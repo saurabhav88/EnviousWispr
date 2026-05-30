@@ -4,7 +4,7 @@ import Foundation
 @preconcurrency import Sparkle
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 
 /// PR-B.1 of #763 — unit tests for `SparkleUpdateController`.
 ///

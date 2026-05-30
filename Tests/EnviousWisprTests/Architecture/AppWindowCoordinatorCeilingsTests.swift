@@ -23,7 +23,7 @@ import Testing
 /// `func`). Line cap 300 (generous soft trip-wire — actual file ~200 lines).
 @Suite struct AppWindowCoordinatorCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/AppWindowCoordinator.swift"
+    "Sources/EnviousWisprAppKit/App/AppWindowCoordinator.swift"
 
   private static let storedPropertyAllowlist: Set<String> = [
     "canOpenOnboarding",
@@ -138,7 +138,7 @@ import Testing
 /// real body.
 private func classBodyOfAppWindowCoordinator() throws -> String {
   let source = try String(
-    contentsOf: RepoRoot.sourceURL("Sources/EnviousWispr/App/AppWindowCoordinator.swift"),
+    contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprAppKit/App/AppWindowCoordinator.swift"),
     encoding: .utf8)
   guard let openRange = source.range(of: "final class AppWindowCoordinator {") else {
     Issue.record("AppWindowCoordinator declaration not found at expected path/shape")

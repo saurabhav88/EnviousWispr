@@ -18,7 +18,7 @@ import Testing
 /// `currentViewState` is private). One allowed extension — `NSMenuDelegate`.
 @Suite struct MenuBarControllerCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/MenuBarController.swift"
+    "Sources/EnviousWisprAppKit/App/MenuBarController.swift"
 
   private static let storedPropertyAllowlist: Set<String> = [
     "iconAnimator",
@@ -130,7 +130,7 @@ import Testing
 /// first inner brace).
 private func classBodyOfMenuBarController() throws -> String {
   let source = try String(
-    contentsOf: RepoRoot.sourceURL("Sources/EnviousWispr/App/MenuBarController.swift"),
+    contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprAppKit/App/MenuBarController.swift"),
     encoding: .utf8)
   guard let openRange = source.range(of: "final class MenuBarController: NSObject {") else {
     Issue.record("MenuBarController declaration not found at expected path/shape")

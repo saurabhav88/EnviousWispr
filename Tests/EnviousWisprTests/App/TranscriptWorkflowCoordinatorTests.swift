@@ -5,7 +5,7 @@ import EnviousWisprStorage
 import Foundation
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
 
 /// Unit tests for `TranscriptWorkflowCoordinator` (PR6 of epic #763).
@@ -21,7 +21,7 @@ import Testing
 ///    fails closed: no transcript mutation, no selection change, no crash.
 ///    The catch block's `AppLogger.shared.log` call is exercised but its
 ///    parity (verbatim message + category) is asserted at code-review time
-///    against `Sources/EnviousWispr/App/the former root-state file` not by an
+///    against `Sources/EnviousWisprAppKit/App/the former root-state file` not by an
 ///    AppLogger sink seam (the seam would require a refactor outside PR6
 ///    scope; Codex grounded review accepted the narrowing).
 @MainActor

@@ -12,7 +12,7 @@ import Testing
 /// - ≤20 lines
 /// - imports ⊆ {Observation}
 @Suite struct NavigationCoordinatorCeilingsTests {
-  private static let sourcePath = "Sources/EnviousWispr/App/NavigationCoordinator.swift"
+  private static let sourcePath = "Sources/EnviousWisprAppKit/App/NavigationCoordinator.swift"
 
   @Test func storedCollaboratorCeiling() throws {
     let source = try CeilingsTestSupport.source(at: Self.sourcePath)

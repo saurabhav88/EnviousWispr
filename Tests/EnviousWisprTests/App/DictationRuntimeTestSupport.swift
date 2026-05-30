@@ -4,7 +4,7 @@ import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprASR
 @testable import EnviousWisprAudio
 @testable import EnviousWisprPipeline
@@ -132,7 +132,7 @@ enum DictationRuntimeFixtures {
   /// only the return type narrows to `KernelDictationDriver`.
   ///
   /// `sharedVAD` (#882): production builds ONE `CaptureVADSignalSource` and
-  /// passes the same instance to both drivers (`EnviousWisprApp.swift:101-102`),
+  /// passes the same instance to both drivers (`WisprBootstrapper.swift:101-102`),
   /// so `audioCapture.onVADAutoStop` is bound exactly once. A test that builds
   /// both a Parakeet and a WhisperKit driver MUST share the source the same
   /// way, or this helper's own `makeSharedVADSignalSource` call re-binds (steals)

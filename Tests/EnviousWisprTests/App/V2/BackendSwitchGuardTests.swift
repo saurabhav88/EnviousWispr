@@ -8,14 +8,14 @@ import EnviousWisprStorage
 import Foundation
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
 
 /// V2 fault-injection — Lane C invariant C3 (issue #291).
 ///
 /// Asserts that `PipelineSettingsSync` rejects backend switches while either
 /// pipeline is active. Current behavior at
-/// `Sources/EnviousWispr/App/PipelineSettingsSync.swift:86-98`: when
+/// `Sources/EnviousWisprAppKit/App/PipelineSettingsSync.swift:86-98`: when
 /// `pipeline.state.isActive || whisperKitKernelDriver.state.isActive`, the
 /// `.selectedBackend` change is logged and dropped, and the active recording
 /// continues uninterrupted. This test guards that contract: a future change

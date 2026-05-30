@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 
 /// PR-B.2 of #763 — unit tests for `AppWindowCoordinator`.
 ///

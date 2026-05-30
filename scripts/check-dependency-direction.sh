@@ -5,7 +5,8 @@
 # Authoritative dep graph (verified against Package.swift on 2026-04-30).
 # Edit `permitted_imports_for` below when Package.swift changes (and update the
 # Bible if the new edge represents an architectural decision):
-#   EnviousWispr           -> Core, Storage, PostProcessing, Audio, Services, ASR, LLM, Pipeline (executable, top of stack)
+#   EnviousWispr           -> AppKit (thin launchable shell; #919). Imports ONLY the kit.
+#   EnviousWisprAppKit     -> Core, Storage, PostProcessing, Audio, Services, ASR, LLM, Pipeline (app-shell library; #919, top of stack)
 #   EnviousWisprAudioService -> Core, Audio (XPC executable)
 #   EnviousWisprASRService -> Core, ASR, Audio (XPC executable)
 #   EnviousWisprPipeline   -> Core, ASR, Audio, LLM, PostProcessing, Services, Storage
@@ -35,7 +36,8 @@ permitted_imports_for() {
     EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
     EnviousWisprAudioService)      echo "EnviousWisprCore EnviousWisprAudio" ;;
     EnviousWisprASRService)        echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio" ;;
-    EnviousWispr)                  echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprPipeline" ;;
+    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprPipeline" ;;
+    EnviousWispr)                  echo "EnviousWisprAppKit" ;;
     *)                             return 1 ;;
   esac
 }

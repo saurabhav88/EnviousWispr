@@ -7,48 +7,51 @@ import EnviousWisprServices
 import EnviousWisprStorage
 import SwiftUI
 
-@main
-struct EnviousWisprApp: App {
-  @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+/// #919: the single production composition root, relocated out of the `@main`
+/// `EnviousWisprApp` struct into `EnviousWisprAppKit` so the unit-test target
+/// can link this code WITHOUT launching the app. The thin `EnviousWisprApp`
+/// shell (still `@main`, still owning the `@NSApplicationDelegateAdaptor` and
+/// app identity) constructs ONE of these in `App.init()`, attaches it to the
+/// shell `AppDelegate`, and shows `mainWindowContent()` / `onboardingWindowContent()`.
+/// App-owned homes stay `internal` to this module (no public leak); only the
+/// bootstrapper type + its init + 4 lifecycle methods + 2 view factories + 2
+/// window-title accessors cross to the shell.
+@MainActor
+public final class WisprBootstrapper {
+  // App-owned homes (epic #763 composition root). Held as `let` on this
+  // bootstrapper (which the shell keeps alive via a single `@State`); injected
+  // into views via `.environment(...)` inside the view factories below.
+  let navigationCoordinator: NavigationCoordinator
+  let diagnosticsCoordinator: DiagnosticsCoordinator
+  let languageSuggestionPresenter: LanguageSuggestionPresenter
+  let updateCoordinatorHolder: UpdateCoordinatorHolder
+  let sparkleUpdateController: SparkleUpdateController
+  let transcriptWorkflowCoordinator: TranscriptWorkflowCoordinator
+  let liveRecordingState: LiveRecordingState
+  let lastRecordingResult: LastRecordingResult
+  let backendMetadata: BackendMetadata
+  let dictationRuntime: DictationRuntime
+  let hotkeyService: HotkeyService
+  let appWindowCoordinator: AppWindowCoordinator
+  let menuBarController: MenuBarController
+  let appLifecycleCoordinator: AppLifecycleCoordinator
 
-  // PR-A of #763: SwiftUI App struct is the composition root. App-owned homes
-  // live here as `@State` and are injected into views via `.environment(...)`.
-  @State private var navigationCoordinator: NavigationCoordinator
-  @State private var diagnosticsCoordinator: DiagnosticsCoordinator
-  @State private var languageSuggestionPresenter: LanguageSuggestionPresenter
-  @State private var updateCoordinatorHolder: UpdateCoordinatorHolder
-  @State private var sparkleUpdateController: SparkleUpdateController
-  @State private var transcriptWorkflowCoordinator: TranscriptWorkflowCoordinator
-  @State private var liveRecordingState: LiveRecordingState
-  @State private var lastRecordingResult: LastRecordingResult
-  @State private var backendMetadata: BackendMetadata
-  @State private var dictationRuntime: DictationRuntime
-  @State private var hotkeyService: HotkeyService
-  @State private var appWindowCoordinator: AppWindowCoordinator
-  @State private var menuBarController: MenuBarController
-  @State private var appLifecycleCoordinator: AppLifecycleCoordinator
+  // The nine view-facing subsystems (epic #763), injected into both Window
+  // scenes' environment by the view factories.
+  let settings: SettingsManager
+  let permissions: PermissionsService
+  let asrManager: any ASRManagerInterface
+  let customWordsCoordinator: CustomWordsCoordinator
+  let setup: SetupCoordinator
+  let audioDeviceList: AudioDeviceList
+  let aiAvailability: AIAvailabilityCoordinator
+  let keychainManager: KeychainManager
+  let llmDiscovery: LLMModelDiscoveryCoordinator
 
-  // The nine view-facing subsystems are App-owned `@State` homes, injected
-  // into both Window scenes' environment. Every Settings / Main / Onboarding
-  // view reads these homes directly (epic #763).
-  @State private var settings: SettingsManager
-  @State private var permissions: PermissionsService
-  @State private var asrManager: any ASRManagerInterface
-  @State private var customWordsCoordinator: CustomWordsCoordinator
-  @State private var setup: SetupCoordinator
-  @State private var audioDeviceList: AudioDeviceList
-  @State private var aiAvailability: AIAvailabilityCoordinator
-  @State private var keychainManager: KeychainManager
-  @State private var llmDiscovery: LLMModelDiscoveryCoordinator
+  // The re-polish service is App-owned (epic #763).
+  let polishService: TranscriptPolishService
 
-  // The re-polish service is App-owned (epic #763): the composition root
-  // holds the canonical reference; views and consumers read it directly.
-  @State private var polishService: TranscriptPolishService
-
-  @State private var isOnboardingPresented: Bool =
-    !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
-
-  init() {
+  public init() {
     // ===== Subsystem construction (epic #763) =====
     // `EnviousWisprApp` is the composition root: every subsystem is constructed
     // here. Construction order is load-bearing: `polishService` before the
@@ -412,103 +415,143 @@ struct EnviousWisprApp: App {
       hotkeyService: hotkeyService
     )
 
-    _navigationCoordinator = State(initialValue: navigationCoordinator)
-    _diagnosticsCoordinator = State(initialValue: diagnosticsCoordinator)
-    _languageSuggestionPresenter = State(initialValue: languageSuggestionPresenter)
-    _updateCoordinatorHolder = State(initialValue: updateCoordinatorHolder)
-    _sparkleUpdateController = State(initialValue: sparkleUpdateController)
-    _transcriptWorkflowCoordinator = State(initialValue: transcriptWorkflowCoordinator)
-    _liveRecordingState = State(initialValue: liveRecordingState)
-    _lastRecordingResult = State(initialValue: lastRecordingResult)
-    _backendMetadata = State(initialValue: backendMetadata)
-    _dictationRuntime = State(initialValue: dictationRuntime)
-    _hotkeyService = State(initialValue: hotkeyService)
-    _appWindowCoordinator = State(initialValue: appWindowCoordinator)
-    _menuBarController = State(initialValue: menuBarController)
-    _appLifecycleCoordinator = State(initialValue: appLifecycleCoordinator)
+    self.navigationCoordinator = navigationCoordinator
+    self.diagnosticsCoordinator = diagnosticsCoordinator
+    self.languageSuggestionPresenter = languageSuggestionPresenter
+    self.updateCoordinatorHolder = updateCoordinatorHolder
+    self.sparkleUpdateController = sparkleUpdateController
+    self.transcriptWorkflowCoordinator = transcriptWorkflowCoordinator
+    self.liveRecordingState = liveRecordingState
+    self.lastRecordingResult = lastRecordingResult
+    self.backendMetadata = backendMetadata
+    self.dictationRuntime = dictationRuntime
+    self.hotkeyService = hotkeyService
+    self.appWindowCoordinator = appWindowCoordinator
+    self.menuBarController = menuBarController
+    self.appLifecycleCoordinator = appLifecycleCoordinator
 
     // PR-C.1 of #763: the nine view-facing homes.
-    _settings = State(initialValue: settings)
-    _permissions = State(initialValue: permissions)
-    _asrManager = State(initialValue: asrManager)
-    _customWordsCoordinator = State(initialValue: customWordsCoordinator)
-    _setup = State(initialValue: setup)
-    _audioDeviceList = State(initialValue: audioDeviceList)
-    _aiAvailability = State(initialValue: aiAvailability)
-    _keychainManager = State(initialValue: keychainManager)
-    _llmDiscovery = State(initialValue: llmDiscovery)
+    self.settings = settings
+    self.permissions = permissions
+    self.asrManager = asrManager
+    self.customWordsCoordinator = customWordsCoordinator
+    self.setup = setup
+    self.audioDeviceList = audioDeviceList
+    self.aiAvailability = aiAvailability
+    self.keychainManager = keychainManager
+    self.llmDiscovery = llmDiscovery
 
     // PR-C.3 of #763: App-owned re-polish service.
-    _polishService = State(initialValue: polishService)
-
-    // PR-A: push App-owned homes into AppDelegate before any
-    // NSApplicationDelegate callback fires.
-    appDelegate.attach(
-      sparkleUpdateController: sparkleUpdateController,
-      appLifecycleCoordinator: appLifecycleCoordinator
-    )
+    self.polishService = polishService
 
     // Initialize observability (PostHog + Sentry) unconditionally at launch.
+    // #919: same timing as before — the shell's `App.init()` constructs this
+    // bootstrapper synchronously, before any NSApplicationDelegate callback.
     ObservabilityBootstrap.initialize()
   }
 
-  var body: some Scene {
-    Window(AppConstants.appName, id: "main") {
-      UnifiedWindowView()
-        .frame(minWidth: 580, minHeight: 400)
-        .environment(navigationCoordinator)
-        .environment(diagnosticsCoordinator)
-        .environment(languageSuggestionPresenter)
-        .environment(updateCoordinatorHolder)
-        .environment(transcriptWorkflowCoordinator)
-        .environment(liveRecordingState)
-        .environment(lastRecordingResult)
-        .environment(backendMetadata)
-        .environment(dictationRuntime)
-        .environment(appWindowCoordinator)
-        // The nine view-facing homes (epic #763).
-        .environment(settings)
-        .environment(permissions)
-        .environment(customWordsCoordinator)
-        .environment(setup)
-        .environment(audioDeviceList)
-        .environment(aiAvailability)
-        .environment(llmDiscovery)
-        .environment(\.asrManager, asrManager)
-        .environment(\.keychainManager, keychainManager)
-        .background(
-          ActionWirer(
-            settings: settings,
-            appWindowCoordinator: appWindowCoordinator,
-            menuBarController: menuBarController,
-            isOnboardingPresented: $isOnboardingPresented
-          )
-        )
-    }
-    .defaultSize(width: 820, height: 600)
+  // MARK: - Lifecycle (forwarded by the shell `AppDelegate`)
+  // #919: preserves the exact pre-split timing — `startUpdater()` runs in
+  // `applicationWillFinishLaunching`, before the first SwiftUI scene body
+  // evaluates (issue #739 / SparkleUpdateController contract).
 
-    // Onboarding window — non-resizable, centered, auto-opens on first launch.
-    Window(AppConstants.onboardingWindowTitle, id: "onboarding") {
-      OnboardingV2View(onComplete: {
-        appWindowCoordinator.closeOnboardingWindow()
-      })
-      .environment(navigationCoordinator)
-      .environment(languageSuggestionPresenter)
-      .environment(dictationRuntime)
-      .environment(appWindowCoordinator)
+  public func applicationWillFinishLaunching() {
+    sparkleUpdateController.startUpdater()
+  }
+
+  public func applicationDidFinishLaunching() {
+    appLifecycleCoordinator.runDidFinishLaunching()
+  }
+
+  public func applicationDidBecomeActive() {
+    appLifecycleCoordinator.runDidBecomeActive()
+  }
+
+  public func applicationWillTerminate() {
+    appLifecycleCoordinator.runWillTerminate()
+  }
+
+  // MARK: - Window titles (so the shell needs no EnviousWisprCore dependency)
+
+  public var mainWindowTitle: String { AppConstants.appName }
+  public var onboardingWindowTitle: String { AppConstants.onboardingWindowTitle }
+
+  // MARK: - Root content
+  // Homes are injected here, INSIDE the kit — the shell injects nothing, so no
+  // home type crosses the module boundary (keeps the public surface tiny).
+
+  public func mainWindowContent() -> some View {
+    MainWindowRoot(b: self)
+  }
+
+  public func onboardingWindowContent() -> some View {
+    OnboardingWindowRoot(b: self)
+  }
+}
+
+/// The main window's root view. Owns the onboarding-presented view-state (was
+/// `@State` on the old App struct) and injects every App-owned home.
+private struct MainWindowRoot: View {
+  let b: WisprBootstrapper
+  @State private var isOnboardingPresented: Bool =
+    !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+
+  var body: some View {
+    UnifiedWindowView()
+      .frame(minWidth: 580, minHeight: 400)
+      .environment(b.navigationCoordinator)
+      .environment(b.diagnosticsCoordinator)
+      .environment(b.languageSuggestionPresenter)
+      .environment(b.updateCoordinatorHolder)
+      .environment(b.transcriptWorkflowCoordinator)
+      .environment(b.liveRecordingState)
+      .environment(b.lastRecordingResult)
+      .environment(b.backendMetadata)
+      .environment(b.dictationRuntime)
+      .environment(b.appWindowCoordinator)
       // The nine view-facing homes (epic #763).
-      .environment(settings)
-      .environment(permissions)
-      .environment(customWordsCoordinator)
-      .environment(setup)
-      .environment(audioDeviceList)
-      .environment(aiAvailability)
-      .environment(llmDiscovery)
-      .environment(\.asrManager, asrManager)
-      .environment(\.keychainManager, keychainManager)
-    }
-    .windowResizability(.contentSize)
-    .defaultSize(width: 500, height: 550)
+      .environment(b.settings)
+      .environment(b.permissions)
+      .environment(b.customWordsCoordinator)
+      .environment(b.setup)
+      .environment(b.audioDeviceList)
+      .environment(b.aiAvailability)
+      .environment(b.llmDiscovery)
+      .environment(\.asrManager, b.asrManager)
+      .environment(\.keychainManager, b.keychainManager)
+      .background(
+        ActionWirer(
+          settings: b.settings,
+          appWindowCoordinator: b.appWindowCoordinator,
+          menuBarController: b.menuBarController,
+          isOnboardingPresented: $isOnboardingPresented
+        )
+      )
+  }
+}
+
+/// The onboarding window's root view.
+private struct OnboardingWindowRoot: View {
+  let b: WisprBootstrapper
+
+  var body: some View {
+    OnboardingV2View(onComplete: {
+      b.appWindowCoordinator.closeOnboardingWindow()
+    })
+    .environment(b.navigationCoordinator)
+    .environment(b.languageSuggestionPresenter)
+    .environment(b.dictationRuntime)
+    .environment(b.appWindowCoordinator)
+    // The nine view-facing homes (epic #763).
+    .environment(b.settings)
+    .environment(b.permissions)
+    .environment(b.customWordsCoordinator)
+    .environment(b.setup)
+    .environment(b.audioDeviceList)
+    .environment(b.aiAvailability)
+    .environment(b.llmDiscovery)
+    .environment(\.asrManager, b.asrManager)
+    .environment(\.keychainManager, b.keychainManager)
   }
 }
 

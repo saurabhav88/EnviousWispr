@@ -8,7 +8,7 @@ bundle with `EW_FAULT_INJECTION=1` set via `open --env`. Without both gates
 satisfied (DEBUG build AND env var), the endpoint is inert. The release path
 (`scripts/bundle-dev.sh`) does NOT contain the endpoint — by design.
 
-Wire protocol (per `Sources/EnviousWispr/App/Debug/DebugFaultEndpoint.swift`):
+Wire protocol (per `Sources/EnviousWisprAppKit/App/Debug/DebugFaultEndpoint.swift`):
 
     <token>\\n
     <command>\\n

@@ -26,7 +26,7 @@ import Testing
 ///   trip-wire — actual file ~280 lines).
 @Suite struct SparkleUpdateControllerCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/SparkleUpdateController.swift"
+    "Sources/EnviousWisprAppKit/App/SparkleUpdateController.swift"
 
   @Test func collaboratorCount() throws {
     let body = try RouterCeilingParser.classBody(

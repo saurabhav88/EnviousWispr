@@ -9,7 +9,7 @@ struct DictationInvokedPipelineWiringTests {
     // DictationSessionConfigFactory. The factory now owns the
     // `inputMode: settings.recordingMode` plumbing.
     let factorySource = try Self.read(
-      "Sources/EnviousWispr/App/DictationSessionConfigFactory.swift")
+      "Sources/EnviousWisprAppKit/App/DictationSessionConfigFactory.swift")
 
     #expect(configSource.contains("public let inputMode: RecordingMode"))
     #expect(factorySource.contains("inputMode: settings.recordingMode"))

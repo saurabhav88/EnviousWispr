@@ -1,7 +1,7 @@
 import EnviousWisprPipeline
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 
 /// PR-7 (#827): the cold-start cohort token stamped onto the `PTT-to-recording`
 /// log line (`ASREngineReadiness.coldStartCohortToken`). The end-to-end value

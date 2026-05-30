@@ -68,7 +68,7 @@ import Testing
   // MARK: PR-5 Rung 5 Codex code-diff r1 P1 — per-subscriber broadcast
   //
   // The source is shared between two `KernelDictationDriver`s in production
-  // (Parakeet + WhisperKit) via `EnviousWisprApp.swift:148`. A single
+  // (Parakeet + WhisperKit) via `WisprBootstrapper.swift:148`. A single
   // `AsyncStream` delivers each yield to exactly one iterator, so an
   // overlap between the two kernels' `subscribeVADSignals` tasks could
   // swallow a stop signal before the active driver saw it. Each

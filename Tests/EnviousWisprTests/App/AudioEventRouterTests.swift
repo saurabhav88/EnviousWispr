@@ -3,7 +3,7 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprASR
 @testable import EnviousWisprAudio
 @testable import EnviousWisprLLM
@@ -116,7 +116,7 @@ struct AudioEventRouterTests {
 
     let legacyStore = DictationRuntimeFixtures.tempStore()
     // Share the SAME VAD source with the WhisperKit driver, mirroring production
-    // (`EnviousWisprApp.swift:101-102`). Without this, the helper's own
+    // (`WisprBootstrapper.swift:101-102`). Without this, the helper's own
     // `makeSharedVADSignalSource` builds a second source and re-binds
     // `audio.onVADAutoStop` to it — orphaning the Parakeet kernel's stop path so
     // `fireVADAutoStop()` reaches nobody and the recording survives to the 300s

@@ -39,7 +39,7 @@ import Testing
 ///      `var languageSuggestionPresenter`.
 @Suite struct DictationLifecycleCoordinatorCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/DictationRuntime/DictationLifecycleCoordinator.swift"
+    "Sources/EnviousWisprAppKit/App/DictationRuntime/DictationLifecycleCoordinator.swift"
 
   @Test func collaboratorCount() throws {
     let body = try RouterCeilingParser.classBody(

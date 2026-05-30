@@ -3,7 +3,7 @@ import EnviousWisprASR
 import EnviousWisprCore
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 
 /// Unit tests for SetupCoordinator's preload observation behavior.
 ///

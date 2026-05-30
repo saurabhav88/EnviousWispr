@@ -1,6 +1,6 @@
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 
 /// Issue #768 (PR3 of epic #763) — pins the `DiagnosticsCoordinator` contract
 /// that was extracted from the former root state.

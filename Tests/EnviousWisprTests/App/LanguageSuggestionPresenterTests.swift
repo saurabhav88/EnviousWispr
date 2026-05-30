@@ -4,7 +4,7 @@ import EnviousWisprPipeline
 import Foundation
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 
 /// Test-controllable overlay double. Holds the current intent that
 /// `readCurrentIntent()` returns and records all `showOverlay(...)` and

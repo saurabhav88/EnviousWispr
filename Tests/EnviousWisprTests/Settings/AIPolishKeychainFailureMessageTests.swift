@@ -2,7 +2,7 @@ import Foundation
 import Security
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
 
 /// Regression tests for #724 — keychain failure → user-facing message mapping.

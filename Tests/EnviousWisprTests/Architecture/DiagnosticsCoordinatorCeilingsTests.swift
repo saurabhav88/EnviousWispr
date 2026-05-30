@@ -12,7 +12,7 @@ import Testing
 /// - ≤14 lines
 /// - imports ⊆ {Observation}
 @Suite struct DiagnosticsCoordinatorCeilingsTests {
-  private static let sourcePath = "Sources/EnviousWispr/App/DiagnosticsCoordinator.swift"
+  private static let sourcePath = "Sources/EnviousWisprAppKit/App/DiagnosticsCoordinator.swift"
 
   @Test func storedCollaboratorCeiling() throws {
     let source = try CeilingsTestSupport.source(at: Self.sourcePath)

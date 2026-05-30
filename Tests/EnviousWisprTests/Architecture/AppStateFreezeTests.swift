@@ -18,13 +18,24 @@ import Testing
   /// not false-positive.
   private static let tokenPattern = #"\bAppState\b"#
 
-  private static let appStateRelativePath = "Sources/EnviousWispr/App/AppState.swift"
+  /// #919: the app-shell code moved from the app target into EnviousWisprAppKit,
+  /// so guard BOTH the old shell location and the new kit location — AppState
+  /// must not reappear in either.
+  private static let appStateRelativePaths = [
+    "Sources/EnviousWispr/App/AppState.swift",
+    "Sources/EnviousWisprAppKit/App/AppState.swift",
+  ]
 
   @Test func appStateFileDoesNotExist() {
-    let url = repoRoot().appending(path: Self.appStateRelativePath)
-    #expect(
-      !FileManager.default.fileExists(atPath: url.path),
-      "AppState.swift must stay deleted (epic #763). State belongs in the named domain home.")
+    for relativePath in Self.appStateRelativePaths {
+      let url = repoRoot().appending(path: relativePath)
+      #expect(
+        !FileManager.default.fileExists(atPath: url.path),
+        """
+        AppState.swift must stay deleted (epic #763), checked at \(relativePath). \
+        State belongs in the named domain home.
+        """)
+    }
   }
 
   @Test func noSourceReferencesAppState() throws {

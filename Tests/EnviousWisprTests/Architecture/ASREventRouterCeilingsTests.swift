@@ -4,7 +4,7 @@ import Testing
 /// PR8 of #763 — locks `ASREventRouter`'s entanglement shape.
 @Suite struct ASREventRouterCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/DictationRuntime/ASREventRouter.swift"
+    "Sources/EnviousWisprAppKit/App/DictationRuntime/ASREventRouter.swift"
 
   @Test func collaboratorCount() throws {
     let body = try RouterCeilingParser.classBody(named: "ASREventRouter", at: Self.sourcePath)

@@ -8,7 +8,7 @@ import EnviousWisprStorage
 import Foundation
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
 
 /// Regression test for #728.

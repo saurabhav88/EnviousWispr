@@ -26,7 +26,7 @@ import Testing
 /// `runWillTerminate` unchanged (`init` is not a `func`).
 @Suite struct AppLifecycleCoordinatorCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/AppLifecycleCoordinator.swift"
+    "Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift"
 
   private static let storedPropertyAllowlist: Set<String> = [
     "audioEnvironmentSnapshotter",

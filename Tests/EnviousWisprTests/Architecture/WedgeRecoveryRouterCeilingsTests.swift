@@ -4,7 +4,7 @@ import Testing
 /// PR8 of #763 — locks `WedgeRecoveryRouter`'s entanglement shape.
 @Suite struct WedgeRecoveryRouterCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/DictationRuntime/WedgeRecoveryRouter.swift"
+    "Sources/EnviousWisprAppKit/App/DictationRuntime/WedgeRecoveryRouter.swift"
 
   @Test func collaboratorCount() throws {
     let body = try RouterCeilingParser.classBody(

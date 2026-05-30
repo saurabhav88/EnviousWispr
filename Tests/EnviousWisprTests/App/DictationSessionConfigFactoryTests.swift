@@ -8,7 +8,7 @@ import EnviousWisprServices
 import EnviousWisprStorage
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 
 /// Unit tests for `DictationSessionConfigFactory.make(...)` (PR5 of epic #763).
 ///

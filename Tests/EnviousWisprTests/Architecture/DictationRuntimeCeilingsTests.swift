@@ -23,7 +23,7 @@ import Testing
 ///   as the last init step.
 @Suite struct DictationRuntimeCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/DictationRuntime/DictationRuntime.swift"
+    "Sources/EnviousWisprAppKit/App/DictationRuntime/DictationRuntime.swift"
 
   @Test func collaboratorCount() throws {
     let body = try RouterCeilingParser.classBody(

@@ -98,20 +98,26 @@ import Testing
       """)
   }
 
-  /// Non-private method ceiling — the App struct is composition-only. The
-  /// only required member is the SwiftUI-protocol `body: some Scene` (computed
-  /// property, not a method) and the `init()`. No callable public/internal
-  /// methods are allowed because views and other types must not depend on
-  /// methods of the App struct.
+  /// Non-private method ceiling. #919: the relocated composition root
+  /// (`WisprBootstrapper`) exposes EXACTLY the front-door surface the thin
+  /// `@main` shell needs — 4 lifecycle forwards (`applicationWillFinishLaunching`,
+  /// `applicationDidFinishLaunching`, `applicationDidBecomeActive`,
+  /// `applicationWillTerminate`) + 2 view factories (`mainWindowContent`,
+  /// `onboardingWindowContent`) = 6 public `func`s. The 2 window-title
+  /// accessors are computed `var`s (not counted). No DOMAIN methods are allowed
+  /// beyond this front door — those belong on the individual homes. This cap is
+  /// the public-surface gate from the #919 plan (= 8 public decls overall:
+  /// these 6 funcs + the type + its `init`).
   @Test func envWisprAppNonPrivateMethodCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelNonPrivateMethods(in: body)
     #expect(
-      count <= 0,
+      count <= 6,
       """
-      EnviousWisprApp non-private method ceiling exceeded: \(count) > 0. \
-      The App struct is the composition root. Methods belong on the
-      individual @State homes (NavigationCoordinator, DictationRuntime, ...).
+      WisprBootstrapper non-private method ceiling exceeded: \(count) > 6. \
+      The bootstrapper's public surface is the 4 lifecycle forwards + 2 view \
+      factories. New domain methods belong on the individual homes \
+      (NavigationCoordinator, DictationRuntime, ...), not the composition root.
       """)
   }
 
@@ -152,14 +158,20 @@ import Testing
   /// `AppLifecycleCoordinator` init call expanding from one `appState:` argument
   /// to ten specific-home arguments. Cap set by the deterministic rule
   /// (post-change actual 569 + 10, rounded up to the nearest 5).
+  /// Ratcheted 580→615 in #919 (2026-05-30): the composition root moved into
+  /// `WisprBootstrapper` and absorbed the relocated `body` content as two view
+  /// factories (`mainWindowContent`/`onboardingWindowContent`) + their private
+  /// root views (`MainWindowRoot`/`OnboardingWindowRoot`) + the 4 lifecycle
+  /// forwards, net of dropping the `@State` backing assignments. Cap set by the
+  /// deterministic rule (post-change actual 604 + 10, rounded up to 615).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 580,
+      lineCount <= 615,
       """
-      EnviousWisprApp line count exceeded: \(lineCount) > 580. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 615. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }
@@ -199,13 +211,17 @@ import Testing
 }
 
 private func envWisprAppURL() -> URL {
-  RepoRoot.sourceURL("Sources/EnviousWispr/App/EnviousWisprApp.swift")
+  // #919: the composition root moved out of the `@main` `EnviousWisprApp`
+  // struct into `WisprBootstrapper` in EnviousWisprAppKit (so the unit-test
+  // target links it without launching the app). This ceiling now tracks the
+  // relocated root; the thin `@main` shell holds only 2 stored properties.
+  RepoRoot.sourceURL("Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift")
 }
 
 private func structBodyOfEnviousWisprApp() throws -> String {
   let source = try String(contentsOf: envWisprAppURL(), encoding: .utf8)
-  guard let openRange = source.range(of: "struct EnviousWisprApp: App {") else {
-    Issue.record("EnviousWisprApp declaration not found at expected path/shape")
+  guard let openRange = source.range(of: "public final class WisprBootstrapper {") else {
+    Issue.record("WisprBootstrapper declaration not found at expected path/shape")
     throw POSIXError(.ENOENT)
   }
   let openIdx = source.index(before: openRange.upperBound)  // points at '{'

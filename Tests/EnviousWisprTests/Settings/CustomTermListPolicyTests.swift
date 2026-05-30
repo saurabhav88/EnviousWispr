@@ -2,7 +2,7 @@ import EnviousWisprCore
 import Foundation
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 
 /// Phase 4 (#634) — pins the pure filter + pagination helper used by
 /// `CustomTermsSection`. Bible §10.6.
