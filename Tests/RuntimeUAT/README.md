@@ -17,7 +17,7 @@ This directory is tracked in git. Output artifacts (screenshots, logs, generated
 1. **Python 3.13** with PyObjC bindings: `pip3 install pyobjc-framework-Cocoa pyobjc-framework-Quartz pyobjc-framework-ApplicationServices`
 2. **Accessibility permission granted** to your terminal / Claude Code shell. System Settings → Privacy & Security → Accessibility → enable for Terminal.app or your shell of choice.
 3. **Microphone permission granted** to EnviousWispr.
-4. **EnviousWispr.app built and launchable** at the expected path. For dev runs use `scripts/bundle-dev.sh`. For release runs use the installed `EnviousWispr.app`.
+4. **EnviousWispr.app built and launchable** at the expected path. For dev runs use `scripts/build-dev-app.sh`. For release runs use the installed `EnviousWispr.app`.
 5. **OpenAI API key** at `~/.enviouswispr-keys/openai-api-key` for high-quality TTS (`echo` voice). Falls back to macOS `say` (Evan Enhanced) if missing.
 
 ## Layout

@@ -11,12 +11,11 @@ INPUT_LOG=""
 APP_LOG="${HOME}/Library/Logs/EnviousWispr/app.log"
 APP_BUNDLE_ID="com.enviouswispr.app.dev"
 DEV_APP_PATH="$ROOT_DIR/build/EnviousWispr Local.app"
-DEBUG_BINARY="$ROOT_DIR/.build/debug/EnviousWispr"
 DEV_APP_BINARY="$DEV_APP_PATH/Contents/MacOS/EnviousWispr"
-DEBUG_AUDIO_SERVICE_BINARY="$ROOT_DIR/.build/debug/EnviousWisprAudioService"
-DEBUG_ASR_SERVICE_BINARY="$ROOT_DIR/.build/debug/EnviousWisprASRService"
-DEV_AUDIO_SERVICE_BINARY="$DEV_APP_PATH/Contents/XPCServices/com.enviouswispr.audioservice.xpc/Contents/MacOS/EnviousWisprAudioService"
-DEV_ASR_SERVICE_BINARY="$DEV_APP_PATH/Contents/XPCServices/com.enviouswispr.asrservice.xpc/Contents/MacOS/EnviousWisprASRService"
+# #913 PR4: the Xcode-built dev bundle names XPC dirs by product name, not bundle
+# id (the retired hand-rolled bundler used `com.enviouswispr.*.xpc`).
+DEV_AUDIO_SERVICE_BINARY="$DEV_APP_PATH/Contents/XPCServices/EnviousWisprAudioService.xpc/Contents/MacOS/EnviousWisprAudioService"
+DEV_ASR_SERVICE_BINARY="$DEV_APP_PATH/Contents/XPCServices/EnviousWisprASRService.xpc/Contents/MacOS/EnviousWisprASRService"
 LOG_PIPE="$RUN_DIR/lid-perf-signposts.pipe"
 TAIL_PID=""
 GREP_PID=""
@@ -55,34 +54,41 @@ enable_app_file_logging() {
     exit 2
   fi
 
-  if [[ ! -x "$DEBUG_BINARY" || ! -x "$DEV_APP_BINARY" ||
-    ! -x "$DEBUG_AUDIO_SERVICE_BINARY" || ! -x "$DEV_AUDIO_SERVICE_BINARY" ||
-    ! -x "$DEBUG_ASR_SERVICE_BINARY" || ! -x "$DEV_ASR_SERVICE_BINARY" ]]; then
-    echo "debug binary or app bundle executable is missing." >&2
-    echo "Build and launch the debug dev app first, then rerun this script." >&2
+  if [[ ! -x "$DEV_APP_BINARY" || ! -x "$DEV_AUDIO_SERVICE_BINARY" ||
+    ! -x "$DEV_ASR_SERVICE_BINARY" ]]; then
+    echo "dev app bundle executable(s) missing at $DEV_APP_PATH." >&2
+    echo "Run scripts/build-dev-app.sh first, then rerun this script." >&2
     exit 2
   fi
 
-  EXPECTED_VERSION="$(git -C "$ROOT_DIR" describe --tags --always 2>/dev/null || echo '0.0.0')-debug"
-  APP_VERSION="$(plutil -extract CFBundleShortVersionString raw "$DEV_APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
-  if [[ "$APP_VERSION" != "$EXPECTED_VERSION" ]]; then
-    echo "lid-perf-bench needs the current debug dev app so AppLogger writes app.log." >&2
-    echo "Found version '${APP_VERSION:-unknown}' at $DEV_APP_PATH." >&2
-    echo "Expected version '$EXPECTED_VERSION'." >&2
-    echo "Note: scripts/bundle-dev.sh creates a release-style '-dev' bundle; this benchmark needs a debug '-debug' bundle." >&2
-    echo "Build and launch the debug dev app first, then rerun this script." >&2
+  # #913 PR4: the dev bundle is built by the Tuist/Xcode engine (scripts/build-dev-app.sh),
+  # which compiles the DEBUG-flagged `Dev` configuration so AppLogger file logging is
+  # available. Verify it is the `.dev` bundle, and that no source file is newer than the
+  # built binary (the freshness signal — replaces the old comparison against a separate
+  # `swift build -c debug` output, which no longer exists post-migration).
+  ACTUAL_ID="$(plutil -extract CFBundleIdentifier raw "$DEV_APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+  if [[ "$ACTUAL_ID" != "$APP_BUNDLE_ID" ]]; then
+    echo "lid-perf-bench needs the .dev bundle ($APP_BUNDLE_ID); found '${ACTUAL_ID:-unknown}' at $DEV_APP_PATH." >&2
+    echo "Run scripts/build-dev-app.sh to build + launch the DEBUG-compiled Dev bundle, then rerun." >&2
     exit 2
   fi
 
-  if [[ "$DEBUG_BINARY" -nt "$DEV_APP_BINARY" ]]; then
-    echo "debug app bundle is older than the freshly built debug binary." >&2
-    echo "Build and launch the debug dev app first, then rerun this script." >&2
-    exit 2
-  fi
-  if [[ "$DEBUG_AUDIO_SERVICE_BINARY" -nt "$DEV_AUDIO_SERVICE_BINARY" ||
-    "$DEBUG_ASR_SERVICE_BINARY" -nt "$DEV_ASR_SERVICE_BINARY" ]]; then
-    echo "debug app bundle has stale XPC helper executables." >&2
-    echo "Build and launch the debug dev app first, then rerun this script." >&2
+  # Freshness inputs = app/XPC sources + resources (swift/entitlements/plist) AND
+  # the build-config manifests (Project.swift / Tuist.swift / Package*), since a
+  # change to any of those after the last build-dev-app.sh produces a stale bundle.
+  STALE_INPUT="$(
+    {
+      find "$ROOT_DIR/Sources" -type f \
+        \( -name '*.swift' -o -name '*.entitlements' -o -name '*.plist' \) \
+        -newer "$DEV_APP_BINARY" -print -quit 2>/dev/null
+      for f in Project.swift Tuist.swift Workspace.swift Package.swift Package.resolved; do
+        [[ -e "$ROOT_DIR/$f" && "$ROOT_DIR/$f" -nt "$DEV_APP_BINARY" ]] && echo "$ROOT_DIR/$f"
+      done
+    } | head -1
+  )"
+  if [[ -n "$STALE_INPUT" ]]; then
+    echo "dev app bundle is older than a build input (e.g. $STALE_INPUT)." >&2
+    echo "Run scripts/build-dev-app.sh to rebuild the dev bundle, then rerun this script." >&2
     exit 2
   fi
 

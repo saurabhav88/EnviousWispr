@@ -129,7 +129,8 @@ def settings_snapshot():
         "autoCopyToClipboard", "restoreClipboardAfterPaste", "isDebugModeEnabled",
     ]
     # The DEBUG build this capture runs against is the dev bundle — its
-    # UserDefaults live under the `.dev` domain (bundle-dev.sh §DEV_BUNDLE_ID).
+    # UserDefaults live under the `.dev` domain (the dev bundle id built by
+    # scripts/build-dev-app.sh).
     domain = "com.enviouswispr.app.dev"
     snap = {"_defaults_domain": domain}
     for k in keys:

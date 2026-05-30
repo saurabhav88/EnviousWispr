@@ -51,7 +51,9 @@ tree_hash=$(
     done || true
   } | shasum | cut -d' ' -f1
 )
-bundle_path="/tmp/EnviousWispr Local.app"
+# #913 PR4: the dev bundle is now built + deployed to build/EnviousWispr Local.app
+# by scripts/build-dev-app.sh (Xcode engine), not the old /tmp staging path.
+bundle_path="$PROJECT_ROOT/build/EnviousWispr Local.app"
 [ -d "$bundle_path" ] || bundle_path=""
 
 # --- Find or create the latest run directory for this HEAD ---

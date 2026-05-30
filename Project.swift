@@ -46,10 +46,30 @@ let releaseConfigSettings: SettingsDictionary = [
   "GCC_OPTIMIZATION_LEVEL": "s",
 ]
 
+// Dev config: identical compiler flags to Debug (DEBUG defined → AppLogger file
+// logging on, -Onone, fast incremental). It exists as a SEPARATE configuration
+// so the dev-only self-signed signing + the `EnviousWispr Local` product naming
+// live here and NEVER touch the CI-load-bearing Debug config (CI's hosted runner
+// has no `EnviousWispr Dev` cert). (#913 PR4 — Codex-grounded reconciliation.)
+let devConfigSettings: SettingsDictionary = debugConfigSettings
+
+// Dev-only manual signing with the self-signed `EnviousWispr Dev` cert. Merged
+// ONLY into the Dev config of the 3 signable bundles (app + 2 XPC). Debug and
+// Release inherit `CODE_SIGNING_ALLOWED=NO` from `commonSettings`, so CI (which
+// builds Debug + Release) never depends on the local-only cert. (#913 PR4.)
+let devSigningSettings: SettingsDictionary = [
+  "CODE_SIGNING_ALLOWED": "YES",
+  "CODE_SIGNING_REQUIRED": "YES",
+  "CODE_SIGN_STYLE": "Manual",
+  "CODE_SIGN_IDENTITY": "EnviousWispr Dev",
+  "OTHER_CODE_SIGN_FLAGS": "--timestamp=none",
+]
+
 let projectSettings = Settings.settings(
   base: commonSettings,
   configurations: [
     .debug(name: "Debug", settings: debugConfigSettings),
+    .debug(name: "Dev", settings: devConfigSettings),
     .release(name: "Release", settings: releaseConfigSettings),
   ]
 )
@@ -62,6 +82,7 @@ let projectSettings = Settings.settings(
 // products. (#913 PR2)
 func targetSettings(
   debugExtra: SettingsDictionary = [:],
+  devExtra: SettingsDictionary = [:],
   releaseExtra: SettingsDictionary = [:]
 ) -> Settings {
   Settings.settings(
@@ -71,6 +92,10 @@ func targetSettings(
         name: "Debug",
         settings: debugConfigSettings.merging(debugExtra) { _, new in new }
       ),
+      .debug(
+        name: "Dev",
+        settings: devConfigSettings.merging(devExtra) { _, new in new }
+      ),
       .release(
         name: "Release",
         settings: releaseConfigSettings.merging(releaseExtra) { _, new in new }
@@ -79,17 +104,31 @@ func targetSettings(
   )
 }
 
-// PR2 sets only the per-config IDENTITY (bundle id + Sparkle feed). The
-// Apple-intended automatic-signing migration (Apple Development cert + Mac
-// Development profile under DEVELOPMENT_TEAM=9UT54V24XG) lands in the dev-bundle
-// PR (PR4) + release PRs (PR5/PR6), where signing is inherently needed and the
-// founder's Apple Development cert is available. PR2 builds unsigned (like PR1),
-// proving the resource accessor + dev identity independent of signing. (#913)
+// Per-config IDENTITY (bundle id + Sparkle feed) is set on every config. The
+// `.dev` identity lives on BOTH Debug (PR2, kept for CI's unsigned debug build)
+// AND Dev (the local signed bundle). Dev additionally carries self-signed manual
+// signing + the `EnviousWispr Local` product name. Release carries production
+// identity (signing handled at archive/export time in PR5/PR6, NOT here). (#913)
 let appSettings = targetSettings(
   debugExtra: [
     "PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.app.dev",
     "SU_FEED_URL": "",
   ],
+  devExtra: devSigningSettings.merging([
+    "PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.app.dev",
+    "SU_FEED_URL": "",
+    // The local dev app is named "EnviousWispr Local.app" (distinct from the
+    // prod "EnviousWispr.app"), but the executable + CFBundleExecutable stay
+    // "EnviousWispr" so hook/process checks (`pgrep -x EnviousWispr`) match.
+    "PRODUCT_NAME": "EnviousWispr Local",
+    "WRAPPER_NAME": "EnviousWispr Local.app",
+    "EXECUTABLE_NAME": "EnviousWispr",
+    // Dev signs with the self-signed cert (no team), so it CANNOT carry the
+    // team-prefixed keychain-access-groups entitlement (that forces a
+    // provisioning profile). The dev build uses the file-storage keychain
+    // backend anyway, so a Dev entitlements file without the group is correct.
+    "CODE_SIGN_ENTITLEMENTS": "Sources/EnviousWispr/Resources/EnviousWispr-Dev.entitlements",
+  ]) { _, new in new },
   releaseExtra: [
     "PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.app",
     "SU_FEED_URL": "https://enviouswispr.com/appcast.xml",
@@ -98,11 +137,15 @@ let appSettings = targetSettings(
 
 let audioServiceSettings = targetSettings(
   debugExtra: ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.audioservice.dev"],
+  devExtra: devSigningSettings.merging(
+    ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.audioservice.dev"]) { _, new in new },
   releaseExtra: ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.audioservice"]
 )
 
 let asrServiceSettings = targetSettings(
   debugExtra: ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.asrservice.dev"],
+  devExtra: devSigningSettings.merging(
+    ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.asrservice.dev"]) { _, new in new },
   releaseExtra: ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.asrservice"]
 )
 
@@ -347,6 +390,23 @@ let project = Project(
       testAction: .targets(
         ["EnviousWisprTests", "EnviousWisprASRTests"],
         configuration: "Debug"
+      )
+    ),
+    // PR4: dev scheme — builds the app in the `Dev` config (self-signed
+    // `EnviousWispr Local.app`). `scripts/build-dev-app.sh` + the dev rebuild
+    // skills drive this; CI never selects it (CI uses `EnviousWispr`/Debug +
+    // `EnviousWispr-Release`/Release). Test action runs in Dev (unsigned logic
+    // tests, same DEBUG flags as Debug).
+    .scheme(
+      name: "EnviousWispr-Dev",
+      shared: true,
+      buildAction: .buildAction(
+        targets: ["EnviousWispr"],
+        findImplicitDependencies: true
+      ),
+      testAction: .targets(
+        ["EnviousWisprTests", "EnviousWisprASRTests"],
+        configuration: "Dev"
       )
     ),
     .scheme(
