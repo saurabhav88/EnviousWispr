@@ -87,3 +87,5 @@ For the deeper explainer: [On-device vs cloud dictation: which is actually priva
 If you only do one thing this week, swap typing for dictation on your three highest-volume text channels: email, your team Slack, and your meeting-notes habit. Re-evaluate after five working days. Either it sticks because the time savings are obvious, or it does not, and you lost nothing.
 
 If you want a free, on-device tool to try this with: [download EnviousWispr](https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg). No account, works offline, runs on Apple Silicon.
+
+*Comparing dictation tools for everyday productivity? See [vs WisprFlow](/compare/wisprflow/), [vs Apple Dictation](/compare/apple-dictation/), or [browse all comparisons](/compare/).*
