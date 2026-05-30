@@ -54,6 +54,9 @@ import Testing
     "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift",
     "Sources/EnviousWisprPipeline/KernelFinalizationWiring.swift",
     "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift",
+    // #878: the ASR-interruption direct-emit path reads `engineIdentity.displayName`
+    // for its Sentry label; was an `== .whisperKit` literal until PR-6 debt cleanup.
+    "Sources/EnviousWisprPipeline/KernelDictationDriver.swift",
   ]
 
   /// The observer file no longer holds an emitter default — it must never

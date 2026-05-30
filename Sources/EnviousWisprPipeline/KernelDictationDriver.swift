@@ -226,6 +226,15 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     // (Codex review #11 r3 / `PipelineStateChangeHandler` guard).
     if kernel.state == .idle {
       outcome.transcript = nil
+      // Clear the post-recording polish error alongside the transcript — both
+      // are last-session outcome fields surfaced publicly (`currentTranscript`
+      // / `lastPolishError`). Idle-gated (not unconditional like
+      // `lastExternalError`) for the same reason as the transcript: a `reset()`
+      // that no-ops because the kernel sits in `.finalizing` must leave the
+      // in-flight outcome intact for completion telemetry. Without this, a
+      // prior session's "AI polish failed" surface lingered into the next
+      // dictation (#859).
+      outcome.polishError = nil
     }
     fireStateChangeIfNeeded()
   }
@@ -303,8 +312,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       // so this direct-emit fallback path carries parity with the sink
       // path's tagging.
       let backendID = adapter.engineIdentity.rawValue
-      let backendLabel =
-        adapter.engineIdentity.backendType == .whisperKit ? "WhisperKit" : "Parakeet"
+      // Engine display name via the identity accessor, not a hard-coded
+      // engine-identity literal (`gate-on-capability-not-identity-literal`,
+      // #878). This file is now an `EngineIdentityFreezeTests` reader site, so
+      // the banned literal can't return. (The freeze scanner is line-regex, not
+      // comment-aware, so this comment must avoid the banned token too.)
+      let backendLabel = adapter.engineIdentity.displayName
       captureErrorSink(
         NSError(
           domain: "EnviousWispr", code: -3,
@@ -444,6 +457,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       // `.completed` is observed.
       if kernel.state == .idle {
         outcome.transcript = nil
+        // Mirror the sync `reset()` method: clear the stale polish-error
+        // surface alongside the transcript (#859). Both reset entry points
+        // intentionally parallel each other (doc-comment at the sync method).
+        outcome.polishError = nil
       }
       // PR-4.5 #9 (Codex r5): when the kernel is already idle, `reset()` is a
       // no-op, so the kernel-state observation does NOT fire. After

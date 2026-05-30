@@ -258,6 +258,51 @@ import Testing
       h.driver.reset()
       #expect(h.driver.currentTranscript?.text == "in-flight save")
     }
+
+    @Test(
+      "reset() clears the stale polish error once the kernel is idle (#859)",
+      .bug(
+        "https://github.com/saurabhav88/EnviousWispr/issues/859", "stale polishError survives reset"
+      )
+    )
+    func resetWhenIdleClearsStalePolishError() {
+      let h = makeDriver()
+      // A prior session's polish failure left a message on the public surface.
+      h.outcome.polishError = "AI polish failed"
+      #expect(h.driver.lastPolishError == "AI polish failed")
+      h.driver.reset()  // kernel is at idle (resting)
+      #expect(
+        h.driver.lastPolishError == nil,
+        "reset() at idle must clear the stale polish-error surface")
+    }
+
+    @Test("handle(.reset) clears the stale polish error once the kernel is idle (#859)")
+    func handleResetWhenIdleClearsStalePolishError() async throws {
+      let h = makeDriver()
+      h.outcome.polishError = "AI polish failed"
+      try await h.driver.handle(event: .reset)  // kernel is at idle (resting)
+      #expect(
+        h.driver.lastPolishError == nil,
+        "handle(.reset) at idle must mirror reset() and clear the polish-error surface")
+    }
+
+    @Test(
+      "reset() preserves the polish error when the kernel is in the finalizing safe-point (#859)"
+    )
+    func resetDuringFinalizingPreservesPolishError() {
+      let h = makeDriver()
+      // Mirror the transcript safe-point contract: a reset arriving during the
+      // finalizing window must not erase the in-flight outcome before
+      // `.completed` is observed for completion telemetry.
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .recording))
+      #expect(h.kernel.testForceTransition(to: .stopping))
+      #expect(h.kernel.testForceTransition(to: .transcribing))
+      #expect(h.kernel.testForceTransition(to: .finalizing))
+      h.outcome.polishError = "in-flight polish error"
+      h.driver.reset()
+      #expect(h.driver.lastPolishError == "in-flight polish error")
+    }
   #endif
 
   // MARK: Helpers
