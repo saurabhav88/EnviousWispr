@@ -222,6 +222,48 @@ import Testing
       "finalize() waited for every dispatched feed — no tail buffer dropped")
   }
 
+  @Test(
+    "acceptAudio does not count a buffer whose feed throws (#867)",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/867",
+      "feed-throw overcounts streamingBuffersFed")
+  )
+  func feedThrowDoesNotIncrementBuffersFed() async throws {
+    let manager = StubParakeetASRManager()
+    manager.feedAudioThrows = true  // every feed fails (transient ASR/XPC)
+    manager.finalizeStreamingResult = makeResult("streamed text")
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: true)
+    feed(adapter, samples: [0.1], session: sid)
+    feed(adapter, samples: [0.2], session: sid)
+    _ = await adapter.finalize(batchSamples: nil)
+    let diag = try #require(adapter.lastASRDiagnostics)
+    #expect(diag.streamingBuffersDispatched == 2, "both buffers were dispatched")
+    #expect(
+      diag.streamingBuffersFed == 0,
+      "neither buffer counts as fed because the feed threw, preserving the dropped-feed signal for empty-result triage (#867)"
+    )
+  }
+
+  @Test("acceptAudio counts every buffer whose feed succeeds (#867 success bracket)")
+  func successfulFeedsAreAllCounted() async throws {
+    let manager = StubParakeetASRManager()
+    // feedAudioThrows stays false — every feed succeeds.
+    manager.finalizeStreamingResult = makeResult("streamed text")
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: true)
+    feed(adapter, samples: [0.1], session: sid)
+    feed(adapter, samples: [0.2], session: sid)
+    _ = await adapter.finalize(batchSamples: nil)
+    let diag = try #require(adapter.lastASRDiagnostics)
+    #expect(diag.streamingBuffersDispatched == 2)
+    #expect(
+      diag.streamingBuffersFed == 2,
+      "the normal path still counts every successfully-fed buffer (no regression)")
+  }
+
   // MARK: Stale-async session guards (Codex r2)
 
   @Test("a feed queued before a cancel is not fed into the terminated session")
@@ -386,6 +428,9 @@ final class StubParakeetASRManager: ASRManagerInterface {
     text: "default-batch", language: "en", duration: 1, processingTime: 0,
     backendType: .parakeet)
   var transcribeThrows = false
+  /// When set, `feedAudio` throws — models a transient ASR/XPC feed failure that
+  /// the per-buffer feed task swallows (#867).
+  var feedAudioThrows = false
   /// When set, `feedAudio` yields many times before completing — models a
   /// streaming feed still in flight when `finalize()` is called.
   var slowFeed = false
@@ -439,6 +484,7 @@ final class StubParakeetASRManager: ASRManagerInterface {
     if slowFeed {
       for _ in 0..<100 { await Task.yield() }
     }
+    if feedAudioThrows { throw FakeASRError.feed }
     feedAudioCount += 1
   }
 
@@ -479,5 +525,5 @@ final class StubParakeetASRManager: ASRManagerInterface {
   func cancelIdleTimer() { cancelIdleTimerCount += 1 }
   func cancelInFlightLoad() { cancelInFlightLoadCount += 1 }
 
-  enum FakeASRError: Error { case streamingSetup, decode }
+  enum FakeASRError: Error { case streamingSetup, decode, feed }
 }
