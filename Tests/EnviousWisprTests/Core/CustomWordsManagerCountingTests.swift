@@ -104,12 +104,20 @@ struct CustomWordsManagerCountingTests {
     // 49 unique increments: below threshold → no auto-flush → disk unchanged.
     manager.recordReplacements(words.prefix(49).map(\.id))
     let at49 = try Self.readWords(at: path)
+    #expect(
+      at49.count == 50,
+      "all 50 seeded words must still be on disk — guards the allSatisfy below from a vacuous pass on an empty read"
+    )
     #expect(at49.allSatisfy { $0.frequencyUsed == 0 }, "49 pending must not auto-flush")
 
     // The 50th unique increment crosses the threshold → immediate auto-flush,
     // with NO manual flush call.
     manager.recordReplacements([words[49].id])
     let at50 = try Self.readWords(at: path)
+    #expect(
+      at50.count == 50,
+      "all 50 seeded words must be present after auto-flush — guards the allSatisfy below from a vacuous pass"
+    )
     #expect(
       at50.allSatisfy { $0.frequencyUsed == 1 },
       "crossing the 50-count threshold auto-flushes all pending increments")

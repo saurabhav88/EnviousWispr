@@ -50,6 +50,76 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
   }
 
+  // MARK: - #826 — comment/string-aware declaration anchor + brace scan
+
+  @Test func classBody_ignoresDeclarationTextInComment() throws {
+    // A doc comment quoting the declaration must not mis-anchor the scan. Before
+    // #826 the raw `range(of:)` matched the comment first and the brace scan
+    // latched onto the comment's `{`, throwing "unbalanced braces".
+    let body = try classBody(
+      of: """
+        // Example usage: `final class Probe {` is the declaration shape.
+        final class Probe {
+          let alpha: AlphaDep
+          let beta: BetaDep
+        }
+        """)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
+  @Test func classBody_ignoresDeclarationTextInStringLiteral() throws {
+    // A string literal holding the declaration text (here a top-level `let`
+    // before the real class) must not mis-anchor the scan.
+    let body = try classBody(
+      of: """
+        let fake = "final class Probe {"
+        final class Probe {
+          let alpha: AlphaDep
+        }
+        """)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
+  @Test func classBody_ignoresBraceInStringLiteralBody() throws {
+    // A `}` inside a string literal must not close the class body early. Before
+    // #826 the raw brace scan saw the string's `}` and truncated the body,
+    // dropping the trailing collaborator.
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let pattern: Matcher = makeMatcher("unbalanced } brace")
+          let alpha: AlphaDep
+        }
+        """)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
+  @Test func classBody_ignoresBraceInComment() throws {
+    // A `}` inside a `//` comment must not close the class body early.
+    let body = try classBody(
+      of: """
+        final class Probe {
+          // a stray closing brace } sits in this comment
+          let alpha: AlphaDep
+        }
+        """)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
+  @Test func classBody_preservesOffsetsAcrossNonASCII() throws {
+    // The code view blanks masked chars to spaces by Character, so a non-ASCII
+    // char inside a string (alongside a brace) must not shift the code-view to
+    // source offset mapping — the body slice stays correct (#826 / offset unit).
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let note: Label = makeLabel("café ☕ }")
+          let alpha: AlphaDep
+        }
+        """)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
   @Test func collaboratorCount_excludesVarStoredProperty() throws {
     // `var` is owned mutable state, not a collaborator (architecture-rules.md).
     let body = try classBody(
