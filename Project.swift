@@ -210,6 +210,18 @@ let project = Project(
         .package(product: "FluidAudio"),
       ]),
 
+    // #919: app-shell library (homes + views + composition root + the
+    // WisprBootstrapper front door). The unit-test target links THIS, so
+    // `xcodebuild test` never launches the app. WhisperKit/FluidAudio/Sparkle
+    // declared directly because Xcode doesn't propagate them transitively.
+    firstPartyLibrary(
+      "EnviousWisprAppKit",
+      dependencies: firstPartyTargetDeps + [
+        .package(product: "WhisperKit"),
+        .package(product: "FluidAudio"),
+        .package(product: "Sparkle"),
+      ]),
+
     // ---- XPC services ----
     .target(
       name: "EnviousWisprAudioService",
@@ -265,9 +277,12 @@ let project = Project(
         "Sources/EnviousWispr/Resources/AppIcon.icns"
       ],
       entitlements: .file(path: "Sources/EnviousWispr/Resources/EnviousWispr.entitlements"),
-      dependencies: firstPartyTargetDeps + [
-        .package(product: "WhisperKit"),
-        .package(product: "FluidAudio"),
+      // #919: the thin shell links ONLY the kit (the kit static-links the
+      // engine modules + WhisperKit + FluidAudio). Sparkle stays a direct app
+      // dep so Tuist embeds Sparkle.framework into the .app; the two XPC
+      // services stay direct so they bundle into Contents/XPCServices.
+      dependencies: [
+        .target(name: "EnviousWisprAppKit"),
         .package(product: "Sparkle"),
         .target(name: "EnviousWisprAudioService"),
         .target(name: "EnviousWisprASRService"),
@@ -278,11 +293,14 @@ let project = Project(
     // ---- Test bundles ----
     // This bundle's graph is intentionally BROADER than Package.swift's
     // testTarget list. SwiftPM let the test target name only a subset and
-    // propagated the rest transitively (e.g. FluidAudio/Sparkle via the app
-    // dep, Services/ASR via Pipeline). Xcode does not propagate, so every
+    // propagated the rest transitively. Xcode does not propagate, so every
     // module a test imports DIRECTLY must be a declared edge. Verified: tests
-    // import all 8 first-party modules + FluidAudio + Sparkle directly, so the
-    // full first-party set + those two externals is the exact, minimal set.
+    // import all 8 first-party modules + EnviousWisprAppKit + FluidAudio +
+    // Sparkle directly, so the full first-party set + the kit + those two
+    // externals is the exact, minimal set.
+    // #919: depends on EnviousWisprAppKit (the app-shell library), NOT the app
+    // target — Tuist therefore wires NO test host, so `xcodebuild test` runs
+    // hermetically without launching EnviousWispr.app.
     .target(
       name: "EnviousWisprTests",
       destinations: .macOS,
@@ -292,7 +310,7 @@ let project = Project(
       infoPlist: .default,
       sources: ["Tests/EnviousWisprTests/**"],
       dependencies: firstPartyTargetDeps + [
-        .target(name: "EnviousWispr"),
+        .target(name: "EnviousWisprAppKit"),
         .package(product: "FluidAudio"),
         .package(product: "Sparkle"),
       ],
