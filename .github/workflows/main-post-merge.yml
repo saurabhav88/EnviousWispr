@@ -8,6 +8,13 @@ concurrency:
   group: main-post-merge
   cancel-in-progress: true
 
+# Shared Xcode-engine constants (#913 PR3).
+env:
+  DERIVED_DATA_PATH: .derivedData/CI
+  XCODE_PROJECT: EnviousWispr.xcodeproj
+  XCODE_SCHEME: EnviousWispr
+  XCODE_RELEASE_SCHEME: EnviousWispr-Release
+
 jobs:
   main-post-merge-build:
     runs-on: macos-26
@@ -27,120 +34,178 @@ jobs:
       - name: Detect code changes
         id: changes
         run: |
+          set -euo pipefail
           CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "unknown")
           echo "==> Changed files:"
           echo "$CHANGED"
-          if echo "$CHANGED" | grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)'; then
+          if grep -qE '^\.github/workflows/(pr-check|main-post-merge)\.yml$' <<< "$CHANGED"; then
             echo "needs_build=true" >> "$GITHUB_OUTPUT"
-            echo "==> Code changes detected — running post-merge build"
+            echo "==> CI build workflow changed — running post-merge Xcode build"
+          elif grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)' <<< "$CHANGED"; then
+            echo "needs_build=true" >> "$GITHUB_OUTPUT"
+            echo "==> Code changes detected — running post-merge Xcode build"
           else
             echo "needs_build=false" >> "$GITHUB_OUTPUT"
             echo "==> Non-code changes only — skipping build"
           fi
 
-      - name: Compute SwiftPM cache key
-        id: spm-cache-key
+      - name: Verify environment
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          swift --version
+          xcodebuild -version
+          SDK_VER="$(xcrun --sdk macosx --show-sdk-version)"
+          echo "macOS SDK: $SDK_VER"
+
+          if ! swift --version 2>&1 | grep -q "Swift version 6"; then
+            echo "::error::Swift 6.0+ required"
+            exit 1
+          fi
+
+          if [ "$(printf '%s\n' "26.0" "$SDK_VER" | sort -V | head -n1)" != "26.0" ]; then
+            echo "::error::macOS SDK 26.0+ required for FoundationModels (found: $SDK_VER)"
+            exit 1
+          fi
+
+      - name: Install mise + Tuist
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          curl https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/mise" install tuist@4.195.11
+          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version
+
+      - name: Generate Xcode project
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist generate --no-open
+          git status --porcelain -- '*.xcodeproj' '*.xcworkspace' '.derivedData'
+
+      - name: Compute Xcode build cache key
+        id: xcode-cache-key
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
           TOOLCHAIN_ID="$(
-            { xcodebuild -version; xcrun --sdk macosx --show-sdk-version; } |
+            { xcodebuild -version; xcrun --sdk macosx --show-sdk-version; "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version; } |
             shasum -a 256 | cut -c1-12
           )"
           echo "toolchain_id=$TOOLCHAIN_ID" >> "$GITHUB_OUTPUT"
 
-      # main-post-merge.yml is the cache WRITER: it restores the freshest
-      # compatible cache, runs the full debug+release build+test matrix, then
-      # saves a new cache under the rolling commit-keyed primary key. Every PR
-      # then restores this fresh default-branch cache (see issue #804).
-      - name: Restore SwiftPM build cache
-        id: spm-cache
+      # main-post-merge.yml is the cache WRITER: restore freshest compatible
+      # cache, run the full debug+release build+test matrix, then save a new
+      # cache under the rolling commit-keyed primary key (issue #804).
+      - name: Restore Xcode build cache
+        id: xcode-cache
         if: steps.changes.outputs.needs_build == 'true'
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: .build
-          key: ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
+          path: |
+            .derivedData/CI/SourcePackages
+            .derivedData/CI/Build
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved') }}-
-            ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-
-            ${{ runner.os }}-spm-
+            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-
+            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-
+            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-
 
-      # COMPILE_FLAGS comes from scripts/swift-test.sh (single source) so this build
-      # graph matches the test step's graph and the test step reuses these objects
-      # instead of recompiling every first-party module (#885). Captured into a string
-      # first (a failing emitter aborts the step under set -e), then split into an
-      # array so the flags pass as separate argv without unquoted word-splitting.
-      - name: Build (debug)
+      - name: Build (debug, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
-          FLAGS_STR="$(scripts/swift-test.sh --print-compile-flags)"
-          read -ra COMPILE_FLAGS <<< "$FLAGS_STR"
-          swift build "${COMPILE_FLAGS[@]}"
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -destination 'generic/platform=macOS' \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            VALID_ARCHS=arm64
 
-      - name: Build (release)
+      - name: Build (release, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
-          FLAGS_STR="$(scripts/swift-test.sh --print-compile-flags)"
-          read -ra COMPILE_FLAGS <<< "$FLAGS_STR"
-          swift build -c release --arch arm64 "${COMPILE_FLAGS[@]}"
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_RELEASE_SCHEME" \
+            -configuration Release \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -destination 'generic/platform=macOS' \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            VALID_ARCHS=arm64
 
-      - name: Run logic tests
+      - name: Run logic tests (debug, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
-          OUTPUT=$(scripts/swift-test.sh 2>&1) || true
-          echo "$OUTPUT"
-          # Fail on actual test failures
-          if echo "$OUTPUT" | grep -q "✘"; then
-            echo "::error::Swift tests have failures"
-            exit 1
-          fi
-          # Verify tests actually started (guard against silent no-op)
-          STARTED=$(echo "$OUTPUT" | grep -c "started" || true)
-          if [ "$STARTED" -eq 0 ]; then
-            echo "::error::No tests started — possible compilation failure"
-            exit 1
-          fi
-          PASSED=$(echo "$OUTPUT" | grep -c "passed" || true)
-          echo "==> $STARTED test entries started, $PASSED reported passed, 0 failures"
+          set -o pipefail
+          xcodebuild test \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -destination 'platform=macOS,arch=arm64' \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            VALID_ARCHS=arm64 | tee xcode-test-debug.log
 
-      - name: Run logic tests (release config)
+          # Require a positive executed-test count (see pr-check.yml rationale):
+          # a presence-grep would green a zero-test run.
+          TESTS_RUN=$(grep -oE "Test run with [0-9]+ test" xcode-test-debug.log | grep -oE "[0-9]+" | awk '{s+=$1} END{print s+0}')
+          if [ "$TESTS_RUN" -lt 1 ]; then
+            echo "::error::Xcode executed 0 debug tests (empty/misconfigured bundle) — failing"
+            exit 1
+          fi
+          echo "==> Xcode executed $TESTS_RUN tests (debug)"
+
+      # ENABLE_TESTABILITY=YES is required on the release TEST invocation only:
+      # the test targets use `@testable import`, which needs the first-party
+      # modules built with `-enable-testing`. Debug enables testability by
+      # default; Release does not, so without this the test build fails with
+      # "module built without '-enable-testing'". It is NOT set on the release
+      # `build` step above, so the shippable release artifact stays non-testable
+      # and fully optimized. (Mirrors the old `swift test -c release` behavior.)
+      - name: Run logic tests (release config, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
-          set +e
-          OUTPUT=$(scripts/swift-test.sh -c release 2>&1)
-          STATUS=$?
-          set -e
-          echo "$OUTPUT"
-          if [ "$STATUS" -ne 0 ]; then
-            echo "::error::scripts/swift-test.sh -c release exited $STATUS"
-            exit "$STATUS"
-          fi
-          if echo "$OUTPUT" | grep -q "✘"; then
-            echo "::error::Swift tests have failures (release config)"
+          set -o pipefail
+          xcodebuild test \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_RELEASE_SCHEME" \
+            -configuration Release \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -destination 'platform=macOS,arch=arm64' \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            VALID_ARCHS=arm64 \
+            ENABLE_TESTABILITY=YES | tee xcode-test-release.log
+
+          # Require a positive executed-test count (see pr-check.yml rationale).
+          TESTS_RUN=$(grep -oE "Test run with [0-9]+ test" xcode-test-release.log | grep -oE "[0-9]+" | awk '{s+=$1} END{print s+0}')
+          if [ "$TESTS_RUN" -lt 1 ]; then
+            echo "::error::Xcode executed 0 release tests (empty/misconfigured bundle) — failing"
             exit 1
           fi
-          STARTED=$(echo "$OUTPUT" | grep -c "started" || true)
-          if [ "$STARTED" -eq 0 ]; then
-            echo "::error::No tests started in release config — possible compilation failure"
-            exit 1
-          fi
-          PASSED=$(echo "$OUTPUT" | grep -c "passed" || true)
-          echo "==> release: $STARTED test entries started, $PASSED reported passed, 0 failures"
+          echo "==> Xcode executed $TESTS_RUN tests (release)"
 
       # Save only when the build/tests succeeded and the restore was not an exact
       # hit. The primary key carries github.sha, so a first run for this commit
-      # always saves; a rerun of the same commit exact-hits and skips (re-saving
-      # an existing key errors). Uses the restore step's resolved primary key.
-      - name: Save SwiftPM build cache
-        if: steps.changes.outputs.needs_build == 'true' && success() && steps.spm-cache.outputs.cache-hit != 'true'
+      # always saves; a rerun of the same commit exact-hits and skips.
+      - name: Save Xcode build cache
+        if: steps.changes.outputs.needs_build == 'true' && success() && steps.xcode-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: .build
-          key: ${{ steps.spm-cache.outputs.cache-primary-key }}
+          path: |
+            .derivedData/CI/SourcePackages
+            .derivedData/CI/Build
+          key: ${{ steps.xcode-cache.outputs.cache-primary-key }}
 
       - name: Post result
         if: always()

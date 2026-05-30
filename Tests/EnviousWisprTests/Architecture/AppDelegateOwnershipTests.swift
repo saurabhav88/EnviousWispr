@@ -85,7 +85,7 @@ private struct NamedHomeViolation: Equatable {
 }
 
 private func appDelegateURL() -> URL {
-  URL(fileURLWithPath: "Sources/EnviousWispr/App/AppDelegate.swift")
+  RepoRoot.sourceURL("Sources/EnviousWispr/App/AppDelegate.swift")
 }
 
 private func classBodyOfAppDelegate() throws -> String {

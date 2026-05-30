@@ -22,7 +22,7 @@ import Testing
 enum RouterCeilingParser {
 
   static func classBody(named typeName: String, at path: String) throws -> String {
-    let source = try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
+    let source = try String(contentsOf: RepoRoot.sourceURL(path), encoding: .utf8)
     // Search the declaration AND balance the body braces over a CODE VIEW
     // (string-literal contents + `//` comments blanked to spaces, length
     // preserved), so a `final class X {` or a stray `{`/`}` inside a comment or

@@ -70,7 +70,7 @@ import Testing
 
   @Test func lineCount() throws {
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
       count <= 300,
@@ -84,7 +84,7 @@ import Testing
     // Guard against smuggling methods through an extension that escapes the
     // in-class non-private method count.
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let pattern = #"^[[:space:]]*extension[[:space:]]+AppWindowCoordinator\b"#
     let regex = try NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines])
     let ns = source as NSString
@@ -99,7 +99,7 @@ import Testing
 
   @Test func allowedImports() throws {
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let actual = RouterCeilingParser.imports(in: source)
     let allowed: Set<String> = ["AppKit", "EnviousWisprCore", "Observation"]
     let extras = actual.subtracting(allowed)
@@ -138,7 +138,7 @@ import Testing
 /// real body.
 private func classBodyOfAppWindowCoordinator() throws -> String {
   let source = try String(
-    contentsOf: URL(fileURLWithPath: "Sources/EnviousWispr/App/AppWindowCoordinator.swift"),
+    contentsOf: RepoRoot.sourceURL("Sources/EnviousWispr/App/AppWindowCoordinator.swift"),
     encoding: .utf8)
   guard let openRange = source.range(of: "final class AppWindowCoordinator {") else {
     Issue.record("AppWindowCoordinator declaration not found at expected path/shape")

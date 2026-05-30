@@ -8,12 +8,20 @@ concurrency:
   group: pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+# Shared Xcode-engine constants for both macOS lanes (#913 PR3). The Ubuntu
+# aggregator inherits these harmlessly.
+env:
+  DERIVED_DATA_PATH: .derivedData/CI
+  XCODE_PROJECT: EnviousWispr.xcodeproj
+  XCODE_SCHEME: EnviousWispr
+  XCODE_RELEASE_SCHEME: EnviousWispr-Release
+
 jobs:
-  # Debug lane: debug build + XPC hygiene self-tests + debug-config logic tests.
-  # Runs in parallel with build-release (issue #906). Keeps runs-on/timeout from
-  # the pre-split single build-check job. needs_build gating stays at STEP level
-  # so a docs-only PR runs this job but skips the build/test steps and reports
-  # success — the build-check aggregator requires success from both lanes.
+  # Debug lane: Xcode debug build + XPC hygiene self-tests + debug-config logic
+  # tests via `xcodebuild test`. Runs in parallel with build-release (issue #906).
+  # needs_build gating stays at STEP level so a docs-only PR runs this job but
+  # skips the build/test steps and reports success — the build-check aggregator
+  # requires success from both lanes. (#913 PR3 moved this lane to the Xcode engine.)
   build-debug:
     runs-on: macos-26
     timeout-minutes: 45
@@ -35,16 +43,21 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          set -euo pipefail
           CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
           echo "==> Changed files:"
           echo "$CHANGED"
-          # Check if ANY file outside website/, docs/, .github/, content-engine/ changed
-          if echo "$CHANGED" | grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)'; then
+          # A change to the build/test workflows must validate itself (the Xcode
+          # build/cache/test logic), so force a full build for those.
+          if grep -qE '^\.github/workflows/(pr-check|main-post-merge)\.yml$' <<< "$CHANGED"; then
             echo "needs_build=true" >> "$GITHUB_OUTPUT"
-            echo "==> Swift source changes detected — full build required"
+            echo "==> CI build workflow changed — full Xcode build required"
+          elif grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)' <<< "$CHANGED"; then
+            echo "needs_build=true" >> "$GITHUB_OUTPUT"
+            echo "==> Swift source changes detected — full Xcode build required"
           else
             echo "needs_build=false" >> "$GITHUB_OUTPUT"
-            echo "==> No Swift source changes — skipping build"
+            echo "==> No Swift/build-workflow changes — skipping build"
           fi
 
       - name: Verify environment
@@ -52,6 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           swift --version
+          xcodebuild -version
           SDK_VER="$(xcrun --sdk macosx --show-sdk-version)"
           echo "macOS SDK: $SDK_VER"
 
@@ -65,55 +79,69 @@ jobs:
             exit 1
           fi
 
-      - name: Compute SwiftPM cache key
-        id: spm-cache-key
+      - name: Install mise + Tuist
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          curl https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/mise" install tuist@4.195.11
+          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version
+
+      - name: Generate Xcode project
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist generate --no-open
+          # Generated project / DerivedData must never be committed.
+          git status --porcelain -- '*.xcodeproj' '*.xcworkspace' '.derivedData'
+
+      - name: Compute Xcode build cache key
+        id: xcode-cache-key
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
           TOOLCHAIN_ID="$(
-            { xcodebuild -version; xcrun --sdk macosx --show-sdk-version; } |
+            { xcodebuild -version; xcrun --sdk macosx --show-sdk-version; "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version; } |
             shasum -a 256 | cut -c1-12
           )"
           echo "toolchain_id=$TOOLCHAIN_ID" >> "$GITHUB_OUTPUT"
 
-      # Rolling cache key: the github.sha suffix makes the primary key unique per
-      # commit so the cache is never an exact hit here. pr-check.yml is restore-only
-      # by design — main-post-merge.yml is the sole writer (see issue #804). The
-      # restore-keys prefixes fall back to the freshest compatible cache.
-      - name: Restore SwiftPM build cache
-        id: spm-cache
+      # Rolling key (github.sha suffix) so the primary key is never an exact hit
+      # here. pr-check.yml is restore-only by design — main-post-merge.yml is the
+      # sole writer (issue #804). restore-keys fall through to the freshest cache.
+      - name: Restore Xcode build cache
+        id: xcode-cache
         if: steps.changes.outputs.needs_build == 'true'
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: .build
-          key: ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
+          path: |
+            .derivedData/CI/SourcePackages
+            .derivedData/CI/Build
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved') }}-
-            ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-
-            ${{ runner.os }}-spm-
+            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-
+            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-
+            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-
 
-      # Two lanes restore concurrently and read-only. Usually they resolve to the
-      # same artifact, but a main-post-merge save landing between the two lane
-      # restores can make them fall through to different restore-key artifacts —
-      # timing-only, never a correctness issue (the build is valid with any
-      # stale/missing SwiftPM cache). Logged so divergence is observable (#906).
-      - name: Log SwiftPM cache restore
+      - name: Log Xcode cache restore
         if: steps.changes.outputs.needs_build == 'true'
         run: |
-          echo "==> SwiftPM cache (debug lane): matched=${{ steps.spm-cache.outputs.cache-matched-key }} hit=${{ steps.spm-cache.outputs.cache-hit }}"
+          echo "==> Xcode cache (debug lane): matched=${{ steps.xcode-cache.outputs.cache-matched-key }} hit=${{ steps.xcode-cache.outputs.cache-hit }}"
 
-      # COMPILE_FLAGS comes from scripts/swift-test.sh (single source) so this build
-      # graph matches the test step's graph and the test step reuses these objects
-      # instead of recompiling every first-party module (#885). Captured into a string
-      # first (a failing emitter aborts the step under set -e), then split into an
-      # array so the flags pass as separate argv without unquoted word-splitting.
-      - name: Build (debug)
+      - name: Build (debug, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
-          FLAGS_STR="$(scripts/swift-test.sh --print-compile-flags)"
-          read -ra COMPILE_FLAGS <<< "$FLAGS_STR"
-          swift build "${COMPILE_FLAGS[@]}"
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -destination 'generic/platform=macOS' \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            VALID_ARCHS=arm64
 
       - name: XPC error hygiene self-test
         if: steps.changes.outputs.needs_build == 'true'
@@ -123,30 +151,35 @@ jobs:
         if: steps.changes.outputs.needs_build == 'true'
         run: scripts/check-xpc-error-hygiene.sh
 
-      - name: Run logic tests
+      - name: Run logic tests (debug, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
-          OUTPUT=$(scripts/swift-test.sh 2>&1) || true
-          echo "$OUTPUT"
-          # Fail on actual test failures
-          if echo "$OUTPUT" | grep -q "✘"; then
-            echo "::error::Swift tests have failures"
-            exit 1
-          fi
-          # Verify tests actually started (guard against silent no-op)
-          STARTED=$(echo "$OUTPUT" | grep -c "started" || true)
-          if [ "$STARTED" -eq 0 ]; then
-            echo "::error::No tests started — possible compilation failure"
-            exit 1
-          fi
-          PASSED=$(echo "$OUTPUT" | grep -c "passed" || true)
-          echo "==> $STARTED test entries started, $PASSED reported passed, 0 failures"
+          set -o pipefail
+          xcodebuild test \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -destination 'platform=macOS,arch=arm64' \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            VALID_ARCHS=arm64 | tee xcode-test-debug.log
 
-  # Release lane: release build + FoundationModels compile probe. Runs in parallel
-  # with build-debug (issue #906). The FoundationModels probe rides this lane (it is
-  # a standalone macOS-26 SDK compile, ~5s, depends on neither build). Keeps
-  # runs-on/timeout from the pre-split single build-check job; step-level gating.
+          # Guard against a silent zero-test run: xcodebuild prints suite-level
+          # "passed" text even for an empty bundle, so a presence-grep would
+          # green a run where nothing executed. Require a positive executed
+          # count (summed across the Swift Testing per-target run summaries).
+          TESTS_RUN=$(grep -oE "Test run with [0-9]+ test" xcode-test-debug.log | grep -oE "[0-9]+" | awk '{s+=$1} END{print s+0}')
+          if [ "$TESTS_RUN" -lt 1 ]; then
+            echo "::error::Xcode executed 0 tests (empty/misconfigured bundle) — failing the gate"
+            exit 1
+          fi
+          echo "==> Xcode executed $TESTS_RUN tests (debug)"
+
+  # Release lane: Xcode release build + FoundationModels compile probe. Runs in
+  # parallel with build-debug (issue #906). The probe is a standalone macOS-26
+  # SDK compile (~5s). Step-level needs_build gating. (#913 PR3 → Xcode engine.)
   build-release:
     runs-on: macos-26
     timeout-minutes: 45
@@ -168,16 +201,19 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          set -euo pipefail
           CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
           echo "==> Changed files:"
           echo "$CHANGED"
-          # Check if ANY file outside website/, docs/, .github/, content-engine/ changed
-          if echo "$CHANGED" | grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)'; then
+          if grep -qE '^\.github/workflows/(pr-check|main-post-merge)\.yml$' <<< "$CHANGED"; then
             echo "needs_build=true" >> "$GITHUB_OUTPUT"
-            echo "==> Swift source changes detected — full build required"
+            echo "==> CI build workflow changed — full Xcode build required"
+          elif grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)' <<< "$CHANGED"; then
+            echo "needs_build=true" >> "$GITHUB_OUTPUT"
+            echo "==> Swift source changes detected — full Xcode build required"
           else
             echo "needs_build=false" >> "$GITHUB_OUTPUT"
-            echo "==> No Swift source changes — skipping build"
+            echo "==> No Swift/build-workflow changes — skipping build"
           fi
 
       - name: Verify environment
@@ -185,6 +221,7 @@ jobs:
         run: |
           set -euo pipefail
           swift --version
+          xcodebuild -version
           SDK_VER="$(xcrun --sdk macosx --show-sdk-version)"
           echo "macOS SDK: $SDK_VER"
 
@@ -198,45 +235,65 @@ jobs:
             exit 1
           fi
 
-      - name: Compute SwiftPM cache key
-        id: spm-cache-key
+      - name: Install mise + Tuist
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          curl https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/mise" install tuist@4.195.11
+          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version
+
+      - name: Generate Xcode project
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist generate --no-open
+          git status --porcelain -- '*.xcodeproj' '*.xcworkspace' '.derivedData'
+
+      - name: Compute Xcode build cache key
+        id: xcode-cache-key
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
           TOOLCHAIN_ID="$(
-            { xcodebuild -version; xcrun --sdk macosx --show-sdk-version; } |
+            { xcodebuild -version; xcrun --sdk macosx --show-sdk-version; "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version; } |
             shasum -a 256 | cut -c1-12
           )"
           echo "toolchain_id=$TOOLCHAIN_ID" >> "$GITHUB_OUTPUT"
 
-      # Restore-only (see build-debug lane comment + issue #804).
-      - name: Restore SwiftPM build cache
-        id: spm-cache
+      - name: Restore Xcode build cache
+        id: xcode-cache
         if: steps.changes.outputs.needs_build == 'true'
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: .build
-          key: ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
+          path: |
+            .derivedData/CI/SourcePackages
+            .derivedData/CI/Build
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved') }}-
-            ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-
-            ${{ runner.os }}-spm-
+            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-
+            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-
+            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-
 
-      - name: Log SwiftPM cache restore
+      - name: Log Xcode cache restore
         if: steps.changes.outputs.needs_build == 'true'
         run: |
-          echo "==> SwiftPM cache (release lane): matched=${{ steps.spm-cache.outputs.cache-matched-key }} hit=${{ steps.spm-cache.outputs.cache-hit }}"
+          echo "==> Xcode cache (release lane): matched=${{ steps.xcode-cache.outputs.cache-matched-key }} hit=${{ steps.xcode-cache.outputs.cache-hit }}"
 
-      # COMPILE_FLAGS single-sourced from scripts/swift-test.sh (#885) — only the -F
-      # flag re-keys the compile graph; -c release and --arch arm64 do not, so the
-      # shipped binary is functionally unchanged.
-      - name: Build (release)
+      - name: Build (release, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
-          FLAGS_STR="$(scripts/swift-test.sh --print-compile-flags)"
-          read -ra COMPILE_FLAGS <<< "$FLAGS_STR"
-          swift build -c release --arch arm64 "${COMPILE_FLAGS[@]}"
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_RELEASE_SCHEME" \
+            -configuration Release \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -destination 'generic/platform=macOS' \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            VALID_ARCHS=arm64
 
       - name: Verify FoundationModels compile probe
         if: steps.changes.outputs.needs_build == 'true'

@@ -46,7 +46,7 @@ import Testing
 
   @Test func lineCount() throws {
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
       count <= 150,
@@ -60,7 +60,7 @@ import Testing
     // Filters comment lines so doc text mentioning the forbidden symbol
     // to explain the constraint does not trigger.
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let code = source.split(separator: "\n", omittingEmptySubsequences: false)
       .filter { line in
         let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -78,7 +78,7 @@ import Testing
 
   @Test func allowedImports() throws {
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let actual = RouterCeilingParser.imports(in: source)
     let allowed: Set<String> = [
       "Foundation", "EnviousWisprASR", "EnviousWisprCore",

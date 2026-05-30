@@ -15,6 +15,9 @@ xcuserdata/
 # Tuist generated artifacts (project/workspace are CLI-generated, never committed)
 Derived/
 
+# Xcode DerivedData for the CI Xcode-engine build/test (#913 PR3)
+.derivedData/
+
 # Swift Package Manager
 .build/
 .swiftpm/

@@ -337,6 +337,13 @@ let project = Project(
       buildAction: .buildAction(
         targets: ["EnviousWispr"],
         findImplicitDependencies: true
+      ),
+      // PR3: release-config test action so main-post-merge can run
+      // `xcodebuild test -scheme EnviousWispr-Release -configuration Release`,
+      // preserving the release-config test coverage the old post-merge job ran.
+      testAction: .targets(
+        ["EnviousWisprTests", "EnviousWisprASRTests"],
+        configuration: "Release"
       )
     ),
   ]

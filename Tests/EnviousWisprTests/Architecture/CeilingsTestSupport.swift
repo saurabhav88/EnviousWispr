@@ -10,7 +10,7 @@ import Testing
 /// Skeleton authored in `.codex/2026-05-18-pr5-plus-revision-r2-final.md` § 2.
 enum CeilingsTestSupport {
   static func source(at path: String) throws -> String {
-    try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
+    try String(contentsOf: RepoRoot.sourceURL(path), encoding: .utf8)
   }
 
   static func lineCount(in source: String) -> Int {
@@ -177,7 +177,9 @@ enum CeilingsTestSupport {
     // The first non-attribute capture group lands at index 2 because group 1
     // captures the optional access modifier prefix; for `importPattern`, the
     // module name is also at index 2 (after the attrs group).
-    guard match.numberOfRanges > 2, let captureRange = Range(match.range(at: match.numberOfRanges - 1), in: line) else {
+    guard match.numberOfRanges > 2,
+      let captureRange = Range(match.range(at: match.numberOfRanges - 1), in: line)
+    else {
       return nil
     }
     return String(line[captureRange])

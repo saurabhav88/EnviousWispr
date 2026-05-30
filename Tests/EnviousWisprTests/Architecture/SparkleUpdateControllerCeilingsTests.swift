@@ -89,7 +89,7 @@ import Testing
 
   @Test func lineCount() throws {
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
       count <= 800,
@@ -104,7 +104,7 @@ import Testing
     // the in-class non-private method count. Only the two Sparkle delegate
     // conformances are sanctioned.
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let pattern = #"^[[:space:]]*extension[[:space:]]+SparkleUpdateController\b"#
     let regex = try NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines])
     let ns = source as NSString
@@ -120,7 +120,7 @@ import Testing
 
   @Test func allowedImports() throws {
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let actual = RouterCeilingParser.imports(in: source)
     let allowed: Set<String> = [
       "AppKit", "EnviousWisprCore", "EnviousWisprServices", "Foundation", "Sparkle",

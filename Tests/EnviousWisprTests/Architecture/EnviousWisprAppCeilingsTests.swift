@@ -199,7 +199,7 @@ import Testing
 }
 
 private func envWisprAppURL() -> URL {
-  URL(fileURLWithPath: "Sources/EnviousWispr/App/EnviousWisprApp.swift")
+  RepoRoot.sourceURL("Sources/EnviousWispr/App/EnviousWisprApp.swift")
 }
 
 private func structBodyOfEnviousWisprApp() throws -> String {
