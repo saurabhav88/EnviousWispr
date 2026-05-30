@@ -5,10 +5,15 @@
 
 # Xcode
 DerivedData/
+*.xcodeproj/
 *.xcworkspace
 xcuserdata/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+*.xcresult
+
+# Tuist generated artifacts (project/workspace are CLI-generated, never committed)
+Derived/
 
 # Swift Package Manager
 .build/
