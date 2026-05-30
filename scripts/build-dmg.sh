@@ -14,6 +14,12 @@ BUNDLE="build/${APP_NAME}"
 BINARY="$PROJ_ROOT/.build/release/EnviousWispr"
 RESOURCES_SRC="$PROJ_ROOT/Sources/EnviousWispr/Resources"
 ENTITLEMENTS="$RESOURCES_SRC/EnviousWispr.entitlements"
+# #913: Developer ID provisioning profile that authorizes the restricted
+# keychain-access-groups entitlement at launch (Apple TN3125). Embedded at
+# Contents/embedded.provisionprofile before the main-app codesign seals it.
+PROFILE="$PROJ_ROOT/signing/EnviousWispr_DeveloperID.provisionprofile"
+TEAM_ID="9UT54V24XG"
+KEYCHAIN_GROUP="9UT54V24XG.com.enviouswispr.app"
 
 echo "==> Assembling ${APP_NAME} v${VERSION} ..."
 
@@ -127,15 +133,79 @@ if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
     codesign "${SIGN_FLAGS[@]}" --entitlements "$XPC_ENTITLEMENTS" "$XPC_BUNDLE"
     codesign "${SIGN_FLAGS[@]}" --entitlements "$ASR_ENTITLEMENTS" "$ASR_XPC_BUNDLE"
 
-    # 6. Main app bundle (outermost — signed last)
+    # 6. Embed the Developer ID provisioning profile, THEN main app bundle.
+    # #913: keychain-access-groups is a restricted entitlement; AMFI requires an
+    # embedded profile to authorize it at launch (Apple TN3125). The profile is
+    # sealed by the signature, so it must be in place BEFORE the main-app codesign.
+    # Order matters: copy the profile FIRST, then clear xattrs, then sign — the
+    # copy can re-add iCloud xattrs, and the rule is xattr -cr immediately before codesign.
+    if [[ ! -f "$PROFILE" ]]; then
+        echo "::error::Provisioning profile not found at $PROFILE"
+        exit 1
+    fi
+    echo "    [6/6] Embedding provisioning profile + signing main app"
+    cp "$PROFILE" "$BUNDLE/Contents/embedded.provisionprofile"
     # Re-clear xattrs: FileProvider (iCloud) can re-add detritus between sign steps
     xattr -cr "$BUNDLE"
-    echo "    [6/6] Signing main app"
     codesign "${SIGN_FLAGS[@]}" --entitlements "$ENTITLEMENTS" "$BUNDLE"
 
     # Verify: deep + strict catches any unsigned nested code
     echo "==> Verifying signatures ..."
     codesign --verify --deep --strict --verbose=2 "$BUNDLE"
+
+    # #913: provisioning-profile authorization checks. These catch a cert/profile
+    # mismatch (e.g. cert rotated, stale profile committed) BEFORE launch UAT.
+    echo "==> Verifying embedded provisioning profile authorizes the entitlement ..."
+    EMBEDDED="$BUNDLE/Contents/embedded.provisionprofile"
+    if [[ ! -f "$EMBEDDED" ]]; then
+        echo "::error::embedded.provisionprofile missing after signing"
+        exit 1
+    fi
+    PROFILE_PLIST="$(security cms -D -i "$EMBEDDED" 2>/dev/null)"
+    # (b) profile team matches
+    PROFILE_TEAM="$(echo "$PROFILE_PLIST" | plutil -extract TeamIdentifier.0 raw - 2>/dev/null || true)"
+    if [[ "$PROFILE_TEAM" != "$TEAM_ID" ]]; then
+        echo "::error::Profile TeamIdentifier '$PROFILE_TEAM' != expected '$TEAM_ID'"
+        exit 1
+    fi
+    # (c) profile authorizes our keychain group (literal or team wildcard).
+    # Substring tests (not `grep -q`): a piped `grep -q` exits on first match and
+    # SIGPIPEs the upstream writer, which trips `set -o pipefail` (exit 141).
+    PROFILE_KAG="$(echo "$PROFILE_PLIST" | plutil -extract Entitlements.keychain-access-groups xml1 -o - - 2>/dev/null || true)"
+    if [[ "$PROFILE_KAG" != *"${TEAM_ID}.*"* && "$PROFILE_KAG" != *"$KEYCHAIN_GROUP"* ]]; then
+        echo "::error::Profile keychain-access-groups does not authorize $KEYCHAIN_GROUP"
+        echo "$PROFILE_KAG"
+        exit 1
+    fi
+    # (d) signing-cert authority (informational). Capture full output (no early-exit pipe).
+    CS_OUT="$(codesign -dvvv "$BUNDLE" 2>&1 || true)"
+    AUTH_LINES="$(printf '%s\n' "$CS_OUT" | grep '^Authority' || true)"
+    echo "    profile team=$PROFILE_TEAM; app authority=${AUTH_LINES%%$'\n'*}"
+    # (f) the signed bundle actually carries all three required entitlement keys
+    SIGNED_ENTS="$(codesign -d --entitlements - --xml "$BUNDLE" 2>/dev/null || true)"
+    for KEY in "com.apple.application-identifier" "com.apple.developer.team-identifier" "keychain-access-groups"; do
+        if [[ "$SIGNED_ENTS" != *"$KEY"* ]]; then
+            echo "::error::Signed bundle missing entitlement key: $KEY"
+            exit 1
+        fi
+    done
+    # (e) profile expiry warning (soft — never hard-fail a release on a soft deadline)
+    PROFILE_EXP="$(echo "$PROFILE_PLIST" | plutil -extract ExpirationDate raw - 2>/dev/null || true)"
+    if [[ -n "$PROFILE_EXP" ]]; then
+        EXP_EPOCH="$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$PROFILE_EXP" "+%s" 2>/dev/null || echo 0)"
+        NOW_EPOCH="$(date "+%s")"
+        if [[ "$EXP_EPOCH" -gt 0 ]]; then
+            DAYS_LEFT=$(( (EXP_EPOCH - NOW_EPOCH) / 86400 ))
+            if [[ "$DAYS_LEFT" -lt 60 ]]; then
+                echo "::warning::Provisioning profile expires in ${DAYS_LEFT} days ($PROFILE_EXP) — regenerate via signing recipe (see distribution.md)"
+            else
+                echo "    profile valid for ${DAYS_LEFT} more days (expires $PROFILE_EXP)"
+            fi
+        fi
+    fi
+    # (g) Gatekeeper assessment on the signed app (DMG is notarized+stapled separately in CI)
+    spctl --assess --type exec --verbose=2 "$BUNDLE" || echo "::warning::spctl assess non-zero pre-notarization (expected before stapling)"
+    echo "==> Provisioning-profile authorization checks passed."
 
     # Enumerate all Mach-O binaries and confirm each is signed
     echo "==> Signed binary inventory:"
