@@ -26,12 +26,18 @@ Actions updates are grouped into a single PR per week to reduce noise.
 
 ## Required checks
 
-`main` is protected via the `main-protection` ruleset (active) with required status checks:
+`main` is protected via the `main-protection` ruleset (active). The ruleset
+requires exactly one status check:
 
-- `build-check` (from `pr-check.yml`) — debug build, release build, test compilation
-- `drift-check` (from `ci-drift-check.yml`) — SHA pinning, script existence, YAML validity
-- Branches must be up to date before merging
+- `build-check` — the required aggregate gate (from `pr-check.yml`). It depends on
+  two parallel macOS lanes and is green only when both pass:
+  - `build-debug` — debug build, XPC error hygiene, debug-config logic tests
+  - `build-release` — release build, FoundationModels compile probe
 - Restrict deletions and block force pushes enabled
+
+`ci-drift-check.yml` is NOT a required PR check — it runs weekly (Monday noon UTC)
+and on manual trigger (see "Drift detector" below). Strict "branches up to date
+before merging" is OFF, so a moved `main` needs no rebase.
 
 Direct pushes to `main` are allowed for the release bot (appcast updates) but
 human changes should go through PRs.

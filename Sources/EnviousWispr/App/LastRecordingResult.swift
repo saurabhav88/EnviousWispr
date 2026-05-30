@@ -36,3 +36,5 @@ final class LastRecordingResult {
 // CI build-gate trigger for #804 (cache-first CI-speedup PR): a CI-workflow-only
 // change otherwise sets needs_build=false and skips the build steps, so this PR
 // could not self-test. This inert line forces needs_build=true. Safe to remove.
+// CI build-gate trigger for #906 (build-check parallel debug‖release split): same
+// self-validation reason — forces both new lanes to run for real on this PR.
