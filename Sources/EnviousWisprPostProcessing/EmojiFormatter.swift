@@ -190,6 +190,22 @@ public struct EmojiFormatter: Sendable {
     return try EmojiFormatter(entries: entries, enablePhonetic: enablePhonetic)
   }
 
+  // MARK: - Resource-resolution diagnostics (#913 PR2)
+
+  /// The `Bundle.module` URL for the bundled emoji dictionary, or nil if the
+  /// resource bundle did not ship. Exposes the SAME `Bundle.module` lookup the
+  /// production `load()` path uses — not a fallback — so a test can assert the
+  /// shipped resource resolves at runtime under the Xcode build.
+  public static var bundledDictionaryURLForDiagnostics: URL? {
+    Bundle.module.url(forResource: "emoji-dictionary", withExtension: "json")
+  }
+
+  /// The `Bundle.module` bundle URL, for asserting where the resource bundle
+  /// physically resolves (e.g. inside a signed app's `Contents/Resources`).
+  public static var moduleBundleURLForDiagnostics: URL {
+    Bundle.module.bundleURL
+  }
+
   // MARK: - Public format
 
   /// Convert spoken-emoji phrases in `text` to Unicode glyphs. Pure; never throws.

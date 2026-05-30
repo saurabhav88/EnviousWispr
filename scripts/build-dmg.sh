@@ -33,8 +33,14 @@ mkdir -p "$BUNDLE/Contents/Frameworks"
 cp "$BINARY" "$BUNDLE/Contents/MacOS/EnviousWispr"
 chmod +x "$BUNDLE/Contents/MacOS/EnviousWispr"
 
-# Copy Info.plist (production bundle ID, version from committed plist)
+# Copy Info.plist and stamp the production bundle ID + Sparkle feed.
+# The committed plist holds build-variable placeholders ($(PRODUCT_BUNDLE_IDENTIFIER),
+# $(SU_FEED_URL)) that the Xcode build path substitutes; this hand-rolled path must
+# stamp the concrete production values itself. (#913 PR2 — this stamping, and this
+# whole script, are removed in PR6 when the release pipeline moves to the Xcode engine.)
 cp "$RESOURCES_SRC/Info.plist" "$BUNDLE/Contents/Info.plist"
+plutil -replace CFBundleIdentifier -string "com.enviouswispr.app" "$BUNDLE/Contents/Info.plist"
+plutil -replace SUFeedURL -string "https://enviouswispr.com/appcast.xml" "$BUNDLE/Contents/Info.plist"
 
 # Copy icon
 cp "$RESOURCES_SRC/AppIcon.icns" "$BUNDLE/Contents/Resources/AppIcon.icns"
@@ -61,6 +67,7 @@ mkdir -p "$XPC_BUNDLE/Contents/MacOS"
 cp "$XPC_BINARY" "$XPC_BUNDLE/Contents/MacOS/EnviousWisprAudioService"
 chmod +x "$XPC_BUNDLE/Contents/MacOS/EnviousWisprAudioService"
 cp "$XPC_RESOURCES/Info.plist" "$XPC_BUNDLE/Contents/Info.plist"
+plutil -replace CFBundleIdentifier -string "com.enviouswispr.audioservice" "$XPC_BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleVersion -string "$VERSION" "$XPC_BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$VERSION" "$XPC_BUNDLE/Contents/Info.plist"
 
@@ -74,6 +81,7 @@ mkdir -p "$ASR_XPC_BUNDLE/Contents/MacOS"
 cp "$ASR_BINARY" "$ASR_XPC_BUNDLE/Contents/MacOS/EnviousWisprASRService"
 chmod +x "$ASR_XPC_BUNDLE/Contents/MacOS/EnviousWisprASRService"
 cp "$ASR_RESOURCES/Info.plist" "$ASR_XPC_BUNDLE/Contents/Info.plist"
+plutil -replace CFBundleIdentifier -string "com.enviouswispr.asrservice" "$ASR_XPC_BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleVersion -string "$VERSION" "$ASR_XPC_BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$VERSION" "$ASR_XPC_BUNDLE/Contents/Info.plist"
 

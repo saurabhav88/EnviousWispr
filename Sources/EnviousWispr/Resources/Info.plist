@@ -9,7 +9,7 @@
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.enviouswispr.app</string>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleName</key>
 	<string>EnviousWispr</string>
 	<key>CFBundlePackageType</key>
@@ -37,7 +37,7 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>SUFeedURL</key>
-	<string>https://enviouswispr.com/appcast.xml</string>
+	<string>$(SU_FEED_URL)</string>
 	<key>SUPublicEDKey</key>
 	<string>jHq1RIQKDmtO64qtCdZ6jNdHNFrfyScE16yuu+ufvDw=</string>
 </dict>
