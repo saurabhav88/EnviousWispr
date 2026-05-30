@@ -6,7 +6,7 @@ TCP listener. To run end-to-end: invoke the `wispr-rebuild-debug` skill, which
 compiles `-c debug` (so `#if DEBUG` seams are present) and launches the debug
 bundle with `EW_FAULT_INJECTION=1` set via `open --env`. Without both gates
 satisfied (DEBUG build AND env var), the endpoint is inert. The release path
-(`scripts/bundle-dev.sh`) does NOT contain the endpoint — by design.
+(the shipped release build) does NOT contain the endpoint — by design.
 
 Wire protocol (per `Sources/EnviousWisprAppKit/App/Debug/DebugFaultEndpoint.swift`):
 
@@ -133,7 +133,7 @@ def _read_token(pid: int) -> str:
         raise RuntimeError(
             f"fault token not found at {path} — invoke the `wispr-rebuild-debug` "
             "skill to build and launch the debug bundle with EW_FAULT_INJECTION=1 set. "
-            "The release path (`scripts/bundle-dev.sh`) does not contain the endpoint."
+            "The shipped release build does not contain the endpoint."
         )
     return path.read_text(encoding="utf-8").strip()
 

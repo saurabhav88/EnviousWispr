@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      #913 PR4 — Dev-config entitlements for the self-signed local build.
+      Identical to EnviousWispr.entitlements EXCEPT it omits keychain-access-groups.
+      The release app (Developer-ID-signed, team 9UT54V24XG) needs that group to
+      use the data-protection keychain for API-key storage (#845). The DEV build
+      uses the file-storage keychain backend (~/.enviouswispr-keys/, the
+      DEBUG/dev bundle path — see keychain-two-backends), so it never touches the
+      data-protection keychain and never needs the team-prefixed group. The
+      self-signed "EnviousWispr Dev" cert has no team, so carrying the group would
+      force a provisioning profile. Keep the privacy entitlements (mic +
+      apple-events) — those sign fine with a self-signed cert and no profile.
+    -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist>

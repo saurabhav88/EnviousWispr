@@ -69,7 +69,7 @@ detect_lane_from_diff() {
   local changed_files="$1"
   local lanes=""
 
-  if echo "$changed_files" | grep -qE '^(Sources/|Tests/|Package\.swift|Package\.resolved)'; then
+  if echo "$changed_files" | grep -qE '^(Sources/|Tests/|Package\.swift|Package\.resolved|Project\.swift|Tuist\.swift|Workspace\.swift|Tuist/)'; then
     lanes="$lanes Code"
   fi
   if echo "$changed_files" | grep -qE '^(website/|assets/|content-engine/)'; then
@@ -200,24 +200,27 @@ elif [ "$DECLARED" = "Docs/dev-tooling" ]; then
   fi
 fi
 
-echo "==> Phase 3.2: Smoke (release build + bundle + launch)"
+echo "==> Phase 3.2: Smoke (Tuist/Xcode DEV build + signed copy + launch)"
 if [ "$DECLARED" = "Code" ]; then
-  # Per Codex round 3: smoke must be release build + bundle + launch, not
-  # release build alone. Invoke scripts/bundle-dev.sh (the canonical builder
-  # that compiles release, bundles into /tmp/EnviousWispr Local.app, signs,
-  # and launches). It exits non-zero on any failure, which we propagate.
-  if [ -x "$PROJECT_ROOT/scripts/bundle-dev.sh" ]; then
-    if "$PROJECT_ROOT/scripts/bundle-dev.sh" > "$RUN_DIR/smoke.log" 2>&1; then
-      RUNNING_VER=$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-g[a-f0-9]+-dev' "$RUN_DIR/smoke.log" | tail -1 || echo "unknown")
-      jq -n --arg sha "$HEAD_SHA" --arg ver "$RUNNING_VER" --arg bundle "/tmp/EnviousWispr Local.app" \
-        '{head_sha:$sha, build_version:$ver, bundle_path:$bundle, smoke_step:"build_bundle_launch", note:"bundle-dev.sh ran end-to-end; app launched from bundle path"}' \
+  # #913 PR4: smoke runs the canonical Xcode-engine dev builder
+  # scripts/build-dev-app.sh (Tuist generate → xcodebuild the EnviousWispr-Dev
+  # scheme in the Dev config → self-signed → copy to build/EnviousWispr Local.app
+  # → launch). It exits non-zero on any failure, which we propagate. Replaces the
+  # retired SwiftPM dev bundler (release build + hand-rolled bundle).
+  DEV_BUILD_SCRIPT="$PROJECT_ROOT/scripts/build-dev-app.sh"
+  DEV_APP="$PROJECT_ROOT/build/EnviousWispr Local.app"
+  if [ -x "$DEV_BUILD_SCRIPT" ]; then
+    if "$DEV_BUILD_SCRIPT" > "$RUN_DIR/smoke.log" 2>&1; then
+      RUNNING_VER=$(plutil -extract CFBundleVersion raw "$DEV_APP/Contents/Info.plist" 2>/dev/null || echo "unknown")
+      jq -n --arg sha "$HEAD_SHA" --arg ver "$RUNNING_VER" --arg bundle "$DEV_APP" \
+        '{head_sha:$sha, build_version:$ver, bundle_path:$bundle, smoke_step:"tuist_dev_build_signed_copy_launch", note:"Tuist/Xcode DEV build produced signed self-signed .dev bundle and launched it"}' \
         > "$RUN_DIR/smoke.json"
-      record_step "smoke" 0 "build + bundle + launch succeeded ($RUNNING_VER)"
+      record_step "smoke" 0 "Tuist/Xcode DEV build + launch succeeded ($RUNNING_VER)"
     else
-      record_step "smoke" 1 "bundle-dev.sh failed (see smoke.log) — release build, bundle creation, signing, OR launch broken"
+      record_step "smoke" 1 "scripts/build-dev-app.sh failed (see smoke.log) — Tuist build, signing, copy, OR launch broken"
     fi
   else
-    record_step "smoke" 1 "scripts/bundle-dev.sh not executable — cannot run smoke"
+    record_step "smoke" 1 "scripts/build-dev-app.sh not executable — cannot run Code-lane smoke"
   fi
 fi
 
