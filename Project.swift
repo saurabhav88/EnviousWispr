@@ -54,6 +54,58 @@ let projectSettings = Settings.settings(
   ]
 )
 
+// Per-target settings = the common base + per-config optimization + per-config
+// identity overrides (bundle id / Sparkle feed). Debug carries the `.dev`
+// identity (isolates TCC/Keychain and blanks the update feed); Release carries
+// the production identity. The three Info.plists reference
+// `$(PRODUCT_BUNDLE_IDENTIFIER)` and `$(SU_FEED_URL)` so these reach the signed
+// products. (#913 PR2)
+func targetSettings(
+  debugExtra: SettingsDictionary = [:],
+  releaseExtra: SettingsDictionary = [:]
+) -> Settings {
+  Settings.settings(
+    base: commonSettings,
+    configurations: [
+      .debug(
+        name: "Debug",
+        settings: debugConfigSettings.merging(debugExtra) { _, new in new }
+      ),
+      .release(
+        name: "Release",
+        settings: releaseConfigSettings.merging(releaseExtra) { _, new in new }
+      ),
+    ]
+  )
+}
+
+// PR2 sets only the per-config IDENTITY (bundle id + Sparkle feed). The
+// Apple-intended automatic-signing migration (Apple Development cert + Mac
+// Development profile under DEVELOPMENT_TEAM=9UT54V24XG) lands in the dev-bundle
+// PR (PR4) + release PRs (PR5/PR6), where signing is inherently needed and the
+// founder's Apple Development cert is available. PR2 builds unsigned (like PR1),
+// proving the resource accessor + dev identity independent of signing. (#913)
+let appSettings = targetSettings(
+  debugExtra: [
+    "PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.app.dev",
+    "SU_FEED_URL": "",
+  ],
+  releaseExtra: [
+    "PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.app",
+    "SU_FEED_URL": "https://enviouswispr.com/appcast.xml",
+  ]
+)
+
+let audioServiceSettings = targetSettings(
+  debugExtra: ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.audioservice.dev"],
+  releaseExtra: ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.audioservice"]
+)
+
+let asrServiceSettings = targetSettings(
+  debugExtra: ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.asrservice.dev"],
+  releaseExtra: ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.asrservice"]
+)
+
 // First-party modules are NATIVE Tuist targets, statically linked. The app and
 // both XPC services each get their own copy of the code they need (no runtime
 // @rpath dependency on internal frameworks) — matching the current SwiftPM
@@ -176,7 +228,7 @@ let project = Project(
         // Transitive FluidAudio C-target modules (see Pipeline note above).
         .package(product: "FluidAudio"),
       ],
-      settings: projectSettings
+      settings: audioServiceSettings
     ),
     .target(
       name: "EnviousWisprASRService",
@@ -196,7 +248,7 @@ let project = Project(
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
       ],
-      settings: projectSettings
+      settings: asrServiceSettings
     ),
 
     // ---- App ----
@@ -220,7 +272,7 @@ let project = Project(
         .target(name: "EnviousWisprAudioService"),
         .target(name: "EnviousWisprASRService"),
       ],
-      settings: projectSettings
+      settings: appSettings
     ),
 
     // ---- Test bundles ----

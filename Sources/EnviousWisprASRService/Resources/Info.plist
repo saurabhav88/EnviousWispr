@@ -5,7 +5,7 @@
     <key>CFBundleExecutable</key>
     <string>EnviousWisprASRService</string>
     <key>CFBundleIdentifier</key>
-    <string>com.enviouswispr.asrservice</string>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleName</key>
     <string>EnviousWispr ASR Service</string>
     <key>CFBundlePackageType</key>
