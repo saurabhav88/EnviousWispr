@@ -9,7 +9,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-check:
+  # Debug lane: debug build + XPC hygiene self-tests + debug-config logic tests.
+  # Runs in parallel with build-release (issue #906). Keeps runs-on/timeout from
+  # the pre-split single build-check job. needs_build gating stays at STEP level
+  # so a docs-only PR runs this job but skips the build/test steps and reports
+  # success — the build-check aggregator requires success from both lanes.
+  build-debug:
     runs-on: macos-26
     timeout-minutes: 45
 
@@ -87,6 +92,16 @@ jobs:
             ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-
             ${{ runner.os }}-spm-
 
+      # Two lanes restore concurrently and read-only. Usually they resolve to the
+      # same artifact, but a main-post-merge save landing between the two lane
+      # restores can make them fall through to different restore-key artifacts —
+      # timing-only, never a correctness issue (the build is valid with any
+      # stale/missing SwiftPM cache). Logged so divergence is observable (#906).
+      - name: Log SwiftPM cache restore
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          echo "==> SwiftPM cache (debug lane): matched=${{ steps.spm-cache.outputs.cache-matched-key }} hit=${{ steps.spm-cache.outputs.cache-hit }}"
+
       # COMPILE_FLAGS comes from scripts/swift-test.sh (single source) so this build
       # graph matches the test step's graph and the test step reuses these objects
       # instead of recompiling every first-party module (#885). Captured into a string
@@ -99,14 +114,6 @@ jobs:
           FLAGS_STR="$(scripts/swift-test.sh --print-compile-flags)"
           read -ra COMPILE_FLAGS <<< "$FLAGS_STR"
           swift build "${COMPILE_FLAGS[@]}"
-
-      - name: Build (release)
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          FLAGS_STR="$(scripts/swift-test.sh --print-compile-flags)"
-          read -ra COMPILE_FLAGS <<< "$FLAGS_STR"
-          swift build -c release --arch arm64 "${COMPILE_FLAGS[@]}"
 
       - name: XPC error hygiene self-test
         if: steps.changes.outputs.needs_build == 'true'
@@ -136,6 +143,101 @@ jobs:
           PASSED=$(echo "$OUTPUT" | grep -c "passed" || true)
           echo "==> $STARTED test entries started, $PASSED reported passed, 0 failures"
 
+  # Release lane: release build + FoundationModels compile probe. Runs in parallel
+  # with build-debug (issue #906). The FoundationModels probe rides this lane (it is
+  # a standalone macOS-26 SDK compile, ~5s, depends on neither build). Keeps
+  # runs-on/timeout from the pre-split single build-check job; step-level gating.
+  build-release:
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 2
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Detect code changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "==> Changed files:"
+          echo "$CHANGED"
+          # Check if ANY file outside website/, docs/, .github/, content-engine/ changed
+          if echo "$CHANGED" | grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)'; then
+            echo "needs_build=true" >> "$GITHUB_OUTPUT"
+            echo "==> Swift source changes detected — full build required"
+          else
+            echo "needs_build=false" >> "$GITHUB_OUTPUT"
+            echo "==> No Swift source changes — skipping build"
+          fi
+
+      - name: Verify environment
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          swift --version
+          SDK_VER="$(xcrun --sdk macosx --show-sdk-version)"
+          echo "macOS SDK: $SDK_VER"
+
+          if ! swift --version 2>&1 | grep -q "Swift version 6"; then
+            echo "::error::Swift 6.0+ required"
+            exit 1
+          fi
+
+          if [ "$(printf '%s\n' "26.0" "$SDK_VER" | sort -V | head -n1)" != "26.0" ]; then
+            echo "::error::macOS SDK 26.0+ required for FoundationModels (found: $SDK_VER)"
+            exit 1
+          fi
+
+      - name: Compute SwiftPM cache key
+        id: spm-cache-key
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          TOOLCHAIN_ID="$(
+            { xcodebuild -version; xcrun --sdk macosx --show-sdk-version; } |
+            shasum -a 256 | cut -c1-12
+          )"
+          echo "toolchain_id=$TOOLCHAIN_ID" >> "$GITHUB_OUTPUT"
+
+      # Restore-only (see build-debug lane comment + issue #804).
+      - name: Restore SwiftPM build cache
+        id: spm-cache
+        if: steps.changes.outputs.needs_build == 'true'
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved') }}-
+            ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-
+            ${{ runner.os }}-spm-
+
+      - name: Log SwiftPM cache restore
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          echo "==> SwiftPM cache (release lane): matched=${{ steps.spm-cache.outputs.cache-matched-key }} hit=${{ steps.spm-cache.outputs.cache-hit }}"
+
+      # COMPILE_FLAGS single-sourced from scripts/swift-test.sh (#885) — only the -F
+      # flag re-keys the compile graph; -c release and --arch arm64 do not, so the
+      # shipped binary is functionally unchanged.
+      - name: Build (release)
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          FLAGS_STR="$(scripts/swift-test.sh --print-compile-flags)"
+          read -ra COMPILE_FLAGS <<< "$FLAGS_STR"
+          swift build -c release --arch arm64 "${COMPILE_FLAGS[@]}"
+
       - name: Verify FoundationModels compile probe
         if: steps.changes.outputs.needs_build == 'true'
         run: |
@@ -158,3 +260,23 @@ jobs:
             -o /tmp/foundation_models_probe
 
           echo "==> FoundationModels compile probe PASSED"
+
+  # Required aggregate gate. This is the ONLY required status check on main
+  # (ruleset main-protection, context "build-check"); keeping the job id
+  # "build-check" preserves that context so no ruleset change is needed (#906).
+  # always() && !cancelled(): runs after the lanes even when one fails (so it can
+  # fail closed), but is skipped when the whole run is cancelled (a superseded
+  # push) so the obsolete SHA shows "cancelled", not a false "Failure".
+  build-check:
+    needs: [build-debug, build-release]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require both build lanes
+        run: |
+          if [ "${{ needs.build-debug.result }}" != "success" ] || [ "${{ needs.build-release.result }}" != "success" ]; then
+            echo "::error::build lane failed — build-debug=${{ needs.build-debug.result }} build-release=${{ needs.build-release.result }}"
+            exit 1
+          fi
+          echo "==> Both build lanes passed."
