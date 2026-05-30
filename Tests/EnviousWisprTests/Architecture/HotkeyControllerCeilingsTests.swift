@@ -14,7 +14,7 @@ import Testing
 ///   points (council resolution §15.5).
 @Suite struct HotkeyControllerCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/DictationRuntime/HotkeyController.swift"
+    "Sources/EnviousWisprAppKit/App/DictationRuntime/HotkeyController.swift"
 
   @Test func collaboratorCount() throws {
     let body = try RouterCeilingParser.classBody(

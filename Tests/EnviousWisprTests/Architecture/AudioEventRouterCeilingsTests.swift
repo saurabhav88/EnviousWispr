@@ -10,7 +10,7 @@ import Testing
 /// Bible §30 changelog.
 @Suite struct AudioEventRouterCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/DictationRuntime/AudioEventRouter.swift"
+    "Sources/EnviousWisprAppKit/App/DictationRuntime/AudioEventRouter.swift"
 
   @Test func collaboratorCount() throws {
     let body = try RouterCeilingParser.classBody(named: "AudioEventRouter", at: Self.sourcePath)

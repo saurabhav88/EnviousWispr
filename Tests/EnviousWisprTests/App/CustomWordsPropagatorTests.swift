@@ -2,7 +2,7 @@ import EnviousWisprCore
 import Foundation
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 
 /// Phase 0 (#640) — pins the `CustomWordsPropagator` contract around the
 /// split-lane registry pattern. Replaces Phase D (#496) tests after the

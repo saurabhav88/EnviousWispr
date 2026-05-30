@@ -1,24 +1,26 @@
 import Foundation
 import Testing
 
-/// PR-B.4 of #763 — locks `AppDelegate` at its final shape: a thin AppKit
-/// adapter. PR-B extracted Sparkle (B.1), windows (B.2), the menu bar (B.3),
-/// and the process-lifecycle sequence (B.4) into App-owned homes. What remains
-/// is two weak refs, five forced `NSApplicationDelegate` callbacks, `attach`,
-/// and a private `assertAttached` tripwire.
+/// Locks `AppDelegate` at its thin-AppKit-adapter shape.
+///
+/// #919: `AppDelegate` stays in the thin shell (the `@NSApplicationDelegateAdaptor`
+/// must live in the `@main` `App` struct's module). It now holds ONE weak ref —
+/// the `WisprBootstrapper` (the relocated composition root in EnviousWisprAppKit) —
+/// and forwards the forced `NSApplicationDelegate` callbacks into it. The
+/// pre-#919 two-weak-ref shape (sparkleUpdateController + appLifecycleCoordinator)
+/// collapsed to the single bootstrapper ref; the engine modules are no longer
+/// imported here.
 ///
 /// The shape gate is an EXACT stored-property-name allowlist. This test parses
-/// every stored declaration in the class body (`let` and `var`, all access
-/// levels) and asserts the name set EQUALS the 2-name allowlist. Re-adding a
-/// dependency to `AppDelegate` fails the test — dependencies belong on the
-/// App-owned homes, not the adapter.
+/// every stored declaration in the class body and asserts the name set EQUALS
+/// the allowlist. Re-adding a dependency to `AppDelegate` fails the test —
+/// dependencies belong in the bootstrapper/homes, not the adapter.
 @Suite struct AppDelegateCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/AppDelegate.swift"
+    "Sources/EnviousWispr/AppDelegate.swift"
 
   private static let storedPropertyAllowlist: Set<String> = [
-    "sparkleUpdateController",
-    "appLifecycleCoordinator",
+    "bootstrapper"
   ]
 
   @Test func storedPropertyNamesMatchAllowlist() throws {
@@ -67,7 +69,9 @@ import Testing
     let source = try String(
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let actual = RouterCeilingParser.imports(in: source)
-    let allowed: Set<String> = ["AppKit", "EnviousWisprServices", "Foundation"]
+    // #919: Services dropped, EnviousWisprAppKit added — the shell delegate
+    // forwards into the bootstrapper instead of holding engine-module homes.
+    let allowed: Set<String> = ["AppKit", "EnviousWisprAppKit", "Foundation"]
     let extras = actual.subtracting(allowed)
     #expect(
       extras.isEmpty,
@@ -96,26 +100,32 @@ import Testing
       """)
   }
 
-  /// Issue #799 close criterion: the loud-guard tripwire. Both lifecycle entry
-  /// points that depend on a weak ref must call `assertAttached`, and the
-  /// helper must keep both arms — the `#if DEBUG` `assertionFailure` and the
-  /// release-build `SentryBreadcrumb`. Source-level check — booting AppKit or
-  /// firing `assertionFailure` in a unit test is not viable.
+  /// The loud-guard tripwire (#919). Both lifecycle entry points that deref the
+  /// weak `bootstrapper` ref must call `assertAttached()` first, and the helper
+  /// must keep its `#if DEBUG` `assertionFailure`. The pre-#919 release-build
+  /// `SentryBreadcrumb` arm was intentionally dropped: the shell no longer
+  /// imports `EnviousWisprServices`, and the nil path is unreachable because the
+  /// `@main` shell strong-holds the bootstrapper via `@State` for the app's
+  /// lifetime. Source-level check — booting AppKit in a unit test is not viable.
   @Test func assertAttachedGuardsLifecycleEntryPoints() throws {
     let source = try String(
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
+    // One `private func assertAttached()` declaration + two call sites
+    // (applicationWillFinishLaunching, applicationDidFinishLaunching).
+    let occurrences = source.components(separatedBy: "assertAttached()").count - 1
     #expect(
-      source.contains("assertAttached(sparkleUpdateController,"),
-      "applicationWillFinishLaunching must guard its weak ref with assertAttached.")
-    #expect(
-      source.contains("assertAttached(appLifecycleCoordinator,"),
-      "applicationDidFinishLaunching must guard its weak ref with assertAttached.")
-    #expect(
-      source.contains("assertionFailure(") && source.contains("SentryBreadcrumb.add("),
+      occurrences >= 3,
       """
-      assertAttached must keep both arms: a debug `assertionFailure` and a \
-      release-build `SentryBreadcrumb`. A wiring regression must be loud in \
-      debug and diagnosable in release.
+      applicationWillFinishLaunching + applicationDidFinishLaunching must each \
+      call assertAttached() before forwarding into the bootstrapper \
+      (found \(occurrences) occurrences of `assertAttached()`, expected the \
+      declaration + 2 call sites).
+      """)
+    #expect(
+      source.contains("assertionFailure("),
+      """
+      assertAttached must keep its DEBUG `assertionFailure` arm so a wiring \
+      regression is loud at development time.
       """)
   }
 }

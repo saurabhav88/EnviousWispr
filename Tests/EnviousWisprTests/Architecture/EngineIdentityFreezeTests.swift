@@ -173,9 +173,11 @@ import Testing
       found \(callers.count) in \(callers).
       """)
     #expect(
-      callers.first?.hasSuffix("EnviousWispr/App/EnviousWisprApp.swift") == true,
+      callers.first?.hasSuffix("EnviousWisprAppKit/App/WisprBootstrapper.swift") == true,
       """
-      The sole production caller must be `EnviousWispr/App/EnviousWisprApp.swift`;
+      The sole production caller must be \
+      `EnviousWisprAppKit/App/WisprBootstrapper.swift` (#919: the composition \
+      root relocated out of the app target's `@main` struct into the kit);
       found \(callers).
       """)
   }

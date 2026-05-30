@@ -2,7 +2,7 @@ import EnviousWisprCore
 import Foundation
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
 
 /// Phase C (#428) — pins the `TranscriptCoordinator` contract around the new

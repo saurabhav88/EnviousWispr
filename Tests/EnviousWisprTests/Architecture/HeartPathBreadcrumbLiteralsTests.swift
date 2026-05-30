@@ -14,9 +14,9 @@ import Testing
 /// scans all of `Sources/` for the deleted root-state type's name.
 @Suite struct HeartPathBreadcrumbLiteralsTests {
   private static let routerSourcePaths = [
-    "Sources/EnviousWispr/App/DictationRuntime/AudioEventRouter.swift",
-    "Sources/EnviousWispr/App/DictationRuntime/ASREventRouter.swift",
-    "Sources/EnviousWispr/App/DictationRuntime/WedgeRecoveryRouter.swift",
+    "Sources/EnviousWisprAppKit/App/DictationRuntime/AudioEventRouter.swift",
+    "Sources/EnviousWisprAppKit/App/DictationRuntime/ASREventRouter.swift",
+    "Sources/EnviousWisprAppKit/App/DictationRuntime/WedgeRecoveryRouter.swift",
   ]
 
   /// Literal strings that MUST appear at least once in the union of the

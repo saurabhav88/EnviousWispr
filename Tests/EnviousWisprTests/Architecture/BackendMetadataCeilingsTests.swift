@@ -16,7 +16,7 @@ import Testing
 /// Lowering any cap is free; raising requires a Bible §30 changelog entry.
 @Suite struct BackendMetadataCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/BackendMetadata.swift"
+    "Sources/EnviousWisprAppKit/App/BackendMetadata.swift"
 
   @Test func storedPropertyCeiling() throws {
     let source = try CeilingsTestSupport.source(at: Self.sourcePath)

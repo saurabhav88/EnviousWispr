@@ -4,7 +4,7 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprASR
 
 /// Unit tests for `BackendMetadata` (PR7 of epic #763). Covers the three

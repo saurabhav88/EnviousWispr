@@ -91,6 +91,26 @@ let package = Package(
       ],
       path: "Sources/EnviousWisprPipeline"
     ),
+    // #919: the app-shell layer (homes + views + composition root) lives in
+    // this library so the unit-test target can link it WITHOUT launching the
+    // app. The launchable `EnviousWispr` target is a thin shell over it.
+    .target(
+      name: "EnviousWisprAppKit",
+      dependencies: [
+        "EnviousWisprCore",
+        "EnviousWisprStorage",
+        "EnviousWisprPostProcessing",
+        "EnviousWisprAudio",
+        "EnviousWisprServices",
+        "EnviousWisprASR",
+        "EnviousWisprLLM",
+        "EnviousWisprPipeline",
+        .product(name: "WhisperKit", package: "argmax-oss-swift"),
+        "FluidAudio",
+        "Sparkle",
+      ],
+      path: "Sources/EnviousWisprAppKit"
+    ),
     .executableTarget(
       name: "EnviousWisprAudioService",
       dependencies: [
@@ -112,20 +132,13 @@ let package = Package(
       path: "Sources/EnviousWisprASRService",
       exclude: ["Resources"]
     ),
+    // #919: thin launchable shell. Owns @main + the AppDelegate adaptor +
+    // app identity/Resources; delegates ALL construction + lifecycle to
+    // `WisprBootstrapper` in EnviousWisprAppKit. Depends ONLY on the kit.
     .executableTarget(
       name: "EnviousWispr",
       dependencies: [
-        "EnviousWisprCore",
-        "EnviousWisprStorage",
-        "EnviousWisprPostProcessing",
-        "EnviousWisprAudio",
-        "EnviousWisprServices",
-        "EnviousWisprASR",
-        "EnviousWisprLLM",
-        "EnviousWisprPipeline",
-        .product(name: "WhisperKit", package: "argmax-oss-swift"),
-        "FluidAudio",
-        "Sparkle",
+        "EnviousWisprAppKit"
       ],
       path: "Sources/EnviousWispr",
       exclude: ["Resources"]
@@ -139,7 +152,9 @@ let package = Package(
         "EnviousWisprPipeline",
         "EnviousWisprStorage",
         "EnviousWisprAudio",
-        "EnviousWispr",
+        // #919: link the app-shell code from the library, NOT the app target,
+        // so `swift test` / `xcodebuild test` never launch the app.
+        "EnviousWisprAppKit",
       ],
       path: "Tests/EnviousWisprTests"
     ),

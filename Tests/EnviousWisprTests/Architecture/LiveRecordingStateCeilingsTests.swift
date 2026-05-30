@@ -24,7 +24,7 @@ import Testing
 /// Lowering any cap is free; raising requires a Bible §30 changelog entry.
 @Suite struct LiveRecordingStateCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/LiveRecordingState.swift"
+    "Sources/EnviousWisprAppKit/App/LiveRecordingState.swift"
 
   @Test func storedPropertyCeiling() throws {
     let source = try CeilingsTestSupport.source(at: Self.sourcePath)

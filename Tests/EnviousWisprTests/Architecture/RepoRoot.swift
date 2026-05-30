@@ -19,7 +19,7 @@ enum RepoRoot {
     .deletingLastPathComponent()  // <root>/
 
   /// Absolute URL for a repo-relative source path (e.g.
-  /// `"Sources/EnviousWispr/App/AppDelegate.swift"`). An already-absolute path
+  /// `"Sources/EnviousWisprAppKit/App/AppDelegate.swift"`). An already-absolute path
   /// is returned unchanged, so callers that pass an absolute path (or this
   /// helper applied twice) resolve identically.
   static func sourceURL(_ relativePath: String) -> URL {

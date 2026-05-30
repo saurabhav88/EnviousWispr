@@ -1,6 +1,6 @@
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 
 /// Issue #765 (PR2 of epic #763) — pins the `NavigationCoordinator` contract
 /// that was extracted from the former root state.

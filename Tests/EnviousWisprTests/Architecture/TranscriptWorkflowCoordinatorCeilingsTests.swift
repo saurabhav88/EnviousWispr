@@ -19,7 +19,7 @@ import Testing
 /// ceiling of exactly 1 enforces that structurally.
 @Suite struct TranscriptWorkflowCoordinatorCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/TranscriptWorkflowCoordinator.swift"
+    "Sources/EnviousWisprAppKit/App/TranscriptWorkflowCoordinator.swift"
 
   @Test func storedPropertyCeiling() throws {
     let source = try CeilingsTestSupport.source(at: Self.sourcePath)

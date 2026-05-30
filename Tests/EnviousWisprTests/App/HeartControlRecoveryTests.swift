@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprServices
 
 /// #585 — HeartControlRecovery extracted from the former root state.

@@ -85,7 +85,9 @@ private struct NamedHomeViolation: Equatable {
 }
 
 private func appDelegateURL() -> URL {
-  RepoRoot.sourceURL("Sources/EnviousWispr/App/AppDelegate.swift")
+  // #919: AppDelegate stays in the thin shell (the adaptor must live in the
+  // @main App struct's module), so it is no longer under the kit's App/ dir.
+  RepoRoot.sourceURL("Sources/EnviousWispr/AppDelegate.swift")
 }
 
 private func classBodyOfAppDelegate() throws -> String {

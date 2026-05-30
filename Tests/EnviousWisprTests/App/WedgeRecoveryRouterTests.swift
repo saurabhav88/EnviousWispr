@@ -2,7 +2,7 @@ import EnviousWisprCore
 import Foundation
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
 @testable import EnviousWisprPipeline
 

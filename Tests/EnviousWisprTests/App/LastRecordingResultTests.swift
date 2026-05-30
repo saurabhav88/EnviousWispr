@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 
 /// Unit tests for `LastRecordingResult` (PR7 of epic #763).
 ///

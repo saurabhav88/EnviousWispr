@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import EnviousWispr
+@testable import EnviousWisprAppKit
 
 /// Issue #617 — locks the contract of `AIPolishModelClassifier.isRecommendedForCleanup`.
 ///

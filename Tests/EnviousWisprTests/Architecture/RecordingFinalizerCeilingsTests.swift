@@ -16,7 +16,7 @@ import Testing
 ///   and is NOT counted), ≤ 150 lines.
 @Suite struct RecordingFinalizerCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/DictationRuntime/RecordingFinalizer.swift"
+    "Sources/EnviousWisprAppKit/App/DictationRuntime/RecordingFinalizer.swift"
 
   @Test func collaboratorCount() throws {
     let body = try RouterCeilingParser.classBody(

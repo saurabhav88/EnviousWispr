@@ -20,7 +20,7 @@ import Testing
 /// Lowering any cap is free; raising requires a Bible §30 changelog entry.
 @Suite struct LastRecordingResultCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/LastRecordingResult.swift"
+    "Sources/EnviousWisprAppKit/App/LastRecordingResult.swift"
 
   @Test func storedLetCollaboratorCeiling() throws {
     let source = try CeilingsTestSupport.source(at: Self.sourcePath)

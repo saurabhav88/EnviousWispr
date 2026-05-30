@@ -12,7 +12,7 @@ import Testing
 /// Lowering any cap is free; raising requires a Bible §30 changelog entry.
 @Suite struct DictationSessionConfigFactoryCeilingsTests {
   private static let sourcePath =
-    "Sources/EnviousWispr/App/DictationSessionConfigFactory.swift"
+    "Sources/EnviousWisprAppKit/App/DictationSessionConfigFactory.swift"
 
   @Test func storedPropertyCeiling() throws {
     let source = try CeilingsTestSupport.source(at: Self.sourcePath)
