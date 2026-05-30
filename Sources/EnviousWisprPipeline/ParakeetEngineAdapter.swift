@@ -56,8 +56,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// task is the completion signal — no wall-clock deadline. A `ContinuousClock`
   /// deadline raced the `@MainActor` scheduler: under contention it fired before
   /// queued feed tasks ran, dropping tail audio (Codex PR-4a r4, reproduced as a
-  /// `finalizeDrainsStreamingFeeds` flake). Each task `try?`-awaits `feedAudio`,
-  /// so it always completes — on success or a thrown XPC error — never hangs.
+  /// `finalizeDrainsStreamingFeeds` flake). Each task awaits `feedAudio` inside a
+  /// `do/catch` (the task type is `Task<Void, Never>`), so it always completes —
+  /// on success or a swallowed thrown error — never hangs.
   private var feedTasks: [Task<Void, Never>] = []
 
   // MARK: Batch-rescue PCM retention (§3.2a)
@@ -239,8 +240,20 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       // (old Parakeet pipeline).
       guard self.sessionID == handoffSession, self.streamingActive, !self.isTerminal
       else { return }
-      try? await self.asrManager.feedAudio(pcmBuffer)
-      self.streamingBuffersFed += 1
+      do {
+        try await self.asrManager.feedAudio(pcmBuffer)
+        self.streamingBuffersFed += 1
+      } catch {
+        // The host-side `feedAudio` call threw (transient ASR/XPC error). Do NOT
+        // count this buffer as fed — `streamingBuffersFed` (surfaced as
+        // `asr.streaming_buffers_fed` in ASREmptyResultDiagnostics) counts buffers
+        // whose feed call returned successfully, so `fed < dispatched` stays
+        // visible in empty-result triage as the signal that some feed calls did
+        // not complete (#867). The delta itself is the failure count, so the
+        // catch stays silent (a per-buffer breadcrumb would be noisy at ~39Hz).
+        // The task is still `Task<Void, Never>` and completes, so `finalize()`'s
+        // drain barrier is unaffected.
+      }
     }
     feedTasks.append(task)
   }
