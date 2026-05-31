@@ -21,7 +21,10 @@ public enum OutputClassifierManifest {
   public static let modelName = "MiniLM-L6"
   public static let modelSeed = 13
 
-  /// Folder-referenced resource names in `Bundle.main.resourceURL`.
+  /// Resource names in `Bundle.main.resourceURL`. Xcode compiles the committed
+  /// source `.mlpackage` into `.mlmodelc` at build time, so the runtime loads
+  /// the compiled model (the `.mlpackage` is the defensive fallback only).
+  public static let compiledModelName = "OutputClassifier.mlmodelc"
   public static let mlpackageName = "OutputClassifier.mlpackage"
   public static let tokenizerFolderName = "OutputClassifierTokenizer"
   public static let contractFileName = "tokenizer-contract.json"

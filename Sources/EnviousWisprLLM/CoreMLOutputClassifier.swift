@@ -38,10 +38,12 @@ public actor CoreMLOutputClassifier: OutputClassifierProtocol {
       OutputClassifierManifest.contractFileName)
     let tokenizerJSON = tokenizerFolder.appendingPathComponent("tokenizer.json")
     let tokenizerConfig = tokenizerFolder.appendingPathComponent("tokenizer_config.json")
+    let compiledModel = resourceURL.appendingPathComponent(
+      OutputClassifierManifest.compiledModelName, isDirectory: true)
     let mlpackage = resourceURL.appendingPathComponent(
       OutputClassifierManifest.mlpackageName, isDirectory: true)
 
-    for url in [contractURL, tokenizerJSON, tokenizerConfig, mlpackage]
+    for url in [contractURL, tokenizerJSON, tokenizerConfig]
     where !fileManager.fileExists(atPath: url.path) {
       throw OutputClassifierError.disabled(.missingFile)
     }
@@ -71,13 +73,23 @@ public actor CoreMLOutputClassifier: OutputClassifierProtocol {
     }
     try adapter.validate()
 
-    // 5. Compile the .mlpackage on-device and load. (Build-time compile is not
-    //    possible under Tuist 4.195.11 — see the PR8 runbook refresh addendum.)
+    // 5. Load the model. Xcode's CoreML build rule compiles the app-target
+    //    .mlpackage into OutputClassifier.mlmodelc at BUILD time, so the normal
+    //    path loads that directly (no on-device compile). Defensive fallback:
+    //    if only the source .mlpackage shipped, compile it on-device.
     let model: MLModel
     do {
-      let compiledURL = try await MLModel.compileModel(at: mlpackage)
       let configuration = MLModelConfiguration()  // computeUnits = .all (ANE/GPU/CPU)
-      model = try MLModel(contentsOf: compiledURL, configuration: configuration)
+      if fileManager.fileExists(atPath: compiledModel.path) {
+        model = try MLModel(contentsOf: compiledModel, configuration: configuration)
+      } else if fileManager.fileExists(atPath: mlpackage.path) {
+        let compiledURL = try await MLModel.compileModel(at: mlpackage)
+        model = try MLModel(contentsOf: compiledURL, configuration: configuration)
+      } else {
+        throw OutputClassifierError.disabled(.missingFile)
+      }
+    } catch let error as OutputClassifierError {
+      throw error
     } catch {
       throw OutputClassifierError.disabled(.modelLoadFailed)
     }
