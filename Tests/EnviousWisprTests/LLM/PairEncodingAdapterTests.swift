@@ -107,6 +107,47 @@ import Testing
     #expect(encoded.inputIDs.dropFirst(8).allSatisfy { $0 == 1 })
   }
 
+  // Contract whose specials all resolve (cls/sep/pad present) but which declares
+  // an unknown kind in one slot — validate() must still reject it (Codex P2).
+  private func contractWithOverride(_ overrides: [String: String]) -> String {
+    func v(_ key: String, _ dflt: String) -> String { overrides[key] ?? dflt }
+    return """
+      {
+        "contractVersion": 1, "modelName": "x", "family": "\(v("family", "bert_wordpiece"))",
+        "inputPrefix": "Input: ", "outputPrefix": "Output: ",
+        "pairTemplate": { "kind": "\(v("templateKind", "bert_pair"))", "sequence": ["cls","input","sep","output","sep"] },
+        "specialTokenIds": { "pad": 0, "cls": 101, "sep": 102 },
+        "specialsBudget": \(v("specialsBudget", "4")), "maxLength": \(v("maxLength", "128")),
+        "minOutputTokens": 32,
+        "inputTruncationPolicy": { "kind": "head_tail", "headTokens": 64, "tailTokens": 32 },
+        "outputTruncationPolicy": { "kind": "\(v("outTrunc", "tail"))", "headTokens": 64, "tailTokens": 32 },
+        "tokenTypePolicy": { "kind": "\(v("ttKind", "bert_segments"))", "needsSegmentIds": true, "segmentVocabSize": 2 }
+      }
+      """
+  }
+
+  @Test(
+    "validate() rejects unsupported family / template / token-type / truncation / maxLength",
+    arguments: [
+      ["family": "deberta_v3"],
+      ["templateKind": "deberta_pair"],
+      ["ttKind": "deberta_segments"],
+      ["outTrunc": "middle"],
+      ["maxLength": "10"],  // <= specialsBudget + minOutputTokens
+      ["specialsBudget": "0"],
+    ])
+  func validateRejectsUnsupported(_ override: [String: String]) throws {
+    let adapter = PairEncodingAdapter(
+      contract: try decodeContract(contractWithOverride(override)), encode: wordIndexEncoder)
+    #expect(throws: OutputClassifierError.self) { try adapter.validate() }
+  }
+
+  @Test("validate() accepts the shipped contract + a well-formed RoBERTa contract")
+  func validateAcceptsSupported() throws {
+    let bert = try TokenizerContract.load(from: OutputClassifierTestPaths.contract)
+    try PairEncodingAdapter(contract: bert, encode: wordIndexEncoder).validate()
+  }
+
   @Test("validate() throws unsupportedFamily when a template special is missing")
   func validateMissingSpecial() throws {
     let json = """

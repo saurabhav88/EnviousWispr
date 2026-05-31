@@ -53,6 +53,7 @@ final class StubOutputClassifier: OutputClassifierProtocol, @unchecked Sendable 
   enum Behavior: Sendable {
     case score(Double)
     case sleep(seconds: Double, then: Double)
+    case blockSync(seconds: Double, then: Double)  // non-cooperative thread block
     case throwError
   }
   let behavior: Behavior
@@ -64,6 +65,12 @@ final class StubOutputClassifier: OutputClassifierProtocol, @unchecked Sendable 
       return value
     case let .sleep(seconds, then):
       try await Task.sleep(for: .seconds(seconds))
+      return then
+    case let .blockSync(seconds, then):
+      // Synchronous, NON-cooperative block (ignores cancellation) — models a
+      // stuck Core ML inference. `usleep` is a blocking C syscall (Thread.sleep
+      // is banned in async contexts). The deadline must bound the caller anyway.
+      usleep(UInt32(seconds * 1_000_000))
       return then
     case .throwError:
       throw OutputClassifierError.disabled(.inferenceError)

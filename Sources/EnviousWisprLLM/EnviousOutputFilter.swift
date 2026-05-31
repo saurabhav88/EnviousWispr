@@ -96,33 +96,37 @@ public enum EnviousOutputFilter {
 
     let rawInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
     let start = DispatchTime.now()
-    do {
-      let score = try await withThrowingTimeout(seconds: 0.050) {
-        try await classifier.score(input: input, polished: sync.polished)
+    // TRUE 50ms wall-clock bound: `withDeadline` returns nil on timeout WITHOUT
+    // awaiting a stuck synchronous Core ML inference (Codex P1). A throw/NaN
+    // inside is mapped to .nan so timeout (nil) and inference error (nan) stay
+    // distinguishable in telemetry. Either way the limb fails open.
+    let scored: Double? = await withDeadline(seconds: 0.050) {
+      do { return try await classifier.score(input: input, polished: sync.polished) } catch {
+        return Double.nan
       }
-      let elapsedMs = Int(
-        Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000)
-      guard score.isFinite else {
-        logClassifierDisabled(reason: "inference_error")
-        return sync
-      }
-      let discard = score >= OutputClassifierManifest.discardThreshold
-      let decision = discard ? "DISCARD" : "KEEP"
-      let rounded = (score * 10000).rounded() / 10000
-      Task {
-        await AppLogger.shared.log(
-          "[OutputClassifier] score=\(rounded) decision=\(decision) latency_ms=\(elapsedMs)",
-          level: .info, category: "LLM")
-      }
-      if discard {
-        return Result(polished: rawInput, fellBackToRaw: true, tripped: "classifier_discard")
-      }
-      return sync
-    } catch {
-      let reason = (error as? OutputClassifierError)?.reason.rawValue ?? "inference_error"
-      logClassifierDisabled(reason: reason)
+    }
+    let elapsedMs = Int(
+      Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000)
+    guard let score = scored else {
+      logClassifierDisabled(reason: "timeout")
       return sync
     }
+    guard score.isFinite else {
+      logClassifierDisabled(reason: "inference_error")
+      return sync
+    }
+    let discard = score >= OutputClassifierManifest.discardThreshold
+    let decision = discard ? "DISCARD" : "KEEP"
+    let rounded = (score * 10000).rounded() / 10000
+    Task {
+      await AppLogger.shared.log(
+        "[OutputClassifier] score=\(rounded) decision=\(decision) latency_ms=\(elapsedMs)",
+        level: .info, category: "LLM")
+    }
+    if discard {
+      return Result(polished: rawInput, fellBackToRaw: true, tripped: "classifier_discard")
+    }
+    return sync
   }
 
   private static func logClassifierDisabled(reason: String) {

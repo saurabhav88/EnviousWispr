@@ -63,6 +63,22 @@ import Testing
     #expect(result.tripped == nil)
   }
 
+  @Test("non-cooperative synchronous block is bounded by the deadline and fails open")
+  func nonCooperativeBlockFailsOpen() async {
+    // A stuck synchronous inference (500ms thread block, ignores cancellation):
+    // the 50ms deadline must still return the sync result well before the block
+    // ends — proving withDeadline does not await the abandoned operation.
+    let clock = ContinuousClock()
+    let elapsed = await clock.measure {
+      let result = await EnviousOutputFilter.filterWithClassifier(
+        input: Self.cleanInput, output: Self.cleanOutput,
+        classifier: StubOutputClassifier(.blockSync(seconds: 0.5, then: 0.99)))
+      #expect(result.fellBackToRaw == false)
+      #expect(result.tripped == nil)
+    }
+    #expect(elapsed < .milliseconds(400), "deadline did not bound the caller: \(elapsed)")
+  }
+
   @Test("NaN score fails open")
   func nanFailsOpen() async {
     let result = await EnviousOutputFilter.filterWithClassifier(

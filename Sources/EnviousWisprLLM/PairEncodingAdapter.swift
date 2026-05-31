@@ -31,13 +31,32 @@ public struct PairEncodingAdapter: Sendable {
     self.encode = encode
   }
 
-  /// Validate that every special the template references resolves in the
-  /// contract. Call once at load; a missing special is an unsupported family.
+  static let supportedFamilies: Set<String> = ["bert_wordpiece", "roberta_bpe"]
+  static let supportedTemplateKinds: Set<String> = ["bert_pair", "roberta_pair"]
+  static let supportedTokenTypeKinds: Set<String> = ["bert_segments", "none"]
+  static let supportedTruncationKinds: Set<String> = ["tail", "head_tail"]
+
+  /// Validate the contract is a SUPPORTED, internally-consistent shape before
+  /// any encoding. Allowlists family / template / token-type / truncation kinds,
+  /// requires positive budgets, a sane maxLength, and that every template
+  /// special resolves. Any violation throws `.disabled(.unsupportedFamily)` so
+  /// the classifier disables and fails open (Codex P2). Call once at load.
   public func validate() throws {
+    func require(_ condition: Bool) throws {
+      if !condition { throw OutputClassifierError.disabled(.unsupportedFamily) }
+    }
+    try require(Self.supportedFamilies.contains(contract.family))
+    try require(Self.supportedTemplateKinds.contains(contract.pairTemplate.kind))
+    try require(Self.supportedTokenTypeKinds.contains(contract.tokenTypePolicy.kind))
+    try require(Self.supportedTruncationKinds.contains(contract.outputTruncationPolicy.kind))
+    try require(contract.specialsBudget > 0)
+    try require(contract.minOutputTokens > 0)
+    try require(contract.inputTruncationPolicy.headTokens > 0)
+    try require(contract.inputTruncationPolicy.tailTokens > 0)
+    // maxLength must leave room for specials + the minimum output budget.
+    try require(contract.maxLength > contract.specialsBudget + contract.minOutputTokens)
     for token in contract.pairTemplate.sequence where token != "input" && token != "output" {
-      if specialID(for: token) == nil {
-        throw OutputClassifierError.disabled(.unsupportedFamily)
-      }
+      try require(specialID(for: token) != nil)
     }
   }
 
