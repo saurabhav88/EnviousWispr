@@ -22,7 +22,17 @@ free, fast, and fully controlled.
 |----------|--------|---------|
 | `pr-check.yml` → `build-check` | `macos-15` (hosted) | Fast compile gate — debug + release + test target |
 | `pr-check.yml` → `ai-compile-gate` | `self-hosted, enviouswispr-release` | FoundationModels compile probe |
-| `release.yml` → `build-and-release` | `self-hosted, enviouswispr-release` | Full release: build + sign + notarize + DMG |
+| `release.yml` → `build-release-artifacts` | `self-hosted, enviouswispr-release` | Full release: Xcode/Tuist archive + inside-out sign (embeds the Developer ID provisioning profile) + notarize + DMG |
+
+## Release Toolchain (Xcode engine, #913)
+
+Release builds run on the Xcode build engine via Tuist (not SwiftPM). The runner needs:
+
+- **mise** (installed via Homebrew at `/opt/homebrew/bin/mise`) — version manager.
+- **Tuist `4.195.11`** — managed by mise (`mise x tuist@4.195.11 -- tuist ...`); the `release.yml` build job's "Ensure Tuist available" step runs `mise install tuist@4.195.11` (idempotent) before building, so a fresh runner self-provisions.
+- **Xcode 26.5** + **create-dmg** (the workflow installs create-dmg via Homebrew per run).
+
+The build/sign/DMG mechanics live in `scripts/build-release-dmg.sh` (the release workflow calls it), so a local release proof runs identical code to CI. GitHub Action `run:` steps are non-interactive, so the script resolves `mise` by absolute path (the interactive `mise` shell function is absent in CI shells).
 
 ## Managing the Runner
 

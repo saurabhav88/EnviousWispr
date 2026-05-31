@@ -233,11 +233,17 @@ jobs:
       - name: Install create-dmg
         run: brew install create-dmg
 
-      - name: Build release binary
+      - name: Ensure Tuist available
         run: |
-          echo "==> Building arm64 release binary ..."
-          swift build -c release --arch arm64
-          echo "==> Build complete."
+          set -euo pipefail
+          MISE_BIN="$(command -v mise || true)"
+          [[ -z "$MISE_BIN" && -x "$HOME/.local/bin/mise" ]] && MISE_BIN="$HOME/.local/bin/mise"
+          [[ -z "$MISE_BIN" && -x /opt/homebrew/bin/mise ]] && MISE_BIN="/opt/homebrew/bin/mise"
+          if [[ -z "$MISE_BIN" ]]; then
+            echo "::error::mise not found on the release runner"; exit 1
+          fi
+          "$MISE_BIN" install tuist@4.195.11
+          "$MISE_BIN" x tuist@4.195.11 -- tuist version
 
       - name: Import Developer ID certificate
         env:
@@ -257,37 +263,19 @@ jobs:
             -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
 
-      - name: Stamp observability keys into Info.plist
-        env:
-          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-        run: |
-          PLIST="Sources/EnviousWispr/Resources/Info.plist"
-          if [[ -n "${POSTHOG_API_KEY}" ]]; then
-            plutil -replace PostHogAPIKey -string "${POSTHOG_API_KEY}" "$PLIST"
-            echo "==> PostHog API key stamped into Info.plist"
-          else
-            echo "::warning::POSTHOG_API_KEY secret not set — PostHog will be disabled in this release"
-          fi
-          if [[ -n "${SENTRY_DSN}" ]]; then
-            plutil -replace SentryDSN -string "${SENTRY_DSN}" "$PLIST"
-            echo "==> Sentry DSN stamped into Info.plist"
-          else
-            echo "::warning::SENTRY_DSN secret not set — Sentry will be disabled in this release"
-          fi
-
-      - name: Package and sign DMG
+      - name: Build, sign & package release DMG
         env:
           CODESIGN_IDENTITY: "Developer ID Application: ${{ secrets.APPLE_TEAM_NAME }} (${{ secrets.APPLE_TEAM_ID }})"
-          SPARKLE_FEED_URL: "https://enviouswispr.com/appcast.xml"
-          SPARKLE_EDDSA_PUBLIC_KEY: ${{ secrets.SPARKLE_EDDSA_PUBLIC_KEY }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SU_FEED_URL: "https://enviouswispr.com/appcast.xml"
           VERSION: ${{ needs.preflight.outputs.version }}
         run: |
-          if [[ -z "${SPARKLE_EDDSA_PUBLIC_KEY}" ]]; then
-            echo "::error::SPARKLE_EDDSA_PUBLIC_KEY secret is not set"
-            exit 1
-          fi
-          ./scripts/build-dmg.sh "$VERSION"
+          # Xcode-engine build + sign (embeds the Developer ID provisioning profile
+          # that authorizes the keychain entitlement at launch) + DMG. Secrets and
+          # feed are stamped into Info.plist at archive time via an xcconfig the
+          # script generates from these env vars. (#913 PR6)
+          ./scripts/build-release-dmg.sh "$VERSION"
 
       - name: Notarize DMG
         env:
@@ -344,7 +332,12 @@ jobs:
             echo "::error::SPARKLE_PRIVATE_KEY secret is not set — cannot sign update"
             exit 1
           fi
-          EDDSA_SIG=$(echo "${SPARKLE_PRIVATE_KEY}" | .build/artifacts/sparkle/Sparkle/bin/sign_update -p "${DMG_PATH}" --ed-key-file /dev/stdin 2>/dev/null || echo "")
+          SIGN_UPDATE="$(find build/DerivedData -path '*/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update' -type f -print -quit)"
+          if [[ -z "$SIGN_UPDATE" ]]; then
+            echo "::error::Sparkle sign_update not found under build/DerivedData"
+            exit 1
+          fi
+          EDDSA_SIG=$(echo "${SPARKLE_PRIVATE_KEY}" | "$SIGN_UPDATE" -p "${DMG_PATH}" --ed-key-file /dev/stdin 2>/dev/null || echo "")
           if [[ -z "${EDDSA_SIG}" ]]; then
             echo "::error::Sparkle EdDSA signature is empty — sign_update failed"
             exit 1
@@ -386,7 +379,7 @@ jobs:
         with:
           name: dsym-artifacts-${{ needs.preflight.outputs.version }}
           retention-days: 30
-          path: .build/arm64-apple-macosx/release/
+          path: build/dSYMs/
 
       - name: Cleanup keychain
         if: always()
@@ -648,7 +641,7 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dsym-artifacts-${{ needs.preflight.outputs.version }}
-          path: .build/arm64-apple-macosx/release/
+          path: build/dSYMs/
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ needs.preflight.outputs.source-run-id }}
 
@@ -672,7 +665,7 @@ jobs:
           sentry-cli releases set-commits "v${VERSION}" --auto
 
           echo "==> Uploading dSYMs ..."
-          sentry-cli debug-files upload --include-sources .build/arm64-apple-macosx/release/
+          sentry-cli debug-files upload --include-sources build/dSYMs/
 
           sentry-cli releases finalize "v${VERSION}"
           echo "==> Sentry release v${VERSION} finalized with dSYMs."

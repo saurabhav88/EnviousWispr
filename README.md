@@ -108,10 +108,10 @@ Dependencies resolve automatically via Swift Package Manager. First build takes 
 For a distributable `.app` bundle and DMG:
 
 ```bash
-./scripts/build-dmg.sh
+./scripts/build-release-dmg.sh <version>
 ```
 
-Requires macOS 14+ with Swift 6.0+ toolchain (Xcode Command Line Tools or full Xcode).
+The release build runs on the Xcode engine via Tuist, so it requires full Xcode (26+) plus mise and Tuist; set `CODESIGN_IDENTITY` to sign. Running the app itself requires macOS 14+.
 
 ## Architecture
 

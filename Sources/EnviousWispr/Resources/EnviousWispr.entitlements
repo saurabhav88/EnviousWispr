@@ -22,7 +22,7 @@
       requires to be authorized by an embedded Developer ID provisioning profile
       at launch (Apple TN3125). Without it the notarized release app fails to
       spawn on macOS 26 (taskgated "no eligible provisioning profiles found" ->
-      amfid -413 -> runningboardd error=163). scripts/build-dmg.sh embeds
+      amfid -413 -> runningboardd error=163). scripts/build-release-dmg.sh embeds
       signing/EnviousWispr_DeveloperID.provisionprofile at
       Contents/embedded.provisionprofile before the final codesign; that profile
       carries keychain-access-groups ['9UT54V24XG.*'] which authorizes the group
