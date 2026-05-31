@@ -118,7 +118,7 @@ EnviousWispr.app/
 
 # Local-only directories (not shipped, not needed for builds)
 scripts/*
-!scripts/build-dmg.sh
+!scripts/build-release-dmg.sh
 !scripts/build-dev-app.sh
 !scripts/check-xpc-error-hygiene.sh
 !scripts/swift-test.sh

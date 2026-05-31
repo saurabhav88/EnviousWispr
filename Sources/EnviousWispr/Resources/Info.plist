@@ -36,6 +36,10 @@
 	<string>EnviousWispr needs microphone access for speech-to-text dictation.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>PostHogAPIKey</key>
+	<string>$(POSTHOG_API_KEY)</string>
+	<key>SentryDSN</key>
+	<string>$(SENTRY_DSN)</string>
 	<key>SUFeedURL</key>
 	<string>$(SU_FEED_URL)</string>
 	<key>SUPublicEDKey</key>
