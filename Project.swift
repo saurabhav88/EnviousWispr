@@ -113,6 +113,13 @@ let appSettings = targetSettings(
   debugExtra: [
     "PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.app.dev",
     "SU_FEED_URL": "",
+    // #913: Debug carries the `.dev` bundle id and is unsigned
+    // (CODE_SIGNING_ALLOWED=NO), but the base target entitlements are the PROD
+    // file (which now carries application-identifier/team-identifier for the
+    // embedded provisioning profile). Route Debug to the Dev entitlements too so
+    // the unsigned CI build never carries a prod application-identifier under a
+    // `.dev` bundle id. Inert today, prevents a future signed-Debug trap.
+    "CODE_SIGN_ENTITLEMENTS": "Sources/EnviousWispr/Resources/EnviousWispr-Dev.entitlements",
   ],
   devExtra: devSigningSettings.merging([
     "PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.app.dev",

@@ -17,7 +17,24 @@
       "Developer ID Application: ENVIOUS LABS LLC (9UT54V24XG)" certs used by
       the release pipeline. The first entry is the default access group used
       by SecItemAdd when no explicit kSecAttrAccessGroup is set.
+
+      Issue #913: keychain-access-groups is a RESTRICTED entitlement that AMFI
+      requires to be authorized by an embedded Developer ID provisioning profile
+      at launch (Apple TN3125). Without it the notarized release app fails to
+      spawn on macOS 26 (taskgated "no eligible provisioning profiles found" ->
+      amfid -413 -> runningboardd error=163). scripts/build-dmg.sh embeds
+      signing/EnviousWispr_DeveloperID.provisionprofile at
+      Contents/embedded.provisionprofile before the final codesign; that profile
+      carries keychain-access-groups ['9UT54V24XG.*'] which authorizes the group
+      below. The application-identifier + team-identifier keys below MUST match
+      the profile (and the Release bundle id) for the profile to validate. The
+      DEV build omits all three (EnviousWispr-Dev.entitlements) — self-signed,
+      file-based key storage, no profile.
     -->
+    <key>com.apple.application-identifier</key>
+    <string>9UT54V24XG.com.enviouswispr.app</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>9UT54V24XG</string>
     <key>keychain-access-groups</key>
     <array>
         <string>9UT54V24XG.com.enviouswispr.app</string>
