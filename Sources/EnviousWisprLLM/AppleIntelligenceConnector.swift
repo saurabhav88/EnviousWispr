@@ -123,7 +123,16 @@ enum OutputLanguageValidator {
 /// Requires macOS 26+ with Apple Intelligence support. No API key, no internet connection.
 public struct AppleIntelligenceConnector: TranscriptPolisher {
 
-  public init() {}
+  /// On-device output-safety classifier (#832/#913 PR8). Injected at construction
+  /// (NOT via the polish method — `TranscriptPolisher` is an existential, so a
+  /// defaulted method parameter would be discarded by dynamic dispatch). When
+  /// non-nil, the post-AFM filter path becomes classifier-aware; when nil,
+  /// behavior is identical to before (synchronous filter only). Always fail-open.
+  private let classifier: OutputClassifierProtocol?
+
+  public init(classifier: OutputClassifierProtocol? = nil) {
+    self.classifier = classifier
+  }
 
   /// Natural-mode instructions — v30 prompt family. Aggressive filler cleanup,
   /// self-correction collapse, terminal-punctuation repair. Used for
@@ -414,7 +423,8 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         options: GenerationOptions(sampling: .greedy)
       )
       let rawContent = response.content
-      let filtered = EnviousOutputFilter.filter(input: text, output: rawContent)
+      let filtered = await EnviousOutputFilter.filterWithClassifier(
+        input: text, output: rawContent, classifier: classifier)
       let content = filtered.polished
       Self.logAFMTrace(mode: mode, rawContent: rawContent, filtered: filtered)
 
@@ -470,7 +480,8 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         options: GenerationOptions(sampling: .greedy)
       )
       let rawContent = response.content
-      let filtered = EnviousOutputFilter.filter(input: text, output: rawContent)
+      let filtered = await EnviousOutputFilter.filterWithClassifier(
+        input: text, output: rawContent, classifier: classifier)
       let content = filtered.polished
       Self.logAFMTrace(mode: mode, rawContent: rawContent, filtered: filtered)
 

@@ -111,6 +111,13 @@ EnviousWispr.app/
 *.bin
 .me
 
+# #832/#913 PR8: the on-device output-safety classifier is COMMITTED (founder
+# decision: embed, never download). Re-include this one .mlpackage + its inner
+# model.mlmodel / weight.bin, overriding the broad model globs above. Largest
+# inner file is ~43 MB (< GitHub's 100 MB per-file limit), so normal git.
+!Sources/EnviousWisprLLM/Resources/OutputClassifier.mlpackage/
+!Sources/EnviousWisprLLM/Resources/OutputClassifier.mlpackage/**
+
 # Dolt database files (added by bd init)
 .dolt/
 *.db

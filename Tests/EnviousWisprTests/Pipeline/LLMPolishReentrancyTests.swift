@@ -88,7 +88,7 @@ struct LLMPolishReentrancyTests {
     let started = AsyncStream.makeStream(of: Void.self)
     let cont = started.continuation
     let gate = ReleaseGate()
-    step.makePolisher = { _, _ in
+    step.makePolisher = { _, _, _ in
       GatePolisher(
         onStart: {
           cont.yield(())
@@ -145,7 +145,7 @@ struct LLMPolishReentrancyTests {
 
     let gate = ReleaseGate()
     await gate.release()  // no mutation: let polish run straight through
-    step.makePolisher = { _, _ in
+    step.makePolisher = { _, _, _ in
       GatePolisher(onStart: {}, gate: gate, result: Self.polishedSentence)
     }
 
@@ -161,7 +161,7 @@ struct LLMPolishReentrancyTests {
     let step = LLMPolishStep(keychainManager: KeychainManager())
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
-    step.makePolisher = { _, _ in nil }
+    step.makePolisher = { _, _, _ in nil }
 
     let context = TextProcessingContext(text: Self.inputSentence, language: "en")
     do {

@@ -1,0 +1,82 @@
+{
+  "contractVersion": 1,
+  "modelName": "MiniLM-L6",
+  "modelSeed": 13,
+  "family": "bert_wordpiece",
+  "inputPrefix": "Input: ",
+  "outputPrefix": "Output: ",
+  "pairTemplate": {
+    "kind": "bert_pair",
+    "sequence": [
+      "cls",
+      "input",
+      "sep",
+      "output",
+      "sep"
+    ]
+  },
+  "specialTokenIds": {
+    "pad": 0,
+    "cls": 101,
+    "sep": 102
+  },
+  "specialsBudget": 4,
+  "maxLength": 128,
+  "inputTruncationPolicy": {
+    "kind": "head_tail",
+    "headTokens": 64,
+    "tailTokens": 32,
+    "reserveMinOutputTokens": 32
+  },
+  "outputTruncationPolicy": {
+    "kind": "tail",
+    "headTokens": 64,
+    "tailTokens": 32
+  },
+  "minOutputTokens": 32,
+  "tokenTypePolicy": {
+    "kind": "bert_segments",
+    "needsSegmentIds": true,
+    "segmentVocabSize": 2,
+    "inputSegmentId": 0,
+    "outputSegmentId": 1,
+    "padSegmentId": 0
+  },
+  "paddingPolicy": {
+    "kind": "right",
+    "padInputIdsWith": 0,
+    "padAttentionMaskWith": 0,
+    "padTokenTypeIdsWith": 0
+  },
+  "vocabHash": "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66",
+  "expectedInputs": [
+    {
+      "name": "input_ids",
+      "shape": [
+        1,
+        128
+      ],
+      "dtype": "int32"
+    },
+    {
+      "name": "attention_mask",
+      "shape": [
+        1,
+        128
+      ],
+      "dtype": "int32"
+    },
+    {
+      "name": "token_type_ids",
+      "shape": [
+        1,
+        128
+      ],
+      "dtype": "int32"
+    }
+  ],
+  "goldenFixtureHashes": {
+    "tokenization": "f6c17e1bfa24ca4a255b964ad751ddd35934f23734a96afb0be1591c94e3454f"
+  },
+  "contractHash": "49366fbd8c05093ef90433a737f67d2f0fc3664cfe2a0309ba48c4dd5811ab22"
+}

@@ -49,7 +49,8 @@ public final class TranscriptPolishService {
   public init(
     keychainManager: KeychainManager,
     transcriptStore: TranscriptStore,
-    dictationActivity: DictationActivityProviding? = nil
+    dictationActivity: DictationActivityProviding? = nil,
+    outputClassifierHolder: OutputClassifierHolder? = nil
   ) {
     self.llmPolishStep = LLMPolishStep(keychainManager: keychainManager)
     self.pasteCompletionRegistry = PasteCompletionRegistry()
@@ -58,6 +59,9 @@ public final class TranscriptPolishService {
     // Standalone: no pipeline callbacks needed.
     self.llmPolishStep.onWillProcess = nil
     self.llmPolishStep.onToken = nil
+    // #832/#913 PR8: saved-transcript repolish runs the same Apple Intelligence
+    // path, so it receives the same app-owned output-safety classifier.
+    self.llmPolishStep.outputClassifierHolder = outputClassifierHolder
   }
 
   /// Set the dictation activity provider after init (when the former root state conforms post-init).

@@ -51,6 +51,11 @@ public final class WisprBootstrapper {
   // The re-polish service is App-owned (epic #763).
   let polishService: TranscriptPolishService
 
+  /// App-owned output-safety classifier holder (#832/#913 PR8). The classifier
+  /// is loaded asynchronously off the heart path at prewarm; the holder lets the
+  /// live-dictation and re-polish `LLMPolishStep`s pick it up once ready.
+  let outputClassifierHolder: OutputClassifierHolder
+
   public init() {
     // ===== Subsystem construction (epic #763) =====
     // `EnviousWisprApp` is the composition root: every subsystem is constructed
@@ -92,11 +97,17 @@ public final class WisprBootstrapper {
     let transcriptStore = TranscriptStore()
     let transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
 
+    // #832/#913 PR8: app-owned output-safety classifier holder. Created before
+    // the polish service + both kernel drivers so all three receive the same
+    // instance; the classifier itself loads asynchronously at prewarm (below).
+    let outputClassifierHolder = OutputClassifierHolder()
+
     // Phase 0 (#640) — single shared paste-completion registry. `polishService`
     // is constructed before the pipelines so both receive the same instance.
     let polishService = TranscriptPolishService(
       keychainManager: keychainManager,
-      transcriptStore: transcriptStore
+      transcriptStore: transcriptStore,
+      outputClassifierHolder: outputClassifierHolder
     )
 
     // PR-5 Rung 5 (#827): the VAD signal source is App-owned and shared
@@ -120,7 +131,8 @@ public final class WisprBootstrapper {
         transcriptStore: transcriptStore,
         keychainManager: keychainManager,
         captureTelemetry: captureTelemetry,
-        pasteCompletionRegistry: polishService.pasteCompletionRegistry
+        pasteCompletionRegistry: polishService.pasteCompletionRegistry,
+        outputClassifierHolder: outputClassifierHolder
       ))
 
     // W6: language-flip telemetry wired via a closure so `EnviousWisprASR`
@@ -157,7 +169,8 @@ public final class WisprBootstrapper {
         transcriptStore: transcriptStore,
         keychainManager: keychainManager,
         captureTelemetry: captureTelemetry,
-        pasteCompletionRegistry: polishService.pasteCompletionRegistry
+        pasteCompletionRegistry: polishService.pasteCompletionRegistry,
+        outputClassifierHolder: outputClassifierHolder
       ))
 
     // Phase F (#501) — `SetupCoordinator` needs `asrManager` + the WhisperKit
@@ -222,9 +235,16 @@ public final class WisprBootstrapper {
     SentryBreadcrumb.updateASRBackend(
       settings.selectedBackend == .whisperKit ? "whisperkit" : "parakeet")
 
-    settings.onChange = { [weak settingsSync, weak settings] key in
+    settings.onChange = { [weak settingsSync, weak settings, outputClassifierHolder] key in
       guard let settingsSync, let settings else { return }
       settingsSync.handleSettingChanged(key, settings: settings)
+      // #832/#913 PR8: if the user switches polish to Apple Intelligence after
+      // launch, prewarm the classifier then (idempotent — no-op if loaded).
+      // Captures the holder (not self — self isn't fully initialized here).
+      if key == .llmProvider {
+        WisprBootstrapper.prewarmOutputClassifierIfNeeded(
+          holder: outputClassifierHolder, provider: settings.llmProvider)
+      }
     }
 
     // Pre-load the selected backend's model in the background to eliminate
@@ -447,10 +467,57 @@ public final class WisprBootstrapper {
     // PR-C.3 of #763: App-owned re-polish service.
     self.polishService = polishService
 
+    // #832/#913 PR8: App-owned output-safety classifier holder.
+    self.outputClassifierHolder = outputClassifierHolder
+
     // Initialize observability (PostHog + Sentry) unconditionally at launch.
     // #919: same timing as before — the shell's `App.init()` constructs this
     // bootstrapper synchronously, before any NSApplicationDelegate callback.
     ObservabilityBootstrap.initialize()
+
+    // #832/#913 PR8: prewarm the output-safety classifier off the heart path.
+    // Gated on Apple Intelligence (the only provider it scores); a later switch
+    // to Apple Intelligence re-triggers via `settings.onChange` above. Never
+    // blocks launch, recording, ASR, or paste.
+    Self.prewarmOutputClassifierIfNeeded(
+      holder: outputClassifierHolder, provider: settings.llmProvider)
+  }
+
+  /// Load the on-device output-safety classifier in the background and publish
+  /// it into `holder`. Idempotent (no-op if already loaded) and gated on Apple
+  /// Intelligence polish. Every failure fails open (the polish path keeps
+  /// working without the extra safety net). Static so the `settings.onChange`
+  /// closure can call it without capturing a not-yet-initialized `self`.
+  /// #832/#913 PR8.
+  private static func prewarmOutputClassifierIfNeeded(
+    holder: OutputClassifierHolder, provider: LLMProvider
+  ) {
+    guard provider == .appleIntelligence, holder.classifier == nil else { return }
+    Task {
+      guard let resourceURL = Bundle.main.resourceURL else {
+        await AppLogger.shared.log(
+          "[OutputClassifier] preWarm skipped: no bundle resourceURL — fail open",
+          level: .info, category: "LLM")
+        return
+      }
+      let start = DispatchTime.now()
+      do {
+        // `load` is nonisolated-async → the heavy compile/load runs off the main
+        // actor (SE-0338); the holder is set back on the main actor here.
+        let classifier = try await CoreMLOutputClassifier.load(resourceURL: resourceURL)
+        holder.classifier = classifier
+        let elapsedMs = Int(
+          Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000)
+        await AppLogger.shared.log(
+          "[OutputClassifier] preWarm complete latency_ms=\(elapsedMs)",
+          level: .info, category: "LLM")
+      } catch {
+        let reason = (error as? OutputClassifierError)?.reason.rawValue ?? "load_failed"
+        await AppLogger.shared.log(
+          "[OutputClassifier] preWarm failed reason=\(reason) — fail open to raw/sync-filtered polish",
+          level: .info, category: "LLM")
+      }
+    }
   }
 
   // MARK: - Lifecycle (forwarded by the shell `AppDelegate`)

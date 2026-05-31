@@ -71,7 +71,12 @@ let package = Package(
     ),
     .target(
       name: "EnviousWisprLLM",
-      dependencies: ["EnviousWisprCore"],
+      dependencies: [
+        "EnviousWisprCore",
+        // #832/#913 PR8: public Argmax tokenizer surface for the output-safety
+        // classifier pair-encoder seam (AutoTokenizerWrapper / TokenizerWrapper).
+        .product(name: "ArgmaxOSS", package: "argmax-oss-swift"),
+      ],
       path: "Sources/EnviousWisprLLM"
     ),
     .target(

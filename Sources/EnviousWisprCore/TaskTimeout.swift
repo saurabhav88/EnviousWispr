@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Thrown when a `withThrowingTimeout` call exceeds its deadline.
 public struct TimeoutError: Error, CustomStringConvertible {
@@ -28,5 +29,44 @@ public func withThrowingTimeout<T: Sendable>(
     let result = try await group.next()!
     group.cancelAll()
     return result
+  }
+}
+
+/// Run `operation` with a TRUE wall-clock deadline: returns its result if it
+/// finishes within `seconds`, otherwise `nil` once the deadline passes —
+/// WITHOUT awaiting the operation after timing out. Unlike `withThrowingTimeout`
+/// (whose task-group scope awaits the losing child), this abandons a losing
+/// operation, so a SYNCHRONOUS, non-cooperative blocking call (e.g. Core ML
+/// `MLModel.prediction`) cannot make the caller wait past the deadline. The
+/// abandoned operation finishes in the background and its result is discarded.
+/// Use for fail-open LIMB budgets where bounding the caller matters more than
+/// the operation's completion. (#832/#913 PR8 — Codex P1.)
+public func withDeadline<T: Sendable>(
+  seconds: Double,
+  operation: @escaping @Sendable () async -> T
+) async -> T? {
+  let resumed = OSAllocatedUnfairLock(initialState: false)
+  func claim() -> Bool {
+    resumed.withLock { done in
+      done
+        ? false
+        : {
+          done = true
+          return true
+        }()
+    }
+  }
+  return await withCheckedContinuation { (continuation: CheckedContinuation<T?, Never>) in
+    let operationTask = Task(priority: .userInitiated) {
+      let value = await operation()
+      if claim() { continuation.resume(returning: value) }
+    }
+    Task {
+      try? await Task.sleep(for: .seconds(seconds))
+      if claim() {
+        operationTask.cancel()  // best-effort; cannot preempt a blocked thread
+        continuation.resume(returning: nil)
+      }
+    }
   }
 }

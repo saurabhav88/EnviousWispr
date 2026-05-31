@@ -82,6 +82,10 @@ public enum KernelDictationDriverFactory {
     /// Heart-path error sink (defaulted to the production global). See
     /// `HeartPathCaptureErrorSink`.
     package let captureErrorSink: HeartPathCaptureErrorSink
+    /// App-owned output-safety classifier holder (#832/#913 PR8). Optional —
+    /// nil when no classifier (tests, or before prewarm). Read lazily at polish
+    /// time by `LLMPolishStep`.
+    package let outputClassifierHolder: OutputClassifierHolder?
 
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct. `@MainActor`
@@ -97,7 +101,8 @@ public enum KernelDictationDriverFactory {
       keychainManager: KeychainManager,
       captureTelemetry: CaptureTelemetryState,
       pasteCompletionRegistry: PasteCompletionRegistry,
-      captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink
+      captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
+      outputClassifierHolder: OutputClassifierHolder? = nil
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
@@ -107,6 +112,7 @@ public enum KernelDictationDriverFactory {
       self.captureTelemetry = captureTelemetry
       self.pasteCompletionRegistry = pasteCompletionRegistry
       self.captureErrorSink = captureErrorSink
+      self.outputClassifierHolder = outputClassifierHolder
     }
   }
 
@@ -125,6 +131,9 @@ public enum KernelDictationDriverFactory {
     /// Heart-path error sink (defaulted to the production global). See
     /// `HeartPathCaptureErrorSink`.
     package let captureErrorSink: HeartPathCaptureErrorSink
+    /// App-owned output-safety classifier holder (#832/#913 PR8). See
+    /// `ParakeetInputs.outputClassifierHolder`.
+    package let outputClassifierHolder: OutputClassifierHolder?
 
     /// Explicit package init — same reasoning as `ParakeetInputs.init`.
     /// `languageDetector` is intentionally non-optional (no default) so the
@@ -143,7 +152,8 @@ public enum KernelDictationDriverFactory {
       keychainManager: KeychainManager,
       captureTelemetry: CaptureTelemetryState,
       pasteCompletionRegistry: PasteCompletionRegistry,
-      captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink
+      captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
+      outputClassifierHolder: OutputClassifierHolder? = nil
     ) {
       self.audioCapture = audioCapture
       self.whisperKitBackend = whisperKitBackend
@@ -154,6 +164,7 @@ public enum KernelDictationDriverFactory {
       self.captureTelemetry = captureTelemetry
       self.pasteCompletionRegistry = pasteCompletionRegistry
       self.captureErrorSink = captureErrorSink
+      self.outputClassifierHolder = outputClassifierHolder
     }
   }
 
@@ -205,7 +216,8 @@ public enum KernelDictationDriverFactory {
       keychainManager: inputs.keychainManager,
       captureTelemetry: inputs.captureTelemetry,
       pasteCompletionRegistry: inputs.pasteCompletionRegistry,
-      captureErrorSink: inputs.captureErrorSink)
+      captureErrorSink: inputs.captureErrorSink,
+      outputClassifierHolder: inputs.outputClassifierHolder)
   }
 
   /// Build the driver stack for the WhisperKit engine. PR-5 Rung 5 flips the
@@ -232,7 +244,8 @@ public enum KernelDictationDriverFactory {
       keychainManager: inputs.keychainManager,
       captureTelemetry: inputs.captureTelemetry,
       pasteCompletionRegistry: inputs.pasteCompletionRegistry,
-      captureErrorSink: inputs.captureErrorSink)
+      captureErrorSink: inputs.captureErrorSink,
+      outputClassifierHolder: inputs.outputClassifierHolder)
   }
 
   /// Engine-agnostic assembler. The two package entry points construct their
@@ -248,14 +261,19 @@ public enum KernelDictationDriverFactory {
     keychainManager: KeychainManager,
     captureTelemetry: CaptureTelemetryState,
     pasteCompletionRegistry: PasteCompletionRegistry,
-    captureErrorSink: @escaping HeartPathCaptureErrorSink
+    captureErrorSink: @escaping HeartPathCaptureErrorSink,
+    outputClassifierHolder: OutputClassifierHolder? = nil
   ) -> KernelDictationDriver {
     // 1. LimbSteps — same instances driver + wiring hold by reference.
+    // #832/#913 PR8: the live-dictation LLMPolishStep receives the app-owned
+    // output-safety classifier holder (read lazily at polish time).
+    let llmPolish = LLMPolishStep(keychainManager: keychainManager)
+    llmPolish.outputClassifierHolder = outputClassifierHolder
     let limbSteps = LimbSteps(
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
-      llmPolish: LLMPolishStep(keychainManager: keychainManager)
+      llmPolish: llmPolish
     )
 
     // 2. Shared mutable holders.
