@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// Defense-in-depth post-processor for AFM plain-string polish output.
@@ -72,6 +73,64 @@ public enum EnviousOutputFilter {
       fellBackToRaw: false,
       tripped: preambleStripped ? "preamble_stripped" : nil
     )
+  }
+
+  /// Classifier-aware filter (#832/#913 PR8). Runs the synchronous defense-in-depth
+  /// `filter` first; if it already tripped, returns that and SKIPS the classifier
+  /// (a cheap detector already caught the case). Otherwise, when a classifier is
+  /// available, scores the (input, polished) pair on-device with a 50ms LIMB
+  /// budget. Probability `>= discardThreshold` ⇒ discard the polish and fall back
+  /// to the raw transcript (`tripped: "classifier_discard"`, which rides the
+  /// existing `filterTripped`/PostHog `filter_tripped` telemetry).
+  ///
+  /// Fail-open: a nil classifier, timeout, throw, NaN, or any disable reason
+  /// returns the synchronous result unchanged. Never blocks dictation. Telemetry
+  /// logs score/decision/latency only — never raw text or tokens.
+  public static func filterWithClassifier(
+    input: String,
+    output: String,
+    classifier: OutputClassifierProtocol?
+  ) async -> Result {
+    let sync = filter(input: input, output: output)
+    guard sync.fellBackToRaw == false, let classifier else { return sync }
+
+    let rawInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    let start = DispatchTime.now()
+    do {
+      let score = try await withThrowingTimeout(seconds: 0.050) {
+        try await classifier.score(input: input, polished: sync.polished)
+      }
+      let elapsedMs = Int(
+        Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000)
+      guard score.isFinite else {
+        logClassifierDisabled(reason: "inference_error")
+        return sync
+      }
+      let discard = score >= OutputClassifierManifest.discardThreshold
+      let decision = discard ? "DISCARD" : "KEEP"
+      let rounded = (score * 10000).rounded() / 10000
+      Task {
+        await AppLogger.shared.log(
+          "[OutputClassifier] score=\(rounded) decision=\(decision) latency_ms=\(elapsedMs)",
+          level: .info, category: "LLM")
+      }
+      if discard {
+        return Result(polished: rawInput, fellBackToRaw: true, tripped: "classifier_discard")
+      }
+      return sync
+    } catch {
+      let reason = (error as? OutputClassifierError)?.reason.rawValue ?? "inference_error"
+      logClassifierDisabled(reason: reason)
+      return sync
+    }
+  }
+
+  private static func logClassifierDisabled(reason: String) {
+    Task {
+      await AppLogger.shared.log(
+        "[OutputClassifier] disabled reason=\(reason) — fail open to filtered output",
+        level: .info, category: "LLM")
+    }
   }
 
   private static func firstLine(of text: String) -> String {

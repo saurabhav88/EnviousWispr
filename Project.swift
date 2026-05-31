@@ -172,9 +172,12 @@ func firstPartyLibrary(
     bundleId: "com.enviouswispr.\(name)",
     deploymentTargets: deploymentTargets,
     infoPlist: .default,
-    sources: hasResources
-      ? [.glob("Sources/\(name)/**", excluding: ["Sources/\(name)/Resources/**"])]
-      : ["Sources/\(name)/**"],
+    // A module's Resources/ is data, never compile sources — exclude it from
+    // the source glob unconditionally. (#913 PR8: EnviousWisprLLM/Resources now
+    // holds a .mlpackage whose inner model.mlmodel would otherwise be swept in
+    // as a CoreML source of this static-framework target, which has no CoreML
+    // build phase. Those files ride the APP target's resources instead.)
+    sources: [.glob("Sources/\(name)/**", excluding: ["Sources/\(name)/Resources/**"])],
     resources: hasResources ? ["Sources/\(name)/Resources/**"] : [],
     dependencies: dependencies,
     settings: projectSettings
@@ -240,7 +243,10 @@ let project = Project(
     firstPartyLibrary(
       "EnviousWisprLLM",
       dependencies: [
-        .target(name: "EnviousWisprCore")
+        .target(name: "EnviousWisprCore"),
+        // #832/#913 PR8: public Argmax tokenizer surface (AutoTokenizerWrapper /
+        // TokenizerWrapper) for the output-safety classifier's pair-encoder seam.
+        .package(product: "ArgmaxOSS"),
       ]),
     firstPartyLibrary(
       "EnviousWisprPipeline",
@@ -323,8 +329,20 @@ let project = Project(
       deploymentTargets: deploymentTargets,
       infoPlist: .file(path: "Sources/EnviousWispr/Resources/Info.plist"),
       sources: ["Sources/EnviousWispr/**"],
+      // #832/#913 PR8: the on-device output-safety classifier rides the APP
+      // target so its files land in EnviousWispr.app/Contents/Resources and
+      // resolve at runtime via Bundle.main — NOT a SwiftPM module bundle.
+      // Both are FOLDER REFERENCES: Tuist 4.195.11 recurses into a globbed
+      // .mlpackage and fails to place its inner model.mlmodel in a build phase,
+      // so the package ships verbatim and is compiled on-device at prewarm via
+      // MLModel.compileModel(at:) (off the heart path) instead of at build time.
+      // The tokenizer folder reference preserves the OutputClassifierTokenizer/
+      // subdirectory verbatim. EnviousWisprLLM stays hasResources:false to
+      // avoid double-bundling the same files into Bundle.module.
       resources: [
-        "Sources/EnviousWispr/Resources/AppIcon.icns"
+        "Sources/EnviousWispr/Resources/AppIcon.icns",
+        .folderReference(path: "Sources/EnviousWisprLLM/Resources/OutputClassifier.mlpackage"),
+        .folderReference(path: "Sources/EnviousWisprLLM/Resources/OutputClassifierTokenizer"),
       ],
       entitlements: .file(path: "Sources/EnviousWispr/Resources/EnviousWispr.entitlements"),
       // #919: the thin shell links ONLY the kit (the kit static-links the

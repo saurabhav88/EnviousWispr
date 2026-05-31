@@ -47,16 +47,26 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// breadcrumb plus throw. Tests inject a controllable polisher to exercise the
   /// post-await settings snapshot. Mirrors `promptPlanner` above; `internal`
   /// because only the same-module factory and `@testable` tests reach it.
-  typealias PolisherFactory = @MainActor (LLMProvider, KeychainManager) -> (any TranscriptPolisher)?
-  var makePolisher: PolisherFactory = { provider, keychain in
+  typealias PolisherFactory = @MainActor (LLMProvider, KeychainManager, OutputClassifierProtocol?)
+    ->
+    (any TranscriptPolisher)?
+  var makePolisher: PolisherFactory = { provider, keychain, classifier in
     switch provider {
     case .openAI: OpenAIConnector(keychainManager: keychain)
     case .gemini: GeminiConnector(keychainManager: keychain)
     case .ollama: OllamaConnector()
-    case .appleIntelligence: AppleIntelligenceConnector()
+    // #832/#913 PR8: the on-device output-safety classifier runs ONLY on Apple
+    // Intelligence output (the path where AFM can compose artifacts). Injected
+    // via init — fail-open when nil (not yet prewarmed / load failed).
+    case .appleIntelligence: AppleIntelligenceConnector(classifier: classifier)
     case .none: nil
     }
   }
+
+  /// Holds the app-owned output-safety classifier (#832/#913 PR8). Read LAZILY
+  /// at polish time (not at build time) so the value set after async prewarm is
+  /// picked up by the next polish. Nil for standalone callsites without one.
+  public var outputClassifierHolder: OutputClassifierHolder?
 
   /// Called before LLM processing starts (pipeline uses this to set .polishing state).
   public var onWillProcess: (() -> Void)?
@@ -182,7 +192,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       )
     }
 
-    guard let polisher = makePolisher(provider, keychainManager) else {
+    guard let polisher = makePolisher(provider, keychainManager, outputClassifierHolder?.classifier)
+    else {
       SentryBreadcrumb.captureError(
         LLMError.providerUnavailable, category: .providerInitFailed, stage: "polish")
       throw LLMError.providerUnavailable

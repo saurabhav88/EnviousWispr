@@ -85,13 +85,16 @@ import Testing
   /// - 27 → 26 in PR-C.4 of epic #763 (2026-05-20, #816): PR-C.4 deleted the
   ///   receive-only root state property, the final step of the epic.
   ///   Lower-is-free.
+  /// - 26 → 27 in #913 PR8 (2026-05-31, #832): App-owned `outputClassifierHolder`
+  ///   for the on-device output-safety classifier (loaded async at prewarm,
+  ///   injected into both kernel drivers + the re-polish service).
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 26,
+      count <= 27,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 26. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 27. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -164,14 +167,18 @@ import Testing
   /// root views (`MainWindowRoot`/`OnboardingWindowRoot`) + the 4 lifecycle
   /// forwards, net of dropping the `@State` backing assignments. Cap set by the
   /// deterministic rule (post-change actual 604 + 10, rounded up to 615).
+  /// Ratcheted 615→690 in #913 PR8 (2026-05-31, #832): the composition root
+  /// absorbed the output-safety classifier holder + its off-heart-path prewarm
+  /// method (load + publish + provider re-trigger). Cap set by the deterministic
+  /// rule (post-change actual 679 + 10, rounded up to 690).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 615,
+      lineCount <= 690,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 615. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 690. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

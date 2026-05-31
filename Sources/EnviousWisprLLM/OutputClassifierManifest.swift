@@ -1,0 +1,92 @@
+import Foundation
+
+/// Canonical constants for the on-device output-safety classifier (#832/#913 PR8).
+///
+/// The classifier is the Phase-3 winner: a MiniLM-L6 cross-encoder (seed 13)
+/// that scores an (instruction, polished-output) pair and flags cases where
+/// Apple Intelligence composed an artifact instead of cleaning the dictation.
+///
+/// Provenance (durable artifact tree, not committed here):
+///   `~/Developer/EnviousLabs/EnviousWispr-artifacts/issue-832-classifier-probe/`
+///   - model:     `phase3-models/MiniLM-L6-13/fixed.mlpackage`
+///   - tokenizer: `phase2-models/MiniLM-L6-13/checkpoint-best/{tokenizer.json,tokenizer_config.json}`
+///   - threshold: `phase2-models/MiniLM-L6-13/eval.json` → `T_clf`
+///
+/// The model ships as `OutputClassifier.mlpackage` in the APP bundle's
+/// `Contents/Resources` (an app-target folder reference) and is compiled to a
+/// `.mlmodelc` on-device at prewarm. See the PR8 runbook refresh addendum for
+/// why the compile is load-time rather than build-time (Tuist `.mlpackage`
+/// build-phase limitation).
+public enum OutputClassifierManifest {
+  public static let modelName = "MiniLM-L6"
+  public static let modelSeed = 13
+
+  /// Folder-referenced resource names in `Bundle.main.resourceURL`.
+  public static let mlpackageName = "OutputClassifier.mlpackage"
+  public static let tokenizerFolderName = "OutputClassifierTokenizer"
+  public static let contractFileName = "tokenizer-contract.json"
+
+  /// Sigmoid-probability threshold: probability >= this ⇒ DISCARD (fall back to
+  /// raw transcript). Sourced from the trained checkpoint's `eval.json` `T_clf`.
+  public static let discardThreshold = 0.10498441010713577
+
+  /// Fixed Core ML tensor shape locked at Phase 3 (NOT `model_max_length=512`).
+  public static let maxLength = 128
+
+  // Pair-encoding budgets (mirror of the Python `PairDataset`; see
+  // `PairEncodingAdapter`). Authoritative copy also lives in the shipped
+  // `tokenizer-contract.json`; these constants are the in-code source of truth
+  // used when no contract override applies.
+  public static let padTokenID = 0
+  public static let clsTokenID = 101
+  public static let sepTokenID = 102
+  public static let specialsBudget = 4
+  public static let inputHeadTokens = 64
+  public static let inputTailTokens = 32
+  public static let minOutputTokens = 32
+  public static let segmentVocabSize = 2
+
+  /// Core ML I/O contract (verified at load; mismatch ⇒ fail open).
+  public static let inputIDsFeature = "input_ids"
+  public static let attentionMaskFeature = "attention_mask"
+  public static let tokenTypeIDsFeature = "token_type_ids"
+  public static let logitsFeature = "logits"
+
+  /// Build-time integrity anchors (verified by `OutputClassifierResourceTests`
+  /// against the committed sources, NOT at runtime — the runtime artifact is a
+  /// compiled `.mlmodelc` whose bytes differ from the source `.mlpackage`).
+  /// `mlpackageSHA256` = sha256 over sorted "<relpath> <filesha256>" lines of
+  /// the committed `OutputClassifier.mlpackage` directory.
+  public static let mlpackageSHA256 =
+    "80bdecbec8a100f4d7b4b7a9640f0dd6400aab8abd9a63abba08a6638d7baf28"
+  /// The shipped `tokenizer-contract.json` `contractHash` (canonical contract
+  /// bytes ++ tokenizer.json ++ tokenizer_config.json). Recomputed and verified
+  /// at runtime; mismatch ⇒ classifier disabled, fail open.
+  public static let tokenizerContractSHA256 =
+    "49366fbd8c05093ef90433a737f67d2f0fc3664cfe2a0309ba48c4dd5811ab22"
+}
+
+/// Why the classifier was disabled for an app run (telemetry only — never
+/// carries raw text or tokens).
+public enum OutputClassifierDisabledReason: String, Sendable {
+  case contractHashMismatch = "contract_hash_mismatch"
+  case missingFile = "missing_file"
+  case unsupportedFamily = "unsupported_family"
+  case fixtureSelfTestFailed = "fixture_selftest_failed"
+  case shapeMismatch = "shape_mismatch"
+  case inferenceError = "inference_error"
+  case tokenizerLoadFailed = "tokenizer_load_failed"
+  case modelLoadFailed = "model_load_failed"
+}
+
+/// Typed load/score failures. All map to fail-open at the call site.
+public enum OutputClassifierError: Error, Sendable, CustomStringConvertible {
+  case disabled(OutputClassifierDisabledReason)
+
+  public var reason: OutputClassifierDisabledReason {
+    switch self {
+    case let .disabled(r): return r
+    }
+  }
+  public var description: String { "OutputClassifier disabled: \(reason.rawValue)" }
+}
