@@ -100,10 +100,10 @@ Both models run entirely on-device using CoreML. First launch downloads and comp
 ```bash
 git clone https://github.com/saurabhav88/EnviousWispr.git
 cd EnviousWispr
-swift build
+swift build            # compiles the Swift packages (dependencies resolve via SPM)
 ```
 
-Dependencies resolve automatically via Swift Package Manager. First build takes several minutes as ML models compile.
+The runnable `.app` is assembled by the Xcode build engine via Tuist, not by `swift build` — use `./scripts/build-dev-app.sh` for a local dev build, or the release path below. First build takes several minutes as ML models compile.
 
 For a distributable `.app` bundle and DMG:
 

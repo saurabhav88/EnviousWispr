@@ -169,14 +169,14 @@ record_step() {
 
 echo "==> Phase 3.1: Logic tests"
 if [ "$DECLARED" = "Code" ]; then
-  if [ -x "$PROJECT_ROOT/scripts/swift-test.sh" ]; then
-    if "$PROJECT_ROOT/scripts/swift-test.sh" > "$RUN_DIR/tests.log" 2>&1; then
-      record_step "tests" 0 "swift-test passed"
+  if [ -x "$PROJECT_ROOT/scripts/xcode-test.sh" ]; then
+    if "$PROJECT_ROOT/scripts/xcode-test.sh" > "$RUN_DIR/tests.log" 2>&1; then
+      record_step "tests" 0 "xcode-test passed"
     else
-      record_step "tests" 1 "swift-test failed (see tests.log)"
+      record_step "tests" 1 "xcode-test failed (see tests.log)"
     fi
   else
-    record_step "tests" 1 "swift-test.sh not executable"
+    record_step "tests" 1 "xcode-test.sh not executable"
   fi
 elif [ "$DECLARED" = "Docs/dev-tooling" ]; then
   echo "ShellCheck + self-test for Docs/dev-tooling lane" > "$RUN_DIR/shellcheck.txt"

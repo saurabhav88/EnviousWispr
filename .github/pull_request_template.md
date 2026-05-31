@@ -9,9 +9,8 @@
 ## Pre-Merge Checklist
 
 ### Build Verification
-- [ ] `swift build` passes locally
-- [ ] `swift build -c release --arch arm64` passes locally
-- [ ] `swift build --build-tests` passes locally
+- [ ] Dev build passes locally (`scripts/build-dev-app.sh`, Xcode/Tuist engine)
+- [ ] Logic tests pass locally (`scripts/xcode-test.sh`; add `--release` if the PR adds `#if DEBUG`-gated test symbols)
 - [ ] CI `build-check` status is green
 
 ### Behavioral Testing (Local UAT)
