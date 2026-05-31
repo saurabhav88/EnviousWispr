@@ -2,7 +2,9 @@ import EnviousWisprCore
 
 extension DictationSessionConfig {
   /// Default snapshot for tests that don't care about specific settings values.
-  /// Mirrors the `SettingsManager` defaults at construction time.
+  /// A deterministic test baseline (polish OFF, no on-device-AI dependency in CI)
+  /// — NOT a mirror of the production `SettingsManager` defaults, which default
+  /// polish to Apple Intelligence and emoji on (#923, SettingsDefaultValues).
   static func testDefault(
     autoCopyToClipboard: Bool = true,
     inputMode: RecordingMode = .pushToTalk,

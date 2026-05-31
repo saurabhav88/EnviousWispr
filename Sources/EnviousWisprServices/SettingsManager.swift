@@ -45,16 +45,39 @@ public final class SettingsManager {
 
   public var onChange: ((SettingKey) -> Void)?
 
+  /// The store backing all user-preference reads/writes. Injected for testability;
+  /// production resolves to `SettingsDefaults.store` (the build-shared suite, #923).
+  /// EXCEPTION: the per-build `useXPCAudioService` knob deliberately uses
+  /// `UserDefaults.standard` directly, never this store.
+  private let defaults: UserDefaults
+
+  /// The UserDefaults keys SettingsManager owns that are UNIFIED across builds
+  /// (the #923 migration's source of truth). Excludes `useXPCAudioService`
+  /// (per-build XPC debug knob) and `noiseSuppression` (removed/forced-off).
+  public nonisolated static let unifiedDefaultsKeys: [String] = [
+    "selectedBackend", "recordingMode", "llmProvider", "llmModel", "ollamaModel",
+    "autoCopyToClipboard", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
+    "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
+    "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
+    "pushToTalkKeyCode", "pushToTalkModifiersRaw", "modelUnloadPolicy",
+    "restoreClipboardAfterPaste", "wordCorrectionEnabled", "fillerRemovalEnabled",
+    "emojiFormatterEnabled", "isDebugModeEnabled", "debugLogLevel",
+    "useExtendedThinking", "whisperKitLanguage", "languageMode",
+    "selectedInputDeviceUID", "preferredInputDeviceIDOverride", "environmentPreset",
+    "useStreamingASR", "warmEnginePolicy",
+    WhatsNewConstants.lastSeenVersionDefaultsKey,
+  ]
+
   public var selectedBackend: ASRBackendType {
     didSet {
-      UserDefaults.standard.set(selectedBackend.rawValue, forKey: "selectedBackend")
+      defaults.set(selectedBackend.rawValue, forKey: "selectedBackend")
       onChange?(.selectedBackend)
     }
   }
 
   public var recordingMode: RecordingMode {
     didSet {
-      UserDefaults.standard.set(recordingMode.rawValue, forKey: "recordingMode")
+      defaults.set(recordingMode.rawValue, forKey: "recordingMode")
       onChange?(.recordingMode)
     }
   }
@@ -64,7 +87,7 @@ public final class SettingsManager {
       if oldValue != llmProvider {
         TelemetryService.shared.providerChanged(from: oldValue.rawValue, to: llmProvider.rawValue)
       }
-      UserDefaults.standard.set(llmProvider.rawValue, forKey: "llmProvider")
+      defaults.set(llmProvider.rawValue, forKey: "llmProvider")
       // Canonicalize model for the new provider
       if llmProvider == .appleIntelligence {
         llmModel = "apple-intelligence"
@@ -77,65 +100,65 @@ public final class SettingsManager {
 
   public var llmModel: String {
     didSet {
-      UserDefaults.standard.set(llmModel, forKey: "llmModel")
+      defaults.set(llmModel, forKey: "llmModel")
       onChange?(.llmModel)
     }
   }
 
   public var ollamaModel: String {
     didSet {
-      UserDefaults.standard.set(ollamaModel, forKey: "ollamaModel")
+      defaults.set(ollamaModel, forKey: "ollamaModel")
       onChange?(.ollamaModel)
     }
   }
 
   public var autoCopyToClipboard: Bool {
     didSet {
-      UserDefaults.standard.set(autoCopyToClipboard, forKey: "autoCopyToClipboard")
+      defaults.set(autoCopyToClipboard, forKey: "autoCopyToClipboard")
       onChange?(.autoCopyToClipboard)
     }
   }
 
   public var hotkeyEnabled: Bool {
     didSet {
-      UserDefaults.standard.set(hotkeyEnabled, forKey: "hotkeyEnabled")
+      defaults.set(hotkeyEnabled, forKey: "hotkeyEnabled")
       onChange?(.hotkeyEnabled)
     }
   }
 
   public var vadAutoStop: Bool {
     didSet {
-      UserDefaults.standard.set(vadAutoStop, forKey: "vadAutoStop")
+      defaults.set(vadAutoStop, forKey: "vadAutoStop")
       onChange?(.vadAutoStop)
     }
   }
 
   public var vadSilenceTimeout: Double {
     didSet {
-      UserDefaults.standard.set(vadSilenceTimeout, forKey: "vadSilenceTimeout")
+      defaults.set(vadSilenceTimeout, forKey: "vadSilenceTimeout")
       onChange?(.vadSilenceTimeout)
     }
   }
 
   public var vadSensitivity: Float {
     didSet {
-      UserDefaults.standard.set(vadSensitivity, forKey: "vadSensitivity")
+      defaults.set(vadSensitivity, forKey: "vadSensitivity")
       onChange?(.vadSensitivity)
     }
   }
 
   public var vadEnergyGate: Bool {
     didSet {
-      UserDefaults.standard.set(vadEnergyGate, forKey: "vadEnergyGate")
+      defaults.set(vadEnergyGate, forKey: "vadEnergyGate")
       onChange?(.vadEnergyGate)
     }
   }
 
   public var onboardingState: OnboardingState {
     didSet {
-      UserDefaults.standard.set(onboardingState.rawValue, forKey: "onboardingState")
+      defaults.set(onboardingState.rawValue, forKey: "onboardingState")
       // Keep legacy key in sync so any existing observers see the right value.
-      UserDefaults.standard.set(onboardingState == .completed, forKey: "hasCompletedOnboarding")
+      defaults.set(onboardingState == .completed, forKey: "hasCompletedOnboarding")
       onChange?(.onboardingState)
     }
   }
@@ -148,114 +171,116 @@ public final class SettingsManager {
 
   public var cancelKeyCode: UInt16 {
     didSet {
-      UserDefaults.standard.set(Int(cancelKeyCode), forKey: "cancelKeyCode")
+      defaults.set(Int(cancelKeyCode), forKey: "cancelKeyCode")
       onChange?(.cancelKeyCode)
     }
   }
 
   public var cancelModifiers: NSEvent.ModifierFlags {
     didSet {
-      UserDefaults.standard.set(cancelModifiers.rawValue, forKey: "cancelModifiersRaw")
+      defaults.set(cancelModifiers.rawValue, forKey: "cancelModifiersRaw")
       onChange?(.cancelModifiers)
     }
   }
 
   public var toggleKeyCode: UInt16 {
     didSet {
-      UserDefaults.standard.set(Int(toggleKeyCode), forKey: "toggleKeyCode")
+      defaults.set(Int(toggleKeyCode), forKey: "toggleKeyCode")
       onChange?(.toggleKeyCode)
     }
   }
 
   public var toggleModifiers: NSEvent.ModifierFlags {
     didSet {
-      UserDefaults.standard.set(toggleModifiers.rawValue, forKey: "toggleModifiersRaw")
+      defaults.set(toggleModifiers.rawValue, forKey: "toggleModifiersRaw")
       onChange?(.toggleModifiers)
     }
   }
 
   public var pushToTalkKeyCode: UInt16 {
     didSet {
-      UserDefaults.standard.set(Int(pushToTalkKeyCode), forKey: "pushToTalkKeyCode")
+      defaults.set(Int(pushToTalkKeyCode), forKey: "pushToTalkKeyCode")
       onChange?(.pushToTalkKeyCode)
     }
   }
 
   public var pushToTalkModifiers: NSEvent.ModifierFlags {
     didSet {
-      UserDefaults.standard.set(pushToTalkModifiers.rawValue, forKey: "pushToTalkModifiersRaw")
+      defaults.set(pushToTalkModifiers.rawValue, forKey: "pushToTalkModifiersRaw")
       onChange?(.pushToTalkModifiers)
     }
   }
 
   public var modelUnloadPolicy: ModelUnloadPolicy {
     didSet {
-      UserDefaults.standard.set(modelUnloadPolicy.rawValue, forKey: "modelUnloadPolicy")
+      defaults.set(modelUnloadPolicy.rawValue, forKey: "modelUnloadPolicy")
       onChange?(.modelUnloadPolicy)
     }
   }
 
   public var restoreClipboardAfterPaste: Bool {
     didSet {
-      UserDefaults.standard.set(restoreClipboardAfterPaste, forKey: "restoreClipboardAfterPaste")
+      defaults.set(restoreClipboardAfterPaste, forKey: "restoreClipboardAfterPaste")
       onChange?(.restoreClipboardAfterPaste)
     }
   }
 
   public var wordCorrectionEnabled: Bool {
     didSet {
-      UserDefaults.standard.set(wordCorrectionEnabled, forKey: "wordCorrectionEnabled")
+      defaults.set(wordCorrectionEnabled, forKey: "wordCorrectionEnabled")
       onChange?(.wordCorrectionEnabled)
     }
   }
 
   public var fillerRemovalEnabled: Bool {
     didSet {
-      UserDefaults.standard.set(fillerRemovalEnabled, forKey: "fillerRemovalEnabled")
+      defaults.set(fillerRemovalEnabled, forKey: "fillerRemovalEnabled")
       onChange?(.fillerRemovalEnabled)
     }
   }
 
-  /// Spoken-emoji conversion toggle (#341). Default OFF until false-positive
-  /// rate is validated on real corpus per founder direction 2026-05-16.
+  /// Spoken-emoji conversion toggle (#341). Default ON (#923, founder-ratified
+  /// 2026-05-30): safe because the formatter fires only on explicit
+  /// "<phrase> emoji" triggers, never sentiment inference. Canonical default in
+  /// `SettingsDefaultValues.emojiFormatterEnabled`.
   public var emojiFormatterEnabled: Bool {
     didSet {
-      UserDefaults.standard.set(emojiFormatterEnabled, forKey: "emojiFormatterEnabled")
+      defaults.set(emojiFormatterEnabled, forKey: "emojiFormatterEnabled")
       onChange?(.emojiFormatterEnabled)
     }
   }
 
   public var useStreamingASR: Bool {
     didSet {
-      UserDefaults.standard.set(useStreamingASR, forKey: "useStreamingASR")
+      defaults.set(useStreamingASR, forKey: "useStreamingASR")
       onChange?(.useStreamingASR)
     }
   }
 
   public var warmEnginePolicy: WarmEnginePolicy {
     didSet {
-      UserDefaults.standard.set(warmEnginePolicy.rawValue, forKey: "warmEnginePolicy")
+      defaults.set(warmEnginePolicy.rawValue, forKey: "warmEnginePolicy")
       onChange?(.warmEnginePolicy)
     }
   }
 
   public var isDebugModeEnabled: Bool {
     didSet {
-      UserDefaults.standard.set(isDebugModeEnabled, forKey: "isDebugModeEnabled")
+      defaults.set(isDebugModeEnabled, forKey: "isDebugModeEnabled")
       onChange?(.isDebugModeEnabled)
     }
   }
 
   public var debugLogLevel: DebugLogLevel {
     didSet {
-      UserDefaults.standard.set(debugLogLevel.rawValue, forKey: "debugLogLevel")
+      defaults.set(debugLogLevel.rawValue, forKey: "debugLogLevel")
       onChange?(.debugLogLevel)
     }
   }
 
   public var useExtendedThinking: Bool {
     didSet {
-      UserDefaults.standard.set(useExtendedThinking, forKey: "useExtendedThinking")
+      defaults.set(useExtendedThinking, forKey: "useExtendedThinking")
       onChange?(.useExtendedThinking)
     }
   }
@@ -266,7 +291,7 @@ public final class SettingsManager {
   /// one-time migration and will be removed in a later stream.
   public var whisperKitLanguage: String {
     didSet {
-      UserDefaults.standard.set(whisperKitLanguage, forKey: "whisperKitLanguage")
+      defaults.set(whisperKitLanguage, forKey: "whisperKitLanguage")
       onChange?(.whisperKitLanguage)
     }
   }
@@ -277,7 +302,7 @@ public final class SettingsManager {
   public var languageMode: LanguageMode {
     didSet {
       if let data = try? JSONEncoder().encode(languageMode) {
-        UserDefaults.standard.set(data, forKey: "languageMode")
+        defaults.set(data, forKey: "languageMode")
       }
       onChange?(.languageMode)
     }
@@ -285,14 +310,14 @@ public final class SettingsManager {
 
   public var selectedInputDeviceUID: String {
     didSet {
-      UserDefaults.standard.set(selectedInputDeviceUID, forKey: "selectedInputDeviceUID")
+      defaults.set(selectedInputDeviceUID, forKey: "selectedInputDeviceUID")
       onChange?(.selectedInputDeviceUID)
     }
   }
 
   public var noiseSuppression: Bool {
     didSet {
-      UserDefaults.standard.set(noiseSuppression, forKey: "noiseSuppression")
+      defaults.set(noiseSuppression, forKey: "noiseSuppression")
       onChange?(.noiseSuppression)
     }
   }
@@ -300,7 +325,7 @@ public final class SettingsManager {
   /// User override for input device. Empty string means "Auto" (smart selection).
   public var preferredInputDeviceIDOverride: String {
     didSet {
-      UserDefaults.standard.set(
+      defaults.set(
         preferredInputDeviceIDOverride, forKey: "preferredInputDeviceIDOverride")
       onChange?(.preferredInputDeviceIDOverride)
     }
@@ -308,7 +333,7 @@ public final class SettingsManager {
 
   public var environmentPreset: EnvironmentPreset {
     didSet {
-      UserDefaults.standard.set(environmentPreset.rawValue, forKey: "environmentPreset")
+      defaults.set(environmentPreset.rawValue, forKey: "environmentPreset")
       onChange?(.environmentPreset)
     }
   }
@@ -320,6 +345,8 @@ public final class SettingsManager {
   /// Does NOT fire onChange — this is not a live-switchable setting.
   public var useXPCAudioService: Bool {
     didSet {
+      // PER-BUILD EXCEPTION (#923): write to the build's own store, never the
+      // shared `defaults`. Developer XPC debug knob, excluded from unification.
       UserDefaults.standard.set(useXPCAudioService, forKey: "useXPCAudioService")
     }
   }
@@ -328,7 +355,7 @@ public final class SettingsManager {
 
   public var lastSeenWhatsNewVersion: String {
     didSet {
-      UserDefaults.standard.set(
+      defaults.set(
         lastSeenWhatsNewVersion, forKey: WhatsNewConstants.lastSeenVersionDefaultsKey)
       hasUnreadWhatsNew = (lastSeenWhatsNewVersion != WhatsNewConstants.currentContentVersion)
     }
@@ -350,21 +377,37 @@ public final class SettingsManager {
     set { recordingMode = newValue ? .pushToTalk : .toggle }
   }
 
-  public init() {
-    let defaults = UserDefaults.standard
+  /// - Parameter defaults: the store backing all preferences. Pass `nil` (the
+  ///   default) for production (resolves to `SettingsDefaults.store`, the
+  ///   build-shared suite); tests inject a private suite. `nil` (not a direct
+  ///   `SettingsDefaults.store` default arg) keeps the accessor Services-internal.
+  public init(defaults: UserDefaults? = nil) {
+    let defaults = defaults ?? SettingsDefaults.store
+    self.defaults = defaults
     selectedBackend =
-      ASRBackendType(rawValue: defaults.string(forKey: "selectedBackend") ?? "") ?? .parakeet
+      ASRBackendType(rawValue: defaults.string(forKey: "selectedBackend") ?? "")
+      ?? SettingsDefaultValues.selectedBackend
     recordingMode =
-      RecordingMode(rawValue: defaults.string(forKey: "recordingMode") ?? "") ?? .pushToTalk
-    llmProvider = LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "") ?? .none
+      RecordingMode(rawValue: defaults.string(forKey: "recordingMode") ?? "")
+      ?? SettingsDefaultValues.recordingMode
+    llmProvider =
+      LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "")
+      ?? SettingsDefaultValues.llmProvider
     llmModel = defaults.string(forKey: "llmModel") ?? LLMProvider.defaultModel(for: .openAI)
-    ollamaModel = defaults.string(forKey: "ollamaModel") ?? "llama3.2"
-    autoCopyToClipboard = defaults.object(forKey: "autoCopyToClipboard") as? Bool ?? true
-    hotkeyEnabled = true  // toggle removed; always enabled
-    vadAutoStop = defaults.object(forKey: "vadAutoStop") as? Bool ?? false
-    vadSilenceTimeout = defaults.object(forKey: "vadSilenceTimeout") as? Double ?? 1.5
-    vadSensitivity = defaults.object(forKey: "vadSensitivity") as? Float ?? 0.5
-    vadEnergyGate = defaults.object(forKey: "vadEnergyGate") as? Bool ?? true
+    ollamaModel = defaults.string(forKey: "ollamaModel") ?? SettingsDefaultValues.ollamaModel
+    autoCopyToClipboard =
+      defaults.object(forKey: "autoCopyToClipboard") as? Bool
+      ?? SettingsDefaultValues.autoCopyToClipboard
+    hotkeyEnabled = SettingsDefaultValues.hotkeyEnabled  // toggle removed; always enabled
+    vadAutoStop =
+      defaults.object(forKey: "vadAutoStop") as? Bool ?? SettingsDefaultValues.vadAutoStop
+    vadSilenceTimeout =
+      defaults.object(forKey: "vadSilenceTimeout") as? Double
+      ?? SettingsDefaultValues.vadSilenceTimeout
+    vadSensitivity =
+      defaults.object(forKey: "vadSensitivity") as? Float ?? SettingsDefaultValues.vadSensitivity
+    vadEnergyGate =
+      defaults.object(forKey: "vadEnergyGate") as? Bool ?? SettingsDefaultValues.vadEnergyGate
     // Migrate legacy hasCompletedOnboarding Bool → OnboardingState enum.
     // If the new "onboardingState" key exists, use it directly.
     // Otherwise, fall back to the old Bool (existing users → .completed).
@@ -379,51 +422,65 @@ public final class SettingsManager {
     }
 
     let savedCancelKeyCode = defaults.object(forKey: "cancelKeyCode") as? Int
-    cancelKeyCode = UInt16(savedCancelKeyCode ?? 53)
+    cancelKeyCode = UInt16(savedCancelKeyCode ?? SettingsDefaultValues.cancelKeyCode)
 
     let savedCancelModRaw = defaults.object(forKey: "cancelModifiersRaw") as? UInt
-    cancelModifiers = NSEvent.ModifierFlags(rawValue: savedCancelModRaw ?? 0)
+    cancelModifiers = NSEvent.ModifierFlags(
+      rawValue: savedCancelModRaw ?? SettingsDefaultValues.cancelModifiersRaw)
 
     let savedToggleKeyCode = defaults.object(forKey: "toggleKeyCode") as? Int
-    toggleKeyCode = UInt16(savedToggleKeyCode ?? Int(ModifierKeyCodes.rightOption))
+    toggleKeyCode = UInt16(savedToggleKeyCode ?? SettingsDefaultValues.toggleKeyCode)
 
     let savedToggleModRaw = defaults.object(forKey: "toggleModifiersRaw") as? UInt
-    toggleModifiers = NSEvent.ModifierFlags(rawValue: savedToggleModRaw ?? 0)
+    toggleModifiers = NSEvent.ModifierFlags(
+      rawValue: savedToggleModRaw ?? SettingsDefaultValues.toggleModifiersRaw)
 
     // PTT migration: old modifier-only → new key+modifier format
     let legacyPTTModRaw = defaults.object(forKey: "pushToTalkModifierRaw") as? UInt
     if let legacyMod = legacyPTTModRaw, defaults.object(forKey: "pushToTalkKeyCode") == nil {
       // Migrate old-style modifier-only PTT to modifier+Space
-      pushToTalkKeyCode = 49  // Space
+      pushToTalkKeyCode = UInt16(SettingsDefaultValues.pushToTalkKeyCode)  // Space
       pushToTalkModifiers = NSEvent.ModifierFlags(rawValue: legacyMod)
-      defaults.set(49, forKey: "pushToTalkKeyCode")
+      defaults.set(SettingsDefaultValues.pushToTalkKeyCode, forKey: "pushToTalkKeyCode")
       defaults.set(legacyMod, forKey: "pushToTalkModifiersRaw")
       defaults.removeObject(forKey: "pushToTalkModifierRaw")
       defaults.removeObject(forKey: "pushToTalkModifierKeyCode")
     } else {
       let savedPTTKeyCode = defaults.object(forKey: "pushToTalkKeyCode") as? Int
-      pushToTalkKeyCode = UInt16(savedPTTKeyCode ?? 49)
+      pushToTalkKeyCode = UInt16(savedPTTKeyCode ?? SettingsDefaultValues.pushToTalkKeyCode)
       let savedPTTModRaw = defaults.object(forKey: "pushToTalkModifiersRaw") as? UInt
       pushToTalkModifiers = NSEvent.ModifierFlags(
-        rawValue: savedPTTModRaw ?? NSEvent.ModifierFlags.option.rawValue)
+        rawValue: savedPTTModRaw ?? SettingsDefaultValues.pushToTalkModifiersRaw)
     }
 
     modelUnloadPolicy =
       ModelUnloadPolicy(
         rawValue: defaults.string(forKey: "modelUnloadPolicy") ?? ""
-      ) ?? .never
+      ) ?? SettingsDefaultValues.modelUnloadPolicy
     restoreClipboardAfterPaste =
-      defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool ?? true
-    wordCorrectionEnabled = defaults.object(forKey: "wordCorrectionEnabled") as? Bool ?? true
-    fillerRemovalEnabled = defaults.object(forKey: "fillerRemovalEnabled") as? Bool ?? true
-    emojiFormatterEnabled = defaults.object(forKey: "emojiFormatterEnabled") as? Bool ?? false
-    isDebugModeEnabled = defaults.object(forKey: "isDebugModeEnabled") as? Bool ?? false
+      defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool
+      ?? SettingsDefaultValues.restoreClipboardAfterPaste
+    wordCorrectionEnabled =
+      defaults.object(forKey: "wordCorrectionEnabled") as? Bool
+      ?? SettingsDefaultValues.wordCorrectionEnabled
+    fillerRemovalEnabled =
+      defaults.object(forKey: "fillerRemovalEnabled") as? Bool
+      ?? SettingsDefaultValues.fillerRemovalEnabled
+    emojiFormatterEnabled =
+      defaults.object(forKey: "emojiFormatterEnabled") as? Bool
+      ?? SettingsDefaultValues.emojiFormatterEnabled
+    isDebugModeEnabled =
+      defaults.object(forKey: "isDebugModeEnabled") as? Bool
+      ?? SettingsDefaultValues.isDebugModeEnabled
     debugLogLevel =
       DebugLogLevel(
         rawValue: defaults.string(forKey: "debugLogLevel") ?? ""
-      ) ?? .info
-    useExtendedThinking = defaults.object(forKey: "useExtendedThinking") as? Bool ?? false
-    whisperKitLanguage = defaults.string(forKey: "whisperKitLanguage") ?? "en"
+      ) ?? SettingsDefaultValues.debugLogLevel
+    useExtendedThinking =
+      defaults.object(forKey: "useExtendedThinking") as? Bool
+      ?? SettingsDefaultValues.useExtendedThinking
+    whisperKitLanguage =
+      defaults.string(forKey: "whisperKitLanguage") ?? SettingsDefaultValues.whisperKitLanguage
     // Load languageMode, or migrate from whisperKitLanguage on first launch
     // (Multilingual v1). Both paths normalize (lowercase) and validate against
     // the Whisper-supported 99-lang set; unsupported, empty, or case-variant
@@ -460,12 +517,21 @@ public final class SettingsManager {
       return migrated
     }()
     languageMode = resolvedLanguageMode
-    selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID") ?? ""
-    noiseSuppression = false
-    preferredInputDeviceIDOverride = defaults.string(forKey: "preferredInputDeviceIDOverride") ?? ""
+    selectedInputDeviceUID =
+      defaults.string(forKey: "selectedInputDeviceUID")
+      ?? SettingsDefaultValues.selectedInputDeviceUID
+    noiseSuppression = SettingsDefaultValues.noiseSuppression
+    preferredInputDeviceIDOverride =
+      defaults.string(forKey: "preferredInputDeviceIDOverride")
+      ?? SettingsDefaultValues.preferredInputDeviceIDOverride
     environmentPreset =
-      EnvironmentPreset(rawValue: defaults.string(forKey: "environmentPreset") ?? "") ?? .normal
-    useXPCAudioService = defaults.object(forKey: "useXPCAudioService") as? Bool ?? true
+      EnvironmentPreset(rawValue: defaults.string(forKey: "environmentPreset") ?? "")
+      ?? SettingsDefaultValues.environmentPreset
+    // PER-BUILD EXCEPTION (#923): useXPCAudioService is a developer XPC debug
+    // knob, NOT a unified user preference — read/write via UserDefaults.standard
+    // (the build's own store), never the shared `defaults`. Matches the bootstrap
+    // read at WisprBootstrapper and stays out of unifiedDefaultsKeys.
+    useXPCAudioService = UserDefaults.standard.object(forKey: "useXPCAudioService") as? Bool ?? true
 
     // Migration (issue #614, 2026-05-04): the Formal/Standard/Friendly preset axis and the
     // hidden custom-prompt path were removed. Drop their orphaned UserDefaults keys so the
@@ -477,11 +543,12 @@ public final class SettingsManager {
     // key so existing users with `noiseSuppression=true` are migrated to raw audio on first
     // launch after upgrade. Idempotent: removeObject on an absent key is a no-op.
     defaults.removeObject(forKey: "noiseSuppression")
-    useStreamingASR = defaults.object(forKey: "useStreamingASR") as? Bool ?? false
+    useStreamingASR =
+      defaults.object(forKey: "useStreamingASR") as? Bool ?? SettingsDefaultValues.useStreamingASR
     warmEnginePolicy =
       WarmEnginePolicy(
         rawValue: defaults.string(forKey: "warmEnginePolicy") ?? ""
-      ) ?? .seconds30
+      ) ?? SettingsDefaultValues.warmEnginePolicy
 
     // What's New: fresh install (nil) defaults to current version so new users aren't badged.
     let storedWhatsNew =
