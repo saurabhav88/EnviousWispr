@@ -58,6 +58,9 @@ public final class WisprBootstrapper {
     // pipelines (they read its `pasteCompletionRegistry`); `settingsSync` after
     // both pipelines + `setup`.
 
+    // #923: one-time dev→shared settings migration; MUST precede SettingsManager()
+    // (mutates the store it reads). Release/shipped builds no-op. See migration doc.
+    SettingsDefaultsMigration.migrateIfNeeded()
     let settings = SettingsManager()
     let permissions = PermissionsService()
     let keychainManager = KeychainManager()
@@ -493,8 +496,14 @@ public final class WisprBootstrapper {
 /// `@State` on the old App struct) and injects every App-owned home.
 private struct MainWindowRoot: View {
   let b: WisprBootstrapper
-  @State private var isOnboardingPresented: Bool =
-    !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+  @State private var isOnboardingPresented: Bool
+
+  init(b: WisprBootstrapper) {
+    self.b = b
+    // #923: derive from the SettingsManager instance, not a raw `.standard` read
+    // (which on the dev build would hit the wrong per-build store).
+    _isOnboardingPresented = State(initialValue: !b.settings.hasCompletedOnboarding)
+  }
 
   var body: some View {
     UnifiedWindowView()

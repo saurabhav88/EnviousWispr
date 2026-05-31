@@ -116,7 +116,12 @@ final class OnboardingV2ViewModel {
 
       checklistStatuses[1] = .inProgress
       try await Task.sleep(nanoseconds: 1_500_000_000)
-      settings.llmProvider = .appleIntelligence
+      // #923: Apple Intelligence is now the canonical default
+      // (SettingsDefaultValues.llmProvider), so no write here. Writing the
+      // default would make every onboarded user look "customized" forever,
+      // polluting the default/custom distinction the migration relies on.
+      // Onboarded users get Apple Intelligence via the canonical default; this
+      // step stays a visual checklist beat + telemetry only.
       checklistStatuses[1] = .completed
       TelemetryService.shared.onboardingStepCompleted(step: "ai_config", result: "completed")
 
