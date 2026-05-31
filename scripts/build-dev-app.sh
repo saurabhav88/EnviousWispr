@@ -38,24 +38,23 @@ if ! security find-identity -v -p codesigning | grep -q "$DEV_CERT_NAME"; then
   exit 1
 fi
 
-# ─── Step 2: Stop the running dev app (scoped to the .dev bundle id) ──────────
-echo "==> Step 2: Stopping running dev app..."
-osascript -e '
-if application id "com.enviouswispr.app.dev" is running then
-  tell application id "com.enviouswispr.app.dev" to quit
-end if
-' 2>/dev/null || true
+# ─── Step 2: Stop ONLY this worktree's running dev app (path-scoped) ──────────
+# Scope strictly to PIDs whose executable path is inside THIS worktree's bundle.
+# The `.dev` bundle id is shared by every worktree's dev build AND prod shares
+# the `EnviousWispr` executable name — so a bundle-id quit or `pkill -x
+# EnviousWispr` would also kill a sibling worktree's app or the founder's live
+# session (pkill-scope-to-own-worktree rule). Never quit by bundle id, never
+# kill by bare process name.
+echo "==> Step 2: Stopping this worktree's dev app (path-scoped)..."
+DEV_EXE="$APP_PATH/Contents/MacOS/EnviousWispr"
+this_worktree_pids() { pgrep -f "$DEV_EXE" 2>/dev/null || true; }
 
-for i in $(seq 1 50); do
-  pgrep -x "EnviousWispr" >/dev/null 2>&1 || break
-  if [ "$i" -eq 50 ]; then
-    pkill -9 -x "EnviousWispr" 2>/dev/null || true
-    sleep 0.5
-  fi
-  sleep 0.1
-done
-if pgrep -x "EnviousWispr" >/dev/null 2>&1; then
-  echo "ERROR: EnviousWispr still running after quit/kill"
+for pid in $(this_worktree_pids); do kill -TERM "$pid" 2>/dev/null || true; done
+for _ in $(seq 1 50); do [ -z "$(this_worktree_pids)" ] && break; sleep 0.1; done
+for pid in $(this_worktree_pids); do kill -9 "$pid" 2>/dev/null || true; done
+sleep 0.3
+if [ -n "$(this_worktree_pids)" ]; then
+  echo "ERROR: this worktree's dev EnviousWispr still running after scoped TERM/KILL"
   exit 1
 fi
 
@@ -116,5 +115,8 @@ codesign --verify "$APP_PATH"
 echo "==> Step 8: Launching..."
 open "$APP_PATH"
 sleep 3
-pgrep -x "EnviousWispr" >/dev/null || { echo "ERROR: app did not launch"; exit 1; }
+# Verify launch by THIS worktree's executable path, not a global process-name
+# match (which could see a sibling worktree's or the prod app).
+this_worktree_pids() { pgrep -f "$APP_PATH/Contents/MacOS/EnviousWispr" 2>/dev/null || true; }
+[ -n "$(this_worktree_pids)" ] || { echo "ERROR: this worktree's dev app did not launch"; exit 1; }
 echo "==> EnviousWispr (dev) running ✓  ($APP_PATH)"

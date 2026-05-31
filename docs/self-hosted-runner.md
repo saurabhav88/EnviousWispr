@@ -20,8 +20,8 @@ free, fast, and fully controlled.
 
 | Workflow | Runner | Purpose |
 |----------|--------|---------|
-| `pr-check.yml` → `build-check` | `macos-15` (hosted) | Fast compile gate — debug + release + test target |
-| `pr-check.yml` → `ai-compile-gate` | `self-hosted, enviouswispr-release` | FoundationModels compile probe |
+| `pr-check.yml` → `build-debug` / `build-release` | `macos-26` (hosted) | Xcode/Tuist build lanes — debug build + XPC hygiene + debug tests ‖ release build + FoundationModels compile probe |
+| `pr-check.yml` → `build-check` | `ubuntu-latest` (hosted) | Required-gate aggregator over both build lanes (`needs: [build-debug, build-release]`) |
 | `release.yml` → `build-release-artifacts` | `self-hosted, enviouswispr-release` | Full release: Xcode/Tuist archive + inside-out sign (embeds the Developer ID provisioning profile) + notarize + DMG |
 
 ## Release Toolchain (Xcode engine, #913)
