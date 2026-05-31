@@ -230,6 +230,60 @@ else
             exit 1
         fi
     done
+    # the signed leaf cert must be one of the embedded profile's authorized
+    # DeveloperCertificates. Catches a same-team cert NOT in the profile — e.g. a
+    # rotated Developer ID Application cert (same common name, new fingerprint) the
+    # profile was not regenerated for: it passes the team + entitlement checks above
+    # but is rejected at first launch (taskgated -> amfid -413). Team identity alone
+    # cannot catch this; only a leaf-vs-profile fingerprint comparison can. (#925)
+    der_sha256() {
+        # SHA-256 of a DER cert file, normalized (no label, no colons, uppercase).
+        # Ends in `|| true` so a pipefail abort cannot escape the command substitution;
+        # empty output is the failure signal the caller checks.
+        openssl x509 -inform DER -in "$1" -noout -fingerprint -sha256 2>/dev/null \
+            | sed 's/.*Fingerprint=//; s/://g' | tr 'a-f' 'A-F' || true
+    }
+    CERT_TMP="$(mktemp -d)"
+    # cleanup is explicit on every exit path below (empty-leaf, post-loop success, and
+    # unauthorized exit) — no EXIT trap, which would clobber none-exists-today but is
+    # fragile to add for a mid-script block.
+    # codesign --extract-certificates writes <prefix>N RELATIVE TO CWD, honoring only the
+    # prefix BASENAME (it ignores any leading directory in the prefix), and the
+    # space-separated prefix form silently writes nothing. So run it in a subshell cd'd
+    # into CERT_TMP with the `=basename` form, and pass an ABSOLUTE bundle path
+    # ($BUNDLE is "build/$APP_NAME", relative to $PROJ_ROOT) so the cd doesn't break it.
+    # leaf_0 is the leaf signing cert. (#925 — extract form empirically pinned 2026-05-31;
+    # the other forms are flaky / CWD-relative.)
+    ( cd "$CERT_TMP" && codesign -d --extract-certificates=leaf_ "$PROJ_ROOT/$BUNDLE" ) >/dev/null 2>&1 || true
+    LEAF_FP="$(der_sha256 "$CERT_TMP/leaf_0")"
+    if [[ -z "$LEAF_FP" ]]; then
+        echo "::error::Could not read the signed leaf certificate from $BUNDLE (signing/extract failed?)"
+        rm -rf "$CERT_TMP"
+        exit 1
+    fi
+    LEAF_AUTHORIZED=0
+    CERT_IDX=0
+    # while-condition form: the natural end-of-array plutil failure terminates the
+    # loop without tripping `set -e`.
+    while CERT_B64="$(plutil -extract "DeveloperCertificates.$CERT_IDX" raw -o - - <<<"$PROFILE_PLIST" 2>/dev/null)"; do
+        printf '%s' "$CERT_B64" | base64 -D > "$CERT_TMP/auth$CERT_IDX.der" 2>/dev/null || true
+        AUTH_FP="$(der_sha256 "$CERT_TMP/auth$CERT_IDX.der")"
+        if [[ -n "$AUTH_FP" && "$LEAF_FP" == "$AUTH_FP" ]]; then
+            LEAF_AUTHORIZED=1
+            break
+        fi
+        CERT_IDX=$((CERT_IDX + 1))
+    done
+    rm -rf "$CERT_TMP"
+    if [[ "$LEAF_AUTHORIZED" -ne 1 ]]; then
+        echo "::error::Signed leaf cert ($LEAF_FP) is not among the embedded profile's DeveloperCertificates."
+        echo "::error::The signing certificate and the embedded provisioning profile disagree — regenerate"
+        echo "::error::signing/EnviousWispr_DeveloperID.provisionprofile for the current Developer ID cert"
+        echo "::error::(see distribution.md 'embed-provisioning-profile'). A same-team but unauthorized cert"
+        echo "::error::passes the team check yet is rejected at launch (amfid -413)."
+        exit 1
+    fi
+    echo "    signed leaf cert authorized by embedded profile (sha256 $LEAF_FP)"
     # profile expiry warning (soft — never hard-fail a release on a soft deadline)
     PROFILE_EXP="$(echo "$PROFILE_PLIST" | plutil -extract ExpirationDate raw - 2>/dev/null || true)"
     if [[ -n "$PROFILE_EXP" ]]; then
