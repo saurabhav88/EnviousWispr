@@ -28,6 +28,45 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.1.0
+
+    Entry(
+      id: "polish-keeps-your-words",
+      icon: "checkmark.shield",
+      title: "Polish keeps your words, not your commands",
+      description:
+        "Dictate something that sounds like an instruction, like \"draft a Slack to Matt about the launch\", and on-device polish used to sometimes go write that message instead of cleaning up what you said. It now recognizes the difference and keeps your actual words.",
+      category: .smarterAIPolish,
+      version: "2.1.0"
+    ),
+    Entry(
+      id: "honest-warm-up-then-instant",
+      icon: "gauge.with.dots.needle.33percent",
+      title: "An honest warm-up, then instant presses",
+      description:
+        "Right after launch the speech engine takes a moment to warm up. You now see a clear indicator while that happens, instead of a start that looks frozen. Once it is warm, every press begins instantly with no flicker.",
+      category: .fasterAndMoreReliable,
+      version: "2.1.0"
+    ),
+    Entry(
+      id: "whisperkit-on-gpu",
+      icon: "bolt",
+      title: "Faster WhisperKit transcription",
+      description:
+        "We moved the WhisperKit speech engine from your Mac's Neural Engine onto its GPU. In our testing that is the faster path for WhisperKit, so transcription warms up and finishes quicker.",
+      category: .fasterAndMoreReliable,
+      version: "2.1.0"
+    ),
+    Entry(
+      id: "steadier-under-the-hood-2-1",
+      icon: "wrench.and.screwdriver",
+      title: "A steadier app under the hood",
+      description:
+        "We finished a major rebuild of how EnviousWispr is assembled and packaged. You won't see it directly, but it makes the app sturdier and lets us ship improvements to you faster and more safely.",
+      category: .fasterAndMoreReliable,
+      version: "2.1.0"
+    ),
+
     // MARK: - v2.0.3
 
     Entry(
