@@ -82,6 +82,18 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   private var lastFiredState: PipelineState
 
+  /// Fired by the finalizing-sub-status observer (`observeFinalizingSubStatus`)
+  /// whenever the overlay's intent should refresh because of a `.transcribing`
+  /// → `.polishing` flip that does NOT change the public `PipelineState` (both
+  /// collapse to `.polishing`, so `onStateChange` never sees it). Display-only
+  /// enrichment: carries NO lifecycle authority and MUST be wired only to the
+  /// overlay show path — never to anything that mutates recording state,
+  /// schedules warnings, or appends transcripts. Distinct from `onStateChange`,
+  /// which carries the public `PipelineState` for lifecycle/menu/window
+  /// consumers (#930).
+  @ObservationIgnored
+  public var onOverlayIntentChange: ((OverlayIntent) -> Void)?
+
   /// Heart-path error sink for the driver's own direct `.asrInterrupted`
   /// captureError emit. Defaulted to the production global so the only behavior
   /// change is testability — the factory threads the same injected sink it
@@ -119,9 +131,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     await (adapter as? any ASREngineCacheModelLoadable)?.prepareModelIfCached()
   }
 
-  /// Begin observing the kernel for `onStateChange` fan-out.
+  /// Begin observing the kernel for `onStateChange` fan-out and overlay
+  /// sub-status flips.
   func start() {
     observeKernelState()
+    observeFinalizingSubStatus()
   }
 
   // MARK: Limb-step accessors (read by `PipelineSettingsSync` + custom-words)
@@ -353,8 +367,25 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     switch kernel.state {
     case .idle, .completed, .cancelled, .discarded, .noSpeech:
       return .hidden
-    case .preparing, .warmingUp:
+    case .warmingUp:
+      // A real model load is running — `runForwardPath` only transitions to
+      // `.warmingUp` when `adapter.readiness != .ready` — so the loading label
+      // is honest.
       return .processing(label: "Preparing dictation...")
+    case .preparing:
+      // `.preparing` is a sub-10ms bookkeeping step (mint session, spawn the
+      // forward path). On a WARM engine (`adapter.readiness == .ready`) no
+      // `.warmingUp` load follows, so "Preparing dictation..." is a phantom
+      // flash on every press (#930). Project straight to the recording pill so
+      // the overlay is created ONCE at press time and the real `.recording`
+      // (same `.recording(audioLevel: 0)` intent) dedups into it — no label,
+      // and no tear-down/rebuild stutter that a `.hidden` projection caused
+      // (UAT 2026-05-31: `.hidden` forced a fresh-create pop; the label flash
+      // was equally unwanted). On a COLD engine a real `.warmingUp` load
+      // follows, so keep the honest loading label.
+      return adapter.readiness == .ready
+        ? .recording(audioLevel: 0)
+        : .processing(label: "Preparing dictation...")
     case .recording:
       // The real level is supplied by `AudioCaptureManager` downstream — the
       // pipeline returns 0 here, exactly as the old Parakeet pipeline did.
@@ -562,6 +593,40 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     onStateChange?(mapped)
   }
 
+  /// Arm a SECOND, separate `withObservationTracking` on
+  /// `kernel.finalizingSubStatus` (NOT `kernel.state`) so the overlay can flip
+  /// "Transcribing…" → "Polishing…" mid-`.finalizing` — a sub-status change the
+  /// public `PipelineState` collapses to `.polishing`, so `observeKernelState`
+  /// never sees it (#930).
+  ///
+  /// Two deliberate shapes:
+  /// 1. Re-arm UNCONDITIONALLY via `defer`, BEFORE the `.finalizing` guard.
+  ///    `finalizingSubStatus` resets to `.transcribing` during
+  ///    `resetSessionState()` at the START of the next session, while the
+  ///    kernel is NOT `.finalizing`; if the re-arm sat behind the guard the
+  ///    observation would silently die after the first session.
+  /// 2. Push the overlay intent ONLY while `kernel.state == .finalizing`, and
+  ///    ONLY through `onOverlayIntentChange` — never `fireStateChangeIfNeeded` /
+  ///    `onStateChange`. The public `PipelineState` fan-out and `ASREventRouter`
+  ///    routing stay byte-identical; this channel is display-only.
+  ///
+  /// A late flip whose `@MainActor` hop lands after a new session is finalizing
+  /// re-reads the CURRENT `overlayIntent`, so the worst case is one redundant
+  /// push of the correct label, which the overlay dedups (`show(intent:)`).
+  private func observeFinalizingSubStatus() {
+    withObservationTracking {
+      _ = kernel.finalizingSubStatus
+    } onChange: { [weak self] in
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        defer { self.observeFinalizingSubStatus() }
+        if self.kernel.state == .finalizing {
+          self.onOverlayIntentChange?(self.overlayIntent)
+        }
+      }
+    }
+  }
+
   /// Apply the session's frozen LLM config to the polish step. Mirrors the
   /// LLM portion of old Parakeet pipeline's `applySessionConfig(_:)`
   /// (old Parakeet pipeline). VAD + device UID portions
@@ -701,8 +766,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       // and breaks the `.finalizing` safe point (verified Codex r1 on the
       // attempted Div 3 fix). The user-visible cost of the current
       // collapse is "Polishing..." appears a few hundred ms early in
-      // MainWindow; the `overlayIntent` getter already routes through
-      // `finalizingSubStatus` for the overlay-text path.
+      // MainWindow. The floating OVERLAY does not pay that cost: the
+      // `overlayIntent` getter routes through `finalizingSubStatus`, and the
+      // dedicated `observeFinalizingSubStatus` channel (#930) refreshes the
+      // overlay live on the flip WITHOUT touching this public mapper.
       return .polishing
     case .completed:
       return .complete

@@ -57,6 +57,7 @@ import Testing
     _ = driver.llmPolish
     _ = driver.currentSessionConfig
     driver.onStateChange = { _ in }
+    driver.onOverlayIntentChange = { _ in }  // #930 — App-consumed overlay channel
     driver.setExternalError("probe")
     driver.handleEngineInterruption()
     driver.handleASRServiceInterruption()
