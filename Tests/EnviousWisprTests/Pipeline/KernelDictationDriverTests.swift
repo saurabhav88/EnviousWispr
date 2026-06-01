@@ -303,6 +303,116 @@ import Testing
       h.driver.reset()
       #expect(h.driver.lastPolishError == "in-flight polish error")
     }
+
+    // MARK: #930 — overlay phase labels
+
+    @Test(
+      "the finalizing sub-status flip pushes a fresh overlay intent (Transcribing -> Polishing)"
+    )
+    func finalizingSubStatusFlipPushesOverlay() async {
+      let h = makeDriver()
+      var pushed: [OverlayIntent] = []
+      h.driver.onOverlayIntentChange = { pushed.append($0) }
+      // Walk to the finalizing safe-point (sub-status defaults to .transcribing).
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .recording))
+      #expect(h.kernel.testForceTransition(to: .stopping))
+      #expect(h.kernel.testForceTransition(to: .transcribing))
+      #expect(h.kernel.testForceTransition(to: .finalizing))
+      // The polish step's onWillProcess equivalent — flip to .polishing.
+      h.kernel.testSetFinalizingSubStatus(.polishing)
+      await drainUntil { pushed.last == .processing(label: "Polishing...") }
+      #expect(
+        pushed.last == .processing(label: "Polishing..."),
+        "a .polishing sub-status while .finalizing must push the Polishing overlay")
+    }
+
+    @Test(
+      "a sub-status flip while NOT finalizing pushes nothing (display-only, guarded)"
+    )
+    func subStatusFlipOutsideFinalizingDoesNotPush() async {
+      let h = makeDriver()
+      var pushed: [OverlayIntent] = []
+      h.driver.onOverlayIntentChange = { pushed.append($0) }
+      // Kernel is at .idle — a sub-status mutation must not reach the overlay.
+      h.kernel.testSetFinalizingSubStatus(.polishing)
+      // Give any scheduled @MainActor hop a chance to land, then assert silence.
+      for _ in 0..<50 { await Task.yield() }
+      #expect(pushed.isEmpty, "no overlay push may fire while the kernel is not finalizing")
+    }
+
+    @Test(
+      "the sub-status observation survives the inter-session reset (two finalizing sessions)"
+    )
+    func subStatusObservationSurvivesInterSessionReset() async {
+      let h = makeDriver()
+      var pushed: [OverlayIntent] = []
+      h.driver.onOverlayIntentChange = { pushed.append($0) }
+      // Session 1 → finalizing → polishing.
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .recording))
+      #expect(h.kernel.testForceTransition(to: .stopping))
+      #expect(h.kernel.testForceTransition(to: .transcribing))
+      #expect(h.kernel.testForceTransition(to: .finalizing))
+      h.kernel.testSetFinalizingSubStatus(.polishing)
+      await drainUntil { pushed.last == .processing(label: "Polishing...") }
+      let afterSession1 = pushed.count
+      #expect(afterSession1 >= 1)
+      // End session 1 and reproduce the kill window: the sub-status resets to
+      // .transcribing while the kernel is NOT finalizing (terminal). If the
+      // re-arm sat behind the .finalizing guard, the observation would die here.
+      #expect(h.kernel.testForceTransition(to: .completed))
+      h.kernel.testSetFinalizingSubStatus(.transcribing)
+      for _ in 0..<50 { await Task.yield() }
+      // Session 2 → finalizing → polishing again. The push MUST fire a second
+      // time, proving the observation re-armed across the reset.
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .recording))
+      #expect(h.kernel.testForceTransition(to: .stopping))
+      #expect(h.kernel.testForceTransition(to: .transcribing))
+      #expect(h.kernel.testForceTransition(to: .finalizing))
+      h.kernel.testSetFinalizingSubStatus(.polishing)
+      await drainUntil {
+        pushed.count > afterSession1 && pushed.last == .processing(label: "Polishing...")
+      }
+      #expect(
+        pushed.last == .processing(label: "Polishing..."),
+        "session 2's polish flip must still push — the observer survived the reset")
+    }
+
+    @Test(
+      "a WARM .preparing projects straight to the recording pill — no phantom 'preparing' flash, no rebuild stutter"
+    )
+    func warmPreparingProjectsToRecordingPill() async throws {
+      let h = makeDriver()
+      // Warm the engine so `adapter.readiness == .ready` (no .warmingUp follows).
+      try await h.adapter.warmUp()
+      #expect(h.adapter.readiness == .ready)
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      // Same intent the real `.recording` emits, so the overlay is created once
+      // at press time and the real `.recording` dedups into it (UAT 2026-05-31:
+      // `.hidden` here caused a tear-down/rebuild stutter; the label was a
+      // phantom flash). No "Preparing dictation..." label on a warm press.
+      #expect(h.driver.overlayIntent == .recording(audioLevel: 0))
+    }
+
+    @Test("a COLD .preparing keeps the loading label (a real warm-up follows)")
+    func coldPreparingKeepsLoadingLabel() {
+      let h = makeDriver()
+      // Fresh adapter is `.notReady` — a real `.warmingUp` load will follow.
+      #expect(h.adapter.readiness == .notReady)
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.driver.overlayIntent == .processing(label: "Preparing dictation..."))
+    }
+
+    @Test(".warmingUp always keeps the loading label regardless of readiness")
+    func warmingUpKeepsLoadingLabel() {
+      let h = makeDriver()
+      // .warmingUp is only reached on a cold load, so the label is always honest.
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .warmingUp))
+      #expect(h.driver.overlayIntent == .processing(label: "Preparing dictation..."))
+    }
   #endif
 
   // MARK: Helpers
@@ -311,6 +421,7 @@ import Testing
     let driver: KernelDictationDriver
     let kernel: RecordingSessionKernel
     let outcome: KernelFinalizationOutcome
+    let adapter: FakeEngine
   }
 
   private func makeDriver() -> Harness {
@@ -340,7 +451,7 @@ import Testing
       kernel: kernel, observer: observer, outcome: outcome,
       context: KernelSessionContext(), steps: steps, adapter: adapter)
     driver.start()
-    return Harness(driver: driver, kernel: kernel, outcome: outcome)
+    return Harness(driver: driver, kernel: kernel, outcome: outcome, adapter: adapter)
   }
 
   private func drainUntil(_ condition: @MainActor () -> Bool) async {

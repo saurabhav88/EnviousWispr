@@ -129,6 +129,31 @@ final class DictationLifecycleCoordinator {
       guard let self else { return }
       self.handleWhisperKit(newState: newState)
     }
+    // #930: the overlay-only sub-status channel. A `.transcribing` →
+    // `.polishing` flip mid-`.finalizing` does NOT change the public
+    // `PipelineState`, so it never reaches `onStateChange`; this dedicated
+    // callback refreshes the overlay label through the same show seam. It is
+    // display-only — wired ONLY to `showOverlayIntent`, never to lifecycle.
+    kernelDriver.onOverlayIntentChange = { [weak self] intent in
+      self?.showOverlayIntent(intent)
+    }
+    whisperKitKernelDriver.onOverlayIntentChange = { [weak self] intent in
+      self?.showOverlayIntent(intent)
+    }
+  }
+
+  /// The single overlay-show seam. Every overlay push — state-handler driven
+  /// (`makeStateChangeHandler`) and sub-status driven (`onOverlayIntentChange`)
+  /// — flows through here so the audio-level provider and lock state are
+  /// threaded identically. `RecordingOverlayPanel.show(intent:)` dedups on its
+  /// current intent, so a redundant identical push is dropped (#930).
+  private func showOverlayIntent(_ intent: OverlayIntent) {
+    let audioCapture = self.audioCapture
+    recordingOverlay.show(
+      intent: intent,
+      audioLevelProvider: { audioCapture.audioLevel },
+      isRecordingLocked: recordingLockedAccess.get()
+    )
   }
 
   // MARK: - Per-pipeline state-change handling
@@ -294,15 +319,7 @@ final class DictationLifecycleCoordinator {
 
   private func makeStateChangeHandler(backendLabel: String) -> PipelineStateChangeHandler {
     PipelineStateChangeHandler(
-      showOverlay: { [weak self] intent in
-        guard let self else { return }
-        let audioCapture = self.audioCapture
-        self.recordingOverlay.show(
-          intent: intent,
-          audioLevelProvider: { audioCapture.audioLevel },
-          isRecordingLocked: self.recordingLockedAccess.get()
-        )
-      },
+      showOverlay: { [weak self] intent in self?.showOverlayIntent(intent) },
       cancelPendingWarning: { [weak self] in self?.postCompletionWarningTask?.cancel() },
       schedulePolishFailedWarning: { [weak self] in
         self?.schedulePostCompletionWarning(message: "Polish failed -- using raw text")
