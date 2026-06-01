@@ -46,16 +46,16 @@ import Testing
     let source = try String(
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
-    // #879: raised 250 → 280. The cold-boot press-safety guard runs on BOTH
-    // start paths — `start()` (PTT) and `toggle(source:)` (toggle-hotkey / menu /
-    // toolbar) — so a press on a not-ready engine never mints a session on any
-    // path. The domain logic (pill + warm-up + READY announce) lives off this
-    // type in `ColdPressGuard`; only the small readiness guards live here. No
-    // new collaborator or non-private method.
+    // #879: raised 250 → 280 (cold-boot press-safety guards on both start
+    // paths), then 280 → 285 for the `activeDriver` computed var — a computed
+    // accessor (not a stored slot or method) that lets the runtime route
+    // onboarding's warm-up through the active engine's shared `ensureEngineWarm`.
+    // The domain logic still lives off this type in `ColdPressGuard`; no new
+    // collaborator or non-private method.
     #expect(
-      count <= 280,
+      count <= 285,
       """
-      RecordingStarter line count exceeded: \(count) > 280. \
+      RecordingStarter line count exceeded: \(count) > 285. \
       Raise via Bible §30 only.
       """)
   }

@@ -219,10 +219,6 @@ private final class NoOpASRManagerV2: ASRManagerInterface {
     loadProgressTickReporter?(Date(), "test-fake-load")
     isModelLoaded = true
   }
-  func loadModelSilently() async {
-    loadProgressTickReporter?(Date(), "test-fake-load")
-    isModelLoaded = true
-  }
   func unloadModel() async {}
   func setInitialBackendType(_ type: ASRBackendType) { activeBackendType = type }
   func switchBackend(to type: ASRBackendType) async { activeBackendType = type }

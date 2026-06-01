@@ -109,22 +109,11 @@ final class AppLifecycleCoordinator {
       NSApp.setActivationPolicy(.accessory)
     }
 
-    // Issue #445: launch-time telemetry callback wiring. ASRManagerProxy/
-    // ASRManager fire this closure from inside `loadModelSilently()` so the
-    // launch-warming path (previously silent on success) becomes visible in
-    // PostHog.
-    ASRManagerProxy.launchPreloadReporter = { backend, result, durationMs in
-      Task { @MainActor in
-        TelemetryService.shared.launchModelPreloadCompleted(
-          backend: backend, result: result, durationMs: durationMs)
-      }
-    }
-    ASRManager.launchPreloadReporter = { backend, result, durationMs in
-      Task { @MainActor in
-        TelemetryService.shared.launchModelPreloadCompleted(
-          backend: backend, result: result, durationMs: durationMs)
-      }
-    }
+    // #879: the launch-preload telemetry callback wiring was removed. The
+    // launch warm-up now routes through `KernelDictationDriver.ensureEngineWarm
+    // (reason: .launch)`, which emits `launch.model_preload_completed` directly
+    // (it depends on `EnviousWisprServices`, so no cross-module callback hop is
+    // needed the way the ASR-layer reporter required).
 
     // PR-B.2 of #763: the window-close observer lives on AppWindowCoordinator.
     appWindowCoordinator.installOnLaunch()

@@ -42,6 +42,17 @@ public enum EngineWarmupReason: Sendable {
   }
 }
 
+/// The outcome of an `ensureEngineWarm` call. The helper never throws into its
+/// callers (a warm-up failure must not crash the heart-path press), so it
+/// reports the result as a value. Most callers discard it (they re-read live
+/// readiness); onboarding consumes `.failed` to drive its "download failed →
+/// Retry" UX, which needs the underlying error. Not `Sendable` — produced and
+/// consumed on the `@MainActor`.
+public enum EngineWarmupOutcome {
+  case ready
+  case failed(any Error)
+}
+
 /// Resume-once latch for `KernelDictationDriver.awaitKernelTerminal`. A
 /// reference type so the closure passed to `withObservationTracking`'s
 /// `onChange` and the recursive re-arm method share the same instance.
@@ -75,10 +86,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   private let outcome: KernelFinalizationOutcome
   private let steps: LimbSteps
 
-  /// PR-5 Rung 5 (#827): the adapter the kernel drives. Held by the driver
-  /// so `prepareBackendSilently()` can route to the adapter's optional
-  /// `ASREngineCacheModelLoadable` capability. Package-scoped — the only
-  /// reader outside this file is internal-test code in the same module.
+  /// PR-5 Rung 5 (#827): the adapter the kernel drives. Held by the driver so
+  /// `ensureEngineWarm(reason:)` can read its live readiness and drive
+  /// `adapter.warmUp()`. Package-scoped — the only reader outside this file is
+  /// internal-test code in the same module.
   package let adapter: any ASREngineAdapter
 
   /// The per-session context the wiring's closures read (PR-4 §3.3 — "captured
@@ -141,47 +152,63 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     self.lastFiredState = Self.pipelineState(for: kernel.state, externalError: nil)
   }
 
-  /// PR-5 Rung 5 (#827) — silent pre-load entry point matching OLD
-  /// `WhisperKitPipeline.prepareBackendSilently()`. Forwards to the adapter
-  /// only when the adapter caches models (WhisperKit conforms to
-  /// `ASREngineCacheModelLoadable`); no-op for Parakeet (does not conform,
-  /// the cast returns nil). Called from `SetupCoordinator.preloadAction`
-  /// at App init.
-  package func prepareBackendSilently() async {
-    await (adapter as? any ASREngineCacheModelLoadable)?.prepareModelIfCached()
-  }
-
-  /// Cold-boot warm-up coordinator (#879). The single shared entry the cold
-  /// press (`RecordingStarter`) and an engine swap (`PipelineSettingsSync`)
-  /// route through so the readiness-check + single-flight can't drift. Reads
-  /// the live `adapter.readiness` (the ONLY gate — no persisted OS-build stamp,
-  /// which would be an unsafe cache key per #879 §3); if the engine is already
-  /// ready it is a no-op. Otherwise it drives the engine's normal model load
-  /// via `adapter.warmUp()` — idempotent and single-flighted by the backend
-  /// (`WhisperKitBackend.loadTask` / `ASRManager.inFlightLoadTask`), so a press
-  /// landing during a launch/onboarding warm-up JOINS the in-flight load rather
-  /// than starting a second compile. "Loaded" already means "first press
+  /// Cold-boot warm-up coordinator (#879). The SINGLE shared entry every warm-up
+  /// site routes through — launch (`WisprBootstrapper` for Parakeet,
+  /// `SetupCoordinator` for WhisperKit), onboarding (`OnboardingV2View`), engine
+  /// swap (`PipelineSettingsSync`), and the cold press (`RecordingStarter`) — so
+  /// the readiness-check + single-flight + telemetry live in one place and can't
+  /// drift. Reads the live `adapter.readiness` (the ONLY gate — no persisted
+  /// OS-build stamp, which would be an unsafe cache key per #879 §3); if the
+  /// engine is already ready it no-ops. Otherwise it drives the engine's normal
+  /// model load via `adapter.warmUp()` — idempotent and single-flighted by the
+  /// backend (`WhisperKitBackend.loadTask` / `ASRManager.inFlightLoadTask`), so a
+  /// press landing during a launch/onboarding warm-up JOINS the in-flight load
+  /// rather than starting a second compile. "Loaded" already means "first press
   /// instant" (measured 2026-06-01: no first-inference penalty), so this drives
   /// the normal load only — no `prewarm` (it would load twice) and no
-  /// dummy-transcribe. Non-throwing: a warm-up failure leaves the engine
-  /// not-ready, the next press re-shows the pill and re-kicks this, and the
-  /// heart path is unaffected.
-  public func ensureEngineWarm(reason: EngineWarmupReason) async {
-    guard adapter.readiness != .ready else { return }
+  /// dummy-transcribe.
+  ///
+  /// Never throws into callers (a warm-up failure must not crash the heart-path
+  /// press); it returns an `EngineWarmupOutcome` instead. Most callers discard
+  /// it and re-read live readiness; onboarding consumes `.failed` to drive its
+  /// "download failed → Retry" UX. For the `.launch` reason it also emits the
+  /// existing `launch.model_preload_completed` metric (already_loaded /
+  /// joined_in_flight / success / failed) so that dashboard keeps continuity
+  /// after this became the launch warm-up entry (replacing `loadModelSilently`).
+  @discardableResult
+  public func ensureEngineWarm(reason: EngineWarmupReason) async -> EngineWarmupOutcome {
     let engine = adapter.engineIdentity.rawValue
+    if adapter.readiness == .ready {
+      if reason == .launch {
+        TelemetryService.shared.launchModelPreloadCompleted(
+          backend: engine, result: "already_loaded", durationMs: 0)
+      }
+      return .ready
+    }
     let warmupInFlight = adapter.readiness == .warming
     let start = ContinuousClock.now
     TelemetryService.shared.coldStartWarmupStarted(
       engine: engine, reason: reason.telemetryToken, warmupInFlight: warmupInFlight)
     do {
       try await adapter.warmUp()
+      let ms = Self.elapsedMs(since: start)
       TelemetryService.shared.coldStartWarmupCompleted(
-        engine: engine, reason: reason.telemetryToken,
-        durationMs: Self.elapsedMs(since: start))
+        engine: engine, reason: reason.telemetryToken, durationMs: ms)
+      if reason == .launch {
+        TelemetryService.shared.launchModelPreloadCompleted(
+          backend: engine, result: warmupInFlight ? "joined_in_flight" : "success",
+          durationMs: ms)
+      }
+      return .ready
     } catch {
       TelemetryService.shared.coldStartWarmupFailed(
         engine: engine, reason: reason.telemetryToken,
         error: String(describing: error))
+      if reason == .launch {
+        TelemetryService.shared.launchModelPreloadCompleted(
+          backend: engine, result: "failed", durationMs: Self.elapsedMs(since: start))
+      }
+      return .failed(error)
     }
   }
 

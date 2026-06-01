@@ -157,9 +157,8 @@ public final class WisprBootstrapper {
     // into, not a single-dispatch-surface consolidation (still two drivers).
     // LID-to-polish wiring is
     // owned by `KernelFinalizationWiring.processText` via the
-    // `ASREngineLanguageIdentifying` cast on the adapter; the silent
-    // App-init cache pre-load is owned by the driver's
-    // `prepareBackendSilently()` via the `ASREngineCacheModelLoadable` cast.
+    // `ASREngineLanguageIdentifying` cast on the adapter; the launch warm-up
+    // is owned by the shared `ensureEngineWarm(reason: .launch)` (#879).
     let whisperKitKernelDriver = KernelDictationDriverFactory.makeForWhisperKit(
       inputs: KernelDictationDriverFactory.WhisperKitInputs(
         audioCapture: audioCapture,
@@ -175,13 +174,14 @@ public final class WisprBootstrapper {
 
     // Phase F (#501) — `SetupCoordinator` needs `asrManager` + the WhisperKit
     // preload closure. `[weak whisperKitKernelDriver]` so it does not retain it.
-    // PR-5 Rung 5: `prepareBackendSilently()` forwards via the
-    // `ASREngineCacheModelLoadable` cast on the WhisperKit adapter (parity
-    // with OLD `WhisperKitPipeline.prepareBackendSilently()`).
+    // The WhisperKit launch warm-up routes through the shared
+    // `ensureEngineWarm(reason: .launch)` (gated by `SetupCoordinator` on
+    // `setupState == .ready`, so it only fires for a downloaded model — never
+    // an unprompted download for a non-opted-in user).
     let setup = SetupCoordinator(
       asrManager: asrManager,
       preloadAction: { [weak whisperKitKernelDriver] in
-        await whisperKitKernelDriver?.prepareBackendSilently()
+        await whisperKitKernelDriver?.ensureEngineWarm(reason: .launch)
       }
     )
 
@@ -248,11 +248,14 @@ public final class WisprBootstrapper {
     }
 
     // Pre-load the selected backend's model in the background to eliminate
-    // cold-start delay. Parakeet: direct silent load. WhisperKit:
-    // observation-based (waits for setupState to become .ready first).
+    // cold-start delay. Parakeet: shared warm-up via the active driver.
+    // WhisperKit: observation-based (waits for setupState to become .ready
+    // first, then `preloadAction` → `ensureEngineWarm`).
     if settings.selectedBackend == .parakeet {
-      Task { [weak asrManager] in
-        await asrManager?.loadModelSilently()
+      Task { [weak kernelDriver] in
+        // Discard the outcome so the Task's Success type stays Void
+        // (`EngineWarmupOutcome` is @MainActor-only, not Sendable).
+        _ = await kernelDriver?.ensureEngineWarm(reason: .launch)
       }
     }
     Task { [weak setup] in

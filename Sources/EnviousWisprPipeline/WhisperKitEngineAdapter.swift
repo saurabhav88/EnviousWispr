@@ -1076,43 +1076,12 @@ extension WhisperKitEngineAdapter: ASREngineTelemetryProviding {}
 
 extension WhisperKitEngineAdapter: ASREngineLanguageIdentifying {}
 
-extension WhisperKitEngineAdapter: ASREngineCacheModelLoadable {
-  /// Silent model pre-load matching the OLD `WhisperKitPipeline.prepareBackendSilently()`
-  /// at `:349-377` byte-for-byte: checks `backend.isReady`, calls
-  /// `backend.prepareIfCached()` (cache-only, no download), logs the three OLD
-  /// messages to AppLogger under the surviving `"WhisperKitPipeline"` category,
-  /// swallows errors. Called from `KernelDictationDriver.prepareBackendSilently()`
-  /// via the `as? any ASREngineCacheModelLoadable` cast on the adapter.
-  package func prepareModelIfCached() async {
-    let isBackendReady = await backend.isReady
-    guard !isBackendReady else { return }
-    do {
-      let loaded = try await backend.prepareIfCached()
-      if loaded {
-        Task {
-          await AppLogger.shared.log(
-            "WhisperKit model pre-loaded successfully (background)",
-            level: .info, category: "WhisperKitPipeline"
-          )
-        }
-      } else {
-        Task {
-          await AppLogger.shared.log(
-            "WhisperKit model not cached, skipping silent pre-load",
-            level: .info, category: "WhisperKitPipeline"
-          )
-        }
-      }
-    } catch {
-      Task {
-        await AppLogger.shared.log(
-          "WhisperKit model pre-load failed: \(error.localizedDescription)",
-          level: .info, category: "WhisperKitPipeline"
-        )
-      }
-    }
-  }
-}
+// #879: the `ASREngineCacheModelLoadable` conformance (`prepareModelIfCached`)
+// was removed with `KernelDictationDriver.prepareBackendSilently()`. WhisperKit's
+// launch warm-up now routes through the shared `ensureEngineWarm(reason: .launch)`
+// (gated by `SetupCoordinator` on `setupState == .ready`), which drives
+// `warmUp()` → `backend.prepare()` (cache-first, with the existing download
+// fallback). The kernel's `preWarm` cache-refresh still uses `warmUpFromCache()`.
 
 // MARK: - Test-only inspectors (`@testable import` reaches `internal`)
 

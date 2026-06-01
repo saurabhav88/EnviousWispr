@@ -48,6 +48,14 @@ final class RecordingStarter {
     }
   }
 
+  /// The driver for the currently-active engine. #879 Phase D — lets the
+  /// runtime route onboarding's first-run warm-up through the active engine's
+  /// shared `ensureEngineWarm`. Computed (not a stored slot or a method), so it
+  /// adds no entanglement to this start-path home.
+  var activeDriver: KernelDictationDriver {
+    asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
+  }
+
   init(
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,

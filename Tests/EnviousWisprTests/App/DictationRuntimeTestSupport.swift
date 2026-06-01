@@ -4,8 +4,8 @@ import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation
 
-@testable import EnviousWisprAppKit
 @testable import EnviousWisprASR
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
@@ -70,7 +70,6 @@ final class RouterTestASRManager: ASRManagerInterface {
   var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
 
   func loadModel() async throws {}
-  func loadModelSilently() async {}
   func unloadModel() async {}
   func setInitialBackendType(_ type: ASRBackendType) { activeBackendType = type }
   func switchBackend(to type: ASRBackendType) async { activeBackendType = type }

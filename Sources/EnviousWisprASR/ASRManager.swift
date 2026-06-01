@@ -107,47 +107,12 @@ public final class ASRManager: ASRManagerInterface {
     try await task.value
   }
 
-  /// Silent warmup: load the model in the background without mutating UI-visible download state.
-  /// Used at app launch. If a user-initiated load is already in progress, awaits it.
-  /// Issue #445: launch-time telemetry callback. Mirror of `ASRManagerProxy`.
-  public nonisolated(unsafe) static var launchPreloadReporter:
-    (@Sendable (String, String, Int) -> Void)?
-
-  public func loadModelSilently() async {
-    let start = ContinuousClock.now
-    let backendTag = activeBackendType.rawValue
-    if isModelLoaded {
-      Self.report(backend: backendTag, result: "already_loaded", start: start)
-      return
-    }
-    if let existing = inFlightLoadTask {
-      try? await existing.value
-      Self.report(backend: backendTag, result: "joined_in_flight", start: start)
-      return
-    }
-    do {
-      try await loadModel()
-      Self.report(backend: backendTag, result: "success", start: start)
-    } catch {
-      // Silent warmup failure is non-fatal. Record button triggers lazy-load as fallback.
-      Task {
-        await AppLogger.shared.log(
-          "Silent model warmup failed: \(error.localizedDescription)",
-          level: .info, category: "ASRManager"
-        )
-      }
-      Self.report(backend: backendTag, result: "failed", start: start)
-    }
-  }
-
-  private static func report(
-    backend: String, result: String, start: ContinuousClock.Instant
-  ) {
-    let elapsed = ContinuousClock.now - start
-    let (s, a) = elapsed.components
-    let ms = Int(s) * 1_000 + Int(a / 1_000_000_000_000_000)
-    launchPreloadReporter?(backend, result, ms)
-  }
+  // #879: the launch/onboarding warm-up entry (formerly `loadModelSilently` +
+  // the `launchPreloadReporter` callback) moved to the shared
+  // `KernelDictationDriver.ensureEngineWarm(reason:)`, which drives this
+  // `loadModel()` via the adapter and owns the `launch.model_preload_completed`
+  // telemetry for the `.launch` reason. The single-flight (`inFlightLoadTask`)
+  // still makes a press landing during a launch warm-up join the in-flight load.
 
   /// Transcribe raw audio samples (16kHz mono Float32).
   public func transcribe(audioSamples: [Float], options: TranscriptionOptions = .default)

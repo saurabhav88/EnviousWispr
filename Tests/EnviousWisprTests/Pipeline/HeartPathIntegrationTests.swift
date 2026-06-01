@@ -608,7 +608,6 @@ internal final class MockASRManager: ASRManagerInterface {
   }
 
   func loadModel() async throws {}
-  func loadModelSilently() async {}
   func unloadModel() async {}
   func setInitialBackendType(_ type: ASRBackendType) { activeBackendType = type }
   func switchBackend(to type: ASRBackendType) async { activeBackendType = type }

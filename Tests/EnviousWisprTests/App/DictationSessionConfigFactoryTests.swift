@@ -195,7 +195,6 @@ private final class FactoryFakeASRManager: ASRManagerInterface {
   var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
 
   func loadModel() async throws { fatalError("not used in DictationSessionConfigFactoryTests") }
-  func loadModelSilently() async { fatalError("not used in DictationSessionConfigFactoryTests") }
   func unloadModel() async { fatalError("not used in DictationSessionConfigFactoryTests") }
   func setInitialBackendType(_: ASRBackendType) { fatalError("not used") }
   func switchBackend(to _: ASRBackendType) async { fatalError("not used") }

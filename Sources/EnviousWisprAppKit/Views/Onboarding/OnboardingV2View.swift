@@ -1,6 +1,7 @@
 import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprPipeline
 import EnviousWisprServices
 import IOKit.pwr_mgt
 import SwiftUI
@@ -84,7 +85,15 @@ final class OnboardingV2ViewModel {
   /// Minimum free disk space required for model download + compilation (1 GB).
   private static let requiredDiskSpaceBytes: Int64 = 1_073_741_824
 
-  func startSetup(asrManager: any ASRManagerInterface, settings: SettingsManager) async {
+  /// #879 Phase D — the first-run model warm-up routes through the shared
+  /// `warmUp` closure (the active engine's `ensureEngineWarm(reason: .onboarding)`,
+  /// wired by `DictationRuntime`), so onboarding uses the same live-readiness
+  /// check + single-flight + telemetry as every other warm-up site. The closure
+  /// never throws (the helper reports failure as a value), so this maps a
+  /// `.failed` outcome to the existing "download failed → Retry" UX.
+  func startSetup(
+    warmUp: @MainActor () async -> EngineWarmupOutcome, settings: SettingsManager
+  ) async {
     settings.onboardingState = .settingUp
 
     // Disk space preflight — fail early with a friendly message instead of failing at 80%.
@@ -103,17 +112,32 @@ final class OnboardingV2ViewModel {
     checklistStatuses[0] = .inProgress
     preventSleep()
     startProgressPolling()
-    do {
-      try await asrManager.loadModel()
-      stopProgressPolling()
-      allowSleep()
-      // Check cancellation before advancing — window may have closed during download.
-      try Task.checkCancellation()
-      checklistStatuses[0] = .completed
-      installQuip = ""
-      stopQuipTimer()
-      TelemetryService.shared.onboardingStepCompleted(step: "model_download", result: "completed")
 
+    let outcome = await warmUp()
+    stopProgressPolling()
+    allowSleep()
+
+    // Window may have closed during the warm-up — leave onboardingState as
+    // .settingUp so the next launch re-runs the checklist from scratch (the
+    // model load itself is single-flighted, so it keeps loading in the
+    // background and the relaunch finds it ready / joins it).
+    if Task.isCancelled { return }
+
+    if case .failed(let error) = outcome {
+      let friendly = Self.friendlyError(error)
+      downloadError = friendly
+      rawErrorDetails = "\(error)"
+      checklistStatuses[0] = .error(friendly)
+      return
+    }
+
+    // .ready — the active engine is genuinely warm; advance the checklist beats.
+    checklistStatuses[0] = .completed
+    installQuip = ""
+    stopQuipTimer()
+    TelemetryService.shared.onboardingStepCompleted(step: "model_download", result: "completed")
+
+    do {
       checklistStatuses[1] = .inProgress
       try await Task.sleep(nanoseconds: 1_500_000_000)
       // #923: Apple Intelligence is now the canonical default
@@ -133,18 +157,8 @@ final class OnboardingV2ViewModel {
       try await Task.sleep(nanoseconds: 400_000_000)
       settings.onboardingState = .needsPermissions
       setupPhase = .permissions
-    } catch is CancellationError {
-      stopProgressPolling()
-      allowSleep()
-      // Task was cancelled (window closed mid-setup). Leave onboardingState as .settingUp
-      // so the next launch re-runs the checklist from scratch.
     } catch {
-      stopProgressPolling()
-      allowSleep()
-      let friendly = Self.friendlyError(error)
-      downloadError = friendly
-      rawErrorDetails = "\(error)"
-      checklistStatuses[0] = .error(friendly)
+      // Window closed during the post-warm checklist beats → leave .settingUp.
     }
   }
 
@@ -283,14 +297,13 @@ struct OnboardingV2View: View {
 
   @Environment(SettingsManager.self) private var settings
   @Environment(PermissionsService.self) private var permissions
-  @Environment(\.asrManager) private var asrManagerEnv
+  // #879 Phase D — onboarding's first-run warm-up routes through the shared
+  // `ensureEngineWarm` via `DictationRuntime` (injected by OnboardingWindowRoot),
+  // replacing the prior direct `asrManager.loadModel()`.
+  @Environment(DictationRuntime.self) private var dictationRuntime
   var onComplete: () -> Void
 
   @State private var viewModel = OnboardingV2ViewModel()
-
-  /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
-  /// environment (see `AppEnvironmentKeys.swift`).
-  private var asrManager: any ASRManagerInterface { asrManagerEnv! }
 
   var body: some View {
     ZStack {
@@ -323,7 +336,9 @@ struct OnboardingV2View: View {
         viewModel.downloadError == nil,
         case .pending = viewModel.checklistStatuses[0]
       else { return }
-      await viewModel.startSetup(asrManager: asrManager, settings: settings)
+      await viewModel.startSetup(
+        warmUp: { await dictationRuntime.ensureActiveEngineWarmForOnboarding() },
+        settings: settings)
     }
   }
 
