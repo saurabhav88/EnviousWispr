@@ -29,7 +29,7 @@ https://github.com/user-attachments/assets/e636e1a0-a0d1-4f7c-be0a-b7c907c6d5ab
 
 ## What is this?
 
-EnviousWispr is a free AI dictation app for macOS that runs entirely on-device. It uses Whisper and Parakeet speech-to-text models on Apple Silicon to transcribe your voice locally, polishes the output with an optional LLM, and pastes clean text into whatever app you're working in. The entire pipeline runs in under 2 seconds.
+EnviousWispr is a free AI dictation app for macOS that runs entirely on-device. It uses Whisper and Parakeet speech-to-text models on Apple Silicon to transcribe your voice locally, polishes the output with an optional LLM, and pastes clean text into whatever app you're working in. Transcription is sub-second; with optional AI polish, the full hotkey-to-paste flow typically lands in around a second and a half.
 
 No cloud. No account required. No subscription. No audio ever leaves your Mac. Works fully offline.
 
@@ -38,10 +38,10 @@ No cloud. No account required. No subscription. No audio ever leaves your Mac. W
 | | EnviousWispr | Cloud dictation services |
 |---|---|---|
 | **Privacy** | 100% on-device transcription | Audio uploaded to servers |
-| **Speed** | Sub-second pipeline, paste-on-stop | Network round-trip latency |
+| **Speed** | Sub-second transcription, paste-on-stop | Network round-trip latency |
 | **Models** | Parakeet v3 (NVIDIA NeMo) + WhisperKit (OpenAI Whisper) | Single vendor model |
-| **Polish** | Optional LLM cleanup (GPT, Gemini) with your own keys | Basic punctuation only |
-| **Cost** | One-time purchase, no subscription for core features | Monthly subscription |
+| **Polish** | Optional. Fully on-device (Apple Intelligence, Ollama) or bring-your-own-key cloud (GPT, Gemini) | Cloud polish, included in subscription |
+| **Cost** | Free. No account, no subscription | Monthly subscription |
 | **Works offline** | Yes, fully functional without internet | No |
 
 ## How it works
@@ -51,34 +51,37 @@ Press hotkey  -->  Record  -->  Transcribe  -->  Polish (optional)  -->  Paste
     ~0ms          live        ~400-800ms         ~200-500ms            instant
 ```
 
-1. **Press your hotkey** from any app. Toggle mode or push-to-talk, your choice.
+1. **Press your hotkey** from any app. Push-to-talk, toggle, or hands-free (double-press to lock for long-form), your choice.
 2. **Speak naturally.** Silero VAD detects when you stop talking and ends recording automatically.
-3. **On-device transcription.** Choose Parakeet v3 (fastest, 25 languages) or WhisperKit (99 languages).
-4. **AI polish** (optional). Clean up grammar, punctuation, and formatting via OpenAI or Gemini with your own API key.
+3. **On-device transcription.** Choose Parakeet v3 (fastest, 25 European languages) or WhisperKit (99 languages, with automatic language detection).
+4. **AI polish** (optional). Clean up grammar, punctuation, and formatting. Runs fully on-device with Apple Intelligence (macOS 26+) or Ollama, or in the cloud via OpenAI or Gemini with your own API key.
 5. **Text lands in your clipboard** and optionally auto-pastes into the active app.
 
 > See the full interactive pipeline demo at [enviouswispr.com/how-it-works](https://enviouswispr.com/how-it-works)
 
 ## Supported Models
 
-| Model | Best for | Languages | Download size | Hardware |
+| Model | Best for | Languages | Disk space | Hardware |
 |---|---|---|---|---|
-| **Parakeet TDT v3** | Fastest multilingual dictation (default) | 25 languages | ~500 MB | Apple Silicon |
-| **WhisperKit** (Whisper Large v3 Turbo) | Broadest language coverage | 99 languages | ~800 MB | Apple Silicon |
+| **Parakeet TDT v3** | Fastest dictation (default) | 25 European languages | ~460 MB | Apple Silicon |
+| **WhisperKit** (Whisper Large v3 Turbo) | Broadest language coverage and automatic language detection | 99 languages | ~1.6 GB | Apple Silicon |
 
 Both models run entirely on-device using CoreML. First launch downloads and compiles the model; subsequent launches are instant.
 
 ## Features
 
-- **Dual ASR engines** with [Parakeet v3](https://github.com/FluidInference/FluidAudio) (NVIDIA NeMo) and [WhisperKit](https://github.com/argmaxinc/argmax-oss-swift) (OpenAI Whisper)
-- **Voice Activity Detection** via Silero VAD for hands-free stop
-- **LLM polish** with OpenAI GPT or Google Gemini (bring your own API key)
-- **Custom vocabulary** for names, brands, and technical terms the ASR might miss
-- **Global hotkey** with toggle and push-to-talk modes
-- **Auto-paste** directly into the active app, or just copy to clipboard
-- **Transcript history** for browsing, searching, and reviewing past dictations
-- **Menu bar native** with minimal footprint
-- **Auto-updates** via Sparkle
+- 🎙️ **Dual ASR engines** with [Parakeet v3](https://github.com/FluidInference/FluidAudio) (NVIDIA NeMo) and [WhisperKit](https://github.com/argmaxinc/argmax-oss-swift) (OpenAI Whisper)
+- ✨ **AI polish that respects your words** — strips filler words and false starts, fixes grammar and punctuation, formats numbers, dates, and URLs, and honors your custom vocabulary, all in your spoken language (never translated or rewritten)
+- 🔒 **Polish that can stay private** — run it fully on-device with Apple Intelligence (macOS 26+) or Ollama, or in the cloud via OpenAI GPT / Google Gemini with your own API key
+- 🌍 **Multilingual with automatic language detection** — speak in any supported language and EnviousWispr detects it, then offers to lock it in for faster, more accurate transcription
+- 😀 **Speak an emoji** — say the emoji's name followed by "emoji" (like "thumbs up emoji") and the glyph drops right in
+- ✋ **Voice Activity Detection** via Silero VAD — stops recording automatically when you stop talking
+- 📚 **Custom vocabulary** for names, brands, and technical terms the ASR might miss
+- ⌨️ **Global hotkey** with push-to-talk, toggle, and hands-free modes (double-press to lock for long-form dictation)
+- 📋 **Auto-paste** directly into the active app, or just copy to clipboard
+- 🕘 **Transcript history** for browsing, searching, and reviewing past dictations, with one-click re-polish to re-run AI cleanup on any past transcript
+- 🧭 **Menu bar native** with minimal footprint
+- 🔄 **Auto-updates** via Sparkle
 
 ## Quick Start
 
@@ -88,7 +91,7 @@ Both models run entirely on-device using CoreML. First launch downloads and comp
 4. Set your preferred hotkey in Settings > Shortcuts
 5. Start talking
 
-**Optional:** Add an OpenAI or Gemini API key in Settings > AI Polish for transcript cleanup.
+**Optional:** Turn on AI polish in Settings > AI Polish. Keep it fully on-device with Apple Intelligence (macOS 26+) or Ollama, or add an OpenAI or Gemini API key.
 
 ## Requirements
 
@@ -134,7 +137,7 @@ This project uses conventional commits: `feat(scope):`, `fix(scope):`, `refactor
 EnviousWispr is built on a simple principle: **your voice is yours.**
 
 - Audio is captured, transcribed, and discarded locally. Nothing is uploaded, stored, or shared.
-- LLM polish (if enabled) sends only the text transcript to your chosen provider using your own API key. Audio is never sent.
+- LLM polish (if enabled) can run entirely on your Mac with Apple Intelligence or a local Ollama model, so the polish step makes no network call. If you pick a cloud provider (OpenAI or Gemini), only text is sent (your transcript plus the polish instructions) using your own API key. Audio is never sent.
 - Anonymous product analytics (PostHog) can be disabled in Settings.
 - Crash reporting (Sentry) contains no transcript content, audio, or personal data.
 
