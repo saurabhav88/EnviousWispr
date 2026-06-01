@@ -442,6 +442,34 @@ import Testing
     #expect(h.adapter.warmUpCallCount == 1)
   }
 
+  @Test("ensureEngineWarm reports .ready when the warm-up succeeds")
+  func ensureEngineWarmReportsReady() async {
+    let h = makeDriver()
+    let outcome = await h.driver.ensureEngineWarm(reason: .onboarding)
+    guard case .ready = outcome else {
+      Issue.record("expected .ready, got \(outcome)")
+      return
+    }
+    #expect(h.adapter.readiness == .ready)
+  }
+
+  @Test(
+    "ensureEngineWarm reports .failed(error) when warm-up throws — never throws into the caller")
+  func ensureEngineWarmReportsFailedOnThrow() async {
+    // `.wedgeOnLoad` + a prior cancel makes `warmUp()` throw immediately
+    // (`ASREngineError.wedged`). The helper must catch it and surface `.failed`
+    // so onboarding can drive its "download failed → Retry" UX — and the
+    // heart-path press never sees the throw.
+    let h = makeDriver(behavior: .wedgeOnLoad)
+    await h.adapter.cancel()
+    let outcome = await h.driver.ensureEngineWarm(reason: .onboarding)
+    guard case .failed = outcome else {
+      Issue.record("expected .failed, got \(outcome)")
+      return
+    }
+    #expect(h.adapter.readiness != .ready)
+  }
+
   // MARK: Helpers
 
   private struct Harness {
@@ -451,8 +479,8 @@ import Testing
     let adapter: FakeEngine
   }
 
-  private func makeDriver() -> Harness {
-    let adapter = FakeEngine(behavior: .batchSuccess(text: "x"), clock: FakeClock())
+  private func makeDriver(behavior: FakeEngineBehavior = .batchSuccess(text: "x")) -> Harness {
+    let adapter = FakeEngine(behavior: behavior, clock: FakeClock())
     let kernel = RecordingSessionKernel(
       adapter: adapter,
       audioCapture: FakeAudioCapture(),

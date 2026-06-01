@@ -271,13 +271,12 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("wedge_detected", properties: properties)
   }
 
-  /// Issue #445: launch-time telemetry. Emits when `loadModelSilently()`
-  /// completes (success, already-loaded, or failed) so we can finally see
-  /// what happens during launch warming. Pre-#445 the launch path was
-  /// invisible: `loadModelSilently()` is silent on success by design and
-  /// only logs on failure, so we had zero visibility into how long the
-  /// preload takes, whether it succeeds, or whether different users hit
-  /// different cold-path durations.
+  /// Issue #445 launch-time telemetry, now emitted by the shared
+  /// `KernelDictationDriver.ensureEngineWarm(reason: .launch)` (#879) when it
+  /// drives the launch warm-up — `result` is one of "success",
+  /// "already_loaded", "joined_in_flight", or "failed". Keeps continuity of the
+  /// `launch.model_preload_completed` dashboard after the launch warm-up entry
+  /// moved off `loadModelSilently`.
   public func launchModelPreloadCompleted(
     backend: String, result: String, durationMs: Int
   ) {

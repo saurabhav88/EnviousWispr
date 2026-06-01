@@ -56,7 +56,6 @@ private final class MinimalASRManager: ASRManagerInterface {
   var onServiceInterrupted: (() -> Void)?
 
   func loadModel() async throws {}
-  func loadModelSilently() async {}
   func unloadModel() async {}
   func setInitialBackendType(_ type: ASRBackendType) {}
   func switchBackend(to type: ASRBackendType) async {}

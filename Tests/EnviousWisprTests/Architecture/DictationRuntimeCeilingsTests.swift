@@ -57,14 +57,20 @@ import Testing
       named: "DictationRuntime", at: Self.sourcePath)
     let count = RouterCeilingParser.nonPrivateMethodCount(in: body)
     // Parser counts `func`, not `init` or computed `var` (e.g. hotkeyDescription).
+    // #879: raised 6 → 7 for `ensureActiveEngineWarmForOnboarding()` — the
+    // onboarding screen routes its first-run warm-up through the runtime so it
+    // uses the same shared `ensureEngineWarm` as every other warm-up site. It is
+    // a thin forward to `starter.activeDriver.ensureEngineWarm(.onboarding)`, no
+    // new state.
     #expect(
-      count <= 6,
+      count <= 7,
       """
-      DictationRuntime non-private method ceiling exceeded: \(count) > 6 \
+      DictationRuntime non-private method ceiling exceeded: \(count) > 7 \
       non-private `func` declarations. PR10 baseline: \
       startHotkeyServiceIfEnabled, suspendHotkeys, resumeHotkeys, \
-      toggleRecording, cancelRecording, resetActivePipeline. Raising the \
-      ceiling requires a Bible §30 entry.
+      toggleRecording, cancelRecording, resetActivePipeline; #879 added \
+      ensureActiveEngineWarmForOnboarding. Raising the ceiling requires a \
+      Bible §30 entry.
       """)
   }
 

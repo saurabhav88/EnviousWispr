@@ -142,4 +142,13 @@ final class DictationRuntime {
   func cancelRecording() async { await finalizer.cancel() }
 
   func resetActivePipeline() { finalizer.resetActive() }
+
+  /// #879 Phase D — route onboarding's first-run model warm-up through the
+  /// shared `ensureEngineWarm(reason: .onboarding)` on the active engine's
+  /// driver, so the onboarding gate uses the same live-readiness check +
+  /// single-flight + telemetry as every other warm-up site. Returns the outcome
+  /// so the onboarding screen can drive its "download failed → Retry" UX.
+  func ensureActiveEngineWarmForOnboarding() async -> EngineWarmupOutcome {
+    await starter.activeDriver.ensureEngineWarm(reason: .onboarding)
+  }
 }

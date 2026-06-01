@@ -21,7 +21,6 @@ public protocol ASRManagerInterface: AnyObject {
 
   // Model lifecycle
   func loadModel() async throws
-  func loadModelSilently() async
   func unloadModel() async  // periphery:ignore - called via existential type (ASRManager idle timer)
   func setInitialBackendType(_ type: ASRBackendType)
   func switchBackend(to type: ASRBackendType) async

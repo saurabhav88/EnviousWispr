@@ -102,61 +102,12 @@ public final class ASRManagerProxy: ASRManagerInterface {
     try await task.value
   }
 
-  /// Silent warmup: load the model in the background without mutating UI-visible download state.
-  /// Used at app launch. If a user-initiated load is already in progress, awaits it.
-  public func loadModelSilently() async {
-    let start = ContinuousClock.now
-    let backendTag = activeBackendType.rawValue
-    if isModelLoaded {
-      Self.emitLaunchPreloadTelemetry(
-        backend: backendTag, result: "already_loaded", start: start)
-      return
-    }
-    // If a load is already in progress, just await it silently.
-    if let existing = inFlightLoadTask {
-      try? await existing.value
-      Self.emitLaunchPreloadTelemetry(
-        backend: backendTag, result: "joined_in_flight", start: start)
-      return
-    }
-    do {
-      try await loadModel()
-      Self.emitLaunchPreloadTelemetry(backend: backendTag, result: "success", start: start)
-    } catch {
-      // Silent warmup failure is non-fatal. Record button triggers lazy-load as fallback.
-      Task {
-        await AppLogger.shared.log(
-          "Silent model warmup failed: \(error.localizedDescription)",
-          level: .info, category: "ASRManagerProxy"
-        )
-      }
-      Self.emitLaunchPreloadTelemetry(backend: backendTag, result: "failed", start: start)
-    }
-  }
-
-  /// Issue #445: launch-time telemetry callback. Set at app startup by
-  /// AppDelegate (one-line assignment, no former-root-state collaborator growth).
-  /// `EnviousWisprASR` cannot depend on `EnviousWisprServices` per
-  /// architecture-rules.md dependency direction, so the actual PostHog
-  /// emission lives outside this module — we just hand off the timing.
-  ///
-  /// Signature: `(backend, result, durationMs) -> Void`
-  /// `result` is one of "success", "already_loaded", "joined_in_flight", "failed".
-  public nonisolated(unsafe) static var launchPreloadReporter:
-    (@Sendable (String, String, Int) -> Void)?
-
-  /// Self-contained — does NOT grow the former root state. Emits a PostHog event so we can
-  /// finally see launch-time model-load behavior in production (success,
-  /// duration, failure rate). Pre-#445 this path was completely silent on
-  /// success by design.
-  private static func emitLaunchPreloadTelemetry(
-    backend: String, result: String, start: ContinuousClock.Instant
-  ) {
-    let elapsed = ContinuousClock.now - start
-    let (s, a) = elapsed.components
-    let ms = Int(s) * 1_000 + Int(a / 1_000_000_000_000_000)
-    launchPreloadReporter?(backend, result, ms)
-  }
+  // #879: `loadModelSilently` + the `launchPreloadReporter` launch-telemetry
+  // callback were removed here too. The launch/onboarding warm-up entry is now
+  // the shared `KernelDictationDriver.ensureEngineWarm(reason:)`, which drives
+  // `loadModel()` via the adapter and owns `launch.model_preload_completed` for
+  // the `.launch` reason. The `inFlightLoadTask` single-flight is unchanged, so
+  // a press during a launch warm-up still joins the in-flight load.
 
   /// Whether the progress-polling timer is currently scheduled. Internal only
   /// for the #586 regression test that exercises the polling lifecycle without
