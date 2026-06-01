@@ -180,7 +180,71 @@ final class RecordingOverlayPanel {
           .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
         ])
       showPassiveChip(payload: payload)
+    case .cachingModel(let engineLabel):
+      NSAccessibility.post(
+        element: NSApp.mainWindow as Any,
+        notification: .announcementRequested,
+        userInfo: [
+          .announcement: "Getting dictation ready, one moment",
+          .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
+        ])
+      presentTransientNotice(
+        content: ColdStartNoticeView(
+          title: "Getting dictation ready…",
+          subtitle: "\(engineLabel) is warming up after a restart",
+          icon: .spinner
+        ).frame(width: 300, height: 56),
+        width: 300, height: 56, dismissAfter: 2.0)
+    case .engineReady:
+      NSAccessibility.post(
+        element: NSApp.mainWindow as Any,
+        notification: .announcementRequested,
+        userInfo: [
+          .announcement: "Dictation ready. Press to start.",
+          .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
+        ])
+      presentTransientNotice(
+        content: ColdStartNoticeView(
+          title: "Ready — press to dictate",
+          subtitle: nil,
+          icon: .ready
+        ).frame(width: 240, height: 44),
+        width: 240, height: 44, dismissAfter: 1.5)
     }
+  }
+
+  /// Present a transient cold-start notice (caching / ready pill, #879).
+  /// Mirrors the create-or-transition + auto-dismiss shape of the other
+  /// transient notices, generalized over the content view so the two
+  /// cold-start pills share one path. Tears down any existing panel and
+  /// recreates at the same position on the next run-loop cycle (the same
+  /// `DispatchQueue.main.async` deferral the rest of this file uses to avoid
+  /// re-entrant `NSHostingView` creation).
+  private func presentTransientNotice<V: View>(
+    content: V, width: CGFloat, height: CGFloat, dismissAfter: Double
+  ) {
+    let existingPanel = panel
+    let y = existingPanel?.frame.origin.y
+    panel = nil
+    autoDismissTask?.cancel()
+    autoDismissTask = nil
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+    if let existingPanel {
+      CATransaction.flush()
+      existingPanel.close()
+    }
+    generation &+= 1
+    let token = generation
+
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.generation == token else { return }
+      self.pendingCreateWork = nil
+      self.showPanel(content: content, width: width, height: height, y: y)
+      self.scheduleAutoDismiss(seconds: dismissAfter)
+    }
+    pendingCreateWork = work
+    DispatchQueue.main.async(execute: work)
   }
 
   // MARK: - Legacy API (internal)
@@ -964,6 +1028,56 @@ struct PolishingOverlayView: View {
       Text(label)
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(.white)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(OverlayCapsuleBackground())
+  }
+}
+
+// MARK: - ColdStartNoticeView
+
+/// Cold-boot warm-up pill (#879). Two uses, driven by `icon`:
+/// - `.spinner` — "getting ready" while the engine warms after a cold boot.
+/// - `.ready` — the "ready, press to dictate" announcement.
+///
+/// Both convey state with a shape (spinning wheel / checkmark) plus text, never
+/// color alone (accessibility-noncolor). An optional `subtitle` renders a
+/// dimmer secondary line (e.g. which engine is warming).
+struct ColdStartNoticeView: View {
+  enum Icon {
+    case spinner
+    case ready
+  }
+
+  let title: String
+  var subtitle: String?
+  let icon: Icon
+
+  var body: some View {
+    HStack(spacing: 10) {
+      switch icon {
+      case .spinner:
+        SpectrumWheelIcon(size: 24)
+      case .ready:
+        Image(systemName: "checkmark.circle.fill")
+          .foregroundStyle(Color(red: 0.2, green: 0.82, blue: 0.45))
+          .font(.system(size: 18))
+          .accessibilityHidden(true)
+      }
+
+      VStack(alignment: .leading, spacing: 1) {
+        Text(title)
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(.white)
+          .lineLimit(1)
+        if let subtitle {
+          Text(subtitle)
+            .font(.system(size: 11, weight: .regular))
+            .foregroundStyle(.white.opacity(0.65))
+            .lineLimit(1)
+        }
+      }
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)

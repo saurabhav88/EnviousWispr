@@ -51,6 +51,18 @@ public enum OverlayIntent: Equatable, Sendable {
   /// language. Renders State A (strikes 1+2: Lock + Dismiss) or State B (strike 3:
   /// Dismiss only with Settings copy). Auto-dismissed after 6 seconds; pauses on hover.
   case passiveChip(payload: LanguageChipPayload)
+  /// Cold-boot warm-up notice (#879). Shown when the user presses while the
+  /// active engine is not yet ready (fresh install, or first launch after a
+  /// macOS update wiped the compiled-model cache). Replaces the bare
+  /// "Preparing dictation…" wall: an honest, plain-English "getting ready"
+  /// pill. `engineLabel` is the active engine's display name, shown as a
+  /// secondary line. Auto-dismissed after about 2 seconds.
+  case cachingModel(engineLabel: String)
+  /// Cold-boot "ready" announcement (#879). Fired when a warm-up that the user
+  /// raced (saw a `.cachingModel` pill for) finishes, so they know to press
+  /// again. Auto-dismissed after about 1.5 seconds. Never fired at launch when
+  /// no cold press preceded it.
+  case engineReady
 }
 
 /// Issue #285 — heart-path telemetry callbacks that the former root state routes to

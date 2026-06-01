@@ -22,6 +22,26 @@ import Foundation
 // PR-4a ships this production-unwired: no App-layer caller constructs it.
 // PR-4b re-points the 13 App files at this type.
 
+/// Why a warm-up was requested (#879). Tags telemetry so the warm-up duration
+/// and outcome can be attributed to the launch primer, onboarding, an engine
+/// swap, or a raced cold press. Carries no behavior — `ensureEngineWarm` drives
+/// the same single-flighted load regardless of reason.
+public enum EngineWarmupReason: Sendable {
+  case launch
+  case onboarding
+  case engineSwap
+  case coldPress
+
+  var telemetryToken: String {
+    switch self {
+    case .launch: return "launch"
+    case .onboarding: return "onboarding"
+    case .engineSwap: return "engine_swap"
+    case .coldPress: return "cold_press"
+    }
+  }
+}
+
 /// Resume-once latch for `KernelDictationDriver.awaitKernelTerminal`. A
 /// reference type so the closure passed to `withObservationTracking`'s
 /// `onChange` and the recursive re-arm method share the same instance.
@@ -131,6 +151,45 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     await (adapter as? any ASREngineCacheModelLoadable)?.prepareModelIfCached()
   }
 
+  /// Cold-boot warm-up coordinator (#879). The single shared entry the cold
+  /// press (`RecordingStarter`) and an engine swap (`PipelineSettingsSync`)
+  /// route through so the readiness-check + single-flight can't drift. Reads
+  /// the live `adapter.readiness` (the ONLY gate — no persisted OS-build stamp,
+  /// which would be an unsafe cache key per #879 §3); if the engine is already
+  /// ready it is a no-op. Otherwise it drives the engine's normal model load
+  /// via `adapter.warmUp()` — idempotent and single-flighted by the backend
+  /// (`WhisperKitBackend.loadTask` / `ASRManager.inFlightLoadTask`), so a press
+  /// landing during a launch/onboarding warm-up JOINS the in-flight load rather
+  /// than starting a second compile. "Loaded" already means "first press
+  /// instant" (measured 2026-06-01: no first-inference penalty), so this drives
+  /// the normal load only — no `prewarm` (it would load twice) and no
+  /// dummy-transcribe. Non-throwing: a warm-up failure leaves the engine
+  /// not-ready, the next press re-shows the pill and re-kicks this, and the
+  /// heart path is unaffected.
+  public func ensureEngineWarm(reason: EngineWarmupReason) async {
+    guard adapter.readiness != .ready else { return }
+    let engine = adapter.engineIdentity.rawValue
+    let warmupInFlight = adapter.readiness == .warming
+    let start = ContinuousClock.now
+    TelemetryService.shared.coldStartWarmupStarted(
+      engine: engine, reason: reason.telemetryToken, warmupInFlight: warmupInFlight)
+    do {
+      try await adapter.warmUp()
+      TelemetryService.shared.coldStartWarmupCompleted(
+        engine: engine, reason: reason.telemetryToken,
+        durationMs: Self.elapsedMs(since: start))
+    } catch {
+      TelemetryService.shared.coldStartWarmupFailed(
+        engine: engine, reason: reason.telemetryToken,
+        error: String(describing: error))
+    }
+  }
+
+  private static func elapsedMs(since instant: ContinuousClock.Instant) -> Int {
+    let (s, a) = (ContinuousClock.now - instant).components
+    return Int(s) * 1000 + Int(a / 1_000_000_000_000_000)
+  }
+
   /// Begin observing the kernel for `onStateChange` fan-out and overlay
   /// sub-status flips.
   func start() {
@@ -168,6 +227,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// is correct for both engines: WhisperKit's live driver uses a separate
   /// in-process backend, so the shared ASR manager's flag does not reflect it.
   public var engineReadiness: ASREngineReadiness { adapter.readiness }
+
+  /// The active engine's user-facing display name (e.g. "Parakeet v3" /
+  /// "WhisperKit"). Exposed read-only so the App layer can label the cold-boot
+  /// warm-up pill (#879) without reaching into the package-scoped `adapter`.
+  public var engineDisplayName: String { adapter.engineIdentity.displayName }
 
   // MARK: PR-4b.2 — direct methods + property (mirror old Parakeet pipeline App surface)
 
@@ -369,9 +433,15 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       return .hidden
     case .warmingUp:
       // A real model load is running — `runForwardPath` only transitions to
-      // `.warmingUp` when `adapter.readiness != .ready` — so the loading label
-      // is honest.
-      return .processing(label: "Preparing dictation...")
+      // `.warmingUp` when `adapter.readiness != .ready`. #879: replace the bare
+      // "Preparing dictation…" wall with the honest cold-boot pill so the wall
+      // is unreachable on any cold path. Both press paths (`RecordingStarter`
+      // `start()` PTT and `toggle(source:)`) now return early on a cold engine
+      // without minting a session, so the only way a session reaches
+      // `.warmingUp` is a readiness-flip race (ready at the press-time snapshot,
+      // not-ready by the time the kernel starts) — and that race gets the
+      // plain-English pill here instead of the wall.
+      return .cachingModel(engineLabel: adapter.engineIdentity.displayName)
     case .preparing:
       // `.preparing` is a sub-10ms bookkeeping step (mint session, spawn the
       // forward path). On a WARM engine (`adapter.readiness == .ready`) no
@@ -382,10 +452,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       // and no tear-down/rebuild stutter that a `.hidden` projection caused
       // (UAT 2026-05-31: `.hidden` forced a fresh-create pop; the label flash
       // was equally unwanted). On a COLD engine a real `.warmingUp` load
-      // follows, so keep the honest loading label.
+      // follows, so surface the honest cold-boot pill (#879), not the bare wall.
       return adapter.readiness == .ready
         ? .recording(audioLevel: 0)
-        : .processing(label: "Preparing dictation...")
+        : .cachingModel(engineLabel: adapter.engineIdentity.displayName)
     case .recording:
       // The real level is supplied by `AudioCaptureManager` downstream — the
       // pipeline returns 0 here, exactly as the old Parakeet pipeline did.

@@ -396,24 +396,51 @@ import Testing
       #expect(h.driver.overlayIntent == .recording(audioLevel: 0))
     }
 
-    @Test("a COLD .preparing keeps the loading label (a real warm-up follows)")
-    func coldPreparingKeepsLoadingLabel() {
+    @Test("a COLD .preparing surfaces the cold-boot pill, not the bare wall (#879)")
+    func coldPreparingShowsCachingPill() {
       let h = makeDriver()
       // Fresh adapter is `.notReady` — a real `.warmingUp` load will follow.
       #expect(h.adapter.readiness == .notReady)
       #expect(h.kernel.testForceTransition(to: .preparing))
-      #expect(h.driver.overlayIntent == .processing(label: "Preparing dictation..."))
+      // #879: the bare "Preparing dictation…" wall is unreachable on a cold
+      // path; the honest cold-boot pill (engine-named) replaces it.
+      #expect(h.driver.overlayIntent == .cachingModel(engineLabel: "Parakeet v3"))
     }
 
-    @Test(".warmingUp always keeps the loading label regardless of readiness")
-    func warmingUpKeepsLoadingLabel() {
+    @Test(".warmingUp surfaces the cold-boot pill (a real cold load is running) (#879)")
+    func warmingUpShowsCachingPill() {
       let h = makeDriver()
-      // .warmingUp is only reached on a cold load, so the label is always honest.
+      // .warmingUp is only reached on a cold load, so the cold-boot pill is honest.
       #expect(h.kernel.testForceTransition(to: .preparing))
       #expect(h.kernel.testForceTransition(to: .warmingUp))
-      #expect(h.driver.overlayIntent == .processing(label: "Preparing dictation..."))
+      #expect(h.driver.overlayIntent == .cachingModel(engineLabel: "Parakeet v3"))
     }
   #endif
+
+  // MARK: #879 — ensureEngineWarm shared helper
+
+  @Test("ensureEngineWarm drives a not-ready engine to ready via a single warmUp")
+  func ensureEngineWarmDrivesNotReadyToReady() async {
+    let h = makeDriver()
+    #expect(h.adapter.readiness == .notReady)
+    #expect(h.adapter.warmUpCallCount == 0)
+    await h.driver.ensureEngineWarm(reason: .coldPress)
+    #expect(h.adapter.readiness == .ready)
+    // The helper drives the normal load exactly once — no prewarm/dummy step.
+    #expect(h.adapter.warmUpCallCount == 1)
+  }
+
+  @Test("ensureEngineWarm is a no-op when the engine is already ready")
+  func ensureEngineWarmNoOpWhenReady() async throws {
+    let h = makeDriver()
+    try await h.adapter.warmUp()
+    #expect(h.adapter.readiness == .ready)
+    #expect(h.adapter.warmUpCallCount == 1)
+    // Already ready → the helper must not touch the adapter again (no second
+    // load, no drift). Live readiness is the sole gate.
+    await h.driver.ensureEngineWarm(reason: .launch)
+    #expect(h.adapter.warmUpCallCount == 1)
+  }
 
   // MARK: Helpers
 

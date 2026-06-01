@@ -93,6 +93,19 @@ final class RecordingStarter {
       guard !kernelDriver.state.isActive else { return }
     }
     lastRecordingResult?.polishError = nil
+    // #879 — cold-boot press safety. A press on a not-ready engine must NOT mint
+    // a recording session (no audio captured → none discarded). Hand off to the
+    // cold-press policy (pill + warm-up + READY announce) and bail; the user
+    // re-presses after "Ready" and that re-press runs the full warm path below.
+    // Placed after the polish-error reset (cleared on every entry), before the
+    // AX-refresh / overlay / prewarm block.
+    if readinessAtEntry != .ready {
+      ColdPressGuard.handle(
+        overlay: recordingOverlay, active: active,
+        backendTag: isWhisperKit ? "whisperkit" : "parakeet",
+        readiness: readinessAtEntry)
+      return
+    }
     permissions.refreshAccessibilityStatus()
     if !permissions.hasAccessibilityPermission {
       permissions.restartMonitoringIfNeeded()
@@ -217,8 +230,21 @@ final class RecordingStarter {
     let active: KernelDictationDriver =
       asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
     let isWK = asrManager.activeBackendType == .whisperKit
-    if !(isWK ? whisperKitKernelDriver.state.isActive : kernelDriver.state.isActive) {
+    let isStartingFromIdle =
+      !(isWK ? whisperKitKernelDriver.state.isActive : kernelDriver.state.isActive)
+    if isStartingFromIdle {
       lastRecordingResult?.polishError = nil
+      // #879 — same cold-boot press safety as the PTT path. A toggle press that
+      // would START on a not-ready engine shows the pill + warms instead of
+      // minting a session (the toggle-hotkey is a user press too). A toggle that
+      // STOPS an active session is unaffected (guarded by `isStartingFromIdle`).
+      if active.engineReadiness != .ready {
+        ColdPressGuard.handle(
+          overlay: recordingOverlay, active: active,
+          backendTag: isWK ? "whisperkit" : "parakeet",
+          readiness: active.engineReadiness)
+        return
+      }
     }
     permissions.refreshAccessibilityStatus()
     if !permissions.hasAccessibilityPermission {

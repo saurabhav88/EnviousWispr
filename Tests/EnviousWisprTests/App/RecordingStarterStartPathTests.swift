@@ -5,8 +5,8 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
-@testable import EnviousWisprAppKit
 @testable import EnviousWisprASR
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
@@ -37,6 +37,7 @@ import Testing
     let permissions: PermissionsService
     let lockBox: TestRecordingLockedBox
     let lastRecordingResult: LastRecordingResult
+    let overlay: RecordingOverlayPanel
   }
 
   private static func makeFixture() -> Fixture {
@@ -98,7 +99,8 @@ import Testing
       asr: asr,
       permissions: permissions,
       lockBox: lockBox,
-      lastRecordingResult: lastRecordingResult
+      lastRecordingResult: lastRecordingResult,
+      overlay: overlay
     )
   }
 
@@ -147,6 +149,55 @@ import Testing
     // be callable in any state).
     await fx.starter.toggle(source: .toolbar)
     await fx.starter.start()
+  }
+
+  // #879 — cold-boot press safety. The matcher-set boundary is `.ready` vs
+  // not-ready (`.notReady` / `.warming`). A press on a not-ready engine must
+  // mint NO recording session (no audio captured → none discarded) and show
+  // the cold-boot pill; a press on a ready engine must skip the cold branch
+  // entirely.
+  @Test func coldPressMintsNoSessionAndShowsCachingPill() async {
+    let fx = Self.makeFixture()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = false  // → readiness .notReady
+    #expect(fx.kernelDriver.engineReadiness == .notReady)
+
+    await fx.starter.start()
+
+    // No session minted: the kernel never left idle.
+    #expect(fx.kernelDriver.state == .idle)
+    // The honest cold-boot pill is shown (engine-named), not a recording pill.
+    #expect(fx.overlay.currentIntent == .cachingModel(engineLabel: "Parakeet v3"))
+  }
+
+  @Test func coldToggleMintsNoSessionAndShowsCachingPill() async {
+    // The toggle-hotkey / menu / toolbar START path must follow the same
+    // no-session-on-cold contract as the PTT path (Codex #879 review).
+    let fx = Self.makeFixture()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = false  // → readiness .notReady
+    #expect(fx.kernelDriver.engineReadiness == .notReady)
+
+    await fx.starter.toggle(source: .toggleHotkey)
+
+    #expect(fx.kernelDriver.state == .idle)
+    #expect(fx.overlay.currentIntent == .cachingModel(engineLabel: "Parakeet v3"))
+  }
+
+  @Test func warmPressSkipsColdBranch() async {
+    let fx = Self.makeFixture()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true  // → readiness .ready
+    #expect(fx.kernelDriver.engineReadiness == .ready)
+
+    await fx.starter.start()
+
+    // A ready press must NOT take the cold branch — the cold-boot pill is the
+    // only intent `start()` sets from that branch, so its absence proves the
+    // warm path ran.
+    if case .cachingModel = fx.overlay.currentIntent {
+      Issue.record("warm press must not show the cold-boot caching pill")
+    }
   }
 
   @Test func lastUserStopAccessIsThreadedFromFinalizer() async {
