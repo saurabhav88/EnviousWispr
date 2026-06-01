@@ -7,18 +7,30 @@ import Foundation
 // can add real signal-based watchdog recovery without wall-clock timeouts.
 
 /// Hardcoded compute options optimized for Apple Silicon dictation.
-/// Audio encoder + text decoder → Neural Engine, mel spectrogram → GPU.
+/// Audio encoder + text decoder + mel spectrogram → GPU (#879 Phase C).
+///
+/// Moved encoder/decoder off the Neural Engine: the ANE path runs a from-scratch
+/// Espresso→ANE AOT compile on a cold/OS-update-wiped cache that measured ~109s,
+/// blocking the first press behind a long "preparing" window. The GPU path
+/// compiles ~13s cold (measured 2026-06-01) with no first-inference penalty
+/// (ASR 0.70s vs 0.75s) and verbatim jfk output, so the launch warm-up wins the
+/// race against the user's first press. `.cpuAndGPU` requests CPU/GPU placement
+/// and avoids requesting the Neural Engine; CoreML maps that choice per
+/// `MLComputeUnits` semantics on each device (WhisperKit forces CPU-only on the
+/// Simulator). The transcript-quality parity vs the prior ANE path is verified
+/// by live UAT before merge (#879 Phase C gate).
 private let dictationComputeOptions = ModelComputeOptions(
   melCompute: .cpuAndGPU,
-  audioEncoderCompute: .cpuAndNeuralEngine,
-  textDecoderCompute: .cpuAndNeuralEngine
+  audioEncoderCompute: .cpuAndGPU,
+  textDecoderCompute: .cpuAndGPU
 )
 
 /// WhisperKit ASR backend — broad language support with hardcoded dictation-optimized quality.
 ///
 /// Uses Argmax WhisperKit SPM for Whisper-based speech recognition.
 /// Decoding options and compute hardware allocation are hardcoded for optimal
-/// dictation accuracy on Apple Silicon (Neural Engine for encoder/decoder).
+/// dictation accuracy on Apple Silicon (GPU for mel/encoder/decoder — #879
+/// Phase C; the prior Neural Engine path cold-compiled ~109s on a wiped cache).
 ///
 /// The model must be downloaded via WhisperKitSetupService before calling prepare().
 public actor WhisperKitBackend: ASRBackend {
