@@ -46,10 +46,16 @@ import Testing
     let source = try String(
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
+    // #879: raised 250 → 280. The cold-boot press-safety guard runs on BOTH
+    // start paths — `start()` (PTT) and `toggle(source:)` (toggle-hotkey / menu /
+    // toolbar) — so a press on a not-ready engine never mints a session on any
+    // path. The domain logic (pill + warm-up + READY announce) lives off this
+    // type in `ColdPressGuard`; only the small readiness guards live here. No
+    // new collaborator or non-private method.
     #expect(
-      count <= 250,
+      count <= 280,
       """
-      RecordingStarter line count exceeded: \(count) > 250. \
+      RecordingStarter line count exceeded: \(count) > 280. \
       Raise via Bible §30 only.
       """)
   }

@@ -291,6 +291,59 @@ public final class TelemetryService {
       ])
   }
 
+  // MARK: - Cold-boot warm-up (#879)
+
+  /// Cold-boot warm-up began for the active engine. `reason` tags the call site
+  /// (launch / onboarding / engine_swap / cold_press); `warmupInFlight` is true
+  /// when a prior warm-up was already running and this call joined it. Privacy:
+  /// timing/state only, no audio or text (telemetry-privacy boundary).
+  public func coldStartWarmupStarted(engine: String, reason: String, warmupInFlight: Bool) {
+    PostHogSDK.shared.capture(
+      "coldstart.warmup_started",
+      properties: [
+        "engine": engine,
+        "reason": reason,
+        "warmup_in_flight": warmupInFlight,
+      ])
+  }
+
+  /// Cold-boot warm-up reached `.ready`. `durationMs` is `ready_at − warmup_started_at`.
+  public func coldStartWarmupCompleted(engine: String, reason: String, durationMs: Int) {
+    PostHogSDK.shared.capture(
+      "coldstart.warmup_completed",
+      properties: [
+        "engine": engine,
+        "reason": reason,
+        "duration_ms": durationMs,
+        "$value": Double(durationMs) / 1000.0,
+      ])
+  }
+
+  /// Cold-boot warm-up failed — the engine stays not-ready and the next press
+  /// re-kicks it. `error` is the error's description (no audio/text).
+  public func coldStartWarmupFailed(engine: String, reason: String, error: String) {
+    PostHogSDK.shared.capture(
+      "coldstart.warmup_failed",
+      properties: [
+        "engine": engine,
+        "reason": reason,
+        "error": error,
+      ])
+  }
+
+  /// A press landed on a not-yet-ready engine, so NO recording session was
+  /// minted (no audio captured → none discarded). `warmupInFlight` distinguishes
+  /// "joined an in-flight warm-up" from "kicked a fresh one." Pairs with the
+  /// existing `launch.model_preload_completed`. Privacy: state only.
+  public func coldStartPressBlocked(asrBackend: String, warmupInFlight: Bool) {
+    PostHogSDK.shared.capture(
+      "coldstart.press_blocked",
+      properties: [
+        "asr_backend": asrBackend,
+        "warmup_in_flight": warmupInFlight,
+      ])
+  }
+
   public func asrCompleted(
     backend: String, result: String, coldStart: Bool, latencySeconds: Double, charCount: Int
   ) {

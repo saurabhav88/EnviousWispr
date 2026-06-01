@@ -118,6 +118,14 @@ final class PipelineSettingsSync {
         if backend == .whisperKit {
           await self?.whisperKitSetup.detectState()
           self?.onNeedsPreloadObservation?()
+        } else {
+          // #879 — warm the newly-active Parakeet engine on swap so the first
+          // press after switching is instant. Without this, swapping to
+          // Parakeet leaves it cold until the first press (only launch warmed
+          // it, and only if it was the launch-selected backend). Idempotent +
+          // single-flighted; no-op if already loaded. WhisperKit warms via the
+          // observation path above.
+          await self?.kernelDriver.ensureEngineWarm(reason: .engineSwap)
         }
       }
     case .recordingMode:
