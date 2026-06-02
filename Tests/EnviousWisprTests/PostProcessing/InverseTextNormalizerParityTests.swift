@@ -23,22 +23,55 @@ struct InverseTextNormalizerParityTests {
     let slice: String
   }
 
-  /// `<repo>/Tests/EnviousWisprTests/Resources/InverseTextNormalizer/parity.jsonl`.
-  static let fixtureURL: URL = URL(filePath: #filePath)
+  /// `<repo>/Tests/EnviousWisprTests/Resources/InverseTextNormalizer/`.
+  static let resourceDir: URL = URL(filePath: #filePath)
     .deletingLastPathComponent()  // PostProcessing
     .deletingLastPathComponent()  // EnviousWisprTests
     .deletingLastPathComponent()  // Tests
     .deletingLastPathComponent()  // repo root
-    .appending(path: "Tests/EnviousWisprTests/Resources/InverseTextNormalizer/parity.jsonl")
+    .appending(path: "Tests/EnviousWisprTests/Resources/InverseTextNormalizer")
 
-  static func loadRows() throws -> [Row] {
-    let text = try String(contentsOf: fixtureURL, encoding: .utf8)
+  static func loadRows(_ file: String = "parity.jsonl") throws -> [Row] {
+    let text = try String(contentsOf: resourceDir.appending(path: file), encoding: .utf8)
     let decoder = JSONDecoder()
     return try text.split(separator: "\n").compactMap { line in
       let trimmed = line.trimmingCharacters(in: .whitespaces)
       guard trimmed.isEmpty == false else { return nil }
       return try decoder.decode(Row.self, from: Data(trimmed.utf8))
     }
+  }
+
+  /// Byte-for-byte compare the Swift engine against the oracle outputs in `rows`.
+  /// Records a per-category breakdown + sample on failure; returns the mismatch count.
+  static func checkParity(_ rows: [Row], label: String) -> Int {
+    let itn = InverseTextNormalizer()
+    var mismatches: [(Row, String)] = []
+    var perCategoryTotal: [String: Int] = [:]
+    var perCategoryFail: [String: Int] = [:]
+    for row in rows {
+      perCategoryTotal[row.category, default: 0] += 1
+      let got = itn.normalize(row.input)
+      if got != row.expected {
+        perCategoryFail[row.category, default: 0] += 1
+        if mismatches.count < 40 { mismatches.append((row, got)) }
+      }
+    }
+    let failCount = perCategoryFail.values.reduce(0, +)
+    if failCount > 0 {
+      let sample = mismatches.map { item -> String in
+        let (r, got) = item
+        return "  [\(r.category)/\(r.slice)] in=\(r.input.debugDescription) "
+          + "want=\(r.expected.debugDescription) got=\(got.debugDescription)"
+      }.joined(separator: "\n")
+      let byCat = perCategoryFail.sorted { $0.key < $1.key }
+        .map { "\($0.key): \($0.value)/\(perCategoryTotal[$0.key] ?? 0)" }
+        .joined(separator: ", ")
+      let msg =
+        "ITN parity [\(label)]: \(failCount)/\(rows.count) mismatches vs Python oracle.\n"
+        + "By category (fail/total): \(byCat)\nFirst \(mismatches.count):\n\(sample)"
+      Issue.record("\(msg)")
+    }
+    return failCount
   }
 
   /// Two degenerate oracle inputs are non-idempotent in the Python reference too (a 17-word
@@ -57,39 +90,18 @@ struct InverseTextNormalizerParityTests {
   func byteForByteParity() throws {
     let rows = try Self.loadRows()
     #expect(rows.count > 1500, "parity fixture looks truncated: \(rows.count) rows")
+    #expect(Self.checkParity(rows, label: "curated") == 0)
+  }
 
-    let itn = InverseTextNormalizer()
-    var mismatches: [(Row, String)] = []
-    var perCategoryTotal: [String: Int] = [:]
-    var perCategoryFail: [String: Int] = [:]
-
-    for row in rows {
-      perCategoryTotal[row.category, default: 0] += 1
-      let got = itn.normalize(row.input)
-      if got != row.expected {
-        perCategoryFail[row.category, default: 0] += 1
-        if mismatches.count < 40 {
-          mismatches.append((row, got))
-        }
-      }
-    }
-
-    let failCount = perCategoryFail.values.reduce(0, +)
-    if failCount > 0 {
-      let sample = mismatches.map { item -> String in
-        let (r, got) = item
-        return "  [\(r.category)/\(r.slice)] in=\(r.input.debugDescription) "
-          + "want=\(r.expected.debugDescription) got=\(got.debugDescription)"
-      }.joined(separator: "\n")
-      let byCat = perCategoryFail.sorted { $0.key < $1.key }
-        .map { "\($0.key): \($0.value)/\(perCategoryTotal[$0.key] ?? 0)" }
-        .joined(separator: ", ")
-      let msg =
-        "ITN parity: \(failCount)/\(rows.count) mismatches vs Python oracle.\n"
-        + "By category (fail/total): \(byCat)\nFirst \(mismatches.count):\n\(sample)"
-      Issue.record("\(msg)")
-    }
-    #expect(failCount == 0)
+  /// Independent-data faithfulness: rows NOT baked into the curated fixture (the synthetic
+  /// holdout + the public Google-TN set + real dictations, deduped against `parity.jsonl`).
+  /// Passing here means the port is faithful to the oracle on UNSEEN inputs, not just the
+  /// cases captured at build time.
+  @Test("Swift ITN matches the oracle on the independent holdout (unseen inputs)")
+  func holdoutParity() throws {
+    let rows = try Self.loadRows("parity_holdout.jsonl")
+    #expect(rows.count > 3000, "holdout fixture looks truncated: \(rows.count) rows")
+    #expect(Self.checkParity(rows, label: "holdout") == 0)
   }
 
   // MARK: - Safety property: no corruption of natural prose (heaviest-weighted rubric)
