@@ -185,6 +185,39 @@ import Testing
       context.clock.drainPending()
     }
 
+    // MARK: #959 — seam routing: ordinary terminal uses cheap cancel(), wedge uses recoverFromWedge()
+
+    @Test("#959 an ordinary terminal routes through cheap cancel(), never recoverFromWedge()")
+    func ordinaryTerminalUsesCheapCancel() async {
+      let (context, wrapper) = makeWrapper()
+      await apply(.start, to: wrapper)
+      await apply(.cancel, to: wrapper)  // recording → cancelled (an ordinary discard)
+
+      #expect(wrapper.testKernel.state == .cancelled)
+      #expect(context.engine.cancelCallCount >= 1, "ordinary discard must call cheap cancel()")
+      #expect(
+        context.engine.recoverFromWedgeCallCount == 0,
+        "ordinary discard must NOT invoke heavy wedge recovery — that was the #959 bug")
+    }
+
+    @Test("#959 a load wedge routes through recoverFromWedge(), never cheap cancel()")
+    func loadWedgeUsesRecoverFromWedge() async {
+      let (context, wrapper) = makeWrapper(behavior: .wedgeOnLoad)
+      await apply(.start, to: wrapper)
+      context.clock.advance(by: 4)  // let the wedge watcher fire
+      await wrapper.drainReadyWork()
+
+      #expect(wrapper.testKernel.state == .failed(.modelWedged))
+      #expect(
+        context.engine.recoverFromWedgeCallCount == 1,
+        "a genuine load wedge must invoke heavy recovery")
+      #expect(
+        context.engine.cancelCallCount == 0,
+        "the wedge path must NOT also run the cheap discard (no session was begun)")
+
+      context.clock.drainPending()
+    }
+
     // MARK: Heart/limbs — raw text survives a limb failure
 
     @Test("a polish-limb failure still delivers the transcript")

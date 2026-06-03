@@ -147,6 +147,10 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       isLoadInFlight = false
     }
     try await asrManager.loadModel()
+    // #959: a superseded load throws from `loadModel()`, but recheck readiness
+    // anyway so any "returned but not actually loaded" path reports failure to
+    // `ensureEngineWarm()` instead of a false "warm-up succeeded".
+    guard asrManager.isModelLoaded else { throw ASRLoadSupersededError() }
   }
 
   /// Latest phase string observed by the in-flight `loadProgressTickReporter`,
@@ -299,11 +303,10 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   // TODO(#NNN): finalize-wedge watchdog needs Parakeet progress signal.
   var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { nil }
 
-  /// Idempotent discard. Cancels streaming and any wedged in-flight model load,
-  /// clears the retained PCM. `cancelInFlightLoad()` is what unblocks the
-  /// kernel's load-wedge recovery (issue #445); the kernel routes its
-  /// `detectLoadWedge` recovery through this same `cancel()`.
-  func cancel() async {
+  /// The cheap, model-preserving teardown shared by `cancel()` and
+  /// `recoverFromWedge()`: cancel streaming, clear per-session state. Touches
+  /// neither the model load nor the XPC connection.
+  private func discardSession() async {
     isCancelled = true
     isTerminal = true
     lastResult = nil
@@ -315,6 +318,33 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       streamingActive = false
       await asrManager.cancelStreaming()
     }
+  }
+
+  /// #959 CHEAP, model-preserving discard — what every ordinary terminal
+  /// (`noSpeech`/`discarded`/`cancelled`) routes through. A healthy RESIDENT
+  /// model stays loaded and `readiness` stays `.ready` (the warm-engine bug fix).
+  /// BUT a load that is still IN FLIGHT (a cold warm-up the user cancelled) is
+  /// released via `cancelInFlightLoad()` so the kernel's `warmUp()` await
+  /// unblocks promptly instead of hanging the overlay until the load finishes
+  /// (Codex code-diff P1). The `isLoadInFlight` gate is the distinction: a warm
+  /// resident model has no load in flight, so this never tears down a healthy
+  /// engine — that IS the seam split.
+  func cancel() async {
+    await discardSession()
+    if isLoadInFlight {
+      asrManager.cancelInFlightLoad()
+    }
+  }
+
+  /// #959 HEAVY wedge recovery. The cheap discard PLUS an UNCONDITIONAL
+  /// `cancelInFlightLoad()` — the issue #445 service-kill that invalidates the
+  /// XPC connection (terminating the service-side wedged load OR a stuck batch
+  /// decode, which has no in-flight load task) and forces a fresh reload. Called
+  /// ONLY by the kernel's load-wedge / finalize-wedge detectors.
+  /// `cancelInFlightLoad()` is synchronous and non-blocking, so no deadline is
+  /// needed for the Parakeet path.
+  func recoverFromWedge() async {
+    await discardSession()
     asrManager.cancelInFlightLoad()
   }
 

@@ -27,6 +27,7 @@ enum FakeEngineEvent: Equatable, Sendable {
   case observeSpeechSegments(count: Int)
   case finalize
   case cancel
+  case recoverFromWedge
 }
 
 /// Synthetic error type for the cache-preload failure-bypass test
@@ -108,6 +109,10 @@ final class FakeEngine: ASREngineAdapter {
   /// audio through instead of `nil`.
   private(set) var lastFinalizeBatchSamples: [Float]? = nil
   private(set) var cancelCallCount = 0
+  /// #959: counts `recoverFromWedge()` calls so seam tests can assert ordinary
+  /// terminals route through cheap `cancel()` while only the wedge detectors
+  /// route through heavy `recoverFromWedge()`.
+  private(set) var recoverFromWedgeCallCount = 0
   private(set) var lastUnloadPolicy: ModelUnloadPolicy?
   private(set) var lastSessionID: SessionID?
   /// The `streaming` flag the kernel passed on the last `beginSession()` —
@@ -246,11 +251,12 @@ final class FakeEngine: ASREngineAdapter {
     case .wedgeOnLoad:
       // The load emits a few progress ticks (arming the kernel's wedge
       // watcher) then goes silent — a genuine cadence stall (PR-3 plan §3.7).
-      // It suspends until `cancel()` resumes us; best-effort load
+      // It suspends until `recoverFromWedge()` resumes us (#959: the kernel's
+      // load-wedge detector calls that, not cheap `cancel()`); best-effort load
       // cancellation (D6): `warmUp()` throws once released.
-      // If `cancel()` ALREADY ran (cancel-before-warmUp ordering), there is no
-      // future `cancel()` to resume the continuation — parking would hang.
-      // Throw immediately instead.
+      // If a discard ALREADY ran (cancel-before-warmUp ordering set `isCancelled`),
+      // there is no future release to resume the continuation — parking would
+      // hang. Throw immediately instead.
       if isCancelled { throw ASREngineError.wedged }
       emitLoadTick()
       emitLoadTick()
@@ -377,7 +383,23 @@ final class FakeEngine: ASREngineAdapter {
     isTerminal = true
     // PR-5 Rung 2A: cancellation invalidates any prior session's result.
     lastResult = nil
-    // Release a wedged `warmUp()` / `finalize()` (best-effort, D6).
+    // #959: cheap discard — it does NOT release a wedged `warmUp()`/`finalize()`.
+    // The kernel only routes ordinary terminals here; releasing a wedge is the
+    // job of `recoverFromWedge()` below.
+  }
+
+  /// #959 HEAVY wedge recovery. Does the same teardown as `cancel()` PLUS
+  /// releasing any wedged `warmUp()` / `finalize()` continuation (best-effort,
+  /// D6) — the behavior that used to live in `cancel()`. Tracked under its OWN
+  /// counter (not `cancelCallCount`) so seam tests can assert routing: the
+  /// kernel's load-wedge / finalize-wedge detectors call this; ordinary
+  /// terminals call cheap `cancel()`.
+  func recoverFromWedge() async {
+    recoverFromWedgeCallCount += 1
+    eventLog.append(.recoverFromWedge)
+    isCancelled = true
+    isTerminal = true
+    lastResult = nil
     if let continuation = loadWedgeContinuation {
       loadWedgeContinuation = nil
       continuation.resume()

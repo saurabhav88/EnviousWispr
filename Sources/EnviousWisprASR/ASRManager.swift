@@ -23,6 +23,28 @@ public final class ASRManager: ASRManagerInterface {
   /// Single-flight guard: if a load is already in progress, callers await it instead of starting a new one.
   private var inFlightLoadTask: Task<Void, any Error>?
 
+  /// #959 readiness-integrity token (see `ASRManagerProxy.loadGeneration`).
+  private var loadGeneration: UInt64 = 0
+
+  /// #959 single-flight identity (see `ASRManagerProxy.loadTaskSeq`).
+  private var loadTaskSeq: UInt64 = 0
+  private var activeLoadTaskID: UInt64 = 0
+
+  /// Bump the load generation so an in-flight load completion is superseded, and
+  /// log the `ready → notReady` transition tagged with cause. Called before any
+  /// supersession early-return. Ordinary session discard never calls this.
+  private func invalidateCurrentLoadGeneration(cause: String) {
+    loadGeneration &+= 1
+    if isModelLoaded {
+      Task {
+        await AppLogger.shared.log(
+          "[ASRManager] readiness ready→notReady (cause=\(cause)) backend=\(activeBackendType.rawValue)",
+          level: .info, category: "ASR"
+        )
+      }
+    }
+  }
+
   // Phase G5: existential-typed for test injection. Production callers pass
   // nothing; the defaults preserve today's wiring exactly. Tests pass fakes
   // that report `isReady=true` without a real model load, unblocking
@@ -63,7 +85,13 @@ public final class ASRManager: ASRManagerInterface {
 
   /// Switch to a different backend. Unloads the previous one.
   public func switchBackend(to type: ASRBackendType) async {
+    // #959: same-backend no-op guard FIRST so it never supersedes a valid load.
     guard type != activeBackendType else { return }
+    invalidateCurrentLoadGeneration(cause: "switch")
+    // #959 (Codex code-diff P2): retire the old backend's in-flight load task so
+    // a later `loadModel()` for the new backend starts fresh, not joins the stale.
+    inFlightLoadTask?.cancel()
+    inFlightLoadTask = nil
     await activeBackend.unload()
     activeBackendType = type
     isModelLoaded = false
@@ -80,6 +108,8 @@ public final class ASRManager: ASRManagerInterface {
 
     let task = Task { @MainActor [weak self] in
       guard let self else { return }
+      // #959: capture the load generation; refuse to mark loaded if superseded.
+      let gen = self.loadGeneration
       self.downloadProgress = 0
       self.downloadPhase = "Preparing download..."
       self.downloadDetail = ""
@@ -100,10 +130,19 @@ public final class ASRManager: ASRManagerInterface {
       self.downloadProgress = 1.0
       self.downloadPhase = ""
       self.downloadDetail = ""
-      self.isModelLoaded = await self.activeBackend.isReady
+      // #959: read readiness first, THEN guard, so a cancel/unload/switch that
+      // landed during the `isReady` await can't be overwritten by a stale write.
+      let ready = await self.activeBackend.isReady
+      guard gen == self.loadGeneration else { throw ASRLoadSupersededError() }
+      self.isModelLoaded = ready
     }
+    loadTaskSeq &+= 1
+    let myTaskID = loadTaskSeq
     inFlightLoadTask = task
-    defer { inFlightLoadTask = nil }
+    activeLoadTaskID = myTaskID
+    // #959 (Codex code-diff P1): identity-guarded cleanup — only retire the
+    // handle if it is still ours, so a superseded load can't clear a retry's task.
+    defer { if activeLoadTaskID == myTaskID { inFlightLoadTask = nil } }
     try await task.value
   }
 
@@ -162,7 +201,10 @@ public final class ASRManager: ASRManagerInterface {
   /// Unload the active backend, freeing model RAM.
   /// Refuses to unload if a streaming session is active — cancel streaming first.
   public func unloadModel() async {
-    guard isModelLoaded else { return }
+    // #959: a live streaming session means the model is in use and there is no
+    // in-flight load to supersede — refuse FIRST, before bumping the generation,
+    // so the readiness `ready→notReady` log never falsely fires on a refusal
+    // (Codex code-diff P2 note). The model stays loaded.
     if isStreaming {
       Task {
         await AppLogger.shared.log(
@@ -172,6 +214,18 @@ public final class ASRManager: ASRManagerInterface {
       }
       return
     }
+    // Bump before the loaded-guard so an in-flight load (flag still false) is
+    // superseded too, not just a resident model.
+    invalidateCurrentLoadGeneration(cause: "unload")
+    // #959 (Codex re-review P2): retire the superseded in-flight load task the
+    // same way `switchBackend()` / `cancelInFlightLoad()` do — otherwise a retry
+    // that joins via single-flight before the doomed task finishes propagates
+    // `ASRLoadSupersededError` instead of starting a fresh load. Must run BEFORE
+    // the loaded-guard, because the in-flight case is exactly when `isModelLoaded`
+    // is still false and the guard would early-return with the stale handle live.
+    inFlightLoadTask?.cancel()
+    inFlightLoadTask = nil
+    guard isModelLoaded else { return }
     await activeBackend.unload()
     isModelLoaded = false
   }
@@ -181,6 +235,8 @@ public final class ASRManager: ASRManagerInterface {
   /// next press triggers a fresh load. Mostly used in tests; production runs
   /// against `ASRManagerProxy` which has the full connection-invalidate path.
   public func cancelInFlightLoad() {
+    // #959: supersede the current load first so a stale completion can't resurrect it.
+    invalidateCurrentLoadGeneration(cause: "recoverFromWedge")
     inFlightLoadTask?.cancel()
     inFlightLoadTask = nil
     isModelLoaded = false

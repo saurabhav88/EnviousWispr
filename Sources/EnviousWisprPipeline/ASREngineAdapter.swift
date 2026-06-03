@@ -271,7 +271,25 @@ public protocol ASREngineAdapter: AnyObject {
 
   /// Idempotent discard. Calling it 2+ times has the same effect as once
   /// (PR-1 §B.2.2).
+  ///
+  /// #959: `cancel()` is the CHEAP, model-preserving session discard — the only
+  /// thing ordinary terminals (`noSpeech`/`discarded`/`cancelled`) call. It stops
+  /// streaming and clears per-session state, but MUST NOT tear down a healthy
+  /// resident model or invalidate the engine's load. A model that was `.ready`
+  /// before `cancel()` (no load in flight) stays `.ready`. For a genuinely
+  /// wedged load/decode, the kernel's wedge detectors call `recoverFromWedge()`
+  /// instead — never `cancel()`.
   func cancel() async
+
+  /// #959: HEAVY wedge recovery — tear the engine down hard so the next press
+  /// reloads fresh. Called ONLY by the kernel's load-wedge / finalize-wedge
+  /// detectors, never for an ordinary session discard. Does everything `cancel()`
+  /// does PLUS the engine-specific kill (Parakeet: XPC service teardown via
+  /// `cancelInFlightLoad()`; WhisperKit: in-process backend unload). MUST be
+  /// best-effort and deadline-bounded so a wedged in-process decode cannot hang
+  /// the kernel's recovery path. After it returns, `readiness` is expected
+  /// `.notReady` and the next press warms the engine.
+  func recoverFromWedge() async
 
   // MARK: Engine interruption
 

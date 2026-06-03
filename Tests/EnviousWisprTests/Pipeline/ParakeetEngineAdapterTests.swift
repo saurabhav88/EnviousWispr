@@ -206,6 +206,64 @@ import Testing
     }
   }
 
+  // MARK: #959 — cheap cancel() vs heavy recoverFromWedge() seam split
+
+  @Test("#959 cancel() preserves a loaded model — no service-kill, readiness stays .ready")
+  func cancelPreservesLoadedModel() async throws {
+    let manager = StubParakeetASRManager()
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    try await adapter.warmUp()
+    #expect(adapter.readiness == .ready)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: true)
+    await adapter.cancel()
+    #expect(
+      manager.cancelInFlightLoadCount == 0,
+      "ordinary discard must NOT call cancelInFlightLoad — the bug was tearing down a healthy engine"
+    )
+    #expect(manager.isModelLoaded, "resident model stays loaded after a cheap discard")
+    #expect(adapter.readiness == .ready, "readiness must remain .ready after a discard (#959)")
+  }
+
+  @Test("#959 recoverFromWedge() tears the engine down — cancelInFlightLoad fires exactly once")
+  func recoverFromWedgeTearsDownEngine() async throws {
+    let manager = StubParakeetASRManager()
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    try await adapter.warmUp()
+    await adapter.recoverFromWedge()
+    #expect(
+      manager.cancelInFlightLoadCount == 1,
+      "wedge recovery is the ONLY path that invokes the #445 service-kill")
+  }
+
+  @Test("#959 cancel() still cancels an active streaming session (cheap-discard duties intact)")
+  func cancelStillCancelsStreaming() async throws {
+    let manager = StubParakeetASRManager()
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: true)
+    await adapter.cancel()
+    #expect(manager.cancelStreamingCount == 1, "cancel() must still tear down streaming")
+    #expect(manager.cancelInFlightLoadCount == 0, "but must NOT kill the model load")
+  }
+
+  @Test("#959 cancel() during an IN-FLIGHT cold load releases it so the kernel unblocks (Codex P1)")
+  func cancelDuringInFlightLoadReleasesIt() async throws {
+    let manager = StubParakeetASRManager()
+    manager.gateLoadModel = true
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let warmTask = Task { @MainActor in try? await adapter.warmUp() }
+    // Wait until warmUp() has entered loadModel() (parked on the gate) — now a
+    // load is genuinely in flight (`isLoadInFlight == true`).
+    while manager.loadModelCount == 0 { await Task.yield() }
+    await adapter.cancel()
+    #expect(
+      manager.cancelInFlightLoadCount == 1,
+      "cancel during an in-flight cold load must release it so the kernel's warmUp await unblocks")
+    manager.releaseLoadGate()
+    _ = await warmTask.value
+  }
+
   @Test("finalize drains in-flight streaming feeds before finalizeStreaming")
   func finalizeDrainsStreamingFeeds() async throws {
     let manager = StubParakeetASRManager()
@@ -437,6 +495,10 @@ final class StubParakeetASRManager: ASRManagerInterface {
   /// When set, `finalizeStreaming` yields many times before returning — models
   /// a finalize suspended in ASR while a new session begins.
   var slowFinalizeStreaming = false
+  /// #959: when set, `loadModel()` parks until `releaseLoadGate()` so a test can
+  /// drive `cancel()` while a cold load is genuinely in flight (`isLoadInFlight`).
+  var gateLoadModel = false
+  private var loadGate: CheckedContinuation<Void, Never>?
 
   // Observed counters
   var loadModelCount = 0
@@ -458,7 +520,15 @@ final class StubParakeetASRManager: ASRManagerInterface {
 
   func loadModel() async throws {
     loadModelCount += 1
+    if gateLoadModel {
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in loadGate = c }
+    }
     isModelLoaded = true
+  }
+
+  func releaseLoadGate() {
+    loadGate?.resume()
+    loadGate = nil
   }
   func unloadModel() async {}
   func setInitialBackendType(_ type: ASRBackendType) { activeBackendType = type }

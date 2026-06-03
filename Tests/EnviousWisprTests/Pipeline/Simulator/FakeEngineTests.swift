@@ -181,16 +181,19 @@ struct FakeEngineTests {
     }
   }
 
-  @Test("wedgeOnFinalize: cancel() releases the wedged finalize as .cancelled")
-  func wedgeOnFinalizeReleasedByCancel() async {
+  @Test(
+    "wedgeOnFinalize: recoverFromWedge() releases the wedged finalize as .cancelled (cancel() does not)"
+  )
+  func wedgeOnFinalizeReleasedByRecoverFromWedge() async {
     let clock = FakeClock()
     let engine = FakeEngine(behavior: .wedgeOnFinalize, clock: clock)
     let finalizeTask = Task { @MainActor in await engine.finalize(batchSamples: nil) }
     await Task.yield()
-    await engine.cancel()
+    // #959: the heavy wedge-recovery path releases the wedge — NOT cheap cancel().
+    await engine.recoverFromWedge()
     let outcome = await finalizeTask.value
     guard case .cancelled = outcome else {
-      Issue.record("expected .cancelled after cancel released the wedge, got \(outcome)")
+      Issue.record("expected .cancelled after recoverFromWedge released the wedge, got \(outcome)")
       return
     }
   }
