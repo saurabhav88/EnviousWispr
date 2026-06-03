@@ -44,5 +44,11 @@
 	<string>$(SU_FEED_URL)</string>
 	<key>SUPublicEDKey</key>
 	<string>jHq1RIQKDmtO64qtCdZ6jNdHNFrfyScE16yuu+ufvDw=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>3600</integer>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
 </dict>
 </plist>

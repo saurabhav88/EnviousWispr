@@ -19,6 +19,18 @@ struct UnifiedWindowView: View {
                 if section == .whatsNew {
                   WhatsNewSidebarRow(isUnread: settings.hasUnreadWhatsNew)
                     .tag(section)
+                } else if section == .checkForUpdates {
+                  // Issue #958: action row (D1), NOT a navigation tag — fires the
+                  // attended check on tap and never becomes `selectedSection`.
+                  // Sparkle's own UI is the feedback.
+                  Button {
+                    updateCoordinatorHolder.coordinator?.checkForUpdatesFromSettings()
+                  } label: {
+                    Label(section.label, systemImage: section.icon)
+                      .frame(maxWidth: .infinity, alignment: .leading)
+                      .contentShape(Rectangle())
+                  }
+                  .buttonStyle(.plain)
                 } else {
                   Label(section.label, systemImage: section.icon)
                     .tag(section)
@@ -92,6 +104,10 @@ struct UnifiedWindowView: View {
       MemorySettingsView()
     case .permissions:
       PermissionsSettingsView()
+    case .checkForUpdates:
+      // Issue #958: D1 action row never selects this case (no `.tag`), but the
+      // exhaustive switch requires an arm.
+      EmptyView()
     #if DEBUG
       case .diagnostics:
         DiagnosticsSettingsView()

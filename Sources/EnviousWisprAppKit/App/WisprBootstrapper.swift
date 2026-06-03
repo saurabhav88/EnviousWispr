@@ -530,6 +530,8 @@ public final class WisprBootstrapper {
 
   public func applicationWillFinishLaunching() {
     sparkleUpdateController.startUpdater()
+    // #958: proactive launch check, right after startUpdater per Sparkle guidance.
+    sparkleUpdateController.updateCoordinator?.checkForUpdatesProactively(trigger: "launch")
   }
 
   public func applicationDidFinishLaunching() {
@@ -538,6 +540,8 @@ public final class WisprBootstrapper {
 
   public func applicationDidBecomeActive() {
     appLifecycleCoordinator.runDidBecomeActive()
+    // #958: proactive foreground check (post-sleep freshness), strict >=3600 gated.
+    sparkleUpdateController.updateCoordinator?.checkForUpdatesProactively(trigger: "foreground")
   }
 
   public func applicationWillTerminate() {
