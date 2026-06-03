@@ -18,44 +18,68 @@ import Testing
 @Suite @MainActor
 struct SetupCoordinatorTests {
 
-  /// Active backend = parakeet → preload action must NOT fire even if the user
-  /// later flips WhisperKit to .ready (no observation should be running).
-  @Test func parakeetBackendSkipsPreload() async throws {
+  /// With setup forced `.ready`, the parakeet backend guard is the sole preload
+  /// suppressor: an active parakeet backend must skip preload even when WhisperKit
+  /// setup is ready. Deleting or inverting the backend guard makes preload fire
+  /// for parakeet → this test goes red. (Before #898 both tests used a parakeet
+  /// backend whose setup could never reach `.ready`, so the readiness gate alone
+  /// guaranteed count == 0 and the backend guard was never exercised.)
+  @Test(
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/898", "parakeet backend guard untested"))
+  func parakeetBackendSkipsPreloadWhenReady() async throws {
     let fakeASR = FakeASRManager(backend: .parakeet)
     let counter = InvocationCounter()
     let coord = SetupCoordinator(
       asrManager: fakeASR,
+      setupStateReader: { .ready },
       preloadAction: { @MainActor in counter.increment() }
     )
 
     coord.startPreloadObservation()
+    await drainMainActorTasks()
 
-    // Yield once so the observation Task gets a chance to run and bail out
-    // on the .parakeet guard.
-    try await Task.sleep(nanoseconds: 50_000_000)
-
-    #expect(counter.count == 0, "preloadAction must not fire when active backend is parakeet")
+    #expect(
+      counter.count == 0,
+      "preloadAction must not fire for a parakeet backend even when setup is .ready"
+    )
   }
 
-  /// startPreloadObservation can be called repeatedly; each call cancels the
-  /// prior observation Task. Verify the invocation completes without crashing
-  /// (cancellation correctness — the task body uses `[weak self]` and a
-  /// while-not-cancelled loop).
-  @Test func repeatedStartCancelsPrior() async throws {
-    let fakeASR = FakeASRManager(backend: .parakeet)
+  /// With setup forced `.ready` and WhisperKit the active backend, rapid repeated
+  /// starts coalesce to a single preload: each `startPreloadObservation()` cancels
+  /// the prior observation Task before it runs, so only the last survives and fires
+  /// preload exactly once. Deleting `whisperKitPreloadTask?.cancel()` leaks all
+  /// three observers → count == 3 → this test goes red.
+  @Test(
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/898",
+      "repeated-start cancellation untested"))
+  func repeatedStartCoalescesToSinglePreload() async throws {
+    let fakeASR = FakeASRManager(backend: .whisperKit)
     let counter = InvocationCounter()
     let coord = SetupCoordinator(
       asrManager: fakeASR,
+      setupStateReader: { .ready },
       preloadAction: { @MainActor in counter.increment() }
     )
 
     coord.startPreloadObservation()
     coord.startPreloadObservation()
     coord.startPreloadObservation()
+    await drainMainActorTasks()
 
-    try await Task.sleep(nanoseconds: 50_000_000)
+    #expect(
+      counter.count == 1,
+      "rapid repeated starts must cancel prior observers and preload exactly once"
+    )
+  }
 
-    #expect(counter.count == 0)
+  /// Drain the main-actor task queue so the observation Task runs to completion
+  /// (firing preload) or bails at a guard, without a wall-clock sleep. The
+  /// observation Task is main-actor-isolated, so repeatedly yielding the test
+  /// task lets it make full progress (`tests-no-real-time-scheduling-precision`).
+  private func drainMainActorTasks(_ iterations: Int = 20) async {
+    for _ in 0..<iterations { await Task.yield() }
   }
 }
 
