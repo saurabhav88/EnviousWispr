@@ -672,6 +672,31 @@ public final class TelemetryService {
     )
   }
 
+  /// Issue #958: a proactive launch/foreground trigger evaluated, whether it
+  /// actually fired a background check, and why. Emitted on EVERY return path.
+  /// Bounded cardinality: `trigger ∈ {launch, foreground}`, `fired ∈ {true,false}`,
+  /// `reason ∈ {fired, cooldown, auto_checks_off, no_updater, session_in_progress}`.
+  /// The non-fired cases are what the existing `update.sparkle_cycle_finished`
+  /// cannot show.
+  public func updateProactiveCheckTriggered(trigger: String, fired: Bool, reason: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "update.proactive_check_triggered",
+          stringProps: ["trigger": trigger, "reason": reason],
+          boolProps: ["fired": fired]
+        ))
+    #endif
+    PostHogSDK.shared.capture(
+      "update.proactive_check_triggered",
+      properties: [
+        "trigger": trigger,
+        "fired": fired,
+        "reason": reason,
+      ]
+    )
+  }
+
   public func updateSparkleDefaultShown(version: String, isCritical: Bool, reason: String) {
     #if DEBUG
       testEventHook?(

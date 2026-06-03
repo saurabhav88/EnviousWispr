@@ -12,6 +12,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   case clipboard
   case memory
   case permissions
+  case checkForUpdates
   #if DEBUG
     case diagnostics
   #endif
@@ -30,6 +31,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .clipboard: return "Clipboard"
     case .memory: return "Performance"
     case .permissions: return "Permissions"
+    case .checkForUpdates: return "Check for Updates"
     #if DEBUG
       case .diagnostics: return "Diagnostics"
     #endif
@@ -48,6 +50,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .clipboard: return "clipboard"
     case .memory: return "memorychip"
     case .permissions: return "lock.shield"
+    case .checkForUpdates: return "arrow.triangle.2.circlepath"
     #if DEBUG
       case .diagnostics: return "ladybug"
     #endif
@@ -60,7 +63,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .speechEngine, .audio, .shortcuts: return .record
     case .aiPolish, .wordCorrection: return .process
     case .clipboard: return .output
-    case .memory, .permissions: return .system
+    case .memory, .permissions, .checkForUpdates: return .system
     #if DEBUG
       case .diagnostics: return .system
     #endif
