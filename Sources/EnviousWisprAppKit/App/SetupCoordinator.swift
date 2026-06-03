@@ -21,12 +21,23 @@ final class SetupCoordinator {
   private let asrManager: any ASRManagerInterface
   private let preloadAction: @MainActor () async -> Void
 
+  /// Reads WhisperKit setup readiness for the preload gate. Defaults to the owned
+  /// `whisperKitSetup` service, so production behavior is unchanged. A unit test
+  /// injects a reader that returns `.ready` to prove the parakeet backend guard —
+  /// not the (test-unreachable) readiness gate — is what suppresses preload (#898).
+  private let setupStateReader: @MainActor () -> WhisperKitSetupState
+
   init(
     asrManager: any ASRManagerInterface,
+    setupStateReader: (@MainActor () -> WhisperKitSetupState)? = nil,
     preloadAction: @escaping @MainActor () async -> Void
   ) {
     self.asrManager = asrManager
     self.preloadAction = preloadAction
+    // Bind the default reader inside init capturing the owned service as a local
+    // (a default parameter value cannot reference `self`).
+    let service = whisperKitSetup
+    self.setupStateReader = setupStateReader ?? { service.setupState }
   }
 
   /// Observe `whisperKitSetup.setupState` and invoke `preloadAction` when it becomes
@@ -44,7 +55,7 @@ final class SetupCoordinator {
         // restarts this observer; the re-entry sees the new activeBackendType.
         guard self.asrManager.activeBackendType == .whisperKit else { return }
 
-        let currentState = self.whisperKitSetup.setupState
+        let currentState = self.setupStateReader()
         if currentState == .ready {
           await self.preloadAction()
           return
