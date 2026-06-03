@@ -8,9 +8,17 @@ import Foundation
 ///
 /// Provenance (durable artifact tree, not committed here):
 ///   `~/Developer/EnviousLabs/EnviousWispr-artifacts/issue-832-classifier-probe/`
-///   - model:     `phase3-models/MiniLM-L6-13/fixed.mlpackage`
+///   - model:     `phase3-models/MiniLM-L6-reformat2-13/fixed.mlpackage` (#949 retrain)
 ///   - tokenizer: `phase2-models/MiniLM-L6-13/checkpoint-best/{tokenizer.json,tokenizer_config.json}`
-///   - threshold: `phase2-models/MiniLM-L6-13/eval.json` → `T_clf`
+///     (UNCHANGED — same base; tokenizer folder + contract not re-shipped)
+///   - threshold: `phase2-models/MiniLM-L6-reformat2-13/eval.json` → `T_clf`
+///
+/// #949 retrain (2026-06-02): same MiniLM-L6 seed 13, fine-tuned one gentle epoch
+/// (lr 2e-5) on the v5 corpus + ~3.1k synthesized faithful-reformat KEEP pairs and
+/// adversarial unfaithful-reformat DISCARD pairs, so faithful contact-block reformats
+/// (phone/date/address) score KEEP instead of being discarded as composed. No-regression
+/// gates green: locked-test discard-recall 98.67% (floor 98.5%; shipped 98.89%), KEEP
+/// FPR-95 2.77%, reformat false-discard 67.5% → 3.0%, Core ML drift 0 band-flips.
 ///
 /// The model ships as `OutputClassifier.mlpackage` in the APP bundle's
 /// `Contents/Resources` (an app-target folder reference) and is compiled to a
@@ -31,7 +39,10 @@ public enum OutputClassifierManifest {
 
   /// Sigmoid-probability threshold: probability >= this ⇒ DISCARD (fall back to
   /// raw transcript). Sourced from the trained checkpoint's `eval.json` `T_clf`.
-  public static let discardThreshold = 0.10498441010713577
+  /// #949: re-swept on the reformat-augmented dev (max discard-recall @ KEEP FPR-95
+  /// ≤ 3%), down from 0.10498441010713577 — the lower threshold keeps faithful
+  /// reformats (the #949 case scores 0.025) while holding hallucination recall.
+  public static let discardThreshold = 0.08155437558889389
 
   /// Fixed Core ML tensor shape locked at Phase 3 (NOT `model_max_length=512`).
   public static let maxLength = 128
@@ -61,7 +72,7 @@ public enum OutputClassifierManifest {
   /// `mlpackageSHA256` = sha256 over sorted "<relpath> <filesha256>" lines of
   /// the committed `OutputClassifier.mlpackage` directory.
   public static let mlpackageSHA256 =
-    "80bdecbec8a100f4d7b4b7a9640f0dd6400aab8abd9a63abba08a6638d7baf28"
+    "0770ab0559ac90f95358a85a19845fa2745fc182ab06637ecb005b52d7bdce2d"
   /// The shipped `tokenizer-contract.json` `contractHash` (canonical contract
   /// bytes ++ tokenizer.json ++ tokenizer_config.json). Recomputed and verified
   /// at runtime; mismatch ⇒ classifier disabled, fail open.
