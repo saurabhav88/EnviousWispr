@@ -323,6 +323,12 @@ jobs:
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
           VERSION: ${{ needs.preflight.outputs.version }}
+          # Issue #953: when set, forces hosts BELOW this version onto Sparkle's
+          # attended (prompted) update path instead of a silent background install
+          # (Sparkle marks the item a majorUpgrade -> SPUAutomaticUpdateDriver defers).
+          # Set deliberately per high-risk release (bundle/signing/installer/size change);
+          # leave empty for ordinary patches. Empty -> element omitted entirely.
+          SPARKLE_MIN_AUTOUPDATE_VERSION: "2.1.0"
         run: |
           DMG_PATH="build/EnviousWispr-${VERSION}.dmg"
           DMG_SIZE=$(stat -f%z "$DMG_PATH")
@@ -343,13 +349,20 @@ jobs:
             exit 1
           fi
 
+          # Issue #953: optional major-upgrade floor. Build the element only when set;
+          # an empty element behaves like "absent" to Sparkle but we omit it cleanly.
+          MIN_AUTOUPDATE_ELEMENT=""
+          if [[ -n "${SPARKLE_MIN_AUTOUPDATE_VERSION}" ]]; then
+            MIN_AUTOUPDATE_ELEMENT=$'\n                '"<sparkle:minimumAutoupdateVersion>${SPARKLE_MIN_AUTOUPDATE_VERSION}</sparkle:minimumAutoupdateVersion>"
+          fi
+
           mkdir -p build
           cat > build/appcast-entry.xml << ENTRY
               <item>
                 <title>Version ${VERSION}</title>
                 <pubDate>${DATE}</pubDate>
                 <sparkle:version>${VERSION}</sparkle:version>
-                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>${MIN_AUTOUPDATE_ELEMENT}
                 <enclosure
                   url="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/EnviousWispr-${VERSION}.dmg"
                   length="${DMG_SIZE}"

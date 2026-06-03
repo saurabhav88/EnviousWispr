@@ -28,6 +28,27 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.1.1
+
+    Entry(
+      id: "speak-naturally-see-it-written",
+      icon: "textformat.123",
+      title: "Speak it naturally, see it written",
+      description:
+        "EnviousWispr now formats what you dictate the way you actually mean it, automatically: phone numbers, money, percentages, years, dates, times, ordinals, decimals, number ranges, emails, and web addresses. Say \"five five five, one two three, four five six seven\" and you get 555-123-4567; \"eighty million dollars\" becomes $80 million; \"nineteen eighty seven\" becomes 1987. It even works when AI polish is turned off.",
+      category: .newFeatures,
+      version: "2.1.1"
+    ),
+    Entry(
+      id: "more-reliable-updates",
+      icon: "arrow.triangle.2.circlepath",
+      title: "More reliable updates",
+      description:
+        "We improved how EnviousWispr installs new versions, so updates land cleanly instead of getting stuck partway. And if an update ever has trouble, the copy you already have keeps working.",
+      category: .fasterAndMoreReliable,
+      version: "2.1.1"
+    ),
+
     // MARK: - v2.1.0
 
     Entry(
