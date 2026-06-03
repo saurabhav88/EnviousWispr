@@ -51,6 +51,15 @@ final class KernelFinalizationOutcome {
   var polishDurationSeconds: Double = 0
   var pasteDurationSeconds: Double = 0
   var pasteResult: PasteDeliveryResult?
+  /// #145: deterministic ITN run facts, threaded onto `dictation.completed`.
+  /// Metadata only (`telemetry-privacy-boundary`). `itnFloorDelivered` is derived
+  /// in `updateTranscriptMetrics` from `itnChanged` + the polish outcome.
+  var itnRan = false
+  var itnChanged = false
+  var itnSkipReason: String?
+  var itnLatencyMs: Double?
+  var itnLenBefore: Int?
+  var itnLenAfter: Int?
 
   init() {}
 }
@@ -127,19 +136,40 @@ struct KernelFinalizationWiring {
       // result; planner reads it via `LLMPolishStep.languageDetection`.
       steps.llmPolish.languageDetection =
         (adapter as? any ASREngineLanguageIdentifying)?.lastLanguageDetection
+      // #145: per-session capability hint for the ITN gate. Use the CAPABILITY,
+      // never an engine-identity literal (`EngineIdentityFreezeTests` bans
+      // identity reads outside the factory). Mirrors the `languageDetection`
+      // wire above.
+      steps.inverseTextNormalization.backendSupportsLID =
+        adapter.capabilities.supportsLanguageDetection
       let language: String? = {
         if case .locked(let code) = context.config?.languageMode { return code }
         return nil
       }()
       let start = CFAbsoluteTimeGetCurrent()
+      // #145: ITN runs BEFORE polish so it doubles as the raw-fallback floor —
+      // polish-rejected/disabled both deliver the post-ITN text.
       let result = try await textProcessingRunner.run(
         rawText: raw,
         language: language,
         targetAppName: context.targetApp?.localizedName,
         steps: [
-          steps.wordCorrection, steps.fillerRemoval, steps.emojiFormatter, steps.llmPolish,
+          steps.wordCorrection, steps.fillerRemoval, steps.emojiFormatter,
+          steps.inverseTextNormalization, steps.llmPolish,
         ])
       let ctx = result.context
+      // #145: thread the ITN run outcome onto `dictation.completed` (metadata
+      // only — `telemetry-privacy-boundary`). Read on the same actor right after
+      // the chain; `itn_floor_delivered` is computed later in
+      // `updateTranscriptMetrics` where the polish outcome is known.
+      if let itn = steps.inverseTextNormalization.lastRun {
+        outcome.itnRan = itn.ran
+        outcome.itnChanged = itn.changed
+        outcome.itnSkipReason = itn.skipReason
+        outcome.itnLatencyMs = itn.latencyMs
+        outcome.itnLenBefore = itn.lenBefore
+        outcome.itnLenAfter = itn.lenAfter
+      }
       outcome.rawText = ctx.text
       outcome.polishedText = ctx.polishedText
       outcome.llmProvider = ctx.llmProvider
@@ -233,6 +263,24 @@ struct KernelFinalizationWiring {
     }
   }
 
+  /// #145: did the user actually GET the ITN floor? True when ITN changed the
+  /// text AND polish did not deliver a DISTINCT polished result — disabled /
+  /// unavailable (no polished text), ran-and-rejected (fell back to raw), OR
+  /// short-circuited (e.g. "too short" returns its input verbatim, so polished
+  /// == the post-ITN text; that path does NOT set `pipelineFellBackToRaw` —
+  /// Codex r1 #2). In all cases the pasted text is the post-ITN text. `rawText`
+  /// is the final chain text (post-ITN), set in `processText`. Internal for a
+  /// direct parametric test.
+  static func itnFloorDelivered(
+    itnChanged: Bool,
+    polishedText: String?,
+    rawText: String?,
+    pipelineFellBackToRaw: Bool
+  ) -> Bool {
+    guard itnChanged else { return false }
+    return polishedText == nil || pipelineFellBackToRaw || polishedText == rawText
+  }
+
   private static func updateTranscriptMetrics(
     outcome: KernelFinalizationOutcome,
     context: KernelSessionContext
@@ -247,6 +295,12 @@ struct KernelFinalizationWiring {
         outcome.pipelineEndedAtSeconds.map { $0 - start }
       }
 
+    let itnFloorDelivered = Self.itnFloorDelivered(
+      itnChanged: outcome.itnChanged,
+      polishedText: outcome.polishedText,
+      rawText: outcome.rawText,
+      pipelineFellBackToRaw: outcome.pipelineFellBackToRaw)
+
     transcript.metrics = ExecutionMetrics(
       asrLatencySeconds: asrLatency,
       llmLatencySeconds: outcome.polishDurationSeconds,
@@ -259,7 +313,14 @@ struct KernelFinalizationWiring {
       polishRouterMode: outcome.polishMetadata?.routerMode,
       polishRouterBasis: outcome.polishMetadata?.routerBasis,
       polishFilterTripped: outcome.polishMetadata?.filterTripped,
-      polishFellBackToRaw: outcome.polishMetadata == nil ? nil : outcome.pipelineFellBackToRaw
+      polishFellBackToRaw: outcome.polishMetadata == nil ? nil : outcome.pipelineFellBackToRaw,
+      itnRan: outcome.itnRan,
+      itnChanged: outcome.itnChanged,
+      itnFloorDelivered: itnFloorDelivered,
+      itnSkipReason: outcome.itnSkipReason,
+      itnLatencyMs: outcome.itnLatencyMs,
+      itnLenBefore: outcome.itnLenBefore,
+      itnLenAfter: outcome.itnLenAfter
     )
     outcome.transcript = transcript
   }

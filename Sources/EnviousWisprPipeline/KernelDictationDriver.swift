@@ -64,15 +64,17 @@ private final class TerminalResumeLatch: Sendable {
   var resumed = false
 }
 
-/// The four text-processing limb steps the App configures and the kernel's
+/// The five text-processing limb steps the App configures and the kernel's
 /// `processText` closure runs. Created once, shared by the driver (which
 /// exposes the accessors) and `KernelFinalizationWiring` (whose `processText`
-/// consumes them).
+/// consumes them). `inverseTextNormalization` runs before `llmPolish` as the
+/// always-on raw-fallback floor (#145).
 @MainActor
 struct LimbSteps {
   let wordCorrection: WordCorrectionStep
   let fillerRemoval: FillerRemovalStep
   let emojiFormatter: EmojiFormatterStep
+  let inverseTextNormalization: InverseTextNormalizationStep
   let llmPolish: LLMPolishStep
 }
 

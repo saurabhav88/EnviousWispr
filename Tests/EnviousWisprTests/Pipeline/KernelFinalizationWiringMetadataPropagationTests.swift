@@ -40,6 +40,7 @@ import Testing
         wordCorrection: WordCorrectionStep(),
         fillerRemoval: FillerRemovalStep(),
         emojiFormatter: EmojiFormatterStep(),
+        inverseTextNormalization: InverseTextNormalizationStep(),
         llmPolish: LLMPolishStep(keychainManager: KeychainManager())),
       textProcessingRunner: TextProcessingRunner(),
       save: { saved.transcript = $0 },

@@ -59,6 +59,103 @@ import Testing
     #expect(signal.fired)
   }
 
+  // MARK: ITN floor (#145)
+
+  @Test("ITN runs in the live chain: spoken numbers are formatted (floor on)")
+  func itnFormatsInChain() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let wiring = makeWiring(outcome: outcome)
+    // Polish is OFF in this harness (no API key) → the chain's final text is
+    // the post-ITN text = the raw-fallback floor.
+    let result = try await wiring.processText("the code is two zero three") {}
+    #expect(result == "the code is 203")
+    #expect(outcome.itnRan)
+    #expect(outcome.itnChanged)
+    #expect(outcome.itnSkipReason == nil)
+  }
+
+  @Test("ITN floor is delivered end-to-end: metrics flag the polish-off floor")
+  func itnFloorDeliveredMetrics() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let saved = SavedTranscriptBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(outcome: outcome, context: context, save: { saved.transcript = $0 })
+
+    let floored = try await wiring.processText(
+      "call me at two zero three nine five four eight eight seven nine"
+    ) {}
+    try await wiring.store(floored)
+    _ = await wiring.deliver(floored)
+
+    let metrics = try #require(outcome.transcript?.metrics)
+    #expect(metrics.itnRan == true)
+    #expect(metrics.itnChanged == true)
+    #expect(metrics.itnFloorDelivered == true, "polish off + ITN changed => the user got the floor")
+    #expect(metrics.itnSkipReason == nil)
+    #expect((metrics.itnLenBefore ?? 0) > 0)
+  }
+
+  @Test("plain prose is a no-op: ITN ran, changed nothing, floor not delivered")
+  func itnNoOpPassthrough() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let saved = SavedTranscriptBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(outcome: outcome, context: context, save: { saved.transcript = $0 })
+
+    let result = try await wiring.processText("hello there friend") {}
+    try await wiring.store(result)
+    _ = await wiring.deliver(result)
+
+    #expect(result == "hello there friend")
+    let metrics = try #require(outcome.transcript?.metrics)
+    #expect(metrics.itnRan == true)
+    #expect(metrics.itnChanged == false)
+    #expect(metrics.itnFloorDelivered == false)
+  }
+
+  @Test("chain order: filler removal runs BEFORE ITN")
+  func itnRunsAfterFillerRemoval() async throws {
+    let steps = makeSteps()
+    steps.fillerRemoval.fillerRemovalEnabled = true
+    let wiring = makeWiring(steps: steps)
+    // "um" is stripped by filler removal first; ITN then formats the cleaned
+    // number. If ITN ran before filler removal the spacing would differ.
+    let result = try await wiring.processText("um the code is two zero three") {}
+    #expect(result == "the code is 203")
+  }
+
+  @Test("per-session gate wire reads the engine LID capability, not an identity literal")
+  func itnBackendCapabilityWired() async throws {
+    let steps = makeSteps()
+    let wiring = makeWiring(steps: steps)
+    _ = try await wiring.processText("hello") {}
+    // The Parakeet-class adapter does not support LID → the step's gate hint is
+    // wired to false (run on English-or-unknown), sourced from
+    // `adapter.capabilities.supportsLanguageDetection`.
+    #expect(steps.inverseTextNormalization.backendSupportsLID == false)
+  }
+
+  @Test(
+    "itn_floor_delivered is true whenever polish did not deliver a distinct result",
+    arguments: [
+      // (itnChanged, polished, raw, fellBack, expected)
+      (false, String?.none, String?.some("203"), false, false),  // ITN didn't change → never
+      (true, String?.none, String?.some("203"), false, true),  // polish disabled → floor
+      (true, String?.some("203"), String?.some("203"), true, true),  // rejected → floor
+      (true, String?.some("203"), String?.some("203"), false, true),  // short-circuit (==) → floor
+      (true, String?.some("Two oh three"), String?.some("203"), false, false),  // distinct polish → not floor
+    ])
+  func floorDeliveredLogic(
+    itnChanged: Bool, polished: String?, raw: String?, fellBack: Bool, expected: Bool
+  ) {
+    #expect(
+      KernelFinalizationWiring.itnFloorDelivered(
+        itnChanged: itnChanged, polishedText: polished, rawText: raw,
+        pipelineFellBackToRaw: fellBack) == expected)
+  }
+
   // MARK: store
 
   @Test("store builds the Transcript from the side-channel and persists it")
@@ -132,6 +229,7 @@ import Testing
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
+      inverseTextNormalization: InverseTextNormalizationStep(),
       llmPolish: LLMPolishStep(keychainManager: KeychainManager()))
   }
 

@@ -273,6 +273,7 @@ public enum KernelDictationDriverFactory {
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
+      inverseTextNormalization: InverseTextNormalizationStep(),
       llmPolish: llmPolish
     )
 
