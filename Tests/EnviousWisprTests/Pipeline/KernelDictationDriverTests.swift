@@ -501,6 +501,7 @@ import Testing
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
+      inverseTextNormalization: InverseTextNormalizationStep(),
       llmPolish: LLMPolishStep(keychainManager: KeychainManager()))
     let driver = KernelDictationDriver(
       kernel: kernel, observer: observer, outcome: outcome,

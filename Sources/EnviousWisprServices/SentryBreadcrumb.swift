@@ -272,6 +272,9 @@ public enum SentryBreadcrumb {
     case heartPathFinalization = "heart_path_finalization"
     case pipelineDispatchFailed = "pipeline_dispatch_failed"
     case pipelinePostConditionFailed = "pipeline_post_condition_failed"
+    /// #145: the deterministic ITN limb exceeded its 0.5s off-actor cap. Rare by
+    /// construction (engine p95 ~0.1ms) — the user still gets pre-ITN text.
+    case inverseNormalizationTimeout = "inverse_normalization_timeout"
   }
 }
 

@@ -20,6 +20,18 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var polishRouterBasis: String?
   public var polishFilterTripped: String?
   public var polishFellBackToRaw: Bool?
+  /// Deterministic ITN telemetry (#145). Populated per dictation; nil on
+  /// pre-#145 transcripts on disk (additive optional Codable, back-compatible).
+  /// `itnFloorDelivered` = ITN changed the text AND polish did not deliver a
+  /// distinct polished result (disabled/unavailable/rejected) — the user got the
+  /// raw-fallback floor. Metadata only (`telemetry-privacy-boundary`).
+  public var itnRan: Bool?
+  public var itnChanged: Bool?
+  public var itnFloorDelivered: Bool?
+  public var itnSkipReason: String?
+  public var itnLatencyMs: Double?
+  public var itnLenBefore: Int?
+  public var itnLenAfter: Int?
 
   public init(
     asrLatencySeconds: Double? = nil,
@@ -35,7 +47,14 @@ public struct ExecutionMetrics: Codable, Sendable {
     polishRouterMode: String? = nil,
     polishRouterBasis: String? = nil,
     polishFilterTripped: String? = nil,
-    polishFellBackToRaw: Bool? = nil
+    polishFellBackToRaw: Bool? = nil,
+    itnRan: Bool? = nil,
+    itnChanged: Bool? = nil,
+    itnFloorDelivered: Bool? = nil,
+    itnSkipReason: String? = nil,
+    itnLatencyMs: Double? = nil,
+    itnLenBefore: Int? = nil,
+    itnLenAfter: Int? = nil
   ) {
     self.asrLatencySeconds = asrLatencySeconds
     self.llmLatencySeconds = llmLatencySeconds
@@ -51,6 +70,13 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.polishRouterBasis = polishRouterBasis
     self.polishFilterTripped = polishFilterTripped
     self.polishFellBackToRaw = polishFellBackToRaw
+    self.itnRan = itnRan
+    self.itnChanged = itnChanged
+    self.itnFloorDelivered = itnFloorDelivered
+    self.itnSkipReason = itnSkipReason
+    self.itnLatencyMs = itnLatencyMs
+    self.itnLenBefore = itnLenBefore
+    self.itnLenAfter = itnLenAfter
   }
 }
 

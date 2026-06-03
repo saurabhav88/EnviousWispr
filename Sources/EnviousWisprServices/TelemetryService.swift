@@ -78,7 +78,14 @@ public final class TelemetryService {
       pasteResult: m?.pasteTier,
       e2eSeconds: m?.e2eSeconds ?? t.processingTime,
       asrSeconds: m?.asrLatencySeconds,
-      llmSeconds: m?.llmLatencySeconds
+      llmSeconds: m?.llmLatencySeconds,
+      itnRan: m?.itnRan,
+      itnChanged: m?.itnChanged,
+      itnFloorDelivered: m?.itnFloorDelivered,
+      itnSkipReason: m?.itnSkipReason,
+      itnLatencyMs: m?.itnLatencyMs,
+      itnLenBefore: m?.itnLenBefore,
+      itnLenAfter: m?.itnLenAfter
     )
     if let e2e = m?.e2eSeconds {
       metricPipelineE2E(
@@ -208,7 +215,10 @@ public final class TelemetryService {
     result: String, inputMode: String, asrBackend: String,
     llmProvider: String?, fillerRemoval: Bool,
     targetApp: String?, pasteResult: String?,
-    e2eSeconds: Double, asrSeconds: Double?, llmSeconds: Double?
+    e2eSeconds: Double, asrSeconds: Double?, llmSeconds: Double?,
+    itnRan: Bool? = nil, itnChanged: Bool? = nil, itnFloorDelivered: Bool? = nil,
+    itnSkipReason: String? = nil, itnLatencyMs: Double? = nil,
+    itnLenBefore: Int? = nil, itnLenAfter: Int? = nil
   ) {
     var props: [String: Any] = [
       "result": result,
@@ -223,6 +233,14 @@ public final class TelemetryService {
     if let pr = pasteResult { props["paste_result"] = pr }
     if let asr = asrSeconds { props["asr_seconds"] = String(format: "%.3f", asr) }
     if let llm = llmSeconds { props["llm_seconds"] = String(format: "%.3f", llm) }
+    // #145: deterministic ITN facts (metadata only — `telemetry-privacy-boundary`).
+    if let r = itnRan { props["itn_ran"] = r }
+    if let c = itnChanged { props["itn_changed"] = c }
+    if let fd = itnFloorDelivered { props["itn_floor_delivered"] = fd }
+    if let sr = itnSkipReason { props["itn_skip_reason"] = sr }
+    if let lat = itnLatencyMs { props["itn_latency_ms"] = String(format: "%.3f", lat) }
+    if let lb = itnLenBefore { props["itn_len_before"] = lb }
+    if let la = itnLenAfter { props["itn_len_after"] = la }
     PostHogSDK.shared.capture("dictation.completed", properties: props)
   }
 
