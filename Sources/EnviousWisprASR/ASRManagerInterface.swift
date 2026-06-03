@@ -1,6 +1,16 @@
 @preconcurrency import AVFoundation
 import EnviousWisprCore
 
+/// Thrown by `loadModel()` when the load it was running was superseded mid-flight
+/// by a `cancelInFlightLoad()` (wedge recovery), an `unloadModel()`, or a real
+/// `switchBackend(to:)` — detected via the manager's monotonic `loadGeneration`
+/// token (#959). The completion does NOT mark the model loaded; surfacing it as a
+/// throw (rather than a silent no-op) keeps `warmUp()` / `ensureEngineWarm()` from
+/// reporting a false "warm-up succeeded" on a model that is no longer resident.
+public struct ASRLoadSupersededError: Error, Equatable {
+  public init() {}
+}
+
 /// Abstraction over ASR management — enables swapping between in-process and XPC implementations.
 ///
 /// `ASRManager` (in-process) and `ASRManagerProxy` (XPC) both conform to this protocol.

@@ -1371,7 +1371,11 @@ final class RecordingSessionKernel {
           totalAttemptDurationMs: milliseconds(forTicks: now &- loadAttemptStartedAtTick)
         )
         bump()
-        await adapter.cancel()
+        // #959: a GENUINE load wedge — heavy recovery (tear down the engine),
+        // never the cheap model-preserving `cancel()` that ordinary terminals
+        // use. The `.wedged` terminal below already surfaces wedge telemetry
+        // (`KernelLifecycleTelemetrySink`), so no extra event is emitted here.
+        await adapter.recoverFromWedge()
         return
       }
       // A tick landed within the window — the load is still progressing.
@@ -1431,7 +1435,10 @@ final class RecordingSessionKernel {
       if currentTick() &- lastFinalizeTickAt >= UInt64(wedgeStallTicks) {
         finalizeWedgeDetected = true
         bump()
-        await adapter.cancel()
+        // #959: a GENUINE finalize/decode wedge — heavy recovery, not the cheap
+        // `cancel()`. Wedge telemetry is surfaced by the `.failed(.wedged)`
+        // terminal path (`KernelLifecycleTelemetrySink`).
+        await adapter.recoverFromWedge()
         return
       }
       // A finalize tick landed within the window — still progressing.

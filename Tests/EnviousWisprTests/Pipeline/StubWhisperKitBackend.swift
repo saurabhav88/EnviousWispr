@@ -135,8 +135,18 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
     return incrementalSessionFactory?()
   }
 
+  /// #959: when set, `unload()` blocks (models a wedged in-process CoreML
+  /// teardown) so a test can prove `recoverFromWedge()` is deadline-bounded.
+  var hangUnload = false
+  func setHangUnload(_ v: Bool) { hangUnload = v }
+
   func unload() async {
     unloadCount += 1
+    if hangUnload {
+      // Wedged: `withDeadline` abandons + cancels this task at its deadline.
+      try? await Task.sleep(for: .seconds(60))
+      return
+    }
     isReady = false
   }
 }

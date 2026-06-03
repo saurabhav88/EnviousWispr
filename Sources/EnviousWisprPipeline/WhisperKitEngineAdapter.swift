@@ -183,11 +183,13 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   init(
     backend: any WhisperKitBackendDriving,
     languageDetector: LanguageDetector = LanguageDetector(),
-    audioCaptureSessionIDSource: @escaping @MainActor () -> UInt64 = { 0 }
+    audioCaptureSessionIDSource: @escaping @MainActor () -> UInt64 = { 0 },
+    wedgeRecoveryUnloadDeadlineSec: Double = 2.0
   ) {
     self.backend = backend
     self.languageDetector = languageDetector
     self.audioCaptureSessionIDSource = audioCaptureSessionIDSource
+    self.wedgeRecoveryUnloadDeadlineSec = wedgeRecoveryUnloadDeadlineSec
   }
 
   // MARK: ASREngineAdapter — identity & capability
@@ -226,7 +228,13 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     do {
       try await task.value
       prepareTask = nil
-      cachedReadiness = .ready
+      // #959: recheck the backend's actual readiness after `prepare()` returns
+      // (a `recoverFromWedge()` that cancelled `prepareTask` rethrows above; this
+      // guards any "returned but not ready" path) so `ensureEngineWarm()` never
+      // reports a false success on an unready engine.
+      let ready = await captured.isReady
+      cachedReadiness = ready ? .ready : .notReady
+      guard ready else { throw ASRLoadSupersededError() }
     } catch {
       prepareTask = nil
       cachedReadiness = .notReady
@@ -915,6 +923,33 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
       await worker.cancel()
     }
     cachedReadiness = await backend.isReady ? .ready : .notReady
+  }
+
+  /// #959 fail-open ceiling for the wedge-recovery unload. NOT a measured perf
+  /// threshold — it is the documented `withDeadline` fail-open budget: a healthy
+  /// in-process `unload()` is effectively instant; this bounds the rare case
+  /// where a wedged CoreML decode blocks `unload()` so recovery can never hang
+  /// the kernel. The abandoned unload finishes in the background. Injectable so
+  /// tests can drive a fast deadline; production uses the 2.0s default.
+  private let wedgeRecoveryUnloadDeadlineSec: Double
+
+  /// #959 HEAVY wedge recovery. The cheap discard (`cancel()`) PLUS a forced
+  /// in-process backend unload so the next press reloads fresh. WhisperKit
+  /// decodes IN-PROCESS, so a genuinely wedged CoreML decode could block
+  /// `unload()` on the same locked resource — the unload is therefore
+  /// deadline-bounded (fail-open: a blocked unload is abandoned rather than
+  /// hanging recovery; a pathological in-process freeze may still need a user
+  /// force-quit, unlike Parakeet's XPC service which the OS reaps). Called ONLY
+  /// by the kernel's wedge detectors. Dormant in practice: WhisperKit is
+  /// signal-free for load-wedge detection and exposes no `finalizeProgress`, so
+  /// no kernel wedge detector currently fires for it (whisperkit-research.md).
+  func recoverFromWedge() async {
+    await cancel()
+    let captured = backend
+    _ = await withDeadline(seconds: wedgeRecoveryUnloadDeadlineSec) {
+      await captured.unload()
+    }
+    cachedReadiness = .notReady
   }
 
   // MARK: ASREngineAdapter — cleanup

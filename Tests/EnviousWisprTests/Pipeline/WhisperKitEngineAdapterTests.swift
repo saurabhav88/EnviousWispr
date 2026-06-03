@@ -56,6 +56,32 @@ import Testing
     #expect(adapter.readiness == .ready)
   }
 
+  // MARK: #959 — heavy recoverFromWedge() (best-effort, deadline-bounded)
+
+  @Test("#959 recoverFromWedge() tears the engine down to .notReady for a fresh reload")
+  func recoverFromWedgeForcesNotReady() async throws {
+    let backend = StubWhisperKitBackend()
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    try await adapter.warmUp()
+    #expect(adapter.readiness == .ready)
+    await adapter.recoverFromWedge()
+    #expect(adapter.readiness == .notReady, "wedge recovery unloads the in-process backend")
+    #expect(await backend.unloadCount == 1)
+  }
+
+  @Test("#959 recoverFromWedge() returns within its deadline even if unload() hangs")
+  func recoverFromWedgeIsDeadlineBounded() async throws {
+    let backend = StubWhisperKitBackend()
+    await backend.setHangUnload(true)
+    // Inject a fast fail-open deadline; a wedged in-process unload must NOT hang
+    // the kernel's recovery path.
+    let adapter = WhisperKitEngineAdapter(backend: backend, wedgeRecoveryUnloadDeadlineSec: 0.05)
+    try await adapter.warmUp()
+    #expect(adapter.readiness == .ready)
+    await adapter.recoverFromWedge()  // must return despite the hung unload
+    #expect(adapter.readiness == .notReady)
+  }
+
   @Test("readiness goes notReady after applyUnloadPolicy(.immediately) executes")
   func cachedReadinessAfterImmediateUnload() async throws {
     let backend = StubWhisperKitBackend()

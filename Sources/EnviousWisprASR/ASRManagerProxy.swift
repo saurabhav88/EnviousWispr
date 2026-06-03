@@ -44,7 +44,42 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// Single-flight guard: if a load is already in progress, callers await it instead of starting a new one.
   private var inFlightLoadTask: Task<Void, any Error>?
 
+  /// #959 readiness-integrity token. Monotonic; `loadModel()` captures it at the
+  /// start of its load and refuses to write `isModelLoaded = true` if it changed
+  /// before the load completes (throws `ASRLoadSupersededError`). Bumped by
+  /// `invalidateCurrentLoadGeneration(cause:)` from `cancelInFlightLoad()` /
+  /// `unloadModel()` / a real `switchBackend(to:)`, so a cancelled, unloaded, or
+  /// switched-away load can never resurrect a false `.ready` on a dead/wrong engine.
+  private var loadGeneration: UInt64 = 0
+
+  /// #959 single-flight identity. Each `loadModel()` that creates a task tags it
+  /// with a fresh `loadTaskSeq` and records it as `activeLoadTaskID`. The task's
+  /// cleanup `defer` nils `inFlightLoadTask` ONLY if it is still the active task,
+  /// so a superseded load A (whose handle `cancelInFlightLoad()` already nilled,
+  /// letting retry B install its own task) cannot clear B's handle on A's exit
+  /// (Codex code-diff P1).
+  private var loadTaskSeq: UInt64 = 0
+  private var activeLoadTaskID: UInt64 = 0
+
   public init() {}
+
+  /// Invalidate whatever load is current: bump the generation so an in-flight
+  /// `loadModel()` completion (even one whose `isModelLoaded` is still `false`)
+  /// is superseded, and log the `ready → notReady` transition tagged with cause.
+  /// Called BEFORE any supersession early-return so an in-flight load is caught.
+  /// Ordinary `cancel()` (session discard) does NOT call this — its appearance
+  /// after a plain terminal is the recurrence signal for #959.
+  private func invalidateCurrentLoadGeneration(cause: String) {
+    loadGeneration &+= 1
+    if isModelLoaded {
+      Task {
+        await AppLogger.shared.log(
+          "[ASRManagerProxy] readiness ready→notReady (cause=\(cause)) backend=\(activeBackendType.rawValue)",
+          level: .info, category: "ASR"
+        )
+      }
+    }
+  }
 
   // MARK: - ASRManagerInterface: Model lifecycle
 
@@ -58,6 +93,10 @@ public final class ASRManagerProxy: ASRManagerInterface {
 
     let task = Task { @MainActor [weak self] in
       guard let self else { return }
+      // #959: capture the load generation at the start of this load. If a
+      // cancel/unload/switch bumps it before the load completes, the completion
+      // below throws `ASRLoadSupersededError` instead of marking the model loaded.
+      let gen = self.loadGeneration
       // Reset progress state before starting.
       self.downloadProgress = 0
       self.downloadPhase = "Preparing download..."
@@ -90,6 +129,10 @@ public final class ASRManagerProxy: ASRManagerInterface {
           guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
         }
       }
+      // #959: a cancel/unload/switch that landed during the load bumped the
+      // generation — do NOT mark the (now superseded) model loaded; throw so
+      // `warmUp()` / `ensureEngineWarm()` report failure instead of false success.
+      guard gen == self.loadGeneration else { throw ASRLoadSupersededError() }
       // Success path — clear progress and mark loaded. (stopProgressPolling
       // runs from the defer above on every exit.)
       self.downloadProgress = 1.0
@@ -97,8 +140,14 @@ public final class ASRManagerProxy: ASRManagerInterface {
       self.downloadDetail = ""
       self.isModelLoaded = true
     }
+    loadTaskSeq &+= 1
+    let myTaskID = loadTaskSeq
     inFlightLoadTask = task
-    defer { inFlightLoadTask = nil }
+    activeLoadTaskID = myTaskID
+    // #959: identity-guarded cleanup — only retire the handle if it is still
+    // ours. A supersession (`cancelInFlightLoad`/`switchBackend`) nils the handle
+    // and a retry may install its own; this defer must not clobber that retry.
+    defer { if activeLoadTaskID == myTaskID { inFlightLoadTask = nil } }
     try await task.value
   }
 
@@ -149,6 +198,17 @@ public final class ASRManagerProxy: ASRManagerInterface {
   }
 
   public func unloadModel() async {
+    // #959: bump BEFORE the loaded-guard so an in-flight load (whose
+    // `isModelLoaded` is still false) is superseded too, not just a resident model.
+    invalidateCurrentLoadGeneration(cause: "unload")
+    // #959 (Codex re-review P2): retire the superseded in-flight load task the
+    // same way `switchBackend()` / `cancelInFlightLoad()` do — otherwise a retry
+    // that joins via single-flight before the doomed task finishes propagates
+    // `ASRLoadSupersededError` instead of starting a fresh load. Must run BEFORE
+    // the loaded-guard, because the in-flight case is exactly when `isModelLoaded`
+    // is still false and the guard would early-return with the stale handle live.
+    inFlightLoadTask?.cancel()
+    inFlightLoadTask = nil
     guard isModelLoaded else { return }
     await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
       serviceProxy { proxy in
@@ -171,7 +231,16 @@ public final class ASRManagerProxy: ASRManagerInterface {
   }
 
   public func switchBackend(to type: ASRBackendType) async {
+    // #959: keep the same-backend no-op guard FIRST so a no-op switch (settings
+    // re-applying the current backend) never supersedes a valid in-flight load.
     guard type != activeBackendType else { return }
+    // A real switch supersedes any in-flight load for the old backend.
+    invalidateCurrentLoadGeneration(cause: "switch")
+    // #959 (Codex code-diff P2): retire the old backend's in-flight load task so
+    // a subsequent `loadModel()` for the NEW backend starts fresh instead of
+    // joining the stale task and receiving `ASRLoadSupersededError`.
+    inFlightLoadTask?.cancel()
+    inFlightLoadTask = nil
     if isModelLoaded { await unloadModel() }
     activeBackendType = type
     isStreaming = false
@@ -355,6 +424,9 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// This is the programmatic equivalent of the user manually quitting and
   /// relaunching the app — same recovery mechanism, no user effort required.
   public func cancelInFlightLoad() {
+    // #959: supersede the current load FIRST so its completion can't resurrect
+    // readiness after this teardown (always destructive — no no-op guard here).
+    invalidateCurrentLoadGeneration(cause: "recoverFromWedge")
     inFlightLoadTask?.cancel()
     inFlightLoadTask = nil
     connection?.invalidate()
