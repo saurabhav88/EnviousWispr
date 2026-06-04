@@ -122,7 +122,13 @@ struct KernelFinalizationWiring {
     textProcessingRunner: TextProcessingRunner,
     save: @escaping @MainActor (Transcript) throws -> Void,
     deliverPaste: @escaping @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult,
-    pasteCompletionRegistry: PasteCompletionRegistry?
+    pasteCompletionRegistry: PasteCompletionRegistry?,
+    // #900 clock seam — defaults to today's live expression, so production
+    // behavior is identical (the closure capture adds one call). A test injects
+    // a manual clock to advance logical time by hand and assert the tick rate,
+    // instead of sleeping (which `tests-no-real-time-scheduling-precision` bans).
+    // Trailing-defaulted so the other construction sites stay source-compatible.
+    currentTime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
   ) {
     // processText — run the limb chain, write the polish side-channel, return
     // the final display text. `onPolishStarted` is wired into
@@ -256,7 +262,7 @@ struct KernelFinalizationWiring {
     // (PR-4 §3.6). `currentTick` quantizes `systemUptime` to 100 ms ticks
     // (precedent: `LoadProgressWatcher.currentTime`).
     currentTick = {
-      UInt64(ProcessInfo.processInfo.systemUptime / Self.tickDurationSeconds)
+      UInt64(currentTime() / Self.tickDurationSeconds)
     }
     sleepTicks = { ticks in
       try? await Task.sleep(for: .seconds(Double(ticks) * Self.tickDurationSeconds))

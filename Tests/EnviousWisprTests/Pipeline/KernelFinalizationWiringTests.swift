@@ -28,12 +28,30 @@ import Testing
     #expect(windowSeconds >= 0.8)
   }
 
-  @Test("the logical clock advances and sleepTicks returns")
-  func clock() async {
-    let wiring = makeWiring()
-    let first = wiring.currentTick()
-    #expect(first == wiring.currentTick() || wiring.currentTick() >= first)
-    await wiring.sleepTicks(0)  // a zero-tick sleep returns promptly
+  @Test(
+    "currentTick advances by the number of whole logical ticks elapsed",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/900",
+      "logical tick rate was unverified (tautology)"
+    )
+  )
+  func currentTickAdvancesWithClock() async {
+    // Inject a manual clock so logical time advances by hand — no Task.sleep
+    // cadence (`tests-no-real-time-scheduling-precision`). The old test asserted
+    // `first == currentTick() || currentTick() >= first`, true for any monotonic
+    // or even frozen clock, so a frozen clock or wrong tick divisor passed.
+    let clock = ManualClock()
+    let wiring = makeWiring(currentTime: { clock.now })
+    let first = wiring.currentTick()  // floor(0 / 0.1) == 0
+
+    // Advance 3.5 ticks: landing mid-window means floating-point error in
+    // `UInt64(now / tickDurationSeconds)` cannot straddle a tick boundary, so
+    // exactly 3 whole ticks have elapsed. (Advancing a clean 3.0 ticks would
+    // rely on the lucky rounding of `0.1 * 3 / 0.1`; 3.5 is boundary-safe.)
+    clock.advance(by: KernelFinalizationWiring.tickDurationSeconds * 3.5)
+    #expect(wiring.currentTick() == first + 3)
+
+    await wiring.sleepTicks(0)  // a zero-tick sleep returns promptly (liveness)
   }
 
   // MARK: processText
@@ -240,7 +258,8 @@ import Testing
     save: @escaping @MainActor (Transcript) throws -> Void = { _ in },
     deliverPaste: @escaping @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult = {
       _ in Self.deliveredResult
-    }
+    },
+    currentTime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
   ) -> KernelFinalizationWiring {
     KernelFinalizationWiring(
       outcome: outcome,
@@ -250,8 +269,18 @@ import Testing
       textProcessingRunner: TextProcessingRunner(),
       save: save,
       deliverPaste: deliverPaste,
-      pasteCompletionRegistry: nil)
+      pasteCompletionRegistry: nil,
+      currentTime: currentTime)
   }
+}
+
+/// Hand-advanced logical clock for the tick-rate test. Local `@MainActor` copy:
+/// the `ManualClock` in `LoadProgressWatcherTests` is `private` to that suite and
+/// cannot be reused. Satisfies the `@MainActor () -> TimeInterval` clock seam.
+@MainActor
+private final class ManualClock {
+  private(set) var now: TimeInterval = 0
+  func advance(by seconds: TimeInterval) { now += seconds }
 }
 
 private enum WiringTestError: Error { case storage }
