@@ -143,7 +143,9 @@ struct OllamaConnectorRequestBodyTests {
   /// tests can't catch a bad polish reroute.
   @Test("polish surfaces a transport failure through the injected executor")
   func polishSurfacesExecutorError() async {
+    let counter = RequestCounter()
     let connector = OllamaConnector(networkExecutor: { _ in
+      await counter.bump()
       throw URLError(.notConnectedToInternet)  // maps to providerUnavailable, fail-fast
     })
     let config = LLMProviderConfig(
@@ -162,6 +164,12 @@ struct OllamaConnectorRequestBodyTests {
         onToken: nil
       )
     }
+    // The throw alone doesn't prove the polish path reached the network: a
+    // pre-network guard (config validation, empty-model) throwing an LLMError
+    // would also satisfy the expectation above. Counting the executor pins the
+    // failure to the injected transport actually running — deleting the polish
+    // reroute and hard-throwing earlier drops the count to 0 and reddens this.
+    #expect(await counter.count == 1)
   }
 }
 
