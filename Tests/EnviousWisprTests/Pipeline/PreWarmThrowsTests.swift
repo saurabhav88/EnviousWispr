@@ -1,4 +1,3 @@
-@preconcurrency import AVFoundation
 import EnviousWisprAudio
 import EnviousWisprCore
 import Foundation
@@ -45,63 +44,27 @@ struct PreWarmThrowsTests {
     #expect(capture.preWarmCallCount == 1)  // the kernel actually reached capture.preWarm()
   }
 
-  @Test("mock preWarm returns cleanly when not configured to throw")
+  /// The success-path twin of `kernelRethrowsPreWarmError`: drives the REAL
+  /// `RecordingSessionKernel.preWarm()` over a capture that succeeds and asserts
+  /// the kernel reaches `capture.preWarm()` and returns without throwing. The old
+  /// `preWarmSucceedsByDefault` only called a local mock's `preWarm()` and checked
+  /// the mock's own counter — it ran zero production code, so any kernel mutation
+  /// (never calling preWarm on the happy path, or always throwing) left it green.
+  @Test("the kernel completes preWarm cleanly when the audio capture succeeds")
   @MainActor
-  func preWarmSucceedsByDefault() async throws {
-    let mock = PassthroughAudioCapture()
-    try await mock.preWarm()
-    #expect(mock.preWarmCallCount == 1)
+  func kernelCompletesPreWarmOnSuccess() async throws {
+    let clock = FakeClock()
+    let engine = FakeEngine(behavior: .batchSuccess(text: "default"), clock: clock)
+    let capture = FakeAudioCapture()  // preWarmError == nil → success path
+    let vad = FakeVADSignalSource()
+    let paste = FakePasteTarget()
+    let session = KernelRecordingSession(
+      engine: engine, capture: capture, vad: vad, clock: clock, paste: paste)
+    try await session.testKernel.preWarm()  // real kernel; must not throw
+    #expect(capture.preWarmCallCount == 1)  // the kernel actually reached capture.preWarm()
   }
 }
 
 enum PreWarmFailedError: Error, Equatable {
   case simulated
-}
-
-// MARK: - Minimal AudioCaptureInterface conformer for the default-success check
-
-@MainActor
-final class PassthroughAudioCapture: AudioCaptureInterface {
-  var isCapturing: Bool = false
-  var audioLevel: Float = 0
-  var capturedSamples: [Float] = []
-  var currentAudioRoute: String = "unknown"
-  var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
-  var onEngineInterrupted: (() -> Void)?
-  var onVADAutoStop: (() -> Void)?
-  var onCaptureStalled: ((CaptureStallContext) -> Void)?
-  var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
-  var onXPCServiceError: ((XPCErrorContext) -> Void)?
-  var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
-  var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
-  var currentCaptureSessionID: UInt64 = 0
-  var isActivelyCapturing: Bool = false
-  var captureSourceType: String = "mock"
-  var noiseSuppressionEnabled: Bool = false
-  var selectedInputDeviceUID: String = ""
-  var preferredInputDeviceIDOverride: String = ""
-  var warmEnginePolicy: WarmEnginePolicy = .off
-
-  private(set) var preWarmCallCount: Int = 0
-
-  func startEnginePhase() async throws {}
-  func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
-    AsyncStream { $0.finish() }
-  }
-  func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
-    AsyncStream { $0.finish() }
-  }
-  func stopCapture() async -> CaptureResult { CaptureResult(samples: []) }
-  func rebuildEngine() {}
-  func buildEngine(noiseSuppression: Bool) {}
-  func preWarm() async throws { preWarmCallCount += 1 }
-  func abortPreWarm() {}
-  func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {
-    true
-  }
-  func configureVAD(autoStop: Bool, silenceTimeout: Double, sensitivity: Float, energyGate: Bool) {}
-  func getSamplesSnapshot(fromIndex: Int) async -> (samples: [Float], totalCount: Int) {
-    ([], 0)
-  }
-  func getVADSegments() async -> [SpeechSegment] { [] }
 }
