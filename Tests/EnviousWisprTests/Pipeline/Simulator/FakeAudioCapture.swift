@@ -163,9 +163,14 @@ final class FakeAudioCapture: AudioCaptureInterface {
   // MARK: Harness control surface (scenario `CaptureDirective`s)
 
   /// Deliver one synthetic 16 kHz mono Float32 buffer onto the capture stream
-  /// and through `onBufferCaptured`.
-  func deliverBuffer(frameCount: Int = AudioConstants.captureBufferSize) {
-    let samples = [Float](repeating: 0.1, count: frameCount)
+  /// and through `onBufferCaptured`. `amplitude` controls the constant sample
+  /// value — the default 0.1 is well above the kernel's #964 dead-air floor; a
+  /// sub-floor value (e.g. 0.001) lets a scenario express a genuinely silent
+  /// capture so the no-speech gate can be exercised end-to-end.
+  func deliverBuffer(
+    frameCount: Int = AudioConstants.captureBufferSize, amplitude: Float = 0.1
+  ) {
+    let samples = [Float](repeating: amplitude, count: frameCount)
     accumulatedSamples.append(contentsOf: samples)
     deliveredBufferCount += 1
     guard let buffer = Self.makeBuffer(samples: samples) else { return }

@@ -245,6 +245,45 @@ enum ScenarioInventory {
       expected: ExpectedOutcome(
         terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,
         transcript: .nonEmpty)),
+    // A20–A22: #964 faint-speech recovery. Silero reports zero segments
+    // (`.confirmedNoSpeech`), but the raw buffer above the dead-air floor must
+    // reach ASR instead of being dropped.
+    Scenario(
+      id: "A20", name: "#964 zero segments + energy -> ASR recovers faint speech",
+      steps: [
+        .engine(.setBehavior(.batchSuccess(text: "actually let's go"))),
+        .vad(.evidence(.confirmedNoSpeech)),
+        .trigger(.start), .capture(.deliverBuffer), .trigger(.stop),
+        .expectState(.completed),
+      ],
+      expected: ExpectedOutcome(
+        terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,
+        transcript: .nonEmpty)),
+    Scenario(
+      id: "A21", name: "#964 zero segments + energy + empty decode -> noSpeech (R2)",
+      steps: [
+        // Reaching ASR on the energy path then getting an empty decode is
+        // fan/room noise, NOT a failure — the kernel must map it to `.noSpeech`,
+        // never `.failed(.asrEmpty)`, despite the adapter's `hadSpeechEvidence`.
+        .engine(.setBehavior(.empty(hadSpeechEvidence: true))),
+        .vad(.evidence(.confirmedNoSpeech)),
+        .trigger(.start), .capture(.deliverBuffer), .trigger(.stop),
+      ],
+      expected: ExpectedOutcome(
+        terminalState: .noSpeech, pasteCount: 0, pasteOutcome: .none,
+        transcript: .none)),
+    Scenario(
+      id: "A22", name: "#964 zero segments + dead air -> gate still skips ASR",
+      steps: [
+        // A silent tap (sub-floor amplitude) must still skip ASR entirely — the
+        // engine is never consulted, so the configured batch success is unused.
+        .engine(.setBehavior(.batchSuccess(text: "should never paste"))),
+        .vad(.evidence(.confirmedNoSpeech)),
+        .trigger(.start), .capture(.deliverSilentBuffer), .trigger(.stop),
+      ],
+      expected: ExpectedOutcome(
+        terminalState: .noSpeech, pasteCount: 0, pasteOutcome: .none,
+        transcript: .none)),
   ]
 
   // MARK: §1.3 regression locks (R1, R2)
@@ -402,6 +441,7 @@ enum ScenarioInventory {
   static let canonicalIDs: Set<String> = [
     "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10",
     "A11", "A12", "A13", "A14", "A15", "A16", "A17", "A18", "A19",
+    "A20", "A21", "A22",
     "R1", "R2",
     "C1", "C2", "C3", "C4", "C5", "C6",
     "L1", "L2", "L3", "L4", "L5", "L6",

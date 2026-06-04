@@ -996,44 +996,70 @@ final class RecordingSessionKernel {
     }
 
     // VAD no-speech gate (PR-1 §B.6) — keys on *confirmed* no-speech.
+    // #964: `.confirmedNoSpeech` means Silero found zero speech segments, which
+    // also swallows faint/whispered speech sitting below Silero's 0.5 threshold.
+    // Skip ASR only when the raw buffer is ALSO dead air; otherwise fall through
+    // and let Parakeet arbitrate (it returns empty on real silence/room noise —
+    // verified on synthetic probes plus 65 competitor whisper clips).
     let speechEvidence = vad.speechEvidenceAtStop()
+    // Set when we proceed to ASR despite zero VAD segments purely because raw
+    // energy beat the dead-air floor — used below to map an empty decode back to
+    // a quiet `.noSpeech` instead of a user-visible ASR failure (#964 R2).
+    var attemptedFromEnergyDespiteNoSegments = false
     if speechEvidence == .confirmedNoSpeech {
-      // Stamp BEFORE the transition so the lifecycle-event observer reads
-      // the source at `.noSpeech` mapping time (PR-4b.2 §3.6 r7).
-      lastNoSpeechSource = .vadGate
-      telemetryState.noSpeechTelemetry = KernelNoSpeechTelemetry(
-        mode: isStreamingSession ? "streaming" : "batch",
-        rawSampleCount: captureResult.samples.count,
-        peakAudioLevel: rawPeakAudioLevel
-      )
-      emitZombieZeroPeakIfNeeded(
-        rawSamples: captureResult.samples,
-        peakAudioLevel: rawPeakAudioLevel
-      )
-      // GAP 3 app.log parity: emit the VAD filtered log here too — for
-      // `.confirmedNoSpeech`, conditioner never runs (we return below),
-      // so the filtered count is 0 by definition. Without this, the
-      // no-speech path is missing one of the OLD TP debug lines (TP:772
-      // emitted before TP:800's no-speech gate). Codex r1 (P3) on GAP 3.
-      Task {
-        await AppLogger.shared.log(
-          "VAD filtered to 0 samples (0.0% voiced)",
-          level: .verbose, category: "Pipeline"
+      if Self.rawAudioIsDeadAir(captureResult.samples, peak: rawPeakAudioLevel) {
+        // Stamp BEFORE the transition so the lifecycle-event observer reads
+        // the source at `.noSpeech` mapping time (PR-4b.2 §3.6 r7).
+        lastNoSpeechSource = .vadGate
+        telemetryState.noSpeechTelemetry = KernelNoSpeechTelemetry(
+          mode: isStreamingSession ? "streaming" : "batch",
+          rawSampleCount: captureResult.samples.count,
+          peakAudioLevel: rawPeakAudioLevel
         )
+        emitZombieZeroPeakIfNeeded(
+          rawSamples: captureResult.samples,
+          peakAudioLevel: rawPeakAudioLevel
+        )
+        // GAP 3 app.log parity: emit the VAD filtered log here too — for
+        // dead-air `.confirmedNoSpeech`, conditioner never runs (we return
+        // below), so the filtered count is 0 by definition. Without this, the
+        // no-speech path is missing one of the OLD TP debug lines (TP:772
+        // emitted before TP:800's no-speech gate). Codex r1 (P3) on GAP 3.
+        Task {
+          await AppLogger.shared.log(
+            "VAD filtered to 0 samples (0.0% voiced)",
+            level: .verbose, category: "Pipeline"
+          )
+        }
+        // GAP 3 app.log parity: VAD-gate skip log (TP:800-804) — gives debug
+        // log readers a clear marker for "user pressed without speaking."
+        let peak = rawPeakAudioLevel
+        let cnt = capturedSampleCount
+        Task {
+          await AppLogger.shared.log(
+            "VAD gate: no speech, skipping ASR "
+              + "(samples=\(cnt), peak=\(String(format: "%.4f", peak)))",
+            level: .info, category: "Pipeline"
+          )
+        }
+        finishTerminal(.noSpeech, sid: sid)
+        return
       }
-      // GAP 3 app.log parity: VAD-gate skip log (TP:800-804) — gives debug
-      // log readers a clear marker for "user pressed without speaking."
+      // Faint speech: zero VAD segments but raw energy above the dead-air floor.
+      // Recover it by transcribing instead of dropping. With zero segments the
+      // conditioner returns the raw buffer unchanged (SampleFilter early-out),
+      // so Parakeet decodes the full capture.
+      attemptedFromEnergyDespiteNoSegments = true
       let peak = rawPeakAudioLevel
       let cnt = capturedSampleCount
       Task {
         await AppLogger.shared.log(
-          "VAD gate: no speech, skipping ASR "
+          "VAD gate: zero segments but raw energy above dead-air floor — "
+            + "transcribing to recover faint speech "
             + "(samples=\(cnt), peak=\(String(format: "%.4f", peak)))",
           level: .info, category: "Pipeline"
         )
       }
-      finishTerminal(.noSpeech, sid: sid)
-      return
     }
 
     // Condition the captured audio for ASR batch rescue (PR-4.5 #5) — VAD
@@ -1181,7 +1207,15 @@ final class RecordingSessionKernel {
       await runFinalizing(sid, asrText: result.text)
     case .empty(let hadSpeechEvidence):
       mergeAdapterDiagnosticsIntoASREmpty()
-      if !hadSpeechEvidence {
+      // #964 R2: if we reached ASR only because raw energy beat the dead-air
+      // floor despite zero VAD segments, an empty decode means fan/room noise —
+      // not a failed transcription. Route it to the quiet `.noSpeech` terminal,
+      // never the user-visible `.failed(.asrEmpty)` error. The adapter reports
+      // `hadSpeechEvidence: true` (it saw samples); the kernel knows the
+      // segments were empty, so it owns the final routing decision.
+      let effectiveSpeechEvidence =
+        hadSpeechEvidence && !attemptedFromEnergyDespiteNoSegments
+      if !effectiveSpeechEvidence {
         // Stamp BEFORE the transition so the observer reads the source
         // at `.noSpeech` mapping time (PR-4b.2 §3.6 r7).
         lastNoSpeechSource = .asrEmptyNoSpeech
@@ -1210,7 +1244,8 @@ final class RecordingSessionKernel {
           )
         }
       }
-      finishTerminal(hadSpeechEvidence ? .failed(.asrEmpty) : .noSpeech, sid: sid)
+      finishTerminal(
+        effectiveSpeechEvidence ? .failed(.asrEmpty) : .noSpeech, sid: sid)
     case .cancelled:
       finishTerminal(.cancelled, sid: sid)
     case .failed(.wedged):
@@ -1965,6 +2000,54 @@ final class RecordingSessionKernel {
 
   private func peakAudioLevel(in samples: [Float]) -> Float {
     samples.reduce(Float(0)) { max($0, abs($1)) }
+  }
+
+  /// Empirical dead-air energy thresholds for the #964 no-speech gate. See
+  /// `rawAudioIsDeadAir`. Deliberately LOW — these reject only genuine silence,
+  /// not an audible-but-faint utterance (measured -35 dB room noise peaks at
+  /// 0.0178, above a real whisper at 0.0109, so signal level alone can't split
+  /// faint speech from noise — Parakeet is the arbiter past this floor).
+  enum DeadAirFloor {
+    /// Peak absolute amplitude (linear, Float32). ~ -44 dBFS.
+    static let peak: Float = 0.006
+    /// Whole-buffer RMS.
+    static let rms: Float = 0.00125
+    /// Loudest 40 ms window RMS — catches a faint word inside a mostly-silent
+    /// buffer where the whole-buffer RMS stays low.
+    static let windowRms: Float = 0.002
+    /// 40 ms at 16 kHz.
+    static let windowSamples = 640
+  }
+
+  /// True when a raw capture buffer is dead air (no recoverable speech) for the
+  /// #964 gate: when Silero reports zero segments we skip ASR ONLY if the raw
+  /// audio is also below every `DeadAirFloor` threshold. Otherwise the kernel
+  /// falls through and lets Parakeet decide. Pure + static so the boundary
+  /// cases (just-below / just-above each threshold) unit-test without a kernel.
+  nonisolated static func rawAudioIsDeadAir(_ samples: [Float], peak: Float)
+    -> Bool
+  {
+    guard peak < DeadAirFloor.peak else { return false }
+    guard !samples.isEmpty else { return true }
+    var sumSquares: Float = 0
+    for s in samples { sumSquares += s * s }
+    let rms = (sumSquares / Float(samples.count)).squareRoot()
+    guard rms < DeadAirFloor.rms else { return false }
+    // Loudest non-overlapping 40 ms window. A faint word lifts a local window's
+    // RMS even when most of the buffer is silence around it; tiled windows keep
+    // this bounded at O(n).
+    let window = DeadAirFloor.windowSamples
+    guard samples.count >= window else { return rms < DeadAirFloor.windowRms }
+    var maxWindowRms = rms
+    var i = 0
+    while i + window <= samples.count {
+      var ss: Float = 0
+      for j in i..<(i + window) { ss += samples[j] * samples[j] }
+      let wr = (ss / Float(window)).squareRoot()
+      if wr > maxWindowRms { maxWindowRms = wr }
+      i += window
+    }
+    return maxWindowRms < DeadAirFloor.windowRms
   }
 
   private static func speechDurationMs(_ segments: [SpeechSegment]) -> Int {

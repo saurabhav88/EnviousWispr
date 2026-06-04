@@ -148,6 +148,10 @@ struct ScenarioRunner {
     switch captureDirective {
     case .deliverBuffer:
       context.capture.deliverBuffer()
+    case .deliverSilentBuffer:
+      // Below the #964 dead-air floor (peak/rms/window-rms all < threshold) so
+      // the kernel's no-speech gate still skips ASR on a genuinely silent tap.
+      context.capture.deliverBuffer(amplitude: 0.001)
     case .stall:
       // A stall fires the liveness-watchdog signal — not merely an absence
       // of buffers (C3 / C4). Routed through the kernel's external entry to
