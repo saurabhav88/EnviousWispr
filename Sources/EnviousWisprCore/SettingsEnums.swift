@@ -8,17 +8,3 @@ public enum OnboardingState: String, Codable, Sendable {
   case needsPermissions = "needsCompletion"
   case completed = "completed"
 }
-
-public enum EnvironmentPreset: String, CaseIterable, Codable, Sendable {
-  case quiet = "quiet"
-  case normal = "normal"
-  case noisy = "noisy"
-
-  public var vadSensitivity: Float {
-    switch self {
-    case .quiet: return 0.8
-    case .normal: return 0.5
-    case .noisy: return 0.2
-    }
-  }
-}

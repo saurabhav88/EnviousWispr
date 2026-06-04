@@ -2,7 +2,7 @@ import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
-/// Transcription engine, multi-language options, recording environment, and cleanup settings.
+/// Transcription engine, multi-language options, and cleanup settings.
 struct SpeechEngineSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(SetupCoordinator.self) private var setup
@@ -121,15 +121,8 @@ struct SpeechEngineSettingsView: View {
         }
       }
 
-      // ── Section 3: Recording Environment ─────────────────────────────
-      BrandedSection(header: "Recording Environment") {
-        BrandedRow {
-          EnvironmentPresetCards(
-            selection: Binding(
-              get: { settings.environmentPreset },
-              set: { settings.environmentPreset = $0 }
-            ))
-        }
+      // ── Section 3: Auto-Stop ─────────────────────────────────────────
+      BrandedSection(header: "Auto-Stop") {
         BrandedRow {
           VStack(alignment: .leading, spacing: 4) {
             Toggle("Stop recording on silence", isOn: $settings.vadAutoStop)
@@ -341,91 +334,5 @@ struct SpeechEngineSettingsView: View {
     }
     .buttonStyle(.borderless)
     .help("Re-check model status")
-  }
-}
-
-// ── Environment preset card picker ───────────────────────────────────────────
-
-private struct PresetInfo {
-  let preset: EnvironmentPreset
-  let emoji: String
-  let name: String
-  let description: String
-}
-
-private let presets: [PresetInfo] = [
-  PresetInfo(
-    preset: .quiet, emoji: "🤫", name: "Quiet", description: "Library, bedroom, quiet office"),
-  PresetInfo(preset: .normal, emoji: "🏠", name: "Normal", description: "Home, private office"),
-  PresetInfo(preset: .noisy, emoji: "🏢", name: "Noisy", description: "Open office, café, outdoors"),
-]
-
-private struct EnvironmentPresetCards: View {
-  @Binding var selection: EnvironmentPreset
-
-  var body: some View {
-    HStack(spacing: 8) {
-      ForEach(presets, id: \.preset) { info in
-        PresetCard(info: info, isSelected: selection == info.preset) {
-          selection = info.preset
-        }
-      }
-    }
-  }
-}
-
-private struct PresetCard: View {
-  let info: PresetInfo
-  let isSelected: Bool
-  let onTap: () -> Void
-
-  var body: some View {
-    Button(action: onTap) {
-      VStack(spacing: 4) {
-        ZStack(alignment: .topTrailing) {
-          Color.clear.frame(height: 1)  // layout anchor
-          if isSelected {
-            Image(systemName: "checkmark.circle.fill")
-              .font(.system(size: 11))
-              .foregroundStyle(.white)
-              .background(Color.stAccent)
-              .clipShape(Circle())
-              .offset(x: 2, y: -2)
-          }
-        }
-        .frame(height: 12)
-
-        Text(info.emoji)
-          .font(.system(size: 22))
-
-        Text(info.name)
-          .font(.system(size: 12.5, weight: .semibold))
-          .foregroundStyle(.primary)
-
-        Text(info.description)
-          .font(.system(size: 10.5))
-          .foregroundStyle(.secondary)
-          .multilineTextAlignment(.center)
-          .lineLimit(2)
-      }
-      .padding(.vertical, 10)
-      .padding(.horizontal, 8)
-      .frame(maxWidth: .infinity)
-      .contentShape(Rectangle())
-      .background(
-        RoundedRectangle(cornerRadius: 9)
-          .fill(isSelected ? Color.stAccent.opacity(0.08) : Color(nsColor: .controlBackgroundColor))
-          .overlay(
-            RoundedRectangle(cornerRadius: 9)
-              .stroke(
-                isSelected ? Color.stAccent : Color(nsColor: .separatorColor),
-                lineWidth: isSelected ? 1.5 : 1)
-          )
-          .shadow(color: isSelected ? Color.stAccent.opacity(0.20) : .clear, radius: 4, y: 2)
-      )
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel("\(info.name) — \(info.description)")
-    .accessibilityValue(isSelected ? "selected" : "")
   }
 }

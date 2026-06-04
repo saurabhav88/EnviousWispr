@@ -37,7 +37,6 @@ public final class SettingsManager {
     case selectedInputDeviceUID
     case noiseSuppression
     case preferredInputDeviceIDOverride
-    case environmentPreset
     case useXPCAudioService
     case useStreamingASR
     case warmEnginePolicy
@@ -63,7 +62,7 @@ public final class SettingsManager {
     "restoreClipboardAfterPaste", "wordCorrectionEnabled", "fillerRemovalEnabled",
     "emojiFormatterEnabled", "isDebugModeEnabled", "debugLogLevel",
     "useExtendedThinking", "whisperKitLanguage", "languageMode",
-    "selectedInputDeviceUID", "preferredInputDeviceIDOverride", "environmentPreset",
+    "selectedInputDeviceUID", "preferredInputDeviceIDOverride",
     "useStreamingASR", "warmEnginePolicy",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
   ]
@@ -331,13 +330,6 @@ public final class SettingsManager {
     }
   }
 
-  public var environmentPreset: EnvironmentPreset {
-    didSet {
-      defaults.set(environmentPreset.rawValue, forKey: "environmentPreset")
-      onChange?(.environmentPreset)
-    }
-  }
-
   /// Use XPC audio service instead of in-process AudioCaptureManager.
   /// Default: true (Step 7 — XPC is the standard path).
   /// Cold flag — read at launch only. Changing requires app restart.
@@ -524,9 +516,6 @@ public final class SettingsManager {
     preferredInputDeviceIDOverride =
       defaults.string(forKey: "preferredInputDeviceIDOverride")
       ?? SettingsDefaultValues.preferredInputDeviceIDOverride
-    environmentPreset =
-      EnvironmentPreset(rawValue: defaults.string(forKey: "environmentPreset") ?? "")
-      ?? SettingsDefaultValues.environmentPreset
     // PER-BUILD EXCEPTION (#923): useXPCAudioService is a developer XPC debug
     // knob, NOT a unified user preference — read/write via UserDefaults.standard
     // (the build's own store), never the shared `defaults`. Matches the bootstrap

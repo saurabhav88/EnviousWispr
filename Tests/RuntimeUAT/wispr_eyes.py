@@ -391,14 +391,13 @@ def read(label):
 
 _CARD_GROUPS = {
     "engine": ["Fast (English)", "Multi-Language"],
-    "environment": ["Quiet", "Normal", "Noisy"],
     "style": ["Formal", "Standard", "Friendly"],
 }
 
 def read_cards(group):
     """Read which card is selected in a card group.
 
-    Groups: 'engine', 'environment', 'style'.
+    Groups: 'engine', 'style'.
     Returns dict of {card_name: selected_bool}.
     Usage: read_cards('engine')  read_cards('style')
     """
@@ -926,7 +925,7 @@ def scan(toggle=False):
         ("History", [], [], [], []),  # skip button scan — 711 rows make it slow
         ("Transcription",
          ["Stop recording on silence", "Remove filler words"],
-         [], ["engine", "environment"], []),
+         [], ["engine"], []),
         ("Microphone", [], ["Input"], [], []),
         ("Shortcuts", [], [], [], []),
         ("AI Polish", ["Deep reasoning"], ["Provider", "Model"],

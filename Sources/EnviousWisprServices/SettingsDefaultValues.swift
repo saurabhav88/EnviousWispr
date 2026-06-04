@@ -56,7 +56,6 @@ enum SettingsDefaultValues {
   static let selectedInputDeviceUID = ""
   static let noiseSuppression = false
   static let preferredInputDeviceIDOverride = ""
-  static let environmentPreset: EnvironmentPreset = .normal
 
   static let useStreamingASR = false
   static let warmEnginePolicy: WarmEnginePolicy = .seconds30

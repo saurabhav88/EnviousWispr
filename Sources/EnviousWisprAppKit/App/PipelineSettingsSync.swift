@@ -149,9 +149,6 @@ final class PipelineSettingsSync {
       reconcileOllamaEviction(settings: settings)
     case .hotkeyEnabled:
       if settings.hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
-    case .environmentPreset:
-      // Cascade into `vadSensitivity` for the next recording's snapshot.
-      settings.vadSensitivity = settings.environmentPreset.vadSensitivity
     case .cancelKeyCode:
       hotkeyService.cancelKeyCode = settings.cancelKeyCode
     case .cancelModifiers:
