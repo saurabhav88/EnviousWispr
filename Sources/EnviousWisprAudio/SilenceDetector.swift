@@ -2,6 +2,29 @@ import EnviousWisprCore
 @preconcurrency import FluidAudio
 import Foundation
 
+/// #905 test seam — the narrow per-chunk VAD streaming surface `SilenceDetector`
+/// depends on. Lets a fake substitute for the concrete FluidAudio `VadManager`
+/// (which needs a real Silero CoreML model, unreachable in a unit test), so the
+/// "streaming clock advances on every chunk, before the energy gate" contract
+/// (#604 followup) can be tested behaviorally instead of by grepping source text.
+///
+/// `SilenceDetector` is an `actor` (not `@MainActor`), so an `any StreamingVad`
+/// existential is fine here — `avoid-any-mainactor-protocol-hotpath` does not
+/// bind, and per-chunk existential dispatch at ~10 Hz is negligible. The real
+/// `VadManager` conforms via an empty extension; the field is still built lazily
+/// in `prepare()`, defaulting to the real manager, so production is unchanged.
+internal protocol StreamingVad: Sendable {
+  func processStreamingChunk(
+    _ audioChunk: [Float],
+    state: VadStreamState,
+    config: VadSegmentationConfig,
+    returnSeconds: Bool,
+    timeResolution: Int
+  ) async throws -> VadStreamResult
+}
+
+extension VadManager: StreamingVad {}
+
 public struct SmoothedVADConfig: Sendable {
   public var emaAlpha: Float = 0.3
   public var onsetThreshold: Float = 0.5
@@ -82,7 +105,10 @@ enum SmoothedVADPhase: Sendable {
 /// they have different timing, different thresholds, and serve different consumers
 /// (WhisperKit clipTimestamps vs recording-stop UX). See issue #604.
 public actor SilenceDetector {
-  private var vadManager: VadManager?
+  private var vadManager: (any StreamingVad)?
+  /// #905 seam — builds the VAD lazily in `prepare()`. Defaults to the real
+  /// `VadManager`; a test injects a fake. Behavior-identical by default.
+  private let makeStreamingVad: @Sendable () async throws -> any StreamingVad
   private var streamState: VadStreamState = .initial()
   public private(set) var speechDetected = false
   public private(set) var isReady = false
@@ -116,15 +142,30 @@ public actor SilenceDetector {
   public init(
     silenceTimeout: TimeInterval = 1.5, vadConfig: SmoothedVADConfig = SmoothedVADConfig()
   ) {
+    // Delegate to the internal seam init with the real VAD factory. The seam is
+    // internal (not public) so the protocol stays inside the module — #905 keeps
+    // this MEDIUM, not REFACTOR. Tests reach the seam via `@testable import`.
+    self.init(
+      silenceTimeout: silenceTimeout, vadConfig: vadConfig,
+      makeStreamingVad: { try await VadManager(config: VadConfig(defaultThreshold: 0.5)) })
+  }
+
+  /// #905 seam init — internal so the `StreamingVad` parameter does not widen the
+  /// public surface. `@testable` tests inject a fake here.
+  init(
+    silenceTimeout: TimeInterval = 1.5,
+    vadConfig: SmoothedVADConfig = SmoothedVADConfig(),
+    makeStreamingVad: @Sendable @escaping () async throws -> any StreamingVad
+  ) {
     self.silenceTimeout = silenceTimeout
     self.vadConfig = vadConfig
+    self.makeStreamingVad = makeStreamingVad
   }
 
   /// Load the Silero VAD model. Call once before processing.
   public func prepare() async throws {
     guard !isReady else { return }
-    let config = VadConfig(defaultThreshold: 0.5)
-    vadManager = try await VadManager(config: config)
+    vadManager = try await makeStreamingVad()
     isReady = true
   }
 
@@ -183,7 +224,9 @@ public actor SilenceDetector {
       result = try await vad.processStreamingChunk(
         samples,
         state: streamState,
-        config: segConfig
+        config: segConfig,
+        returnSeconds: false,
+        timeResolution: 1
       )
     } catch {
       Task {

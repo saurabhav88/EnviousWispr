@@ -157,70 +157,81 @@ struct SilenceDetectorBoundaryTests {
   // FluidAudio's VadStreamEvent.sampleIndex is computed in VadStreamState's
   // internal sample clock, which only advances inside processStreamingChunk.
   // Skipping that call on energy-gated chunks would drift the FluidAudio clock
-  // away from our buffer index, producing wrong SpeechSegment boundaries.
-  // Codex flagged this on 2026-05-04 against an earlier draft of this branch.
+  // away from our buffer index, producing wrong SpeechSegment boundaries
+  // (Codex flagged this on 2026-05-04). The contract: processStreamingChunk runs
+  // on EVERY chunk, before the energy gate can zero the smoothed-EMA input.
   //
-  // The fix is in `processChunk`: the energy gate now only suppresses
-  // rawProbability fed to advanceStateMachine; it never bypasses
-  // processStreamingChunk. This test locks the contract by inspecting the
-  // source text — runtime end-to-end coverage would require the real Silero
-  // CoreML model and network access (out of scope for unit tests).
+  // #905 replaced an earlier text-grep test (which read SilenceDetector.swift as
+  // a String and asserted the call literal appeared before the gate literal —
+  // blind to wrong arguments, drifted indices, or a runtime branch hiding the
+  // skip) with these behavioral tests: a fake `StreamingVad` records each call
+  // and the `processedSamples` clock it was handed, so a gated chunk that skips
+  // the call (the pre-#604 regression) or a dropped `streamState = result.state`
+  // is caught by running the real `processChunk`, not by grepping source.
 
-  @Test("energy gate must not bypass processStreamingChunk")
-  func energyGateDoesNotBypassFluidAudioClock() throws {
-    let detectorPath = SilenceDetectorBoundaryTests.findSilenceDetectorSource()
-    let source = try String(contentsOfFile: detectorPath, encoding: .utf8)
-
-    // Locate the function body of processChunk.
-    guard let funcRange = source.range(of: "public func processChunk(") else {
-      Issue.record("Could not locate processChunk in SilenceDetector.swift")
-      return
-    }
-    // The function body extends to the next top-level function declaration
-    // ("internal func advanceStateMachine") which immediately follows it.
-    guard let nextFuncRange = source.range(of: "internal func advanceStateMachine(") else {
-      Issue.record("Could not locate advanceStateMachine in SilenceDetector.swift")
-      return
-    }
-    let processChunkBody = String(source[funcRange.lowerBound..<nextFuncRange.lowerBound])
-
-    // The energy-gate path must NOT skip processStreamingChunk. This catches a
-    // regression where someone re-introduces the pre-#604 pattern of
-    // "if energyGated { rawProbability = 0; skip VAD inference }".
-    let containsCall = processChunkBody.contains("vad.processStreamingChunk(")
-    #expect(
-      containsCall,
-      "processChunk must call vad.processStreamingChunk to keep FluidAudio's clock aligned with the buffer"
+  @Test(
+    "energy-gated quiet chunks still advance the FluidAudio streaming clock",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/905",
+      "energy gate must not skip the per-chunk VAD streaming call"
     )
+  )
+  func gatedChunksStillAdvanceStreamingClock() async throws {
+    let fake = FakeStreamingVad()
+    // energyGateThreshold > 0 so a silent chunk (RMS 0) is energy-gated — the
+    // exact case the pre-#604 bug skipped the streaming call on.
+    let detector = SilenceDetector(
+      vadConfig: SmoothedVADConfig(energyGateThreshold: 0.5),
+      makeStreamingVad: { fake }
+    )
+    try await detector.prepare()
 
-    // Ordering guard: after the #604 fix, processStreamingChunk runs FIRST
-    // (always), and the energy-gate check runs AFTER, only zeroing the
-    // rawProbability fed to the smoothed-EMA path. If a regression moves the
-    // gate back BEFORE the call (the pre-#604 shape), it's likely once again
-    // bypassing the call on quiet chunks. This assertion catches that
-    // structural drift.
-    if let gateRange = processChunkBody.range(of: "vadConfig.energyGateThreshold > 0"),
-      let callRange = processChunkBody.range(of: "vad.processStreamingChunk(")
-    {
-      #expect(
-        callRange.lowerBound < gateRange.lowerBound,
-        "processStreamingChunk must run before the energy-gate check; otherwise the gate is likely bypassing the call (pre-#604 shape)"
-      )
-    }
+    let quiet = [Float](repeating: 0.0, count: SilenceDetector.chunkSize)
+    _ = await detector.processChunk(quiet)
+    _ = await detector.processChunk(quiet)
+
+    let seen = await fake.seenProcessedSamples
+    #expect(seen.count == 2)  // the streaming call fired on BOTH gated chunks
+    #expect(seen[1] > seen[0])  // state propagated — the clock advanced across chunks
   }
 
-  /// Resolves the absolute path to SilenceDetector.swift. Walks up from this
-  /// test file to find the package root, then descends into Sources.
-  private static func findSilenceDetectorSource() -> String {
-    var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-    for _ in 0..<10 {
-      let candidate = dir.appendingPathComponent(
-        "Sources/EnviousWisprAudio/SilenceDetector.swift")
-      if FileManager.default.fileExists(atPath: candidate.path) {
-        return candidate.path
-      }
-      dir.deleteLastPathComponent()
-    }
-    return "Sources/EnviousWisprAudio/SilenceDetector.swift"
+  @Test("a non-gated (loud) chunk also advances the streaming clock")
+  func loudChunkAlsoAdvancesStreamingClock() async throws {
+    let fake = FakeStreamingVad()
+    let detector = SilenceDetector(
+      vadConfig: SmoothedVADConfig(energyGateThreshold: 0.5),
+      makeStreamingVad: { fake }
+    )
+    try await detector.prepare()
+
+    // RMS 0.8 ≥ threshold 0.5 → NOT energy-gated (the adversarial other side).
+    let loud = [Float](repeating: 0.8, count: SilenceDetector.chunkSize)
+    _ = await detector.processChunk(loud)
+    _ = await detector.processChunk(loud)
+
+    let seen = await fake.seenProcessedSamples
+    #expect(seen.count == 2)
+    #expect(seen[1] > seen[0])
+  }
+}
+
+/// Records each `processStreamingChunk` call and the `processedSamples` clock it
+/// was handed, then returns a result that advances that clock by the chunk size
+/// (mirroring FluidAudio's `VadManager+Streaming`). An `actor` so it satisfies
+/// the `Sendable` `StreamingVad` seam under Swift 6.
+actor FakeStreamingVad: StreamingVad {
+  private(set) var seenProcessedSamples: [Int] = []
+
+  func processStreamingChunk(
+    _ audioChunk: [Float],
+    state: VadStreamState,
+    config: VadSegmentationConfig,
+    returnSeconds: Bool,
+    timeResolution: Int
+  ) async throws -> VadStreamResult {
+    seenProcessedSamples.append(state.processedSamples)
+    var next = state
+    next.processedSamples += audioChunk.count
+    return VadStreamResult(state: next, event: nil, probability: 0.0)
   }
 }
