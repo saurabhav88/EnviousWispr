@@ -1163,6 +1163,7 @@ final class RecordingSessionKernel {
       finalSampleCount: conditioned.finalSampleCount,
       samplesPaddedToMinimum: conditioned.samplesPaddedToMinimum,
       usedRawFallbackAfterVAD: conditioned.usedRawFallbackAfterVAD,
+      usedRawSoftOnsetPreservation: conditioned.usedRawSoftOnsetPreservation,
       speechSegments: vadSegments
     )
     // PR-4.5 §8 metadata-only telemetry: sample counts + booleans, no audio
@@ -1172,7 +1173,8 @@ final class RecordingSessionKernel {
     // genuinely short utterance.
     log(
       "conditioner raw=\(captureResult.samples.count) filtered=\(conditioned.filteredSampleCount) "
-        + "rawFallback=\(conditioned.usedRawFallbackAfterVAD) padded=\(conditioned.samplesPaddedToMinimum) "
+        + "rawFallback=\(conditioned.usedRawFallbackAfterVAD) softOnset=\(conditioned.usedRawSoftOnsetPreservation) "
+        + "padded=\(conditioned.samplesPaddedToMinimum) reason=\(conditioned.conditioningReason) "
         + "final=\(conditioned.finalSampleCount)")
 
     // Transcribing.
