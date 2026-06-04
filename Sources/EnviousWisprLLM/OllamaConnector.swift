@@ -7,12 +7,25 @@ import Foundation
 public struct OllamaConnector: TranscriptPolisher {
   private let baseURL: String
 
+  /// #901 test seam — the network transport for both call sites (evict + polish
+  /// retry loop). Defaults to today's exact expression, so production behavior is
+  /// identical. A test injects a request-counting fake to assert the empty-name
+  /// evict guard makes zero calls (the old test only bounded wall-clock against a
+  /// non-routable host, which a deleted guard still satisfied via fast ECONNREFUSED).
+  private let networkExecutor: @Sendable (URLRequest) async throws -> (Data, URLResponse)
+
   /// Simplified prompt for weak/small models that struggle with complex instructions.
   private static let weakModelSystemPrompt =
     "Fix grammar and punctuation. Return only the corrected text."
 
-  public init(baseURL: String = "http://localhost:11434") {
+  public init(
+    baseURL: String = "http://localhost:11434",
+    networkExecutor: @Sendable @escaping (URLRequest) async throws -> (Data, URLResponse) = {
+      try await LLMNetworkSession.shared.session.data(for: $0)
+    }
+  ) {
     self.baseURL = baseURL
+    self.networkExecutor = networkExecutor
   }
 
   public func polish(
@@ -168,7 +181,7 @@ public struct OllamaConnector: TranscriptPolisher {
       request.httpBody = try JSONSerialization.data(
         withJSONObject: Self.makeEvictRequestBody(model: modelName)
       )
-      let (_, response) = try await LLMNetworkSession.shared.session.data(for: request)
+      let (_, response) = try await networkExecutor(request)
       let status = (response as? HTTPURLResponse)?.statusCode ?? 0
       let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
       let result = (200...299).contains(status) ? "unloaded" : "error"
@@ -293,7 +306,7 @@ public struct OllamaConnector: TranscriptPolisher {
       do {
         let (data, response): (Data, URLResponse)
         do {
-          (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
+          (data, response) = try await networkExecutor(request)
         } catch let urlError as URLError {
           switch urlError.code {
           case .notConnectedToInternet, .cannotFindHost:

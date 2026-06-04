@@ -107,19 +107,67 @@ struct OllamaConnectorRequestBodyTests {
     #expect(OllamaConnector.effectiveOllamaModel(provider: .ollama, model: "") == nil)
   }
 
-  // MARK: - evictModel fire-and-forget guard (#295)
+  // MARK: - evictModel fire-and-forget guard (#295, hardened #901)
 
-  /// Empty model names are a no-op — the method must return immediately
-  /// without hitting the network. Regression guard for callers that pass
-  /// the stored model field without first checking `isEmpty`.
-  @Test func evictModelWithEmptyNameIsNoOp() async {
-    // Pointed at a non-routable address so any accidental network
-    // call would time out rather than succeed; the test completes
-    // in well under the 3s connector timeout because the guard
-    // short-circuits before `URLSession.data(for:)` is invoked.
-    let connector = OllamaConnector(baseURL: "http://127.0.0.1:1")
-    let start = Date()
+  /// Empty model names are a no-op — the guard must return before any network
+  /// call. The old test only bounded wall-clock (< 0.5s) against a non-routable
+  /// host, which a deleted `!modelName.isEmpty` guard still satisfied via fast
+  /// ECONNREFUSED. This counts requests instead: empty name => zero calls.
+  @Test("empty model name evicts without any network call")
+  func evictModelWithEmptyNameMakesNoRequest() async {
+    let counter = RequestCounter()
+    let connector = OllamaConnector(networkExecutor: { _ in
+      await counter.bump()
+      throw URLError(.cannotConnectToHost)  // evict is fire-and-forget; the throw is ignored
+    })
     await connector.evictModel("")
-    #expect(Date().timeIntervalSince(start) < 0.5)
+    #expect(await counter.count == 0)  // guard active: the network was never reached
   }
+
+  /// The other side of the routing flip (`matcher-set-adversarial-tests`): a
+  /// non-empty name must reach the network exactly once. Pins the guard from
+  /// both sides so deleting it is caught regardless of which case regresses.
+  @Test("non-empty model name evicts via exactly one network call")
+  func evictModelWithNonEmptyNameMakesOneRequest() async {
+    let counter = RequestCounter()
+    let connector = OllamaConnector(networkExecutor: { _ in
+      await counter.bump()
+      throw URLError(.cannotConnectToHost)  // evict ignores the throw
+    })
+    await connector.evictModel("gemma4:latest")
+    #expect(await counter.count == 1)
+  }
+
+  /// The polish call site must also route through the injected executor and
+  /// surface a transport failure (not silently swallow it). The evict-only count
+  /// tests can't catch a bad polish reroute.
+  @Test("polish surfaces a transport failure through the injected executor")
+  func polishSurfacesExecutorError() async {
+    let connector = OllamaConnector(networkExecutor: { _ in
+      throw URLError(.notConnectedToInternet)  // maps to providerUnavailable, fail-fast
+    })
+    let config = LLMProviderConfig(
+      model: "gemma4:latest",
+      apiKeyKeychainId: nil,
+      maxTokens: 128,
+      temperature: 0.3,
+      thinkingBudget: nil,
+      reasoningEffort: nil
+    )
+    await #expect(throws: LLMError.self) {
+      _ = try await connector.polish(
+        text: "hello",
+        instructions: PolishInstructions(systemPrompt: "sys"),
+        config: config,
+        onToken: nil
+      )
+    }
+  }
+}
+
+/// Counts how many times the injected network executor is invoked. An actor so
+/// the `@Sendable` executor closure can mutate it from any concurrency domain.
+private actor RequestCounter {
+  private(set) var count = 0
+  func bump() { count += 1 }
 }
