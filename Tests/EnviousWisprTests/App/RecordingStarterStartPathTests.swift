@@ -105,10 +105,6 @@ import Testing
     )
   }
 
-  @Test func constructionDoesNotCrash() {
-    _ = Self.makeFixture()
-  }
-
   @Test func isProcessingFalseWhenBothPipelinesIdle() {
     let fx = Self.makeFixture()
     fx.asr.activeBackendType = .parakeet
@@ -209,11 +205,15 @@ import Testing
 
     await fx.starter.start()
 
-    // A ready press must NOT take the cold branch — the cold-boot pill is the
-    // only intent `start()` sets from that branch, so its absence proves the
-    // warm path ran.
-    if case .cachingModel = fx.overlay.currentIntent {
-      Issue.record("warm press must not show the cold-boot caching pill")
+    // A ready press must take the WARM path, which shows the recording overlay.
+    // The old test only checked the cold-boot pill's ABSENCE — a broken warm
+    // path that returned early without recording also has no cold pill and
+    // stayed green. Asserting the positive recording intent reddens that
+    // early-return mutation while still proving the cold branch was skipped.
+    guard case .recording = fx.overlay.currentIntent else {
+      Issue.record(
+        "warm press must show the recording overlay; got \(fx.overlay.currentIntent)")
+      return
     }
   }
 
