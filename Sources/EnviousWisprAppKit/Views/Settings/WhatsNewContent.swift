@@ -28,6 +28,45 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.1.2
+
+    Entry(
+      id: "automatic-update-checks",
+      icon: "sparkles",
+      title: "EnviousWispr keeps itself current",
+      description:
+        "The app now looks for new versions on its own: when you open it, when you come back to it, and quietly in the background. So a waiting improvement finds you instead of you having to go looking. There's also a clear \"Check for Updates\" control in Settings if you ever want to look right now.",
+      category: .newFeatures,
+      version: "2.1.2"
+    ),
+    Entry(
+      id: "soft-and-distant-speech-captured",
+      icon: "waveform",
+      title: "Soft and distant speech no longer gets dropped",
+      description:
+        "If you spoke quietly, whispered, or sat back from your mic, EnviousWispr would sometimes capture nothing at all. It now hears those faint and far-away words and writes them down, including a soft first word that used to get clipped off the start.",
+      category: .fasterAndMoreReliable,
+      version: "2.1.2"
+    ),
+    Entry(
+      id: "no-false-warming-up-notice",
+      icon: "bolt.badge.checkmark",
+      title: "No more false \"warming up\" notice",
+      description:
+        "Tapping record again right after a quick tap or a \"changed my mind\" cancel could flash the \"warming up\" notice as if the app were starting cold, even though it was already warm and ready. That stray notice is gone: a warm app just records.",
+      category: .qualityOfLife,
+      version: "2.1.2"
+    ),
+    Entry(
+      id: "removed-recording-environment-picker",
+      icon: "slider.horizontal.3",
+      title: "Removed a setting that promised something it didn't do",
+      description:
+        "The \"Recording Environment\" choice (Quiet, Normal, Noisy) sounded like it changed how well the app hears you in different surroundings. It never did that. We removed it so Settings only shows controls that actually do what they say.",
+      category: .qualityOfLife,
+      version: "2.1.2"
+    ),
+
     // MARK: - v2.1.1
 
     Entry(
