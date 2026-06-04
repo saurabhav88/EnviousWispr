@@ -14,6 +14,7 @@ internal struct ASREmptyResultDiagnostics {
   var finalSampleCount: Int?
   var samplesPaddedToMinimum: Bool?
   var usedRawFallbackAfterVAD: Bool?
+  var usedRawSoftOnsetPreservation: Bool?
 
   var streamingResultChars: Int?
   var streamingFinalizeFailed: Bool?
@@ -74,6 +75,9 @@ internal struct ASREmptyResultDiagnostics {
     put(finalSampleCount, key: "asr.final_sample_count", into: &extra)
     put(samplesPaddedToMinimum, key: "asr.samples_padded_to_minimum", into: &extra)
     put(usedRawFallbackAfterVAD, key: "asr.used_raw_fallback_after_vad", into: &extra)
+    put(
+      usedRawSoftOnsetPreservation,
+      key: "asr.used_raw_soft_onset_preservation", into: &extra)
 
     put(streamingResultChars, key: "asr.streaming_result_chars", into: &extra)
     put(streamingFinalizeFailed, key: "asr.streaming_finalize_failed", into: &extra)

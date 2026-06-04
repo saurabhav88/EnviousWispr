@@ -39,6 +39,13 @@ public struct ConditionedAudio: Equatable, Sendable {
   /// Matches the old Parakeet pipeline's raw-fallback branch.
   public let usedRawFallbackAfterVAD: Bool
 
+  /// `true` when #843 soft-onset preservation fired — a short take whose VAD
+  /// filter would have dropped a large early-onset prefix, so the conditioner
+  /// returned the full raw capture to keep the soft leading word ("Actually",
+  /// "Overall"). Distinct from `usedRawFallbackAfterVAD`, which fires only when
+  /// the filtered audio itself fell below the ASR minimum.
+  public let usedRawSoftOnsetPreservation: Bool
+
   /// `true` when the final sample count was below the ASR minimum and the
   /// conditioner appended silence to reach it. Matches the old Parakeet
   /// pipeline's short-utterance padding.
@@ -48,6 +55,17 @@ public struct ConditionedAudio: Equatable, Sendable {
   /// kept explicit so the telemetry surface does not depend on whether the
   /// caller bothered to recompute.
   public var finalSampleCount: Int { samples.count }
+
+  /// Human-readable label of which conditioning path produced `samples`, for
+  /// telemetry/triage. Soft-onset preservation and the too-aggressive fallback
+  /// both yield raw audio but for different reasons; `filteredSampleCount`
+  /// distinguishes a genuine trim from a no-op passthrough.
+  public var conditioningReason: String {
+    if usedRawSoftOnsetPreservation { return "rawSoftOnset" }
+    if usedRawFallbackAfterVAD { return "rawFallbackTooAggressive" }
+    if samplesPaddedToMinimum { return "filteredPaddedToMinimum" }
+    return "filtered"
+  }
 }
 
 /// Apply VAD-segment filtering, too-aggressive-filter raw fallback, and
@@ -73,14 +91,34 @@ public enum CapturedAudioConditioner {
     let filtered = SampleFilter.filter(from: rawSamples, segments: vadSegments)
     let filteredCount = filtered.count
 
-    // Step 2: too-aggressive-filter raw fallback at the conditioner layer
-    //. Even with non-empty
-    // segments, SampleFilter's merge can produce fewer than `minimumSamples`
-    // if voiced regions were sparse. If raw audio would meet the minimum,
-    // prefer raw — losing words is worse than ASR seeing extra silence.
     var working = filtered
     var usedRawFallback = false
-    if working.count < minimumSamples && rawSamples.count >= minimumSamples {
+    var usedRawSoftOnset = false
+    let rawMeetsMinimum = rawSamples.count >= minimumSamples
+
+    // Step 2a: #843 soft-onset preservation. A soft vowel-initial leading word
+    // ("Actually", "Overall") sits just before the first VAD segment and the
+    // filter trims it away. When a SHORT take's speech starts EARLY and the
+    // filter would drop a LARGE fraction of the raw audio, that dropped prefix
+    // is very likely the real onset — feed the full raw capture to ASR instead.
+    // Parakeet handles the extra leading silence and returns empty on true
+    // silence/noise (verified on synthetic probes + 65 competitor clips).
+    // R3 (Codex): only when raw ALREADY meets the ASR minimum, so this branch
+    // never routes a sub-minimum buffer into the Step 3 zero-padding below — the
+    // RNNT decoder-loop hazard (gotchas-audio: "Do not pad silence").
+    if rawMeetsMinimum,
+      shouldPreserveSoftOnset(
+        rawCount: rawSamples.count,
+        filteredCount: filteredCount,
+        vadSegments: vadSegments)
+    {
+      working = rawSamples
+      usedRawSoftOnset = true
+    } else if working.count < minimumSamples && rawMeetsMinimum {
+      // Step 2b: too-aggressive-filter raw fallback (pre-existing). Even with
+      // non-empty segments, SampleFilter's merge can produce fewer than
+      // `minimumSamples` if voiced regions were sparse. Prefer raw — losing
+      // words is worse than ASR seeing extra silence.
       working = rawSamples
       usedRawFallback = true
     }
@@ -100,6 +138,44 @@ public enum CapturedAudioConditioner {
       samples: working,
       filteredSampleCount: filteredCount,
       usedRawFallbackAfterVAD: usedRawFallback,
+      usedRawSoftOnsetPreservation: usedRawSoftOnset,
       samplesPaddedToMinimum: padded)
+  }
+
+  // MARK: #843 soft-onset preservation
+
+  /// Thresholds for soft-onset preservation. Derived from the empirical capture
+  /// audit on #843: the dropped "Actually"/"Overall" takes were short (≤2.7 s),
+  /// their single VAD segment started early, and the trim removed 55-63% of the
+  /// raw audio. Deliberately conservative so a long dictation's legitimate
+  /// trailing-silence trim is never mistaken for onset loss.
+  enum SoftOnset {
+    /// Only short takes. A long dictation dropping ≥25% is real silence trim,
+    /// not a clipped first word.
+    static let maxRawSamples = Int(8 * AudioConstants.sampleRate)  // 8.0 s
+    /// The earliest segment must start within this window for the dropped
+    /// prefix to be a plausible onset rather than a long pre-speech pause.
+    static let maxFirstSegmentStartSample = Int(2 * AudioConstants.sampleRate)  // 2.0 s
+    /// Fraction of raw the filter must drop before we treat it as onset loss.
+    static let minDroppedFraction = 0.25
+  }
+
+  /// True when the VAD filter looks like it clipped a soft leading word: a short
+  /// take, with at least one segment that starts early, where filtering dropped
+  /// a large fraction of the raw audio. Pure + internal so the boundary cases
+  /// (drop% / segment-start / raw-length, each just below and just above the
+  /// threshold) unit-test directly.
+  static func shouldPreserveSoftOnset(
+    rawCount: Int, filteredCount: Int, vadSegments: [SpeechSegment]
+  ) -> Bool {
+    guard rawCount > 0, rawCount <= SoftOnset.maxRawSamples else { return false }
+    // Earliest segment start (segments are not guaranteed sorted).
+    guard let firstStart = vadSegments.map(\.startSample).min() else { return false }
+    guard firstStart < SoftOnset.maxFirstSegmentStartSample else { return false }
+    // Filtering dropped ≥ minDroppedFraction of the raw audio. (When the filter
+    // no-op'd — empty/sub-threshold segments — filteredCount == rawCount, so the
+    // drop is 0 and this is false.)
+    let dropped = rawCount - filteredCount
+    return Double(dropped) >= SoftOnset.minDroppedFraction * Double(rawCount)
   }
 }
