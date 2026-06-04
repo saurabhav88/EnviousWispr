@@ -15,9 +15,12 @@ import Testing
 /// `isProgressPollingActiveForTesting` honest, so a future refactor cannot
 /// silently break the defer guarantee.
 ///
-/// Full failure-path coverage through real `loadModel()` requires a
-/// fake-XPC service infrastructure; that is intentionally not built tonight.
-/// See issue thread for follow-up.
+/// `loadModelClearsPollingOnTransportError` (#899) drives the *real*
+/// `loadModel()` to its `serviceUnreachable` throw via the connection-preflight
+/// seam, so deleting the production `defer { self.stopProgressPolling() }` makes
+/// it red. (It supersedes the old `deferWrapPatternSimulation`, which only
+/// re-implemented the pattern locally and passed because the test itself called
+/// `stopProgressPolling`.)
 @MainActor
 @Suite("ASRManagerProxy progress polling")
 struct ASRManagerProxyProgressPollingTests {
@@ -76,31 +79,26 @@ struct ASRManagerProxyProgressPollingTests {
     #expect(proxy.isProgressPollingActiveForTesting == false)
   }
 
-  @Test("polling state survives a simulated loadModel throw (defer-wrap pattern)")
-  func deferWrapPatternSimulation() {
-    // Mirrors the exact pattern at ASRManagerProxy.swift:77-81. If a future
-    // refactor removes the defer-stop, this test still passes only because
-    // the test itself calls stopProgressPolling — that is intentional: the
-    // test documents the contract; the regression risk is in the call site.
-    let proxy = ASRManagerProxy()
+  @Test(
+    "loadModel stops progress polling when the XPC transport is unreachable",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/586",
+      "XPC error leaks progress timer"
+    )
+  )
+  func loadModelClearsPollingOnTransportError() async {
+    // No-op connection preflight: the real XPC connection is never established,
+    // so production's real `serviceProxy` nil-connection branch fires
+    // `onProxyError` → `serviceUnreachable`. That drives the *real*
+    // `defer { self.stopProgressPolling() }` inside `loadModel()` — the #586
+    // leak guard. Deleting that defer leaves the timer alive after the awaited
+    // throw, so this test goes red.
+    let proxy = ASRManagerProxy(connectionPreflight: { _ in })
 
-    func simulateThrowingLoad() throws {
-      proxy.startProgressPolling()
-      defer { proxy.stopProgressPolling() }
-      throw SimulatedXPCError.serviceUnreachable
-    }
-
-    do {
-      try simulateThrowingLoad()
-      Issue.record("expected simulateThrowingLoad to throw")
-    } catch {
-      // expected
+    await #expect(throws: XPCASRTransportError.self) {
+      try await proxy.loadModel()
     }
 
     #expect(proxy.isProgressPollingActiveForTesting == false)
-  }
-
-  private enum SimulatedXPCError: Error {
-    case serviceUnreachable
   }
 }

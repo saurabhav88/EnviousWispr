@@ -61,7 +61,21 @@ public final class ASRManagerProxy: ASRManagerInterface {
   private var loadTaskSeq: UInt64 = 0
   private var activeLoadTaskID: UInt64 = 0
 
-  public init() {}
+  /// #899 test seam — the connection-preflight step `loadModel()` runs before it
+  /// reaches `serviceProxy`. Production default establishes the real XPC
+  /// connection exactly as `ensureConnection()` does today, so behavior is
+  /// identical by default. A test supplies a no-op preflight, leaving
+  /// `connection` nil, so production's real `serviceProxy` nil-connection branch
+  /// fires `onProxyError` → `serviceUnreachable`, exercising the real
+  /// `defer { self.stopProgressPolling() }` (#586 leak guard). Closure takes the
+  /// proxy as a parameter (not a captured `self`) so the default is a plain
+  /// expression with no self-capture; bound inside `init` so it can name the
+  /// private `ensureConnection()`.
+  private let connectionPreflight: @MainActor (ASRManagerProxy) -> Void
+
+  public init(connectionPreflight: (@MainActor (ASRManagerProxy) -> Void)? = nil) {
+    self.connectionPreflight = connectionPreflight ?? { $0.ensureConnection() }
+  }
 
   /// Invalidate whatever load is current: bump the generation so an in-flight
   /// `loadModel()` completion (even one whose `isModelLoaded` is still `false`)
@@ -102,7 +116,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
       self.downloadPhase = "Preparing download..."
       self.downloadDetail = ""
 
-      self.ensureConnection()
+      self.connectionPreflight(self)
       self.resendConfigIfNeeded()
 
       // Codex finding (2026-05-07): clear any stale progress file from a
