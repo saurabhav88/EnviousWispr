@@ -25,13 +25,26 @@ import Testing
 @Suite("ASRManagerProxy progress polling")
 struct ASRManagerProxyProgressPollingTests {
 
-  @Test("startProgressPolling activates the timer")
-  func startActivates() {
+  @Test("startProgressPolling schedules a live timer on the main run loop")
+  func startActivates() throws {
     let proxy = ASRManagerProxy()
-    #expect(proxy.isProgressPollingActiveForTesting == false)
+    #expect(proxy.progressPollTimerForTesting == nil)
 
     proxy.startProgressPolling()
-    #expect(proxy.isProgressPollingActiveForTesting == true)
+    let timer = try #require(proxy.progressPollTimerForTesting)
+    // The timer must be live AND actually scheduled on the main run loop. The
+    // old `!= nil` flag (and even a plain `isValid` check) stayed green if
+    // `RunLoop.main.add` were deleted — a stored-but-never-scheduled `Timer`
+    // is still valid and non-nil, yet never fires. `CFRunLoopContainsTimer`
+    // checks the scheduling deterministically and synchronously, without
+    // firing the timer or touching the shared `ProgressFile` (a real-timer
+    // test would need both, which `tests-no-real-time-scheduling-precision`
+    // and the process-global-state guidance steer away from). Production adds
+    // the timer to `RunLoop.main` `.common` modes, so check `.commonModes`.
+    #expect(timer.isValid)  // not invalidated / not a dead timer
+    #expect(
+      CFRunLoopContainsTimer(CFRunLoopGetMain(), timer as CFRunLoopTimer, .commonModes),
+      "the polling timer must be scheduled on the main run loop, not merely stored")
 
     proxy.stopProgressPolling()
   }
@@ -46,21 +59,27 @@ struct ASRManagerProxyProgressPollingTests {
     #expect(proxy.isProgressPollingActiveForTesting == false)
   }
 
-  @Test("re-arming via startProgressPolling does not leak the prior timer")
+  @Test("re-arming via startProgressPolling invalidates the prior timer (no leak)")
   func reArmingDoesNotLeak() {
     let proxy = ASRManagerProxy()
     proxy.startProgressPolling()
-    let firstActive = proxy.isProgressPollingActiveForTesting
-    #expect(firstActive == true)
+    let firstTimer = proxy.progressPollTimerForTesting
+    #expect(firstTimer?.isValid == true)
 
-    // start without an explicit stop in between should still result in a
-    // single active timer — startProgressPolling's first line calls
-    // stopProgressPolling() to invalidate any prior timer before scheduling.
+    // Re-arm without an explicit stop. startProgressPolling's first line calls
+    // stopProgressPolling(), which invalidates the prior timer before scheduling
+    // a new one. Holding the prior timer reference lets us PROVE that: a leak
+    // (the old timer left running on the run loop) is invisible through the
+    // `!= nil` flag, which only ever sees the newest timer. If that cleanup is
+    // removed, firstTimer stays valid and this reddens.
     proxy.startProgressPolling()
-    #expect(proxy.isProgressPollingActiveForTesting == true)
+    let secondTimer = proxy.progressPollTimerForTesting
+    #expect(firstTimer?.isValid == false, "the prior timer must be invalidated, not leaked")
+    #expect(secondTimer?.isValid == true, "the re-armed timer is live")
+    #expect(firstTimer !== secondTimer, "re-arm installs a distinct timer")
 
     proxy.stopProgressPolling()
-    #expect(proxy.isProgressPollingActiveForTesting == false)
+    #expect(proxy.progressPollTimerForTesting == nil)
   }
 
   @Test("stopProgressPolling is idempotent — calling twice is safe")

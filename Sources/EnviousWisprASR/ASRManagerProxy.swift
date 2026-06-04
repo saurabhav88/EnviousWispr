@@ -178,6 +178,13 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// via `@testable import EnviousWisprASR`.
   internal var isProgressPollingActiveForTesting: Bool { progressPollTimer != nil }
 
+  /// Read-only handle to the live polling timer, for the #586 leak-regression
+  /// test that must hold a reference to the PRIOR timer across a re-arm and
+  /// assert it was invalidated (a leak is invisible through the `!= nil` flag
+  /// above, which only ever sees the newest timer). Read-only window onto the
+  /// existing private state — adds no behavior and no new stored property.
+  internal var progressPollTimerForTesting: Timer? { progressPollTimer }
+
   internal func startProgressPolling() {
     stopProgressPolling()
     // Read progress from shared file — bypasses XPC entirely.
