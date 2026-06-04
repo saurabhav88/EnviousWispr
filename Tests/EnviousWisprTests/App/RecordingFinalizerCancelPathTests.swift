@@ -75,10 +75,6 @@ import Testing
     )
   }
 
-  @Test func constructionDoesNotCrash() {
-    _ = Self.makeFixture()
-  }
-
   @Test func cancelIsNoOpWhenParakeetIdle() async {
     let fx = Self.makeFixture()
     fx.asr.activeBackendType = .parakeet
@@ -161,8 +157,13 @@ import Testing
   @Test func markLockedFlipsTheLockAndUpdatesOverlay() {
     let fx = Self.makeFixture()
     #expect(fx.lockBox.isLocked == false)
+    #expect(fx.overlay.isRecordingLockedForTesting == false)
     fx.finalizer.markLocked()
     #expect(fx.lockBox.isLocked == true)
+    // The test name promises the overlay is updated too — markLocked() calls
+    // recordingOverlay.updateLockState(true). The old test asserted only the
+    // shared lock setter, so deleting the overlay update left it green.
+    #expect(fx.overlay.isRecordingLockedForTesting == true)
   }
 
   @Test func userStopClearsLockBeforeDispatch() async {

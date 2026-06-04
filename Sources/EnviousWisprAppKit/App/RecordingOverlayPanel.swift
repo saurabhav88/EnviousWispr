@@ -603,6 +603,12 @@ final class RecordingOverlayPanel {
     isRecordingLocked = locked
   }
 
+  /// Read-only mirror of the private lock flag, for tests that verify
+  /// `markLocked()` / `updateLockState(_:)` actually toggled the overlay rather
+  /// than only the shared lock setter. Mirrors the
+  /// `ASRManagerProxy.isProgressPollingActiveForTesting` test-accessor pattern.
+  internal var isRecordingLockedForTesting: Bool { isRecordingLocked }
+
   /// Show the passive language-detection chip as a floating panel. Mirrors the
   /// `showAccessibilityToast` shape: defers creation to next run loop cycle,
   /// guards against rapid replace via the generation token. Auto-dismiss is 6s
