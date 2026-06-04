@@ -40,7 +40,7 @@ import Testing
     let overlay: RecordingOverlayPanel
   }
 
-  private static func makeFixture() -> Fixture {
+  private static func makeFixture(accessibilityRefresh: (@MainActor () -> Void)? = nil) -> Fixture {
     // `RecordingOverlayPanel.show(intent: .recording, ...)` posts an
     // `NSAccessibility` notification against `NSApp.mainWindow`. `NSApp`
     // is an implicitly-unwrapped optional that crashes the test process
@@ -89,7 +89,8 @@ import Testing
       recordingLockedAccess: lockAccess,
       lastUserStopAccess: finalizer.lastUserStopAccess,
       lastRecordingResult: lastRecordingResult,
-      dictationLifecycleCoordinator: nil
+      dictationLifecycleCoordinator: nil,
+      accessibilityRefresh: accessibilityRefresh
     )
     return Fixture(
       starter: starter,
@@ -140,15 +141,31 @@ import Testing
     #expect(fx.lastRecordingResult.polishError == nil)
   }
 
-  @Test func toggleAndStartBothRefreshAccessibilityStatus() async {
-    let fx = Self.makeFixture()
+  /// The old `toggleAndStartBothRefreshAccessibilityStatus` had ZERO `#expect` —
+  /// it only checked crash-freedom, so deleting the AX re-arm block from
+  /// `start()`/`toggle()` left it green. This injects a counting spy and asserts
+  /// each path refreshes accessibility exactly once. The engine MUST be marked
+  /// ready (`isModelLoaded = true`) — otherwise both paths return at the
+  /// cold-engine guard BEFORE the AX block and the spy never increments.
+  @Test(
+    "start() and toggle() each refresh accessibility exactly once",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/904",
+      "AX re-arm on start/toggle was unverified (zero-assertion test)"
+    )
+  )
+  func startAndToggleEachRefreshAccessibilityOnce() async {
+    let counter = AXRefreshCounter()
+    let fx = Self.makeFixture(accessibilityRefresh: { counter.count += 1 })
     fx.asr.activeBackendType = .parakeet
-    // Smoke-level: simply verify that toggle() and start() do not crash
-    // even when AX is denied (the start-path code calls
-    // refreshAccessibilityStatus + restartMonitoringIfNeeded; both must
-    // be callable in any state).
-    await fx.starter.toggle(source: .toolbar)
+    fx.asr.isModelLoaded = true  // → readiness .ready, so start/toggle pass the cold-engine guard
+    #expect(fx.kernelDriver.engineReadiness == .ready)
+
     await fx.starter.start()
+    #expect(counter.count == 1)  // start() refreshed once
+
+    await fx.starter.toggle(source: .toolbar)
+    #expect(counter.count == 2)  // toggle() refreshed once more
   }
 
   // #879 — cold-boot press safety. The matcher-set boundary is `.ready` vs
@@ -218,4 +235,12 @@ import Testing
   // `lastUserStopAccessIsThreadedFromFinalizer` test pins the wiring of
   // the closure; the guard itself mirrors the post-toggle check at
   // lines 162-165 (covered by behavioral observation in Live UAT).
+}
+
+/// Counts accessibility-refresh invocations for #904. A `@MainActor` reference
+/// type because the seam closure is `@MainActor` (implicitly `Sendable` in
+/// Swift 6) and the `@MainActor` suite supplies it.
+@MainActor
+private final class AXRefreshCounter {
+  var count = 0
 }

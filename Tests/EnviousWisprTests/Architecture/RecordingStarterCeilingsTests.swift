@@ -52,10 +52,16 @@ import Testing
     // onboarding's warm-up through the active engine's shared `ensureEngineWarm`.
     // The domain logic still lives off this type in `ColdPressGuard`; no new
     // collaborator or non-private method.
+    // #904 (trust sweep): raised 285 → 292 for the `accessibilityRefresh` test
+    // seam — a defaulted `@MainActor () -> Void` closure that makes the AX
+    // re-arm-on-revocation step in `start()`/`toggle()` observable (the old test
+    // had zero assertions). The closure does NOT count as a collaborator
+    // (collaboratorCount still ≤ 7) and is not a non-private method; only the
+    // paper-line ceiling moves. Production behavior is identical by default.
     #expect(
-      count <= 285,
+      count <= 292,
       """
-      RecordingStarter line count exceeded: \(count) > 285. \
+      RecordingStarter line count exceeded: \(count) > 292. \
       Raise via Bible §30 only.
       """)
   }

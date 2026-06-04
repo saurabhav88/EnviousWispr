@@ -27,6 +27,10 @@ final class RecordingStarter {
   let settings: SettingsManager
   let permissions: PermissionsService
   let recordingOverlay: RecordingOverlayPanel
+  /// #904 test seam — the accessibility re-arm step `start()`/`toggle()` run.
+  /// Default (bound in init capturing `permissions`, since a default arg can't
+  /// reference an init param) is today's block; a test injects a counting spy.
+  let accessibilityRefresh: @MainActor () -> Void
 
   var heartControlRecovery: HeartControlRecovery
   var recordingLockedAccess: DictationLifecycleCoordinator.RecordingLockedAccess
@@ -68,7 +72,8 @@ final class RecordingStarter {
     recordingLockedAccess: DictationLifecycleCoordinator.RecordingLockedAccess,
     lastUserStopAccess: RecordingFinalizer.LastUserStopAccess,
     lastRecordingResult: LastRecordingResult,
-    dictationLifecycleCoordinator: DictationLifecycleCoordinator?
+    dictationLifecycleCoordinator: DictationLifecycleCoordinator?,
+    accessibilityRefresh: (@MainActor () -> Void)? = nil
   ) {
     self.audioCapture = audioCapture
     self.asrManager = asrManager
@@ -82,6 +87,12 @@ final class RecordingStarter {
     self.lastUserStopAccess = lastUserStopAccess
     self.lastRecordingResult = lastRecordingResult
     self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
+    let perms = permissions
+    self.accessibilityRefresh =
+      accessibilityRefresh ?? {
+        perms.refreshAccessibilityStatus()
+        if !perms.hasAccessibilityPermission { perms.restartMonitoringIfNeeded() }
+      }
   }
 
   /// Hotkey PTT start path. Mirrors the former root-state file (pre-PR10):
@@ -114,10 +125,7 @@ final class RecordingStarter {
         readiness: readinessAtEntry)
       return
     }
-    permissions.refreshAccessibilityStatus()
-    if !permissions.hasAccessibilityPermission {
-      permissions.restartMonitoringIfNeeded()
-    }
+    accessibilityRefresh()
     recordingOverlay.show(
       intent: .recording(audioLevel: 0),
       audioLevelProvider: { [audioCapture] in audioCapture.audioLevel },
@@ -254,10 +262,7 @@ final class RecordingStarter {
         return
       }
     }
-    permissions.refreshAccessibilityStatus()
-    if !permissions.hasAccessibilityPermission {
-      permissions.restartMonitoringIfNeeded()
-    }
+    accessibilityRefresh()
     do {
       try await active.handle(
         event: .toggleRecording(
