@@ -4,8 +4,8 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
-@testable import EnviousWisprAppKit
 @testable import EnviousWisprASR
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
@@ -96,22 +96,60 @@ import Testing
     #expect(fx.lockBox.isLocked == false)
   }
 
-  @Test func userStopMarksTimestampBeforeAwait() async {
-    // Timing invariant: the timestamp must be visible to Starter's wedge
-    // guard immediately after userStop() begins. With pipelines idle, the
-    // dispatch await returns quickly; after userStop() resolves, the
-    // accessor must read a non-nil value.
+  /// The ordering invariant `RecordingStarter`'s post-await wedge guards depend
+  /// on: `lastUserStopRequest` must be set BEFORE `userStop()` enters its
+  /// suspending dispatch await. The injected dispatch closure reads the timestamp
+  /// at dispatch entry. (The old `userStopMarksTimestampBeforeAwait` read only
+  /// after the await resolved, so it passed whether the timestamp was set before
+  /// or after the await — it could never catch a reordering.)
+  @Test(
+    "userStop sets the stop timestamp before entering the dispatch await",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/902",
+      "stop timestamp ordering"
+    )
+  )
+  func userStopSetsTimestampBeforeDispatchAwait() async {
     let fx = Self.makeFixture()
-    #expect(fx.finalizer.lastUserStopAccess.read() == nil)
-    await fx.finalizer.userStop()
-    #expect(fx.finalizer.lastUserStopAccess.read() != nil)
+    let finalizer = fx.finalizer
+    let obs = DispatchObservation()
+    finalizer.requestStopDispatch = { driver in
+      obs.dispatchRan = true
+      obs.stampAtEntry = finalizer.lastUserStopAccess.read()
+      try await driver.handle(event: .requestStop)  // forward — an idle driver ignores stop
+    }
+    await finalizer.userStop()
+    #expect(obs.dispatchRan)  // the dispatch closure was actually reached
+    #expect(obs.stampAtEntry != nil)  // the timestamp was already set at dispatch entry
   }
 
-  @Test func cancelMarksTimestampBeforeAwait() async {
+  /// The same ordering invariant for `cancel()`. Its dispatch is guarded by
+  /// `.recording`/`.loadingModel`, so the active driver is force-transitioned to
+  /// `.recording` to reach the dispatch. The cancel closure observes only (no
+  /// forward) because real `cancelRecording()` awaits terminal convergence.
+  @Test(
+    "cancel sets the stop timestamp before entering the dispatch await",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/902",
+      "cancel timestamp ordering"
+    )
+  )
+  func cancelSetsTimestampBeforeDispatchAwait() async {
     let fx = Self.makeFixture()
-    #expect(fx.finalizer.lastUserStopAccess.read() == nil)
-    await fx.finalizer.cancel()
-    #expect(fx.finalizer.lastUserStopAccess.read() != nil)
+    fx.asr.activeBackendType = .parakeet
+    // idle -> recording is a forbidden direct transition; walk through .preparing
+    // first, matching the kernel FSM (KernelDictationDriverTests precedent).
+    _ = fx.kernelDriver.kernelForTesting.testForceTransition(to: .preparing)
+    _ = fx.kernelDriver.kernelForTesting.testForceTransition(to: .recording)
+    let finalizer = fx.finalizer
+    let obs = DispatchObservation()
+    finalizer.cancelRecordingDispatch = { _ in
+      obs.dispatchRan = true
+      obs.stampAtEntry = finalizer.lastUserStopAccess.read()
+    }
+    await finalizer.cancel()
+    #expect(obs.dispatchRan)  // the state guard passed and the dispatch was reached
+    #expect(obs.stampAtEntry != nil)  // the timestamp was already set at dispatch entry
   }
 
   @Test func markLockedFlipsTheLockAndUpdatesOverlay() {
@@ -155,4 +193,14 @@ import Testing
       #expect(fx.kernelDriver.state == .error("parakeet-err"))
     }
   }
+}
+
+/// Records what an injected dispatch closure observed at the moment it was
+/// entered. A `@MainActor` reference type so the dispatch closure (itself
+/// `@MainActor`, hence implicitly `Sendable` in Swift 6) can capture and mutate
+/// it without a mutable-local-capture diagnostic.
+@MainActor
+private final class DispatchObservation {
+  var dispatchRan = false
+  var stampAtEntry: ContinuousClock.Instant?
 }

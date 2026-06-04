@@ -30,6 +30,21 @@ final class RecordingFinalizer {
 
   private var lastUserStopRequest: ContinuousClock.Instant?
 
+  /// #902 test seams — the stop/cancel dispatch steps. Defaults are today's exact
+  /// inline calls, so production behavior is identical. Two separate closures
+  /// because `userStop()` dispatches `.requestStop` (throwing) while `cancel()`
+  /// calls `cancelRecording()` (non-throwing, different method). A test injects a
+  /// closure that reads `lastUserStopRequest` at dispatch entry to prove the
+  /// timestamp is set BEFORE the suspending await — the ordering invariant
+  /// `RecordingStarter`'s post-await wedge guards depend on, which the old test
+  /// (reading only after the await resolved) could never verify.
+  var requestStopDispatch: @MainActor (KernelDictationDriver) async throws -> Void = {
+    try await $0.handle(event: .requestStop)
+  }
+  var cancelRecordingDispatch: @MainActor (KernelDictationDriver) async -> Void = {
+    await $0.cancelRecording()
+  }
+
   /// Read accessor exposed to `RecordingStarter` so the start path's
   /// post-condition wedge guard can detect "user stopped during start"
   /// without granting Starter write access to the underlying state.
@@ -66,7 +81,7 @@ final class RecordingFinalizer {
     let active: KernelDictationDriver =
       asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
     do {
-      try await active.handle(event: .requestStop)
+      try await requestStopDispatch(active)
     } catch {
       heartControlRecovery.logDispatchFailure(error, op: "stop")
     }
@@ -87,7 +102,7 @@ final class RecordingFinalizer {
     let active: KernelDictationDriver =
       asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
     guard active.state == .recording || active.state == .loadingModel else { return }
-    await active.cancelRecording()
+    await cancelRecordingDispatch(active)
   }
 
   func markLocked() {
