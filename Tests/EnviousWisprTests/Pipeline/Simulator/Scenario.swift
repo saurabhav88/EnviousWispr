@@ -69,8 +69,12 @@ enum LimbDirective: Sendable {
 
 /// A directive to the `FakeAudioCapture` mid-scenario.
 enum CaptureDirective: Sendable {
-  /// Deliver one synthetic audio buffer.
+  /// Deliver one synthetic audio buffer (amplitude 0.1 — above the #964
+  /// dead-air floor).
   case deliverBuffer
+  /// Deliver one synthetic buffer below the #964 dead-air floor — a genuinely
+  /// silent capture (amplitude 0.001).
+  case deliverSilentBuffer
   /// Stall the capture stream (no buffers).
   case stall
   /// Raise an engine interruption (mic disconnect / route change).

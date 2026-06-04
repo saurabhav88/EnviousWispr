@@ -409,9 +409,14 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 
   /// Streaming finalize, then batch rescue if streaming returned empty or
   /// failed. Mirrors the old Parakeet pipeline's `transcribeWithStreamingRescue`.
-  /// The kernel runs the VAD no-speech gate before `finalize()`, so reaching
-  /// here means speech evidence was voiced or unavailable — the rescue always
-  /// attempts batch when streaming yields nothing.
+  /// The kernel runs the VAD no-speech gate before `finalize()`. Reaching here
+  /// means speech evidence was voiced, unavailable, OR (since #964) zero VAD
+  /// segments but raw energy above the dead-air floor — the faint-speech
+  /// recovery path. In that last case an empty decode is fan/room noise, not a
+  /// failure: the adapter still reports `.empty(hadSpeechEvidence: true)` (it
+  /// saw samples), and the KERNEL re-maps it to `.noSpeech` because it knows the
+  /// segments were empty. The rescue always attempts batch when streaming
+  /// yields nothing.
   private func finalizeStreamingWithRescue(batchSamples: [Float]?) async -> ASREngineOutcome {
     var diagnostics = KernelASRAdapterDiagnostics(
       streamingBuffersDispatched: streamingBuffersDispatched,
@@ -508,10 +513,13 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       diagnostics.batchRescueResultChars = trimmed.count
       lastASRDiagnostics = diagnostics
       if trimmed.isEmpty {
-        // Past the kernel's VAD no-speech gate, an empty decode is a real ASR
-        // failure — `hadSpeechEvidence: true` routes the kernel to
-        // `failed(asrEmpty)` (PR-1 §B.1.2), matching today's "Couldn't catch
-        // that" path.
+        // The adapter saw samples, so it reports `hadSpeechEvidence: true`. Past
+        // the kernel's VAD no-speech gate this normally routes to
+        // `failed(asrEmpty)` (PR-1 §B.1.2) — today's "Couldn't catch that" path.
+        // Exception (#964): when the kernel reached ASR on the faint-speech
+        // recovery path (zero VAD segments but raw energy above the dead-air
+        // floor) it re-maps this empty result to `.noSpeech`. The kernel owns
+        // that decision; the adapter's report is unchanged.
         return .empty(hadSpeechEvidence: true)
       }
       return .transcript(result)
