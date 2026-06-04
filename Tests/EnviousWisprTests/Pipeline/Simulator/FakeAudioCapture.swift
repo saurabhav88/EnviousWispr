@@ -37,6 +37,9 @@ final class FakeAudioCapture: AudioCaptureInterface {
   var failCaptureStart = false
   /// `startEnginePhase()` throws `.permissionDenied` (mic permission revoked).
   var permissionDenied = false
+  /// `preWarm()` throws this when non-nil (#903 — lets a test drive the real
+  /// `RecordingSessionKernel.preWarm()` rethrow path). Nil = preWarm succeeds.
+  var preWarmError: Error?
 
   // MARK: Observed counters (for FakeAudioCaptureTests teardown assertion)
 
@@ -132,6 +135,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
 
   func preWarm() async throws {
     preWarmCallCount += 1
+    if let preWarmError { throw preWarmError }
   }
 
   func abortPreWarm() {
