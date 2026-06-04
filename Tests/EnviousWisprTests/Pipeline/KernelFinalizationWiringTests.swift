@@ -60,9 +60,16 @@ import Testing
   func processTextWritesSideChannel() async throws {
     let outcome = KernelFinalizationOutcome()
     let wiring = makeWiring(outcome: outcome)
-    let result = try await wiring.processText("hello there") {}
-    #expect(!result.isEmpty)
-    #expect(outcome.rawText != nil, "the raw ASR text is recorded for the store closure")
+    // ITN-transformable input: if the limb chain were bypassed (raw text passed
+    // straight through, side-channel set to raw), both assertions would read
+    // "the code is two zero three". The chain actually running formats it to
+    // "the code is 203", so the exact-match assertions pin real limb work — the
+    // old `!isEmpty` + `!= nil` pair stayed green under a full bypass.
+    let result = try await wiring.processText("the code is two zero three") {}
+    #expect(result == "the code is 203")
+    #expect(
+      outcome.rawText == "the code is 203",
+      "the post-chain floor text is recorded on the side channel for the store closure")
   }
 
   @Test("processText wires onPolishStarted into LLMPolishStep.onWillProcess")
@@ -137,11 +144,17 @@ import Testing
   func itnRunsAfterFillerRemoval() async throws {
     let steps = makeSteps()
     steps.fillerRemoval.fillerRemovalEnabled = true
-    let wiring = makeWiring(steps: steps)
-    // "um" is stripped by filler removal first; ITN then formats the cleaned
-    // number. If ITN ran before filler removal the spacing would differ.
+    let outcome = KernelFinalizationOutcome()
+    let wiring = makeWiring(outcome: outcome, steps: steps)
+    // The output "the code is 203" is order-INSENSITIVE — both orders reach it —
+    // so it cannot prove the chain order. The real proof is the length ITN
+    // recorded for its input: filler removal runs first and strips the leading
+    // "um ", so ITN sees the 26-char cleaned text. If ITN ran before filler
+    // removal it would see the 29-char raw ("um " still present) and lenBefore
+    // would be 3 longer.
     let result = try await wiring.processText("um the code is two zero three") {}
     #expect(result == "the code is 203")
+    #expect(outcome.itnLenBefore == "the code is two zero three".count)
   }
 
   @Test("per-session gate wire reads the engine LID capability, not an identity literal")
