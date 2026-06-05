@@ -204,7 +204,12 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// LID. Static — the kernel branches on `capabilities`, never on engine
   /// identity (epic §3.4).
   var capabilities: ASREngineCapabilities {
-    ASREngineCapabilities(supportsStreaming: false, supportsLanguageDetection: true)
+    // decodesConditionedBatchSamples: false — WhisperKit ignores `batchSamples`
+    // and decodes the raw capture via clipTimestamps (#950 tail-trim diagnostic
+    // is meaningless for it; the VAD trim does not drop its ASR input).
+    ASREngineCapabilities(
+      supportsStreaming: false, supportsLanguageDetection: true,
+      decodesConditionedBatchSamples: false)
   }
 
   var readiness: ASREngineReadiness { cachedReadiness }

@@ -51,6 +51,14 @@ public struct ConditionedAudio: Equatable, Sendable {
   /// pipeline's short-utterance padding.
   public let samplesPaddedToMinimum: Bool
 
+  /// #950 — count of trailing raw samples the VAD trim discarded after the last
+  /// valid voiced segment's padded end. `0` when the filter no-op'd
+  /// (empty / sub-4800-voiced / malformed segments) OR a raw-keeping path fired
+  /// (`usedRawFallbackAfterVAD` / `usedRawSoftOnsetPreservation`, which feed the
+  /// FULL raw buffer to ASR). Metadata only; diagnostic counterpart to
+  /// `filteredSampleCount`. Computed by `droppedTrailingSamples`.
+  public let droppedTailSampleCount: Int
+
   /// Final sample count of `samples` — redundant with `samples.count` but
   /// kept explicit so the telemetry surface does not depend on whether the
   /// caller bothered to recompute.
@@ -134,12 +142,49 @@ public enum CapturedAudioConditioner {
       padded = true
     }
 
+    // #950 tail-trim diagnostic. 0 on the raw-keeping paths (we fed the FULL raw
+    // buffer to ASR, so nothing was dropped); else what the VAD trim discarded
+    // after the last valid voiced segment's padded end.
+    let droppedTail =
+      (usedRawFallback || usedRawSoftOnset)
+      ? 0
+      : droppedTrailingSamples(rawSampleCount: rawSamples.count, vadSegments: vadSegments)
+
     return ConditionedAudio(
       samples: working,
       filteredSampleCount: filteredCount,
       usedRawFallbackAfterVAD: usedRawFallback,
       usedRawSoftOnsetPreservation: usedRawSoftOnset,
-      samplesPaddedToMinimum: padded)
+      samplesPaddedToMinimum: padded,
+      droppedTailSampleCount: droppedTail)
+  }
+
+  /// #950 — trailing raw samples discarded by the VAD trim after the last valid
+  /// voiced segment's padded end. Mirrors `SampleFilter.filter`'s no-op rules so
+  /// it never reports a phantom drop the filter did not actually make: skips
+  /// malformed segments (`endSample <= startSample`), returns `0` when total
+  /// valid voiced audio is `< 4800` (the filter returns raw there). All counts
+  /// are 16kHz mono scalar samples; `padding` matches `SampleFilter`'s default.
+  /// Overflow-hardened to parity with `SampleFilter` (#387) — pure, total.
+  static func droppedTrailingSamples(
+    rawSampleCount: Int, vadSegments: [SpeechSegment], padding: Int = 1600
+  ) -> Int {
+    guard !vadSegments.isEmpty else { return 0 }
+    var voiced = 0  // saturates at 4800 (only the >=4800 gate cares)
+    var lastEnd = 0  // true max valid endSample, independent of voiced saturation
+    for segment in vadSegments where segment.endSample > segment.startSample {
+      lastEnd = max(lastEnd, segment.endSample)
+      if voiced < 4800 {
+        let (len, lenOverflow) =
+          segment.endSample.subtractingReportingOverflow(segment.startSample)
+        let (sum, sumOverflow) = voiced.addingReportingOverflow(lenOverflow ? 4800 : len)
+        voiced = (lenOverflow || sumOverflow) ? 4800 : sum
+      }
+    }
+    guard voiced >= 4800 else { return 0 }
+    let (paddedEnd, endOverflow) = lastEnd.addingReportingOverflow(max(0, padding))
+    let keptThrough = endOverflow ? rawSampleCount : min(rawSampleCount, paddedEnd)
+    return max(0, rawSampleCount - keptThrough)
   }
 
   // MARK: #843 soft-onset preservation

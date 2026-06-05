@@ -330,7 +330,10 @@ public enum KernelDictationDriverFactory {
       textProcessingRunner: textProcessingRunner,
       save: { transcript in try transcriptStore.save(transcript) },
       deliverPaste: { request in await PasteCascadeExecutor().deliver(request) },
-      pasteCompletionRegistry: pasteCompletionRegistry
+      pasteCompletionRegistry: pasteCompletionRegistry,
+      // #950 — share the SAME telemetry state the kernel stamps so the metrics
+      // builder reads the tail-trim diagnostic for `asr.completed`.
+      telemetryState: telemetryState
     )
 
     // 7. Kernel.

@@ -128,7 +128,13 @@ struct KernelFinalizationWiring {
     // a manual clock to advance logical time by hand and assert the tick rate,
     // instead of sleeping (which `tests-no-real-time-scheduling-precision` bans).
     // Trailing-defaulted so the other construction sites stay source-compatible.
-    currentTime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    currentTime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+    // #950 — the SAME shared `KernelTelemetryState` the kernel stamps and the
+    // lifecycle sink reads; the metrics builder reads the kernel-computed
+    // tail-trim diagnostic from it for the PostHog `asr.completed` event.
+    // Defaulted (fresh, tail fields nil) so other construction sites stay
+    // source-compatible; the factory passes the shared instance.
+    telemetryState: KernelTelemetryState = KernelTelemetryState()
   ) {
     // processText — run the limb chain, write the polish side-channel, return
     // the final display text. `onPolishStarted` is wired into
@@ -243,7 +249,8 @@ struct KernelFinalizationWiring {
       outcome.pipelineEndedAtSeconds = pipelineEnd
       outcome.pasteResult = pasteResult
       outcome.pasteDurationSeconds = pipelineEnd - pasteStart
-      Self.updateTranscriptMetrics(outcome: outcome, context: context)
+      Self.updateTranscriptMetrics(
+        outcome: outcome, context: context, telemetryState: telemetryState)
       Self.logPipelineTimingTotal(outcome: outcome)
       // PR-5 Rung 4.5 (#827): LID perf signpost `t_clipboard_write` —
       // gated on engine LID capability (NOT paste outcome). OLD pipeline
@@ -289,7 +296,8 @@ struct KernelFinalizationWiring {
 
   private static func updateTranscriptMetrics(
     outcome: KernelFinalizationOutcome,
-    context: KernelSessionContext
+    context: KernelSessionContext,
+    telemetryState: KernelTelemetryState
   ) {
     guard var transcript = outcome.transcript else { return }
     let asrLatency =
@@ -326,7 +334,12 @@ struct KernelFinalizationWiring {
       itnSkipReason: outcome.itnSkipReason,
       itnLatencyMs: outcome.itnLatencyMs,
       itnLenBefore: outcome.itnLenBefore,
-      itnLenAfter: outcome.itnLenAfter
+      itnLenAfter: outcome.itnLenAfter,
+      // #950 tail-trim diagnostic — kernel-computed, read from the shared
+      // telemetry state (eligible Parakeet batch only; nil for streaming /
+      // WhisperKit / non-success). Carried onto `asr.completed`.
+      tailDroppedMs: telemetryState.asrCompletedTelemetry?.droppedTailMs,
+      tailHadEnergy: telemetryState.asrCompletedTelemetry?.tailHadEnergy
     )
     outcome.transcript = transcript
   }

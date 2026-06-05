@@ -393,6 +393,15 @@ final class KernelLifecycleTelemetrySink {
     if let incremental = telemetryState.asrCompletedTelemetry?.incrementalAccepted {
       payload["incremental"] = incremental
     }
+    // #950 tail-trim diagnostic (eligible Parakeet batch only; nil omitted).
+    // `tail_dropped_ms` always present when set (incl. 0); `tail_had_energy` only
+    // when a tail was dropped. Metadata only — no audio/content.
+    if let droppedMs = telemetryState.asrCompletedTelemetry?.droppedTailMs {
+      payload["tail_dropped_ms"] = droppedMs
+    }
+    if let hadEnergy = telemetryState.asrCompletedTelemetry?.tailHadEnergy {
+      payload["tail_had_energy"] = hadEnergy
+    }
     return payload
   }
 

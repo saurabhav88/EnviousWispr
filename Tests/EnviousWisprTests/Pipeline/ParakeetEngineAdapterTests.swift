@@ -32,11 +32,14 @@ import Testing
 
   // MARK: Capabilities + readiness
 
-  @Test("capabilities: Parakeet streams, detects no language")
+  @Test("capabilities: Parakeet streams, detects no language, decodes conditioned batch")
   func capabilities() {
     let adapter = ParakeetEngineAdapter(asrManager: StubParakeetASRManager())
     #expect(adapter.capabilities.supportsStreaming)
     #expect(!adapter.capabilities.supportsLanguageDetection)
+    // #950 — Parakeet decodes the kernel-conditioned (VAD-trimmed) batch buffer,
+    // so the tail-trim diagnostic applies to it.
+    #expect(adapter.capabilities.decodesConditionedBatchSamples)
   }
 
   @Test("readiness reflects the ASR manager's load state")

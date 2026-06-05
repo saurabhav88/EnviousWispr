@@ -95,7 +95,8 @@ public final class TelemetryService {
     if let asrLat = m?.asrLatencySeconds {
       asrCompleted(
         backend: t.backendType.rawValue, result: "success", coldStart: m?.coldStart ?? false,
-        latencySeconds: asrLat, charCount: t.text.count)
+        latencySeconds: asrLat, charCount: t.text.count,
+        tailDroppedMs: m?.tailDroppedMs, tailHadEnergy: m?.tailHadEnergy)
     }
     if let llmLat = m?.llmLatencySeconds, llmLat > 0, t.llmProvider != nil {
       llmPolishCompleted(
@@ -398,18 +399,24 @@ public final class TelemetryService {
   }
 
   public func asrCompleted(
-    backend: String, result: String, coldStart: Bool, latencySeconds: Double, charCount: Int
+    backend: String, result: String, coldStart: Bool, latencySeconds: Double, charCount: Int,
+    // #950 tail-trim diagnostic — eligible Parakeet batch only; nil omitted.
+    // Metadata only (Int ms + Bool); no audio/content. `tailDroppedMs` always set
+    // (incl. 0) when eligible so the denominator holds; `tailHadEnergy` only when
+    // a tail was actually dropped.
+    tailDroppedMs: Int? = nil, tailHadEnergy: Bool? = nil
   ) {
-    PostHogSDK.shared.capture(
-      "asr.completed",
-      properties: [
-        "backend": backend,
-        "result": result,
-        "cold_start": coldStart,
-        "latency_seconds": String(format: "%.3f", latencySeconds),
-        "char_count": charCount,
-        "$value": latencySeconds,
-      ])
+    var properties: [String: Any] = [
+      "backend": backend,
+      "result": result,
+      "cold_start": coldStart,
+      "latency_seconds": String(format: "%.3f", latencySeconds),
+      "char_count": charCount,
+      "$value": latencySeconds,
+    ]
+    if let tailDroppedMs { properties["tail_dropped_ms"] = tailDroppedMs }
+    if let tailHadEnergy { properties["tail_had_energy"] = tailHadEnergy }
+    PostHogSDK.shared.capture("asr.completed", properties: properties)
   }
 
   public func llmPolishCompleted(

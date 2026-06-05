@@ -242,6 +242,61 @@ import Testing
       ])
   }
 
+  @Test(".asrCompleted carries both tail keys when a tail was dropped (#950)")
+  func asrCompletedCarriesTailKeysWhenDropped() {
+    let recorder = Recorder()
+    let state = KernelTelemetryState()
+    state.asrCompletedTelemetry = KernelASRCompletedTelemetry(
+      durationSeconds: 0.3, charCount: 5, mode: "batch", language: "en",
+      droppedTailMs: 250, tailHadEnergy: true)
+    let sink = makeSink(recorder: recorder, telemetryState: state)
+    sink.emit(.asrCompleted)
+    #expect(
+      recorder.breadcrumbs == [
+        .init(
+          stage: "asr", message: "ASR completed",
+          dataKeys: [
+            "backend", "char_count", "duration_s", "language", "mode",
+            "tail_dropped_ms", "tail_had_energy",
+          ])
+      ])
+  }
+
+  @Test(".asrCompleted carries tail_dropped_ms=0 but omits tail_had_energy when no tail (#950)")
+  func asrCompletedCarriesZeroDropOmitsEnergy() {
+    let recorder = Recorder()
+    let state = KernelTelemetryState()
+    state.asrCompletedTelemetry = KernelASRCompletedTelemetry(
+      durationSeconds: 0.3, charCount: 5, mode: "batch", language: "en",
+      droppedTailMs: 0, tailHadEnergy: nil)
+    let sink = makeSink(recorder: recorder, telemetryState: state)
+    sink.emit(.asrCompleted)
+    #expect(
+      recorder.breadcrumbs == [
+        .init(
+          stage: "asr", message: "ASR completed",
+          dataKeys: [
+            "backend", "char_count", "duration_s", "language", "mode", "tail_dropped_ms",
+          ])
+      ])
+  }
+
+  @Test(".asrCompleted omits both tail keys when nil (streaming / WhisperKit, #950)")
+  func asrCompletedOmitsTailKeysWhenNil() {
+    let recorder = Recorder()
+    let state = KernelTelemetryState()
+    state.asrCompletedTelemetry = KernelASRCompletedTelemetry(
+      durationSeconds: 0.3, charCount: 5, mode: "streaming", language: "en")
+    let sink = makeSink(recorder: recorder, telemetryState: state)
+    sink.emit(.asrCompleted)
+    #expect(
+      recorder.breadcrumbs == [
+        .init(
+          stage: "asr", message: "ASR completed",
+          dataKeys: ["backend", "char_count", "duration_s", "language", "mode"])
+      ])
+  }
+
   @Test(".pipelineCompleted emits the TP:1032 breadcrumb")
   func pipelineCompletedEmission() {
     let recorder = Recorder()
