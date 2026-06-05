@@ -35,11 +35,14 @@ import Testing
 
   // MARK: Capabilities + readiness
 
-  @Test("capabilities: WhisperKit decodes batch-only and detects language")
+  @Test("capabilities: WhisperKit decodes batch-only, detects language, ignores conditioned batch")
   func capabilities() {
     let adapter = WhisperKitEngineAdapter(backend: StubWhisperKitBackend())
     #expect(adapter.capabilities.supportsStreaming == false)
     #expect(adapter.capabilities.supportsLanguageDetection == true)
+    // #950 — WhisperKit ignores `batchSamples` and decodes the raw capture, so
+    // the VAD trim does not touch its ASR input; tail-trim diagnostic excluded.
+    #expect(adapter.capabilities.decodesConditionedBatchSamples == false)
   }
 
   @Test("readiness transitions: init → notReady; warmUp → ready; cancel keeps notReady")

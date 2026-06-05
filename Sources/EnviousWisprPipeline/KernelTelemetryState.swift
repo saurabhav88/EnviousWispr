@@ -58,6 +58,12 @@ struct KernelASRCompletedTelemetry {
   // OLD `WhisperKitPipeline.swift:1049-1052` ASR-completed breadcrumb carried.
   // nil for Parakeet (no incremental concept) → sink omits the key.
   var incrementalAccepted: Bool? = nil
+  // #950 tail-trim diagnostic, eligible Parakeet batch only. `droppedTailMs`
+  // always set (incl. 0) on the eligible success path so the Sentry breadcrumb
+  // carries a denominator; `tailHadEnergy` only when droppedTailMs > 0 (no tail
+  // slice otherwise). nil → sink omits the key.
+  var droppedTailMs: Int? = nil
+  var tailHadEnergy: Bool? = nil
 }
 
 struct KernelASRAdapterDiagnostics {

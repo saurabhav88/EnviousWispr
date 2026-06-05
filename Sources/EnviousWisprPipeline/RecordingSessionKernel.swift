@@ -1122,6 +1122,29 @@ final class RecordingSessionKernel {
     let conditioned = CapturedAudioConditioner.condition(
       rawSamples: captureResult.samples, vadSegments: vadSegments)
     let vadSpeechDurationMs = Self.speechDurationMs(vadSegments)
+
+    // #950 tail-trim diagnostic. Eligible = the engine decodes the conditioned
+    // (VAD-trimmed) batch buffer (Parakeet, via capability) AND this is a batch
+    // session; only then does "trailing audio the VAD trim dropped before ASR"
+    // mean anything (WhisperKit decodes the raw capture, so the trim does not
+    // touch its ASR input). Metadata only; never gates the heart path.
+    let tailEligible =
+      adapter.capabilities.decodesConditionedBatchSamples && !isStreamingSession
+    let droppedTailSamples = tailEligible ? conditioned.droppedTailSampleCount : 0
+    // Always set (incl. 0) for eligible batch so the analytics denominator holds;
+    // nil (omitted) for streaming / non-conditioned-batch engines.
+    let tailDroppedMs: Int? = tailEligible ? droppedTailSamples / 16 : nil
+    var tailHadEnergy: Bool? = nil
+    var tailPeak: Float = 0
+    if droppedTailSamples > 0 {
+      // Intentional copy: `rawAudioIsDeadAir` takes `[Float]`, and `Array(...)`
+      // also rebases the slice to the 0-based indexing its window scan assumes.
+      // Bounded by `droppedTailSamples`, materialized ONCE on the cold stop path
+      // (not the RT audio thread); sync, cannot throw.
+      let tailSlice = Array(captureResult.samples.suffix(droppedTailSamples))
+      tailPeak = tailSlice.reduce(Float(0)) { Swift.max($0, Swift.abs($1)) }
+      tailHadEnergy = !Self.rawAudioIsDeadAir(tailSlice, peak: tailPeak)
+    }
     // GAP 3 app.log parity: VAD filter ratio log (TP:772-776).
     let rawCount = captureResult.samples.count
     let filteredCount = conditioned.filteredSampleCount
@@ -1175,7 +1198,14 @@ final class RecordingSessionKernel {
       "conditioner raw=\(captureResult.samples.count) filtered=\(conditioned.filteredSampleCount) "
         + "rawFallback=\(conditioned.usedRawFallbackAfterVAD) softOnset=\(conditioned.usedRawSoftOnsetPreservation) "
         + "padded=\(conditioned.samplesPaddedToMinimum) reason=\(conditioned.conditioningReason) "
-        + "final=\(conditioned.finalSampleCount)")
+        + "final=\(conditioned.finalSampleCount) "
+        // #950 tail-trim diagnostic — sid for dogfood correlation, capturedMs to
+        // surface flush-loss (short capture + droppedTailMs=0), and the tail peak
+        // float (debug-log only, never analytics — privacy boundary).
+        + "sid=\(sid.raw) capturedMs=\(captureResult.samples.count / 16) "
+        + "droppedTailMs=\(tailDroppedMs.map(String.init) ?? "n/a") "
+        + "tailEnergy=\(tailHadEnergy.map(String.init) ?? "n/a") "
+        + "tailPeak=\(String(format: "%.4f", tailPeak))")
 
     // Transcribing.
     let asrStart = CFAbsoluteTimeGetCurrent()
@@ -1204,7 +1234,10 @@ final class RecordingSessionKernel {
         // the ASR-completed Sentry breadcrumb (parity with OLD
         // `WhisperKitPipeline.swift:1049-1052`). nil for Parakeet.
         incrementalAccepted: (adapter as? ASREngineTelemetryProviding)?
-          .lastASRDiagnostics?.incrementalAccepted
+          .lastASRDiagnostics?.incrementalAccepted,
+        // #950 tail-trim diagnostic (eligible Parakeet batch only; nil omitted).
+        droppedTailMs: tailDroppedMs,
+        tailHadEnergy: tailHadEnergy
       )
       await runFinalizing(sid, asrText: result.text)
     case .empty(let hadSpeechEvidence):

@@ -32,6 +32,15 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var itnLatencyMs: Double?
   public var itnLenBefore: Int?
   public var itnLenAfter: Int?
+  /// #950 tail-trim diagnostic. Populated only for eligible Parakeet batch
+  /// successes; nil for streaming, WhisperKit, non-success, and pre-#950
+  /// transcripts on disk (additive optional Codable, back-compatible).
+  /// `tailDroppedMs` = trailing audio (ms) the VAD trim discarded after the last
+  /// detected word (0 = ran, nothing dropped). `tailHadEnergy` = that discarded
+  /// tail was above the dead-air floor (non-dead-air energy, NOT confirmed voice);
+  /// nil when `tailDroppedMs == 0` (no tail slice). Metadata only.
+  public var tailDroppedMs: Int?
+  public var tailHadEnergy: Bool?
 
   public init(
     asrLatencySeconds: Double? = nil,
@@ -54,7 +63,9 @@ public struct ExecutionMetrics: Codable, Sendable {
     itnSkipReason: String? = nil,
     itnLatencyMs: Double? = nil,
     itnLenBefore: Int? = nil,
-    itnLenAfter: Int? = nil
+    itnLenAfter: Int? = nil,
+    tailDroppedMs: Int? = nil,
+    tailHadEnergy: Bool? = nil
   ) {
     self.asrLatencySeconds = asrLatencySeconds
     self.llmLatencySeconds = llmLatencySeconds
@@ -77,6 +88,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.itnLatencyMs = itnLatencyMs
     self.itnLenBefore = itnLenBefore
     self.itnLenAfter = itnLenAfter
+    self.tailDroppedMs = tailDroppedMs
+    self.tailHadEnergy = tailHadEnergy
   }
 }
 

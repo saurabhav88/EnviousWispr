@@ -65,9 +65,24 @@ public struct ASREngineCapabilities: Sendable {
   /// AppLogger lines. The lifecycle sink only owns kernel-level events.
   public let supportsLanguageDetection: Bool
 
-  public init(supportsStreaming: Bool, supportsLanguageDetection: Bool) {
+  /// The engine's ASR decodes the kernel-conditioned (VAD-trimmed) batch buffer
+  /// passed to `finalize(batchSamples:)` (Parakeet). `false` for engines that
+  /// ignore `batchSamples` and decode the raw capture instead (WhisperKit, which
+  /// derives `clipTimestamps` from VAD segments over the raw audio). Gates the
+  /// #950 tail-trim diagnostic: "audio dropped before ASR by the VAD trim" is
+  /// only meaningful when the engine actually consumes the trimmed buffer.
+  /// Defaulted `true` so existing constructions stay source-compatible; the only
+  /// `false` is WhisperKit.
+  public let decodesConditionedBatchSamples: Bool
+
+  public init(
+    supportsStreaming: Bool,
+    supportsLanguageDetection: Bool,
+    decodesConditionedBatchSamples: Bool = true
+  ) {
     self.supportsStreaming = supportsStreaming
     self.supportsLanguageDetection = supportsLanguageDetection
+    self.decodesConditionedBatchSamples = decodesConditionedBatchSamples
   }
 }
 
