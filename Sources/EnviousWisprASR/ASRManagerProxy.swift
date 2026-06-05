@@ -572,9 +572,17 @@ public final class ASRManagerProxy: ASRManagerInterface {
         level: .info, category: "XPC"
       )
     }
+    // #959: align with the connection-loss handlers — supersede the load + log
+    // cause BEFORE clearing loaded state, and clear `isModelLoaded` explicitly
+    // (the async invalidationHandler also clears it, but make this path
+    // self-consistent so readiness is unambiguous after a wedge).
+    if isModelLoaded || isStreaming || inFlightLoadTask != nil {
+      invalidateCurrentLoadGeneration(cause: "xpc_wedge")
+    }
     connection?.invalidate()
     connection = nil
     isStreaming = false
+    isModelLoaded = false
     needsReinit = true
   }
 
@@ -603,19 +611,30 @@ public final class ASRManagerProxy: ASRManagerInterface {
         guard let proxy else { return }
         let wasStreaming = proxy.isStreaming
         let wasLoaded = proxy.isModelLoaded
+        let wasInFlight = proxy.inFlightLoadTask != nil
+        // #959: supersede the current/in-flight load (and log the ready→notReady
+        // cause) BEFORE clearing `isModelLoaded`, so the cause log fires and a
+        // load completing after this teardown cannot resurrect a false `.ready`.
+        // Widened to `wasInFlight` so a connection lost mid-load is superseded
+        // even though `isModelLoaded` is still false.
+        if wasLoaded || wasStreaming || wasInFlight {
+          proxy.invalidateCurrentLoadGeneration(cause: "xpc_interruption")
+        }
         if proxy.isModelLoaded {
           proxy.isModelLoaded = false
           proxy.isStreaming = false
         }
         proxy.needsReinit = true
+        // #959: fire the interruption signal BEFORE the fire-and-forget log so
+        // the router's idle-marker set is not delayed behind the `await` (shrinks
+        // the kill-vs-press gap). Surface only if ASR was active/resident.
+        if wasStreaming || wasLoaded {
+          proxy.onServiceInterrupted?()
+        }
         await AppLogger.shared.log(
           "[ASRManagerProxy] XPC interruptionHandler fired — wasStreaming=\(wasStreaming), wasLoaded=\(wasLoaded)",
           level: .info, category: "XPC"
         )
-        // Surface crash to pipeline if ASR was active (streaming or batch in-flight)
-        if wasStreaming || wasLoaded {
-          proxy.onServiceInterrupted?()
-        }
       }
     }
   }
@@ -627,6 +646,12 @@ public final class ASRManagerProxy: ASRManagerInterface {
       Task { @MainActor [weak proxy] in
         guard let proxy else { return }
         let wasActive = proxy.isStreaming || proxy.isModelLoaded
+        let wasInFlight = proxy.inFlightLoadTask != nil
+        // #959: same as the interruption handler — supersede current/in-flight
+        // load + log cause BEFORE clearing `isModelLoaded`.
+        if wasActive || wasInFlight {
+          proxy.invalidateCurrentLoadGeneration(cause: "xpc_invalidation")
+        }
         proxy.connection = nil
         if proxy.isModelLoaded {
           proxy.isModelLoaded = false

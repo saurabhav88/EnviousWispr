@@ -58,10 +58,18 @@ import Testing
     // had zero assertions). The closure does NOT count as a collaborator
     // (collaboratorCount still ≤ 7) and is not a non-private method; only the
     // paper-line ceiling moves. Production behavior is identical by default.
+    // #959 (idle XPC reclaim): raised 292 → 305 for the warm-respawn branch on
+    // both start paths (a not-ready press routes to `ColdPressGuard
+    // .resolveNotReadyPress` — warm-respawn falls through to record, genuine cold
+    // still pills) + the `warmRespawnInFlight` overlay-latch set just before each
+    // kernel dispatch. The decision + telemetry live OFF this type in
+    // `ColdPressGuard`; the latch lives on `KernelDictationDriver` — so
+    // collaboratorCount stays ≤ 7 and nonPrivateMethodCount stays ≤ 2 (no new
+    // slot or method); only the paper-line ceiling moves.
     #expect(
-      count <= 292,
+      count <= 305,
       """
-      RecordingStarter line count exceeded: \(count) > 292. \
+      RecordingStarter line count exceeded: \(count) > 305. \
       Raise via Bible §30 only.
       """)
   }

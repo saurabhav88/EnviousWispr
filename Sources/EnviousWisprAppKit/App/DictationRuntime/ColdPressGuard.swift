@@ -18,6 +18,29 @@ import Foundation
 /// (privacy: never begin listening on the user's behalf).
 @MainActor
 enum ColdPressGuard {
+  /// #959 — resolve a press on a not-ready engine. Returns `true` for a
+  /// warm-respawn (the resident model was reaped while idle AND the user keeps it
+  /// resident, `.never`): consumes the marker, records the branch, and the caller
+  /// FALLS THROUGH to the normal start so the press records (~0.2s re-warm under
+  /// the kernel watchdog, overlay morphed to recording). Returns `false` for a
+  /// genuine cold press: shows the #879 pill (no session) and the caller returns.
+  /// Keeps the decision off `RecordingStarter` (same ceiling rationale as `handle`).
+  static func resolveNotReadyPress(
+    overlay: RecordingOverlayPanel,
+    active: KernelDictationDriver,
+    backendTag: String,
+    readiness: ASREngineReadiness,
+    modelUnloadPolicy: ModelUnloadPolicy
+  ) -> Bool {
+    if active.residentModelLostWhileIdle && modelUnloadPolicy == .never {
+      active.residentModelLostWhileIdle = false
+      TelemetryService.shared.serviceRespawnStarted(asrBackend: backendTag)
+      return true
+    }
+    handle(overlay: overlay, active: active, backendTag: backendTag, readiness: readiness)
+    return false
+  }
+
   static func handle(
     overlay: RecordingOverlayPanel,
     active: KernelDictationDriver,

@@ -361,6 +361,42 @@ public final class TelemetryService {
       ])
   }
 
+  /// #959 — the OS reaped the idle ASR XPC service while a resident model was
+  /// loaded (readiness dropped to `.notReady` with no active session). This is
+  /// the reclaim-frequency signal (per-user/hour → OS-fight watch). The reap
+  /// cause (`xpc_interruption` / `xpc_invalidation`) is in the proxy's app.log
+  /// `readiness ready→notReady (cause=…)` line; the router that emits this only
+  /// observes "a resident model was lost while idle". Privacy: state only.
+  public func serviceReclaimed(asrBackend: String) {
+    PostHogSDK.shared.capture(
+      "coldstart.service_reclaimed",
+      properties: [
+        "asr_backend": asrBackend,
+        "was_idle": true,
+      ])
+  }
+
+  /// #959 — a press took the warm-respawn branch (idle-reaped warm model): the
+  /// press proceeds to record instead of showing the cold pill. Pairs with
+  /// `service_respawn_completed` to measure the avoided-pill rate.
+  public func serviceRespawnStarted(asrBackend: String) {
+    PostHogSDK.shared.capture(
+      "coldstart.service_respawn_started",
+      properties: ["asr_backend": asrBackend])
+  }
+
+  /// #959 — the warm-respawn press reached `.recording`. `durationMs` is
+  /// press→recording; p95/p99 is the slow-warm / memory-pressure watch.
+  public func serviceRespawnCompleted(engine: String, durationMs: Int) {
+    PostHogSDK.shared.capture(
+      "coldstart.service_respawn_completed",
+      properties: [
+        "engine": engine,
+        "duration_ms": durationMs,
+        "$value": Double(durationMs) / 1000.0,
+      ])
+  }
+
   public func asrCompleted(
     backend: String, result: String, coldStart: Bool, latencySeconds: Double, charCount: Int
   ) {
