@@ -35,6 +35,15 @@ final class ASREventRouter {
         self.kernelDriver.handleASRServiceInterruption()
       } else if wkState == .recording || wkState == .transcribing {
         self.whisperKitKernelDriver.handleASRServiceInterruption()
+      } else {
+        // #959: the Parakeet ASR service (this `asrManager`) was reaped while
+        // idle — `onServiceInterrupted` only fires when a resident model was
+        // loaded (`wasLoaded || wasStreaming`), and neither driver is active, so
+        // this is the reap-while-idle case that drops readiness to `.notReady`.
+        // Mark the Parakeet driver so the next press warm-respawns (re-warm ~0.2s
+        // + record) instead of showing the #879 cold pill. The driver owns the
+        // marker + reclaim telemetry (keeps this router's import set minimal).
+        self.kernelDriver.markResidentModelLostWhileIdle()
       }
     }
   }

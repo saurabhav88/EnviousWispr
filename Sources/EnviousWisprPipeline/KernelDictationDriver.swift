@@ -105,6 +105,28 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// outside (`setExternalError`). Cleared on the next start / reset.
   private var lastExternalError: String?
 
+  /// #959 — set by `ASREventRouter` when the OS reaps this engine's idle ASR
+  /// service while a resident model was loaded (readiness drops to `.notReady`
+  /// with no active session). It is the ONLY signal that distinguishes "warm
+  /// model reaped while idle" (re-warm ~0.2s) from "never-loaded true cold boot"
+  /// (~6s). `RecordingStarter` consumes it to warm-respawn instead of showing
+  /// the #879 cold pill. Cleared on consume (in the starter), on any successful
+  /// load reaching `.recording` (below), and on `ensureEngineWarm` success.
+  @ObservationIgnored
+  public var residentModelLostWhileIdle = false
+
+  /// #959 — latch set by `RecordingStarter` immediately before it dispatches
+  /// `.toggleRecording` on the warm-respawn branch. While set, `overlayIntent`
+  /// routes `.preparing`/`.warmingUp` through the #930 warm `.recording` morph
+  /// (no `.cachingModel` pill) for the sub-second re-warm. Cleared when the
+  /// kernel reaches `.recording` (emitting `service_respawn_completed`) or any
+  /// terminal (no emit). Set ONLY just before the kernel dispatch so a pre-toggle
+  /// abort never leaks a latch.
+  @ObservationIgnored
+  public private(set) var warmRespawnInFlight = false
+  @ObservationIgnored
+  private var warmRespawnStartedAt: ContinuousClock.Instant?
+
   /// Fired by the kernel-state observer whenever the mapped `PipelineState`
   /// changes. The App's `DictationLifecycleCoordinator` is the consumer.
   @ObservationIgnored
@@ -181,6 +203,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   public func ensureEngineWarm(reason: EngineWarmupReason) async -> EngineWarmupOutcome {
     let engine = adapter.engineIdentity.rawValue
     if adapter.readiness == .ready {
+      // #959: a load has succeeded — drop any stale idle-reap marker so a later
+      // genuine cold boot still shows the pill. Covers the launch/backend-swap
+      // warm paths, which complete here WITHOUT a kernel state transition.
+      residentModelLostWhileIdle = false
       if reason == .launch {
         TelemetryService.shared.launchModelPreloadCompleted(
           backend: engine, result: "already_loaded", durationMs: 0)
@@ -193,6 +219,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       engine: engine, reason: reason.telemetryToken, warmupInFlight: warmupInFlight)
     do {
       try await adapter.warmUp()
+      residentModelLostWhileIdle = false  // #959: load succeeded — drop stale marker.
       let ms = Self.elapsedMs(since: start)
       TelemetryService.shared.coldStartWarmupCompleted(
         engine: engine, reason: reason.telemetryToken, durationMs: ms)
@@ -470,7 +497,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       // `.warmingUp` is a readiness-flip race (ready at the press-time snapshot,
       // not-ready by the time the kernel starts) — and that race gets the
       // plain-English pill here instead of the wall.
-      return .cachingModel(engineLabel: adapter.engineIdentity.displayName)
+      // #959: a warm-respawn (idle ASR service reaped, model still cached,
+      // re-warm ~0.2s) sets the latch — route through the #930 warm `.recording`
+      // morph so no cold pill flashes for the sub-second reload. True cold boot
+      // (latch unset) keeps the honest pill.
+      return warmRespawnInFlight
+        ? .recording(audioLevel: 0)
+        : .cachingModel(engineLabel: adapter.engineIdentity.displayName)
     case .preparing:
       // `.preparing` is a sub-10ms bookkeeping step (mint session, spawn the
       // forward path). On a WARM engine (`adapter.readiness == .ready`) no
@@ -482,7 +515,9 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       // (UAT 2026-05-31: `.hidden` forced a fresh-create pop; the label flash
       // was equally unwanted). On a COLD engine a real `.warmingUp` load
       // follows, so surface the honest cold-boot pill (#879), not the bare wall.
-      return adapter.readiness == .ready
+      // #959: a warm-respawn also takes the warm morph (latch set) even though
+      // readiness is briefly `.notReady` during the ~0.2s reload.
+      return (warmRespawnInFlight || adapter.readiness == .ready)
         ? .recording(audioLevel: 0)
         : .cachingModel(engineLabel: adapter.engineIdentity.displayName)
     case .recording:
@@ -679,9 +714,57 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       Task { @MainActor [weak self] in
         guard let self else { return }
         self.clearContextConfigIfTerminalOrIdle()
+        self.updateWarmRespawnLatch()
         self.fireStateChangeIfNeeded()
         self.observeKernelState()
       }
+    }
+  }
+
+  /// #959 — called by `RecordingStarter` immediately before the warm-respawn
+  /// `.toggleRecording` dispatch (after the pre-warm cancellation guards), so a
+  /// pre-toggle abort never leaves a latch set. Latches the warm overlay morph
+  /// and the start instant for the respawn-duration metric.
+  public func beginWarmRespawnOverlay() {
+    warmRespawnInFlight = true
+    warmRespawnStartedAt = ContinuousClock.now
+  }
+
+  /// #959 — called by `ASREventRouter` when the OS reaps this engine's idle ASR
+  /// service while a resident model was loaded. Sets the marker AND emits the
+  /// reclaim telemetry here (the driver already owns the `EnviousWisprServices`
+  /// import) so `ASREventRouter` keeps its minimal import set.
+  public func markResidentModelLostWhileIdle() {
+    residentModelLostWhileIdle = true
+    TelemetryService.shared.serviceReclaimed(asrBackend: adapter.engineIdentity.rawValue)
+  }
+
+  /// #959 — clear the warm-respawn latch + idle-reap marker as the kernel moves.
+  /// On the first `.recording`: the model loaded successfully — clear the marker
+  /// and, if the latch was set, emit `service_respawn_completed` (start→recording)
+  /// and drop the latch. On any terminal reached without recording (cancel /
+  /// fail / abort): drop the latch WITHOUT emitting completed.
+  private func updateWarmRespawnLatch() {
+    switch kernel.state {
+    case .recording:
+      residentModelLostWhileIdle = false
+      guard warmRespawnInFlight else { return }
+      if let started = warmRespawnStartedAt {
+        TelemetryService.shared.serviceRespawnCompleted(
+          engine: adapter.engineIdentity.rawValue,
+          durationMs: Self.elapsedMs(since: started))
+      }
+      warmRespawnInFlight = false
+      warmRespawnStartedAt = nil
+    case .idle, .completed, .cancelled, .discarded, .noSpeech, .failed,
+      .audioInterrupted, .asrInterrupted, .stopping, .transcribing, .finalizing:
+      // Reached a non-recording state — if a warm-respawn latch is still set the
+      // start aborted before capture; drop it without emitting completed.
+      guard warmRespawnInFlight else { return }
+      warmRespawnInFlight = false
+      warmRespawnStartedAt = nil
+    case .preparing, .warmingUp:
+      break  // still warming — keep the latch so the overlay stays morphed
     }
   }
 

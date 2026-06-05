@@ -1,8 +1,8 @@
 import Foundation
 import Testing
 
-@testable import EnviousWisprAppKit
 @testable import EnviousWisprASR
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
 
 /// PR8 of #763 — unit tests for `ASREventRouter`.
@@ -149,6 +149,55 @@ struct ASREventRouterTests {
       await Task.yield()
 
       #expect(whisperKit.state == .polishing)
+      withExtendedLifetime(router) {}
+    }
+  #endif
+
+  // MARK: - #959 idle reap → resident-model-lost marker
+
+  @Test("idle ASR reap sets the resident-model-lost marker on the Parakeet driver")
+  func idleReapSetsResidentModelLostMarker() {
+    let audio = RouterTestAudioCapture()
+    let asr = RouterTestASRManager()
+    let store = DictationRuntimeFixtures.tempStore()
+    let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
+      audioCapture: audio, asrManager: asr, store: store)
+    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+      audioCapture: audio, store: store)
+    let router = ASREventRouter(
+      asrManager: asr, kernelDriver: parakeet, whisperKitKernelDriver: whisperKit)
+
+    #expect(parakeet.residentModelLostWhileIdle == false)
+    // Both pipelines idle → `onServiceInterrupted` (fired only when a resident
+    // model was lost) is the reap-while-idle case → marker is set.
+    asr.onServiceInterrupted?()
+    #expect(parakeet.residentModelLostWhileIdle == true)
+    withExtendedLifetime(router) {}
+  }
+
+  #if DEBUG
+    @Test("active ASR interruption routes to the driver and does NOT set the idle marker")
+    func activeInterruptionDoesNotSetIdleMarker() async {
+      let audio = RouterTestAudioCapture()
+      let asr = RouterTestASRManager()
+      let store = DictationRuntimeFixtures.tempStore()
+      let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
+        audioCapture: audio, asrManager: asr, store: store)
+      let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+        audioCapture: audio, store: store)
+      let router = ASREventRouter(
+        asrManager: asr, kernelDriver: parakeet, whisperKitKernelDriver: whisperKit)
+
+      let kernel = parakeet.kernelForTesting
+      #expect(kernel.testForceTransition(to: .preparing))
+      #expect(kernel.testForceTransition(to: .recording))
+      #expect(parakeet.state == .recording)
+      asr.onServiceInterrupted?()
+      await Task.yield()
+
+      // Active session → the crash routes to `handleASRServiceInterruption`,
+      // NOT the idle-reap marker branch.
+      #expect(parakeet.residentModelLostWhileIdle == false)
       withExtendedLifetime(router) {}
     }
   #endif
