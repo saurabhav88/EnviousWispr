@@ -4,6 +4,16 @@
 <dict>
     <key>com.apple.security.device.audio-input</key>
     <true/>
+    <!--
+      #636 follow-up: Contacts (Import from Contacts). Hardened Runtime requires
+      a per-resource entitlement to access Contacts — the parallel of audio-input
+      above for the microphone. Non-sandboxed does NOT exempt this; without it the
+      notarized hardened app's CNContactStore access is blocked and the permission
+      prompt never appears. NSContactsUsageDescription is necessary but not
+      sufficient on hardened runtime.
+    -->
+    <key>com.apple.security.personal-information.addressbook</key>
+    <true/>
     <key>com.apple.security.automation.apple-events</key>
     <true/>
     <!--

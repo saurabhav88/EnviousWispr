@@ -12,9 +12,13 @@
       data-protection keychain and never needs the team-prefixed group. The
       self-signed "EnviousWispr Dev" cert has no team, so carrying the group would
       force a provisioning profile. Keep the privacy entitlements (mic +
-      apple-events) — those sign fine with a self-signed cert and no profile.
+      contacts + apple-events) — those sign fine with a self-signed cert and no
+      profile. #636: contacts (addressbook) added in parallel with prod so the
+      dev build mirrors the release resource-access set.
     -->
     <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <key>com.apple.security.personal-information.addressbook</key>
     <true/>
     <key>com.apple.security.automation.apple-events</key>
     <true/>
