@@ -425,6 +425,37 @@ public final class CustomWordsManager {
     words = updated
   }
 
+  /// Bulk-update existing words by ID with a single file read + write. Mirrors
+  /// `update(word:)` per word — canonical trim, reject-empty, alias sanitize —
+  /// but collapses the per-word `loadFile`/`saveFile` into one of each so the
+  /// contacts-import alias enrichment can flush a batch of generated aliases
+  /// without an O(n) per-word rewrite (#636 follow-up).
+  ///
+  /// An ID not present in the file is skipped (no-op), NOT appended — unlike
+  /// `update(word:)`, which appends a missing id as a built-in override.
+  /// Enrichment must never resurrect a word the user deleted mid-job. Returns
+  /// with `words` untouched if nothing matched.
+  public func updateBatch(_ updates: [CustomWord], to words: inout [CustomWord]) throws {
+    guard !updates.isEmpty else { return }
+    var file = loadFile() ?? CustomWordsFile()
+    var changed = false
+    for word in updates {
+      let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmed.isEmpty else { continue }
+      guard let idx = file.words.firstIndex(where: { $0.id == word.id }) else { continue }
+      var sanitized = word
+      sanitized.canonical = trimmed
+      sanitized.aliases = sanitized.aliases
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+      file.words[idx] = sanitized
+      changed = true
+    }
+    guard changed else { return }
+    try saveFile(file)
+    words = mergedWords(file: file)
+  }
+
   // MARK: - Private File I/O
 
   /// Single read path — normalizes legacy formats to CustomWordsFile.

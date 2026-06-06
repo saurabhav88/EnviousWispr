@@ -61,6 +61,14 @@ struct LearningSection: View {
               .font(.stHelper)
               .foregroundStyle(.green)
           }
+          if let progress = contactsImport.enrichmentProgress {
+            Label(
+              "Finding spoken variants… \(progress.done) of \(progress.total)",
+              systemImage: "sparkles"
+            )
+            .font(.stHelper)
+            .foregroundStyle(.stTextTertiary)
+          }
           if case .failed(let message) = contactsImport.phase {
             Text(message)
               .font(.stHelper)
