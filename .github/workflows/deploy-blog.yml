@@ -4,8 +4,15 @@ on:
   push:
     branches: [main]
     paths: ['website/**']
-  # schedule removed — re-enable when new scheduled blog posts are queued
-  # - cron: '7 14 * * *'
+  schedule:
+    # Daily rebuild at 14:07 UTC (~10:07 America/New_York) so future-dated blog
+    # posts go live on their pubDate without a push. The build recomputes
+    # "today" in Eastern (see website/src/utils/posts.ts isPublishedPost), so a
+    # post dated for today becomes visible on the first run on/after that date.
+    # Runs well after midnight ET in both EST and EDT, so posts always publish
+    # on the correct calendar day. Safe to leave on year-round (a day with no
+    # newly-due post just redeploys identical output).
+    - cron: '7 14 * * *'
   workflow_dispatch: # Manual trigger
 
 concurrency:
