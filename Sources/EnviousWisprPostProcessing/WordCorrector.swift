@@ -22,6 +22,19 @@ public struct WordCorrector: Sendable {
   public static let ambiguityMargin: Double = 0.05
   public static let shortTokenMaxLength = 4
 
+  /// #992 pack fuzzy: a vocabulary-pack term participates in the fuzzy passes
+  /// only when its scored surface is at least this many characters. Short pack
+  /// terms stay exact-only (Pass 1/3) — short surfaces are where coincidental
+  /// fuzzy collisions concentrate ("a sync" → async, "and jinx" → nginx).
+  public static let packFuzzyMinLength = 7
+
+  /// #992 pack fuzzy: additive stricter bar for pack-tier fuzzy acceptance,
+  /// stacked on top of the #638 vocab-size + length-aware adjustments. Pack
+  /// terms have LOWER authority than user/builtin terms — which are matched in a
+  /// separate, earlier tier (see `correct(using:)`), so this bump is a second
+  /// line of defense, not the precedence mechanism.
+  public static let packFuzzyThresholdBump: Double = 0.05
+
   /// #341 EmojiFormatter trigger-word reservation. These literals cannot be
   /// substituted by custom-word correction even when a user has defined an
   /// alias for them. See plan §3.4 global-behavior caveat.
@@ -121,6 +134,20 @@ public struct WordCorrector: Sendable {
     public let lowercasedCanonicals: [String]
     public let singleFuzzyCandidates: [SurfaceCanonical]
     public let multiAliasByCount: [Int: [AliasCanonical]]
+    /// #992 pack fuzzy tier (LOWER authority than the non-pack pools above).
+    /// Single-word pack ALIAS surfaces (lowercased, length ≥ packFuzzyMinLength)
+    /// for the pack Pass-4 scan; pack CANONICALS (length ≥ packFuzzyMinLength)
+    /// for the pack Pass-5 scan. Scored ONLY after every non-pack fuzzy pass
+    /// misses, so a user/builtin match always wins.
+    public let packSingleFuzzyCandidates: [SurfaceCanonical]
+    public let packCanonicals: [String]
+    public let packLowercasedCanonicals: [String]
+    /// #992 precedence: lowercased keys of every NON-pack exact term (single
+    /// alias keys + canonical self-entries + all non-pack canonicals). A token
+    /// the user/builtin vocabulary already recognizes is "correct as-is", so the
+    /// pack fuzzy tier must NEVER rewrite it — including the case where the
+    /// non-pack tier made no replacement because no fix was needed.
+    public let nonPackExactKeys: Set<String>
   }
 
   /// Build the lookup structures for a given vocabulary. Pure function.
@@ -218,15 +245,17 @@ public struct WordCorrector: Sendable {
           if singleAliasMap[key] == nil { singleAliasMap[key] = word.canonical }
         }
       }
+      // #992: pack canonical self-entries are NOT added to singleAliasMap. They
+      // only ever normalized casing — unreliable for packs (lowercase
+      // canonicals) and the source of the live casing harm (correct
+      // "Ameritrade" → "ameritrade" via Pass 3). A pack canonical near-miss is
+      // now handled by the Pass-5 pack fuzzy tier with the casing guard.
       let ck = word.canonical.lowercased()
-      if !ck.contains(" "), !nonPackCanonicalKeys.contains(ck), singleAliasMap[ck] == nil {
-        singleAliasMap[ck] = word.canonical
-      }
       // Attribution: fill the pack id only when no non-pack term owns this
-      // canonical. Known minor telemetry edge (accepted for PR-1): if a user
-      // term and a pack term SHARE a canonical, a pack-alias correction is
-      // attributed to the user id, so `hadPackTerm` under-counts that case.
-      // Counts-only telemetry; corrected text is unaffected.
+      // canonical. Known minor telemetry edge (accepted, #992 §6): if a user
+      // term and a pack term SHARE a canonical, a pack correction is attributed
+      // to the user id, so `hadPackTerm` under-counts that case. Counts-only
+      // telemetry; corrected text is unaffected.
       if canonicalToID[ck] == nil { canonicalToID[ck] = word.id }
       if canonicalToWord[ck] == nil { canonicalToWord[ck] = word }
     }
@@ -256,6 +285,42 @@ public struct WordCorrector: Sendable {
       }
     }
 
+    // #992 pack fuzzy tier (LOWER authority). Single-word pack terms whose
+    // scored surface length ≥ packFuzzyMinLength, built from the SAME lowercased
+    // surfaces the scorer sees (normalization parity with the non-pack pools).
+    // Multi-word pack terms and compounds stay out (deferred to the n-gram
+    // follow-up). Scored only after every non-pack fuzzy pass misses.
+    var packSingleFuzzyCandidates: [Lookups.SurfaceCanonical] = []
+    for word in packWords {
+      for alias in word.aliases where !alias.contains(" ") {
+        let surface = alias.lowercased()
+        if surface.count >= packFuzzyMinLength {
+          packSingleFuzzyCandidates.append(
+            Lookups.SurfaceCanonical(surface: surface, canonical: word.canonical))
+        }
+      }
+    }
+    // De-dupe by lowercased canonical: the same canonical can ship in two
+    // enabled packs (e.g. "miralax" in medical+brands). Without de-duping, the
+    // duplicate competes against itself in pack Pass 5 — both copies score
+    // identically, driving the best-vs-second margin to 0 and wrongly rejecting
+    // a valid fix (the Pass-5 loop, unlike Pass 4, has no same-canonical guard).
+    var seenPackCanonicals = Set<String>()
+    var packCanonicals: [String] = []
+    for word in packWords {
+      let canonical = word.canonical
+      guard !canonical.contains(" "), canonical.count >= packFuzzyMinLength else { continue }
+      if seenPackCanonicals.insert(canonical.lowercased()).inserted {
+        packCanonicals.append(canonical)
+      }
+    }
+    let packLowercasedCanonicals = packCanonicals.map { $0.lowercased() }
+
+    // #992 precedence: every token the non-pack vocabulary already recognizes
+    // as-is (single alias keys + canonical self-entries via nonPackSingleAliasMap,
+    // plus all non-pack canonicals). The pack fuzzy tier is skipped for these.
+    let nonPackExactKeys = Set(nonPackSingleAliasMap.keys).union(nonPackCanonicalKeys)
+
     return Lookups(
       singleAliasMap: singleAliasMap,
       multiAliasMap: multiAliasMap,
@@ -265,7 +330,11 @@ public struct WordCorrector: Sendable {
       canonicals: canonicals,
       lowercasedCanonicals: lowercasedCanonicals,
       singleFuzzyCandidates: singleFuzzyCandidates,
-      multiAliasByCount: multiAliasByCount
+      multiAliasByCount: multiAliasByCount,
+      packSingleFuzzyCandidates: packSingleFuzzyCandidates,
+      packCanonicals: packCanonicals,
+      packLowercasedCanonicals: packLowercasedCanonicals,
+      nonPackExactKeys: nonPackExactKeys
     )
   }
 
@@ -307,6 +376,10 @@ public struct WordCorrector: Sendable {
     let lowercasedCanonicals = lookups.lowercasedCanonicals
     let singleFuzzyCandidates = lookups.singleFuzzyCandidates
     let multiAliasByCount = lookups.multiAliasByCount
+    let packSingleFuzzyCandidates = lookups.packSingleFuzzyCandidates
+    let packCanonicals = lookups.packCanonicals
+    let packLowercasedCanonicals = lookups.packLowercasedCanonicals
+    let nonPackExactKeys = lookups.nonPackExactKeys
 
     var replacements: [Replacement] = []
     var tokens = text.components(separatedBy: .whitespaces)
@@ -630,6 +703,106 @@ public struct WordCorrector: Sendable {
             "WordCorrector: REJECT pass=canonical-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass5Margin, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3)) reason=\(reason)"
           )
         #endif
+      }
+
+      // #992 PACK FUZZY TIER — LOWER authority. Reached ONLY here, i.e. after
+      // every non-pack fuzzy pass above missed (each accept returns early). This
+      // ordering is what makes "user/builtin always wins" structurally true: any
+      // user/builtin match (Pass 3/4/5) preempts the entire pack tier. Pack
+      // matches additionally clear a stricter bar (packFuzzyThresholdBump) and a
+      // casing guard (a case-only change is never an improvement for the
+      // lowercase pack canonicals). Source is unambiguous: only pack terms are
+      // scored in this tier.
+
+      // #992 precedence guard: if the token is already a recognized non-pack
+      // term (user/builtin canonical or alias), it is correct as-is — packs
+      // must not rewrite it. This covers the case where the non-pack tier above
+      // produced no replacement precisely because no fix was needed.
+      if nonPackExactKeys.contains(coreLower) {
+        return token
+      }
+
+      // Pack Pass 4: single-word pack aliases.
+      if !packSingleFuzzyCandidates.isEmpty {
+        var pBest = 0.0
+        var pSecond = 0.0
+        var pMatch = ""
+        for entry in packSingleFuzzyCandidates {
+          let surfLen = entry.surface.count
+          let lenRatio = Double(min(coreLen, surfLen)) / Double(max(coreLen, surfLen))
+          if lenRatio < 0.5 { continue }
+          let s = score(coreLower, against: entry.surface)
+          if s > pBest {
+            if pMatch != entry.canonical { pSecond = pBest }
+            pBest = s
+            pMatch = entry.canonical
+          } else if s > pSecond && entry.canonical != pMatch {
+            pSecond = s
+          }
+        }
+        let vocabPenalty = Self.largeVocabPenalty(poolSize: packSingleFuzzyCandidates.count)
+        let lengthAdj = Self.lengthAwareAdjustment(candidateLength: pMatch.count)
+        let packThreshold =
+          effectiveThreshold + vocabPenalty - lengthAdj + Self.packFuzzyThresholdBump
+        if pBest >= packThreshold, pBest - pSecond >= Self.ambiguityMargin, core != pMatch {
+          if coreLower == pMatch.lowercased() {
+            // Casing guard: case-only change — suppress, fall through.
+            #if DEBUG
+              Self.logger.debug(
+                "WordCorrector: SUPPRESS pass=pack-alias-fuzzy reason=case_only source='\(core)' target='\(pMatch)'"
+              )
+            #endif
+          } else {
+            appendReplacement(forCanonical: pMatch)
+            #if DEBUG
+              Self.logger.debug(
+                "WordCorrector: type=pack-alias-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pBest - pSecond, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
+              )
+            #endif
+            return prefix + pMatch + suffix
+          }
+        }
+      }
+
+      // Pack Pass 5: single-word pack canonicals.
+      if !packLowercasedCanonicals.isEmpty {
+        var pBest = 0.0
+        var pSecond = 0.0
+        var pMatch = ""
+        for (idx, targetLower) in packLowercasedCanonicals.enumerated() {
+          let targetLen = targetLower.count
+          let lenRatio = Double(min(coreLen, targetLen)) / Double(max(coreLen, targetLen))
+          if lenRatio < 0.5 { continue }
+          let s = score(coreLower, against: targetLower)
+          if s > pBest {
+            pSecond = pBest
+            pBest = s
+            pMatch = packCanonicals[idx]
+          } else if s > pSecond {
+            pSecond = s
+          }
+        }
+        let vocabPenalty = Self.largeVocabPenalty(poolSize: packLowercasedCanonicals.count)
+        let lengthAdj = Self.lengthAwareAdjustment(candidateLength: pMatch.count)
+        let packThreshold =
+          effectiveThreshold + vocabPenalty - lengthAdj + Self.packFuzzyThresholdBump
+        if pBest >= packThreshold, pBest - pSecond >= Self.ambiguityMargin, core != pMatch {
+          if coreLower == pMatch.lowercased() {
+            #if DEBUG
+              Self.logger.debug(
+                "WordCorrector: SUPPRESS pass=pack-canonical-fuzzy reason=case_only source='\(core)' target='\(pMatch)'"
+              )
+            #endif
+          } else {
+            appendReplacement(forCanonical: pMatch)
+            #if DEBUG
+              Self.logger.debug(
+                "WordCorrector: type=pack-canonical-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pBest - pSecond, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
+              )
+            #endif
+            return prefix + pMatch + suffix
+          }
+        }
       }
 
       return token
