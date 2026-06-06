@@ -1,20 +1,27 @@
+import EnviousWisprCore
 import EnviousWisprPostProcessing
 import SwiftUI
 
-/// Read-only browser for a vocabulary pack's full word list (#992). Opens when a
-/// pack row is tapped. A pinned search box filters an alphabetical list of every
-/// correctable word in the pack. No editing — bundled packs are read-only.
+/// Read-only browser for a vocabulary pack's full term list (#992). Opens from a
+/// pack row's "See all" button. A pinned search box filters an alphabetical list
+/// of every word the pack fixes; each row shows the correct word plus the spoken
+/// variants (aliases) it catches, as pills (mirroring the Custom Word edit sheet).
+/// No editing — bundled packs are read-only.
 struct VocabularyPackDetailSheet: View {
   let id: VocabularyPackID
-  /// Alphabetical canonicals, supplied by the section so the sheet stays dumb.
-  let words: [String]
+  /// Pack terms (word + aliases), alphabetical by word, supplied by the section.
+  let terms: [CustomWord]
   @State private var searchQuery: String = ""
   @Environment(\.dismiss) private var dismiss
 
-  private var filteredWords: [String] {
+  /// Rows whose word OR any alias contains the query (case-insensitive).
+  private var filteredTerms: [CustomWord] {
     let query = searchQuery.trimmingCharacters(in: .whitespaces)
-    guard !query.isEmpty else { return words }
-    return words.filter { $0.localizedCaseInsensitiveContains(query) }
+    guard !query.isEmpty else { return terms }
+    return terms.filter { term in
+      term.canonical.localizedCaseInsensitiveContains(query)
+        || term.aliases.contains { $0.localizedCaseInsensitiveContains(query) }
+    }
   }
 
   var body: some View {
@@ -23,9 +30,12 @@ struct VocabularyPackDetailSheet: View {
       VStack(alignment: .leading, spacing: 2) {
         Text(id.displayName)
           .font(.headline)
-        Text("\(words.count) \(words.count == 1 ? "word" : "words") this pack can fix")
-          .font(.stHelper)
-          .foregroundStyle(.stTextTertiary)
+        Text(
+          "\(terms.count) \(terms.count == 1 ? "word" : "words") · the variants under each are examples of the mistakes it catches, not the full set"
+        )
+        .font(.stHelper)
+        .foregroundStyle(.stTextTertiary)
+        .fixedSize(horizontal: false, vertical: true)
       }
 
       // Search
@@ -33,7 +43,7 @@ struct VocabularyPackDetailSheet: View {
         Image(systemName: "magnifyingglass")
           .foregroundStyle(.stTextTertiary)
           .font(.system(size: 12))
-        TextField("Search words", text: $searchQuery)
+        TextField("Search words or variants", text: $searchQuery)
           .textFieldStyle(.plain)
         if !searchQuery.isEmpty {
           Button {
@@ -55,8 +65,8 @@ struct VocabularyPackDetailSheet: View {
           .strokeBorder(Color.stDivider, lineWidth: 1)
       )
 
-      // Word list (or empty state)
-      if filteredWords.isEmpty {
+      // Term list (or empty state)
+      if filteredTerms.isEmpty {
         Spacer()
         Text(
           searchQuery.isEmpty
@@ -69,13 +79,10 @@ struct VocabularyPackDetailSheet: View {
         Spacer()
       } else {
         ScrollView {
-          LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(filteredWords.enumerated()), id: \.element) { index, word in
-              Text(word)
-                .font(.body)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 6)
-              if index < filteredWords.count - 1 {
+          VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(filteredTerms.enumerated()), id: \.element.id) { index, term in
+              termRow(term)
+              if index < filteredTerms.count - 1 {
                 Divider().overlay(Color.stDivider)
               }
             }
@@ -92,6 +99,37 @@ struct VocabularyPackDetailSheet: View {
       }
     }
     .padding(20)
-    .frame(width: 400, height: 480)
+    .frame(width: 420, height: 520)
+  }
+
+  /// One word + its alias pills.
+  @ViewBuilder
+  private func termRow(_ term: CustomWord) -> some View {
+    VStack(alignment: .leading, spacing: 5) {
+      Text(term.canonical)
+        .font(.body)
+      if term.aliases.isEmpty {
+        Text("No spoken variants")
+          .font(.system(size: 11))
+          .foregroundStyle(.stTextTertiary)
+      } else {
+        WrappingHStack(spacing: 6) {
+          ForEach(sortedAliases(term), id: \.self) { alias in
+            Text(alias)
+              .font(.system(size: 11))
+              .padding(.horizontal, 6)
+              .padding(.vertical, 3)
+              .background(Color.stAccentLight)
+              .clipShape(RoundedRectangle(cornerRadius: 4))
+          }
+        }
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.vertical, 8)
+  }
+
+  private func sortedAliases(_ term: CustomWord) -> [String] {
+    term.aliases.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
   }
 }

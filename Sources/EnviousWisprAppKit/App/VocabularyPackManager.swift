@@ -68,12 +68,13 @@ final class VocabularyPackManager {
     return pack.terms.map(\.canonical).sorted().prefix(limit).map { $0 }
   }
 
-  /// Every correctable word in a pack, sorted alphabetically (case-insensitive),
-  /// for the pack-detail word list. Fail-open: missing pack yields an empty list.
-  func canonicals(_ id: VocabularyPackID) -> [String] {
+  /// Every term in a pack — the correct word plus the spoken variants (aliases)
+  /// it catches — sorted alphabetically by word (case-insensitive), for the
+  /// pack-detail list. Fail-open: missing pack yields an empty list.
+  func packTerms(_ id: VocabularyPackID) -> [CustomWord] {
     guard let pack = store.load(id) else { return [] }
-    return pack.terms.map(\.canonical).sorted {
-      $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+    return pack.terms.sorted {
+      $0.canonical.localizedCaseInsensitiveCompare($1.canonical) == .orderedAscending
     }
   }
 }
