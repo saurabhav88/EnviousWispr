@@ -2,11 +2,13 @@ import EnviousWisprPostProcessing
 import SwiftUI
 
 /// Vocabulary Packs section of the Your Words settings tab (#633 Phase 9).
-/// One toggle per installed ASR-mined pack. Default OFF. Enabling a pack feeds
-/// its known mis-hearing fixes into the corrector (exact-match only); raw
-/// dictation is unaffected when off. Bible §10.2.
+/// One row per installed ASR-mined pack: a toggle to enable it and a tappable
+/// body that opens the pack's full word list (#992). Default OFF. Enabling a
+/// pack feeds its known mis-hearing fixes into the corrector; raw dictation is
+/// unaffected when off. Bible §10.2.
 struct VocabPacksSection: View {
   @Environment(VocabularyPackManager.self) private var packManager
+  @State private var selectedPack: VocabularyPackID?
 
   var body: some View {
     BrandedSection(header: "Vocabulary packs") {
@@ -20,19 +22,33 @@ struct VocabPacksSection: View {
       } else {
         ForEach(Array(ids.enumerated()), id: \.element) { index, id in
           BrandedRow(showDivider: index < ids.count - 1) {
-            HStack(alignment: .top) {
-              VStack(alignment: .leading, spacing: 2) {
-                Text(id.displayName)
-                  .font(.body)
-                Text(id.blurb)
-                  .font(.stHelper)
-                  .foregroundStyle(.stTextTertiary)
-                Text(rowDetail(for: id))
-                  .font(.stHelper)
-                  .foregroundStyle(.stTextTertiary)
-                  .padding(.top, 2)
+            HStack(alignment: .center) {
+              // Tapping the text/chevron area opens the full word list.
+              Button {
+                selectedPack = id
+              } label: {
+                HStack(alignment: .top) {
+                  VStack(alignment: .leading, spacing: 2) {
+                    Text(id.displayName)
+                      .font(.body)
+                    Text(id.blurb)
+                      .font(.stHelper)
+                      .foregroundStyle(.stTextTertiary)
+                    Text(rowDetail(for: id))
+                      .font(.stHelper)
+                      .foregroundStyle(.stTextTertiary)
+                      .padding(.top, 2)
+                  }
+                  Spacer()
+                  Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.stTextTertiary)
+                }
+                .contentShape(Rectangle())
               }
-              Spacer()
+              .buttonStyle(.plain)
+              .accessibilityHint("Opens the full word list for this pack")
+
               Toggle(
                 "",
                 isOn: Binding(
@@ -42,10 +58,15 @@ struct VocabPacksSection: View {
               )
               .toggleStyle(BrandedToggleStyle())
               .labelsHidden()
+              .accessibilityLabel("Enable \(id.displayName) pack")
+              .padding(.leading, 6)
             }
           }
         }
       }
+    }
+    .sheet(item: $selectedPack) { id in
+      VocabularyPackDetailSheet(id: id, words: packManager.canonicals(id))
     }
   }
 

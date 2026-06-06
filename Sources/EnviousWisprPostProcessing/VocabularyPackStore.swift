@@ -10,15 +10,17 @@ import os
 /// terms tagged `source: .pack`.
 ///
 /// Each pack ships as `Resources/Packs/<id>.json` shaped `{canonical: [aliases]}`
-/// (the validated output of the pack-production pipeline). Terms are EXACT-MATCH
-/// ONLY downstream — `WordCorrector.buildLookups` keeps `.pack` aliases out of
-/// every fuzzy/compound pass.
+/// (the validated output of the pack-production pipeline). Downstream,
+/// `WordCorrector` matches pack terms via a length-gated fuzzy tier that runs
+/// only after every non-pack pass misses, so user/builtin words always win (#992).
 ///
 /// Fail-open: any load/decode failure logs and yields no terms, so a corrupt or
 /// missing pack file can never poison the corrector vocabulary wiring. This is
 /// upstream of the runner-level step fail-open.
-public enum VocabularyPackID: String, CaseIterable, Sendable, Codable {
+public enum VocabularyPackID: String, CaseIterable, Sendable, Codable, Identifiable {
   case tech, medical, legal, brands, names
+
+  public var id: String { rawValue }
 
   public var displayName: String {
     switch self {
