@@ -1,6 +1,6 @@
 ---
 title: "Say It, Get It Formatted: Dates, Numbers, Emails, and More"
-description: "EnviousWispr formats spoken numbers, dates, times, money, percentages, phone numbers, emails, and web addresses into the way you would actually type them. It runs on your Mac, before any AI step, on every dictation."
+description: "EnviousWispr formats spoken numbers, dates, times, money, phone numbers, emails, and web addresses the way you would actually type them, right on your Mac."
 pubDate: 2026-06-08
 tags: ["dictation", "macos", "productivity", "ai-polish"]
 draft: false
