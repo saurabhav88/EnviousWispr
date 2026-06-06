@@ -59,3 +59,31 @@ jobs:
           CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Tell IndexNow (Bing/Yandex/Naver) about posts that go live TODAY only.
+      # Submitting just the newly-published URLs (not a daily blast of every URL)
+      # is the protocol's intended use. Runs only after a successful deploy, and
+      # is non-fatal: a flaky IndexNow response must not redden a good publish.
+      # "Today" is computed in America/New_York to match the build-time
+      # visibility gate in website/src/utils/posts.ts (isPublishedPost).
+      - name: Notify IndexNow for posts published today
+        if: success()
+        continue-on-error: true
+        working-directory: website
+        run: |
+          TODAY="$(TZ=America/New_York date +%F)"
+          urls=()
+          for f in src/content/blog/*.md; do
+            pd="$(grep -m1 '^pubDate:' "$f" | sed -E 's/^pubDate:[[:space:]]*//; s/"//g' | cut -dT -f1)"
+            draft="$(grep -m1 '^draft:' "$f" | sed -E 's/^draft:[[:space:]]*//; s/"//g')"
+            if [ "$pd" = "$TODAY" ] && [ "$draft" != "true" ]; then
+              urls+=("https://enviouswispr.com/blog/$(basename "$f" .md)/")
+            fi
+          done
+          if [ "${#urls[@]}" -eq 0 ]; then
+            echo "No blog posts dated $TODAY (ET); nothing to submit to IndexNow."
+            exit 0
+          fi
+          echo "Submitting ${#urls[@]} URL(s) published today to IndexNow:"
+          printf '  %s\n' "${urls[@]}"
+          bash scripts/indexnow-submit.sh "${urls[@]}"
