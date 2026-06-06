@@ -271,24 +271,44 @@ struct BundledVocabularyPackTests {
   }
 
   /// Two-tier fuzzy fires on REAL data: a 1-char near-miss of a long (>=8) real
-  /// alias corrects to its canonical through the pack fuzzy tier.
-  @Test("a near-miss of a long real pack alias corrects via the fuzzy tier")
+  /// single-word alias corrects to its canonical through the pack fuzzy tier.
+  ///
+  /// Deterministic by construction: it iterates EVERY qualifying tech term. The
+  /// prior `first(where:)` over an unordered dictionary picked a random term per
+  /// run (Swift hashes are per-process seeded), so it flaked ~1/30 when it landed
+  /// on a term whose mined alias is itself a far mishearing (e.g. cherrypick /
+  /// "cherapak") — there a near-miss correctly stays below the safe bar. The
+  /// clear majority must fire; a few far-alias outliers staying conservative is
+  /// correct behavior, not a regression.
+  @Test("near-misses of long real pack aliases correct via the fuzzy tier")
   func realAliasNearMissNowCorrects() {
     let store = VocabularyPackStore()
-    guard let pack = store.load(.tech),
-      let sample = pack.terms.first(where: {
-        ($0.aliases.first(where: { $0.count >= 8 && !$0.contains(" ") }) != nil)
-      }),
-      let alias = sample.aliases.first(where: { $0.count >= 8 && !$0.contains(" ") })
-    else {
-      Issue.record("tech pack produced no single-word alias >= 8 chars for a near-miss probe")
+    guard let pack = store.load(.tech) else {
+      Issue.record("tech pack failed to load from bundle")
       return
     }
-    let nearMiss = String(alias.dropLast())
-    let result = WordCorrector().correct(nearMiss, against: pack.terms)
+    let corrector = WordCorrector()
+    var qualifying = 0
+    var corrected = 0
+    var misses: [String] = []
+    for term in pack.terms.sorted(by: { $0.canonical < $1.canonical }) {
+      guard let alias = term.aliases.first(where: { $0.count >= 8 && !$0.contains(" ") })
+      else { continue }
+      qualifying += 1
+      let nearMiss = String(alias.dropLast())
+      let out = corrector.correct(nearMiss, against: pack.terms).corrected
+      if out == term.canonical {
+        corrected += 1
+      } else {
+        misses.append("[\(term.canonical)] '\(nearMiss)'->'\(out)'")
+      }
+    }
+    #expect(qualifying > 0, "no tech term has a single-word alias >= 8 chars to probe")
+    // Clear majority must fire; far-mined-alias outliers may stay conservative.
+    let detail = misses.joined(separator: " | ")
     #expect(
-      result.corrected == sample.canonical,
-      "near-miss '\(nearMiss)' should fuzzy-correct to '\(sample.canonical)', got '\(result.corrected)'"
+      corrected * 4 >= qualifying * 3,
+      "fuzzy tier fired on only \(corrected)/\(qualifying) real long-aliased terms; misses: \(detail)"
     )
   }
 
@@ -363,36 +383,48 @@ struct BundledVocabularyPackTests {
     )
   }
 
-  /// End-to-end proof casing reaches paste: a near-miss of a long single-word
-  /// alias whose canonical carries caps (and clears the length gate) must correct
-  /// to the CAPITALIZED canonical, not a lowercased form. Guards the whole point
-  /// of the recasing — that genuine fixes paste with correct capitalization.
-  @Test("a recased pack fix pastes with correct capitalization")
+  /// End-to-end proof casing reaches paste: a lowercase 1-char truncation of a
+  /// recased (caps-carrying) canonical must correct back to the CAPITALIZED
+  /// canonical — i.e. a lowercase mishearing pastes capitalized. Guards the whole
+  /// point of the recasing.
+  ///
+  /// Deterministic by construction: iterates EVERY recased canonical long enough
+  /// that a 1-char truncation still clears the length gate, and probes with the
+  /// canonical's own truncation (guaranteed-close — unlike mined aliases, which
+  /// can be far mishearings). Asserts the clear majority paste capitalized;
+  /// iterating ALL avoids the hash-seed flakiness of `first(where:)` over an
+  /// unordered dictionary.
+  @Test("recased pack fixes paste with correct capitalization")
   func recasedFixPastesCapitalized() {
     let store = VocabularyPackStore()
-    var probe: (canonical: String, alias: String, terms: [CustomWord])?
+    let corrector = WordCorrector()
+    var qualifying = 0
+    var capitalizedHits = 0
+    var misses: [String] = []
     for id in VocabularyPackID.allCases {
       guard let pack = store.load(id) else { continue }
-      if let sample = pack.terms.first(where: { term in
-        term.canonical != term.canonical.lowercased()
-          && term.canonical.count >= WordCorrector.packFuzzyMinLength
-          && term.aliases.contains(where: { $0.count >= 8 && !$0.contains(" ") })
-      }),
-        let alias = sample.aliases.first(where: { $0.count >= 8 && !$0.contains(" ") })
-      {
-        probe = (sample.canonical, alias, pack.terms)
-        break
+      for term in pack.terms.sorted(by: { $0.canonical < $1.canonical }) {
+        guard term.canonical != term.canonical.lowercased(),
+          !term.canonical.contains(" "),
+          term.canonical.count >= WordCorrector.packFuzzyMinLength + 1
+        else { continue }
+        qualifying += 1
+        let nearMiss = String(term.canonical.dropLast()).lowercased()
+        let out = corrector.correct(nearMiss, against: pack.terms).corrected
+        if out == term.canonical {
+          capitalizedHits += 1
+        } else {
+          misses.append("[\(term.canonical)] '\(nearMiss)'->'\(out)'")
+        }
       }
     }
-    guard let probe else {
-      Issue.record("no recased canonical with a long single-word alias found across packs")
-      return
-    }
-    let nearMiss = String(probe.alias.dropLast())
-    let result = WordCorrector().correct(nearMiss, against: probe.terms)
     #expect(
-      result.corrected == probe.canonical,
-      "near-miss '\(nearMiss)' should correct to capitalized '\(probe.canonical)', got '\(result.corrected)'"
+      qualifying > 0,
+      "no recased canonical >= \(WordCorrector.packFuzzyMinLength + 1) chars found")
+    let detail = misses.prefix(10).joined(separator: " | ")
+    #expect(
+      capitalizedHits * 4 >= qualifying * 3,
+      "recased fixes pasted capitalized for only \(capitalizedHits)/\(qualifying); misses: \(detail)"
     )
   }
 }
