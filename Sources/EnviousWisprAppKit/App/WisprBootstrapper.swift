@@ -47,6 +47,7 @@ public final class WisprBootstrapper {
   let aiAvailability: AIAvailabilityCoordinator
   let keychainManager: KeychainManager
   let llmDiscovery: LLMModelDiscoveryCoordinator
+  let vocabularyPackManager: VocabularyPackManager
 
   // The re-polish service is App-owned (epic #763).
   let polishService: TranscriptPolishService
@@ -74,6 +75,9 @@ public final class WisprBootstrapper {
     let captureTelemetry = CaptureTelemetryState()
     let customWordsCoordinator = CustomWordsCoordinator()
     let customWordsPropagator = CustomWordsPropagator()
+    // #633 Phase 9: owns enabled vocabulary-pack state; merges pack terms into
+    // the corrector lane (default OFF). Wired into `wireCustomWords` below.
+    let vocabularyPackManager = VocabularyPackManager()
     let aiAvailability = AIAvailabilityCoordinator()
 
     // XPC audio service — default ON. Audio capture runs in a separate XPC
@@ -223,7 +227,8 @@ public final class WisprBootstrapper {
         whisperKitKernelDriver.llmPolish,
         polishService.llmPolishStep,
       ],
-      coordinator: customWordsCoordinator
+      coordinator: customWordsCoordinator,
+      packManager: vocabularyPackManager
     )
 
     settingsSync.onNeedsPreloadObservation = { [weak setup] in
@@ -466,6 +471,7 @@ public final class WisprBootstrapper {
     self.aiAvailability = aiAvailability
     self.keychainManager = keychainManager
     self.llmDiscovery = llmDiscovery
+    self.vocabularyPackManager = vocabularyPackManager
 
     // PR-C.3 of #763: App-owned re-polish service.
     self.polishService = polishService
@@ -600,6 +606,7 @@ private struct MainWindowRoot: View {
       .environment(b.audioDeviceList)
       .environment(b.aiAvailability)
       .environment(b.llmDiscovery)
+      .environment(b.vocabularyPackManager)
       .environment(\.asrManager, b.asrManager)
       .environment(\.keychainManager, b.keychainManager)
       .background(

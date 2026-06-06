@@ -134,9 +134,15 @@ func wireCustomWords(
   initialWords: [CustomWord],
   correctorConsumers: [any CorrectorVocabularyConsumer],
   polishConsumers: [any PolishVocabularyConsumer],
-  coordinator: CustomWordsCoordinator
+  coordinator: CustomWordsCoordinator,
+  packManager: VocabularyPackManager? = nil
 ) -> ([CustomWord]) -> Void {
-  let seed = LanePartitioner.split(initialWords, generation: 0)
+  // #633 Phase 9: the corrector lane is user/builtin words + enabled pack
+  // terms. `LanePartitioner.split` keeps pack terms out of the polish lane.
+  // The merge funnels through one path so both a user-word edit and a pack
+  // toggle produce the same combined lane with a fresh generation.
+  func packTerms() -> [CustomWord] { packManager?.enabledPackTerms() ?? [] }
+  let seed = LanePartitioner.split(initialWords + packTerms(), generation: 0)
   propagator.update(corrector: seed.corrector, polish: seed.polish)
   for consumer in correctorConsumers {
     propagator.register(consumer)
@@ -153,17 +159,27 @@ func wireCustomWords(
   // `@State`). No retain cycle: the propagator holds only weak consumer
   // boxes and never references the coordinator.
   let onChange: ([CustomWord]) -> Void = { words in
-    let next = LanePartitioner.split(words, generation: propagator.corrector.generation &+ 1)
+    packManager?.currentUserWords = words
+    let combined = words + packTerms()
+    let next = LanePartitioner.split(combined, generation: propagator.corrector.generation &+ 1)
     propagator.update(corrector: next.corrector, polish: next.polish)
   }
   coordinator.onWordsChanged = onChange
+  // A pack toggle re-merges the LAST user words with the new enabled set,
+  // bumping generation so the corrector step's lookup cache invalidates.
+  if let packManager {
+    packManager.currentUserWords = initialWords
+    packManager.rebroadcast = { onChange(packManager.currentUserWords) }
+  }
   return onChange
 }
 
-/// Splits a flat `[CustomWord]` (as produced by `CustomWordsCoordinator`)
-/// into the two typed lanes. Both lanes currently receive the same terms;
-/// the type distinction (`CorrectorVocabulary` vs `PolishVocabulary`) is the
-/// architectural seam that prevents accidental cross-wiring at compile time.
+/// Splits a flat `[CustomWord]` into the two typed lanes. The corrector lane
+/// receives ALL terms (user/builtin + installed pack terms); the polish lane
+/// receives only non-pack terms — pack-sourced terms must never reach the
+/// polish prompt (bible §2.2, #633 Phase 9). The type distinction
+/// (`CorrectorVocabulary` vs `PolishVocabulary`) is the compile-time seam; this
+/// `source != .pack` filter is the assembly-side enforcement.
 @MainActor
 enum LanePartitioner {
   static func split(_ words: [CustomWord], generation: UInt64) -> (
@@ -171,7 +187,8 @@ enum LanePartitioner {
   ) {
     return (
       corrector: CorrectorVocabulary(terms: words, generation: generation),
-      polish: PolishVocabulary(terms: words, generation: generation)
+      polish: PolishVocabulary(
+        terms: words.filter { $0.source != .pack }, generation: generation)
     )
   }
 }

@@ -1,0 +1,402 @@
+{
+  "accept": [
+    "ekipt",
+    "oxcept"
+  ],
+  "AngularJS": [
+    "angularge",
+    "ingiolarge",
+    "ingiolarts",
+    "inkyolarge"
+  ],
+  "async": [
+    "esync",
+    "isinc",
+    "isync",
+    "osinc",
+    "ozync"
+  ],
+  "autoscaling": [
+    "autosculum",
+    "autoskalong",
+    "etroskilling"
+  ],
+  "backpressure": [
+    "backbrushery",
+    "backbushery",
+    "buckbrusher"
+  ],
+  "backpropagation": [
+    "backpapagine",
+    "backpropagatine"
+  ],
+  "Bazel": [
+    "bazool",
+    "beazel",
+    "buesil"
+  ],
+  "Blazor": [
+    "blizzr",
+    "blueser"
+  ],
+  "bluegreen": [
+    "bleagreen",
+    "bluegroon"
+  ],
+  "cache": [
+    "catca"
+  ],
+  "cherrypick": [
+    "cherapak",
+    "cheropick",
+    "cheropok",
+    "cherubick",
+    "chorepik",
+    "choropic",
+    "chorpit",
+    "churapik"
+  ],
+  "CLI": [
+    "clarf"
+  ],
+  "codec": [
+    "cadoak",
+    "codic",
+    "kodich",
+    "kodok",
+    "sedec"
+  ],
+  "computervision": [
+    "simputervision"
+  ],
+  "Consul": [
+    "consal",
+    "sinsil"
+  ],
+  "Couchbase": [
+    "corchbase"
+  ],
+  "csharp": [
+    "seashaw"
+  ],
+  "Cypress": [
+    "cypras",
+    "cypresh"
+  ],
+  "deadletter": [
+    "detteldeer",
+    "dettelder"
+  ],
+  "Dockerfile": [
+    "decaphile",
+    "dickerfile",
+    "dochfil",
+    "dockerfilla",
+    "docphilo"
+  ],
+  "DocumentDB": [
+    "dacumentdb",
+    "decumantdb",
+    "ducumentdb"
+  ],
+  "dotnet": [
+    "datnet",
+    "dotnath"
+  ],
+  "ECDSA": [
+    "actsa"
+  ],
+  "finetuning": [
+    "fanatuning",
+    "fanetuning",
+    "finetunong",
+    "finetunung",
+    "fintenang",
+    "fituning"
+  ],
+  "GenAI": [
+    "genow"
+  ],
+  "Gerrit": [
+    "gurret",
+    "gurrit",
+    "jarat",
+    "jarub",
+    "jeriff",
+    "jerrith"
+  ],
+  "HSTS": [
+    "hsdesh",
+    "hsdsh"
+  ],
+  "ImageMagick": [
+    "amagemagic",
+    "imagemagac"
+  ],
+  "InVision": [
+    "anvision",
+    "infison"
+  ],
+  "Kerberos": [
+    "corberos",
+    "kaberos",
+    "kberos",
+    "kberus",
+    "kerberas"
+  ],
+  "lakehouse": [
+    "likaosu"
+  ],
+  "lexer": [
+    "lexir",
+    "loxer"
+  ],
+  "linkedlist": [
+    "lenkidlist",
+    "lunkedlist"
+  ],
+  "localStorage": [
+    "licklestorage",
+    "locustoragi"
+  ],
+  "LSTM": [
+    "lsdmh"
+  ],
+  "metaprogramming": [
+    "metaprogrammong"
+  ],
+  "nanoid": [
+    "nanoad",
+    "nanoaud",
+    "nanoe",
+    "nanoide",
+    "nanood",
+    "nanoord",
+    "nanorad",
+    "nomoid",
+    "nonoid",
+    "nunlate"
+  ],
+  "nginx": [
+    "mbunks",
+    "nganks",
+    "ngunks",
+    "njenx",
+    "unjinx"
+  ],
+  "nonblocking": [
+    "nonbuking",
+    "nunbooking"
+  ],
+  "nonce": [
+    "nints",
+    "nonco",
+    "nonkar",
+    "nuncar",
+    "nunts"
+  ],
+  "NuGet": [
+    "nagit",
+    "negit",
+    "neuda",
+    "newgap",
+    "newgat",
+    "nujet"
+  ],
+  "OpenAI": [
+    "apernye",
+    "eperknife",
+    "epini",
+    "openo",
+    "openr"
+  ],
+  "OpenCV": [
+    "epink",
+    "opanc",
+    "openc",
+    "opinc",
+    "opunk"
+  ],
+  "OpenVPN": [
+    "appendman",
+    "ipinpen",
+    "occamfon",
+    "opemphman",
+    "openfun",
+    "openpen",
+    "openpon",
+    "ophonfm",
+    "oppenfmann"
+  ],
+  "OTel": [
+    "othil",
+    "ottil"
+  ],
+  "pacman": [
+    "pacmin",
+    "pecman"
+  ],
+  "pentest": [
+    "pantice",
+    "pantist",
+    "pentist",
+    "pentust"
+  ],
+  "PHPUnit": [
+    "pghbunith"
+  ],
+  "Postgres": [
+    "pestvers",
+    "piscus",
+    "postgrish"
+  ],
+  "RabbitMQ": [
+    "rabbitk",
+    "rabek",
+    "rabok"
+  ],
+  "ReactJS": [
+    "roxchs",
+    "ryaksch"
+  ],
+  "reCAPTCHA": [
+    "racaptcha",
+    "rackapcha",
+    "recapcha",
+    "recapta",
+    "rockcha",
+    "rockupture"
+  ],
+  "RedHat": [
+    "ridat",
+    "rodhat",
+    "rudhat"
+  ],
+  "referer": [
+    "rafera",
+    "referra",
+    "referrar",
+    "referrier"
+  ],
+  "regex": [
+    "ragex",
+    "regix",
+    "regox",
+    "regux",
+    "rigox",
+    "rogerx",
+    "rogiks",
+    "rugex"
+  ],
+  "regexp": [
+    "regext",
+    "regoxp",
+    "rejexp",
+    "rugexp",
+    "rygex",
+    "rygixp"
+  ],
+  "Rider": [
+    "ridier"
+  ],
+  "route": [
+    "rauto",
+    "ryute"
+  ],
+  "RSpec": [
+    "aspuk",
+    "rspoc"
+  ],
+  "SciPy": [
+    "scapey",
+    "scuppy"
+  ],
+  "SFTP": [
+    "sfdph"
+  ],
+  "spaCy": [
+    "spasi",
+    "spoci",
+    "sposy",
+    "spusy"
+  ],
+  "Spinnaker": [
+    "spanaca",
+    "spanaker",
+    "spinacker",
+    "spinaker",
+    "spinnacker",
+    "spinnager"
+  ],
+  "stresstest": [
+    "strawst",
+    "stristies",
+    "stristist",
+    "strostist",
+    "strustist"
+  ],
+  "Tauri": [
+    "tiyuri"
+  ],
+  "tcpdump": [
+    "tcpdimp"
+  ],
+  "Tekton": [
+    "tactan",
+    "tacton",
+    "tectan",
+    "tectin",
+    "tiktin",
+    "tocton"
+  ],
+  "timezone": [
+    "tanzono",
+    "temizone",
+    "tumazone"
+  ],
+  "trie": [
+    "triwo",
+    "tryou"
+  ],
+  "Veracode": [
+    "ferricode",
+    "vericode",
+    "vericodi",
+    "vertode",
+    "vurecode"
+  ],
+  "VLAN": [
+    "velun"
+  ],
+  "VueJS": [
+    "viewges",
+    "viewodge"
+  ],
+  "warmup": [
+    "warmap",
+    "warmapp",
+    "wormup"
+  ],
+  "WebM": [
+    "wabam",
+    "wabum",
+    "webem",
+    "webum",
+    "wobben",
+    "wubam"
+  ],
+  "winget": [
+    "wengit",
+    "wenjet",
+    "winggut",
+    "wingot",
+    "wingut",
+    "winkit"
+  ],
+  "Zeplin": [
+    "sipplin",
+    "suprin",
+    "zipplin",
+    "zuplin"
+  ]
+}

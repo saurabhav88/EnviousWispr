@@ -106,17 +106,19 @@ public final class WordCorrectionStep: TextProcessingStep, CorrectorVocabularyCo
       let sourceIDs = Set(replacements.map(\.sourceID))
       var hadUser = false
       var hadBuiltin = false
+      var hadPack = false
       for term in snapshot.terms where sourceIDs.contains(term.id) {
         switch term.source {
         case .user: hadUser = true
         case .builtin: hadBuiltin = true
         case .observedAX: hadUser = true  // observedAX -> persists as user
+        case .pack: hadPack = true  // #633 Phase 9 installed vocabulary pack
         }
       }
       TelemetryService.shared.customWordsReplacementBatch(
         replacementCount: count,
         vocabSize: snapshot.terms.count,
-        hadPackTerm: false,
+        hadPackTerm: hadPack,
         hadUserTerm: hadUser,
         hadBuiltinTerm: hadBuiltin,
         latencyBucket: LatencyBucket.of(milliseconds: elapsedMs)
