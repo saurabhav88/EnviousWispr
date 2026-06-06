@@ -29,6 +29,12 @@ Last-updated: 2026-05-15
 - [WisprFlow alternatives (9 options compared)](https://enviouswispr.com/compare/wisprflow-alternatives/): Listicle ranking nine alternatives by price, privacy, and offline support.
 - [Compare to alternatives (index)](https://enviouswispr.com/compare/): All comparisons.
 
+## Features
+
+- [Dictate in a whisper: soft and quiet speech](https://enviouswispr.com/blog/dictate-in-a-whisper-soft-speech/): Capturing quiet, whispered, and far-from-the-mic speech so you can dictate at night or in a shared office without raising your voice.
+- [Say it, get it formatted: dates, numbers, emails](https://enviouswispr.com/blog/spoken-text-formatting-dates-numbers-emails/): On-device conversion of spoken numbers, dates, times, money, percentages, phone numbers, emails, and web addresses into typed form, before any AI step.
+- [Speaking emoji in your dictation](https://enviouswispr.com/blog/speak-emoji-dictation/): Say "thumbs up emoji" to get the glyph; trigger-word based, 1,500+ emoji, runs on-device, never converts a bare word by accident.
+
 ## Privacy and architecture
 
 - [On-device vs cloud dictation privacy](https://enviouswispr.com/blog/on-device-vs-cloud-dictation-privacy/): What each architecture does with your voice data and what that means for privacy.
@@ -59,6 +65,7 @@ Last-updated: 2026-05-15
 ## Behind the scenes
 
 - [Building commercial software solo with Claude Code](https://enviouswispr.com/blog/building-commercial-software-solo-with-claude-code/): How the app is built (one founder + Claude Code).
+- [Moving Whisper off the Neural Engine](https://enviouswispr.com/blog/whisperkit-neural-engine-to-gpu/): Why we moved the Whisper-based engine from the Neural Engine to the GPU, with cold-start measurements (about 109 seconds down to about 13).
 - [Welcome to EnviousWispr](https://enviouswispr.com/blog/welcome-to-enviouswispr/): Launch post.
 
 ## Legal
