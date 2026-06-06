@@ -345,4 +345,54 @@ struct BundledVocabularyPackTests {
       rewrites.isEmpty,
       "pack fuzzy rewrote everyday/multilingual text (false positives): \(detail)")
   }
+
+  // MARK: - #992 fast-follow: recased canonicals
+
+  /// Data-shape proof the recasing shipped: every Names-pack canonical is a
+  /// proper noun and must start uppercase (was all-lowercase pre-recasing).
+  @Test("names pack canonicals are capitalized")
+  func namesPackCanonicalsCapitalized() {
+    guard let pack = VocabularyPackStore().load(.names) else {
+      Issue.record("names pack failed to load from bundle")
+      return
+    }
+    let stillLower = pack.terms.filter { $0.canonical.first?.isLowercase == true }
+    #expect(
+      stillLower.isEmpty,
+      "names canonicals must be capitalized; found lowercase: \(stillLower.map(\.canonical).prefix(8))"
+    )
+  }
+
+  /// End-to-end proof casing reaches paste: a near-miss of a long single-word
+  /// alias whose canonical carries caps (and clears the length gate) must correct
+  /// to the CAPITALIZED canonical, not a lowercased form. Guards the whole point
+  /// of the recasing — that genuine fixes paste with correct capitalization.
+  @Test("a recased pack fix pastes with correct capitalization")
+  func recasedFixPastesCapitalized() {
+    let store = VocabularyPackStore()
+    var probe: (canonical: String, alias: String, terms: [CustomWord])?
+    for id in VocabularyPackID.allCases {
+      guard let pack = store.load(id) else { continue }
+      if let sample = pack.terms.first(where: { term in
+        term.canonical != term.canonical.lowercased()
+          && term.canonical.count >= WordCorrector.packFuzzyMinLength
+          && term.aliases.contains(where: { $0.count >= 8 && !$0.contains(" ") })
+      }),
+        let alias = sample.aliases.first(where: { $0.count >= 8 && !$0.contains(" ") })
+      {
+        probe = (sample.canonical, alias, pack.terms)
+        break
+      }
+    }
+    guard let probe else {
+      Issue.record("no recased canonical with a long single-word alias found across packs")
+      return
+    }
+    let nearMiss = String(probe.alias.dropLast())
+    let result = WordCorrector().correct(nearMiss, against: probe.terms)
+    #expect(
+      result.corrected == probe.canonical,
+      "near-miss '\(nearMiss)' should correct to capitalized '\(probe.canonical)', got '\(result.corrected)'"
+    )
+  }
 }

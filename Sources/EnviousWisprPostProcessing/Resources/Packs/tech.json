@@ -3,7 +3,7 @@
     "ekipt",
     "oxcept"
   ],
-  "angularjs": [
+  "AngularJS": [
     "angularge",
     "ingiolarge",
     "ingiolarts",
@@ -30,12 +30,12 @@
     "backpapagine",
     "backpropagatine"
   ],
-  "bazel": [
+  "Bazel": [
     "bazool",
     "beazel",
     "buesil"
   ],
-  "blazor": [
+  "Blazor": [
     "blizzr",
     "blueser"
   ],
@@ -56,7 +56,7 @@
     "chorpit",
     "churapik"
   ],
-  "cli": [
+  "CLI": [
     "clarf"
   ],
   "codec": [
@@ -69,17 +69,17 @@
   "computervision": [
     "simputervision"
   ],
-  "consul": [
+  "Consul": [
     "consal",
     "sinsil"
   ],
-  "couchbase": [
+  "Couchbase": [
     "corchbase"
   ],
   "csharp": [
     "seashaw"
   ],
-  "cypress": [
+  "Cypress": [
     "cypras",
     "cypresh"
   ],
@@ -87,14 +87,14 @@
     "detteldeer",
     "dettelder"
   ],
-  "dockerfile": [
+  "Dockerfile": [
     "decaphile",
     "dickerfile",
     "dochfil",
     "dockerfilla",
     "docphilo"
   ],
-  "documentdb": [
+  "DocumentDB": [
     "dacumentdb",
     "decumantdb",
     "ducumentdb"
@@ -103,7 +103,7 @@
     "datnet",
     "dotnath"
   ],
-  "ecdsa": [
+  "ECDSA": [
     "actsa"
   ],
   "finetuning": [
@@ -114,10 +114,10 @@
     "fintenang",
     "fituning"
   ],
-  "genai": [
+  "GenAI": [
     "genow"
   ],
-  "gerrit": [
+  "Gerrit": [
     "gurret",
     "gurrit",
     "jarat",
@@ -125,19 +125,19 @@
     "jeriff",
     "jerrith"
   ],
-  "hsts": [
+  "HSTS": [
     "hsdesh",
     "hsdsh"
   ],
-  "imagemagick": [
+  "ImageMagick": [
     "amagemagic",
     "imagemagac"
   ],
-  "invision": [
+  "InVision": [
     "anvision",
     "infison"
   ],
-  "kerberos": [
+  "Kerberos": [
     "corberos",
     "kaberos",
     "kberos",
@@ -155,11 +155,11 @@
     "lenkidlist",
     "lunkedlist"
   ],
-  "localstorage": [
+  "localStorage": [
     "licklestorage",
     "locustoragi"
   ],
-  "lstm": [
+  "LSTM": [
     "lsdmh"
   ],
   "metaprogramming": [
@@ -195,7 +195,7 @@
     "nuncar",
     "nunts"
   ],
-  "nuget": [
+  "NuGet": [
     "nagit",
     "negit",
     "neuda",
@@ -203,21 +203,21 @@
     "newgat",
     "nujet"
   ],
-  "openai": [
+  "OpenAI": [
     "apernye",
     "eperknife",
     "epini",
     "openo",
     "openr"
   ],
-  "opencv": [
+  "OpenCV": [
     "epink",
     "opanc",
     "openc",
     "opinc",
     "opunk"
   ],
-  "openvpn": [
+  "OpenVPN": [
     "appendman",
     "ipinpen",
     "occamfon",
@@ -228,7 +228,7 @@
     "ophonfm",
     "oppenfmann"
   ],
-  "otel": [
+  "OTel": [
     "othil",
     "ottil"
   ],
@@ -242,24 +242,24 @@
     "pentist",
     "pentust"
   ],
-  "phpunit": [
+  "PHPUnit": [
     "pghbunith"
   ],
-  "postgres": [
+  "Postgres": [
     "pestvers",
     "piscus",
     "postgrish"
   ],
-  "rabbitmq": [
+  "RabbitMQ": [
     "rabbitk",
     "rabek",
     "rabok"
   ],
-  "reactjs": [
+  "ReactJS": [
     "roxchs",
     "ryaksch"
   ],
-  "recaptcha": [
+  "reCAPTCHA": [
     "racaptcha",
     "rackapcha",
     "recapcha",
@@ -267,7 +267,7 @@
     "rockcha",
     "rockupture"
   ],
-  "redhat": [
+  "RedHat": [
     "ridat",
     "rodhat",
     "rudhat"
@@ -296,31 +296,31 @@
     "rygex",
     "rygixp"
   ],
-  "rider": [
+  "Rider": [
     "ridier"
   ],
   "route": [
     "rauto",
     "ryute"
   ],
-  "rspec": [
+  "RSpec": [
     "aspuk",
     "rspoc"
   ],
-  "scipy": [
+  "SciPy": [
     "scapey",
     "scuppy"
   ],
-  "sftp": [
+  "SFTP": [
     "sfdph"
   ],
-  "spacy": [
+  "spaCy": [
     "spasi",
     "spoci",
     "sposy",
     "spusy"
   ],
-  "spinnaker": [
+  "Spinnaker": [
     "spanaca",
     "spanaker",
     "spinacker",
@@ -335,13 +335,13 @@
     "strostist",
     "strustist"
   ],
-  "tauri": [
+  "Tauri": [
     "tiyuri"
   ],
   "tcpdump": [
     "tcpdimp"
   ],
-  "tekton": [
+  "Tekton": [
     "tactan",
     "tacton",
     "tectan",
@@ -358,17 +358,17 @@
     "triwo",
     "tryou"
   ],
-  "veracode": [
+  "Veracode": [
     "ferricode",
     "vericode",
     "vericodi",
     "vertode",
     "vurecode"
   ],
-  "vlan": [
+  "VLAN": [
     "velun"
   ],
-  "vuejs": [
+  "VueJS": [
     "viewges",
     "viewodge"
   ],
@@ -377,7 +377,7 @@
     "warmapp",
     "wormup"
   ],
-  "webm": [
+  "WebM": [
     "wabam",
     "wabum",
     "webem",
@@ -393,7 +393,7 @@
     "wingut",
     "winkit"
   ],
-  "zeplin": [
+  "Zeplin": [
     "sipplin",
     "suprin",
     "zipplin",
