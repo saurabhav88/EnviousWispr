@@ -88,13 +88,16 @@ import Testing
   /// - 26 → 27 in #913 PR8 (2026-05-31, #832): App-owned `outputClassifierHolder`
   ///   for the on-device output-safety classifier (loaded async at prewarm,
   ///   injected into both kernel drivers + the re-polish service).
+  /// - 27 → 28 in #633 Phase 9 (2026-06-06): App-owned `vocabularyPackManager`
+  ///   for the opt-in word packs — owns enabled-pack state and merges pack
+  ///   terms into the corrector lane, injected into the main Window scene.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 27,
+      count <= 28,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 27. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 28. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -171,14 +174,18 @@ import Testing
   /// absorbed the output-safety classifier holder + its off-heart-path prewarm
   /// method (load + publish + provider re-trigger). Cap set by the deterministic
   /// rule (post-change actual 679 + 10, rounded up to 690).
+  /// Ratcheted 690→705 in #633 Phase 9 (2026-06-06): the composition root
+  /// constructs `vocabularyPackManager`, passes it into `wireCustomWords`, and
+  /// injects it into the main Window scene. Cap set by the deterministic rule
+  /// (post-change actual 693 + 10, rounded up to nearest 5 = 705).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 690,
+      lineCount <= 705,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 690. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 705. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

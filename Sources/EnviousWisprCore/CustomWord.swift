@@ -15,6 +15,9 @@ public enum WordSource: String, Sendable, CaseIterable {
   case builtin  // ships in app bundle (CustomWordsManager.builtinDefaults)
   case user  // user-typed via Custom Terms UI; default for any decoded CustomWord
   case observedAX  // auto-learned via AX observation (Phase 7, #629)
+  case pack  // installed vocabulary pack (ASR-mined alias dataset, #633 Phase 9).
+  // EXACT-MATCH ONLY in WordCorrector: pack aliases/canonicals never enter the
+  // fuzzy/compound passes (Pass 0/2/4/5). Corrector lane only, never polish.
 }
 
 public struct CustomWord: Codable, Identifiable, Sendable, Hashable {

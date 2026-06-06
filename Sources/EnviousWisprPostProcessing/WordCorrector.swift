@@ -127,17 +127,30 @@ public struct WordCorrector: Sendable {
   /// `WordCorrectionStep` calls this once per generation change and reuses
   /// the result across many `correct(...)` calls.
   public static func buildLookups(words: [CustomWord]) -> Lookups {
+    // #633 Phase 9: pack-sourced terms are EXACT-MATCH ONLY. They participate
+    // in the exact alias/canonical maps (Pass 1 multi-exact, Pass 3
+    // single-exact) but are excluded from every fuzzy/compound pool
+    // (Pass 0 nospace-compound, Pass 2 multi-fuzzy, Pass 4 single-fuzzy,
+    // Pass 5 canonical-fuzzy). Non-pack (user/builtin/observedAX) terms keep
+    // their full behaviour. On any key clash, non-pack wins: the non-pack maps
+    // are built first and authoritatively, then pack entries fill ONLY keys no
+    // non-pack term claimed. This protects user terms from pack shadowing for
+    // all clash shapes (user-alias vs pack-alias, user-canonical vs pack-alias,
+    // user-alias vs pack-canonical).
+    let packWords = words.filter { $0.source == .pack }
+    let nonPackWords = words.filter { $0.source != .pack }
+
     var singleAliasMap: [String: String] = [:]
     var multiAliasMap: [String: String] = [:]
     var collisionCount = 0
     var canonicalToID: [String: UUID] = [:]
     var canonicalToWord: [String: CustomWord] = [:]
-    for word in words {
+    for word in nonPackWords {
       canonicalToID[word.canonical.lowercased()] = word.id
       canonicalToWord[word.canonical.lowercased()] = word
     }
 
-    for word in words {
+    for word in nonPackWords {
       for alias in word.aliases {
         let key = alias.lowercased()
         if alias.contains(" ") {
@@ -164,7 +177,7 @@ public struct WordCorrector: Sendable {
       }
     }
 
-    for word in words {
+    for word in nonPackWords {
       let key = word.canonical.lowercased()
       if !key.contains(" ") {
         if let existing = singleAliasMap[key] {
@@ -180,20 +193,59 @@ public struct WordCorrector: Sendable {
       }
     }
 
-    let canonicals = words.map(\.canonical)
+    // Snapshot the NON-PACK exact maps. The fuzzy/compound pools derive from
+    // these so pack terms can never become fuzzy candidates.
+    let nonPackSingleAliasMap = singleAliasMap
+    let nonPackMultiAliasMap = multiAliasMap
+
+    // Every non-pack canonical key (INCLUDING multi-word canonicals, which get
+    // no exact-map self-entry). A pack term must never claim one of these keys,
+    // so a multi-word user canonical can't be hijacked by a pack alias even
+    // though it isn't present in the alias maps. (Codex diff-review edge.)
+    let nonPackCanonicalKeys = Set(nonPackWords.map { $0.canonical.lowercased() })
+
+    // Pack exact entries: fill ONLY keys not already claimed by a non-pack term
+    // (non-pack wins, for all clash shapes incl. multi-word canonicals). Pack
+    // canonicals also get an attribution id so applied pack replacements report
+    // `hadPackTerm`.
+    for word in packWords {
+      for alias in word.aliases {
+        let key = alias.lowercased()
+        if nonPackCanonicalKeys.contains(key) { continue }  // user canonical wins
+        if alias.contains(" ") {
+          if multiAliasMap[key] == nil { multiAliasMap[key] = word.canonical }
+        } else {
+          if singleAliasMap[key] == nil { singleAliasMap[key] = word.canonical }
+        }
+      }
+      let ck = word.canonical.lowercased()
+      if !ck.contains(" "), !nonPackCanonicalKeys.contains(ck), singleAliasMap[ck] == nil {
+        singleAliasMap[ck] = word.canonical
+      }
+      // Attribution: fill the pack id only when no non-pack term owns this
+      // canonical. Known minor telemetry edge (accepted for PR-1): if a user
+      // term and a pack term SHARE a canonical, a pack-alias correction is
+      // attributed to the user id, so `hadPackTerm` under-counts that case.
+      // Counts-only telemetry; corrected text is unaffected.
+      if canonicalToID[ck] == nil { canonicalToID[ck] = word.id }
+      if canonicalToWord[ck] == nil { canonicalToWord[ck] = word }
+    }
+
+    // Fuzzy + compound + canonical-fuzzy pools: NON-PACK words ONLY.
+    let canonicals = nonPackWords.map(\.canonical)
     let lowercasedCanonicals = canonicals.map { $0.lowercased() }
-    let singleFuzzyCandidates = singleAliasMap.map {
+    let singleFuzzyCandidates = nonPackSingleAliasMap.map {
       Lookups.SurfaceCanonical(surface: $0.key, canonical: $0.value)
     }
     var multiAliasByCount: [Int: [Lookups.AliasCanonical]] = [:]
-    for (alias, canonical) in multiAliasMap {
+    for (alias, canonical) in nonPackMultiAliasMap {
       let count = alias.components(separatedBy: " ").count
       multiAliasByCount[count, default: []].append(
         Lookups.AliasCanonical(alias: alias, canonical: canonical))
     }
 
     var nospaceCanonicalMap: [String: String] = [:]
-    for word in words {
+    for word in nonPackWords {
       let nospace = word.canonical.replacingOccurrences(of: " ", with: "").lowercased()
       nospaceCanonicalMap[nospace] = word.canonical
       for alias in word.aliases {

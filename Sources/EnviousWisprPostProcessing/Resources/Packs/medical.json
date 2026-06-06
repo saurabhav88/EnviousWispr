@@ -1,0 +1,629 @@
+{
+  "acetaminophen": [
+    "acidaminophan",
+    "acidaminophen",
+    "ostaminofin"
+  ],
+  "acne": [
+    "achni"
+  ],
+  "amoxicillin": [
+    "amaxicylin",
+    "amaxisillin",
+    "amaxysilin",
+    "amexicillin",
+    "amexysilin",
+    "anaxicillin",
+    "armaticillin",
+    "emoxicillin",
+    "eumoxacillin",
+    "imokasillin",
+    "omuxicilian"
+  ],
+  "ankle": [
+    "anclay",
+    "anclo"
+  ],
+  "appendectomy": [
+    "apendectomy",
+    "appendicdomy",
+    "appendicme",
+    "appendicomy",
+    "opendectomy",
+    "upendectomy"
+  ],
+  "ascites": [
+    "acidos",
+    "esites",
+    "essites"
+  ],
+  "bisacodyl": [
+    "bisacodil",
+    "bisaystill",
+    "bosaccodil",
+    "bosacodil",
+    "pisacodil"
+  ],
+  "brainstem": [
+    "bryinston"
+  ],
+  "bruit": [
+    "bewatt",
+    "brayot",
+    "breut"
+  ],
+  "cardioversion": [
+    "cardiovacin",
+    "cardiovasian",
+    "cardiovercyan",
+    "carduovicine"
+  ],
+  "cecum": [
+    "kakum",
+    "secan",
+    "sesum"
+  ],
+  "celexa": [
+    "colxa",
+    "kolexa",
+    "selexa",
+    "selixo",
+    "sellax"
+  ],
+  "cervix": [
+    "corvix",
+    "curvix",
+    "servax",
+    "servix",
+    "servox",
+    "surfax"
+  ],
+  "cholecystectomy": [
+    "cholsystectomy",
+    "coalcystectomy",
+    "colcystectomy",
+    "colsystectomy"
+  ],
+  "clonazepam": [
+    "clonasbum",
+    "clonaspum"
+  ],
+  "codeine": [
+    "codini",
+    "codonu"
+  ],
+  "colchicine": [
+    "calciosene",
+    "celchessine",
+    "colchicino",
+    "culchicene",
+    "culturesyn",
+    "seltchicine",
+    "silchacine",
+    "silchicine"
+  ],
+  "cyclobenzaprine": [
+    "cyclobensprini",
+    "cyclobenzoprene",
+    "cyclobenzprene",
+    "cyclobenzprina",
+    "cyclobenzprini",
+    "cyclubenzoprene"
+  ],
+  "diphenhydramine": [
+    "daphenhydramine",
+    "diffinhydramine",
+    "diffinhydramini"
+  ],
+  "distension": [
+    "darstin"
+  ],
+  "dysuria": [
+    "dysaria",
+    "dysary",
+    "dyseraia",
+    "dyseri",
+    "dyseria",
+    "dyserio",
+    "dysoria"
+  ],
+  "echocardiogram": [
+    "echardiogram",
+    "echicardiogram",
+    "icacardiogram",
+    "otchacardiogram"
+  ],
+  "erythema": [
+    "arithama",
+    "arithema",
+    "erifema",
+    "erithama",
+    "erithema",
+    "erithima",
+    "orithema",
+    "orthema"
+  ],
+  "fexofenadine": [
+    "fexofmatine",
+    "fexofnadine",
+    "fexofnadino",
+    "foxofnadine",
+    "fuxofhmadine",
+    "vexofnadin"
+  ],
+  "fosamax": [
+    "fasamax",
+    "fasimax",
+    "fossamax",
+    "fossamix",
+    "fossamux"
+  ],
+  "gallop": [
+    "gillip",
+    "golop",
+    "gullop",
+    "gullup"
+  ],
+  "gallstones": [
+    "gallstonas",
+    "galsonish",
+    "galstonish",
+    "galstonus",
+    "gaulstonish",
+    "gausterness",
+    "gulstonos"
+  ],
+  "gemfibrozil": [
+    "gamphabrazil",
+    "gemfabrazal",
+    "gemfibrazel",
+    "gemphabrosal",
+    "gemphibrazol"
+  ],
+  "gland": [
+    "glend",
+    "glind",
+    "glond",
+    "glund"
+  ],
+  "goiter": [
+    "goidir",
+    "goita",
+    "goite",
+    "gorta"
+  ],
+  "hematemesis": [
+    "hamaknis",
+    "hematenessis"
+  ],
+  "hemoptysis": [
+    "haemopsys",
+    "hematizers",
+    "hemopdys",
+    "hemophtesis",
+    "hemoptasis",
+    "hemoptasys",
+    "hemupdissus",
+    "hermoptosis",
+    "homopasis",
+    "symoptosis"
+  ],
+  "humerus": [
+    "hamarus",
+    "heimrus",
+    "hemorrhus",
+    "homeress",
+    "homeris",
+    "humorush"
+  ],
+  "humira": [
+    "hamira",
+    "hermera",
+    "hermira",
+    "himira",
+    "humai",
+    "humeira",
+    "humeya",
+    "humiro"
+  ],
+  "hydralazine": [
+    "hydrolasine",
+    "hydrolasing",
+    "hydrolazeno",
+    "hydrolazini",
+    "hyrolazine"
+  ],
+  "ileum": [
+    "earleem",
+    "earlium",
+    "elium",
+    "ulilam"
+  ],
+  "incidence": [
+    "ansidence",
+    "incidenc",
+    "incidenci",
+    "incidencife",
+    "incidenka",
+    "insidence",
+    "oncidents"
+  ],
+  "januvia": [
+    "genuvia",
+    "genuvii",
+    "genuvio",
+    "ginuvia",
+    "januvi",
+    "januview"
+  ],
+  "keppra": [
+    "kepra"
+  ],
+  "klonopin": [
+    "clanopin",
+    "clanpin",
+    "clenopin",
+    "clonopen",
+    "clunapin",
+    "klanapin",
+    "klonopen"
+  ],
+  "lantus": [
+    "lantush",
+    "lintus",
+    "luntis"
+  ],
+  "leukopenia": [
+    "laucopenia",
+    "leucopy",
+    "leukopnei",
+    "locopenia",
+    "lukopemayu",
+    "lukopi"
+  ],
+  "levodopa": [
+    "levadopa",
+    "levadope",
+    "levadopo",
+    "lividopa"
+  ],
+  "lipase": [
+    "lapasi",
+    "lapasu",
+    "lipace",
+    "lipsay",
+    "loopace",
+    "lopasi",
+    "lupaces"
+  ],
+  "lipitor": [
+    "lepidur",
+    "lipeta",
+    "lipettia",
+    "lipidr",
+    "lipita",
+    "lipiter",
+    "lippertia",
+    "lobiter"
+  ],
+  "lovenox": [
+    "levinox",
+    "libemocks",
+    "lovemax",
+    "lovnix",
+    "luvinox"
+  ],
+  "lumpectomy": [
+    "lumpicdomy",
+    "lympectomy"
+  ],
+  "lymphadenopathy": [
+    "limfordenophy",
+    "limphodenopathy",
+    "lymphidenopathy",
+    "lymphidinopathy",
+    "lymphodenopathy",
+    "lymphodenophy",
+    "lymphodinophy",
+    "lymphodonopithy",
+    "lymphomopathy",
+    "lymphoodonophy"
+  ],
+  "melena": [
+    "mailna",
+    "mailner",
+    "melaner",
+    "mielena"
+  ],
+  "methocarbamol": [
+    "mafacabamo",
+    "mathacobmol",
+    "methacarbamill",
+    "methacarbamol",
+    "methacarbamyl",
+    "methacarbemol",
+    "metharbamol",
+    "methicarbonyl"
+  ],
+  "metoprolol": [
+    "metaprobol",
+    "metaproil",
+    "metaproll",
+    "mitaprol",
+    "modapral"
+  ],
+  "miralax": [
+    "meralax",
+    "merlax",
+    "moalax",
+    "morelax",
+    "muralax",
+    "murelax",
+    "murilox"
+  ],
+  "motrin": [
+    "mephrin",
+    "metrin",
+    "moctram",
+    "motran",
+    "motron",
+    "mutrin"
+  ],
+  "mycophenolate": [
+    "micafenilato",
+    "mycofenylata",
+    "mycophenylate",
+    "mycophnolate",
+    "mysophenolate"
+  ],
+  "nebivolol": [
+    "nebival",
+    "nebivalal",
+    "nebivol",
+    "nebivolil",
+    "nobival",
+    "nobivol",
+    "nubival"
+  ],
+  "nystatin": [
+    "nestaten",
+    "nistadin",
+    "nistatin",
+    "nistatun",
+    "nisterdon",
+    "nistuten"
+  ],
+  "oxybutynin": [
+    "archibutanin",
+    "axibutanin",
+    "axibutinin",
+    "exibutanin",
+    "octabutanin",
+    "oxabutanin",
+    "oxabutanone",
+    "oxybutanin"
+  ],
+  "paracentesis": [
+    "paracenses",
+    "paracentasysh",
+    "paracentes",
+    "paracentios",
+    "paracyntesis",
+    "paracyntheses",
+    "paracynthesis",
+    "poracynthesis"
+  ],
+  "patella": [
+    "patelli",
+    "paytala",
+    "paytela",
+    "paytella",
+    "paytler",
+    "putella",
+    "pytela"
+  ],
+  "paxil": [
+    "paxel",
+    "paxol",
+    "pecxel",
+    "pockill",
+    "poxel",
+    "puxel",
+    "puxil"
+  ],
+  "petechiae": [
+    "pdakey",
+    "ptece",
+    "ptekia",
+    "pyteki"
+  ],
+  "pharynx": [
+    "farinx",
+    "fharynx",
+    "foreinx",
+    "forinks",
+    "furinks",
+    "varynx"
+  ],
+  "plaquenil": [
+    "plaquinil",
+    "plaquinol",
+    "plequinil",
+    "pliquanil",
+    "pliquinil",
+    "ploquenil",
+    "ploquinil",
+    "pluquinil"
+  ],
+  "pleura": [
+    "pluru"
+  ],
+  "pravachol": [
+    "pravachal",
+    "pravakall",
+    "pravakil",
+    "pravattual",
+    "pravetchel",
+    "pravical",
+    "pravichell",
+    "pravicol",
+    "pravishal",
+    "pravishl",
+    "privacle",
+    "provacal",
+    "provacol"
+  ],
+  "prolactin": [
+    "preluctin",
+    "prolacin",
+    "prolatin",
+    "prolctin",
+    "proletin",
+    "proloctin",
+    "prolocton",
+    "proloctun",
+    "prulluckedin"
+  ],
+  "proscar": [
+    "prasca",
+    "prascar",
+    "prasir",
+    "praskar",
+    "presca",
+    "priscar",
+    "priscor",
+    "proska"
+  ],
+  "proteinuria": [
+    "proteinori",
+    "proteinuei",
+    "protenuri",
+    "protenuria",
+    "protenurio",
+    "protonura",
+    "protonuria"
+  ],
+  "pruritus": [
+    "paritos",
+    "poritus",
+    "prioritis",
+    "proitas",
+    "proitash",
+    "proritis",
+    "proudis"
+  ],
+  "psoriasis": [
+    "sariasis",
+    "soriaces",
+    "soriasis",
+    "soriasos",
+    "soriasses"
+  ],
+  "qid": [
+    "wyyewski"
+  ],
+  "rales": [
+    "relez"
+  ],
+  "robaxin": [
+    "rebacin",
+    "rebaxin",
+    "robackson",
+    "robacson",
+    "robuxen",
+    "robuxin",
+    "robuxon",
+    "robuxun"
+  ],
+  "singulair": [
+    "sangulair",
+    "sengler",
+    "singulare",
+    "songulare",
+    "sungulaire",
+    "sungulare"
+  ],
+  "spleen": [
+    "splone",
+    "spluin",
+    "splun"
+  ],
+  "splenomegaly": [
+    "splanombly",
+    "splenomboli",
+    "splinombly"
+  ],
+  "sulfasalazine": [
+    "sulfasealazin",
+    "sulfasealazine",
+    "sulfazalazina",
+    "sulfazalazini",
+    "sulfisalicin"
+  ],
+  "tadalafil": [
+    "hodolafill",
+    "tadalafal",
+    "tadalafel",
+    "tadaofel",
+    "tadlathel",
+    "tedolafol",
+    "todolafel",
+    "tootelafel"
+  ],
+  "tamiflu": [
+    "hamul",
+    "hemiflow",
+    "tamaflu",
+    "tamifil",
+    "tamiflow",
+    "tamifluff",
+    "tanaflu",
+    "tanifluve",
+    "tanofil",
+    "timaflu",
+    "tumaflu"
+  ],
+  "temazepam": [
+    "hemazim",
+    "hemisbaum",
+    "temasbum",
+    "temaspim",
+    "temasum",
+    "temazm"
+  ],
+  "tendinitis": [
+    "tandinitis",
+    "tendernitis",
+    "tendinitas",
+    "tendonitos",
+    "tondonitis",
+    "tundinitis"
+  ],
+  "testis": [
+    "tistis"
+  ],
+  "urinalysis": [
+    "erinalysis"
+  ],
+  "venous": [
+    "fenush",
+    "venosh",
+    "venush",
+    "weenos"
+  ],
+  "vyvanse": [
+    "fivans",
+    "vivanso",
+    "vivansu",
+    "vivensay"
+  ],
+  "wheezing": [
+    "wheezym",
+    "wizung"
+  ],
+  "zocor": [
+    "zaucier",
+    "zekka",
+    "zocca"
+  ]
+}
