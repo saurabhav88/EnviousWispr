@@ -1,6 +1,6 @@
 ---
 title: "Say 'Fire Emoji,' Get 🔥: Speaking Emoji in Your Dictation"
-description: "Say 'thumbs up emoji' in EnviousWispr and you get 👍. It is on by default, covers more than 1,500 emoji by name, runs on your Mac, and never converts a bare word by accident."
+description: "Say 'thumbs up emoji' in EnviousWispr and you get 👍. It covers more than 1,500 emoji by name, runs on your Mac, and never converts a bare word by accident."
 pubDate: 2026-06-10
 tags: ["dictation", "macos", "productivity"]
 draft: false

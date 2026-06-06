@@ -1,6 +1,6 @@
 ---
 title: "Dictate in a Whisper: Capturing Soft and Quiet Speech"
-description: "EnviousWispr now reliably captures quiet, whispered, and far-from-the-mic speech, including the soft first word that used to get clipped. Dictate at midnight or in an open office without raising your voice."
+description: "EnviousWispr now captures quiet, whispered, and far-from-the-mic speech, so you can dictate at midnight or in a shared office without raising your voice."
 pubDate: 2026-06-07
 tags: ["dictation", "macos", "privacy", "accessibility"]
 draft: false
