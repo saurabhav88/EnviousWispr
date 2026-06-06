@@ -45,6 +45,7 @@ final class AppLifecycleCoordinator {
   private let permissions: PermissionsService
   private let keychainManager: KeychainManager
   private let customWordsCoordinator: CustomWordsCoordinator
+  private let contactsImportCoordinator: ContactsImportCoordinator
   private let aiAvailability: AIAvailabilityCoordinator
   private let audioCapture: any AudioCaptureInterface
   private let asrManager: any ASRManagerInterface
@@ -63,6 +64,7 @@ final class AppLifecycleCoordinator {
     permissions: PermissionsService,
     keychainManager: KeychainManager,
     customWordsCoordinator: CustomWordsCoordinator,
+    contactsImportCoordinator: ContactsImportCoordinator,
     aiAvailability: AIAvailabilityCoordinator,
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
@@ -80,6 +82,7 @@ final class AppLifecycleCoordinator {
     self.permissions = permissions
     self.keychainManager = keychainManager
     self.customWordsCoordinator = customWordsCoordinator
+    self.contactsImportCoordinator = contactsImportCoordinator
     self.aiAvailability = aiAvailability
     self.audioCapture = audioCapture
     self.asrManager = asrManager
@@ -194,6 +197,13 @@ final class AppLifecycleCoordinator {
       model: settings.llmModel,
       keychainManager: keychainManager
     )
+
+    // #636: opt-in launch re-scan of Contacts. Add-only, off the launch path —
+    // an unawaited background Task so a slow Contacts read never blocks launch.
+    // Limb: the coordinator itself no-ops unless access is granted.
+    if settings.contactsSyncOnLaunchEnabled {
+      Task { await contactsImportCoordinator.syncNewContacts() }
+    }
 
     // Onboarding auto-open is handled by ActionWirer inside the main Window
     // scene. No deferred dispatch required here.

@@ -128,6 +128,7 @@ scripts/*
 !scripts/build-release-dmg.sh
 !scripts/build-dev-app.sh
 !scripts/check-xpc-error-hygiene.sh
+!scripts/check-contacts-data-flow.sh
 !scripts/xcode-test.sh
 !scripts/indexnow-submit.py
 # UAT scripts — required by workflow tooling (workflow-process.md §1 step 9 + §11)

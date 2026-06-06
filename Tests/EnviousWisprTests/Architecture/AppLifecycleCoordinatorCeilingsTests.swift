@@ -24,6 +24,11 @@ import Testing
 /// unchanged at 3. Allowlist count rises 10 → 19 (3 owned `var` + 16 injected
 /// `let`); non-private `func`s `runDidFinishLaunching`, `runDidBecomeActive`,
 /// `runWillTerminate` unchanged (`init` is not a `func`).
+/// Bible §30 entry (#636, 2026-06-06): `contactsImportCoordinator` added — the
+/// App-layer orchestrator for Import-from-Contacts. Injected `let`, read by
+/// `runDidFinishLaunching` for the opt-in launch sync only. Allowlist 19 → 20
+/// (3 owned `var` + 17 injected `let`); non-private method count unchanged at 3.
+/// A narrow new coordinator, not god-object accretion (issue-636 §3b).
 @Suite struct AppLifecycleCoordinatorCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift"
@@ -36,6 +41,7 @@ import Testing
     "permissions",
     "keychainManager",
     "customWordsCoordinator",
+    "contactsImportCoordinator",
     "aiAvailability",
     "audioCapture",
     "asrManager",
@@ -60,7 +66,7 @@ import Testing
       extras.isEmpty && missing.isEmpty,
       """
       AppLifecycleCoordinator stored-property set drifted from the \
-      19-name allowlist. Unexpected: \(extras.sorted()). Missing: \
+      20-name allowlist. Unexpected: \(extras.sorted()). Missing: \
       \(missing.sorted()). Adding a stored property is god-object drift — \
       raising the allowlist requires a Bible §30 entry. Removing one means \
       this allowlist must shrink in the same PR.

@@ -40,6 +40,9 @@ enum SettingsDefaultValues {
 
   static let wordCorrectionEnabled = true
   static let fillerRemovalEnabled = true
+  // #636: opt-in launch re-scan of Contacts (add-only). Default OFF — the
+  // feature only runs when the user enables both import and this sub-toggle.
+  static let contactsSyncOnLaunchEnabled = false
   // #923: spoken-emoji conversion ON by default. Safe — the formatter fires
   // ONLY on explicit "<phrase> emoji" triggers; it never infers emoji from
   // sentiment (personas.md emoji-control-current), so uncustomized users see no

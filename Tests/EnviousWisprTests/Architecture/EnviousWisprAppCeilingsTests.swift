@@ -91,13 +91,17 @@ import Testing
   /// - 27 → 28 in #633 Phase 9 (2026-06-06): App-owned `vocabularyPackManager`
   ///   for the opt-in word packs — owns enabled-pack state and merges pack
   ///   terms into the corrector lane, injected into the main Window scene.
+  /// - 28 → 29 in #636 (2026-06-06): App-owned `contactsImportCoordinator` for
+  ///   Import-from-Contacts — orchestrates the opt-in import + bulk-remove,
+  ///   injected into the main Window scene and read by AppLifecycleCoordinator
+  ///   for the opt-in launch sync. A narrow new coordinator (issue-636 §3b).
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 28,
+      count <= 29,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 28. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 29. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.

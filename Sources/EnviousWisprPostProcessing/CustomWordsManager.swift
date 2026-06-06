@@ -296,6 +296,61 @@ public final class CustomWordsManager {
     words = mergedWords(file: file)
   }
 
+  /// Bulk-insert custom words with a single file read + write. Mirrors
+  /// `add(word:to:)` per word — canonical trim, reject-empty, case-insensitive
+  /// de-dupe (against existing terms AND earlier entries in this same batch),
+  /// alias sanitize, and the tombstoned-built-in restore branch — but collapses
+  /// the O(n) per-word `loadFile`/`saveFile` into one of each so a large import
+  /// (thousands of names) never rewrites the file per word.
+  ///
+  /// Returns the UUIDs of the user words this call actually appended, in input
+  /// order. De-duplicated inputs and tombstoned-built-in restores are NOT in the
+  /// returned set: the caller (contacts import) treats the result as the
+  /// import's owned set for bulk-removal, and a restored built-in is not
+  /// import-owned.
+  public func addBatch(_ incoming: [CustomWord], to words: inout [CustomWord]) throws
+    -> [UUID]
+  {
+    var file = loadFile() ?? CustomWordsFile()
+    // Seed dedupe from BOTH the in-memory merged list and the on-disk file so a
+    // stale `words` snapshot can't produce a duplicate at batch scale.
+    var seen = Set(words.map { $0.canonical.lowercased() })
+    seen.formUnion(file.words.map { $0.canonical.lowercased() })
+    var createdIDs: [UUID] = []
+
+    for word in incoming {
+      let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmed.isEmpty else { continue }
+      let key = trimmed.lowercased()
+      guard !seen.contains(key) else { continue }
+
+      // Tombstoned-built-in restore (mirrors the built-in branch of add(word:)).
+      // A LIVE built-in is already in `seen` (it is in merged `words`), so a
+      // built-in match here means it was tombstoned: un-delete it instead of
+      // adding a duplicate user word. Restored built-ins are not in createdIDs.
+      if let builtin = Self.builtinDefaults.first(where: {
+        $0.word.canonical.caseInsensitiveCompare(trimmed) == .orderedSame
+      }) {
+        file.deletedBuiltinIds.removeAll { $0 == builtin.id }
+        seen.insert(key)
+        continue
+      }
+
+      var sanitized = word
+      sanitized.canonical = trimmed
+      sanitized.aliases = sanitized.aliases
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+      file.words.append(sanitized)
+      createdIDs.append(sanitized.id)
+      seen.insert(key)
+    }
+
+    try saveFile(file)
+    words = mergedWords(file: file)
+    return createdIDs
+  }
+
   public func remove(id: UUID, from words: inout [CustomWord]) throws {
     let word = words.first { $0.id == id }
     var file = loadFile() ?? CustomWordsFile()
@@ -312,6 +367,33 @@ public final class CustomWordsManager {
     }
 
     file.words.removeAll { $0.id == id }
+    try saveFile(file)
+    words = mergedWords(file: file)
+  }
+
+  /// Bulk-remove by ID with a single file read + write. Mirrors `remove(id:)`
+  /// per ID — including tombstoning a built-in whose canonical matches a removed
+  /// word — but collapses to one `loadFile`/`saveFile`. IDs not present are
+  /// skipped. Used by the contacts-import bulk-remove pill (#636) to avoid an
+  /// O(n) per-word rewrite when clearing a large import.
+  public func removeBatch(ids: [UUID], from words: inout [CustomWord]) throws {
+    guard !ids.isEmpty else { return }
+    let idSet = Set(ids)
+    var file = loadFile() ?? CustomWordsFile()
+
+    // Tombstone any built-ins whose canonical matches a removed word (mirror
+    // remove(id:)). Import-created words are user words, so this is normally
+    // inert for the import path, but keeps batch semantics identical to single.
+    for id in ids {
+      guard let word = words.first(where: { $0.id == id }) else { continue }
+      if let builtin = Self.builtinDefaults.first(where: {
+        $0.word.canonical.lowercased() == word.canonical.lowercased()
+      }), !file.deletedBuiltinIds.contains(builtin.id) {
+        file.deletedBuiltinIds.append(builtin.id)
+      }
+    }
+
+    file.words.removeAll { idSet.contains($0.id) }
     try saveFile(file)
     words = mergedWords(file: file)
   }

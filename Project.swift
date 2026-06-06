@@ -207,7 +207,7 @@ let project = Project(
   ],
   settings: projectSettings,
   targets: [
-    // ---- 8 first-party modules (native static frameworks) ----
+    // ---- 9 first-party modules (native static frameworks) ----
     firstPartyLibrary("EnviousWisprCore", dependencies: []),
     firstPartyLibrary(
       "EnviousWisprStorage",
@@ -266,6 +266,16 @@ let project = Project(
         .package(product: "FluidAudio"),
       ]),
 
+    // App-layer-scoped leaf (Core only): the Contacts-framework shim for #636.
+    // Consumed only by EnviousWisprAppKit + the test bundle, so it is added to
+    // those targets explicitly rather than to the shared `firstPartyTargetDeps`
+    // engine set.
+    firstPartyLibrary(
+      "EnviousWisprContacts",
+      dependencies: [
+        .target(name: "EnviousWisprCore")
+      ]),
+
     // #919: app-shell library (homes + views + composition root + the
     // WisprBootstrapper front door). The unit-test target links THIS, so
     // `xcodebuild test` never launches the app. WhisperKit/FluidAudio/Sparkle
@@ -273,6 +283,7 @@ let project = Project(
     firstPartyLibrary(
       "EnviousWisprAppKit",
       dependencies: firstPartyTargetDeps + [
+        .target(name: "EnviousWisprContacts"),
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
         .package(product: "Sparkle"),
@@ -379,6 +390,7 @@ let project = Project(
       sources: ["Tests/EnviousWisprTests/**"],
       dependencies: firstPartyTargetDeps + [
         .target(name: "EnviousWisprAppKit"),
+        .target(name: "EnviousWisprContacts"),
         .package(product: "FluidAudio"),
         .package(product: "Sparkle"),
       ],

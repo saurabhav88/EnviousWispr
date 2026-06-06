@@ -6,7 +6,7 @@
 # Edit `permitted_imports_for` below when Package.swift changes (and update the
 # Bible if the new edge represents an architectural decision):
 #   EnviousWispr           -> AppKit (thin launchable shell; #919). Imports ONLY the kit.
-#   EnviousWisprAppKit     -> Core, Storage, PostProcessing, Audio, Services, ASR, LLM, Pipeline (app-shell library; #919, top of stack)
+#   EnviousWisprAppKit     -> Core, Storage, PostProcessing, Audio, Services, ASR, LLM, Pipeline, Contacts (app-shell library; #919, top of stack)
 #   EnviousWisprAudioService -> Core, Audio (XPC executable)
 #   EnviousWisprASRService -> Core, ASR, Audio (XPC executable)
 #   EnviousWisprPipeline   -> Core, ASR, Audio, LLM, PostProcessing, Services, Storage
@@ -15,6 +15,7 @@
 #   EnviousWisprLLM        -> Core
 #   EnviousWisprAudio      -> Core
 #   EnviousWisprPostProcessing -> Core
+#   EnviousWisprContacts   -> Core (Contacts-framework shim; #636, App-layer-scoped leaf)
 #   EnviousWisprStorage    -> Core
 #   EnviousWisprCore       -> (no app deps)
 #
@@ -30,13 +31,14 @@ permitted_imports_for() {
     EnviousWisprAudio)             echo "EnviousWisprCore" ;;
     EnviousWisprASR)               echo "EnviousWisprCore EnviousWisprAudio" ;;
     EnviousWisprPostProcessing)    echo "EnviousWisprCore" ;;
+    EnviousWisprContacts)          echo "EnviousWisprCore" ;;
     EnviousWisprStorage)           echo "EnviousWisprCore" ;;
     EnviousWisprLLM)               echo "EnviousWisprCore" ;;
     EnviousWisprServices)          echo "EnviousWisprCore" ;;
     EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
     EnviousWisprAudioService)      echo "EnviousWisprCore EnviousWisprAudio" ;;
     EnviousWisprASRService)        echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio" ;;
-    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprPipeline" ;;
+    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprPipeline EnviousWisprContacts" ;;
     EnviousWispr)                  echo "EnviousWisprAppKit" ;;
     *)                             return 1 ;;
   esac

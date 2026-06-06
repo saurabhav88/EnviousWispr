@@ -42,6 +42,14 @@ let package = Package(
       path: "Sources/EnviousWisprPostProcessing",
       resources: [.process("Resources")]
     ),
+    // Leaf module (Core only) wrapping the Contacts framework behind a narrow
+    // read-only protocol for the Import-from-Contacts feature (#636). Consumed
+    // by EnviousWisprAppKit; no .library product (internal-only).
+    .target(
+      name: "EnviousWisprContacts",
+      dependencies: ["EnviousWisprCore"],
+      path: "Sources/EnviousWisprContacts"
+    ),
     .target(
       name: "EnviousWisprAudio",
       dependencies: [
@@ -110,6 +118,7 @@ let package = Package(
         "EnviousWisprASR",
         "EnviousWisprLLM",
         "EnviousWisprPipeline",
+        "EnviousWisprContacts",
         .product(name: "WhisperKit", package: "argmax-oss-swift"),
         "FluidAudio",
         "Sparkle",
@@ -160,6 +169,7 @@ let package = Package(
         // #919: link the app-shell code from the library, NOT the app target,
         // so `swift test` / `xcodebuild test` never launch the app.
         "EnviousWisprAppKit",
+        "EnviousWisprContacts",
       ],
       path: "Tests/EnviousWisprTests"
     ),
