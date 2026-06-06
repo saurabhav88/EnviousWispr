@@ -290,6 +290,16 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("wedge_detected", properties: properties)
   }
 
+  /// #636: contacts import completed. Privacy-safe by construction — emits the
+  /// COUNT of contacts added and the trigger only, NEVER a name. The
+  /// `check-contacts-data-flow.sh` hook allow-lists this as the one permitted
+  /// telemetry sink in the contacts code.
+  public func contactsImported(count: Int, trigger: String) {
+    PostHogSDK.shared.capture(
+      "contacts_imported",
+      properties: ["count": count, "$value": count, "trigger": trigger])
+  }
+
   /// Issue #445 launch-time telemetry, now emitted by the shared
   /// `KernelDictationDriver.ensureEngineWarm(reason: .launch)` (#879) when it
   /// drives the launch warm-up — `result` is one of "success",

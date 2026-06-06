@@ -42,6 +42,7 @@ public final class WisprBootstrapper {
   let permissions: PermissionsService
   let asrManager: any ASRManagerInterface
   let customWordsCoordinator: CustomWordsCoordinator
+  let contactsImportCoordinator: ContactsImportCoordinator
   let setup: SetupCoordinator
   let audioDeviceList: AudioDeviceList
   let aiAvailability: AIAvailabilityCoordinator
@@ -74,6 +75,10 @@ public final class WisprBootstrapper {
     let audioDeviceList = AudioDeviceList()
     let captureTelemetry = CaptureTelemetryState()
     let customWordsCoordinator = CustomWordsCoordinator()
+    // #636: contacts-import orchestrator. Reads only the tiny import-log file at
+    // construction (no Contacts framework call until the user acts).
+    let contactsImportCoordinator = ContactsImportCoordinator(
+      customWords: customWordsCoordinator)
     let customWordsPropagator = CustomWordsPropagator()
     // #633 Phase 9: owns enabled vocabulary-pack state; merges pack terms into
     // the corrector lane (default OFF). Wired into `wireCustomWords` below.
@@ -432,6 +437,7 @@ public final class WisprBootstrapper {
       permissions: permissions,
       keychainManager: keychainManager,
       customWordsCoordinator: customWordsCoordinator,
+      contactsImportCoordinator: contactsImportCoordinator,
       aiAvailability: aiAvailability,
       audioCapture: audioCapture,
       asrManager: asrManager,
@@ -466,6 +472,7 @@ public final class WisprBootstrapper {
     self.permissions = permissions
     self.asrManager = asrManager
     self.customWordsCoordinator = customWordsCoordinator
+    self.contactsImportCoordinator = contactsImportCoordinator
     self.setup = setup
     self.audioDeviceList = audioDeviceList
     self.aiAvailability = aiAvailability
@@ -602,6 +609,7 @@ private struct MainWindowRoot: View {
       .environment(b.settings)
       .environment(b.permissions)
       .environment(b.customWordsCoordinator)
+      .environment(b.contactsImportCoordinator)
       .environment(b.setup)
       .environment(b.audioDeviceList)
       .environment(b.aiAvailability)

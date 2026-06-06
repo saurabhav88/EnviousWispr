@@ -13,9 +13,17 @@ final class CustomWordsCoordinator {
   /// Called after any mutation so the former root state can sync words to pipelines.
   var onWordsChanged: (([CustomWord]) -> Void)?
 
-  private let manager = CustomWordsManager()
+  private let manager: CustomWordsManager
 
   init() {
+    self.manager = CustomWordsManager()
+    customWords = manager.load() ?? []
+  }
+
+  /// Test seam (#636): inject a temp-file-backed manager so hermetic tests of
+  /// the contacts-import flow never touch the production custom-words file.
+  package init(manager: CustomWordsManager) {
+    self.manager = manager
     customWords = manager.load() ?? []
   }
 
@@ -45,10 +53,38 @@ final class CustomWordsCoordinator {
     }
   }
 
+  /// Bulk-add for the contacts import (#636). Returns the IDs actually created
+  /// (for the import log), or nil on failure (check `customWordError`).
+  func addBatch(_ words: [CustomWord]) -> [UUID]? {
+    do {
+      let created = try manager.addBatch(words, to: &customWords)
+      onWordsChanged?(customWords)
+      customWordError = nil
+      return created
+    } catch {
+      customWordError = error.localizedDescription
+      return nil
+    }
+  }
+
   @discardableResult
   func remove(id: UUID) -> String? {
     do {
       try manager.remove(id: id, from: &customWords)
+      onWordsChanged?(customWords)
+      customWordError = nil
+      return nil
+    } catch {
+      customWordError = error.localizedDescription
+      return customWordError
+    }
+  }
+
+  /// Bulk-remove by ID (contacts-import pill, #636).
+  @discardableResult
+  func removeBatch(ids: [UUID]) -> String? {
+    do {
+      try manager.removeBatch(ids: ids, from: &customWords)
       onWordsChanged?(customWords)
       customWordError = nil
       return nil

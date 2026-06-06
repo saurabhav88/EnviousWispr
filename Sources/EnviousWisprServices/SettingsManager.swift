@@ -29,6 +29,7 @@ public final class SettingsManager {
     case wordCorrectionEnabled
     case fillerRemovalEnabled
     case emojiFormatterEnabled
+    case contactsSyncOnLaunchEnabled
     case isDebugModeEnabled
     case debugLogLevel
     case useExtendedThinking
@@ -60,7 +61,7 @@ public final class SettingsManager {
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "pushToTalkKeyCode", "pushToTalkModifiersRaw", "modelUnloadPolicy",
     "restoreClipboardAfterPaste", "wordCorrectionEnabled", "fillerRemovalEnabled",
-    "emojiFormatterEnabled", "isDebugModeEnabled", "debugLogLevel",
+    "emojiFormatterEnabled", "contactsSyncOnLaunchEnabled", "isDebugModeEnabled", "debugLogLevel",
     "useExtendedThinking", "whisperKitLanguage", "languageMode",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride",
     "useStreamingASR", "warmEnginePolicy",
@@ -235,6 +236,16 @@ public final class SettingsManager {
     didSet {
       defaults.set(fillerRemovalEnabled, forKey: "fillerRemovalEnabled")
       onChange?(.fillerRemovalEnabled)
+    }
+  }
+
+  /// Opt-in: re-read Contacts on launch and add any new names (#636). Default
+  /// OFF. Add-only — never updates or deletes existing terms. Limb: the launch
+  /// path never awaits or blocks on it.
+  public var contactsSyncOnLaunchEnabled: Bool {
+    didSet {
+      defaults.set(contactsSyncOnLaunchEnabled, forKey: "contactsSyncOnLaunchEnabled")
+      onChange?(.contactsSyncOnLaunchEnabled)
     }
   }
 
@@ -458,6 +469,9 @@ public final class SettingsManager {
     fillerRemovalEnabled =
       defaults.object(forKey: "fillerRemovalEnabled") as? Bool
       ?? SettingsDefaultValues.fillerRemovalEnabled
+    contactsSyncOnLaunchEnabled =
+      defaults.object(forKey: "contactsSyncOnLaunchEnabled") as? Bool
+      ?? SettingsDefaultValues.contactsSyncOnLaunchEnabled
     emojiFormatterEnabled =
       defaults.object(forKey: "emojiFormatterEnabled") as? Bool
       ?? SettingsDefaultValues.emojiFormatterEnabled

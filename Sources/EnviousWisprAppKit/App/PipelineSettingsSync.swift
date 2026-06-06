@@ -205,7 +205,8 @@ final class PipelineSettingsSync {
       break  // Frozen per recording; see `DictationSessionConfig`.
     case .whisperKitLanguage:
       break  // Deprecated — legacy migration only (SettingsManager:460-484).
-    case .onboardingState, .hasCompletedOnboarding, .useXPCAudioService:
+    case .onboardingState, .hasCompletedOnboarding, .useXPCAudioService,
+      .contactsSyncOnLaunchEnabled:
       break  // UI-only or cold flag.
     }
   }
