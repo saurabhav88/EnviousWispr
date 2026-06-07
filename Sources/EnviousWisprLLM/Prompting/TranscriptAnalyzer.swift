@@ -2,7 +2,7 @@ import EnviousWisprCore
 
 /// Analyzes a transcript to determine the appropriate PolishMode.
 /// Pure function. Deterministic heuristics, never delegated to the LLM.
-public struct TranscriptAnalyzer: Sendable {
+struct TranscriptAnalyzer: Sendable {
 
   /// Analyze transcript text and return the appropriate polish mode.
   ///
@@ -15,7 +15,7 @@ public struct TranscriptAnalyzer: Sendable {
   ///
   /// Conservative nil-app routing: when appName is nil, bias toward .message,
   /// never produce .structured without strong signals.
-  public static func analyzeMode(
+  static func analyzeMode(
     transcript: String,
     appName: String?
   ) -> PolishMode {

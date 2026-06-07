@@ -121,7 +121,7 @@ public struct TokenizerContract: Codable, Sendable, Equatable {
 /// Supports the JSON subset the contract uses: object / array / String / Bool /
 /// integer NSNumber. Throws on an unsupported type (e.g. a float).
 enum CanonicalJSON {
-  struct UnsupportedValue: Error { let typeDescription: String }
+  struct UnsupportedValue: Error {}
 
   static func encode(_ value: Any) throws -> Data {
     var out = String()
@@ -157,14 +157,14 @@ enum CanonicalJSON {
         // Contract values are integers only; reject a non-integral number
         // rather than silently emitting a format Python wouldn't match.
         guard Double(number.intValue) == number.doubleValue else {
-          throw UnsupportedValue(typeDescription: "non-integer number \(number)")
+          throw UnsupportedValue()
         }
         out.append(String(number.intValue))
       }
     case is NSNull:
       out.append("null")
     default:
-      throw UnsupportedValue(typeDescription: String(describing: type(of: value)))
+      throw UnsupportedValue()
     }
   }
 

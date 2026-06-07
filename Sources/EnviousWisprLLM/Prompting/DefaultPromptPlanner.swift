@@ -105,7 +105,6 @@ public struct DefaultPromptPlanner: PromptPlanning {
     let filteredCustomWords = Self.filterCustomWords(
       input.polishVocabulary.terms,
       tier: detection.tier,
-      detectedLang: detection.lang,
       allowedStrings: Set(effectiveStrings)
     )
     return input.withPolishVocabulary(
@@ -122,7 +121,6 @@ public struct DefaultPromptPlanner: PromptPlanning {
   static func filterCustomWords(
     _ customWords: [CustomWord],
     tier: LanguageConfidenceTier,
-    detectedLang: String?,
     allowedStrings: Set<String>
   ) -> [CustomWord] {
     switch tier {

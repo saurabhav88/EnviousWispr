@@ -4,10 +4,10 @@ import EnviousWisprCore
 /// System prompt defines the editor role and allowed edits; user message wraps the transcript
 /// in <transcript> tags with an anti-instruction clause. Resists injection and jailbreak shapes.
 /// Retains mode-specific formatting, appName context, short-text guard, and custom vocabulary.
-public struct GeminiPromptBuilder: PromptBuilder {
-  public init() {}
+struct GeminiPromptBuilder: PromptBuilder {
+  init() {}
 
-  public func build(input: PromptBuildInput, mode: PolishMode) -> PromptEnvelope {
+  func build(input: PromptBuildInput, mode: PolishMode) -> PromptEnvelope {
     var system = V2SystemBase
 
     // Context block

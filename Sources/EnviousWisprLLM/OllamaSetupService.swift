@@ -291,13 +291,6 @@ public final class OllamaSetupService {
     return thinkingCapableFamilyPrefixes.contains(where: { lower.hasPrefix($0) })
   }
 
-  /// Convenience: check if a model name is weak using downloaded model metadata.
-  public func isWeakModel(_ name: String) -> Bool {
-    let canonical = Self.canonicalModelName(name)
-    let downloaded = downloadedModels.first(where: { $0.canonicalName == canonical })
-    return Self.isWeakModel(name, parameterBillions: downloaded?.parameterBillions)
-  }
-
   // MARK: - Private
 
   private var ollamaProcess: Process?
