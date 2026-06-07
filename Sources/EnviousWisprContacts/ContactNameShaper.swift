@@ -13,24 +13,21 @@ public struct ShapedName: Sendable, Equatable {
 }
 
 /// Pure logic that turns raw contact names into the exact set of canonical terms
-/// to import. This is the §3.4 design hinge in code.
+/// to import: each distinctive name becomes its OWN single-token canonical.
 ///
 /// `WordCorrector` registers every space-free (single-token) canonical as an
-/// EXACT self-entry that rewrites the spoken word unconditionally on Pass 3 —
-/// no fuzzy/threshold/stopword guard. So a lone common word like "Will" or
-/// "May" imported as a single-token canonical would capitalize that word every
-/// time the user dictates it. Multi-word canonicals get NO exact self-entry
-/// (they fire only on the full phrase). The shaping rules below exploit that:
+/// EXACT self-entry that rewrites the spoken word unconditionally on Pass 3, with
+/// no fuzzy/threshold/stopword guard. A space-containing canonical gets NO such
+/// self-entry, so a combined "First Last" entry corrected nothing; we no longer
+/// emit one. The per-name rules below exploit the single-token behavior:
 ///
-/// - When both names are present, always emit the full `"First Last"` canonical
-///   (safe: multi-word, phrase-only) — this covers the name in context even when
-///   neither part survives as a lone token.
-/// - Additionally emit `given` or `family` ALONE only when that token is
-///   distinctive (not a common English word, length ≥ 2, letters-only) so
-///   "Ramachandran" / "Vasquez" still correct when said alone.
-/// - A lone common-word name (in the stoplist) is skipped as a single token; the
-///   full-name entry still covers it. A single-field contact whose only name is a
-///   common word produces nothing (better than corrupting speech).
+/// - Emit `given` and/or `family` ALONE, each only when that token is distinctive
+///   (not a common English word, length >= 2, letters-only) so "Ramachandran" /
+///   "Vasquez" still correct when said.
+/// - A lone common-word name (in the stoplist) is skipped: importing "Will" or
+///   "May" as a single-token canonical would capitalize that ordinary word on
+///   every dictation. A contact whose only names are common words yields nothing
+///   (better than corrupting speech).
 public enum ContactNameShaper {
   /// Lone tokens shorter than this are not imported on their own (still covered
   /// by the full-name entry). Guards single letters / initials.
@@ -39,23 +36,14 @@ public enum ContactNameShaper {
   public static func shape(_ candidates: [CandidateName]) -> [ShapedName] {
     var out: [ShapedName] = []
     for candidate in candidates {
-      let given = candidate.given
-      let family = candidate.family
-      let givenValid = isNameLike(given)
-      let familyValid = isNameLike(family)
-
+      // Per-name shaping: each distinctive name becomes its own single-token
+      // canonical. No combined "First Last" entry (a space-containing canonical
+      // gets no exact self-entry in WordCorrector, so it corrected nothing).
       var canonicals: [String] = []
-      if givenValid && familyValid {
-        canonicals.append("\(given) \(family)")
-        if isDistinctiveLoneToken(given) { canonicals.append(given) }
-        if isDistinctiveLoneToken(family) { canonicals.append(family) }
-      } else if givenValid {
-        if isDistinctiveLoneToken(given) { canonicals.append(given) }
-      } else if familyValid {
-        if isDistinctiveLoneToken(family) { canonicals.append(family) }
-      }
+      if isDistinctiveLoneToken(candidate.given) { canonicals.append(candidate.given) }
+      if isDistinctiveLoneToken(candidate.family) { canonicals.append(candidate.family) }
 
-      // De-dupe within one contact (e.g. given == family) — case-insensitive.
+      // De-dupe within one contact (e.g. given == family), case-insensitive.
       var seen = Set<String>()
       for canonical in canonicals where seen.insert(canonical.lowercased()).inserted {
         out.append(ShapedName(contactID: candidate.contactID, canonical: canonical))
@@ -81,6 +69,16 @@ public enum ContactNameShaper {
     guard isNameLike(token) else { return false }
     guard token.count >= minLoneTokenLength else { return false }
     return !commonWordStoplist.contains(token.lowercased())
+  }
+
+  /// Whether `token` is in the common-word stoplist (case-insensitive). Exposed
+  /// `package` so the import-side alias enrichment can drop any generated alias
+  /// that is itself a common word: an alias DOES enter `WordCorrector`'s
+  /// unconditional single-alias self-map, so a common-word alias would rewrite
+  /// ordinary speech. PostProcessing cannot import this module, so the filter
+  /// lives at the AppKit enrichment call site (#636 follow-up).
+  package static func isCommonWord(_ token: String) -> Bool {
+    commonWordStoplist.contains(token.lowercased())
   }
 
   /// Common English words that are also common given/family names. A lone token

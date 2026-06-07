@@ -439,14 +439,19 @@ public final class WordSuggestionService: Sendable {
 
     @available(macOS 26, *)
     private func runRawSuggestion(
-      for word: String
+      for word: String,
+      knownCategory: WordCategory? = nil
     ) async throws -> (category: WordCategory, aliases: [String]) {
-      // Heuristic classification first — skips one AFM call for clear-cut
-      // cases (all-caps short = acronym; mixed-case or digits/dots = domain).
-      // The AFM classifier has been observed to misclassify obvious acronyms
-      // like CRM, JSON, SQL, API as brand/general/domain.
+      // A caller that already knows the category (contacts import pins .person)
+      // skips both the heuristic and the AFM classifier call. Otherwise:
+      // heuristic classification first — skips one AFM call for clear-cut cases
+      // (all-caps short = acronym; mixed-case or digits/dots = domain). The AFM
+      // classifier has been observed to misclassify obvious acronyms like CRM,
+      // JSON, SQL, API as brand/general/domain.
       let category: WordCategory
-      if let heuristic = Self.classifyByHeuristic(word) {
+      if let knownCategory {
+        category = knownCategory
+      } else if let heuristic = Self.classifyByHeuristic(word) {
         category = heuristic
       } else {
         let classificationSession = LanguageModelSession(
@@ -523,11 +528,16 @@ public final class WordSuggestionService: Sendable {
   #elseif canImport(FoundationModels)
     @available(macOS 26, *)
     private func runRawSuggestion(
-      for word: String
+      for word: String,
+      knownCategory: WordCategory? = nil
     ) async throws -> (category: WordCategory, aliases: [String]) {
-      // Step 1 — heuristic classification first, AFM as fallback.
+      // Step 1 — classification. A caller that already knows the category
+      // (contacts import pins .person) skips it; otherwise heuristic first, AFM
+      // as fallback.
       let category: WordCategory
-      if let heuristic = Self.classifyByHeuristic(word) {
+      if let knownCategory {
+        category = knownCategory
+      } else if let heuristic = Self.classifyByHeuristic(word) {
         category = heuristic
       } else {
         let classificationSession = LanguageModelSession(
@@ -604,6 +614,34 @@ public final class WordSuggestionService: Sendable {
       }
     }
   #endif
+}
+
+// MARK: - AliasSuggesting (contacts-import enrichment, #636 follow-up)
+
+extension WordSuggestionService: AliasSuggesting {
+  /// On-device alias generation for an already-classified word. Mirrors
+  /// `suggest(for:)`'s availability gate, 5-second timeout, and degeneration
+  /// filter, but skips classification (the caller pins the category) and returns
+  /// the bare alias list. nil when unavailable, timed out, or the model
+  /// degenerated to self-echoes.
+  package func suggestAliases(for word: String, category: WordCategory) async -> [String]? {
+    #if canImport(FoundationModels)
+      guard #available(macOS 26, *),
+        case .available = SystemLanguageModel.default.availability
+      else { return nil }
+      do {
+        return try await withThrowingTimeout(seconds: 5) {
+          let raw = try await self.runRawSuggestion(for: word, knownCategory: category)
+          let filtered = Self.filterDegeneratedAliases(raw.aliases, canonical: word)
+          return filtered.isEmpty ? nil : filtered
+        }
+      } catch {
+        return nil
+      }
+    #else
+      return nil
+    #endif
+  }
 }
 
 public struct WordSuggestions: Sendable {

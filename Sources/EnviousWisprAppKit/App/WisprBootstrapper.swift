@@ -75,10 +75,11 @@ public final class WisprBootstrapper {
     let audioDeviceList = AudioDeviceList()
     let captureTelemetry = CaptureTelemetryState()
     let customWordsCoordinator = CustomWordsCoordinator()
-    // #636: contacts-import orchestrator. Reads only the tiny import-log file at
-    // construction (no Contacts framework call until the user acts).
+    // #636: contacts-import orchestrator (opt-in import + bulk-remove + background
+    // alias enrichment via the reused on-device suggester). #636 follow-up.
     let contactsImportCoordinator = ContactsImportCoordinator(
-      customWords: customWordsCoordinator)
+      customWords: customWordsCoordinator,
+      aliasSuggester: customWordsCoordinator.aliasSuggester)
     let customWordsPropagator = CustomWordsPropagator()
     // #633 Phase 9: owns enabled vocabulary-pack state; merges pack terms into
     // the corrector lane (default OFF). Wired into `wireCustomWords` below.

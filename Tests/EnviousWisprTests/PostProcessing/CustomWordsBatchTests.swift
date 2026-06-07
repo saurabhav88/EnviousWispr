@@ -107,4 +107,53 @@ struct CustomWordsBatchTests {
     try mgr.removeBatch(ids: [], from: &words)
     #expect(words.count == before)
   }
+
+  // #636 follow-up — updateBatch: single-save bulk alias update used by the
+  // contacts-import enrichment flush.
+
+  @Test("updateBatch updates aliases for existing words and persists across reload")
+  func updateBatchPersists() throws {
+    let (mgr, url) = Self.tempManager()
+    defer { Self.cleanup(url) }
+    var words = mgr.load() ?? []
+    let a = person("Ramachandran Test")
+    let b = person("Vasquez Test")
+    _ = try mgr.addBatch([a, b], to: &words)
+
+    var aUpd = try #require(words.first { $0.canonical == "Ramachandran Test" })
+    aUpd.aliases = ["rama", "ram uh"]
+    try mgr.updateBatch([aUpd], to: &words)
+
+    #expect(words.first { $0.canonical == "Ramachandran Test" }?.aliases == ["rama", "ram uh"])
+    let reloaded = CustomWordsManager(fileURL: url).load() ?? []
+    #expect(reloaded.first { $0.canonical == "Ramachandran Test" }?.aliases == ["rama", "ram uh"])
+    // The untouched word keeps its empty alias list.
+    #expect(reloaded.first { $0.canonical == "Vasquez Test" }?.aliases.isEmpty == true)
+  }
+
+  @Test("updateBatch skips a missing id — never resurrects a removed word")
+  func updateBatchMissingIdNoOp() throws {
+    let (mgr, url) = Self.tempManager()
+    defer { Self.cleanup(url) }
+    var words = mgr.load() ?? []
+    _ = try mgr.addBatch([person("Ramachandran Test")], to: &words)
+
+    var ghost = person("Ghost Test")  // never added to the file
+    ghost.aliases = ["boo"]
+    try mgr.updateBatch([ghost], to: &words)
+
+    #expect(!words.contains { $0.canonical == "Ghost Test" })
+    let reloaded = CustomWordsManager(fileURL: url).load() ?? []
+    #expect(!reloaded.contains { $0.canonical == "Ghost Test" })
+  }
+
+  @Test("updateBatch with empty input is a no-op")
+  func updateBatchEmpty() throws {
+    let (mgr, url) = Self.tempManager()
+    defer { Self.cleanup(url) }
+    var words = mgr.load() ?? []
+    let before = words.count
+    try mgr.updateBatch([], to: &words)
+    #expect(words.count == before)
+  }
 }

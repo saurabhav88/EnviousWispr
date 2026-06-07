@@ -9,6 +9,10 @@ final class CustomWordsCoordinator {
   var customWords: [CustomWord] = []
   var customWordError: String?
   let suggestionService = WordSuggestionService()
+  /// The reused on-device alias generator, exposed as the narrow protocol so the
+  /// composition root can wire it into the contacts-import coordinator without
+  /// naming a PostProcessing type (keeps the root's import surface minimal).
+  var aliasSuggester: any AliasSuggesting { suggestionService }
 
   /// Called after any mutation so the former root state can sync words to pipelines.
   var onWordsChanged: (([CustomWord]) -> Void)?
@@ -98,6 +102,22 @@ final class CustomWordsCoordinator {
   func update(_ word: CustomWord) -> String? {
     do {
       try manager.update(word: word, in: &customWords)
+      onWordsChanged?(customWords)
+      customWordError = nil
+      return nil
+    } catch {
+      customWordError = error.localizedDescription
+      return customWordError
+    }
+  }
+
+  /// Bulk-update existing words (contacts-import alias enrichment, #636
+  /// follow-up). One `onWordsChanged` for the whole batch so the corrector
+  /// rebuilds once per flush, not once per word.
+  @discardableResult
+  func updateBatch(_ words: [CustomWord]) -> String? {
+    do {
+      try manager.updateBatch(words, to: &customWords)
       onWordsChanged?(customWords)
       customWordError = nil
       return nil
