@@ -15,6 +15,7 @@ public struct EmojiFormatter: Sendable {
     public let emoji: String  // "👍"
     public let synonyms: [String]  // ["thumb up", "thumbs-up"]
 
+    // periphery:ignore - test seam
     public init(phrase: String, emoji: String, synonyms: [String] = []) {
       self.phrase = phrase
       self.emoji = emoji
@@ -196,12 +197,14 @@ public struct EmojiFormatter: Sendable {
   /// resource bundle did not ship. Exposes the SAME `Bundle.module` lookup the
   /// production `load()` path uses — not a fallback — so a test can assert the
   /// shipped resource resolves at runtime under the Xcode build.
+  // periphery:ignore - test seam (resource-resolution diagnostic)
   public static var bundledDictionaryURLForDiagnostics: URL? {
     Bundle.module.url(forResource: "emoji-dictionary", withExtension: "json")
   }
 
   /// The `Bundle.module` bundle URL, for asserting where the resource bundle
   /// physically resolves (e.g. inside a signed app's `Contents/Resources`).
+  // periphery:ignore - test seam (resource-resolution diagnostic)
   public static var moduleBundleURLForDiagnostics: URL {
     Bundle.module.bundleURL
   }
@@ -255,7 +258,6 @@ public struct EmojiFormatter: Sendable {
   struct CandidateMatch: Equatable {
     let range: NSRange
     let emoji: String
-    let phrase: String
   }
 
   /// Tier A (exact canonical) + Tier B (synonym). Returns non-overlapping
@@ -276,7 +278,7 @@ public struct EmojiFormatter: Sendable {
         for m in results {
           if !overlaps(m.range) {
             taken.append(m.range)
-            out.append(CandidateMatch(range: m.range, emoji: entry.emoji, phrase: entry.phrase))
+            out.append(CandidateMatch(range: m.range, emoji: entry.emoji))
           }
         }
       }
@@ -368,7 +370,7 @@ public struct EmojiFormatter: Sendable {
           continue
         }
         newlyCovered.append(matchRange)
-        out.append(CandidateMatch(range: matchRange, emoji: chosen.emoji, phrase: chosen.phrase))
+        out.append(CandidateMatch(range: matchRange, emoji: chosen.emoji))
         break  // only longest matching span per trigger
       }
     }

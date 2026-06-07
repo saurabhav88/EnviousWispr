@@ -95,7 +95,6 @@ public struct InverseTextNormalizer: Sendable {
     words.sorted { $0.count != $1.count ? $0.count > $1.count : $0 < $1 }.joined(separator: "|")
   }
   static func alt(_ words: Set<String>) -> String { alt(Array(words)) }
-  static func alt(_ words: [String.SubSequence]) -> String { alt(words.map(String.init)) }
 
   static let numwordAlt = alt(numword)
   // A number token: a number-WORD or an already-digit token ('20', '1,234') for mixed-state.

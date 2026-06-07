@@ -46,6 +46,7 @@ public final class WordSuggestionService: Sendable {
   /// NEVER call from production code. Production reads `suggest(for:)`,
   /// which shares the same `runRawSuggestion` core but wraps a 5s timeout
   /// and returns `WordSuggestions?` after running the degeneration filter.
+  // periphery:ignore - eval harness API (scripts/eval/alias_runner)
   public func benchmarkSuggest(
     for word: String,
     disableTimeout: Bool = false
