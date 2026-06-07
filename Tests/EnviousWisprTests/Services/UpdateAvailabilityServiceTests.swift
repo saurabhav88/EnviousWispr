@@ -23,7 +23,6 @@ struct UpdateAvailabilityServiceTests {
     UpdateAvailabilityService.AvailableUpdate(
       versionString: version,
       displayVersion: display,
-      buildString: version,
       isCriticalUpdate: critical
     )
   }

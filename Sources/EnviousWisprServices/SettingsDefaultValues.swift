@@ -54,7 +54,6 @@ enum SettingsDefaultValues {
   static let useExtendedThinking = false
 
   static let whisperKitLanguage = "en"
-  static let languageMode: LanguageMode = .auto
 
   static let selectedInputDeviceUID = ""
   static let noiseSuppression = false

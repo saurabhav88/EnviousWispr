@@ -13,18 +13,15 @@ public final class UpdateAvailabilityService {
   public struct AvailableUpdate: Sendable, Equatable {
     public let versionString: String  // CFBundleVersion (canonical compare key)
     public let displayVersion: String  // CFBundleShortVersionString (UI copy)
-    public let buildString: String?
     public let isCriticalUpdate: Bool
 
     public init(
       versionString: String,
       displayVersion: String,
-      buildString: String?,
       isCriticalUpdate: Bool
     ) {
       self.versionString = versionString
       self.displayVersion = displayVersion
-      self.buildString = buildString
       self.isCriticalUpdate = isCriticalUpdate
     }
   }
@@ -113,6 +110,7 @@ public final class UpdateAvailabilityService {
   /// Public API retained for tests; no in-app caller post-#739. Sparkle's
   /// cycle-finish callback no longer invokes this — widget state is cleared by
   /// `rehydratePendingIfNewer` when the bundle version catches up to pending.
+  // periphery:ignore - test seam
   public func noteResolved(installedVersion: String?) {
     state = .none
     dismissedForSession = false
@@ -123,6 +121,7 @@ public final class UpdateAvailabilityService {
 
   // MARK: - User-driven mutations
 
+  // periphery:ignore - test seam
   public func dismissForSession() {
     dismissedForSession = true
     if case .available(let u) = state {
@@ -168,7 +167,6 @@ public final class UpdateAvailabilityService {
     return AvailableUpdate(
       versionString: v,
       displayVersion: display,
-      buildString: v,
       isCriticalUpdate: isCritical
     )
   }

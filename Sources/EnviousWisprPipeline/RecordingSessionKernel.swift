@@ -173,8 +173,8 @@ final class RecordingSessionKernel {
   /// the simulator's logical-tick time base — not a wall-clock deadline.
   private let wedgeStallTicks: Int
 
-  /// Minimum logical-tick duration of a visible recording (PR-4.5 #4 — parity
-  /// with `TimingConstants.minimumRecordingDuration` = 500 ms). A recording
+  /// Minimum logical-tick duration of a visible recording (PR-4.5 #4 — a
+  /// 500 ms floor). A recording
   /// terminating in less than this many ticks since `→ recording` is silently
   /// discarded as an accidental tap (`discardReason = .tooShort`). Measured
   /// from VISIBLE recording start, NOT from pre-roll capture (PR-4.5 §5b — so

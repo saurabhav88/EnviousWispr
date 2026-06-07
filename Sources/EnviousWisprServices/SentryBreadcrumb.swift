@@ -289,6 +289,7 @@ extension SentryBreadcrumb {
   /// query Core Audio, await work, or take locks on the Sentry capture path.
   public nonisolated(unsafe) static var audioEnvironmentProvider: AudioEnvironmentProvider?
 
+  // periphery:ignore - test seam
   public static func withAudioEnvironmentProvider<T>(
     _ provider: AudioEnvironmentProvider?,
     _ body: () throws -> T

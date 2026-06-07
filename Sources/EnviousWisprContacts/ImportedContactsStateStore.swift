@@ -78,6 +78,7 @@ public struct ImportedContactsStateStore: Sendable {
 
   /// Test seam: inject an explicit file URL so unit tests hit a per-test temp
   /// file instead of the production path. Production uses the zero-arg `init()`.
+  // periphery:ignore - test seam
   package init(fileURL: URL) {
     self.fileURL = fileURL
     Self.prepareDirectory(at: fileURL.deletingLastPathComponent())
