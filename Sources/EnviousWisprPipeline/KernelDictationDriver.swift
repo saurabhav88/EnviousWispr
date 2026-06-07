@@ -693,12 +693,14 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     /// a specific FSM state (e.g. force `.finalizing` to assert `.polishing`
     /// state mapping or to pin a safe-point invariant) reach `testForceTransition`
     /// through this accessor.
+    // periphery:ignore - test seam
     var kernelForTesting: RecordingSessionKernel { kernel }
 
     /// Test-only session-context handle. Used to verify the terminal-state
     /// cleanup clears `targetApp` + `targetElement` (Div 8 of seam audit /
     /// TP:998-1000, 1128-1129, 1221-1223). The context's properties are not
     /// otherwise observable from outside the driver.
+    // periphery:ignore - test seam
     var contextForTesting: KernelSessionContext { context }
   #endif
 

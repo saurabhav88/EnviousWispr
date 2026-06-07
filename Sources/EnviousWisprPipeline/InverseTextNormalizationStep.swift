@@ -19,54 +19,54 @@ import Foundation
 /// so it runs OFF the main actor (the `WordCorrectionStep` pattern) and a no-op returns
 /// the input context untouched. Founder Gate-1 (2026-06-02): always ON, no user toggle.
 @MainActor
-public final class InverseTextNormalizationStep: TextProcessingStep {
-  public let name = "Inverse Text Normalization"
+final class InverseTextNormalizationStep: TextProcessingStep {
+  let name = "Inverse Text Normalization"
 
   /// Always-on safety floor (#145, founder Gate-1 2026-06-02: ON for all, no toggle).
-  public var isEnabled: Bool { true }
+  var isEnabled: Bool { true }
 
   /// Runner-level runaway BACKSTOP only. The real cap is the step's own 0.5s
   /// `withDeadline` in `process(...)` — a TRUE wall-clock bound that abandons a
   /// pathological `normalize` so the heart path's paste is never held. This outer
   /// bound sits comfortably above 0.5s so the runner never preempts the step's
   /// own deadline (which also owns the anomaly breadcrumb).
-  public var maxDuration: Duration { .seconds(2) }
+  var maxDuration: Duration { .seconds(2) }
 
   /// Per-session capability hint wired by `KernelFinalizationWiring` from
   /// `adapter.capabilities.supportsLanguageDetection` — NOT an engine-identity
   /// literal (`EngineIdentityFreezeTests` bans identity reads at non-factory sites).
   /// Default `false` = legacy / Parakeet-class (run on English-or-unknown), the
   /// always-on intent for steps constructed in isolation (tests).
-  public var backendSupportsLID: Bool = false
+  var backendSupportsLID: Bool = false
 
   /// Per-run outcome the wiring reads after the chain runs to thread ITN fields onto
   /// `dictation.completed`. Metadata only (counts/lengths/latency/skip-reason) — never
   /// transcript text (`telemetry-privacy-boundary`).
-  public struct RunOutcome: Sendable {
+  struct RunOutcome: Sendable {
     /// True when the engine actually ran (not gated out by language).
-    public let ran: Bool
+    let ran: Bool
     /// True when the engine changed the text.
-    public let changed: Bool
+    let changed: Bool
     /// `nil` when it ran; otherwise the skip bucket (`non_english` / `lid_backend_nil`).
-    public let skipReason: String?
+    let skipReason: String?
     /// Wall-clock of the engine call in milliseconds (0 on skip).
-    public let latencyMs: Double
+    let latencyMs: Double
     /// Character length before / after (edit size is allowed; #253 precedent).
-    public let lenBefore: Int
-    public let lenAfter: Int
+    let lenBefore: Int
+    let lenAfter: Int
   }
 
   /// The most recent `process(...)` outcome. Read by `KernelFinalizationWiring`
   /// immediately after the chain runs (same actor, no race).
-  public private(set) var lastRun: RunOutcome?
+  private(set) var lastRun: RunOutcome?
 
   private let normalizer: InverseTextNormalizer
 
-  public init(normalizer: InverseTextNormalizer = InverseTextNormalizer()) {
+  init(normalizer: InverseTextNormalizer = InverseTextNormalizer()) {
     self.normalizer = normalizer
   }
 
-  public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
+  func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
     let input = context.text
     let lenBefore = input.count
 

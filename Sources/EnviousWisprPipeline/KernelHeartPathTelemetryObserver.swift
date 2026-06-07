@@ -1,6 +1,5 @@
 import EnviousWisprAudio
 import EnviousWisprCore
-import EnviousWisprServices
 import Foundation
 
 // MARK: - KernelHeartPathTelemetryObserver (epic #827, PR-4 §3.9)

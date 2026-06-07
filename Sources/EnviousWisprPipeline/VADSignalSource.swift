@@ -59,7 +59,7 @@ public enum VADSpeechEvidence: Equatable, Sendable {
 /// (PR-1 §B.6). The kernel does not know whether the conformer is the
 /// in-process detector or the XPC service-side one.
 @MainActor
-public protocol VADSignalSource: AnyObject {
+protocol VADSignalSource: AnyObject {
   /// Open a fresh per-subscriber stream of stop-driving signals (auto-stop,
   /// max-duration). The kernel latches a stop on each delivered signal.
   ///

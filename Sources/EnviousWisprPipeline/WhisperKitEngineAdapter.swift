@@ -1129,8 +1129,10 @@ extension WhisperKitEngineAdapter {
   /// Test-only read of the retained PCM. The production read site is the
   /// incremental worker's provider closure, which captures `self` weakly and
   /// reads `retainedPCM` on `@MainActor`.
+  // periphery:ignore - test seam
   internal var retainedPCMForUnitTests: [Float] { retainedPCM }
   /// Test-only read of the kernel-supplied speech segments.
+  // periphery:ignore - test seam
   internal var observedSpeechSegmentsForUnitTests: [SpeechSegment] { observedSpeechSegments }
   /// Test-only handle to the armed model-unload task. Tests `await
   /// adapter.modelUnloadTaskForUnitTests?.value` to wait for an armed
@@ -1138,6 +1140,7 @@ extension WhisperKitEngineAdapter {
   /// task always completes (it returns whether or not it fires `unload()`),
   /// so the await is bounded. Avoids the release-config flake where the
   /// scheduled unload had not run within a fixed `Task.yield()` budget.
+  // periphery:ignore - test seam
   internal var modelUnloadTaskForUnitTests: Task<Void, Never>? { modelUnloadTask }
 }
 
@@ -1158,6 +1161,7 @@ package protocol WhisperKitBackendDriving: Actor {
   var isReady: Bool { get }
   var modelVariantName: String { get }
   func prepare() async throws
+  // periphery:ignore - protocol requirement (witnessed by WhisperKitBackend)
   func prepareIfCached() async throws -> Bool
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
   func observeLID(samples: [Float], maxWindows: Int) async -> LIDObservationBatch

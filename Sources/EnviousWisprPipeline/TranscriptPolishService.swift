@@ -206,12 +206,6 @@ public final class TranscriptPolishService {
     return updated
   }
 
-  /// Clear enhancement state. The in-flight LLM call will check Task.checkCancellation()
-  /// and exit without saving if the parent Task was cancelled.
-  public func cancel() {
-    polishingTranscriptID = nil
-  }
-
   // MARK: - Private Helpers
 
   /// Record an enhancement error scoped to a transcript.

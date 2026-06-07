@@ -79,7 +79,7 @@ public struct ConditionedAudio: Equatable, Sendable {
 /// Apply VAD-segment filtering, too-aggressive-filter raw fallback, and
 /// short-utterance padding in the order the old pipeline did (PR-4.5 plan
 /// §3 #5 + §5b). Pure function; safe to call from any actor.
-public enum CapturedAudioConditioner {
+enum CapturedAudioConditioner {
 
   /// Condition `rawSamples` for ASR batch rescue. When `vadSegments` is empty
   /// the VAD-filter step is a no-op (the kernel passes empty segments when no
@@ -87,7 +87,7 @@ public enum CapturedAudioConditioner {
   ///
   /// `minimumSamples` defaults to `AudioConstants.minimumTranscriptionSamples`
   /// — both ASR backends require ≥1 s of audio. Tests may override.
-  public static func condition(
+  static func condition(
     rawSamples: [Float],
     vadSegments: [SpeechSegment],
     minimumSamples: Int = AudioConstants.minimumTranscriptionSamples

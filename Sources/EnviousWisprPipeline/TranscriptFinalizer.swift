@@ -5,6 +5,7 @@ import EnviousWisprStorage
 import Foundation
 
 /// Input for post-ASR finalization.
+// periphery:ignore - test seam (production finalization is KernelFinalizationWiring)
 @MainActor
 internal struct FinalizationRequest {
   let asrText: String
@@ -21,6 +22,7 @@ internal struct FinalizationRequest {
 }
 
 /// Output from post-ASR finalization.
+// periphery:ignore - test seam (production finalization is KernelFinalizationWiring)
 @MainActor
 internal struct FinalizationResult {
   let transcript: Transcript
@@ -42,6 +44,7 @@ internal struct FinalizationResult {
 /// Typed errors so pipelines can decide the right fallback per category.
 /// GPT Desktop review: a single generic throw path blurs storage failures
 /// with polish failures, creating misleading Sentry data and wrong fallbacks.
+// periphery:ignore - test seam (production finalization is KernelFinalizationWiring)
 internal enum FinalizationError: Error {
   /// Text processing ran but produced empty output
   case emptyAfterProcessing
@@ -55,6 +58,7 @@ internal enum FinalizationError: Error {
 /// .polishing, .complete, .error based on the result.
 /// Does NOT own step instances. Steps are passed in via the request.
 /// Does NOT emit pipeline-specific telemetry (ASR mode, backend, etc.).
+// periphery:ignore - test seam (production finalization is KernelFinalizationWiring)
 @MainActor
 internal final class TranscriptFinalizer {
   private let save: @MainActor (Transcript) throws -> Void

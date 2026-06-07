@@ -1,4 +1,3 @@
-import EnviousWisprAudio
 import Foundation
 
 /// Per-call context for `HeartPathTelemetryEmitter.noAudioCaptured(...)`.

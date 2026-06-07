@@ -9,8 +9,8 @@ import Foundation
 // App consumes it directly. `KernelOwnershipFreezeTests` keeps it deleted.
 
 /// Known interruption message strings used to route .error state to .interruption overlay intent.
-public enum InterruptionMessages {
-  public static let micDisconnected = "Microphone disconnected"
+enum InterruptionMessages {
+  static let micDisconnected = "Microphone disconnected"
 }
 
 /// Events the recording driver handles.

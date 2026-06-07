@@ -75,13 +75,3 @@ internal enum SampleFilter {
     return result.isEmpty ? allSamples : result
   }
 }
-
-/// Shared pipeline utilities.
-internal enum PipelineUtils {
-
-  /// Convert Duration to milliseconds for logging.
-  static func durationMs(_ d: Duration) -> Int {
-    let (seconds, attoseconds) = d.components
-    return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
-  }
-}

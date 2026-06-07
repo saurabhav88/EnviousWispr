@@ -71,20 +71,21 @@ public enum RecordingSessionState: Equatable, Sendable {
 
 /// The `finalizing` sub-status surfaced for the overlay string (PR-1 §B.4,
 /// PR-3 plan §3.5). The kernel owns the observation point; a limb only emits.
-public enum FinalizingSubStatus: Equatable, Sendable {
+enum FinalizingSubStatus: Equatable, Sendable {
   case transcribing
   case polishing
 }
 
 /// How the transcript reached the user (PR-1 §B.1.3). The kernel records this
 /// from the `deliver` seam's return value.
-public enum KernelDeliveryOutcome: Equatable, Sendable {
+enum KernelDeliveryOutcome: Equatable, Sendable {
   case pasted
   case clipboardOnly
 }
 
 /// The user-visible error surface a terminal state renders (PR-1 §B.1.3).
-public enum KernelErrorCategory: Equatable, Sendable {
+// periphery:ignore - test seam (read only via the test-only userVisibleError)
+enum KernelErrorCategory: Equatable, Sendable {
   case recoverableError
   case interruption
 }
@@ -93,7 +94,7 @@ public enum KernelErrorCategory: Equatable, Sendable {
 /// PR-1 §B.7.4 telemetry event (PR-4 plan §3.8a). A sibling observable to
 /// `state`, the same shape as `deliveredTranscript`; the `discarded` FSM case
 /// stays plain (no state-enum payload).
-public enum DiscardReason: Equatable, Sendable {
+enum DiscardReason: Equatable, Sendable {
   /// Stop latched before the session ever reached `recording` — PTT released
   /// during prepare / warm-up. No transcribable audio.
   case releasedBeforeRecording
@@ -107,7 +108,7 @@ public enum DiscardReason: Equatable, Sendable {
 /// observer can route the source-appropriate breadcrumb without losing the
 /// old VAD-gate vs ASR-empty no-speech distinction (PR-1 §B.7.2; old
 /// the old Parakeet pipeline vs `:902`).
-public enum NoSpeechSource: Equatable, Sendable {
+enum NoSpeechSource: Equatable, Sendable {
   /// VAD gate fired pre-ASR — raw samples had no speech evidence
   /// (`TP:787` — "VAD gate: no speech detected, skipping ASR").
   case vadGate
@@ -130,7 +131,8 @@ struct KernelModelLoadWedgeTelemetry: Equatable, Sendable {
 
 /// A typed limb-seam failure the kernel maps to a `failed` terminal reason
 /// (PR-3 plan §14a). The `processText` / `store` seams throw these.
-public enum KernelLimbError: Error, Sendable {
+// periphery:ignore - test seam (thrown only by the test simulator)
+enum KernelLimbError: Error, Sendable {
   /// Text processing produced empty output (PR-1 §B.1.2 `emptyAfterProcessing`).
   case emptyAfterProcessing
   /// Transcript disk-save threw (epic §3.8 caveat b, deferred #830).
@@ -276,6 +278,7 @@ final class RecordingSessionKernel {
 
   /// The user-visible error category for the current terminal state, derived
   /// from the FSM state (PR-1 §B.1.3). `nil` for non-error terminals.
+  // periphery:ignore - test seam (read only by the simulator)
   var userVisibleError: KernelErrorCategory? {
     switch state {
     case .audioInterrupted:
@@ -390,6 +393,7 @@ final class RecordingSessionKernel {
   /// at `.recording`. The drain gates on this signal so it never settles mid
   /// hand-off (the recurring `interleavingSweep` `got recording` flake). No
   /// production reader — observation only.
+  // periphery:ignore - test seam (simulator drain gate; no production reader)
   var hasUnconsumedRecordingExit: Bool {
     recordingExitLatched && state == .recording
   }

@@ -34,6 +34,7 @@ public final class EmojiFormatterStep: TextProcessingStep {
   }
 
   /// Test seam — inject a custom formatter (used by `EmojiFormatterStepTests`).
+  // periphery:ignore - test seam
   init(formatter: EmojiFormatter?) {
     self.formatter = formatter
   }
