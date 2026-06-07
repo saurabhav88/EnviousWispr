@@ -379,6 +379,21 @@ final class RecordingSessionKernel {
   private var pendingRecordingExit: RecordingExit?
   private var recordingExitLatched = false
 
+  /// Test-observation signal for the simulator's drain (companion to
+  /// `workEpoch`). `true` only in the window between `deliverRecordingExit`
+  /// latching an exit from `.recording` and the forward path consuming it and
+  /// transitioning out of `.recording`. The exit delivery bumps `workEpoch`
+  /// and resumes the forward-path continuation synchronously inside the
+  /// triggering call — *before* the simulator's `drainReadyWork` starts — so
+  /// that bump is absorbed and epoch-stability alone can falsely report
+  /// quiescence while the resumed-but-not-yet-scheduled forward path still sits
+  /// at `.recording`. The drain gates on this signal so it never settles mid
+  /// hand-off (the recurring `interleavingSweep` `got recording` flake). No
+  /// production reader — observation only.
+  var hasUnconsumedRecordingExit: Bool {
+    recordingExitLatched && state == .recording
+  }
+
   /// Buffers handed to the adapter this session — the sub-minimum-duration
   /// proxy (PR-1 §B.1.2 `recording → discarded`): zero buffers ⇒ `discarded`.
   private var bufferCountThisSession = 0

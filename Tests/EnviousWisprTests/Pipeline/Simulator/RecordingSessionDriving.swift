@@ -241,19 +241,42 @@ final class KernelRecordingSession: RecordingSessionDriving {
     }
   }
 
-  /// Yield until the kernel's `workEpoch` stops advancing — every ready task
-  /// has run and the FSM has settled. `workEpoch` is the signal: the kernel
-  /// bumps it on every transition, task resumption, and progress tick. The
-  /// 64-yield stability requirement is margin for a ready kernel task that
-  /// loses the scheduler lottery to unrelated parallel tests across several
-  /// yields under MainActor contention — not a deadline. The 20000-iteration
-  /// cap is a safety net against a kernel livelock (it surfaces as a
-  /// stuck-state assertion failure, not a hang).
+  /// Yield until the kernel's `workEpoch` stops advancing — the FSM has settled
+  /// for everything `workEpoch` covers (the kernel bumps it on every transition,
+  /// task resumption, and progress tick). The 64-yield stability requirement is
+  /// margin for a ready kernel task that loses the scheduler lottery to
+  /// unrelated parallel tests across several yields under MainActor contention —
+  /// not a deadline. The 20000-iteration cap is a safety net against a kernel
+  /// livelock (it surfaces as a stuck-state assertion failure, not a hang).
+  ///
+  /// Epoch-stability ALONE is not sufficient for the recording-exit hand-off: a
+  /// recording-exit delivered by the previous step (`stop` / `cancel` from
+  /// `.recording`) bumps `workEpoch` and resumes the forward-path continuation
+  /// synchronously inside that step — *before* this drain starts — so the bump
+  /// is absorbed into the initial `last` and offers no protection. Under
+  /// full-suite MainActor contention the resumed forward-path task can then lose
+  /// the scheduler lottery for the whole 64-yield window, and the drain would
+  /// return while the FSM is still observably `.recording`. The next step's
+  /// `cancel` is then swallowed by the already-latched stop and the scenario
+  /// flakes (the recurring `interleavingSweep` `got recording` failure). So gate
+  /// the return on the kernel's own hand-off signal: never declare quiescence
+  /// while a delivered recording-exit is still unconsumed. The forward path is a
+  /// ready task on a cooperative serial executor, so it cannot be starved
+  /// forever — the signal clears within a bounded number of yields, well under
+  /// the livelock cap.
+  ///
+  /// Scope: this gate addresses the recording-exit hand-off, the only window the
+  /// observed flakes hit (every recurrence was `got recording`). The same
+  /// bump-absorption shape exists in principle at other continuations resumed
+  /// inside a step's `apply` — `FakeClock.advance(by:)` resuming a `slowLoad` /
+  /// `slowFinalize` sleep, a VAD `AsyncStream.yield` — but none has manifested.
+  /// If a future flake reports a stale `transcribing` / `warmingUp` after an
+  /// `advanceClock` or VAD step, those are the next signals to gate the same way.
   func drainReadyWork() async {
     var last = kernel.workEpoch
     var stable = 0
     var iterations = 0
-    while stable < 64, iterations < 20000 {
+    while iterations < 20000 {
       await Task.yield()
       iterations += 1
       let now = kernel.workEpoch
@@ -263,6 +286,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
         stable = 0
         last = now
       }
+      if stable >= 64, !kernel.hasUnconsumedRecordingExit { return }
     }
   }
 
