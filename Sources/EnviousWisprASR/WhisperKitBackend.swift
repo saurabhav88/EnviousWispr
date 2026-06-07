@@ -59,17 +59,6 @@ public actor WhisperKitBackend: ASRBackend {
     "openai_whisper-large-v3-v20240930_turbo"
   }
 
-  /// Issue #445 / Codex pass 3: drop the held `loadTask` reference so the
-  /// next `prepare()` starts a fresh task instead of awaiting the wedged
-  /// one. The wedged task itself cannot be cancelled (CoreML's `MLModel.load`
-  /// is synchronous and ignores cooperative cancel) — it leaks until it
-  /// returns. But the `isReady` flag stays false, so the next call enters the
-  /// new-task branch and the user gets a clean retry.
-  public func resetLoadState() {
-    loadTask?.cancel()
-    loadTask = nil
-  }
-
   public func prepare() async throws {
     guard !isReady else { return }  // Idempotent — skip if already loaded
 

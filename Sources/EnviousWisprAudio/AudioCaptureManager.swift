@@ -587,6 +587,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   /// Returns empty — in-process VAD segments are owned by the pipeline's SilenceDetector,
   /// not by the capture manager. Only meaningful for the XPC path.
+  // periphery:ignore - XPC capture contract (invoked via NSXPC proxy)
   public func getVADSegments() async -> [SpeechSegment] {
     return []
   }

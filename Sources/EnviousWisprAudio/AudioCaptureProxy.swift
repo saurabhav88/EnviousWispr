@@ -706,6 +706,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     }
   }
 
+  // periphery:ignore - XPC capture contract (invoked via NSXPC proxy)
   public func getSamplesSnapshot(fromIndex: Int) async -> (samples: [Float], totalCount: Int) {
     // Use OneShotContinuation to guarantee exactly one resume — XPC error handler and
     // reply handler can race, and double-resume is undefined behavior.
@@ -729,6 +730,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     }
   }
 
+  // periphery:ignore - XPC capture contract (invoked via NSXPC proxy)
   public func getVADSegments() async -> [SpeechSegment] {
     // Use OneShotContinuation to guarantee exactly one resume.
     let sessionID = activeCaptureGeneration

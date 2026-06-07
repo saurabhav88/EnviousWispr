@@ -45,14 +45,14 @@ import os
 /// Callers must NOT invoke `append` while holding the RT audio lock — see
 /// `architecture-rules.md` Audio/ASR Danger Zones. Capture the message
 /// outside the RT lock and emit afterwards.
-public final class RotatingFileSink: @unchecked Sendable {
+final class RotatingFileSink: @unchecked Sendable {
   private let path: URL
   private let lockFilePath: URL
   private let maxSize: Int
   private let maxFiles: Int
   private let lock = OSAllocatedUnfairLock()
 
-  public init(path: URL, maxSize: Int = 5 * 1_024 * 1_024, maxFiles: Int = 3) {
+  init(path: URL, maxSize: Int = 5 * 1_024 * 1_024, maxFiles: Int = 3) {
     self.path = path
     // Stable companion file for cross-process flock. Never renamed, never
     // touched by rotation logic — its only role is to host an OS file lock
@@ -65,7 +65,7 @@ public final class RotatingFileSink: @unchecked Sendable {
 
   /// Append a single message to the sink. Synchronous and nonisolated; safe to
   /// call from non-RT audio paths. Failures are silent (best-effort logging).
-  public func append(_ message: String) {
+  func append(_ message: String) {
     let data = Data(message.utf8)
     lock.withLock {
       Self.atomicAppendWithRotation(

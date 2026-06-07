@@ -104,7 +104,7 @@ public actor ParakeetBackend: ASRBackend {
 
   // MARK: - Streaming ASR
 
-  public func startStreaming(options: TranscriptionOptions) async throws {
+  public func startStreaming(options _: TranscriptionOptions) async throws {
     guard isReady, let models = fluidModels else { throw ASRError.notReady }
 
     // Cancel any existing streaming session before starting a new one.

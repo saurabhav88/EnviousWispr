@@ -8,7 +8,6 @@ import Foundation
 /// resolver-helper closure needed.
 @MainActor
 final class ASREventRouter {
-  let asrManager: any ASRManagerInterface
   let kernelDriver: KernelDictationDriver
   let whisperKitKernelDriver: KernelDictationDriver
 
@@ -17,7 +16,6 @@ final class ASREventRouter {
     kernelDriver: KernelDictationDriver,
     whisperKitKernelDriver: KernelDictationDriver
   ) {
-    self.asrManager = asrManager
     self.kernelDriver = kernelDriver
     self.whisperKitKernelDriver = whisperKitKernelDriver
 

@@ -1,7 +1,6 @@
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprPipeline
-import EnviousWisprServices
 import Foundation
 
 /// PR8 of #763 — routes capture-stall, XPC reply timeout, and capture-session
@@ -9,23 +8,16 @@ import Foundation
 /// stale callbacks via `isCurrentSession` before dispatching.
 @MainActor
 final class WedgeRecoveryRouter {
-  let audioCapture: any AudioCaptureInterface
-  let kernelDriver: KernelDictationDriver
-  let whisperKitKernelDriver: KernelDictationDriver
-
   let isCurrentSession: @MainActor (UInt64) -> Bool
   let resolveActiveTelemetryTarget: @MainActor () -> (any HeartPathTelemetryTarget)?
 
   init(
     audioCapture: any AudioCaptureInterface,
-    kernelDriver: KernelDictationDriver,
-    whisperKitKernelDriver: KernelDictationDriver,
+    kernelDriver _: KernelDictationDriver,
+    whisperKitKernelDriver _: KernelDictationDriver,
     isCurrentSession: @escaping @MainActor (UInt64) -> Bool,
     resolveActiveTelemetryTarget: @escaping @MainActor () -> (any HeartPathTelemetryTarget)?
   ) {
-    self.audioCapture = audioCapture
-    self.kernelDriver = kernelDriver
-    self.whisperKitKernelDriver = whisperKitKernelDriver
     self.isCurrentSession = isCurrentSession
     self.resolveActiveTelemetryTarget = resolveActiveTelemetryTarget
 

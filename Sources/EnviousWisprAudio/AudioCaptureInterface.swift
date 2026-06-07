@@ -6,6 +6,7 @@ import EnviousWisprCore
 @MainActor
 public protocol AudioCaptureInterface: AnyObject {
   // Observable state (read-only externally)
+  // periphery:ignore - protocol requirement; prod reads concrete impls
   var isCapturing: Bool { get }
   var audioLevel: Float { get }
   var capturedSamples: [Float] { get }
@@ -52,6 +53,7 @@ public protocol AudioCaptureInterface: AnyObject {
   /// Fires on the first route resolution and on every subsequent resolution
   /// where sourceType or reason differs from the prior call. No-op on
   /// warm-reuse resolutions that produce the same decision.
+  // periphery:ignore - planned route telemetry API (producers wired, consumer pending)
   var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)? { get set }
 
   /// Monotonic per-source identifier for the active capture session.
@@ -92,6 +94,8 @@ public protocol AudioCaptureInterface: AnyObject {
 
   // VAD (Step 5)
   func configureVAD(autoStop: Bool, silenceTimeout: Double, sensitivity: Float, energyGate: Bool)
+  // periphery:ignore - XPC capture contract (invoked via NSXPC proxy)
   func getSamplesSnapshot(fromIndex: Int) async -> (samples: [Float], totalCount: Int)
+  // periphery:ignore - XPC capture contract (invoked via NSXPC proxy)
   func getVADSegments() async -> [SpeechSegment]
 }

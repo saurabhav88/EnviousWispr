@@ -115,9 +115,6 @@ final class AVAudioEngineSource: AudioInputSource {
   )
   /// Pending watchdog; cancelled on stop / deactivate / new session.
   private var stallWorkItem: DispatchWorkItem?
-  /// Uptime nanoseconds captured when the current watchdog was armed —
-  /// passed into `CaptureStallContext` for latency diagnostics.
-  private var stallArmedAtUptimeNs: UInt64 = 0
 
   // MARK: - State
 
@@ -361,7 +358,6 @@ final class AVAudioEngineSource: AudioInputSource {
     stallWorkItem?.cancel()
     let armedSession = captureGeneration
     let armedAtNs = DispatchTime.now().uptimeNanoseconds
-    stallArmedAtUptimeNs = armedAtNs
     let item = Self.makeStallWorkItem(
       armedSession: armedSession, armedAtNs: armedAtNs, source: self)
     stallWorkItem = item
