@@ -100,8 +100,6 @@ struct UnifiedWindowView: View {
       YourWordsView()
     case .clipboard:
       ClipboardSettingsView()
-    case .memory:
-      MemorySettingsView()
     case .permissions:
       PermissionsSettingsView()
     case .checkForUpdates:

@@ -925,7 +925,7 @@ def scan(toggle=False):
         ("History", [], [], [], []),  # skip button scan — 711 rows make it slow
         ("Transcription",
          ["Stop recording on silence", "Remove filler words"],
-         [], ["engine"], []),
+         ["Unload model after"], ["engine"], []),
         ("Microphone", [], ["Input"], [], []),
         ("Shortcuts", [], [], [], []),
         ("AI Polish", ["Deep reasoning"], ["Provider", "Model"],
@@ -934,7 +934,6 @@ def scan(toggle=False):
         ("Clipboard",
          ["Auto-copy to clipboard", "Restore clipboard after paste"],
          [], [], []),
-        ("Performance", [], ["Unload model after"], [], []),
         ("Permissions", [], [], [], []),
         ("Diagnostics", ["Enable debug mode"], [], [],
          ["Open Log Directory", "Copy Log Path", "Clear Logs",

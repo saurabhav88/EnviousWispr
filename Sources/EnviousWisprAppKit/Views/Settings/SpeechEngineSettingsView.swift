@@ -2,7 +2,7 @@ import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
-/// Transcription engine, multi-language options, and cleanup settings.
+/// Transcription engine, multi-language options, cleanup, and model-memory settings.
 struct SpeechEngineSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(SetupCoordinator.self) private var setup
@@ -189,6 +189,37 @@ struct SpeechEngineSettingsView: View {
               .foregroundStyle(.stTextTertiary)
           }
         }
+      }
+
+      // ── Section 6: Memory ─────────────────────────────────────────────
+      BrandedSection(header: "Memory") {
+        BrandedRow {
+          Picker("Unload model after", selection: $settings.modelUnloadPolicy) {
+            ForEach(ModelUnloadPolicy.allCases, id: \.self) { policy in
+              Text(policy.displayName).tag(policy)
+            }
+          }
+        }
+        if settings.modelUnloadPolicy != .never {
+          BrandedRow {
+            Text(
+              "The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s)."
+            )
+            .font(.stHelper)
+            .foregroundStyle(.stTextTertiary)
+          }
+        }
+        if settings.modelUnloadPolicy == .immediately {
+          BrandedRow(showDivider: false) {
+            Text(
+              "Model is freed after every transcription. Expect a reload delay on each recording."
+            )
+            .font(.stHelper)
+            .foregroundStyle(.stWarning)
+          }
+        }
+      } footer: {
+        FrozenPerRecordingFootnote()
       }
     }
     .onAppear {
