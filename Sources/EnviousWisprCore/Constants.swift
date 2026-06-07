@@ -93,10 +93,6 @@ public enum TimingConstants {
   /// Accessibility permission polling interval (seconds).
   public static let accessibilityPollIntervalSec: Double = 5.0
 
-  /// Minimum recording duration before transcription (seconds).
-  /// Recordings shorter than this are silently discarded (accidental taps).
-  public static let minimumRecordingDuration: TimeInterval = 0.5
-
   /// Maximum recording duration before graceful auto-stop (seconds).
   /// Prevents runaway recordings from consuming unbounded memory/CPU.
   /// AudioCaptureManager has a hard emergency limit at 600s; this fires earlier and gracefully.

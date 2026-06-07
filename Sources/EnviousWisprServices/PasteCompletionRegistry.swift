@@ -77,6 +77,7 @@ public final class PasteCompletionRegistry {
   }
 
   /// Test-only — current observer count (after pruning dead weak refs).
+  // periphery:ignore - test seam
   public var observerCount: Int {
     observers.removeAll { $0.value == nil }
     return observers.count

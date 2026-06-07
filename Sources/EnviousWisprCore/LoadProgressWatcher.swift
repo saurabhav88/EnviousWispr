@@ -211,6 +211,7 @@ public final class LoadProgressWatcher {
   /// resets the watcher. Useful for deterministic assertions in tests
   /// (instead of awaiting `wedged()` and hoping the scheduler resumes it
   /// within the test runner's deadline).
+  // periphery:ignore - test seam
   public var hasFired: Bool { fired }
 
   /// Snapshot of the watcher's per-attempt state. Used by the pipeline to

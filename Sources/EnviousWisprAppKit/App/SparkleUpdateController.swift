@@ -167,7 +167,6 @@ extension SparkleUpdateController: @preconcurrency SPUStandardUserDriverDelegate
     let available = UpdateAvailabilityService.AvailableUpdate(
       versionString: update.versionString,
       displayVersion: update.displayVersionString,
-      buildString: update.versionString,
       isCriticalUpdate: update.isCriticalUpdate
     )
     updateCoordinator?.service.noteAvailable(available)

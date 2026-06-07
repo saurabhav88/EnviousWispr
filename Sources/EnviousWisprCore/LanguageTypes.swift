@@ -269,10 +269,10 @@ public enum LanguageDetectorThresholds {
 
 /// Script classification helper. The set of non-Latin-script Whisper languages
 /// is fixed per spec § Layer 4.
-public enum LanguageScriptGuardrail {
+enum LanguageScriptGuardrail {
   /// ISO 639-1 codes whose dominant script is non-Latin.
   /// Sourced verbatim from the spec.
-  public static let nonLatinScriptLanguages: Set<String> = [
+  static let nonLatinScriptLanguages: Set<String> = [
     "ar", "bg", "bn", "el", "gu", "he", "hi", "ja", "ka", "km", "kn",
     "ko", "lo", "ml", "mr", "my", "ne", "pa", "ru", "sa", "si", "sr",
     "ta", "te", "th", "uk", "ur", "yi", "yue", "zh",
@@ -280,7 +280,7 @@ public enum LanguageScriptGuardrail {
 
   /// True if the ISO 639-1 language code's dominant script is not Latin.
   /// Used by the prompt layer to decide whether to strip untagged Latin terms.
-  public static func isNonLatinScript(_ lang: String) -> Bool {
+  static func isNonLatinScript(_ lang: String) -> Bool {
     nonLatinScriptLanguages.contains(lang.lowercased())
   }
 
@@ -289,13 +289,13 @@ public enum LanguageScriptGuardrail {
   /// switch to character-count for these. Note: Korean DOES use whitespace
   /// between Eojeol word units, so it stays on the word-count path. Arabic,
   /// Hebrew, Cyrillic, and Indic scripts also use whitespace.
-  public static let unsegmentedScriptLanguages: Set<String> = [
+  static let unsegmentedScriptLanguages: Set<String> = [
     "ja", "zh", "yue", "th", "lo", "my", "km",
   ]
 
   /// True if the language uses a script that does not separate words with
   /// whitespace. See `unsegmentedScriptLanguages`.
-  public static func isUnsegmentedScript(_ lang: String) -> Bool {
+  static func isUnsegmentedScript(_ lang: String) -> Bool {
     unsegmentedScriptLanguages.contains(lang.lowercased())
   }
 }
