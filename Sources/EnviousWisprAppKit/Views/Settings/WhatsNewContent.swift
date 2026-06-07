@@ -4,8 +4,6 @@ import Foundation
 /// Static "What's New" content, decoupled from the view layer.
 /// Update WhatsNewConstants.currentContentVersion in Core whenever entries change.
 enum WhatsNewContent {
-  static let contentVersion = WhatsNewConstants.currentContentVersion
-
   enum Category: String, CaseIterable, Identifiable {
     case newFeatures = "New Features"
     case smarterAIPolish = "Smarter AI Polish"

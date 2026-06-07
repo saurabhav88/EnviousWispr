@@ -607,6 +607,7 @@ final class RecordingOverlayPanel {
   /// `markLocked()` / `updateLockState(_:)` actually toggled the overlay rather
   /// than only the shared lock setter. Mirrors the
   /// `ASRManagerProxy.isProgressPollingActiveForTesting` test-accessor pattern.
+  // periphery:ignore - test seam
   internal var isRecordingLockedForTesting: Bool { isRecordingLocked }
 
   /// Show the passive language-detection chip as a floating panel. Mirrors the

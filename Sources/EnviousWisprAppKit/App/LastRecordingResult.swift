@@ -1,4 +1,3 @@
-import EnviousWisprCore
 import Foundation
 import Observation
 

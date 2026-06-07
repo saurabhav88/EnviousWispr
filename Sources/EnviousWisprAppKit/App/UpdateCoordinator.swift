@@ -239,7 +239,7 @@ final class UpdateCoordinator {
 /// the property changes.
 @Observable
 @MainActor
-public final class UpdateCoordinatorHolder {
+final class UpdateCoordinatorHolder {
   var coordinator: UpdateCoordinator?
-  public init() {}
+  init() {}
 }
