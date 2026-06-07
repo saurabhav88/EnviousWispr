@@ -44,7 +44,6 @@ public enum VocabularyPackID: String, CaseIterable, Sendable, Codable, Identifia
 }
 
 public struct VocabularyPack: Sendable {
-  public let id: VocabularyPackID
   public let terms: [CustomWord]
 }
 
@@ -55,11 +54,6 @@ public final class VocabularyPackStore: Sendable {
   /// Production: loads from this module's `Bundle.module`.
   public init() {
     self.bundle = .module
-  }
-
-  /// Test seam: inject a fixture bundle.
-  package init(bundle: Bundle) {
-    self.bundle = bundle
   }
 
   /// Pack IDs whose JSON resolves in the bundle. Fail-open: unresolved packs
@@ -80,7 +74,7 @@ public final class VocabularyPackStore: Sendable {
         source: .pack
       )
     }
-    return VocabularyPack(id: id, terms: terms)
+    return VocabularyPack(terms: terms)
   }
 
   /// Flattened terms for every enabled pack (deterministic order). Missing

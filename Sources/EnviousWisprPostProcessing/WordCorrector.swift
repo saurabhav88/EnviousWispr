@@ -353,6 +353,7 @@ public struct WordCorrector: Sendable {
 
   /// Convenience overload — builds lookups inline. Use this when you only
   /// call `correct` once per vocabulary (legacy callers, tests).
+  // periphery:ignore - test seam
   public func correct(_ text: String, against words: [CustomWord]) -> (
     corrected: String, replacements: [Replacement]
   ) {

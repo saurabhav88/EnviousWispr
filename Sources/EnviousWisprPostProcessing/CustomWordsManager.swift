@@ -42,6 +42,7 @@ public final class CustomWordsManager {
   /// per-test temp file instead of the production Application Support path.
   /// Production code always uses the zero-arg `init()`. Bible §9.3 disk
   /// round-trip coverage was missing from Phase 3b; this seam closes it.
+  // periphery:ignore - test seam
   package init(fileURL: URL) {
     self.fileURL = fileURL
     let directory = fileURL.deletingLastPathComponent()
@@ -209,6 +210,7 @@ public final class CustomWordsManager {
   /// Phase 3b (#631): test seam — synchronously flush any pending increments.
   /// Production code never calls this; tests use it to validate the writer
   /// without waiting for the 30s debounce timer.
+  // periphery:ignore - test seam
   package func flushPendingIncrementsForTesting() {
     flushPendingIncrements()
   }
