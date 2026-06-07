@@ -552,6 +552,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// that a queued feed saw the terminated session and skipped — instead of
   /// yield-polling `feedAudioCount`. Each task always returns (it guards on the
   /// session check and returns), so the await is bounded.
+  // periphery:ignore - test seam
   internal var feedTasksForUnitTests: [Task<Void, Never>] { feedTasks }
 }
 

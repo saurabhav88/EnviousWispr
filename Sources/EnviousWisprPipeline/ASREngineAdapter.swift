@@ -198,7 +198,7 @@ public struct AudioBufferHandoff: @unchecked Sendable {
 /// MUST / MUST NOT clauses in PR-1 §B.2.2 define the behavior every conformer
 /// (`FakeEngine`, and the PR-4 / PR-5 real adapters) must implement.
 @MainActor
-public protocol ASREngineAdapter: AnyObject {
+package protocol ASREngineAdapter: AnyObject {
   // MARK: Identity & capability
 
   /// Self-declared engine identity. The kernel and factory read identity from
