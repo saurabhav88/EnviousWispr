@@ -1,9 +1,9 @@
 import EnviousWisprCore
-import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation
 import Testing
 
+@testable import EnviousWisprLLM
 @testable import EnviousWisprPipeline
 
 /// Tests for dual-mode polish telemetry plumbing (#429).

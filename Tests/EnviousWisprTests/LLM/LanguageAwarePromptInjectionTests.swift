@@ -70,7 +70,6 @@ struct LanguageAwarePromptInjectionTests {
     let result = DefaultPromptPlanner.filterCustomWords(
       [],
       tier: .locked,
-      detectedLang: "ja",
       allowedStrings: Set(vocab.effectiveTerms(detectedLang: "ja", tier: .locked))
     )
     let canonicals = Set(result.map(\.canonical))

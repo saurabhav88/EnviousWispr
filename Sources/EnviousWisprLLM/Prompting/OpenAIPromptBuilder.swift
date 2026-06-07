@@ -6,10 +6,10 @@ import EnviousWisprCore
 /// ASR-awareness clause, appName context block, language override prefix, short-text
 /// guard, and custom vocabulary rendering. Gemini-specific system text (`V2SystemBase`)
 /// and mode clauses (`formattingClause`) are NOT used by this builder.
-public struct OpenAIPromptBuilder: PromptBuilder {
-  public init() {}
+struct OpenAIPromptBuilder: PromptBuilder {
+  init() {}
 
-  public func build(input: PromptBuildInput, mode: PolishMode) -> PromptEnvelope {
+  func build(input: PromptBuildInput, mode: PolishMode) -> PromptEnvelope {
     var system = ""
 
     // Language override (prepended for non-English transcripts).

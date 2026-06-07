@@ -4,10 +4,10 @@ import EnviousWisprCore
 /// Uses few-shot examples to teach formatting (Gemma mirrors demonstrated format).
 /// No context block (eval showed no quality difference for Gemma).
 /// No separate ASR clause (few-shot examples implicitly teach correction).
-public struct GemmaPromptBuilder: PromptBuilder {
-  public init() {}
+struct GemmaPromptBuilder: PromptBuilder {
+  init() {}
 
-  public func build(input: PromptBuildInput, mode: PolishMode) -> PromptEnvelope {
+  func build(input: PromptBuildInput, mode: PolishMode) -> PromptEnvelope {
     // Weak model override: simplified prompt, no formatting, no few-shot
     if OllamaSetupService.isWeakModel(input.modelID) {
       return buildWeakModel(transcript: input.transcript)

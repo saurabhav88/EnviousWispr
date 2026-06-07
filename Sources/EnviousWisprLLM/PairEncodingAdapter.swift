@@ -21,12 +21,12 @@ public struct EncodedClassifierInput: Equatable, Sendable {
 ///   6. assemble specials by walking `pairTemplate.sequence`
 ///   7. segment ids by the same walk (`bert_segments` / `none`)
 ///   8. attention mask 1=real 0=pad; right-pad ids/mask/segments to maxLength
-public struct PairEncodingAdapter: Sendable {
-  public let contract: TokenizerContract
+struct PairEncodingAdapter: Sendable {
+  let contract: TokenizerContract
   /// Tokenize one side as a single text WITHOUT special tokens.
   private let encode: @Sendable (String) -> [Int]
 
-  public init(contract: TokenizerContract, encode: @escaping @Sendable (String) -> [Int]) {
+  init(contract: TokenizerContract, encode: @escaping @Sendable (String) -> [Int]) {
     self.contract = contract
     self.encode = encode
   }
@@ -41,7 +41,7 @@ public struct PairEncodingAdapter: Sendable {
   /// requires positive budgets, a sane maxLength, and that every template
   /// special resolves. Any violation throws `.disabled(.unsupportedFamily)` so
   /// the classifier disables and fails open (Codex P2). Call once at load.
-  public func validate() throws {
+  func validate() throws {
     func require(_ condition: Bool) throws {
       if !condition { throw OutputClassifierError.disabled(.unsupportedFamily) }
     }
@@ -60,7 +60,7 @@ public struct PairEncodingAdapter: Sendable {
     }
   }
 
-  public func encodePair(input: String, output: String) -> EncodedClassifierInput {
+  func encodePair(input: String, output: String) -> EncodedClassifierInput {
     var inIDs = encode(contract.inputPrefix + input)
     var outIDs = encode(contract.outputPrefix + output)
 

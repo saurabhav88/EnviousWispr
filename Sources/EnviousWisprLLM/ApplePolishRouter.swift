@@ -94,16 +94,16 @@ public enum RouterBasis: Sendable, Equatable {
 ///
 /// Tunability: every threshold, noun list, and weight lives in one file so
 /// later telemetry-driven adjustments are a single PR.
-public enum ApplePolishRouter {
+enum ApplePolishRouter {
 
   /// A routing decision with the mode and the signals that produced it.
-  public struct Decision: Equatable, Sendable {
-    public let mode: ApplePolishMode
-    public let score: Int
-    public let basis: RouterBasis
-    public let signals: [RouterSignal]
+  struct Decision: Equatable, Sendable {
+    let mode: ApplePolishMode
+    let score: Int
+    let basis: RouterBasis
+    let signals: [RouterSignal]
 
-    public init(
+    init(
       mode: ApplePolishMode, score: Int, basis: RouterBasis, signals: [RouterSignal]
     ) {
       self.mode = mode
@@ -116,12 +116,13 @@ public enum ApplePolishRouter {
   // MARK: - Public entry points
 
   /// Classify a post-ASR transcript and return `natural` or `technical`.
-  public static func classify(_ text: String) -> ApplePolishMode {
+  // periphery:ignore - test seam
+  static func classify(_ text: String) -> ApplePolishMode {
     decide(text).mode
   }
 
   /// Classify and return the full decision with signals (for logging / tests).
-  public static func decide(_ text: String) -> Decision {
+  static func decide(_ text: String) -> Decision {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else {
       return Decision(mode: .natural, score: 0, basis: .empty, signals: [.emptyInput])

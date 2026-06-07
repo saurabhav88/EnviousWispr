@@ -17,15 +17,15 @@ import Foundation
 ///      input didn't, AFM executed instead of cleaned. Fall back to raw input.
 ///   3. Length backstop — if stripped body is > 1.5x input + 50 chars, assume
 ///      AFM generated a novel/essay. Fall back to raw input.
-public enum EnviousOutputFilter {
+enum EnviousOutputFilter {
 
-  public struct Result: Equatable, Sendable {
-    public let polished: String
-    public let fellBackToRaw: Bool
-    public let tripped: String?
+  struct Result: Equatable, Sendable {
+    let polished: String
+    let fellBackToRaw: Bool
+    let tripped: String?
   }
 
-  public static func filter(input: String, output: String) -> Result {
+  static func filter(input: String, output: String) -> Result {
     let rawInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
     let rawOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -86,7 +86,7 @@ public enum EnviousOutputFilter {
   /// Fail-open: a nil classifier, timeout, throw, NaN, or any disable reason
   /// returns the synchronous result unchanged. Never blocks dictation. Telemetry
   /// logs score/decision/latency only — never raw text or tokens.
-  public static func filterWithClassifier(
+  static func filterWithClassifier(
     input: String,
     output: String,
     classifier: OutputClassifierProtocol?
