@@ -87,8 +87,6 @@ final class ContactsImportCoordinator {
     self.importedCount = stateStore.load().importedContactIDs.count
   }
 
-  var authorizationStatus: ContactsAuthorization { provider.authorizationStatus() }
-
   /// Step 1 (user taps Import): request access if needed, fetch, shape, dedupe,
   /// and stage a preview for the confirm sheet. Writes nothing.
   func prepareImport() async {
@@ -376,6 +374,7 @@ final class ContactsImportCoordinator {
 
   /// Test seam: await the current enrichment task to completion (no sleeps).
   /// Returns immediately when no job is running.
+  // periphery:ignore - test seam
   package func awaitEnrichmentForTesting() async {
     await enrichmentTask?.value
   }

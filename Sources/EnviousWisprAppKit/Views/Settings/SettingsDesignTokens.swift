@@ -33,19 +33,11 @@ extension Color {
 // MARK: - ShapeStyle Shorthands (enables `.stAccent` in `.foregroundStyle()`)
 
 extension ShapeStyle where Self == Color {
-  static var stPageBg: Color { Color.stPageBg }
-  static var stSectionBg: Color { Color.stSectionBg }
-  static var stSidebarBg: Color { Color.stSidebarBg }
   static var stTextSecondary: Color { Color.stTextSecondary }
   static var stTextTertiary: Color { Color.stTextTertiary }
   static var stAccent: Color { Color.stAccent }
-  static var stAccentLight: Color { Color.stAccentLight }
-  static var stToggleOn: Color { Color.stToggleOn }
-  static var stToggleOff: Color { Color.stToggleOff }
-  static var stDivider: Color { Color.stDivider }
   static var stSuccess: Color { Color.stSuccess }
   static var stWarning: Color { Color.stWarning }
-  static var stWarningSoft: Color { Color.stWarningSoft }
   static var stError: Color { Color.stError }
 }
 

@@ -48,6 +48,7 @@ final class TranscriptCoordinator {
     }
   }
 
+  // periphery:ignore - test seam
   func waitForLoadForTesting() async {
     await loadTask?.value
   }

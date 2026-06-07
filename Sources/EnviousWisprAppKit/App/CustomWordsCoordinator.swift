@@ -26,22 +26,10 @@ final class CustomWordsCoordinator {
 
   /// Test seam (#636): inject a temp-file-backed manager so hermetic tests of
   /// the contacts-import flow never touch the production custom-words file.
+  // periphery:ignore - test seam
   package init(manager: CustomWordsManager) {
     self.manager = manager
     customWords = manager.load() ?? []
-  }
-
-  @discardableResult
-  func add(_ word: String) -> String? {
-    do {
-      try manager.add(canonical: word, to: &customWords)
-      onWordsChanged?(customWords)
-      customWordError = nil
-      return nil
-    } catch {
-      customWordError = error.localizedDescription
-      return customWordError
-    }
   }
 
   @discardableResult

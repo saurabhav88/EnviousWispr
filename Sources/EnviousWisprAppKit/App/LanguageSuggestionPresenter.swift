@@ -39,11 +39,11 @@ import Foundation
 /// this type's signature).
 @MainActor
 @Observable
-public final class LanguageSuggestionPresenter {
+final class LanguageSuggestionPresenter {
   /// Currently visible chip payload (nil = none). Internal observers may read
   /// this for UI state; the canonical "show this chip" call happens via the
   /// injected `showOverlay` closure inside `surfaceBufferedChipIfPossible`.
-  public private(set) var currentChip: LanguageChipPayload?
+  private(set) var currentChip: LanguageChipPayload?
 
   // MARK: - Persisted state (UserDefaults)
 
@@ -83,7 +83,7 @@ public final class LanguageSuggestionPresenter {
   /// fire a false second recording-complete announcement to VoiceOver users.
   private let hideOverlay: @MainActor () -> Void
 
-  public init(
+  init(
     showOverlay: @escaping @MainActor (OverlayIntent) -> Void,
     readCurrentIntent: @escaping @MainActor () -> OverlayIntent,
     hideOverlay: @escaping @MainActor () -> Void,
@@ -101,7 +101,7 @@ public final class LanguageSuggestionPresenter {
   /// Called from `LanguageDetector` emit handler during `.transcribing`.
   /// Filters obvious irrelevance (wrong reason, English, nil lang) then stores
   /// the latest trigger for surfacing on pipeline completion. Latest-wins.
-  public func bufferTrigger(_ trigger: PassiveChipTrigger) {
+  func bufferTrigger(_ trigger: PassiveChipTrigger) {
     guard trigger.reason == .consistentHighConfidence else { return }
     guard let rawLang = trigger.lang else { return }
     let base = normalizedBase(rawLang)
@@ -130,7 +130,7 @@ public final class LanguageSuggestionPresenter {
   ///
   /// The buffered trigger is consumed regardless of outcome (a stale trigger
   /// should not roll over into the next dictation).
-  public func surfaceBufferedChipIfPossible(currentLanguageMode: LanguageMode) {
+  func surfaceBufferedChipIfPossible(currentLanguageMode: LanguageMode) {
     guard let trigger = bufferedTrigger else { return }
     bufferedTrigger = nil
     guard let rawLang = trigger.lang else { return }
@@ -203,12 +203,12 @@ public final class LanguageSuggestionPresenter {
 
   /// Clear the currently visible chip payload, e.g. when a new recording starts
   /// or pipeline errors. Hides the overlay via the injected closure.
-  public func clearCurrentChip() {
+  func clearCurrentChip() {
     currentChip = nil
   }
 
   /// Cancel/error path: drop any buffered trigger so it does not surface later.
-  public func clearBuffer() {
+  func clearBuffer() {
     bufferedTrigger = nil
   }
 
@@ -217,7 +217,7 @@ public final class LanguageSuggestionPresenter {
   /// User tapped Lock. Returns the language code so the caller can write
   /// `settings.languageMode = .locked(lang)`. Hides the chip overlay.
   @discardableResult
-  public func accept() -> String? {
+  func accept() -> String? {
     guard let chip = currentChip else { return nil }
     let prevCount = dismissalCounts[chip.lang] ?? 0
     dismissalCounts[chip.lang] = 0
@@ -235,7 +235,7 @@ public final class LanguageSuggestionPresenter {
 
   /// User tapped the Dismiss button (explicit). Increments the dismissal count.
   /// Crossing the State-B boundary suppresses the language. Hides the chip overlay.
-  public func dismissExplicit() {
+  func dismissExplicit() {
     guard let chip = currentChip else { return }
     let prevCount = dismissalCounts[chip.lang] ?? 0
     let newCount = prevCount + 1
@@ -275,7 +275,7 @@ public final class LanguageSuggestionPresenter {
   /// overlay is still showing the chip — Codex code-diff r4 [P2]: a stale
   /// auto-dismiss task from a chip that was replaced by recording/processing/
   /// clipboardFallback would otherwise call .hidden and clobber the new overlay.
-  public func autoDismiss(generation: UInt64) {
+  func autoDismiss(generation: UInt64) {
     guard let chip = currentChip, chip.generation == generation else { return }
     let prevCount = dismissalCounts[chip.lang] ?? 0
     currentChip = nil
@@ -297,7 +297,7 @@ public final class LanguageSuggestionPresenter {
   /// Settings reset: clear all chip state (counts, suppression, buffer, current,
   /// last-shown). Persisted keys are fully REMOVED (not overwritten with empty
   /// values) so re-reads start from a clean absent-key state.
-  public func resetAllChipState() {
+  func resetAllChipState() {
     let priorCounts = dismissalCounts.count
     let priorSuppressed = suppressedLanguages.count
     let chipWasVisibleBeforeReset = currentChip != nil

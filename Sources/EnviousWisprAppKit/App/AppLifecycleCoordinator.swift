@@ -29,6 +29,7 @@ final class AppLifecycleCoordinator {
   // Owned process-lifetime objects: constructed in `runDidFinishLaunching`,
   // torn down in `runWillTerminate`.
   private var audioEnvironmentSnapshotter: AudioEnvironmentSnapshotter?
+  // periphery:ignore - retain anchor: owns audio-system observer lifetime
   private var audioSystemEventReporter: AudioSystemEventReporter?
 
   #if DEBUG
