@@ -25,7 +25,6 @@ final class RecordingStarter {
   let kernelDriver: KernelDictationDriver
   let whisperKitKernelDriver: KernelDictationDriver
   let settings: SettingsManager
-  let permissions: PermissionsService
   let recordingOverlay: RecordingOverlayPanel
   /// #904 test seam — the accessibility re-arm step `start()`/`toggle()` run.
   /// Default (bound in init capturing `permissions`, since a default arg can't
@@ -80,7 +79,6 @@ final class RecordingStarter {
     self.kernelDriver = kernelDriver
     self.whisperKitKernelDriver = whisperKitKernelDriver
     self.settings = settings
-    self.permissions = permissions
     self.recordingOverlay = recordingOverlay
     self.heartControlRecovery = heartControlRecovery
     self.recordingLockedAccess = recordingLockedAccess

@@ -176,6 +176,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// for the #586 regression test that exercises the polling lifecycle without
   /// going through the (XPC-coupled) `loadModel` happy path. Tests reach it
   /// via `@testable import EnviousWisprASR`.
+  // periphery:ignore - test seam
   internal var isProgressPollingActiveForTesting: Bool { progressPollTimer != nil }
 
   /// Read-only handle to the live polling timer, for the #586 leak-regression
@@ -183,6 +184,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// assert it was invalidated (a leak is invisible through the `!= nil` flag
   /// above, which only ever sees the newest timer). Read-only window onto the
   /// existing private state — adds no behavior and no new stored property.
+  // periphery:ignore - test seam
   internal var progressPollTimerForTesting: Timer? { progressPollTimer }
 
   internal func startProgressPolling() {

@@ -3,7 +3,7 @@ import CoreAudio
 /// Policy for selecting the audio capture source.
 /// `.automatic` decides based on output route + input intent.
 /// `.forceEngine` / `.forceCaptureSession` are for debugging/testing.
-public enum CaptureSourcePolicy: Sendable {
+enum CaptureSourcePolicy: Sendable {
   case automatic
   case forceEngine
   case forceCaptureSession

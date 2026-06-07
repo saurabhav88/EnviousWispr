@@ -51,7 +51,7 @@ public protocol ASRBackend: Actor {
 extension ASRBackend {
   public var supportsStreaming: Bool { false }
 
-  public func startStreaming(options: TranscriptionOptions) async throws {
+  public func startStreaming(options _: TranscriptionOptions) async throws {
     throw ASRError.streamingNotSupported
   }
 

@@ -32,9 +32,13 @@ import Foundation
 @MainActor
 @Observable
 final class DictationRuntime {
+  // periphery:ignore - retain anchor: owns the lifecycle coordinator (installs weak-self driver callbacks)
   private let dictationLifecycleCoordinator: DictationLifecycleCoordinator
+  // periphery:ignore - retain anchor: owns the audio event router (AVAudio observer + weak-self callbacks)
   private let audioEventRouter: AudioEventRouter
+  // periphery:ignore - retain anchor: owns the ASR event router (asrManager.onServiceInterrupted weak-self callback)
   private let asrEventRouter: ASREventRouter
+  // periphery:ignore - retain anchor: owns the wedge-recovery router (audioCapture weak-self callbacks)
   private let wedgeRecoveryRouter: WedgeRecoveryRouter
   private let hotkeyController: HotkeyController
   private let starter: RecordingStarter

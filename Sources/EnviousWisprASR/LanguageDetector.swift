@@ -448,11 +448,13 @@ public actor LanguageDetector {
   public func peekMemory() -> SessionLanguageMemory { memory }
   /// Testing-only: seed memory (e.g., for anti-flap setups without replaying
   /// full history).
+  // periphery:ignore - test seam
   public func setMemoryForTesting(_ memory: SessionLanguageMemory) {
     self.memory = memory
   }
   /// Testing seam: run Layer 3 logic over a pre-computed probability dict.
   /// Skips the WhisperKit call so tests do not need a real model.
+  // periphery:ignore - test seam
   public func evaluateForTesting(
     windowProbs: [String: Double],
     voicedDuration: TimeInterval,

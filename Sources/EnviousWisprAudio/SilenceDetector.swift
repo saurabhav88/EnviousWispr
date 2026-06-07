@@ -334,32 +334,6 @@ public actor SilenceDetector {
     }
   }
 
-  public func filterSamples(from allSamples: [Float], padding: Int = 1600) -> [Float] {
-    guard !speechSegments.isEmpty else { return allSamples }
-
-    let totalVoiced = speechSegments.reduce(0) { $0 + ($1.endSample - $1.startSample) }
-    guard totalVoiced >= 4800 else { return allSamples }
-
-    // Build padded ranges and merge overlaps
-    var merged: [(start: Int, end: Int)] = []
-    for segment in speechSegments {
-      let start = max(0, segment.startSample - padding)
-      let end = min(allSamples.count, segment.endSample + padding)
-      if let last = merged.last, start <= last.end {
-        merged[merged.count - 1].end = max(last.end, end)
-      } else {
-        merged.append((start, end))
-      }
-    }
-
-    var result: [Float] = []
-    for range in merged {
-      guard range.start < range.end else { continue }
-      result.append(contentsOf: allSamples[range.start..<range.end])
-    }
-    return result.isEmpty ? allSamples : result
-  }
-
   // MARK: - Private Helpers
 
   /// Applies a FluidAudio streaming VAD boundary event to `speechSegments`.

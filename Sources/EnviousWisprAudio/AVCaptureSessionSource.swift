@@ -26,10 +26,6 @@ private final class SessionLifecycleSignal<T: Sendable>: @unchecked Sendable {
     self.continuation = continuation
   }
 
-  func observe(name: Notification.Name, object: Any?, returning value: T) {
-    observe(name: name, object: object, returning: value, onSignal: nil)
-  }
-
   func observe(
     name: Notification.Name,
     object: Any?,
