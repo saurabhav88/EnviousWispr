@@ -26,6 +26,45 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.1.3
+
+    Entry(
+      id: "import-names-from-contacts",
+      icon: "person.crop.circle.badge.plus",
+      title: "Bring in the names of people you know",
+      description:
+        "One tap on \"Import from Contacts\" adds the people in your address book to your custom words, so a coworker's or friend's hard-to-spell name comes out right the first time. Everything stays on your Mac. Your contacts are never uploaded. EnviousWispr also quietly learns the common ways each name gets misheard, so it catches those too.",
+      category: .newFeatures,
+      version: "2.1.3"
+    ),
+    Entry(
+      id: "vocabulary-packs",
+      icon: "books.vertical",
+      title: "Vocabulary packs for brands and jargon",
+      description:
+        "Turn on a pack and EnviousWispr recognizes those words and capitalizes them the way they're meant to be written (AngularJS, Nivea, Acosta). Each pack has a searchable list, so you can see every word it covers and the spoken variants it catches.",
+      category: .newFeatures,
+      version: "2.1.3"
+    ),
+    Entry(
+      id: "no-swallowed-press-after-idle",
+      icon: "clock.arrow.circlepath",
+      title: "No more swallowed first press after a break",
+      description:
+        "If you left the app idle for a while, your next recording could get eaten while it flashed a \"warming up\" notice, even though it was basically ready. It now quietly re-wakes in a fraction of a second and captures your words, including the very first one.",
+      category: .fasterAndMoreReliable,
+      version: "2.1.3"
+    ),
+    Entry(
+      id: "simpler-settings-performance",
+      icon: "slider.horizontal.3",
+      title: "One less Settings tab to hunt through",
+      description:
+        "The \"Performance\" tab held just one control: how long to keep the engine loaded between recordings. It now sits at the bottom of the Transcription screen, right where it belongs, so Settings has one less place to look.",
+      category: .qualityOfLife,
+      version: "2.1.3"
+    ),
+
     // MARK: - v2.1.2
 
     Entry(
