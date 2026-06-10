@@ -505,7 +505,9 @@ jobs:
         needs.build-release-artifacts.result == 'skipped'
       )
     runs-on: [self-hosted, enviouswispr-release]
-    timeout-minutes: 10
+    # #1019: bumped 10→20 to accommodate the wait-for-Pages-deploy poll before
+    # the edge purge + verify (the deploy + edge refresh can take several min).
+    timeout-minutes: 20
     steps:
       - name: Checkout main
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -597,6 +599,71 @@ jobs:
             git push origin main
             echo "==> Appcast pushed to main"
           fi
+
+      # ----------------------------------------------------------------------
+      # #1019 C2 — instantly-fresh feed at the edge.
+      # The appcast push above triggers deploy-blog.yml (paths: website/**) →
+      # Cloudflare Pages redeploy. Cloudflare's edge was observed serving the
+      # stale appcast well past its TTL (#948), so after the deploy is live we
+      # purge the edge for appcast.xml and verify the canonical URL serves the
+      # new version. All three steps are limbs (continue-on-error): on failure
+      # the release still ships and the feed self-refreshes at max-age=60.
+      # ----------------------------------------------------------------------
+      - name: Wait for Cloudflare Pages deploy of new appcast
+        id: wait-pages
+        if: steps.check-appcast.outputs.exists == 'false' && steps.push-appcast.outcome == 'success'
+        continue-on-error: true
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          # Cache-bypassing poll: a unique query string misses the Cloudflare
+          # edge cache and hits the Pages origin, so this observes the deploy
+          # going live (independent of the edge cache state).
+          URL="https://enviouswispr.com/appcast.xml?cb=${{ github.run_id }}-${{ github.run_attempt }}"
+          for i in $(seq 1 30); do
+            if curl -fsS "$URL" | grep -qF "<sparkle:version>${VERSION}</sparkle:version>"; then
+              echo "==> Pages origin live with v${VERSION} (attempt ${i})"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::warning::Pages deploy did not surface v${VERSION} within ~7.5m; edge self-refreshes at max-age=60."
+          exit 1
+
+      - name: Purge Cloudflare edge cache for appcast
+        id: purge-edge
+        if: steps.check-appcast.outputs.exists == 'false' && steps.push-appcast.outcome == 'success' && steps.wait-pages.outcome == 'success'
+        continue-on-error: true
+        env:
+          CF_PURGE_TOKEN: ${{ secrets.CLOUDFLARE_PURGE_TOKEN }}
+        run: |
+          # Scoped cache-purge token (single zone: enviouswispr.com). Bearer auth.
+          curl -fsS -X POST \
+            "https://api.cloudflare.com/client/v4/zones/b4416a0f0ebd699e96969a331c7ad7ff/purge_cache" \
+            -H "Authorization: Bearer ${CF_PURGE_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"files":["https://enviouswispr.com/appcast.xml"]}'
+          echo ""
+          echo "==> Requested edge purge for appcast.xml"
+
+      - name: Verify canonical appcast serves new version
+        if: steps.check-appcast.outputs.exists == 'false' && steps.push-appcast.outcome == 'success' && steps.wait-pages.outcome == 'success'
+        continue-on-error: true
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          # The canonical (cacheable) URL must serve the new version after purge.
+          for i in $(seq 1 6); do
+            if curl -fsS "https://enviouswispr.com/appcast.xml" | grep -qF "<sparkle:version>${VERSION}</sparkle:version>"; then
+              echo "==> Canonical appcast.xml now serves v${VERSION} (attempt ${i})"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::warning::Canonical appcast.xml still stale after purge; edge self-refreshes at max-age=60."
+          # Surface as a failed-but-nonblocking limb (continue-on-error) so a
+          # stale-after-purge is visible in the run, not a silent green.
+          exit 1
 
       - name: Fallback — open appcast PR
         id: fallback-pr
