@@ -37,6 +37,11 @@ struct PasteDeliveryResultLabelTests {
         outcome: .delivered(tier: .appleScript, durationMs: 3)
       ),
       PasteDeliveryResult(
+        tier: .menuPaste,
+        durationMs: 3,
+        outcome: .delivered(tier: .menuPaste, durationMs: 3)
+      ),
+      PasteDeliveryResult(
         tier: .clipboardOnly,
         durationMs: 4,
         outcome: .delivered(tier: .clipboardOnly, durationMs: 4)
