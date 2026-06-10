@@ -59,6 +59,13 @@ public final class UpdateAvailabilityService {
   @ObservationIgnored private let defaults: UserDefaults
   @ObservationIgnored private let currentBundleVersion: String
 
+  /// #1019: AppKit-facing change hook (the `@Observable` macro only notifies
+  /// SwiftUI dependency tracking; AppKit consumers — the menu-bar icon, the
+  /// once-per-version notification — get no callback from it). Mirrors the
+  /// `SettingsManager.onChange` / `PermissionsService.onAccessibilityChange`
+  /// single-slot pattern. Fired from every `state` mutation.
+  @ObservationIgnored public var onAvailabilityChange: (() -> Void)?
+
   // MARK: - Init
 
   public init(
@@ -105,6 +112,7 @@ public final class UpdateAvailabilityService {
     state = .available(update)
     dismissedForSession = (defaults.string(forKey: Self.kDismissedVersion) == update.versionString)
     persist(update)
+    onAvailabilityChange?()
   }
 
   /// Public API retained for tests; no in-app caller post-#739. Sparkle's
@@ -117,6 +125,7 @@ public final class UpdateAvailabilityService {
     resolvingWatchdog?.cancel()
     resolvingWatchdog = nil
     clearPersisted()
+    onAvailabilityChange?()
   }
 
   // MARK: - User-driven mutations
@@ -131,6 +140,7 @@ public final class UpdateAvailabilityService {
 
   public func triggerInstall() {
     state = .resolving
+    onAvailabilityChange?()
     installAction()
     // Watchdog: if no terminal signal arrives within 5s, restore .available so
     // the user can retry. Keeps the banner from getting stuck if Sparkle no-ops.
@@ -142,6 +152,7 @@ public final class UpdateAvailabilityService {
         guard let self else { return }
         if case .resolving = self.state, let pending = self.persistedPending() {
           self.state = .available(pending)
+          self.onAvailabilityChange?()
         }
       }
     }
@@ -190,6 +201,7 @@ public final class UpdateAvailabilityService {
       // is not silently suppressed by historical state.
       defaults.removeObject(forKey: Self.kDismissedVersion)
       dismissedForSession = false
+      onAvailabilityChange?()
     } else {
       // Bundle has caught up to or surpassed pending — user installed by some path.
       clearPersisted()
