@@ -14,5 +14,5 @@
   Cache-Control: public, max-age=2592000
 
 /appcast.xml
-  Cache-Control: public, max-age=300
+  Cache-Control: public, max-age=60
   X-Robots-Tag: noindex
