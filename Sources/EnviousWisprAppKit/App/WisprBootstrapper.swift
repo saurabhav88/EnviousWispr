@@ -26,6 +26,7 @@ public final class WisprBootstrapper {
   let languageSuggestionPresenter: LanguageSuggestionPresenter
   let updateCoordinatorHolder: UpdateCoordinatorHolder
   let sparkleUpdateController: SparkleUpdateController
+  let updateTriggerCoordinator: UpdateTriggerCoordinator
   let transcriptWorkflowCoordinator: TranscriptWorkflowCoordinator
   let liveRecordingState: LiveRecordingState
   let lastRecordingResult: LastRecordingResult
@@ -328,6 +329,14 @@ public final class WisprBootstrapper {
     let updateCoordinatorHolder = UpdateCoordinatorHolder()
     let sparkleUpdateController = SparkleUpdateController(holder: updateCoordinatorHolder)
 
+    // #1019: event-driven update-discovery triggers (wake / network). Data-free
+    // — it reads `updateCoordinator` lazily (nil until `startUpdater()`), so it
+    // tolerates being constructed before Sparkle boots.
+    let updateTriggerCoordinator = UpdateTriggerCoordinator(
+      onTrigger: { [weak sparkleUpdateController] trigger in
+        sparkleUpdateController?.updateCoordinator?.checkForUpdatesProactively(trigger: trigger)
+      })
+
     let transcriptWorkflowCoordinator = TranscriptWorkflowCoordinator(
       transcriptCoordinator: transcriptCoordinator,
       polishService: polishService
@@ -458,6 +467,7 @@ public final class WisprBootstrapper {
     self.languageSuggestionPresenter = languageSuggestionPresenter
     self.updateCoordinatorHolder = updateCoordinatorHolder
     self.sparkleUpdateController = sparkleUpdateController
+    self.updateTriggerCoordinator = updateTriggerCoordinator
     self.transcriptWorkflowCoordinator = transcriptWorkflowCoordinator
     self.liveRecordingState = liveRecordingState
     self.lastRecordingResult = lastRecordingResult
@@ -544,8 +554,15 @@ public final class WisprBootstrapper {
 
   public func applicationWillFinishLaunching() {
     sparkleUpdateController.startUpdater()
+    // #1019: wire the active-dictation guard so the new install affordances
+    // (menu item / notification) never relaunch the app mid-capture.
+    sparkleUpdateController.updateCoordinator?.dictationActiveProvider = { [weak self] in
+      self?.liveRecordingState.isDictationActive ?? false
+    }
     // #958: proactive launch check, right after startUpdater per Sparkle guidance.
     sparkleUpdateController.updateCoordinator?.checkForUpdatesProactively(trigger: "launch")
+    // #1019: begin observing wake / network for an always-on, windowless user.
+    updateTriggerCoordinator.start()
   }
 
   public func applicationDidFinishLaunching() {
@@ -559,6 +576,8 @@ public final class WisprBootstrapper {
   }
 
   public func applicationWillTerminate() {
+    // #1019: tear down the network path monitor + wake observer.
+    updateTriggerCoordinator.stop()
     appLifecycleCoordinator.runWillTerminate()
   }
 

@@ -95,13 +95,18 @@ import Testing
   ///   Import-from-Contacts — orchestrates the opt-in import + bulk-remove,
   ///   injected into the main Window scene and read by AppLifecycleCoordinator
   ///   for the opt-in launch sync. A narrow new coordinator (issue-636 §3b).
+  /// - 29 → 30 in #1019 (2026-06-09): App-owned `updateTriggerCoordinator` for
+  ///   always-on update discovery — translates OS wake/network signals into
+  ///   proactive update checks for a never-foregrounded user. Data-free; holds
+  ///   only the path monitor + wake latch (issue-1019 §3b). A narrow new home
+  ///   keeping the composition root thin per `no-appcontainer`.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 29,
+      count <= 30,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 29. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 30. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -182,14 +187,19 @@ import Testing
   /// constructs `vocabularyPackManager`, passes it into `wireCustomWords`, and
   /// injects it into the main Window scene. Cap set by the deterministic rule
   /// (post-change actual 693 + 10, rounded up to nearest 5 = 705).
+  /// Ratcheted 705→735 in #1019 (2026-06-09): the composition root constructs
+  /// `updateTriggerCoordinator`, wires the dictation-active guard provider +
+  /// launch start in `applicationWillFinishLaunching`, and tears the monitor
+  /// down in `applicationWillTerminate`. Cap set by the deterministic rule
+  /// (post-change actual 721 + 10, rounded up to nearest 5 = 735).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 705,
+      lineCount <= 735,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 705. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 735. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

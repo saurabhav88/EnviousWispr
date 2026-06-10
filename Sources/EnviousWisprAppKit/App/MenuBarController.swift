@@ -75,13 +75,25 @@ final class MenuBarController: NSObject {
     // was the sole assigner of this single-slot closure — a verified 1:1
     // transfer. The owner of the icon owns the trigger.
     permissions.onAccessibilityChange = { [weak self] in self?.updateIcon() }
+
+    // #1019: flip the icon to / from the "update waiting" gold-wave cue the
+    // moment availability changes, even with no window or menu open. The
+    // coordinator exists by now (startUpdater() ran in
+    // applicationWillFinishLaunching, before this didFinishLaunching call).
+    sparkleUpdateController.updateCoordinator?.onAvailabilityChange = { [weak self] in
+      self?.updateIcon()
+    }
+    updateIcon()
   }
 
   // MARK: - Icon
 
   /// Update the status item icon for the current pipeline / permission state.
   func updateIcon() {
-    iconAnimator.transition(to: Self.iconState(currentViewState()))
+    let state = currentViewState()
+    iconAnimator.transition(to: Self.iconState(state))
+    // #1019: non-color accessibility affordance for the gold-wave cue.
+    statusItem?.button?.setAccessibilityValue(state.updateAvailable ? "Update available" : nil)
   }
 
   /// Pure icon-state mapping. Logic byte-identical to the pre-PR-B.3
@@ -101,7 +113,10 @@ final class MenuBarController: NSObject {
     {
       return .processing
     } else {
-      return .idle
+      // #1019: idle-with-update variant. Chosen ONLY here, after onboarding /
+      // warning / error / recording / processing — so the update cue never
+      // overrides a higher-priority state.
+      return state.updateAvailable ? .updatePending : .idle
     }
   }
 
@@ -124,6 +139,26 @@ final class MenuBarController: NSObject {
         systemSymbolName: "exclamationmark.circle.fill", accessibilityDescription: "Setup required")
       setupItem.target = self
       menu.addItem(setupItem)
+      menu.addItem(.separator())
+    }
+
+    // #1019: prominent "update waiting" item near the top. Disabled (with a
+    // "finish dictating" hint) while dictation is active; the coordinator's
+    // install path is guarded too, so this is defense-in-depth, not the sole
+    // gate.
+    if state.updateAvailable {
+      let installTitle: String = {
+        guard state.installEnabled else { return "Update ready: finish dictating to install" }
+        if let v = state.updateDisplayVersion, !v.isEmpty { return "Update ready: Install v\(v)" }
+        return "Update ready: Install"
+      }()
+      let updateItem = NSMenuItem(
+        title: installTitle, action: #selector(installUpdateAction), keyEquivalent: "")
+      updateItem.image = NSImage(
+        systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: "Install update")
+      updateItem.target = self
+      updateItem.isEnabled = state.installEnabled
+      menu.addItem(updateItem)
       menu.addItem(.separator())
     }
 
@@ -220,7 +255,19 @@ final class MenuBarController: NSObject {
   /// Reads are byte-identical to the pre-PR-B.3 `AppDelegate.populateMenu` /
   /// `updateIcon` reads.
   private func currentViewState() -> MenuBarViewState {
-    MenuBarViewState(
+    // #1019: read the pending-update state (non-critical only — critical routes
+    // to Sparkle's own UX) and the active-dictation guard.
+    let pending: UpdateAvailabilityService.AvailableUpdate? = {
+      if case .available(let u) = sparkleUpdateController.updateCoordinator?.service.state ?? .none,
+        !u.isCriticalUpdate
+      {
+        return u
+      }
+      return nil
+    }()
+    let dictationActive = liveRecordingState.isDictationActive
+
+    return MenuBarViewState(
       pipelineState: liveRecordingState.pipelineState,
       asrLabel: backendMetadata.modelLabel,
       llmLabel: backendMetadata.llmLabel,
@@ -228,7 +275,10 @@ final class MenuBarController: NSObject {
       vadAutoStop: settings.vadAutoStop,
       vadSilenceTimeout: settings.vadSilenceTimeout,
       showAccessibilityWarning: permissions.shouldShowAccessibilityWarning,
-      hasUpdater: sparkleUpdateController.hasUpdater
+      hasUpdater: sparkleUpdateController.hasUpdater,
+      updateAvailable: pending != nil,
+      updateDisplayVersion: pending?.displayVersion,
+      installEnabled: pending != nil && !dictationActive
     )
   }
 
@@ -255,6 +305,13 @@ final class MenuBarController: NSObject {
 
   @objc private func quitAction() {
     actions.quit()
+  }
+
+  /// #1019: install the waiting update from the menu item. The coordinator
+  /// re-checks active dictation before relaunching, so a stale-enabled item
+  /// still cannot kill in-flight work.
+  @objc private func installUpdateAction() {
+    sparkleUpdateController.updateCoordinator?.installFromMenu()
   }
 }
 
@@ -300,4 +357,13 @@ struct MenuBarViewState: Equatable {
   let vadSilenceTimeout: Double
   let showAccessibilityWarning: Bool
   let hasUpdater: Bool
+  /// #1019: a non-critical update is waiting to install.
+  var updateAvailable: Bool = false
+  /// #1019: the pending update's display version (e.g. "2.1.4"), for the
+  /// dropdown item copy.
+  var updateDisplayVersion: String? = nil
+  /// #1019: whether install is permitted right now — false whenever dictation
+  /// is active (record / load / transcribe / polish), so a relaunch never kills
+  /// in-flight work.
+  var installEnabled: Bool = false
 }

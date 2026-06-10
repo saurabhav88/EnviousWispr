@@ -147,11 +147,14 @@ extension SparkleUpdateController: @preconcurrency SPUStandardUserDriverDelegate
     _ update: SUAppcastItem,
     andInImmediateFocus immediateFocus: Bool
   ) -> Bool {
-    let hasMainWindow = NSApp.windows.contains { $0.isVisible && $0.canBecomeMain }
-    if !hasMainWindow { return true }  // no banner mount → Sparkle handles
+    // #1019: the no-window non-critical case no longer hands off to Sparkle's
+    // focus-stealing modal. Our menu-bar gold-wave cue + once-per-version
+    // notification own that surface now (both land from `noteAvailable` in
+    // `standardUserDriverWillHandleShowingUpdate` below). Critical or
+    // immediate-focus updates still route to Sparkle's full UX.
     if update.isCriticalUpdate { return true }  // critical → Sparkle's full UX
     if immediateFocus { return true }  // Sparkle wants front-and-center
-    return false  // we own the gentle UX via the banner
+    return false  // we own the gentle UX (banner when windowed; menu-bar + notification otherwise)
   }
 
   /// Issue #343: side-effect callback that fires after the yes/no decision.
@@ -371,5 +374,19 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
     // triggerInstall restores .available if the user clicked the widget but
     // did not complete an install.
     updateCoordinator?.lastInstallSource = nil
+
+    // #1019: feed the cycle OUTCOME to the proactive-check cooldown. A genuine
+    // network/parse failure does NOT consume the event-driven cooldown (so the
+    // next wake/network trigger re-checks); a benign Sparkle terminal code
+    // (no-update / user-cancel / install-later) means the feed WAS reached and
+    // the cooldown is earned.
+    let reachedFeed: Bool = {
+      guard let nsError = error as NSError? else { return true }
+      if nsError.domain == "SUSparkleErrorDomain", [1001, 4007, 4008].contains(nsError.code) {
+        return true
+      }
+      return false
+    }()
+    updateCoordinator?.recordUpdateCheckOutcome(success: reachedFeed)
   }
 }

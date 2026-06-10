@@ -6,8 +6,8 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
-@testable import EnviousWisprAppKit
 @testable import EnviousWisprASR
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
@@ -72,6 +72,32 @@ struct MenuBarControllerTests {
   @Test("iconState: idle + onboarding incomplete → error")
   func iconStateOnboardingIncomplete() {
     let s = fixture(pipelineState: .idle, onboardingComplete: false)
+    #expect(MenuBarController.iconState(s) == .error)
+  }
+
+  // MARK: - iconState update cue (#1019)
+
+  @Test("iconState: idle + update available → updatePending")
+  func iconStateUpdatePending() {
+    let s = fixture(pipelineState: .idle, updateAvailable: true)
+    #expect(MenuBarController.iconState(s) == .updatePending)
+  }
+
+  @Test("iconState: update cue never overrides recording")
+  func iconStateUpdateIgnoredWhileRecording() {
+    let s = fixture(pipelineState: .recording, updateAvailable: true)
+    #expect(MenuBarController.iconState(s) == .recording)
+  }
+
+  @Test("iconState: update cue never overrides processing")
+  func iconStateUpdateIgnoredWhileProcessing() {
+    let s = fixture(pipelineState: .transcribing, updateAvailable: true)
+    #expect(MenuBarController.iconState(s) == .processing)
+  }
+
+  @Test("iconState: update cue never overrides accessibility warning")
+  func iconStateUpdateIgnoredWithWarning() {
+    let s = fixture(pipelineState: .idle, showAccessibilityWarning: true, updateAvailable: true)
     #expect(MenuBarController.iconState(s) == .error)
   }
 
@@ -176,6 +202,48 @@ struct MenuBarControllerTests {
       updateItem?.action == #selector(SparkleUpdateController.openUpdateCheckFromMenu(_:)))
   }
 
+  @Test(
+    "renderMenu: update available + install enabled → versioned Install item targets controller")
+  func renderMenuUpdateInstallEnabled() {
+    let controller = makeController()
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu,
+      state: fixture(
+        pipelineState: .idle, updateAvailable: true, updateDisplayVersion: "2.1.4",
+        installEnabled: true))
+
+    let installItem = item(menu, "Update ready: Install v2.1.4")
+    #expect(installItem != nil, "Enabled update item must show the version")
+    #expect(installItem?.isEnabled == true)
+    #expect(installItem?.target as AnyObject? === controller)
+  }
+
+  @Test("renderMenu: update available but dictation active → disabled finish-dictating item")
+  func renderMenuUpdateInstallDisabledWhileDictating() {
+    let controller = makeController()
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu,
+      state: fixture(
+        pipelineState: .recording, updateAvailable: true, updateDisplayVersion: "2.1.4",
+        installEnabled: false))
+
+    #expect(item(menu, "Update ready: Install v2.1.4") == nil)
+    let blocked = item(menu, "Update ready: finish dictating to install")
+    #expect(blocked != nil, "Disabled item must explain why install is blocked")
+    #expect(blocked?.isEnabled == false)
+  }
+
+  @Test("renderMenu: no update → no install item")
+  func renderMenuNoUpdateNoItem() {
+    let controller = makeController()
+    let menu = NSMenu()
+    controller.renderMenu(into: menu, state: fixture(pipelineState: .idle))
+    #expect(item(menu, "Update ready: Install") == nil)
+    #expect(menu.items.allSatisfy { !$0.title.hasPrefix("Update ready") })
+  }
+
   @Test("renderMenu: auto-stop indicator appears when vadAutoStop is on")
   func renderMenuAutoStop() {
     let controller = makeController()
@@ -228,7 +296,10 @@ struct MenuBarControllerTests {
     onboardingComplete: Bool = true,
     vadAutoStop: Bool = false,
     showAccessibilityWarning: Bool = false,
-    hasUpdater: Bool = false
+    hasUpdater: Bool = false,
+    updateAvailable: Bool = false,
+    updateDisplayVersion: String? = nil,
+    installEnabled: Bool = false
   ) -> MenuBarViewState {
     MenuBarViewState(
       pipelineState: pipelineState,
@@ -238,7 +309,10 @@ struct MenuBarControllerTests {
       vadAutoStop: vadAutoStop,
       vadSilenceTimeout: 2.0,
       showAccessibilityWarning: showAccessibilityWarning,
-      hasUpdater: hasUpdater
+      hasUpdater: hasUpdater,
+      updateAvailable: updateAvailable,
+      updateDisplayVersion: updateDisplayVersion,
+      installEnabled: installEnabled
     )
   }
 

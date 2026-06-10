@@ -2,8 +2,10 @@ import AppKit
 
 /// Manages animated menu bar icon states using Core Graphics rendering.
 ///
-/// Four states: idle (static grey lips), recording (rainbow lips reacting to audio),
-/// processing (rotating rainbow spectrum wheel), error (static red lips).
+/// Five states: idle (static grey lips), recording (rainbow lips reacting to
+/// audio), processing (rotating rainbow spectrum wheel), error (static red
+/// lips), updatePending (grey lips with a gold wave travelling outward — the
+/// "update waiting" cue, #1019).
 @MainActor
 final class MenuBarIconAnimator {
 
@@ -12,6 +14,11 @@ final class MenuBarIconAnimator {
     case recording
     case processing
     case error
+    /// #1019: an update is downloaded/available and waiting to install. An
+    /// idle-with-update display variant — the controller selects it only inside
+    /// the idle branch of its icon-state mapping, so it never overrides
+    /// recording / processing / error / warning.
+    case updatePending
   }
 
   private weak var button: NSStatusBarButton?
@@ -26,6 +33,15 @@ final class MenuBarIconAnimator {
   // Processing rotation angle (degrees)
   private var rotationAngle: Double = 0
 
+  // #1019: update-pending gold-wave phase (0…1 per loop).
+  private var wavePhase: Double = 0
+  private var reduceMotionObserver: NSObjectProtocol?
+
+  /// #ffd700 — the "pending" semantic gold.
+  private static let goldColor = (r: CGFloat(1.0), g: CGFloat(0.843), b: CGFloat(0.0))
+  /// Mid-grey base the gold washes through.
+  private static let greyColor = (r: CGFloat(0.5), g: CGFloat(0.5), b: CGFloat(0.5))
+
   // MARK: - Configuration
 
   /// Call once from setupStatusItem() after creating the button.
@@ -34,6 +50,19 @@ final class MenuBarIconAnimator {
     self.idleImage = renderIdleLips()
     self.errorImage = renderErrorLips()
     button.image = self.idleImage
+
+    // #1019: re-render the update-pending cue when the system reduce-motion
+    // setting changes live (AppKit-native — the SwiftUI `@Environment` key does
+    // not reach this AppKit class).
+    reduceMotionObserver = NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+      object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self, self.currentState == .updatePending else { return }
+        self.restartUpdatePendingForReduceMotionChange()
+      }
+    }
   }
 
   // MARK: - State Transitions
@@ -54,7 +83,19 @@ final class MenuBarIconAnimator {
       startProcessingAnimation()
     case .error:
       button?.image = errorImage
+    case .updatePending:
+      wavePhase = 0
+      startUpdatePendingAnimation()
     }
+  }
+
+  /// Re-apply the update-pending cue when reduce-motion toggles while it is the
+  /// current state (the new transition guard would otherwise no-op a same-state
+  /// re-entry).
+  private func restartUpdatePendingForReduceMotionChange() {
+    stopTimer()
+    wavePhase = 0
+    startUpdatePendingAnimation()
   }
 
   // MARK: - Timer Management
@@ -92,6 +133,30 @@ final class MenuBarIconAnimator {
         self.rotationAngle += 3.0  // 360° / 8s / 15fps = 3° per frame
         if self.rotationAngle >= 360 { self.rotationAngle -= 360 }
         button.image = self.renderProcessingWheel()
+      }
+    }
+  }
+
+  // MARK: - Update-pending Animation (gold wave through grey lips, ~20fps)
+
+  /// #1019: grey lips with a fast, near-together gold wave sweeping outward from
+  /// the center column. Reduce-motion users get a static gold-tinted frame
+  /// instead of the loop.
+  private func startUpdatePendingAnimation() {
+    guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+      button?.image = renderUpdatePendingStatic()
+      return
+    }
+    button?.image = renderUpdatePendingLips(phase: wavePhase)
+
+    animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) {
+      [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self, let button = self.button else { return }
+        // ~1.3s loop at 20fps → 26 frames per loop.
+        self.wavePhase += 1.0 / 26.0
+        if self.wavePhase >= 1.0 { self.wavePhase -= 1.0 }
+        button.image = self.renderUpdatePendingLips(phase: self.wavePhase)
       }
     }
   }
@@ -327,6 +392,92 @@ final class MenuBarIconAnimator {
         ctx.restoreGState()
       }
 
+      return true
+    }
+  }
+
+  // Shared 9+9 lip geometry (viewBox 0 0 64 64), column index 0…8.
+  private static let upperLipBars: [(x: CGFloat, y: CGFloat, h: CGFloat)] = [
+    (4, 22.25, 5), (10, 17.6375, 8), (16, 12.04, 12),
+    (22, 16.96, 9), (28, 21.5575, 6), (34, 16.96, 9),
+    (40, 12.04, 12), (46, 17.6375, 8), (52, 22.25, 5),
+  ]
+  private static let lowerLipBars: [(x: CGFloat, y: CGFloat, h: CGFloat)] = [
+    (4, 30.25, 5), (10, 28.6375, 9), (16, 27.04, 12),
+    (22, 28.96, 15), (28, 30.5575, 17), (34, 28.96, 15),
+    (40, 27.04, 12), (46, 28.6375, 9), (52, 30.25, 5),
+  ]
+
+  /// Gold intensity (0…1) for a bar at column index `i` of `count` columns,
+  /// given the wave front position. Distance is normalized (0 center, 1 edge);
+  /// a narrow band → "near-together" wave; the front overshoots to 1.25 so
+  /// there is a brief all-grey gap before the next sweep ("fast").
+  private static func waveIntensity(columnIndex i: Int, of count: Int, phase: Double) -> CGFloat {
+    let center = CGFloat(count - 1) / 2.0  // 4.0 for 9 columns
+    let distance = abs(CGFloat(i) - center) / center
+    let front = CGFloat(phase) * 1.25
+    let band: CGFloat = 0.22
+    return max(0, 1 - abs(distance - front) / band)
+  }
+
+  /// Render the gold-wave frame for `phase`. Grey lips with gold washing
+  /// outward from the center column.
+  private func renderUpdatePendingLips(phase: Double) -> NSImage {
+    let upper = Self.upperLipBars.indices.map {
+      Self.waveIntensity(columnIndex: $0, of: Self.upperLipBars.count, phase: phase)
+    }
+    let lower = Self.lowerLipBars.indices.map {
+      Self.waveIntensity(columnIndex: $0, of: Self.lowerLipBars.count, phase: phase)
+    }
+    return renderLips(upperIntensities: upper, lowerIntensities: lower)
+  }
+
+  /// Reduce-motion fallback: a static, clearly-gold lips (uniform mid blend) so
+  /// the "update waiting" meaning still reads without any animation.
+  private func renderUpdatePendingStatic() -> NSImage {
+    let upper = Self.upperLipBars.map { _ in CGFloat(0.6) }
+    let lower = Self.lowerLipBars.map { _ in CGFloat(0.6) }
+    return renderLips(upperIntensities: upper, lowerIntensities: lower)
+  }
+
+  private static func blendGoldOverGrey(_ t: CGFloat) -> CGColor {
+    let r = greyColor.r + (goldColor.r - greyColor.r) * t
+    let g = greyColor.g + (goldColor.g - greyColor.g) * t
+    let b = greyColor.b + (goldColor.b - greyColor.b) * t
+    return CGColor(red: r, green: g, blue: b, alpha: 0.95)
+  }
+
+  /// Shared lips renderer: fills the 9+9 bar geometry, coloring each bar by its
+  /// precomputed gold intensity. Only `[CGFloat]` (Sendable) crosses into the
+  /// drawing block — colors are built inside it.
+  private func renderLips(upperIntensities: [CGFloat], lowerIntensities: [CGFloat]) -> NSImage {
+    let size = NSSize(width: 18, height: 18)
+    return NSImage(size: size, flipped: true) { rect in
+      guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+      let scale = rect.width / 64.0
+      let barWidth: CGFloat = 4.5 * scale
+      let cornerRadius: CGFloat = 1.5 * scale
+
+      for (i, bar) in Self.upperLipBars.enumerated() {
+        ctx.setFillColor(Self.blendGoldOverGrey(upperIntensities[i]))
+        let barRect = CGRect(
+          x: bar.x * scale, y: bar.y * scale, width: barWidth, height: bar.h * scale)
+        ctx.addPath(
+          CGPath(
+            roundedRect: barRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius,
+            transform: nil))
+        ctx.fillPath()
+      }
+      for (i, bar) in Self.lowerLipBars.enumerated() {
+        ctx.setFillColor(Self.blendGoldOverGrey(lowerIntensities[i]))
+        let barRect = CGRect(
+          x: bar.x * scale, y: bar.y * scale, width: barWidth, height: bar.h * scale)
+        ctx.addPath(
+          CGPath(
+            roundedRect: barRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius,
+            transform: nil))
+        ctx.fillPath()
+      }
       return true
     }
   }
