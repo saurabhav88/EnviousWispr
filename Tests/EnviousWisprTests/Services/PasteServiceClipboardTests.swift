@@ -38,6 +38,27 @@ struct PasteServiceClipboardTests {
     #expect(NSPasteboard.general.string(forType: .string) == originalText)
   }
 
+  @Test("#729: restoreClipboard restores an empty prior clipboard to empty (clears our paste text)")
+  func restoreClipboardRestoresEmptyToEmpty() {
+    let initial = PasteService.saveClipboard()
+    defer { Self.restoreExactly(initial) }
+
+    // Prior clipboard is empty.
+    NSPasteboard.general.clearContents()
+    let emptySnapshot = PasteService.saveClipboard()
+    #expect(emptySnapshot.items.isEmpty)
+
+    // Our paste writes text onto the board.
+    let pastedText = "dictated-\(UUID().uuidString)"
+    let changeCountAfterPaste = PasteService.copyToClipboardReturningChangeCount(pastedText)
+    #expect(NSPasteboard.general.string(forType: .string) == pastedText)
+
+    PasteService.restoreClipboard(emptySnapshot, changeCountAfterPaste: changeCountAfterPaste)
+
+    // The board must be cleared back to empty, not left holding our paste text.
+    #expect(NSPasteboard.general.string(forType: .string) == nil)
+  }
+
   @Test("restoreClipboard skips restore when clipboard changed after our paste write")
   func restoreClipboardSkipsWhenClipboardAdvanced() {
     let initial = PasteService.saveClipboard()

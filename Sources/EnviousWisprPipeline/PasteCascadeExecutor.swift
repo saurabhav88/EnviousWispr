@@ -124,6 +124,10 @@ internal final class PasteCascadeExecutor {
     // attempted, can also be recorded. Populated only on failure paths;
     // attached to the `.clipboardOnly` Sentry payload as `paste.tier_failures`.
     var tierFailures: [String: String] = [:]
+    // #729 Tier 2c menu-paste probe outcome, used to compute `paste.focus_class`.
+    // nil = the menu probe never ran (not a `.nonText` path, or activation
+    // timed out before probing) → no `focus_class` value is emitted.
+    var menuProbe: MenuPasteProbe? = nil
 
     // Three-way classification of the focused element (PR #220 design intent,
     // restored for Chromium/Electron contenteditable inputs — see #277).
@@ -190,26 +194,9 @@ internal final class PasteCascadeExecutor {
     if tier == .clipboardOnly, canAttemptKeyPaste,
       let app = request.targetApp, !app.isTerminated
     {
-      let pollInterval = TimingConstants.activationPollIntervalMs
-      let timeout = TimingConstants.activationTimeoutMs
-
-      _ = PasteService.forceActivateApp(pid: app.processIdentifier)
-      app.activate()
-      var elapsed = 0
-      while elapsed < timeout {
-        try? await Task.sleep(for: .milliseconds(pollInterval))
-        elapsed += pollInterval
-        if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
-          break
-        }
-        if elapsed % 300 < pollInterval {
-          _ = PasteService.forceActivateApp(pid: app.processIdentifier)
-          app.activate()
-        }
-      }
-
-      let activated =
-        NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
+      let activation = await activate(app)
+      let activated = activation.activated
+      let elapsed = activation.elapsed
 
       if activated {
         tiersAttempted.append(.cgEvent)
@@ -266,6 +253,58 @@ internal final class PasteCascadeExecutor {
       }
     }
 
+    // Tier 2c: Language-agnostic Edit > Paste for non-text container roles (#729).
+    // Word/Excel/Numbers/OneNote expose their editor as a container AX role, so
+    // Tier 2's blind Cmd+V is skipped (canAttemptKeyPaste == false) to avoid
+    // firing into a void. Instead we activate the app (snap-back), put our text
+    // on the clipboard, then drive the app's OWN Edit > Paste command, found by
+    // its ⌘V shortcut. The command's enabled-state separates a real editor
+    // (Scenario B — paste it) from no-field-focused (Scenario A — overlay).
+    if tier == .clipboardOnly, classification == .nonText, axTrusted,
+      let app = request.targetApp, !app.isTerminated
+    {
+      let activation = await activate(app)
+      if activation.activated {
+        // Put our text on the clipboard BEFORE probing enabled-state: apps grey
+        // out Paste when the clipboard is empty/incompatible (#729 Codex r1).
+        let snapshot: ClipboardSnapshot? =
+          request.restoreClipboardAfterPaste ? PasteService.saveClipboard() : nil
+        let changeCount = PasteService.copyToClipboardReturningChangeCount(request.text)
+        if let menuItem = PasteService.findPasteMenuItem(pid: app.processIdentifier),
+          PasteService.isMenuItemEnabled(menuItem)
+        {
+          // Scenario B: a real paste target. Enabled item found.
+          menuProbe = .targetEnabled
+          tiersAttempted.append(.menuPaste)
+          if PasteService.pressMenuItem(menuItem) {
+            tier = .menuPaste
+            // Restore the user's prior clipboard after the paste lands.
+            if let snapshot {
+              try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
+              PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCount)
+            }
+          } else {
+            // Enabled but AXPress failed. Leave request.text on the clipboard
+            // (do NOT restore) so the user's manual Cmd+V still works.
+            tierFailures["menu_paste"] = "press_failed"
+            emitTierFailureBreadcrumb(
+              stage: "menu_paste", reason: "press_failed", bundleId: bundleId)
+          }
+        } else {
+          // Scenario A (or item disabled/absent): no paste target. Leave
+          // request.text on the clipboard; Tier 3 overlay follows.
+          menuProbe = .noTarget
+        }
+      } else {
+        // Activation timed out for .nonText: do NOT route to the English-only
+        // Tier 2b AppleScript path (that fallback is for the key-paste-eligible
+        // branch). Fall to clipboard-only; the probe never ran, so no focus_class.
+        tierFailures["activation"] = "timeout_ms=\(activation.elapsed)"
+        emitTierFailureBreadcrumb(
+          stage: "activation", reason: "timeout_ms=\(activation.elapsed)", bundleId: bundleId)
+      }
+    }
+
     // Tier 3: Clipboard fallback.
     // The "non-text element focused" log fires only when we deliberately skipped
     // Tier 2 because a non-text element was focused (PR #220's void-protection
@@ -311,15 +350,58 @@ internal final class PasteCascadeExecutor {
       )
     }
 
-    emitPasteTelemetry(outcome: outcome, tierFailures: tierFailures)
+    emitPasteTelemetry(
+      outcome: outcome, tierFailures: tierFailures, focusClass: menuProbe?.focusClassLabel)
 
     return PasteDeliveryResult(tier: tier, durationMs: durationMs, outcome: outcome)
+  }
+
+  /// #729 Tier 2c menu-paste probe outcome. Drives `paste.focus_class`.
+  enum MenuPasteProbe {
+    /// An enabled Edit > Paste item was found (Scenario B — real paste target).
+    case targetEnabled
+    /// The item was absent or disabled (Scenario A — no paste target).
+    case noTarget
+
+    var focusClassLabel: String {
+      switch self {
+      case .targetEnabled: return "non_text_with_paste_target"
+      case .noTarget: return "no_paste_target"
+      }
+    }
+  }
+
+  /// Activate `app` and poll until it is frontmost or the activation timeout
+  /// elapses. Re-issues activation every ~300ms. Returns whether the app became
+  /// frontmost and how long we waited. Shared by Tier 2 (Cmd+V) and Tier 2c
+  /// (menu paste).
+  private func activate(_ app: NSRunningApplication) async -> (activated: Bool, elapsed: Int) {
+    let pollInterval = TimingConstants.activationPollIntervalMs
+    let timeout = TimingConstants.activationTimeoutMs
+
+    _ = PasteService.forceActivateApp(pid: app.processIdentifier)
+    app.activate()
+    var elapsed = 0
+    while elapsed < timeout {
+      try? await Task.sleep(for: .milliseconds(pollInterval))
+      elapsed += pollInterval
+      if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
+        break
+      }
+      if elapsed % 300 < pollInterval {
+        _ = PasteService.forceActivateApp(pid: app.processIdentifier)
+        app.activate()
+      }
+    }
+    let activated =
+      NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
+    return (activated, elapsed)
   }
 
   /// Fires Sentry captureError for non-delivered outcomes. Owned by the cascade
   /// so overlay UI and telemetry both derive from the same typed outcome.
   private func emitPasteTelemetry(
-    outcome: PasteDeliveryOutcome, tierFailures: [String: String]
+    outcome: PasteDeliveryOutcome, tierFailures: [String: String], focusClass: String?
   ) {
     switch outcome {
     case .delivered:
@@ -341,7 +423,8 @@ internal final class PasteCascadeExecutor {
           targetBundleID: bundle,
           accessibilityTrusted: accessibilityTrusted,
           targetDiagnostics: diagnostics,
-          tierFailures: tierFailures
+          tierFailures: tierFailures,
+          focusClass: focusClass
         )
       )
     case .cgEventCreationFailed(let accessibilityTrusted):
@@ -377,9 +460,10 @@ internal final class PasteCascadeExecutor {
     targetBundleID: String?,
     accessibilityTrusted: Bool,
     targetDiagnostics: PasteElementDiagnostics,
-    tierFailures: [String: String]
+    tierFailures: [String: String],
+    focusClass: String? = nil
   ) -> [String: Any] {
-    [
+    var extra: [String: Any] = [
       "paste.tiers_attempted": tiersAttempted,
       "paste.focus_classification": focus.telemetryLabel,
       "paste.target_bundle_id": targetBundleID ?? NSNull(),
@@ -391,6 +475,13 @@ internal final class PasteCascadeExecutor {
       "paste.target_element_role_source": targetDiagnostics.roleSource,
       "paste.target_element_subrole_status": targetDiagnostics.subroleStatus,
     ]
+    // #729: present only when the Tier 2c menu probe actually ran (Scenario
+    // A/B discriminator). Absent on .textField/.missing and on activation
+    // timeout before probing.
+    if let focusClass {
+      extra["paste.focus_class"] = focusClass
+    }
+    return extra
   }
 
   /// Emit a non-blocking Sentry breadcrumb for a single tier failure. The

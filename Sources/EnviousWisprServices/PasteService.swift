@@ -21,6 +21,10 @@ public enum PasteTier: String, Sendable {
   case axDirect = "ax_direct"
   case cgEvent = "cgevent"
   case appleScript = "applescript"
+  /// Language-agnostic Edit > Paste menu command driven via Accessibility
+  /// (#729). Used for non-text container roles (Word/Excel/Numbers/OneNote)
+  /// where Cmd+V can't be aimed at a writable element.
+  case menuPaste = "menu_paste"
   case clipboardOnly = "clipboard_only"
 }
 
@@ -82,7 +86,8 @@ public enum PasteService {
 
   /// Reads privacy-safe role metadata from the captured AX element handle.
   /// This is queried at paste time, not snapshotted at recording start.
-  public static func capturedElementDiagnostics(_ element: AXUIElement?) -> PasteElementDiagnostics {
+  public static func capturedElementDiagnostics(_ element: AXUIElement?) -> PasteElementDiagnostics
+  {
     guard let element else { return .missing }
 
     var roleRef: CFTypeRef?
@@ -100,10 +105,12 @@ public enum PasteService {
     let subroleErr = AXUIElementCopyAttributeValue(
       element, kAXSubroleAttribute as CFString, &subroleRef
     )
-    let subrole = subroleErr == .success
+    let subrole =
+      subroleErr == .success
       ? PasteElementDiagnostics.sanitizedAXAttribute(subroleRef as? String)
       : nil
-    let subroleStatus: String = subroleErr == .success
+    let subroleStatus: String =
+      subroleErr == .success
       ? (subrole == nil ? "missing" : "present")
       : "unavailable"
 
@@ -170,8 +177,12 @@ public enum PasteService {
       return
     }
 
-    // Nothing to restore (clipboard was already empty).
-    guard !snapshot.items.isEmpty else { return }
+    // Prior clipboard was empty — restore to empty by clearing our own paste
+    // text off the board, rather than leaving it behind (#729 Codex diff review).
+    guard !snapshot.items.isEmpty else {
+      pasteboard.clearContents()
+      return
+    }
 
     pasteboard.clearContents()
     let pbItems: [NSPasteboardItem] = snapshot.items.map { itemDict in
@@ -400,6 +411,95 @@ public enum PasteService {
   /// Simulate Cmd+V keystroke to paste from clipboard into the active app.
   public static func simulatePaste() {
     dispatchCmdV()
+  }
+
+  // MARK: - Tier 2c: Language-agnostic Edit > Paste via Accessibility menu (#729)
+
+  /// True when an AX menu item's command-key equivalent is exactly ⌘V (no
+  /// extra modifiers). Pure, language-agnostic predicate: it matches the
+  /// keyboard shortcut, never the localized menu title.
+  ///
+  /// - `cmdChar` is `AXMenuItemCmdChar` (the shortcut character; "v" / "V").
+  /// - `modifiers` is `AXMenuItemCmdModifiers`, where `0` ==
+  ///   `kAXMenuItemModifierNone` (Command only). `1<<3` ==
+  ///   `kAXMenuItemModifierNoCommand` denotes the ABSENCE of ⌘ and must not
+  ///   match; Shift/Option/Control bits (`1<<0`/`1<<1`/`1<<2`) also exclude.
+  ///   So a plain ⌘V item has `modifiers == 0`.
+  public static func isPasteShortcut(cmdChar: String?, modifiers: Int) -> Bool {
+    guard let cmdChar else { return false }
+    return cmdChar.lowercased() == "v" && modifiers == 0
+  }
+
+  /// Walk the app's menu bar to find the Edit > Paste item, identified by its
+  /// ⌘V shortcut rather than its (localized) title. Returns the menu-item
+  /// element or nil. Bounded traversal depth (menu bar → top menus → items).
+  /// Live-only (like `captureFocusedElement` / `forceActivateApp`); the pure
+  /// matching logic is covered by `isPasteShortcut` unit tests.
+  @MainActor
+  public static func findPasteMenuItem(pid: pid_t) -> AXUIElement? {
+    let app = AXUIElementCreateApplication(pid)
+    // Cap AX round-trips so a misbehaving app can't hang the paste path.
+    AXUIElementSetAttributeValue(app, "AXTimeout" as CFString, Float(1.0) as CFTypeRef)
+    var menuBarRef: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(app, kAXMenuBarAttribute as CFString, &menuBarRef) == .success,
+      let menuBar = menuBarRef
+    else { return nil }
+    let menuBarElement = menuBar as! AXUIElement
+    return firstPasteItem(in: menuBarElement, depth: 0)
+  }
+
+  /// Depth-bounded search for the first ⌘V menu item under `element`.
+  @MainActor
+  private static func firstPasteItem(in element: AXUIElement, depth: Int) -> AXUIElement? {
+    // menu bar(0) → menu-bar-item(1) → menu(2) → menu-item(3); allow a little
+    // slack for apps that nest an extra group, but stay bounded.
+    guard depth <= 4 else { return nil }
+    var childrenRef: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
+        == .success,
+      let children = childrenRef as? [AXUIElement]
+    else { return nil }
+
+    for child in children {
+      var cmdCharRef: CFTypeRef?
+      let hasShortcut =
+        AXUIElementCopyAttributeValue(child, "AXMenuItemCmdChar" as CFString, &cmdCharRef)
+        == .success
+      if hasShortcut {
+        var modRef: CFTypeRef?
+        _ = AXUIElementCopyAttributeValue(child, "AXMenuItemCmdModifiers" as CFString, &modRef)
+        let modifiers = (modRef as? Int) ?? -1
+        if isPasteShortcut(cmdChar: cmdCharRef as? String, modifiers: modifiers) {
+          return child
+        }
+      }
+      if let found = firstPasteItem(in: child, depth: depth + 1) {
+        return found
+      }
+    }
+    return nil
+  }
+
+  /// Whether an AX menu item is currently enabled. Apps disable Edit > Paste
+  /// when there is no paste target focused or the clipboard is empty — this is
+  /// the Scenario-A-vs-B discriminator, so it MUST be read AFTER our text is on
+  /// the clipboard. Fails closed (returns false) on any AX error.
+  @MainActor
+  public static func isMenuItemEnabled(_ item: AXUIElement) -> Bool {
+    var ref: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(item, kAXEnabledAttribute as CFString, &ref) == .success
+    else { return false }
+    return (ref as? Bool) ?? false
+  }
+
+  /// Trigger a menu item's default action (AXPress) — equivalent to the user
+  /// clicking it. Returns true on success.
+  @MainActor
+  public static func pressMenuItem(_ item: AXUIElement) -> Bool {
+    AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
   }
 
   // MARK: - App Activation via Accessibility

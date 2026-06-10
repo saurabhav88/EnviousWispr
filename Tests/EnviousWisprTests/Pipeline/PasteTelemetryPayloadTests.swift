@@ -100,6 +100,33 @@ struct PasteTelemetryPayloadTests {
     assertNoContentLikeKeys(extra)
   }
 
+  @Test("#729: focus_class present only when the menu probe ran")
+  func focusClassPresentOnlyWhenProbed() {
+    // No probe (default nil) -> key absent.
+    let noProbe = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(
+      tiersAttempted: [],
+      focus: .nonText,
+      targetBundleID: "com.microsoft.Word",
+      accessibilityTrusted: true,
+      targetDiagnostics: .missing,
+      tierFailures: [:]
+    )
+    #expect(noProbe["paste.focus_class"] == nil)
+
+    // Scenario A: probe ran, no paste target.
+    let noTarget = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(
+      tiersAttempted: [],
+      focus: .nonText,
+      targetBundleID: "com.microsoft.Word",
+      accessibilityTrusted: true,
+      targetDiagnostics: .missing,
+      tierFailures: [:],
+      focusClass: "no_paste_target"
+    )
+    #expect(noTarget["paste.focus_class"] as? String == "no_paste_target")
+    assertNoContentLikeKeys(noTarget)
+  }
+
   private func assertNoContentLikeKeys(_ extra: [String: Any]) {
     for key in extra.keys {
       let lower = key.lowercased()

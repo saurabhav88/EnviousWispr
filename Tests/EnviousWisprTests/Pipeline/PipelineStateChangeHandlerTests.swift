@@ -136,6 +136,27 @@ struct PipelineStateChangeHandlerTests {
     #expect(calls.completedCalls.count == 1)
   }
 
+  @Test("#729: menu_paste tier is a successful delivery, not a clipboard fallback")
+  func completeMenuPasteRoutesAsSuccess() {
+    let spy = OverlaySpy()
+    let calls = CallbackRecorder()
+    let handler = Self.makeHandler(overlay: spy, callbacks: calls)
+    let transcript = Self.makeTranscript(pasteTier: "menu_paste")
+
+    handler.handle(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: .hidden,
+      lastPolishError: nil,
+      currentTranscript: transcript
+    )
+
+    // Must NOT show the clipboard-fallback or accessibility-toast overlay —
+    // menu_paste delivered the text, same as any other success tier.
+    #expect(spy.calls == [OverlaySpy.Call(intent: .hidden)])
+    #expect(calls.completedCalls.count == 1)
+    #expect(calls.failedCalls.isEmpty)
+  }
+
   @Test("complete + AX-denied paste tier routes to accessibilityToast overlay")
   func completeAccessibilityDeniedRoutesToToast() {
     let spy = OverlaySpy()
