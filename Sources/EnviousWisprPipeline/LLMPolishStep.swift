@@ -133,6 +133,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// gate for non-whitespace-segmented scripts. 10 chars ≈ a short utterance.
   private static let minCharsForCJKPolish = 10
 
+  /// The too-short skip's return value: text untouched, AI fields nil (#1022).
+  private static func bypassedContext(_ context: TextProcessingContext) -> TextProcessingContext {
+    var ctx = context
+    ctx.polishedText = nil
+    ctx.llmProvider = nil
+    ctx.llmModel = nil
+    return ctx
+  }
+
   public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
     onWillProcess?()
     // #827 PR-8: snapshot the mutable provider/model at entry. process()
@@ -155,6 +164,12 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // Language-aware: CJK/Thai/Lao scripts use char-count since they don't
     // segment words with whitespace (a 31-char Japanese utterance is 1-2
     // "words" by split, which would wrongly skip polish).
+    //
+    // The skip is a Bypass (llm-contract): no polish output, no provider
+    // stamp — `polishedText != nil` is the UI's "AI was applied" signal
+    // (history badge, Enhance visibility), so the bypass must leave it nil
+    // (#1022). Fields cleared explicitly so the contract holds even for a
+    // caller entering with stale AI fields set.
     let lang = languageDetection?.lang ?? context.language
     let useCharCount = lang.map(LanguageTypes.isUnsegmentedScript) ?? false
     if useCharCount {
@@ -166,9 +181,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
             level: .info, category: "LLM"
           )
         }
-        var ctx = context
-        ctx.polishedText = context.text
-        return ctx
+        return Self.bypassedContext(context)
       }
     } else {
       let wordCount = context.text.split(whereSeparator: \.isWhitespace).count
@@ -179,9 +192,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
             level: .info, category: "LLM"
           )
         }
-        var ctx = context
-        ctx.polishedText = context.text
-        return ctx
+        return Self.bypassedContext(context)
       }
     }
 

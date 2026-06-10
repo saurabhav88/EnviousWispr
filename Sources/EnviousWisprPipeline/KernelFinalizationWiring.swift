@@ -278,12 +278,12 @@ struct KernelFinalizationWiring {
 
   /// #145: did the user actually GET the ITN floor? True when ITN changed the
   /// text AND polish did not deliver a DISTINCT polished result — disabled /
-  /// unavailable (no polished text), ran-and-rejected (fell back to raw), OR
-  /// short-circuited (e.g. "too short" returns its input verbatim, so polished
-  /// == the post-ITN text; that path does NOT set `pipelineFellBackToRaw` —
-  /// Codex r1 #2). In all cases the pasted text is the post-ITN text. `rawText`
-  /// is the final chain text (post-ITN), set in `processText`. Internal for a
-  /// direct parametric test.
+  /// unavailable / too-short bypass (no polished text — since #1022 the
+  /// "too short" skip leaves `polishedText` nil), ran-and-rejected (fell back
+  /// to raw), OR ran-but-identical (polished == the post-ITN text; that path
+  /// does NOT set `pipelineFellBackToRaw` — Codex r1 #2). In all cases the
+  /// pasted text is the post-ITN text. `rawText` is the final chain text
+  /// (post-ITN), set in `processText`. Internal for a direct parametric test.
   static func itnFloorDelivered(
     itnChanged: Bool,
     polishedText: String?,

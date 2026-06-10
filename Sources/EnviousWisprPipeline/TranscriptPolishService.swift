@@ -126,14 +126,14 @@ public final class TranscriptPolishService {
     // .whisperKit + nil detection as formatting-only (safe, no lexical bias).
     llmPolishStep.languageDetection = nil
 
-    let polishedText: String
+    let stepOutput: String?
     do {
       var context = TextProcessingContext(
         text: transcript.text,
         language: transcript.language
       )
       context = try await llmPolishStep.process(context)
-      polishedText = context.polishedText ?? context.text
+      stepOutput = context.polishedText
     } catch {
       recordError(for: transcript.id, message: error.localizedDescription)
       Task {
@@ -145,8 +145,17 @@ public final class TranscriptPolishService {
       throw error
     }
 
-    // Check for cancellation after LLM work completes
+    // Check for cancellation after LLM work completes — before the bypass
+    // guard, so a cancelled enhancement never records a fresh user message.
     try Task.checkCancellation()
+
+    // Bypass (too-short skip) returns no polish output (#1022). Surface it
+    // instead of saving a raw copy stamped as polished (llm-contract:
+    // "Re-polish must surface live silent-skips").
+    guard let polishedText = stepOutput else {
+      recordError(for: transcript.id, message: "This dictation is too short for AI polish.")
+      throw LLMError.requestFailed("Transcript too short for polish")
+    }
 
     // Validate: don't save empty or identical text
     if polishedText.isEmpty {
