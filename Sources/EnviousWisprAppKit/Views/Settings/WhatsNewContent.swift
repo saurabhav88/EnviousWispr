@@ -26,6 +26,27 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.1.4
+
+    Entry(
+      id: "paste-works-in-word-excel-pages",
+      icon: "doc.richtext",
+      title: "Pasting now lands in Word, Excel, and more",
+      description:
+        "We fixed an issue where in some apps (Word, Excel, Pages, Numbers, OneNote, Sublime Text, Firefox) your dictation would say \"Copied\" but never actually paste. Your words now land in the document like everywhere else.",
+      category: .fasterAndMoreReliable,
+      version: "2.1.4"
+    ),
+    Entry(
+      id: "small-ui-tweaks",
+      icon: "sparkles",
+      title: "Small UI tweaks for a cleaner experience",
+      description:
+        "A tidier sidebar status card, History columns that stay readable in small windows, more reliable update delivery, and an AI badge that only appears when AI actually ran.",
+      category: .qualityOfLife,
+      version: "2.1.4"
+    ),
+
     // MARK: - v2.1.3
 
     Entry(
