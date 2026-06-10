@@ -173,9 +173,9 @@ import Testing
     arguments: [
       // (itnChanged, polished, raw, fellBack, expected)
       (false, String?.none, String?.some("203"), false, false),  // ITN didn't change → never
-      (true, String?.none, String?.some("203"), false, true),  // polish disabled → floor
+      (true, String?.none, String?.some("203"), false, true),  // disabled or too-short bypass → floor
       (true, String?.some("203"), String?.some("203"), true, true),  // rejected → floor
-      (true, String?.some("203"), String?.some("203"), false, true),  // short-circuit (==) → floor
+      (true, String?.some("203"), String?.some("203"), false, true),  // ran-but-identical (==) → floor
       (true, String?.some("Two oh three"), String?.some("203"), false, false),  // distinct polish → not floor
     ])
   func floorDeliveredLogic(
@@ -188,6 +188,35 @@ import Testing
   }
 
   // MARK: store
+
+  @Test(
+    "short dictation through the real chain persists no polish output and no provider stamp",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1022",
+      "AI badge on short dictations AI never touched"
+    )
+  )
+  func shortDictationStoresBypass() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let saved = SavedTranscriptBox()
+    let steps = makeSteps()
+    // Polish ON (provider + mocked polisher) so the nil comes from the
+    // too-short gate, not from the disabled-step path the other tests use.
+    steps.llmPolish.llmProvider = .openAI
+    steps.llmPolish.llmModel = "gpt-4o-mini"
+    steps.llmPolish.makePolisher = { _, _, _ in CannedPolisher() }
+    let wiring = makeWiring(outcome: outcome, steps: steps, save: { saved.transcript = $0 })
+
+    let result = try await wiring.processText("Other apps") {}
+    try await wiring.store(result)
+
+    // The unit-level proxy for "history row shows no AI badge" (#1022).
+    let transcript = try #require(saved.transcript)
+    #expect(transcript.text == "Other apps")
+    #expect(transcript.polishedText == nil)
+    #expect(transcript.llmProvider == nil)
+    #expect(transcript.llmModel == nil)
+  }
 
   @Test("store builds the Transcript from the side-channel and persists it")
   func storeBuildsAndSaves() async throws {
@@ -297,6 +326,21 @@ private final class ManualClock {
 }
 
 private enum WiringTestError: Error { case storage }
+
+/// Deterministic polisher for the #1022 short-dictation test: enables the
+/// polish step (provider set, connector mocked) so the persisted nil can only
+/// come from the too-short gate. If the gate ever let the short input through,
+/// the test would see "canned polish output" persisted instead of nil.
+private struct CannedPolisher: TranscriptPolisher {
+  func polish(
+    text: String,
+    instructions: PolishInstructions,
+    config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    LLMResult(polishedText: "canned polish output")
+  }
+}
 
 @MainActor
 private final class SignalFlag {
