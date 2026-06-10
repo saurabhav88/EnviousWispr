@@ -614,7 +614,10 @@ private struct MainWindowRoot: View {
 
   var body: some View {
     UnifiedWindowView()
-      .frame(minWidth: 580, minHeight: 400)
+      // 710 covers the pinned sidebar (200) + the NavigationSplitView divider
+      // (~8, AX-measured) + the History pane floors (230 + 8 + 260 = 498), so
+      // the window can never crush any column (#1024).
+      .frame(minWidth: 710, minHeight: 400)
       .environment(b.navigationCoordinator)
       .environment(b.diagnosticsCoordinator)
       .environment(b.languageSuggestionPresenter)
