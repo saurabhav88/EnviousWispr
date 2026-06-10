@@ -4,8 +4,8 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
-@testable import EnviousWisprAppKit
 @testable import EnviousWisprASR
+@testable import EnviousWisprAppKit
 
 /// Unit tests for `BackendMetadata` (PR7 of epic #763). Covers the three
 /// display surfaces exposed to views/AppDelegate: `modelLabel`,
@@ -79,6 +79,59 @@ struct BackendMetadataTests {
     bm.settings.ollamaModel = "llama3.2"
     bm.llmDiscovery.discoveredModels = []
     #expect(bm.llmLabel == "llama3.2")
+  }
+
+  // MARK: - polishLabel
+
+  @Test("polishLabel: provider .none returns 'Off' even with stale model fields populated")
+  func polishLabelOffIgnoresStaleModels() {
+    let bm = makeBackendMetadata()
+    bm.settings.llmProvider = LLMProvider.none
+    bm.settings.llmModel = "gpt-4o-mini"
+    bm.settings.ollamaModel = "llama3.2"
+    #expect(bm.polishLabel == "Off")
+  }
+
+  @Test("polishLabel: discovered cloud model returns its displayName")
+  func polishLabelDiscoveredModelReturnsDisplayName() {
+    let bm = makeBackendMetadata()
+    bm.settings.llmProvider = .openAI
+    bm.settings.llmModel = "gpt-4o-mini"
+    bm.llmDiscovery.discoveredModels = [
+      LLMModelInfo(
+        id: "gpt-4o-mini",
+        displayName: "GPT-4o Mini",
+        provider: .openAI,
+        isAvailable: true)
+    ]
+    #expect(bm.polishLabel == "GPT-4o Mini")
+  }
+
+  @Test("polishLabel: cloud model before discovery returns the raw ID")
+  func polishLabelPreDiscoveryReturnsRawID() {
+    let bm = makeBackendMetadata()
+    bm.settings.llmProvider = .gemini
+    bm.settings.llmModel = "gemini-2.0-flash"
+    bm.llmDiscovery.discoveredModels = []
+    #expect(bm.polishLabel == "gemini-2.0-flash")
+  }
+
+  @Test("polishLabel: Apple Intelligence is named directly, never the raw model id")
+  func polishLabelAppleIntelligenceNamedDirectly() {
+    let bm = makeBackendMetadata()
+    bm.settings.llmProvider = .appleIntelligence
+    bm.settings.llmModel = "apple-intelligence"
+    bm.llmDiscovery.discoveredModels = []
+    #expect(bm.polishLabel == "Apple Intelligence")
+  }
+
+  @Test("polishLabel: Ollama provider reads ollamaModel")
+  func polishLabelOllamaReadsOllamaModel() {
+    let bm = makeBackendMetadata()
+    bm.settings.llmProvider = .ollama
+    bm.settings.ollamaModel = "llama3.2"
+    bm.llmDiscovery.discoveredModels = []
+    #expect(bm.polishLabel == "llama3.2")
   }
 
   // MARK: - statusText(for:) — Parakeet branch
