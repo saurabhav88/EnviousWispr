@@ -6,14 +6,22 @@ import Testing
 /// Locks the home as the canonical "backend/model display labels" surface:
 /// - 3 stored properties (`settings`, `asrManager`, `llmDiscovery`)
 /// - 1 non-private method (`statusText(for:)`)
-/// - ≤65 lines
+/// - ≤75 lines
 /// - imports ⊆ {EnviousWisprASR, EnviousWisprCore, EnviousWisprServices, Observation}
 ///
-/// Computed properties (`modelLabel`, `llmLabel`) are NOT counted by the
-/// shared parser; only `func` declarations are. `LLMModelDiscoveryCoordinator`
-/// is App-local (same target, no Services import needed for it).
+/// Computed properties (`modelLabel`, `llmLabel`, `polishLabel`) are NOT
+/// counted by the shared parser; only `func` declarations are.
+/// `LLMModelDiscoveryCoordinator` is App-local (same target, no Services
+/// import needed for it).
 ///
 /// Lowering any cap is free; raising requires a Bible §30 changelog entry.
+///
+/// Bible §30 entry (#1026, 2026-06-10): line cap 65→75. Reason: fourth
+/// display label `polishLabel` (sidebar AI Polish row) — a provider
+/// switch ("Off" / "Apple Intelligence" / llmLabel chain) in the
+/// ceiling's explicitly uncounted category (computed display label);
+/// stored-property, method, and import caps unchanged. The home
+/// remains display-only.
 @Suite struct BackendMetadataCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/BackendMetadata.swift"
@@ -51,9 +59,9 @@ import Testing
     let source = try CeilingsTestSupport.source(at: Self.sourcePath)
     let count = CeilingsTestSupport.lineCount(in: source)
     #expect(
-      count <= 65,
+      count <= 75,
       """
-      BackendMetadata line count exceeded: \(count) > 65. \
+      BackendMetadata line count exceeded: \(count) > 75. \
       Ratchet down if implementation came in lower; raise only via Bible §30.
       """)
   }

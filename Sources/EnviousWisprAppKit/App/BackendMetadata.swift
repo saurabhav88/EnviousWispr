@@ -28,6 +28,20 @@ final class BackendMetadata {
     settings.selectedBackend == .parakeet ? "Parakeet v3" : "WhisperKit"
   }
 
+  /// Sidebar AI Polish row label. Reads the CONFIGURED polish target
+  /// (a settings readout), not runtime availability or last-polish
+  /// success — a configured-but-unreachable provider still shows its
+  /// model name; per-dictation outcomes surface on the transcript.
+  /// Apple Intelligence is named directly: its model id never varies
+  /// and discovery only runs when the settings pane is visited.
+  var polishLabel: String {
+    switch settings.llmProvider {
+    case .none: "Off"
+    case .appleIntelligence: "Apple Intelligence"
+    default: llmLabel
+    }
+  }
+
   var llmLabel: String {
     guard settings.llmProvider != .none else { return "LLM Deactivated" }
     let model = settings.llmProvider == .ollama ? settings.ollamaModel : settings.llmModel

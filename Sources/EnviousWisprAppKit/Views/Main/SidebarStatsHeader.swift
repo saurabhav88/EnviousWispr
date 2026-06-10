@@ -46,6 +46,7 @@ struct SidebarStatsHeader: View {
       ModelStatusBar(
         modelName: backendMetadata.modelLabel,
         statusText: backendMetadata.statusText(for: liveRecordingState.pipelineState),
+        polishLabel: backendMetadata.polishLabel,
         isRecording: isRecording,
         isLoaded: asrManager.isModelLoaded,
         hasError: {
@@ -60,33 +61,68 @@ struct SidebarStatsHeader: View {
   }
 }
 
-/// Compact status bar showing model name and state.
+/// Compact two-row status card: transcription engine + configured AI polish.
+/// `polishLabel` is a settings readout (configured target), not a runtime
+/// health signal — see `BackendMetadata.polishLabel`.
 struct ModelStatusBar: View {
   let modelName: String
   let statusText: String
+  let polishLabel: String
   let isRecording: Bool
   let isLoaded: Bool
   let hasError: Bool
 
   var body: some View {
-    HStack(spacing: 6) {
-      Circle()
-        .fill(dotColor)
-        .frame(width: 8, height: 8)
-        .accessibilityHidden(true)
+    VStack(alignment: .leading, spacing: 5) {
+      HStack(spacing: 6) {
+        Circle()
+          .fill(dotColor)
+          .frame(width: 8, height: 8)
+          .accessibilityHidden(true)
 
-      Text(modelName)
-        .font(.caption)
-        .fontWeight(.medium)
+        Text("Engine")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .layoutPriority(1)
 
-      Text("·")
-        .foregroundStyle(.tertiary)
+        Spacer(minLength: 8)
 
-      Text(statusText)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        Text(modelName)
+          .font(.caption)
+          .fontWeight(.medium)
+          .lineLimit(1)
+          .truncationMode(.middle)
+          .help(modelName)
 
-      Spacer()
+        Text("·")
+          .foregroundStyle(.tertiary)
+
+        Text(statusText)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+          .layoutPriority(1)
+      }
+
+      HStack(spacing: 6) {
+        Color.clear
+          .frame(width: 8, height: 8)
+          .accessibilityHidden(true)
+
+        Text("AI Polish")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .layoutPriority(1)
+
+        Spacer(minLength: 8)
+
+        Text(polishLabel)
+          .font(.caption)
+          .fontWeight(.medium)
+          .lineLimit(1)
+          .truncationMode(.middle)
+          .help(polishLabel)
+      }
     }
     .padding(.horizontal, 10)
     .padding(.vertical, 6)
@@ -95,6 +131,7 @@ struct ModelStatusBar: View {
         .fill(
           isRecording ? AnyShapeStyle(Color.stError.opacity(0.1)) : AnyShapeStyle(.fill.quinary))
     )
+    .accessibilityElement(children: .combine)
   }
 
   private var dotColor: Color {
