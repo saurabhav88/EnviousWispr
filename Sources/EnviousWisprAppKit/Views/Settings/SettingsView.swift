@@ -57,7 +57,9 @@ struct UnifiedWindowView: View {
         }
       }
       .background(Color.stSidebarBg)
-      .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 260)
+      // Fixed at 200 (#1024): the root window minimum (700) guarantees the
+      // History pane floors (498) only when the sidebar cannot grow past 200.
+      .navigationSplitViewColumnWidth(200)
     } detail: {
       detailContent
         .frame(maxWidth: .infinity, maxHeight: .infinity)
