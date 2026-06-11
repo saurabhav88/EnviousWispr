@@ -197,3 +197,6 @@ routine-session-logs-*/
 
 # Codex scratch artifacts (local-only review prompts/outputs)
 .codex/
+
+# Local research workbenches (classifier retraining data, eval corpora) — never tracked
+/artifacts/
