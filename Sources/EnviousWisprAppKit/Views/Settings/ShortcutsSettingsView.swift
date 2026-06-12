@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
@@ -21,11 +22,17 @@ struct ShortcutsSettingsView: View {
         }
         BrandedRow {
           VStack(alignment: .leading, spacing: 4) {
-            Toggle(
-              settings.isPushToTalk ? "Push to Talk" : "Toggle",
-              isOn: $settings.isPushToTalk
+            // #917: both modes visible side by side. The old single Toggle
+            // labeled itself with the ACTIVE mode, so switching it "off" to
+            // leave toggle mode kept you in toggle mode — observed live as
+            // "the switch is broken."
+            BrandedSegmentedPicker(
+              options: [
+                ("Push to Talk", RecordingMode.pushToTalk),
+                ("Toggle", RecordingMode.toggle),
+              ],
+              selection: $settings.recordingMode
             )
-            .toggleStyle(BrandedToggleStyle())
             Text(
               settings.isPushToTalk
                 ? "Hold the hotkey to record, release to stop."
