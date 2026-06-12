@@ -1297,6 +1297,37 @@ final class RecordingSessionKernel {
             level: .info, category: "Pipeline"
           )
         }
+        #if DEBUG
+          // #979 diagnostic: dogfood builds save the audio pair for this
+          // terminal so the next local occurrence answers the production
+          // fork (real short word lost vs non-speech transient that fooled
+          // the voice detector). DEBUG-only; local disk; bounded retention.
+          let rawSamples = captureResult.samples
+          // Codex P2 (r1+r2): dump what the engine ACTUALLY decoded.
+          // WhisperKit ignores the conditioned buffer and decodes the raw
+          // capture padded to the transcription minimum — reuse the SAME
+          // routing helper the adapter calls so the fed WAV matches the
+          // failing decode byte-for-byte.
+          let fedSamples =
+            adapter.capabilities.decodesConditionedBatchSamples
+            ? conditioned.samples
+            : WhisperKitPipelineSpeechRouting.paddedASRSamples(
+              rawSamples: captureResult.samples,
+              minimumSamples: AudioConstants.minimumTranscriptionSamples)
+          let sidRaw = sid.raw.uuidString
+          Task.detached(priority: .utility) {
+            // Task.detached (not Task): file IO off the kernel's actor; no
+            // cancellation or ordering relationship with the session — the
+            // dump must survive the session reaching its terminal state.
+            let prefix = ASREmptyCaptureDump.dump(
+              raw: rawSamples, fed: fedSamples, sessionID: sidRaw)
+            await AppLogger.shared.log(
+              prefix.map { "ASR-empty capture dumped: \($0)-{raw,fed}.wav" }
+                ?? "ASR-empty capture dump FAILED (diagnostic limb, ignored)",
+              level: .info, category: "Pipeline"
+            )
+          }
+        #endif
       }
       finishTerminal(
         effectiveSpeechEvidence ? .failed(.asrEmpty) : .noSpeech, sid: sid)
