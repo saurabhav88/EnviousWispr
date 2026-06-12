@@ -308,7 +308,15 @@ import Testing
       context: context,
       adapter: ParakeetEngineAdapter(asrManager: StubParakeetASRManager()),
       steps: steps ?? makeSteps(),
-      textProcessingRunner: TextProcessingRunner(),
+      // #989: deterministic executor — this suite asserts chain SEMANTICS
+      // (ordering, side channels, delivery), never step timing. The
+      // production `withThrowingTimeout` executor let full-suite MainActor
+      // contention starve a short-budget limb (FillerRemoval, 50ms) past its
+      // deadline, silently discarding its output and flaking the chain-order
+      // test. Timeout behavior itself is covered by TextProcessingRunnerTests
+      // and HeartPathIntegrationTests with the same fake.
+      textProcessingRunner: TextProcessingRunner(
+        timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0).run),
       save: save,
       deliverPaste: deliverPaste,
       pasteCompletionRegistry: nil,
