@@ -110,6 +110,12 @@ struct ASREventRouterTests {
       await Task.yield()
 
       #expect(driver.state == .polishing)
+      // Codex PR #990 P2 (#959): the safe point includes the marker side
+      // effect, not just the FSM state — a crash during polishing is not an
+      // idle reap. A stale marker would route the NEXT not-ready press
+      // through warm-respawn (skipping the cold pill) and pollute
+      // `coldstart.service_reclaimed` telemetry.
+      #expect(driver.residentModelLostWhileIdle == false)
       withExtendedLifetime(router) {}
     }
   #endif
@@ -149,6 +155,10 @@ struct ASREventRouterTests {
       await Task.yield()
 
       #expect(whisperKit.state == .polishing)
+      // Codex PR #990 P2 (#959): same marker discipline as the Parakeet
+      // polishing test above — a WhisperKit session mid-polish means the
+      // system is not idle, so the Parakeet driver must not be marked.
+      #expect(driver.residentModelLostWhileIdle == false)
       withExtendedLifetime(router) {}
     }
   #endif

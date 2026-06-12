@@ -33,6 +33,16 @@ final class ASREventRouter {
         self.kernelDriver.handleASRServiceInterruption()
       } else if wkState == .recording || wkState == .transcribing {
         self.whisperKitKernelDriver.handleASRServiceInterruption()
+      } else if pState == .polishing || wkState == .polishing {
+        // Codex PR #990 P2 (#959): a crash/reap during the post-ASR polishing
+        // window is NOT an idle reap — a session is still finalizing. The
+        // kernel deliberately treats `.finalizing` as a safe point (see the
+        // WONTFIX note in `KernelDictationDriver.pipelineState(for:)`), and
+        // the marker is part of that safe-point contract: setting it here
+        // would let the next not-ready press consume a stale marker, bypass
+        // the #879 cold pill after a genuine mid-session crash, and pollute
+        // `coldstart.service_reclaimed` telemetry. Log-only (the line above
+        // already records both driver states).
       } else {
         // #959: the Parakeet ASR service (this `asrManager`) was reaped while
         // idle — `onServiceInterrupted` only fires when a resident model was
