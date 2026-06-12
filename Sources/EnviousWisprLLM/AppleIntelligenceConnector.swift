@@ -164,10 +164,12 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
 
     Allowed edits:
     1. Fix spelling, capitalization, and punctuation
-    2. MUST remove filler words (um, uh, like, you know, I mean, basically, actually, literally, well, honestly, sort of, kind of)
+    2. MUST remove filler words (um, uh, like, you know, I mean)
     3. MUST remove obvious false starts and repeated fragments
     4. Correct clearly misheard words only when the correction is obvious
-    5. MUST collapse self-corrections by keeping only the final version
+    5. MUST collapse self-corrections by keeping only the final version after
+       words like "wait", "no", "sorry", or "actually"
+       Remove the earlier abandoned version completely.
 
     Preserve the speaker's meaning, tone, and formality.
     Keep the original wording and order as much as possible.
@@ -211,7 +213,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
 
     Allowed edits:
     1. Fix spelling, capitalization, and punctuation
-    2. MUST remove filler words (um, uh, like, you know, I mean, basically, actually, literally, well, honestly, sort of, kind of)
+    2. MUST remove filler words (um, uh, like, you know, I mean)
     3. MUST remove obvious false starts and repeated fragments
     4. Correct clearly misheard words only when the correction is obvious
     5. MUST collapse self-corrections by keeping only the final version after words like "wait", "no", "sorry", or "actually"
@@ -440,6 +442,23 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         throw LLMError.emptyResponse
       }
 
+      // #963: deterministic restore of a deleted sentence-leading discourse
+      // marker. Prompt rules alone cannot make the on-device model keep
+      // "Actually"/"Well"/... reliably; the repair runs on the post-filter
+      // text and no-ops unless the dictation opened with a marker that the
+      // polish dropped.
+      let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+      let repairedContent = LeadingMarkerRepair.repair(
+        input: text, output: trimmedContent, expectedLanguage: detectedLanguage)
+      if repairedContent != trimmedContent {
+        Task {
+          await AppLogger.shared.log(
+            "AFM leading-marker repair: restored the dictation's opening word",
+            level: .info, category: "LLM"
+          )
+        }
+      }
+
       let metadata = PolishMetadata(
         routerMode: mode.rawValue,
         routerBasis: routerBasis,
@@ -447,7 +466,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         filterFellBackToRaw: filtered.fellBackToRaw
       )
       return LLMResult(
-        polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines),
+        polishedText: repairedContent,
         polishMetadata: metadata
       )
     }
@@ -497,6 +516,23 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         throw LLMError.emptyResponse
       }
 
+      // #963: deterministic restore of a deleted sentence-leading discourse
+      // marker. Prompt rules alone cannot make the on-device model keep
+      // "Actually"/"Well"/... reliably; the repair runs on the post-filter
+      // text and no-ops unless the dictation opened with a marker that the
+      // polish dropped.
+      let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+      let repairedContent = LeadingMarkerRepair.repair(
+        input: text, output: trimmedContent, expectedLanguage: detectedLanguage)
+      if repairedContent != trimmedContent {
+        Task {
+          await AppLogger.shared.log(
+            "AFM leading-marker repair: restored the dictation's opening word",
+            level: .info, category: "LLM"
+          )
+        }
+      }
+
       let metadata = PolishMetadata(
         routerMode: mode.rawValue,
         routerBasis: routerBasis,
@@ -504,7 +540,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         filterFellBackToRaw: filtered.fellBackToRaw
       )
       return LLMResult(
-        polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines),
+        polishedText: repairedContent,
         polishMetadata: metadata
       )
     }
