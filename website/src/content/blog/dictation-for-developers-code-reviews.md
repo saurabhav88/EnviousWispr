@@ -28,13 +28,13 @@ Not all developer writing sounds the same. A commit message is terse. A PR descr
 
 For most developer writing (review comments, ticket updates, README sections, Slack threads), the default polish handles the cleanup without over-formalizing or stripping your voice. You speak naturally and the output reads naturally.
 
-For specialized formatting, EnviousWispr's Custom prompt option lets you write your own instructions for the polish step. A few examples that work well for developer workflows:
+For more specialized output, the way you talk steers the shape, and Ollama, OpenAI, or Gemini polish turns those cues into formatting. A few patterns that work well for developer workflows:
 
-- "Format as a markdown bullet list with code references in backticks." Useful for changelog entries or release notes.
-- "Write in past tense and group changes by subsystem." Useful for postmortem timelines.
-- "Output API documentation with parameter and return descriptions." Useful for public method docs.
+- Call out a list ("first... then... finally," "the changes were") and, with Ollama, OpenAI, or Gemini polish on, changelog entries or release notes come back as a clean markdown bullet list.
+- Walk a postmortem timeline in order and the polish keeps that sequence the way you narrate it.
+- Name the parts of an API doc as you speak (the parameters, what each returns) and the output lands organized.
 
-The Custom prompt sticks until you change it, so once you have a prompt that fits your team's style, you can leave it in place and dictate against it for as long as you need.
+On the Apple Intelligence default, you get the same content as clean prose, with no markdown invented. There's nothing to set up either way.
 
 ## Real workflow: dictating a PR description
 
@@ -74,7 +74,7 @@ This works especially well for longer review comments, the kind where you need t
 
 Technical documentation has the highest typing-to-thinking ratio of anything developers write. You know what the system does. You just need to get it into words. Dictation makes this almost trivial.
 
-For documentation, the polish step produces structured prose with proper punctuation and clean paragraphs. You talk through the architecture the way you'd explain it to a new team member, and the output lands polished and ready to commit. Custom prompts let you go further: tell the post-processor to format output as API documentation with parameter descriptions, or to use specific header structures.
+For documentation, the polish step produces clean prose with proper punctuation and clear paragraphs. You talk through the architecture the way you'd explain it to a new team member, and the output lands polished and ready to commit. Walk through it in sections, and with Ollama, OpenAI, or Gemini polish on those headers and lists carry into the output as markdown.
 
 This is particularly useful for the kind of documentation that always gets skipped: the "how does this subsystem actually work" docs that everyone wishes existed but nobody wants to sit down and type out. Speaking is lower friction than typing for this kind of knowledge dump, and the difference is enough to make it actually happen.
 
@@ -95,8 +95,8 @@ For developers working on proprietary codebases, under NDA, or at companies with
 To set up for developer use:
 
 1. **Pick your hotkey.** Choose something that doesn't collide with your IDE shortcuts.
-2. **Leave polish on.** Default polish handles most developer writing (review comments, ticket updates, README sections) without over-formalizing.
-3. **Set a Custom prompt for the niches.** API docs, changelog entries, structured postmortems. The Custom prompt sticks until you change it.
+2. **Leave polish on.** The polish handles most developer writing (review comments, ticket updates, README sections) without over-formalizing.
+3. **Speak the structure for the niches.** API docs, changelog entries, structured postmortems: name the sections and lists out loud, and with Ollama, OpenAI, or Gemini polish on the output comes back formatted.
 
 Hold the hotkey in GitHub, talk through your PR description, and the polished text lands ready to paste. Move to Slack and the same workflow handles a quick reply.
 

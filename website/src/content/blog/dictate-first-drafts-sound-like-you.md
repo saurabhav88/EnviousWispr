@@ -1,6 +1,6 @@
 ---
 title: "Dictate First Drafts That Sound Like You"
-description: "Most dictation tools strip your voice. Here's how to dictate first drafts that keep your writing style intact using on-device polish and Custom prompts."
+description: "Most dictation tools strip your voice. Here's how to dictate first drafts that keep your writing style intact with on-device polish built to preserve how you actually write."
 pubDate: 2026-03-14
 updatedDate: 2026-04-04
 tags: ["writing", "dictation", "workflow", "writing-style"]
@@ -12,7 +12,7 @@ Every dictation tool on the market is lying to you about the same thing. They pr
 
 The problem isn't speech-to-text accuracy. The problem is that most tools treat post-processing as "make it sound professional" instead of "make it sound like the person who said it."
 
-That's a solvable problem, if the tool gives you control over what happens after transcription.
+That's a solvable problem, if the tool's polish is built to preserve your voice instead of flattening it.
 
 If you're new to EnviousWispr, the [getting started guide](/blog/getting-started-enviouswispr-under-2-minutes/) walks you through setup in under two minutes.
 
@@ -20,20 +20,20 @@ If you're new to EnviousWispr, the [getting started guide](/blog/getting-started
 
 Standard speech to text treats your words as data to be cleaned. The goal is "correct" text: grammatically inoffensive, uniformly punctuated, utterly generic. That's fine for transcribing a meeting. It's terrible for writing.
 
-Writers don't want correct. They want *theirs*. Short fragments for emphasis. Em dashes instead of semicolons. A specific way of handling dialogue tags, or paragraphs that breathe a certain way. The raw transcription from any speech model is a starting point, not a finished product. Most tools don't give you any control over what happens between transcription and output.
+Writers don't want correct. They want *theirs*. Short fragments for emphasis. Em dashes instead of semicolons. A specific way of handling dialogue tags, or paragraphs that breathe a certain way. The raw transcription from any speech model is a starting point, not a finished product. Most tools flatten that starting point into something generic.
 
 That's the gap EnviousWispr fills.
 
 ## How EnviousWispr Keeps Your Voice Intact
 
-EnviousWispr splits the work into two stages: transcription and post-processing. Transcription runs locally on your Mac using on-device speech recognition via Core ML. That gives you accurate raw text. Post-processing is where you shape it.
+EnviousWispr splits the work into two stages: transcription and post-processing. Transcription runs locally on your Mac using on-device speech recognition via Core ML. That gives you accurate raw text. Post-processing is where your voice gets preserved.
 
 Here's what makes the difference for writers:
 
-- **On-device polish that keeps your voice.** Your local LLM (Apple Intelligence, Ollama) or a cloud API (OpenAI, Gemini) cleans up the raw transcription: filler words go, punctuation gets fixed, structure tightens, but your contractions, sentence fragments, and rhythm stay intact. The default polish is tuned for natural-sounding output, not corporate sameness.
-- **Custom prompts for explicit control.** When you want to lock in a specific style, write a Custom prompt and the polish step uses it for every dictation until you change it. Examples: "use em dashes, not semicolons", "keep sentence fragments, they're intentional", "format as Markdown with H2 headings".
+- **On-device polish that keeps your voice.** Your local LLM (Apple Intelligence, Ollama) or a cloud API (OpenAI, Gemini) cleans up the raw transcription: filler words go, punctuation gets fixed, structure tightens, but your contractions, sentence fragments, and rhythm stay intact. The polish is tuned for natural-sounding output, not corporate sameness.
+- **An editor, not a rewriter.** The polish is built to edit, not reword. It preserves your meaning, tone, and phrasing, and never translates or rewrites what you said. Your em dashes, your intentional fragments, your rhythm survive the cleanup.
 
-You can change the Custom prompt as your task changes (drafting one minute, client-facing prose the next), and the polish step picks it up on your next dictation. You're in control.
+It also adapts to length: a quick aside stays a clean line, while a longer piece comes back as clean, readable prose. You don't switch anything between drafting and client-facing work; the polish keeps your voice either way.
 
 For a deeper look at how the transcription and post-processing pipeline connects, see the [How It Works](/how-it-works/) page.
 
@@ -47,26 +47,24 @@ Download the latest `.dmg` from the [GitHub releases page](https://github.com/sa
 
 No account. No API key. No subscription. It's free.
 
-### Step 2: Set Up Polish (and a Custom Prompt If You Need One)
+### Step 2: Set Up Polish
 
-The speech model downloads automatically on first launch. Once that's done (a few minutes), open EnviousWispr's settings. The default polish is tuned to keep your voice intact while cleaning up filler words and punctuation. For most writing, that's the right starting point.
+The speech model downloads automatically on first launch. Once that's done (a few minutes), open EnviousWispr's settings and pick your polish engine. On macOS 26 and later, Apple Intelligence is on by default; on earlier macOS, choose Ollama to keep it on-device, or add an OpenAI or Gemini key. The polish keeps your voice intact while cleaning up filler words and punctuation, and it works across whatever you're writing:
 
-If you want to lock in a specific shape, write a Custom prompt. Pick whichever pattern matches what you're working on:
+- Novels, blog drafts, and freewriting keep your natural voice, contractions, and sentence rhythm.
+- Newsletters and articles come back as clean, readable prose with a light touch.
+- Longer, more formal pieces get tightened structure and proper paragraphs.
+- Your stylistic choices (em dashes over semicolons, intentional fragments) survive, because the polish edits rather than rewrites.
 
-- "Keep my natural voice, contractions, and sentence rhythm. Don't formalize." For novels, blog drafts, freewriting.
-- "Output clean, readable prose with light polish. Keep my voice." For newsletters and articles.
-- "Tighten sentence structure, remove casual phrasing, produce polished prose." For academic papers, client deliverables.
-- "Use em dashes instead of semicolons. Preserve sentence fragments when intentional." For specific style preferences.
-
-The Custom prompt sticks until you change it.
+There's nothing to configure. The polish reads what you said and matches it.
 
 Post-processing can run on-device (Apple Intelligence, Ollama) or through cloud APIs (OpenAI, Gemini). Your raw dictation never leaves your device unless you explicitly configure an external API.
 
 ### Step 3: Dictate Your First Draft
 
-Hold your hotkey. Start talking. Don't edit in your head; just speak. Release the hotkey when you're done with a thought. A second or two later on Apple Silicon, polished text lands in your writing app, styled the way you specified.
+Hold your hotkey. Start talking. Don't edit in your head; just speak. Release the hotkey when you're done with a thought. A second or two later on Apple Silicon, polished text lands in your writing app, cleaned up but still in your voice.
 
-That's it. No copying and pasting. No switching apps. The text pastes into the app that has focus, cleaned up according to your polish settings.
+That's it. No copying and pasting. No switching apps. The text pastes into the app that has focus, cleaned up while keeping your voice.
 
 ## What the Difference Actually Looks Like
 
@@ -110,8 +108,8 @@ For a detailed look at how on-device processing compares to cloud alternatives, 
 
 Most writers who've tried dictation and quit had one of three problems:
 
-1. **The output didn't sound like them.** Solved by an on-device polish step tuned to keep your voice, plus a Custom prompt for full control over processing instructions.
-2. **Switching between contexts was tedious.** Edit the Custom prompt as your task changes; the polish step picks it up on your next dictation.
+1. **The output didn't sound like them.** Solved by an on-device polish step built to preserve your voice: it edits, it doesn't reword.
+2. **Switching between contexts was tedious.** Nothing to switch. The polish adapts to what you said, so the same setup handles a manuscript paragraph and a quick Slack reply.
 3. **Privacy concerns with cloud tools.** Solved by on-device processing that never phones home.
 
 The first few sessions feel awkward. You'll over-explain, stumble, repeat yourself. That's normal. The post-processor catches most of it, and within a week you'll find a rhythm. Dictation isn't a replacement for writing; it's a way to get your first draft out of your head faster so you can spend your energy on editing, which is where the real writing happens anyway.
@@ -121,7 +119,7 @@ The first few sessions feel awkward. You'll over-explain, stumble, repeat yourse
 EnviousWispr is free and yours to keep. No strings.
 
 1. [Download EnviousWispr free](/#download), or grab the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases)
-2. Leave polish on the default, or write a Custom prompt that matches your voice
+2. Leave AI polish on; it's built to keep your voice intact
 3. Dictate your next first draft
 
 ## Related Posts

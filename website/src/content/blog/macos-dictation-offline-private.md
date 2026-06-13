@@ -79,7 +79,7 @@ Apple's built-in dictation has improved significantly. On Apple Silicon Macs run
 Where it falls short:
 
 - **No post-processing.** What you say is what you get, filler words and all.
-- **Limited customization.** No custom prompts, no way to adjust output formatting.
+- **No smart formatting.** A quick note and a long, structured rundown come out shaped exactly the same; no adapting to what you said.
 - **No hands-free mode.** You need to trigger it each time.
 - **No custom word dictionary.** No way to teach it your terminology.
 
@@ -113,7 +113,7 @@ EnviousWispr differs on three axes:
 | On-device transcription | Yes | Partial | No | No |
 | Post-processing | On-device or cloud (your choice) | None | Cloud | Cloud |
 | Hands-free mode | Yes (double-press lock) | No | Varies | No |
-| Custom prompts | Yes | No | Varies | Yes |
+| Adaptive formatting | Yes (Ollama, OpenAI, or Gemini polish) | No | Varies | Varies |
 | Custom word dictionary | Yes | No | No | No |
 | Internet required | No | No | Yes | Yes |
 | Cost | Free | Free | Subscription | Subscription |
@@ -147,9 +147,9 @@ EnviousWispr downloads its speech recognition model automatically on first launc
 
 If you want to avoid holding keys, just double-press your hotkey to lock recording. No settings change needed. Speak naturally, then press once to finish or triple-press to cancel.
 
-### Tune the Polish Step
+### Let the Polish Adapt
 
-EnviousWispr's polish step cleans up your dictation by default, removing filler words and fixing punctuation without flattening your voice. When you need a specific shape (a particular tone, format, or convention), a Custom prompt lets you write your own polish instructions and reuse them across dictations.
+EnviousWispr's polish step cleans up your dictation by default, removing filler words and fixing punctuation without flattening your voice. A quick aside stays a clean line. With Ollama, OpenAI, or Gemini polish on, a longer piece with list cues comes back structured with paragraphs and bullets; on the Apple Intelligence default, the same content stays clean prose.
 
 ## A Tool That Works When You Need It
 

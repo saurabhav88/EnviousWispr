@@ -72,7 +72,7 @@ The minimum kit is a recent Apple Silicon Mac (M1 or newer), macOS 14 Sonoma or 
 
 **"Dictation feels weird in an open office."**  True. Use a headset. Or wait until you are alone for the long-form stuff and type the short replies. Most people do not dictate in front of others; they batch the dictation for solo focus blocks.
 
-**"My text sounds nothing like me when dictated."**  Try a "preserve voice" polish prompt instead of a "clean up grammar" one. The polish layer can either flatten your voice or keep it; the choice is configurable in most tools, including ours.
+**"My text sounds nothing like me when dictated."**  That's a sign the tool's polish is rewriting instead of editing. EnviousWispr's polish is built to preserve your voice: it keeps your phrasing and rhythm and only cleans up filler and punctuation.
 
 **"I make weird mistakes that auto-correct does not catch."**  Mostly homophones. Read the polished text once before sending. That 10-second pass catches the rare miss and is still 70% faster than typing.
 

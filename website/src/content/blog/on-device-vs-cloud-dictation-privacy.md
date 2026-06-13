@@ -93,7 +93,7 @@ For many people, especially those dictating work-related content on a Mac, on-de
 
 EnviousWispr is an on-device dictation app for macOS. It ships with two transcription backends: Parakeet for fast English dictation and WhisperKit for multi-language support. Both run natively via Core ML on Apple Silicon. Your audio is recorded, transcribed, and post-processed locally. Recordings never leave your Mac.
 
-Here's what the workflow looks like: hold a hotkey, speak, release. A second or two later, polished text lands on your clipboard or pastes directly into the app you're using. Post-processing (punctuation cleanup, filler word removal, tone adjustment) runs through your choice of AI provider: Apple Intelligence and Ollama for fully on-device, or OpenAI and Gemini if you prefer cloud. A Custom prompt lets you shape the output for different contexts; the polish step uses your prompt for every dictation until you change it.
+Here's what the workflow looks like: hold a hotkey, speak, release. A second or two later, polished text lands on your clipboard or pastes directly into the app you're using. Post-processing (punctuation cleanup, filler word removal, light formatting) runs through your choice of AI provider: Apple Intelligence and Ollama for fully on-device, or OpenAI and Gemini if you prefer cloud. The polish shapes the output to match what you said, adapting per dictation with nothing to configure.
 
 Here's what that looks like in practice:
 

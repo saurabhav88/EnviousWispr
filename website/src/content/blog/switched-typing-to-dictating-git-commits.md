@@ -1,6 +1,6 @@
 ---
 title: "Dictating Git Commits on macOS: Better Messages, Less Typing"
-description: "Dictating git commits produces better messages than typing. Here's how on-device polish and Custom prompts make voice commit messages practical."
+description: "Dictating git commits produces better messages than typing. Here's how on-device polish turns spoken explanations into clean, readable commit bodies."
 pubDate: 2026-03-16
 updatedDate: 2026-04-04
 tags: ["developer", "git", "workflow", "dictation"]
@@ -47,33 +47,27 @@ For commit messages, something stripped down works best: terse, technical, no fl
 
 EnviousWispr's default polish already keeps output direct and technical without over-formalizing. No "So basically what I did was..." making it into a commit message. For terminal work, that's usually enough.
 
-When you want exact formatting (conventional commits, specific scope tags, mandatory body structure), a Custom prompt locks it in. Write something like "output as a conventional commit with type, scope, and body" and the polish step uses it for every dictation until you change it.
+For conventional commits, type the short prefix yourself, `feat(auth):` is a couple of seconds, and dictate the part that's actually tedious: the body that explains the why. The polish cleans your spoken explanation; it does not invent structure, so the prefix you want is the prefix you type.
 
 ## How the post-processor shapes commit messages
 
-This is where it gets good. EnviousWispr's LLM post-processing step cleans up your spoken words into properly structured text. The default polish strips filler, fixes punctuation, and keeps output direct, which already gets you most of the way to a good commit message.
+This is where it gets good. EnviousWispr's LLM post-processing step cleans up your spoken words into clean, direct text. The polish strips filler, fixes punctuation, and keeps output direct, which already gets you most of the way to a good commit message.
 
-With a Custom prompt, you can go even further: define exact formatting rules like "output as a conventional commit with type, scope, and body." You tell the post-processor precisely how to structure your commits, changelogs, or any other output format.
+The trick is to split the work: type the one-line subject (your `type(scope):` prefix and a short summary), then dictate the body, the part that explains the why. The polish cleans that spoken explanation into a tight paragraph. Here's a dictated body before and after the polish:
 
-The results are surprisingly good. Hold the hotkey and say:
+*You type the subject:* `feat(auth): add rate limiting to login endpoint`
 
-*"feat auth, add rate limiting to the login endpoint because we were getting hammered by credential stuffing bots. It uses a sliding window counter in Redis with a default of five attempts per minute per IP."*
+*You dictate the body:* "so we were getting hammered by credential stuffing bots, um, so I added a sliding window counter in Redis with a default of five attempts per minute per IP"
 
-The post-processor outputs:
+*The polish cleans it to:*
 
-```
-feat(auth): add rate limiting to login endpoint
+> Credential stuffing bots were hammering the login endpoint. Added a sliding window counter in Redis with a default of five attempts per minute per IP.
 
-Credential stuffing bots were hammering the login endpoint. Added
-sliding window counter in Redis with a default of five attempts per
-minute per IP.
-```
-
-That's a commit message worth finding in a git log six months from now. And it takes about ten seconds to produce, including the hotkey hold.
+That's a commit message worth finding in a git log six months from now, and the explanatory part took about ten seconds to say instead of a minute to type.
 
 ## Before and after: typed vs. dictated commits
 
-Here's what the difference looks like in practice. These are typical before-and-after examples comparing the typed approach to the dictated approach.
+Here's the difference in practice. In each pair, the terse version is what you'd type in a hurry; the richer version is the commit you end up with when you type the subject and dictate the body, with the polish cleaning it up.
 
 **Typed:** `fix tests`
 **Dictated:**
@@ -116,7 +110,7 @@ A few things worth knowing when using developer dictation daily.
 
 **You'll feel weird at first.** Talking to your Mac in an open office is awkward. Starting at home helps, and most teams wear headphones anyway. If self-consciousness is a concern, start with commit messages: they're short, private, and the improvement is immediately visible in your git log.
 
-**A Custom prompt for commits is worth setting once.** A "conventional commit" prompt produces consistent, well-structured messages across every dictation in your terminal. Set it once and forget it.
+**Type the prefix, dictate the body.** The `feat(auth):` part is a couple of keystrokes; the body, the part that explains the why, is what dictation makes easy. Speak it, and the polish cleans it up.
 
 **It helps with RSI.** After eight-plus hours of typing every day, being able to offload even a portion of that to voice makes a noticeable difference in wrist strain by end of day. If RSI is your primary motivation, there's a dedicated guide on [voice input for RSI](/blog/voice-input-rsi-keyboard-free-workflow/).
 
@@ -126,10 +120,10 @@ If you want to try dictating git commits, here's the minimal setup.
 
 1. [Download EnviousWispr free](/#download) or grab it directly from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases) and grant it microphone and accessibility permissions on first launch
 2. The speech model downloads automatically on first launch. No model selection needed.
-3. Leave polish on the default for direct, technical output, or set a "conventional commit" Custom prompt for stricter formatting.
+3. Leave AI polish on for direct, technical output; type your `type(scope):` prefix and dictate the body.
 4. Open your terminal, hold the hotkey, describe your change, release
 
-That's the whole workflow. Hold, speak, release. Your commit message lands formatted and ready to go. EnviousWispr is [free](https://github.com/saurabhav88/EnviousWispr): no account, no API key, no subscription.
+That's the whole workflow. Type the subject, hold the hotkey, speak the body, release. The cleaned-up body lands ready to paste under your subject line. EnviousWispr is [free](https://github.com/saurabhav88/EnviousWispr): no account, no API key, no subscription.
 
 ## Related Posts
 

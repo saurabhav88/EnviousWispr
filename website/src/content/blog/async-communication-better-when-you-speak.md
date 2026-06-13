@@ -50,13 +50,13 @@ Not every message should sound the same. A Slack reply to your team is casual. A
 
 EnviousWispr's polish step handles this in two layers. The default polish removes filler words, fixes punctuation, and tightens structure without flattening your voice into corporate prose. It works well across most async writing, so the same workflow handles a Slack reply and a status update.
 
-When you need a specific shape, the Custom prompt option lets you write your own polish instructions. A few that work well:
+When you need a specific shape, the way you talk sets it. The polish reads what you said and matches it:
 
-- "Keep this casual and concise. Don't formalize." For Slack and team threads.
-- "Tighten sentence structure and produce a polished tone with proper paragraphs." For client-facing email.
-- "Preserve technical terms and project-specific language. Output as a structured paragraph." For project docs and updates.
+- A short, casual aside for Slack and team threads stays casual and concise, not formalized.
+- A longer, more deliberate message for client-facing email comes back tightened, with proper paragraphs.
+- Project docs and updates keep your technical terms and land as structured prose.
 
-You change the Custom prompt as your task changes, and the polish step picks it up on your next dictation. You speak naturally every time.
+The output adapts as your task changes, automatically. You speak naturally every time.
 
 ## Privacy: your work conversations stay on-device
 
