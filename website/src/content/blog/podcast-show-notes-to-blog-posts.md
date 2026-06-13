@@ -40,11 +40,11 @@ You can dictate show notes in the same conversational tone your audience already
 
 ## Post-Processing That Shapes Your Output
 
-This is where things get genuinely useful for podcast show notes blog posts. EnviousWispr's [post-processing pipeline](/how-it-works/) cleans up your dictation and formats it into polished text. The default polish keeps things conversational and scannable, which is what you want for show notes. For a more structured blog version, a Custom prompt produces tighter prose with proper paragraphs.
+This is where things get genuinely useful for podcast show notes blog posts. EnviousWispr's [post-processing pipeline](/how-it-works/) cleans up your dictation and formats it into polished text. The polish keeps things conversational and scannable, which is what you want for show notes. When you talk through a longer, structured blog version, it comes back as tighter prose with proper paragraphs.
 
-A Custom prompt lets you write your own processing instructions: tell the pipeline to format output as bullet-point show notes with a summary paragraph, or to expand dictation into a full 800-1200 word blog post with H2 headings. Save one prompt per output format and swap them between dictations. That makes it fast to repurpose podcast content into different written formats from the same dictation.
+You shape that by how you speak, and Ollama, OpenAI, or Gemini polish turns it into format: run through your show notes as a quick list and they land as bullet points with a summary. On the Apple Intelligence default, you get the same content as clean prose. For a blog version, speak the post in full (a longer take, in your own words); the polish cleans up what you said, but it never pads a short recap out into a long post, so say the post you want.
 
-Here's what this looks like end to end, dictating a recap right after recording:
+Here's what this looks like end to end, dictating a recap right after recording (with Ollama, OpenAI, or Gemini polish, which adds the bullets and labels; the Apple Intelligence default keeps it as clean prose):
 
 **What you say:**
 > okay so in this episode we talked to Sarah Chen about building a podcast audience from scratch um she said the biggest mistake new podcasters make is focusing on downloads instead of engagement and she recommended starting with a weekly newsletter to build a direct relationship with listeners we also covered her strategy for getting guests when you're a small show which is basically lead with what you can offer them not what they can offer you and then at the end she shared her tech stack which is Riverside for recording Descript for editing and Kit for the newsletter
@@ -90,7 +90,7 @@ Here's what a podcast-to-blog workflow looks like end to end:
 2. **Dictate show notes** immediately after recording. Hold the hotkey, speak a 2-3 minute recap of the episode, release.
 3. **Post-processing cleans and formats** the output as structured show notes (summary, key topics, resources)
 4. **Paste into your podcast host.** The text is already on your clipboard or pasted directly into the focused app.
-5. **Dictate again for the blog version.** Speak the same recap, swap in your "blog post" Custom prompt, and let the post-processing reformat it as a full blog post.
+5. **Dictate the blog version separately.** Speak the full post in your own words (a longer take), and the polish cleans it up the same way. It won't expand the recap for you, so say the post you want.
 6. **Light editing pass.** Clean up any details the LLM missed, add your episode embed link, publish.
 
 Total time for both show notes and a blog post: 10-15 minutes instead of an hour-plus of typing. You stay in your natural spoken medium the entire time.
@@ -99,7 +99,7 @@ Total time for both show notes and a blog post: 10-15 minutes instead of an hour
 
 Podcasters produce enormous amounts of spoken content that rarely gets repurposed. The friction isn't creative; you already have the ideas and the words. The friction is the format conversion: turning spoken thoughts into written text.
 
-Dictation with on-device post-processing removes that friction. You speak your show notes and blog posts the same way you speak your episodes. The default polish handles tone and cleanup; Custom prompts handle fine-grained formatting. Everything stays local on your Mac.
+Dictation with on-device post-processing removes that friction. You speak your show notes and blog posts the same way you speak your episodes. The polish handles tone and cleanup, and shapes the output to match how you talked through it. With on-device polish, everything stays local on your Mac.
 
 ## Related Posts
 
@@ -107,6 +107,6 @@ Dictation with on-device post-processing removes that friction. You speak your s
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). From download to first dictation.
 - [On-device vs. cloud dictation: what's private](/blog/on-device-vs-cloud-dictation-privacy/). Why on-device matters for pre-release and embargoed podcast content.
 
-[Download EnviousWispr free](https://enviouswispr.com/#download). No account, no subscription, no API key required. The speech model downloads automatically on first launch. Try the default polish, or write a Custom prompt for show-note formatting, and start turning episodes into written content the same day. The source is [on GitHub](https://github.com/saurabhav88/EnviousWispr/releases) if you want to inspect it first.
+[Download EnviousWispr free](https://enviouswispr.com/#download). No account, no subscription, no API key required. The speech model downloads automatically on first launch. Leave the polish on, talk through your show notes, and start turning episodes into written content the same day. The source is [on GitHub](https://github.com/saurabhav88/EnviousWispr/releases) if you want to inspect it first.
 
 *Comparing tools for episode-to-text workflows? See [vs MacWhisper](/compare/macwhisper/), [vs Otter.ai](/compare/otter-ai/), or [browse all comparisons](/compare/).*

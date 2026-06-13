@@ -26,7 +26,7 @@ EnviousWispr handles this differently. After transcription, your text runs throu
 
 ## AI Polish for Every Email Type
 
-Not every email sounds the same. A response to a board member requires different language than a quick delegation to your direct report. EnviousWispr's polish step adapts to what you're writing, and Custom prompts let you lock in a specific shape when you need one.
+Not every email sounds the same. A response to a board member requires different language than a quick delegation to your direct report. EnviousWispr's polish step adapts to what you're writing, matching the shape of what you said without any setup.
 
 ### Quick replies
 
@@ -34,15 +34,15 @@ The default polish works well for brevity. Speak a few sentences, get back a cle
 
 ### Structured correspondence
 
-For investor updates, client responses, and cross-functional announcements, dictate your key points conversationally and the polish step outputs paragraphs with proper punctuation and clear breaks. Want consistent salutations and a sign-off across every email? Save those expectations as a Custom prompt and the polish step applies them every time until you change it.
+For investor updates, client responses, and cross-functional announcements, dictate your key points conversationally and the polish step outputs paragraphs with proper punctuation and clear breaks. Want a greeting and a sign-off? Just speak them, and the polish keeps them in place.
 
 ### Delegation emails
 
 The LLM post-processing step naturally formats action-oriented dictation into structured output. Dictate what needs to happen, who owns it, and the deadline. The output arrives as a clean bulleted list with names and dates, ready to paste and send.
 
-### Custom prompts
+### Structure follows your voice
 
-The Custom prompt option lets you write your own processing instructions. Want your email output to always include a greeting and sign-off? Want bullet points for action items? Write the prompt once and every dictation follows your rules until you change it.
+You shape the output by how you talk, not by configuring anything. Open with a greeting and close with a sign-off and the polish keeps them. With Ollama, OpenAI, or Gemini polish on, rattle off action items and they come back as bullet points; on the Apple Intelligence default, you get the same items as clean prose. Either way, every dictation follows what you said.
 
 ## Sensitive Data Stays on Your MacBook
 

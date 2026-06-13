@@ -1,6 +1,6 @@
 ---
 title: "Voice to Prose on macOS: A Realistic Writing Workflow"
-description: "Build a voice-to-prose writing workflow with on-device macOS dictation. Real examples, honest tradeoffs, custom polish prompts, and first-draft setup tips."
+description: "Build a voice-to-prose writing workflow with on-device macOS dictation. Real examples, honest tradeoffs, voice-preserving polish, and first-draft setup tips."
 pubDate: 2026-03-24
 updatedDate: 2026-04-04
 tags: ["writing", "workflow", "dictation", "writing-style"]
@@ -17,24 +17,23 @@ Understanding what happens between your voice and the finished text helps you ge
 
 1. **Record.** Hold the hotkey, speak, release. The app captures raw audio from your microphone.
 2. **Transcribe.** Your speech is converted to text locally via Core ML, using on-device speech recognition. This is a literal transcription; every filler word, false start, and repeated phrase comes through.
-3. **Post-process.** An LLM cleans up the raw transcription. It strips filler words, fixes punctuation, corrects grammar, and tightens structure. If you want output shaped a specific way (a particular tone, format, or convention), a Custom prompt lets you tell the polish step exactly how to handle your dictation.
+3. **Post-process.** An LLM cleans up the raw transcription. It strips filler words, fixes punctuation, corrects grammar, and keeps your voice. A short aside stays a clean line; a longer piece comes back as clean, readable prose (and, with Ollama, OpenAI, or Gemini polish on, with paragraph breaks and light structure).
 
 The third step is where the writing happens. Raw transcription is messy. Post-processing is what turns "so basically what I'm trying to say is that like the pipeline has three steps and each one does a different thing" into a coherent sentence. You can read more about the technical details on the [how EnviousWispr's transcription pipeline works](/how-it-works/) page.
 
 The whole cycle takes a second or two on Apple Silicon. Fast enough that you don't lose your train of thought waiting for output.
 
-## Shaping the output with a Custom prompt
+## How the polish shapes your output
 
-The default post-processing does a solid job: it removes filler words, fixes punctuation, and produces clean sentences without flattening your voice. For most writing (blog drafts, journal entries, articles, freewriting) the default is the right starting point. The output reads like you wrote it: conversational, direct, human.
+The post-processing does a solid job: it removes filler words, fixes punctuation, and produces clean sentences without flattening your voice. For most writing (blog drafts, journal entries, articles, freewriting) the output reads like you wrote it: conversational, direct, human.
 
-When you need a specific shape, a Custom prompt is the lever. You write a single instruction once and the polish step applies it to every dictation until you change it. A few that work well for writers:
+When you need a specific shape, the way you talk is the lever. The polish reads what you said and matches it. A few patterns that work well for writers:
 
-- "Keep my natural voice and contractions intact. Don't formalize." Useful for blog drafts.
-- "Tighten sentence structure and remove casual phrasing." Useful for client deliverables and formal essays.
-- "Format as screenplay-style dialogue with character names in caps." Useful for fiction.
-- "Keep this as stream of consciousness with line breaks, do not punctuate aggressively." Useful for raw morning pages.
+- Speak loosely for blog drafts and your natural voice and contractions stay intact, not formalized.
+- Speak in fuller sentences for client deliverables and formal essays and the structure tightens.
+- Keep morning pages as stream of consciousness and the polish leaves your flow alone, just cleaning up the worst of the filler.
 
-You can change the Custom prompt as your task changes (drafting one minute, client correspondence the next), and the polish step picks up the new instructions on your next dictation.
+The output adapts as your task changes (drafting one minute, client correspondence the next), with nothing to switch between dictations.
 
 ## A realistic example: before and after
 
@@ -98,7 +97,7 @@ The best workflow uses both. Dictate the rough draft. Type the edits. That's the
 
 [Download EnviousWispr free](https://enviouswispr.com/#download), no account, no subscription required. It takes a couple of minutes to set up on any Apple Silicon Mac running macOS Sonoma or later. On first launch, grant microphone access and the speech model downloads automatically. No model selection needed. The source is also [on GitHub](https://github.com/saurabhav88/EnviousWispr/releases).
 
-Then try this: open whatever you're working on, hold the hotkey, and talk through your next paragraph. See what comes back. Adjust your Custom prompt until the output matches how you write.
+Then try this: open whatever you're working on, hold the hotkey, and talk through your next paragraph. See what comes back. The more you speak in your natural voice, the more the output matches how you write.
 
 ## Related Posts
 

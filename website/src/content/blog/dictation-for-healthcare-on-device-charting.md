@@ -60,7 +60,7 @@ EnviousWispr writes into whatever field has focus. That means it works in Epic's
 
 Referral letters are repetitive in shape and unique in content. You name the patient, summarize the relevant history, state the clinical question, and ask for the consultation. That's a paragraph or two of structured prose every time.
 
-Hold the hotkey and dictate the body. The polish step formats it as a clean letter. If you want consistent salutations, sign-offs, or your standard closing language, write a Custom prompt that sets those expectations once and the polish step applies them to every dictation until you change it. A prompt like "format as a referral letter with a Dear Dr. X greeting, three short paragraphs, and a sign-off matching my role" sticks until you change it.
+Hold the hotkey and dictate the body. The polish step formats it as a clean letter. Speak it the way a letter reads (your greeting, the patient summary, the clinical question, your sign-off) and the polish keeps that shape, turning a spoken paragraph or two into a structured letter.
 
 ### Discharge summaries before you leave
 
@@ -72,18 +72,18 @@ Dictate it section by section. Speak the admission course as you remember it. Sp
 
 Charting is most of the writing, but it isn't all of it. Email replies to staff, message threads with referring physicians, drafts to the practice manager, end-of-day notes to yourself. All of it is faster spoken. Hold the hotkey, talk, release. Same workflow, different field.
 
-## Custom prompts: lock in your documentation style
+## Let your dictation shape the documentation
 
-EnviousWispr's polish step has a default that handles general writing well. For clinical documentation, a Custom prompt is worth setting once. The polish step uses your prompt for every dictation until you change it.
+EnviousWispr's polish handles clinical writing without any setup. A quick one-line order stays a line. With Ollama, OpenAI, or Gemini polish on, a longer note spoken in sections comes back structured with paragraphs and bullets; on the Apple Intelligence default, the same note lands as clean prose. You guide it by how you speak.
 
-A few patterns that work well for clinicians:
+A few patterns that work well for clinicians (formatting applies with Ollama, OpenAI, or Gemini polish on; the Apple Intelligence default keeps the same content as clean prose):
 
-- **SOAP format.** "Output structured as Subjective, Objective, Assessment, Plan with each section as its own paragraph. Preserve clinical terms and dosing details exactly."
-- **Referral letters.** "Format as a referral letter with a brief patient summary, the clinical question, and a closing thanking the consultant. Three paragraphs maximum."
-- **Discharge summaries.** "Output organized by Admission Course, Hospital Course, and Discharge Plan. Use bullet points where appropriate for medication lists and follow-up instructions."
-- **Patient instructions.** "Translate clinical jargon to plain language at a 6th-grade reading level. Use second-person voice. Output as a numbered list of action items."
+- **SOAP notes.** Say "subjective," "objective," "assessment," "plan" as you move through the note, and each becomes its own section, with your clinical terms and dosing details preserved.
+- **Referral letters.** Dictate it the way a letter reads: a brief patient summary, the clinical question, and a closing to the consultant. The polish keeps that letter shape.
+- **Discharge summaries.** Walk through admission course, hospital course, and discharge plan out loud, and the structure follows your narration, with bullets for medication lists and follow-up instructions.
+- **Patient instructions.** Speak in plain, second-person language and call out the steps; they come back as a clean, bulleted list.
 
-You can swap prompts as your task changes (a chart note one minute, a patient handout the next), and the polish step picks up the new instructions on your next dictation.
+Because the polish adapts per dictation, you can switch from a chart note one minute to a patient handout the next, and the output shape follows what you said each time.
 
 ## Compared to enterprise medical dictation
 
@@ -125,7 +125,7 @@ EnviousWispr is free to download. The source is available on GitHub under BSL 1.
 4. Pick a hotkey that doesn't collide with your EMR shortcuts. Hold to record, release to transcribe.
 5. Open your EMR, click into a chart field, hold the hotkey, and speak your first note. The polish step cleans it up and the text lands in the field.
 
-If you want consistent SOAP structure or referral-letter formatting, write a Custom prompt for that workflow in Settings under AI Polish. The prompt sticks until you change it.
+If you want SOAP structure or a referral-letter shape, just speak it that way (name the sections out loud) and the polish organizes around those cues. No setup required.
 
 ## Related Posts
 

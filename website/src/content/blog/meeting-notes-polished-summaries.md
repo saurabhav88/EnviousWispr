@@ -26,23 +26,21 @@ But the real leverage comes from what happens next.
 
 ## How do you turn dictated meeting notes into a structured summary?
 
-A structured meeting summary on Mac comes from two steps: dictate a 30-second voice dump while context is fresh, then let an LLM polish step shape that audio into bullet sections. EnviousWispr handles both. Hold a hotkey, talk through what happened (decisions, owners, deadlines, open questions), and release. On-device speech recognition transcribes the audio in a second or two on Apple Silicon.
+A structured meeting summary on Mac comes from two steps: dictate a 30-second voice dump while context is fresh, then let an LLM polish step clean it up. EnviousWispr handles both, and with Ollama, OpenAI, or Gemini polish on it also lays the result out into sections and bullets. Hold a hotkey, talk through what happened (decisions, owners, deadlines, open questions), and release. On-device speech recognition transcribes the audio in a second or two on Apple Silicon.
 
-The polish step turns that raw text into a usable summary. The default polish removes filler and fixes punctuation, which already produces something cleaner than most people type. For a tighter shape, set a Custom prompt like "format as a meeting summary with attendees, key decisions, action items with owners and due dates, and open questions." The polish step uses that instruction on every dictation until you change it. Save different prompts for board updates, Slack recaps, or email follow-ups.
+The polish step turns that raw text into a usable summary. It removes filler and fixes punctuation, which already produces something cleaner than most people type. With Ollama, OpenAI, or Gemini polish turned on, a longer debrief with decisions and action items gets laid out with sections and bullet points automatically; on the Apple Intelligence default, you get the same content as clean, readable prose. Either way, the way you speak guides the shape.
 
-Out of the box, EnviousWispr cleans up filler words, fixes punctuation, and tightens structure. That alone transforms your dictation. But for meeting notes, the real unlock is structure.
+Out of the box, EnviousWispr cleans up filler words, fixes punctuation, and keeps your voice. That alone transforms your dictation. But for meeting notes, the real unlock is structure.
 
-A Custom prompt lets you tell the post-processor exactly how to format your output. For meeting summaries, a prompt like this works well:
+You steer that structure with your words, not a settings panel. Name the parts as you talk: say "the decisions were," "action items," "open questions." With Ollama, OpenAI, or Gemini polish on, the summary organizes around those cues; on the Apple Intelligence default, the same points come back as clean prose in the order you said them. Either way, you walk through what happened and let the structure fall out of how you narrate it.
 
-**"Format as a meeting summary. Include: attendees mentioned, key decisions, action items with owners and due dates, and open questions. Use bullet points. Keep it concise."**
-
-Even today, the LLM post-processing step does a remarkable job of structuring your raw dictation. Here's what the transformation looks like:
+The LLM post-processing step does a remarkable job of this. Here's what the formatted output looks like (with Ollama, OpenAI, or Gemini polish):
 
 ### Before: raw dictation
 
 > Met with product and sales about the Q3 launch timeline. Sarah confirmed the beta ships May 15. Mark owns the partner outreach deck, due by Friday. We agreed to cut the enterprise tier from the initial launch, revisit in Q4. I need to send the updated roadmap to the board by Thursday. Oh, and we still need to figure out the pricing page copy, nobody owns that yet.
 
-### After: LLM-processed summary
+### After: formatted summary (Ollama, OpenAI, or Gemini)
 
 > **Meeting Summary: Q3 Launch Timeline**
 >
@@ -73,7 +71,7 @@ For an exec who regularly discusses confidential business matters, this isn't a 
 
 Not every meeting summary goes to the same place. A quick standup recap might go straight into Slack. A board prep summary might go into Notion or a Google Doc. A one-on-one follow-up might become an email.
 
-For each destination, a Custom prompt tuned to that surface produces the right shape. Save a "board summary" prompt, a "Slack recap" prompt, an "email follow-up" prompt; swap them in as the destination changes and the polish step picks up the new instructions on your next dictation.
+The polish matches what you said. A two-sentence Slack recap stays tight and conversational. With Ollama, OpenAI, or Gemini polish on, a long board debrief comes back sectioned and bulleted; on the Apple Intelligence default, the same debrief lands as clean prose. You get the right shape by speaking it that way, not by switching a setting between dictations.
 
 ## Making it part of your routine
 
@@ -83,12 +81,12 @@ A few tips for getting started:
 
 - **Start with high-stakes meetings.** Board reviews, strategy sessions, client calls, wherever the cost of lost context is highest.
 - **Keep your dictation loose.** Don't try to speak in polished sentences. The LLM handles cleanup. Just get the facts out.
-- **Save a Custom prompt per destination.** Board summaries want structured prose; Slack recaps want bullet points; email follow-ups want a short paragraph plus action items. Build the prompts once and reuse them.
+- **Let your words set the shape.** Say the structure out loud ("key decisions," "action items," "open questions"). With Ollama, OpenAI, or Gemini polish on, the summary comes back organized around those cues; on the Apple Intelligence default, it stays clean prose in the order you spoke.
 - **Use hands-free mode for longer debriefs.** If you need to talk through a complex meeting for two or three minutes, double-press your hotkey to lock recording so you don't have to hold a key the entire time.
 
 ## Get started
 
-[Download EnviousWispr free](/#download), or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). It's free; install it and start dictating. No registration, no payment. The speech model downloads automatically on first launch. Try the default polish first, and write a Custom prompt if you want output shaped to your specific workflow.
+[Download EnviousWispr free](/#download), or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). It's free; install it and start dictating. No registration, no payment. The speech model downloads automatically on first launch. Leave AI polish on and let it shape your dictation automatically.
 
 ## Related Posts
 

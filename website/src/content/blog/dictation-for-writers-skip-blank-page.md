@@ -44,7 +44,7 @@ After EnviousWispr transcribes your speech, it runs the text through a local LLM
 
 That processing can run fully on-device with Apple Intelligence or Ollama, without sending your words anywhere.
 
-For writers who want explicit control over the output, the Custom prompt option lets you write your own post-processing instructions: "format as screenplay-style dialogue," "keep this as stream of consciousness with line breaks," "preserve em-dashes and parentheticals," or anything else you need. Set your custom system prompt in Settings under AI Polish, and the polish step uses it for every dictation until you change it.
+For writers who want their voice preserved, the polish is built to edit, not reword. It keeps your meaning, tone, and phrasing intact, so your em dashes, your parentheticals, and your intentional fragments survive the cleanup. Keep a passage as loose stream of consciousness and the polish leaves your flow alone; the output always sounds like you, not a template.
 
 For a step-by-step look at how this works in a real writing session, see [Voice to Prose: A Realistic Writing Workflow](/blog/voice-to-prose-writing-workflow/).
 
@@ -119,7 +119,7 @@ You can read more about [how the pipeline works](/how-it-works/), from microphon
 
 EnviousWispr is free. You don't need an account, a subscription, or an API key.
 
-[Download EnviousWispr free](/#download) or grab the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases). Install it, grant microphone and accessibility permissions, and you're dictating within a few minutes. The speech model downloads automatically. Try dictating your next first draft instead of typing it, and write a Custom prompt later if you want output shaped to your specific style.
+[Download EnviousWispr free](/#download) or grab the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases). Install it, grant microphone and accessibility permissions, and you're dictating within a few minutes. The speech model downloads automatically. Try dictating your next first draft instead of typing it, and let the polish keep it in your voice.
 
 The blank page problem doesn't go away. But when you can speak your way past it, it stops being the thing that kills your morning.
 

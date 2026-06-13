@@ -11,7 +11,7 @@ faqs:
   - question: "How do podcasters use dictation in their workflow?"
     answer: "Three places. First, dictating episode outlines and scripts before recording, which is faster than typing a script. Second, post-record, dictating show notes into structured prose without re-listening to the whole episode. Third, repurposing the episode transcript into blog posts by dictating the connective tissue between transcript pull quotes."
   - question: "Does the AI polish flatten my writing voice?"
-    answer: "It can if you use a generic polish prompt. A 'fix grammar, preserve voice' prompt keeps your phrasing intact and only cleans up filler words and punctuation. Tools that let you configure the polish behavior (including EnviousWispr) are worth the setup time for content work."
+    answer: "It can if the tool's polish rewrites instead of edits. EnviousWispr's polish is built to preserve your voice: it keeps your phrasing and tone intact and only cleans up filler words and punctuation, so a dictated draft still sounds like you. That makes it a good fit for content work."
   - question: "Can I dictate fiction?"
     answer: "Yes. Many novelists use dictation for first drafts because it forces forward motion. The polish step is more aggressive in fiction since dictated fiction often needs heavier sentence restructuring than dictated email. Plan for a longer editing pass."
 ---
@@ -22,9 +22,9 @@ This guide is the hub for content-creation workflows on macOS. It covers writers
 
 ## Why dictation is different for creators
 
-For productivity workers, dictation is about speed. For creators, it is about speed AND voice. Dictation captures the way you actually talk, which is usually closer to your real writing voice than the over-cautious version that comes out of your keyboard. The risk is that you sacrifice that voice if you use a generic AI polish prompt that flattens everything to "professional business prose."
+For productivity workers, dictation is about speed. For creators, it is about speed AND voice. Dictation captures the way you actually talk, which is usually closer to your real writing voice than the over-cautious version that comes out of your keyboard. The risk is that you sacrifice that voice if your tool's polish rewrites everything into "professional business prose" instead of preserving how you actually talk.
 
-The trick is to pick a tool that lets you configure the polish behavior. The polish should fix grammar, remove filler words, and keep the rhythm of how you actually talk. That is what makes a 1,500-word dictated essay feel like your essay instead of a press release.
+The trick is to pick a tool whose polish preserves your voice. The polish should fix grammar, remove filler words, and keep the rhythm of how you actually talk. That is what makes a 1,500-word dictated essay feel like your essay instead of a press release.
 
 ## The five creator surfaces where dictation pays back fastest
 
@@ -36,7 +36,7 @@ Read the workflow: [Mac dictation for writers: skip the blank page](/blog/dictat
 
 ### 2. First drafts that sound like you
 
-The follow-up to the blank-page problem: how do you keep your dictated draft from sounding like a corporate memo? The answer is in the polish prompt and the discipline of the human pass at the end.
+The follow-up to the blank-page problem: how do you keep your dictated draft from sounding like a corporate memo? The answer is a polish built to preserve your voice, plus the discipline of the human pass at the end.
 
 Read the workflow: [Dictate first drafts that sound like you](/blog/dictate-first-drafts-sound-like-you/).
 
@@ -67,7 +67,7 @@ Read the workflow for lecture notes: [Take lecture notes by speaking on Mac](/bl
 The basics are the same as any dictation setup: Apple Silicon Mac, macOS 14 or later, an on-device dictation tool. The differences for creators are in the polish configuration and the microphone.
 
 1. **Use a real microphone, not your laptop's built-in.** A $60 USB condenser microphone is enough. The transcription accuracy difference between a laptop mic and a dedicated mic is substantial for long-form work.
-2. **Configure the polish prompt to preserve voice.** "Fix grammar and punctuation. Remove filler words. Keep the original phrasing and rhythm." Avoid prompts that say "make it sound professional" or "make it concise" unless you actually want that.
+2. **Use a polish that preserves voice.** EnviousWispr's polish is built to fix grammar and punctuation and remove filler while keeping your original phrasing and rhythm, rather than rewriting your draft into generic "professional" prose.
 3. **Use push-to-talk for thinking-out-loud work.** You will pause mid-sentence. Push-to-talk handles that gracefully. Hands-free mode tends to transcribe your thinking pauses as garbled text.
 4. **Build in a 10-minute human pass at the end.** This is non-negotiable for published work. Dictated copy needs one editorial pass before it ships, even with good polish. The 10 minutes you spend editing are still less than the time you would have spent typing.
 

@@ -33,7 +33,7 @@ But raw transcription isn't a script. It's a wall of text with filler words, fal
 
 EnviousWispr's post-processing pipeline cleans up your speech after transcription: removing filler words, fixing punctuation, and producing polished text. The default polish preserves your conversational voice while cleaning up the rough edges, which is what you want for podcast scripting.
 
-When you need a specific shape (interview prep, solo script, show notes, cold open), the Custom prompt option lets you write processing instructions like "keep sentence fragments, add section breaks between topics, format with H2 headings." That level of control makes dictated scripts even more useful.
+When you need a specific shape (interview prep, solo script, show notes, cold open), the way you talk steers it. Speak in fragments and the polish keeps them; call out "next section" or "first... then... finally" as you go, and it adds breaks and structure around those cues. That level of guidance, with no setup, makes dictated scripts even more useful.
 
 The output has the structure you need: cleaned of "um" and "you know," but still sounding like you.
 
@@ -47,7 +47,7 @@ Here's what that looks like in practice, dictating a cold open for an episode ab
 
 That's a usable cold open. It sounds like you because it literally is you, just without the filler words and with proper punctuation. Read that back into the mic and it works immediately. The idea made it from your head to the page before it had a chance to evaporate.
 
-With a Custom prompt, you can fine-tune output for different show formats: interview prep as numbered questions, solo scripts with paragraph breaks, show notes as bullet summaries, cold opens tightened to three punchy sentences.
+By how you speak, you can shape output for different show formats. With Ollama, OpenAI, or Gemini polish on, run through your interview questions or show notes as a list and they come back as bullet points. On the Apple Intelligence default, you get the same words cleaned up as prose, and cold opens stay short and punchy on any engine.
 
 Check [how EnviousWispr's pipeline works](/how-it-works/) for the full picture on how transcription and post-processing fit together.
 
@@ -83,7 +83,7 @@ This is the hardest habit to break. You'll say something awkward, and every inst
 
 ### Use Verbal Section Markers
 
-Say "new section" or "next topic" or "heading: [topic name]" as you dictate. The post-processing pipeline picks up on these verbal cues and uses them to add structure to your output. With a Custom prompt, you have full control over how those markers get formatted.
+Say "new section" or "next topic" or "heading: [topic name]" as you dictate, and those cues stay in your text as markers. With Ollama, OpenAI, or Gemini polish on, the pipeline can turn them into actual section breaks; on the Apple Intelligence default they remain as spoken labels you can format later.
 
 ### Do a Read-Back Pass
 

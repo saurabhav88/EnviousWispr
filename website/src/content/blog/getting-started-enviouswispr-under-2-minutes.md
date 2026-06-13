@@ -87,11 +87,11 @@ EnviousWispr downloads its speech recognition model automatically on first launc
 
 ### AI polish
 
-EnviousWispr's polish step removes filler words, fixes punctuation, and tightens structure without flattening your voice. The default works well for most writing. When you need a specific shape (a more polished tone, a particular format, your personal style rules), a Custom prompt lets you write your own polish instructions and reuse them.
+EnviousWispr's polish step removes filler words, fixes punctuation, and keeps your voice. It works well across most writing: a short aside stays a clean line, while a longer piece comes back as clean, readable prose.
 
-### Custom prompts
+### Structure follows your voice
 
-Custom prompts let you tell the post-processor exactly how to handle your speech: "format as bullet points," "translate to Spanish," "write in my style: short sentences, no semicolons." Set your own system prompt in Settings under AI Polish, and the polish step uses it for every dictation until you change it.
+You shape the output by how you talk. Speak a quick one-liner and it stays one line. With Ollama, OpenAI, or Gemini polish on, rattle off a list ("first... then... finally") and it comes back as bullet points; on the Apple Intelligence default, you get the same items as clean prose. There's nothing to configure either way.
 
 ### Custom word dictionary
 
