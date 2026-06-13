@@ -339,7 +339,12 @@ struct KernelFinalizationWiring {
       // telemetry state (eligible Parakeet batch only; nil for streaming /
       // WhisperKit / non-success). Carried onto `asr.completed`.
       tailDroppedMs: telemetryState.asrCompletedTelemetry?.droppedTailMs,
-      tailHadEnergy: telemetryState.asrCompletedTelemetry?.tailHadEnergy
+      tailHadEnergy: telemetryState.asrCompletedTelemetry?.tailHadEnergy,
+      // #950 tail-preserve recovery + tuning signals.
+      usedTailPreservation: telemetryState.asrCompletedTelemetry?.usedTailPreservation,
+      recoveredTailMs: telemetryState.asrCompletedTelemetry?.recoveredTailMs,
+      tailVoicedFraction: telemetryState.asrCompletedTelemetry?.tailVoicedFraction,
+      tailRefusedReason: telemetryState.asrCompletedTelemetry?.tailRefusedReason
     )
     outcome.transcript = transcript
   }

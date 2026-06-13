@@ -41,6 +41,18 @@ public struct ExecutionMetrics: Codable, Sendable {
   /// nil when `tailDroppedMs == 0` (no tail slice). Metadata only.
   public var tailDroppedMs: Int?
   public var tailHadEnergy: Bool?
+  /// #950 tail-preserve recovery + tuning signals. Populated only for eligible
+  /// Parakeet batch; nil for streaming / WhisperKit / non-success / pre-#950
+  /// transcripts on disk (additive optional Codable, back-compatible).
+  /// `usedTailPreservation`: nil=ineligible, false=eligible-not-preserved,
+  /// true=recovered a sustained-voice dropped tail. `recoveredTailMs`: ms appended
+  /// back on a fire. `tailVoicedFraction`: sustained-voice ratio [0,1] of the
+  /// dropped tail. `tailRefusedReason`: why an eligible tail was refused
+  /// (too_short/too_long/low_voiced_fraction/not_filtered/no_tail). Metadata only.
+  public var usedTailPreservation: Bool?
+  public var recoveredTailMs: Int?
+  public var tailVoicedFraction: Double?
+  public var tailRefusedReason: String?
 
   public init(
     asrLatencySeconds: Double? = nil,
@@ -65,7 +77,11 @@ public struct ExecutionMetrics: Codable, Sendable {
     itnLenBefore: Int? = nil,
     itnLenAfter: Int? = nil,
     tailDroppedMs: Int? = nil,
-    tailHadEnergy: Bool? = nil
+    tailHadEnergy: Bool? = nil,
+    usedTailPreservation: Bool? = nil,
+    recoveredTailMs: Int? = nil,
+    tailVoicedFraction: Double? = nil,
+    tailRefusedReason: String? = nil
   ) {
     self.asrLatencySeconds = asrLatencySeconds
     self.llmLatencySeconds = llmLatencySeconds
@@ -90,6 +106,10 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.itnLenAfter = itnLenAfter
     self.tailDroppedMs = tailDroppedMs
     self.tailHadEnergy = tailHadEnergy
+    self.usedTailPreservation = usedTailPreservation
+    self.recoveredTailMs = recoveredTailMs
+    self.tailVoicedFraction = tailVoicedFraction
+    self.tailRefusedReason = tailRefusedReason
   }
 }
 

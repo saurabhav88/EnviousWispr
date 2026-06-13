@@ -96,7 +96,9 @@ public final class TelemetryService {
       asrCompleted(
         backend: t.backendType.rawValue, result: "success", coldStart: m?.coldStart ?? false,
         latencySeconds: asrLat, charCount: t.text.count,
-        tailDroppedMs: m?.tailDroppedMs, tailHadEnergy: m?.tailHadEnergy)
+        tailDroppedMs: m?.tailDroppedMs, tailHadEnergy: m?.tailHadEnergy,
+        usedTailPreservation: m?.usedTailPreservation, recoveredTailMs: m?.recoveredTailMs,
+        tailVoicedFraction: m?.tailVoicedFraction, tailRefusedReason: m?.tailRefusedReason)
     }
     if let llmLat = m?.llmLatencySeconds, llmLat > 0, t.llmProvider != nil {
       llmPolishCompleted(
@@ -414,7 +416,13 @@ public final class TelemetryService {
     // Metadata only (Int ms + Bool); no audio/content. `tailDroppedMs` always set
     // (incl. 0) when eligible so the denominator holds; `tailHadEnergy` only when
     // a tail was actually dropped.
-    tailDroppedMs: Int? = nil, tailHadEnergy: Bool? = nil
+    tailDroppedMs: Int? = nil, tailHadEnergy: Bool? = nil,
+    // #950 tail-preserve recovery + tuning signals (omit-on-nil). `tailPreserved`
+    // nil=ineligible / false=eligible-not-preserved / true=recovered;
+    // `tailPreservedMs` = ms appended back; `tailVoicedFraction` = sustained-voice
+    // ratio; `tailRefusedReason` = why an eligible tail was refused. Metadata only.
+    usedTailPreservation: Bool? = nil, recoveredTailMs: Int? = nil,
+    tailVoicedFraction: Double? = nil, tailRefusedReason: String? = nil
   ) {
     var properties: [String: Any] = [
       "backend": backend,
@@ -426,6 +434,10 @@ public final class TelemetryService {
     ]
     if let tailDroppedMs { properties["tail_dropped_ms"] = tailDroppedMs }
     if let tailHadEnergy { properties["tail_had_energy"] = tailHadEnergy }
+    if let usedTailPreservation { properties["tail_preserved"] = usedTailPreservation }
+    if let recoveredTailMs { properties["tail_preserved_ms"] = recoveredTailMs }
+    if let tailVoicedFraction { properties["tail_voiced_fraction"] = tailVoicedFraction }
+    if let tailRefusedReason { properties["tail_refused_reason"] = tailRefusedReason }
     PostHogSDK.shared.capture("asr.completed", properties: properties)
   }
 
