@@ -458,7 +458,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>AI polish / LLM providers</td>
-            <td><span class="table-highlight">5 providers:</span> Apple Intelligence, Ollama, OpenAI, Gemini, Groq</td>
+            <td><span class="table-highlight">4 providers:</span> Apple Intelligence, Ollama, OpenAI, Gemini</td>
             <td><span class="table-cross">None</span></td>
           </tr>
           <tr>
@@ -675,7 +675,7 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-title">Modern AI polish, not just raw transcript</div>
         <div class="deep-dive-body">
           <p>Dragon gives you a transcript and expects you to fix it. It has no concept of LLM-based post-processing. Dragon was built in an era before large language models existed, and Nuance has not retrofitted this capability.</p>
-          <p>EnviousWispr integrates five LLM providers for Smart Polish: Apple Intelligence (fully on-device), Ollama (local models like Llama or Mistral), and cloud options via OpenAI, Gemini, or Groq if you bring your own API key. The polish step removes filler words, fixes punctuation, restructures awkward phrasings, and adapts to the app you are dictating into.</p>
+          <p>EnviousWispr integrates four LLM providers for Smart Polish: Apple Intelligence (fully on-device), Ollama (local models like Llama or Mistral), and cloud options via OpenAI or Gemini if you bring your own API key. The polish step removes filler words, fixes punctuation, restructures awkward phrasings, and adapts to the app you are dictating into.</p>
           <p>The system is context-aware. Dictating into Slack? The polish keeps it conversational. Writing an email? It formalizes. And all cloud providers only receive the text transcript, never your audio.</p>
           <div class="deep-dive-detail">
             <strong>Technical detail:</strong> Smart Polish uses sandwich prompt framing with XML-tagged transcript boundaries to prevent hallucination. Output validation rejects responses longer than 3x the input. Short transcripts (3 words or fewer) bypass the LLM entirely. Preamble stripping removes "Certainly!" artifacts automatically.
