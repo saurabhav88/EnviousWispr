@@ -158,6 +158,22 @@ struct InverseTextNormalizerParityTests {
       // strict-cardinal corruption guard: a non-cardinal run is left untouched (context for
       // "one twenty" belongs to the AI-polish layer, not the deterministic floor)
       ("there were one twenty people there", "there were one twenty people there"),
+      // #145 follow-up: capitalized number words in an UNIT-ANCHORED numeric context
+      // (currency / percent / decimal point) now format — they did not before because the
+      // lexicon lookups were case-sensitive.
+      ("Twenty dollars please", "$20 please"),
+      ("Twenty percent off", "20% off"),
+      // crash guard: a title-cased decimal must format, not trap on the force-unwrapped fraction
+      // word ('Five'); the case-insensitive regex captures it, so the digit map must lowercase.
+      ("Three Point Five", "3.5"),
+      // adversarial negatives: a capitalized number word with NO unit anchor must stay a word,
+      // never corrupt into a digit — covers prose ("One thing", "Two of us") AND proper nouns
+      // that contain a scale word ("Hundred Acre Wood", "One Million Moms"). A bare/scale-only
+      // capital is ambiguous between count and name, so the deterministic floor leaves it.
+      ("One thing that I want to figure out", "One thing that I want to figure out"),
+      ("Two of us went to the store", "Two of us went to the store"),
+      ("Hundred Acre Wood", "Hundred Acre Wood"),
+      ("One Million Moms", "One Million Moms"),
     ])
   func categoryFixes(input: String, expected: String) {
     #expect(InverseTextNormalizer().normalize(input) == expected)
