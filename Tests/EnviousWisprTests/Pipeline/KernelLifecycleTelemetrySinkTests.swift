@@ -297,6 +297,51 @@ import Testing
       ])
   }
 
+  @Test(".asrCompleted carries preserve + tuning keys when a tail was recovered (#950)")
+  func asrCompletedCarriesPreserveKeys() {
+    let recorder = Recorder()
+    let state = KernelTelemetryState()
+    state.asrCompletedTelemetry = KernelASRCompletedTelemetry(
+      durationSeconds: 0.3, charCount: 5, mode: "batch", language: "en",
+      droppedTailMs: 2_500, tailHadEnergy: true,
+      usedTailPreservation: true, recoveredTailMs: 2_500, tailVoicedFraction: 0.92)
+    let sink = makeSink(recorder: recorder, telemetryState: state)
+    sink.emit(.asrCompleted)
+    #expect(
+      recorder.breadcrumbs == [
+        .init(
+          stage: "asr", message: "ASR completed",
+          dataKeys: [
+            "backend", "char_count", "duration_s", "language", "mode",
+            "tail_dropped_ms", "tail_had_energy", "tail_preserved",
+            "tail_preserved_ms", "tail_voiced_fraction",
+          ])
+      ])
+  }
+
+  @Test(".asrCompleted carries tail_refused_reason when eligible but not preserved (#950)")
+  func asrCompletedCarriesRefusedReason() {
+    let recorder = Recorder()
+    let state = KernelTelemetryState()
+    state.asrCompletedTelemetry = KernelASRCompletedTelemetry(
+      durationSeconds: 0.3, charCount: 5, mode: "batch", language: "en",
+      droppedTailMs: 1_000, tailHadEnergy: true,
+      usedTailPreservation: false, tailVoicedFraction: 0.2,
+      tailRefusedReason: "low_voiced_fraction")
+    let sink = makeSink(recorder: recorder, telemetryState: state)
+    sink.emit(.asrCompleted)
+    #expect(
+      recorder.breadcrumbs == [
+        .init(
+          stage: "asr", message: "ASR completed",
+          dataKeys: [
+            "backend", "char_count", "duration_s", "language", "mode",
+            "tail_dropped_ms", "tail_had_energy", "tail_preserved",
+            "tail_refused_reason", "tail_voiced_fraction",
+          ])
+      ])
+  }
+
   @Test(".pipelineCompleted emits the TP:1032 breadcrumb")
   func pipelineCompletedEmission() {
     let recorder = Recorder()

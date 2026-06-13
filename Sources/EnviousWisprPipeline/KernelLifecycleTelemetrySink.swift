@@ -402,6 +402,19 @@ final class KernelLifecycleTelemetrySink {
     if let hadEnergy = telemetryState.asrCompletedTelemetry?.tailHadEnergy {
       payload["tail_had_energy"] = hadEnergy
     }
+    // #950 tail-preserve recovery + tuning signals (omit-on-nil, metadata only).
+    if let preserved = telemetryState.asrCompletedTelemetry?.usedTailPreservation {
+      payload["tail_preserved"] = preserved
+    }
+    if let recoveredMs = telemetryState.asrCompletedTelemetry?.recoveredTailMs {
+      payload["tail_preserved_ms"] = recoveredMs
+    }
+    if let voicedFraction = telemetryState.asrCompletedTelemetry?.tailVoicedFraction {
+      payload["tail_voiced_fraction"] = voicedFraction
+    }
+    if let refusedReason = telemetryState.asrCompletedTelemetry?.tailRefusedReason {
+      payload["tail_refused_reason"] = refusedReason
+    }
     return payload
   }
 

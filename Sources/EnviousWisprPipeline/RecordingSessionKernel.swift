@@ -1155,14 +1155,53 @@ final class RecordingSessionKernel {
     let tailDroppedMs: Int? = tailEligible ? droppedTailSamples / 16 : nil
     var tailHadEnergy: Bool? = nil
     var tailPeak: Float = 0
+    // #950 tail-preserve: hoist the dropped-tail slice to outer scope — the
+    // energy check (below), the sustained-voice gate, and the recovery append all
+    // read it. `Array(...)` rebases the slice to the 0-based indexing the window
+    // scans assume; materialized ONCE on the cold stop path (not the RT audio
+    // thread); sync, cannot throw; empty when nothing was dropped.
+    let tailSlice: [Float] =
+      droppedTailSamples > 0
+      ? Array(captureResult.samples.suffix(droppedTailSamples)) : []
     if droppedTailSamples > 0 {
-      // Intentional copy: `rawAudioIsDeadAir` takes `[Float]`, and `Array(...)`
-      // also rebases the slice to the 0-based indexing its window scan assumes.
-      // Bounded by `droppedTailSamples`, materialized ONCE on the cold stop path
-      // (not the RT audio thread); sync, cannot throw.
-      let tailSlice = Array(captureResult.samples.suffix(droppedTailSamples))
       tailPeak = tailSlice.reduce(Float(0)) { Swift.max($0, Swift.abs($1)) }
       tailHadEnergy = !Self.rawAudioIsDeadAir(tailSlice, peak: tailPeak)
+    }
+    // #950 tail-preserve. Decide once; the outcome carries the refusal reason for
+    // tuning telemetry. The heart path is byte-identical to before unless a
+    // sustained-voice dropped tail (eligible "filtered" path, in [400,8000]ms,
+    // >= 50% voiced) fires the recovery branch. `tailVoicedFraction` is the
+    // hallucination guard: a single desk-thump / keyboard transient tiles to a
+    // low fraction and is refused before it ever reaches ASR.
+    let tailFraction = droppedTailSamples > 0 ? Self.tailVoicedFraction(tailSlice) : 0
+    let tailDecision = Self.tailPreserveDecision(
+      tailEligible: tailEligible,
+      conditioningReason: conditioned.conditioningReason,
+      droppedTailSamples: droppedTailSamples,
+      droppedTailMs: tailDroppedMs ?? 0,
+      voicedFraction: tailFraction)
+    let asrSamples: [Float]
+    var recoveredTailMs: Int? = nil
+    // nil when ineligible (engine/streaming); a real Bool on the eligible path so
+    // `false` is a valid false-fire-rate denominator.
+    var usedTailPreservation: Bool? = tailEligible ? false : nil
+    // Tuning signals (#950 founder upgrade): voiced fraction surfaced whenever a
+    // tail was measured; refusal reason set only on the eligible-but-refused path.
+    let tailVoicedFractionForTelemetry: Double? =
+      (tailEligible && droppedTailSamples > 0) ? tailFraction : nil
+    var tailRefusedReason: String? = nil
+    switch tailDecision {
+    case .preserve:
+      // Contiguous: `tailSlice == raw[keptThrough..<rawCount]`, the exact region
+      // the trim discarded, appended immediately after the filtered buffer.
+      asrSamples = conditioned.samples + tailSlice
+      recoveredTailMs = tailDroppedMs
+      usedTailPreservation = true
+    case .refuse(let reason):
+      asrSamples = conditioned.samples
+      tailRefusedReason = reason
+    case .notEvaluated:
+      asrSamples = conditioned.samples
     }
     // GAP 3 app.log parity: VAD filter ratio log (TP:772-776).
     let rawCount = captureResult.samples.count
@@ -1202,7 +1241,10 @@ final class RecordingSessionKernel {
       vadSpeechDurationMs: vadSpeechDurationMs,
       peakAudioLevel: rawPeakAudioLevel,
       vadFilteredSampleCount: conditioned.filteredSampleCount,
-      finalSampleCount: conditioned.finalSampleCount,
+      // #950: report the buffer ACTUALLY fed to ASR (filtered + recovered tail
+      // when preservation fired), so an asr-empty diagnostic matches the decode.
+      // `vadFilteredSampleCount` above stays the conditioner's own count.
+      finalSampleCount: asrSamples.count,
       samplesPaddedToMinimum: conditioned.samplesPaddedToMinimum,
       usedRawFallbackAfterVAD: conditioned.usedRawFallbackAfterVAD,
       usedRawSoftOnsetPreservation: conditioned.usedRawSoftOnsetPreservation,
@@ -1224,13 +1266,19 @@ final class RecordingSessionKernel {
         + "sid=\(sid.raw) capturedMs=\(captureResult.samples.count / 16) "
         + "droppedTailMs=\(tailDroppedMs.map(String.init) ?? "n/a") "
         + "tailEnergy=\(tailHadEnergy.map(String.init) ?? "n/a") "
-        + "tailPeak=\(String(format: "%.4f", tailPeak))")
+        + "tailPeak=\(String(format: "%.4f", tailPeak)) "
+        // #950 tail-preserve outcome: did the recovery fire, how much it rescued,
+        // the sustained-voice fraction, and (when refused) why. Debug-log only.
+        + "tailPreserved=\(usedTailPreservation.map(String.init) ?? "n/a") "
+        + "recoveredTailMs=\(recoveredTailMs.map(String.init) ?? "n/a") "
+        + "voicedFraction=\(tailVoicedFractionForTelemetry.map { String(format: "%.2f", $0) } ?? "n/a") "
+        + "refusedReason=\(tailRefusedReason ?? "n/a")")
 
     // Transcribing.
     let asrStart = CFAbsoluteTimeGetCurrent()
     markASRTimingStart(isStreamingSession)
     transition(to: .transcribing)
-    let outcome = await finalize(sid, batchSamples: conditioned.samples)
+    let outcome = await finalize(sid, batchSamples: asrSamples)
     guard isCurrent(sid), !state.isTerminal else { return }
     let asrEnd = CFAbsoluteTimeGetCurrent()
     markASRTimingEnd()
@@ -1256,7 +1304,12 @@ final class RecordingSessionKernel {
           .lastASRDiagnostics?.incrementalAccepted,
         // #950 tail-trim diagnostic (eligible Parakeet batch only; nil omitted).
         droppedTailMs: tailDroppedMs,
-        tailHadEnergy: tailHadEnergy
+        tailHadEnergy: tailHadEnergy,
+        // #950 tail-preserve recovery + tuning signals.
+        usedTailPreservation: usedTailPreservation,
+        recoveredTailMs: recoveredTailMs,
+        tailVoicedFraction: tailVoicedFractionForTelemetry,
+        tailRefusedReason: tailRefusedReason
       )
       await runFinalizing(sid, asrText: result.text)
     case .empty(let hadSpeechEvidence):
@@ -1310,7 +1363,7 @@ final class RecordingSessionKernel {
           // failing decode byte-for-byte.
           let fedSamples =
             adapter.capabilities.decodesConditionedBatchSamples
-            ? conditioned.samples
+            ? asrSamples
             : WhisperKitPipelineSpeechRouting.paddedASRSamples(
               rawSamples: captureResult.samples,
               minimumSamples: AudioConstants.minimumTranscriptionSamples)
@@ -2133,6 +2186,74 @@ final class RecordingSessionKernel {
       i += window
     }
     return maxWindowRms < DeadAirFloor.windowRms
+  }
+
+  /// Fraction of non-overlapping 40 ms windows in `slice` whose RMS clears the
+  /// dead-air window floor. Continuous lost speech tiles to ~1.0; a lone
+  /// transient (desk-thump / keyboard clack) in a mostly-silent tail tiles to
+  /// ~0.04. Pure + static, O(n), reuses `DeadAirFloor` — the sustained-voice
+  /// gate that keeps energetic NON-speech tails out of ASR (#950 hallucination
+  /// guard). Returns 0 for a slice shorter than one window (too short to assess).
+  nonisolated static func tailVoicedFraction(_ slice: [Float]) -> Double {
+    let window = DeadAirFloor.windowSamples
+    guard slice.count >= window else { return 0 }
+    var voiced = 0
+    var total = 0
+    var i = 0
+    while i + window <= slice.count {
+      var ss: Float = 0
+      for j in i..<(i + window) { ss += slice[j] * slice[j] }
+      if (ss / Float(window)).squareRoot() >= DeadAirFloor.windowRms { voiced += 1 }
+      total += 1
+      i += window
+    }
+    return total == 0 ? 0 : Double(voiced) / Double(total)
+  }
+
+  /// Thresholds for the #950 tail-preserve recovery branch.
+  enum TailPreserve {
+    /// Min dropped-tail ms worth recovering (below this is pad-decay, not a word).
+    static let floorMs = 400
+    /// Hard cap — never auto-append more than this much trailing audio.
+    static let maxRecoverMs = 8000
+    /// >= half the tail's 40 ms windows must be voiced (sustained voice, not one spike).
+    static let voicedFractionFloor = 0.5
+  }
+
+  /// Outcome of the tail-preserve decision. Carries the refusal reason so
+  /// telemetry can answer "among eligible dictations with a dropped tail, why was
+  /// it NOT recovered?" without duplicating the threshold logic at the call site —
+  /// ONE source of truth for the guards.
+  enum TailPreserveDecision: Equatable {
+    case preserve
+    case refuse(reason: String)
+    case notEvaluated
+  }
+
+  /// Pure, nonisolated, total — boundary-testable like `rawAudioIsDeadAir`. Guard
+  /// ORDER defines the reason taxonomy: engine-eligibility first (`.notEvaluated`,
+  /// so `usedTailPreservation` stays nil for the denominator), then conditioner
+  /// path, then a non-empty tail, then the duration window, then sustained voice.
+  /// The first failing guard names the reason.
+  nonisolated static func tailPreserveDecision(
+    tailEligible: Bool,
+    conditioningReason: String,
+    droppedTailSamples: Int,
+    droppedTailMs: Int,
+    voicedFraction: Double,
+    floorMs: Int = TailPreserve.floorMs,
+    maxRecoverMs: Int = TailPreserve.maxRecoverMs,
+    voicedFractionFloor: Double = TailPreserve.voicedFractionFloor
+  ) -> TailPreserveDecision {
+    guard tailEligible else { return .notEvaluated }
+    guard conditioningReason == "filtered" else { return .refuse(reason: "not_filtered") }
+    guard droppedTailSamples > 0 else { return .refuse(reason: "no_tail") }
+    guard droppedTailMs >= floorMs else { return .refuse(reason: "too_short") }
+    guard droppedTailMs <= maxRecoverMs else { return .refuse(reason: "too_long") }
+    guard voicedFraction >= voicedFractionFloor else {
+      return .refuse(reason: "low_voiced_fraction")
+    }
+    return .preserve
   }
 
   private static func speechDurationMs(_ segments: [SpeechSegment]) -> Int {

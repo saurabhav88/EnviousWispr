@@ -64,6 +64,15 @@ struct KernelASRCompletedTelemetry {
   // slice otherwise). nil → sink omits the key.
   var droppedTailMs: Int? = nil
   var tailHadEnergy: Bool? = nil
+  // #950 tail-preserve recovery + tuning signals (eligible Parakeet batch only).
+  // `usedTailPreservation`: nil=ineligible, false=eligible-not-preserved,
+  // true=recovered a sustained-voice dropped tail. `recoveredTailMs`: ms appended
+  // back on a fire. `tailVoicedFraction`: sustained-voice ratio of the dropped
+  // tail. `tailRefusedReason`: why an eligible tail was refused. nil → sink omits.
+  var usedTailPreservation: Bool? = nil
+  var recoveredTailMs: Int? = nil
+  var tailVoicedFraction: Double? = nil
+  var tailRefusedReason: String? = nil
 }
 
 struct KernelASRAdapterDiagnostics {
