@@ -211,7 +211,12 @@ public struct InverseTextNormalizer: Sendable {
       return " \(comma(n)) "
     }
 
-    // generic cardinals: longest runs of number-words -> int
+    // generic cardinals: longest runs of number-words -> int. Left case-SENSITIVE on purpose: a
+    // capitalized number word here has no unit/operator anchor, so it is ambiguous between a count
+    // and prose / a proper noun ("Hundred Acre Wood", "One Million Moms"). A scale word does NOT
+    // disambiguate (proper nouns use them too), so capitalized cardinals stay untouched and that
+    // context call is left to the AI-polish layer. (Unit-anchored caps ARE handled — see currency/
+    // percent/decimals below.)
     let cardPat = #"(?:\b(?:"# + Self.numwordAlt + #")\b\s*){1,}"#
     t = reSub(cardPat, t) { m in
       let words = Self.splitWords(m.whole)
@@ -362,8 +367,14 @@ public struct InverseTextNormalizer: Sendable {
       + #"(?<d>(?:"# + Self.digitWordAlt + #")(?:\s+(?:"# + Self.digitWordAlt + #"))*)"#
       + #"(?:\s+(?<scale>million|billion|thousand))?\s"#
     return reSub(pat, t) { m in
-      guard let whole = Self.wordsToInt(Self.splitWords(m.g("w") ?? "")) else { return nil }
-      let digs = Self.splitWords(m.g("d") ?? "").map { String(Self.units[$0]!) }.joined()
+      // 'point' anchors numeric intent, so lowercasing the captured amount is corruption-safe.
+      guard let whole = Self.wordsToInt(Self.splitWords((m.g("w") ?? "").lowercased())) else {
+        return nil
+      }
+      // Lowercase the fraction words too: the case-insensitive regex can capture 'Five' in
+      // 'Three Point Five', and Self.units[$0]! would force-unwrap nil on the capitalized key.
+      let digs = Self.splitWords((m.g("d") ?? "").lowercased()).map { String(Self.units[$0]!) }
+        .joined()
       let scale = (m.g("scale") ?? "").trimmingCharacters(in: .whitespaces).lowercased()
       if !scale.isEmpty, let sv = Self.scales[scale] {
         let value = (Double("\(whole).\(digs)") ?? 0) * Double(sv)
@@ -381,9 +392,14 @@ public struct InverseTextNormalizer: Sendable {
       #"\s((?<d>(?:"# + Self.numtok + #")(?:\s+(?:"# + Self.numtok + #"))*)\s+dollars"#
       + #"(?:\s+and\s+(?<c>(?:"# + Self.numtok + #")(?:\s+(?:"# + Self.numtok
       + #"))*)\s+cents)?)\s"#
+    // 'dollars'/'cents'/'percent' anchor numeric intent, so lowercasing the captured amount is
+    // corruption-safe: a capitalized sentence-initial 'Twenty dollars'/'Twenty percent' is a number,
+    // never prose. (Bare cardinals stay case-sensitive — see the cardinal pass above.)
     t = reSub(curPat, t) { m in
-      guard let d = Self.wordsToInt(Self.splitWords(m.g("d") ?? "")) else { return nil }
-      if let cRaw = m.g("c"), let c = Self.wordsToInt(Self.splitWords(cRaw)) {
+      guard let d = Self.wordsToInt(Self.splitWords((m.g("d") ?? "").lowercased())) else {
+        return nil
+      }
+      if let cRaw = m.g("c"), let c = Self.wordsToInt(Self.splitWords(cRaw.lowercased())) {
         return " $\(comma(d)).\(pad2(c)) "
       }
       return " $\(comma(d)) "
@@ -391,12 +407,16 @@ public struct InverseTextNormalizer: Sendable {
     let centsPat =
       #"\s((?<c>(?:"# + Self.numtok + #")(?:\s+(?:"# + Self.numtok + #"))*)\s+cents)\s"#
     t = reSub(centsPat, t) { m in
-      guard let c = Self.wordsToInt(Self.splitWords(m.g("c") ?? "")) else { return nil }
+      guard let c = Self.wordsToInt(Self.splitWords((m.g("c") ?? "").lowercased())) else {
+        return nil
+      }
       return " $\(String(format: "%.2f", Double(c) / 100.0)) "
     }
     let pctPat = #"\s((?:"# + Self.numtok + #")(?:\s+(?:"# + Self.numtok + #"))*)\s+percent\b"#
     t = reSub(pctPat, t) { m in
-      guard let n = Self.wordsToInt(Self.splitWords(m.g(1) ?? "")) else { return nil }
+      guard let n = Self.wordsToInt(Self.splitWords((m.g(1) ?? "").lowercased())) else {
+        return nil
+      }
       return " \(n)% "
     }
     return t
