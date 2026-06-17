@@ -497,13 +497,15 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   // MARK: Caller-facing event + overlay surface
 
-  /// #1060: the transcribing-pill label. After a max-duration auto-stop, make the
-  /// stop legible ("Recording ended, transcribing now"); otherwise the plain
-  /// label. Transcribing/Polishing labels already live in the driver, so this
-  /// stays consistent with that precedent.
+  /// #1060/#1064: the transcribing-pill label. After a max-duration auto-stop, make
+  /// the stop legible; otherwise the plain label. Tightened to "60-minute limit
+  /// reached. Transcribing..." (#1064) — plainer, one fewer word, and the trailing
+  /// "Transcribing..." matches the normal label so the pill reads consistently.
+  /// Transcribing/Polishing labels already live in the driver, so this stays
+  /// consistent with that precedent.
   private var transcribingPillLabel: String {
     kernel.lastStopReason == "max_duration"
-      ? "Reached the 60-minute limit. Transcribing now."
+      ? "60-minute limit reached. Transcribing..."
       : "Transcribing..."
   }
 
