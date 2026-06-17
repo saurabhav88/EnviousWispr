@@ -515,15 +515,21 @@ final class KernelLifecycleTelemetrySink {
         .audioCaptureFailed, "recording",
         captureFailureExtra(error: error, failureMode: "thrown_start"))
     case .asrEmpty:
-      emitCaptureError(
-        NSError(
-          domain: "EnviousWispr", code: -1,
-          userInfo: [
-            NSLocalizedDescriptionKey: "ASR returned empty text despite speech evidence"
-          ]),
-        .asrEmptyResult, "asr",
-        telemetryState.asrEmptyDiagnostics?.sentryExtra() ?? ["backend": backend.rawValue],
-        snapshot: recordingSnapshot())
+      // #979: ASR-empty on non-speech (ambient noise trips VAD, engine
+      // correctly returns empty) is an EXPECTED outcome, not an error.
+      // Evidence: 7 organic capture pairs all ambient non-speech (energy-mod
+      // 0.08-0.19, no inter-word pauses); founder repro "airplane, light taps";
+      // SuperWhisper logs the same condition and treats it as a soft notice.
+      // The user already sees "Couldn't catch that" from the terminal STATE
+      // (KernelDictationDriver), independent of this emit. Downgrade from a
+      // Sentry error (which flagged a non-bug AND auto-filed issues via the
+      // Sentry->GitHub triage) to a context-only breadcrumb. Frequency still
+      // lives in PostHog pipeline.failed (error_code "Couldn't catch that --
+      // try again"); engineering evidence still lives in the DEBUG
+      // ASREmptyCaptureDump. Both untouched.
+      breadcrumb(
+        "asr", "ASR returned empty text despite speech evidence",
+        telemetryState.asrEmptyDiagnostics?.sentryExtra() ?? ["backend": backend.rawValue])
     case .emptyAfterProcessing:
       emitCaptureError(
         HeartPathError.emptyAfterProcessing(
