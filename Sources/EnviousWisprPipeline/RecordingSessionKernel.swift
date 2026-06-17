@@ -328,6 +328,26 @@ final class RecordingSessionKernel {
   private var stoppingStartedAtTick: UInt64?
   private var recordingStartedAtDate: Date?
 
+  /// Fired at most once per recording when the VAD seam reports the recording is
+  /// approaching `maxRecordingDuration` (#1060), carrying the remaining seconds.
+  /// ADVISORY: the kernel does NOT stop on this (that is the separate stop
+  /// stream); it forwards a semantic event the driver maps to a UI banner. No
+  /// user-facing copy lives here — copy stays in the App layer.
+  var onApproachingMaxDuration: (@MainActor (TimeInterval) -> Void)?
+
+  /// Low-cardinality reason the most recent recording stopped, set when the
+  /// recording-exit latches and cleared at session start (#1060). Read by the
+  /// driver to label the transcribing pill ("Recording ended, transcribing now"
+  /// on `"max_duration"`) and by the App layer for `dictation.completed`
+  /// telemetry (`stop_reason`). A reason string, never user content.
+  private(set) var lastStopReason: String?
+
+  /// Wall-clock length of the most recent recording in seconds (#1060), captured
+  /// when the recording-exit latches and cleared at session start. LIVE metadata
+  /// for `dictation.completed` (`recording_seconds`) — distinct from the
+  /// processing-time `e2eSeconds`. Never persisted to the transcript.
+  private(set) var lastRecordingDurationSeconds: Double?
+
   /// `true` once the polish step returned a non-empty processed transcript —
   /// the kernel-era equivalent of the point at which the old pipeline called
   /// `asrManager.noteTranscriptionComplete(policy:)` (just after polish, before
@@ -881,6 +901,8 @@ final class RecordingSessionKernel {
     // Recording.
     transition(to: .recording)
     recordingStartedAtDate = Date()
+    lastStopReason = nil  // #1060: clear prior session's stop reason.
+    lastRecordingDurationSeconds = nil
     // Stamp visible-recording start for the #4 discard gate (PR-4.5 #4, §5b).
     // Set ONLY after the transition to .recording; pre-roll buffers fed
     // earlier do not count toward minimum-duration.
@@ -1761,6 +1783,24 @@ final class RecordingSessionKernel {
         }
       }
     }
+    // Separate advisory stream (#1060): approaching-cap warnings never stop the
+    // recording. Same session-stamp / stale-drop discipline as the stop stream;
+    // a stale warning from a finished session is dropped, not forwarded.
+    spawn(sid) { [weak self] in
+      guard let self else { return }
+      for await warning in self.vad.subscribeWarningSignals() {
+        guard self.isCurrent(sid) else { return }
+        guard warning.sessionID == self.currentSessionID else {
+          self.staleVADSignalDrops += 1
+          self.log(
+            "dropped stale VAD warning from=\(warning.sessionID.raw) "
+              + "current=\(self.currentSessionID.raw) totalDrops=\(self.staleVADSignalDrops)")
+          continue
+        }
+        guard self.state == .recording else { continue }
+        self.onApproachingMaxDuration?(warning.remainingSeconds)
+      }
+    }
   }
 
   // MARK: Recording-exit channel
@@ -1778,6 +1818,20 @@ final class RecordingSessionKernel {
   private func deliverRecordingExit(_ exit: RecordingExit) {
     guard !recordingExitLatched else { return }
     recordingExitLatched = true
+    // #1060: capture wall-clock recording length (live telemetry, not persisted).
+    if let start = recordingStartedAtDate {
+      lastRecordingDurationSeconds = Date().timeIntervalSince(start)
+    }
+    // #1060: record the stop reason for the transcribing-pill label + telemetry.
+    switch exit {
+    case .userStop: lastStopReason = "user"
+    case .vadAutoStop: lastStopReason = "vad_auto_stop"
+    case .maxDuration: lastStopReason = "max_duration"
+    case .captureStall: lastStopReason = "capture_stall"
+    case .audioInterruption: lastStopReason = "audio_interruption"
+    case .asrInterruption: lastStopReason = "asr_interruption"
+    case .cancel: lastStopReason = "cancel"
+    }
     bump()
     if let continuation = recordingExitContinuation {
       recordingExitContinuation = nil

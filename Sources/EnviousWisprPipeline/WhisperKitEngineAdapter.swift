@@ -131,9 +131,10 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   private var observedSpeechSegments: [SpeechSegment] = []
 
   /// Cap on `retainedPCM` — `maxRecordingDuration` worth of 16 kHz mono samples
-  /// (300 s * 16 kHz = 4.8 M Float = ~19 MB). Mirrors Parakeet's cap so the
-  /// two engines size memory the same way. On reaching the cap the
-  /// accumulation stops growing; recording auto-stops on max-duration anyway.
+  /// (3600 s * 16 kHz = 57.6 M Float = ~230 MB; #1060 raised the cap 300→3600).
+  /// Mirrors Parakeet's cap so the two engines size memory the same way. On
+  /// reaching the cap the accumulation stops growing; recording auto-stops on
+  /// max-duration anyway.
   private static let retainedPCMCap = Int(
     TimingConstants.maxRecordingDuration * AudioConstants.sampleRate)
 

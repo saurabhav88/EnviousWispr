@@ -18,6 +18,9 @@ final class FakeVADSignalSource: VADSignalSource {
   /// auto-removes its entry via `onTermination`.
   private var subscribers: [Int: AsyncStream<VADStopSignal>.Continuation] = [:]
   private var nextSubscriberID: Int = 0
+  /// Per-subscriber continuations for the approaching-cap warning stream (#1060).
+  private var warningSubscribers: [Int: AsyncStream<VADWarningSignal>.Continuation] = [:]
+  private var nextWarningSubscriberID: Int = 0
 
   /// The verdict `speechEvidenceAtStop()` returns. Defaults to `.voiced`;
   /// scenarios set `.confirmedNoSpeech` or `.unavailable`.
@@ -57,6 +60,36 @@ final class FakeVADSignalSource: VADSignalSource {
     }
   }
 
+  func subscribeWarningSignals() -> AsyncStream<VADWarningSignal> {
+    let id = nextWarningSubscriberID
+    nextWarningSubscriberID += 1
+    return AsyncStream { continuation in
+      warningSubscribers[id] = continuation
+      continuation.onTermination = { @Sendable [weak self] _ in
+        Task { @MainActor [weak self] in
+          self?.warningSubscribers.removeValue(forKey: id)
+        }
+      }
+    }
+  }
+
+  /// Number of approaching-cap warnings emitted — for warning-path tests.
+  private(set) var emittedWarningCount = 0
+
+  /// Emit an approaching-cap warning stamped with `currentSessionID` (#1060).
+  func emitWarning(remainingSeconds: TimeInterval = 60) {
+    emittedWarningCount += 1
+    let signal = VADWarningSignal(remainingSeconds: remainingSeconds, sessionID: currentSessionID)
+    for continuation in warningSubscribers.values { continuation.yield(signal) }
+  }
+
+  /// Emit a warning stamped with a PRIOR session's id — the stale-drop case.
+  func emitStaleWarning(remainingSeconds: TimeInterval = 60) {
+    emittedWarningCount += 1
+    let signal = VADWarningSignal(remainingSeconds: remainingSeconds, sessionID: SessionID())
+    for continuation in warningSubscribers.values { continuation.yield(signal) }
+  }
+
   /// Emit one stop-driving signal, stamped with `currentSessionID` (driven by a
   /// scenario's `VADDirective`). Broadcast to every live subscriber.
   func emit(_ kind: VADStopKind) {
@@ -86,5 +119,7 @@ final class FakeVADSignalSource: VADSignalSource {
   func finish() {
     for continuation in subscribers.values { continuation.finish() }
     subscribers.removeAll()
+    for continuation in warningSubscribers.values { continuation.finish() }
+    warningSubscribers.removeAll()
   }
 }

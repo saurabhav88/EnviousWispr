@@ -80,8 +80,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   private(set) var lastFailureError: (any Error)?
 
   /// Cap on `retainedPCM` — `maxRecordingDuration` worth of 16 kHz mono samples
-  /// (300 s x 16 kHz = 4.8 M `Float` = ~19 MB). On reaching the cap the
-  /// accumulation stops growing; recording auto-stops on max-duration anyway.
+  /// (3600 s x 16 kHz = 57.6 M `Float` = ~230 MB; #1060 raised the cap 300→3600).
+  /// On reaching the cap the accumulation stops growing; recording auto-stops on
+  /// max-duration anyway.
   private static let retainedPCMCap = Int(
     TimingConstants.maxRecordingDuration * AudioConstants.sampleRate)
 

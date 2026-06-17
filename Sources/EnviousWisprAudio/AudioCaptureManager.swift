@@ -90,8 +90,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// User override for input device. Empty string means "Auto" (smart selection enabled).
   public var preferredInputDeviceIDOverride: String = ""
 
-  /// Maximum recording duration in seconds. Prevents unbounded memory growth.
-  public nonisolated static let maxRecordingDurationSeconds: Double = 600
+  /// Hard emergency recording-duration ceiling in seconds. Prevents unbounded
+  /// memory growth. MUST stay strictly above the graceful soft cap
+  /// (`TimingConstants.maxRecordingDuration`, 3600s) so the graceful stop+transcribe
+  /// always wins; this 60s margin keeps the hard teardown a true backstop only
+  /// reached if the soft stop wedges (#1060). Raised 600→3660.
+  public nonisolated static let maxRecordingDurationSeconds: Double = 3660
   /// Maximum sample count derived from maxRecordingDurationSeconds at 16kHz.
   public nonisolated static let maxRecordingSamples: Int = Int(
     maxRecordingDurationSeconds * targetSampleRate)

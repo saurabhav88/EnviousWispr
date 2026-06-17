@@ -149,6 +149,14 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   public var onOverlayIntentChange: ((OverlayIntent) -> Void)?
 
+  /// Fired at most once per recording when the recording approaches the
+  /// max-duration cap (#1060), carrying remaining seconds. Display-only, like
+  /// `onOverlayIntentChange`: carries NO lifecycle authority; wire ONLY to the
+  /// overlay banner path, never to anything that mutates recording state. The
+  /// App layer owns the user-facing copy.
+  @ObservationIgnored
+  public var onApproachingMaxDuration: ((TimeInterval) -> Void)?
+
   /// Heart-path error sink for the driver's own direct `.asrInterrupted`
   /// captureError emit. Defaulted to the production global so the only behavior
   /// change is testability — the factory threads the same injected sink it
@@ -251,6 +259,9 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   func start() {
     observeKernelState()
     observeFinalizingSubStatus()
+    kernel.onApproachingMaxDuration = { [weak self] remaining in
+      self?.onApproachingMaxDuration?(remaining)
+    }
   }
 
   // MARK: Limb-step accessors (read by `PipelineSettingsSync` + custom-words)
@@ -478,7 +489,23 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     context.config
   }
 
+  /// #1060: stop reason + wall-clock length of the most recent recording, for
+  /// the App layer's `dictation.completed` telemetry. LIVE pass-through from the
+  /// kernel; never persisted. Reason strings only, never user content.
+  public var lastStopReason: String? { kernel.lastStopReason }
+  public var lastRecordingDurationSeconds: Double? { kernel.lastRecordingDurationSeconds }
+
   // MARK: Caller-facing event + overlay surface
+
+  /// #1060: the transcribing-pill label. After a max-duration auto-stop, make the
+  /// stop legible ("Recording ended, transcribing now"); otherwise the plain
+  /// label. Transcribing/Polishing labels already live in the driver, so this
+  /// stays consistent with that precedent.
+  private var transcribingPillLabel: String {
+    kernel.lastStopReason == "max_duration"
+      ? "Reached the 60-minute limit. Transcribing now."
+      : "Transcribing..."
+  }
 
   public var overlayIntent: OverlayIntent {
     if let lastExternalError {
@@ -525,11 +552,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       // pipeline returns 0 here, exactly as the old Parakeet pipeline did.
       return .recording(audioLevel: 0)
     case .stopping, .transcribing:
-      return .processing(label: "Transcribing...")
+      return .processing(label: transcribingPillLabel)
     case .finalizing:
       switch kernel.finalizingSubStatus {
       case .transcribing:
-        return .processing(label: "Transcribing...")
+        return .processing(label: transcribingPillLabel)
       case .polishing:
         return .processing(label: "Polishing...")
       }
