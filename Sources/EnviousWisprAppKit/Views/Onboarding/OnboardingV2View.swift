@@ -766,7 +766,7 @@ private struct PermissionsPhaseView: View {
             .frame(maxWidth: 360)
             .padding(.vertical, 13)
             .background(
-              bothGranted ? Color.obTextPrimary : Color.obTextPrimary.opacity(0.4),
+              bothGranted ? Color.obButtonFill : Color.obButtonFill.opacity(0.4),
               in: RoundedRectangle(cornerRadius: 12)
             )
         }
@@ -948,7 +948,7 @@ private struct ReadyScreenV2: View {
             .foregroundStyle(.white)
             .frame(maxWidth: 360)
             .padding(.vertical, 13)
-            .background(Color.obTextPrimary, in: RoundedRectangle(cornerRadius: 12))
+            .background(Color.obButtonFill, in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
         .keyboardShortcut(.defaultAction)
@@ -1139,7 +1139,7 @@ private struct KeycapHotkeyView: View {
         Color.obAccent.opacity(0.10)
       } else {
         LinearGradient(
-          colors: [.white, Color.obSurface],
+          colors: [Color.obKeycapTop, Color.obSurface],
           startPoint: .top,
           endPoint: .bottom
         )

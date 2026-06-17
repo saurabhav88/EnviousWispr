@@ -118,6 +118,7 @@ struct MenuBarControllerTests {
         "Start Recording",
         "",  // separator
         "Settings...",
+        "Appearance",  // #1047 submenu parent
         "",  // separator
         "Quit \(AppConstants.appName)",
       ],
@@ -129,15 +130,49 @@ struct MenuBarControllerTests {
     // Separators are separators.
     #expect(menu.items[2].isSeparatorItem)
     #expect(menu.items[4].isSeparatorItem)
-    #expect(menu.items[6].isSeparatorItem)
+    #expect(menu.items[7].isSeparatorItem)
     // Settings carries the comma key-equivalent; Quit carries "q".
     #expect(item(menu, "Settings...")?.keyEquivalent == ",")
     #expect(item(menu, "Quit \(AppConstants.appName)")?.keyEquivalent == "q")
-    // Every actionable item targets the controller.
-    for actionable in menu.items where actionable.action != nil {
+    // Every actionable item targets the controller. Submenu parents (e.g.
+    // Appearance) are excluded: AppKit assigns them a system `submenuAction:`
+    // whose target is the submenu itself; their children's targeting is covered
+    // by `renderMenuAppearanceSubmenu`.
+    for actionable in menu.items where actionable.action != nil && actionable.submenu == nil {
       #expect(
         actionable.target as AnyObject? === controller,
         "\(actionable.title) should target the MenuBarController")
+    }
+  }
+
+  @Test(
+    "renderMenu: Appearance submenu checkmarks the current preference, clears the others",
+    arguments: [AppearancePreference.system, .light, .dark])
+  func renderMenuAppearanceSubmenu(current: AppearancePreference) {
+    let controller = makeController()
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu, state: fixture(pipelineState: .idle, appearancePreference: current))
+
+    let appearance = item(menu, "Appearance")
+    #expect(appearance != nil, "Appearance item missing")
+    let submenu = appearance?.submenu
+    #expect(submenu?.items.map(\.title) == ["System", "Light", "Dark"])
+
+    // Exactly the current preference is checked; the other two are off.
+    let expectedOn: String = {
+      switch current {
+      case .system: return "System"
+      case .light: return "Light"
+      case .dark: return "Dark"
+      }
+    }()
+    for sub in submenu?.items ?? [] {
+      #expect(
+        sub.state == (sub.title == expectedOn ? .on : .off),
+        "\(sub.title) checkmark wrong for current=\(current)")
+      #expect(sub.representedObject as? String != nil, "\(sub.title) must carry its rawValue")
+      #expect(sub.target as AnyObject? === controller, "\(sub.title) should target the controller")
     }
   }
 
@@ -299,7 +334,8 @@ struct MenuBarControllerTests {
     hasUpdater: Bool = false,
     updateAvailable: Bool = false,
     updateDisplayVersion: String? = nil,
-    installEnabled: Bool = false
+    installEnabled: Bool = false,
+    appearancePreference: AppearancePreference = .system
   ) -> MenuBarViewState {
     MenuBarViewState(
       pipelineState: pipelineState,
@@ -312,7 +348,8 @@ struct MenuBarControllerTests {
       hasUpdater: hasUpdater,
       updateAvailable: updateAvailable,
       updateDisplayVersion: updateDisplayVersion,
-      installEnabled: installEnabled
+      installEnabled: installEnabled,
+      appearancePreference: appearancePreference
     )
   }
 

@@ -13,6 +13,9 @@ enum SettingsDefaultValues {
   static let selectedBackend: ASRBackendType = .parakeet
   static let recordingMode: RecordingMode = .pushToTalk
 
+  /// Default appearance follows the macOS system setting.
+  static let appearancePreference: AppearancePreference = .system
+
   // #923: AI polish is ON by default, Apple Intelligence. Previously the cold
   // fallback was `.none` and onboarding wrote `.appleIntelligence` separately,
   // which made the real default ambiguous. Apple Intelligence is on-device; on

@@ -226,6 +226,29 @@ final class MenuBarController: NSObject {
     settingsItem.target = self
     menu.addItem(settingsItem)
 
+    // Appearance submenu (System / Light / Dark) — checkmark on the current
+    // preference. Mirrors the Settings → Appearance picker (#1047).
+    let appearanceItem = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
+    appearanceItem.image = NSImage(
+      systemSymbolName: "circle.lefthalf.filled", accessibilityDescription: "Appearance")
+    let appearanceSubmenu = NSMenu()
+    for option in AppearancePreference.allCases {
+      let title =
+        switch option {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+      let item = NSMenuItem(
+        title: title, action: #selector(setAppearanceAction(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = option.rawValue
+      item.state = option == state.appearancePreference ? .on : .off
+      appearanceSubmenu.addItem(item)
+    }
+    appearanceItem.submenu = appearanceSubmenu
+    menu.addItem(appearanceItem)
+
     // Check for Updates — targets SparkleUpdateController so it can tag the
     // install source as "menu" for telemetry attribution (issue #343).
     // PR-B.1 of #763 retargeted target/action to the controller; PR-B.3
@@ -278,7 +301,8 @@ final class MenuBarController: NSObject {
       hasUpdater: sparkleUpdateController.hasUpdater,
       updateAvailable: pending != nil,
       updateDisplayVersion: pending?.displayVersion,
-      installEnabled: pending != nil && !dictationActive
+      installEnabled: pending != nil && !dictationActive,
+      appearancePreference: settings.appearancePreference
     )
   }
 
@@ -297,6 +321,15 @@ final class MenuBarController: NSObject {
 
   @objc private func openSettingsAction() {
     actions.openSettings()
+  }
+
+  /// #1047: set the window-appearance preference from the Appearance submenu.
+  /// The `didSet` persists it and the bootstrapper applies it to `NSApp`.
+  @objc private func setAppearanceAction(_ sender: NSMenuItem) {
+    guard let raw = sender.representedObject as? String,
+      let preference = AppearancePreference(rawValue: raw)
+    else { return }
+    settings.appearancePreference = preference
   }
 
   @objc private func openPermissionsAction() {
@@ -366,4 +399,6 @@ struct MenuBarViewState: Equatable {
   /// is active (record / load / transcribe / polish), so a relaunch never kills
   /// in-flight work.
   var installEnabled: Bool = false
+  /// #1047: current window-appearance preference, for the Appearance submenu checkmark.
+  var appearancePreference: AppearancePreference = .system
 }
