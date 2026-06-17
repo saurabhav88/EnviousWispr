@@ -37,7 +37,7 @@ Read the workflow: [Dictating emails at the speed of thought](/blog/dictate-emai
 
 ### 2. Meeting notes and polished summaries
 
-The hard part of meeting notes is not capturing them. It is turning a transcript into a summary that someone else can act on. Dictate your raw notes during or right after a meeting, then let the polish layer compress them into a structured summary with action items.
+The hard part of meeting notes is not capturing them. It is turning a raw transcript into something structured that someone else can act on. Dictate your notes during or right after a meeting, naming the decisions and action items as you say them, then let the polish layer clean them up and lay them out into clear sections.
 
 Read the workflow: [Dictating meeting notes and polished summaries](/blog/meeting-notes-polished-summaries/).
 

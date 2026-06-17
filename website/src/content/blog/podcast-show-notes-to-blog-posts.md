@@ -42,23 +42,24 @@ You can dictate show notes in the same conversational tone your audience already
 
 This is where things get genuinely useful for podcast show notes blog posts. EnviousWispr's [post-processing pipeline](/how-it-works/) cleans up your dictation and formats it into polished text. The polish keeps things conversational and scannable, which is what you want for show notes. When you talk through a longer, structured blog version, it comes back as tighter prose with proper paragraphs.
 
-You shape that by how you speak, and Ollama, OpenAI, or Gemini polish turns it into format: run through your show notes as a quick list and they land as bullet points with a summary. On the Apple Intelligence default, you get the same content as clean prose. For a blog version, speak the post in full (a longer take, in your own words); the polish cleans up what you said, but it never pads a short recap out into a long post, so say the post you want.
+You shape that by how you speak, and Ollama, OpenAI, or Gemini polish turns it into format: run through your show notes as a quick list and they land as clean bullet points. On the Apple Intelligence default, you get the same content as clean prose. For a blog version, speak the post in full (a longer take, in your own words); the polish cleans up what you said, but it never pads a short recap out into a long post, so say the post you want.
 
-Here's what this looks like end to end, dictating a recap right after recording (with Ollama, OpenAI, or Gemini polish, which adds the bullets and labels; the Apple Intelligence default keeps it as clean prose):
+Here's what this looks like end to end, dictating a recap right after recording. The structure follows the cues you speak; with Ollama, OpenAI, or Gemini polish on you get labeled bullets, and the Apple Intelligence default keeps the same content as clean prose:
 
 **What you say:**
-> okay so in this episode we talked to Sarah Chen about building a podcast audience from scratch um she said the biggest mistake new podcasters make is focusing on downloads instead of engagement and she recommended starting with a weekly newsletter to build a direct relationship with listeners we also covered her strategy for getting guests when you're a small show which is basically lead with what you can offer them not what they can offer you and then at the end she shared her tech stack which is Riverside for recording Descript for editing and Kit for the newsletter
+> okay episode recap. we talked to Sarah Chen about building a podcast audience from scratch. um the big takeaway is the biggest mistake new podcasters make is focusing on downloads instead of engagement, and she recommended starting with a weekly newsletter to build a direct relationship with listeners. we also covered her guest strategy for a small show, which is basically lead with what you can offer them not what they can offer you. and the resources she mentioned were Riverside for recording, Descript for editing, and Kit for the newsletter
 
 **What gets pasted:**
-> **Episode Summary:** Sarah Chen shares her framework for building a podcast audience from zero, focusing on engagement over downloads.
+> **Episode recap:** We talked to Sarah Chen about building a podcast audience from scratch.
 >
-> **Key Topics:**
-> - Why engagement matters more than download numbers for new podcasters
-> - Building a weekly newsletter to create direct listener relationships
-> - Guest booking strategy for small shows: lead with value you can offer
+> **The big takeaway:** The biggest mistake new podcasters make is focusing on downloads instead of engagement. She recommended starting with a weekly newsletter to build a direct relationship with listeners.
 >
-> **Resources Mentioned:**
-> - Riverside (recording), Descript (editing), Kit (newsletter)
+> **Guest strategy for a small show:** Lead with what you can offer them, not what they can offer you.
+>
+> **Resources mentioned:**
+> - Riverside (recording)
+> - Descript (editing)
+> - Kit (newsletter)
 
 Two minutes of speaking replaced forty-five minutes of typing. The show notes are structured, scannable, and ready to paste into your podcast host. That creative momentum from the recording session doesn't have to die. You capture it before the episode goes cold.
 
