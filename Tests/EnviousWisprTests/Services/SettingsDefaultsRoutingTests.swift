@@ -72,6 +72,32 @@ struct SettingsDefaultsRoutingTests {
     #expect(!keys.contains("sessionLanguagePriors"))
   }
 
+  // MARK: - Appearance preference (#1047)
+
+  @Test("appearance defaults to .system on a fresh install")
+  func appearanceDefaultsToSystem() {
+    let settings = SettingsManager(defaults: Self.freshSuite())
+    #expect(settings.appearancePreference == .system)
+  }
+
+  @Test("appearance persists to the injected store and is in the unified key set")
+  func appearancePersists() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    settings.appearancePreference = .dark
+    #expect(suite.string(forKey: "appearancePreference") == "dark")
+    // Reload from the same store → the choice survives.
+    #expect(SettingsManager(defaults: suite).appearancePreference == .dark)
+    #expect(SettingsManager.unifiedDefaultsKeys.contains("appearancePreference"))
+  }
+
+  @Test("an unparseable stored appearance value falls back to .system")
+  func appearanceUnparseableFallsBack() {
+    let suite = Self.freshSuite()
+    suite.set("solarized", forKey: "appearancePreference")
+    #expect(SettingsManager(defaults: suite).appearancePreference == .system)
+  }
+
   @Test("useXPCAudioService writes to .standard, never the injected store")
   func useXPCStaysPerBuild() {
     let suite = Self.freshSuite()

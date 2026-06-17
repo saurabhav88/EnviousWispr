@@ -208,6 +208,8 @@ final class PipelineSettingsSync {
     case .onboardingState, .hasCompletedOnboarding, .useXPCAudioService,
       .contactsSyncOnLaunchEnabled:
       break  // UI-only or cold flag.
+    case .appearance:
+      break  // UI-only; applied to NSApp.appearance by the app shell (#1047).
     }
   }
 

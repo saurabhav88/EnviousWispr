@@ -41,6 +41,7 @@ public final class SettingsManager {
     case useXPCAudioService
     case useStreamingASR
     case warmEnginePolicy
+    case appearance
   }
 
   public var onChange: ((SettingKey) -> Void)?
@@ -64,7 +65,7 @@ public final class SettingsManager {
     "emojiFormatterEnabled", "contactsSyncOnLaunchEnabled", "isDebugModeEnabled", "debugLogLevel",
     "useExtendedThinking", "whisperKitLanguage", "languageMode",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride",
-    "useStreamingASR", "warmEnginePolicy",
+    "useStreamingASR", "warmEnginePolicy", "appearancePreference",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
   ]
 
@@ -271,6 +272,15 @@ public final class SettingsManager {
     didSet {
       defaults.set(warmEnginePolicy.rawValue, forKey: "warmEnginePolicy")
       onChange?(.warmEnginePolicy)
+    }
+  }
+
+  /// Window-appearance preference. UI-only — the app shell applies it to
+  /// `NSApp.appearance`; pipeline sync treats `.appearance` as a no-op.
+  public var appearancePreference: AppearancePreference {
+    didSet {
+      defaults.set(appearancePreference.rawValue, forKey: "appearancePreference")
+      onChange?(.appearance)
     }
   }
 
@@ -552,6 +562,11 @@ public final class SettingsManager {
       WarmEnginePolicy(
         rawValue: defaults.string(forKey: "warmEnginePolicy") ?? ""
       ) ?? SettingsDefaultValues.warmEnginePolicy
+
+    appearancePreference =
+      AppearancePreference(
+        rawValue: defaults.string(forKey: "appearancePreference") ?? ""
+      ) ?? SettingsDefaultValues.appearancePreference
 
     // What's New: fresh install (nil) defaults to current version so new users aren't badged.
     let storedWhatsNew =

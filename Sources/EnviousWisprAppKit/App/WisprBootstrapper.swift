@@ -70,6 +70,9 @@ public final class WisprBootstrapper {
     // (mutates the store it reads). Release/shipped builds no-op. See migration doc.
     SettingsDefaultsMigration.migrateIfNeeded()
     let settings = SettingsManager()
+    // #1047: apply the persisted appearance before any window is built so a
+    // pinned Dark never flashes white. `.system` clears the override (follow OS).
+    AppearanceController.apply(settings.appearancePreference)
     let permissions = PermissionsService()
     let keychainManager = KeychainManager()
     let recordingOverlay = RecordingOverlayPanel()
@@ -250,6 +253,11 @@ public final class WisprBootstrapper {
     settings.onChange = { [weak settingsSync, weak settings, outputClassifierHolder] key in
       guard let settingsSync, let settings else { return }
       settingsSync.handleSettingChanged(key, settings: settings)
+      // #1047: appearance is a view-shell concern (no pipeline sync) — apply it
+      // to NSApp here so both the menu and the Settings picker take effect live.
+      if key == .appearance {
+        AppearanceController.apply(settings.appearancePreference)
+      }
       // #832/#913 PR8: if the user switches polish to Apple Intelligence after
       // launch, prewarm the classifier then (idempotent — no-op if loaded).
       // Captures the holder (not self — self isn't fully initialized here).

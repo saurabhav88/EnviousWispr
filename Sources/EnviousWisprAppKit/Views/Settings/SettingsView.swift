@@ -74,7 +74,6 @@ struct UnifiedWindowView: View {
         StatusBadge()
       }
     }
-    .preferredColorScheme(.light)
     .onChange(of: navigationCoordinator.pendingSection) { _, newSection in
       if let section = newSection {
         selectedSection = section
@@ -90,6 +89,8 @@ struct UnifiedWindowView: View {
       HistoryContentView()
     case .whatsNew:
       WhatsNewSettingsView()
+    case .appearance:
+      AppearanceSettingsView()
     case .speechEngine:
       SpeechEngineSettingsView()
     case .audio:
