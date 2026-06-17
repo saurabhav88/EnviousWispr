@@ -88,6 +88,13 @@ internal final class TextProcessingRunner {
       let budgetSeconds =
         Double(step.maxDuration.components.seconds)
         + Double(step.maxDuration.components.attoseconds) / 1e18
+      // #1055: snapshot the polish provider BEFORE the await. `LLMPolishStep.
+      // llmProvider` is a mutable @MainActor property that PipelineSettingsSync
+      // can change while `process()` is in flight; reading it in the catch block
+      // (after the timeout suspension) would misclassify the timeout if the user
+      // switched providers mid-polish. Snapshotting here mirrors the step's own
+      // entry snapshot of `provider` and the `stepName` snapshot above.
+      let polishProviderAtStart = (step as? LLMPolishStep)?.llmProvider
       do {
         context = try await timeoutExecutor(budgetSeconds) {
           try await step.process(input)
@@ -122,7 +129,30 @@ internal final class TextProcessingRunner {
       } catch {
         let stepMs = (CFAbsoluteTimeGetCurrent() - stepStart) * 1000
         let isTimeout = error is TimeoutError
-        let reason = isTimeout ? "timed out" : "failed: \(error.localizedDescription)"
+        // #1055: AFM context-window overflow is a clean skip (dictation too long
+        // for the on-device model), not a failure — raw deterministically-cleaned
+        // text passes through and no "AI polish failed" is surfaced.
+        let contextWindowSkip = error as? AFMContextWindowExceeded
+        // #1055: an Apple Intelligence polish that TIMES OUT (the on-device model
+        // stalling on a long or runaway dictation) is handled exactly like a
+        // context-window skip — silent raw fallback, not an "AI polish failed"
+        // error. On-device polish of long input is known-flaky and the clean
+        // deterministic text is the right thing to ship. Scoped to the
+        // appleIntelligence provider ONLY: cloud-provider timeouts still surface
+        // (they signal a transient network issue the user should see).
+        let isAppleIntelligencePolishTimeout =
+          isTimeout && polishProviderAtStart == .appleIntelligence
+        let reason: String
+        if isAppleIntelligencePolishTimeout {
+          reason =
+            "skipped: on-device AI polish timed out on a long dictation, using deterministic text"
+        } else if isTimeout {
+          reason = "timed out"
+        } else if let cw = contextWindowSkip {
+          reason = "skipped: too long for on-device AI polish (\(cw.stage.rawValue))"
+        } else {
+          reason = "failed: \(error.localizedDescription)"
+        }
         // Apple Intelligence language-gate skips (unsupported input
         // language, output-language drift) are expected no-ops, not
         // polish failures. Log and continue with raw text; do not
@@ -139,8 +169,24 @@ internal final class TextProcessingRunner {
         } else {
           isLanguageGateSkip = false
         }
-        if step.errorSurfacePolicy == .surface && !isLanguageGateSkip {
+        if step.errorSurfacePolicy == .surface && !isLanguageGateSkip
+          && contextWindowSkip == nil && !isAppleIntelligencePolishTimeout
+        {
           polishError = error.localizedDescription
+        }
+        // #1055: emit a dedicated skip event so we can measure how often long
+        // dictations bypass on-device polish — input the future 1-hour-recording
+        // work needs. All three reasons share the `context_window_` prefix so a
+        // single analytics query captures every AFM-long-dictation skip mode:
+        // predicted (preflight), caught (generation overflow), timeout (stall).
+        if let cw = contextWindowSkip {
+          let skipReason =
+            cw.stage == .predicted ? "context_window_predicted" : "context_window_caught"
+          TelemetryService.shared.polishSkipped(
+            provider: LLMProvider.appleIntelligence.rawValue, reason: skipReason)
+        } else if isAppleIntelligencePolishTimeout {
+          TelemetryService.shared.polishSkipped(
+            provider: LLMProvider.appleIntelligence.rawValue, reason: "context_window_timeout")
         }
         // #657 (2026-05-05): emit cap-trip telemetry when WordCorrectionStep
         // exceeds its 3s `maxDuration`. The step's result was discarded; raw

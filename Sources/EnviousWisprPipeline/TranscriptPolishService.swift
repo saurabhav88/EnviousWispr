@@ -134,6 +134,23 @@ public final class TranscriptPolishService {
       )
       context = try await llmPolishStep.process(context)
       stepOutput = context.polishedText
+    } catch let ctxErr as AFMContextWindowExceeded {
+      // #1055: the explicit re-polish action gets an HONEST reason ("too long"),
+      // not the live-dictation silent skip and not the misleading "too short"
+      // message the nil-output guard below would otherwise show.
+      let msg = "This dictation is too long for on-device Apple Intelligence polish."
+      recordError(for: transcript.id, message: msg)
+      TelemetryService.shared.polishSkipped(
+        provider: LLMProvider.appleIntelligence.rawValue,
+        reason: ctxErr.stage == .predicted ? "context_window_predicted" : "context_window_caught"
+      )
+      Task {
+        await AppLogger.shared.log(
+          "Transcript re-polish skipped: too long for on-device AI polish (\(ctxErr.stage.rawValue))",
+          level: .info, category: "Enhancement"
+        )
+      }
+      throw LLMError.requestFailed(msg)
     } catch {
       recordError(for: transcript.id, message: error.localizedDescription)
       Task {

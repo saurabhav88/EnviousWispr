@@ -27,6 +27,30 @@ public struct AFMPolishError: Error, Sendable {
   }
 }
 
+/// Thrown when a dictation's assembled on-device prompt (instructions +
+/// transcript + reserved output) would exceed Apple Intelligence's 4,096-token
+/// context window (#1055). `.predicted` = the token-count preflight stopped it
+/// before the model call; `.caught` = the model still threw
+/// `exceededContextWindowSize` at generation (the preflight under-counted).
+///
+/// Deliberately NOT an `AFMPolishError` and NOT an `LLMError`: it propagates
+/// untyped through `LLMPolishStep.process()`, and is handled by exactly two
+/// callers — `TextProcessingRunner` treats it as a silent live-dictation skip
+/// (deterministically-cleaned text passes through), and `TranscriptPolishService`
+/// surfaces an honest "too long for on-device polish" message. A plain struct
+/// (no FoundationModels dependency) so Pipeline-side code and tests can catch /
+/// construct it without importing the framework.
+public struct AFMContextWindowExceeded: Error, Sendable {
+  public enum Stage: String, Sendable {
+    case predicted
+    case caught
+  }
+  public let stage: Stage
+  public init(stage: Stage) {
+    self.stage = stage
+  }
+}
+
 /// Normalizes language identifiers (ISO 639-1 or BCP-47) to lowercased base
 /// codes. Shared between the preflight gate and the output validator so both
 /// speak the same language vocabulary. Internal so `@testable import` can reach
@@ -132,6 +156,59 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
 
   public init(classifier: OutputClassifierProtocol? = nil) {
     self.classifier = classifier
+  }
+
+  // MARK: - AFM context-window preflight (#1055)
+
+  /// Apple Intelligence shares a 4,096-token context window across instructions
+  /// + prompt + generated output (Apple docs; measured 2026-06-17, see
+  /// `.claude/knowledge/llm-contract.md` FACT: afm-context-window-4096).
+  static let afmContextWindowTokens = 4096
+  /// Headroom kept below the hard window. Tuned by on-device validation (#1055).
+  static let afmContextSafetyMarginTokens = 128
+  /// PREFLIGHT output reserve as a multiple of input tokens. A clean transcript
+  /// polish produces output ≈ input — filler removal roughly offsets the
+  /// punctuation/capitalization it adds (measured ~1.01× on an 881-word unique
+  /// passage, 2026-06-17). So 1.0 reserves exactly enough room for a 1:1 polish,
+  /// and the preflight skips ONLY when even that can't fit the shared 4,096-token
+  /// window — i.e. genuinely-huge input (~990+ words / ~7+ min). The preflight is
+  /// a fast-path optimization, NOT the safety net: a dictation that slips through
+  /// and overflows or stalls is caught silently at generation (`.caught`, or the
+  /// runner's Apple-Intelligence-timeout skip) and the deterministic text ships.
+  /// Earlier builds used a large FIXED reserve that wrongly skipped good ~4-min
+  /// dictations; that "5-minute cliff" was a test-methodology artifact (a reused
+  /// session accumulating turns + repetitive test text), corrected 2026-06-17.
+  static let afmPreflightOutputReserveMultiplier = 1.0
+  /// Generation cap multiple (× input tokens, + floor) used to derive the
+  /// ADVISORY `GenerationOptions.maximumResponseTokens`. For most inputs this
+  /// sits above the `EnviousOutputFilter` length_guard's 1.5× ceiling, so a
+  /// legitimate cleanup (≤1.5× input) is never the binding limit while a runaway
+  /// is bounded so it does not generate for tens of seconds. Near the window
+  /// limit the call site CLAMPS the resulting cap to the room actually left in
+  /// the window (see `generateGuardingContextWindow`), which can pull it below
+  /// 1.5× — harmless because the cap is advisory (the model can exceed it,
+  /// measured 2026-06-17) and a clean polish is ~1:1 anyway. Best-effort latency
+  /// optimization only, NOT a correctness mechanism: a genuine overflow is caught
+  /// by `.caught`, a stall by the runner's Apple-Intelligence-timeout skip, and a
+  /// >1.5× runaway by the length_guard (→ raw).
+  static let afmOutputCapMultiplier = 1.7
+  static let afmOutputCapFloorTokens = 80
+
+  /// Advisory max tokens the on-device model should generate for a given input,
+  /// BEFORE the call-site clamp to remaining window room.
+  static func afmMaxOutputTokens(inputTokens: Int) -> Int {
+    Int(Double(inputTokens) * afmOutputCapMultiplier) + afmOutputCapFloorTokens
+  }
+
+  /// Conservative token estimate from character count, language-scaled. Used
+  /// only when Apple's exact `tokenCount` is unavailable (< macOS 26.4) or
+  /// throws. Over-estimates (CJK/unsegmented ~1 char/token, Latin ~3
+  /// chars/token) so it errs toward skipping rather than letting an overflow
+  /// reach the model.
+  static func heuristicAFMTokens(_ text: String, lang: String?) -> Int {
+    let unsegmented = lang.map(LanguageTypes.isUnsegmentedScript) ?? false
+    let divisor = unsegmented ? 1.0 : 3.0
+    return Int((Double(text.count) / divisor).rounded(.up))
   }
 
   /// Natural-mode instructions — v30 prompt family. Aggressive filler cleanup,
@@ -372,9 +449,14 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         }
 
         return result
+      } catch let ctxErr as AFMContextWindowExceeded {
+        // #1055: the context-window skip must NOT be wrapped as AFMPolishError
+        // (which LLMPolishStep maps to a `generation_failed` Sentry error). Let
+        // it propagate untyped to the runner (silent live skip) /
+        // TranscriptPolishService (honest "too long" message).
+        throw ctxErr
       } catch let afmErr as AFMPolishError {
-        // Re-throw untouched if already typed (defensive — shouldn't happen
-        // since polishWithFoundationModels currently only throws plain errors).
+        // Re-throw untouched if already typed (defensive).
         throw afmErr
       } catch {
         throw AFMPolishError(underlying: error, routerMode: routerMode, routerBasis: routerBasis)
@@ -409,7 +491,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       mode: ApplePolishMode,
       routerBasis: String
     ) async throws -> LLMResult {
-      let session = try makeSession(
+      let prepared = try makeSession(
         instructions: instructions,
         detectedLanguage: detectedLanguage,
         mode: mode
@@ -420,11 +502,11 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       // performs better empirically. `<TRANSCRIPT>` tags structurally isolate
       // dictated content from the system prompt.
       let wrapped = "<TRANSCRIPT>\n\(text)\n</TRANSCRIPT>"
-      let response = try await session.respond(
-        to: wrapped,
-        options: GenerationOptions(sampling: .greedy)
-      )
-      let rawContent = response.content
+      // #1055: token-count preflight + generation-time overflow guard. Throws
+      // AFMContextWindowExceeded (predicted/caught) when the dictation can't fit
+      // the 4,096-token window, instead of stalling ~10s then erroring.
+      let rawContent = try await Self.generateGuardingContextWindow(
+        prepared: prepared, wrapped: wrapped, detectedLanguage: detectedLanguage)
       let filtered = await EnviousOutputFilter.filterWithClassifier(
         input: text, output: rawContent, classifier: classifier)
       let content = filtered.polished
@@ -485,7 +567,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       mode: ApplePolishMode,
       routerBasis: String
     ) async throws -> LLMResult {
-      let session = try makeSession(
+      let prepared = try makeSession(
         instructions: instructions,
         detectedLanguage: detectedLanguage,
         mode: mode
@@ -494,11 +576,11 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       // CLT-only fallback path: same plain-string + filter design as the
       // @Generable path so behavior is consistent across build flavors.
       let wrapped = "<TRANSCRIPT>\n\(text)\n</TRANSCRIPT>"
-      let response = try await session.respond(
-        to: wrapped,
-        options: GenerationOptions(sampling: .greedy)
-      )
-      let rawContent = response.content
+      // #1055: token-count preflight + generation-time overflow guard. Throws
+      // AFMContextWindowExceeded (predicted/caught) when the dictation can't fit
+      // the 4,096-token window, instead of stalling ~10s then erroring.
+      let rawContent = try await Self.generateGuardingContextWindow(
+        prepared: prepared, wrapped: wrapped, detectedLanguage: detectedLanguage)
       let filtered = await EnviousOutputFilter.filterWithClassifier(
         input: text, output: rawContent, classifier: classifier)
       let content = filtered.polished
@@ -578,12 +660,114 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       }
     }
 
+    /// Bundles the live session with the model instance and the EXACT assembled
+    /// system prompt, so the #1055 context-window preflight can `tokenCount` the
+    /// same strings that `respond(...)` will consume.
+    @available(macOS 26.0, *)
+    struct PreparedAFMSession {
+      let session: LanguageModelSession
+      let model: SystemLanguageModel
+      let systemPrompt: String
+    }
+
+    /// Exact token count via Apple's counter (macOS 26.4+); on older systems or
+    /// if the counter throws (non-cancellation), fall back to the conservative
+    /// char heuristic. Cancellation rethrows so the pipeline timeout/cancel path
+    /// is preserved.
+    @available(macOS 26.0, *)
+    private static func estimateAFMTokens(
+      model: SystemLanguageModel, text: String, lang: String?
+    ) async throws -> Int {
+      if #available(macOS 26.4, *) {
+        do {
+          return try await model.tokenCount(for: text)
+        } catch is CancellationError {
+          throw CancellationError()
+        } catch {
+          return heuristicAFMTokens(text, lang: lang)
+        }
+      }
+      return heuristicAFMTokens(text, lang: lang)
+    }
+
+    /// #1055 preflight + generation guard. Counts instructions + wrapped
+    /// transcript + a reserved output budget; if that exceeds the window minus
+    /// the safety margin, throws `AFMContextWindowExceeded(.predicted)` WITHOUT
+    /// calling the model. Otherwise calls `respond(...)` and, if the model still
+    /// throws `exceededContextWindowSize`, reclassifies it as `.caught`. Returns
+    /// the raw generated content. All other generation errors propagate.
+    @available(macOS 26.0, *)
+    private static func generateGuardingContextWindow(
+      prepared: PreparedAFMSession, wrapped: String, detectedLanguage: String?
+    ) async throws -> String {
+      // The system prompt is always English (instructions + an English-framed
+      // language clause + the custom-words block), regardless of the dictation
+      // language. Count it with the Latin heuristic (lang: nil) so the macOS
+      // 26.0–26.3 fallback path doesn't over-count the ~2.5k-char prompt at
+      // ~1 char/token for CJK/Thai/Lao dictations and wrongly skip transcripts
+      // that actually fit. Only the transcript itself carries `detectedLanguage`.
+      // (On macOS 26.4+ the exact `tokenCount` ignores `lang` entirely.)
+      let promptTokens = try await estimateAFMTokens(
+        model: prepared.model, text: prepared.systemPrompt, lang: nil)
+      let inputTokens = try await estimateAFMTokens(
+        model: prepared.model, text: wrapped, lang: detectedLanguage)
+      // Skip decision reserves room for a 1:1 clean polish (output ≈ input) on
+      // top of the instructions + wrapped transcript, and skips ONLY when even
+      // that physically can't fit — genuinely-huge input. The model might still
+      // overflow a dictation that fits the 1:1 projection (a content-driven
+      // runaway), but that is caught silently at generation (`.caught`) rather
+      // than pre-empted here, so the preflight stays permissive and lets AFM
+      // polish long dictations it can actually handle.
+      let reservedOutputTokens = Int(
+        (Double(inputTokens) * afmPreflightOutputReserveMultiplier).rounded(.up))
+      let projected = promptTokens + inputTokens + reservedOutputTokens
+      let budget = afmContextWindowTokens - afmContextSafetyMarginTokens
+      // Advisory response cap, CLAMPED to the room actually left in the window
+      // after instructions + prompt. Empirically this SDK does not reject a call
+      // whose `maximumResponseTokens` would overrun the window (measured
+      // 2026-06-17: a 3,500-tok cap on a near-limit input still completed), and a
+      // clean ~1:1 polish stops well before the cap anyway — but clamping keeps
+      // the request coherent and future-proofs against an SDK that DOES reserve
+      // it upfront. `max(floor, …)` keeps it positive when the preflight is about
+      // to skip (the log line below reads it before the skip throw).
+      let maxOutputTokens = max(
+        afmOutputCapFloorTokens,
+        min(afmMaxOutputTokens(inputTokens: inputTokens), budget - promptTokens - inputTokens))
+      if projected > budget {
+        Task {
+          await AppLogger.shared.log(
+            "AFM context preflight: skipping on-device polish (projected ~\(projected) tok > budget \(budget); prompt=\(promptTokens) input=\(inputTokens) reservedOutput=\(reservedOutputTokens) outputCap=\(maxOutputTokens))",
+            level: .info, category: "LLM"
+          )
+        }
+        throw AFMContextWindowExceeded(stage: .predicted)
+      }
+      do {
+        let response = try await prepared.session.respond(
+          to: wrapped,
+          options: GenerationOptions(sampling: .greedy, maximumResponseTokens: maxOutputTokens)
+        )
+        return response.content
+      } catch let genErr as LanguageModelSession.GenerationError {
+        if case .exceededContextWindowSize = genErr {
+          Task {
+            await AppLogger.shared.log(
+              "AFM context overflow caught at generation (preflight under-counted); skipping on-device polish",
+              level: .info, category: "LLM"
+            )
+          }
+          throw AFMContextWindowExceeded(stage: .caught)
+        }
+        throw genErr
+      }
+    }
+
     @available(macOS 26.0, *)
     private func makeSession(
       instructions: PolishInstructions,
       detectedLanguage: String?,
       mode: ApplePolishMode
-    ) throws -> LanguageModelSession {
+    ) throws -> PreparedAFMSession {
       // Permissive content-transformation guardrails — peer-ecosystem default
       // for text-transform apps. Prevents AFM from refusing to polish benign
       // dictation that happens to mention sensitive topics.
@@ -641,10 +825,11 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       }
       let systemPrompt = basePrompt + suffix
 
-      return LanguageModelSession(
+      let session = LanguageModelSession(
         model: model,
         instructions: systemPrompt
       )
+      return PreparedAFMSession(session: session, model: model, systemPrompt: systemPrompt)
     }
   #endif
 }
