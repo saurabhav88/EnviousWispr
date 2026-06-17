@@ -40,6 +40,23 @@ public struct VADStopSignal: Equatable, Sendable {
   }
 }
 
+/// An advisory VAD signal that the recording is approaching `maxRecordingDuration`
+/// (#1060). NOT a stop — recording continues; this is a separate stream from
+/// `VADStopSignal` precisely because `VADStopKind` is stop-driving and the kernel
+/// routes every stop kind to `deliverRecordingExitIfCurrent`. Carries
+/// `remainingSeconds` so the App layer can keep "auto-stop in 1 minute" copy
+/// truthful (suppress/relabel on a late fire). Session-stamped like `VADStopSignal`
+/// so a late warning from a finished session is dropped by the kernel.
+public struct VADWarningSignal: Equatable, Sendable {
+  public let remainingSeconds: TimeInterval
+  public let sessionID: SessionID
+
+  public init(remainingSeconds: TimeInterval, sessionID: SessionID) {
+    self.remainingSeconds = remainingSeconds
+    self.sessionID = sessionID
+  }
+}
+
 /// Tri-state speech evidence read by the kernel at `stopping` (PR-1 §B.6).
 /// The no-speech gate keys on *confirmed* no-speech, not on an empty segment
 /// list per se (Codex r2 correction).
@@ -73,6 +90,13 @@ protocol VADSignalSource: AnyObject {
   /// per-subscriber continuation is removed automatically on iterator
   /// cancellation via `onTermination`.
   func subscribeStopSignals() -> AsyncStream<VADStopSignal>
+
+  /// Open a fresh per-subscriber stream of approaching-cap warning signals
+  /// (#1060). Advisory only — the kernel forwards a semantic event upward and
+  /// never stops on these. Same per-subscriber broadcast contract as
+  /// `subscribeStopSignals()` (each call returns a new stream; every yield is
+  /// broadcast to every live subscriber; `onTermination` removes the continuation).
+  func subscribeWarningSignals() -> AsyncStream<VADWarningSignal>
 
   /// The speech-evidence verdict at stop. Read once when the kernel enters
   /// `stopping`.

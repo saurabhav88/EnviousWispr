@@ -34,6 +34,28 @@ import Testing
     #expect(signal == VADStopSignal(kind: .maxDurationReached, sessionID: sid))
   }
 
+  @Test("noteApproachingMaxDuration yields a warning signal stamped with the current session")
+  func warningBridging() async {
+    let source = CaptureVADSignalSource()
+    let sid = SessionID()
+    source.setCurrentSessionID(sid)
+    var iterator = source.subscribeWarningSignals().makeAsyncIterator()
+    source.noteApproachingMaxDuration(remainingSeconds: 60)
+    let signal = await iterator.next()
+    #expect(signal == VADWarningSignal(remainingSeconds: 60, sessionID: sid))
+  }
+
+  @Test("a warning never appears on the stop stream (#1060 separate streams)")
+  func warningDoesNotRideStopStream() async {
+    let source = CaptureVADSignalSource()
+    source.setCurrentSessionID(SessionID())
+    var stopIterator = source.subscribeStopSignals().makeAsyncIterator()
+    source.noteApproachingMaxDuration(remainingSeconds: 60)  // must NOT reach the stop stream
+    source.noteMaxDurationReached()
+    let signal = await stopIterator.next()
+    #expect(signal?.kind == .maxDurationReached)
+  }
+
   @Test("bind claims onVADAutoStop — the XPC callback drives a stop signal")
   func bindOwnsXPCCallback() async {
     let source = CaptureVADSignalSource()

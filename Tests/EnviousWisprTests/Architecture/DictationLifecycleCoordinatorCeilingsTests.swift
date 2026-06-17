@@ -26,6 +26,16 @@ import Testing
 ///       PR10's `RecordingFinalizer` plan).
 ///   PR10 ratchets back down when `RecordingFinalizer` absorbs the
 ///   lock-state writes (the closure-pair retires).
+/// - #1060 (2026-06-17): line ceiling 350 → 365. The coordinator gained the
+///   approaching-cap warning presentation (`showApproachingCapWarning`, a PRIVATE
+///   method) + its callback wiring + completion-telemetry stop-reason/length —
+///   correctly placed here per state-ownership decision table row 8 (overlay /
+///   warning / transition behavior after start). The ENTANGLEMENT ceilings are
+///   UNCHANGED (collaborators still 11, non-private methods still 5): the feature
+///   added no collaborator and no public surface, only lines. Per
+///   `measure-entanglement-not-paper` the line ceiling is the loose/paper metric,
+///   so a modest paper bump for a correctly-placed responsibility is the honest
+///   call over comment-cramming. Comments were trimmed first to minimize it.
 ///
 /// Var-exclusion rationale (per category, locked here so a future PR cannot
 /// argue "var anything is free"):
@@ -75,9 +85,9 @@ import Testing
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      count <= 350,
+      count <= 365,
       """
-      DictationLifecycleCoordinator line count exceeded: \(count) > 350. \
+      DictationLifecycleCoordinator line count exceeded: \(count) > 365. \
       Raise via Bible §30 only.
       """)
   }

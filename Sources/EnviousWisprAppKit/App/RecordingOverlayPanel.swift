@@ -15,6 +15,17 @@ final class OverlayLockState {
   var isLocked: Bool = false
 }
 
+/// Observable holder for the transient in-panel notice banner (#1060).
+/// Shared between RecordingOverlayPanel and RecordingOverlayView so a notice can
+/// morph the live recording pill (a banner inside the same capsule) WITHOUT
+/// tearing the panel down — the existing `.warning`/`presentTransientNotice`
+/// paths all rebuild the single panel and would lose the `.recording` state.
+@MainActor
+@Observable
+final class OverlayNoticeState {
+  var message: String? = nil
+}
+
 // MARK: - RecordingOverlayPanel
 
 /// Floating overlay panel that shows recording and polishing status.
@@ -26,6 +37,12 @@ final class RecordingOverlayPanel {
 
   /// Reactive lock state shared with RecordingOverlayView.
   private let lockState = OverlayLockState()
+
+  /// Reactive transient-notice state shared with RecordingOverlayView (#1060).
+  private let noticeState = OverlayNoticeState()
+
+  /// Pending auto-clear for the transient notice banner.
+  private var noticeDismissWork: DispatchWorkItem?
 
   /// Monotonically-increasing generation token. Incremented on every show/hide
   /// call. The DispatchQueue.main.async closures capture their token at dispatch
@@ -312,14 +329,44 @@ final class RecordingOverlayPanel {
     lockState.isLocked = isRecordingLocked
     let overlayView = RecordingOverlayView(
       audioLevelProvider: audioLevelProvider,
-      lockState: lockState
+      lockState: lockState,
+      noticeState: noticeState
     )
-    // Use a generous fixed frame that accommodates both normal (185x44) and
-    // locked (120x64) sizes. The SwiftUI content inside handles its own sizing
-    // via padding and intrinsic size. This avoids needing to resize the panel
-    // window frame on lock transitions.
-    .frame(width: 185, height: 64)
-    showPanel(content: overlayView, width: 185, height: 64, y: y)
+    // Fixed frame accommodating normal (185x44), locked (120x64), and the #1060
+    // notice-banner expansion (a 2-line banner under the pill). Content is
+    // centered and the capsule self-sizes; showPanel clamps the origin so the
+    // taller frame never clips under the menu bar (Codex P2).
+    .frame(width: 185, height: 92)
+    showPanel(content: overlayView, width: 185, height: 92, y: y)
+  }
+
+  /// #1060: flash a transient banner over the LIVE recording pill (a second line
+  /// inside the same capsule), then auto-clear. No-op unless a recording panel is
+  /// live — leaves `panel`, `currentIntent`, and `generation` untouched (no
+  /// teardown → no #930 flicker). The App layer owns the copy string.
+  func flashRecordingNotice(_ message: String, dismissAfter: Double? = nil) {
+    guard panel != nil, case .recording = currentIntent else { return }
+    noticeDismissWork?.cancel()
+    noticeDismissWork = nil
+    noticeState.message = message
+    // #1060: nil dismissAfter = persist until the recording ends. The cap warning
+    // stays the whole final minute and is cleared by the transition out of
+    // recording (transitionToPolishing) or hide(). A non-nil value auto-dismisses.
+    guard let dismissAfter else { return }
+    let work = DispatchWorkItem { [weak self] in
+      self?.noticeState.message = nil
+      self?.noticeDismissWork = nil
+    }
+    noticeDismissWork = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + dismissAfter, execute: work)
+  }
+
+  /// Clear any live notice banner + its pending auto-clear. Called on hide and on
+  /// transitions away from recording so a notice never bleeds into the next session.
+  private func clearRecordingNotice() {
+    noticeDismissWork?.cancel()
+    noticeDismissWork = nil
+    noticeState.message = nil
   }
 
   /// Show a transient "Copied to clipboard" notice that auto-dismisses after 2.5s.
@@ -455,7 +502,14 @@ final class RecordingOverlayPanel {
   private func createPolishingPanel(label: String = "Polishing...") {
     guard panel == nil else { return }
 
-    showPanel(content: PolishingOverlayView(label: label).frame(width: 185, height: 44), width: 185)
+    // #1060: wider/taller frame so a wrapped 2-line label (the 60-minute end
+    // message) is not clipped; the capsule self-sizes for short labels. The
+    // window height must match the content frame (Codex P2): showPanel sizes the
+    // hosting view to its `height` arg, so omitting it leaves a 44pt window that
+    // clips the second line.
+    showPanel(
+      content: PolishingOverlayView(label: label).frame(width: 230, height: 70),
+      width: 230, height: 70)
   }
 
   /// Transition an existing panel to the Accessibility permission notice.
@@ -494,6 +548,7 @@ final class RecordingOverlayPanel {
   /// Transition an existing panel from recording to polishing mode.
   private func transitionToPolishing(label: String = "Polishing...") {
     guard let existingPanel = panel else { return }
+    clearRecordingNotice()  // #1060 (Codex P3): don't leak a cap notice into the next session.
     let y = existingPanel.frame.origin.y
 
     panel = nil
@@ -519,7 +574,8 @@ final class RecordingOverlayPanel {
       guard let self, self.generation == token else { return }
       self.pendingCreateWork = nil
       self.showPanel(
-        content: PolishingOverlayView(label: label).frame(width: 185, height: 44), width: 185, y: y)
+        content: PolishingOverlayView(label: label).frame(width: 230, height: 70),
+        width: 230, height: 70, y: y)
     }
     pendingCreateWork = work
     DispatchQueue.main.async(execute: work)
@@ -532,6 +588,7 @@ final class RecordingOverlayPanel {
     audioLevelProvider: @escaping () -> Float, isRecordingLocked: Bool = false
   ) {
     guard let existingPanel = panel else { return }
+    clearRecordingNotice()  // #1060 (Codex P3): fresh session starts with no stale notice.
     let y = existingPanel.frame.origin.y
 
     panel = nil
@@ -587,7 +644,15 @@ final class RecordingOverlayPanel {
     p.contentView = hostingView
 
     let x = targetScreen.visibleFrame.midX - width / 2
-    let panelY = y ?? (targetScreen.visibleFrame.maxY - 60)
+    let requestedY = y ?? (targetScreen.visibleFrame.maxY - 60)
+    // #1060 (Codex P2): keep the whole panel within the visible frame. The
+    // recording pill's frame is tall enough to host the cap-warning banner, and
+    // positioning by the bottom origin would push the top above the visible
+    // frame (clipping under the menu bar) on a normal recording start. Clamp the
+    // origin so the top never exceeds the frame. Small panels (≤ the default
+    // 60 pt offset) are unaffected.
+    let maxOriginY = targetScreen.visibleFrame.maxY - height - 8
+    let panelY = min(requestedY, maxOriginY)
     p.setFrameOrigin(NSPoint(x: x, y: panelY))
 
     p.orderFrontRegardless()
@@ -676,6 +741,7 @@ final class RecordingOverlayPanel {
     currentIntent = .hidden
     isRecordingLocked = false
     lockState.isLocked = false
+    clearRecordingNotice()
     autoDismissTask?.cancel()
     autoDismissTask = nil
     generation &+= 1
@@ -984,22 +1050,38 @@ private struct DistressCapsuleBackground: View {
 struct RecordingOverlayView: View {
   let audioLevelProvider: () -> Float
   var lockState: OverlayLockState
+  /// #1060: transient notice banner shown inside the recording capsule.
+  var noticeState: OverlayNoticeState
   @State private var audioLevel: Float = 0
   @State private var elapsed: TimeInterval = 0
 
   private let startTime = Date()
 
   var body: some View {
-    HStack(spacing: 10) {
-      // Rainbow lips icon — audio-reactive during recording.
-      // Scales to 2x in hands-free (locked) mode.
-      RainbowLipsIcon(size: 24, audioLevel: audioLevel)
-        .scaleEffect(lockState.isLocked ? 2.0 : 1.0)
+    VStack(spacing: 6) {
+      HStack(spacing: 10) {
+        // Rainbow lips icon — audio-reactive during recording.
+        // Scales to 2x in hands-free (locked) mode.
+        RainbowLipsIcon(size: 24, audioLevel: audioLevel)
+          .scaleEffect(lockState.isLocked ? 2.0 : 1.0)
 
-      if !lockState.isLocked {
-        Text(FormattingConstants.formatDuration(elapsed))
-          .font(.system(size: 13, weight: .medium, design: .monospaced))
-          .foregroundStyle(.white)
+        if !lockState.isLocked {
+          Text(FormattingConstants.formatDuration(elapsed))
+            .font(.system(size: 13, weight: .medium, design: .monospaced))
+            .foregroundStyle(.white)
+            .transition(.opacity)
+        }
+      }
+
+      // #1060: approaching-cap warning banner. Appears inside the same capsule
+      // (no panel rebuild), wraps within the pill width, auto-clears.
+      if let notice = noticeState.message {
+        Text(notice)
+          .font(.system(size: 11, weight: .medium))
+          .foregroundStyle(.white.opacity(0.95))
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: 170)
           .transition(.opacity)
       }
     }
@@ -1007,6 +1089,7 @@ struct RecordingOverlayView: View {
     // Single container animation prevents animation stacking: N per-element
     // modifiers × update rate creates exponential state transitions (gotchas.md).
     .animation(.easeOut(duration: 0.08), value: audioLevel)
+    .animation(.easeInOut(duration: 0.25), value: noticeState.message)
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
     .background(OverlayCapsuleBackground())
@@ -1032,9 +1115,16 @@ struct PolishingOverlayView: View {
       // Spinning spectrum wheel icon — polishing/processing state
       SpectrumWheelIcon(size: 24)
 
+      // #1060: wrap long labels (e.g. "Reached the 60-minute limit. Transcribing
+      // now.") instead of clipping them in a fixed single line. Short labels
+      // ("Transcribing...", "Polishing...") render unchanged on one line; the
+      // capsule sizes to content.
       Text(label)
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(.white)
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: 180)
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)

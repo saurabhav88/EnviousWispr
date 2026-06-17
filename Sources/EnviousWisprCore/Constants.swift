@@ -95,8 +95,29 @@ public enum TimingConstants {
 
   /// Maximum recording duration before graceful auto-stop (seconds).
   /// Prevents runaway recordings from consuming unbounded memory/CPU.
-  /// AudioCaptureManager has a hard emergency limit at 600s; this fires earlier and gracefully.
-  public static let maxRecordingDuration: TimeInterval = 300
+  /// AudioCaptureManager has a hard emergency limit at 3660s; this fires earlier and gracefully.
+  /// Raised 300→3600 (#1060): 60-minute cap. Memory ~230 MB/copy at 16 kHz mono Float32.
+  /// In RELEASE this is always 3600. DEBUG builds honor a `EWDebugMaxRecordingSeconds`
+  /// UserDefaults override (>0) so Live UAT can drive the full warning→cap→transcribe
+  /// cycle in ~90s instead of an hour; the override cannot exist in release.
+  public static var maxRecordingDuration: TimeInterval {
+    #if DEBUG
+      let override = UserDefaults.standard.double(forKey: "EWDebugMaxRecordingSeconds")
+      if override > 0 { return override }
+    #endif
+    return 3600
+  }
+
+  /// Lead time before `maxRecordingDuration` at which the user is warned the
+  /// recording is about to auto-stop (seconds). #1060: the 59-minute nudge.
+  /// DEBUG-overridable via `EWDebugWarningLeadSeconds` (paired with the cap override).
+  public static var maxDurationWarningLeadSeconds: TimeInterval {
+    #if DEBUG
+      let override = UserDefaults.standard.double(forKey: "EWDebugWarningLeadSeconds")
+      if override > 0 { return override }
+    #endif
+    return 60
+  }
 
   /// Double-press detection window for hands-free recording mode (milliseconds).
   /// Release within this window starts a debounce timer; second press within

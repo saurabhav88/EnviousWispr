@@ -138,6 +138,12 @@ final class DictationLifecycleCoordinator {
     whisperKitKernelDriver.onOverlayIntentChange = { [weak self] intent in
       self?.showOverlayIntent(intent)
     }
+    // #1060: approaching-cap warning — display-only banner, no lifecycle authority.
+    let onApproaching: (TimeInterval) -> Void = { [weak self] r in
+      self?.showApproachingCapWarning(remainingSeconds: r)
+    }
+    kernelDriver.onApproachingMaxDuration = onApproaching
+    whisperKitKernelDriver.onApproachingMaxDuration = onApproaching
   }
 
   /// The single overlay-show seam. Every overlay push — state-handler driven
@@ -152,6 +158,17 @@ final class DictationLifecycleCoordinator {
       audioLevelProvider: { audioCapture.audioLevel },
       isRecordingLocked: recordingLockedAccess.get()
     )
+  }
+
+  /// #1060: within the last minute before the cap. Show a PERSISTENT in-panel
+  /// banner (no auto-dismiss) that stays until the recording stops; cleared by the
+  /// transition out of recording. "Under a minute" reads accurately for the whole
+  /// window, so no countdown or late-fire guard is needed. Copy lives here.
+  private func showApproachingCapWarning(remainingSeconds: TimeInterval) {
+    recordingOverlay.flashRecordingNotice("Recording auto-stops in under a minute (60-minute cap)")
+    TelemetryService.shared.recordingCapWarningShown(
+      backend: lastCapturingBackend == .whisperKit ? "whisperKit" : "parakeet",
+      capSeconds: TimingConstants.maxRecordingDuration)
   }
 
   // MARK: - Per-pipeline state-change handling
@@ -316,7 +333,9 @@ final class DictationLifecycleCoordinator {
   // MARK: - State-handler factory
 
   private func makeStateChangeHandler(backendLabel: String) -> PipelineStateChangeHandler {
-    PipelineStateChangeHandler(
+    // #1060: this handler's driver — completion telemetry reads its length + stop reason.
+    let driver = backendLabel == "whisperKit" ? whisperKitKernelDriver : kernelDriver
+    return PipelineStateChangeHandler(
       showOverlay: { [weak self] intent in self?.showOverlayIntent(intent) },
       cancelPendingWarning: { [weak self] in self?.postCompletionWarningTask?.cancel() },
       schedulePolishFailedWarning: { [weak self] in
@@ -326,7 +345,9 @@ final class DictationLifecycleCoordinator {
       reportDictationCompleted: { [weak self] t in
         guard let self else { return }
         TelemetryService.shared.reportDictationCompleted(
-          transcript: t, inputMode: self.settings.recordingMode.rawValue)
+          transcript: t, inputMode: self.settings.recordingMode.rawValue,
+          recordingSeconds: driver.lastRecordingDurationSeconds,
+          stopReason: driver.lastStopReason)
       },
       reportPipelineFailed: { msg in
         TelemetryService.shared.pipelineFailed(

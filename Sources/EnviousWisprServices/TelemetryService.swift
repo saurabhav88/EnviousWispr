@@ -56,7 +56,10 @@ public final class TelemetryService {
   // MARK: - Observation Layer (reads domain objects)
 
   /// Called by the former root state when a pipeline completes. Reads Transcript + ExecutionMetrics.
-  public func reportDictationCompleted(transcript t: Transcript, inputMode: String) {
+  public func reportDictationCompleted(
+    transcript t: Transcript, inputMode: String,
+    recordingSeconds: Double? = nil, stopReason: String? = nil
+  ) {
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
@@ -85,7 +88,9 @@ public final class TelemetryService {
       itnSkipReason: m?.itnSkipReason,
       itnLatencyMs: m?.itnLatencyMs,
       itnLenBefore: m?.itnLenBefore,
-      itnLenAfter: m?.itnLenAfter
+      itnLenAfter: m?.itnLenAfter,
+      recordingSeconds: recordingSeconds,
+      stopReason: stopReason
     )
     if let e2e = m?.e2eSeconds {
       metricPipelineE2E(
@@ -221,7 +226,8 @@ public final class TelemetryService {
     e2eSeconds: Double, asrSeconds: Double?, llmSeconds: Double?,
     itnRan: Bool? = nil, itnChanged: Bool? = nil, itnFloorDelivered: Bool? = nil,
     itnSkipReason: String? = nil, itnLatencyMs: Double? = nil,
-    itnLenBefore: Int? = nil, itnLenAfter: Int? = nil
+    itnLenBefore: Int? = nil, itnLenAfter: Int? = nil,
+    recordingSeconds: Double? = nil, stopReason: String? = nil
   ) {
     var props: [String: Any] = [
       "result": result,
@@ -231,6 +237,10 @@ public final class TelemetryService {
       "e2e_seconds": String(format: "%.3f", e2eSeconds),
       "$value": e2eSeconds,
     ]
+    // #1060: how long the user actually spoke (distinct from e2e processing time)
+    // + why the recording stopped. Metadata only (telemetry-privacy-boundary).
+    if let rec = recordingSeconds { props["recording_seconds"] = String(format: "%.3f", rec) }
+    if let sr = stopReason { props["stop_reason"] = sr }
     if let p = llmProvider { props["llm_provider"] = p }
     if let a = targetApp { props["target_app"] = a }
     if let pr = pasteResult { props["paste_result"] = pr }
@@ -254,6 +264,16 @@ public final class TelemetryService {
       props["$value"] = d
     }
     PostHogSDK.shared.capture("dictation.canceled", properties: props)
+  }
+
+  /// #1060: the approaching-cap warning was shown to the user (~1 min before the
+  /// recording-duration cap). Counts the population that records long enough to
+  /// near the cap — near-zero today; a rising count is the signal to invest in
+  /// full long-form mode (#344). Metadata only.
+  public func recordingCapWarningShown(backend: String, capSeconds: Double) {
+    PostHogSDK.shared.capture(
+      "recording.cap_warning_shown",
+      properties: ["asr_backend": backend, "cap_seconds": capSeconds])
   }
 
   // MARK: - Pipeline Steps

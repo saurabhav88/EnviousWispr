@@ -38,6 +38,11 @@ package final class CaptureVADSignalSource: VADSignalSource {
   /// cancellation removes its own entry via `onTermination`.
   private var subscribers: [Int: AsyncStream<VADStopSignal>.Continuation] = [:]
   private var nextSubscriberID: Int = 0
+  /// Per-subscriber continuations for the separate approaching-cap warning
+  /// stream (#1060). Mirrors `subscribers` but for `VADWarningSignal` (advisory,
+  /// never stop-driving). Kept distinct so warnings can never ride the stop path.
+  private var warningSubscribers: [Int: AsyncStream<VADWarningSignal>.Continuation] = [:]
+  private var nextWarningSubscriberID: Int = 0
   private weak var audioCapture: (any AudioCaptureInterface)?
   private var monitorTask: Task<Void, Never>?
   private var silenceDetector: SilenceDetector?
@@ -80,6 +85,19 @@ package final class CaptureVADSignalSource: VADSignalSource {
       continuation.onTermination = { @Sendable [weak self] _ in
         Task { @MainActor [weak self] in
           self?.subscribers.removeValue(forKey: id)
+        }
+      }
+    }
+  }
+
+  package func subscribeWarningSignals() -> AsyncStream<VADWarningSignal> {
+    let id = nextWarningSubscriberID
+    nextWarningSubscriberID += 1
+    return AsyncStream { continuation in
+      warningSubscribers[id] = continuation
+      continuation.onTermination = { @Sendable [weak self] _ in
+        Task { @MainActor [weak self] in
+          self?.warningSubscribers.removeValue(forKey: id)
         }
       }
     }
@@ -233,9 +251,13 @@ package final class CaptureVADSignalSource: VADSignalSource {
       detector: detector,
       vadAutoStop: config.vadAutoStop,
       maxDuration: TimingConstants.maxRecordingDuration,
+      warningLead: TimingConstants.maxDurationWarningLeadSeconds,
       recordingStartTime: recordingStartTime,
       sampleProvider: { audioCapture.capturedSamples },
       isRecording: isRecording,
+      onApproachingMaxDuration: { [weak self] remainingSeconds in
+        self?.noteApproachingMaxDuration(remainingSeconds: remainingSeconds)
+      },
       onStop: { [weak self] reason in
         switch reason {
         case .silenceTimeout:
@@ -264,5 +286,17 @@ package final class CaptureVADSignalSource: VADSignalSource {
 
   private func broadcast(_ signal: VADStopSignal) {
     for continuation in subscribers.values { continuation.yield(signal) }
+  }
+
+  /// Record an approaching-cap warning (#1060). Advisory — does NOT stop the
+  /// recording. Stamped with the current session; broadcast to every live
+  /// warning subscriber. Fired at most once per recording by `VADMonitorLoop`.
+  func noteApproachingMaxDuration(remainingSeconds: TimeInterval) {
+    broadcastWarning(
+      VADWarningSignal(remainingSeconds: remainingSeconds, sessionID: currentSessionID))
+  }
+
+  private func broadcastWarning(_ signal: VADWarningSignal) {
+    for continuation in warningSubscribers.values { continuation.yield(signal) }
   }
 }
