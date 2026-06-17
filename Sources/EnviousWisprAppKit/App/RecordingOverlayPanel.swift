@@ -502,14 +502,12 @@ final class RecordingOverlayPanel {
   private func createPolishingPanel(label: String = "Polishing...") {
     guard panel == nil else { return }
 
-    // #1060: wider/taller frame so a wrapped 2-line label (the 60-minute end
-    // message) is not clipped; the capsule self-sizes for short labels. The
-    // window height must match the content frame (Codex P2): showPanel sizes the
-    // hosting view to its `height` arg, so omitting it leaves a 44pt window that
-    // clips the second line.
-    showPanel(
-      content: PolishingOverlayView(label: label).frame(width: 230, height: 70),
-      width: 230, height: 70)
+    // #1064: size the pill to its content (one hugging line) so short labels
+    // ("Polishing...", "Transcribing...") stay compact and the longer 60-minute
+    // cap-end message gets exactly the width it needs. A fixed frame stranded
+    // short labels in empty space (the #1060 regression). `width` is ignored
+    // under fitToContent.
+    showPanel(content: PolishingOverlayView(label: label), width: 230, fitToContent: true)
   }
 
   /// Transition an existing panel to the Accessibility permission notice.
@@ -574,8 +572,7 @@ final class RecordingOverlayPanel {
       guard let self, self.generation == token else { return }
       self.pendingCreateWork = nil
       self.showPanel(
-        content: PolishingOverlayView(label: label).frame(width: 230, height: 70),
-        width: 230, height: 70, y: y)
+        content: PolishingOverlayView(label: label), width: 230, y: y, fitToContent: true)
     }
     pendingCreateWork = work
     DispatchQueue.main.async(execute: work)
@@ -613,8 +610,16 @@ final class RecordingOverlayPanel {
   }
 
   /// Create and show a floating overlay panel with the given SwiftUI content.
+  ///
+  /// `fitToContent` (#1064): size the panel to the SwiftUI view's own
+  /// `fittingSize` instead of the passed `width`/`height`, so a pill hugs its
+  /// label — compact for short labels ("Polishing...", "Transcribing...") and
+  /// only as wide as the content needs for a longer label (the 60-minute
+  /// cap-end message). A fixed frame strands short labels in empty space (the
+  /// #1060 regression). `width`/`height` are ignored when set.
   private func showPanel<V: View>(
-    content: V, width: CGFloat, height: CGFloat = 44, y: CGFloat? = nil
+    content: V, width: CGFloat, height: CGFloat = 44, y: CGFloat? = nil,
+    fitToContent: Bool = false
   ) {
     // Guard against the edge case where no screen is available (C3).
     guard
@@ -623,7 +628,21 @@ final class RecordingOverlayPanel {
         ?? NSScreen.screens.first
     else { return }
 
-    let size = NSRect(x: 0, y: 0, width: width, height: height)
+    let hostingView = NSHostingView(rootView: content)
+    // Resolve the panel size: content-driven when `fitToContent`, else the
+    // caller's fixed dims. `fittingSize` triggers a layout pass on the hosting
+    // view and returns the SwiftUI content's ideal size.
+    let resolvedWidth: CGFloat
+    let resolvedHeight: CGFloat
+    if fitToContent {
+      let fitting = hostingView.fittingSize
+      resolvedWidth = fitting.width
+      resolvedHeight = fitting.height
+    } else {
+      resolvedWidth = width
+      resolvedHeight = height
+    }
+    let size = NSRect(x: 0, y: 0, width: resolvedWidth, height: resolvedHeight)
 
     let p = NSPanel(
       contentRect: size,
@@ -639,11 +658,10 @@ final class RecordingOverlayPanel {
     p.isMovableByWindowBackground = true
     p.hasShadow = true
 
-    let hostingView = NSHostingView(rootView: content)
     hostingView.frame = size
     p.contentView = hostingView
 
-    let x = targetScreen.visibleFrame.midX - width / 2
+    let x = targetScreen.visibleFrame.midX - resolvedWidth / 2
     let requestedY = y ?? (targetScreen.visibleFrame.maxY - 60)
     // #1060 (Codex P2): keep the whole panel within the visible frame. The
     // recording pill's frame is tall enough to host the cap-warning banner, and
@@ -651,7 +669,7 @@ final class RecordingOverlayPanel {
     // frame (clipping under the menu bar) on a normal recording start. Clamp the
     // origin so the top never exceeds the frame. Small panels (≤ the default
     // 60 pt offset) are unaffected.
-    let maxOriginY = targetScreen.visibleFrame.maxY - height - 8
+    let maxOriginY = targetScreen.visibleFrame.maxY - resolvedHeight - 8
     let panelY = min(requestedY, maxOriginY)
     p.setFrameOrigin(NSPoint(x: x, y: panelY))
 
@@ -1115,16 +1133,16 @@ struct PolishingOverlayView: View {
       // Spinning spectrum wheel icon — polishing/processing state
       SpectrumWheelIcon(size: 24)
 
-      // #1060: wrap long labels (e.g. "Reached the 60-minute limit. Transcribing
-      // now.") instead of clipping them in a fixed single line. Short labels
-      // ("Transcribing...", "Polishing...") render unchanged on one line; the
-      // capsule sizes to content.
+      // #1064: single line that hugs its content. The panel is sized to this
+      // view's fittingSize (showPanel `fitToContent`), so short labels
+      // ("Polishing...", "Transcribing...") stay compact and the long 60-minute
+      // cap-end message gets exactly the width it needs — never clipped, never
+      // stranded in empty space (the #1060 fixed-frame regression).
       Text(label)
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(.white)
-        .multilineTextAlignment(.leading)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: 180)
+        .lineLimit(1)
+        .fixedSize()
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
