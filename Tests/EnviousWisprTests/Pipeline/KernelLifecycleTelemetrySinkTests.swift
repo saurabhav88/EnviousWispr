@@ -502,14 +502,30 @@ import Testing
     #expect(recorder.captureErrors.first?.stage == "recording")
   }
 
-  @Test(".failed(.asrEmpty) emits .asrEmptyResult captureError")
-  func failedASREmptyEmission() {
+  @Test(
+    ".failed(.asrEmpty) downgrades to a breadcrumb, emits NO captureError (#979)",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/979", "ASR-empty non-bug"))
+  func failedASREmptyDowngradedToBreadcrumb() throws {
     let recorder = Recorder()
     let sink = makeSink(recorder: recorder)
     sink.emit(.failed(.asrEmpty))
+    // #979: ASR-empty on non-speech is an expected outcome, not an error — no
+    // Sentry error means no auto-filed issue. A context-only breadcrumb instead.
+    #expect(recorder.captureErrors.isEmpty)
+    let crumb = try #require(recorder.breadcrumbs.first { $0.stage == "asr" })
+    #expect(crumb.message == "ASR returned empty text despite speech evidence")
+  }
+
+  // Adversarial control: the downgrade is scoped to `.asrEmpty` ONLY — sibling
+  // failure terminals still emit a real Sentry error (see
+  // failedModelLoadFailedEmission / failedCaptureStartFailedEmission above).
+  @Test(".failed(.asrEmpty) downgrade does NOT silence sibling failure terminals")
+  func asrEmptyDowngradeIsScoped() {
+    let recorder = Recorder()
+    let sink = makeSink(recorder: recorder)
+    sink.emit(.failed(.captureStartFailed))
     #expect(recorder.captureErrors.count == 1)
-    #expect(recorder.captureErrors.first?.category == .asrEmptyResult)
-    #expect(recorder.captureErrors.first?.stage == "asr")
+    #expect(recorder.captureErrors.first?.category == .audioCaptureFailed)
   }
 
   @Test(".failed(.emptyAfterProcessing) emits .heartPathFinalization captureError")

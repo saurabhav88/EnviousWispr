@@ -268,6 +268,10 @@ public enum SentryBreadcrumb {
     case audioCaptureFailed = "audio_capture_failed"
     case audioCaptureStalled = "audio_capture_stalled"
     case asrFailed = "asr_failed"
+    /// #979: retained as a historical Sentry tag — no longer emitted (ASR-empty
+    /// on non-speech downgraded to a context-only breadcrumb in
+    /// KernelLifecycleTelemetrySink). Kept so old `asr_empty_result` events stay
+    /// documented; do not re-wire to an error without revisiting #979.
     case asrEmptyResult = "asr_empty_result"
     case heartPathFinalization = "heart_path_finalization"
     case pipelineDispatchFailed = "pipeline_dispatch_failed"
