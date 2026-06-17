@@ -70,6 +70,49 @@ struct LanguageNormalizerTests {
   }
 }
 
+// MARK: - AFM token heuristic (macOS 26.0–26.3 fallback)
+
+/// #1055: the char-based token heuristic used when Apple's exact `tokenCount`
+/// is unavailable. The system prompt is ALWAYS English, so it must be counted
+/// with the Latin rate (lang: nil) regardless of the dictation language — else
+/// a CJK/Thai dictation makes the preflight count the ~2.5k-char English prompt
+/// at ~1 char/token and skip a transcript that actually fits.
+@Suite("Apple Intelligence: AFM token heuristic")
+struct AFMTokenHeuristicTests {
+
+  /// Stand-in for the always-English system prompt (Latin script).
+  private static let englishPrompt = String(
+    repeating: "You are a transcript cleaner. Fix punctuation and remove fillers. ",
+    count: 30)
+
+  @Test("Latin text scales at ~3 chars/token; unsegmented at ~1 char/token")
+  func divisorByScript() {
+    let latin = AppleIntelligenceConnector.heuristicAFMTokens(Self.englishPrompt, lang: nil)
+    let asCJK = AppleIntelligenceConnector.heuristicAFMTokens(Self.englishPrompt, lang: "zh")
+    // Latin divisor 3.0 vs unsegmented 1.0 → CJK-scaled count is ~3× larger.
+    #expect(latin == Int((Double(Self.englishPrompt.count) / 3.0).rounded(.up)))
+    #expect(asCJK == Self.englishPrompt.count)
+    #expect(asCJK > latin * 2)
+  }
+
+  @Test("English prompt as Latin leaves window room; as CJK it blows the budget (the #1055 bug)")
+  func englishPromptMustUseLatinRate() {
+    // The fix passes lang: nil for the always-English system prompt. If a caller
+    // instead threaded a CJK dictation language through, the same prompt is
+    // counted ~3× higher. Assertions are computed from the actual length so the
+    // test is robust to edits of the stand-in prompt.
+    let chars = Self.englishPrompt.count
+    let correct = AppleIntelligenceConnector.heuristicAFMTokens(Self.englishPrompt, lang: nil)
+    let buggy = AppleIntelligenceConnector.heuristicAFMTokens(Self.englishPrompt, lang: "ja")
+    #expect(correct == Int((Double(chars) / 3.0).rounded(.up)))
+    #expect(buggy == chars)
+    // The buggy CJK-scaled prompt alone would consume more than a third of the
+    // 4,096-token window before any transcript — the over-skip the fix avoids.
+    #expect(buggy > AppleIntelligenceConnector.afmContextWindowTokens / 3)
+    #expect(correct < AppleIntelligenceConnector.afmContextWindowTokens / 3)
+  }
+}
+
 // MARK: - AppleIntelligenceCapabilities
 
 @Suite("Apple Intelligence: documented allowlist")

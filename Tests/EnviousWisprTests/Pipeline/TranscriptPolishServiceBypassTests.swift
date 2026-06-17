@@ -82,4 +82,55 @@ struct TranscriptPolishServiceBypassTests {
     #expect(reloaded.llmProvider == nil)
     #expect(reloaded.llmModel == nil)
   }
+
+  /// #1055: throws the too-long-for-on-device signal so the service's HONEST
+  /// "too long" path is exercised instead of the misleading "too short" message
+  /// the nil-output guard would otherwise show.
+  private struct ContextWindowThrowingPolisher: TranscriptPolisher {
+    func polish(
+      text: String,
+      instructions: PolishInstructions,
+      config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      throw AFMContextWindowExceeded(stage: .predicted)
+    }
+  }
+
+  @Test("Re-polish a too-long transcript: honest 'too long' message, not 'too short'")
+  func enhanceOnTooLongSurfacesContextWindow() async throws {
+    let dir = makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = TranscriptStore(directory: dir)
+    let activity = IdleDictationActivity()
+    let service = TranscriptPolishService(
+      keychainManager: KeychainManager(),
+      transcriptStore: store,
+      dictationActivity: activity
+    )
+    service.llmPolishStep.llmProvider = .openAI
+    service.llmPolishStep.llmModel = "gpt-4o-mini"
+    service.llmPolishStep.makePolisher = { _, _, _ in ContextWindowThrowingPolisher() }
+
+    // Long enough to clear the too-short gate and reach the polisher.
+    let transcript = Transcript(
+      text:
+        "this is a sufficiently long dictation that clears the short-input gate and reaches the polisher",
+      language: "en")
+    try store.save(transcript)
+
+    await #expect(throws: LLMError.self) {
+      _ = try await service.polish(transcript)
+    }
+
+    let message = try #require(service.lastEnhancementError?.message)
+    #expect(message.localizedCaseInsensitiveContains("too long"))
+    #expect(!message.localizedCaseInsensitiveContains("too short"))
+    #expect(service.lastEnhancementError?.transcriptID == transcript.id)
+
+    // Persisted transcript untouched — no fake polished copy stamped as polished.
+    let onDisk = try await store.loadAll()
+    let reloaded = try #require(onDisk.first { $0.id == transcript.id })
+    #expect(reloaded.polishedText == nil)
+  }
 }

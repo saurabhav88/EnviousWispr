@@ -479,6 +479,27 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("llm.polish_completed", properties: props)
   }
 
+  /// #1055: AI polish was intentionally skipped (not failed). Dedicated event —
+  /// NOT `llm.polish_completed`, which requires a provider stamp and would
+  /// wrongly mark a skipped transcript as AI-polished. `reason` is one of the
+  /// AFM-long-dictation skip modes (shared `context_window_` prefix):
+  /// `context_window_predicted` (preflight), `context_window_caught` (generation
+  /// overflow), or `context_window_timeout` (the 10 s on-device budget stalled).
+  public func polishSkipped(provider: String, reason: String) {
+    let props: [String: Any] = [
+      "provider": provider,
+      "skip_reason": reason,
+    ]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "llm.polish_skipped",
+          stringProps: ["provider": provider, "skip_reason": reason],
+          boolProps: [:]))
+    #endif
+    PostHogSDK.shared.capture("llm.polish_skipped", properties: props)
+  }
+
   public func pasteCompleted(tier: String, targetApp: String?, result: String, latencyMs: Int) {
     var props: [String: Any] = [
       "tier": tier,
