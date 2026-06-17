@@ -28,7 +28,7 @@ But the real leverage comes from what happens next.
 
 A structured meeting summary on Mac comes from two steps: dictate a 30-second voice dump while context is fresh, then let an LLM polish step clean it up. EnviousWispr handles both, and with Ollama, OpenAI, or Gemini polish on it also lays the result out into sections and bullets. Hold a hotkey, talk through what happened (decisions, owners, deadlines, open questions), and release. On-device speech recognition transcribes the audio in a second or two on Apple Silicon.
 
-The polish step turns that raw text into a usable summary. It removes filler and fixes punctuation, which already produces something cleaner than most people type. With Ollama, OpenAI, or Gemini polish turned on, a longer debrief with decisions and action items gets laid out with sections and bullet points automatically; on the Apple Intelligence default, you get the same content as clean, readable prose. Either way, the way you speak guides the shape.
+The polish step turns that raw dump into clean, structured notes. It removes filler and fixes punctuation, which already produces something cleaner than most people type. With Ollama, OpenAI, or Gemini polish turned on, a longer debrief with decisions and action items gets laid out with sections and bullet points automatically; on the Apple Intelligence default, you get the same content as clean, readable prose. Either way, the way you speak guides the shape.
 
 Out of the box, EnviousWispr cleans up filler words, fixes punctuation, and keeps your voice. That alone transforms your dictation. But for meeting notes, the real unlock is structure.
 
@@ -38,24 +38,22 @@ The LLM post-processing step does a remarkable job of this. Here's what the form
 
 ### Before: raw dictation
 
-> Met with product and sales about the Q3 launch timeline. Sarah confirmed the beta ships May 15. Mark owns the partner outreach deck, due by Friday. We agreed to cut the enterprise tier from the initial launch, revisit in Q4. I need to send the updated roadmap to the board by Thursday. Oh, and we still need to figure out the pricing page copy, nobody owns that yet.
+> Met with product and sales about the Q3 launch timeline. Decisions: Sarah confirmed the beta ships May 15, and we agreed to cut the enterprise tier from the initial launch and revisit in Q4. Action items: Mark owns the partner outreach deck, due Friday, and I need to send the updated roadmap to the board by Thursday. Open question: the pricing page copy, nobody owns that yet.
 
 ### After: formatted summary (Ollama, OpenAI, or Gemini)
 
-> **Meeting Summary: Q3 Launch Timeline**
+> **Q3 Launch Timeline**
 >
-> **Attendees:** Product team, Sales team, Sarah, Mark
->
-> **Key Decisions:**
+> **Decisions:**
 > - Beta ships May 15 (confirmed)
-> - Enterprise tier cut from initial launch; revisit in Q4
+> - Enterprise tier cut from the initial launch; revisit in Q4
 >
 > **Action Items:**
-> - Mark: Partner outreach deck, due Friday
-> - [Me]: Send updated roadmap to board, due Thursday
+> - Mark: partner outreach deck, due Friday
+> - Me: send updated roadmap to the board, due Thursday
 >
-> **Open Questions:**
-> - Pricing page copy, no owner assigned
+> **Open Question:**
+> - Pricing page copy, no owner yet
 
 That's the difference between a wall of text you'll never revisit and a summary you can paste straight into Slack, email to your team, or drop into Notion. There's a real pride in sending a meeting summary that looks like you spent ten minutes on it, knowing it took thirty seconds. The whole process, from speaking to structured output, takes less time than opening a new document and typing a subject line.
 
