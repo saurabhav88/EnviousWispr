@@ -39,6 +39,9 @@ internal struct FinalizationResult {
   /// Final pipeline-level fallback flag (filter OR validator). See
   /// `TextProcessingContext.pipelineFellBackToRaw`.
   let pipelineFellBackToRaw: Bool
+  /// #1050 honest disaggregation of `pipelineFellBackToRaw`. Carried for parity
+  /// with the production fold; this test-seam finalizer emits no telemetry.
+  let polishFallbackReason: String?
 }
 
 /// Typed errors so pipelines can decide the right fallback per category.
@@ -184,7 +187,8 @@ internal final class TranscriptFinalizer {
       polishDurationSeconds: polishEnd - polishStart,
       pasteDurationSeconds: pasteEnd - pasteStart,
       polishMetadata: context.polishMetadata,
-      pipelineFellBackToRaw: context.pipelineFellBackToRaw
+      pipelineFellBackToRaw: context.pipelineFellBackToRaw,
+      polishFallbackReason: context.polishFallbackReason
     )
   }
 }

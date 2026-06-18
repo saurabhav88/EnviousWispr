@@ -43,6 +43,8 @@ final class KernelFinalizationOutcome {
   /// assembly (§8 polish-latency capture).
   var polishMetadata: PolishMetadata?
   var pipelineFellBackToRaw = false
+  /// #1050 honest disaggregation of `pipelineFellBackToRaw`; AFM-gated downstream.
+  var polishFallbackReason: String?
   var pipelineStartedAtSeconds: Double?
   var pipelineEndedAtSeconds: Double?
   var asrStartedAtSeconds: Double?
@@ -188,6 +190,7 @@ struct KernelFinalizationWiring {
       outcome.llmModel = ctx.llmModel
       outcome.polishMetadata = ctx.polishMetadata
       outcome.pipelineFellBackToRaw = ctx.pipelineFellBackToRaw
+      outcome.polishFallbackReason = ctx.polishFallbackReason
       outcome.polishError = result.polishError
       outcome.polishDurationSeconds = CFAbsoluteTimeGetCurrent() - start
       return ctx.polishedText ?? ctx.text
@@ -280,8 +283,12 @@ struct KernelFinalizationWiring {
   /// text AND polish did not deliver a DISTINCT polished result — disabled /
   /// unavailable / too-short bypass (no polished text — since #1022 the
   /// "too short" skip leaves `polishedText` nil), ran-and-rejected (fell back
-  /// to raw), OR ran-but-identical (polished == the post-ITN text; that path
-  /// does NOT set `pipelineFellBackToRaw` — Codex r1 #2). In all cases the
+  /// to raw), OR ran-but-identical (polished == the post-ITN text). NOTE
+  /// (corrected #1050): the ran-but-identical case ALSO sets
+  /// `pipelineFellBackToRaw` (the `validatedText == context.text` arm in
+  /// `LLMPolishStep`, surfaced as reason `no_change`); the explicit
+  /// `polishedText == rawText` clause is a redundant safety net for any path
+  /// that delivers polished == raw without the flag. In all cases the
   /// pasted text is the post-ITN text. `rawText` is the final chain text
   /// (post-ITN), set in `processText`. Internal for a direct parametric test.
   static func itnFloorDelivered(
@@ -328,6 +335,7 @@ struct KernelFinalizationWiring {
       polishRouterBasis: outcome.polishMetadata?.routerBasis,
       polishFilterTripped: outcome.polishMetadata?.filterTripped,
       polishFellBackToRaw: outcome.polishMetadata == nil ? nil : outcome.pipelineFellBackToRaw,
+      polishFallbackReason: outcome.polishMetadata == nil ? nil : outcome.polishFallbackReason,
       itnRan: outcome.itnRan,
       itnChanged: outcome.itnChanged,
       itnFloorDelivered: itnFloorDelivered,
