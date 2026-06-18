@@ -23,6 +23,15 @@ public struct TextProcessingContext: Sendable {
   /// to raw input. Computed in `LLMPolishStep` after validation; the connector
   /// cannot know this. Telemetry surfaces this as `fell_back_to_raw`.
   public var pipelineFellBackToRaw: Bool
+  /// Honest reason the pipeline fell back to raw, disaggregating the single
+  /// `pipelineFellBackToRaw` boolean (#1050). Nil when polish changed the text
+  /// (not a fallback). One of `no_change` (model returned the input unchanged —
+  /// benign), `guard_discard` (connector `EnviousOutputFilter` tripped — genuine
+  /// misbehavior caught; `polishMetadata.filterTripped` names which), or
+  /// `validator_discard` (model differed but `validatePolishOutput` substituted
+  /// the original — genuine catch the `filter_tripped` signal cannot see).
+  /// Invariant: `(polishFallbackReason != nil) == pipelineFellBackToRaw`.
+  public var polishFallbackReason: String?
 
   public init(text: String, language: String?) {
     self.text = text

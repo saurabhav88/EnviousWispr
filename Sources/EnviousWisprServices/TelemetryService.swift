@@ -112,7 +112,8 @@ public final class TelemetryService {
         routerMode: m?.polishRouterMode,
         routerBasis: m?.polishRouterBasis,
         filterTripped: m?.polishFilterTripped,
-        fellBackToRaw: m?.polishFellBackToRaw
+        fellBackToRaw: m?.polishFellBackToRaw,
+        fallbackReason: m?.polishFallbackReason
       )
     }
     if let tier = m?.pasteTier, let ms = m?.pasteLatencyMs {
@@ -467,7 +468,8 @@ public final class TelemetryService {
     routerMode: String? = nil,
     routerBasis: String? = nil,
     filterTripped: String? = nil,
-    fellBackToRaw: Bool? = nil
+    fellBackToRaw: Bool? = nil,
+    fallbackReason: String? = nil
   ) {
     var props: [String: Any] = [
       "provider": provider,
@@ -480,6 +482,7 @@ public final class TelemetryService {
     if let rb = routerBasis { props["router_basis"] = rb }
     if let ft = filterTripped { props["filter_tripped"] = ft }
     if let fb = fellBackToRaw { props["fell_back_to_raw"] = fb }
+    if let fr = fallbackReason { props["fallback_reason"] = fr }
     #if DEBUG
       var stringProps: [String: String] = [
         "provider": provider, "result": result,
@@ -488,6 +491,7 @@ public final class TelemetryService {
       if let rm = routerMode { stringProps["router_mode"] = rm }
       if let rb = routerBasis { stringProps["router_basis"] = rb }
       if let ft = filterTripped { stringProps["filter_tripped"] = ft }
+      if let fr = fallbackReason { stringProps["fallback_reason"] = fr }
       var boolProps: [String: Bool] = [:]
       if let fb = fellBackToRaw { boolProps["fell_back_to_raw"] = fb }
       testEventHook?(

@@ -20,6 +20,13 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var polishRouterBasis: String?
   public var polishFilterTripped: String?
   public var polishFellBackToRaw: Bool?
+  /// #1050 honest disaggregation of `polishFellBackToRaw`. Populated only for AFM
+  /// polish (nil for cloud / pre-#1050 records); nil also when polish CHANGED the
+  /// text (not a fallback). `no_change` (benign — model returned input unchanged),
+  /// `guard_discard` (`EnviousOutputFilter` caught bad output), or
+  /// `validator_discard` (`validatePolishOutput` caught bad output — invisible to
+  /// `polishFilterTripped`). Invariant: present iff `polishFellBackToRaw == true`.
+  public var polishFallbackReason: String?
   /// Deterministic ITN telemetry (#145). Populated per dictation; nil on
   /// pre-#145 transcripts on disk (additive optional Codable, back-compatible).
   /// `itnFloorDelivered` = ITN changed the text AND polish did not deliver a
@@ -69,6 +76,7 @@ public struct ExecutionMetrics: Codable, Sendable {
     polishRouterBasis: String? = nil,
     polishFilterTripped: String? = nil,
     polishFellBackToRaw: Bool? = nil,
+    polishFallbackReason: String? = nil,
     itnRan: Bool? = nil,
     itnChanged: Bool? = nil,
     itnFloorDelivered: Bool? = nil,
@@ -97,6 +105,7 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.polishRouterBasis = polishRouterBasis
     self.polishFilterTripped = polishFilterTripped
     self.polishFellBackToRaw = polishFellBackToRaw
+    self.polishFallbackReason = polishFallbackReason
     self.itnRan = itnRan
     self.itnChanged = itnChanged
     self.itnFloorDelivered = itnFloorDelivered

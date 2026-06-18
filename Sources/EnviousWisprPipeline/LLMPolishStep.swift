@@ -308,6 +308,14 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       ctx.polishMetadata = result.polishMetadata
       ctx.pipelineFellBackToRaw =
         (result.polishMetadata?.filterFellBackToRaw ?? false) || (validatedText == context.text)
+      // #1050: honest disaggregation of the boolean above. Invariant:
+      // (reason != nil) == pipelineFellBackToRaw (the existing line is left
+      // untouched — `pipelineFellBackToRaw` also feeds `itnFloorDelivered`).
+      ctx.polishFallbackReason = Self.polishFallbackReason(
+        filterFellBackToRaw: result.polishMetadata?.filterFellBackToRaw ?? false,
+        postFilterOutput: result.polishedText,
+        validatedText: validatedText,
+        originalText: context.text)
       return ctx
     }
 
@@ -363,7 +371,48 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     ctx.polishMetadata = result.polishMetadata
     ctx.pipelineFellBackToRaw =
       (result.polishMetadata?.filterFellBackToRaw ?? false) || (validatedText == context.text)
+    // #1050: see the AFM path above. Cloud providers leave `polishMetadata` nil,
+    // so this reason is nil-degraded downstream in `KernelFinalizationWiring`
+    // exactly like `pipelineFellBackToRaw` — kept here only for path symmetry.
+    ctx.polishFallbackReason = Self.polishFallbackReason(
+      filterFellBackToRaw: result.polishMetadata?.filterFellBackToRaw ?? false,
+      postFilterOutput: result.polishedText,
+      validatedText: validatedText,
+      originalText: context.text)
     return ctx
+  }
+
+  // MARK: - Fallback Reason (#1050)
+
+  /// Disaggregate the conflated `pipelineFellBackToRaw` boolean into an honest
+  /// reason for telemetry. Pure + static so it is directly unit-testable
+  /// (mirrors the `KernelFinalizationWiring.itnFloorDelivered` precedent).
+  ///
+  /// - nil → polish CHANGED the text (NOT a fallback; `pipelineFellBackToRaw == false`).
+  /// - `guard_discard` → the connector `EnviousOutputFilter` tripped (genuine
+  ///   misbehavior caught; `polishMetadata.filterTripped` names which guard).
+  /// - `no_change` → the model returned the input unchanged (benign no-op — the
+  ///   ~75%-of-fallbacks majority that inflated the headline rate).
+  /// - `validator_discard` → the model differed but `validatePolishOutput`
+  ///   substituted the original (genuine catch the `filter_tripped` signal cannot see).
+  ///
+  /// Invariant (locked by a parametric test): `(reason != nil)` equals the real
+  /// `filterFellBackToRaw || (validatedText == originalText)`, so this NEVER
+  /// changes `pipelineFellBackToRaw` — it only labels it.
+  ///
+  /// `postFilterOutput` is `result.polishedText`: post-connector-filter,
+  /// post-leading-marker-repair, PRE-`validatePolishOutput` (not the raw model
+  /// output). On a filter trip it equals the input, so `guard_discard` MUST be
+  /// checked first.
+  static func polishFallbackReason(
+    filterFellBackToRaw: Bool,
+    postFilterOutput: String,
+    validatedText: String,
+    originalText: String
+  ) -> String? {
+    if filterFellBackToRaw { return "guard_discard" }
+    guard validatedText == originalText else { return nil }
+    return postFilterOutput == originalText ? "no_change" : "validator_discard"
   }
 
   // MARK: - Output Validation

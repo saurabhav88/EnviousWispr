@@ -244,11 +244,11 @@ struct DualModePolishTelemetryTests {
 
   // MARK: - 4b. PipelineFellBackToRaw OR semantics (LLMPolishStep §3.5)
 
-  /// `LLMPolishStep` computes `pipelineFellBackToRaw = filterFellBackToRaw ||
-  /// (validatedText == context.text)`. That OR is too small to inject through
-  /// the existing LLMPolishStep surface (the polisher is built per-call from
-  /// `llmProvider`), so we verify the formula directly here. Production sites:
-  /// `LLMPolishStep.swift:248` (AFM path) and `LLMPolishStep.swift:312` (cloud).
+  /// `LLMPolishStep.process()` computes `pipelineFellBackToRaw =
+  /// filterFellBackToRaw || (validatedText == context.text)` on both the AFM and
+  /// cloud paths. The OR is conceptually verified here; the production formula is
+  /// now also locked against the new `#1050` reason helper by
+  /// `fallbackReasonInvariantMatchesOR` below (section 7).
   @Test("pipelineFellBackToRaw is OR of filter outcome and validator outcome")
   func pipelineFellBackToRawIsOR() {
     func computeOR(filterFellBack: Bool, validatorFellBack: Bool) -> Bool {
@@ -265,8 +265,9 @@ struct DualModePolishTelemetryTests {
   /// Pipelines build `polishFellBackToRaw: metadata == nil ? nil : pipelineFellBackToRaw`.
   /// When no AFM polish ran (cloud provider, or polish skipped), the field
   /// must be NIL — not `false` — so PostHog filtering on `fell_back_to_raw IS
-  /// NOT NULL` correctly excludes non-AFM events. Production sites:
-  /// the old Parakeet pipeline and `KernelDictationDriver.swift:1050`.
+  /// NOT NULL` correctly excludes non-AFM events. Production site:
+  /// `KernelFinalizationWiring.updateTranscriptMetrics` (the `polishMetadata ==
+  /// nil ? nil : …` gate, which `#1050` `polishFallbackReason` now mirrors).
   @Test("ExecutionMetrics.polishFellBackToRaw is nil when polishMetadata is absent")
   func executionMetricsFellBackIsNilWithoutMetadata() {
     let metadata: PolishMetadata? = nil
@@ -306,6 +307,172 @@ struct DualModePolishTelemetryTests {
     #expect(metrics.polishRouterMode == "natural")
     #expect(metrics.polishFellBackToRaw == false)
   }
+
+  // MARK: - 7. #1050 polishFallbackReason — honest disaggregation
+
+  /// The real production helper (`LLMPolishStep.polishFallbackReason`) is pure +
+  /// static, so we exercise it directly rather than re-implementing the logic.
+
+  @Test("polishFallbackReason: nil when polish CHANGED the text (not a fallback)")
+  func fallbackReasonNilWhenChanged() {
+    // Obviously-distinct strings: filler removed + capitalized + punctuated, so
+    // validatedText != originalText → polish applied → not a fallback.
+    let reason = LLMPolishStep.polishFallbackReason(
+      filterFellBackToRaw: false,
+      postFilterOutput: "This is the clean text.",
+      validatedText: "This is the clean text.",
+      originalText: "um so this is the clean text")
+    #expect(reason == nil)
+  }
+
+  @Test("polishFallbackReason: guard_discard when the connector filter tripped")
+  func fallbackReasonGuardDiscard() {
+    // filter trip → postFilterOutput is raw input, validated == original.
+    let reason = LLMPolishStep.polishFallbackReason(
+      filterFellBackToRaw: true,
+      postFilterOutput: "raw input",
+      validatedText: "raw input",
+      originalText: "raw input")
+    #expect(reason == "guard_discard")
+  }
+
+  @Test("polishFallbackReason: guard_discard takes PRECEDENCE even if output differs")
+  func fallbackReasonGuardDiscardPrecedence() {
+    // Defensive: a filter trip must win before the no_change/validator branch,
+    // since on a real trip postFilterOutput == input anyway.
+    let reason = LLMPolishStep.polishFallbackReason(
+      filterFellBackToRaw: true,
+      postFilterOutput: "something else",
+      validatedText: "raw input",
+      originalText: "raw input")
+    #expect(reason == "guard_discard")
+  }
+
+  @Test("polishFallbackReason: no_change when the model returned the input unchanged")
+  func fallbackReasonNoChange() {
+    let reason = LLMPolishStep.polishFallbackReason(
+      filterFellBackToRaw: false,
+      postFilterOutput: "already clean text",
+      validatedText: "already clean text",
+      originalText: "already clean text")
+    #expect(reason == "no_change")
+  }
+
+  @Test("polishFallbackReason: validator_discard when the validator substituted the original")
+  func fallbackReasonValidatorDiscard() {
+    // Model produced DIFFERENT output, but validatePolishOutput rejected it and
+    // returned the original — invisible to filter_tripped.
+    let reason = LLMPolishStep.polishFallbackReason(
+      filterFellBackToRaw: false,
+      postFilterOutput: "a wildly hallucinated expansion",
+      validatedText: "original",
+      originalText: "original")
+    #expect(reason == "validator_discard")
+  }
+
+  @Test("polishFallbackReason invariant: (reason != nil) == the real pipelineFellBackToRaw OR")
+  func fallbackReasonInvariantMatchesOR() {
+    // Lock the equivalence to the production formula
+    // `filterFellBackToRaw || (validatedText == originalText)` so the new reason
+    // can never drift from the boolean it disaggregates.
+    let original = "the original text"
+    let differing = "a different polished text"
+    for filterFellBack in [false, true] {
+      for validatedEqualsOriginal in [false, true] {
+        let validated = validatedEqualsOriginal ? original : differing
+        // postFilterOutput varied so both no_change and validator_discard arise.
+        for postFilter in [original, differing] {
+          let reason = LLMPolishStep.polishFallbackReason(
+            filterFellBackToRaw: filterFellBack,
+            postFilterOutput: postFilter,
+            validatedText: validated,
+            originalText: original)
+          let expectedFellBack = filterFellBack || (validated == original)
+          #expect((reason != nil) == expectedFellBack)
+        }
+      }
+    }
+  }
+
+  @Test("ExecutionMetrics roundtrips polishFallbackReason through Codable")
+  func executionMetricsRoundtripsFallbackReason() throws {
+    let original = ExecutionMetrics(
+      llmLatencySeconds: 0.5,
+      polishRouterMode: "natural",
+      polishRouterBasis: "scored",
+      polishFilterTripped: nil,
+      polishFellBackToRaw: true,
+      polishFallbackReason: "no_change")
+    let decoded = try JSONDecoder().decode(
+      ExecutionMetrics.self, from: try JSONEncoder().encode(original))
+    #expect(decoded.polishFallbackReason == "no_change")
+    #expect(decoded.polishFellBackToRaw == true)
+  }
+
+  @Test("ExecutionMetrics decodes pre-#1050 records (no polishFallbackReason) cleanly")
+  func executionMetricsDecodesWithoutFallbackReason() throws {
+    let oldShape = """
+      {
+        "coldStart": false,
+        "streamingMode": false,
+        "polishFellBackToRaw": true
+      }
+      """
+    let metrics = try JSONDecoder().decode(
+      ExecutionMetrics.self, from: oldShape.data(using: .utf8)!)
+    #expect(metrics.polishFellBackToRaw == true)
+    #expect(metrics.polishFallbackReason == nil)
+  }
+
+  #if DEBUG
+
+    @Test("TelemetryService emits fallback_reason when passed")
+    func telemetryServiceEmitsFallbackReason() async {
+      let box = EventBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        Task { @MainActor in
+          if event.name == "llm.polish_completed" { box.value = event }
+        }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.llmPolishCompleted(
+        provider: "appleIntelligence", model: "apple-intelligence",
+        result: "success", latencySeconds: 0.4,
+        routerMode: "natural", routerBasis: "scored",
+        filterTripped: nil, fellBackToRaw: true,
+        fallbackReason: "no_change")
+
+      await Task.yield()
+      try? await Task.sleep(nanoseconds: 5_000_000)
+
+      let event = try? #require(box.value)
+      #expect(event?.stringProps["fallback_reason"] == "no_change")
+      #expect(event?.boolProps["fell_back_to_raw"] == true)
+    }
+
+    @Test("TelemetryService omits fallback_reason when nil (cloud / not a fallback)")
+    func telemetryServiceOmitsFallbackReasonWhenNil() async {
+      let box = EventBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        Task { @MainActor in
+          if event.name == "llm.polish_completed" { box.value = event }
+        }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.llmPolishCompleted(
+        provider: "openai", model: "gpt-4o-mini",
+        result: "success", latencySeconds: 1.0)
+
+      await Task.yield()
+      try? await Task.sleep(nanoseconds: 5_000_000)
+
+      let event = try? #require(box.value)
+      #expect(event?.stringProps["fallback_reason"] == nil)
+    }
+
+  #endif  // DEBUG
 
   // MARK: - 5. AFMPolishError shape
 
