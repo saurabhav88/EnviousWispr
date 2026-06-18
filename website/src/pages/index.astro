@@ -231,6 +231,15 @@ const jsonLdFaq = JSON.stringify({
   </section>
 
   <!-- ═══════════════════════════════════════════════════════
+       What EnviousWispr is — AI-citable definition
+       ═══════════════════════════════════════════════════════ -->
+  <section class="intro-def" aria-label="What EnviousWispr is">
+    <div class="container">
+      <p class="intro-def-text reveal">EnviousWispr is a free dictation app for macOS. Hold a hotkey, speak, and your words land as clean, polished text in whatever app you're using. Transcription runs entirely on your Mac, so your audio never leaves your device. Optional AI polish can tidy the text on-device too, or through a cloud provider you choose.</p>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════
        How It Works — Video Demo
        ═══════════════════════════════════════════════════════ -->
   <section class="video-section section" id="how-it-works" aria-labelledby="video-heading">
@@ -639,6 +648,13 @@ const jsonLdFaq = JSON.stringify({
 </BaseLayout>
 
 <style>
+/* What EnviousWispr is — AI-citable definition block (#538) */
+.intro-def { padding: 8px 0 56px; text-align: center; }
+.intro-def-text {
+  max-width: 680px; margin: 0 auto; padding: 0 24px;
+  font-size: 19px; line-height: 1.65; color: var(--text-2);
+}
+
 /* ═══════════════════════════════════════════════════════
    Hero
    ═══════════════════════════════════════════════════════ */

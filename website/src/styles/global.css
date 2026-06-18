@@ -217,3 +217,23 @@ body::after {
   *,*::before,*::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
   .reveal { opacity: 1; transform: none; }
 }
+
+/* #538 on-page SEO: pin the first (feature-label) column of compare tables on phones
+   so labels stay visible while swiping to the competitor column. Adds only NEW sticky
+   properties on the first cell; does not override the per-page scoped wrapper rules.
+   Applies to all .compare-table users (11 /compare/<competitor>/ pages + the /compare/ hub). */
+@media (max-width: 600px) {
+  .compare-table thead th:first-child,
+  .compare-table tbody td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    /* Opaque so the scrolling competitor column doesn't ghost through the pinned
+       first column. Some pages set a translucent scoped bg on these first cells
+       (header `thead th` on competitor pages; body `td:first-child` on the /compare/ hub),
+       and Astro boosts scoped-selector specificity, so a targeted !important is the
+       correct tool to keep a sticky-overlay background opaque everywhere. */
+    background: #fff !important;
+  }
+  .compare-table thead th:first-child { z-index: 3; }
+}
