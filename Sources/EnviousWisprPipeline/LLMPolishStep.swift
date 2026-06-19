@@ -289,9 +289,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
           onToken: onToken
         )
       } catch let afmErr as AFMPolishError {
-        SentryBreadcrumb.captureAFMPolishError(
-          afmErr.underlying,
-          routerMode: afmErr.routerMode, routerBasis: afmErr.routerBasis)
+        SentryBreadcrumb.captureAFMPolishError(afmErr.underlying)
         throw afmErr.underlying
       }
       let llmEnd = CFAbsoluteTimeGetCurrent()

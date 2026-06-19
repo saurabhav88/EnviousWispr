@@ -300,7 +300,7 @@ enum WhatsNewContent {
       icon: "wand.and.stars",
       title: "Apple Intelligence keeps your voice and your precision",
       description:
-        "On-device polish now reads what you dictated and picks the right pass. Casual notes keep your tone. Code, jargon, and careful business writing keep their precision. Six months of tuning underpins this.",
+        "On-device polish keeps your voice and your precision. Casual notes keep your tone. Code, jargon, and careful business writing keep their precision. Six months of tuning underpins this.",
       category: .smarterAIPolish,
       version: "2.0.0"
     ),

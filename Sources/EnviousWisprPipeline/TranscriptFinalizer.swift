@@ -33,7 +33,7 @@ internal struct FinalizationResult {
   let polishDurationSeconds: Double
   /// Time spent in paste (for metrics).
   let pasteDurationSeconds: Double
-  /// Connector-source-of-truth metadata for AFM dual-mode polish (#429).
+  /// Connector-source-of-truth metadata for AFM polish (#429; single-prompt since #1072).
   /// Forwarded to pipeline so it can fold into `ExecutionMetrics` for telemetry.
   let polishMetadata: PolishMetadata?
   /// Final pipeline-level fallback flag (filter OR validator). See

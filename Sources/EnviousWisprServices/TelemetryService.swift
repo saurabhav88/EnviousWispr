@@ -109,8 +109,6 @@ public final class TelemetryService {
       llmPolishCompleted(
         provider: t.llmProvider ?? "unknown", model: t.llmModel,
         result: t.polishedText != nil ? "success" : "skipped", latencySeconds: llmLat,
-        routerMode: m?.polishRouterMode,
-        routerBasis: m?.polishRouterBasis,
         filterTripped: m?.polishFilterTripped,
         fellBackToRaw: m?.polishFellBackToRaw,
         fallbackReason: m?.polishFallbackReason
@@ -465,8 +463,6 @@ public final class TelemetryService {
   public func llmPolishCompleted(
     provider: String, model: String?,
     result: String, latencySeconds: Double,
-    routerMode: String? = nil,
-    routerBasis: String? = nil,
     filterTripped: String? = nil,
     fellBackToRaw: Bool? = nil,
     fallbackReason: String? = nil
@@ -478,8 +474,6 @@ public final class TelemetryService {
       "$value": latencySeconds,
     ]
     if let m = model { props["model"] = m }
-    if let rm = routerMode { props["router_mode"] = rm }
-    if let rb = routerBasis { props["router_basis"] = rb }
     if let ft = filterTripped { props["filter_tripped"] = ft }
     if let fb = fellBackToRaw { props["fell_back_to_raw"] = fb }
     if let fr = fallbackReason { props["fallback_reason"] = fr }
@@ -488,8 +482,6 @@ public final class TelemetryService {
         "provider": provider, "result": result,
       ]
       if let m = model { stringProps["model"] = m }
-      if let rm = routerMode { stringProps["router_mode"] = rm }
-      if let rb = routerBasis { stringProps["router_basis"] = rb }
       if let ft = filterTripped { stringProps["filter_tripped"] = ft }
       if let fr = fallbackReason { stringProps["fallback_reason"] = fr }
       var boolProps: [String: Bool] = [:]

@@ -15,7 +15,7 @@ public struct TextProcessingContext: Sendable {
   public var llmModel: String?
   /// Target app display name (e.g. "Terminal"). Nil if unknown or re-polish path.
   public var targetAppName: String?
-  /// Connector-source-of-truth metadata for AFM dual-mode polish (#429).
+  /// Connector-source-of-truth metadata for AFM polish (#429; single-prompt since #1072).
   /// Cloud providers leave this nil.
   public var polishMetadata: PolishMetadata?
   /// Final pipeline-level fallback flag — true if EITHER the connector-side
