@@ -151,6 +151,8 @@ scripts/eval/*
 !scripts/eval/chunk_size_benchmark.py
 !scripts/eval/overpolish-eval.py
 !scripts/eval/golden_judge_scores.json
+!scripts/eval/prompts/
+!scripts/eval/prompts/**
 !scripts/eval/corpus/
 scripts/eval/corpus/*
 !scripts/eval/corpus/ci_corpus.jsonl
