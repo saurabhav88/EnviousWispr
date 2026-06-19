@@ -10,7 +10,7 @@ faqs:
   - question: "What does store=false actually do at OpenAI and Gemini?"
     answer: "It tells the provider not to retain that specific request and its response in their server-side history. OpenAI documents this as a per-request flag on the Chat Completions API. Google added an equivalent per-request flag to Gemini's generateContent endpoint. Both are independent of any project-level setting, so the request opts out even if your account defaults are different."
   - question: "Does this mean my dictation is private end to end?"
-    answer: "When you use a fully on-device polish provider like Apple Intelligence or Ollama, the audio and text never leave your Mac. When you use cloud polish with OpenAI or Gemini, the polished text segment travels to the provider so the model can rewrite it. EnviousWispr never sees or stores any of it. With store=false, the provider does not keep it either after answering."
+    answer: "When you use a fully on-device polish provider like Apple Intelligence or Ollama, the audio and text never leave your Mac. When you use cloud polish with OpenAI or Gemini, the polished text segment travels to the provider so the model can rewrite it. EnviousWispr never sees or stores any of it. With store=false, we ask the provider not to retain it after answering, and the provider's data policy governs what they actually keep."
   - question: "Why use cloud polish at all if on-device polish exists?"
     answer: "On-device polish is the default for a reason: nothing leaves your Mac. Cloud polish is there for people who want the rewriting quality of a larger model, or who already have an OpenAI or Gemini key for other work and want the same model handling their dictation. The choice is yours, and EnviousWispr makes the privacy posture explicit either way."
   - question: "Does store=false stop the provider from training on my data?"
@@ -33,7 +33,7 @@ This was added in two passes. The OpenAI flag landed first. The Gemini equivalen
 
 ## What it means at OpenAI
 
-OpenAI's `store` parameter tells the Chat Completions endpoint not to keep the prompt or completion in their request history. The Conversations dashboard reflects only requests that were stored. With `store: false`, the request transcribes, the model answers, and the provider does not retain a copy of the input or output for later viewing or reuse.
+OpenAI's `store` parameter tells the Chat Completions endpoint not to keep the prompt or completion in their request history. The Conversations dashboard reflects only requests that were stored. With `store: false`, the request transcribes, the model answers, and it stays out of your account history for later viewing or reuse. That last part is a request to the provider, not a guarantee about their systems: their published data policy governs actual retention.
 
 OpenAI separately states that API traffic is not used to train their models for customers paying through the API. The `store: false` flag is a per-request reinforcement of that posture: it removes the data path that retention would have used.
 
