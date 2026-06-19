@@ -153,23 +153,35 @@ internal final class TextProcessingRunner {
         } else {
           reason = "failed: \(error.localizedDescription)"
         }
-        // Apple Intelligence language-gate skips (unsupported input
-        // language, output-language drift) are expected no-ops, not
-        // polish failures. Log and continue with raw text; do not
-        // set `polishError`, which would surface as "AI polish
-        // failed" in the UI.
-        let isLanguageGateSkip: Bool
+        // Apple Intelligence skips that degrade quietly to raw text instead of
+        // an "AI polish failed" pill: per-request language gates (unsupported
+        // input language, output-language drift) AND the PERMANENT
+        // provider-incapable case (#1080 — pre-macOS-26 / Apple Intelligence
+        // switched off / ineligible hardware / not compiled in).
+        // `frameworkUnavailable` is thrown ONLY by AppleIntelligenceConnector
+        // for those permanent states and fires on EVERY dictation for such a
+        // Mac, so surfacing it nags a user who cannot fix it from the live
+        // path. Log and continue with raw text; do not set `polishError`,
+        // which would surface as "AI polish failed" in the UI.
+        // Contract: `frameworkUnavailable` is the PERMANENT "this Mac or build
+        // cannot run Apple Intelligence" state. Every TRANSIENT or actionable
+        // outage MUST keep surfacing and stays OUT of this set —
+        // `modelNotReady` (model downloading / org-restricted),
+        // `providerUnavailable` (Ollama down), `requestFailed` (cloud 5xx),
+        // `invalidAPIKey` — locked by the adversarial tests in
+        // TextProcessingRunnerTests.
+        let isSilentPolishSkip: Bool
         if let llmError = error as? LLMError {
           switch llmError {
-          case .unsupportedInputLanguage, .outputLanguageDrift:
-            isLanguageGateSkip = true
+          case .unsupportedInputLanguage, .outputLanguageDrift, .frameworkUnavailable:
+            isSilentPolishSkip = true
           default:
-            isLanguageGateSkip = false
+            isSilentPolishSkip = false
           }
         } else {
-          isLanguageGateSkip = false
+          isSilentPolishSkip = false
         }
-        if step.errorSurfacePolicy == .surface && !isLanguageGateSkip
+        if step.errorSurfacePolicy == .surface && !isSilentPolishSkip
           && contextWindowSkip == nil && !isAppleIntelligencePolishTimeout
         {
           polishError = error.localizedDescription

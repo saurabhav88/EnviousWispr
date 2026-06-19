@@ -152,6 +152,15 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
   case providerUnavailable
   case modelNotFound(String)
   case frameworkUnavailable(String)
+  /// The selected on-device Apple Intelligence model is enabled but not usable
+  /// right now — still downloading, or restricted by organization policy.
+  /// Distinct from `frameworkUnavailable`, which is the PERMANENT "this Mac or
+  /// build cannot run Apple Intelligence" state (pre-macOS-26, switched off,
+  /// ineligible hardware, not compiled in). `modelNotReady` is TRANSIENT and may
+  /// resolve on its own, so the live dictation path keeps surfacing it (the user
+  /// learns why polish is temporarily unavailable) instead of silently degrading
+  /// to raw text the way the permanent cases do. (#1080)
+  case modelNotReady(String)
   /// Input language is not supported by the selected provider. Distinct from
   /// `frameworkUnavailable` (global provider state): this fires per-request
   /// when a specific detected language is outside the provider's supported
@@ -175,6 +184,8 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
       return "Ollama model '\(model)' is not pulled. Run: ollama pull \(model)"
     case .frameworkUnavailable(let reason):
       return reason
+    case .modelNotReady(let reason):
+      return reason
     case .unsupportedInputLanguage(let code):
       return
         "Apple Intelligence does not support the input language '\(code)' for on-device polishing."
@@ -193,6 +204,7 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
     case (.requestFailed(let a), .requestFailed(let b)),
       (.modelNotFound(let a), .modelNotFound(let b)),
       (.frameworkUnavailable(let a), .frameworkUnavailable(let b)),
+      (.modelNotReady(let a), .modelNotReady(let b)),
       (.unsupportedInputLanguage(let a), .unsupportedInputLanguage(let b)):
       return a == b
     case (.outputLanguageDrift(let le, let la), .outputLanguageDrift(let re, let ra)):

@@ -244,6 +244,119 @@ struct TextProcessingRunnerTests {
     #expect(result.polishError == nil)
   }
 
+  @Test(
+    "suppresses polishError for frameworkUnavailable skips from LLM Polish (#1080)",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1080",
+      "AI polish pill nagged every dictation on AI-unavailable Macs")
+  )
+  func suppressesPolishErrorForFrameworkUnavailable() async throws {
+    let runner = deterministicRunner()
+
+    let first = RecordingStep(name: "Word Correction") { context in
+      var next = context
+      next.text += "-A"
+      return next
+    }
+
+    // Pre-macOS-26 / Apple-Intelligence-off Macs throw this on EVERY dictation;
+    // it must degrade silently to raw text, never surface the "AI polish failed"
+    // pill the user cannot fix from the live path.
+    let llm = RecordingStep(name: "LLM Polish", errorSurfacePolicy: .surface) { _ in
+      throw LLMError.frameworkUnavailable("FoundationModels not available (requires macOS 26)")
+    }
+
+    let after = RecordingStep(name: "Suffix") { context in
+      var next = context
+      next.text += "-C"
+      return next
+    }
+
+    let result = try await runner.run(
+      rawText: "start",
+      language: "en",
+      targetAppName: nil,
+      steps: [first, llm, after]
+    )
+
+    #expect(llm.runCount == 1)
+    #expect(after.runCount == 1)
+    #expect(after.seenInputs[0].text == "start-A")
+    #expect(result.context.text == "start-A-C")
+    #expect(result.polishError == nil)
+  }
+
+  @Test(
+    "surfaces polishError for providerUnavailable, the adversarial non-skip class (#1080)",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1080",
+      "genuine provider outages must keep surfacing, unlike frameworkUnavailable")
+  )
+  func surfacesPolishErrorForProviderUnavailable() async throws {
+    let runner = deterministicRunner()
+
+    // providerUnavailable is a genuine outage (Ollama down, cloud provider init
+    // failed), NOT the macOS-26 framework gate. It must keep surfacing the pill;
+    // sharing the silent-skip set with frameworkUnavailable would be a regression.
+    let llm = RecordingStep(name: "LLM Polish", errorSurfacePolicy: .surface) { _ in
+      throw LLMError.providerUnavailable
+    }
+
+    let after = RecordingStep(name: "Suffix") { context in
+      var next = context
+      next.text += "-after"
+      return next
+    }
+
+    let result = try await runner.run(
+      rawText: "start",
+      language: "en",
+      targetAppName: nil,
+      steps: [llm, after]
+    )
+
+    #expect(after.runCount == 1)
+    #expect(result.context.text == "start-after")
+    #expect(result.polishError == LLMError.providerUnavailable.localizedDescription)
+  }
+
+  @Test(
+    "surfaces polishError for modelNotReady, the transient Apple Intelligence class (#1080)",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1080",
+      "model-downloading / org-restricted must stay visible, unlike the permanent frameworkUnavailable"
+    )
+  )
+  func surfacesPolishErrorForModelNotReady() async throws {
+    let runner = deterministicRunner()
+
+    // modelNotReady is TRANSIENT (model still downloading, or org-restricted) and
+    // carries an informative message. Unlike the permanent frameworkUnavailable
+    // cases (pre-26 / switched off), it must keep surfacing so the user learns
+    // why polish is temporarily unavailable instead of silent raw text.
+    let message = "The on-device model is not ready. It may still be downloading."
+    let llm = RecordingStep(name: "LLM Polish", errorSurfacePolicy: .surface) { _ in
+      throw LLMError.modelNotReady(message)
+    }
+
+    let after = RecordingStep(name: "Suffix") { context in
+      var next = context
+      next.text += "-after"
+      return next
+    }
+
+    let result = try await runner.run(
+      rawText: "start",
+      language: "en",
+      targetAppName: nil,
+      steps: [llm, after]
+    )
+
+    #expect(after.runCount == 1)
+    #expect(result.context.text == "start-after")
+    #expect(result.polishError == LLMError.modelNotReady(message).localizedDescription)
+  }
+
   @Test("skips a timed-out non-LLM step and continues without polishError")
   func skipsTimedOutNonLLMStep() async throws {
     // #784 (2026-05-18): migrated from real `Task.sleep(300ms)` racing a

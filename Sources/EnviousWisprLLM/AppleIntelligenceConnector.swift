@@ -559,7 +559,11 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
           "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri."
         )
       case .modelNotReady:
-        throw LLMError.frameworkUnavailable(
+        // #1080: TRANSIENT — keep this distinct from the permanent
+        // `frameworkUnavailable` cases so the live dictation path SURFACES it
+        // (informative "downloading / restricted" message) instead of silently
+        // degrading to raw text the way pre-26 / switched-off do.
+        throw LLMError.modelNotReady(
           "The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider."
         )
       @unknown default:
