@@ -190,29 +190,11 @@ public enum SentryBreadcrumb {
     return merged
   }
 
-  /// Capture a post-router Apple Intelligence polish failure with router
-  /// fields on this event only. Do not write these to global Sentry scope:
-  /// router attribution belongs to the failing polish event, not later
-  /// unrelated errors.
-  public static func captureAFMPolishError(
-    _ error: any Error,
-    routerMode: String,
-    routerBasis: String
-  ) {
-    let fields: [String: Any] = [
-      "polish_mode": routerMode,
-      "polish_router_basis": routerBasis,
-    ]
-    captureError(
-      error,
-      category: .generationFailed,
-      stage: "polish",
-      extra: fields,
-      tags: [
-        "polish_mode": routerMode,
-        "polish_router_basis": routerBasis,
-      ]
-    )
+  /// Capture an Apple Intelligence polish generation failure on this event
+  /// (#429; the router `polish_mode`/`polish_router_basis` fields were dropped in
+  /// #1072 when the dual router was removed).
+  public static func captureAFMPolishError(_ error: any Error) {
+    captureError(error, category: .generationFailed, stage: "polish")
   }
 
   // MARK: - Apple Intelligence Diagnostics

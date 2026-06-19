@@ -6,34 +6,27 @@ import Testing
 @testable import EnviousWisprLLM
 @testable import EnviousWisprPipeline
 
-/// Tests for dual-mode polish telemetry plumbing (#429).
+/// Tests for AFM polish telemetry plumbing (#429; the dual `router_mode` /
+/// `router_basis` fields were removed in #1072 when the natural/technical router
+/// was collapsed into a single prompt).
 ///
 /// Coverage strategy: AppleIntelligenceConnector cannot be tested directly
 /// (requires AFM macOS 26+). LLMPolishStep does not expose an injectable
-/// polisher seam (it constructs the connector internally based on llmProvider),
-/// so we cannot drive its catch path or `pipelineFellBackToRaw` computation
-/// end-to-end through the public surface. Adding such a seam is out of scope
-/// for #429 (telemetry-only). Instead this suite verifies:
+/// polisher seam, so we cannot drive its catch path or `pipelineFellBackToRaw`
+/// computation end-to-end through the public surface. Instead this suite verifies:
 ///
-///   1. PolishMetadata wraps cleanly into LLMResult.
-///   2. ExecutionMetrics carries the four new fields and decodes old-shape
-///      records (Codable backward-compat).
-///   3. TelemetryService.llmPolishCompleted forwards new properties through
-///      the testEventHook seam.
-///   4. EnviousOutputFilter trips deterministically (fixed input/output pairs
-///      from the documented imperative trigger list).
-///   4b. The OR formula `pipelineFellBackToRaw = filter || validator` is
-///       correct in isolation. The formula's *call site* in
-///       LLMPolishStep.swift:248/312 is verified by Codex production inspection.
-///   4c. The pipeline-side degradation `metadata == nil ? nil :
-///       pipelineFellBackToRaw` is correct in isolation. Call sites at
-///       Parakeet pipeline.swift:932 + KernelDictationDriver.swift:1050 are
-///       verified by Codex production inspection.
-///   5. AFMPolishError is a Sendable typed wrapper preserving underlying, and
-///      SentryBreadcrumb captures post-router AFM failures with router fields
-///      on the event instead of the global scope.
+///   1. PolishMetadata wraps cleanly into LLMResult (now filter-only fields).
+///   2. ExecutionMetrics decodes old-shape records (Codable backward-compat).
+///   3. TelemetryService.llmPolishCompleted forwards the filter/fallback
+///      properties through the testEventHook seam.
+///   4. EnviousOutputFilter trips deterministically (fixed input/output pairs).
+///   4b. The OR formula `pipelineFellBackToRaw = filter || validator`.
+///   4c. The pipeline-side degradation `metadata == nil ? nil : pipelineFellBackToRaw`.
+///   5. AFMPolishError wraps the underlying error, and `captureAFMPolishError`
+///      records a `generationFailed` / `polish` Sentry event.
+///   7. #1050 `polishFallbackReason` honest disaggregation.
 @MainActor
-@Suite("Dual-mode polish telemetry — #429")
+@Suite("AFM polish telemetry — #1072")
 struct DualModePolishTelemetryTests {
 
   // MARK: - 1. LLMResult ↔ PolishMetadata wrapping
@@ -47,16 +40,12 @@ struct DualModePolishTelemetryTests {
   @Test("LLMResult preserves PolishMetadata when constructed with one")
   func llmResultPreservesMetadata() {
     let meta = PolishMetadata(
-      routerMode: "natural",
-      routerBasis: "scored",
-      filterTripped: nil,
-      filterFellBackToRaw: false
+      filterTripped: "code_shape_guard",
+      filterFellBackToRaw: true
     )
     let result = LLMResult(polishedText: "hello", polishMetadata: meta)
-    #expect(result.polishMetadata?.routerMode == "natural")
-    #expect(result.polishMetadata?.routerBasis == "scored")
-    #expect(result.polishMetadata?.filterTripped == nil)
-    #expect(result.polishMetadata?.filterFellBackToRaw == false)
+    #expect(result.polishMetadata?.filterTripped == "code_shape_guard")
+    #expect(result.polishMetadata?.filterFellBackToRaw == true)
   }
 
   // MARK: - 2. ExecutionMetrics Codable backward-compat
@@ -75,30 +64,44 @@ struct DualModePolishTelemetryTests {
     let metrics = try JSONDecoder().decode(ExecutionMetrics.self, from: data)
     #expect(metrics.asrLatencySeconds == 0.5)
     #expect(metrics.llmLatencySeconds == 1.2)
-    #expect(metrics.polishRouterMode == nil)
-    #expect(metrics.polishRouterBasis == nil)
     #expect(metrics.polishFilterTripped == nil)
     #expect(metrics.polishFellBackToRaw == nil)
   }
 
-  @Test("ExecutionMetrics roundtrips new polish* fields through Codable")
+  @Test("ExecutionMetrics decodes legacy records that still carry router fields cleanly")
+  func executionMetricsIgnoresLegacyRouterFields() throws {
+    // Records persisted before #1072 still have polishRouterMode / polishRouterBasis
+    // on disk. Decoding must ignore the now-unknown keys, not fail.
+    let legacy = """
+      {
+        "coldStart": false,
+        "streamingMode": false,
+        "polishRouterMode": "technical",
+        "polishRouterBasis": "tier1",
+        "polishFilterTripped": "imperative_execution_guard",
+        "polishFellBackToRaw": true
+      }
+      """
+    let metrics = try JSONDecoder().decode(
+      ExecutionMetrics.self, from: legacy.data(using: .utf8)!)
+    #expect(metrics.polishFilterTripped == "imperative_execution_guard")
+    #expect(metrics.polishFellBackToRaw == true)
+  }
+
+  @Test("ExecutionMetrics roundtrips polish* fields through Codable")
   func executionMetricsRoundtripsPolishFields() throws {
     let original = ExecutionMetrics(
       llmLatencySeconds: 1.0,
-      polishRouterMode: "technical",
-      polishRouterBasis: "tier1",
       polishFilterTripped: "imperative_execution_guard",
       polishFellBackToRaw: true
     )
     let encoded = try JSONEncoder().encode(original)
     let decoded = try JSONDecoder().decode(ExecutionMetrics.self, from: encoded)
-    #expect(decoded.polishRouterMode == "technical")
-    #expect(decoded.polishRouterBasis == "tier1")
     #expect(decoded.polishFilterTripped == "imperative_execution_guard")
     #expect(decoded.polishFellBackToRaw == true)
   }
 
-  // MARK: - 3. TelemetryService surfaces new properties via testEventHook
+  // MARK: - 3. TelemetryService surfaces properties via testEventHook
 
   // testEventHook + CapturedTelemetryEvent are DEBUG-only — release builds
   // strip them from TelemetryService entirely. CI compiles tests with
@@ -115,7 +118,7 @@ struct DualModePolishTelemetryTests {
       var value: CapturedTelemetryEvent?
     }
 
-    @Test("TelemetryService emits all four new properties when fully populated")
+    @Test("TelemetryService emits the filter properties when populated")
     func telemetryServiceEmitsNewProperties() async {
       let box = EventBox()
       TelemetryService.shared.testEventHook = { @Sendable event in
@@ -130,8 +133,6 @@ struct DualModePolishTelemetryTests {
         model: "apple-intelligence",
         result: "success",
         latencySeconds: 0.873,
-        routerMode: "technical",
-        routerBasis: "tier1",
         filterTripped: "code_shape_guard",
         fellBackToRaw: true
       )
@@ -142,8 +143,7 @@ struct DualModePolishTelemetryTests {
 
       let event = try? #require(box.value)
       #expect(event?.stringProps["provider"] == "appleIntelligence")
-      #expect(event?.stringProps["router_mode"] == "technical")
-      #expect(event?.stringProps["router_basis"] == "tier1")
+      #expect(event?.stringProps["router_mode"] == nil)
       #expect(event?.stringProps["filter_tripped"] == "code_shape_guard")
       #expect(event?.boolProps["fell_back_to_raw"] == true)
     }
@@ -168,8 +168,6 @@ struct DualModePolishTelemetryTests {
 
       let event = try? #require(box.value)
       #expect(event?.stringProps["provider"] == "openai")
-      #expect(event?.stringProps["router_mode"] == nil)
-      #expect(event?.stringProps["router_basis"] == nil)
       #expect(event?.stringProps["filter_tripped"] == nil)
       #expect(event?.boolProps["fell_back_to_raw"] == nil)
     }
@@ -187,7 +185,6 @@ struct DualModePolishTelemetryTests {
       TelemetryService.shared.llmPolishCompleted(
         provider: "appleIntelligence", model: "apple-intelligence",
         result: "success", latencySeconds: 0.5,
-        routerMode: "natural", routerBasis: "scored",
         filterTripped: nil,
         fellBackToRaw: false
       )
@@ -247,7 +244,7 @@ struct DualModePolishTelemetryTests {
   /// `LLMPolishStep.process()` computes `pipelineFellBackToRaw =
   /// filterFellBackToRaw || (validatedText == context.text)` on both the AFM and
   /// cloud paths. The OR is conceptually verified here; the production formula is
-  /// now also locked against the new `#1050` reason helper by
+  /// now also locked against the `#1050` reason helper by
   /// `fallbackReasonInvariantMatchesOR` below (section 7).
   @Test("pipelineFellBackToRaw is OR of filter outcome and validator outcome")
   func pipelineFellBackToRawIsOR() {
@@ -265,9 +262,7 @@ struct DualModePolishTelemetryTests {
   /// Pipelines build `polishFellBackToRaw: metadata == nil ? nil : pipelineFellBackToRaw`.
   /// When no AFM polish ran (cloud provider, or polish skipped), the field
   /// must be NIL — not `false` — so PostHog filtering on `fell_back_to_raw IS
-  /// NOT NULL` correctly excludes non-AFM events. Production site:
-  /// `KernelFinalizationWiring.updateTranscriptMetrics` (the `polishMetadata ==
-  /// nil ? nil : …` gate, which `#1050` `polishFallbackReason` now mirrors).
+  /// NOT NULL` correctly excludes non-AFM events.
   @Test("ExecutionMetrics.polishFellBackToRaw is nil when polishMetadata is absent")
   func executionMetricsFellBackIsNilWithoutMetadata() {
     let metadata: PolishMetadata? = nil
@@ -277,34 +272,25 @@ struct DualModePolishTelemetryTests {
     #expect(polishFellBackToRaw == nil)
 
     let metrics = ExecutionMetrics(
-      polishRouterMode: metadata?.routerMode,
-      polishRouterBasis: metadata?.routerBasis,
       polishFilterTripped: metadata?.filterTripped,
       polishFellBackToRaw: polishFellBackToRaw
     )
-    #expect(metrics.polishRouterMode == nil)
-    #expect(metrics.polishRouterBasis == nil)
     #expect(metrics.polishFilterTripped == nil)
     #expect(metrics.polishFellBackToRaw == nil)
   }
 
   @Test("ExecutionMetrics.polishFellBackToRaw is false when AFM ran but pipeline did not fall back")
   func executionMetricsFellBackIsFalseOnSuccessfulAFM() {
-    let metadata = PolishMetadata(
-      routerMode: "natural", routerBasis: "scored",
-      filterTripped: nil, filterFellBackToRaw: false
-    )
+    let metadata = PolishMetadata(filterTripped: nil, filterFellBackToRaw: false)
     let pipelineFellBackToRaw = false  // validator did not trigger either
     let polishFellBackToRaw: Bool? =
       Optional<PolishMetadata>.some(metadata) == nil ? nil : pipelineFellBackToRaw
 
     let metrics = ExecutionMetrics(
-      polishRouterMode: metadata.routerMode,
-      polishRouterBasis: metadata.routerBasis,
       polishFilterTripped: metadata.filterTripped,
       polishFellBackToRaw: polishFellBackToRaw
     )
-    #expect(metrics.polishRouterMode == "natural")
+    #expect(metrics.polishFilterTripped == nil)
     #expect(metrics.polishFellBackToRaw == false)
   }
 
@@ -398,8 +384,6 @@ struct DualModePolishTelemetryTests {
   func executionMetricsRoundtripsFallbackReason() throws {
     let original = ExecutionMetrics(
       llmLatencySeconds: 0.5,
-      polishRouterMode: "natural",
-      polishRouterBasis: "scored",
       polishFilterTripped: nil,
       polishFellBackToRaw: true,
       polishFallbackReason: "no_change")
@@ -439,7 +423,6 @@ struct DualModePolishTelemetryTests {
       TelemetryService.shared.llmPolishCompleted(
         provider: "appleIntelligence", model: "apple-intelligence",
         result: "success", latencySeconds: 0.4,
-        routerMode: "natural", routerBasis: "scored",
         filterTripped: nil, fellBackToRaw: true,
         fallbackReason: "no_change")
 
@@ -474,18 +457,11 @@ struct DualModePolishTelemetryTests {
 
   #endif  // DEBUG
 
-  // MARK: - 5. AFMPolishError shape
+  // MARK: - 5. AFMPolishError shape + Sentry capture
 
-  @Test("AFMPolishError preserves underlying error and router metadata")
+  @Test("AFMPolishError preserves the underlying error")
   func afmPolishErrorPreservesUnderlying() {
-    let underlying = LLMError.emptyResponse
-    let wrapped = AFMPolishError(
-      underlying: underlying,
-      routerMode: "technical",
-      routerBasis: "tier1"
-    )
-    #expect(wrapped.routerMode == "technical")
-    #expect(wrapped.routerBasis == "tier1")
+    let wrapped = AFMPolishError(underlying: LLMError.emptyResponse)
     if let unwrapped = wrapped.underlying as? LLMError {
       #expect(unwrapped == LLMError.emptyResponse)
     } else {
@@ -493,70 +469,43 @@ struct DualModePolishTelemetryTests {
     }
   }
 
-  @Test("AFM polish error capture includes router metadata on the event")
-  func afmPolishErrorCaptureIncludesRouterMetadata() {
+  @Test("captureAFMPolishError records a generationFailed / polish event")
+  func afmPolishErrorCaptureRecordsGenerationFailed() {
     struct Captured {
       let category: SentryBreadcrumb.ErrorCategory
       let stage: String
       let extra: [String: Any]
-      let tags: [String: String]
     }
     final class CaptureBox: @unchecked Sendable {
       private let lock = NSLock()
       private var _value: Captured?
-      private var _tags: [String: String] = [:]
-
       var value: Captured? {
         lock.lock()
         defer { lock.unlock() }
         return _value
       }
-
-      func recordTags(_ tags: [String: String]) {
-        lock.lock()
-        defer { lock.unlock() }
-        _tags = tags
-      }
-
       func record(_ captured: Captured) {
         lock.lock()
         defer { lock.unlock() }
-        _value = Captured(
-          category: captured.category,
-          stage: captured.stage,
-          extra: captured.extra,
-          tags: _tags
-        )
+        _value = captured
       }
     }
 
     let box = CaptureBox()
     let prior = SentryBreadcrumb.captureErrorDelegate
-    let priorTags = SentryBreadcrumb.captureErrorTagsDelegate
-    SentryBreadcrumb.captureErrorTagsDelegate = { tags in
-      box.recordTags(tags)
-    }
     SentryBreadcrumb.captureErrorDelegate = { _, category, stage, extra in
-      box.record(Captured(category: category, stage: stage, extra: extra ?? [:], tags: [:]))
+      box.record(Captured(category: category, stage: stage, extra: extra ?? [:]))
     }
     defer { SentryBreadcrumb.captureErrorDelegate = prior }
-    defer { SentryBreadcrumb.captureErrorTagsDelegate = priorTags }
 
-    SentryBreadcrumb.captureAFMPolishError(
-      LLMError.emptyResponse,
-      routerMode: "technical",
-      routerBasis: "tier1"
-    )
+    SentryBreadcrumb.captureAFMPolishError(LLMError.emptyResponse)
 
     let captured = box.value
     #expect(captured?.category == .generationFailed)
     #expect(captured?.stage == "polish")
-    #expect(captured?.extra["polish_mode"] as? String == "technical")
-    #expect(captured?.extra["polish_router_basis"] as? String == "tier1")
-    #expect(captured?.tags["pipeline.stage"] == "polish")
-    #expect(captured?.tags["error.category"] == "generation_failed")
-    #expect(captured?.tags["polish_mode"] == "technical")
-    #expect(captured?.tags["polish_router_basis"] == "tier1")
+    // Router fields were removed in #1072 — the event no longer carries them.
+    #expect(captured?.extra["polish_mode"] == nil)
+    #expect(captured?.extra["polish_router_basis"] == nil)
   }
 
   // MARK: - 6. PolishMetadata Codable roundtrip
@@ -564,8 +513,6 @@ struct DualModePolishTelemetryTests {
   @Test("PolishMetadata roundtrips through Codable")
   func polishMetadataCodableRoundtrip() throws {
     let original = PolishMetadata(
-      routerMode: "natural",
-      routerBasis: "scored",
       filterTripped: "preamble_stripped",
       filterFellBackToRaw: false
     )

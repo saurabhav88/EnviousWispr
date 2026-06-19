@@ -13,11 +13,10 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var e2eSeconds: Double?
   public var errorStage: String?
   public var errorCode: String?
-  /// Dual-mode polish telemetry (#429). Populated only for AFM polish; nil for
-  /// cloud providers and pre-AFM dictations on disk. `polishFellBackToRaw` is
-  /// the FINAL pipeline outcome (filter OR validator), not just the filter result.
-  public var polishRouterMode: String?
-  public var polishRouterBasis: String?
+  /// AFM polish telemetry (#429; single-prompt since #1072). Populated only for
+  /// AFM polish; nil for cloud providers and pre-AFM dictations on disk.
+  /// `polishFellBackToRaw` is the FINAL pipeline outcome (filter OR validator),
+  /// not just the filter result.
   public var polishFilterTripped: String?
   public var polishFellBackToRaw: Bool?
   /// #1050 honest disaggregation of `polishFellBackToRaw`. Populated only for AFM
@@ -72,8 +71,6 @@ public struct ExecutionMetrics: Codable, Sendable {
     e2eSeconds: Double? = nil,
     errorStage: String? = nil,
     errorCode: String? = nil,
-    polishRouterMode: String? = nil,
-    polishRouterBasis: String? = nil,
     polishFilterTripped: String? = nil,
     polishFellBackToRaw: Bool? = nil,
     polishFallbackReason: String? = nil,
@@ -101,8 +98,6 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.e2eSeconds = e2eSeconds
     self.errorStage = errorStage
     self.errorCode = errorCode
-    self.polishRouterMode = polishRouterMode
-    self.polishRouterBasis = polishRouterBasis
     self.polishFilterTripped = polishFilterTripped
     self.polishFellBackToRaw = polishFellBackToRaw
     self.polishFallbackReason = polishFallbackReason

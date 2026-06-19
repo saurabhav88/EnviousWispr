@@ -116,8 +116,8 @@ struct EnviousOutputFilterTests {
   @Test("brainstorm execution falls back to raw input")
   func brainstormExecutionFallsBack() {
     // Regression gate for T023 (2026-04-21). AFM sometimes executes on
-    // "brainstorm X" even in technical mode and returns suggestions instead
-    // of preserving the imperative. Filter must catch this.
+    // "brainstorm X" and returns suggestions instead of preserving the
+    // imperative. Filter must catch this.
     let input = "Brainstorm three names for the new onboarding flow."
     let output =
       "Welcome to the new onboarding flow! Here are three suggestions: 1. Onboarding Journey 2. Welcome Path 3. Start Here"

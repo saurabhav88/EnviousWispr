@@ -331,8 +331,6 @@ struct KernelFinalizationWiring {
       coldStart: false,
       streamingMode: outcome.streamingMode,
       e2eSeconds: e2e,
-      polishRouterMode: outcome.polishMetadata?.routerMode,
-      polishRouterBasis: outcome.polishMetadata?.routerBasis,
       polishFilterTripped: outcome.polishMetadata?.filterTripped,
       polishFellBackToRaw: outcome.polishMetadata == nil ? nil : outcome.pipelineFellBackToRaw,
       polishFallbackReason: outcome.polishMetadata == nil ? nil : outcome.polishFallbackReason,
