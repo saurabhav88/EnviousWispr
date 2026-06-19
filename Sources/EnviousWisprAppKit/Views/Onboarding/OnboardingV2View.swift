@@ -1,9 +1,22 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprPipeline
 import EnviousWisprServices
 import IOKit.pwr_mgt
 import SwiftUI
+
+// MARK: - Apple Intelligence Settings Deep Link
+
+/// System Settings deep-link for the Apple Intelligence & Siri pane. `internal`
+/// (not file-private) so the onboarding-availability test target can assert the
+/// validated URL string and catch accidental edits to it. Validated 2026-06-19
+/// on macOS 26.6: opening this lands on "Apple Intelligence & Siri". Only ever
+/// opened from the `.enableInSettings` branch, which requires macOS 26, so it
+/// never targets a missing pane on older macOS. (#1080)
+enum AppleIntelligenceSettings {
+  static let systemSettingsURL = "x-apple.systempreferences:com.apple.Siri-Settings.extension"
+}
 
 // MARK: - ViewModel
 
@@ -277,6 +290,15 @@ final class OnboardingV2ViewModel {
 
   func openAccessibilitySettings(permissions: PermissionsService) {
     _ = permissions.requestAccessibilityAccess()
+  }
+
+  /// Opens the Apple Intelligence & Siri pane in System Settings so the user
+  /// can switch Apple Intelligence on. Only invoked from the `.enableInSettings`
+  /// onboarding notice (macOS 26 + switched off). (#1080)
+  func openAppleIntelligenceSettings() {
+    if let url = URL(string: AppleIntelligenceSettings.systemSettingsURL) {
+      NSWorkspace.shared.open(url)
+    }
   }
 
   func finishOnboarding(settings: SettingsManager) {
@@ -667,6 +689,9 @@ private struct PermissionsPhaseView: View {
   var viewModel: OnboardingV2ViewModel
   @Environment(PermissionsService.self) private var permissions
   @Environment(SettingsManager.self) private var settings
+  // #1080: read the launch availability report (already computed + injected) to
+  // optionally surface the on-device polish path. Read-only; never gates Continue.
+  @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
 
   var body: some View {
     VStack(spacing: 0) {
@@ -747,6 +772,18 @@ private struct PermissionsPhaseView: View {
       .padding(.bottom, 20)
       .animation(.easeInOut(duration: 0.30), value: viewModel.accessibilityGranted)
 
+      // #1080: optional on-device polish notice. Renders ONLY when the launch
+      // report yields an actionable reason (Apple Intelligence off, or pre-26).
+      // nil report or nil notice → nothing renders (load-bearing safe default).
+      // It sits below the required rows and NEVER affects the Continue gate.
+      if let notice = aiAvailability.latestReport?.onboardingPolishNotice {
+        AIPolishNoticeSection(notice: notice) {
+          viewModel.openAppleIntelligenceSettings()
+        }
+        .padding(.bottom, 20)
+        .transition(.opacity)
+      }
+
       Spacer()
 
       // #735: gate Continue on BOTH mic AND accessibility. PostHog (60d prod)
@@ -811,6 +848,91 @@ private struct PermissionsPhaseView: View {
       // #735: showSkipLink no longer used (Skip-for-now backdoor removed); `elapsed` retained
       // so future telemetry can re-attach a "time-on-permissions-screen" event if needed.
       _ = elapsed
+    }
+  }
+}
+
+/// #1080: optional onboarding notice about the free on-device Apple Intelligence
+/// polish path. Rendered by `PermissionsPhaseView` ONLY when the launch
+/// availability report yields an actionable notice; it never gates Continue.
+/// `.enableInSettings` is an accent card with a one-tap jump to System Settings
+/// (Apple Intelligence switched off on a macOS-26 Mac); `.updateMacOS` is a
+/// neutral, button-less informational card (pre-macOS-26). The "incompatible
+/// hardware" case is impossible here — we ship Apple-Silicon-only, so an
+/// ineligible Mac never launches us, and the classifier returns nil for it.
+private struct AIPolishNoticeSection: View {
+  let notice: AppleIntelligenceAvailabilityReport.OnboardingPolishNotice
+  let onOpenSettings: () -> Void
+
+  var body: some View {
+    VStack(spacing: 12) {
+      // Eyebrow: visually separates this optional item from the two required
+      // permission rows above it.
+      HStack(spacing: 10) {
+        Rectangle().fill(Color.obTextSecondary.opacity(0.18)).frame(height: 1)
+        Text("AI POLISH · OPTIONAL")
+          .font(.obCaption)
+          .kerning(1.4)
+          .foregroundStyle(Color.obTextSecondary)
+          .fixedSize()
+        Rectangle().fill(Color.obTextSecondary.opacity(0.18)).frame(height: 1)
+      }
+
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(alignment: .top, spacing: 10) {
+          Image(systemName: iconName)
+            .foregroundStyle(accentColor)
+            .font(.system(size: 16, weight: .semibold))
+          VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+              .font(.obLabel)
+              .foregroundStyle(Color.obTextPrimary)
+            Text(message)
+              .font(.obCaption)
+              .foregroundStyle(Color.obTextSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
+        if notice == .enableInSettings {
+          Button("Open System Settings", action: onOpenSettings)
+            .buttonStyle(.plain)
+            .font(.obCaption.weight(.semibold))
+            .foregroundStyle(accentColor)
+            .padding(.leading, 26)
+        }
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(14)
+      .background(accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+      .overlay(
+        RoundedRectangle(cornerRadius: 12)
+          .stroke(accentColor.opacity(0.22), lineWidth: 1)
+      )
+    }
+  }
+
+  private var accentColor: Color {
+    notice == .enableInSettings ? Color.obAccent : Color.obTextSecondary
+  }
+
+  private var iconName: String {
+    notice == .enableInSettings ? "sparkles" : "arrow.up.circle"
+  }
+
+  private var title: String {
+    switch notice {
+    case .enableInSettings: return "Apple Intelligence is turned off"
+    case .updateMacOS: return "AI polish needs macOS 26"
+    }
+  }
+
+  private var message: String {
+    switch notice {
+    case .enableInSettings:
+      return "Turn it on to enable free, on-device AI polish. Dictation works fine without it."
+    case .updateMacOS:
+      return
+        "Update your Mac to macOS 26 to unlock free, on-device Apple Intelligence polish. Dictation works fully right now without it."
     }
   }
 }

@@ -200,6 +200,29 @@ public struct AppleIntelligenceAvailabilityReport: Sendable, Codable {
     return "Apple Intelligence availability could not be determined."
   }
 
+  /// What onboarding should surface about on-device polish, or nil to stay
+  /// silent. Only the two ACTIONABLE reasons map to a notice. (#1080)
+  public enum OnboardingPolishNotice: String, Sendable, Equatable {
+    case enableInSettings  // appleIntelligenceDisabled — actionable (Open Settings)
+    case updateMacOS  // unsupportedOS — informational
+  }
+
+  /// Derived onboarding notice: non-nil ONLY when on-device Apple Intelligence
+  /// polish is unavailable for a reason the user can act on —
+  /// `.enableInSettings` (switched off → Open Settings) or `.updateMacOS`
+  /// (pre-macOS-26 → informational). Every other reason and status returns nil:
+  /// transient ones (modelNotReady, modelAccessFailed, generationFailed),
+  /// the unreachable hardware case (deviceNotEligible/unsupportedHardware — we
+  /// ship Apple-Silicon-only, so an ineligible Mac never launches us), and any
+  /// available/degraded/unknown status. Pure function of `overallStatus` +
+  /// `failureReasons`; not stored.
+  public var onboardingPolishNotice: OnboardingPolishNotice? {
+    guard overallStatus == .unavailable else { return nil }
+    if failureReasons.contains(.appleIntelligenceDisabled) { return .enableInSettings }
+    if failureReasons.contains(.unsupportedOS) { return .updateMacOS }
+    return nil
+  }
+
   /// Debug summary derived from gate results. For dev builds and support.
   public var debugSummary: String {
     gates.allGates.map { "\($0.name): \($0.result.status.rawValue) — \($0.result.summary)" }.joined(
