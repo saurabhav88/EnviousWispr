@@ -119,6 +119,7 @@ struct HotkeyRecorderView: View {
     HStack {
       Text(label)
         .foregroundStyle(colors.label)
+        .accessibilityHidden(true)
       Spacer()
 
       // Use onTapGesture on a plain view to avoid Button stealing key events
@@ -152,6 +153,16 @@ struct HotkeyRecorderView: View {
       .onTapGesture {
         toggleRecording()
       }
+      .accessibilityElement(children: .combine)
+      .accessibilityAddTraits(.isButton)
+      .accessibilityLabel(label)
+      .accessibilityValue(
+        isRecording
+          ? "Recording, press a key combination"
+          : KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
+      )
+      .accessibilityHint("Activates recording. Then press the key combination you want.")
+      .accessibilityAction { toggleRecording() }
 
       // Reset button
       if keyCode != defaultKeyCode || modifiers != defaultModifiers {
@@ -161,6 +172,7 @@ struct HotkeyRecorderView: View {
         }
         .buttonStyle(.plain)
         .help("Reset to default")
+        .accessibilityLabel("Reset shortcut to default")
       }
     }
     .onDisappear {

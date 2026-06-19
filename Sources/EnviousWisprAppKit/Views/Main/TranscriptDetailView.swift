@@ -63,6 +63,7 @@ struct TranscriptDetailView: View {
         }
         .controlSize(.small)
         .buttonStyle(.borderless)
+        .accessibilityLabel("Delete transcript")
       }
       .padding(.horizontal, 16)
       .padding(.vertical, 10)

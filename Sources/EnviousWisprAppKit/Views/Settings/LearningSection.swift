@@ -135,6 +135,7 @@ struct LearningSection: View {
       }
       .buttonStyle(.plain)
       .help("Remove all imported names")
+      .accessibilityLabel("Remove all imported names")
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 4)

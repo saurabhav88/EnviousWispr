@@ -54,6 +54,7 @@ struct VocabularyPackDetailSheet: View {
               .font(.system(size: 12))
           }
           .buttonStyle(.plain)
+          .accessibilityLabel("Clear search")
         }
       }
       .padding(.horizontal, 10)

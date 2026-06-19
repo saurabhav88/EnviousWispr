@@ -84,6 +84,12 @@ struct UpdateAvailableBanner: View {
       LocalizedStringResource("Update available, version \(update.displayVersion)")
     )
     .accessibilityHint(LocalizedStringResource("Activate to install and restart"))
+    .accessibilityAction {
+      coordinator?.handleBannerClicked(
+        version: update.versionString,
+        isCritical: update.isCriticalUpdate,
+        secondsVisible: secondsVisible())
+    }
   }
 
   private func secondsVisible() -> Int {

@@ -99,6 +99,7 @@ struct CustomWordEditSheet: View {
                     .font(.system(size: 8, weight: .bold))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Remove alias \(alias)")
               }
               .padding(.horizontal, 6)
               .padding(.vertical, 3)

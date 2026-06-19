@@ -365,5 +365,6 @@ struct SpeechEngineSettingsView: View {
     }
     .buttonStyle(.borderless)
     .help("Re-check model status")
+    .accessibilityLabel("Re-check model status")
   }
 }
