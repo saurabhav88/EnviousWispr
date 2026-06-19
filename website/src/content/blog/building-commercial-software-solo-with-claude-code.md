@@ -2,12 +2,14 @@
 title: "Building Commercial Software Solo With Claude Code"
 description: "How I structured Claude Code's .claude/ folder into a three-tier context system to ship a production macOS app as a solo developer."
 pubDate: 2026-03-26
-updatedDate: 2026-05-15
+updatedDate: 2026-06-19
 tags: ["claude-code", "vibe-coding", "solo-dev", "ai-tools", "productivity"]
 image: "/images/blog/claude-code-structure/three-pillars.jpg"
 draft: false
 author: "Saurabh Vaish"
 ---
+
+> **Update (June 2026):** This system has evolved a lot since I wrote this. I've published a follow-up on where it stands now, including the parts I changed my mind about: [The State of My Solo Claude Code System: June 2026](/blog/claude-code-system-june-2026/). The post below is the original foundation, and it still holds up as the starting point.
 
 I've been building EnviousWispr, a commercial macOS voice-to-text app, entirely by myself using Claude Code. Along the way I made a lot of mistakes, rewrote things I didn't need to, and lost context between sessions more times than I'd like to admit.
 
