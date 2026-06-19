@@ -110,6 +110,33 @@ public enum AppleIntelligenceDiagnosticsService {
     )
   }
 
+  /// Synchronous availability snapshot for the `app.launched` telemetry event.
+  /// Runs ONLY the synchronous gates (build, OS-runtime, eligibility) + the
+  /// synchronous `sysctl` hardware read — never the async model-access (Stage 4)
+  /// or functional-probe (Stage 5) stages. Eligibility
+  /// (`SystemLanguageModel.default.availability`) is read ONLY when capable, so
+  /// the non-macOS-26 fallback path is never hit.
+  /// CALLER CONTRACT: not guaranteed fast (the eligibility read may touch a
+  /// system framework), so the launch call site computes this OFF the main thread.
+  public static func launchSnapshot() -> LaunchAvailabilitySnapshot {
+    let hardwareClass = currentHardwareClass()
+    let build = checkBuildGate()
+    let runtime = build.status == .passed ? checkOSRuntimeGate() : nil
+    let frameworkAndOS = build.status == .passed && runtime?.status == .passed
+    // Read eligibility (synchronous SystemLanguageModel.availability) only when
+    // framework + OS allow it. Its failure REASON distinguishes genuine hardware
+    // ineligibility (NOT capable) from a capable device that is merely turned off
+    // or still downloading the model (capable, not enabled).
+    let eligibility = frameworkAndOS ? checkEligibilityGate() : nil
+    let deviceIneligible =
+      eligibility?.reasons.contains(.deviceNotEligible) == true
+      || eligibility?.reasons.contains(.unsupportedHardware) == true
+    let isCapable = frameworkAndOS && !deviceIneligible
+    let isEnabled = eligibility?.status == .passed
+    return LaunchAvailabilitySnapshot(
+      hardwareClass: hardwareClass, isCapable: isCapable, isEnabled: isEnabled)
+  }
+
   // MARK: - Timeout Helpers
 
   private static func totalTimeoutMs() -> Int {

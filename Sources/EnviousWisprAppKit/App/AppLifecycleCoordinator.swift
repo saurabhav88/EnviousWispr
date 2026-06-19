@@ -169,21 +169,29 @@ final class AppLifecycleCoordinator {
       Task { await aiAvailability.checkAvailability(trigger: "app_launch") }
     }
 
-    // Fire structured app.launched event — uses cached report (loaded from
-    // UserDefaults in coordinator init). No async wait needed.
+    // Fire structured app.launched event (issue #1073). Compute the AI snapshot
+    // OFF the launch main thread: the eligibility read (SystemLanguageModel
+    // .availability) is synchronous but its cold-boot cost on the main thread is
+    // not provable-safe (council + grounded review), so it must never sit on the
+    // heart-adjacent launch path. Hop back to the @MainActor TelemetryService to
+    // emit (no second telemetry path). The event emits within ms of launch (far
+    // faster than awaiting the up-to-10s deep checkAvailability above), though as
+    // a detached emit it is best-effort and may be missed on an immediate quit.
+    // Task.detached (not Task {}): a plain Task inherits this MainActor context
+    // and would run the read on main; withTaskGroup/@concurrent do not fit a
+    // one-off fire-and-forget that must leave the actor.
     let version =
       Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
     let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
     let osVer = ProcessInfo.processInfo.operatingSystemVersion
-    let cachedReport = aiAvailability.latestReport
-    TelemetryService.shared.appLaunched(
-      version: version,
-      build: build,
-      osVersion: "\(osVer.majorVersion).\(osVer.minorVersion).\(osVer.patchVersion)",
-      hardware: cachedReport?.hardwareClass ?? "unknown",
-      isFreshInstall: isFreshInstall,
-      aiAvailable: cachedReport?.overallStatus == .available
-    )
+    let osVersion = "\(osVer.majorVersion).\(osVer.minorVersion).\(osVer.patchVersion)"
+    Task.detached(priority: .utility) {
+      let snap = AppleIntelligenceDiagnosticsService.launchSnapshot()
+      await TelemetryService.shared.appLaunched(
+        version: version, build: build, osVersion: osVersion,
+        hardware: snap.hardwareClass, isFreshInstall: isFreshInstall,
+        aiCapable: snap.isCapable, aiEnabled: snap.isEnabled)
+    }
 
     // Check Accessibility permission on launch (query only — never auto-prompt).
     permissions.refreshOnLaunch()
