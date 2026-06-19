@@ -17,6 +17,7 @@ struct OutRecord: Encodable {
   let id: String
   var candidate: String?
   var error: String?
+  var latencyMs: Int?
 }
 
 // MARK: - Arg parsing (hand-rolled; keeping the tool dependency-free)
@@ -115,7 +116,7 @@ struct RunnerMain {
 
     // Enable file logging so [AIPolish] trace lines from AppleIntelligenceConnector
     // land in ~/Library/Logs/EnviousWispr/app.log. Required for bench-mode A/B
-    // analysis of router/filter behavior. AppLogger is file-gated on this flag.
+    // analysis of filter/polish behavior. AppLogger is file-gated on this flag.
     await AppLogger.shared.setDebugMode(true)
 
     let sink: FileHandle
@@ -144,7 +145,11 @@ struct RunnerMain {
       temperature: 0,
       thinkingBudget: nil,
       reasoningEffort: nil,
-      detectedLanguage: args.detectedLanguage
+      // Empty string maps to nil so the bench can mirror the DEFAULT Parakeet
+      // production path (no LID → language nil → LeadingMarkerRepair does NOT
+      // fire). Passing "en" forces the repair on, which inflates onset numbers
+      // vs what most users actually get. See #963 onset-masking finding.
+      detectedLanguage: args.detectedLanguage.isEmpty ? nil : args.detectedLanguage
     )
     // System prompt resolution: explicit --system-prompt > --system-prompt-file
     // > built-in enrichment fallback. Python bench driver normally passes the
@@ -179,6 +184,7 @@ struct RunnerMain {
 
     for (index, caseItem) in cases.enumerated() {
       let record: OutRecord
+      let caseStart = Date()
       do {
         let result = try await connector.polish(
           text: caseItem.asr_input,
@@ -186,7 +192,9 @@ struct RunnerMain {
           config: config,
           onToken: nil
         )
-        record = OutRecord(id: caseItem.id, candidate: result.polishedText, error: nil)
+        let ms = Int(Date().timeIntervalSince(caseStart) * 1000)
+        record = OutRecord(
+          id: caseItem.id, candidate: result.polishedText, error: nil, latencyMs: ms)
       } catch let err as LLMError {
         // frameworkUnavailable on the very first case means Apple Intelligence
         // is not usable on this machine at all — no reason to keep trying.

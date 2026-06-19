@@ -309,7 +309,18 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
 
   /// Resolve mode → prompt string. Separate helper so tests and callers can
   /// inspect which prompt ships per mode.
+  ///
+  /// DEV-ONLY bench seam (#1072 prompt iteration): `EW_AFM_PROMPT_FILE` lets the
+  /// `apple_runner` swap a candidate prompt in without a recompile, so the
+  /// tier-bench can A/B a candidate against the shipping prompt. Env-gated;
+  /// never read in production (the variable is only set by the eval harness).
   private static func promptFor(mode: ApplePolishMode) -> String {
+    if let path = ProcessInfo.processInfo.environment["EW_AFM_PROMPT_FILE"],
+      let text = try? String(contentsOfFile: path, encoding: .utf8),
+      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    {
+      return text
+    }
     switch mode {
     case .natural: return onDeviceInstructionsNatural
     case .technical: return onDeviceInstructionsTechnical
