@@ -96,7 +96,8 @@ func printUsage() {
     EXIT CODES:
       0  every case attempted (some may have errored — Python reads those lines)
       2  startup failure: Apple Intelligence unavailable, corpus missing/malformed,
-         or the FIRST case threw frameworkUnavailable
+         or the FIRST case reported Apple Intelligence unavailable
+         (frameworkUnavailable / modelNotReady)
     """
   FileHandle.standardError.write(Data((msg + "\n").utf8))
 }
@@ -197,13 +198,24 @@ struct RunnerMain {
         record = OutRecord(
           id: caseItem.id, candidate: result.polishedText, error: nil, latencyMs: ms)
       } catch let err as LLMError {
-        // frameworkUnavailable on the very first case means Apple Intelligence
-        // is not usable on this machine at all — no reason to keep trying.
-        // Exit 2 so the Python driver treats it as infra error, not as per-case noise.
-        if index == 0, case .frameworkUnavailable = err {
-          fail(
-            "first case threw frameworkUnavailable: \(err.errorDescription ?? String(describing: err))"
-          )
+        // frameworkUnavailable OR modelNotReady on the very first case means
+        // Apple Intelligence is not usable on this machine right now (unsupported
+        // OS, switched off, ineligible hardware, not compiled in, OR the on-device
+        // model is still downloading / org-restricted) — no reason to keep trying.
+        // Exit 2 so the Python driver treats it as an infra error, not per-case
+        // noise. #1101: `modelNotReady` was split out of `frameworkUnavailable`
+        // in #1080; before that it was the same case and already aborted here, so
+        // this restores the pre-#1080 contract (an unavailable model must abort
+        // setup, never corrupt `--mode bench` results as a per-case loss).
+        if index == 0 {
+          switch err {
+          case .frameworkUnavailable, .modelNotReady:
+            fail(
+              "first case threw \(String(describing: err)): \(err.errorDescription ?? "Apple Intelligence unavailable on this machine")"
+            )
+          default:
+            break
+          }
         }
         errorCount += 1
         record = OutRecord(id: caseItem.id, candidate: nil, error: String(describing: err))
