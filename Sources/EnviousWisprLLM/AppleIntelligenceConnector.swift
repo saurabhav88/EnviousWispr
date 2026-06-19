@@ -610,8 +610,8 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       prepared: PreparedAFMSession, wrapped: String, detectedLanguage: String?
     ) async throws -> String {
       // The system prompt is always English (instructions + an English-framed
-      // language clause + the custom-words block), regardless of the dictation
-      // language. Count it with the Latin heuristic (lang: nil) so the macOS
+      // language clause), regardless of the dictation language. Count it with
+      // the Latin heuristic (lang: nil) so the macOS
       // 26.0–26.3 fallback path doesn't over-count the ~2.5k-char prompt at
       // ~1 char/token for CJK/Thai/Lao dictations and wrongly skip transcripts
       // that actually fit. Only the transcript itself carries `detectedLanguage`.
@@ -711,7 +711,8 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       // Issue #616, 2026-05-04: extract the suffix that
       // `LLMPolishStep.appleIntelligenceInstructions` appended on top of
       // `PolishInstructions.default.systemPrompt` (the speech-to-text-awareness
-      // clause and, when non-empty, the user's Custom Words block) and
+      // clause; the user's custom-words block was dropped from this on-device
+      // path in #1084 — the corrector lane applies those terms pre-polish) and
       // concatenate it onto `basePrompt`. Production callers always pass a
       // default-prefixed prompt (verified `SettingsManager.activePolishInstructions`
       // hardcoded to `.default`). The defensive `else` branch is forward-safety
