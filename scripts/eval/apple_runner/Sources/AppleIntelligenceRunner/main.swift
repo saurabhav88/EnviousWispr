@@ -153,8 +153,9 @@ struct RunnerMain {
     )
     // System prompt resolution: explicit --system-prompt > --system-prompt-file
     // > built-in enrichment fallback. Python bench driver normally passes the
-    // full enriched prompt (default + false-start + vocab) via --system-prompt-file
-    // so the runner mirrors LLMPolishStep.appleIntelligenceInstructions exactly.
+    // full enriched prompt (default + false-start) via --system-prompt-file so
+    // the runner mirrors LLMPolishStep.appleIntelligenceInstructions exactly
+    // (custom vocab dropped from the Apple path in #1084).
     let systemPrompt: String
     if let explicit = args.systemPrompt {
       systemPrompt = explicit

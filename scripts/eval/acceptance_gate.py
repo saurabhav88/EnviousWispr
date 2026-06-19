@@ -48,7 +48,9 @@ APPLE_RUNNER_BIN = APPLE_RUNNER_DIR / ".build/release/AppleIntelligenceRunner"
 
 # Mirror of Sources/EnviousWisprCore/LLMResult.swift:115-127. Keep byte-identical.
 # The Apple path in production passes instructions built from this default +
-# compressed enrichment (false-start + tone) + CustomVocabularyFormatter.render.
+# compressed enrichment (false-start + tone). Custom words are NOT injected on
+# the Apple path (#1084 — the corrector lane applies them pre-polish); only the
+# cloud HTTP mirror appends CustomVocabularyFormatter.render (see render_custom_vocab).
 # We replicate the exact prompt here so --mode bench measures what users see.
 POLISH_INSTRUCTIONS_DEFAULT = (
     "Clean up this speech-to-text transcript. Make minimal changes:\n"
@@ -977,13 +979,21 @@ def _apply_validator(candidates_by_id: dict, cases: list, provider: str) -> tupl
 
 def _build_afm_system_prompt() -> str:
     """Compose the exact system prompt the shipped LLMPolishStep passes to the
-    Apple connector in production: default + enrichment + custom vocab."""
-    return (
-        POLISH_INSTRUCTIONS_DEFAULT
-        + APPLE_ENRICHMENT_SUFFIX
-        + "\n\n"
-        + render_custom_vocab()
-    )
+    Apple connector in production: default + enrichment. Custom vocab is NOT
+    appended on the Apple path (#1084 — the deterministic corrector lane applies
+    the user's terms pre-polish, and the on-device vocab block was eval-proven
+    net-negative); the cloud HTTP mirror still appends it via render_custom_vocab().
+
+    Bench scope caveat: this harness measures each provider's POLISH PROMPT in
+    isolation — it does NOT run the pre-polish WordCorrector lane for ANY provider
+    (live dictation does; saved re-polish currently does not). So `custom_vocabulary`
+    corpus cases are scored prompt-only: after #1084 the AFM path shows them with no
+    vocab support at all, and cloud shows them with the prompt block only. Neither
+    reflects the production live-dictation pipeline (corrector + polish); treat
+    custom-vocab as deterministic_owned and discount it (polish-eval.md
+    afm-prompt-iteration-learnings). Pre-correcting bench inputs for all providers
+    is the cleaner long-term fix (tracked with the saved-re-polish corrector gap)."""
+    return POLISH_INSTRUCTIONS_DEFAULT + APPLE_ENRICHMENT_SUFFIX
 
 
 def _apple_polish_subprocess(
@@ -1518,9 +1528,10 @@ def mode_bench(out_name: str | None, corpus_path: Path | None, sleep_seconds: fl
         }
 
     # 1b: AFM via Swift sub-package. Prompt is built to mirror
-    # LLMPolishStep.appleIntelligenceInstructions (default + enrichment + vocab)
-    # so the benchmark measures what production users see. The prompt file is
-    # saved as a run artifact so future audits can see exactly what we asked.
+    # LLMPolishStep.appleIntelligenceInstructions (default + enrichment; AFM
+    # custom-vocab dropped #1084) so the benchmark measures what production users
+    # see. The prompt file is saved as a run artifact so future audits can see
+    # exactly what we asked.
     print(f"\n[bench] Phase 1: polishing {len(cases)} cases via apple-intelligence")
     afm_prompt_path = run_dir / "afm-system-prompt.txt"
     afm_prompt_path.write_text(_build_afm_system_prompt(), encoding="utf-8")

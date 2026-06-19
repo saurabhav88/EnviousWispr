@@ -538,12 +538,21 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     return indirectPreambles.contains { joined.hasPrefix($0) }
   }
 
-  // MARK: - Apple Intelligence Prompt (Compressed Enrichment + Custom Vocab)
+  // MARK: - Apple Intelligence Prompt (Compressed Enrichment)
 
   /// Apple Intelligence uses a simplified on-device prompt (set in makeSession()).
-  /// We append compressed enrichment (ASR awareness, tone preservation) and custom
-  /// vocabulary. Full cloud-style enrichment is too verbose for the small on-device model.
-  private func appleIntelligenceInstructions(
+  /// We append compressed enrichment (ASR awareness, tone preservation); full
+  /// cloud-style enrichment is too verbose for the small on-device model.
+  ///
+  /// Custom words are deliberately NOT injected here (#1084). The deterministic
+  /// `WordCorrector` lane runs BEFORE polish and already applies the user's terms,
+  /// and an eval (ci151 tier-bench, reps=3) showed the on-device vocab block was
+  /// net-negative — it distracted the small model into dropping sentence openers
+  /// and capitalization for no reliable gain. The cloud planner path (see
+  /// `process()` building `PromptBuildInput.polishVocabulary`) still injects vocab;
+  /// this drop is on-device only. `internal` (not `private`) so the regression test
+  /// can assert the assembled prompt stays vocab-free.
+  func appleIntelligenceInstructions(
     _ base: PolishInstructions
   ) -> PolishInstructions {
     var systemPrompt = base.systemPrompt
@@ -553,34 +562,6 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     systemPrompt +=
       "\nThis is speech-to-text output. Remove false starts. "
       + "Preserve the speaker's tone and formality level. If unsure about a correction, leave unchanged."
-
-    let termsCount = polishVocabulary.terms.count
-    Task {
-      await AppLogger.shared.log(
-        "AFM polish vocab inject: termsCount=\(termsCount)",
-        level: .info, category: "LLM"
-      )
-    }
-    if !polishVocabulary.terms.isEmpty {
-      if let vocab = CustomVocabularyFormatter.render(polishVocabulary.terms) {
-        let renderedChars = vocab.count
-        let preview = String(vocab.prefix(180))
-        Task {
-          await AppLogger.shared.log(
-            "AFM polish vocab rendered: chars=\(renderedChars) preview=\"\(preview)\"",
-            level: .info, category: "LLM"
-          )
-        }
-        systemPrompt += "\n\n" + vocab
-      } else {
-        Task {
-          await AppLogger.shared.log(
-            "AFM polish vocab render returned nil despite termsCount=\(termsCount)",
-            level: .info, category: "LLM"
-          )
-        }
-      }
-    }
 
     return PolishInstructions(systemPrompt: systemPrompt)
   }
