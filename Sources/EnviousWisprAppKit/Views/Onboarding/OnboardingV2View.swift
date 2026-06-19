@@ -1034,6 +1034,16 @@ private struct KeycapHotkeyView: View {
           )
           .contentShape(Rectangle())
           .onTapGesture { toggleRecording() }
+          .accessibilityElement(children: .combine)
+          .accessibilityAddTraits(.isButton)
+          .accessibilityLabel("Dictation hotkey")
+          .accessibilityValue(
+            isRecording
+              ? "Recording, press a key combination"
+              : displayLabel
+          )
+          .accessibilityHint("Activates recording. Then press the key combination you want.")
+          .accessibilityAction { toggleRecording() }
 
         // "Change" chip — overlaps top-right corner
         if !isRecording {

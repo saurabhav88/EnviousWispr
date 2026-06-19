@@ -273,6 +273,7 @@ struct AIPolishSettingsView: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Refresh available models")
+                .accessibilityLabel("Refresh available models")
               }
             }
           }
@@ -792,6 +793,7 @@ struct AIPolishSettingsView: View {
       .buttonStyle(.borderless)
       .disabled(aiAvailability.isChecking)
       .help("Check Apple Intelligence availability")
+      .accessibilityLabel("Check Apple Intelligence availability")
     }
 
     // "Why?" detail text
@@ -1071,6 +1073,7 @@ struct AIPolishSettingsView: View {
     }
     .buttonStyle(.borderless)
     .help("Re-check Ollama status")
+    .accessibilityLabel("Re-check Ollama status")
   }
 
   // MARK: - Ollama Warm-up Indicator
@@ -1096,6 +1099,7 @@ struct AIPolishSettingsView: View {
       }
       .buttonStyle(.borderless)
       .help("Couldn't prepare model. Click to retry.")
+      .accessibilityLabel("Retry preparing model")
     default:
       Button {
         guard !settings.llmModel.isEmpty else { return }
@@ -1105,6 +1109,7 @@ struct AIPolishSettingsView: View {
       }
       .buttonStyle(.borderless)
       .help("Prepare model")
+      .accessibilityLabel("Prepare model")
     }
   }
 }

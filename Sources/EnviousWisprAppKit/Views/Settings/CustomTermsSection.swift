@@ -50,6 +50,7 @@ struct CustomTermsSection: View {
                 .font(.system(size: 12))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Clear search")
           }
         }
       }
@@ -97,6 +98,7 @@ struct CustomTermsSection: View {
             }
             .buttonStyle(.plain)
             .disabled(currentPage == 0)
+            .accessibilityLabel("Previous page")
             Spacer()
             Text("Page \(currentPage + 1) of \(pageCount)")
               .font(.stHelper)
@@ -109,6 +111,7 @@ struct CustomTermsSection: View {
             }
             .buttonStyle(.plain)
             .disabled(currentPage >= pageCount - 1)
+            .accessibilityLabel("Next page")
           }
         }
       }
