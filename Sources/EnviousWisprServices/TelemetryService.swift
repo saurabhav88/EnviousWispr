@@ -123,7 +123,7 @@ public final class TelemetryService {
 
   public func appLaunched(
     version: String, build: String, osVersion: String, hardware: String, isFreshInstall: Bool,
-    aiAvailable: Bool
+    aiCapable: Bool, aiEnabled: Bool
   ) {
     PostHogSDK.shared.capture(
       "app.launched",
@@ -133,7 +133,8 @@ public final class TelemetryService {
         "os_version": osVersion,
         "hardware": hardware,
         "is_fresh_install": isFreshInstall,
-        "ai_available": aiAvailable,
+        "ai_capable": aiCapable,
+        "ai_enabled": aiEnabled,
       ])
   }
 

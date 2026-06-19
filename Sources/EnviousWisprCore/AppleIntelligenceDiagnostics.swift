@@ -109,6 +109,29 @@ public struct AIGateSet: Sendable, Codable {
   }
 }
 
+// MARK: - Launch Availability Snapshot
+
+/// Synchronous launch-time Apple Intelligence facts for the `app.launched`
+/// telemetry event. Domain facts, not telemetry-shaped: the call site maps
+/// `isCapable` -> `ai_capable` and `isEnabled` -> `ai_enabled`. Produced by
+/// `AppleIntelligenceDiagnosticsService.launchSnapshot()`.
+public struct LaunchAvailabilitySnapshot: Sendable {
+  /// `hw.machine` (e.g. "arm64"). Live sysctl, always real — never "unknown" via a missing cache.
+  public let hardwareClass: String
+  /// Framework compiled in AND macOS 26+ AND the device is hardware-eligible (NOT
+  /// `.deviceNotEligible`): the device CAN run Apple Intelligence. The user may
+  /// still have it switched off or the model may be downloading — see `isEnabled`.
+  public let isCapable: Bool
+  /// `SystemLanguageModel.default.availability == .available`: eligible + enabled + model-ready right now.
+  public let isEnabled: Bool
+
+  public init(hardwareClass: String, isCapable: Bool, isEnabled: Bool) {
+    self.hardwareClass = hardwareClass
+    self.isCapable = isCapable
+    self.isEnabled = isEnabled
+  }
+}
+
 // MARK: - Availability Report
 
 /// Structured diagnostic report for Apple Intelligence availability.
