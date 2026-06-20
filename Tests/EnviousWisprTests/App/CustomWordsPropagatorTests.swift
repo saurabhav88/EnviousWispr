@@ -156,7 +156,7 @@ struct CustomWordsPropagatorTests {
   // MARK: - Integration: wireCustomWords with both consumer lists
 
   @Test(
-    "Integration — wireCustomWords seeds 2 corrector spies + 3 polish spies, coordinator broadcast reaches all"
+    "Integration — wireCustomWords seeds 2 corrector spies + 2 polish spies, coordinator broadcast reaches all"
   )
   func wireCustomWordsIntegration() {
     let coordinator = CustomWordsCoordinator()
@@ -166,7 +166,7 @@ struct CustomWordsPropagatorTests {
     ]
 
     let correctorSpies: [CorrectorSpy] = (0..<2).map { _ in CorrectorSpy() }
-    let polishSpies: [PolishSpy] = (0..<3).map { _ in PolishSpy() }
+    let polishSpies: [PolishSpy] = (0..<2).map { _ in PolishSpy() }
     let propagator = CustomWordsPropagator()
 
     wireCustomWords(

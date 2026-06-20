@@ -100,6 +100,10 @@ import Testing
   ///   proactive update checks for a never-foregrounded user. Data-free; holds
   ///   only the path monitor + wake latch (issue-1019 §3b). A narrow new home
   ///   keeping the composition root thin per `no-appcontainer`.
+  /// - 30 → 29 in #1106 (2026-06-19): removed the re-polish feature.
+  ///   `transcriptWorkflowCoordinator` collapsed into a direct
+  ///   `transcriptCoordinator` env injection (net zero — a rename), and
+  ///   `polishService` dropped (−1). Lower-is-free.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
@@ -213,7 +217,7 @@ import Testing
   /// (`EnviousWisprASR`, `EnviousWisprAudio`, `EnviousWisprLLM`,
   /// `EnviousWisprPipeline`). This is the deliberate consequence of making
   /// `EnviousWisprApp` the construction root: it now builds `AudioCaptureProxy`,
-  /// `ASRManagerProxy`, both pipelines, `TranscriptPolishService`,
+  /// `ASRManagerProxy`, both pipelines,
   /// `LLMModelDiscoveryCoordinator`, etc. — the construction that used to live
   /// in the former root-state initializer. A composition root importing the modules it
   /// composes is correct; the anti-coupling intent is satisfied by the

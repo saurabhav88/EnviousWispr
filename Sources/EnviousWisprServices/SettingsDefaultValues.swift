@@ -52,6 +52,11 @@ enum SettingsDefaultValues {
   // surprise emoji, just gain the explicit-trigger capability.
   static let emojiFormatterEnabled = true
 
+  // #1063: crash-recovery audio safety copy. Default ON — every recording is
+  // protected by an encrypted, auto-deleted-on-success spool. Off means never
+  // persist audio (the privacy-strict choice).
+  static let crashRecoveryEnabled = true
+
   static let isDebugModeEnabled = false
   static let debugLogLevel: DebugLogLevel = .info
   static let useExtendedThinking = false

@@ -49,23 +49,17 @@ struct BackendSwitchGuardTests {
     )
 
     let transcriptStore = TranscriptStore()
-    let keychain = KeychainManager()
 
     let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audioCapture, asrManager: asrManager, store: transcriptStore)
     let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audioCapture, store: transcriptStore)
-    let polishService = TranscriptPolishService(
-      keychainManager: keychain,
-      transcriptStore: transcriptStore
-    )
     let hotkeyService = HotkeyService()
     let whisperKitSetup = WhisperKitSetupService()
 
     let sync = PipelineSettingsSync(
       kernelDriver: pipeline,
       whisperKitKernelDriver: whisperKitKernelDriver,
-      polishService: polishService,
       audioCapture: audioCapture,
       asrManager: asrManager,
       hotkeyService: hotkeyService,

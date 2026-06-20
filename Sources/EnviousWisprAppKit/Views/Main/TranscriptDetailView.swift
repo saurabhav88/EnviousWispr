@@ -8,7 +8,7 @@ struct TranscriptDetailView: View {
   @Environment(PermissionsService.self) private var permissions
   @Environment(SettingsManager.self) private var settings
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
-  @Environment(TranscriptWorkflowCoordinator.self) private var transcriptWorkflowCoordinator
+  @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -43,21 +43,10 @@ struct TranscriptDetailView: View {
             ? "Paste into active app"
             : "Accessibility permission required for paste")
 
-        if transcript.polishedText == nil && settings.llmProvider != .none {
-          Button {
-            Task { await transcriptWorkflowCoordinator.polishTranscript(transcript) }
-          } label: {
-            Label("Enhance", systemImage: "sparkles")
-          }
-          .controlSize(.small)
-          .disabled(transcriptWorkflowCoordinator.polishingTranscriptID != nil)
-          .help("Polish with AI")
-        }
-
         Spacer()
 
         Button(role: .destructive) {
-          transcriptWorkflowCoordinator.transcriptCoordinator.delete(transcript)
+          transcriptCoordinator.delete(transcript)
         } label: {
           Image(systemName: "trash")
         }
@@ -99,20 +88,6 @@ struct TranscriptDetailView: View {
               .font(.body)
               .textSelection(.enabled)
               .frame(maxWidth: .infinity, alignment: .leading)
-          }
-
-          if let enhError = transcriptWorkflowCoordinator.lastEnhancementError,
-            enhError.transcriptID == transcript.id
-          {
-            HStack(spacing: 6) {
-              Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-              Text("AI polish failed: \(enhError.message)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-            .padding(8)
-            .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
           }
         }
         .padding()
