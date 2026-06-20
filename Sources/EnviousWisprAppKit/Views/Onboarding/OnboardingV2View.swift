@@ -776,7 +776,9 @@ private struct PermissionsPhaseView: View {
       // report yields an actionable reason (Apple Intelligence off, or pre-26).
       // nil report or nil notice → nothing renders (load-bearing safe default).
       // It sits below the required rows and NEVER affects the Continue gate.
-      if let notice = aiAvailability.latestReport?.onboardingPolishNotice {
+      // #1100: reads the coordinator's display accessor (real report in release;
+      // a DEBUG override can force a state for onboarding validation).
+      if let notice = aiAvailability.onboardingPolishNoticeForDisplay {
         AIPolishNoticeSection(notice: notice) {
           viewModel.openAppleIntelligenceSettings()
         }

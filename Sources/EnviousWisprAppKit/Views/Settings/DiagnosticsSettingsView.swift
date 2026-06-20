@@ -12,6 +12,11 @@ struct DiagnosticsSettingsView: View {
   // PR-B.2 of #763: "Restart Onboarding" reaches the window coordinator
   // through the environment instead of an `NSApp.delegate` downcast.
   @Environment(AppWindowCoordinator.self) private var appWindowCoordinator
+  // #1100: drives the DEBUG-only "Simulate AI polish state" picker below.
+  // DEBUG-gated so release carries no extra environment dependency here.
+  #if DEBUG
+    @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
+  #endif
 
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
   /// environment (see `AppEnvironmentKeys.swift`).
@@ -19,6 +24,9 @@ struct DiagnosticsSettingsView: View {
 
   var body: some View {
     @Bindable var settings = settings
+    #if DEBUG
+      @Bindable var aiAvailability = aiAvailability
+    #endif
 
     SettingsContentView {
       // ── Debug Mode ────────────────────────────────────────────────────
@@ -40,6 +48,28 @@ struct DiagnosticsSettingsView: View {
               }
             }
           }
+          #if DEBUG
+            // #1100: force the onboarding Apple Intelligence note to a given
+            // state so it can be validated on a Mac where Apple Intelligence is
+            // actually available. Pair with "Restart Onboarding…" below.
+            BrandedRow {
+              VStack(alignment: .leading, spacing: 4) {
+                Picker(
+                  "Simulate AI polish state",
+                  selection: $aiAvailability.debugForcedNotice
+                ) {
+                  ForEach(AIAvailabilityCoordinator.DebugForcedNotice.allCases) { state in
+                    Text(state.label).tag(state)
+                  }
+                }
+                Text(
+                  "Forces the onboarding Apple Intelligence note. Pair with \"Restart Onboarding…\" to see each state. Debug builds only."
+                )
+                .font(.stHelper)
+                .foregroundStyle(.stTextTertiary)
+              }
+            }
+          #endif
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 4) {
               Button("Restart Onboarding…") {
