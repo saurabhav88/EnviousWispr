@@ -6,10 +6,10 @@ import Foundation
 //
 // Recovery must run the SAME post-ASR text chain a live dictation runs
 // (word correction -> filler removal -> emoji -> inverse text normalization ->
-// LLM polish), but OUTSIDE the live kernel. The chain's runner and steps are
-// internal to Pipeline and `TranscriptPolishService` only runs the polish step,
-// so neither is reusable from the App layer. This is the small PUBLIC seam that
-// reuses the internal `TextProcessingRunner` + the same five step instances.
+// LLM polish -> emoji restore), but OUTSIDE the live kernel. The chain's runner
+// and steps are internal to Pipeline and not reusable from the App layer, so
+// this is the small PUBLIC seam that reuses the internal `TextProcessingRunner`
+// + the same six step instances.
 //
 // It is a limb of a limb: a recovered transcript that fails to polish lands as
 // raw text (the raw-fallback contract), exactly like a live dictation whose
@@ -34,7 +34,7 @@ public struct RecoveryTextOutcome: Sendable {
   public var displayText: String { polishedText ?? text }
 }
 
-/// Runs the standard five-step post-ASR text chain on a recovered transcript.
+/// Runs the standard six-step post-ASR text chain on a recovered transcript.
 @MainActor
 public final class RecoveryTextProcessor {
   private let steps: LimbSteps
@@ -49,16 +49,20 @@ public final class RecoveryTextProcessor {
     keychainManager: KeychainManager, outputClassifierHolder: OutputClassifierHolder? = nil
   ) {
     let llmPolish = LLMPolishStep(keychainManager: keychainManager)
-    // Standalone, like TranscriptPolishService: no live-pipeline callbacks.
+    // Standalone (no live kernel attached): no streaming/lifecycle callbacks.
     llmPolish.onWillProcess = nil
     llmPolish.onToken = nil
     llmPolish.outputClassifierHolder = outputClassifierHolder
+    // `emojiRestore` is the final limb (#761): always-on and data-driven, it
+    // no-ops unless the recovered take polished under Apple Intelligence and a
+    // glyph was dropped, so it needs no settings from the snapshot.
     self.steps = LimbSteps(
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),
-      llmPolish: llmPolish)
+      llmPolish: llmPolish,
+      emojiRestore: EmojiRestoreStep())
     self.runner = TextProcessingRunner()
   }
 
@@ -82,8 +86,8 @@ public final class RecoveryTextProcessor {
     // Reasoning setting at record time, so a reasoning-capable provider replays
     // under the same setting the live dictation used (Codex PR0 P2).
     steps.llmPolish.useExtendedThinking = snapshot.useExtendedThinking
-    // No persisted language-detection result for a recovered take (mirrors
-    // TranscriptPolishService); the planner treats nil detection safely.
+    // No persisted language-detection result for a recovered take; the planner
+    // treats nil detection safely.
     steps.llmPolish.languageDetection = nil
     // `polishInstructions` is intentionally left at the step default: the live
     // value (`SettingsManager.activePolishInstructions`) is the constant
@@ -116,7 +120,7 @@ public final class RecoveryTextProcessor {
         targetAppName: targetAppName,
         steps: [
           steps.wordCorrection, steps.fillerRemoval, steps.emojiFormatter,
-          steps.inverseTextNormalization, steps.llmPolish,
+          steps.inverseTextNormalization, steps.llmPolish, steps.emojiRestore,
         ])
       return RecoveryTextOutcome(
         text: result.context.text,

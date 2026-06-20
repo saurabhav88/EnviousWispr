@@ -123,6 +123,24 @@ struct EmojiRestorerTests {
     #expect(r.text == "Love you \u{2764} so much.")
   }
 
+  @Test("Skin-tone variant: a de-toned keep is a no-op; a true drop restores the tone verbatim")
+  func skinToneVariantNormalizationAndVerbatimRestore() {
+    // Match keys strip the skin-tone modifier (👍🏽 == 👍), so a glyph AFM keeps but
+    // de-tones is detected as KEPT and never re-inserted as a toned duplicate.
+    let kept = restorer.restore(
+      polished: "Nice work \u{1F44D} everyone.",
+      prePolish: "Nice work \u{1F44D}\u{1F3FD} everyone.")
+    #expect(kept.dropped == 0)
+    #expect(kept.text == "Nice work \u{1F44D} everyone.")
+    // Restore is verbatim from the pre-polish slice, so a glyph AFM drops outright
+    // comes back WITH its tone — the kept-but-de-toned case above is the only lossy one.
+    let dropped = restorer.restore(
+      polished: "Nice work everyone.",
+      prePolish: "Nice work \u{1F44D}\u{1F3FD} everyone.")
+    #expect(dropped.dropped == 1)
+    #expect(dropped.text == "Nice work \u{1F44D}\u{1F3FD} everyone.")
+  }
+
   @Test("Intra-token dots (URL, decimal) don't mis-scope the anchor")
   func intraTokenDotsKeepAnchor() {
     let url = restorer.restore(

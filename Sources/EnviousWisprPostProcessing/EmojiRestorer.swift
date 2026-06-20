@@ -60,8 +60,13 @@ public struct EmojiRestorer: Sendable {
       || (0x2300...0x23FF).contains(v)
   }
 
-  /// Normalize a glyph for kept-vs-dropped matching: strip VS16 + skin tone so
-  /// `❤️`==`❤` and `👍🏽`==`👍`. Restore stays verbatim.
+  /// Normalize a glyph for kept-vs-dropped matching ONLY: strip VS16 + skin tone
+  /// so `❤️`==`❤` and `👍🏽`==`👍`. Restore is always verbatim from the pre-polish
+  /// slice, so a glyph AFM drops outright comes back with its tone intact. The
+  /// strip is deliberate: when AFM keeps an emoji but de-tones it (`👍🏽`->`👍`),
+  /// matching on the base treats it as KEPT, so we leave AFM's glyph instead of
+  /// inserting a toned duplicate beside it. The only lossy case is that
+  /// kept-but-de-toned variant; a true drop never loses the tone.
   private static func matchKey(_ glyph: String) -> String {
     var out = String.UnicodeScalarView()
     for s in glyph.unicodeScalars {
