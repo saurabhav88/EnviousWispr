@@ -142,7 +142,10 @@ final class HeartPathTelemetryEmitter {
       "capture_session.reason_label": ctx.reasonLabel ?? NSNull(),
       "capture_session.error_domain": ctx.errorDomain ?? NSNull(),
       "capture_session.error_code": ctx.errorCode.map { $0 } ?? NSNull(),
-      "capture_session.error_description": ctx.errorDescription ?? NSNull(),
+      // #1095: the raw OS `errorDescription` (a free-form `localizedDescription`)
+      // is intentionally NOT emitted — `error_domain` + `error_code` above carry
+      // the error identity content-free. The field stays on the context for the
+      // error's own `errorDescription` (HeartPathError), not for telemetry.
       "capture.is_actively_capturing": ctx.isActivelyCapturing,
       "capture_session_id": Int(ctx.sessionID),
     ]

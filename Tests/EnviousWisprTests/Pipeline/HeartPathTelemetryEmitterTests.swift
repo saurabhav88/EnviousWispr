@@ -107,7 +107,7 @@ struct HeartPathTelemetryEmitterTests {
     "capture_session.reason_label",
     "capture_session.error_domain",
     "capture_session.error_code",
-    "capture_session.error_description",
+    // #1095: capture_session.error_description (raw OS string) no longer emitted.
     "capture.is_actively_capturing",
     "capture_session_id",
   ]

@@ -143,7 +143,7 @@ public enum SentryBreadcrumb {
     tags: [String: String] = [:]
   ) {
     let event = Event(level: .error)
-    event.message = SentryMessage(formatted: "\(category.rawValue): \(error.localizedDescription)")
+    event.message = SentryMessage(formatted: "\(category.rawValue): \(Self.structuredDescriptor(error))")
     var eventTags = [
       "pipeline.stage": stage,
       "error.category": category.rawValue,
@@ -177,6 +177,18 @@ public enum SentryBreadcrumb {
     } else {
       SentrySDK.capture(event: event)
     }
+  }
+
+  /// Structural, content-free descriptor for an error: `"<domain>#<code>"`.
+  /// Used in the captured event's `message` instead of `error.localizedDescription`,
+  /// which on framework errors can interpolate arbitrary OS strings. Domain and
+  /// code are framework identifiers (e.g. `AVFoundationErrorDomain#-11800`), never
+  /// user content — so dictation text can never reach the message surface, even if
+  /// a future error type interpolated a transcript into its `localizedDescription`.
+  /// See #1095. `internal` (not `private`) so the redaction tripwire can pin it.
+  nonisolated static func structuredDescriptor(_ error: any Error) -> String {
+    let ns = error as NSError
+    return "\(ns.domain)#\(ns.code)"
   }
 
   private static func mergedExtra(_ extra: [String: Any]?) -> [String: Any]? {
