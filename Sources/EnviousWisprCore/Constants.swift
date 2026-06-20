@@ -75,6 +75,40 @@ public enum AudioConstants {
 
 }
 
+// MARK: - Crash-Recovery Constants
+
+/// Tuning + format constants for the crash-recovery audio spool (#1063). A
+/// recording is streamed to an encrypted, append-only `.ewrec` file while
+/// recording so a crash / OS memory-kill / kernel panic / power loss mid-take
+/// is recoverable on the next launch. Proposed flush/watermark values; tuned
+/// with empirical evidence in PR1/PR3.
+public enum RecoveryConstants {
+  /// Subdirectory of Application Support holding spool files.
+  public static let spoolDirectoryName = "audio_recovery"
+  /// File extension for a spool file (named `<recoverySessionID>.ewrec`).
+  public static let fileExtension = "ewrec"
+  /// On-disk format version recorded in the header.
+  public static let formatVersion = 1
+
+  /// AES-256 key length in bytes.
+  public static let aesKeyByteCount = 32
+  /// Reserved nonce counter for the header settings block; audio/marker frames
+  /// start at `firstFrameNonceCounter`, so no nonce is reused under one key.
+  public static let settingsNonceCounter: UInt64 = 0
+  /// First nonce counter used by an audio/marker frame.
+  public static let firstFrameNonceCounter: UInt64 = 1
+
+  /// Audio chunk cadence — how often captured samples are flushed to a frame.
+  public static let chunkIntervalSeconds: Double = 1.0
+  /// Durable-checkpoint cadence (fsync). Also the power-loss tail-loss bound.
+  public static let flushIntervalSeconds: Double = 3.0
+  /// Stop spooling when free space drops below this, so recovery never consumes
+  /// the last disk the heart path needs (History save / ASR temp / model cache).
+  public static let lowDiskWatermarkBytes: Int64 = 1_500_000_000
+  /// Orphan spools older than this are purged on launch (TTL backstop).
+  public static let retentionDays = 30
+}
+
 // MARK: - Timing Constants
 
 public enum TimingConstants {

@@ -130,6 +130,17 @@ public struct Transcript: Codable, Identifiable, Sendable {
   public let llmProvider: String?
   public let llmModel: String?
   public var metrics: ExecutionMetrics?
+  /// Links a transcript to its crash-recovery spool (the durable kernel
+  /// `SessionID`). On a live transcript it lets the recovery scan dedup — a
+  /// spool whose id already appears in History is deleted, never re-transcribed.
+  /// On a recovered transcript it records which spool produced it. Optional for
+  /// decode-safety: pre-#1063 JSON has no key and decodes to nil (synthesized
+  /// Codable, no custom decode). #1063.
+  public let recoverySessionID: String?
+  /// True when this transcript was reconstructed from a recovered recording
+  /// after an abnormal exit — drives the History "Recovered" badge. Optional so
+  /// legacy JSON decodes to nil (treated as not-recovered). #1063.
+  public let isRecovered: Bool?
 
   public init(
     id: UUID = UUID(),
@@ -142,7 +153,9 @@ public struct Transcript: Codable, Identifiable, Sendable {
     createdAt: Date = Date(),
     llmProvider: String? = nil,
     llmModel: String? = nil,
-    metrics: ExecutionMetrics? = nil
+    metrics: ExecutionMetrics? = nil,
+    recoverySessionID: String? = nil,
+    isRecovered: Bool? = nil
   ) {
     self.id = id
     self.text = text
@@ -155,6 +168,8 @@ public struct Transcript: Codable, Identifiable, Sendable {
     self.llmProvider = llmProvider
     self.llmModel = llmModel
     self.metrics = metrics
+    self.recoverySessionID = recoverySessionID
+    self.isRecovered = isRecovered
   }
 
   /// The text to display — polished if available, otherwise raw.

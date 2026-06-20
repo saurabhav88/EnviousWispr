@@ -29,6 +29,7 @@ public final class SettingsManager {
     case wordCorrectionEnabled
     case fillerRemovalEnabled
     case emojiFormatterEnabled
+    case crashRecoveryEnabled
     case contactsSyncOnLaunchEnabled
     case isDebugModeEnabled
     case debugLogLevel
@@ -62,7 +63,8 @@ public final class SettingsManager {
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "pushToTalkKeyCode", "pushToTalkModifiersRaw", "modelUnloadPolicy",
     "restoreClipboardAfterPaste", "wordCorrectionEnabled", "fillerRemovalEnabled",
-    "emojiFormatterEnabled", "contactsSyncOnLaunchEnabled", "isDebugModeEnabled", "debugLogLevel",
+    "emojiFormatterEnabled", "crashRecoveryEnabled", "contactsSyncOnLaunchEnabled",
+    "isDebugModeEnabled", "debugLogLevel",
     "useExtendedThinking", "whisperKitLanguage", "languageMode",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride",
     "useStreamingASR", "warmEnginePolicy", "appearancePreference",
@@ -258,6 +260,17 @@ public final class SettingsManager {
     didSet {
       defaults.set(emojiFormatterEnabled, forKey: "emojiFormatterEnabled")
       onChange?(.emojiFormatterEnabled)
+    }
+  }
+
+  /// Crash-recovery audio safety copy (#1063). Default ON. When on, every
+  /// recording is streamed to an encrypted spool that is deleted on a clean
+  /// stop and replayed into History after an abnormal exit; off means audio is
+  /// never persisted.
+  public var crashRecoveryEnabled: Bool {
+    didSet {
+      defaults.set(crashRecoveryEnabled, forKey: "crashRecoveryEnabled")
+      onChange?(.crashRecoveryEnabled)
     }
   }
 
@@ -485,6 +498,9 @@ public final class SettingsManager {
     emojiFormatterEnabled =
       defaults.object(forKey: "emojiFormatterEnabled") as? Bool
       ?? SettingsDefaultValues.emojiFormatterEnabled
+    crashRecoveryEnabled =
+      defaults.object(forKey: "crashRecoveryEnabled") as? Bool
+      ?? SettingsDefaultValues.crashRecoveryEnabled
     isDebugModeEnabled =
       defaults.object(forKey: "isDebugModeEnabled") as? Bool
       ?? SettingsDefaultValues.isDebugModeEnabled
