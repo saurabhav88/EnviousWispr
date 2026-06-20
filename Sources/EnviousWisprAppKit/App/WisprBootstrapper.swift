@@ -283,7 +283,6 @@ public final class WisprBootstrapper {
 
     let navigationCoordinator = NavigationCoordinator()
     let diagnosticsCoordinator = DiagnosticsCoordinator()
-    let recoveryCoordinator = RecoveryCoordinator()
 
     // PR4 of #763 construction-order constraint preserved: LanguageSuggestionPresenter
     // captures `recordingOverlay` through narrow closures.
@@ -350,6 +349,51 @@ public final class WisprBootstrapper {
       audioCapture: audioCapture,
       asrManager: asrManager
     )
+    // #1063 PR2: crash-recovery owner. The per-orphan replayer (decrypt →
+    // transcribe → polish → save) is built from existing app deps; the coordinator
+    // owns the launch scan, the recording gate, dedup, and cleanup routing. The
+    // key store + spool-store factory are shared so arm/recover/cleanup agree on
+    // backend + paths.
+    let recoveryKeyStore = RecoveryKeyStore()
+    let makeRecoverySpoolStore: @Sendable () -> RecoverySpoolStore = { RecoverySpoolStore() }
+    let recoverySpoolReplayer = RecoverySpoolReplayer(
+      asrManager: asrManager,
+      keyStore: recoveryKeyStore,
+      makeSpoolStore: makeRecoverySpoolStore,
+      transcriptStore: transcriptStore,
+      transcriptCoordinator: transcriptCoordinator,
+      keychainManager: keychainManager,
+      outputClassifierHolder: outputClassifierHolder,
+      // Best-effort: the snapshot carries only the custom-words version, so recovery
+      // applies the user's CURRENT words (pack terms omitted) — normal-quality, not
+      // byte-exact. `+ 1` keeps the cache generation non-zero so terms take effect.
+      currentVocabulary: { [customWordsCoordinator] in
+        LanePartitioner.split(
+          customWordsCoordinator.customWords,
+          generation: UInt64(customWordsCoordinator.customWords.count) &+ 1)
+      })
+    let recoveryCoordinator = RecoveryCoordinator(
+      keyStore: recoveryKeyStore,
+      makeSpoolStore: makeRecoverySpoolStore,
+      replayer: recoverySpoolReplayer,
+      existingRecoveryIDs: { [transcriptStore] in
+        let all = (try? await transcriptStore.loadAll()) ?? []
+        return Set(all.compactMap(\.recoverySessionID))
+      },
+      isDictationActive: { [liveRecordingState] in liveRecordingState.isDictationActive },
+      // Discard hard-resets the shared engine (#445 service-kill) so an in-flight,
+      // otherwise-uncancellable recovery transcribe returns at once and the next
+      // recording gets a clean engine.
+      resetEngine: { [asrManager] in asrManager.cancelInFlightLoad() })
+    // #1063 PR2: the "recovering" pill's Discard action.
+    recordingOverlay.setDiscardRecoveryHandler { [weak recoveryCoordinator] in
+      recoveryCoordinator?.discardActiveRecovery()
+    }
+    // #1063 PR2: block a Speech-Engine switch while recovery replays on the shared
+    // engine (a switch mid-recovery would unload the model and lose the spool).
+    settingsSync.isRecovering = { [weak recoveryCoordinator] in
+      recoveryCoordinator?.isRecovering ?? false
+    }
     let lastRecordingResult = LastRecordingResult()
     let backendMetadata = BackendMetadata(
       settings: settings,
@@ -563,10 +607,10 @@ public final class WisprBootstrapper {
 
   public func applicationDidFinishLaunching() {
     appLifecycleCoordinator.runDidFinishLaunching()
-    // #1063 PR1: sweep any orphan crash-recovery spools + keys left by a prior
-    // run. PR1 does not recover yet (that is PR2) — purging keeps zero
-    // recoverable audio on disk. Off-main, fire-and-forget.
-    recoveryCoordinator.purgeOrphansOnLaunch()
+    // #1063 PR2: scan for orphan crash-recovery spools and recover them behind the
+    // blocking "recovering" pill (replaces PR1's purge). Strict limb, single-flight,
+    // one attempt per orphan. No-orphan launch is byte-identical to today.
+    Task { await recoveryCoordinator.scanAndRecover() }
   }
 
   public func applicationDidBecomeActive() {

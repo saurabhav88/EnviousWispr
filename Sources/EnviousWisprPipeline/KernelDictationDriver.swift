@@ -139,6 +139,42 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   private var lastFiredState: PipelineState
 
+  /// #1063 PR2 — fires when the kernel reaches a NON-`.completed` terminal,
+  /// carrying this session's `recoverySessionID` (captured from `context.config`
+  /// BEFORE the terminal cleanup nulls it) and the terminal KIND (discard vs
+  /// failure). The App's `DictationLifecycleCoordinator` routes it to
+  /// `RecoveryCoordinator` so a discarded recording's spool is deleted and a
+  /// failed recording's spool is RETAINED for next-launch recovery. Distinct
+  /// from `onStateChange` (which fires the externalError-pinnable public
+  /// `PipelineState`): this keys off the RAW kernel terminal, so it never fires
+  /// for `.completed` (a durable save already ran) and the error pin can't
+  /// trigger it. `@MainActor` closure, off the collaborator cap; default no-op
+  /// keeps the Pipeline recovery-unaware. The first param is the optional
+  /// `recoverySessionID` (nil when recovery was off for the take).
+  @ObservationIgnored
+  public var onSessionEndedWithoutSave: (@MainActor (String?, RecordingTerminalKind) -> Void)?
+
+  /// Fire-once latch for `onSessionEndedWithoutSave` (sibling to `lastFiredState`).
+  /// Tracks the last RAW `kernel.state` the ended-without-save check evaluated so
+  /// a re-armed observation can't double-fire for one terminal, while two
+  /// consecutive sessions ending at the SAME terminal still each fire (the
+  /// intervening `.idle`/`.preparing`/`.recording` transitions change this value).
+  @ObservationIgnored
+  private var lastEndedWithoutSaveObservedState: RecordingSessionState
+
+  /// #1063 PR2 (Codex terminal-kind matrix) — disposition for the CURRENT
+  /// session's `.cancelled` terminal. `.cancelled` is reached by BOTH a genuine
+  /// user cancel (`RecordingFinalizer.cancel()` → `cancelRecording(disposition:
+  /// .discard)`) AND fault/system cancels that route through `kernel.cancel()`
+  /// (active `reset()`, `setExternalError()`, the settings-rebuild cancel). A user
+  /// cancel should DELETE the spool; a fault cancel should RETAIN recoverable
+  /// audio. Defaults to `.failure` (RETAIN) so any cancel NOT explicitly attributed
+  /// as a user discard conservatively keeps the audio. Set at the `cancelRecording`
+  /// call site, consumed + reset at the `.cancelled` signal fire, and reset on each
+  /// new session start.
+  @ObservationIgnored
+  private var pendingCancelDisposition: RecordingTerminalKind = .failure
+
   /// Fired by the finalizing-sub-status observer (`observeFinalizingSubStatus`)
   /// whenever the overlay's intent should refresh because of a `.transcribing`
   /// → `.polishing` flip that does NOT change the public `PipelineState` (both
@@ -184,6 +220,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     self.adapter = adapter
     self.captureErrorSink = captureErrorSink
     self.lastFiredState = Self.pipelineState(for: kernel.state, externalError: nil)
+    self.lastEndedWithoutSaveObservedState = kernel.state
   }
 
   /// Cold-boot warm-up coordinator (#879). The SINGLE shared entry every warm-up
@@ -320,7 +357,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// its own is fire-and-latch: it triggers the recording-exit path or sets
   /// `cancelRequested`, but the actual transition to `.cancelled` /
   /// `.discarded` happens on the forward path's next yield.
-  public func cancelRecording() async {
+  /// `disposition` (#1063 PR2) attributes a `.cancelled` terminal for crash
+  /// recovery: `.discard` (genuine USER cancel — delete the spool) vs the
+  /// default `.failure` (a system cancel like the noise-suppression rebuild —
+  /// RETAIN recoverable audio). The user-cancel path passes `.discard`; the
+  /// settings-rebuild caller uses the retain default.
+  public func cancelRecording(disposition: RecordingTerminalKind = .failure) async {
+    pendingCancelDisposition = disposition
     kernel.cancel()
     await awaitKernelTerminal()
   }
@@ -614,6 +657,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // closures to read at finalize time (the wiring's optional-chained
         // reads were always-nil in production until this PR — finding #6).
         lastExternalError = nil
+        // #1063 PR2: a fresh session starts with the conservative cancel
+        // disposition (RETAIN) — only a genuine user cancel during this session
+        // flips it to discard. Prevents a stale user-discard from a prior session
+        // leaking onto this session's fault-cancel.
+        pendingCancelDisposition = .failure
         outcome.transcript = nil
         outcome.polishError = nil
         outcome.rawText = nil
@@ -753,6 +801,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         guard let self else { return }
+        // #1063 PR2 — FIRST, before `clearContextConfigIfTerminalOrIdle()` nulls
+        // `context.config`: capture this session's recovery id off the still-live
+        // config and fire the ended-without-save signal on a fresh non-`.completed`
+        // terminal. Ordering is load-bearing — the id is gone after the clear.
+        self.fireSessionEndedWithoutSaveIfNeeded()
         self.clearContextConfigIfTerminalOrIdle()
         self.updateWarmRespawnLatch()
         self.fireStateChangeIfNeeded()
@@ -813,6 +866,55 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     guard mapped != lastFiredState else { return }
     lastFiredState = mapped
     onStateChange?(mapped)
+  }
+
+  /// #1063 PR2 — fire `onSessionEndedWithoutSave` when the kernel enters a fresh
+  /// non-`.completed` terminal. Reads `context.config?.recoverySessionID` BEFORE
+  /// the caller's `clearContextConfigIfTerminalOrIdle()` nulls it. The latch
+  /// (`lastEndedWithoutSaveObservedState`) is updated on EVERY transition so a
+  /// re-armed observation can't double-fire for one terminal, while back-to-back
+  /// sessions ending at the same terminal still each fire (intervening states
+  /// change the latch). `.completed` is never a signal here (its durable-save
+  /// callback owns cleanup); `.idle` and the transient states map to nil.
+  private func fireSessionEndedWithoutSaveIfNeeded() {
+    defer { lastEndedWithoutSaveObservedState = kernel.state }
+    guard kernel.state != lastEndedWithoutSaveObservedState else { return }
+    let kind: RecordingTerminalKind?
+    if kernel.state == .cancelled {
+      // `.cancelled` is ambiguous (Codex terminal-kind matrix): a genuine user
+      // cancel DELETES, but a fault/system cancel (active reset, external-error,
+      // settings rebuild) RETAINS recoverable audio. Resolve via the per-cancel
+      // disposition attributed at the `kernel.cancel()` call site; consume + reset
+      // to the conservative default so a stale user-discard can't leak to a later
+      // fault cancel.
+      kind = pendingCancelDisposition
+      pendingCancelDisposition = .failure
+    } else {
+      kind = Self.endedWithoutSaveKind(for: kernel.state)
+    }
+    guard let kind else { return }
+    onSessionEndedWithoutSave?(context.config?.recoverySessionID, kind)
+  }
+
+  /// Classify the UNAMBIGUOUS non-`.completed` terminals for the crash-recovery
+  /// cleanup signal. `.cancelled` is EXCLUDED (returns nil) — it is ambiguous
+  /// (user discard vs fault/system retain) and resolved at the fire site via
+  /// `pendingCancelDisposition`. Also nil for `.completed` (durable save ran),
+  /// `.idle`, and non-terminal states. Exhaustive so a new `RecordingSessionState`
+  /// forces a routing decision. Internal (not private) so the split is unit-tested
+  /// directly (`matcher-set-adversarial-tests`).
+  static func endedWithoutSaveKind(for s: RecordingSessionState)
+    -> RecordingTerminalKind?
+  {
+    switch s {
+    case .discarded, .noSpeech:
+      return .discard
+    case .failed, .audioInterrupted, .asrInterrupted:
+      return .failure
+    case .cancelled, .completed, .idle, .preparing, .warmingUp, .recording,
+      .stopping, .transcribing, .finalizing:
+      return nil
+    }
   }
 
   /// Arm a SECOND, separate `withObservationTracking` on

@@ -145,9 +145,72 @@ public struct RecoverySpoolStore: Sendable {
       truncated: !sawCleanFinalize)
   }
 
-  /// Delete a spool file. Idempotent — a missing file is success.
+  /// Delete a spool file AND its recovery-attempt marker (#1063 PR2). Idempotent
+  /// — a missing file is success. Deleting the spool always clears its marker so
+  /// no stale marker outlives the spool it guarded (success and abandon paths
+  /// both route here).
   public func delete(recoverySessionID: String) throws {
     let url = spoolURL(for: recoverySessionID)
+    do {
+      try FileManager.default.removeItem(at: url)
+    } catch let error as CocoaError where error.code == .fileNoSuchFile {
+      // Spool already gone — still clear any marker below.
+    }
+    try deleteAttemptMarker(for: recoverySessionID)
+  }
+
+  // MARK: - One-attempt crash-loop marker (#1063 PR2)
+
+  /// Sidecar marker path for a spool's recovery attempt (`<id>.attempt`).
+  public func attemptMarkerURL(for recoverySessionID: String) -> URL {
+    directory.appendingPathComponent(
+      "\(recoverySessionID).\(RecoveryConstants.attemptFileExtension)")
+  }
+
+  /// Whether a recovery-attempt marker exists for this spool. Present on the next
+  /// launch ⇒ a prior recovery attempt crashed the app ⇒ abandon, do not retry.
+  public func hasAttemptMarker(for recoverySessionID: String) -> Bool {
+    FileManager.default.fileExists(atPath: attemptMarkerURL(for: recoverySessionID).path)
+  }
+
+  /// Durably write the recovery-attempt marker BEFORE the risky load/transcribe
+  /// step: write a temp file, `F_FULLFSYNC` it, then atomically rename into place
+  /// (the same durable-write shape `RecoveryKeyStore.fileStore` uses), so a crash
+  /// the instant after we commit to recovering is reliably detected next launch.
+  public func writeAttemptMarker(for recoverySessionID: String) throws {
+    let url = attemptMarkerURL(for: recoverySessionID)
+    let tmpURL = directory.appendingPathComponent(
+      ".\(recoverySessionID).\(RecoveryConstants.attemptFileExtension).tmp")
+    let fm = FileManager.default
+    do {
+      let fd = Foundation.open(tmpURL.path, O_CREAT | O_WRONLY | O_TRUNC, 0o600)
+      guard fd >= 0 else { throw RecoverySpoolStoreError.attemptMarkerWriteFailed(errno) }
+      // Presence is the signal; a single byte gives fsync something to flush.
+      let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+      try handle.write(contentsOf: Data([0x31]))
+      if fcntl(fd, F_FULLFSYNC) == -1 {
+        try? handle.close()
+        try? fm.removeItem(at: tmpURL)
+        throw RecoverySpoolStoreError.attemptMarkerWriteFailed(errno)
+      }
+      try handle.close()
+      if fm.fileExists(atPath: url.path) {
+        _ = try fm.replaceItemAt(url, withItemAt: tmpURL)
+      } else {
+        try fm.moveItem(at: tmpURL, to: url)
+      }
+    } catch let error as RecoverySpoolStoreError {
+      try? fm.removeItem(at: tmpURL)
+      throw error
+    } catch {
+      try? fm.removeItem(at: tmpURL)
+      throw RecoverySpoolStoreError.attemptMarkerWriteFailed(errno)
+    }
+  }
+
+  /// Delete a spool's attempt marker. Idempotent — a missing marker is success.
+  public func deleteAttemptMarker(for recoverySessionID: String) throws {
+    let url = attemptMarkerURL(for: recoverySessionID)
     do {
       try FileManager.default.removeItem(at: url)
     } catch let error as CocoaError where error.code == .fileNoSuchFile {
@@ -208,4 +271,12 @@ public struct RecoveredSpool: Sendable {
     self.terminationReason = terminationReason
     self.truncated = truncated
   }
+}
+
+/// Errors thrown by `RecoverySpoolStore` host-side operations (#1063 PR2).
+public enum RecoverySpoolStoreError: Error, Equatable {
+  /// The one-attempt crash-loop marker could not be written durably (carries
+  /// `errno`). The caller treats this as fail-closed: skip recovering this spool
+  /// this launch rather than risk an un-guarded retry.
+  case attemptMarkerWriteFailed(Int32)
 }

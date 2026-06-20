@@ -22,6 +22,12 @@ final class PipelineSettingsSync {
   /// preload observation without coupling this layer to the composition root.
   var onNeedsPreloadObservation: (() -> Void)?
 
+  /// #1063 PR2 — true while the crash-recovery limb is replaying behind the pill.
+  /// A backend switch then would unload/reset the model mid-recovery, throwing the
+  /// in-flight transcribe and (one-attempt) deleting the spool — data loss. Set by
+  /// the composition root to `RecoveryCoordinator.isRecovering`; default no-recovery.
+  var isRecovering: () -> Bool = { false }
+
   /// Tracks the last evictable Ollama model for #295. Independent of the
   /// kernel's polish step because SettingsManager's cascading didSet can
   /// corrupt a pre-snapshot read from the polish step.
@@ -94,13 +100,19 @@ final class PipelineSettingsSync {
   func handleSettingChanged(_ key: SettingsManager.SettingKey, settings: SettingsManager) {
     switch key {
     case .selectedBackend:
-      // Don't switch backends while a pipeline is actively recording/transcribing
+      // Don't switch backends while a pipeline is actively recording/transcribing,
+      // OR while crash recovery is replaying on the shared engine (#1063 PR2) — a
+      // switch would unload/reset the model mid-recovery and lose the spool.
+      // Like the pre-existing active-pipeline case, the switch is DROPPED (not
+      // queued): the persisted `selectedBackend` and the active engine can disagree
+      // until the next change/relaunch. Recovery is short (seconds), so the window
+      // is brief; a general deferred-apply mechanism is PR3 hardening (Codex r6 P2).
       let parakeetActive = kernelDriver.state.isActive
       let whisperKitActive = whisperKitKernelDriver.state.isActive
-      if parakeetActive || whisperKitActive {
+      if parakeetActive || whisperKitActive || isRecovering() {
         Task {
           await AppLogger.shared.log(
-            "Backend switch blocked — pipeline is active",
+            "Backend switch blocked — pipeline active or recovery in progress",
             level: .info, category: "PipelineSettingsSync"
           )
         }

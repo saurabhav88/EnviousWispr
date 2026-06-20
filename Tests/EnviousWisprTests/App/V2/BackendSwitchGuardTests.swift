@@ -102,6 +102,46 @@ struct BackendSwitchGuardTests {
 
     await pipeline.cancelRecording()
   }
+
+  /// #1063 PR2: a Speech-Engine switch while crash recovery is replaying on the
+  /// shared engine must be BLOCKED — otherwise the switch unloads/resets the model
+  /// mid-recovery, throws the in-flight transcribe, and (one attempt) deletes the
+  /// spool. Both pipelines are IDLE here, so ONLY the recovery guard can block it.
+  @Test("backend switch is blocked while crash recovery is replaying")
+  func testBackendSwitchBlockedDuringRecovery() async throws {
+    let audioCapture = FakeAudioCapture()
+    let asrManager = MockASRManager(
+      transcribeBehavior: .success(
+        ASRResult(
+          text: "unused", language: "en", duration: 1, processingTime: 0.01,
+          backendType: .parakeet)))
+    let store = TranscriptStore()
+    let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
+      audioCapture: audioCapture, asrManager: asrManager, store: store)
+    let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
+      audioCapture: audioCapture, store: store)
+    let sync = PipelineSettingsSync(
+      kernelDriver: pipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
+      audioCapture: audioCapture,
+      asrManager: asrManager,
+      hotkeyService: HotkeyService(),
+      whisperKitSetup: WhisperKitSetupService()
+    )
+    #expect(!pipeline.state.isActive && !whisperKitKernelDriver.state.isActive)
+    // Simulate recovery in progress.
+    sync.isRecovering = { true }
+
+    let settings = SettingsManager()
+    settings.selectedBackend = .whisperKit
+    sync.handleSettingChanged(.selectedBackend, settings: settings)
+    try? await Task.sleep(for: .milliseconds(50))
+
+    #expect(
+      asrManager.activeBackendType == .parakeet,
+      "the switch must be dropped while recovery holds the engine (got \(asrManager.activeBackendType))"
+    )
+  }
 }
 
 @MainActor

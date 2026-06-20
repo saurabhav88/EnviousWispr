@@ -87,6 +87,12 @@ public enum RecoveryConstants {
   public static let spoolDirectoryName = "audio_recovery"
   /// File extension for a spool file (named `<recoverySessionID>.ewrec`).
   public static let fileExtension = "ewrec"
+  /// File extension for a per-spool recovery-ATTEMPT marker (#1063 PR2). Written
+  /// durably (fsync + atomic rename) BEFORE the risky load/transcribe step; its
+  /// presence on the next launch means a prior recovery attempt crashed the app,
+  /// so that spool is abandoned rather than retried (the one-attempt crash-loop
+  /// guard). Named `<recoverySessionID>.attempt`.
+  public static let attemptFileExtension = "attempt"
   /// On-disk format version recorded in the header.
   public static let formatVersion = 1
 

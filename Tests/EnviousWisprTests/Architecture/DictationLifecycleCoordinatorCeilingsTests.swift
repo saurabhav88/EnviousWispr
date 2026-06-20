@@ -97,10 +97,16 @@ import Testing
     // without a durable save, instead of leaking until launch). Still a `var`
     // closure (collaboratorCount stays ≤ 11); only the paper-line ceiling moves
     // (deterministic rule: actual 390 + 10 → round up to 400).
+    // #1063 PR2 (crash-recovery replay): raised 400 → 415. The published-state
+    // `.idle`/`.error` cleanup branch was REPLACED by wiring the driver's
+    // kernel-terminal signal (`onSessionEndedWithoutSave`, carrying the recovery
+    // id + terminal KIND) to the recovery-cleanup closure in `install()`; the
+    // closure type widened to `(String?, RecordingTerminalKind) -> Void`. No new
+    // collaborator (count stays ≤ 11). Deterministic rule: actual 404 + 10 → 415.
     #expect(
-      count <= 400,
+      count <= 415,
       """
-      DictationLifecycleCoordinator line count exceeded: \(count) > 400. \
+      DictationLifecycleCoordinator line count exceeded: \(count) > 415. \
       Raise via Bible §30 only.
       """)
   }

@@ -81,10 +81,24 @@ import Testing
     // so a dropped `.toggleRecording` can't lose the user's stop) and the PTT
     // abort-cleanup call. Only the paper-line ceiling moves (deterministic rule:
     // actual 375 + 10 → round up to 385).
+    // #1063 PR2 (crash-recovery replay): raised 385 → 420 for the third bare
+    // closure `isRecovering` (also excluded — a non-`async` `() -> Bool` closure
+    // is not a collaborator, collaboratorCount still ≤ 7), the recovery-hold gate
+    // branch added to BOTH `start()` and `toggle()` (a press while recovering
+    // shows the pill + returns, no session minted), and the id-carrying
+    // `cleanupRecoveryArm(config.recoverySessionID)` at the three abort sites. The
+    // recovery owner stays OFF this type; only the paper-line ceiling moves
+    // (deterministic rule: actual 407 + 10 → round up to 420).
+    // #1063 PR2 (Codex code-diff r2 P2): raised 420 → 440 for the post-arm recovery
+    // re-checks in BOTH `start()` and `toggle()` — the top-of-method `isRecovering`
+    // gate can go stale across the prewarm/arm awaits, so a second check before the
+    // kernel dispatch bails (no session) if launch recovery began mid-start. Still
+    // no new collaborator (count stays ≤ 7); only the paper-line ceiling moves
+    // (deterministic rule: actual 430 + 10 → round up to 440).
     #expect(
-      count <= 385,
+      count <= 440,
       """
-      RecordingStarter line count exceeded: \(count) > 385. \
+      RecordingStarter line count exceeded: \(count) > 440. \
       Raise via Bible §30 only.
       """)
   }

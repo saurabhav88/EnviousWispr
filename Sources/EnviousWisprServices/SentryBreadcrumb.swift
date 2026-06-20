@@ -276,9 +276,20 @@ public enum SentryBreadcrumb {
     case inverseNormalizationTimeout = "inverse_normalization_timeout"
     /// #1063 PR1: the crash-recovery limb could not arm because its per-session
     /// key failed to generate/persist. Non-crash — the recording is byte-identical;
-    /// only the safety copy is absent for that take. (Recovery-side failures —
-    /// decrypt/transcribe — land in PR2 when the recovery read-flow exists.)
+    /// only the safety copy is absent for that take.
     case recoveryKeyStoreFailed = "recovery_key_store_failed"
+    /// #1063 PR2: a recovered spool failed to decrypt (missing key, cipher
+    /// mismatch, or an empty/torn prefix). Non-crash limb — the orphan is deleted
+    /// and the user sees "couldn't recover."
+    case recoveryDecryptFailed = "recovery_decrypt_failed"
+    /// #1063 PR2: transcribing a recovered spool returned empty or threw. Non-crash
+    /// limb (one attempt) — the orphan is deleted and the user sees "couldn't
+    /// recover."
+    case recoveryTranscribeFailed = "recovery_transcribe_failed"
+    /// #1063 PR2: a spool whose attempt marker was already present on launch — a
+    /// prior recovery attempt crashed the app — so it is abandoned (deleted, never
+    /// retried) by the one-attempt crash-loop guard rather than risking a loop.
+    case recoveryAbandonedAfterAttempt = "recovery_abandoned_after_attempt"
     /// #761: the deterministic post-polish emoji-restore guard re-inserted fewer
     /// glyphs than AFM dropped (`restored < dropped`). Impossible by construction
     /// — every dropped glyph is re-inserted — so this fires only on a regression.

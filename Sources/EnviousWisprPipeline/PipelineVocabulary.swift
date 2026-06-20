@@ -63,6 +63,27 @@ public enum OverlayIntent: Equatable, Sendable {
   /// again. Auto-dismissed after about 1.5 seconds. Never fired at launch when
   /// no cold press preceded it.
   case engineReady
+  /// Crash-recovery hold notice (#1063 PR2). Shown when the user presses to
+  /// record while the one leftover recording from a prior abnormal exit is
+  /// backfilling behind the shared engine — exactly the cold-engine
+  /// `.cachingModel` shape, plus a Discard affordance for "I don't want to
+  /// wait." No session is minted. Auto-dismissed after a few seconds; re-shown
+  /// on each blocked press.
+  case recoveringLastRecording
+}
+
+/// Why a recording ended at a terminal state WITHOUT a durable transcript save,
+/// classified for the crash-recovery cleanup signal (#1063 PR2). Derived from
+/// the kernel's terminal `RecordingSessionState` by `KernelDictationDriver`.
+///
+/// - `discard`: the user (or the absence of speech) ended it — `.cancelled`,
+///   `.discarded`, `.noSpeech`. Nothing worth recovering: delete the spool now.
+/// - `failure`: a pipeline / audio / engine fault ended it — `.failed`,
+///   `.audioInterrupted`, `.asrInterrupted`. The captured audio is the user's
+///   words they wanted: RETAIN the spool so it is recovered on the next launch.
+public enum RecordingTerminalKind: Equatable, Sendable {
+  case discard
+  case failure
 }
 
 /// Issue #285 — heart-path telemetry callbacks that the former root state routes to

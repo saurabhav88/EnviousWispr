@@ -444,6 +444,60 @@ public final class TelemetryService {
       ])
   }
 
+  // MARK: - Crash-recovery (#1063 PR2)
+  //
+  // Privacy: state/counts/buckets only — never transcript text, audio, or
+  // filenames (telemetry-privacy boundary). Durations are bucketed, not exact.
+
+  /// At least one recoverable orphan was found on launch, so recovery ran behind
+  /// the blocking pill. `count` is how many leftover recordings will backfill.
+  public func recoveryFound(count: Int) {
+    PostHogSDK.shared.capture("recovery.found", properties: ["count": count])
+  }
+
+  /// One leftover recording finished its recovery attempt. `outcome` is one of
+  /// `recovered` / `discarded` / `failed` / `abandoned`; `reason` tags a failure
+  /// (`decrypt` / `transcribe` / `empty`); durations are bucketed; `polishFellBack`
+  /// is true when the recovered text landed raw (polish skipped/failed).
+  public func recoveryCompleted(
+    outcome: String,
+    reason: String? = nil,
+    recoveredSeconds: Int? = nil,
+    spoolSeconds: Int? = nil,
+    polishFellBack: Bool? = nil
+  ) {
+    var properties: [String: Any] = ["outcome": outcome]
+    if let reason { properties["reason"] = reason }
+    if let recoveredSeconds {
+      properties["recovered_seconds_bucket"] = Self.recoverySecondsBucket(recoveredSeconds)
+    }
+    if let spoolSeconds {
+      properties["spool_seconds_bucket"] = Self.recoverySecondsBucket(spoolSeconds)
+    }
+    if let polishFellBack { properties["polish_fell_back"] = polishFellBack }
+    PostHogSDK.shared.capture("recovery.completed", properties: properties)
+  }
+
+  /// A record-press landed while recovery held the engine, so NO session was
+  /// minted (the user saw the "recovering" pill). Mirrors `coldstart.press_blocked`.
+  public func recoveryPressBlocked(asrBackend: String) {
+    PostHogSDK.shared.capture(
+      "recovery.press_blocked", properties: ["asr_backend": asrBackend])
+  }
+
+  /// Coarse duration bucket (seconds) for recovery telemetry — keeps exact
+  /// lengths off the wire while preserving short/medium/long signal.
+  private static func recoverySecondsBucket(_ seconds: Int) -> String {
+    switch seconds {
+    case ..<10: return "0-10"
+    case ..<30: return "10-30"
+    case ..<60: return "30-60"
+    case ..<180: return "60-180"
+    case ..<600: return "180-600"
+    default: return "600+"
+    }
+  }
+
   public func asrCompleted(
     backend: String, result: String, coldStart: Bool, latencySeconds: Double, charCount: Int,
     // #950 tail-trim diagnostic — eligible Parakeet batch only; nil omitted.

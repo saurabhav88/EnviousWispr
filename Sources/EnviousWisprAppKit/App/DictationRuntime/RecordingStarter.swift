@@ -43,10 +43,20 @@ final class RecordingStarter {
   /// recording — a PTT release or a concurrent-toggle stop landing in the arm
   /// window. Those paths mint no kernel session, so no terminal pipeline state
   /// fires to drive the lifecycle coordinator's cleanup; the start path must
-  /// trigger it directly. Bare closure (off the collaborator cap); bound to
-  /// `RecoveryCoordinator.handleRecordingEndedWithoutDurableSave`. Default no-op.
-  /// (#1063 PR1, Codex r3.)
-  let cleanupRecoveryArm: @MainActor () -> Void
+  /// trigger it directly, passing the id armed for this start (nil ⇒ recovery was
+  /// off — no-op). A pre-start abort is always a DISCARD. Bare closure (off the
+  /// collaborator cap); bound to `RecoveryCoordinator
+  /// .handleRecordingEndedWithoutDurableSave(recoverySessionID:terminal:)`.
+  /// (#1063 PR1, Codex r3; id+terminal in PR2.)
+  let cleanupRecoveryArm: @MainActor (String?) -> Void
+
+  /// Whether the crash-recovery limb is replaying a leftover recording behind the
+  /// blocking pill (#1063 PR2). A record-press while true mints NO session — the
+  /// gate shows the "recovering" pill and returns, exactly like the cold-engine
+  /// not-ready gate. Bare closure (off the collaborator cap); bound to
+  /// `RecoveryCoordinator.isRecovering`. Default `false` keeps recovery-off and
+  /// legacy/test construction unchanged.
+  let isRecovering: @MainActor () -> Bool
 
   var heartControlRecovery: HeartControlRecovery
   var recordingLockedAccess: DictationLifecycleCoordinator.RecordingLockedAccess
@@ -93,10 +103,12 @@ final class RecordingStarter {
     makeRecoveryDirective: @escaping @MainActor (SettingsManager, ASRBackendType, Bool) async -> (
       recoverySessionID: String, payload: Data
     )? = { _, _, _ in nil },
-    cleanupRecoveryArm: @escaping @MainActor () -> Void = {}
+    cleanupRecoveryArm: @escaping @MainActor (String?) -> Void = { _ in },
+    isRecovering: @escaping @MainActor () -> Bool = { false }
   ) {
     self.makeRecoveryDirective = makeRecoveryDirective
     self.cleanupRecoveryArm = cleanupRecoveryArm
+    self.isRecovering = isRecovering
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.kernelDriver = kernelDriver
@@ -131,6 +143,16 @@ final class RecordingStarter {
       guard !whisperKitKernelDriver.state.isActive else { return }
     } else {
       guard !kernelDriver.state.isActive else { return }
+    }
+    // #1063 PR2 — recovery hold. While the one leftover recording backfills behind
+    // the blocking pill, a record-press mints NO session: show the "recovering"
+    // pill (with Discard) and bail, before warming the engine the recovery is
+    // using. Takes precedence over the cold-engine gate below (same shape).
+    if isRecovering() {
+      recordingOverlay.show(intent: .recoveringLastRecording)
+      TelemetryService.shared.recoveryPressBlocked(
+        asrBackend: isWhisperKit ? "whisperkit" : "parakeet")
+      return
     }
     lastRecordingResult?.polishError = nil
     // #879 — cold-boot press safety. A press on a not-ready engine must NOT mint
@@ -217,8 +239,22 @@ final class RecordingStarter {
         audioCapture.abortPreWarm()
         // A key was armed for this take but no session will start — no terminal
         // pipeline state fires, so clean the orphan spool/key here (Codex r3).
-        cleanupRecoveryArm()
+        // Pre-start abort is always a discard (#1063 PR2: pass this take's id).
+        cleanupRecoveryArm(config.recoverySessionID)
         recordingOverlay.show(intent: .hidden)
+        recordingLockedAccess.set(false)
+        return
+      }
+      // #1063 PR2 (Codex code-diff r2 P2): the top-of-`start()` recovery gate can
+      // go STALE across the `preWarm` + recovery-arm awaits — launch recovery may
+      // have started in that window. Re-check before minting a session so a new
+      // recording can't contend with the recovery replay on the shared engine;
+      // tear down the engine + clean the just-armed id, exactly like the guards
+      // above.
+      if isRecovering() {
+        audioCapture.abortPreWarm()
+        cleanupRecoveryArm(config.recoverySessionID)
+        recordingOverlay.show(intent: .recoveringLastRecording)
         recordingLockedAccess.set(false)
         return
       }
@@ -289,6 +325,15 @@ final class RecordingStarter {
       !(isWK ? whisperKitKernelDriver.state.isActive : kernelDriver.state.isActive)
     var isWarmRespawn = false
     if isStartingFromIdle {
+      // #1063 PR2 — recovery hold, same as the PTT path. A toggle that would START
+      // while recovery holds the engine mints no session: show the pill and bail.
+      // A toggle that STOPS an active session is unaffected (guarded by
+      // `isStartingFromIdle`).
+      if isRecovering() {
+        recordingOverlay.show(intent: .recoveringLastRecording)
+        TelemetryService.shared.recoveryPressBlocked(asrBackend: isWK ? "whisperkit" : "parakeet")
+        return
+      }
       lastRecordingResult?.polishError = nil
       // #879 — same cold-boot press safety as the PTT path. A toggle press that
       // would START on a not-ready engine shows the pill + warms instead of
@@ -325,12 +370,21 @@ final class RecordingStarter {
       // terminal state for the lifecycle coordinator's cleanup to observe).
       if isStartingFromIdle {
         if let lastStop = lastUserStopAccess.read(), lastStop > toggleStart {
-          cleanupRecoveryArm()
+          cleanupRecoveryArm(config.recoverySessionID)
           return
         }
         if active.state.isActive {
-          cleanupRecoveryArm()
+          cleanupRecoveryArm(config.recoverySessionID)
           try await active.handle(event: .requestStop)
+          return
+        }
+        // #1063 PR2 (Codex code-diff r2 P2): re-check after the recovery-arm await
+        // — launch recovery may have started in that window. Bail before minting a
+        // session so it can't contend with the recovery replay; clean the just-
+        // armed id.
+        if isRecovering() {
+          cleanupRecoveryArm(config.recoverySessionID)
+          recordingOverlay.show(intent: .recoveringLastRecording)
           return
         }
       }
