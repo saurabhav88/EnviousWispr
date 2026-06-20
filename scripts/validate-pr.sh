@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
 # validate-pr.sh — Single-command Phase 3 runner (PR #498).
 #
-# Walks the Phase 3 sequence in order:
+# Walks the Phase 3 sequence in the canonical order (reordered 2026-06-20 per
+# founder directive — see workflow-process.md RULE: codex-clean-gates-runtime-uat):
 #   1. Logic tests
-#   2. Smoke (release build + bundle + launch)
-#   3. Live UAT (lane-specific; synthetic dictation default for Code lane)
-#   4. Codex code-diff review
-#   5. (Bug fixes return to step 1)
-#   6. (Push handled by caller)
+#   2. Codex code-diff review — iterate to a CLEAN pass (no app rebuild and no
+#      Live UAT between rounds; validate fixes with the fast inline swift harness)
+#   3. Smoke (Tuist/Xcode DEV build + signed copy + launch) + Live UAT — the
+#      SINGLE rebuild, run once on the Codex-clean code
+#   4. (Runtime-only Live UAT failure -> fix -> Codex clean again -> rebuild + re-UAT)
+#   5. (Push handled by caller)
+#
+# This script is a SCAFFOLDER, not the review sequencer: for a Code-lane change it
+# runs logic tests + the smoke build and writes `skipped:true` stubs for Live UAT
+# and Codex that the caller overwrites. The caller drives Codex code-diff to clean
+# BEFORE invoking the smoke + Live UAT portion, so the smoke build below is the
+# single post-Codex rebuild. The numbered Phase 3.x echo sections are the
+# scaffolder's internal step order, not the caller's review order.
 #
 # Writes evidence into `.validation/runs/<timestamp>-<shortsha>/`.
 # Calls `check-validation.sh` at the end as the final assertion.
@@ -200,7 +209,7 @@ elif [ "$DECLARED" = "Docs/dev-tooling" ]; then
   fi
 fi
 
-echo "==> Phase 3.2: Smoke (Tuist/Xcode DEV build + signed copy + launch)"
+echo "==> Phase 3.2: Smoke (Tuist/Xcode DEV build + signed copy + launch) — the single rebuild, expected AFTER Codex code-diff is clean"
 if [ "$DECLARED" = "Code" ]; then
   # #913 PR4: smoke runs the canonical Xcode-engine dev builder
   # scripts/build-dev-app.sh (Tuist generate → xcodebuild the EnviousWispr-Dev
@@ -224,7 +233,7 @@ if [ "$DECLARED" = "Code" ]; then
   fi
 fi
 
-echo "==> Phase 3.3: Live UAT (lane-specific)"
+echo "==> Phase 3.3: Live UAT (lane-specific) — runs on the post-Codex-clean smoke build above"
 case "$DECLARED" in
   Code)
     # Stage 1 stub: write a STRUCTURED JSON skip record. Real Code-lane
@@ -298,7 +307,7 @@ EOF
     ;;
 esac
 
-echo "==> Phase 3.4: Codex code-diff review (caller's responsibility — script not auto-invoking)"
+echo "==> Phase 3.4: Codex code-diff review (caller's responsibility; MUST be clean BEFORE the smoke + Live UAT rebuild above — script not auto-invoking)"
 if [ ! -s "$RUN_DIR/codex-review.txt" ] && [ "$DECLARED" = "Code" ]; then
   echo "Run: codex review --base origin/main -c model=gpt-5.5 -c model_reasoning_effort=medium </dev/null > $RUN_DIR/codex-review.txt" > "$RUN_DIR/codex-review-todo.txt"
   record_step "codex-review" 1 "Stage 1 stub — caller must run codex review and overwrite codex-review.txt"
