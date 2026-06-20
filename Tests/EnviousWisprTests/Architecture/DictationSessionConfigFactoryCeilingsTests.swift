@@ -64,6 +64,10 @@ import Testing
     let allowed: Set<String> = [
       "EnviousWisprASR", "EnviousWisprCore",
       "EnviousWisprPipeline", "EnviousWisprServices",
+      // #1063 PR1 (Bible §30): the factory now threads an opaque `Data?` crash-
+      // recovery payload into `DictationSessionConfig`, so it needs `Data`
+      // (Foundation, a system value type — not a feature-module coupling).
+      "Foundation",
     ]
     let extras = actual.subtracting(allowed)
     #expect(

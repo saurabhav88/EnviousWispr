@@ -300,6 +300,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// warm-up pill (#879) without reaching into the package-scoped `adapter`.
   public var engineDisplayName: String { adapter.engineIdentity.displayName }
 
+  /// Whether the active engine can detect spoken language. Exposed read-only so
+  /// the App layer can capture it into the crash-recovery settings snapshot at
+  /// record start (#1063 PR1) without reaching into the package-scoped `adapter`
+  /// — and so recovery gates on the CAPABILITY, never an engine-identity literal
+  /// (`gate-on-capability-not-identity-literal`). Mirrors `engineReadiness`.
+  public var supportsLanguageDetection: Bool { adapter.capabilities.supportsLanguageDetection }
+
   // MARK: PR-4b.2 — direct methods + property (mirror old Parakeet pipeline App surface)
 
   /// Async cancel request. Wraps `kernel.cancel()` for App callers

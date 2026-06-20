@@ -97,7 +97,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
     if failEngineStart { throw FakeCaptureError.engineStartFailed }
   }
 
-  func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
+  func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
     beginCapturePhaseCallCount += 1
     if failCaptureStart { throw FakeCaptureError.captureStartFailed }
     currentCaptureSessionID += 1

@@ -23,6 +23,9 @@ public final class WisprBootstrapper {
   // into views via `.environment(...)` inside the view factories below.
   let navigationCoordinator: NavigationCoordinator
   let diagnosticsCoordinator: DiagnosticsCoordinator
+  /// Owns the crash-recovery limb (#1063 PR1): arms each recording's encrypted
+  /// spool, deletes it on durable save, purges orphans on launch.
+  let recoveryCoordinator: RecoveryCoordinator
   let languageSuggestionPresenter: LanguageSuggestionPresenter
   let updateCoordinatorHolder: UpdateCoordinatorHolder
   let sparkleUpdateController: SparkleUpdateController
@@ -280,6 +283,7 @@ public final class WisprBootstrapper {
 
     let navigationCoordinator = NavigationCoordinator()
     let diagnosticsCoordinator = DiagnosticsCoordinator()
+    let recoveryCoordinator = RecoveryCoordinator()
 
     // PR4 of #763 construction-order constraint preserved: LanguageSuggestionPresenter
     // captures `recordingOverlay` through narrow closures.
@@ -388,6 +392,7 @@ public final class WisprBootstrapper {
       lastRecordingResult: lastRecordingResult,
       languageSuggestionPresenter: languageSuggestionPresenter,
       dictationLifecycleCoordinator: dictationLifecycleCoordinator,
+      recoveryCoordinator: recoveryCoordinator,
       recordingLockedAccess: recordingLockedAccess,
       resolveActiveCaptureBackend: { [weak dictationLifecycleCoordinator] in
         dictationLifecycleCoordinator?.activeCaptureBackend()
@@ -457,6 +462,7 @@ public final class WisprBootstrapper {
 
     self.navigationCoordinator = navigationCoordinator
     self.diagnosticsCoordinator = diagnosticsCoordinator
+    self.recoveryCoordinator = recoveryCoordinator
     self.languageSuggestionPresenter = languageSuggestionPresenter
     self.updateCoordinatorHolder = updateCoordinatorHolder
     self.sparkleUpdateController = sparkleUpdateController
@@ -557,6 +563,10 @@ public final class WisprBootstrapper {
 
   public func applicationDidFinishLaunching() {
     appLifecycleCoordinator.runDidFinishLaunching()
+    // #1063 PR1: sweep any orphan crash-recovery spools + keys left by a prior
+    // run. PR1 does not recover yet (that is PR2) — purging keeps zero
+    // recoverable audio on disk. Off-main, fire-and-forget.
+    recoveryCoordinator.purgeOrphansOnLaunch()
   }
 
   public func applicationDidBecomeActive() {

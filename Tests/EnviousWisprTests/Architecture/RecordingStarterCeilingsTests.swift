@@ -66,10 +66,25 @@ import Testing
     // `ColdPressGuard`; the latch lives on `KernelDictationDriver` — so
     // collaboratorCount stays ≤ 7 and nonPrivateMethodCount stays ≤ 2 (no new
     // slot or method); only the paper-line ceiling moves.
+    // #1063 PR1 (crash recovery): raised 305 → 350 for the `makeRecoveryDirective`
+    // bare-closure slot (arms the spool; does NOT count as a collaborator — the
+    // `async` closure is excluded, collaboratorCount still ≤ 7), the private
+    // `makeSessionConfig(triggerSource:armRecovery:)` helper consolidating both
+    // start paths, and the Codex code-diff guards (arm-only-on-start + a PTT
+    // post-arm release re-check so a quick release can't leave a recording
+    // running). The recovery owner is `RecoveryCoordinator`, OFF this type; only
+    // the paper-line ceiling moves (deterministic rule: actual 338 + 10 → 350).
+    // #1063 PR1 (Codex code-diff r3): raised 350 → 385 for the second bare
+    // closure `cleanupRecoveryArm` (also excluded — a non-`async` `() -> Void`
+    // closure is not a collaborator, collaboratorCount still ≤ 7) plus the toggle
+    // post-arm guards (stop/cancel-during-arm + concurrent-start → `.requestStop`
+    // so a dropped `.toggleRecording` can't lose the user's stop) and the PTT
+    // abort-cleanup call. Only the paper-line ceiling moves (deterministic rule:
+    // actual 375 + 10 → round up to 385).
     #expect(
-      count <= 305,
+      count <= 385,
       """
-      RecordingStarter line count exceeded: \(count) > 305. \
+      RecordingStarter line count exceeded: \(count) > 385. \
       Raise via Bible §30 only.
       """)
   }

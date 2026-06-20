@@ -875,7 +875,9 @@ final class RecordingSessionKernel {
     // rescue.
     audioCapture.onBufferCaptured = makeBufferCallback(sid)
     do {
-      _ = try await audioCapture.beginCapturePhase()
+      // Forward the opaque crash-recovery directive (nil unless armed) to the
+      // helper. The kernel never interprets it — recovery is a limb (#1063 PR1).
+      _ = try await audioCapture.beginCapturePhase(recoveryPayload: config.recoveryPayload)
     } catch {
       guard isCurrent(sid) else { return }
       audioCapture.onBufferCaptured = nil

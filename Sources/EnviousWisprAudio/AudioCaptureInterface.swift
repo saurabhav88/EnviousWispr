@@ -83,7 +83,11 @@ public protocol AudioCaptureInterface: AnyObject {
 
   // Core lifecycle
   func startEnginePhase() async throws
-  func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer>
+  /// `recoveryPayload` is an opaque encoded `RecoverySpoolDirective` the recording
+  /// kernel forwards to arm the crash-recovery limb (#1063 PR1); nil ⇒ no spool.
+  /// Every caller except the kernel uses the no-arg `beginCapturePhase()`
+  /// convenience in the extension below.
+  func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer>
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer>  // periphery:ignore - convenience method combining engine + capture phases
   func stopCapture() async -> CaptureResult
   func rebuildEngine()
@@ -98,4 +102,15 @@ public protocol AudioCaptureInterface: AnyObject {
   func getSamplesSnapshot(fromIndex: Int) async -> (samples: [Float], totalCount: Int)
   // periphery:ignore - XPC capture contract (invoked via NSXPC proxy)
   func getVADSegments() async -> [SpeechSegment]
+}
+
+extension AudioCaptureInterface {
+  /// Begin capture without arming crash recovery — the default for every caller
+  /// except the recording kernel (which forwards the session's recovery
+  /// directive). Keeps all existing no-arg call sites source-compatible after
+  /// the `recoveryPayload:` requirement was added (#1063 PR1). Public so
+  /// cross-module existential callers (kernel, app shell, tests) resolve it.
+  public func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
+    try await beginCapturePhase(recoveryPayload: nil)
+  }
 }

@@ -84,10 +84,23 @@ import Testing
     let source = try String(
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
+    // #1063 PR1 (crash recovery): raised 365 → 385 for the setter-injected
+    // `onDurableSave` `var` closure (deletes a session's spool + key on durable
+    // save) + its invocation in the existing `appendCompletedTranscript` seam.
+    // A `var` closure is NOT counted as a collaborator (collaboratorCount still
+    // ≤ 11); the Pipeline stays recovery-unaware. Only the paper-line ceiling
+    // moves (deterministic rule: actual 374 + 10 → round up to 385).
+    // #1063 PR1 (Codex code-diff r3): raised 385 → 400 for the second
+    // setter-injected `onRecordingEndedWithoutDurableSave` `var` closure +
+    // its invocation on the non-saved `.idle`/`.error` terminals in BOTH
+    // per-backend handlers (deletes the armed spool/key when a recording ends
+    // without a durable save, instead of leaking until launch). Still a `var`
+    // closure (collaboratorCount stays ≤ 11); only the paper-line ceiling moves
+    // (deterministic rule: actual 390 + 10 → round up to 400).
     #expect(
-      count <= 365,
+      count <= 400,
       """
-      DictationLifecycleCoordinator line count exceeded: \(count) > 365. \
+      DictationLifecycleCoordinator line count exceeded: \(count) > 400. \
       Raise via Bible §30 only.
       """)
   }

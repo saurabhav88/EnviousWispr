@@ -2,6 +2,7 @@ import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprPipeline
 import EnviousWisprServices
+import Foundation
 
 /// Builds a per-recording `DictationSessionConfig` snapshot from the trigger
 /// source, current settings, paste-intent inference, and active-pipeline idle
@@ -16,7 +17,9 @@ enum DictationSessionConfigFactory {
     kernelDriver: KernelDictationDriver,
     whisperKitKernelDriver: KernelDictationDriver,
     settings: SettingsManager,
-    triggerSource: TriggerSource
+    triggerSource: TriggerSource,
+    recoverySessionID: String? = nil,
+    recoveryPayload: Data? = nil
   ) -> DictationSessionConfig {
     // PR-5 Rung 5 (#827): both backends share `PipelineState` vocabulary now,
     // so the per-backend idle switch collapses; the legacy `.ready` case
@@ -63,7 +66,9 @@ enum DictationSessionConfigFactory {
       polishInstructions: settings.activePolishInstructions,
       useExtendedThinking: settings.useExtendedThinking,
       selectedInputDeviceUID: settings.selectedInputDeviceUID,
-      preferredInputDeviceIDOverride: settings.preferredInputDeviceIDOverride
+      preferredInputDeviceIDOverride: settings.preferredInputDeviceIDOverride,
+      recoverySessionID: recoverySessionID,
+      recoveryPayload: recoveryPayload
     )
   }
 }

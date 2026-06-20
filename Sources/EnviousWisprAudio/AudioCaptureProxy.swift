@@ -175,7 +175,9 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     }
   }
 
-  public func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
+  public func beginCapturePhase(recoveryPayload: Data?) async throws
+    -> AsyncStream<AVAudioPCMBuffer>
+  {
     ensureConnection()
 
     // Finish any stale continuation from a previous session.
@@ -190,7 +192,8 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     }
 
     try await withAudioXPCOperationSignal(stage: "begin_capture") { operationID in
-      try await self.awaitBeginCaptureReply(operationID: operationID)
+      try await self.awaitBeginCaptureReply(
+        operationID: operationID, recoveryPayload: recoveryPayload)
     }
 
     isCapturing = true
@@ -200,11 +203,11 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     return stream
   }
 
-  private func awaitBeginCaptureReply(operationID: String) async throws {
+  private func awaitBeginCaptureReply(operationID: String, recoveryPayload: Data?) async throws {
     try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
       let guard_ = OneShotContinuation(cont)
       serviceProxy { proxy in
-        proxy.beginCapture(operationID: operationID) { nsError in
+        proxy.beginCapture(operationID: operationID, recoveryPayload: recoveryPayload) { nsError in
           if let error = nsError { guard_.resume(throwing: error) } else { guard_.resume() }
         }
       } onProxyError: {

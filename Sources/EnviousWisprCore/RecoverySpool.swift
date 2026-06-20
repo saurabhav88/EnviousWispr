@@ -116,9 +116,10 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
 /// means the helper behaves exactly as it does today — no spool, no key use.
 public struct RecoverySpoolDirective: Codable, Sendable, Equatable {
   public let enabled: Bool
-  /// The durable session key shared by the spool and its History entry. This is
-  /// the recording kernel's `SessionID`, NOT a per-XPC-call operation id, so a
-  /// crash in the save->delete window cannot duplicate a recovered transcript.
+  /// The durable session key shared by the spool and its History entry. A
+  /// host-minted per-recording id (created before the kernel starts), NOT a
+  /// per-XPC-call operation id, so a crash in the save->delete window cannot
+  /// duplicate a recovered transcript.
   public let recoverySessionID: String
   /// Absolute path to the `.ewrec` file the writer appends to.
   public let spoolPath: String

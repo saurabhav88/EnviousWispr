@@ -89,6 +89,20 @@ public struct DictationSessionConfig: Sendable {
   public let selectedInputDeviceUID: String
   public let preferredInputDeviceIDOverride: String
 
+  // MARK: Crash recovery (#1063 PR1)
+
+  /// Durable per-recording id minted host-side when the crash-recovery limb is
+  /// armed (nil when recovery is off or could not arm). Stamped onto the saved
+  /// `Transcript.recoverySessionID` so the host can delete this session's spool
+  /// after the transcript is durably saved. NOT the kernel's internal
+  /// `SessionID` — recovery only needs a durable id shared between the spool and
+  /// its transcript, and the host mints it before the kernel starts.
+  public let recoverySessionID: String?
+  /// Opaque encoded `RecoverySpoolDirective` the kernel forwards to the audio
+  /// helper at `beginCapturePhase`. The kernel never interprets it (recovery is
+  /// a limb the kernel is unaware of); nil ⇒ the helper behaves exactly as today.
+  public let recoveryPayload: Data?
+
   public init(
     autoCopyToClipboard: Bool,
     inputMode: RecordingMode,
@@ -107,7 +121,9 @@ public struct DictationSessionConfig: Sendable {
     polishInstructions: PolishInstructions,
     useExtendedThinking: Bool,
     selectedInputDeviceUID: String,
-    preferredInputDeviceIDOverride: String
+    preferredInputDeviceIDOverride: String,
+    recoverySessionID: String? = nil,
+    recoveryPayload: Data? = nil
   ) {
     self.autoCopyToClipboard = autoCopyToClipboard
     self.inputMode = inputMode
@@ -127,5 +143,7 @@ public struct DictationSessionConfig: Sendable {
     self.useExtendedThinking = useExtendedThinking
     self.selectedInputDeviceUID = selectedInputDeviceUID
     self.preferredInputDeviceIDOverride = preferredInputDeviceIDOverride
+    self.recoverySessionID = recoverySessionID
+    self.recoveryPayload = recoveryPayload
   }
 }

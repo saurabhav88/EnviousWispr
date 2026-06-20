@@ -22,6 +22,16 @@ final class AudioServiceDelegate: NSObject, NSXPCListenerDelegate {
     handler.clientProxy = clientProxy
 
     connection.exportedObject = handler
+
+    // Crash-recovery limb (#1063 PR1): when the host (app) disconnects
+    // mid-recording — e.g. an app crash — flush + finalize the spool best-effort
+    // so its prefix carries an interrupted marker. The helper outlives the
+    // disconnected client, so this typically drains; it is additive to the
+    // writer's periodic durable flush and never a guaranteed zero tail.
+    connection.invalidationHandler = { [weak handler] in
+      handler?.flushRecoveryOnInvalidation()
+    }
+
     connection.resume()
     return true
   }

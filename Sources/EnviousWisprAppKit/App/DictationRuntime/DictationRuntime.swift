@@ -57,6 +57,7 @@ final class DictationRuntime {
     lastRecordingResult: LastRecordingResult,
     languageSuggestionPresenter: LanguageSuggestionPresenter?,
     dictationLifecycleCoordinator: DictationLifecycleCoordinator,
+    recoveryCoordinator: RecoveryCoordinator,
     recordingLockedAccess: DictationLifecycleCoordinator.RecordingLockedAccess,
     resolveActiveCaptureBackend: @escaping @MainActor () -> DictationLifecycleCoordinator
       .LastCapturingBackend?,
@@ -118,9 +119,31 @@ final class DictationRuntime {
       recordingLockedAccess: recordingLockedAccess,
       lastUserStopAccess: finalizer.lastUserStopAccess,
       lastRecordingResult: lastRecordingResult,
-      dictationLifecycleCoordinator: dictationLifecycleCoordinator
+      dictationLifecycleCoordinator: dictationLifecycleCoordinator,
+      // #1063 PR1: bind the recovery-arm closure to the coordinator (a bare
+      // closure so the starter stays off its collaborator cap; the kernel never
+      // sees the coordinator).
+      makeRecoveryDirective: { settings, backend, lid in
+        await recoveryCoordinator.makeDirective(
+          settings: settings, backendType: backend, supportsLanguageDetection: lid)
+      },
+      // #1063 PR1 (Codex r3): a PTT release or concurrent-toggle stop landing in
+      // the arm window mints no session, so the lifecycle coordinator sees no
+      // terminal state — the starter cleans the armed spool/key directly.
+      cleanupRecoveryArm: { recoveryCoordinator.handleRecordingEndedWithoutDurableSave() }
     )
     self.starter = starter
+    // #1063 PR1: on a durable transcript save, delete that session's spool + key.
+    // Keeps the Pipeline recovery-unaware — the host observes the saved transcript.
+    dictationLifecycleCoordinator.onDurableSave = { id in
+      recoveryCoordinator.handleDurableSave(recoverySessionID: id)
+    }
+    // #1063 PR1 (Codex r3): a recording that ends WITHOUT a durable save (cancel,
+    // no-speech, too-short, error, helper-crash-while-alive) deletes its armed
+    // spool/key immediately instead of accumulating until launch purge.
+    dictationLifecycleCoordinator.onRecordingEndedWithoutDurableSave = {
+      recoveryCoordinator.handleRecordingEndedWithoutDurableSave()
+    }
     let hotkeyController = HotkeyController(
       hotkeyService: hotkeyService,
       starter: starter,

@@ -34,6 +34,7 @@ import Testing
     let kernelDriver: KernelDictationDriver
     let whisperKitKernelDriver: KernelDictationDriver
     let asr: RouterTestASRManager
+    let audio: RouterTestAudioCapture
     let permissions: PermissionsService
     let lockBox: TestRecordingLockedBox
     let lastRecordingResult: LastRecordingResult
@@ -41,7 +42,10 @@ import Testing
     let settings: SettingsManager
   }
 
-  private static func makeFixture(accessibilityRefresh: (@MainActor () -> Void)? = nil) -> Fixture {
+  private static func makeFixture(
+    accessibilityRefresh: (@MainActor () -> Void)? = nil,
+    releaseDuringRecoveryArm: Bool = false
+  ) -> Fixture {
     // `RecordingOverlayPanel.show(intent: .recording, ...)` posts an
     // `NSAccessibility` notification against `NSApp.mainWindow`. `NSApp`
     // is an implicitly-unwrapped optional that crashes the test process
@@ -83,6 +87,17 @@ import Testing
       languageSuggestionPresenter: nil
     )
     let lastRecordingResult = LastRecordingResult()
+    // #1063 PR1: when asked, the injected recovery-arm closure simulates the
+    // user RELEASING PTT while the key store is being awaited — it records a
+    // user-stop on the finalizer (so `lastUserStopAccess.read() > pttStart`)
+    // and returns no directive. The default closure is the recovery-off no-op.
+    let makeRecoveryDirective:
+      @MainActor (SettingsManager, ASRBackendType, Bool) async -> (
+        recoverySessionID: String, payload: Data
+      )? = { _, _, _ in
+        if releaseDuringRecoveryArm { await finalizer.userStop() }
+        return nil
+      }
     let starter = RecordingStarter(
       audioCapture: audio,
       asrManager: asr,
@@ -96,7 +111,8 @@ import Testing
       lastUserStopAccess: finalizer.lastUserStopAccess,
       lastRecordingResult: lastRecordingResult,
       dictationLifecycleCoordinator: nil,
-      accessibilityRefresh: accessibilityRefresh
+      accessibilityRefresh: accessibilityRefresh,
+      makeRecoveryDirective: makeRecoveryDirective
     )
     return Fixture(
       starter: starter,
@@ -104,6 +120,7 @@ import Testing
       kernelDriver: pipeline,
       whisperKitKernelDriver: whisperKitKernelDriver,
       asr: asr,
+      audio: audio,
       permissions: permissions,
       lockBox: lockBox,
       lastRecordingResult: lastRecordingResult,
@@ -242,6 +259,44 @@ import Testing
   // `lastUserStopAccessIsThreadedFromFinalizer` test pins the wiring of
   // the closure; the guard itself mirrors the post-toggle check at
   // lines 162-165 (covered by behavioral observation in Live UAT).
+
+  /// #1063 PR1 (Codex code-diff r2 P2): the recovery-arm `await` widened the
+  /// pre-session window in `start()`. Unlike the pre-warm guard above, this one
+  /// IS deterministically schedulable — the arm closure is injected, so it can
+  /// record the user-stop mid-arm. A release landing in that window must tear
+  /// down the prewarmed engine (`abortPreWarm`), not merely hide the overlay,
+  /// and must mint no session. A bare hide/unlock would leave the mic engine hot.
+  @Test func pttReleaseDuringRecoveryArmAbortsPrewarmAndMintsNoSession() async {
+    let fx = Self.makeFixture(releaseDuringRecoveryArm: true)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true  // ready → passes cold + pre-warm guards, reaches the arm
+    #expect(fx.kernelDriver.engineReadiness == .ready)
+
+    await fx.starter.start()
+
+    // The prewarmed engine was torn down (not just the overlay hidden).
+    #expect(fx.audio.abortPreWarmCallCount >= 1)
+    // No session minted — the kernel never left idle.
+    #expect(fx.kernelDriver.state == .idle)
+    // Lock released so a subsequent press is not wedged.
+    #expect(fx.lockBox.isLocked == false)
+  }
+
+  /// #1063 PR1 (Codex code-diff r3 P1): the toggle path also awaits the recovery
+  /// arm. A stop/cancel landing in that window must NOT start a fresh recording —
+  /// the post-arm guard reads the user-stop timestamp and bails before
+  /// dispatching `.toggleRecording`, so the kernel never leaves idle.
+  @Test func toggleStopDuringRecoveryArmMintsNoSession() async {
+    let fx = Self.makeFixture(releaseDuringRecoveryArm: true)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true  // ready → passes the cold guard, reaches the arm
+    #expect(fx.kernelDriver.engineReadiness == .ready)
+
+    await fx.starter.toggle(source: .toggleHotkey)
+
+    // No session minted — the kernel never left idle.
+    #expect(fx.kernelDriver.state == .idle)
+  }
 
   // MARK: - #959 warm-respawn (idle XPC reclaim) press routing
 
