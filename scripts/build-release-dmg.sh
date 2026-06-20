@@ -71,24 +71,23 @@ test -d "$WORKSPACE"
 test -f "$ENTITLEMENTS"; test -f "$AUDIO_ENTITLEMENTS"; test -f "$ASR_ENTITLEMENTS"; test -f "$PROFILE"
 
 mkdir -p "$PROJ_ROOT/build"
-# xcconfig treats // as a comment marker; escape the Sentry DSN's :// through a
-# SLASH build setting so the DSN survives Info.plist expansion intact.
-# ${SENTRY_DSN:-} guards set -u when the secret is intentionally absent (dev/unset).
-SENTRY_DSN_RAW="${SENTRY_DSN:-}"
-SENTRY_DSN_XCCONFIG="${SENTRY_DSN_RAW//:\/\//:\$(SLASH)\/}"
-# SU_FEED_URL is NOT set here: xcconfig treats // as a comment, so a feed URL like
-# https://… would truncate to "https:". The feed is a non-secret constant, so it is
-# plutil-stamped post-archive (step 3) instead, like the SwiftPM build-dmg.sh did.
+# POSTHOG_API_KEY has no `//`, so it survives the xcconfig substitution and is
+# stamped at archive time. SENTRY_DSN and SU_FEED_URL both contain `://` — xcconfig
+# treats `//` as a comment, so both are plutil-stamped post-archive (step 3) instead.
+# The old `$(SLASH)` xcconfig escape for SENTRY_DSN was bash-version-fragile: the
+# replacement `${...//:\/\//:\$(SLASH)\/}` keeps the `\` of `\/` on some bash builds
+# (a hosted macos-26 runner's bash did, injecting a stray backslash into the DSN —
+# `https:/\/…` — which the self-hosted Mac's bash stripped). plutil is deterministic
+# and `//`-safe. (#1087)
+# ${POSTHOG_API_KEY:-} guards set -u when the secret is intentionally absent (dev/unset).
 ( umask 077; cat > "$SECRETS_XCCONFIG" <<EOF
-SLASH = /
 POSTHOG_API_KEY = ${POSTHOG_API_KEY:-}
-SENTRY_DSN = ${SENTRY_DSN_XCCONFIG:-}
 EOF
 )
 [[ -z "${POSTHOG_API_KEY:-}" ]] && echo "::warning::POSTHOG_API_KEY not set — PostHog disabled in this build"
 [[ -z "${SENTRY_DSN:-}" ]] && echo "::warning::SENTRY_DSN not set — Sentry disabled in this build"
 
-echo "==> [1/9] Archive (signing OFF; secrets+feed stamped via xcconfig at archive time)"
+echo "==> [1/9] Archive (signing OFF; PostHog stamped via xcconfig; Sentry+feed plutil-stamped post-archive)"
 rm -rf "$DERIVED_DATA" "$ARCHIVE_PATH" "$PROJ_ROOT/build/dSYMs" "$BUNDLE"
 xcodebuild archive \
     -workspace "$WORKSPACE" \
@@ -113,8 +112,13 @@ ditto "$ARCHIVED_APP" "$BUNDLE"
 echo "==> [3/9] Stamp semver + feed URL into app + XPC Info.plists"
 # Xcode names embedded XPC dirs by PRODUCT name (EnviousWispr*Service.xpc), not
 # bundle id (#913 PR4 learning) — discover by glob, route by CFBundleIdentifier.
-# SUFeedURL stamped here (not via xcconfig) to avoid the // comment truncation.
+# SUFeedURL + SentryDSN stamped here (not via xcconfig) to avoid the `//` comment
+# truncation and the bash-fragile $(SLASH) escape (#1087). plutil is `//`-safe.
+# SentryDSN is stamped UNCONDITIONALLY (empty when the secret is unset) so the
+# archive-time `$(SENTRY_DSN)` placeholder never survives into a built app and get
+# mistaken for a real DSN by ObservabilityBootstrap (#1087 Codex P2).
 plutil -replace SUFeedURL -string "$FEED_URL" "$BUNDLE/Contents/Info.plist"
+plutil -replace SentryDSN -string "${SENTRY_DSN:-}" "$BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$VERSION" "$BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleVersion -string "$VERSION" "$BUNDLE/Contents/Info.plist"
 for XPC_SVC in "$BUNDLE/Contents/XPCServices"/*.xpc; do
@@ -133,7 +137,7 @@ if [[ -n "${POSTHOG_API_KEY:-}" ]]; then
 fi
 if [[ -n "${SENTRY_DSN:-}" ]]; then
     SENTRY_VALUE="$(/usr/libexec/PlistBuddy -c 'Print :SentryDSN' "$APP_PLIST")"
-    # The Sentry check catches DSN truncation from an unescaped // in xcconfig.
+    # Catches a mis-stamped DSN (plutil-stamped post-archive since #1087).
     test "$SENTRY_VALUE" = "$SENTRY_DSN"
     [[ "$SENTRY_VALUE" != *'$('* ]]
     unset SENTRY_VALUE
