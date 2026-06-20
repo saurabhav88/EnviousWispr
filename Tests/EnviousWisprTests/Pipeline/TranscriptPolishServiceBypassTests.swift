@@ -97,6 +97,55 @@ struct TranscriptPolishServiceBypassTests {
     }
   }
 
+  /// #761 Codex round 9: when on-device AI returns an EMPTY polish for a
+  /// transcript that carries emoji, the inline emoji-restore must NOT turn `""`
+  /// into a one-glyph string — that would slip past the `isEmpty` guard and save
+  /// a single emoji as the "polished" transcript, masking the empty-response
+  /// failure. The restore is skipped on empty output so the error still surfaces.
+  private struct EmptyReturningPolisher: TranscriptPolisher {
+    func polish(
+      text: String,
+      instructions: PolishInstructions,
+      config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      LLMResult(polishedText: "")
+    }
+  }
+
+  @Test("Empty AI polish on an emoji transcript: surfaces empty error, saves no one-glyph copy")
+  func emptyAFMOutputIsNotMaskedByEmojiRestore() async throws {
+    let dir = makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = TranscriptStore(directory: dir)
+    let activity = IdleDictationActivity()
+    let service = TranscriptPolishService(
+      keychainManager: KeychainManager(),
+      transcriptStore: store,
+      dictationActivity: activity
+    )
+    service.llmPolishStep.llmProvider = .appleIntelligence
+    service.llmPolishStep.llmModel = "apple-on-device"
+    service.llmPolishStep.makePolisher = { _, _, _ in EmptyReturningPolisher() }
+
+    // Emoji-bearing, 5 words: clears the too-short gate (>3 words) but stays
+    // UNDER the validator's 10-word content-drop fallback, so the empty model
+    // output reaches the inline restore as a true "" (a longer transcript would
+    // be salvaged to raw text upstream and never exercise this guard).
+    let transcript = Transcript(text: "Ship it today 🔥 everyone", language: "en")
+    try store.save(transcript)
+
+    await #expect(throws: LLMError.self) {
+      _ = try await service.polish(transcript)
+    }
+
+    // The empty-response failure surfaced; nothing was stamped as polished.
+    let onDisk = try await store.loadAll()
+    let reloaded = try #require(onDisk.first { $0.id == transcript.id })
+    #expect(reloaded.polishedText == nil, "must not save a one-emoji copy from empty AI output")
+    #expect(reloaded.llmProvider == nil)
+  }
+
   @Test("Re-polish a too-long transcript: honest 'too long' message, not 'too short'")
   func enhanceOnTooLongSurfacesContextWindow() async throws {
     let dir = makeTempDir()

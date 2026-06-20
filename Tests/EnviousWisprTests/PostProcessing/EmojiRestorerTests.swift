@@ -4,12 +4,15 @@ import Testing
 @testable import EnviousWisprPostProcessing
 
 /// #761 EmojiRestorer — deterministic post-polish emoji restore. Validates the
-/// v2 position-aware algorithm: lead/trail/mid classification, content-word
-/// anchoring, directional fallback, contiguous-run verbatim re-insertion, and
-/// — critically — that emoji the model kept are NEVER disturbed.
+/// token-alignment algorithm: LCS-align the pre-polish and polished word
+/// streams, anchor each dropped emoji to its neighbor word's aligned image,
+/// hug the side it was dictated against, follow model-inserted sentence breaks,
+/// and — critically — never disturb an emoji the model kept. Sentence splits,
+/// merges, reorders, and repeated anchors are handled by the alignment itself,
+/// not special cases.
 ///
-/// The full empirical case (300 real on-device pairs → 100% retention, 97%
-/// exact-anchor placement) is recorded in
+/// The full empirical case (300 real on-device pairs → 100% retention, plus a
+/// documented head-to-head against the prior positional placer) is recorded in
 /// `docs/feature-requests/issue-761-2026-06-19-emoji-guard-design-notes.md`. The
 /// `corpusRetention` test below embeds a representative subset of those real
 /// pairs so the retention guarantee rides in CI.
@@ -140,6 +143,24 @@ struct EmojiRestorerTests {
     #expect(r.text == "First we update the dashboard 🔥. The dashboard shows metrics.")
   }
 
+  @Test("Polish MERGES two dictated sentences: trailing emoji stays on its own clause")
+  func mergedSentencesKeepTrailingEmojiOnFirstClause() {
+    // Same pre-polish as the split case above, but the model MERGED the two
+    // dictated sentences into one ("..., and the dashboard shows..."). The
+    // merged output sentence spans both "dashboard" occurrences; the block must
+    // still be bounded at the second sentence's content so the trailing emoji
+    // lands on the FIRST "dashboard", not the second (#761 Codex round 9).
+    let r = restorer.restore(
+      polished: "First we update the dashboard, and the dashboard shows metrics.",
+      prePolish: "First we update the dashboard 🔥. The dashboard shows metrics.")
+    #expect(r.text == "First we update the dashboard 🔥, and the dashboard shows metrics.")
+    // A second repeated-anchor merge: "report" recurs across the merge.
+    let r2 = restorer.restore(
+      polished: "Please review the report and the summary, and the report is due Friday.",
+      prePolish: "Please review the report and the summary 📊. The report is due Friday.")
+    #expect(r2.text == "Please review the report and the summary 📊, and the report is due Friday.")
+  }
+
   @Test("Polish splits one dictated sentence: emoji lands in the correct split, not the first")
   func emojiFollowsAnchorAcrossSentenceSplit() {
     // The model split the run-on into two sentences; the trailing emoji's anchor
@@ -154,6 +175,36 @@ struct EmojiRestorerTests {
       polished: "Finished the audit today. Tomorrow I work on focus management.",
       prePolish: "finished the audit today tomorrow I work on focus management 🔥")
     #expect(r2.text == "Finished the audit today. Tomorrow I work on focus management 🔥.")
+  }
+
+  @Test("Split where the right anchor was DELETED: emoji trails its surviving left clause")
+  func splitWithDeletedRightAnchorTrailsLeft() {
+    // The model split one dictated sentence into two AND dropped the conjunction
+    // ("and") the emoji floated before. Alignment maps "it" (shipped it) to the
+    // first occurrence, so the rocket stays on the shipping clause instead of
+    // stranding at the very end (the case the prior positional placer got wrong).
+    let r = restorer.restore(
+      polished: "We shipped it. Users love it.",
+      prePolish: "We shipped it 🚀 and users love it.")
+    #expect(r.text == "We shipped it 🚀. Users love it.")
+  }
+
+  @Test("Emoji dictated after a comma-corrected clause leads the right word, not before the comma")
+  func emojiAfterCommaLeadsRightWord() {
+    // The emoji was dictated AFTER a comma ("Actually, 😢 is..."); it must lead
+    // the following word, never jump back before the comma.
+    let lead = restorer.restore(
+      polished: "Actually, is more accurate.", prePolish: "Actually, 😢 is more accurate.")
+    #expect(lead.text == "Actually, 😢 is more accurate.")
+    // Mirror: dictated BEFORE a comma the model keeps — stays before it.
+    let trail = restorer.restore(
+      polished: "I was excited, but actually no.", prePolish: "I was excited 🔥, but actually no.")
+    #expect(trail.text == "I was excited 🔥, but actually no.")
+    // Float (no punctuation in speech) the model commas: hugs the word it
+    // followed, not the next word.
+    let float = restorer.restore(
+      polished: "Très bien, fini le projet.", prePolish: "Très bien 🎉 fini le projet.")
+    #expect(float.text == "Très bien 🎉, fini le projet.")
   }
 
   @Test("Model-inserted '?' sentence break: emoji follows the break, not precedes it")

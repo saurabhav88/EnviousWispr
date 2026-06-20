@@ -139,8 +139,11 @@ public final class TranscriptPolishService {
       // — NOT toggle-gated: a saved transcript already carries the user's emoji,
       // and "Enhance" must not silently delete them just because the converter
       // is now off. Pure, never throws; a no-op when nothing was dropped.
+      // Skip when the model returned empty: restoring emoji into "" would mask
+      // an empty-response failure as a one-glyph "polish" past the isEmpty guard
+      // below (#761 Codex round 9).
       if context.llmProvider == LLMProvider.appleIntelligence.rawValue,
-        let polished = context.polishedText
+        let polished = context.polishedText, !polished.isEmpty
       {
         context.polishedText =
           EmojiRestorer().restore(
