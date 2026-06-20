@@ -59,6 +59,18 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var recoveredTailMs: Int?
   public var tailVoicedFraction: Double?
   public var tailRefusedReason: String?
+  /// Deterministic post-polish emoji-restore telemetry (#761). Populated only for
+  /// Apple on-device (AFM) polish; nil for cloud providers, no-polish dictations,
+  /// and pre-#761 transcripts on disk (additive optional Codable, back-compatible).
+  /// `emojiInInput` = emoji the converter inserted pre-polish; `emojiDropped` =
+  /// glyphs AFM stripped; `emojiRestored` = glyphs the guard re-inserted (== dropped
+  /// by construction); `emojiRestoreIncomplete` = restored < dropped (anomaly).
+  /// Counts only (`telemetry-privacy-boundary`).
+  public var emojiInInput: Int?
+  public var emojiDropped: Int?
+  public var emojiRestored: Int?
+  public var emojiRestoreIncomplete: Bool?
+  public var emojiLatencyMs: Double?
 
   public init(
     asrLatencySeconds: Double? = nil,
@@ -86,7 +98,12 @@ public struct ExecutionMetrics: Codable, Sendable {
     usedTailPreservation: Bool? = nil,
     recoveredTailMs: Int? = nil,
     tailVoicedFraction: Double? = nil,
-    tailRefusedReason: String? = nil
+    tailRefusedReason: String? = nil,
+    emojiInInput: Int? = nil,
+    emojiDropped: Int? = nil,
+    emojiRestored: Int? = nil,
+    emojiRestoreIncomplete: Bool? = nil,
+    emojiLatencyMs: Double? = nil
   ) {
     self.asrLatencySeconds = asrLatencySeconds
     self.llmLatencySeconds = llmLatencySeconds
@@ -114,6 +131,11 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.recoveredTailMs = recoveredTailMs
     self.tailVoicedFraction = tailVoicedFraction
     self.tailRefusedReason = tailRefusedReason
+    self.emojiInInput = emojiInInput
+    self.emojiDropped = emojiDropped
+    self.emojiRestored = emojiRestored
+    self.emojiRestoreIncomplete = emojiRestoreIncomplete
+    self.emojiLatencyMs = emojiLatencyMs
   }
 }
 

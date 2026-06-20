@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprPostProcessing
 import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
@@ -133,6 +134,19 @@ public final class TranscriptPolishService {
         language: transcript.language
       )
       context = try await llmPolishStep.process(context)
+      // #761: re-polish bypasses the limb chain, so the post-polish emoji guard
+      // runs inline here (the live path uses `EmojiRestoreStep`). AFM-gated only
+      // — NOT toggle-gated: a saved transcript already carries the user's emoji,
+      // and "Enhance" must not silently delete them just because the converter
+      // is now off. Pure, never throws; a no-op when nothing was dropped.
+      if context.llmProvider == LLMProvider.appleIntelligence.rawValue,
+        let polished = context.polishedText
+      {
+        context.polishedText =
+          EmojiRestorer().restore(
+            polished: polished, prePolish: context.text
+          ).text
+      }
       stepOutput = context.polishedText
     } catch let ctxErr as AFMContextWindowExceeded {
       // #1055: the explicit re-polish action gets an HONEST reason ("too long"),

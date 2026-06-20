@@ -245,6 +245,30 @@ import Testing
     }
   }
 
+  // MARK: emoji-restore telemetry never leaks across dictations (#761)
+
+  @Test(
+    "emoji telemetry from a prior AFM dictation never rides a later non-emoji transcript (#761)")
+  func emojiTelemetryClearsOnNonAFM() async throws {
+    // The reused outcome carries a prior AFM dictation's stamped emoji counts.
+    let outcome = KernelFinalizationOutcome()
+    outcome.emojiRan = true
+    outcome.emojiInInput = 2
+    outcome.emojiDropped = 2
+    outcome.emojiRestored = 2
+    outcome.emojiLatencyMs = 0.1
+    // This harness runs polish OFF → the dictation is non-AFM → the always-on
+    // step clears its own `lastRun` → the wiring must RESET the stale outcome
+    // rather than leave the prior counts attached to this transcript.
+    let wiring = makeWiring(outcome: outcome)
+    _ = try await wiring.processText("the code is two zero three") {}
+    #expect(outcome.emojiRan == false)
+    #expect(outcome.emojiInInput == nil)
+    #expect(outcome.emojiDropped == nil)
+    #expect(outcome.emojiRestored == nil)
+    #expect(outcome.emojiLatencyMs == nil)
+  }
+
   // MARK: deliver
 
   @Test("deliver pastes when auto-paste is on and the cascade delivered")
@@ -290,7 +314,8 @@ import Testing
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),
-      llmPolish: LLMPolishStep(keychainManager: KeychainManager()))
+      llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
+      emojiRestore: EmojiRestoreStep())
   }
 
   private func makeWiring(

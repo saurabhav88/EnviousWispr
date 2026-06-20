@@ -261,6 +261,11 @@ public enum SentryBreadcrumb {
     /// #145: the deterministic ITN limb exceeded its 0.5s off-actor cap. Rare by
     /// construction (engine p95 ~0.1ms) — the user still gets pre-ITN text.
     case inverseNormalizationTimeout = "inverse_normalization_timeout"
+    /// #761: the deterministic post-polish emoji-restore guard re-inserted fewer
+    /// glyphs than AFM dropped (`restored < dropped`). Impossible by construction
+    /// — every dropped glyph is re-inserted — so this fires only on a regression.
+    /// The user still got the polished text plus whatever was restored.
+    case emojiRestoreIncomplete = "emoji_restore_incomplete"
   }
 }
 
