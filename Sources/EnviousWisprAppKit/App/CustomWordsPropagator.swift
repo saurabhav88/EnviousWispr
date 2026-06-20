@@ -8,9 +8,9 @@ import Foundation
 /// leakage a Swift compile error.
 ///
 /// `EnviousWisprApp.init()` constructs one propagator, registers the known
-/// consumers (pipeline word-correction × 2, pipeline llmPolish × 2,
-/// polishService.llmPolishStep = 5 total), and forwards
-/// `CustomWordsCoordinator.onWordsChanged` into `update(corrector:polish:)`.
+/// consumers (pipeline word-correction × 2, pipeline llmPolish × 2 = 4 total;
+/// the re-polish polish consumer was removed with the feature in #1106), and
+/// forwards `CustomWordsCoordinator.onWordsChanged` into `update(corrector:polish:)`.
 ///
 /// Re-entrancy is contracted out: a consumer's setter must not call
 /// `propagator.update(...)` synchronously. DEBUG builds trap on violation.

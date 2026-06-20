@@ -73,7 +73,7 @@ public struct DefaultPromptPlanner: PromptPlanning {
   ///   formatting-only path (treat as low confidence — prevents English
   ///   contamination when the detector is bypassed).
   /// - `backend == nil`: safety-net passthrough for callsites that have not
-  ///   adopted the explicit field yet (TranscriptPolishService, tests).
+  ///   adopted the explicit field yet (crash-recovery `RecoveryTextProcessor`, tests).
   private func applyVocabularyPolicy(to input: PromptBuildInput) -> PromptBuildInput {
     // Parakeet: force legacy (English-centric) behavior regardless of any
     // language detection that may have leaked into the input. Parakeet

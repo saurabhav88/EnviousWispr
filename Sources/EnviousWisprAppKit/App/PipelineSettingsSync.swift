@@ -13,7 +13,6 @@ import Foundation
 final class PipelineSettingsSync {
   private let kernelDriver: KernelDictationDriver
   private let whisperKitKernelDriver: KernelDictationDriver
-  private let polishService: TranscriptPolishService
   private let audioCapture: any AudioCaptureInterface
   private let asrManager: any ASRManagerInterface
   private let hotkeyService: HotkeyService
@@ -23,15 +22,14 @@ final class PipelineSettingsSync {
   /// preload observation without coupling this layer to the composition root.
   var onNeedsPreloadObservation: (() -> Void)?
 
-  /// Tracks the last evictable Ollama model for #295. Independent of
-  /// `polishService.llmPolishStep` because SettingsManager's cascading didSet
-  /// can corrupt a pre-snapshot read from the polish step.
+  /// Tracks the last evictable Ollama model for #295. Independent of the
+  /// kernel's polish step because SettingsManager's cascading didSet can
+  /// corrupt a pre-snapshot read from the polish step.
   private var lastEvictableOllamaModel: String?
 
   init(
     kernelDriver: KernelDictationDriver,
     whisperKitKernelDriver: KernelDictationDriver,
-    polishService: TranscriptPolishService,
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
     hotkeyService: HotkeyService,
@@ -39,7 +37,6 @@ final class PipelineSettingsSync {
   ) {
     self.kernelDriver = kernelDriver
     self.whisperKitKernelDriver = whisperKitKernelDriver
-    self.polishService = polishService
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.hotkeyService = hotkeyService
@@ -58,8 +55,6 @@ final class PipelineSettingsSync {
     whisperKitKernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     whisperKitKernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
     whisperKitKernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
-
-    syncPolishServiceSettings(settings)
 
     if settings.noiseSuppression {
       audioCapture.buildEngine(noiseSuppression: true)
@@ -131,21 +126,16 @@ final class PipelineSettingsSync {
     case .recordingMode:
       hotkeyService.recordingMode = settings.recordingMode
     case .llmProvider:
-      // Live mirror to re-polish path; eviction fires for RAM management (#295).
-      // Pipeline polish uses the frozen value from `DictationSessionConfig`.
-      polishService.llmPolishStep.llmProvider = settings.llmProvider
-      polishService.llmPolishStep.llmModel = resolvedModel(settings)
+      // Eviction fires for RAM management (#295). Pipeline polish uses the
+      // frozen value from `DictationSessionConfig`; live steps are seeded per
+      // recording, so nothing to mirror here since #1106 removed re-polish.
       reconcileOllamaEviction(settings: settings)
     case .llmModel:
-      polishService.llmPolishStep.llmModel = resolvedModel(settings)
       if settings.llmProvider == .ollama {
         settings.ollamaModel = settings.llmModel
       }
       reconcileOllamaEviction(settings: settings)
     case .ollamaModel:
-      if settings.llmProvider == .ollama {
-        polishService.llmPolishStep.llmModel = settings.ollamaModel
-      }
       reconcileOllamaEviction(settings: settings)
     case .hotkeyEnabled:
       if settings.hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
@@ -181,7 +171,7 @@ final class PipelineSettingsSync {
     case .debugLogLevel:
       Task { await AppLogger.shared.setLogLevel(settings.debugLogLevel) }
     case .useExtendedThinking:
-      polishService.llmPolishStep.useExtendedThinking = settings.useExtendedThinking
+      break  // Frozen per recording; see `DictationSessionConfig`. (Re-polish mirror removed #1106.)
     case .selectedInputDeviceUID:
       // Rebuilds next recording's capture source; in-flight recordings unaffected.
       audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
@@ -211,17 +201,6 @@ final class PipelineSettingsSync {
     case .appearance:
       break  // UI-only; applied to NSApp.appearance by the app shell (#1047).
     }
-  }
-
-  /// Re-polish settings. TODO: share `LLMPolishConfig` with the pipeline (#206 follow-up).
-  ///
-  /// Custom words are NOT seeded here — `CustomWordsPropagator` owns that
-  /// fanout (Phase D, #496).
-  private func syncPolishServiceSettings(_ settings: SettingsManager) {
-    polishService.llmPolishStep.llmProvider = settings.llmProvider
-    polishService.llmPolishStep.llmModel = resolvedModel(settings)
-    polishService.llmPolishStep.polishInstructions = settings.activePolishInstructions
-    polishService.llmPolishStep.useExtendedThinking = settings.useExtendedThinking
   }
 
   /// Resolve the effective LLM model ID for the current provider.
@@ -254,7 +233,11 @@ final class PipelineSettingsSync {
     // `pre`; the next setting change re-evaluates.
     if isOllamaModelPinnedInFlight(pre) { return }
     lastEvictableOllamaModel = new
-    let polishStep = polishService.llmPolishStep
+    // #1106: eviction is a stateless server-unload by model NAME
+    // (`OllamaConnector.evictModel`), so it routes through the live kernel's
+    // polish step (where the Ollama models actually load) rather than the
+    // deleted re-polish step. Any `LLMPolishStep` instance works.
+    let polishStep = kernelDriver.llmPolish
     Task { [polishStep, pre] in
       await polishStep.evictPreviousOllamaModel(pre)
     }

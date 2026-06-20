@@ -27,10 +27,10 @@ public struct AFMPolishError: Error, Sendable {
 /// `exceededContextWindowSize` at generation (the preflight under-counted).
 ///
 /// Deliberately NOT an `AFMPolishError` and NOT an `LLMError`: it propagates
-/// untyped through `LLMPolishStep.process()`, and is handled by exactly two
-/// callers — `TextProcessingRunner` treats it as a silent live-dictation skip
-/// (deterministically-cleaned text passes through), and `TranscriptPolishService`
-/// surfaces an honest "too long for on-device polish" message. A plain struct
+/// untyped through `LLMPolishStep.process()`. `TextProcessingRunner` treats it
+/// as a silent live-dictation skip (deterministically-cleaned text passes
+/// through); standalone callers (crash-recovery's `RecoveryTextProcessor`, #1063)
+/// catch it and fall back to raw. A plain struct
 /// (no FoundationModels dependency) so Pipeline-side code and tests can catch /
 /// construct it without importing the framework.
 public struct AFMContextWindowExceeded: Error, Sendable {
@@ -371,8 +371,8 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       } catch let ctxErr as AFMContextWindowExceeded {
         // #1055: the context-window skip must NOT be wrapped as AFMPolishError
         // (which LLMPolishStep maps to a `generation_failed` Sentry error). Let
-        // it propagate untyped to the runner (silent live skip) /
-        // TranscriptPolishService (honest "too long" message).
+        // it propagate untyped to the runner (silent live skip); standalone
+        // callers (recovery) catch and fall back to raw.
         throw ctxErr
       } catch let afmErr as AFMPolishError {
         // Re-throw untouched if already typed (defensive).

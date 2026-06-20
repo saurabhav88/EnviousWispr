@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Stats header shown above the transcript list in the sidebar.
 struct SidebarStatsHeader: View {
-  @Environment(TranscriptWorkflowCoordinator.self) private var transcriptWorkflowCoordinator
+  @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
   // PR7 of #763: live phase + display labels resolve through the three new homes.
   @Environment(LiveRecordingState.self) private var liveRecordingState
   @Environment(BackendMetadata.self) private var backendMetadata
@@ -19,7 +19,7 @@ struct SidebarStatsHeader: View {
   }
 
   var body: some View {
-    @Bindable var tc = transcriptWorkflowCoordinator.transcriptCoordinator
+    @Bindable var tc = transcriptCoordinator
 
     VStack(spacing: 10) {
       // Search bar + transcript count row
@@ -35,7 +35,7 @@ struct SidebarStatsHeader: View {
         .padding(.vertical, 5)
         .background(.fill.quinary, in: RoundedRectangle(cornerRadius: 6))
 
-        Text("\(transcriptWorkflowCoordinator.transcriptCoordinator.transcriptCount)")
+        Text("\(transcriptCoordinator.transcriptCount)")
           .font(.caption.bold())
           .foregroundStyle(.secondary)
           .monospacedDigit()

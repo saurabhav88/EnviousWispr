@@ -162,22 +162,3 @@ public struct Transcript: Codable, Identifiable, Sendable {
     polishedText ?? text
   }
 }
-
-/// Protocol for checking whether live dictation is in progress.
-/// Narrow contract injected into services that must guard against concurrent dictation.
-@MainActor
-public protocol DictationActivityProviding: AnyObject {
-  var isDictationActive: Bool { get }
-}
-
-/// Error context scoped to a specific transcript enhancement attempt.
-/// Lives in Core because it's a simple value type shared between Pipeline and App layers.
-public struct EnhancementError: Sendable {
-  public let transcriptID: UUID
-  public let message: String
-
-  public init(transcriptID: UUID, message: String) {
-    self.transcriptID = transcriptID
-    self.message = message
-  }
-}

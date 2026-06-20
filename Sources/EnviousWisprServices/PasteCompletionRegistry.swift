@@ -35,9 +35,10 @@ public protocol PasteCompletionObserver: AnyObject {
   func pasteCompleted(_ event: PasteCompletionEvent)
 }
 
-/// Single shared registry per app instance. Constructed inside
-/// `TranscriptPolishService` and threaded into both pipeline finalizers via
-/// `TranscriptFinalizer.init`. Phase 7 subscribers register here.
+/// Single shared registry per app instance. Constructed once at the composition
+/// root (`WisprBootstrapper`) and threaded into both pipeline finalizers via
+/// `TranscriptFinalizer.init`. Phase 7 subscribers register here. (#1106 moved
+/// construction here from the deleted re-polish service.)
 ///
 /// All operations execute on `@MainActor` because the only emitter
 /// (`TranscriptFinalizer.finalize`) and the only foreseeable subscribers

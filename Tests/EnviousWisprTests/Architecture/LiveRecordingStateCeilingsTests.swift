@@ -17,9 +17,12 @@ import Testing
 ///
 /// Bible §30 entry (PR-C.3 of #763, 2026-05-20, #815): line ceiling 90 → 100.
 /// PR-C.3 adds the `isRecordingLocked` hands-free flag (rehomed off the former root state)
-/// and the `DictationActivityProviding` conformance extension (also off
-/// the former root state). The stored-property count is unchanged (the flag is a primitive
+/// and (historically) a `DictationActivityProviding` conformance extension. The
+/// stored-property count is unchanged (the flag is a primitive
 /// `var`, not counted) and no `func` is added (`isDictationActive` is computed).
+/// #1106 (2026-06-19) dropped the `DictationActivityProviding` conformance with
+/// its only consumer (the re-polish service); `isDictationActive` stays as a
+/// plain computed-var extension, so counts are unchanged.
 ///
 /// Lowering any cap is free; raising requires a Bible §30 changelog entry.
 @Suite struct LiveRecordingStateCeilingsTests {

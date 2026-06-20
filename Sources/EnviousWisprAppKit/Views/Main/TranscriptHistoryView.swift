@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Sidebar list of past transcripts with stats header and search.
 struct TranscriptHistoryView: View {
-  @Environment(TranscriptWorkflowCoordinator.self) private var transcriptWorkflowCoordinator
+  @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
   // PR7 of #763: live phase resolves through LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
   @State private var showDeleteAllConfirmation = false
@@ -13,7 +13,7 @@ struct TranscriptHistoryView: View {
   }
 
   var body: some View {
-    @Bindable var tc = transcriptWorkflowCoordinator.transcriptCoordinator
+    @Bindable var tc = transcriptCoordinator
 
     VStack(spacing: 0) {
       SidebarStatsHeader()
@@ -21,7 +21,7 @@ struct TranscriptHistoryView: View {
       Divider()
 
       List(
-        transcriptWorkflowCoordinator.transcriptCoordinator.filteredTranscripts,
+        transcriptCoordinator.filteredTranscripts,
         selection: $tc.selectedTranscriptID
       ) { transcript in
         TranscriptRowView(transcript: transcript)
@@ -30,7 +30,7 @@ struct TranscriptHistoryView: View {
       .opacity(isRecording ? 0.4 : 1.0)
       .animation(.easeInOut(duration: 0.3), value: isRecording)
       .overlay {
-        if transcriptWorkflowCoordinator.transcriptCoordinator.transcripts.isEmpty {
+        if transcriptCoordinator.transcripts.isEmpty {
           ContentUnavailableView(
             "No Transcripts Yet",
             systemImage: "doc.text",
@@ -39,7 +39,7 @@ struct TranscriptHistoryView: View {
         }
       }
 
-      if !transcriptWorkflowCoordinator.transcriptCoordinator.transcripts.isEmpty {
+      if !transcriptCoordinator.transcripts.isEmpty {
         Divider()
         Button(role: .destructive) {
           showDeleteAllConfirmation = true
@@ -56,11 +56,11 @@ struct TranscriptHistoryView: View {
     .alert("Delete All Transcripts?", isPresented: $showDeleteAllConfirmation) {
       Button("Cancel", role: .cancel) {}
       Button("Delete All", role: .destructive) {
-        transcriptWorkflowCoordinator.transcriptCoordinator.deleteAll()
+        transcriptCoordinator.deleteAll()
       }
     } message: {
       Text(
-        "This will permanently delete all \(transcriptWorkflowCoordinator.transcriptCoordinator.transcriptCount) transcripts. This action cannot be undone."
+        "This will permanently delete all \(transcriptCoordinator.transcriptCount) transcripts. This action cannot be undone."
       )
     }
   }
