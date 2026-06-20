@@ -82,6 +82,26 @@ final class DictationLifecycleCoordinator {
   /// `var languageSuggestionPresenter`.
   var onPipelineStateChange: ((PipelineState) -> Void)?
 
+  /// #1063 PR1 — fires once per completed recording whose transcript carries a
+  /// recovery session id, AFTER the durable save (the completion seam runs on
+  /// `.complete`, which the kernel reaches only after `TranscriptStore.save`
+  /// committed). `DictationRuntime` sets it to `RecoveryCoordinator.handleDurableSave`
+  /// so that session's spool + key are deleted. Setter-injected like
+  /// `onPipelineStateChange` (a `var` closure, off the collaborator cap); the
+  /// default no-op keeps recovery-off behavior. Keeps the Pipeline recovery-unaware.
+  var onDurableSave: (String) -> Void = { _ in }
+
+  /// #1063 PR1 (Codex r3 P1) — fires when a recording reaches a NON-saved
+  /// terminal (`.error` / `.idle` from cancel, no-speech, too-short discard,
+  /// pipeline error, or a helper-crash-while-app-alive). `DictationRuntime` sets
+  /// it to `RecoveryCoordinator.handleRecordingEndedWithoutDurableSave` so the
+  /// armed spool + key are deleted immediately (the app is alive — not a crash —
+  /// so they have no recovery value and would otherwise accumulate until launch).
+  /// `.complete` is EXCLUDED (its save path runs `onDurableSave`); the
+  /// coordinator's armed-id guard makes a post-`.complete` `.idle` a no-op.
+  /// Another off-cap `var` closure, default no-op.
+  var onRecordingEndedWithoutDurableSave: () -> Void = {}
+
   /// Per-pipeline side-effect executors. Lazy so the closures can capture
   /// `self` after all stored properties are initialized.
   private lazy var parakeetStateHandler: PipelineStateChangeHandler =
@@ -191,6 +211,19 @@ final class DictationLifecycleCoordinator {
       // Session ended — retry any Ollama eviction deferred because the
       // frozen session pinned the old model.
       settingsSync.retryDeferredOllamaEviction(settings: settings)
+      // #1063 PR1: a NON-saved ending (cancel / no-speech / too-short / error /
+      // helper-crash-while-alive) left a finalized recovery spool; delete it now.
+      // `.complete` owns deletion via its save path (`onDurableSave`), so skip it.
+      // KNOWN LIMITATION (Codex r4 P2 #1, routed to #1063 PR2): the published
+      // `.error` here is externalError-pinned, so it can in theory fire while the
+      // kernel is still finalizing (a transcript in hand, durable save imminent) —
+      // deleting the spool a beat early. Zero impact in PR1 (the launch purge
+      // wipes every spool regardless of deletion timing, and no current
+      // `setExternalError` caller fires during finalizing). The correct fix is to
+      // key this cleanup off the kernel's terminal transition rather than the
+      // pinnable published state; that signal redesign lands with PR2's recovery
+      // rebuild (scan → recover → save → delete).
+      if case .complete = newState {} else { onRecordingEndedWithoutDurableSave() }
     }
     let nowActive = newState.isActive
     if nowActive && !prevParakeetActive {
@@ -232,6 +265,8 @@ final class DictationLifecycleCoordinator {
       recordingLockedAccess.set(false)
       hotkeyService.unregisterCancelHotkey()
       settingsSync.retryDeferredOllamaEviction(settings: settings)
+      // #1063 PR1: same non-saved recovery-spool cleanup as the Parakeet handler.
+      if case .complete = newState {} else { onRecordingEndedWithoutDurableSave() }
     }
     let nowActive = newState.isActive
     if nowActive && !prevWhisperKitActive {
@@ -341,7 +376,12 @@ final class DictationLifecycleCoordinator {
       schedulePolishFailedWarning: { [weak self] in
         self?.schedulePostCompletionWarning(message: "Polish failed -- using raw text")
       },
-      appendCompletedTranscript: { [weak self] t in self?.transcriptCoordinator.append(t) },
+      appendCompletedTranscript: { [weak self] t in
+        self?.transcriptCoordinator.append(t)
+        // #1063 PR1: the save is durable by `.complete`; delete this session's
+        // spool + key. nil unless recovery was armed for this take.
+        if let sid = t.recoverySessionID { self?.onDurableSave(sid) }
+      },
       reportDictationCompleted: { [weak self] t in
         guard let self else { return }
         TelemetryService.shared.reportDictationCompleted(

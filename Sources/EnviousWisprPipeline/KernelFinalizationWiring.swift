@@ -238,7 +238,13 @@ struct KernelFinalizationWiring {
         processingTime: adapter.lastResult?.processingTime ?? 0,
         backendType: adapter.engineIdentity.backendType,
         llmProvider: outcome.llmProvider,
-        llmModel: outcome.llmModel)
+        llmModel: outcome.llmModel,
+        // #1063 PR1: link this live transcript to its crash-recovery spool (nil
+        // unless recovery was armed) so the host deletes that session's spool +
+        // key once this save is durable. `isRecovered` is false — this is the
+        // live take, not a rescued one.
+        recoverySessionID: context.config?.recoverySessionID,
+        isRecovered: false)
       try save(transcript)
       outcome.transcript = transcript
     }

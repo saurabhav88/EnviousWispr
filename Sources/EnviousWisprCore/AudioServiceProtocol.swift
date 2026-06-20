@@ -49,7 +49,10 @@ import Foundation
     maxWait: Double, pollInterval: Double, reply: @escaping (Bool) -> Void)
 
   /// Phase 2: install audio tap and begin capture. Buffers flow back via audioBufferCaptured callback.
-  func beginCapture(operationID: String, reply: @escaping (NSError?) -> Void)
+  /// `recoveryPayload` is an opaque encoded `RecoverySpoolDirective` (Data only — this is an `@objc`
+  /// protocol) the host hands the helper to arm the crash-recovery limb; nil ⇒ no spool, behaves as today.
+  func beginCapture(
+    operationID: String, recoveryPayload: Data?, reply: @escaping (NSError?) -> Void)
 
   /// Stop capture and return accumulated samples + finalized VAD segments atomically.
   /// First Data = raw Float32 sample bytes. Second Data = packed [Int32 start, Int32 end] VAD segment pairs.

@@ -143,7 +143,8 @@ public enum SentryBreadcrumb {
     tags: [String: String] = [:]
   ) {
     let event = Event(level: .error)
-    event.message = SentryMessage(formatted: "\(category.rawValue): \(Self.structuredDescriptor(error))")
+    event.message = SentryMessage(
+      formatted: "\(category.rawValue): \(Self.structuredDescriptor(error))")
     var eventTags = [
       "pipeline.stage": stage,
       "error.category": category.rawValue,
@@ -273,6 +274,11 @@ public enum SentryBreadcrumb {
     /// #145: the deterministic ITN limb exceeded its 0.5s off-actor cap. Rare by
     /// construction (engine p95 ~0.1ms) — the user still gets pre-ITN text.
     case inverseNormalizationTimeout = "inverse_normalization_timeout"
+    /// #1063 PR1: the crash-recovery limb could not arm because its per-session
+    /// key failed to generate/persist. Non-crash — the recording is byte-identical;
+    /// only the safety copy is absent for that take. (Recovery-side failures —
+    /// decrypt/transcribe — land in PR2 when the recovery read-flow exists.)
+    case recoveryKeyStoreFailed = "recovery_key_store_failed"
     /// #761: the deterministic post-polish emoji-restore guard re-inserted fewer
     /// glyphs than AFM dropped (`restored < dropped`). Impossible by construction
     /// — every dropped glyph is re-inserted — so this fires only on a regression.

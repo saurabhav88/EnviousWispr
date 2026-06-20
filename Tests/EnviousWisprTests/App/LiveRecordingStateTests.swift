@@ -164,7 +164,7 @@ private final class SettableAudioCapture: AudioCaptureInterface {
   var warmEnginePolicy: WarmEnginePolicy = .off
 
   func startEnginePhase() async throws {}
-  func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
+  func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
     AsyncStream { $0.finish() }
   }
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
@@ -214,7 +214,7 @@ private final class ObservableAudioCapture: AudioCaptureInterface {
   var warmEnginePolicy: WarmEnginePolicy = .off
 
   func startEnginePhase() async throws {}
-  func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
+  func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
     AsyncStream { $0.finish() }
   }
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {

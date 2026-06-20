@@ -28,6 +28,26 @@ final class RecordingStarter {
   /// reference an init param) is today's block; a test injects a counting spy.
   let accessibilityRefresh: @MainActor () -> Void
 
+  /// Arms the crash-recovery limb for a recording about to start, returning the
+  /// durable session id + opaque directive payload (nil when recovery is off or
+  /// could not arm). A bare closure so it stays off this start-path home's
+  /// collaborator count; `DictationRuntime` binds it to `RecoveryCoordinator`.
+  /// Default is a no-op (recovery off) so test/legacy construction is unchanged.
+  /// (#1063 PR1.)
+  let makeRecoveryDirective:
+    @MainActor (SettingsManager, ASRBackendType, Bool) async -> (
+      recoverySessionID: String, payload: Data
+    )?
+
+  /// Cleans up a recovery key/spool armed for a start that never produced a
+  /// recording — a PTT release or a concurrent-toggle stop landing in the arm
+  /// window. Those paths mint no kernel session, so no terminal pipeline state
+  /// fires to drive the lifecycle coordinator's cleanup; the start path must
+  /// trigger it directly. Bare closure (off the collaborator cap); bound to
+  /// `RecoveryCoordinator.handleRecordingEndedWithoutDurableSave`. Default no-op.
+  /// (#1063 PR1, Codex r3.)
+  let cleanupRecoveryArm: @MainActor () -> Void
+
   var heartControlRecovery: HeartControlRecovery
   var recordingLockedAccess: DictationLifecycleCoordinator.RecordingLockedAccess
   var lastUserStopAccess: RecordingFinalizer.LastUserStopAccess
@@ -69,8 +89,14 @@ final class RecordingStarter {
     lastUserStopAccess: RecordingFinalizer.LastUserStopAccess,
     lastRecordingResult: LastRecordingResult,
     dictationLifecycleCoordinator: DictationLifecycleCoordinator?,
-    accessibilityRefresh: (@MainActor () -> Void)? = nil
+    accessibilityRefresh: (@MainActor () -> Void)? = nil,
+    makeRecoveryDirective: @escaping @MainActor (SettingsManager, ASRBackendType, Bool) async -> (
+      recoverySessionID: String, payload: Data
+    )? = { _, _, _ in nil },
+    cleanupRecoveryArm: @escaping @MainActor () -> Void = {}
   ) {
+    self.makeRecoveryDirective = makeRecoveryDirective
+    self.cleanupRecoveryArm = cleanupRecoveryArm
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.kernelDriver = kernelDriver
@@ -179,15 +205,24 @@ final class RecordingStarter {
     // genuine-cold press's overlay). The driver clears it at `.recording`/terminal.
     if isWarmRespawn { active.beginWarmRespawnOverlay() }
     do {
-      try await active.handle(
-        event: .toggleRecording(
-          DictationSessionConfigFactory.make(
-            asrManager: asrManager,
-            kernelDriver: kernelDriver,
-            whisperKitKernelDriver: whisperKitKernelDriver,
-            settings: settings,
-            triggerSource: .pttHotkey
-          )))
+      let config = await makeSessionConfig(triggerSource: .pttHotkey, armRecovery: true)
+      // #1063 PR1: the recovery-arm await widened the pre-session window. If PTT
+      // was released during it, `requestStop` hit the idle kernel and was ignored
+      // — bail before minting a session so a quick release can't leave a recording
+      // running (Codex code-diff P1). `preWarm` already started the engine, so
+      // tear it down exactly like the pre-warm-release guard above does (Codex
+      // code-diff r2 P2) — a bare hide/unlock would leave the mic engine running.
+      // Any key armed above is swept by the launch purge's orphan-key pass.
+      if let lastStop = lastUserStopAccess.read(), lastStop > pttStart {
+        audioCapture.abortPreWarm()
+        // A key was armed for this take but no session will start — no terminal
+        // pipeline state fires, so clean the orphan spool/key here (Codex r3).
+        cleanupRecoveryArm()
+        recordingOverlay.show(intent: .hidden)
+        recordingLockedAccess.set(false)
+        return
+      }
+      try await active.handle(event: .toggleRecording(config))
     } catch {
       heartControlRecovery.recover(
         error: error, op: "toggle-from-prewarm",
@@ -273,22 +308,64 @@ final class RecordingStarter {
     // #959: set the overlay latch immediately before the kernel dispatch (toggle
     // has no pre-warm abort path, but keep the set-just-before-dispatch rule).
     if isWarmRespawn { active.beginWarmRespawnOverlay() }
+    let toggleStart = ContinuousClock.now
     do {
-      try await active.handle(
-        event: .toggleRecording(
-          DictationSessionConfigFactory.make(
-            asrManager: asrManager,
-            kernelDriver: kernelDriver,
-            whisperKitKernelDriver: whisperKitKernelDriver,
-            settings: settings,
-            triggerSource: source
-          )))
+      // #1063 PR1: arm recovery ONLY when this toggle STARTS a recording. A stop
+      // toggle reaches here too, but the kernel ignores the config — arming there
+      // would orphan a key (Codex code-diff P2).
+      let config = await makeSessionConfig(
+        triggerSource: source, armRecovery: isStartingFromIdle)
+      // #1063 PR1 (Codex r3 P1): the recovery-arm await (when armRecovery)
+      // suspended this start path. If the user cancelled, OR a concurrent toggle
+      // started the kernel during that window, do NOT start a fresh recording —
+      // `.toggleRecording` is DROPPED in the transient `.preparing/.warmingUp`
+      // states (KernelDictationDriver:644-646), so the user's stop would be lost.
+      // Re-dispatch as `.requestStop` (it LATCHES in those states), and clean the
+      // key armed here (a never-started or immediately-discarded session emits no
+      // terminal state for the lifecycle coordinator's cleanup to observe).
+      if isStartingFromIdle {
+        if let lastStop = lastUserStopAccess.read(), lastStop > toggleStart {
+          cleanupRecoveryArm()
+          return
+        }
+        if active.state.isActive {
+          cleanupRecoveryArm()
+          try await active.handle(event: .requestStop)
+          return
+        }
+      }
+      try await active.handle(event: .toggleRecording(config))
     } catch {
       heartControlRecovery.recover(
         error: error, op: "toggle",
         message: ModelLoadWatchdog.userMessage,
         setExternalError: active.setExternalError)
     }
+  }
+
+  /// Build the per-recording config, arming crash recovery first when this is a
+  /// START (`armRecovery`). Arming has side effects — it mints + DURABLY stores a
+  /// per-session key — so it must NOT run on a stop toggle (the kernel ignores the
+  /// config there; an armed key would orphan with no spool, Codex code-diff P2).
+  /// The directive is nil unless recovery is on, so the heart path is unchanged.
+  /// Reads the active engine's LID CAPABILITY (not an identity literal).
+  /// (#1063 PR1.)
+  private func makeSessionConfig(triggerSource: TriggerSource, armRecovery: Bool) async
+    -> DictationSessionConfig
+  {
+    let recovery =
+      armRecovery
+      ? await makeRecoveryDirective(
+        settings, asrManager.activeBackendType, activeDriver.supportsLanguageDetection)
+      : nil
+    return DictationSessionConfigFactory.make(
+      asrManager: asrManager,
+      kernelDriver: kernelDriver,
+      whisperKitKernelDriver: whisperKitKernelDriver,
+      settings: settings,
+      triggerSource: triggerSource,
+      recoverySessionID: recovery?.recoverySessionID,
+      recoveryPayload: recovery?.payload)
   }
 
   private static func elapsedMs(since instant: ContinuousClock.Instant) -> Int {

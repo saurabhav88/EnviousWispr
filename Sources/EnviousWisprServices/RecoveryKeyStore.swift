@@ -84,6 +84,20 @@ public struct RecoveryKeyStore: Sendable {
     }
   }
 
+  /// Every `recoverySessionID` that currently has a stored key. Lets the launch
+  /// purge sweep ORPHAN keys (a key with no spool — e.g. a recording that armed
+  /// then aborted before any frame was written), which a spool-only scan misses.
+  /// Best-effort: an enumeration failure returns an empty list (the caller is a
+  /// purge — failing closed there just defers cleanup to the next launch).
+  public func listAccountIDs() -> [String] {
+    switch backend {
+    case .file:
+      return fileListAccounts()
+    case .keychain(let service):
+      return keychainListAccounts(service: service)
+    }
+  }
+
   // MARK: Data-protection keychain backend
 
   private func baseQuery(service: String, account: String) -> [String: Any] {
@@ -160,6 +174,20 @@ public struct RecoveryKeyStore: Sendable {
     }
   }
 
+  private func keychainListAccounts(service: String) -> [String] {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecUseDataProtectionKeychain as String: kCFBooleanTrue as Any,
+      kSecReturnAttributes as String: kCFBooleanTrue as Any,
+      kSecMatchLimit as String: kSecMatchLimitAll,
+    ]
+    var result: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    guard status == errSecSuccess, let items = result as? [[String: Any]] else { return [] }
+    return items.compactMap { $0[kSecAttrAccount as String] as? String }
+  }
+
   // MARK: File backend (DEBUG / dev / unrecognized build)
 
   private func fileURL(for account: String) -> URL {
@@ -219,6 +247,15 @@ public struct RecoveryKeyStore: Sendable {
     } catch {
       throw RecoveryKeyStoreError.deleteFailed(errSecIO)
     }
+  }
+
+  private func fileListAccounts() -> [String] {
+    let fm = FileManager.default
+    guard
+      let entries = try? fm.contentsOfDirectory(at: fileDirectory, includingPropertiesForKeys: nil)
+    else { return [] }
+    // Skip dotfiles (the `.{account}.tmp` atomic-write temp + `.metadata*`).
+    return entries.map { $0.lastPathComponent }.filter { !$0.hasPrefix(".") }
   }
 
   // MARK: Backend selection (mirrors KeychainManager — fail closed to file)

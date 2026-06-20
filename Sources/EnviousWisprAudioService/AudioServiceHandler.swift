@@ -35,6 +35,22 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
   /// VAD monitoring task — started after beginCapture, cancelled on stopCapture/abortPreWarm.
   private var vadMonitorTask: Task<Void, Never>?
 
+  // MARK: - Crash-recovery spool state (#1063 PR1)
+
+  /// The live spool writer, built from the recovery directive at beginCapture
+  /// and fed the authoritative captured samples on a poll loop. nil when
+  /// recovery is off / failed to arm. MainActor-confined (like the VAD state).
+  private var recoverySpoolWriter: RecoverySpoolWriter?
+  /// Poll task feeding new captured samples to the writer — mirrors the VAD
+  /// monitor. Cancelled on stop / invalidation.
+  private var recoveryFeedTask: Task<Void, Never>?
+  /// High-water mark of `capturedSamples` already handed to the writer, so the
+  /// clean-stop tail is `captureResult.samples[recoveryFedSampleCount...]`.
+  private var recoveryFedSampleCount: Int = 0
+  /// Single-finalize guard across the clean-stop vs XPC-invalidation race
+  /// (the writer is also idempotent; this avoids even queuing the second call).
+  private var recoveryFinalized: Bool = false
+
   /// Get or create the capture manager on MainActor, wiring callbacks on first creation.
   @MainActor
   private var captureManager: AudioCaptureManager {
@@ -182,7 +198,9 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
     }
   }
 
-  func beginCapture(operationID: String, reply: @escaping (NSError?) -> Void) {
+  func beginCapture(
+    operationID: String, recoveryPayload: Data?, reply: @escaping (NSError?) -> Void
+  ) {
     let signal = XPCOperationSignalFile.audio.makeEmitter(operationID: operationID)
     signal.emit(stage: "audio.begin_capture.received")
     nonisolated(unsafe) let safeReply = reply
@@ -199,6 +217,9 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
         signal.emit(stage: "audio.begin_capture.source_completed")
         self.startVADMonitoring()
         signal.emit(stage: "audio.begin_capture.vad_started")
+        // Crash-recovery limb: arm the spool from the directive. Fail-open —
+        // never throws, never gates the reply (heart path is byte-identical).
+        self.startRecoverySpooling(payload: recoveryPayload)
         safeReply(nil)
       } catch {
         signal.emit(stage: "audio.begin_capture.failed", detail: error.localizedDescription)
@@ -251,6 +272,12 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
       let sampleData = captureResult.samples.withUnsafeBytes { Data($0) }
       signal.emit(stage: "audio.stop_capture.reply_ready")
       safeReply(sampleData, vadData)
+
+      // Crash-recovery limb (AFTER the heart-path reply so it never delays
+      // delivery): write the final tail beyond what the poll loop fed, then
+      // finalize. Uses the authoritative `captureResult.samples`, never the
+      // now-cleared live buffer. Fail-open.
+      self.stopRecoverySpooling(tail: captureResult.samples)
     }
   }
 
@@ -373,5 +400,123 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
   private func cancelVADMonitoring() {
     vadMonitorTask?.cancel()
     vadMonitorTask = nil
+  }
+
+  // MARK: - Crash-recovery spool (#1063 PR1)
+
+  /// Decode the directive and arm the spool writer + feed loop. Fail-open: any
+  /// decode/preflight failure leaves recovery off and capture byte-identical.
+  @MainActor
+  private func startRecoverySpooling(payload: Data?) {
+    recoveryFinalized = false
+    recoveryFedSampleCount = 0
+    recoverySpoolWriter = nil
+    guard let payload,
+      let directive = try? JSONDecoder().decode(RecoverySpoolDirective.self, from: payload),
+      directive.enabled
+    else { return }
+    // Low-disk preflight: don't start a spool when free space is already below
+    // the watermark the heart path needs (History save / ASR temp / model cache).
+    guard Self.hasSufficientDiskSpace(forSpoolAt: directive.spoolPath) else { return }
+
+    let writer = RecoverySpoolWriter(
+      recoverySessionID: directive.recoverySessionID,
+      spoolURL: URL(fileURLWithPath: directive.spoolPath),
+      cipher: RecoverySpoolCipher(directive: directive),
+      settings: directive.settingsSnapshot)
+    writer.start()
+    recoverySpoolWriter = writer
+    startRecoveryFeed(writer: writer, spoolPath: directive.spoolPath)
+  }
+
+  /// Poll the authoritative `capturedSamples` and append new ranges to the
+  /// writer — mirrors `startVADMonitoring`. Lossless (the same buffer
+  /// `stopCapture` returns), off the RT thread, batched at ~`chunkIntervalSeconds`.
+  @MainActor
+  private func startRecoveryFeed(writer: RecoverySpoolWriter, spoolPath: String) {
+    recoveryFeedTask = Task { @MainActor [weak self] in
+      var pollCount = 0
+      let flushEvery = max(
+        1,
+        Int(
+          (RecoveryConstants.flushIntervalSeconds / RecoveryConstants.chunkIntervalSeconds)
+            .rounded()))
+      while !Task.isCancelled {
+        guard let self else { return }
+        let manager = self.captureManager
+        guard manager.isCapturing, writer.isHealthy else { return }
+
+        let currentCount = manager.capturedSamples.count
+        if currentCount > self.recoveryFedSampleCount {
+          let chunk = Array(manager.capturedSamples[self.recoveryFedSampleCount..<currentCount])
+          writer.append(chunk)
+          self.recoveryFedSampleCount = currentCount
+        }
+
+        pollCount += 1
+        if pollCount % flushEvery == 0 {
+          writer.flush()
+          // Low-disk watermark re-check: stop spooling with an honest terminal
+          // marker before recovery can starve the disk the heart path needs.
+          if !Self.hasSufficientDiskSpace(forSpoolAt: spoolPath) {
+            self.finalizeRecovery(.lowDiskWatermark)
+            return
+          }
+        }
+
+        try? await Task.sleep(for: .seconds(RecoveryConstants.chunkIntervalSeconds))
+      }
+    }
+  }
+
+  /// Clean stop: feed the final tail beyond what the poll loop wrote, then
+  /// finalize with the clean marker. Runs once (guarded).
+  @MainActor
+  private func stopRecoverySpooling(tail: [Float]) {
+    guard !recoveryFinalized, let writer = recoverySpoolWriter else { return }
+    recoveryFinalized = true
+    recoveryFeedTask?.cancel()
+    recoveryFeedTask = nil
+    if tail.count > recoveryFedSampleCount {
+      writer.append(Array(tail[recoveryFedSampleCount...]))
+    }
+    writer.flush()
+    writer.finalize(reason: .cleanFinalized)
+    recoverySpoolWriter = nil
+  }
+
+  /// Finalize the spool for a non-clean reason (low disk, helper interrupted).
+  /// Guarded so clean-stop and invalidation cannot both write a terminal marker.
+  @MainActor
+  private func finalizeRecovery(_ reason: RecoverySpoolTerminationReason) {
+    guard !recoveryFinalized, let writer = recoverySpoolWriter else { return }
+    recoveryFinalized = true
+    recoveryFeedTask?.cancel()
+    recoveryFeedTask = nil
+    writer.finalize(reason: reason)
+    recoverySpoolWriter = nil
+  }
+
+  /// Best-effort flush when the host (app) disconnects mid-recording. The helper
+  /// process outlives the disconnected client, so the async finalize on the
+  /// writer's serial queue typically drains and already-written frames are
+  /// OS-durable; the ~3 s periodic flush + valid-prefix recovery are the real
+  /// durability floor (not a guaranteed zero tail).
+  func flushRecoveryOnInvalidation() {
+    Task { @MainActor [weak self] in self?.finalizeRecovery(.interrupted) }
+  }
+
+  /// True when the spool volume has at least the low-disk watermark free. Reads
+  /// the spool's parent directory (the file may not exist yet; the host created
+  /// the directory before handing over the path). Fail-open: an unreadable
+  /// value arms recovery anyway — the writer's backpressure cap is the backstop.
+  private static func hasSufficientDiskSpace(forSpoolAt path: String) -> Bool {
+    let dir = URL(fileURLWithPath: path).deletingLastPathComponent()
+    guard
+      let values = try? dir.resourceValues(
+        forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+      let available = values.volumeAvailableCapacityForImportantUsage
+    else { return true }
+    return available >= RecoveryConstants.lowDiskWatermarkBytes
   }
 }

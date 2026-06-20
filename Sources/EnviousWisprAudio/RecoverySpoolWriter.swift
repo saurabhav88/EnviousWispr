@@ -56,6 +56,11 @@ public final class RecoverySpoolWriter: @unchecked Sendable {
   private nonisolated(unsafe) var nextStartSample: UInt64 = 0
   private nonisolated(unsafe) var nextNonceCounter: UInt64 = RecoveryConstants
     .firstFrameNonceCounter
+  /// Set once the terminal marker is written + the sink closed. Makes `finalize`
+  /// idempotent: PR1 can race a clean-stop `finalize(.cleanFinalized)` against a
+  /// best-effort XPC-invalidation `finalize(.interrupted)`, and a second marker
+  /// write would corrupt the spool's single-terminal-marker contract.
+  private nonisolated(unsafe) var finalized = false
 
   /// - Parameters:
   ///   - maxPendingBytes: backpressure cap. When more than this many bytes of
@@ -183,6 +188,14 @@ public final class RecoverySpoolWriter: @unchecked Sendable {
     reason: RecoverySpoolTerminationReason, completion: (@Sendable () -> Void)? = nil
   ) {
     writeQueue.async { [self] in
+      // Idempotent: a second finalize (clean-stop vs invalidation race) must not
+      // write a second terminal marker. The first caller wins; later callers
+      // no-op but still get their completion so nothing awaiting it hangs.
+      guard !finalized else {
+        completion?()
+        return
+      }
+      finalized = true
       if isHealthy {
         do {
           let marker = try cipher.encodeMarkerFrame(

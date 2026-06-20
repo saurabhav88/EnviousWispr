@@ -473,7 +473,7 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
     startEnginePhaseCallCount += 1
   }
 
-  func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
+  func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
     beginCapturePhaseCallCount += 1
     currentCaptureSessionID += 1
     isCapturing = true

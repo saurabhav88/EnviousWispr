@@ -157,7 +157,7 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
   private var continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
 
   func startEnginePhase() async throws {}
-  func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
+  func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
     isCapturing = true
     isActivelyCapturing = true
     currentCaptureSessionID += 1

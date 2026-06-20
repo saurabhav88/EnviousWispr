@@ -149,6 +149,31 @@ import Testing
         "WhisperKit terminal state \(terminal) must clear the hands-free lock")
     }
   }
+
+  /// #1063 PR1 (Codex code-diff r3 P1): a recording that ends WITHOUT a durable
+  /// save (`.idle` from cancel / no-speech / too-short, or `.error` from a
+  /// pipeline failure / helper-crash-while-alive) must fire the recovery cleanup
+  /// so the armed spool + key are deleted in-session — not left to accumulate
+  /// until the next launch on a long-running menu-bar app. `.complete` must NOT
+  /// fire it: its save path owns deletion via `onDurableSave`. Drives the real
+  /// `install()`-wired `onStateChange` for BOTH backends.
+  @Test func nonSavedTerminalsFireRecoveryCleanupButCompleteDoesNot() {
+    for backend in ["parakeet", "whisperKit"] {
+      let fx = Self.makeCoordinator()
+      var cleanupCount = 0
+      fx.coordinator.onRecordingEndedWithoutDurableSave = { cleanupCount += 1 }
+      fx.coordinator.install()
+      let driver = backend == "whisperKit" ? fx.whisperKitKernelDriver : fx.kernelDriver
+
+      driver.onStateChange?(.idle)
+      #expect(cleanupCount == 1, "\(backend): .idle (cancel/no-speech) must fire non-saved cleanup")
+      driver.onStateChange?(.error("boom"))
+      #expect(cleanupCount == 2, "\(backend): .error must fire non-saved cleanup")
+      driver.onStateChange?(.complete)
+      #expect(
+        cleanupCount == 2, "\(backend): .complete must NOT fire (its save path owns deletion)")
+    }
+  }
 }
 
 /// PR9 of #763 — mutable lock-state stand-in used by the

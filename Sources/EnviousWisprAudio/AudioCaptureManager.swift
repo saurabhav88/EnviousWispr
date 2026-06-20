@@ -170,7 +170,16 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     onLifecycleSignal?("manager_prepare_completed")
   }
 
-  public func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
+  /// In-process capture path. `recoveryPayload` is accepted for protocol
+  /// conformance but IGNORED: the crash-recovery spool runs in the XPC audio
+  /// helper (`AudioServiceHandler`), which owns the authoritative
+  /// `capturedSamples` in the default (`useXPCAudioService`) topology. The
+  /// in-process path is a dev/fallback path and gets recovery in a later phase;
+  /// the heart path here is byte-identical regardless. (#1063 PR1.)
+  public func beginCapturePhase(recoveryPayload: Data?) async throws
+    -> AsyncStream<AVAudioPCMBuffer>
+  {
+    _ = recoveryPayload  // intentionally unused in-process (see doc above)
     guard let source = activeSource else {
       throw AudioError.formatCreationFailed(
         source: "AudioCaptureManager.beginCapturePhase.no_active_source")

@@ -35,9 +35,12 @@ final class RouterTestAudioCapture: AudioCaptureInterface {
   var selectedInputDeviceUID: String = ""
   var preferredInputDeviceIDOverride: String = ""
   var warmEnginePolicy: WarmEnginePolicy = .off
+  /// #1063 PR1: counts `abortPreWarm()` so the release-during-recovery-arm guard
+  /// (Codex code-diff r2 P2) can assert the prewarmed engine is torn down.
+  private(set) var abortPreWarmCallCount = 0
 
   func startEnginePhase() async throws {}
-  func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
+  func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
     AsyncStream { $0.finish() }
   }
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
@@ -47,7 +50,7 @@ final class RouterTestAudioCapture: AudioCaptureInterface {
   func rebuildEngine() {}
   func buildEngine(noiseSuppression: Bool) {}
   func preWarm() async throws {}
-  func abortPreWarm() {}
+  func abortPreWarm() { abortPreWarmCallCount += 1 }
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {
     true
   }
