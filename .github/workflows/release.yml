@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Recovery mode'
+        description: 'Recovery / dry-run mode (build-only = build+sign+notarize, no publish)'
         required: true
         default: 'full'
         type: choice
@@ -16,6 +16,7 @@ on:
           - release-only
           - appcast-only
           - sentry-only
+          - build-only
       tag:
         description: 'Tag (e.g. v1.7.1) — required for all modes'
         required: false
@@ -55,7 +56,7 @@ jobs:
   # Preflight — fail fast before expensive work
   # ==========================================================================
   preflight:
-    runs-on: [self-hosted, enviouswispr-release]
+    runs-on: macos-26
     timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -105,7 +106,7 @@ jobs:
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
         run: |
           case "$MODE" in
-            full) ;;
+            full|build-only) ;;
             release-only|appcast-only|sentry-only)
               if [[ -z "$SOURCE_RUN_ID" ]]; then
                 echo "::error::source_run_id is required for ${MODE} recovery mode"
@@ -121,7 +122,7 @@ jobs:
           MODE: ${{ inputs.mode || 'full' }}
           INPUT_RUN_ID: ${{ inputs.source_run_id }}
         run: |
-          if [[ "$MODE" == "full" ]] || [[ -z "$INPUT_RUN_ID" ]]; then
+          if [[ "$MODE" == "full" || "$MODE" == "build-only" ]] || [[ -z "$INPUT_RUN_ID" ]]; then
             echo "run-id=${{ github.run_id }}" >> "$GITHUB_OUTPUT"
             echo "==> Source run: current (${{ github.run_id }})"
           else
@@ -141,8 +142,8 @@ jobs:
           set -euo pipefail
           FAIL=0
 
-          # Build secrets — required for full and release-only
-          if [[ "$MODE" == "full" || "$MODE" == "release-only" ]]; then
+          # Build secrets — required for full, release-only, and build-only
+          if [[ "$MODE" == "full" || "$MODE" == "release-only" || "$MODE" == "build-only" ]]; then
             [[ "$HAS_SPARKLE_PRIVATE_KEY" == "true" ]] || { echo "::error::SPARKLE_PRIVATE_KEY missing"; FAIL=1; }
             [[ "$HAS_DEVELOPER_ID_CERT" == "true" ]]    || { echo "::error::DEVELOPER_ID_CERT_BASE64 missing"; FAIL=1; }
             [[ "$HAS_APPLE_API_KEY" == "true" ]]         || { echo "::error::APPLE_API_KEY_BASE64 missing"; FAIL=1; }
@@ -183,12 +184,18 @@ jobs:
     needs: [preflight]
     if: >
       github.event_name == 'push' ||
-      inputs.mode == 'full'
-    runs-on: [self-hosted, enviouswispr-release]
+      inputs.mode == 'full' ||
+      inputs.mode == 'build-only'
+    runs-on: macos-26
     timeout-minutes: 330
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        with:
+          xcode-version: latest-stable
 
       - name: Verify SDK supports FoundationModels
         run: |
@@ -233,17 +240,13 @@ jobs:
       - name: Install create-dmg
         run: brew install create-dmg
 
-      - name: Ensure Tuist available
+      - name: Install mise + Tuist
         run: |
           set -euo pipefail
-          MISE_BIN="$(command -v mise || true)"
-          [[ -z "$MISE_BIN" && -x "$HOME/.local/bin/mise" ]] && MISE_BIN="$HOME/.local/bin/mise"
-          [[ -z "$MISE_BIN" && -x /opt/homebrew/bin/mise ]] && MISE_BIN="/opt/homebrew/bin/mise"
-          if [[ -z "$MISE_BIN" ]]; then
-            echo "::error::mise not found on the release runner"; exit 1
-          fi
-          "$MISE_BIN" install tuist@4.195.11
-          "$MISE_BIN" x tuist@4.195.11 -- tuist version
+          curl https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/mise" install tuist@4.195.11
+          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version
 
       - name: Import Developer ID certificate
         env:
@@ -262,6 +265,10 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: \
             -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          # Make the ephemeral keychain the default so codesign resolves the
+          # identity (signed by name in build-release-dmg.sh) unambiguously on a
+          # fresh hosted image. (#1087)
+          security default-keychain -s "$KEYCHAIN_PATH"
 
       - name: Build, sign & package release DMG
         env:
@@ -303,7 +310,9 @@ jobs:
           if echo "${SUBMIT_OUTPUT}" | grep -q "status: Accepted"; then
             echo "==> Notarization accepted. Stapling ..."
             xcrun stapler staple "${DMG_PATH}"
-            echo "==> Stapled. Done."
+            # Re-verify the stapled ticket actually stuck before we ship. (#1087)
+            xcrun stapler validate "${DMG_PATH}"
+            echo "==> Stapled + validated. Done."
             rm -f "${KEY_PATH}"
           elif echo "${SUBMIT_OUTPUT}" | grep -q "status: Invalid"; then
             echo "::error::Notarization REJECTED — fetching log for details"
@@ -430,10 +439,11 @@ jobs:
         needs.build-release-artifacts.result == 'success' ||
         needs.build-release-artifacts.result == 'skipped'
       )
-    runs-on: [self-hosted, enviouswispr-release]
+    runs-on: macos-26
     timeout-minutes: 15
     permissions:
       contents: write
+      actions: read   # cross-run download-artifact (recovery modes) (#1087)
     steps:
       - name: Download release artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -464,7 +474,10 @@ jobs:
           VERSION: ${{ needs.preflight.outputs.version }}
           TAG: ${{ needs.preflight.outputs.tag }}
         run: |
+          # --repo is required on hosted runners: this job has no checkout, so a
+          # fresh hosted workspace has no .git for gh to infer the repo from. (#1087)
           gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
             --title "EnviousWispr v${VERSION}" \
             --generate-notes \
             "build/EnviousWispr-${VERSION}.dmg" \
@@ -478,7 +491,7 @@ jobs:
           TAG: ${{ needs.preflight.outputs.tag }}
         run: |
           echo "==> Recovery mode: overwriting assets on existing release $TAG"
-          gh release upload "$TAG" --clobber \
+          gh release upload "$TAG" --repo "${{ github.repository }}" --clobber \
             "build/EnviousWispr-${VERSION}.dmg" \
             "build/EnviousWispr.dmg"
 
@@ -504,10 +517,13 @@ jobs:
         needs.build-release-artifacts.result == 'success' ||
         needs.build-release-artifacts.result == 'skipped'
       )
-    runs-on: [self-hosted, enviouswispr-release]
+    runs-on: macos-26
     # #1019: bumped 10→20 to accommodate the wait-for-Pages-deploy poll before
     # the edge purge + verify (the deploy + edge refresh can take several min).
     timeout-minutes: 20
+    permissions:
+      contents: read   # checkout + cross-run download (push/PR use the App token) (#1087)
+      actions: read
     steps:
       - name: Checkout main
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -709,8 +725,11 @@ jobs:
         needs.build-release-artifacts.result == 'success' ||
         needs.build-release-artifacts.result == 'skipped'
       )
-    runs-on: [self-hosted, enviouswispr-release]
+    runs-on: macos-26
     timeout-minutes: 15
+    permissions:
+      contents: read   # checkout + cross-run download (Sentry upload uses its own token) (#1087)
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -725,6 +744,9 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ needs.preflight.outputs.source-run-id }}
 
+      - name: Install sentry-cli
+        run: curl -sL https://sentry.io/get-cli/ | bash
+
       - name: Upload dSYMs to Sentry
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -734,7 +756,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Expect sentry-cli pre-installed on self-hosted runner
+          # sentry-cli is installed by the prior step on the hosted runner; this guard is belt-and-suspenders
           if ! command -v sentry-cli &>/dev/null; then
             echo "::error::sentry-cli not found. Install it on the runner: curl -sL https://sentry.io/get-cli/ | bash"
             exit 1
@@ -757,7 +779,7 @@ jobs:
   release-summary:
     needs: [preflight, build-release-artifacts, publish-github-release, publish-appcast, upload-sentry-dsyms]
     if: always() && needs.preflight.result == 'success'
-    runs-on: [self-hosted, enviouswispr-release]
+    runs-on: macos-26
     timeout-minutes: 5
     steps:
       - name: Write release summary
