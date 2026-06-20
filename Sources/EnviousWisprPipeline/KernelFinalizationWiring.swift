@@ -62,6 +62,15 @@ final class KernelFinalizationOutcome {
   var itnLatencyMs: Double?
   var itnLenBefore: Int?
   var itnLenAfter: Int?
+  /// #761: deterministic emoji-restore facts, threaded onto `dictation.completed`.
+  /// Counts only (`telemetry-privacy-boundary`). Populated only on an AFM run; the
+  /// optionals stay nil for cloud / Ollama / no-polish dictations.
+  var emojiRan = false
+  var emojiInInput: Int?
+  var emojiDropped: Int?
+  var emojiRestored: Int?
+  var emojiRestoreIncomplete: Bool?
+  var emojiLatencyMs: Double?
 
   init() {}
 }
@@ -169,7 +178,7 @@ struct KernelFinalizationWiring {
         targetAppName: context.targetApp?.localizedName,
         steps: [
           steps.wordCorrection, steps.fillerRemoval, steps.emojiFormatter,
-          steps.inverseTextNormalization, steps.llmPolish,
+          steps.inverseTextNormalization, steps.llmPolish, steps.emojiRestore,
         ])
       let ctx = result.context
       // #145: thread the ITN run outcome onto `dictation.completed` (metadata
@@ -183,6 +192,26 @@ struct KernelFinalizationWiring {
         outcome.itnLatencyMs = itn.latencyMs
         outcome.itnLenBefore = itn.lenBefore
         outcome.itnLenAfter = itn.lenAfter
+      }
+      // #761: thread the emoji-restore outcome onto `dictation.completed`
+      // (counts only — `telemetry-privacy-boundary`). The always-on step stamps
+      // `lastRun` only on an AFM run and clears it to nil otherwise, so RESET on
+      // the nil path — a prior AFM dictation's counts must never ride a later
+      // (cloud / no-polish) transcript through the reused `outcome`.
+      if let emoji = steps.emojiRestore.lastRun {
+        outcome.emojiRan = emoji.ran
+        outcome.emojiInInput = emoji.emojiInInput
+        outcome.emojiDropped = emoji.dropped
+        outcome.emojiRestored = emoji.restored
+        outcome.emojiRestoreIncomplete = emoji.incomplete
+        outcome.emojiLatencyMs = emoji.latencyMs
+      } else {
+        outcome.emojiRan = false
+        outcome.emojiInInput = nil
+        outcome.emojiDropped = nil
+        outcome.emojiRestored = nil
+        outcome.emojiRestoreIncomplete = nil
+        outcome.emojiLatencyMs = nil
       }
       outcome.rawText = ctx.text
       outcome.polishedText = ctx.polishedText
@@ -350,7 +379,14 @@ struct KernelFinalizationWiring {
       usedTailPreservation: telemetryState.asrCompletedTelemetry?.usedTailPreservation,
       recoveredTailMs: telemetryState.asrCompletedTelemetry?.recoveredTailMs,
       tailVoicedFraction: telemetryState.asrCompletedTelemetry?.tailVoicedFraction,
-      tailRefusedReason: telemetryState.asrCompletedTelemetry?.tailRefusedReason
+      tailRefusedReason: telemetryState.asrCompletedTelemetry?.tailRefusedReason,
+      // #761 deterministic emoji-restore facts (counts only). Populated only on
+      // an AFM run; nil for cloud / Ollama / no-polish and pre-#761 records.
+      emojiInInput: outcome.emojiRan ? outcome.emojiInInput : nil,
+      emojiDropped: outcome.emojiRan ? outcome.emojiDropped : nil,
+      emojiRestored: outcome.emojiRan ? outcome.emojiRestored : nil,
+      emojiRestoreIncomplete: outcome.emojiRan ? outcome.emojiRestoreIncomplete : nil,
+      emojiLatencyMs: outcome.emojiRan ? outcome.emojiLatencyMs : nil
     )
     outcome.transcript = transcript
   }
