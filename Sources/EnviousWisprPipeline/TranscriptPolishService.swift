@@ -192,7 +192,11 @@ public final class TranscriptPolishService {
       createdAt: transcript.createdAt,
       llmProvider: provider.rawValue,
       llmModel: model,
-      metrics: transcript.metrics
+      metrics: transcript.metrics,
+      // #1063: carry the recovery metadata so re-polishing a recovered History
+      // item keeps its "Recovered" badge and its dedupe link to the spool.
+      recoverySessionID: transcript.recoverySessionID,
+      isRecovered: transcript.isRecovered
     )
 
     // Verify transcript wasn't deleted during enhancement (prevents resurrection)
