@@ -1,7 +1,7 @@
 {
   "polish_model": "gpt-4o-mini",
   "captured_at": "2026-06-19T04:09:36.487149Z",
-  "reason": "Recapture under live judge gemini-3.1-pro-preview (gemini-3-pro-preview retired/404) + #1072 PR1 corpus tier-tagging and 4 filler keep-opener relabels. Additive coverage + judge-instrument fix, not a quality reduction.",
+  "reason": "Surgical add of 10 emoji-preservation baselines (EMOJI-PRESERVE-*) for the #1085 fold-in into #761; the 151 prior cases retain their earlier capture.",
   "baseline": {
     "CLEAN-PRIYA-001": "Let's sync tomorrow at 10 to review the API changes.",
     "CLEAN-DIANA-002": "The roadmap review is pushed to Thursday.",
@@ -153,6 +153,16 @@
     "ONSET-EDGE-PRIYA-017": "Set the timeout to sixty seconds.",
     "ONSET-EDGE-DIANA-018": "Let's do the standup at nine. Actually, make it nine thirty.",
     "ONSET-EDGE-MEERA-019": "Pick up the kids at five. Actually, make it five thirty.",
-    "ONSET-EDGE-AARON-020": "Actually, let's meet in the conference room."
+    "ONSET-EDGE-AARON-020": "Actually, let's meet in the conference room.",
+    "EMOJI-PRESERVE-MEERA-001": "So excited for the trip! I cannot wait to see everyone.",
+    "EMOJI-PRESERVE-PRIYA-002": "Shipped the auth refactor today onto the batch job tomorrow.",
+    "EMOJI-PRESERVE-FRANK-003": "Tell Grandma I love her and will call Sunday after church.",
+    "EMOJI-PRESERVE-DIANA-004": "Mike, can you take the Figma review? The link is in the channel.",
+    "EMOJI-PRESERVE-AARON-005": "Thanks for pairing on the auth thing. It really helped.",
+    "EMOJI-PRESERVE-MEERA-006": "Hey Mike, pick up Emma from school today. I have a conference call until six. Thanks.",
+    "EMOJI-PRESERVE-PRIYA-007": "Just merged the release and everything is green. Great work, team!",
+    "EMOJI-PRESERVE-DIANA-008": "Quick async update: I just wrapped with sales. They are greenlighting the enterprise tier for Q3. 🙏",
+    "EMOJI-PRESERVE-FRANK-009": "Just saw the photos of the recital. Emma, you were wonderful. So proud! ❤️",
+    "EMOJI-PRESERVE-AARON-010": "Finished the accessibility audit today. Tomorrow, I am working on the focus management issues. 🚀"
   }
 }

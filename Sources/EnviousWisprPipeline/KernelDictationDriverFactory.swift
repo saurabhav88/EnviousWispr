@@ -269,12 +269,16 @@ public enum KernelDictationDriverFactory {
     // output-safety classifier holder (read lazily at polish time).
     let llmPolish = LLMPolishStep(keychainManager: keychainManager)
     llmPolish.outputClassifierHolder = outputClassifierHolder
+    // #761: `emojiRestore` is the final limb, always-on and data-driven (it
+    // no-ops when no emoji were dropped) — NOT gated on the converter toggle, so
+    // a mid-dictation toggle flip can never strand an already-inserted glyph.
     let limbSteps = LimbSteps(
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),
-      llmPolish: llmPolish
+      llmPolish: llmPolish,
+      emojiRestore: EmojiRestoreStep()
     )
 
     // 2. Shared mutable holders.

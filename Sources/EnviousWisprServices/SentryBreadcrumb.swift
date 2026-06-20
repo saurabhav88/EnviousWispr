@@ -279,6 +279,11 @@ public enum SentryBreadcrumb {
     /// only the safety copy is absent for that take. (Recovery-side failures —
     /// decrypt/transcribe — land in PR2 when the recovery read-flow exists.)
     case recoveryKeyStoreFailed = "recovery_key_store_failed"
+    /// #761: the deterministic post-polish emoji-restore guard re-inserted fewer
+    /// glyphs than AFM dropped (`restored < dropped`). Impossible by construction
+    /// — every dropped glyph is re-inserted — so this fires only on a regression.
+    /// The user still got the polished text plus whatever was restored.
+    case emojiRestoreIncomplete = "emoji_restore_incomplete"
   }
 }
 

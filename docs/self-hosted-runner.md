@@ -1,6 +1,15 @@
 # Self-Hosted GitHub Actions Runner
 
-## Why
+> **DECOMMISSIONED (#1087, 2026-06-20).** The release pipeline (`release.yml`) was
+> migrated to GitHub-hosted `macos-26` runners with ephemeral-keychain signing —
+> all 6 jobs now `runs-on: macos-26`, so no machine at rest holds the signing cert.
+> The "Why" below is obsolete: hosted `macos-26` carries the macOS 26 SDK and
+> already runs our build + FoundationModels probe. The runner is unregistered only
+> AFTER the first real hosted release succeeds; until then it stays registered as a
+> one-revert fallback. The setup/recovery instructions below are retained for the
+> record (re-registration recipe if a self-hosted lane is ever needed again).
+
+## Why (obsolete — see banner)
 
 Release builds require the macOS 26 SDK for FoundationModels (Apple Intelligence).
 GitHub's hosted runners (`macos-15`) don't have it. Larger runners (`macos-26-large`)

@@ -39,7 +39,8 @@ import Testing
         fillerRemoval: FillerRemovalStep(),
         emojiFormatter: EmojiFormatterStep(),
         inverseTextNormalization: InverseTextNormalizationStep(),
-        llmPolish: LLMPolishStep(keychainManager: KeychainManager()))
+        llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
+        emojiRestore: EmojiRestoreStep())
       let outcome = KernelFinalizationOutcome()
       let context = KernelSessionContext()
       let adapter = FakeEngine(behavior: .batchSuccess(text: "x"), clock: FakeClock())

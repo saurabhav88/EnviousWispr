@@ -89,6 +89,11 @@ public final class TelemetryService {
       itnLatencyMs: m?.itnLatencyMs,
       itnLenBefore: m?.itnLenBefore,
       itnLenAfter: m?.itnLenAfter,
+      emojiInInput: m?.emojiInInput,
+      emojiDropped: m?.emojiDropped,
+      emojiRestored: m?.emojiRestored,
+      emojiRestoreIncomplete: m?.emojiRestoreIncomplete,
+      emojiLatencyMs: m?.emojiLatencyMs,
       recordingSeconds: recordingSeconds,
       stopReason: stopReason
     )
@@ -227,6 +232,8 @@ public final class TelemetryService {
     itnRan: Bool? = nil, itnChanged: Bool? = nil, itnFloorDelivered: Bool? = nil,
     itnSkipReason: String? = nil, itnLatencyMs: Double? = nil,
     itnLenBefore: Int? = nil, itnLenAfter: Int? = nil,
+    emojiInInput: Int? = nil, emojiDropped: Int? = nil, emojiRestored: Int? = nil,
+    emojiRestoreIncomplete: Bool? = nil, emojiLatencyMs: Double? = nil,
     recordingSeconds: Double? = nil, stopReason: String? = nil
   ) {
     var props: [String: Any] = [
@@ -254,6 +261,13 @@ public final class TelemetryService {
     if let lat = itnLatencyMs { props["itn_latency_ms"] = String(format: "%.3f", lat) }
     if let lb = itnLenBefore { props["itn_len_before"] = lb }
     if let la = itnLenAfter { props["itn_len_after"] = la }
+    // #761: deterministic emoji-restore facts (counts only — `telemetry-privacy-boundary`).
+    // Present only for AFM dictations that ran the guard.
+    if let ein = emojiInInput { props["emoji_in_input"] = ein }
+    if let ed = emojiDropped { props["emoji_dropped"] = ed }
+    if let er = emojiRestored { props["emoji_restored"] = er }
+    if let inc = emojiRestoreIncomplete { props["emoji_restore_incomplete"] = inc }
+    if let elat = emojiLatencyMs { props["emoji_latency_ms"] = String(format: "%.3f", elat) }
     PostHogSDK.shared.capture("dictation.completed", properties: props)
   }
 
