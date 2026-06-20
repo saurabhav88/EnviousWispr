@@ -14,6 +14,45 @@ final class AIAvailabilityCoordinator {
   /// Latest completed diagnostics report, or nil if never checked.
   private(set) var latestReport: AppleIntelligenceAvailabilityReport?
 
+  #if DEBUG
+    /// DEBUG-only override to validate the onboarding polish notice (#1080)
+    /// without a real AI-unavailable Mac (#1100). In-memory only (not persisted);
+    /// default `.useReal`. Set from the Diagnostics debug settings picker, consumed
+    /// by the onboarding Permissions section via `onboardingPolishNoticeForDisplay`.
+    enum DebugForcedNotice: String, CaseIterable, Identifiable {
+      case useReal, forceNone, enableInSettings, updateMacOS
+      var id: String { rawValue }
+      var label: String {
+        switch self {
+        case .useReal: return "Real (use launch report)"
+        case .forceNone: return "None (hidden)"
+        case .enableInSettings: return "Turn it on (enable in Settings)"
+        case .updateMacOS: return "Needs macOS 26"
+        }
+      }
+    }
+    var debugForcedNotice: DebugForcedNotice = .useReal
+  #endif
+
+  /// The on-device polish notice the onboarding Permissions section should
+  /// display, or nil to stay hidden. In release this is exactly the launch
+  /// report's classification (the section's prior inline read, now routed through
+  /// one accessor so the view no longer reaches through `latestReport`). In DEBUG
+  /// a `debugForcedNotice` override can force a specific state for validation
+  /// (#1100) without a real AI-unavailable Mac.
+  var onboardingPolishNoticeForDisplay: AppleIntelligenceAvailabilityReport.OnboardingPolishNotice?
+  {
+    #if DEBUG
+      switch debugForcedNotice {
+      case .useReal: break
+      case .forceNone: return nil
+      case .enableInSettings: return .enableInSettings
+      case .updateMacOS: return .updateMacOS
+      }
+    #endif
+    return latestReport?.onboardingPolishNotice
+  }
+
   /// Rolling history of recent checks (in-memory, last 20).
   private(set) var history: [AppleIntelligenceAvailabilityReport.HistoryEntry] = []
 
