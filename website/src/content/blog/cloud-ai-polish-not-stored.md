@@ -25,7 +25,7 @@ EnviousWispr now tells both providers, on every request, not to retain it. The f
 
 ## The flag we send
 
-OpenAI's Chat Completions API and Google's Gemini API both accept a per-request flag called `store`. When it's set to `false`, the provider does not retain that request and response in their server-side history. EnviousWispr sends `"store": false` on every cloud polish call: OpenAI's polish requests, Gemini's polish requests, the model-probe call we make to confirm a key works, and the prewarm call we use to warm up a fresh session.
+OpenAI's Chat Completions API and Google's Gemini API both accept a per-request flag called `store`. When it's set to `false`, it asks the provider not to retain that request and response in their server-side history; the provider's data policy governs what is actually kept. EnviousWispr sends `"store": false` on every cloud polish call: OpenAI's polish requests, Gemini's polish requests, the model-probe call we make to confirm a key works, and the prewarm call we use to warm up a fresh session.
 
 That posture is independent of whatever your account defaults are. Even if your project is configured with logging on, the request itself opts out.
 
@@ -71,7 +71,7 @@ The OpenAI request body is built in `Sources/EnviousWisprLLM/OpenAIConnector.swi
 
 Nothing in your day-to-day. Hold the hotkey, speak, release. Polished text lands in your clipboard or pastes into the app you're using, the same as before.
 
-What changed is what the cloud provider holds onto when polish runs through your key. Now: nothing on the request-history side.
+What changed is what the cloud provider is asked not to retain when polish runs through your key. The provider's terms govern actual retention.
 
 ## Related posts
 
