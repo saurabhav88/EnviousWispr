@@ -1,0 +1,17 @@
+name = "enviouswispr-product-health"
+main = "src/index.js"
+compatibility_date = "2026-06-20"
+
+# Daily at 14:00 UTC (10am ET). The late time is a deliberate ingestion-lag
+# buffer so the prior UTC day's events from sleeping/offline laptops have flushed.
+[triggers]
+crons = ["0 14 * * *"]
+
+[vars]
+POSTHOG_PROJECT_ID = "354235"
+
+# Secrets (set via `npx wrangler secret put <NAME>`, never in this file):
+#   POSTHOG_PERSONAL_API_KEY  - GCP secret `posthog-personal-api-key`
+#   DISCORD_WEBHOOK_URL       - Keychain `enviouswispr.discord-webhook-session-logs` (EnviousNotes)
+#   TRIGGER_SECRET            - gates the public manual `fetch` trigger; the cron path needs no token
+#                               (the workers.dev URL is public, so the manual trigger fails closed without it)
