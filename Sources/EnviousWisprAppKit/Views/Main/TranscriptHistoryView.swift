@@ -81,6 +81,21 @@ struct TranscriptRowView: View {
         .font(.body)
 
       HStack(spacing: 6) {
+        if transcript.isRecovered == true {
+          // #1063 PR2 — marks a transcript reconstructed from a recovered recording
+          // after an abnormal exit. Icon + text (never color-only).
+          HStack(spacing: 2) {
+            Image(systemName: "arrow.clockwise.circle")
+            Text("Recovered")
+          }
+          .font(.caption2)
+          .padding(.horizontal, 5)
+          .padding(.vertical, 2)
+          .background(.teal.opacity(0.15), in: Capsule())
+          .foregroundStyle(.teal)
+          .accessibilityLabel("Recovered recording")
+        }
+
         if transcript.polishedText != nil {
           HStack(spacing: 2) {
             Image(systemName: "sparkles")

@@ -129,8 +129,15 @@ final class DictationRuntime {
       },
       // #1063 PR1 (Codex r3): a PTT release or concurrent-toggle stop landing in
       // the arm window mints no session, so the lifecycle coordinator sees no
-      // terminal state — the starter cleans the armed spool/key directly.
-      cleanupRecoveryArm: { recoveryCoordinator.handleRecordingEndedWithoutDurableSave() }
+      // terminal state — the starter cleans the armed spool/key directly. PR2: it
+      // passes this take's id, and a pre-start abort is always a discard.
+      cleanupRecoveryArm: { id in
+        recoveryCoordinator.handleRecordingEndedWithoutDurableSave(
+          recoverySessionID: id, terminal: .discard)
+      },
+      // #1063 PR2: the recording gate — a press while recovery holds the shared
+      // engine mints no session (shows the "recovering" pill).
+      isRecovering: { recoveryCoordinator.isRecovering }
     )
     self.starter = starter
     // #1063 PR1: on a durable transcript save, delete that session's spool + key.
@@ -138,11 +145,12 @@ final class DictationRuntime {
     dictationLifecycleCoordinator.onDurableSave = { id in
       recoveryCoordinator.handleDurableSave(recoverySessionID: id)
     }
-    // #1063 PR1 (Codex r3): a recording that ends WITHOUT a durable save (cancel,
-    // no-speech, too-short, error, helper-crash-while-alive) deletes its armed
-    // spool/key immediately instead of accumulating until launch purge.
-    dictationLifecycleCoordinator.onRecordingEndedWithoutDurableSave = {
-      recoveryCoordinator.handleRecordingEndedWithoutDurableSave()
+    // #1063 PR2: a recording that ends at a non-saved terminal routes to recovery
+    // cleanup by KIND — a discard terminal deletes the spool now; a failure
+    // terminal RETAINS it so the next launch recovers the audio.
+    dictationLifecycleCoordinator.onRecordingEndedWithoutDurableSave = { id, kind in
+      recoveryCoordinator.handleRecordingEndedWithoutDurableSave(
+        recoverySessionID: id, terminal: kind)
     }
     let hotkeyController = HotkeyController(
       hotkeyService: hotkeyService,

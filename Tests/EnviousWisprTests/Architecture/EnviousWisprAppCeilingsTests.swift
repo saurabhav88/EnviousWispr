@@ -196,14 +196,21 @@ import Testing
   /// launch start in `applicationWillFinishLaunching`, and tears the monitor
   /// down in `applicationWillTerminate`. Cap set by the deterministic rule
   /// (post-change actual 721 + 10, rounded up to nearest 5 = 735).
+  /// Ratcheted 735→770 in #1063 PR2 (2026-06-20, crash-recovery replay): the
+  /// composition root builds the per-orphan `RecoverySpoolReplayer` from existing
+  /// app deps + the reshaped `RecoveryCoordinator` (replayer + dedup + contention
+  /// closures), wires the "recovering" pill's Discard handler, and swaps the
+  /// launch purge for `scanAndRecover`. No new App-owned stored property (the
+  /// stored-property cap stays ≤ 30). Cap set by the deterministic rule
+  /// (post-change actual 759 + 10, rounded up to nearest 5 = 770).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 735,
+      lineCount <= 770,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 735. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 770. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

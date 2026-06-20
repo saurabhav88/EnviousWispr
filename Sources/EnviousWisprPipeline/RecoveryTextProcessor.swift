@@ -107,6 +107,20 @@ public final class RecoveryTextProcessor {
     }
   }
 
+  /// Assign the CURRENT custom-words vocabulary, best-effort (#1063 PR2). The
+  /// snapshot carries only the custom-words VERSION, not the terms, so recovery
+  /// cannot replay the exact record-time vocabulary; it applies the user's
+  /// current words instead. Recovery promises normal-quality, not byte-exact —
+  /// without this, a power user's recovered transcript would skip word
+  /// correction the live take had. Caller builds the two vocabularies from the
+  /// live custom-words home (`CustomWordsVocabularySplit.split`).
+  public func applyCustomWordsVocabulary(
+    corrector: CorrectorVocabulary, polish: PolishVocabulary
+  ) {
+    steps.wordCorrection.correctorVocabulary = corrector
+    steps.llmPolish.polishVocabulary = polish
+  }
+
   /// Run the chain. Limb failures inside the chain (a step erroring or timing
   /// out) are absorbed by the runner and surface as a raw-fallback outcome;
   /// only cancellation propagates, and that too falls back to raw.

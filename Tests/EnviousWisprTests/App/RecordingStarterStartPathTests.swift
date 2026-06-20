@@ -44,7 +44,9 @@ import Testing
 
   private static func makeFixture(
     accessibilityRefresh: (@MainActor () -> Void)? = nil,
-    releaseDuringRecoveryArm: Bool = false
+    releaseDuringRecoveryArm: Bool = false,
+    isRecovering: Bool = false,
+    recoveringDuringArm: Bool = false
   ) -> Fixture {
     // `RecordingOverlayPanel.show(intent: .recording, ...)` posts an
     // `NSAccessibility` notification against `NSApp.mainWindow`. `NSApp`
@@ -87,15 +89,26 @@ import Testing
       languageSuggestionPresenter: nil
     )
     let lastRecordingResult = LastRecordingResult()
+    // `recovering` is a captured var both the arm closure (mutates) and the gate
+    // closure (reads) share — lets a test flip recovery ON during the arm await
+    // (#1063 PR2: the post-arm re-check). Both run on the MainActor.
+    var recovering = isRecovering
     // #1063 PR1: when asked, the injected recovery-arm closure simulates the
     // user RELEASING PTT while the key store is being awaited — it records a
     // user-stop on the finalizer (so `lastUserStopAccess.read() > pttStart`)
     // and returns no directive. The default closure is the recovery-off no-op.
+    // #1063 PR2: when `recoveringDuringArm`, it flips recovery ON during the arm
+    // and returns a directive (so `config.recoverySessionID` is set), simulating
+    // launch recovery starting mid-`start()`.
     let makeRecoveryDirective:
       @MainActor (SettingsManager, ASRBackendType, Bool) async -> (
         recoverySessionID: String, payload: Data
       )? = { _, _, _ in
         if releaseDuringRecoveryArm { await finalizer.userStop() }
+        if recoveringDuringArm {
+          recovering = true
+          return (UUID().uuidString, Data())
+        }
         return nil
       }
     let starter = RecordingStarter(
@@ -112,7 +125,8 @@ import Testing
       lastRecordingResult: lastRecordingResult,
       dictationLifecycleCoordinator: nil,
       accessibilityRefresh: accessibilityRefresh,
-      makeRecoveryDirective: makeRecoveryDirective
+      makeRecoveryDirective: makeRecoveryDirective,
+      isRecovering: { recovering }
     )
     return Fixture(
       starter: starter,
@@ -205,6 +219,59 @@ import Testing
     #expect(fx.kernelDriver.state == .idle)
     // The honest cold-boot pill is shown (engine-named), not a recording pill.
     #expect(fx.overlay.currentIntent == .cachingModel(engineLabel: "Parakeet v3"))
+  }
+
+  // #1063 PR2 — the recovery hold. A press (PTT or toggle) while the crash-recovery
+  // limb backfills behind the blocking pill mints NO session and shows the
+  // "recovering" pill instead, mirroring the cold-press contract.
+  @Test func pressWhileRecoveringMintsNoSessionAndShowsRecoveringPill() async {
+    // The engine is not-ready by default; the recovery gate must still win over
+    // the cold-press gate (it is checked first), so the pill is the recovery one.
+    let fx = Self.makeFixture(isRecovering: true)
+    fx.asr.activeBackendType = .parakeet
+
+    await fx.starter.start()
+
+    #expect(fx.kernelDriver.state == .idle, "no session minted while recovering")
+    #expect(
+      fx.overlay.currentIntent == .recoveringLastRecording,
+      "recovery hold takes precedence over the cold-engine pill")
+  }
+
+  @Test func toggleWhileRecoveringMintsNoSessionAndShowsRecoveringPill() async {
+    let fx = Self.makeFixture(isRecovering: true)
+    fx.asr.activeBackendType = .parakeet
+
+    await fx.starter.toggle(source: .toggleHotkey)
+
+    #expect(fx.kernelDriver.state == .idle)
+    #expect(fx.overlay.currentIntent == .recoveringLastRecording)
+  }
+
+  // #1063 PR2 (Codex code-diff r2 P2) — recovery can START during `start()`'s
+  // prewarm/arm awaits (the top-of-method gate read false). The post-arm re-check
+  // must catch it and mint no session, so a new recording can't contend with the
+  // recovery replay on the shared engine.
+  @Test func startRechecksRecoveryAfterArmAndBails() async {
+    let fx = Self.makeFixture(recoveringDuringArm: true)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true  // ready → top gate passes, recovery flips on during arm
+
+    await fx.starter.start()
+
+    #expect(fx.kernelDriver.state == .idle, "no session minted — recovery started during the arm")
+    #expect(fx.overlay.currentIntent == .recoveringLastRecording)
+  }
+
+  @Test func toggleRechecksRecoveryAfterArmAndBails() async {
+    let fx = Self.makeFixture(recoveringDuringArm: true)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+
+    await fx.starter.toggle(source: .toggleHotkey)
+
+    #expect(fx.kernelDriver.state == .idle)
+    #expect(fx.overlay.currentIntent == .recoveringLastRecording)
   }
 
   @Test func coldToggleMintsNoSessionAndShowsCachingPill() async {

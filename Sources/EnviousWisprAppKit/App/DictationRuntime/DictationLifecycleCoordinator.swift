@@ -91,16 +91,18 @@ final class DictationLifecycleCoordinator {
   /// default no-op keeps recovery-off behavior. Keeps the Pipeline recovery-unaware.
   var onDurableSave: (String) -> Void = { _ in }
 
-  /// #1063 PR1 (Codex r3 P1) — fires when a recording reaches a NON-saved
-  /// terminal (`.error` / `.idle` from cancel, no-speech, too-short discard,
-  /// pipeline error, or a helper-crash-while-app-alive). `DictationRuntime` sets
-  /// it to `RecoveryCoordinator.handleRecordingEndedWithoutDurableSave` so the
-  /// armed spool + key are deleted immediately (the app is alive — not a crash —
-  /// so they have no recovery value and would otherwise accumulate until launch).
-  /// `.complete` is EXCLUDED (its save path runs `onDurableSave`); the
-  /// coordinator's armed-id guard makes a post-`.complete` `.idle` a no-op.
-  /// Another off-cap `var` closure, default no-op.
-  var onRecordingEndedWithoutDurableSave: () -> Void = {}
+  /// #1063 PR2 — fires when a recording reaches a NON-`.completed` terminal,
+  /// carrying this session's `recoverySessionID` (or nil if recovery was off) and
+  /// the terminal KIND. `DictationRuntime` sets it to `RecoveryCoordinator
+  /// .handleRecordingEndedWithoutDurableSave(recoverySessionID:terminal:)`, which
+  /// deletes a DISCARD-terminal spool now and RETAINS a FAILURE-terminal spool for
+  /// next-launch recovery. Driven by the kernel's RAW terminal transition (via the
+  /// driver's `onSessionEndedWithoutSave`), NOT the externalError-pinnable published
+  /// state — so it never fires for `.completed` (whose save path runs `onDurableSave`)
+  /// and the error pin can't trigger an early delete. Off-cap `var` closure,
+  /// default no-op keeps recovery-off behavior. (PR1's published-state cleanup
+  /// branch is replaced by this signal.)
+  var onRecordingEndedWithoutDurableSave: (String?, RecordingTerminalKind) -> Void = { _, _ in }
 
   /// Per-pipeline side-effect executors. Lazy so the closures can capture
   /// `self` after all stored properties are initialized.
@@ -146,6 +148,16 @@ final class DictationLifecycleCoordinator {
     whisperKitKernelDriver.onStateChange = { [weak self] newState in
       guard let self else { return }
       self.handleWhisperKit(newState: newState)
+    }
+    // #1063 PR2: the kernel's RAW non-`.completed` terminal signal, carrying the
+    // recovery id + terminal KIND. Routed to the recovery cleanup (discard deletes,
+    // failure retains). Distinct from `onStateChange` (the pinnable published
+    // state) — keyed off the kernel terminal so it never fires during `.finalizing`.
+    kernelDriver.onSessionEndedWithoutSave = { [weak self] id, kind in
+      self?.onRecordingEndedWithoutDurableSave(id, kind)
+    }
+    whisperKitKernelDriver.onSessionEndedWithoutSave = { [weak self] id, kind in
+      self?.onRecordingEndedWithoutDurableSave(id, kind)
     }
     // #930: the overlay-only sub-status channel. A `.transcribing` →
     // `.polishing` flip mid-`.finalizing` does NOT change the public
@@ -211,19 +223,11 @@ final class DictationLifecycleCoordinator {
       // Session ended — retry any Ollama eviction deferred because the
       // frozen session pinned the old model.
       settingsSync.retryDeferredOllamaEviction(settings: settings)
-      // #1063 PR1: a NON-saved ending (cancel / no-speech / too-short / error /
-      // helper-crash-while-alive) left a finalized recovery spool; delete it now.
-      // `.complete` owns deletion via its save path (`onDurableSave`), so skip it.
-      // KNOWN LIMITATION (Codex r4 P2 #1, routed to #1063 PR2): the published
-      // `.error` here is externalError-pinned, so it can in theory fire while the
-      // kernel is still finalizing (a transcript in hand, durable save imminent) —
-      // deleting the spool a beat early. Zero impact in PR1 (the launch purge
-      // wipes every spool regardless of deletion timing, and no current
-      // `setExternalError` caller fires during finalizing). The correct fix is to
-      // key this cleanup off the kernel's terminal transition rather than the
-      // pinnable published state; that signal redesign lands with PR2's recovery
-      // rebuild (scan → recover → save → delete).
-      if case .complete = newState {} else { onRecordingEndedWithoutDurableSave() }
+    // #1063 PR2: the recovery-spool cleanup is NO LONGER keyed off this
+    // externalError-pinnable published state. It is driven by the kernel's RAW
+    // terminal transition via `kernelDriver.onSessionEndedWithoutSave` (wired in
+    // `install()`), which carries the recovery id + terminal KIND and never
+    // fires during `.finalizing` — resolving PR1's "delete a beat early" hole.
     }
     let nowActive = newState.isActive
     if nowActive && !prevParakeetActive {
@@ -265,8 +269,9 @@ final class DictationLifecycleCoordinator {
       recordingLockedAccess.set(false)
       hotkeyService.unregisterCancelHotkey()
       settingsSync.retryDeferredOllamaEviction(settings: settings)
-      // #1063 PR1: same non-saved recovery-spool cleanup as the Parakeet handler.
-      if case .complete = newState {} else { onRecordingEndedWithoutDurableSave() }
+    // #1063 PR2: recovery-spool cleanup is driven by the kernel terminal signal
+    // (`onSessionEndedWithoutSave`), not this published state — see the Parakeet
+    // handler. Nothing to do here.
     }
     let nowActive = newState.isActive
     if nowActive && !prevWhisperKitActive {

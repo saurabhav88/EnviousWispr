@@ -202,4 +202,39 @@ struct RecoverySpoolStoreTests {
     // Idempotent: deleting a missing spool is success.
     try store.delete(recoverySessionID: "alpha")
   }
+
+  // MARK: - One-attempt crash-loop marker (#1063 PR2)
+
+  @Test("attempt marker: write makes it present, delete removes it (idempotent)")
+  func attemptMarkerLifecycle() throws {
+    let store = makeStore()
+    let id = "marked-\(UUID().uuidString)"
+    #expect(!store.hasAttemptMarker(for: id))
+    try store.writeAttemptMarker(for: id)
+    #expect(store.hasAttemptMarker(for: id), "present after write — crash-loop guard armed")
+    try store.deleteAttemptMarker(for: id)
+    #expect(!store.hasAttemptMarker(for: id))
+    // Idempotent.
+    try store.deleteAttemptMarker(for: id)
+  }
+
+  @Test("deleting a spool also clears its attempt marker")
+  func deleteSpoolClearsMarker() async throws {
+    let store = makeStore()
+    let cipher = RecoverySpoolCipher(mode: .aesGcm256, keyData: Self.key())
+    await writeSpool(
+      store: store, sessionID: "gamma", cipher: cipher, chunks: [[0.3]], reason: .cleanFinalized)
+    try store.writeAttemptMarker(for: "gamma")
+    #expect(store.hasAttemptMarker(for: "gamma"))
+    try store.delete(recoverySessionID: "gamma")
+    #expect(!store.hasAttemptMarker(for: "gamma"), "spool delete cleared the marker")
+    #expect(try store.listSpoolSessionIDs() == [])
+  }
+
+  @Test("a marker file is not mistaken for a spool by the scan")
+  func markerNotListedAsSpool() throws {
+    let store = makeStore()
+    try store.writeAttemptMarker(for: "lonely-marker")
+    #expect(try store.listSpoolSessionIDs().isEmpty, "scan lists only .ewrec spools")
+  }
 }
