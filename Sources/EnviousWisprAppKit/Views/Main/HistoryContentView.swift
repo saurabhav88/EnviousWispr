@@ -13,7 +13,7 @@ import SwiftUI
 /// sidebar + both floors so neither column can ever render broken.
 struct HistoryContentView: View {
   @Environment(PermissionsService.self) private var permissions
-  @Environment(TranscriptWorkflowCoordinator.self) private var transcriptWorkflowCoordinator
+  @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
   // PR7 of #763: live-recording fallback transcript comes from LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
 
@@ -25,7 +25,7 @@ struct HistoryContentView: View {
   /// from `TranscriptCoordinator` wins over the in-flight live fallback —
   /// same priority the pre-PR7 root-state getter delivered.
   private var displayedTranscript: Transcript? {
-    let tc = transcriptWorkflowCoordinator.transcriptCoordinator
+    let tc = transcriptCoordinator
     if let selected = tc.selectedTranscriptID,
       let match = tc.transcripts.first(where: { $0.id == selected })
     {
@@ -66,7 +66,7 @@ struct HistoryContentView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .task {
-      transcriptWorkflowCoordinator.transcriptCoordinator.load()
+      transcriptCoordinator.load()
     }
   }
 }

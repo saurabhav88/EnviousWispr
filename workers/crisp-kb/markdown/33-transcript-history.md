@@ -12,7 +12,6 @@ Each transcript entry includes:
 ## Actions
 
 * **Copy:** Copy any past transcript to your clipboard.
-* **Re-polish:** Reprocess a transcript with different AI settings without re-recording. See the Re-Polish Past Transcripts article for details.
 * **Search and filter:** Find specific transcripts using the search bar in the History view.
 
 ## Storage

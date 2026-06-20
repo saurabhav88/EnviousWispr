@@ -84,13 +84,14 @@ final class LiveRecordingState {
   }
 }
 
-// MARK: - DictationActivityProviding
+// MARK: - Dictation activity signal
 
-/// PR-C.3 of #763: `LiveRecordingState` provides the dictation-activity signal
-/// (replaces the former root state's conformance). It already owns both pipelines.
-extension LiveRecordingState: DictationActivityProviding {
-  /// True when either pipeline is recording, transcribing, or polishing. Used
-  /// by `TranscriptPolishService` to block a re-polish during live dictation.
+/// `LiveRecordingState` owns both pipelines, so it exposes whether dictation is
+/// in flight. Read by the menu bar and the auto-open guard. (The
+/// `DictationActivityProviding` protocol conformance was dropped in #1106 with
+/// its only consumer, the re-polish service; this is now a plain computed read.)
+extension LiveRecordingState {
+  /// True when either pipeline is recording, transcribing, or polishing.
   var isDictationActive: Bool {
     kernelDriver.state.isActive || whisperKitKernelDriver.state.isActive
   }

@@ -27,7 +27,7 @@ public final class WisprBootstrapper {
   let updateCoordinatorHolder: UpdateCoordinatorHolder
   let sparkleUpdateController: SparkleUpdateController
   let updateTriggerCoordinator: UpdateTriggerCoordinator
-  let transcriptWorkflowCoordinator: TranscriptWorkflowCoordinator
+  let transcriptCoordinator: TranscriptCoordinator
   let liveRecordingState: LiveRecordingState
   let lastRecordingResult: LastRecordingResult
   let backendMetadata: BackendMetadata
@@ -51,20 +51,17 @@ public final class WisprBootstrapper {
   let llmDiscovery: LLMModelDiscoveryCoordinator
   let vocabularyPackManager: VocabularyPackManager
 
-  // The re-polish service is App-owned (epic #763).
-  let polishService: TranscriptPolishService
-
   /// App-owned output-safety classifier holder (#832/#913 PR8). The classifier
   /// is loaded asynchronously off the heart path at prewarm; the holder lets the
-  /// live-dictation and re-polish `LLMPolishStep`s pick it up once ready.
+  /// live-dictation `LLMPolishStep`s pick it up once ready.
   let outputClassifierHolder: OutputClassifierHolder
 
   public init() {
     // ===== Subsystem construction (epic #763) =====
     // `EnviousWisprApp` is the composition root: every subsystem is constructed
-    // here. Construction order is load-bearing: `polishService` before the
-    // pipelines (they read its `pasteCompletionRegistry`); `settingsSync` after
-    // both pipelines + `setup`.
+    // here. Construction order is load-bearing: `pasteCompletionRegistry` before
+    // the pipelines (they receive it); `settingsSync` after both pipelines +
+    // `setup`.
 
     // #923: one-time dev→shared settings migration; MUST precede SettingsManager()
     // (mutates the store it reads). Release/shipped builds no-op. See migration doc.
@@ -116,13 +113,13 @@ public final class WisprBootstrapper {
     // instance; the classifier itself loads asynchronously at prewarm (below).
     let outputClassifierHolder = OutputClassifierHolder()
 
-    // Phase 0 (#640) — single shared paste-completion registry. `polishService`
-    // is constructed before the pipelines so both receive the same instance.
-    let polishService = TranscriptPolishService(
-      keychainManager: keychainManager,
-      transcriptStore: transcriptStore,
-      outputClassifierHolder: outputClassifierHolder
-    )
+    // Phase 0 (#640) — single shared paste-completion registry, owned by the
+    // composition root and injected into both pipeline finalizers (and any
+    // future #629 auto-learn subscriber). One instance per app session;
+    // constructed before the pipelines so both receive the same one. (#1106
+    // re-homed this from the deleted re-polish service per
+    // `state-ownership.md` shared-infra-homes-not-feature-services.)
+    let pasteCompletionRegistry = PasteCompletionRegistry()
 
     // PR-5 Rung 5 (#827): the VAD signal source is App-owned and shared
     // between both kernel drivers. `audioCapture.onVADAutoStop` is bound
@@ -145,7 +142,7 @@ public final class WisprBootstrapper {
         transcriptStore: transcriptStore,
         keychainManager: keychainManager,
         captureTelemetry: captureTelemetry,
-        pasteCompletionRegistry: polishService.pasteCompletionRegistry,
+        pasteCompletionRegistry: pasteCompletionRegistry,
         outputClassifierHolder: outputClassifierHolder
       ))
 
@@ -182,7 +179,7 @@ public final class WisprBootstrapper {
         transcriptStore: transcriptStore,
         keychainManager: keychainManager,
         captureTelemetry: captureTelemetry,
-        pasteCompletionRegistry: polishService.pasteCompletionRegistry,
+        pasteCompletionRegistry: pasteCompletionRegistry,
         outputClassifierHolder: outputClassifierHolder
       ))
 
@@ -207,7 +204,6 @@ public final class WisprBootstrapper {
     let settingsSync = PipelineSettingsSync(
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
-      polishService: polishService,
       audioCapture: audioCapture,
       asrManager: asrManager,
       hotkeyService: hotkeyService,
@@ -235,7 +231,6 @@ public final class WisprBootstrapper {
       polishConsumers: [
         kernelDriver.llmPolish,
         whisperKitKernelDriver.llmPolish,
-        polishService.llmPolishStep,
       ],
       coordinator: customWordsCoordinator,
       packManager: vocabularyPackManager
@@ -345,11 +340,6 @@ public final class WisprBootstrapper {
         sparkleUpdateController?.updateCoordinator?.checkForUpdatesProactively(trigger: trigger)
       })
 
-    let transcriptWorkflowCoordinator = TranscriptWorkflowCoordinator(
-      transcriptCoordinator: transcriptCoordinator,
-      polishService: polishService
-    )
-
     let liveRecordingState = LiveRecordingState(
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
@@ -362,11 +352,6 @@ public final class WisprBootstrapper {
       asrManager: asrManager,
       llmDiscovery: llmDiscovery
     )
-    // `LiveRecordingState` provides `DictationActivityProviding`: `polishService`
-    // blocks a re-polish while live dictation is in flight. Wired after
-    // `liveRecordingState` exists.
-    polishService.setDictationActivity(liveRecordingState)
-
     // PR9 of #763: construct the lifecycle home BEFORE DictationRuntime.
     // PR-C.3: the hands-free lock flag is rehomed onto `LiveRecordingState`.
     let recordingLockedAccess = DictationLifecycleCoordinator.RecordingLockedAccess(
@@ -476,7 +461,7 @@ public final class WisprBootstrapper {
     self.updateCoordinatorHolder = updateCoordinatorHolder
     self.sparkleUpdateController = sparkleUpdateController
     self.updateTriggerCoordinator = updateTriggerCoordinator
-    self.transcriptWorkflowCoordinator = transcriptWorkflowCoordinator
+    self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState
     self.lastRecordingResult = lastRecordingResult
     self.backendMetadata = backendMetadata
@@ -498,9 +483,6 @@ public final class WisprBootstrapper {
     self.keychainManager = keychainManager
     self.llmDiscovery = llmDiscovery
     self.vocabularyPackManager = vocabularyPackManager
-
-    // PR-C.3 of #763: App-owned re-polish service.
-    self.polishService = polishService
 
     // #832/#913 PR8: App-owned output-safety classifier holder.
     self.outputClassifierHolder = outputClassifierHolder
@@ -630,7 +612,7 @@ private struct MainWindowRoot: View {
       .environment(b.diagnosticsCoordinator)
       .environment(b.languageSuggestionPresenter)
       .environment(b.updateCoordinatorHolder)
-      .environment(b.transcriptWorkflowCoordinator)
+      .environment(b.transcriptCoordinator)
       .environment(b.liveRecordingState)
       .environment(b.lastRecordingResult)
       .environment(b.backendMetadata)

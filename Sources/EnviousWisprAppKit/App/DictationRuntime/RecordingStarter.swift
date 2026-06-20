@@ -15,9 +15,6 @@ import Foundation
 ///
 /// Does NOT own `HotkeyService` (that lives on the App-owned `@State`
 /// and is shared with `PipelineSettingsSync` + `DictationLifecycleCoordinator`).
-/// Does NOT own or receive `TranscriptPolishService` (PR11 of #763 owns
-/// polish-service rehoming — explicit constraint from epic comment
-/// 4483335497).
 @MainActor
 final class RecordingStarter {
   let audioCapture: any AudioCaptureInterface

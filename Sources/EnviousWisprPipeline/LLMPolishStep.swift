@@ -35,8 +35,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// owning pipeline (Parakeet or WhisperKit) so the prompt planner can
   /// dispatch on explicit engine identity rather than inferring it from
   /// the absence of `languageDetection`. Nil for standalone callsites
-  /// (e.g., `TranscriptPolishService`) that do not know the original ASR
-  /// engine; the planner preserves legacy passthrough in that case.
+  /// (e.g. crash-recovery's `RecoveryTextProcessor`, #1063) that do not know
+  /// the original ASR engine; the planner preserves legacy passthrough then.
   public var backend: ASRBackendType?
 
   /// Injectable prompt planner. DefaultPromptPlanner in production, mockable in tests.
@@ -244,10 +244,12 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       return max(context.text.count, LLMConstants.polishMaxTokensFloor)
     }()
 
-    // Prefer live LID but fall back to the context's persisted language
-    // so saved-transcript re-polish paths (e.g. TranscriptPolishService
-    // which clears languageDetection) still hit the Apple Intelligence
-    // preflight gate and language-aware prompt.
+    // Prefer live LID but fall back to the context's persisted language so
+    // standalone callers that clear `languageDetection` (crash-recovery's
+    // `RecoveryTextProcessor`, #1063) still hit the Apple Intelligence preflight
+    // gate and language-aware prompt. LOAD-BEARING — do not remove this fallback
+    // (the only previous caller was the deleted re-polish service, but recovery
+    // relies on the same path).
     let detectedLanguage = languageDetection?.lang ?? context.language
 
     let config = LLMProviderConfig(
@@ -275,10 +277,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       }
       // Let `LLMError.unsupportedInputLanguage` and
       // `LLMError.outputLanguageDrift` propagate. The live dictation
-      // path (TextProcessingRunner) treats them as silent skips. The
-      // saved-transcript re-polish path (TranscriptPolishService)
-      // surfaces them to the user so they can retry with another
-      // provider instead of the transcript being mislabeled AI-polished.
+      // path (TextProcessingRunner) treats them as silent skips; standalone
+      // callers (crash-recovery's RecoveryTextProcessor, #1063) catch and fall
+      // back to raw. Either way the transcript is never mislabeled AI-polished.
       let llmStart = CFAbsoluteTimeGetCurrent()
       let result: LLMResult
       do {

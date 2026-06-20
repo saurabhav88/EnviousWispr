@@ -4,8 +4,8 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
-@testable import EnviousWisprAppKit
 @testable import EnviousWisprASR
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
@@ -45,9 +45,6 @@ import Testing
     let settingsSync = PipelineSettingsSync(
       kernelDriver: pipeline,
       whisperKitKernelDriver: whisperKitKernelDriver,
-      polishService: TranscriptPolishService(
-        keychainManager: KeychainManager(),
-        transcriptStore: store),
       audioCapture: audio,
       asrManager: asr,
       hotkeyService: hotkey,
