@@ -79,7 +79,7 @@ Both models run entirely on-device using CoreML. First launch downloads and comp
 - 📚 **Custom vocabulary** for names, brands, and technical terms the ASR might miss
 - ⌨️ **Global hotkey** with push-to-talk, toggle, and hands-free modes (double-press to lock for long-form dictation)
 - 📋 **Auto-paste** directly into the active app, or just copy to clipboard
-- 🕘 **Transcript history** for browsing, searching, and reviewing past dictations, with one-click re-polish to re-run AI cleanup on any past transcript
+- 🕘 **Transcript history** for browsing, searching, and reviewing past dictations
 - 🧭 **Menu bar native** with minimal footprint
 - 🔄 **Auto-updates** via Sparkle
 
