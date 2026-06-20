@@ -50,6 +50,12 @@ public struct EmojiRestorer: Sendable {
 
   // MARK: - Emoji detection (BASE ranges)
 
+  /// First-scalar range test. Scope is deliberately the set of glyphs the
+  /// deterministic `EmojiFormatter` can emit: every one of its 1,561 dictionary
+  /// entries falls in these ranges. Keycap (`1️⃣`, first scalar a digit) and
+  /// FE0F-backed symbol emoji (`©️`/`®️`/`™️`) are intentionally NOT detected —
+  /// the converter never produces them, and matching a bare `©`/`®`/`™` would
+  /// false-positive on legitimate symbols in ordinary dictated text.
   private static func isEmoji(_ c: Character) -> Bool {
     guard let s = c.unicodeScalars.first else { return false }
     let v = s.value
@@ -114,7 +120,14 @@ public struct EmojiRestorer: Sendable {
         i += 1
         while i < n, isWordChar(chars[i]) { i += 1 }
       }
-      out.append(WTok(key: String(chars[start..<i]).lowercased(), start: start, end: i))
+      // Normalize the curly apostrophe to straight in the MATCH key only (spans
+      // and verbatim restore are untouched): AFM routinely rewrites a dictated
+      // `can't` to `can’t`, and an un-normalized key would treat the contraction
+      // as a different word, drop it from the alignment, and mis-anchor an emoji
+      // that trailed it.
+      let key = String(chars[start..<i]).lowercased().replacingOccurrences(
+        of: "\u{2019}", with: "'")
+      out.append(WTok(key: key, start: start, end: i))
     }
     return out
   }
@@ -373,9 +386,15 @@ public struct EmojiRestorer: Sendable {
       // left clause) nor when PRE already had the ender (a real trailing emoji).
       let rightSurvives = rightW.flatMap { postImageStart($0) } != nil
       let followBreak = rightSurvives && !preEnderRight(run.endIdx)
+      // The emoji genuinely TRAILS sentence-final punctuation it was dictated
+      // after ("Done. 🚀") — a separator sits to its left and no right word
+      // survives — so it must land AFTER the post ender, not anchored before it.
+      let trailsSeparator = leftSeparator(run.startIdx) && !rightSurvives
       func afterLeft(_ e: Int) -> Int {
         var pos = Self.tokenEnd(post, e)
-        if followBreak { while pos < post.count, Self.isEnder(post[pos]) { pos += 1 } }
+        if followBreak || trailsSeparator {
+          while pos < post.count, Self.isEnder(post[pos]) { pos += 1 }
+        }
         return pos
       }
 

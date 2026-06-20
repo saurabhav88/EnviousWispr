@@ -297,6 +297,33 @@ struct EmojiRestorerTests {
     #expect(keepLater.text == "Happy birthday, bro 🎉 🎂.")
   }
 
+  @Test("Emoji dictated AFTER a sentence period stays after it, not before")
+  func trailingEmojiAfterSentencePeriodStaysAfter() {
+    // The emoji trailed a sentence-final period in dictation ("Done. 🚀") and no
+    // word survives to its right; it must land AFTER the post period, not get
+    // anchored before it (#761 Codex code-diff review). The far more common
+    // "emoji before the final period" case ("Shipped it 🚀.") must NOT regress.
+    let after = restorer.restore(polished: "Done.", prePolish: "Done. \u{1F680}")
+    #expect(after.text == "Done. \u{1F680}")
+    let beforePeriod = restorer.restore(polished: "Shipped it.", prePolish: "Shipped it \u{1F680}.")
+    #expect(beforePeriod.text == "Shipped it \u{1F680}.")
+  }
+
+  @Test("AFM curling a contraction's apostrophe doesn't mis-anchor the emoji")
+  func apostropheNormalizationKeepsAnchor() {
+    // AFM rewrites a dictated straight apostrophe to a curly one (`can't`→`can’t`).
+    // The word MATCH key normalizes the variant, so the contraction stays in the
+    // alignment and an emoji that trailed it is not stranded on an earlier word
+    // (#761 Codex code-diff review). Restore is verbatim — the curly glyph stays.
+    let trail = restorer.restore(
+      polished: "I really think I can\u{2019}t.", prePolish: "I really think I can't \u{1F525}.")
+    #expect(trail.text == "I really think I can\u{2019}t \u{1F525}.")
+    // Reverse direction (pre curly, post straight) anchors just as well.
+    let rev = restorer.restore(
+      polished: "That's great.", prePolish: "That\u{2019}s great \u{1F389}.")
+    #expect(rev.text == "That's great \u{1F389}.")
+  }
+
   @Test("Empty polished output → no crash, empty result")
   func emptyPolishedIsSafe() {
     let r = restorer.restore(polished: "", prePolish: "hi 🔥")
