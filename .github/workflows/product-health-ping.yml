@@ -1,0 +1,30 @@
+name: Product Health Check
+
+# Triggers the product-health Cloudflare Worker once a day. The worker
+# (workers/product-health/) rolls up product metrics from PostHog and posts a
+# heartbeat to Discord. Scheduling lives here (GitHub Actions) rather than a
+# Cloudflare cron because the CF account is at its 5-cron free-plan limit (#1092).
+# The worker's fetch endpoint is secret-gated, so only this workflow (holding the
+# repo secret) can fire it. GitHub schedules can run a few minutes late; that is
+# fine because the worker evaluates the prior COMPLETED UTC day, not "now".
+
+on:
+  schedule:
+    - cron: "0 14 * * *"   # 10am ET daily - ingestion-lag buffer for offline laptops
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger product-health worker
+        env:
+          TRIGGER_SECRET: ${{ secrets.PRODUCT_HEALTH_TRIGGER_SECRET }}
+        run: |
+          curl -fsS --retry 3 --retry-delay 10 \
+            -H "x-trigger-secret: ${TRIGGER_SECRET}" \
+            "https://enviouswispr-product-health.saurabhav.workers.dev/" \
+            -o /dev/null -w "worker responded HTTP %{http_code}\n"

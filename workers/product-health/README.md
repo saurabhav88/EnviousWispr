@@ -54,21 +54,31 @@ npx wrangler deploy
 # secrets (never committed):
 ~/.claude/bin/get-key launch posthog-personal-api-key V -- sh -c 'printf "%s" "$V" | npx wrangler secret put POSTHOG_PERSONAL_API_KEY'
 security find-generic-password -w -a m4pro_sv -s enviouswispr.discord-webhook-session-logs | npx wrangler secret put DISCORD_WEBHOOK_URL
-# TRIGGER_SECRET gates the public manual trigger (pick any long random string):
-printf "%s" "$(openssl rand -hex 24)" | npx wrangler secret put TRIGGER_SECRET
+# TRIGGER_SECRET gates the public trigger; stored in Keychain for the GitHub Action:
+security find-generic-password -w -a m4pro_sv -s enviouswispr.product-health-trigger-secret | npx wrangler secret put TRIGGER_SECRET
 
 # verify (posts a real heartbeat to EnviousNotes) - needs the token:
 curl "https://enviouswispr-product-health.saurabhav.workers.dev/?token=<TRIGGER_SECRET>"
 ```
 
-The daily cron path needs no token; only the public `fetch` trigger does (it
-fails closed with 401 if the token is missing or wrong, so the workers.dev URL
-cannot be crawled into spamming Discord).
+The `fetch` trigger fails closed with 401 if the token is missing or wrong, so
+the public workers.dev URL cannot be crawled into spamming Discord.
 
-Cron: `0 14 * * *` (10am ET daily) - a deliberate ingestion-lag buffer so the
-prior UTC day's events from offline laptops have flushed.
+## Scheduling (GitHub Actions, not a Cloudflare cron)
+
+The Cloudflare account is at its 5-cron free-plan limit (#1092), so the daily run
+is driven by `.github/workflows/product-health-ping.yml`, which curls the
+secret-gated endpoint at `0 14 * * *` (10am ET - ingestion-lag buffer). The same
+secret lives as repo secret `PRODUCT_HEALTH_TRIGGER_SECRET`:
+
+```bash
+security find-generic-password -w -a m4pro_sv -s enviouswispr.product-health-trigger-secret \
+  | gh secret set PRODUCT_HEALTH_TRIGGER_SECRET --repo saurabhav88/EnviousWispr
+# run on demand: gh workflow run "Product Health Check" --repo saurabhav88/EnviousWispr
+```
 
 ## Rollback
 
-`npx wrangler delete enviouswispr-product-health` stops the cron. Revert the PR
-to remove the code. A bad threshold is a one-line edit in `THRESHOLDS` + redeploy.
+Delete the GitHub workflow to stop the daily run; `npx wrangler delete
+enviouswispr-product-health` removes the worker entirely. Revert the PR to remove
+the code. A bad threshold is a one-line edit in `THRESHOLDS` + redeploy.
