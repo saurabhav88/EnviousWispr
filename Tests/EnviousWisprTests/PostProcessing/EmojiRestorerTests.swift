@@ -273,6 +273,30 @@ struct EmojiRestorerTests {
     #expect(r.restored == 1)
   }
 
+  @Test("Partial run of DIFFERENT glyphs keeps dictated order (no reversal)")
+  func partialRunOfDifferentGlyphsKeepsOrder() {
+    // AFM keeps the EARLIER glyph of an adjacent run and drops a LATER, different
+    // one. The dropped glyph must land AFTER the kept one, not anchor to the left
+    // word and reverse the order — "🎉 🎂" must not become "🎂 🎉" (#761 Codex
+    // code-diff review). The kept glyph is not a word, so word-alignment alone
+    // would strand the restored glyph before it.
+    let keepEarlier = restorer.restore(
+      polished: "Happy birthday, bro 🎉.", prePolish: "Happy birthday bro 🎉 🎂.")
+    #expect(keepEarlier.text == "Happy birthday, bro 🎉 🎂.")
+    // Mid-sentence variant (right word survives after the run).
+    let mid = restorer.restore(
+      polished: "Miami trip ☀️ today.", prePolish: "Miami trip ☀️ 🌴 today.")
+    #expect(mid.text == "Miami trip ☀️ 🌴 today.")
+    // Sandwiched: model keeps both flanks, drops the middle glyph → restore between.
+    let sandwiched = restorer.restore(
+      polished: "Party A 🎉 🚀 B end.", prePolish: "Party A 🎉 🎂 🚀 B end.")
+    #expect(sandwiched.text == "Party A 🎉 🎂 🚀 B end.")
+    // Mirror (already correct, regression guard): keep the LATER, drop the EARLIER.
+    let keepLater = restorer.restore(
+      polished: "Happy birthday, bro 🎂.", prePolish: "Happy birthday bro 🎉 🎂.")
+    #expect(keepLater.text == "Happy birthday, bro 🎉 🎂.")
+  }
+
   @Test("Empty polished output → no crash, empty result")
   func emptyPolishedIsSafe() {
     let r = restorer.restore(polished: "", prePolish: "hi 🔥")

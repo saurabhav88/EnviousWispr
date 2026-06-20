@@ -239,11 +239,14 @@ public struct EmojiRestorer: Sendable {
     // surviving-looking earlier) is flagged dropped — never stacked beside the
     // kept one. Glyphs whose anchor word polish changed fall through to a plain
     // match-key match (a moved-but-kept emoji nets to zero).
-    var postGlyphs: [(key: String, leftKey: String, consumed: Bool)] = []
+    var postGlyphs: [(key: String, leftKey: String, idx: Int, consumed: Bool)] = []
     for (i, c) in post.enumerated() where Self.isEmoji(c) {
-      postGlyphs.append((Self.matchKey(String(c)), leftKey(postWords, i), false))
+      postGlyphs.append((Self.matchKey(String(c)), leftKey(postWords, i), i, false))
     }
     var droppedFlags = [Bool](repeating: true, count: preEmoji.count)
+    // For each KEPT pre-emoji, the char index of its surviving image in `post`.
+    // Lets restore keep a partially-kept emoji cluster in dictated order.
+    var keptPostIdx = [Int?](repeating: nil, count: preEmoji.count)
     for (k, e) in preEmoji.enumerated() {
       let key = Self.matchKey(e.glyph)
       let lk = leftKey(preWords, e.idx)
@@ -251,6 +254,7 @@ public struct EmojiRestorer: Sendable {
       {
         postGlyphs[j].consumed = true
         droppedFlags[k] = false
+        keptPostIdx[k] = postGlyphs[j].idx
       }
     }
     for (k, e) in preEmoji.enumerated() where droppedFlags[k] {
@@ -258,6 +262,7 @@ public struct EmojiRestorer: Sendable {
       if let j = postGlyphs.firstIndex(where: { !$0.consumed && $0.key == key }) {
         postGlyphs[j].consumed = true
         droppedFlags[k] = false
+        keptPostIdx[k] = postGlyphs[j].idx
       }
     }
     let droppedCount = droppedFlags.filter { $0 }.count
@@ -270,6 +275,10 @@ public struct EmojiRestorer: Sendable {
       var glyphs: String
       var startIdx: Int
       var endIdx: Int
+      // Index range [preStart, preEnd) into `preEmoji` this run covers — lets
+      // restore find the kept emoji flanking the run for order preservation.
+      var preStart: Int
+      var preEnd: Int
     }
     var runs: [Run] = []
     var k = 0
@@ -292,7 +301,8 @@ public struct EmojiRestorer: Sendable {
           break
         }
       }
-      runs.append(Run(glyphs: glyph, startIdx: startIdx, endIdx: lastIdx + 1))
+      runs.append(
+        Run(glyphs: glyph, startIdx: startIdx, endIdx: lastIdx + 1, preStart: k, preEnd: kk))
       k = kk
     }
 
@@ -343,8 +353,9 @@ public struct EmojiRestorer: Sendable {
       return Self.isEnder(pre[i])
     }
 
-    // Resolve the char position in `post` where a run should be inserted.
-    func resolvePos(_ run: Run) -> Int {
+    // Resolve the char position in `post` where a run should be inserted, by the
+    // word-alignment anchor alone (kept-emoji order is applied by `resolvePos`).
+    func resolvePosCore(_ run: Run) -> Int {
       let sent = sentenceOf(run.startIdx)
       let leftW = leftWordIn(run.startIdx, sent.lo)
       let rightW = rightWordIn(run.endIdx, sent.hi)
@@ -400,6 +411,33 @@ public struct EmojiRestorer: Sendable {
         return nil
       }
       return scan(sent.lo, sent.hi) ?? scan(0, pre.count) ?? post.count
+    }
+
+    // Wrap the word-anchor with a kept-emoji ORDER constraint: a dropped run that
+    // is immediately adjacent (whitespace-only gap) to a KEPT emoji from the same
+    // dictated cluster must land on the correct side of it — after a kept LEFT
+    // neighbor, before a kept RIGHT neighbor. Without this a partially-kept run
+    // ("🎉 🎂", AFM keeps 🎉 and drops 🎂) anchors the dropped glyph to the left
+    // WORD and reverses the order ("🎂 🎉"). A no-op unless such adjacency exists.
+    func resolvePos(_ run: Run) -> Int {
+      var pos = resolvePosCore(run)
+      var lo = 0
+      var hi = post.count
+      if run.preStart > 0, !droppedFlags[run.preStart - 1],
+        let pidx = keptPostIdx[run.preStart - 1],
+        pre[(preEmoji[run.preStart - 1].idx + 1)..<run.startIdx].allSatisfy({ $0.isWhitespace })
+      {
+        // The kept emoji is one grapheme `Character` at `pidx`; insert AFTER it.
+        lo = pidx + 1
+      }
+      if run.preEnd < preEmoji.count, !droppedFlags[run.preEnd],
+        let pidx = keptPostIdx[run.preEnd],
+        pre[run.endIdx..<preEmoji[run.preEnd].idx].allSatisfy({ $0.isWhitespace })
+      {
+        hi = pidx
+      }
+      if lo <= hi { pos = min(max(pos, lo), hi) }
+      return pos
     }
 
     var insertions: [(pos: Int, glyph: String)] = []
