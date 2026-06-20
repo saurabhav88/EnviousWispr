@@ -44,11 +44,7 @@ public enum ObservabilityBootstrap {
     config.setBeforeSend { event in
       // PII redaction: strip transcript content, API keys, and emails from event properties.
       // This is a limb — must never throw or crash. Heart is unaffected if this fails.
-      var redactedProperties: [String: Any] = [:]
-      for (key, value) in event.properties {
-        redactedProperties[key] = ObservabilityBootstrap.redactValue(value)
-      }
-      event.properties = redactedProperties
+      event.properties = ObservabilityBootstrap.sanitizePostHogProperties(event.properties)
       return event
     }
 
@@ -90,77 +86,13 @@ public enum ObservabilityBootstrap {
       options.enableAppHangTracking = false
       options.tracesSampleRate = NSNumber(value: 0)
 
+      // PII redaction: strip transcript content, API keys, emails, and
+      // username-bearing crash paths. Extracted into `sanitizeSentryEvent`
+      // (the FINAL payload seam) so the redaction tripwire test (#1095) can
+      // assert on the exact output the SDK transmits, not a pre-`beforeSend`
+      // hook. This is a limb — `sanitizeSentryEvent` must never throw or crash.
       options.beforeSend = { event in
-        // PII redaction: strip transcript content, API keys, and emails.
-        // This is a limb — must never throw or crash. Heart is unaffected if this fails.
-
-        // Redact event message (SentryMessage wraps formatted + raw strings)
-        if let sentryMsg = event.message {
-          let redacted = ObservabilityBootstrap.redactString(sentryMsg.formatted)
-          if redacted != sentryMsg.formatted {
-            event.message = SentryMessage(formatted: redacted)
-          }
-        }
-
-        // Redact extra context values
-        if let extra = event.extra {
-          event.extra = ObservabilityBootstrap.redactDict(extra)
-        }
-
-        // Redact breadcrumb messages and data
-        if let crumbs = event.breadcrumbs {
-          for crumb in crumbs {
-            if let msg = crumb.message {
-              crumb.message = ObservabilityBootstrap.redactString(msg)
-            }
-            if let data = crumb.data {
-              crumb.data = ObservabilityBootstrap.redactDict(data)
-            }
-          }
-        }
-
-        // Redact exception value + mechanism data. Sentry's native crash
-        // handler captures the formatted exception message into
-        // `event.exceptions[].value`; without this pass, a future
-        // `fatalError("transcript=\(text)")` would leak. Verified during V3
-        // audit (#566): no current call sites interpolate transcript-typed
-        // values into fatal traps, but defense-in-depth — a regression
-        // would be invisible until users started crashing.
-        if let exceptions = event.exceptions {
-          for exception in exceptions {
-            if let value = exception.value {
-              exception.value = ObservabilityBootstrap.redactString(value)
-            }
-            if let mechData = exception.mechanism?.data {
-              exception.mechanism?.data = ObservabilityBootstrap.redactDict(mechData)
-            }
-          }
-        }
-
-        // Redact context dictionaries (arbitrary nested string values).
-        // Current contexts are diagnostic counts/statuses, but context is
-        // the natural place where future diagnostic strings would land —
-        // protect it now so a future change doesn't bypass redaction.
-        if let context = event.context {
-          var redactedContext: [String: [String: Any]] = [:]
-          for (key, inner) in context {
-            redactedContext[key] = ObservabilityBootstrap.redactDict(inner)
-          }
-          event.context = redactedContext
-        }
-
-        // Redact tag values. Current tags are low-cardinality strings
-        // (build_type, app_version), but cheap defense-in-depth against
-        // a future tag whose value bleeds transcript-shaped data.
-        if let tags = event.tags {
-          var redactedTags: [String: String] = [:]
-          for (key, value) in tags {
-            redactedTags[key] = ObservabilityBootstrap.redactString(value)
-          }
-          event.tags = redactedTags
-        }
-
-        return event
+        ObservabilityBootstrap.sanitizeSentryEvent(event)
       }
     }
 
@@ -168,6 +100,136 @@ public enum ObservabilityBootstrap {
     SentrySDK.configureScope { scope in
       scope.setTag(value: environment == "development" ? "debug" : "release", key: "app.build_type")
     }
+  }
+
+  /// Sanitize a Sentry event in place and return it. This is the EXACT body the
+  /// SDK `beforeSend` runs — the FINAL payload seam (#1095). Extracted so the
+  /// redaction tripwire test can assert on the same output the SDK transmits.
+  /// Pure, idempotent, and never throws (a limb — heart path is unaffected).
+  static func sanitizeSentryEvent(_ event: Event) -> Event {
+    // Redact event message (SentryMessage wraps formatted + raw strings)
+    if let sentryMsg = event.message {
+      let redacted = redactString(sentryMsg.formatted)
+      if redacted != sentryMsg.formatted {
+        event.message = SentryMessage(formatted: redacted)
+      }
+    }
+
+    // Redact extra context values
+    if let extra = event.extra {
+      event.extra = redactDict(extra)
+    }
+
+    // Redact breadcrumb messages and data
+    if let crumbs = event.breadcrumbs {
+      for crumb in crumbs {
+        if let msg = crumb.message {
+          crumb.message = redactString(msg)
+        }
+        if let data = crumb.data {
+          crumb.data = redactDict(data)
+        }
+      }
+    }
+
+    // Redact exception value + mechanism data. Sentry's native crash
+    // handler captures the formatted exception message into
+    // `event.exceptions[].value`; without this pass, a future
+    // `fatalError("transcript=\(text)")` would leak. Verified during V3
+    // audit (#566): no current call sites interpolate transcript-typed
+    // values into fatal traps, but defense-in-depth — a regression
+    // would be invisible until users started crashing.
+    if let exceptions = event.exceptions {
+      for exception in exceptions {
+        if let value = exception.value {
+          exception.value = redactString(value)
+        }
+        if let mechData = exception.mechanism?.data {
+          exception.mechanism?.data = redactDict(mechData)
+        }
+      }
+    }
+
+    // Redact context dictionaries (arbitrary nested string values).
+    // Current contexts are diagnostic counts/statuses, but context is
+    // the natural place where future diagnostic strings would land —
+    // protect it now so a future change doesn't bypass redaction.
+    if let context = event.context {
+      var redactedContext: [String: [String: Any]] = [:]
+      for (key, inner) in context {
+        redactedContext[key] = redactDict(inner)
+      }
+      event.context = redactedContext
+    }
+
+    // Redact tag values. Current tags are low-cardinality strings
+    // (build_type, app_version), but cheap defense-in-depth against
+    // a future tag whose value bleeds transcript-shaped data.
+    if let tags = event.tags {
+      var redactedTags: [String: String] = [:]
+      for (key, value) in tags {
+        redactedTags[key] = redactString(value)
+      }
+      event.tags = redactedTags
+    }
+
+    // #1095 Layer C — native-crash surfaces. Hard crashes (segfault /
+    // NSException) are written to disk and replayed through `beforeSend` on
+    // next launch carrying stack frames + `debugMeta` (and no `message`). These
+    // fields hold image/source paths, not dictation, but a release build's
+    // paths can embed the developer/user home directory (`/Users/<name>/…`).
+    // Clear the host identifier and scrub the username segment from every
+    // stack-frame and debug-image path so a crash report carries no identity.
+    // Frames live in three serialized surfaces — `event.stacktrace`, each
+    // `thread.stacktrace`, and each `exception.stacktrace` (the SDK sets the
+    // crashed thread's stacktrace directly on the exception for native crashes)
+    // — so cover all three, not just `threads`.
+    event.serverName = nil
+    redactUserPaths(in: event.stacktrace)
+    for thread in event.threads ?? [] {
+      redactUserPaths(in: thread.stacktrace)
+    }
+    for exception in event.exceptions ?? [] {
+      redactUserPaths(in: exception.stacktrace)
+    }
+    for meta in event.debugMeta ?? [] {
+      if let codeFile = meta.codeFile { meta.codeFile = redactUserPath(codeFile) }
+    }
+
+    return event
+  }
+
+  /// Scrub `/Users/<name>/` usernames from every frame's path fields in a
+  /// stacktrace, in place. No-op for a nil stacktrace. (#1095 Layer C helper.)
+  private static func redactUserPaths(in stacktrace: SentryStacktrace?) {
+    guard let frames = stacktrace?.frames else { return }
+    for frame in frames {
+      if let package = frame.package { frame.package = redactUserPath(package) }
+      if let fileName = frame.fileName { frame.fileName = redactUserPath(fileName) }
+    }
+  }
+
+  /// Redact every value in a PostHog event's property bag (the EXACT body the
+  /// PostHog `beforeSend` runs). Shares the same value redactor as Sentry, so
+  /// the tripwire test (#1095) covers both pipelines through one seam.
+  static func sanitizePostHogProperties(_ properties: [String: Any]) -> [String: Any] {
+    var redacted: [String: Any] = [:]
+    for (key, value) in properties {
+      redacted[key] = redactValue(value)
+    }
+    return redacted
+  }
+
+  /// Replace the username segment of a macOS home path (`/Users/<name>/…`)
+  /// with a placeholder, leaving the rest of the path intact for triage.
+  /// No-op when the string contains no such segment. Idempotent; never throws.
+  /// Mirrors the server-side "Usernames in filepaths" scrubbing rule (#1095).
+  static func redactUserPath(_ input: String) -> String {
+    input.replacingOccurrences(
+      of: #"/Users/[^/]+"#,
+      with: "/Users/[REDACTED]",
+      options: .regularExpression
+    )
   }
 
   /// Redact every String value in a `[String: Any]` dictionary recursively,
