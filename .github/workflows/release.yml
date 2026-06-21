@@ -241,10 +241,32 @@ jobs:
         run: brew install create-dmg
 
       - name: Install mise + Tuist
+        env:
+          # Pin mise to a checksummed GitHub release binary instead of the
+          # unpinned `curl https://mise.run | sh` installer. This step runs in
+          # the signing job immediately before the Developer ID cert import, so a
+          # compromised installer endpoint could otherwise persist a shim that
+          # exfiltrates the signing identity. (#1128)
+          # Bump: set VERSION + SHA256 together — sha256 of
+          # mise-<VERSION>-macos-arm64, cross-checked vs the release SHASUMS256.txt.
+          MISE_VERSION: v2026.6.11
+          MISE_SHA256: 5cde7e282e64fd1cea3b1e28b1dc918ee118c3a651be4d8ce27b8494950a26c7
         run: |
           set -euo pipefail
-          curl https://mise.run | sh
+          [ "$(uname -m)" = arm64 ] || { echo "::error::Expected arm64 runner, got $(uname -m)"; exit 1; }
+          MISE_URL="https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-macos-arm64"
+          MISE_TMP="$RUNNER_TEMP/mise"
+          echo "==> Downloading pinned mise ${MISE_VERSION} from ${MISE_URL}"
+          curl --proto '=https' --tlsv1.2 --fail --location \
+            --retry 3 --retry-connrefused --connect-timeout 15 --max-time 120 \
+            -sS -o "$MISE_TMP" "$MISE_URL"
+          echo "${MISE_SHA256}  ${MISE_TMP}" | shasum -a 256 -c -
+          mkdir -p "$HOME/.local/bin"
+          chmod +x "$MISE_TMP"
+          mv "$MISE_TMP" "$HOME/.local/bin/mise"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/mise" --version | grep -qF "${MISE_VERSION#v}" \
+            || { echo "::error::mise version mismatch (expected ${MISE_VERSION#v})"; exit 1; }
           "$HOME/.local/bin/mise" install tuist@4.195.11
           "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version
 
@@ -710,7 +732,7 @@ jobs:
 
   # ==========================================================================
   # LIMB Job D — Upload Sentry dSYMs
-  # Cannot block shipping. Uses pre-installed sentry-cli on runner.
+  # Cannot block shipping. Installs a pinned, checksummed sentry-cli (#1129).
   # ==========================================================================
   upload-sentry-dsyms:
     needs: [preflight, build-release-artifacts, publish-github-release]
@@ -745,7 +767,31 @@ jobs:
           run-id: ${{ needs.preflight.outputs.source-run-id }}
 
       - name: Install sentry-cli
-        run: curl -sL https://sentry.io/get-cli/ | bash
+        env:
+          # Pin sentry-cli to a checksummed GitHub release binary instead of the
+          # unpinned `curl https://sentry.io/get-cli/ | bash` installer. The next
+          # step exposes SENTRY_AUTH_TOKEN (an org-scoped Sentry API token), so a
+          # compromised installer endpoint could otherwise persist a shim that
+          # exfiltrates it. (#1129)
+          # Bump: set VERSION + SHA256 together — sha256 of sentry-cli-Darwin-arm64.
+          SENTRY_CLI_VERSION: "3.5.1"
+          SENTRY_CLI_SHA256: d2b69f611c2e0701ffa09ad93db2f0d2fc845e1cf20a598270860a59cf698932
+        run: |
+          set -euo pipefail
+          [ "$(uname -m)" = arm64 ] || { echo "::error::Expected arm64 runner, got $(uname -m)"; exit 1; }
+          SENTRY_URL="https://github.com/getsentry/sentry-cli/releases/download/${SENTRY_CLI_VERSION}/sentry-cli-Darwin-arm64"
+          SENTRY_TMP="$RUNNER_TEMP/sentry-cli"
+          echo "==> Downloading pinned sentry-cli ${SENTRY_CLI_VERSION} from ${SENTRY_URL}"
+          curl --proto '=https' --tlsv1.2 --fail --location \
+            --retry 3 --retry-connrefused --connect-timeout 15 --max-time 120 \
+            -sS -o "$SENTRY_TMP" "$SENTRY_URL"
+          echo "${SENTRY_CLI_SHA256}  ${SENTRY_TMP}" | shasum -a 256 -c -
+          mkdir -p "$HOME/.local/bin"
+          chmod +x "$SENTRY_TMP"
+          mv "$SENTRY_TMP" "$HOME/.local/bin/sentry-cli"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/sentry-cli" --version | grep -qF "$SENTRY_CLI_VERSION" \
+            || { echo "::error::sentry-cli version mismatch (expected $SENTRY_CLI_VERSION)"; exit 1; }
 
       - name: Upload dSYMs to Sentry
         env:
@@ -756,9 +802,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          # sentry-cli is installed by the prior step on the hosted runner; this guard is belt-and-suspenders
+          # sentry-cli is installed (pinned + checksummed) by the prior step; this guard is belt-and-suspenders
           if ! command -v sentry-cli &>/dev/null; then
-            echo "::error::sentry-cli not found. Install it on the runner: curl -sL https://sentry.io/get-cli/ | bash"
+            echo "::error::sentry-cli not found on PATH. The pinned 'Install sentry-cli' step must have failed."
             exit 1
           fi
           sentry-cli --version
