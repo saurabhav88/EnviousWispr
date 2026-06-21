@@ -25,6 +25,11 @@ on:
         description: 'Run ID that produced build artifacts — required for recovery modes'
         required: false
         type: string
+      dry_run:
+        description: 'Rehearsal: run the whole pipeline (incl. publish/limb jobs on their runners) but gate every real side-effect step. No release, no push, no Sentry finalize. Use with mode=full.'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: release
@@ -56,7 +61,7 @@ jobs:
   # Preflight — fail fast before expensive work
   # ==========================================================================
   preflight:
-    runs-on: macos-26
+    runs-on: ubuntu-latest   # #1117: bash-only (version regex, secret-presence, summary) — no macOS dependency
     timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -104,6 +109,7 @@ jobs:
         env:
           MODE: ${{ inputs.mode }}
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           case "$MODE" in
             full|build-only) ;;
@@ -115,6 +121,13 @@ jobs:
               ;;
             *) echo "::error::Invalid mode: $MODE"; exit 1 ;;
           esac
+          # #1117: dry_run rehearses the full build+publish path, so it only makes
+          # sense with a build mode. A recovery mode reuses prior artifacts and has
+          # nothing to rehearse — reject the nonsensical combo cleanly.
+          if [[ "$DRY_RUN" == "true" && "$MODE" != "full" && "$MODE" != "build-only" ]]; then
+            echo "::error::dry_run=true requires mode=full (or build-only); got mode=${MODE}"
+            exit 1
+          fi
 
       - name: Resolve source run ID
         id: resolve-run
@@ -138,19 +151,25 @@ jobs:
           HAS_APP_ID: ${{ secrets.APP_ID != '' }}
           HAS_APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY != '' }}
           MODE: ${{ inputs.mode || 'full' }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
           FAIL=0
 
-          # Build secrets — required for full, release-only, and build-only
+          # Build secrets — required for full, release-only, and build-only.
+          # (dry_run still builds+signs, so these stay required.)
           if [[ "$MODE" == "full" || "$MODE" == "release-only" || "$MODE" == "build-only" ]]; then
             [[ "$HAS_SPARKLE_PRIVATE_KEY" == "true" ]] || { echo "::error::SPARKLE_PRIVATE_KEY missing"; FAIL=1; }
             [[ "$HAS_DEVELOPER_ID_CERT" == "true" ]]    || { echo "::error::DEVELOPER_ID_CERT_BASE64 missing"; FAIL=1; }
             [[ "$HAS_APPLE_API_KEY" == "true" ]]         || { echo "::error::APPLE_API_KEY_BASE64 missing"; FAIL=1; }
           fi
 
-          # App token — required for appcast push
-          if [[ "$MODE" == "full" || "$MODE" == "appcast-only" ]]; then
+          # App token — required for appcast push. #1117 least-privilege: a dry_run
+          # rehearsal MUST NOT push to main, so it does not require (and the appcast
+          # job will not mint) the App credentials. Requiring them only for a real
+          # publish keeps the rehearsal credential-starved → a forgotten gate fails
+          # auth instead of mutating.
+          if [[ ( "$MODE" == "full" || "$MODE" == "appcast-only" ) && "$DRY_RUN" != "true" ]]; then
             [[ "$HAS_APP_ID" == "true" ]]          || { echo "::error::APP_ID missing"; FAIL=1; }
             [[ "$HAS_APP_PRIVATE_KEY" == "true" ]]  || { echo "::error::APP_PRIVATE_KEY missing"; FAIL=1; }
           fi
@@ -468,7 +487,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        if: steps.check-release.outputs.exists == 'false'
+        if: steps.check-release.outputs.exists == 'false' && inputs.dry_run != true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.preflight.outputs.version }}
@@ -483,8 +502,19 @@ jobs:
             "build/EnviousWispr-${VERSION}.dmg" \
             "build/EnviousWispr.dmg"
 
+      - name: DRY RUN — GitHub Release (no-op)
+        if: steps.check-release.outputs.exists == 'false' && inputs.dry_run == true
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+        run: |
+          # #1117: rehearsal — print the exact command that WOULD run, create nothing.
+          echo "DRY RUN: would run:"
+          echo "  gh release create \"$TAG\" --repo \"${{ github.repository }}\" --title \"EnviousWispr v${VERSION}\" --generate-notes build/EnviousWispr-${VERSION}.dmg build/EnviousWispr.dmg"
+          ls -la build/EnviousWispr-*.dmg build/EnviousWispr.dmg 2>/dev/null || echo "::warning::expected DMGs not found in dry-run download"
+
       - name: Upload assets to existing release (recovery only)
-        if: steps.check-release.outputs.exists == 'true' && inputs.mode == 'release-only'
+        if: steps.check-release.outputs.exists == 'true' && inputs.mode == 'release-only' && inputs.dry_run != true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.preflight.outputs.version }}
@@ -505,6 +535,7 @@ jobs:
   # persist-credentials: false prevents checkout from leaking GITHUB_TOKEN.
   # ==========================================================================
   publish-appcast:
+    # #1117: LIMB — checkout + download + python3/xmllint + App token + git push + curl. All Linux-present.
     needs: [preflight, build-release-artifacts, publish-github-release]
     if: |
       always() && (
@@ -517,7 +548,7 @@ jobs:
         needs.build-release-artifacts.result == 'success' ||
         needs.build-release-artifacts.result == 'skipped'
       )
-    runs-on: macos-26
+    runs-on: ubuntu-latest   # #1117: Linux-eligible limb
     # #1019: bumped 10→20 to accommodate the wait-for-Pages-deploy poll before
     # the edge purge + verify (the deploy + edge refresh can take several min).
     timeout-minutes: 20
@@ -525,6 +556,21 @@ jobs:
       contents: read   # checkout + cross-run download (push/PR use the App token) (#1087)
       actions: read
     steps:
+      - name: Verify Linux tooling
+        run: |
+          set -euo pipefail
+          # #1117: this job moved to ubuntu-latest. Assert its tools rather than
+          # rely on image assumptions; install libxml2-utils if xmllint is absent.
+          for tool in git python3 curl; do
+            command -v "$tool" >/dev/null || { echo "::error::required tool '$tool' missing on runner"; exit 1; }
+            echo "  $tool: $($tool --version 2>&1 | head -n1)"
+          done
+          if ! command -v xmllint >/dev/null; then
+            echo "==> xmllint absent — installing libxml2-utils"
+            sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
+          fi
+          echo "  xmllint: $(xmllint --version 2>&1 | head -n1)"
+
       - name: Checkout main
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -588,17 +634,40 @@ jobs:
           grep -q "github.com/${{ github.repository }}/releases" "$APPCAST"
           echo "==> Appcast validation passed for v${VERSION}"
 
+      - name: DRY RUN — upload injected appcast for inspection
+        if: steps.check-appcast.outputs.exists == 'false' && inputs.dry_run == true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dry-run-appcast-${{ needs.preflight.outputs.version }}
+          retention-days: 7
+          path: website/public/appcast.xml
+
+      # #1117 least-privilege: the App token is the load-bearing safety control.
+      # In a dry_run the mint is skipped, so APP_TOKEN is empty downstream and any
+      # (even accidentally-ungated) push fails auth instead of writing to main.
       - name: Generate GitHub App token
-        if: steps.check-appcast.outputs.exists == 'false'
+        if: steps.check-appcast.outputs.exists == 'false' && inputs.dry_run != true
         id: app-token
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
+      - name: DRY RUN — appcast push (no-op)
+        if: steps.check-appcast.outputs.exists == 'false' && inputs.dry_run == true
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          # #1117: rehearsal — the injected + validated appcast.xml is uploaded as an
+          # artifact above; here we only print what a real run would push. No token
+          # was minted, so no push is possible.
+          echo "DRY RUN: would commit + push website/public/appcast.xml to main:"
+          echo "  git commit -m 'chore(release): update appcast for v${VERSION}' && git push origin main"
+          git --no-pager diff --stat -- website/public/appcast.xml || true
+
       - name: Push appcast to main
         id: push-appcast
-        if: steps.check-appcast.outputs.exists == 'false'
+        if: steps.check-appcast.outputs.exists == 'false' && inputs.dry_run != true
         continue-on-error: true
         env:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -648,7 +717,7 @@ jobs:
 
       - name: Purge Cloudflare edge cache for appcast
         id: purge-edge
-        if: steps.check-appcast.outputs.exists == 'false' && steps.push-appcast.outcome == 'success' && steps.wait-pages.outcome == 'success'
+        if: steps.check-appcast.outputs.exists == 'false' && steps.push-appcast.outcome == 'success' && steps.wait-pages.outcome == 'success' && inputs.dry_run != true
         continue-on-error: true
         env:
           CF_PURGE_TOKEN: ${{ secrets.CLOUDFLARE_PURGE_TOKEN }}
@@ -683,7 +752,7 @@ jobs:
 
       - name: Fallback — open appcast PR
         id: fallback-pr
-        if: steps.check-appcast.outputs.exists == 'false' && steps.push-appcast.outcome == 'failure'
+        if: steps.check-appcast.outputs.exists == 'false' && steps.push-appcast.outcome == 'failure' && inputs.dry_run != true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ needs.preflight.outputs.version }}
@@ -725,7 +794,7 @@ jobs:
         needs.build-release-artifacts.result == 'success' ||
         needs.build-release-artifacts.result == 'skipped'
       )
-    runs-on: macos-26
+    runs-on: ubuntu-latest   # #1117: Linux-eligible limb (sentry-cli installs + runs on Linux)
     timeout-minutes: 15
     permissions:
       contents: read   # checkout + cross-run download (Sentry upload uses its own token) (#1087)
@@ -753,6 +822,7 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           VERSION: ${{ needs.preflight.outputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
 
@@ -762,6 +832,14 @@ jobs:
             exit 1
           fi
           sentry-cli --version
+
+          # #1117: in a dry_run, install + version above prove sentry-cli works on
+          # ubuntu; stop before any real Sentry mutation (no release created/uploaded).
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            echo "DRY RUN: would run: sentry-cli releases new v${VERSION}; debug-files upload --include-sources build/dSYMs/; releases finalize v${VERSION}"
+            ls -la build/dSYMs/ 2>/dev/null || echo "::warning::dSYMs not found in dry-run download"
+            exit 0
+          fi
 
           sentry-cli releases new "v${VERSION}"
           sentry-cli releases set-commits "v${VERSION}" --auto
@@ -779,7 +857,7 @@ jobs:
   release-summary:
     needs: [preflight, build-release-artifacts, publish-github-release, publish-appcast, upload-sentry-dsyms]
     if: always() && needs.preflight.result == 'success'
-    runs-on: macos-26
+    runs-on: ubuntu-latest   # #1117: pure-bash summary
     timeout-minutes: 5
     steps:
       - name: Write release summary
@@ -792,8 +870,18 @@ jobs:
           RELEASE_RESULT: ${{ needs.publish-github-release.result }}
           APPCAST_RESULT: ${{ needs.publish-appcast.result }}
           SENTRY_RESULT: ${{ needs.upload-sentry-dsyms.result }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
+
+          # #1117: a dry_run rehearsal ends every job in `success` (mutations are
+          # gated/no-op'd), so distinguish it from a real shipped release in the
+          # summary — an operator must never read a rehearsal as "shipped".
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            SUMMARY_TITLE="DRY RUN (rehearsal — nothing shipped) — v${VERSION}"
+          else
+            SUMMARY_TITLE="Release Summary — v${VERSION}"
+          fi
 
           status_emoji() {
             case "$1" in
@@ -821,7 +909,7 @@ jobs:
           fi
 
           cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
-          ## Release Summary — v${VERSION}
+          ## ${SUMMARY_TITLE}
 
           | Component | Status | Type |
           |---|---|---|
@@ -849,6 +937,12 @@ jobs:
           if [[ "$RELEASE_RESULT" != "success" && "$RELEASE_RESULT" != "skipped" ]]; then
             echo "::error::HEART FAILURE: GitHub Release failed — release did not ship"
             exit 1
+          fi
+
+          # #1117: dry_run rehearsal — report as a rehearsal, never as "shipped".
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            echo "==> DRY RUN v${VERSION} complete — pipeline rehearsed on its runners, NOTHING shipped (no GitHub Release, no appcast push, no Sentry upload)."
+            exit 0
           fi
 
           # Limb failures are warnings, not errors
