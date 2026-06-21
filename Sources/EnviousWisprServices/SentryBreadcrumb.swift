@@ -163,6 +163,11 @@ public enum SentryBreadcrumb {
       event.extra = eventExtra
     }
 
+    // Group by category + underlying error signature so distinct defects that
+    // share a broad category get their own stable, release-independent issue
+    // instead of merging under one stacktrace bin (#1144).
+    event.fingerprint = Self.handledErrorFingerprint(for: category, error: error)
+
     // Also add a breadcrumb so the error appears in the trail
     add(
       stage: stage,
@@ -190,6 +195,26 @@ public enum SentryBreadcrumb {
   nonisolated static func structuredDescriptor(_ error: any Error) -> String {
     let ns = error as NSError
     return "\(ns.domain)#\(ns.code)"
+  }
+
+  /// Stable Sentry grouping key for a handled error: namespace + category + the
+  /// underlying error signature (`domain#code`). The namespace avoids colliding
+  /// with native-crash groups; the category is the defect class; the signature
+  /// splits distinct root causes that share a broad category so they do not
+  /// silently merge into one issue (#1144). `nonisolated` + pure so the
+  /// non-`@MainActor` test suite calls it directly.
+  nonisolated static func handledErrorFingerprint(
+    for category: ErrorCategory, error: any Error
+  ) -> [String] {
+    ["handled_error", category.rawValue, structuredDescriptor(error)]
+  }
+
+  /// Stable Sentry grouping key for the AI-availability failure event: namespace
+  /// + the sorted failure-reason set (bare namespace when empty). Sorted so the
+  /// key is order-independent across reports (#1144).
+  nonisolated static func aiFailureFingerprint(for reasons: [AIFailureReason]) -> [String] {
+    let sorted = reasons.map(\.rawValue).sorted()
+    return sorted.isEmpty ? ["ai_failure"] : ["ai_failure"] + sorted
   }
 
   private static func mergedExtra(_ extra: [String: Any]?) -> [String: Any]? {
@@ -243,6 +268,9 @@ public enum SentryBreadcrumb {
       "ai.failure_reasons": report.failureReasons.map(\.rawValue).joined(separator: ","),
     ]
     event.extra = report.sentryContext
+    // Group by the sorted failure-reason set so this stays one stable issue
+    // distinct from the handled-error groups (#1144).
+    event.fingerprint = Self.aiFailureFingerprint(for: report.failureReasons)
     SentrySDK.capture(event: event)
   }
 
