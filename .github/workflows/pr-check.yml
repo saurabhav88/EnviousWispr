@@ -25,6 +25,10 @@ jobs:
   build-debug:
     runs-on: macos-26
     timeout-minutes: 45
+    # Expose this lane's content-detection verdict so the build-check aggregator
+    # can report honestly whether a Swift compile actually ran (#1089).
+    outputs:
+      needs_build: ${{ steps.changes.outputs.needs_build }}
 
     steps:
       - name: Checkout
@@ -183,6 +187,10 @@ jobs:
   build-release:
     runs-on: macos-26
     timeout-minutes: 45
+    # Mirror of build-debug's output; the aggregator cross-checks both lanes and
+    # reports "unknown" on any divergence rather than overclaiming (#1089).
+    outputs:
+      needs_build: ${{ steps.changes.outputs.needs_build }}
 
     steps:
       - name: Checkout
@@ -337,3 +345,25 @@ jobs:
             exit 1
           fi
           echo "==> Both build lanes passed."
+
+      - name: Report build status
+        run: |
+          set -euo pipefail
+          # Honest at-a-glance signal for reviewers: distinguish a real Swift
+          # build + test pass from a content-only skip, without touching the
+          # required-check name or the per-step skip logic (#1089). Runs only
+          # after the fail-closed gate above, so it renders solely on a green
+          # run. Both lanes run identical content detection on the same SHAs;
+          # require them to agree, else report "unknown" rather than overclaim.
+          debug_needs="${{ needs.build-debug.outputs.needs_build }}"
+          release_needs="${{ needs.build-release.outputs.needs_build }}"
+          if [ "$debug_needs" = "true" ] && [ "$release_needs" = "true" ]; then
+            STATUS="build-check passed: Swift build and tests ran."
+          elif [ "$debug_needs" = "false" ] && [ "$release_needs" = "false" ]; then
+            STATUS="build-check passed: change classified as content-only, Swift build and tests intentionally skipped."
+          else
+            STATUS="build-check passed: build mode unknown (lane verdicts debug='$debug_needs' release='$release_needs')."
+          fi
+          echo "==> $STATUS"
+          echo "$STATUS" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=build-check::$STATUS"
