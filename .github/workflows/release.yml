@@ -913,7 +913,13 @@ jobs:
           fi
 
           sentry-cli releases new "v${VERSION}"
-          sentry-cli releases set-commits "v${VERSION}" --auto
+          # Commit association is a nice-to-have (suspect-commits), NOT required for
+          # symbolication. `set-commits --auto` can hard-fail ("could not find the SHA
+          # of the previous release in the git history") — notably on a `mode=sentry-only`
+          # RE-RUN, which is exactly #1088's remediation path. --ignore-missing degrades
+          # it to default-commits instead of failing the whole dSYM upload; it is a no-op
+          # when --auto would have succeeded. Keeps the essential symbol upload unblocked.
+          sentry-cli releases set-commits "v${VERSION}" --auto --ignore-missing
 
           echo "==> Uploading dSYMs ..."
           # --wait-for makes the command fail if the server cannot fully PROCESS the
