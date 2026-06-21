@@ -137,6 +137,7 @@ If the step DOES document a per-step recovery, follow that recovery and continue
 - **Path A Step 8 sub-issue link failure** (including the 422 "already exists" case): log and continue. Same rule for Path C step 3 sub-issue link.
 - **Path C step 1 Sentry event-fetch failure**: fall through with `event = null`, do NOT skip the reopen, use the fail-soft regression-comment template (5b). Same rule when `git show {tag}:{filename}` fails or the tag is missing in step 4.
 - **Path C step 3 sub-issue link failure**, **Path C step 5 regression-comment write failure**, or any other Path C sub-step write failure between reopen and the label add: log + continue with the remaining Path C sub-steps. Do NOT abort Path C mid-sequence on a non-auth-expiry error.
+- **Path C eligibility-gate (Step 2.6.5) write failures** — the Step-H hold/canary audit-comment write OR the hold-label add: log + continue to the next Sentry issue (same log-and-continue rule as the reopen-path writes). A transient failure on a HOLD audit comment MUST NOT terminate the run; the issue simply stays correctly closed with the comment retried next run. (The events-fetch / helper-invocation failures inside Step 2.6.5 are NOT errors — they resolve to the `ambiguous` verdict and fail open by design.)
 
 A single transient MCP/Sentry hiccup MUST NOT terminate the whole run when the prompt documents a per-step skip-and-continue. Terminating in those cases drops remaining Sentry issues that should still be processed.
 
@@ -346,17 +347,26 @@ mcp__github__list_issue_comments(
 Grep the combined body + comment-bodies for markers matching:
 
 ```
-<!-- agent:sentry-triage v=4 fingerprint=ENVIOUSWISPR-X decision=<decision> severity=<P0..P3> last_seen=<ISO> source_issue=#<N|none> source=sentry run_id=<id> -->
+<!-- agent:sentry-triage v=4 fingerprint=ENVIOUSWISPR-X decision=<decision> severity=<P0..P3|none> last_seen=<ISO> source_issue=#<N|none> source=sentry run_id=<id> -->
+```
+`severity=none` is valid for `decision=held` (and `ignored`) — those carry no severity. The parser MUST accept `none` so held decisions are recognized on the next run (else the hold throttle and reversal memory are skipped). Reopen/ambiguous decisions always carry `P0..P3`.
+
+Where `<decision>` is one of: `created`, `updated`, `reopened`, `reversed`, `ignored`, `held`, `ambiguous`. (`held` = Path C eligibility gate held the reopen as pre-fix-tail / non-bug / dev-only; `ambiguous` = Path C could not prove benign and failed open to a visible-triage reopen — both are new in the Step 2.6.5 reopen gate below.) The `source_issue` field is the GitHub issue this fingerprint resolved to: `#N` for `created` / `updated` / `reopened` / `reversed` / `held` / `ambiguous` paths (the actual tracking issue number), or `none` if the prior decision was `ignored`. **Do NOT use the parent epic `#317` as `source_issue`** — `#317` is the Bugs epic parent only, not a tracking issue. Older `v=3` markers from the pre-split routine are ALSO valid and ALSO greppable — they lack `source_issue=`, treat as `source_issue=#<containing-issue>` (the issue the marker is on).
+
+**Also grep for the close-stamp marker** (written into the closing comment when an issue was closed — distinct from the `agent:sentry-triage` marker, no collision):
+
+```
+<!-- tik-close: class=<fixed|fixed-merged-unreleased|telemetry-noise|not-a-bug|by-design|duplicate|unknown> fix-commit=<sha|none> fix-released=<vX.Y.Z|none> canonical=#<N|none> -->
 ```
 
-Where `<decision>` is one of: `created`, `updated`, `reopened`, `reversed`, `ignored`. The `source_issue` field is the GitHub issue this fingerprint resolved to: `#N` for `created` / `updated` / `reopened` / `reversed` paths (the actual tracking issue number), or `none` if the prior decision was `ignored`. **Do NOT use the parent epic `#317` as `source_issue`** — `#317` is the Bugs epic parent only, not a tracking issue. Older `v=3` markers from the pre-split routine are ALSO valid and ALSO greppable — they lack `source_issue=`, treat as `source_issue=#<containing-issue>` (the issue the marker is on).
+If present, it gives the close-class and the fix-boundary inputs — but **mapping it to the helper input still follows Step 2.6.5 B exactly** (a stamp with `fix-released=none` + a `fix-commit` is RE-DERIVED at gate time, because a release may have shipped the fix since close; a stamp with no boundary source fails open). Do NOT treat a stamp as a finished boundary "with no derivation." If absent, derive local-git-only per Step 2.6.5. Hold the parsed `class`, `fix-commit`, `fix-released`, `canonical` for the reopen gate.
 
 **Default action when prior agent marker exists — gate on issue state FIRST:**
 
 - **If the GitHub issue is OPEN:** apply Path B's throttle (event count doubled OR new users OR no `agent:sentry-triage` comment in last 7 days — see Path B for canonical definition). If throttle blocks, skip silently. If throttle allows, post an UPDATE comment.
-- **If the GitHub issue is CLOSED:** do NOT apply the throttle. The presence of the issue in the current Sentry `is:unresolved + lastSeen within window` query (or the regression-watch bypass from Step 1) means the defect is firing again post-close. Route to **Path C (REOPEN + regression comment)**. The reversal-required rules below still apply.
+- **If the GitHub issue is CLOSED:** do NOT apply the throttle. The presence of the issue in the current Sentry query (or the regression-watch bypass from Step 1) means the fingerprint is firing post-close. Route to **Path C**, which **no longer reopens unconditionally** — it runs the eligibility gate (Step 2.6.5) to distinguish a true current-release regression (reopen) from pre-fix-tail / dev-only / non-bug noise (hold) before acting. The reversal-required rules below still apply.
 
-This state gate prevents closed-issue regressions from being silently swallowed by the throttle when a prior marker happens to exist. The throttle is for noise control on still-open issues, not for suppressing reopens.
+This state gate prevents closed-issue regressions from being silently swallowed by the throttle when a prior marker happens to exist. The throttle is for noise control on still-open issues, not for suppressing reopens. (Conversely, the Step 2.6.5 eligibility gate prevents the OPPOSITE failure — reopening a closed issue off a lifetime aggregate that is entirely pre-fix-tail, as happened to #979 on 2026-06-21. HOLD there requires proof; anything unprovable fails OPEN to a visible reopen, never a silent hold.)
 
 **If you genuinely disagree with the prior agent decision:** comment must open with `**Reversing prior agent call from <prior-date>:**` followed by the reason. Reversals are explicit and greppable. Reversal is REQUIRED when:
 - New severity differs from prior severity, OR
@@ -417,7 +427,7 @@ For each candidate hit, decide whether to route to Path B (comment on existing) 
 If 2+ match: route by the candidate issue's `state`:
 
 - **Candidate is open** → route as **Path B**. Open the comment with `**Linked from new Sentry fingerprint X because <2+ matched dimensions>: issue #N appears to track the same defect class.**`
-- **Candidate is closed** → route as **Path C**. The fingerprint split is itself a regression signal — the underlying defect is firing again under a new Sentry shortId. Open Path C's regression comment with `**Linked from new Sentry fingerprint X because <2+ matched dimensions>: this issue appears to track the same defect class and is firing again.**` then proceed through the rest of Path C (reopen, sub-link, regression comment with template 5a or 5b, `regression` label).
+- **Candidate is closed** → route as **Path C**, which means **run the Step 2.6.5 eligibility gate FIRST** (fetch events for the SPLIT fingerprint's Sentry issue, resolve the boundary from the candidate's close-stamp/derivation, run the helper). Only on a `reopen`/`ambiguous` family do you reopen the candidate — and only then prepend the linked-fingerprint intro `**Linked from new Sentry fingerprint X because <2+ matched dimensions>: this issue appears to track the same defect class and is firing again.**`. If the gate returns a `hold`/`canary`/`route` family, do NOT reopen — post the Step-H audit comment (or route to canonical) instead. A fingerprint split whose post-close evidence is only pre-fix-tail or dev-only is NOT a reason to reopen.
 
 If only 1 matches OR none match: route as Path A NEW, but include in the body's References section: `Possibly related: #<N> (single dimension match: <which one>)`.
 
@@ -464,6 +474,8 @@ Where start = max(1, lineNo-10) and end = lineNo+10. If the tag doesn't exist, u
 - P1-high: userCount >= 3 OR count >= 20
 - P2-medium: userCount >= 2 OR count >= 5
 - P3-low: everything else
+
+For Path A (new issue) and Path B (open issue), `userCount`/`count` are the Sentry issue aggregate. **For Path C reopens (and ambiguous fail-opens), use the eligibility gate's `eligible_user_count` / `eligible_count` (post-close, production, fix-containing partition) in place of `userCount`/`count` — NEVER the lifetime aggregate.** Scoring a reopen off the lifetime aggregate is exactly the #979 false-P0 (11 lifetime users, all pre-fix → P0). When the verdict is `ambiguous` (counts are 0 because nothing is provably eligible), default the reopen to the LOWEST tier consistent with a visible-triage signal (P3) unless the latest event is `level=fatal`.
 
 **6. Hypothesis fail-soft:** Write the Hypothesis section ONLY if you can name a specific function AND a plausible precondition failure from the stack + source you read. If the evidence is insufficient, write `> Hypothesis pending — stack trace insufficient. Investigation needed.` Do NOT fabricate confident-sounding prose on weak evidence.
 
@@ -559,55 +571,91 @@ If new severity differs from prior agent comment's severity, prepend `**Reversin
 
 ---
 
-### Path C — GitHub issue found, `state == "closed"` (REGRESSION)
+### Path C — GitHub issue found, `state == "closed"` (REGRESSION — eligibility-gated)
 
-This branch fires both reactively (Step 2 finds a closed match) AND as a sweep (Step 0.5 + Step 1 regression-watch keeps cold-but-recurring shortIds alive past the time filter).
+This branch fires both reactively (Step 2 finds a closed match) AND as a sweep (Step 0.5 + Step 1 regression-watch keeps cold-but-recurring shortIds alive past the time filter). It **does NOT reopen unconditionally** — it first runs the Step 2.6.5 eligibility gate, which distinguishes a true current-release regression from pre-fix-tail / dev-only / non-bug noise. The core invariant (council 2026-06-21; issue #1143): **HOLD requires proof; anything unprovable fails OPEN to a visible reopen, never a silent hold.** Severity, when reopening, is scored on the ELIGIBLE partition (post-close, production, on a fix-containing release), never the Sentry lifetime aggregate.
 
-**Note on idempotency:** Path C performs MULTIPLE writes (reopen, sub-issue link, regression comment, label). The `WRITTEN_THIS_RUN` add happens at the END of the sequence (step 6 below), NOT after the reopen, so subsequent writes in this same Path C invocation aren't blocked by the global "skip if shortId in WRITTEN_THIS_RUN" rule. The `WRITTEN_THIS_RUN` check at branch entry (Step 2 routing) prevents re-entry into Path C for the same shortId on a logic-branch loop.
+**Note on idempotency:** Path C performs MULTIPLE writes. The `WRITTEN_THIS_RUN` add happens at the END of the sequence (final step), so subsequent writes in this same invocation aren't blocked by the global rule. The `WRITTEN_THIS_RUN` check at branch entry (Step 2 routing) prevents re-entry for the same shortId.
 
-1. Fetch latest Sentry event (Path A Step 1). If event-fetch fails, fall through with `event = null` — do NOT skip the reopen. The regression-comment hypothesis falls back to the fail-soft sentence at step 5b.
-2. Reopen via `mcp__github__issue_write` (set state=open). If reopen fails with non-auth-expiry error: log + skip remaining Path C steps for this shortId, continue to next Sentry issue. (Auth-expiry triggers the hard policy.)
-3. Ensure sub-issue link to #317 (Bugs) exists. If link fails with 422, it already exists (fine). Other failures: log + continue with step 4. Do NOT abort Path C here.
-4. If `event` is non-null, read source at CURRENT release tag (`git show {tag}:{filename}`). If `event` is null, skip the source read.
-5. Post regression comment via `mcp__github__add_issue_comment`:
+#### Step 2.6.5 — Eligibility gate (run FIRST, before any reopen)
 
-   5a. If `event` is non-null AND you can name a specific function + plausible precondition:
+**A. Fetch the events LIST** (not just `/events/latest/`):
+```bash
+curl -sD - -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
+  "https://us.sentry.io/api/0/organizations/envious-labs-llc/issues/{issue_id}/events/?full=true&statsPeriod=90d&per_page=100"
 ```
-**Regression detected** — This issue recurred after being closed.
+**PAGINATE — do NOT trust a single page.** The events list is paged (~100/page); a HOLD asserts "we saw every post-close event", so a missed later page that contains a post-fix production event would silently hold a real regression. Follow the `Link:` response header: while it contains `rel="next"; results="true"; cursor="<c>"`, refetch with `&cursor=<c>` and accumulate. Cap at 10 pages (1000 events) as a runaway guard; if the cap is hit with `results="true"` still pending, set `events_truncated=true` in the helper input. Per event extract: `dateCreated` and `user.id` (top-level); `release`, `environment`, `app.build_type` (from the `tags[]` array — `{key,value}` pairs, NOT top-level). If ANY page fetch fails (non-200/non-JSON): treat verdict as **ambiguous** (fail open) — do NOT silent-hold. (The helper independently downgrades any truncation-unsafe hold to `ambiguous` when `events_truncated=true`, so this is belt-and-suspenders.)
+
+**B. Resolve the fix boundary** (close-stamp first, else local-git-only derivation — TIK is BANNED from PR tools, so NEVER read a PR):
+- If the `tik-close` stamp (Step 2.5) is present, map it to the helper input: `close_class` = stamp `class`; `canonical` = stamp `canonical`. **`fix_merged` and `fix_released_version` are NOT taken on faith from `class` alone — they require a boundary source (a concrete released version OR a provable commit):**
+  - Stamp has a concrete `fix-released=vX.Y.Z` → `fix_released_version=vX.Y.Z`, `fix_merged=true`.
+  - Stamp has `fix-released=none` AND a `fix-commit` SHA → RE-DERIVE the release tag from the SHA at gate time (SHA-derivation steps below). A `fixed-merged-unreleased` stamp is frozen at close, but a release may have shipped the fix SINCE — re-deriving moves the boundary forward so a real post-release regression reopens instead of being held forever. Re-derivation finds a release tag → use it (`fix_released=vX`, `fix_merged=true`); proves merged-but-still-unreleased → `fix_released=none, fix_merged=true` (HOLD provable); SHA unprovable → `close_class=unknown, fix_merged=false` → ambiguous.
+  - **Stamp has `fix-released=none` AND NO `fix-commit` (or `fix-commit=none`)** → there is NO boundary source to prove anything → `close_class=unknown`, `fix_merged=false`, `fix_released=none` → the gate returns ambiguous → **fail open**. Do NOT set `fix_merged=true` from `class` alone — that would hold every shipped build forever, even one that ships the fix.
+- Else (no stamp) derive: scan the closing comment for a 7-40 char hex SHA.
+- **SHA-derivation steps (used by both the re-derive-above and the no-stamp path):** prove the SHA locally first:
+  ```bash
+  git rev-parse --verify "<sha>^{commit}"          # exit 0 = exists in clone
+  git merge-base --is-ancestor "<sha>" origin/main # exit 0 = merged to main
+  ```
+  - Both exit 0 → `git tag --contains "<sha>" -l 'v*' | sort -V | head -1` (**`-l 'v*'` is mandatory** — the repo has non-release tags like `autopilot-checkpoint-*` / `checkpoint/*` that sort before `v*` and would otherwise win `head -1` and break semver parsing): non-empty = `fix_released` = that release tag; empty = `fix_merged=true, fix_released=none` (merged-but-unreleased — HOLD is now provable).
+  - Either non-zero (bogus SHA / stale or shallow clone / not yet merged) → `close_class=unknown`, `fix_merged=false` → the gate returns ambiguous → **fail open**. Never assume merged-but-unreleased from an unproven SHA.
+  - Only a bare `#PR` with no resolvable local SHA → do NOT read the PR → `close_class=unknown` → fail open.
+- `close_class` defaults to `unknown` when neither stamp nor derivation yields one.
+
+**C. Run the deterministic helper** (the verdict math is unit-tested code, not prose — `workers/sentry-triage/test_tik_eligibility.py`):
+```bash
+echo '{"events":[...],"closed_at":"<ISO>","close_class":"<class>","fix_released_version":<v|null>,"fix_merged":<bool>,"latest_release":"<vX.Y.Z>","events_truncated":<bool>}' \
+  | python3 workers/sentry-triage/tik_eligibility.py
+```
+**`events_truncated` is REQUIRED** — set it `true` whenever step A hit the page cap with more pages pending (else `false`). Omitting it defaults to `false`, which lets a truncated hold stand (silent-hold risk) — always pass it explicitly. Returns `{verdict, family, reason, eligible_user_count, eligible_count, excluded_dev_count, observed_production_releases, dev_canary}`. A non-zero exit or unparseable output → treat as **ambiguous** (fail open). `latest_release` = `git tag -l 'v*' | sort -V | tail -1`.
+
+#### Branch on `family`
+
+- **`reopen` (verdict `reopen-eligible`)** — a production event on a fix-containing release. Reopen (steps R1-R4 below). Severity from `eligible_user_count` / `eligible_count` (NOT lifetime). Decision marker `decision=reopened`.
+- **`ambiguous`** — could not prove benign (unknown relation, missing fix info, fetch/helper failure, current-release evidence we can't classify). **Fail open:** reopen (R1-R4), but the comment opens with `**Unverified regression (boundary unprovable):**` and adds the label `tik-boundary-unknown` alongside `regression`. Decision marker `decision=ambiguous`. NEVER silent-hold.
+- **`hold` (verdicts `hold-prefix-tail` / `hold-nonbug` / `hold-dev-only` / `no-postclose-activity`)** — do NOT reopen. Post a throttled AUDIT comment (step H below) so the hold is visible. Label the still-closed issue: `tik-held-prefixtail` (prefix-tail), `tik-dev-only` (dev-only), else none. Decision marker `decision=held`.
+- **`canary` (verdict `dev-canary-postfix`)** — a fix-containing dogfood build still emits. Do NOT reopen for customers. Post the audit comment (step H) noting the internal early-warning; label `tik-dev-only`. Decision marker `decision=held`.
+- **`route` (verdict `route-to-canonical`)** — closed as duplicate. Do NOT touch the duplicate. Resolve the canonical issue (stamp `canonical=#N`, else the closing comment's "duplicate of #N"); apply Path B (if open) or this Path C gate (if closed) to the canonical. If no canonical resolves → fail open: treat as `ambiguous` on this issue.
+
+**Reopen steps R1-R4** (reopen + ambiguous families):
+- R1. Reopen via `mcp__github__issue_write` (state=open). Reopen fails (non-auth): log + skip remaining steps for this shortId. (Auth-expiry → hard policy.)
+- R2. Ensure sub-issue link to #317 (Bugs). 422 = already exists (fine). Other failure: log + continue.
+- R3. If you can name a specific function + plausible precondition from the latest event's stack at the current tag, write the fresh-hypothesis comment; else the fail-soft variant. Use the regression-comment template below.
+- R4. Add label `regression` (+ `tik-boundary-unknown` for the ambiguous family) via `mcp__github__issue_write`.
+
+Regression comment template (reopen / ambiguous):
+```
+**Regression detected** — eligibility gate verdict: {verdict}.
 | Metric | Value |
 |--------|-------|
-| Users now | {userCount} |
-| Occurrences now | {count} |
-| Release now | {release} |
+| Eligible users (post-fix, prod) | {eligible_user_count} |
+| Eligible occurrences | {eligible_count} |
+| Excluded dev/dogfood events | {excluded_dev_count} |
+| Observed production releases | {observed_production_releases} |
 
 [View in Sentry]({permalink})
 
 **Fresh hypothesis** (current source at {tag}):
-> [2 sentences — re-analyze, don't copy original.]
+> [2 sentences, OR "Hypothesis pending — investigation needed." for the fail-soft / ambiguous case.]
 
-<!-- agent:sentry-triage v=4 fingerprint={shortId} decision=reopened severity={Pn} last_seen={lastSeen} source_issue=#{this_issue_number} source=sentry run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
+<!-- agent:sentry-triage v=4 fingerprint={shortId} decision={reopened|ambiguous} severity={Pn} last_seen={lastSeen} source_issue=#{this_issue_number} source=sentry run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
 ```
 
-   5b. Fail-soft variant — use this when `event` is null OR evidence is insufficient for a confident hypothesis:
+**Step H — Audit comment (hold / canary families).** Do NOT reopen. Apply Path B's "no recent agent comment in last 7 days" throttle ONLY (not the doubled-count / new-users conditions) so a held issue is not re-commented daily. If the throttle allows, post:
 ```
-**Regression detected** — This issue recurred after being closed.
+**Held — eligibility gate verdict: {verdict}.** {reason}.
 | Metric | Value |
 |--------|-------|
-| Users now | {userCount} |
-| Occurrences now | {count} |
-| Last seen | {lastSeen} |
-| Release now | {release} |
+| Observed production releases | {observed_production_releases} |
+| Excluded dev/dogfood events | {excluded_dev_count} |
 
-[View in Sentry]({permalink})
+Not reopened: all post-close evidence is {pre-fix-tail / dev-only / non-actionable}. Resolution is shipping the next release (pre-fix tail) or N/A (dev-only / non-bug). [View in Sentry]({permalink})
 
-**Fresh hypothesis:**
-> Hypothesis pending — investigation needed. (Sentry event fetch failed OR stack-trace evidence insufficient.)
-
-<!-- agent:sentry-triage v=4 fingerprint={shortId} decision=reopened severity={Pn} last_seen={lastSeen} source_issue=#{this_issue_number} source=sentry run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
+<!-- agent:sentry-triage v=4 fingerprint={shortId} decision=held severity=none last_seen={lastSeen} source_issue=#{this_issue_number} source=sentry run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
 ```
+If the throttle blocks (a `held` comment with identical metrics was posted in the last 7 days), skip the comment silently (the issue stays correctly closed). Then add the hold label if not already present.
 
-   If the comment write fails with non-auth-expiry: log + continue to step 6 (still add the label so the reopened issue is tagged).
-6. Add label `regression` via `mcp__github__issue_write`. Then add `shortId` to `WRITTEN_THIS_RUN`.
+**Final step (all families):** add `shortId` to `WRITTEN_THIS_RUN`.
 
 ---
 
