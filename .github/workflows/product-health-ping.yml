@@ -10,7 +10,7 @@ name: Product Health Check
 
 on:
   schedule:
-    - cron: "0 14 * * *"   # 10am ET daily - ingestion-lag buffer for offline laptops
+    - cron: "17 14 * * *"  # ~10:17am ET daily. Offset minute (not :00): GitHub flags top-of-hour as a high-load window where scheduled runs are delayed/dropped (#1131). Minute drift is harmless - the worker evaluates the prior COMPLETED UTC day. The :14 hour is the ingestion-lag buffer for offline laptops.
   workflow_dispatch: {}
 
 permissions:

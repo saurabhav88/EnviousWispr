@@ -68,8 +68,10 @@ the public workers.dev URL cannot be crawled into spamming Discord.
 
 The Cloudflare account is at its 5-cron free-plan limit (#1092), so the daily run
 is driven by `.github/workflows/product-health-ping.yml`, which curls the
-secret-gated endpoint at `0 14 * * *` (10am ET - ingestion-lag buffer). The same
-secret lives as repo secret `PRODUCT_HEALTH_TRIGGER_SECRET`:
+secret-gated endpoint at `17 14 * * *` (~10:17am ET - ingestion-lag buffer; the
+offset minute avoids GitHub's top-of-hour high-load window where runs can be
+delayed or dropped, #1131). The same secret lives as repo secret
+`PRODUCT_HEALTH_TRIGGER_SECRET`:
 
 ```bash
 security find-generic-password -w -a m4pro_sv -s enviouswispr.product-health-trigger-secret \

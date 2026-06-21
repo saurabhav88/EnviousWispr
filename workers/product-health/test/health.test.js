@@ -158,14 +158,51 @@ test("volume: weekend dip below trailing avg does NOT false-fire", () => {
   assert.equal(evaluateVolume(days, "2026-06-21").state, "evaluated-ok");
 });
 
-test("volume: co-firing blackout (schema drift) -> alert", () => {
+test("volume: asr blackout (schema drift) -> alert", () => {
+  // asr.completed co-fires UNCONDITIONALLY on success, so asr==0 with dictations
+  // present is a genuine co-fire vanish (the only drift leg, #1130).
   const days = [
-    { day: "2026-06-19", dictations: 200, pastes: 0, asr: 200 }, // paste event vanished
+    { day: "2026-06-19", dictations: 200, pastes: 200, asr: 0 }, // asr event vanished
     { day: "2026-06-18", dictations: 200, pastes: 200, asr: 200 },
   ];
   const ev = evaluateVolume(days, "2026-06-19");
   assert.equal(ev.state, "alerting");
   assert.equal(ev.driftAlert, true);
+  assert.equal(ev.asrDrift, true);
+});
+
+test("volume: paste-only blackout does NOT alert (copy-only ambiguity, #1130)", () => {
+  // paste.completed is conditional (auto-paste only); pastes==0 is ambiguous
+  // (copy-only vs broken), so it must NOT fire a drift alert even on an active day.
+  const days = [
+    { day: "2026-06-19", dictations: 200, pastes: 0, asr: 200 },
+    { day: "2026-06-18", dictations: 200, pastes: 200, asr: 200 },
+  ];
+  const ev = evaluateVolume(days, "2026-06-19");
+  assert.equal(ev.state, "evaluated-ok");
+  assert.equal(ev.driftAlert, false);
+});
+
+test("volume: copy-only quiet day does NOT alert (#1130)", () => {
+  const days = [
+    { day: "2026-06-19", dictations: 8, pastes: 0, asr: 8 },
+    { day: "2026-06-18", dictations: 6, pastes: 0, asr: 6 },
+  ];
+  const ev = evaluateVolume(days, "2026-06-19");
+  assert.equal(ev.state, "evaluated-ok");
+  assert.equal(ev.driftAlert, false);
+});
+
+test("volume: copy-only ACTIVE day does NOT alert (#1130)", () => {
+  // The false-positive class the old (pastes==0) leg hit: a clearly active day
+  // whose users are all copy-only. Must stay quiet now.
+  const days = [
+    { day: "2026-06-19", dictations: 50, pastes: 0, asr: 50 },
+    { day: "2026-06-18", dictations: 200, pastes: 200, asr: 200 },
+  ];
+  const ev = evaluateVolume(days, "2026-06-19");
+  assert.equal(ev.state, "evaluated-ok");
+  assert.equal(ev.driftAlert, false);
 });
 
 // ---- message ----
@@ -200,6 +237,17 @@ test("message: a crossing produces an ALERT header + block + dashboard link", ()
   assert.match(msg, /ax_denied 10, direct-paste-failed 7/);
   assert.match(msg, /v2\.1\.4: 12/);
   assert.match(msg, /dashboard/);
+});
+
+test("message: drift alert names asr.completed, not paste/asr (#1130)", () => {
+  const msg = buildMessage(
+    results({
+      volume: { state: "alerting", t1d: 200, avg: 200, ratio: 1.0, zeroAlert: false, driftAlert: true, asrDrift: true },
+    })
+  );
+  assert.match(msg, /health - ALERT/);
+  assert.match(msg, /asr\.completed was 0/);
+  assert.ok(!msg.includes("paste/asr"), "drift wording must not reference the dropped paste leg");
 });
 
 test("message: stays within Discord 2000-char cap", () => {
