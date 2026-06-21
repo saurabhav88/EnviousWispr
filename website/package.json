@@ -13,7 +13,8 @@
   },
   "overrides": {
     "devalue": ">=5.8.1",
-    "undici": ">=7.24.0"
+    "undici": ">=7.24.0",
+    "vite": "^7.3.5"
   },
   "dependencies": {
     "@astrojs/rss": "^4.0.17",
