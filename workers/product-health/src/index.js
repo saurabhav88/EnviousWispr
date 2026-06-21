@@ -233,13 +233,19 @@ export function evaluateVolume(days, expectedT1, TH = THRESHOLDS.volume) {
   const trailing = days.filter((d) => String(d.day) !== String(expectedT1));
   const avg = trailing.reduce((a, d) => a + num(d.dictations), 0) / 7;
   const zeroAlert = t1d === 0 && avg >= TH.activeBaselineAvg;
-  // Co-firing blackout (schema drift): dictations succeeded but a co-firing
-  // success event vanished. asr/paste co-fire with dictation.completed on success.
-  const driftAlert = t1Row != null && t1d > 0 && (num(t1Row.pastes) === 0 || num(t1Row.asr) === 0);
+  // Co-firing blackout (schema drift): asr.completed co-fires UNCONDITIONALLY on
+  // every successful dictation (TelemetryService.swift:73-112 -> :501-529), so
+  // asr==0 with dictations>0 is genuine drift. We deliberately do NOT flag
+  // pastes==0: paste.completed is conditional (only emits when auto-paste runs;
+  // copy-only users never emit it, KernelFinalizationWiring.swift:279-284). A zero
+  // is ambiguous (copy-only vs broken; an AX-denied auto-paste still emits with a
+  // clipboard_only_ax_denied tier), so it is not an actionable alert (#1130).
+  const asrDrift = t1Row != null && t1d > 0 && num(t1Row.asr) === 0;
+  const driftAlert = asrDrift;
   const ratio = avg > 0 ? t1d / avg : null;
   return {
     state: zeroAlert || driftAlert ? "alerting" : "evaluated-ok",
-    t1: t1Row || null, t1d, avg, ratio, zeroAlert, driftAlert,
+    t1: t1Row || null, t1d, avg, ratio, zeroAlert, driftAlert, asrDrift,
   };
 }
 
@@ -329,8 +335,8 @@ export function buildMessage(r, versions = []) {
     }
     if (r.volume.driftAlert) {
       alerts.push(
-        `telemetry drift: T-1 had ${r.volume.t1d} dictations but a co-firing success event was 0 ` +
-        `(paste/asr should co-fire) - an event may have stopped emitting.`
+        `telemetry drift: T-1 had ${r.volume.t1d} dictations but asr.completed was 0 ` +
+        `(it co-fires on every successful dictation) - a success event may have stopped emitting.`
       );
     }
   }

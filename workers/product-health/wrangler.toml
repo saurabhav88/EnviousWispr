@@ -5,8 +5,9 @@ compatibility_date = "2026-06-20"
 # No [triggers] cron here: the Cloudflare account is at its 5-cron free-plan limit
 # (#1092), so scheduling lives in a GitHub Actions workflow
 # (.github/workflows/product-health-ping.yml) that pings the secret-gated fetch
-# endpoint daily at 14:00 UTC (10am ET) - a deliberate ingestion-lag buffer so the
-# prior UTC day's events from sleeping/offline laptops have flushed.
+# endpoint daily at 14:17 UTC (~10:17am ET) - a deliberate ingestion-lag buffer so
+# the prior UTC day's events from sleeping/offline laptops have flushed. The :17
+# offset (not top-of-hour) avoids GitHub's high-load window where runs drop (#1131).
 
 [vars]
 POSTHOG_PROJECT_ID = "354235"
