@@ -842,13 +842,14 @@ jobs:
           # step exposes SENTRY_AUTH_TOKEN (an org-scoped Sentry API token), so a
           # compromised installer endpoint could otherwise persist a shim that
           # exfiltrates it. (#1129)
-          # Bump: set VERSION + SHA256 together — sha256 of sentry-cli-Darwin-arm64.
+          # Bump: set VERSION + SHA256 together — sha256 of sentry-cli-Linux-x86_64.
           SENTRY_CLI_VERSION: "3.5.1"
-          SENTRY_CLI_SHA256: d2b69f611c2e0701ffa09ad93db2f0d2fc845e1cf20a598270860a59cf698932
+          SENTRY_CLI_SHA256: 50a1618336cdbb908e5559d6b941f3aa0ef5f341abeca08de40ed8c0070450b4
         run: |
           set -euo pipefail
-          [ "$(uname -m)" = arm64 ] || { echo "::error::Expected arm64 runner, got $(uname -m)"; exit 1; }
-          SENTRY_URL="https://github.com/getsentry/sentry-cli/releases/download/${SENTRY_CLI_VERSION}/sentry-cli-Darwin-arm64"
+          # #1117 moved this limb to ubuntu-latest (x86_64 Linux), so fetch the Linux binary, not Darwin (#1139).
+          [ "$(uname -m)" = x86_64 ] || { echo "::error::Expected x86_64 runner, got $(uname -m)"; exit 1; }
+          SENTRY_URL="https://github.com/getsentry/sentry-cli/releases/download/${SENTRY_CLI_VERSION}/sentry-cli-Linux-x86_64"
           SENTRY_TMP="$RUNNER_TEMP/sentry-cli"
           echo "==> Downloading pinned sentry-cli ${SENTRY_CLI_VERSION} from ${SENTRY_URL}"
           curl --proto '=https' --tlsv1.2 --fail --location \
@@ -861,6 +862,30 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/sentry-cli" --version | grep -qF "$SENTRY_CLI_VERSION" \
             || { echo "::error::sentry-cli version mismatch (expected $SENTRY_CLI_VERSION)"; exit 1; }
+
+      - name: Verify dSYMs present and parseable
+        run: |
+          set -euo pipefail
+          DSYM_DIR="build/dSYMs"
+          # First-party dSYMs we triage crashes on. The archive also ships ~5 Sparkle
+          # dSYMs (Sparkle.framework / Autoupdate / Updater.app / Installer.xpc / Downloader.xpc),
+          # which are uploaded too but NOT gated on (that set drifts with Sparkle versions).
+          FIRST_PARTY=(EnviousWispr.app.dSYM EnviousWisprAudioService.xpc.dSYM EnviousWisprASRService.xpc.dSYM)
+          missing=0
+          for b in "${FIRST_PARTY[@]}"; do
+            [ -d "$DSYM_DIR/$b" ] || { echo "::error::missing first-party dSYM: $b"; missing=1; }
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::dSYM guard failed (empty / mis-staged artifact). Contents of $DSYM_DIR:"
+            ls -1 "$DSYM_DIR" || true
+            exit 1
+          fi
+          for b in "${FIRST_PARTY[@]}"; do
+            dwarf=$(find "$DSYM_DIR/$b/Contents/Resources/DWARF" -type f 2>/dev/null | head -1)
+            { [ -n "$dwarf" ] && sentry-cli debug-files check "$dwarf" >/dev/null 2>&1; } \
+              || { echo "::error::dSYM parse-check failed for $b"; exit 1; }
+          done
+          echo "==> dSYM guard: all 3 first-party dSYMs present and parseable."
 
       - name: Upload dSYMs to Sentry
         env:
@@ -891,7 +916,10 @@ jobs:
           sentry-cli releases set-commits "v${VERSION}" --auto
 
           echo "==> Uploading dSYMs ..."
-          sentry-cli debug-files upload --include-sources build/dSYMs/
+          # --wait-for makes the command fail if the server cannot fully PROCESS the
+          # files (processing errors only surface with --wait/--wait-for). A green exit
+          # then means "symbols processed", not merely "bytes accepted". 300s < 900s job timeout.
+          sentry-cli debug-files upload --include-sources --wait-for 300 build/dSYMs/
 
           sentry-cli releases finalize "v${VERSION}"
           echo "==> Sentry release v${VERSION} finalized with dSYMs."
@@ -917,6 +945,10 @@ jobs:
           APPCAST_RESULT: ${{ needs.publish-appcast.result }}
           SENTRY_RESULT: ${{ needs.upload-sentry-dsyms.result }}
           DRY_RUN: ${{ inputs.dry_run }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          DISCORD_RELEASE_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
 
@@ -991,9 +1023,29 @@ jobs:
             exit 0
           fi
 
-          # Limb failures are warnings, not errors
+          # Limb failures are warnings, not errors. Reaching here means we passed the
+          # heart-failure exit guards AND the dry_run gate above, so this is a real
+          # release that actually shipped. Push a proactive Discord alert (the backup
+          # for unattended releases). Non-blocking: it can never fail the summary job,
+          # but its absence/failure is made VISIBLE (#1088).
           if [[ "$NEEDS_FOLLOWUP" == "Yes" ]]; then
             echo "::warning::Limb failures detected — release shipped but follow-up needed. See summary for recovery commands."
+            if [[ -z "${DISCORD_RELEASE_WEBHOOK:-}" ]]; then
+              echo "::warning::DISCORD_RELEASE_WEBHOOK not configured — proactive alert NOT sent."
+              echo "| Discord alert | NOT configured |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              MSG=$(printf 'RELEASE FOLLOW-UP NEEDED. v%s shipped to users, but a release limb needs attention.\nFollow-up:%b\nRun: %s\nSentry: %s / %s' \
+                "$VERSION" "${FOLLOWUP_ITEMS}" "$RUN_URL" "${SENTRY_ORG:-?}" "${SENTRY_PROJECT:-?}")
+              PAYLOAD=$(python3 -c 'import json,sys; print(json.dumps({"content": sys.argv[1]}))' "$MSG")
+              CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$DISCORD_RELEASE_WEBHOOK" \
+                -H "Content-Type: application/json" -d "$PAYLOAD" || echo "000")
+              if [[ "$CODE" == "204" || "$CODE" == "200" ]]; then
+                echo "| Discord alert | sent ($CODE) |" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "::warning::Discord alert POST failed (HTTP $CODE) — GitHub summary is the fallback record."
+                echo "| Discord alert | attempted, failed ($CODE) |" >> "$GITHUB_STEP_SUMMARY"
+              fi
+            fi
           else
             echo "==> Release v${VERSION} fully shipped. All components successful."
           fi
