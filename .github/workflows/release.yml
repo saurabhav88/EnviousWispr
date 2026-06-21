@@ -63,6 +63,9 @@ jobs:
   preflight:
     runs-on: ubuntu-latest   # #1117: bash-only (version regex, secret-presence, summary) — no macOS dependency
     timeout-minutes: 5
+    permissions:
+      contents: read   # checkout
+      issues: read     # #1144: warn-only release-action surfacing below
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
@@ -102,6 +105,39 @@ jobs:
           if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::Tag must be semver (v1.2.3), got: v${VERSION}"
             exit 1
+          fi
+
+      # #1144: Warn-only backstop. Surfaces issues labeled `release-action`
+      # (deferred release-time actions, e.g. the #1144 Sentry-regroup rollout)
+      # on EVERY release path — including manual `git push` of a tag,
+      # `workflow_dispatch`, and releases from a fresh clone or another machine,
+      # all of which skip the local `.claude/` release-checklist skill's Step 0.
+      # NEVER blocks a release: no `set -e`, and the query is fully swallowed on
+      # error, so a GitHub API hiccup can never stop shipping. #1144 itself is
+      # meant to stay OPEN through the release, which is why this warns, not fails.
+      - name: Surface open release-action issues (warn-only)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          # Two-step so an API error body (a JSON object, not an array) can never
+          # leak into a false warning: jq emits only when the response is a real
+          # array of issues.
+          raw="$(gh api -X GET "repos/${GITHUB_REPOSITORY}/issues" \
+            -f state=open -f labels=release-action -f per_page=100 2>/dev/null || true)"
+          issues="$(printf '%s' "$raw" | jq -r '
+            if type == "array"
+            then .[] | select(.pull_request | not) | "- #\(.number): \(.title) (\(.html_url))"
+            else empty end' 2>/dev/null || true)"
+          if [[ -n "$issues" ]]; then
+            echo "::warning title=Open release-action issues::Handle each issue's release-day steps before/around this release."
+            {
+              echo "### ⚠️ Open release-action issues"
+              echo ""
+              echo "$issues"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No open release-action issues."
           fi
 
       - name: Validate dispatch inputs
