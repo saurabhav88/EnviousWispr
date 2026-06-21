@@ -132,13 +132,72 @@ struct LeadingMarkerRepairTests {
     #expect(out == "La reunión es mañana.")
   }
 
-  @Test("nil language is untouched")
-  func nilLanguageIsNoOp() {
+  @Test(
+    "nil/unknown language repairs — the default Parakeet path",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/963",
+      "repair was off when language is nil"))
+  func nilLanguageRepairs() {
+    // Parakeet has no language detection, so the polish step reaches the repair
+    // with expectedLanguage == nil. The pre-2026-06-21 guard required "en" and
+    // skipped this, leaving the headline bug live on the default path.
     let out = LeadingMarkerRepair.repair(
       input: "actually the fix is merged",
       output: "The fix is merged.",
       expectedLanguage: nil)
-    #expect(out == "The fix is merged.")
+    #expect(out == "Actually, the fix is merged.")
+  }
+
+  // MARK: P2 — correction-cue openers (survival check)
+
+  @Test(
+    "self-correction opener is not restored when the cue collapsed",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/963",
+      "do not re-prepend an abandoned correction cue"),
+    arguments: [
+      // Leading marker + immediate correction cue; polish collapsed the
+      // correction so the cue is gone from the output → do not restore.
+      ("actually no send it friday", "Send it Friday."),
+      ("actually wait make it sixty", "Make it sixty."),
+      ("actually sorry use the staging key", "Use the staging key."),
+    ])
+  func collapsedCorrectionCueIsNotRestored(input: String, polished: String) {
+    let out = LeadingMarkerRepair.repair(
+      input: input, output: polished, expectedLanguage: nil)
+    #expect(out == polished)
+  }
+
+  @Test(
+    "normal sentence whose second word is a cue is still repaired",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/963",
+      "cue survived → real sentence → restore"))
+  func survivingCueWordIsStillRepaired() {
+    // "no" here is part of "no one", not a correction cue — it survives into
+    // the output, so the survival check must NOT suppress the repair.
+    let out = LeadingMarkerRepair.repair(
+      input: "actually no one showed up",
+      output: "No one showed up.",
+      expectedLanguage: nil)
+    #expect(out == "Actually, no one showed up.")
+  }
+
+  @Test(
+    "imperative cue as the real opener is still repaired",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/963",
+      "first-token survival check, realistic form"))
+  func imperativeCueOpenerIsRepaired() {
+    // Codex code-diff review 2026-06-21: "wait" here is the sentence's real
+    // first word (an imperative), not an abandoned correction cue. Dropping
+    // "actually" leaves it the FIRST output token, so the survival check
+    // restores the marker rather than treating it as a collapsed correction.
+    let out = LeadingMarkerRepair.repair(
+      input: "actually wait until friday",
+      output: "Wait until Friday.",
+      expectedLanguage: nil)
+    #expect(out == "Actually, wait until Friday.")
   }
 
   @Test("blank output is untouched")
