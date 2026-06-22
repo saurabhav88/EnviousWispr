@@ -39,11 +39,29 @@ internal final class TextProcessingRunner {
     @escaping @MainActor () async throws -> TextProcessingContext
   ) async throws -> TextProcessingContext
 
+  /// Telemetry seam (#945) mirroring `timeoutExecutor`. Production default
+  /// delegates to `SentryBreadcrumb.captureError`; `RecoveryTextProcessor`
+  /// injects a no-op so crash-recovery polish failures stay silent, and tests
+  /// inject a spy. Fire-and-forget / non-throwing, so a capture can never break
+  /// the limb-failure continuation (heart & limbs). The trailing `String?` is the
+  /// fingerprint discriminator (#945): `.classified(reason)` bridges every reason
+  /// to one `NSError` code, so the reason tag must split the Sentry issue.
+  typealias CaptureError = @MainActor (
+    any Error, SentryBreadcrumb.ErrorCategory, String, [String: Any]?, [String: String], String?
+  ) -> Void
+
   private let logger: any PipelineLogging
   private let timeoutExecutor: TimeoutExecutor
+  private let captureError: CaptureError
 
   init(
     logger: any PipelineLogging = AppLoggerAdapter(),
+    captureError: @escaping CaptureError = {
+      error, category, stage, extra, tags, fingerprintDetail in
+      SentryBreadcrumb.captureError(
+        error, category: category, stage: stage, extra: extra, tags: tags,
+        fingerprintDetail: fingerprintDetail)
+    },
     timeoutExecutor: @escaping TimeoutExecutor = { seconds, op in
       // nonisolated(unsafe) bridges @MainActor `op` to withThrowingTimeout's
       // @Sendable contract. Safety: op is @MainActor and its return value
@@ -60,6 +78,7 @@ internal final class TextProcessingRunner {
     }
   ) {
     self.logger = logger
+    self.captureError = captureError
     self.timeoutExecutor = timeoutExecutor
   }
 
@@ -95,6 +114,11 @@ internal final class TextProcessingRunner {
       // switched providers mid-polish. Snapshotting here mirrors the step's own
       // entry snapshot of `provider` and the `stepName` snapshot above.
       let polishProviderAtStart = (step as? LLMPolishStep)?.llmProvider
+      // #945: snapshot the attempted model alongside the provider, pre-await. On
+      // failure `context.llmModel` is never stamped (set only on success,
+      // LLMPolishStep.swift), so the step snapshot is the only reliable source of
+      // the model the failed attempt actually used.
+      let polishModelAtStart = (step as? LLMPolishStep)?.llmModel
       do {
         context = try await timeoutExecutor(budgetSeconds) {
           try await step.process(input)
@@ -181,10 +205,53 @@ internal final class TextProcessingRunner {
         } else {
           isSilentPolishSkip = false
         }
+        // #945: a raw `URLError.cancelled` from a torn-down request is not a real
+        // failure — never surface a notice or fire a capture for it. Swift
+        // `CancellationError` is already short-circuited above
+        // (`catch is CancellationError`); this covers the URL-loading variant.
+        let isCancellationLike = (error as? URLError)?.code == .cancelled
         if step.errorSurfacePolicy == .surface && !isSilentPolishSkip
           && contextWindowSkip == nil && !isAppleIntelligencePolishTimeout
+          && !isCancellationLike
         {
-          polishError = error.localizedDescription
+          if let provider = polishProviderAtStart, provider != .appleIntelligence {
+            // Cloud (OpenAI/Gemini) or local (Ollama): classify the specific
+            // reason once, then feed it into BOTH the self-contained on-screen
+            // notice and the telemetry reason tag (#945). The capture is
+            // fire-and-forget; the raw transcript/prompt/provider-body never
+            // leave the device (the reason set is closed and content-free).
+            let reason = PolishFailureReason.from(error)
+            polishError = reason.composedMessage(provider: provider)
+            captureError(
+              error,
+              .polishProviderFailed,
+              "polish",
+              [
+                "provider": provider.rawValue,
+                "model": polishModelAtStart ?? "unknown",
+                "is_timeout": isTimeout,
+              ],
+              [
+                "polish.error_case": reason.telemetryTag,
+                "polish.provider": provider.rawValue,
+                "polish.is_timeout": isTimeout ? "true" : "false",
+              ],
+              // Split the Sentry issue per reason: `.classified` bridges every
+              // reason to one NSError code, so the tag alone would merge them.
+              reason.telemetryTag
+            )
+          } else if polishProviderAtStart == .appleIntelligence {
+            // Apple Intelligence: preserve today's exact wording byte-for-byte.
+            // The view now renders `polishError` verbatim, so the runner owns the
+            // "AI polish failed:" prefix here. AFM generation failures are
+            // captured at the polish step, so no capture fires here.
+            polishError = "AI polish failed: " + error.localizedDescription
+          } else {
+            // No polish-provider snapshot: a non-LLMPolishStep surfacing step
+            // (only reachable in tests; production's sole `.surface` step is
+            // LLMPolishStep). Preserve the legacy raw message; no capture.
+            polishError = error.localizedDescription
+          }
         }
         // #1055: emit a dedicated skip event so we can measure how often long
         // dictations bypass on-device polish — input the future 1-hour-recording

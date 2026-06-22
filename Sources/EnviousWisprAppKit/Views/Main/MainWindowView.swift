@@ -158,7 +158,11 @@ struct StatusView: View {
             HStack(spacing: 6) {
               Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.stWarning)
-              Text("AI polish failed: \(polishError)")
+              // #945: the runner composes the full, lead-in-varied notice
+              // ("AI polish failed: ..." for real errors, "AI cleanup skipped:
+              // ..." for not-set-up / too-long / timeout), so render it verbatim
+              // instead of hardcoding the prefix here.
+              Text(polishError)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
