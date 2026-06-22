@@ -41,7 +41,9 @@ struct UpdateCoordinatorProactiveCheckTests {
   final class FakeNotifier: UpdateNotifying {
     var onInstallTapped: (() -> Void)?
     private(set) var posted: [String] = []
+    private(set) var tapRoutingActivations = 0
     func post(displayVersion: String) { posted.append(displayVersion) }
+    func activateTapRouting() { tapRoutingActivations += 1 }
   }
 
   private func makeCoordinator() -> UpdateCoordinator {
@@ -363,5 +365,56 @@ struct UpdateCoordinatorProactiveCheckTests {
     coordinator.installFromMenu()
 
     #expect(coordinator.service.state == .available(availableUpdate("2.1.4")))
+  }
+
+  // MARK: - Eager notification tap-routing (#1029)
+
+  @Test(
+    "activateNotificationTapRouting forwards to the notifier on every call (the forwarder is a thin pass-through; idempotency lives in the presenter's delegate guard, not here)"
+  )
+  func activateTapRoutingForwards() {
+    let notifier = FakeNotifier()
+    let coordinator = makeCoordinator(notifier: notifier)
+
+    coordinator.activateNotificationTapRouting()
+    #expect(notifier.tapRoutingActivations == 1)
+
+    // A second call forwards again — the coordinator does NOT dedupe; the real
+    // presenter's `delegateInstalled` guard is what makes the underlying install
+    // idempotent (Codex r1).
+    coordinator.activateNotificationTapRouting()
+    #expect(notifier.tapRoutingActivations == 2)
+  }
+
+  @Test("a notification tap routes to the guarded install when dictation is inactive")
+  func notificationTapRoutesWhenIdle() {
+    let notifier = FakeNotifier()
+    let coordinator = makeCoordinator(notifier: notifier)
+    coordinator.dictationActiveProvider = { false }
+    coordinator.service.noteAvailable(availableUpdate("2.1.4"))
+
+    notifier.onInstallTapped?()
+
+    // Routed through the dictation guard → the install attempt is tagged from the
+    // notification source (the guard did not block it).
+    #expect(coordinator.lastInstallSource == "notification")
+  }
+
+  @Test(
+    "a notification tap is a no-op when no update is available (stale-notification guard, #1029 Codex r2)"
+  )
+  func notificationTapIgnoredWhenNoUpdateAvailable() {
+    let notifier = FakeNotifier()
+    let coordinator = makeCoordinator(notifier: notifier)
+    coordinator.dictationActiveProvider = { false }
+    // No `noteAvailable` → state is not `.available` (a stale delivered
+    // notification whose version is already installed). With the tap delegate
+    // active on every launch, this path is now reachable; it must NOT kick off
+    // a Sparkle check or churn the resolving state.
+
+    notifier.onInstallTapped?()
+
+    #expect(coordinator.lastInstallSource == nil)
+    #expect(coordinator.service.state != .available(availableUpdate("2.1.4")))
   }
 }
