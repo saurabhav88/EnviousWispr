@@ -102,19 +102,26 @@ struct BrandApostropheTests {
 
   // MARK: Kellogg disambiguation (#1044 — deferred fork resolved)
 
-  /// #1044 resolves the Kellogg fork deferred from #998. The cereal canonical is
-  /// renamed `Kelloggs`→`Kellogg's` so its mishears restore the apostrophe form,
-  /// WITHOUT a plain `kelloggs` alias (it was the apostrophe-less alias, not the
-  /// rename, that fuzzy-coerced the bare company word in #998). The standalone
-  /// company/surname `Kellogg` (one char from the cereal) must still pass through
-  /// untouched — this is the adversarial gate per `matcher-set-adversarial-tests`:
-  /// the company word is exercised in BOTH a bare-token and a sentence context to
-  /// prove the apostrophe rename does not drag it to the cereal.
+  /// #1044 resolves the Kellogg fork deferred from #998 via exact-alias pinning,
+  /// not fuzzy. The cereal canonical is renamed `Kelloggs`→`Kellogg's` so its
+  /// mishears restore the apostrophe form. Because the apostrophe lengthens the
+  /// cereal canonical (`kellogg's`, 9) and pulls it FARTHER from apostrophe-less
+  /// mishears than the adjacent company `Kellogg` (7), the rename alone would let
+  /// the pack-canonical fuzzy pass misroute `kellogs`/`kelloggs` to the COMPANY
+  /// (cloud Codex review on PR #1182). The fix pins every contested form as an
+  /// EXACT alias (exact beats fuzzy in `WordCorrector`): the apostrophe-less
+  /// plural forms (`kelloggs`, `kellogs`) map to the cereal, and a `kellogg`
+  /// trap alias pins the bare company word. No matcher code change.
+  ///
+  /// Adversarial per `matcher-set-adversarial-tests`: the company word is
+  /// exercised bare AND in a sentence, and the apostrophe-less plural is exercised
+  /// against both readings (cereal vs company), since presence in the alias set
+  /// flips routing.
   ///
   /// Live-UAT (#1044, Parakeet v3): "I love Kellogg's cereal …" → ASR emits
   /// "Kellogg's" natively (apostrophe kept), and "Kellogg announced earnings …"
-  /// → ASR emits bare "Kellogg". Both already correct out of ASR; the rename only
-  /// upgrades the mishear path.
+  /// → ASR emits bare "Kellogg". Both already correct out of ASR; the aliases
+  /// upgrade the mishear path without disturbing the native forms.
   @Test(
     "Kellogg: cereal mishears gain the apostrophe; the company word is not coerced",
     .bug(
@@ -131,6 +138,11 @@ struct BrandApostropheTests {
     // Cereal mishears now restore the apostrophe'd canonical.
     #expect(corrected("kalogs", terms) == "Kellogg's")
     #expect(corrected("kelggs", terms) == "Kellogg's")
+    // Apostrophe-less plural mishears route to the cereal, NOT the company
+    // (PR #1182 cloud-review regression: the apostrophe rename shifted the fuzzy
+    // boundary toward `Kellogg`; exact aliases pin them to `Kellogg's`).
+    #expect(corrected("kelloggs", terms) == "Kellogg's")
+    #expect(corrected("kellogs", terms) == "Kellogg's")
     // The native ASR cereal form passes through unchanged.
     #expect(corrected("Kellogg's", terms) == "Kellogg's")
   }
