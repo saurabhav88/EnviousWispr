@@ -42,6 +42,9 @@ final class OnboardingV2ViewModel {
 
   var micGranted = false
   var accessibilityGranted = false
+  /// #735: one-time guard so the grant telemetry + autoCopy default fire once per
+  /// onboarding session even though `accessibilityGranted` now toggles both ways. Never reset.
+  var hasAppliedAxGrant = false
 
   var downloadError: String?
   /// Raw error details for support diagnostics (hidden behind "Copy error details" button).
@@ -797,6 +800,14 @@ private struct PermissionsPhaseView: View {
       VStack(spacing: 8) {
         let bothGranted = viewModel.micGranted && viewModel.accessibilityGranted
         Button {
+          // #735: synchronous live recheck closes the stale-click race — revoke
+          // Accessibility then click Continue before the next poll. Block the
+          // advance and re-disable the gate if AX is no longer trusted.
+          permissions.refreshAccessibilityStatus()
+          guard permissions.accessibilityGranted else {
+            viewModel.accessibilityGranted = false
+            return
+          }
           viewModel.currentScreen = .ready
         } label: {
           Text("Continue")
@@ -817,7 +828,10 @@ private struct PermissionsPhaseView: View {
       permissions.refreshAccessibilityStatus()
       viewModel.micGranted = permissions.hasMicrophonePermission
       viewModel.accessibilityGranted = permissions.accessibilityGranted
+      // #735: relaunch-into-granted — pre-set the one-time latch so the poll loop
+      // doesn't re-fire grant telemetry for a permission granted in a prior session.
       if viewModel.accessibilityGranted {
+        viewModel.hasAppliedAxGrant = true
         settings.autoCopyToClipboard = true
       }
     }
@@ -836,13 +850,26 @@ private struct PermissionsPhaseView: View {
       elapsed += 2
 
       permissions.refreshAccessibilityStatus()
-      if permissions.accessibilityGranted && !viewModel.accessibilityGranted {
-        viewModel.accessibilityGranted = true
+      let axNow = permissions.accessibilityGranted
+
+      // One-time side effects (grant telemetry + autoCopy default): latch-guarded so
+      // they fire once per onboarding session, not on every poll and not again if the
+      // user revokes then re-grants.
+      if axNow && !viewModel.hasAppliedAxGrant {
+        viewModel.hasAppliedAxGrant = true
         settings.autoCopyToClipboard = true
         TelemetryService.shared.onboardingStepCompleted(
           step: "accessibility_permission", result: "granted")
       }
 
+      // #735 revocation fix: mirror LIVE Accessibility state BOTH directions so a
+      // grant-then-revoke (System Settings, before Continue) re-disables the gate
+      // within one poll cycle. Mic stays one-way below — its source is cached.
+      viewModel.accessibilityGranted = axNow
+
+      // Mic stays one-way: hasMicrophonePermission reads cached microphoneStatus
+      // (PermissionsService.swift:49-50), not a live check, so mirroring it both
+      // ways could flip a true flag false from stale cache.
       if permissions.hasMicrophonePermission && !viewModel.micGranted {
         viewModel.micGranted = true
         TelemetryService.shared.onboardingStepCompleted(step: "mic_permission", result: "granted")
