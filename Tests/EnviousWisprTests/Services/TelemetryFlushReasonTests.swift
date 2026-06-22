@@ -4,10 +4,11 @@ import Testing
 
 #if DEBUG
 
-  /// Telemetry Bible Phase 0 (#1169): `flushTelemetry(reason:)` must emit
-  /// `telemetry.flush_requested` carrying the reason (request-attempted, not
-  /// delivery). Delivery itself is unobservable app-side (G3), so there is no
-  /// seam to assert `flush()` ran — that is structural (the line after capture).
+  /// Telemetry Bible Phase 0 (#1169) + Phase 1 (#1170): `flushTelemetry(reason:)`
+  /// must emit `telemetry.flush_requested` carrying the reason (request-attempted,
+  /// not delivery — delivery is unobservable app-side, G3) plus the Phase 1
+  /// diagnostic context `active_recording` / `app_phase`, sourced from the
+  /// `flushContextProvider` closure with a `(false, "unknown")` fallback.
   @Suite("Telemetry flush reason", .serialized)
   struct TelemetryFlushReasonTests {
 
@@ -22,6 +23,7 @@ import Testing
     @Test("flushTelemetry(reason:) emits one telemetry.flush_requested carrying the reason")
     func flushEmitsRequestedEventWithReason() {
       let box = EventBox()
+      TelemetryService.shared.flushContextProvider = nil
       TelemetryService.shared.testEventHook = { @Sendable event in
         if event.name == "telemetry.flush_requested" { box.append(event) }
       }
@@ -35,9 +37,52 @@ import Testing
 
     @Test("FlushReason raw values are the bounded expected set")
     func flushReasonRawValuesBounded() {
-      // Only `.updateInstall` is live today; future reasons are added with their
-      // real call sites (Telemetry Bible Phase 1), never as un-emitted cases.
+      // `.updateInstall` (Sparkle pre-relaunch) + `.appTerminate` (normal quit,
+      // Phase 1) are the only live reasons; a crash reason is intentionally absent.
       #expect(TelemetryService.FlushReason.updateInstall.rawValue == "update_install")
+      #expect(TelemetryService.FlushReason.appTerminate.rawValue == "app_terminate")
+    }
+
+    @MainActor
+    @Test("flushTelemetry falls back to (false, unknown) when no context provider is wired")
+    func flushUsesFallbackContextWhenProviderNil() {
+      let box = EventBox()
+      TelemetryService.shared.flushContextProvider = nil
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        if event.name == "telemetry.flush_requested" { box.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.flushTelemetry(reason: .appTerminate)
+
+      #expect(box.all.count == 1)
+      let event = box.all.first
+      #expect(event?.stringProps["reason"] == "app_terminate")
+      #expect(event?.boolProps["active_recording"] == false)
+      #expect(event?.stringProps["app_phase"] == "unknown")
+    }
+
+    @MainActor
+    @Test("flushTelemetry carries active_recording / app_phase from the context provider")
+    func flushCarriesProviderContext() {
+      let box = EventBox()
+      TelemetryService.shared.flushContextProvider = {
+        TelemetryService.FlushContext(activeRecording: true, appPhase: "recording")
+      }
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        if event.name == "telemetry.flush_requested" { box.append(event) }
+      }
+      defer {
+        TelemetryService.shared.testEventHook = nil
+        TelemetryService.shared.flushContextProvider = nil
+      }
+
+      TelemetryService.shared.flushTelemetry(reason: .appTerminate)
+
+      #expect(box.all.count == 1)
+      let event = box.all.first
+      #expect(event?.boolProps["active_recording"] == true)
+      #expect(event?.stringProps["app_phase"] == "recording")
     }
   }
 

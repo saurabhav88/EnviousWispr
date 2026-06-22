@@ -32,6 +32,22 @@ public enum PipelineState: Equatable, Sendable {
     }
   }
 
+  /// Stable lowercase phase label for telemetry (e.g. the `app_phase` property
+  /// on `telemetry.flush_requested`, Telemetry Bible Phase 1 / #1170). Total
+  /// switch (no `default`) so a new `PipelineState` case forces a compile-time
+  /// decision here rather than silently mapping to a stale label.
+  public var telemetryLabel: String {
+    switch self {
+    case .idle: return "idle"
+    case .loadingModel: return "loading_model"
+    case .recording: return "recording"
+    case .transcribing: return "transcribing"
+    case .polishing: return "polishing"
+    case .complete: return "complete"
+    case .error: return "error"
+    }
+  }
+
 }
 
 /// Policy controlling when idle ASR models are unloaded from memory.

@@ -1054,30 +1054,73 @@ public final class TelemetryService {
   }
 
   /// Why a telemetry flush was requested. Carried on `telemetry.flush_requested`.
-  /// Only `.updateInstall` is live today (the Sparkle pre-relaunch flush). Future
-  /// reasons (appTerminate / crash / manual) are added by the phases that wire
-  /// their real call sites — Telemetry Bible Phase 1 (#1170) — never as
-  /// un-emitted cases here.
+  /// `.updateInstall` = the Sparkle pre-relaunch flush. `.appTerminate` = the
+  /// normal-quit best-effort flush (Telemetry Bible Phase 1 / #1170). A crash-time
+  /// reason is intentionally absent — native crash handlers can't safely do async
+  /// network, so crash flush is documented-infeasible, not wired.
   public enum FlushReason: String {
     case updateInstall = "update_install"
+    case appTerminate = "app_terminate"
   }
 
-  /// Synchronously flushes buffered events. Called before triggering install
-  /// so click/start events survive Sparkle's relaunch. Emits
-  /// `telemetry.flush_requested` carrying `reason` first; PostHog `capture`
-  /// writes the event to its disk-backed queue synchronously (before this
-  /// `flush()` is called), so the flush includes it and it survives a relaunch
-  /// regardless. PostHog `flush()` exposes no delivery result (G3 is not
-  /// observable app-side) — delivery health is watched by the product-health
-  /// integrity heartbeat, not here.
+  /// Late-bound context for a flush, supplied by a provider closure (mirrors
+  /// `SentryBreadcrumb.audioEnvironmentProvider`). Plain already-collected data
+  /// only — the provider must not await, take locks, or query Core Audio.
+  public struct FlushContext: Sendable {
+    public let activeRecording: Bool
+    public let appPhase: String
+    public init(activeRecording: Bool, appPhase: String) {
+      self.activeRecording = activeRecording
+      self.appPhase = appPhase
+    }
+  }
+
+  /// Supplies `active_recording` / `app_phase` for every flush without coupling
+  /// this sink to AppKit/pipeline types. Wired once at launch from the live
+  /// recording state; nil only in unit tests / before launch wiring, in which
+  /// case `flushTelemetry` falls back to `(false, "unknown")` and logs a DEBUG
+  /// warning so the fallback is never a silent production steady state.
+  public var flushContextProvider: (@MainActor () -> FlushContext)?
+
+  /// Best-effort, non-blocking flush. Used before a Sparkle relaunch and on
+  /// normal termination. Emits `telemetry.flush_requested` (carrying `reason`,
+  /// `active_recording`, `app_phase`) first; PostHog `capture` writes the event
+  /// to its disk-backed queue synchronously (so it is durable and included in
+  /// the flush regardless of whether the scheduled delivery completes before a
+  /// relaunch/quit). PostHog `flush()` only schedules async delivery and returns
+  /// immediately — it never blocks the caller, and it exposes no delivery result
+  /// (G3 is not observable app-side; delivery health is watched by the
+  /// product-health integrity heartbeat, not here).
   public func flushTelemetry(reason: FlushReason) {
+    let context: FlushContext
+    if let provided = flushContextProvider?() {
+      context = provided
+    } else {
+      context = FlushContext(activeRecording: false, appPhase: "unknown")
+      #if DEBUG
+        Task {
+          await AppLogger.shared.log(
+            "flushTelemetry: context provider not wired — using fallback "
+              + "(active_recording=false, app_phase=unknown)",
+            level: .debug, category: "Telemetry")
+        }
+      #endif
+    }
+
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
-          name: "telemetry.flush_requested", stringProps: ["reason": reason.rawValue]))
+          name: "telemetry.flush_requested",
+          stringProps: ["reason": reason.rawValue, "app_phase": context.appPhase],
+          boolProps: ["active_recording": context.activeRecording]))
     #endif
     PostHogSDK.shared.capture(
-      "telemetry.flush_requested", properties: ["reason": reason.rawValue])
+      "telemetry.flush_requested",
+      properties: [
+        "reason": reason.rawValue,
+        "active_recording": context.activeRecording,
+        "app_phase": context.appPhase,
+      ])
     PostHogSDK.shared.flush()
   }
 

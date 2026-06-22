@@ -144,6 +144,16 @@ final class AppLifecycleCoordinator {
     // Carbon RegisterEventHotKey requires an active run loop for event delivery.
     dictationRuntime.startHotkeyServiceIfEnabled()
 
+    // Telemetry Bible Phase 1 (#1170): supply `active_recording` / `app_phase`
+    // to every telemetry flush (Sparkle pre-relaunch + normal-quit terminate)
+    // without coupling the sink to pipeline types. Wired here at launch, before
+    // any flush path can fire, so the provider is never nil in production.
+    TelemetryService.shared.flushContextProvider = { [weak self] in
+      let phase = self?.liveRecordingState.pipelineState ?? .idle
+      return TelemetryService.FlushContext(
+        activeRecording: phase.isActive, appPhase: phase.telemetryLabel)
+    }
+
     if settings.onboardingState == .completed {
       // Telemetry Bible Phase 0 (#1169): the standing settings snapshot now
       // routes through one named seam (extended by Phase 3/4). Behavior-
@@ -266,6 +276,16 @@ final class AppLifecycleCoordinator {
   }
 
   func runWillTerminate() {
+    // Telemetry Bible Phase 1 (#1170): best-effort at-quit delivery attempt +
+    // a durable clean-quit marker (carries active_recording / app_phase).
+    // Non-blocking: PostHog flush() only schedules delivery, and capture() has
+    // already persisted events to disk, so nothing is lost if the scheduled
+    // send doesn't finish before exit. Runs FIRST so the context reflects the
+    // real in-flight phase (teardown below resets pipeline state). Crash-time
+    // flush is intentionally absent — native crash handlers can't safely do
+    // async network; pre-crash events survive via PostHog's disk queue.
+    TelemetryService.shared.flushTelemetry(reason: .appTerminate)
+
     // PR-B.2 of #763: both window-close observers are torn down by the
     // coordinator now.
     appWindowCoordinator.tearDown()
