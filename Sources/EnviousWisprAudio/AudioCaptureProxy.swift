@@ -105,9 +105,6 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   /// Flips true on the MainActor inside `audioBufferCaptured` when any buffer
   /// for the active session reaches us. Reset to false when arming.
   private var hasReceivedBufferThisSession: Bool = false
-  /// Uptime-ns captured when the current watchdog armed; threaded into
-  /// `CaptureStallContext` for latency diagnostics.
-  private var stallArmedAtUptimeNs: UInt64 = 0
 
   /// 16kHz mono Float32 format used for buffer reconstruction.
   /// Matches AudioCaptureManager.targetSampleRate / targetChannels.
@@ -221,7 +218,6 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     stallWorkItem?.cancel()
     let armedSession = activeCaptureGeneration
     let armedAtNs = DispatchTime.now().uptimeNanoseconds
-    stallArmedAtUptimeNs = armedAtNs
     let item = Self.makeStallWorkItem(
       armedSession: armedSession, armedAtNs: armedAtNs, proxy: self)
     stallWorkItem = item
@@ -618,7 +614,6 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
             XPCErrorContext(
               kind: .interruptCapturing,
               sessionID: endingSession,
-              timestampNs: firedAt,
               recordingDurationNs: durationNs
             )
           )
@@ -665,7 +660,6 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
           XPCErrorContext(
             kind: wasCapturing ? .invalidateCapturing : .invalidateIdle,
             sessionID: wasCapturing ? endingSession : nil,
-            timestampNs: firedAt,
             recordingDurationNs: durationNs
           )
         )

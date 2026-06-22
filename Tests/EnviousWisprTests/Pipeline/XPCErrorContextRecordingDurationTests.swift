@@ -17,14 +17,14 @@ struct XPCErrorContextRecordingDurationTests {
   @Test("default init omits recordingDurationNs (back-compat for idle invalidate)")
   func defaultInitOmitsField() {
     let ctx = XPCErrorContext(
-      kind: .invalidateIdle, sessionID: nil, timestampNs: 100)
+      kind: .invalidateIdle, sessionID: nil)
     #expect(ctx.recordingDurationNs == nil)
   }
 
   @Test("explicit nil recordingDurationNs is preserved")
   func explicitNilIsPreserved() {
     let ctx = XPCErrorContext(
-      kind: .invalidateIdle, sessionID: nil, timestampNs: 100,
+      kind: .invalidateIdle, sessionID: nil,
       recordingDurationNs: nil)
     #expect(ctx.recordingDurationNs == nil)
   }
@@ -32,7 +32,7 @@ struct XPCErrorContextRecordingDurationTests {
   @Test("explicit value is preserved for interruptCapturing")
   func valuePreservedForInterruptCapturing() {
     let ctx = XPCErrorContext(
-      kind: .interruptCapturing, sessionID: 42, timestampNs: 2_000_000_000,
+      kind: .interruptCapturing, sessionID: 42,
       recordingDurationNs: 1_500_000_000)
     #expect(ctx.kind == .interruptCapturing)
     #expect(ctx.recordingDurationNs == 1_500_000_000)
@@ -41,7 +41,7 @@ struct XPCErrorContextRecordingDurationTests {
   @Test("explicit value is preserved for invalidateCapturing")
   func valuePreservedForInvalidateCapturing() {
     let ctx = XPCErrorContext(
-      kind: .invalidateCapturing, sessionID: 7, timestampNs: 500_000_000,
+      kind: .invalidateCapturing, sessionID: 7,
       recordingDurationNs: 250_000_000)
     #expect(ctx.kind == .invalidateCapturing)
     #expect(ctx.recordingDurationNs == 250_000_000)
@@ -55,7 +55,7 @@ struct XPCErrorContextRecordingDurationTests {
   @Test("nanosecond → millisecond conversion shape used by the breadcrumb")
   func nsToMsConversion() {
     let ctx = XPCErrorContext(
-      kind: .interruptCapturing, sessionID: 1, timestampNs: 1_000_000_000,
+      kind: .interruptCapturing, sessionID: 1,
       recordingDurationNs: 1_500_000_000)
     let ms = ctx.recordingDurationNs.map { Int($0 / 1_000_000) }
     #expect(ms == 1500)

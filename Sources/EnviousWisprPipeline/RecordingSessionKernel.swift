@@ -194,14 +194,6 @@ final class RecordingSessionKernel {
 
   // MARK: Telemetry fan-out
 
-  /// Capture-stall telemetry fan-out (PR-4 plan §3.9). When the capture layer
-  /// reports a stall the kernel — besides routing `failed(.captureStalled)`
-  /// for control flow — hands the raw `CaptureStallContext` to this seam so a
-  /// telemetry observer receives the diagnostic payload the terminal state
-  /// cannot carry. A dumb fan-out: the kernel never reads it back, and it
-  /// keeps the kernel telemetry-infra-agnostic (the closure is a seam, like
-  /// `processText` / `store` / `deliver`). A no-op in the simulator.
-  private let captureStallTelemetry: @MainActor (CaptureStallContext) -> Void
   private let zombieZeroPeakTelemetry: @MainActor (ZeroPeakContext) -> Void
   private let recordingStoppedTelemetry: @MainActor (_ sampleCount: Int) -> Void
   private let markPipelineTimingStart: @MainActor () -> Void
@@ -478,7 +470,6 @@ final class RecordingSessionKernel {
     deliver: @escaping @MainActor (_ text: String) async -> KernelDeliveryOutcome,
     wedgeStallTicks: Int = 2,
     minimumRecordingTicks: Int = 5,
-    captureStallTelemetry: @escaping @MainActor (CaptureStallContext) -> Void = { _ in },
     zombieZeroPeakTelemetry: @escaping @MainActor (ZeroPeakContext) -> Void = { _ in },
     recordingStoppedTelemetry: @escaping @MainActor (_ sampleCount: Int) -> Void = { _ in },
     markPipelineTimingStart: @escaping @MainActor () -> Void = {},
@@ -496,7 +487,6 @@ final class RecordingSessionKernel {
     self.deliver = deliver
     self.wedgeStallTicks = wedgeStallTicks
     self.minimumRecordingTicks = minimumRecordingTicks
-    self.captureStallTelemetry = captureStallTelemetry
     self.zombieZeroPeakTelemetry = zombieZeroPeakTelemetry
     self.recordingStoppedTelemetry = recordingStoppedTelemetry
     self.markPipelineTimingStart = markPipelineTimingStart

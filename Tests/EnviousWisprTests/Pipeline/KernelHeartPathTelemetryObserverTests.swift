@@ -186,8 +186,8 @@ import Testing
     @Test("a capture stall handled by the observer reaches its telemetry emitter")
     func captureStallFanout() async {
       // PR-4b.1: the kernel no longer subscribes to `audioCapture.onCaptureStalled`,
-      // so the previous end-to-end path (capture callback → kernel
-      // `captureStallTelemetry` seam → observer) is unsubscribed. PR-4b.4 wires
+      // so the previous end-to-end path (capture callback → kernel telemetry
+      // seam → observer) is gone. PR-4b.4 wires
       // the driver to fan out a stall to BOTH `observer.handleCaptureStall(_:)`
       // AND `kernel.externalCaptureStalled(_:)` from a single App router
       // subscription. This test now pins the observer-emitter half of that

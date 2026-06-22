@@ -86,7 +86,7 @@ import Testing
           Recorder.DictationInvokedCall(
             triggerSource: trigger, inputMode: mode, targetApp: target))
       },
-      modelLoadWedged: { backend in recorder.modelLoadWedgedBackends.append(backend) },
+      modelLoadWedged: { backend, _ in recorder.modelLoadWedgedBackends.append(backend) },
       captureError: { error, category, stage, _ in
         recorder.captureErrors.append(
           Recorder.CaptureErrorCall(

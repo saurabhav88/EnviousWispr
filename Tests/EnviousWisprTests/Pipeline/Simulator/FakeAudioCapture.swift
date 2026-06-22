@@ -230,8 +230,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
     onXPCServiceError?(
       XPCErrorContext(
         kind: .interruptCapturing,
-        sessionID: currentCaptureSessionID,
-        timestampNs: 0))
+        sessionID: currentCaptureSessionID))
   }
 
   // MARK: Helpers
