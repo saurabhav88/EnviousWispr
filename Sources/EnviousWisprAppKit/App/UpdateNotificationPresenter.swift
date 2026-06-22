@@ -16,6 +16,12 @@ protocol UpdateNotifying: AnyObject {
   /// Lazily request authorization (first time only) and post a single
   /// "update ready" notification. A no-op if the user denied permission.
   func post(displayVersion: String)
+
+  /// #1029: register the tap delegate + category eagerly at launch, independent
+  /// of posting. The app calls this once on launch so a tap on an
+  /// already-delivered notification (or a cold launch *from* the notification)
+  /// always routes, even when `post` is suppressed by the once-per-version guard.
+  func activateTapRouting()
 }
 
 /// Production `UNUserNotificationCenter` implementation. Construction is inert
@@ -61,6 +67,15 @@ final class UpdateNotificationPresenter: NSObject, UpdateNotifying {
       trigger: nil
     )
     UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+  }
+
+  /// #1029: eager tap-routing activation. Touches `UNUserNotificationCenter`
+  /// only when called (from the running app at launch), never at construction —
+  /// so unit tests building an `UpdateCoordinator` with the default notifier stay
+  /// inert. Idempotent via `installDelegateIfNeeded`'s `delegateInstalled` guard,
+  /// so a later `post(...)` (or a repeat activation) is a no-op.
+  func activateTapRouting() {
+    installDelegateIfNeeded(UNUserNotificationCenter.current())
   }
 
   private func installDelegateIfNeeded(_ center: UNUserNotificationCenter) {

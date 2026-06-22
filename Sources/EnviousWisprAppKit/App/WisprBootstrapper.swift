@@ -599,6 +599,11 @@ public final class WisprBootstrapper {
     sparkleUpdateController.updateCoordinator?.dictationActiveProvider = { [weak self] in
       self?.liveRecordingState.isDictationActive ?? false
     }
+    // #1029: install the notification tap delegate eagerly at launch (decoupled
+    // from posting) so a tap on an already-delivered "update ready" notification —
+    // or a cold launch from it — always routes, even when the once-per-version
+    // guard suppresses a fresh post on rehydrate.
+    sparkleUpdateController.updateCoordinator?.activateNotificationTapRouting()
     // #958: proactive launch check, right after startUpdater per Sparkle guidance.
     sparkleUpdateController.updateCoordinator?.checkForUpdatesProactively(trigger: "launch")
     // #1019: begin observing wake / network for an always-on, windowless user.

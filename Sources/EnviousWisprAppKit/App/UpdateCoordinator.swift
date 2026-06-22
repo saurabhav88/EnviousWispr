@@ -241,6 +241,17 @@ final class UpdateCoordinator {
     notifier.post(displayVersion: update.displayVersion)
   }
 
+  /// #1029: install the notification tap delegate eagerly at launch, decoupled
+  /// from posting. Called once from `WisprBootstrapper.applicationWillFinishLaunching`
+  /// (NOT from `init`, which runs in unit tests and must keep the notifier inert).
+  /// Without this, a relaunch where the pending update matches the last-notified
+  /// version returns from `fireUpdateNotificationIfNeeded` before `post`, leaving
+  /// the delegate uninstalled — so a tap on the already-delivered notification (or
+  /// a cold launch from it) would route nowhere.
+  func activateNotificationTapRouting() {
+    notifier.activateTapRouting()
+  }
+
   /// Install entry from the menu-bar "update ready" item. Guarded on active
   /// dictation (defense-in-depth — the item is also disabled in that state).
   func installFromMenu() {
@@ -256,10 +267,16 @@ final class UpdateCoordinator {
 
   private func triggerGuardedInstall(source: String) {
     guard !(dictationActiveProvider?() ?? false) else { return }
+    // #1029: only install when an update is actually available. With the tap
+    // delegate now active on every launch, a tap on a STALE delivered
+    // notification (its version already installed, pending state cleared by
+    // rehydrate) must not start a spurious Sparkle check — `triggerInstall()`
+    // flips the surface to `.resolving` and, with nothing persisted, the
+    // watchdog cannot restore it, wedging the menu-bar cue. Menu/banner
+    // affordances render only while `.available`, so this is a no-op for them.
+    guard case .available(let update) = service.state else { return }
     lastInstallSource = source
-    if case .available(let update) = service.state {
-      recordInstallAttempt(version: update.versionString, source: source)
-    }
+    recordInstallAttempt(version: update.versionString, source: source)
     service.triggerInstall()
   }
 

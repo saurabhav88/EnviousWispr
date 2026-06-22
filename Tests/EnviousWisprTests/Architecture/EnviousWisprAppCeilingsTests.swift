@@ -203,14 +203,22 @@ import Testing
   /// launch purge for `scanAndRecover`. No new App-owned stored property (the
   /// stored-property cap stays ≤ 30). Cap set by the deterministic rule
   /// (post-change actual 759 + 10, rounded up to nearest 5 = 770).
+  /// Ratcheted 770→785 in #1029 (2026-06-21, eager notification tap routing): the
+  /// composition root calls `updateCoordinator.activateNotificationTapRouting()` in
+  /// `applicationWillFinishLaunching` so a tap on an already-delivered update
+  /// notification (or a cold launch from it) routes even when the once-per-version
+  /// guard suppresses a fresh post on rehydrate. Must live in the launch path (not
+  /// `SparkleUpdateController.startUpdater()`, which tests exercise) to keep the
+  /// notifier inert under unit tests. No new App-owned stored property. Cap set by
+  /// the deterministic rule (post-change actual 774 + 10, rounded up to nearest 5 = 785).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 770,
+      lineCount <= 785,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 770. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 785. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }
