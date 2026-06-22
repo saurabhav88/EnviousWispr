@@ -414,6 +414,16 @@ jobs:
           # is allowed to fail. This is the real "will Gatekeeper let a user open
           # this" gate on the notarized + stapled DMG users actually download.
           DMG_PATH="build/EnviousWispr-${VERSION}.dmg"
+          # #957 follow-up (Codex P2 on #1153): assess the DMG CONTAINER itself —
+          # it is the artifact users download and double-click first. Apple's
+          # Gatekeeper guidance checks disk images with `-t open`
+          # (`--context context:primary-signature`); the `-t exec` assessment below
+          # only covers the nested app. `stapler validate` confirms the ticket
+          # stuck, but does not run the full Gatekeeper policy on the container.
+          echo "==> spctl Gatekeeper assessment of the shipped DMG container ..."
+          spctl -a -t open --context context:primary-signature -v "$DMG_PATH"
+          echo "==> Gatekeeper accepts the notarized + stapled DMG."
+          # Also assess the nested app (what the user launches after copying it out).
           MOUNT="${RUNNER_TEMP}/gatekeeper-mount"
           rm -rf "$MOUNT"; mkdir -p "$MOUNT"
           # Trap so a rejection still unmounts (set -e exits before explicit detach).
