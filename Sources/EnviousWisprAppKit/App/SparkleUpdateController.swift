@@ -218,7 +218,7 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
       isCritical: item.isCriticalUpdate,
       source: source
     )
-    TelemetryService.shared.flushTelemetry()
+    TelemetryService.shared.flushTelemetry(reason: .updateInstall)
   }
 
   /// Issue #343: silent install-on-quit path. This is a separate Sparkle
@@ -237,7 +237,7 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
       isCritical: item.isCriticalUpdate,
       source: "install_on_quit"
     )
-    TelemetryService.shared.flushTelemetry()
+    TelemetryService.shared.flushTelemetry(reason: .updateInstall)
     // Returning false lets Sparkle's automatic install-on-quit proceed normally.
     return false
   }

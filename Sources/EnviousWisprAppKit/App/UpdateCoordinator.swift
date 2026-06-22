@@ -357,7 +357,7 @@ final class UpdateCoordinator {
       isCritical: isCritical,
       secondsVisible: secondsVisible
     )
-    TelemetryService.shared.flushTelemetry()
+    TelemetryService.shared.flushTelemetry(reason: .updateInstall)
     service.triggerInstall()
   }
 
