@@ -405,6 +405,26 @@ jobs:
             exit 1
           fi
 
+      - name: Verify Gatekeeper acceptance (final stapled artifact)
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          # #957: the build script's only spctl assessment runs PRE-notarization and
+          # is allowed to fail. This is the real "will Gatekeeper let a user open
+          # this" gate on the notarized + stapled DMG users actually download.
+          DMG_PATH="build/EnviousWispr-${VERSION}.dmg"
+          MOUNT="${RUNNER_TEMP}/gatekeeper-mount"
+          rm -rf "$MOUNT"; mkdir -p "$MOUNT"
+          # Trap so a rejection still unmounts (set -e exits before explicit detach).
+          trap 'hdiutil detach "$MOUNT" 2>/dev/null || true; rm -rf "$MOUNT"' EXIT
+          hdiutil attach "$DMG_PATH" -mountpoint "$MOUNT" -nobrowse -readonly
+          echo "==> spctl Gatekeeper assessment of the shipped app ..."
+          spctl --assess --type exec --verbose=2 "$MOUNT/EnviousWispr.app"
+          echo "==> Gatekeeper accepts the notarized + stapled app."
+          hdiutil detach "$MOUNT"; rm -rf "$MOUNT"
+          trap - EXIT
+
       - name: Generate Sparkle appcast entry
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}

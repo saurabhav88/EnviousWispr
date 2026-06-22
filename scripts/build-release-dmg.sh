@@ -346,11 +346,33 @@ create-dmg \
     "$BUNDLE"
 test -f "$DMG_PATH"
 
-# Fail-fast: mount the DMG and confirm EnviousWispr.app sits at the root (proof3 PHASE 9).
+# Fail-fast: mount the DMG and confirm EnviousWispr.app + all four Sparkle
+# auto-update helpers are present (proof3 PHASE 9; #957 helper-presence guard).
 PRECHECK_MOUNT="$PROJ_ROOT/build/precheck-mount"
 rm -rf "$PRECHECK_MOUNT"; mkdir -p "$PRECHECK_MOUNT"
+# #957: trap so a failed assertion below still unmounts — under `set -e` the
+# script would otherwise exit before the explicit detach and leak the mount.
+trap 'hdiutil detach "$PRECHECK_MOUNT" 2>/dev/null || true; rm -rf "$PRECHECK_MOUNT"' EXIT
 hdiutil attach "$DMG_PATH" -mountpoint "$PRECHECK_MOUNT" -nobrowse -readonly
 test -d "$PRECHECK_MOUNT/EnviousWispr.app"
+# #957: assert all four Sparkle helpers (wrapper AND inner Mach-O) ship in the
+# app. The pre-package per-Mach-O loop ([7/9]) verifies only the binaries it
+# FINDS; a dropped helper would ship silently and break auto-update on user
+# machines. Checking each inner executable with `-f` covers both the wrapper dir
+# and its Mach-O in one test.
+SPARKLE_B="$PRECHECK_MOUNT/EnviousWispr.app/Contents/Frameworks/Sparkle.framework/Versions/B"
+for HELPER in \
+    "$SPARKLE_B/Updater.app/Contents/MacOS/Updater" \
+    "$SPARKLE_B/XPCServices/Installer.xpc/Contents/MacOS/Installer" \
+    "$SPARKLE_B/XPCServices/Downloader.xpc/Contents/MacOS/Downloader" \
+    "$SPARKLE_B/Autoupdate"; do
+    if [[ ! -f "$HELPER" ]]; then
+        echo "::error::Sparkle update helper missing from shipped app: ${HELPER#"$PRECHECK_MOUNT/"}"
+        exit 1
+    fi
+done
+echo "    all 4 Sparkle update helpers present (Updater, Installer, Downloader, Autoupdate)"
 hdiutil detach "$PRECHECK_MOUNT"; rm -rf "$PRECHECK_MOUNT"
+trap - EXIT
 
 echo "==> DMG created: ${DMG_PATH} ($(stat -f%z "$DMG_PATH") bytes)"
