@@ -238,7 +238,9 @@ final class DictationLifecycleCoordinator {
       to: newState,
       pipelineOverlayIntent: kernelDriver.overlayIntent,
       lastPolishError: kernelDriver.lastPolishError,
-      currentTranscript: kernelDriver.currentTranscript
+      currentTranscript: kernelDriver.currentTranscript,
+      historySaved: kernelDriver.lastHistorySaved,
+      historySaveReason: kernelDriver.lastHistorySaveReason
     )
     // PR7 of #763 — push polish error to the post-recording result home so
     // views can read `lastRecordingResult.polishError` without reaching
@@ -282,7 +284,9 @@ final class DictationLifecycleCoordinator {
       to: newState,
       pipelineOverlayIntent: whisperKitKernelDriver.overlayIntent,
       lastPolishError: whisperKitKernelDriver.lastPolishError,
-      currentTranscript: whisperKitKernelDriver.currentTranscript
+      currentTranscript: whisperKitKernelDriver.currentTranscript,
+      historySaved: whisperKitKernelDriver.lastHistorySaved,
+      historySaveReason: whisperKitKernelDriver.lastHistorySaveReason
     )
     lastRecordingResult.polishError = whisperKitKernelDriver.lastPolishError
     dispatchChipLifecycle(
@@ -392,12 +396,18 @@ final class DictationLifecycleCoordinator {
         TelemetryService.shared.reportDictationCompleted(
           transcript: t, inputMode: self.settings.recordingMode.rawValue,
           recordingSeconds: driver.lastRecordingDurationSeconds,
-          stopReason: driver.lastStopReason)
+          stopReason: driver.lastStopReason,
+          historySaveStatus: driver.lastHistorySaved ? "succeeded" : "failed",  // #1167
+          historySaveErrorClass: driver.lastHistorySaveErrorClass)
       },
       reportPipelineFailed: { msg in
         TelemetryService.shared.pipelineFailed(
           stage: "transcription", errorCategory: "pipeline_error", errorCode: msg,
           recoverable: false, backend: backendLabel)
+      },
+      // #1167: history-save-failed pill (post-completion warning slot, ~400 ms).
+      scheduleHistorySaveFailedWarning: { [weak self] reason in
+        self?.schedulePostCompletionWarning(message: "Couldn't save to history: \(reason)")
       }
     )
   }

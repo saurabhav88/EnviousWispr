@@ -40,6 +40,8 @@ struct PipelineStateChangeHandlerTests {
     var appendedCalls: [Transcript] = []
     var completedCalls: [Transcript] = []
     var failedCalls: [String] = []
+    /// #1167: reasons passed to the history-save-failed pill.
+    var historySaveWarnings: [String] = []
   }
 
   private static func makeHandler(
@@ -52,7 +54,8 @@ struct PipelineStateChangeHandlerTests {
       schedulePolishFailedWarning: { callbacks.scheduleWarningCount += 1 },
       appendCompletedTranscript: { callbacks.appendedCalls.append($0) },
       reportDictationCompleted: { callbacks.completedCalls.append($0) },
-      reportPipelineFailed: { callbacks.failedCalls.append($0) }
+      reportPipelineFailed: { callbacks.failedCalls.append($0) },
+      scheduleHistorySaveFailedWarning: { callbacks.historySaveWarnings.append($0) }
     )
   }
 
@@ -83,7 +86,9 @@ struct PipelineStateChangeHandlerTests {
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
       lastPolishError: nil,
-      currentTranscript: transcript
+      currentTranscript: transcript,
+      historySaved: true,
+      historySaveReason: nil
     )
 
     #expect(spy.calls == [OverlaySpy.Call(intent: .hidden)])
@@ -106,7 +111,9 @@ struct PipelineStateChangeHandlerTests {
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
       lastPolishError: "openai_timeout",
-      currentTranscript: transcript
+      currentTranscript: transcript,
+      historySaved: true,
+      historySaveReason: nil
     )
 
     #expect(calls.scheduleWarningCount == 1)
@@ -127,7 +134,9 @@ struct PipelineStateChangeHandlerTests {
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
       lastPolishError: "still set but fallback wins",
-      currentTranscript: transcript
+      currentTranscript: transcript,
+      historySaved: true,
+      historySaveReason: nil
     )
 
     #expect(spy.calls == [OverlaySpy.Call(intent: .clipboardFallback)])
@@ -147,7 +156,9 @@ struct PipelineStateChangeHandlerTests {
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
       lastPolishError: nil,
-      currentTranscript: transcript
+      currentTranscript: transcript,
+      historySaved: true,
+      historySaveReason: nil
     )
 
     // Must NOT show the clipboard-fallback or accessibility-toast overlay —
@@ -168,7 +179,9 @@ struct PipelineStateChangeHandlerTests {
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
       lastPolishError: nil,
-      currentTranscript: transcript
+      currentTranscript: transcript,
+      historySaved: true,
+      historySaveReason: nil
     )
 
     #expect(spy.calls == [OverlaySpy.Call(intent: .accessibilityToast)])
@@ -192,7 +205,9 @@ struct PipelineStateChangeHandlerTests {
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
       lastPolishError: nil,
-      currentTranscript: nil
+      currentTranscript: nil,
+      historySaved: true,
+      historySaveReason: nil
     )
 
     #expect(calls.appendedCalls.isEmpty)
@@ -212,7 +227,9 @@ struct PipelineStateChangeHandlerTests {
       to: PipelineState.recording,
       pipelineOverlayIntent: .recording(audioLevel: 0),
       lastPolishError: nil,
-      currentTranscript: nil
+      currentTranscript: nil,
+      historySaved: true,
+      historySaveReason: nil
     )
 
     #expect(calls.cancelWarningCount == 1)
@@ -239,7 +256,9 @@ struct PipelineStateChangeHandlerTests {
       to: PipelineState.error("mic_disconnected"),
       pipelineOverlayIntent: .error(message: "mic_disconnected"),
       lastPolishError: nil,
-      currentTranscript: nil
+      currentTranscript: nil,
+      historySaved: true,
+      historySaveReason: nil
     )
 
     #expect(calls.cancelWarningCount == 1)
@@ -264,17 +283,47 @@ struct PipelineStateChangeHandlerTests {
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
       lastPolishError: nil,
-      currentTranscript: first
+      currentTranscript: first,
+      historySaved: true,
+      historySaveReason: nil
     )
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
       lastPolishError: nil,
-      currentTranscript: second
+      currentTranscript: second,
+      historySaved: true,
+      historySaveReason: nil
     )
 
     #expect(calls.appendedCalls.count == 2)
     #expect(calls.completedCalls.count == 2)
     #expect(calls.completedCalls.map(\.id) == [first.id, second.id])
+  }
+
+  // MARK: - #1167 history-save best-effort
+
+  @Test("complete + history save failed: pill scheduled, append skipped, telemetry still fires")
+  func completeHistorySaveFailedRoutesPill() {
+    let spy = OverlaySpy()
+    let calls = CallbackRecorder()
+    let handler = Self.makeHandler(overlay: spy, callbacks: calls)
+    let transcript = Self.makeTranscript(pasteTier: "direct")
+
+    handler.handle(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: .hidden,
+      lastPolishError: nil,
+      currentTranscript: transcript,
+      historySaved: false,
+      historySaveReason: "disk is full"
+    )
+
+    #expect(calls.historySaveWarnings == ["disk is full"])
+    // The row was never persisted -> no in-memory append (no phantom entry).
+    #expect(calls.appendedCalls.isEmpty)
+    // Telemetry still fires so the degraded-save dimension is recorded.
+    #expect(calls.completedCalls.count == 1)
+    #expect(calls.scheduleWarningCount == 0)
   }
 }

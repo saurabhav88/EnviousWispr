@@ -34,7 +34,6 @@ public enum RecordingFailureReason: Equatable, Sendable {
   case asrFailed
   case asrWedged
   case emptyAfterProcessing
-  case storageFailed
   case captureStalled
 }
 
@@ -1447,10 +1446,12 @@ final class RecordingSessionKernel {
     do {
       try await store(processed)
     } catch {
-      guard isCurrent(sid) else { return }
-      telemetryState.storageFailureError = error
-      finishTerminal(.failed(.storageFailed), sid: sid)
-      return
+      // #1167: the history save is best-effort — `store` absorbs storage
+      // failures internally (records them on the finalization outcome +
+      // telemetry side-channel and still sets `outcome.transcript`), so it no
+      // longer throws on a save failure. Any residual throw can only be
+      // cancellation during finalize; honor the safe-point (a transcript is in
+      // hand) by falling through to deliver exactly as the success path would.
     }
     guard isCurrent(sid) else { return }
 

@@ -36,6 +36,13 @@ enum PipelineStateSideEffect: Equatable, Sendable {
   /// code. The caller supplies the fixed `stage` / `errorCategory` / `backend`
   /// literals that today live in the former root state's closures.
   case reportPipelineFailed(errorCode: String)
+
+  /// #1167: schedule the transient "Couldn't save to history: <reason>" pill
+  /// ~400 ms after completion, concurrent with the (already-completed) paste.
+  /// Emitted ONLY on `.complete` when the durable history save threw but
+  /// delivery still ran (best-effort save). Reuses the single post-completion
+  /// warning slot, so it is mutually exclusive with `schedulePolishFailedWarning`.
+  case scheduleHistorySaveFailedWarning(reason: String)
 }
 
 struct PipelineStateChangePlan: Equatable, Sendable {
@@ -69,9 +76,15 @@ enum PipelineStateChangePlanner {
     isClipboardFallback: Bool,
     isAccessibilityToast: Bool,
     lastPolishError: String?,
-    hasCurrentTranscript: Bool
+    hasCurrentTranscript: Bool,
+    historySaved: Bool,
+    historySaveReason: String?
   ) -> PipelineStateChangePlan {
     var effects: [PipelineStateSideEffect] = []
+
+    // #1167: a degraded-save completion (delivery ran, history write threw).
+    // Only meaningful on `.complete` with a transcript in hand.
+    let historySaveFailed = hasCurrentTranscript && !historySaved
 
     // Step 1 — overlay resolution + warning scheduling / cancellation.
     // Order mirrors the production closures at the former root-state file: resolve intent, schedule warning iff applicable, then show.
@@ -90,7 +103,10 @@ enum PipelineStateChangePlanner {
         // "Polish failed -- using raw text" overlay would contradict it, so
         // suppress it for skips. Real failures (and the unchanged Apple
         // Intelligence / legacy strings) still schedule the warning.
-        if !PolishFailureReason.isSkipNotice(polishError) {
+        // #1167: a history-save failure takes the single post-completion
+        // warning slot (its pill is scheduled in Step 2), so suppress the
+        // polish-failed pill when both fired this session.
+        if !historySaveFailed, !PolishFailureReason.isSkipNotice(polishError) {
           effects.append(.schedulePolishFailedWarning)
         }
       } else {
@@ -111,7 +127,17 @@ enum PipelineStateChangePlanner {
     // history cache visibly fresh without an O(n) disk scan.
     if case .complete = newState.activity {
       if hasCurrentTranscript {
-        effects.append(.appendCompletedTranscript)
+        // #1167: skip the in-memory history append on a save failure — the row
+        // was never persisted, so the append would show a phantom entry that
+        // vanishes on restart (it reappears as a "Recovered" entry via the
+        // retained crash-recovery spool). Skipping the append also skips the
+        // `onDurableSave` spool cleanup wired inside that handler, so the spool
+        // is retained. Instead, schedule the reason pill. Telemetry still fires.
+        if historySaved {
+          effects.append(.appendCompletedTranscript)
+        } else if let reason = historySaveReason {
+          effects.append(.scheduleHistorySaveFailedWarning(reason: reason))
+        }
         effects.append(.reportDictationCompleted)
       }
     }

@@ -71,6 +71,18 @@ final class KernelFinalizationOutcome {
   var emojiRestored: Int?
   var emojiRestoreIncomplete: Bool?
   var emojiLatencyMs: Double?
+  /// #1167: whether the durable history save succeeded. `false` ⟺ the save
+  /// threw but delivery still proceeded (best-effort save). Default `true` (the
+  /// happy path); the `store` closure sets it explicitly on each save attempt,
+  /// and the driver resets it per session. The recovery-cleanup gate, the pill,
+  /// the in-memory append, the success marker, and the `dictation.completed`
+  /// telemetry all read this — clipboard behavior does NOT (it always reverts
+  /// per the user's setting; `pipeline-mechanics.md` RULE: clipboard-restore-is-sacred).
+  var historySaved = true
+  /// #1167: the storage error when `historySaved == false`, else `nil`. The
+  /// driver maps it to a normalized class + privacy-safe user reason via
+  /// `HistorySaveErrorClass`.
+  var historySaveError: Error?
 
   init() {}
 }
@@ -227,8 +239,16 @@ struct KernelFinalizationWiring {
 
     // store — build the Transcript exactly as TranscriptFinalizer.swift:129
     // (raw / polished from the side-channel, ASR metadata from the adapter),
-    // persist it, and hand it to the driver via the side-channel. A throw
-    // propagates so the kernel routes `failed(storageFailed)` (PR-4 §3.3).
+    // best-effort persist it, and hand it to the driver via the side-channel.
+    //
+    // #1167: the save is BEST-EFFORT. `outcome.transcript` is set BEFORE the
+    // save so completion telemetry + paste metrics (which read it) populate even
+    // when the save throws. A storage failure (full disk / permission / read-only)
+    // is recorded on the outcome + telemetry side-channel and ABSORBED — it does
+    // NOT propagate, so the kernel proceeds to deliver the already-polished text
+    // and finishes `.completed`. The crash-recovery spool is retained (cleanup is
+    // gated on `historySaved`), so History self-heals on next launch. Clipboard
+    // behavior is unchanged (`pipeline-mechanics.md` RULE: clipboard-restore-is-sacred).
     store = { text in
       let transcript = Transcript(
         text: outcome.rawText ?? text,
@@ -245,8 +265,19 @@ struct KernelFinalizationWiring {
         // live take, not a rescued one.
         recoverySessionID: context.config?.recoverySessionID,
         isRecovered: false)
-      try save(transcript)
       outcome.transcript = transcript
+      do {
+        try save(transcript)
+        outcome.historySaved = true
+        outcome.historySaveError = nil
+      } catch {
+        outcome.historySaved = false
+        outcome.historySaveError = error
+        // Mirror the failure onto the telemetry side-channel so the lifecycle
+        // sink can withhold the "transcript durably saved" success marker on a
+        // degraded-save completion (#1167).
+        telemetryState.historySaveFailed = true
+      }
     }
 
     // deliver — run the paste cascade or clipboard copy per the session's

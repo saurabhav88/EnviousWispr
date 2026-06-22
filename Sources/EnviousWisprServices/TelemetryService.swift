@@ -58,7 +58,8 @@ public final class TelemetryService {
   /// Called by the former root state when a pipeline completes. Reads Transcript + ExecutionMetrics.
   public func reportDictationCompleted(
     transcript t: Transcript, inputMode: String,
-    recordingSeconds: Double? = nil, stopReason: String? = nil
+    recordingSeconds: Double? = nil, stopReason: String? = nil,
+    historySaveStatus: String? = nil, historySaveErrorClass: String? = nil
   ) {
     #if DEBUG
       testEventHook?(
@@ -95,7 +96,9 @@ public final class TelemetryService {
       emojiRestoreIncomplete: m?.emojiRestoreIncomplete,
       emojiLatencyMs: m?.emojiLatencyMs,
       recordingSeconds: recordingSeconds,
-      stopReason: stopReason
+      stopReason: stopReason,
+      historySaveStatus: historySaveStatus,
+      historySaveErrorClass: historySaveErrorClass
     )
     if let e2e = m?.e2eSeconds {
       metricPipelineE2E(
@@ -234,7 +237,8 @@ public final class TelemetryService {
     itnLenBefore: Int? = nil, itnLenAfter: Int? = nil,
     emojiInInput: Int? = nil, emojiDropped: Int? = nil, emojiRestored: Int? = nil,
     emojiRestoreIncomplete: Bool? = nil, emojiLatencyMs: Double? = nil,
-    recordingSeconds: Double? = nil, stopReason: String? = nil
+    recordingSeconds: Double? = nil, stopReason: String? = nil,
+    historySaveStatus: String? = nil, historySaveErrorClass: String? = nil
   ) {
     var props: [String: Any] = [
       "result": result,
@@ -268,6 +272,11 @@ public final class TelemetryService {
     if let er = emojiRestored { props["emoji_restored"] = er }
     if let inc = emojiRestoreIncomplete { props["emoji_restore_incomplete"] = inc }
     if let elat = emojiLatencyMs { props["emoji_latency_ms"] = String(format: "%.3f", elat) }
+    // #1167: degraded-save dimension. `succeeded` | `failed`; on failure a
+    // normalized class (`full_disk`/`permission_denied`/`read_only`/`unknown`).
+    // The top-line success metric is "completed AND history_save_status != failed".
+    if let hss = historySaveStatus { props["history_save_status"] = hss }
+    if let hec = historySaveErrorClass { props["history_save_error_class"] = hec }
     PostHogSDK.shared.capture("dictation.completed", properties: props)
   }
 

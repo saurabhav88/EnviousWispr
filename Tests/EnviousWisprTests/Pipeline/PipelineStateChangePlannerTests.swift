@@ -36,7 +36,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: true,
       isAccessibilityToast: false,
       lastPolishError: "polish failed for some reason",
-      hasCurrentTranscript: true
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(plan.effects.contains(.showOverlay(.clipboardFallback)))
     #expect(!plan.effects.contains(.schedulePolishFailedWarning))
@@ -54,7 +56,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: true,
       isAccessibilityToast: true,
       lastPolishError: nil,
-      hasCurrentTranscript: true
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(plan.effects.contains(.showOverlay(.accessibilityToast)))
     #expect(!plan.effects.contains(.showOverlay(.clipboardFallback)))
@@ -68,7 +72,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: true,
       isAccessibilityToast: false,
       lastPolishError: nil,
-      hasCurrentTranscript: true
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(plan.effects.contains(.showOverlay(.clipboardFallback)))
     #expect(!plan.effects.contains(.showOverlay(.accessibilityToast)))
@@ -82,7 +88,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: false,
       isAccessibilityToast: true,
       lastPolishError: nil,
-      hasCurrentTranscript: true
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(plan.effects.contains(.showOverlay(.accessibilityToast)))
     #expect(!plan.effects.contains(.showOverlay(.clipboardFallback)))
@@ -96,7 +104,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: true,
       isAccessibilityToast: true,
       lastPolishError: nil,
-      hasCurrentTranscript: true
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(!plan.effects.contains(.showOverlay(.accessibilityToast)))
     #expect(plan.effects.contains(.showOverlay(Self.recordingIntent)))
@@ -110,7 +120,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: false,
       isAccessibilityToast: false,
       lastPolishError: "openai 429 rate-limited",
-      hasCurrentTranscript: true
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(plan.effects.contains(.showOverlay(.hidden)))
     #expect(plan.effects.contains(.schedulePolishFailedWarning))
@@ -136,7 +148,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: false,
       isAccessibilityToast: false,
       lastPolishError: skipNotice,
-      hasCurrentTranscript: true
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(plan.effects.contains(.showOverlay(.hidden)))
     #expect(!plan.effects.contains(.schedulePolishFailedWarning))
@@ -157,7 +171,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: false,
       isAccessibilityToast: false,
       lastPolishError: failNotice,
-      hasCurrentTranscript: true
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(plan.effects.contains(.schedulePolishFailedWarning))
   }
@@ -170,7 +186,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: false,
       isAccessibilityToast: false,
       lastPolishError: nil,
-      hasCurrentTranscript: true
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(plan.effects.contains(.showOverlay(.hidden)))
     #expect(!plan.effects.contains(.schedulePolishFailedWarning))
@@ -193,7 +211,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: false,
       isAccessibilityToast: false,
       lastPolishError: nil,
-      hasCurrentTranscript: false
+      hasCurrentTranscript: false,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(!plan.effects.contains(.appendCompletedTranscript))
     #expect(!plan.effects.contains(.reportDictationCompleted))
@@ -213,7 +233,9 @@ struct PipelineStateChangePlannerTests {
         isClipboardFallback: false,
         isAccessibilityToast: false,
         lastPolishError: nil,
-        hasCurrentTranscript: false
+        hasCurrentTranscript: false,
+        historySaved: true,
+        historySaveReason: nil
       )
       #expect(
         plan.effects.first == .cancelPendingWarning,
@@ -249,7 +271,9 @@ struct PipelineStateChangePlannerTests {
         isClipboardFallback: false,
         isAccessibilityToast: false,
         lastPolishError: nil,
-        hasCurrentTranscript: false
+        hasCurrentTranscript: false,
+        historySaved: true,
+        historySaveReason: nil
       )
       #expect(
         plan.effects.contains(.showOverlay(intent)),
@@ -273,7 +297,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: false,
       isAccessibilityToast: false,
       lastPolishError: nil,
-      hasCurrentTranscript: false
+      hasCurrentTranscript: false,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(plan.effects.contains(.reportPipelineFailed(errorCode: "mic_disconnected")))
     #expect(plan.effects.contains(.cancelPendingWarning))
@@ -297,7 +323,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: false,
       isAccessibilityToast: false,
       lastPolishError: nil,
-      hasCurrentTranscript: true
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil
     )
     // Order matches the production closure: show overlay, reload history,
     // report telemetry. No warning-cancel, no warning-schedule.
@@ -317,7 +345,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: false,
       isAccessibilityToast: false,
       lastPolishError: "fail",
-      hasCurrentTranscript: true
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(
       plan.effects == [
@@ -336,7 +366,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: true,
       isAccessibilityToast: false,
       lastPolishError: "fail",
-      hasCurrentTranscript: true
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(
       plan.effects == [
@@ -354,7 +386,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: false,
       isAccessibilityToast: false,
       lastPolishError: nil,
-      hasCurrentTranscript: false
+      hasCurrentTranscript: false,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(
       plan.effects == [
@@ -371,7 +405,9 @@ struct PipelineStateChangePlannerTests {
       isClipboardFallback: false,
       isAccessibilityToast: false,
       lastPolishError: nil,
-      hasCurrentTranscript: false
+      hasCurrentTranscript: false,
+      historySaved: true,
+      historySaveReason: nil
     )
     #expect(
       plan.effects == [
@@ -379,6 +415,60 @@ struct PipelineStateChangePlannerTests {
         .showOverlay(.error(message: "bad")),
         .reportPipelineFailed(errorCode: "bad"),
       ])
+  }
+
+  // MARK: - #1167 history-save best-effort
+
+  @Test("complete + history save failed -> pill scheduled, append skipped, telemetry still fires")
+  func completeHistorySaveFailedSchedulesPillSkipsAppend() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: nil,
+      hasCurrentTranscript: true,
+      historySaved: false,
+      historySaveReason: "disk is full"
+    )
+    #expect(plan.effects.contains(.scheduleHistorySaveFailedWarning(reason: "disk is full")))
+    // Append skipped (so onDurableSave is skipped -> spool retained); the row
+    // was never persisted, so an in-memory append would show a phantom entry.
+    #expect(!plan.effects.contains(.appendCompletedTranscript))
+    // Telemetry still fires so the degraded-save dimension is recorded.
+    #expect(plan.effects.contains(.reportDictationCompleted))
+  }
+
+  @Test("complete + history save failed + polish failed -> history pill wins the single slot")
+  func completeHistorySaveFailedSuppressesPolishWarning() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: "openai 429 rate-limited",
+      hasCurrentTranscript: true,
+      historySaved: false,
+      historySaveReason: "permission denied"
+    )
+    #expect(plan.effects.contains(.scheduleHistorySaveFailedWarning(reason: "permission denied")))
+    #expect(!plan.effects.contains(.schedulePolishFailedWarning))
+  }
+
+  @Test("complete + history saved (success) -> append fires, no history pill")
+  func completeHistorySavedAppendsNoPill() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: nil,
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil
+    )
+    #expect(plan.effects.contains(.appendCompletedTranscript))
+    #expect(!plan.effects.contains(.scheduleHistorySaveFailedWarning(reason: "disk is full")))
   }
 
   // MARK: - Activity projection integrity
