@@ -144,6 +144,9 @@ scripts/*
 # UAT helpers (per-PR Swift CLIs invoked during Live UAT, e.g. issue #845 keychain verifier)
 !scripts/uat/
 !scripts/uat/**
+# CI tooling scripts invoked by .github/workflows (issue #1151)
+!scripts/ci/
+!scripts/ci/**
 # Polish eval harness — PUBLIC tracked files only (see .claude/knowledge/polish-eval.md for scope rules)
 !scripts/eval/
 scripts/eval/*
