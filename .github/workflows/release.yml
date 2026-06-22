@@ -186,6 +186,7 @@ jobs:
           HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_BASE64 != '' }}
           HAS_APP_ID: ${{ secrets.APP_ID != '' }}
           HAS_APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY != '' }}
+          HAS_SENTRY_DSN: ${{ secrets.SENTRY_DSN != '' }}
           MODE: ${{ inputs.mode || 'full' }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
@@ -198,6 +199,17 @@ jobs:
             [[ "$HAS_SPARKLE_PRIVATE_KEY" == "true" ]] || { echo "::error::SPARKLE_PRIVATE_KEY missing"; FAIL=1; }
             [[ "$HAS_DEVELOPER_ID_CERT" == "true" ]]    || { echo "::error::DEVELOPER_ID_CERT_BASE64 missing"; FAIL=1; }
             [[ "$HAS_APPLE_API_KEY" == "true" ]]         || { echo "::error::APPLE_API_KEY_BASE64 missing"; FAIL=1; }
+          fi
+
+          # Sentry DSN — required ONLY for modes that BUILD+STAMP the app (mirror of the
+          # build-release-artifacts job's if: push || full || build-only). #1169 / #945
+          # gap 6: a release must not ship green with crash reporting silently OFF.
+          # release-only republishes existing already-stamped DMGs and
+          # appcast-only/sentry-only never build, so they need no DSN. dry_run with
+          # full/build-only still builds+stamps, so it stays required there.
+          # Pro-telemetry (keeps capture ON), not content-policing.
+          if [[ "$MODE" == "full" || "$MODE" == "build-only" ]]; then
+            [[ "$HAS_SENTRY_DSN" == "true" ]] || { echo "::error::SENTRY_DSN missing — release would ship with crash reporting OFF"; FAIL=1; }
           fi
 
           # App token — required for appcast push. #1117 least-privilege: a dry_run

@@ -633,6 +633,22 @@ public final class TelemetryService {
     fillerRemoval: Bool, customWordsCount: Int,
     hasApiKeys: Bool, noiseSuppression: Bool
   ) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "settings.snapshot",
+          stringProps: [
+            "asr_backend": asrBackend,
+            "llm_provider": llmProvider,
+            "recording_mode": recordingMode,
+          ],
+          intProps: ["custom_words_count": customWordsCount],
+          boolProps: [
+            "filler_removal": fillerRemoval,
+            "has_api_keys": hasApiKeys,
+            "noise_suppression": noiseSuppression,
+          ]))
+    #endif
     PostHogSDK.shared.capture(
       "settings.snapshot",
       properties: [
@@ -1028,9 +1044,31 @@ public final class TelemetryService {
     )
   }
 
+  /// Why a telemetry flush was requested. Carried on `telemetry.flush_requested`.
+  /// Only `.updateInstall` is live today (the Sparkle pre-relaunch flush). Future
+  /// reasons (appTerminate / crash / manual) are added by the phases that wire
+  /// their real call sites — Telemetry Bible Phase 1 (#1170) — never as
+  /// un-emitted cases here.
+  public enum FlushReason: String {
+    case updateInstall = "update_install"
+  }
+
   /// Synchronously flushes buffered events. Called before triggering install
-  /// so click/start events survive Sparkle's relaunch.
-  public func flushTelemetry() {
+  /// so click/start events survive Sparkle's relaunch. Emits
+  /// `telemetry.flush_requested` carrying `reason` first; PostHog `capture`
+  /// writes the event to its disk-backed queue synchronously (before this
+  /// `flush()` is called), so the flush includes it and it survives a relaunch
+  /// regardless. PostHog `flush()` exposes no delivery result (G3 is not
+  /// observable app-side) — delivery health is watched by the product-health
+  /// integrity heartbeat, not here.
+  public func flushTelemetry(reason: FlushReason) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "telemetry.flush_requested", stringProps: ["reason": reason.rawValue]))
+    #endif
+    PostHogSDK.shared.capture(
+      "telemetry.flush_requested", properties: ["reason": reason.rawValue])
     PostHogSDK.shared.flush()
   }
 

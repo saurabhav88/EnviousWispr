@@ -145,19 +145,14 @@ final class AppLifecycleCoordinator {
     dictationRuntime.startHotkeyServiceIfEnabled()
 
     if settings.onboardingState == .completed {
-      let s = settings
-      let hasKeys =
-        (try? keychainManager.retrieve(key: KeychainManager.openAIKeyID)) != nil
-        || (try? keychainManager.retrieve(key: KeychainManager.geminiKeyID)) != nil
-      TelemetryService.shared.settingsSnapshot(
-        asrBackend: s.selectedBackend.rawValue,
-        llmProvider: s.llmProvider.rawValue,
-        recordingMode: s.recordingMode.rawValue,
-        fillerRemoval: s.fillerRemovalEnabled,
-        customWordsCount: customWordsCoordinator.customWords.count,
-        hasApiKeys: hasKeys,
-        noiseSuppression: s.noiseSuppression
-      )
+      // Telemetry Bible Phase 0 (#1169): the standing settings snapshot now
+      // routes through one named seam (extended by Phase 3/4). Behavior-
+      // preserving — same event, same fields, same launch timing.
+      StandingSnapshotBuilder(
+        settings: settings,
+        keychainManager: keychainManager,
+        customWordsCoordinator: customWordsCoordinator
+      ).emit()
     }
 
     // Run Apple Intelligence diagnostics via coordinator.
