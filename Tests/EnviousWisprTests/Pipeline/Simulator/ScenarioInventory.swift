@@ -425,15 +425,19 @@ enum ScenarioInventory {
         transcript: .nonEmpty),
       tags: [.concurrencySensitive]),
     Scenario(
-      id: "L6", name: "transcript disk-save fails after transcript",
+      id: "L6", name: "transcript disk-save fails but delivery still completes (#1167)",
       steps: [
         .engine(.setBehavior(.batchSuccess(text: "delivered text"))),
         .limb(.storageWriteFails),
         .trigger(.start), .capture(.deliverBuffer), .trigger(.stop),
       ],
+      // #1167: a history-save throw is best-effort — the kernel absorbs it and
+      // still delivers the polished text, reaching `.completed` with no
+      // user-visible error. (The pill + recovery-spool retention are App-layer
+      // concerns covered in the wiring / planner / handler unit tests.)
       expected: ExpectedOutcome(
-        terminalState: .failed(.storageFailed), pasteCount: 0, pasteOutcome: .none,
-        transcript: .none, userVisibleError: .recoverableError)),
+        terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,
+        transcript: .nonEmpty)),
   ]
 
   /// The exact canonical ID set — `ScenarioInventoryTests` asserts the inventory

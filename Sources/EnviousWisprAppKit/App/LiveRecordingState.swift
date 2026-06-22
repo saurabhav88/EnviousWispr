@@ -72,15 +72,16 @@ final class LiveRecordingState {
     audioCapture.audioLevel
   }
 
-  /// In-flight transcript from the active pipeline. Used as the live
-  /// fallback in `HistoryContentView` composition: selected-history else
-  /// live. Replaces the live-fallback half of the pre-PR7
-  /// the former root state getter.
+  /// In-flight transcript from the active pipeline. Live fallback in
+  /// `HistoryContentView`: selected-history else live. #1167: suppressed when
+  /// the last completion's durable save failed (never persisted; returns via
+  /// next-launch crash-recovery), so the detail pane shows no phantom row.
+  /// Telemetry reads the driver's `currentTranscript` directly, unaffected.
   var currentTranscript: Transcript? {
-    if asrManager.activeBackendType == .whisperKit {
-      return whisperKitKernelDriver.currentTranscript
-    }
-    return kernelDriver.currentTranscript
+    let driver =
+      asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
+    guard driver.lastHistorySaved else { return nil }
+    return driver.currentTranscript
   }
 }
 

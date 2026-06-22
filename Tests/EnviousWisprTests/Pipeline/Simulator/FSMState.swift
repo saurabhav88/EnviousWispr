@@ -22,7 +22,6 @@ enum FSMFailureReason: Equatable, Sendable {
   case asrFailed
   case asrWedged
   case emptyAfterProcessing
-  case storageFailed
   case captureStalled
 }
 

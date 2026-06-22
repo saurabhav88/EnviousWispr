@@ -228,7 +228,12 @@ final class KernelLifecycleTelemetrySink {
 
     case .pipelineCompleted:
       breadcrumb("pipeline", "Pipeline complete", pipelineCompletedPayload())
-      captureTelemetry.recordSuccessfulRecording()
+      // #1167: a degraded-save completion (history write threw, delivery still
+      // ran) must NOT stamp the "transcript durably saved" success marker — gate
+      // on the save outcome mirrored on the telemetry side-channel.
+      if !telemetryState.historySaveFailed {
+        captureTelemetry.recordSuccessfulRecording()
+      }
 
     case .failed(let reason):
       emitFailed(reason)
@@ -492,13 +497,6 @@ final class KernelLifecycleTelemetrySink {
           "polish.enabled": telemetryState.polishEnabled,
           "capture_session_id": Int(audioCapture.currentCaptureSessionID),
         ])
-    case .storageFailed:
-      let error =
-        telemetryState.storageFailureError
-        ?? NSError(
-          domain: "EnviousWispr", code: -12,
-          userInfo: [NSLocalizedDescriptionKey: "Failed to save transcript"])
-      emitCaptureError(error, .asrFailed, "storage", nil)
     case .asrFailed, .asrWedged:
       let error =
         telemetryState.transcriptionFailureError

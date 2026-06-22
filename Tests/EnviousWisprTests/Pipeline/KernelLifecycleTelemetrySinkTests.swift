@@ -62,13 +62,14 @@ import Testing
     recorder: Recorder,
     backend: ASRBackendType = .parakeet,
     context: KernelSessionContext = KernelSessionContext(),
-    telemetryState: KernelTelemetryState = KernelTelemetryState()
+    telemetryState: KernelTelemetryState = KernelTelemetryState(),
+    captureTelemetry: CaptureTelemetryState = CaptureTelemetryState()
   ) -> KernelLifecycleTelemetrySink {
     KernelLifecycleTelemetrySink(
       backend: backend,
       audioCapture: FakeAudioCapture(),
       context: context,
-      captureTelemetry: CaptureTelemetryState(),
+      captureTelemetry: captureTelemetry,
       telemetryState: telemetryState,
       breadcrumb: { stage, message, data in
         recorder.breadcrumbs.append(
@@ -538,14 +539,31 @@ import Testing
     #expect(recorder.captureErrors.first?.stage == "processing")
   }
 
-  @Test(".failed(.storageFailed) emits .asrFailed captureError at 'storage'")
-  func failedStorageFailedEmission() {
+  // #1167: a clean completion stamps the "transcript durably saved" success
+  // marker; a degraded-save completion (history write threw, delivery still
+  // ran) must NOT — the marker gates on `telemetryState.historySaveFailed`.
+  @Test(".pipelineCompleted records the success marker when the save succeeded")
+  func pipelineCompletedRecordsSuccessMarkerOnSave() {
     let recorder = Recorder()
-    let sink = makeSink(recorder: recorder)
-    sink.emit(.failed(.storageFailed))
-    #expect(recorder.captureErrors.count == 1)
-    #expect(recorder.captureErrors.first?.category == .asrFailed)
-    #expect(recorder.captureErrors.first?.stage == "storage")
+    let captureTelemetry = CaptureTelemetryState()
+    let state = KernelTelemetryState()
+    state.historySaveFailed = false
+    let sink = makeSink(
+      recorder: recorder, telemetryState: state, captureTelemetry: captureTelemetry)
+    sink.emit(.pipelineCompleted)
+    #expect(captureTelemetry.timeSinceLastSuccessfulRecordingMs() != nil)
+  }
+
+  @Test(".pipelineCompleted withholds the success marker on a degraded save (#1167)")
+  func pipelineCompletedWithholdsSuccessMarkerOnSaveFailure() {
+    let recorder = Recorder()
+    let captureTelemetry = CaptureTelemetryState()
+    let state = KernelTelemetryState()
+    state.historySaveFailed = true
+    let sink = makeSink(
+      recorder: recorder, telemetryState: state, captureTelemetry: captureTelemetry)
+    sink.emit(.pipelineCompleted)
+    #expect(captureTelemetry.timeSinceLastSuccessfulRecordingMs() == nil)
   }
 
   @Test(".failed(.asrFailed) emits .asrFailed captureError at 'transcription'")

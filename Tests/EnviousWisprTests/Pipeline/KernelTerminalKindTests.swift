@@ -22,7 +22,7 @@ struct KernelTerminalKindTests {
   @Test("failure terminals → .failure (RETAIN the recoverable audio)")
   func failureTerminals() {
     #expect(
-      KernelDictationDriver.endedWithoutSaveKind(for: .failed(.storageFailed)) == .failure)
+      KernelDictationDriver.endedWithoutSaveKind(for: .failed(.asrFailed)) == .failure)
     #expect(KernelDictationDriver.endedWithoutSaveKind(for: .audioInterrupted) == .failure)
     #expect(KernelDictationDriver.endedWithoutSaveKind(for: .asrInterrupted) == .failure)
   }

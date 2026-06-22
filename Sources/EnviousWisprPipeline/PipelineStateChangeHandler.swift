@@ -34,6 +34,8 @@ public final class PipelineStateChangeHandler {
   private let appendCompletedTranscript: @MainActor (Transcript) -> Void
   private let reportDictationCompleted: @MainActor (Transcript) -> Void
   private let reportPipelineFailed: @MainActor (String) -> Void
+  /// #1167: schedule the transient "Couldn't save to history: <reason>" pill.
+  private let scheduleHistorySaveFailedWarning: @MainActor (String) -> Void
 
   public init(
     showOverlay: @escaping ShowOverlay,
@@ -41,7 +43,8 @@ public final class PipelineStateChangeHandler {
     schedulePolishFailedWarning: @escaping @MainActor () -> Void,
     appendCompletedTranscript: @escaping @MainActor (Transcript) -> Void,
     reportDictationCompleted: @escaping @MainActor (Transcript) -> Void,
-    reportPipelineFailed: @escaping @MainActor (String) -> Void
+    reportPipelineFailed: @escaping @MainActor (String) -> Void,
+    scheduleHistorySaveFailedWarning: @escaping @MainActor (String) -> Void
   ) {
     self.showOverlay = showOverlay
     self.cancelPendingWarning = cancelPendingWarning
@@ -49,6 +52,7 @@ public final class PipelineStateChangeHandler {
     self.appendCompletedTranscript = appendCompletedTranscript
     self.reportDictationCompleted = reportDictationCompleted
     self.reportPipelineFailed = reportPipelineFailed
+    self.scheduleHistorySaveFailedWarning = scheduleHistorySaveFailedWarning
   }
 
   /// Drive the full state-change behavior contract for one pipeline.
@@ -61,7 +65,9 @@ public final class PipelineStateChangeHandler {
     to newState: any PipelineStateProtocol,
     pipelineOverlayIntent: OverlayIntent,
     lastPolishError: String?,
-    currentTranscript: Transcript?
+    currentTranscript: Transcript?,
+    historySaved: Bool,
+    historySaveReason: String?
   ) {
     let plan = PipelineStateChangePlanner.plan(
       to: newState,
@@ -70,7 +76,9 @@ public final class PipelineStateChangeHandler {
         || currentTranscript?.metrics?.pasteTier == "clipboard_only_ax_denied",
       isAccessibilityToast: currentTranscript?.metrics?.pasteTier == "clipboard_only_ax_denied",
       lastPolishError: lastPolishError,
-      hasCurrentTranscript: currentTranscript != nil
+      hasCurrentTranscript: currentTranscript != nil,
+      historySaved: historySaved,
+      historySaveReason: historySaveReason
     )
     for effect in plan.effects {
       switch effect {
@@ -90,6 +98,8 @@ public final class PipelineStateChangeHandler {
         }
       case .reportPipelineFailed(let msg):
         reportPipelineFailed(msg)
+      case .scheduleHistorySaveFailedWarning(let reason):
+        scheduleHistorySaveFailedWarning(reason)
       }
     }
   }

@@ -11,7 +11,12 @@ final class KernelTelemetryState {
   var asrEmptyDiagnostics: ASREmptyResultDiagnostics?
   var asrCompletedTelemetry: KernelASRCompletedTelemetry?
   var captureFailureError: (any Error)?
-  var storageFailureError: (any Error)?
+  /// #1167: set by the best-effort `store` closure when the durable history save
+  /// throws. The lifecycle sink reads it to withhold the "transcript durably
+  /// saved" success marker on a degraded-save completion. The operational source
+  /// of truth for recovery-spool cleanup is `KernelFinalizationOutcome.historySaved`,
+  /// NOT this telemetry mirror.
+  var historySaveFailed = false
   var transcriptionFailureError: (any Error)?
   var modelLoadError: (any Error)?
 
@@ -22,7 +27,7 @@ final class KernelTelemetryState {
     asrEmptyDiagnostics = nil
     asrCompletedTelemetry = nil
     captureFailureError = nil
-    storageFailureError = nil
+    historySaveFailed = false
     transcriptionFailureError = nil
     modelLoadError = nil
   }

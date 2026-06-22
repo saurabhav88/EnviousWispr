@@ -64,7 +64,6 @@ import Testing
   func failureMessages() {
     #expect(KernelDictationDriver.failureMessage(.asrEmpty) == "Couldn't catch that -- try again")
     #expect(KernelDictationDriver.failureMessage(.noAudioCaptured) == "No audio captured")
-    #expect(KernelDictationDriver.failureMessage(.storageFailed) == "Failed to save transcript")
     #expect(
       KernelDictationDriver.failureMessage(.emptyAfterProcessing)
         == "No speech detected. Your clipboard is unchanged. Try again.")

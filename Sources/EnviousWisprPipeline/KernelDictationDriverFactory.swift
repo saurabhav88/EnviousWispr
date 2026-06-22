@@ -332,7 +332,15 @@ public enum KernelDictationDriverFactory {
       adapter: adapter,
       steps: limbSteps,
       textProcessingRunner: textProcessingRunner,
-      save: { transcript in try transcriptStore.save(transcript) },
+      save: { transcript in
+        // #1167 Live-UAT seam: force a storage failure so the best-effort save
+        // path is exercised end-to-end (paste still lands, pill shows). DEBUG
+        // only — never compiled into release.
+        #if DEBUG
+          if let fault = KernelDictationDriverFactory.injectedSaveFault() { throw fault }
+        #endif
+        try transcriptStore.save(transcript)
+      },
       deliverPaste: { request in await PasteCascadeExecutor().deliver(request) },
       pasteCompletionRegistry: pasteCompletionRegistry,
       // #950 — share the SAME telemetry state the kernel stamps so the metrics
@@ -440,4 +448,31 @@ public enum KernelDictationDriverFactory {
 
     return driver
   }
+
+  #if DEBUG
+    /// #1167 Live-UAT seam. When the app is launched with `EW_FAULT_INJECTION=1`
+    /// (the existing fault master switch) AND `EW_FAULT_SAVE` names a storage
+    /// error class, return the matching `NSError` so the production `save`
+    /// closure throws it — exercising the best-effort save path end-to-end
+    /// (delivery still runs, the history-save-failed pill shows, the spool is
+    /// retained). Returns `nil` (no fault) otherwise. DEBUG-only.
+    static func injectedSaveFault() -> Error? {
+      let env = ProcessInfo.processInfo.environment
+      guard env["EW_FAULT_INJECTION"] == "1", let kind = env["EW_FAULT_SAVE"] else {
+        return nil
+      }
+      // Mirror the POSIX errno shape the real `TranscriptStore.save` open-guard
+      // throws, so Live UAT exercises the actual classification path.
+      switch kind {
+      case "out_of_space":
+        return NSError(domain: NSPOSIXErrorDomain, code: Int(ENOSPC))
+      case "no_permission":
+        return NSError(domain: NSPOSIXErrorDomain, code: Int(EACCES))
+      case "read_only":
+        return NSError(domain: NSPOSIXErrorDomain, code: Int(EROFS))
+      default:
+        return nil
+      }
+    }
+  #endif
 }

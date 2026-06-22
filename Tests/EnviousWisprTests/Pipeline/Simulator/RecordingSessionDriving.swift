@@ -157,6 +157,11 @@ final class KernelRecordingSession: RecordingSessionDriving {
         return raw
       },
       store: { _ in
+        // #1167: a throwing save models the best-effort store seam. The kernel
+        // ABSORBS the throw (records it on the finalization outcome) and still
+        // proceeds to deliver + `.completed` — it no longer routes a terminal
+        // storage failure. The `KernelLimbError.storageFailed` test seam is
+        // retained to exercise that the kernel swallows a store throw.
         if limb.storageWriteFails { throw KernelLimbError.storageFailed }
       },
       deliver: { text in
@@ -323,7 +328,6 @@ final class KernelRecordingSession: RecordingSessionDriving {
     case .asrFailed: return .asrFailed
     case .asrWedged: return .asrWedged
     case .emptyAfterProcessing: return .emptyAfterProcessing
-    case .storageFailed: return .storageFailed
     case .captureStalled: return .captureStalled
     }
   }

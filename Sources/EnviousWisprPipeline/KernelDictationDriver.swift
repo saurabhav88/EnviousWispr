@@ -325,6 +325,24 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// The polish error from the last session, or `nil`.
   public var lastPolishError: String? { outcome.polishError }
 
+  /// #1167: whether the last session's durable history save succeeded. `false`
+  /// ⟺ the save threw but delivery still proceeded (best-effort save). The App
+  /// layer gates the recovery-spool cleanup, the in-memory history append, and
+  /// the history-save-failed pill on this.
+  public var lastHistorySaved: Bool { outcome.historySaved }
+
+  /// #1167: privacy-safe user reason for the history-save-failed pill, or `nil`
+  /// on a successful save. Rendered as "Couldn't save to history: <reason>".
+  public var lastHistorySaveReason: String? {
+    outcome.historySaveError.map { HistorySaveErrorClass(storageError: $0).userReason }
+  }
+
+  /// #1167: normalized error class for the `dictation.completed` telemetry
+  /// dimension, or `nil` on a successful save. No raw error strings / paths.
+  public var lastHistorySaveErrorClass: String? {
+    outcome.historySaveError.map { HistorySaveErrorClass(storageError: $0).rawValue }
+  }
+
   /// PR-7 (#827): the active engine adapter's normalized readiness, exposed
   /// read-only so the App layer can stamp the cold-start cohort
   /// (`engineReadinessAtPTT`) onto the `PTT-to-recording` log line at trigger
@@ -678,6 +696,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         outcome.polishDurationSeconds = 0
         outcome.pasteDurationSeconds = 0
         outcome.pasteResult = nil
+        // #1167: a fresh session starts assuming the save will succeed; the
+        // best-effort `store` closure flips these only on a real save throw.
+        outcome.historySaved = true
+        outcome.historySaveError = nil
         context.config = config
         context.targetApp = NSWorkspace.shared.frontmostApplication
         context.targetElement = PasteService.captureFocusedElement()
@@ -1147,8 +1169,6 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       return "Transcription stalled. Please try again."
     case .emptyAfterProcessing:
       return "No speech detected. Your clipboard is unchanged. Try again."
-    case .storageFailed:
-      return "Failed to save transcript"
     case .captureStalled:
       return "No audio detected — try again."
     }

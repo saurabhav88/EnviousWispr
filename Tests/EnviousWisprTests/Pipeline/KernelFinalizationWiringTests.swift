@@ -235,14 +235,37 @@ import Testing
     #expect(saved.transcript?.backendType == .parakeet)
     #expect(saved.transcript?.llmProvider == "openai")
     #expect(outcome.transcript?.text == "raw asr text", "the driver reads the transcript here")
+    // #1167: a clean save marks the outcome saved and clears any prior error.
+    #expect(outcome.historySaved)
+    #expect(outcome.historySaveError == nil)
   }
 
-  @Test("store rethrows a storage failure so the kernel routes failed(storageFailed)")
-  func storeRethrows() async {
-    let wiring = makeWiring(save: { _ in throw WiringTestError.storage })
-    await #expect(throws: WiringTestError.self) {
-      try await wiring.store("text")
-    }
+  @Test(
+    "store absorbs a storage failure: records it on the outcome + telemetry, does NOT throw (#1167)",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1167",
+      "a history-save throw must not abort delivery"
+    )
+  )
+  func storeAbsorbsStorageFailure() async throws {
+    let outcome = KernelFinalizationOutcome()
+    outcome.rawText = "the delivered words"
+    let telemetryState = KernelTelemetryState()
+    let wiring = makeWiring(
+      outcome: outcome,
+      save: { _ in throw WiringTestError.storage },
+      telemetryState: telemetryState)
+    // Best-effort: the save throw is absorbed — `store` does NOT propagate it,
+    // so the kernel proceeds to deliver instead of routing a terminal failure.
+    try await wiring.store("the delivered words")
+    #expect(outcome.historySaved == false)
+    #expect(outcome.historySaveError != nil)
+    // The transcript is set BEFORE the save attempt, so completion telemetry +
+    // paste metrics populate and delivery proceeds with the polished text.
+    #expect(outcome.transcript?.text == "the delivered words")
+    // Mirrored onto the telemetry side-channel so the lifecycle sink withholds
+    // the "transcript durably saved" success marker.
+    #expect(telemetryState.historySaveFailed)
   }
 
   // MARK: emoji-restore telemetry never leaks across dictations (#761)
@@ -326,6 +349,7 @@ import Testing
     deliverPaste: @escaping @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult = {
       _ in Self.deliveredResult
     },
+    telemetryState: KernelTelemetryState = KernelTelemetryState(),
     currentTime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
   ) -> KernelFinalizationWiring {
     KernelFinalizationWiring(
@@ -345,7 +369,8 @@ import Testing
       save: save,
       deliverPaste: deliverPaste,
       pasteCompletionRegistry: nil,
-      currentTime: currentTime)
+      currentTime: currentTime,
+      telemetryState: telemetryState)
   }
 }
 

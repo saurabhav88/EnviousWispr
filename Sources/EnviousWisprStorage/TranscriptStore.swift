@@ -49,7 +49,11 @@ public final class TranscriptStore {
     do {
       let fd = Foundation.open(tmpURL.path, O_CREAT | O_WRONLY | O_TRUNC, 0o600)
       guard fd >= 0 else {
-        throw CocoaError(.fileWriteUnknown)
+        // #1167: preserve the POSIX errno (read immediately after the failed
+        // syscall) so the best-effort save path can classify the failure
+        // (disk full / permission / read-only) for the user pill + telemetry,
+        // instead of collapsing every cause into a generic fileWriteUnknown.
+        throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
       }
       let fh = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
       try fh.write(contentsOf: data)
