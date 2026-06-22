@@ -20,8 +20,8 @@ import Foundation
 // and `handleXPCReplyFailed(_:)` methods via `WedgeRecoveryRouter`'s
 // `resolveActiveTelemetryTarget()` (PR-4b.4 wires the App router's Parakeet
 // branch). The capture-stall signal — which the kernel DOES consume for
-// control flow — reaches the observer through the kernel's
-// `captureStallTelemetry` fan-out seam (PR-4 §3.9).
+// control flow — reaches the observer the same way, through the driver's
+// `HeartPathTelemetryTarget` conformance (PR-4 §3.9).
 //
 // PR-4a ships this production-unwired: no App-layer caller constructs it. The
 // lifecycle-event sink is injected — PR-4b supplies the production sink
@@ -129,10 +129,9 @@ final class KernelHeartPathTelemetryObserver {
   // App-facing `KernelDictationDriver` conforms to that protocol and forwards
   // its three methods here. The observer is the single telemetry brain.
 
-  /// Capture-stall telemetry. Reached through the kernel's `captureStallTelemetry`
-  /// fan-out seam (PR-4 §3.9) and through the driver's `HeartPathTelemetryTarget`
-  /// conformance. `HeartPathTelemetryEmitter` dedups per session, so a
-  /// double-call is harmless.
+  /// Capture-stall telemetry. Reached through the driver's
+  /// `HeartPathTelemetryTarget` conformance (PR-4 §3.9).
+  /// `HeartPathTelemetryEmitter` dedups per session, so a double-call is harmless.
   func handleCaptureStall(_ ctx: CaptureStallContext) {
     emitter.stallFired(ctx: ctx, isActivelyCapturing: audioCapture.isActivelyCapturing)
   }

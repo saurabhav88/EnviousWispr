@@ -155,56 +155,6 @@ final class KernelLifecycleTelemetrySink {
     self.noAudioCapturedRich = noAudioCapturedRich
   }
 
-  convenience init(
-    backend: ASRBackendType,
-    audioCapture: any AudioCaptureInterface,
-    context: KernelSessionContext,
-    outcome: KernelFinalizationOutcome = KernelFinalizationOutcome(),
-    captureTelemetry: CaptureTelemetryState,
-    telemetryState: KernelTelemetryState = KernelTelemetryState(),
-    modelLoadWedgeTelemetry: @escaping @MainActor () -> KernelModelLoadWedgeTelemetry? = { nil },
-    breadcrumb: @escaping BreadcrumbSink = { stage, message, data in
-      SentryBreadcrumb.add(stage: stage, message: message, level: .info, data: data)
-    },
-    updateRecordingState: @escaping RecordingStateSink = { active, backend, isStreaming in
-      SentryBreadcrumb.updateRecordingState(
-        active: active, backend: backend, isStreaming: isStreaming)
-    },
-    updateAudioRoute: @escaping AudioRouteSink = { route in
-      SentryBreadcrumb.updateAudioRoute(route)
-    },
-    dictationInvoked: @escaping DictationInvokedSink = { trigger, mode, target in
-      TelemetryService.shared.dictationInvoked(
-        triggerSource: trigger, inputMode: mode, targetApp: target)
-    },
-    modelLoadWedged: @escaping @MainActor (_ backend: String) -> Void,
-    captureError: @escaping CaptureErrorSink = { error, category, stage, extra in
-      SentryBreadcrumb.captureError(error, category: category, stage: stage, extra: extra)
-    },
-    captureErrorWithSnapshot: @escaping SnapshotCaptureErrorSink = {
-      error, category, stage, extra, snapshot in
-      SentryBreadcrumb.captureError(
-        error, category: category, stage: stage, extra: extra, snapshot: snapshot)
-    }
-  ) {
-    self.init(
-      backend: backend,
-      audioCapture: audioCapture,
-      context: context,
-      outcome: outcome,
-      captureTelemetry: captureTelemetry,
-      telemetryState: telemetryState,
-      modelLoadWedgeTelemetry: modelLoadWedgeTelemetry,
-      breadcrumb: breadcrumb,
-      updateRecordingState: updateRecordingState,
-      updateAudioRoute: updateAudioRoute,
-      dictationInvoked: dictationInvoked,
-      modelLoadWedged: { backend, _ in modelLoadWedged(backend) },
-      captureError: captureError,
-      captureErrorWithSnapshot: captureErrorWithSnapshot
-    )
-  }
-
   /// Switch over the 12-case lifecycle vocabulary and emit each PR-1 §B.7.2
   /// kernel-owned event with byte-identical event identity
   /// (stage / message / category / event name). Payload fidelity per §3.7

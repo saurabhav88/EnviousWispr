@@ -124,9 +124,8 @@ public enum XPCErrorKind: String, Sendable {
 public struct XPCErrorContext: Sendable {
   public let kind: XPCErrorKind
   public let sessionID: UInt64?
-  public let timestampNs: UInt64
   /// #455: when the interrupt/invalidate fired while a capture session was
-  /// active, this is `timestampNs - capture-start-uptime-ns`. Nil for idle
+  /// active, this is the elapsed nanoseconds since capture start. Nil for idle
   /// interrupts. Surfaces in the Sentry breadcrumb as
   /// `audio.recording_duration_ms` so triage can distinguish "fired
   /// immediately after start" (likely device binding race) from "fired
@@ -137,12 +136,10 @@ public struct XPCErrorContext: Sendable {
   public init(
     kind: XPCErrorKind,
     sessionID: UInt64?,
-    timestampNs: UInt64,
     recordingDurationNs: UInt64? = nil
   ) {
     self.kind = kind
     self.sessionID = sessionID
-    self.timestampNs = timestampNs
     self.recordingDurationNs = recordingDurationNs
   }
 }
