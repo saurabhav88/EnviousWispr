@@ -75,14 +75,19 @@ struct BrandApostropheTests {
       ("l'oreal", "L'Oréal"),  // real ASR rendering (apostrophe kept, accent dropped) — live-UAT verified
       ("kahlua", "Kahlúa"),
       ("mccafe", "McCafé"),
+      ("McCafe", "McCafé"),  // #1044 live-UAT: Parakeet v3 emitted "McCafe" (CamelCase, accent dropped)
       ("citroen", "Citroën"),
       ("mondelez", "Mondelēz"),
+      ("mondela's", "Mondelēz"),  // #1044 live-UAT: Parakeet v3 emitted "Mondela's" for spoken Mondelēz
     ]
     for (input, expected) in cases {
       let out = corrected(input, terms)
-      #expect(out == expected, "'\(input)' should correct to '\(expected)', got '\(out)'")
-      // Defend against silent ASCII-folding on the paste path.
-      #expect(out == expected, "accent glyphs must survive verbatim in '\(out)'")
+      // Scalar-level compare: String == is canonical-equivalence-aware, so an
+      // accent-folded result could pass a String== assert. Compare unicode
+      // scalars to prove the accent glyph itself survived (swift-testing-unicode-scalar-compare).
+      #expect(
+        Array(out.unicodeScalars) == Array(expected.unicodeScalars),
+        "'\(input)' should correct to '\(expected)' (glyphs intact), got '\(out)'")
     }
   }
 
@@ -95,22 +100,51 @@ struct BrandApostropheTests {
     #expect(corrected("(loreal)", terms) == "(L'Oréal)")
   }
 
-  // MARK: Kellogg disambiguation
+  // MARK: Kellogg disambiguation (#1044 — deferred fork resolved)
 
-  /// Kellogg's is DEFERRED from #998. It is the only brand with an adjacent
-  /// sibling entry — the standalone company/surname `Kellogg` sits one character
-  /// from the cereal `Kellogg's`. Empirically, renaming `Kelloggs`→`Kellogg's`
-  /// and adding the plain `kelloggs` alias made the bare word `Kellogg` (the
-  /// company / Kellogg School / a person) fuzzy-coerce to `Kellogg's` (verified
-  /// against old vs new data: old `Kellogg`→`Kellogg`, post-change
-  /// `Kellogg`→`Kellogg's`). Data alone can't resolve that boundary, so the
-  /// entry is left untouched here. This test locks the safe (unchanged) state so
-  /// a future Kellogg's fix can't silently re-introduce the regression.
-  @Test("Kellogg's deferred: the company word stays Kellogg, no false coercion")
-  func kelloggDeferredSafeState() {
+  /// #1044 resolves the Kellogg fork deferred from #998 via exact-alias pinning,
+  /// not fuzzy. The cereal canonical is renamed `Kelloggs`→`Kellogg's` so its
+  /// mishears restore the apostrophe form. Because the apostrophe lengthens the
+  /// cereal canonical (`kellogg's`, 9) and pulls it FARTHER from apostrophe-less
+  /// mishears than the adjacent company `Kellogg` (7), the rename alone would let
+  /// the pack-canonical fuzzy pass misroute `kellogs`/`kelloggs` to the COMPANY
+  /// (cloud Codex review on PR #1182). The fix pins every contested form as an
+  /// EXACT alias (exact beats fuzzy in `WordCorrector`): the apostrophe-less
+  /// plural forms (`kelloggs`, `kellogs`) map to the cereal, and a `kellogg`
+  /// trap alias pins the bare company word. No matcher code change.
+  ///
+  /// Adversarial per `matcher-set-adversarial-tests`: the company word is
+  /// exercised bare AND in a sentence, and the apostrophe-less plural is exercised
+  /// against both readings (cereal vs company), since presence in the alias set
+  /// flips routing.
+  ///
+  /// Live-UAT (#1044, Parakeet v3): "I love Kellogg's cereal …" → ASR emits
+  /// "Kellogg's" natively (apostrophe kept), and "Kellogg announced earnings …"
+  /// → ASR emits bare "Kellogg". Both already correct out of ASR; the aliases
+  /// upgrade the mishear path without disturbing the native forms.
+  @Test(
+    "Kellogg: cereal mishears gain the apostrophe; the company word is not coerced",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1044",
+      "Kellogg's apostrophe + company-word disambiguation"))
+  func kelloggApostropheResolved() {
     let terms = brandsPackTerms()
+    // Company word — bare token and in a sentence — must NOT become the cereal.
     #expect(corrected("Kellogg", terms) == "Kellogg")
-    #expect(corrected("kellag", terms) == "Kellogg")  // company alias still resolves
+    #expect(corrected("the Kellogg brand", terms) == "the Kellogg brand")
+    #expect(
+      corrected("Kellogg announced earnings today", terms) == "Kellogg announced earnings today")
+    #expect(corrected("kellag", terms) == "Kellogg")  // company mishear still resolves
+    // Cereal mishears now restore the apostrophe'd canonical.
+    #expect(corrected("kalogs", terms) == "Kellogg's")
+    #expect(corrected("kelggs", terms) == "Kellogg's")
+    // Apostrophe-less plural mishears route to the cereal, NOT the company
+    // (PR #1182 cloud-review regression: the apostrophe rename shifted the fuzzy
+    // boundary toward `Kellogg`; exact aliases pin them to `Kellogg's`).
+    #expect(corrected("kelloggs", terms) == "Kellogg's")
+    #expect(corrected("kellogs", terms) == "Kellogg's")
+    // The native ASR cereal form passes through unchanged.
+    #expect(corrected("Kellogg's", terms) == "Kellogg's")
   }
 
   // MARK: User precedence — a user term beats the pack alias
@@ -153,6 +187,12 @@ struct BrandApostropheTests {
     // But a real mishear still corrects to the proper spelling.
     #expect(corrected("pecron", terms) == "Patrón")
     #expect(corrected("dawmines", terms) == "Domino's")
+    // #1044 live-UAT: Parakeet v3 renders spoken Citroën as "citron" — the citrus
+    // fruit, an everyday word. It sits below the 7-char pack-fuzzy gate (6 chars),
+    // so it is exact-only and must pass through; we do NOT add it as a Citroën
+    // alias (it would rewrite "a slice of citron"). The `citroen` alias still maps.
+    #expect(corrected("citron", terms) == "citron")
+    #expect(corrected("a slice of citron", terms) == "a slice of citron")
   }
 
   // MARK: Existing-alias regression — pre-existing misspellings still map
