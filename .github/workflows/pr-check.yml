@@ -34,7 +34,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          fetch-depth: 2
+          # #825: keep FULL history. "Detect code changes" diffs
+          # pull_request.base.sha, which can predate a shallow clone when main
+          # advances mid-PR -> "fatal: bad object" -> build-check red before any
+          # build runs. Do not re-shallow without explicitly fetching BASE_SHA.
+          fetch-depth: 0
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
@@ -48,20 +52,43 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          echo "==> Changed files:"
-          echo "$CHANGED"
-          # A change to the build/test workflows must validate itself (the Xcode
-          # build/cache/test logic), so force a full build for those.
-          if grep -qE '^\.github/workflows/(pr-check|main-post-merge)\.yml$' <<< "$CHANGED"; then
-            echo "needs_build=true" >> "$GITHUB_OUTPUT"
-            echo "==> CI build workflow changed — full Xcode build required"
-          elif grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)' <<< "$CHANGED"; then
-            echo "needs_build=true" >> "$GITHUB_OUTPUT"
-            echo "==> Swift source changes detected — full Xcode build required"
+          echo "==> Detecting changed files: base=$BASE_SHA head=$HEAD_SHA"
+          DIFF_RC=0
+          DIFF_ERR_FILE="${RUNNER_TEMP:-/tmp}/detect_diff_err.txt"
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" 2>"$DIFF_ERR_FILE") || DIFF_RC=$?
+          if [ "$DIFF_RC" -ne 0 ]; then
+            # Fail safe: "Detect code changes" is a build-skipping optimization,
+            # not a gate (#825). A diff that cannot resolve base/head must not
+            # red the required build-check before any build runs.
+            echo "::warning title=detect-code-changes::git diff failed (base=$BASE_SHA head=$HEAD_SHA) rc=$DIFF_RC."
+            echo "::warning::git stderr: $(cat "$DIFF_ERR_FILE" 2>/dev/null || true)"
+            echo "==> is_shallow=$(git rev-parse --is-shallow-repository 2>/dev/null || echo unknown)"
+            if git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then
+              # Checkout is valid (current head present); only the base could not
+              # be resolved. Fall back to a FULL build of correct code.
+              echo "==> head present — failing safe to a full build"
+              echo "needs_build=true" >> "$GITHUB_OUTPUT"
+            else
+              # Merge ref is STALE (current head absent): the working tree is the
+              # WRONG code. Fail loud instead of greening a check on a stale tree.
+              echo "::error title=stale-merge-ref::HEAD_SHA $HEAD_SHA is not in the checkout — refs/pull/<N>/merge is stale. Close and reopen the PR so GitHub recomputes it, then re-run."
+              exit 1
+            fi
           else
-            echo "needs_build=false" >> "$GITHUB_OUTPUT"
-            echo "==> No Swift/build-workflow changes — skipping build"
+            echo "==> Changed files:"
+            echo "$CHANGED"
+            # A change to the build/test workflows must validate itself (the Xcode
+            # build/cache/test logic), so force a full build for those.
+            if grep -qE '^\.github/workflows/(pr-check|main-post-merge)\.yml$' <<< "$CHANGED"; then
+              echo "needs_build=true" >> "$GITHUB_OUTPUT"
+              echo "==> CI build workflow changed — full Xcode build required"
+            elif grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)' <<< "$CHANGED"; then
+              echo "needs_build=true" >> "$GITHUB_OUTPUT"
+              echo "==> Swift source changes detected — full Xcode build required"
+            else
+              echo "needs_build=false" >> "$GITHUB_OUTPUT"
+              echo "==> No Swift/build-workflow changes — skipping build"
+            fi
           fi
 
       - name: Verify environment
@@ -196,7 +223,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          fetch-depth: 2
+          # #825: keep FULL history. "Detect code changes" diffs
+          # pull_request.base.sha, which can predate a shallow clone when main
+          # advances mid-PR -> "fatal: bad object" -> build-check red before any
+          # build runs. Do not re-shallow without explicitly fetching BASE_SHA.
+          fetch-depth: 0
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
@@ -210,18 +241,43 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          echo "==> Changed files:"
-          echo "$CHANGED"
-          if grep -qE '^\.github/workflows/(pr-check|main-post-merge)\.yml$' <<< "$CHANGED"; then
-            echo "needs_build=true" >> "$GITHUB_OUTPUT"
-            echo "==> CI build workflow changed — full Xcode build required"
-          elif grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)' <<< "$CHANGED"; then
-            echo "needs_build=true" >> "$GITHUB_OUTPUT"
-            echo "==> Swift source changes detected — full Xcode build required"
+          echo "==> Detecting changed files: base=$BASE_SHA head=$HEAD_SHA"
+          DIFF_RC=0
+          DIFF_ERR_FILE="${RUNNER_TEMP:-/tmp}/detect_diff_err.txt"
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" 2>"$DIFF_ERR_FILE") || DIFF_RC=$?
+          if [ "$DIFF_RC" -ne 0 ]; then
+            # Fail safe: "Detect code changes" is a build-skipping optimization,
+            # not a gate (#825). A diff that cannot resolve base/head must not
+            # red the required build-check before any build runs.
+            echo "::warning title=detect-code-changes::git diff failed (base=$BASE_SHA head=$HEAD_SHA) rc=$DIFF_RC."
+            echo "::warning::git stderr: $(cat "$DIFF_ERR_FILE" 2>/dev/null || true)"
+            echo "==> is_shallow=$(git rev-parse --is-shallow-repository 2>/dev/null || echo unknown)"
+            if git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then
+              # Checkout is valid (current head present); only the base could not
+              # be resolved. Fall back to a FULL build of correct code.
+              echo "==> head present — failing safe to a full build"
+              echo "needs_build=true" >> "$GITHUB_OUTPUT"
+            else
+              # Merge ref is STALE (current head absent): the working tree is the
+              # WRONG code. Fail loud instead of greening a check on a stale tree.
+              echo "::error title=stale-merge-ref::HEAD_SHA $HEAD_SHA is not in the checkout — refs/pull/<N>/merge is stale. Close and reopen the PR so GitHub recomputes it, then re-run."
+              exit 1
+            fi
           else
-            echo "needs_build=false" >> "$GITHUB_OUTPUT"
-            echo "==> No Swift/build-workflow changes — skipping build"
+            echo "==> Changed files:"
+            echo "$CHANGED"
+            # A change to the build/test workflows must validate itself (the Xcode
+            # build/cache/test logic), so force a full build for those.
+            if grep -qE '^\.github/workflows/(pr-check|main-post-merge)\.yml$' <<< "$CHANGED"; then
+              echo "needs_build=true" >> "$GITHUB_OUTPUT"
+              echo "==> CI build workflow changed — full Xcode build required"
+            elif grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)' <<< "$CHANGED"; then
+              echo "needs_build=true" >> "$GITHUB_OUTPUT"
+              echo "==> Swift source changes detected — full Xcode build required"
+            else
+              echo "needs_build=false" >> "$GITHUB_OUTPUT"
+              echo "==> No Swift/build-workflow changes — skipping build"
+            fi
           fi
 
       - name: Verify environment
