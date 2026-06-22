@@ -14,6 +14,12 @@ enum LLMRetryPolicy {
       case .rateLimited: return true
       case .requestFailed(let msg):
         return msg.contains("server error")
+      case .classified(let reason):
+        // Retryability now lives in the catalog. This preserves today's 5xx
+        // retry (now `.providerServerError`) and rate-limit retry, while
+        // fail-fast reasons (out-of-credits, key problems, the Gemini
+        // rate-or-quota ambiguity) surface their actionable notice immediately.
+        return reason.isRetryable
       default: return false
       }
     }

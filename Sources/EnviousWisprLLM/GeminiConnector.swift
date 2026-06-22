@@ -335,14 +335,37 @@ public struct GeminiConnector: TranscriptPolisher {
         )
       }
     #endif
+    throw LLMError.classified(Self.classify(statusCode: statusCode, bodyString: body))
+  }
+
+  /// Pure status+body -> reason classifier (#945). Gemini's 429
+  /// `RESOURCE_EXHAUSTED` does NOT cleanly split rate-limit vs quota, so it maps
+  /// to the honest `rateLimitedOrQuota` rather than guessing (which is how the
+  /// old code recreated the out-of-credits-told-to-wait bug). Content-safety on a
+  /// non-200 is best-effort; a 200-with-`promptFeedback.blockReason` still
+  /// degrades to `emptyResponse` in the success parse (deferred enhancement).
+  /// Unit-testable without network mocking.
+  static func classify(statusCode: Int, bodyString: String) -> PolishFailureReason {
     switch statusCode {
     case 400:
-      if body.contains("API_KEY_INVALID") { throw LLMError.invalidAPIKey }
-      throw LLMError.requestFailed("Gemini rejected the request. Check model name and parameters.")
-    case 403: throw LLMError.invalidAPIKey
-    case 429: throw LLMError.rateLimited
+      if bodyString.contains("API_KEY_INVALID") { return .apiKeyRejected }
+      if bodyString.contains("exceeds the maximum number of tokens") { return .inputTooLong }
+      if bodyString.contains("PROHIBITED_CONTENT") || bodyString.contains("blockReason") {
+        return .contentBlocked
+      }
+      return .badRequest
+    case 401:
+      return .apiKeyRejected
+    case 403:
+      return .accessDenied
+    case 404:
+      return .modelUnavailable
+    case 429:
+      return .rateLimitedOrQuota
+    case 500...599:
+      return .providerServerError
     default:
-      throw LLMError.requestFailed(Self.friendlyMessage(for: statusCode))
+      return (400...499).contains(statusCode) ? .badRequest : .unknown
     }
   }
 
@@ -357,16 +380,6 @@ public struct GeminiConnector: TranscriptPolisher {
       return "cancelled"
     }
     return "\(type(of: error))"
-  }
-
-  private static func friendlyMessage(for statusCode: Int) -> String {
-    switch statusCode {
-    case 400: return "Gemini rejected the request. Check model name and parameters."
-    case 403: return "Gemini access denied. Check your API key permissions."
-    case 404: return "Gemini model not found. Verify the model name in settings."
-    case 500...599: return "Gemini server error (HTTP \(statusCode)). Try again shortly."
-    default: return "Gemini request failed (HTTP \(statusCode))."
-    }
   }
 
   // MARK: - Retry
@@ -401,12 +414,15 @@ public struct GeminiConnector: TranscriptPolisher {
 
   private func getAPIKey(config: LLMProviderConfig) throws -> String {
     guard let keychainId = config.apiKeyKeychainId else {
-      throw LLMError.invalidAPIKey
+      throw LLMError.classified(.apiKeyMissing)
     }
     do {
       return try keychainManager.retrieve(key: keychainId)
     } catch {
-      throw LLMError.invalidAPIKey
+      // A keychain id is set but the key could not be read (corrupt/inaccessible
+      // entry). Functionally there is no usable key; re-entering it in Settings
+      // (the `apiKeyMissing` action) fixes both this and the no-key case.
+      throw LLMError.classified(.apiKeyMissing)
     }
   }
 }

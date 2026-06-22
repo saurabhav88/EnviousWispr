@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLLM
 import Foundation
 
 /// Every side effect the state-change closure produces, as a value.
@@ -81,9 +82,17 @@ enum PipelineStateChangePlanner {
         resolvedOverlayIntent = .accessibilityToast
       } else if isClipboardFallback {
         resolvedOverlayIntent = .clipboardFallback
-      } else if lastPolishError != nil {
+      } else if let polishError = lastPolishError {
         resolvedOverlayIntent = pipelineOverlayIntent
-        effects.append(.schedulePolishFailedWarning)
+        // #945: a "skipped" notice (no key yet, too long, timed out) is not a
+        // hard failure — the in-window banner shows the actionable
+        // "AI cleanup skipped: ..." message, but the transient
+        // "Polish failed -- using raw text" overlay would contradict it, so
+        // suppress it for skips. Real failures (and the unchanged Apple
+        // Intelligence / legacy strings) still schedule the warning.
+        if !PolishFailureReason.isSkipNotice(polishError) {
+          effects.append(.schedulePolishFailedWarning)
+        }
       } else {
         resolvedOverlayIntent = pipelineOverlayIntent
       }

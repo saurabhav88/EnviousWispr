@@ -172,6 +172,13 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
   /// kept distinct from `requestFailed` so it never surfaces as "AI polish
   /// failed" in the UI.
   case outputLanguageDrift(expected: String, actual: String)
+  /// A cloud/Ollama polish failure carrying its specific classified reason
+  /// (#945). The single adapter that threads the rich `PolishFailureReason`
+  /// catalog through the existing `throws LLMError` contract: connectors throw
+  /// this on the polish path, and the runner unwraps it for the on-screen notice
+  /// and the telemetry reason tag. The pre-existing specific cases stay for the
+  /// Settings model-discovery path and backward compatibility.
+  case classified(PolishFailureReason)
 
   public var errorDescription: String? {
     switch self {
@@ -191,6 +198,12 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
         "Apple Intelligence does not support the input language '\(code)' for on-device polishing."
     case .outputLanguageDrift(let expected, let actual):
       return "LLM polish output drifted from expected language '\(expected)' to '\(actual)'."
+    case .classified(let reason):
+      // The user-facing, provider-specific notice is composed by the runner via
+      // `reason.composedMessage(provider:)`. This generic description exists only
+      // for logs / incidental `localizedDescription` reads where no provider is
+      // known — it is never the on-screen notice.
+      return "AI polish failed (\(reason.telemetryTag))."
     }
   }
 
@@ -209,6 +222,8 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
       return a == b
     case (.outputLanguageDrift(let le, let la), .outputLanguageDrift(let re, let ra)):
       return le == re && la == ra
+    case (.classified(let a), .classified(let b)):
+      return a == b
     default:
       return false
     }

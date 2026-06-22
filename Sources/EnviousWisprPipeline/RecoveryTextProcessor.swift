@@ -63,7 +63,10 @@ public final class RecoveryTextProcessor {
       inverseTextNormalization: InverseTextNormalizationStep(),
       llmPolish: llmPolish,
       emojiRestore: EmojiRestoreStep())
-    self.runner = TextProcessingRunner()
+    // #945: crash-recovery polish failures stay silent in telemetry (this is a
+    // live-only metric). A recovered take that fails to polish still returns its
+    // `polishError` in the outcome, but no `polish_provider_failed` event fires.
+    self.runner = TextProcessingRunner(captureError: { _, _, _, _, _, _ in })
   }
 
   /// Apply the recording's record-time settings snapshot so recovery replays

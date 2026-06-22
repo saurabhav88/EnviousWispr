@@ -64,6 +64,43 @@ struct SentryFingerprintTests {
     #expect(fp.contains { $0.contains(secret) } == false)
   }
 
+  // MARK: - detail discriminator (#945)
+
+  @Test("optional detail appends a fourth fingerprint component")
+  func detailAppends() {
+    let err = NSError(domain: "EnviousWisprLLM.LLMError", code: 10)
+    let fp = SentryBreadcrumb.handledErrorFingerprint(
+      for: .polishProviderFailed, error: err, detail: "out_of_credits")
+    #expect(
+      fp == [
+        "handled_error", "polish_provider_failed", "EnviousWisprLLM.LLMError#10", "out_of_credits",
+      ]
+    )
+  }
+
+  /// The #945 property: `LLMError.classified` bridges every reason to ONE NSError
+  /// code, so without the detail these would merge into one issue. The detail
+  /// must split them.
+  @Test("same category + same domain#code but different detail splits the issue")
+  func detailSplitsSharedCode() {
+    let err = NSError(domain: "EnviousWisprLLM.LLMError", code: 10)
+    let credits = SentryBreadcrumb.handledErrorFingerprint(
+      for: .polishProviderFailed, error: err, detail: "out_of_credits")
+    let rate = SentryBreadcrumb.handledErrorFingerprint(
+      for: .polishProviderFailed, error: err, detail: "rate_limited")
+    #expect(credits != rate)
+  }
+
+  @Test("nil detail leaves the legacy three-component fingerprint unchanged")
+  func nilDetailIsBackwardCompatible() {
+    let err = NSError(domain: "EnviousWispr", code: -3)
+    let withNil = SentryBreadcrumb.handledErrorFingerprint(
+      for: .xpcServiceError, error: err, detail: nil)
+    let legacy = SentryBreadcrumb.handledErrorFingerprint(for: .xpcServiceError, error: err)
+    #expect(withNil == legacy)
+    #expect(withNil == ["handled_error", "xpc_service_error", "EnviousWispr#-3"])
+  }
+
   // MARK: - AI-failure fingerprint
 
   @Test("AI-failure fingerprint is namespace + sorted reason rawValues")

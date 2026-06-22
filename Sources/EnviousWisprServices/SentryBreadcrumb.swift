@@ -134,13 +134,20 @@ public enum SentryBreadcrumb {
   ///   - stage: Pipeline stage where the error occurred.
   ///   - extra: Additional key-value pairs for this specific event.
   ///   - snapshot: Optional point-in-time recording state (attached via scope clone).
+  ///   - fingerprintDetail: Optional low-cardinality discriminator appended to the
+  ///     grouping key. Use when a single error TYPE carries its real root cause in
+  ///     an associated value the bridged `NSError` domain/code cannot see (e.g.
+  ///     `LLMError.classified(reason)` — every reason shares one case index, so
+  ///     without this they would all merge into one issue). Pass the stable reason
+  ///     tag so each cause gets its own Sentry issue (#945).
   public static func captureError(
     _ error: any Error,
     category: ErrorCategory,
     stage: String,
     extra: [String: Any]? = nil,
     snapshot: RecordingSnapshot? = nil,
-    tags: [String: String] = [:]
+    tags: [String: String] = [:],
+    fingerprintDetail: String? = nil
   ) {
     let event = Event(level: .error)
     event.message = SentryMessage(
@@ -166,7 +173,8 @@ public enum SentryBreadcrumb {
     // Group by category + underlying error signature so distinct defects that
     // share a broad category get their own stable, release-independent issue
     // instead of merging under one stacktrace bin (#1144).
-    event.fingerprint = Self.handledErrorFingerprint(for: category, error: error)
+    event.fingerprint = Self.handledErrorFingerprint(
+      for: category, error: error, detail: fingerprintDetail)
 
     // Also add a breadcrumb so the error appears in the trail
     add(
@@ -201,12 +209,16 @@ public enum SentryBreadcrumb {
   /// underlying error signature (`domain#code`). The namespace avoids colliding
   /// with native-crash groups; the category is the defect class; the signature
   /// splits distinct root causes that share a broad category so they do not
-  /// silently merge into one issue (#1144). `nonisolated` + pure so the
-  /// non-`@MainActor` test suite calls it directly.
+  /// silently merge into one issue (#1144). The optional `detail` adds a further
+  /// split for error types whose root cause lives in an associated value the
+  /// bridged `domain#code` cannot distinguish (#945 — `LLMError.classified`).
+  /// `nonisolated` + pure so the non-`@MainActor` test suite calls it directly.
   nonisolated static func handledErrorFingerprint(
-    for category: ErrorCategory, error: any Error
+    for category: ErrorCategory, error: any Error, detail: String? = nil
   ) -> [String] {
-    ["handled_error", category.rawValue, structuredDescriptor(error)]
+    var fingerprint = ["handled_error", category.rawValue, structuredDescriptor(error)]
+    if let detail { fingerprint.append(detail) }
+    return fingerprint
   }
 
   /// Stable Sentry grouping key for the AI-availability failure event: namespace
@@ -282,6 +294,12 @@ public enum SentryBreadcrumb {
     case availabilityCheckFailed = "availability_check_failed"
     case providerInitFailed = "provider_init_failed"
     case generationFailed = "generation_failed"
+    /// #945: a cloud (OpenAI/Gemini) or local (Ollama) AI-cleanup attempt failed
+    /// for a reason the user saw on screen. Carries a `polish.error_case` reason
+    /// tag (the closed `PolishFailureReason` set) so a wave of expired keys or a
+    /// provider outage is visible in triage. Apple Intelligence is excluded (its
+    /// generation failures are captured via `generationFailed`).
+    case polishProviderFailed = "polish_provider_failed"
     case fallbackFailed = "fallback_failed"
     case pasteFailed = "paste_failed"
     case stateMismatch = "state_mismatch"

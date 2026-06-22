@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLLM
 import Foundation
 import Testing
 
@@ -116,6 +117,49 @@ struct PipelineStateChangePlannerTests {
     #expect(plan.effects.contains(.appendCompletedTranscript))
     #expect(plan.effects.contains(.reportDictationCompleted))
     #expect(!plan.effects.contains(.cancelPendingWarning))
+  }
+
+  @Test(
+    "complete + SKIPPED polish notice -> overlay shows but NO failure warning (#945)",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/945",
+      "the transient 'Polish failed' overlay must not contradict an 'AI cleanup skipped:' banner"
+    )
+  )
+  func completeSkippedPolishSuppressesWarning() {
+    // A real skip reason's composed notice ("AI cleanup skipped: no OpenAI API
+    // key set yet. ...") must NOT schedule the hard-failure overlay.
+    let skipNotice = PolishFailureReason.apiKeyMissing.composedMessage(provider: .openAI)
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: skipNotice,
+      hasCurrentTranscript: true
+    )
+    #expect(plan.effects.contains(.showOverlay(.hidden)))
+    #expect(!plan.effects.contains(.schedulePolishFailedWarning))
+    // Still a completed dictation: telemetry + history append are unaffected.
+    #expect(plan.effects.contains(.appendCompletedTranscript))
+    #expect(plan.effects.contains(.reportDictationCompleted))
+  }
+
+  @Test("complete + real (failed) polish notice -> failure warning still fires (#945)")
+  func completeFailedPolishStillSchedulesWarning() {
+    // A real hard-failure reason's composed notice ("AI polish failed: your
+    // OpenAI account is out of credits. ...") must still schedule the overlay —
+    // the skip detector must not over-match the "AI polish failed:" lead-in.
+    let failNotice = PolishFailureReason.outOfCredits.composedMessage(provider: .openAI)
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: failNotice,
+      hasCurrentTranscript: true
+    )
+    #expect(plan.effects.contains(.schedulePolishFailedWarning))
   }
 
   @Test("complete + success (no fallback, no polish error) -> no warning, telemetry fires")

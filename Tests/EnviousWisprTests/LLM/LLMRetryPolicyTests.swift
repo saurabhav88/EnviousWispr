@@ -50,6 +50,44 @@ struct LLMRetryPolicyTests {
     #expect(!LLMRetryPolicy.isRetryable(error))
   }
 
+  // MARK: - Classified-reason arm (#945)
+
+  @Test(
+    "classified server error stays retryable (5xx-retry preservation regression)")
+  func classifiedServerErrorRetryable() {
+    // Before #945, a 5xx rode on `requestFailed(\"...server error...\")` whose
+    // string-match made it retryable. The connectors now throw
+    // `.classified(.providerServerError)`; this must keep retrying transient
+    // outages or we silently stop retrying them.
+    #expect(LLMRetryPolicy.isRetryable(LLMError.classified(.providerServerError)))
+  }
+
+  @Test("classified rate-limited stays retryable")
+  func classifiedRateLimitedRetryable() {
+    #expect(LLMRetryPolicy.isRetryable(LLMError.classified(.rateLimited)))
+  }
+
+  @Test(
+    "classified fail-fast reasons are NOT retryable",
+    arguments: [
+      PolishFailureReason.apiKeyMissing,
+      PolishFailureReason.apiKeyRejected,
+      PolishFailureReason.accessDenied,
+      PolishFailureReason.outOfCredits,
+      PolishFailureReason.rateLimitedOrQuota,
+      PolishFailureReason.modelUnavailable,
+      PolishFailureReason.inputTooLong,
+      PolishFailureReason.contentBlocked,
+      PolishFailureReason.providerUnreachable,
+      PolishFailureReason.badRequest,
+      PolishFailureReason.emptyResponse,
+      PolishFailureReason.timedOut,
+      PolishFailureReason.unknown,
+    ])
+  func classifiedFailFastNotRetryable(reason: PolishFailureReason) {
+    #expect(!LLMRetryPolicy.isRetryable(LLMError.classified(reason)))
+  }
+
   // MARK: - URLError retryable cases
 
   @Test(

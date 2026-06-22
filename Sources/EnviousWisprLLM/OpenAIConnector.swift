@@ -134,14 +134,13 @@ public struct OpenAIConnector: TranscriptPolisher {
             statusForLog = "error_after_200:\(Self.shortError(error))"
             throw error
           }
-        case 401:
-          throw LLMError.invalidAPIKey
-        case 429:
-          throw LLMError.rateLimited
         default:
+          // #945: read the body INSIDE the error arm so the classifier can split
+          // the ambiguous pairs (out-of-credits vs rate-limited on 429; too-long
+          // vs generic 400). `data` is already in hand from the call above.
+          let bodyString = String(data: data, encoding: .utf8) ?? ""
           #if DEBUG
-            let body = String(data: data, encoding: .utf8) ?? ""
-            let truncated = String(body.prefix(200))
+            let truncated = String(bodyString.prefix(200))
             Task {
               await AppLogger.shared.log(
                 "OpenAI HTTP \(httpResponse.statusCode): \(truncated)",
@@ -156,7 +155,8 @@ public struct OpenAIConnector: TranscriptPolisher {
               )
             }
           #endif
-          throw LLMError.requestFailed(Self.friendlyMessage(for: httpResponse.statusCode))
+          throw LLMError.classified(
+            Self.classify(statusCode: httpResponse.statusCode, bodyString: bodyString))
         }
       } catch {
         if statusForLog == "pending" {
@@ -212,24 +212,44 @@ public struct OpenAIConnector: TranscriptPolisher {
     return "\(type(of: error))"
   }
 
-  private static func friendlyMessage(for statusCode: Int) -> String {
+  /// Pure status+body -> reason classifier (#945). Unit-testable without network
+  /// mocking: feed `(Int, String)` fixtures. `internal` so the same-module
+  /// connector throws it and `@testable` tests assert it.
+  static func classify(statusCode: Int, bodyString: String) -> PolishFailureReason {
     switch statusCode {
-    case 400: return "OpenAI rejected the request. Check model name and parameters."
-    case 403: return "OpenAI access denied. Check your API key permissions."
-    case 404: return "OpenAI model not found. Verify the model name in settings."
-    case 500...599: return "OpenAI server error (HTTP \(statusCode)). Try again shortly."
-    default: return "OpenAI request failed (HTTP \(statusCode))."
+    case 401:
+      return .apiKeyRejected
+    case 403:
+      return .accessDenied
+    case 404:
+      return .modelUnavailable
+    case 429:
+      // Split rate-limit vs out-of-credits by the body's `error.type`.
+      return bodyString.contains("insufficient_quota") ? .outOfCredits : .rateLimited
+    case 400:
+      if bodyString.contains("context_length_exceeded") { return .inputTooLong }
+      if bodyString.contains("content_filter") || bodyString.contains("content_policy") {
+        return .contentBlocked
+      }
+      return .badRequest
+    case 500...599:
+      return .providerServerError
+    default:
+      return (400...499).contains(statusCode) ? .badRequest : .unknown
     }
   }
 
   private func getAPIKey(config: LLMProviderConfig) throws -> String {
     guard let keychainId = config.apiKeyKeychainId else {
-      throw LLMError.invalidAPIKey
+      throw LLMError.classified(.apiKeyMissing)
     }
     do {
       return try keychainManager.retrieve(key: keychainId)
     } catch {
-      throw LLMError.invalidAPIKey
+      // A keychain id is set but the key could not be read (corrupt/inaccessible
+      // entry). Functionally there is no usable key; re-entering it in Settings
+      // (the `apiKeyMissing` action) fixes both this and the no-key case.
+      throw LLMError.classified(.apiKeyMissing)
     }
   }
 }

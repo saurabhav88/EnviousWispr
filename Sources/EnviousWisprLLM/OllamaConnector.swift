@@ -310,7 +310,7 @@ public struct OllamaConnector: TranscriptPolisher {
         } catch let urlError as URLError {
           switch urlError.code {
           case .notConnectedToInternet, .cannotFindHost:
-            throw LLMError.providerUnavailable  // not transient, fail fast
+            throw LLMError.classified(.providerUnreachable)  // not transient, fail fast
           default:
             throw urlError  // let LLMRetryPolicy.isRetryable() decide
           }
@@ -323,12 +323,12 @@ public struct OllamaConnector: TranscriptPolisher {
         switch httpResponse.statusCode {
         case 200:
           return (data, httpResponse)
-        case 404:
-          throw LLMError.modelNotFound(config.model)
         default:
+          // #945: read the body INSIDE the error arm for classification (404 ->
+          // model not pulled, 5xx -> server error). `data` is in hand from above.
+          let bodyString = String(data: data, encoding: .utf8) ?? ""
           #if DEBUG
-            let body = String(data: data, encoding: .utf8) ?? ""
-            let truncated = String(body.prefix(200))
+            let truncated = String(bodyString.prefix(200))
             Task {
               await AppLogger.shared.log(
                 "Ollama HTTP \(httpResponse.statusCode): \(truncated)",
@@ -343,7 +343,8 @@ public struct OllamaConnector: TranscriptPolisher {
               )
             }
           #endif
-          throw LLMError.requestFailed(Self.friendlyMessage(for: httpResponse.statusCode))
+          throw LLMError.classified(
+            Self.classify(statusCode: httpResponse.statusCode, bodyString: bodyString))
         }
       } catch {
         lastError = error
@@ -352,16 +353,23 @@ public struct OllamaConnector: TranscriptPolisher {
     }
     // Convert exhausted connection errors to domain error for UI
     if let urlError = lastError as? URLError, urlError.code == .cannotConnectToHost {
-      throw LLMError.providerUnavailable
+      throw LLMError.classified(.providerUnreachable)
     }
     throw lastError ?? LLMError.requestFailed("All retries exhausted")
   }
 
-  private static func friendlyMessage(for statusCode: Int) -> String {
+  /// Pure status+body -> reason classifier (#945). 404 means the model is not
+  /// pulled; 5xx is a local Ollama server error. `bodyString` is accepted for
+  /// signature parity with the cloud classifiers (and future body-based splits).
+  /// Unit-testable without network mocking.
+  static func classify(statusCode: Int, bodyString: String) -> PolishFailureReason {
     switch statusCode {
-    case 400: return "Ollama rejected the request. Check model name and parameters."
-    case 500...599: return "Ollama server error (HTTP \(statusCode)). Try restarting Ollama."
-    default: return "Ollama request failed (HTTP \(statusCode))."
+    case 404:
+      return .modelUnavailable
+    case 500...599:
+      return .providerServerError
+    default:
+      return (400...499).contains(statusCode) ? .badRequest : .unknown
     }
   }
 }
