@@ -8,8 +8,8 @@ import Foundation
 /// source, current settings, paste-intent inference, and active-pipeline idle
 /// state at recording-start dispatch. Stateless: no stored state, no lifecycle.
 ///
-/// Extracted from `the former root state(triggerSource:)` per
-/// epic #763 PR5. Decision-tree rule #17 in `.claude/knowledge/appstate-ownership.md`.
+/// Extracted from the former root state's recording-config construction per
+/// epic #763 PR5. Decision-tree rule #17 in `state-ownership.md`.
 enum DictationSessionConfigFactory {
   @MainActor
   static func make(

@@ -14,7 +14,7 @@ import Foundation
 /// (auto-switch hints, vocabulary suggestions, language-display preferences,
 /// future LID surfaces) do NOT belong here — they get their own home. The name
 /// `LanguageSuggestionPresenter` is broad on purpose so views inject one stable
-/// type, but the scope is narrow. See `appstate-ownership.md` decision-tree #6.
+/// type, but the scope is narrow. See `state-ownership.md` decision-tree #6.
 ///
 /// Heart-path: pure limb. All methods no-throw. Persistence is best-effort
 /// (corrupted UserDefaults: log breadcrumb, delete bad key, start empty).
