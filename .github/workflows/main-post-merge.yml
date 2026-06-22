@@ -33,21 +33,10 @@ jobs:
 
       - name: Detect code changes
         id: changes
-        run: |
-          set -euo pipefail
-          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "unknown")
-          echo "==> Changed files:"
-          echo "$CHANGED"
-          if grep -qE '^\.github/workflows/(pr-check|main-post-merge)\.yml$' <<< "$CHANGED"; then
-            echo "needs_build=true" >> "$GITHUB_OUTPUT"
-            echo "==> CI build workflow changed — running post-merge Xcode build"
-          elif grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)' <<< "$CHANGED"; then
-            echo "needs_build=true" >> "$GITHUB_OUTPUT"
-            echo "==> Code changes detected — running post-merge Xcode build"
-          else
-            echo "needs_build=false" >> "$GITHUB_OUTPUT"
-            echo "==> Non-code changes only — skipping build"
-          fi
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: scripts/ci/classify-changes.sh --push-diff "$BEFORE" "$AFTER"
 
       - name: Verify environment
         if: steps.changes.outputs.needs_build == 'true'
