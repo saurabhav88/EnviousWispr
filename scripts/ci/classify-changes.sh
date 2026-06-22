@@ -7,6 +7,9 @@
 # Usage:
 #   classify-changes.sh <BASE_SHA> <HEAD_SHA>   default: three-dot (merge-base)
 #                                               diff + #825 fail-safe, classify
+#   classify-changes.sh --push-diff <BEFORE> <AFTER>
+#                                               post-merge: two-dot before..after
+#                                               diff + fail-safe, classify
 #   classify-changes.sh --classify-only         classify a newline file list
 #                                               read from stdin (no git)
 #   classify-changes.sh --self-test             run the verdict matrix; exit
@@ -81,6 +84,43 @@ detect() {
   fi
 }
 
+# push_diff: post-merge mode. Acquire the push's changed files with a TWO-dot
+# before..after diff (the whole range the push introduced, not just the last
+# commit), then classify. Used by main-post-merge.yml. before..after is correct
+# for a push (HEAD~1 HEAD missed every commit but the last -> under-build on a
+# multi-commit push).
+push_diff() {
+  local before="${1:-}" after="${2:-}"
+  if [ -z "$before" ] || [ -z "$after" ]; then
+    echo "::error title=classify-changes::BEFORE or AFTER is empty (before='$before' after='$after') — refusing to classify an unknown push event."
+    exit 1
+  fi
+  echo "==> Detecting changed files (push before..after): before=$before after=$after"
+  # All-zeroes BEFORE = a new ref / first push / branch create with no prior
+  # tip to diff against -> fail safe to a full build.
+  if printf '%s' "$before" | grep -qE '^0+$'; then
+    echo "==> before is all-zeroes (new ref) — failing safe to a full build"
+    printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
+    return 0
+  fi
+  local rc=0 err_file changed
+  err_file="${RUNNER_TEMP:-/tmp}/classify_push_err.txt"
+  changed="$(git diff --name-only "$before" "$after" 2>"$err_file")" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    # BEFORE unreachable (e.g. a multi-commit push deeper than the shallow
+    # clone). Fail safe to a full build rather than under-classify. Keyed on the
+    # return code, not stderr text.
+    echo "::warning title=classify-changes::git diff failed (before=$before after=$after) rc=$rc — failing safe to a full build."
+    echo "::warning::git stderr: $(cat "$err_file" 2>/dev/null || true)"
+    echo "==> is_shallow=$(git rev-parse --is-shallow-repository 2>/dev/null || echo unknown)"
+    printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
+  else
+    echo "==> Changed files:"
+    echo "$changed"
+    classify <<<"$changed"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Self-test. Each case asserts $GITHUB_OUTPUT CONTENTS (not just exit code).
 # ---------------------------------------------------------------------------
@@ -127,6 +167,40 @@ _expect_exit1() {
   out="$(mktemp)"
   rc=0
   ( GITHUB_OUTPUT="$out"; detect "$base" "$head" >/dev/null 2>&1 ) || rc=$?
+  lines="$(grep -cE 'needs_build=' "$out" || true)"
+  rm -f "$out"
+  if [ "$rc" -ne 0 ] && [ "$lines" -eq 0 ]; then
+    echo "ok   [$label] exit=$rc, no needs_build written"
+  else
+    echo "FAIL [$label] expected exit!=0 and no needs_build; got rc=$rc needs_build_lines=$lines"
+    SELFTEST_FAILS=$((SELFTEST_FAILS + 1))
+  fi
+}
+
+# _expect_push <before> <after> <expected:true|false> <label>  (run in a repo)
+_expect_push() {
+  local before="$1" after="$2" expected="$3" label="$4"
+  local out got rc
+  out="$(mktemp)"
+  rc=0
+  ( GITHUB_OUTPUT="$out"; push_diff "$before" "$after" >/dev/null 2>&1 ) || rc=$?
+  got="$(grep -oE 'needs_build=(true|false)' "$out" | tail -n1 | cut -d= -f2 || true)"
+  rm -f "$out"
+  if [ "$got" = "$expected" ] && [ "$rc" -eq 0 ]; then
+    echo "ok   [$label] needs_build=$expected rc=0"
+  else
+    echo "FAIL [$label] expected needs_build=$expected rc=0; got needs_build='$got' rc=$rc"
+    SELFTEST_FAILS=$((SELFTEST_FAILS + 1))
+  fi
+}
+
+# _expect_push_exit1 <before> <after> <label>  — expects non-zero exit, no output
+_expect_push_exit1() {
+  local before="$1" after="$2" label="$3"
+  local out lines rc
+  out="$(mktemp)"
+  rc=0
+  ( GITHUB_OUTPUT="$out"; push_diff "$before" "$after" >/dev/null 2>&1 ) || rc=$?
   lines="$(grep -cE 'needs_build=' "$out" || true)"
   rm -f "$out"
   if [ "$rc" -ne 0 ] && [ "$lines" -eq 0 ]; then
@@ -190,6 +264,31 @@ self_test() {
   # empty SHA precondition -> exit 1.
   _expect_exit1 "" "$head2" "empty base -> exit 1"
   _expect_exit1 "$maintip" "" "empty head -> exit 1"
+
+  echo "== push-diff before..after (post-merge) =="
+  git switch -q main
+  local pushbase pushhead sbase
+  pushbase="$(git rev-parse HEAD)"
+  echo morecode >more.swift
+  git add -A
+  git commit -qm "push c1 swift"
+  echo notes >>docs/note.md
+  git add -A
+  git commit -qm "push c2 docs"
+  pushhead="$(git rev-parse HEAD)"
+  # Multi-commit push: an EARLIER commit is swift, the LAST is docs. before..after
+  # surfaces BOTH -> true. HEAD~1 HEAD would have seen only the last (docs) -> a
+  # wrong false. This is the under-build the push-diff mode fixes.
+  _expect_push "$pushbase" "$pushhead" true "multi-commit push (swift then docs) -> true"
+  sbase="$(git rev-parse HEAD)"
+  echo more >>docs/note.md
+  git add -A
+  git commit -qm "push docs only"
+  _expect_push "$sbase" "$(git rev-parse HEAD)" false "single content-only push -> false"
+  _expect_push "0000000000000000000000000000000000000000" "$pushhead" true "all-zeroes before -> full build"
+  _expect_push "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" "$pushhead" true "unreachable before -> fail-safe full build"
+  _expect_push_exit1 "" "$pushhead" "empty before -> exit 1"
+
   cd "$orig"
   rm -rf "$sb"
 
@@ -204,6 +303,7 @@ self_test() {
 main() {
   case "${1:-}" in
     --classify-only) classify ;;
+    --push-diff) push_diff "${2:-}" "${3:-}" ;;
     --self-test) self_test ;;
     *) detect "${1:-}" "${2:-}" ;;
   esac
