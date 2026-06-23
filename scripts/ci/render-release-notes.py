@@ -39,19 +39,20 @@ CATEGORY_RAW = {
 }
 CATEGORY_ORDER = list(CATEGORY_RAW.values())
 
-ENTRY_RE = re.compile(r"Entry\(\s*(.*?)\)\s*,?\s*(?=Entry\(|\]\s*\n)", re.DOTALL)
-
-
 def parse_entries(swift_path):
     with open(swift_path, encoding="utf-8") as fh:
         text = fh.read()
+    # Split on `Entry(` boundaries: each chunk after the first holds exactly one
+    # entry's fields at its start. This is robust to the `// MARK:` comments
+    # between version sections (a previous lookahead-based regex over-extended
+    # across those comments and silently swallowed the first entry of each older
+    # version section).
     entries = []
-    for m in ENTRY_RE.finditer(text):
-        body = m.group(1)
-        t = re.search(r'title:\s*\n?\s*"((?:[^"\\]|\\.)*)"', body, re.DOTALL)
-        d = re.search(r'description:\s*\n?\s*"((?:[^"\\]|\\.)*)"', body, re.DOTALL)
-        c = re.search(r"category:\s*\.(\w+)", body)
-        v = re.search(r'version:\s*"([\d.]+)"', body)
+    for chunk in text.split("Entry(")[1:]:
+        t = re.search(r'title:\s*\n?\s*"((?:[^"\\]|\\.)*)"', chunk, re.DOTALL)
+        d = re.search(r'description:\s*\n?\s*"((?:[^"\\]|\\.)*)"', chunk, re.DOTALL)
+        c = re.search(r"category:\s*\.(\w+)", chunk)
+        v = re.search(r'version:\s*"([\d.]+)"', chunk)
         if not (t and d and c and v):
             continue
         title = t.group(1).replace('\\"', '"')
@@ -132,6 +133,19 @@ def main():
         return 0
 
     if args.self_test:
+        # Integrity check: every entry has exactly one `version:` field, so the
+        # number of parsed entries must equal the number of version fields in the
+        # source. A mismatch means the parser dropped entries (e.g. the MARK-comment
+        # swallowing bug), even if individual versions still render.
+        with open(args.swift_file, encoding="utf-8") as fh:
+            field_count = len(re.findall(r'version:\s*"[\d.]+"', fh.read()))
+        if len(entries) != field_count:
+            print(
+                f"error: parsed {len(entries)} entries but the source has {field_count} "
+                "version fields; the parser dropped entries (drift)",
+                file=sys.stderr,
+            )
+            return 2
         cv = current_content_version()
         if not cv:
             print("error: could not read currentContentVersion", file=sys.stderr)
@@ -144,7 +158,10 @@ def main():
                 file=sys.stderr,
             )
             return 2
-        print(f"self-test OK: {cv} renders {body.count('- **')} item(s)")
+        print(
+            f"self-test OK: {len(entries)} entries parsed (matches source); "
+            f"{cv} renders {body.count('- **')} item(s)"
+        )
         return 0
 
     if not args.version:
