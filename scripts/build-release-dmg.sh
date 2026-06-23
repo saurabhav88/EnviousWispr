@@ -374,12 +374,15 @@ cat > "$SOURCE_TXT" <<SOURCE_EOF
 EnviousWispr Corresponding Source
 
 This DMG contains object code for EnviousWispr version ${VERSION},
-built from git tag v${VERSION}, commit ${COMMIT}.
+released as tag v${VERSION}, built from commit ${COMMIT}.
 
-The Corresponding Source for this binary is available at no charge:
-  Release page:  https://github.com/saurabhav88/EnviousWispr/releases/tag/v${VERSION}
-  Source (tar):  https://github.com/saurabhav88/EnviousWispr/archive/refs/tags/v${VERSION}.tar.gz
+The Corresponding Source for this binary is exactly commit ${COMMIT}, available
+at no charge. These commit-pinned URLs resolve for any pushed commit regardless
+of tag timing:
+  Source (tar):  https://github.com/saurabhav88/EnviousWispr/archive/${COMMIT}.tar.gz
+  Browse:        https://github.com/saurabhav88/EnviousWispr/tree/${COMMIT}
   Git:           git clone https://github.com/saurabhav88/EnviousWispr.git && git checkout ${COMMIT}
+  Release page:  https://github.com/saurabhav88/EnviousWispr/releases/tag/v${VERSION}
 
 EnviousWispr is licensed under the GNU GPL version 3 (see LICENSE in this DMG).
 Build instructions: README.md and scripts/build-release-dmg.sh in the source.
