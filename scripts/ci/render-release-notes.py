@@ -79,8 +79,16 @@ def render(entries, version):
     es = [e for e in entries if e["version"] == version]
     if not es:
         return None
+    # Known categories first in canonical display order, then any category present
+    # in the entries but not in CATEGORY_ORDER (e.g. a new WhatsNewContent.Category
+    # case added in Swift) appended in first-appearance order, so an entry is never
+    # silently dropped from release notes.
+    ordered = list(CATEGORY_ORDER)
+    for e in es:
+        if e["category"] not in ordered:
+            ordered.append(e["category"])
     out = []
-    for cat in CATEGORY_ORDER:
+    for cat in ordered:
         ces = [e for e in es if e["category"] == cat]
         if not ces:
             continue
