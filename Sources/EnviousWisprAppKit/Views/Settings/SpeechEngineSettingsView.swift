@@ -7,8 +7,26 @@ struct SpeechEngineSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(SetupCoordinator.self) private var setup
   @Environment(LanguageSuggestionPresenter.self) private var languageSuggestionPresenter
+  /// #1171 — optional so the view never crashes if rendered outside the main
+  /// window's environment. Drives the subtle "applies after the current
+  /// dictation" hint (silent in the main UX).
+  @Environment(EngineCoordinator.self) private var engineCoordinator: EngineCoordinator?
 
   @State private var showLanguageLockSheet: Bool = false
+
+  /// #1171 — shown ONLY when the user's selected engine differs from the active
+  /// one because a switch is deferred while a dictation/recovery is in flight.
+  /// Not-installed is covered by the download UI below; transient mid-load shows
+  /// nothing.
+  private var engineSwitchDeferredNotice: String? {
+    guard let status = engineCoordinator?.status, status.isDiverged,
+      let reason = status.blockedReason
+    else { return nil }
+    switch reason {
+    case .pipelineActive, .recovery: return "Applies after the current dictation finishes."
+    case .notInstalled, .loading: return nil
+    }
+  }
 
   var body: some View {
     @Bindable var settings = settings
@@ -25,7 +43,7 @@ struct SpeechEngineSettingsView: View {
             selection: $settings.selectedBackend
           )
         }
-        BrandedRow(showDivider: false) {
+        BrandedRow(showDivider: engineSwitchDeferredNotice != nil) {
           Text(
             settings.selectedBackend == .parakeet
               ? "Powered by Parakeet — fast English transcription with built-in punctuation."
@@ -33,6 +51,13 @@ struct SpeechEngineSettingsView: View {
           )
           .font(.stHelper)
           .foregroundStyle(.stTextTertiary)
+        }
+        if let notice = engineSwitchDeferredNotice {
+          BrandedRow(showDivider: false) {
+            Text(notice)
+              .font(.stHelper)
+              .foregroundStyle(.stWarning)
+          }
         }
       }
 

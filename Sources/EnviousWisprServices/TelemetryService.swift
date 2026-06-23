@@ -671,6 +671,114 @@ public final class TelemetryService {
       ])
   }
 
+  /// Telemetry Bible Phase 2 (#1171): a settings change could not be applied
+  /// immediately (a recording was in flight, or crash-recovery was replaying),
+  /// so it was deferred to the next idle/recording-start. Bypass, not a failure.
+  public func settingsChangeBlocked(
+    setting: String, requested: String, activeBackend: String,
+    reason: String, parakeetState: String, whisperKitState: String
+  ) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "settings.change_blocked",
+          stringProps: [
+            "setting": setting,
+            "requested": requested,
+            "active_backend": activeBackend,
+            "reason": reason,
+            "parakeet_state": parakeetState,
+            "whisperkit_state": whisperKitState,
+          ]))
+    #endif
+    PostHogSDK.shared.capture(
+      "settings.change_blocked",
+      properties: [
+        "setting": setting,
+        "requested": requested,
+        "active_backend": activeBackend,
+        "reason": reason,
+        "parakeet_state": parakeetState,
+        "whisperkit_state": whisperKitState,
+      ])
+  }
+
+  /// Telemetry Bible Phase 2 (#1171): a settings change actually took effect.
+  /// `deferred` = false when applied immediately while idle, true when applied
+  /// via the next-idle/recording-start/recovery-completion reconciliation.
+  /// Emitted only after the swap verifies (active == requested). `deferMs` is the
+  /// time the change waited while deferred (0 when applied immediately); `switchMs`
+  /// is the mechanical switch duration. Both metadata only.
+  public func settingsChangeApplied(
+    setting: String, from: String, to: String, deferred: Bool,
+    deferMs: Int = 0, switchMs: Int = 0
+  ) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "settings.change_applied",
+          stringProps: ["setting": setting, "from": from, "to": to],
+          intProps: ["defer_ms": deferMs, "switch_ms": switchMs],
+          boolProps: ["deferred": deferred]))
+    #endif
+    PostHogSDK.shared.capture(
+      "settings.change_applied",
+      properties: [
+        "setting": setting,
+        "from": from,
+        "to": to,
+        "deferred": deferred,
+        "defer_ms": deferMs,
+        "switch_ms": switchMs,
+      ])
+  }
+
+  /// Telemetry Bible Phase 2 (#1171): a backend switch was superseded mid-flight
+  /// by a newer selection (the user flipped again during the `await`). Surfaces
+  /// engine-toggle churn. Metadata only (engine identities).
+  public func engineSwitchSuperseded(from: String, to: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "engine.switch_superseded",
+          stringProps: ["from": from, "to": to]))
+    #endif
+    PostHogSDK.shared.capture(
+      "engine.switch_superseded",
+      properties: ["from": from, "to": to])
+  }
+
+  /// Telemetry Bible Phase 2 (#1171): the warm/load of a just-switched engine
+  /// failed. The switch itself is nonthrowing, so this is the only place a load
+  /// failure for a switch surfaces. Metadata only (engine identity + reason).
+  public func engineSwitchFailed(engine: String, reason: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "engine.switch_failed",
+          stringProps: ["engine": engine, "reason": reason]))
+    #endif
+    PostHogSDK.shared.capture(
+      "engine.switch_failed",
+      properties: ["engine": engine, "reason": reason])
+  }
+
+  /// Telemetry Bible Phase 2 (#1171): a coordinator-owned background warm of an
+  /// engine completed. `outcome` is "ready" or "failed"; `durationMs` is the warm
+  /// duration. Per-engine so warm cost can be tracked by backend. Metadata only.
+  public func engineWarm(engine: String, durationMs: Int, outcome: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "engine.warm",
+          stringProps: ["engine": engine, "outcome": outcome],
+          intProps: ["duration_ms": durationMs]))
+    #endif
+    PostHogSDK.shared.capture(
+      "engine.warm",
+      properties: ["engine": engine, "duration_ms": durationMs, "outcome": outcome])
+  }
+
   // MARK: - AI Diagnostics
 
   /// One summary event per diagnostics check run.

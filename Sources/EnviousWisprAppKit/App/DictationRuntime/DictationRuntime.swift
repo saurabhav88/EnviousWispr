@@ -62,7 +62,17 @@ final class DictationRuntime {
     resolveActiveCaptureBackend: @escaping @MainActor () -> DictationLifecycleCoordinator
       .LastCapturingBackend?,
     resolveActiveTelemetryTarget: @escaping @MainActor () -> (any HeartPathTelemetryTarget)?,
-    isCurrentSession: @escaping @MainActor (UInt64) -> Bool
+    isCurrentSession: @escaping @MainActor (UInt64) -> Bool,
+    // #1171 — start-of-recording engine reconciliation; bound to
+    // `EngineCoordinator.ensureSelectedReadyForPress` + `.isSwitching`. Default
+    // `.notReady` for legacy/tests.
+    ensureSelectedReadyForPress: @escaping @MainActor () async -> EngineCoordinator.PressReadiness =
+      {
+        .notReady
+      },
+    isEngineSwitching: @escaping @MainActor () -> Bool = { false },
+    beginMinting: @escaping @MainActor () -> Void = {},
+    endMinting: @escaping @MainActor () -> Void = {}
   ) {
     self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
     self.audioEventRouter = AudioEventRouter(
@@ -137,7 +147,14 @@ final class DictationRuntime {
       },
       // #1063 PR2: the recording gate — a press while recovery holds the shared
       // engine mints no session (shows the "recovering" pill).
-      isRecovering: { recoveryCoordinator.isRecovering }
+      isRecovering: { recoveryCoordinator.isRecovering },
+      // #1171: drive the selected engine to ready before recording, gate a press
+      // during an in-flight switch, and hold the start-window state-gate so the
+      // coordinator can't switch the engine out mid-startup.
+      ensureSelectedReadyForPress: ensureSelectedReadyForPress,
+      isEngineSwitching: isEngineSwitching,
+      beginMinting: beginMinting,
+      endMinting: endMinting
     )
     self.starter = starter
     // #1063 PR1: on a durable transcript save, delete that session's spool + key.

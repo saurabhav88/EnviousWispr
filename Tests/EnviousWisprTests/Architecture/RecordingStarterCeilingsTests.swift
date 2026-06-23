@@ -95,10 +95,25 @@ import Testing
     // kernel dispatch bails (no session) if launch recovery began mid-start. Still
     // no new collaborator (count stays ≤ 7); only the paper-line ceiling moves
     // (deterministic rule: actual 430 + 10 → round up to 440).
+    // #1171 (Telemetry Bible Phase 2): raised 440 → 480 for the start-of-recording
+    // engine safety check in BOTH `start()` and `toggle()` (a press while the active
+    // engine isn't the selected one routes to the reactive pill, no session) plus
+    // the `ensureSelectedBackend` injected closure. The pill+swap body itself lives
+    // in `ColdPressGuard.reconcileSelectedBackend` (factored out, like `handle`), so
+    // only the call sites + closure land here. No new collaborator (count stays ≤ 7);
+    // deterministic rule: actual 464 + 10 → round up to 480.
+    // #1171 EngineCoordinator refactor (2026-06-23): raised 480 → 515 for the
+    // engine-changed re-check added to BOTH `start()` and `toggle()` after the
+    // preWarm/recovery-arm awaits — the coordinator can switch the active backend
+    // out from under the captured `active` driver across those awaits (the kernel
+    // is idle post-preWarm), so we re-check `activeBackendType` before minting and
+    // bail on a raced engine (mirrors the existing recovery re-check). Two bare
+    // `let entryBackend` captures + two guard blocks; no new collaborator (count
+    // stays ≤ 7). Deterministic rule: actual 503 + 10 → round up to nearest 5 = 515.
     #expect(
-      count <= 440,
+      count <= 515,
       """
-      RecordingStarter line count exceeded: \(count) > 440. \
+      RecordingStarter line count exceeded: \(count) > 515. \
       Raise via Bible §30 only.
       """)
   }
