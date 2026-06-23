@@ -356,7 +356,11 @@ COMMIT="$(git -C "$PROJ_ROOT" rev-parse HEAD)"
 # commit, else SOURCE.txt would point at the wrong corresponding source. On a
 # tag-triggered release HEAD == tag commit by construction; this guards the
 # workflow_dispatch path where the checkout ref can differ from the tag input
-# (cloud review #1).
+# (cloud review #1). Fetch the tag first so a shallow clone that didn't pull it
+# can't silently bypass the guard (cloud review r2 #1); a non-existent tag (e.g.
+# a pre-tag rehearsal) fetches nothing and the guard correctly skips — the build
+# commit is still the true corresponding source.
+git -C "$PROJ_ROOT" fetch --quiet origin "refs/tags/v${VERSION}:refs/tags/v${VERSION}" >/dev/null 2>&1 || true
 if git -C "$PROJ_ROOT" rev-parse -q --verify "refs/tags/v${VERSION}^{commit}" >/dev/null 2>&1; then
     TAG_COMMIT="$(git -C "$PROJ_ROOT" rev-parse "refs/tags/v${VERSION}^{commit}")"
     if [[ "$TAG_COMMIT" != "$COMMIT" ]]; then

@@ -102,8 +102,11 @@ if [[ "$MODE" == "check" ]]; then
   test -f "$NOTICES" || { echo "error: $NOTICES missing — run the generator." >&2; exit 1; }
   stale=0
   for entry in "${COMPONENTS[@]}"; do
-    IFS='|' read -r name _ license _ url _ <<< "$entry"
-    for needle in "$name" "$license" "$url"; do
+    IFS='|' read -r name cversion license _ url _ <<< "$entry"
+    # Include the version: a dep bumped in this list (version-sync passes) but
+    # NOT regenerated into the notices is caught here, because the committed
+    # notices still carry the OLD version string (cloud review r2 #6).
+    for needle in "$name" "$cversion" "$license" "$url"; do
       if ! grep -qF "$needle" "$NOTICES"; then
         echo "error: THIRD-PARTY-NOTICES.txt is missing '$needle' (component '$name') — regenerate it (scripts/ci/gen-third-party-notices.sh > THIRD-PARTY-NOTICES.txt)." >&2
         stale=1
