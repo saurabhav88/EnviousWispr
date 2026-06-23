@@ -63,6 +63,13 @@ jobs:
             .github/workflows/*.yml
           echo "All workflows pass YAML validation."
 
+      - name: Check release-notes renderer parses What's New
+        run: |
+          echo "==> Verifying the release-notes renderer can read WhatsNewContent.swift ..."
+          # Catches drift between the Swift What's New format and the parser the
+          # release workflow relies on, before it silently falls back to auto-notes.
+          python3 scripts/ci/render-release-notes.py --self-test
+
       - name: Drift check summary
         if: always()
         run: |
@@ -70,3 +77,4 @@ jobs:
           echo "- Action SHA pinning: checked"
           echo "- Script existence: checked"
           echo "- YAML validity: checked"
+          echo "- Release-notes renderer: checked"
