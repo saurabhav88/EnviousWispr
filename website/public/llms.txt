@@ -3,7 +3,7 @@
 > The fastest voice-to-text on macOS. Hold a hotkey, speak, release. Polished text lands on your clipboard or pastes directly. Runs entirely on-device with Parakeet (English) or WhisperKit (multilingual). No cloud, no account, no subscription. Free download.
 
 Maker: Envious Labs LLC (Connecticut, USA). Founder: Saurabh Vaish.
-License: Business Source License 1.1 (source-available on GitHub).
+License: GNU General Public License v3 (GPLv3, open source on GitHub).
 Platform: macOS 14 (Sonoma) or later, Apple Silicon only.
 Last-updated: 2026-06-06
 
@@ -75,4 +75,4 @@ Last-updated: 2026-06-06
 
 ## Source
 
-- [GitHub repository](https://github.com/saurabhav88/EnviousWispr): Source-available under BSL 1.1.
+- [GitHub repository](https://github.com/saurabhav88/EnviousWispr): Open source under GPLv3.

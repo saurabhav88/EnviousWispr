@@ -41,7 +41,7 @@ const faqJsonLd = JSON.stringify({
     { "@type": "Question", "name": "Can I switch from Willow Voice easily?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Download EnviousWispr, set your hotkey, and start dictating. There is no data to migrate. Both apps work in any text field on macOS." } },
     { "@type": "Question", "name": "What Mac do I need?", "acceptedAnswer": { "@type": "Answer", "text": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast." } },
     { "@type": "Question", "name": "Does EnviousWispr use the cloud at all?", "acceptedAnswer": { "@type": "Answer", "text": "Transcription is always on-device. If you choose to enable AI polish with a cloud provider, only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation." } },
-    { "@type": "Question", "name": "Is EnviousWispr open source?", "acceptedAnswer": { "@type": "Answer", "text": "Source-available under the Business Source License 1.1. You can read, build, and inspect every line of code on GitHub. Contributions are welcome." } },
+    { "@type": "Question", "name": "Is EnviousWispr open source?", "acceptedAnswer": { "@type": "Answer", "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line of code on GitHub. Contributions are welcome." } },
     { "@type": "Question", "name": "How does EnviousWispr handle filler words like um and uh?", "acceptedAnswer": { "@type": "Answer", "text": "EnviousWispr automatically strips filler words from transcripts before they reach your text field. This happens at the post-processing stage, before AI polish, so even without an LLM enabled your text comes out clean." } },
     { "@type": "Question", "name": "What happens to my clipboard when EnviousWispr pastes text?", "acceptedAnswer": { "@type": "Answer", "text": "EnviousWispr saves your clipboard contents before pasting transcribed text, then restores them afterward. Whatever you had copied before dictating is still there when you press Cmd+V next." } },
   ]
@@ -431,7 +431,7 @@ const breadcrumbJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Source code</td>
-            <td><span class="table-highlight"><a href="https://github.com/saurabhav88/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Source-available</a></span> on GitHub (BSL 1.1)</td>
+            <td><span class="table-highlight"><a href="https://github.com/saurabhav88/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Open source</a></span> on GitHub (GPLv3)</td>
             <td>Closed source</td>
           </tr>
           <tr>
@@ -489,7 +489,7 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">📖</div>
         <div class="advantage-title">Auditable code</div>
-        <p class="advantage-desc">Every line is <a href="https://github.com/saurabhav88/EnviousWispr" style="color: var(--accent); text-decoration: underline;">on GitHub</a> under BSL 1.1. Verify what it does. Report issues directly. Contribute improvements. Closed-source dictation tools ask you to trust their privacy claims on faith.</p>
+        <p class="advantage-desc">Every line is <a href="https://github.com/saurabhav88/EnviousWispr" style="color: var(--accent); text-decoration: underline;">on GitHub</a> under GPLv3. Verify what it does. Report issues directly. Contribute improvements. Closed-source dictation tools ask you to trust their privacy claims on faith.</p>
       </div>
     </div>
   </div>
@@ -664,7 +664,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr really free with no limits?</div>
-        <p class="faq-a">Yes. No subscription, no usage caps, no word-per-week limits. Willow Voice's free tier caps you at 2,000 words per week. EnviousWispr has no such restriction. The source code is available on GitHub under a BSL 1.1 license.</p>
+        <p class="faq-a">Yes. No subscription, no usage caps, no word-per-week limits. Willow Voice's free tier caps you at 2,000 words per week. EnviousWispr has no such restriction. The source code is open source on GitHub under the GPLv3 license.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Willow Voice work offline?</div>
@@ -692,7 +692,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source?</div>
-        <p class="faq-a">Source-available under the Business Source License 1.1. That means you can read, build, and inspect every line of code on GitHub. It is not an OSI-approved open source license, but it gives you full transparency into how the app works. Contributions are welcome.</p>
+        <p class="faq-a">Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How does EnviousWispr handle filler words like "um" and "uh"?</div>

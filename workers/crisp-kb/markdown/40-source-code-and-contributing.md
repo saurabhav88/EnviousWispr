@@ -2,11 +2,11 @@ The full EnviousWispr codebase is available on GitHub at [github.com/saurabhav88
 
 ## License
 
-EnviousWispr is licensed under the **Business Source License 1.1 (BSL 1.1)**. Key points:
+EnviousWispr is open source under the **GNU General Public License v3 (GPLv3)**, an OSI-approved license. Key points:
 
-* **Personal, non-commercial use is permitted.** You can use, copy, modify, and redistribute the code for personal purposes.
-* **Commercial use requires a separate license.** You may not sell, sublicense, or distribute the software or derivative works for a fee without a commercial license from Envious Labs LLC.
-* **Change Date: March 10, 2030.** On this date, the code automatically converts to the **Apache License 2.0**, a permissive open-source license.
+* **Free to use, study, modify, and redistribute**, including for commercial purposes, under the terms of the GPL.
+* **Copyleft.** If you distribute a modified version, that version must also be licensed under the GPLv3 with its source available.
+* **Trademarks reserved.** The EnviousWispr name and logo are trademarks of Envious Labs LLC and are not licensed under the GPL.
 
 ## Contributing
 

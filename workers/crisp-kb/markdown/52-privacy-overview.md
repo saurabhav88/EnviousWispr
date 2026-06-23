@@ -8,9 +8,9 @@ All audio recording and transcription happens locally on your Mac. Your voice au
 
 EnviousWispr does not require an account, login, or registration. You download the app and start using it immediately.
 
-### Source-Available Code
+### Open Source Code
 
-The source code is publicly available on GitHub under the BSL 1.1 license. You can inspect exactly what the app does.
+The source code is publicly available on GitHub under the GPLv3 license. You can inspect exactly what the app does.
 
 ### Works Fully Offline
 

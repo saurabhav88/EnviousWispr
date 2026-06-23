@@ -13,6 +13,7 @@
 <p align="center">
   <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest"><img src="https://img.shields.io/github/v/release/saurabhav88/EnviousWispr?style=flat-square&label=latest&color=7c3aed" alt="Latest Release" /></a>
   <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg"><img src="https://img.shields.io/badge/download-DMG-black?style=flat-square" alt="Download DMG" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-7c3aed?style=flat-square" alt="License GPLv3" /></a>
   <a href="https://enviouswispr.com"><img src="https://img.shields.io/badge/web-enviouswispr.com-7c3aed?style=flat-square" alt="Website" /></a>
   <a href="https://x.com/EnviousLabs"><img src="https://img.shields.io/badge/follow-@EnviousLabs-black?style=flat-square&logo=x" alt="Follow on X" /></a>
 </p>
@@ -32,6 +33,8 @@ https://github.com/user-attachments/assets/e636e1a0-a0d1-4f7c-be0a-b7c907c6d5ab
 EnviousWispr is a free AI dictation app for macOS that runs entirely on-device. It uses Whisper and Parakeet speech-to-text models on Apple Silicon to transcribe your voice locally, polishes the output with an optional LLM, and pastes clean text into whatever app you're working in. Transcription is sub-second; with optional AI polish, the full hotkey-to-paste flow typically lands in around a second and a half.
 
 No cloud. No account required. No subscription. No audio ever leaves your Mac. Works fully offline.
+
+It is open source under the GPLv3, actively maintained, and built to be a tool you can rely on every day.
 
 ## Why EnviousWispr?
 
@@ -59,6 +62,21 @@ Press hotkey  -->  Record  -->  Transcribe  -->  Polish (optional)  -->  Paste
 
 > See the full interactive pipeline demo at [enviouswispr.com/how-it-works](https://enviouswispr.com/how-it-works)
 
+## Reliability is a feature
+
+Dictation is only useful if you can trust it mid-sentence, every time. EnviousWispr keeps the critical path (record, transcribe, paste) deliberately separate from every optional enhancement, so a hiccup in a "nice to have" can never swallow your words. When an optional step cannot run, you simply get your raw transcribed text instead of an error.
+
+| What we hardened | What it means for you |
+|---|---|
+| **Delivery survives non-critical failures** | If saving to your history cannot complete (full disk, permissions), your dictation is still pasted. The save is best-effort and never blocks delivery. |
+| **Paste that actually lands** | A multi-step delivery path tries the fastest reliable method first and falls back automatically, so text lands even in apps that resist the usual paste (Word, Excel, Pages, Numbers, and more). |
+| **Onboarding that won't leave you half-set-up** | Setup won't let you start until Accessibility is granted, and it re-checks if you later revoke permission. |
+| **Clear answers when AI polish has a problem** | If a cloud or local model fails (OpenAI, Gemini, Ollama), you get a specific, plain-language message, and your raw text still arrives. |
+| **Deterministic cleanup before AI** | For English, numbers, dates, and money are formatted by a fixed, predictable step, even when AI polish is off or unavailable. |
+| **Fast recovery after idle** | After the app sits idle, it re-wakes in a fraction of a second so your next press, and its first word, are not lost. |
+| **Privacy-safe diagnostics** | Crash reports carry counts and context, never your transcript or audio, and are redacted before they are sent. |
+| **Hardened releases** | Every build is signed, notarized, and Gatekeeper-checked before it ships. |
+
 ## Supported Models
 
 | Model | Best for | Languages | Disk space | Hardware |
@@ -71,17 +89,30 @@ Both models run entirely on-device using CoreML. First launch downloads and comp
 ## Features
 
 - 🎙️ **Dual ASR engines** with [Parakeet v3](https://github.com/FluidInference/FluidAudio) (NVIDIA NeMo) and [WhisperKit](https://github.com/argmaxinc/argmax-oss-swift) (OpenAI Whisper)
-- ✨ **AI polish that respects your words** — strips filler words and false starts, fixes grammar and punctuation, formats numbers, dates, and URLs, and honors your custom vocabulary, all in your spoken language (never translated or rewritten)
-- 🔒 **Polish that can stay private** — run it fully on-device with Apple Intelligence (macOS 26+) or Ollama, or in the cloud via OpenAI GPT / Google Gemini with your own API key
-- 🌍 **Multilingual with automatic language detection** — speak in any supported language and EnviousWispr detects it, then offers to lock it in for faster, more accurate transcription
-- 😀 **Speak an emoji** — say the emoji's name followed by "emoji" (like "thumbs up emoji") and the glyph drops right in
-- ✋ **Voice Activity Detection** via Silero VAD — stops recording automatically when you stop talking
-- 📚 **Custom vocabulary** for names, brands, and technical terms the ASR might miss
+- ✨ **AI polish that respects your words**: strips filler words and false starts, fixes grammar and punctuation, formats numbers, dates, and URLs, and honors your custom vocabulary, all in your spoken language (never translated or rewritten)
+- 🔒 **Polish that can stay private**: run it fully on-device with Apple Intelligence (macOS 26+) or Ollama, or in the cloud via OpenAI GPT / Google Gemini with your own API key
+- 🌍 **Multilingual with automatic language detection**: speak in any supported language and EnviousWispr detects it, then offers to lock it in for faster, more accurate transcription
+- 😀 **Speak an emoji**: say the emoji's name followed by "emoji" (like "thumbs up emoji") and the glyph drops right in
+- ✋ **Voice Activity Detection** via Silero VAD that stops recording automatically when you stop talking
+- 📚 **Custom vocabulary and vocabulary packs** for names, brands, and technical terms the ASR might miss, plus one-tap import of names from your Contacts (which never leave your Mac)
 - ⌨️ **Global hotkey** with push-to-talk, toggle, and hands-free modes (double-press to lock for long-form dictation)
 - 📋 **Auto-paste** directly into the active app, or just copy to clipboard
 - 🕘 **Transcript history** for browsing, searching, and reviewing past dictations
 - 🧭 **Menu bar native** with minimal footprint
 - 🔄 **Auto-updates** via Sparkle
+
+## Recent improvements
+
+EnviousWispr ships often. A few of the user-facing improvements from recent releases:
+
+- **Pasting lands in more apps.** Text now reliably reaches apps that previously said "Copied" but never pasted (Word, Excel, Pages, Numbers, OneNote, and others). (v2.1.4)
+- **Vocabulary packs and Contacts import.** Turn on a pack for brands and jargon, or import the names of people you know in one tap, so hard-to-spell names come out right. Your contacts never leave your Mac. (v2.1.3)
+- **No swallowed first word after a break.** After idling, the engine re-wakes in a fraction of a second and captures your words, including the very first one. (v2.1.2 and v2.1.3)
+- **Soft and distant speech captured.** Quiet, whispered, or far-from-the-mic speech is now transcribed instead of dropped. (v2.1.2)
+- **Automatic update checks.** The app looks for new versions on its own, with a clear "Check for Updates" control in Settings. (v2.1.2)
+- **Clearer AI polish errors.** Cloud and local polish failures (OpenAI, Gemini, Ollama) now show a specific, actionable message, and your raw text still arrives.
+
+See the [full release history](https://github.com/saurabhav88/EnviousWispr/releases) for every version.
 
 ## Quick Start
 
@@ -98,6 +129,8 @@ Both models run entirely on-device using CoreML. First launch downloads and comp
 - macOS 14 (Sonoma) or later
 - Apple Silicon (M1 or newer)
 
+Core dictation works across the full supported range. The built-in Apple Intelligence polish option requires macOS 26 or later; on earlier versions dictation works normally and you can use Ollama or a cloud key for polish instead.
+
 ## Building from Source
 
 ```bash
@@ -106,7 +139,7 @@ cd EnviousWispr
 swift build            # compiles the Swift packages (dependencies resolve via SPM)
 ```
 
-The runnable `.app` is assembled by the Xcode build engine via Tuist, not by `swift build` — use `./scripts/build-dev-app.sh` for a local dev build, or the release path below. First build takes several minutes as ML models compile.
+The runnable `.app` is assembled by the Xcode build engine via Tuist, not by `swift build`. Use `./scripts/build-dev-app.sh` for a local dev build, or the release path below. First build takes several minutes as ML models compile.
 
 For a distributable `.app` bundle and DMG:
 
@@ -128,7 +161,7 @@ Key design choices:
 
 ## Contributing
 
-Contributions are welcome. Please open an issue to discuss significant changes before submitting a PR.
+Contributions are welcome. EnviousWispr is open source under the GPLv3. Please open an issue to discuss significant changes before submitting a PR.
 
 This project uses conventional commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`.
 
@@ -151,6 +184,6 @@ Built by [Envious Labs](https://enviouslabs.co)
 
 ## License
 
-EnviousWispr is source-available under the [Business Source License 1.1](LICENSE). You may view, fork, and modify the code for personal, non-commercial use. Commercial use requires a license from Envious Labs. The code converts to Apache 2.0 on March 10, 2030.
+EnviousWispr is open source under the [GNU General Public License v3](LICENSE) (GPLv3), an OSI-approved license. You can read, build, modify, and redistribute the code under the terms of the GPL, including for commercial purposes; distributed derivative works must also be licensed under the GPLv3 with their source available.
 
-For commercial licensing inquiries: hello@enviouswispr.com
+The EnviousWispr name and logo are trademarks of Envious Labs and are not covered by the GPL.

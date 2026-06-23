@@ -16,7 +16,7 @@ faqs:
   - question: "Does store=false stop the provider from training on my data?"
     answer: "It opts the request out of server-side history retention, which is the path most provider training pipelines depend on. Provider-level training opt-outs are a separate setting, and OpenAI and Gemini already exclude API traffic from training by default for paid usage. Setting store=false adds a request-level signal on top of that posture."
   - question: "How can I verify this myself?"
-    answer: "EnviousWispr is source-available. The OpenAI request lives in Sources/EnviousWisprLLM/OpenAIConnector.swift and the Gemini request lives in Sources/EnviousWisprLLM/GeminiConnector.swift. Both include store: false in the JSON body sent to the provider. You can also inspect the network request from your own machine if you want to confirm."
+    answer: "EnviousWispr is open source. The OpenAI request lives in Sources/EnviousWisprLLM/OpenAIConnector.swift and the Gemini request lives in Sources/EnviousWisprLLM/GeminiConnector.swift. Both include store: false in the JSON body sent to the provider. You can also inspect the network request from your own machine if you want to confirm."
 ---
 
 If you bring your own OpenAI or Gemini key to handle AI polish, the next question is the natural one. What does the provider keep? Your dictation is your words, your tone, the things you wouldn't paste into a public form. So the provider's behavior matters as much as ours.
@@ -65,7 +65,7 @@ Finally, this is a small change in the request body, not a rewrite of the polish
 
 ## How to verify
 
-The OpenAI request body is built in `Sources/EnviousWisprLLM/OpenAIConnector.swift`. The Gemini request body is built in `Sources/EnviousWisprLLM/GeminiConnector.swift`. Both include `"store": false` in the JSON sent to the provider. If you want to confirm against your own traffic, run a network capture on your Mac while a polish call is in flight; the flag is in the request body. EnviousWispr is source-available on [GitHub](https://github.com/saurabhav88/EnviousWispr), so the audit is right there.
+The OpenAI request body is built in `Sources/EnviousWisprLLM/OpenAIConnector.swift`. The Gemini request body is built in `Sources/EnviousWisprLLM/GeminiConnector.swift`. Both include `"store": false` in the JSON sent to the provider. If you want to confirm against your own traffic, run a network capture on your Mac while a polish call is in flight; the flag is in the request body. EnviousWispr is open source on [GitHub](https://github.com/saurabhav88/EnviousWispr), so the audit is right there.
 
 ## What changes for you
 

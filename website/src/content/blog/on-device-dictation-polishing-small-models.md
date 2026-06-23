@@ -26,7 +26,7 @@ Critically, the 91.0 percent result was not a first attempt. It is the product o
 
 ## 2. System under study
 
-The system under study is EnviousWispr, an application providing free, fully on-device dictation for macOS on Apple Silicon. When the user holds a hotkey and speaks, cleaned text is inserted at the cursor in under a second. Speech-to-text processing occurs entirely on-device using Parakeet as the default fast engine for 25 languages, with WhisperKit available for 99 languages. An active-by-default polish stage rewrites raw transcription into finished text using Apple's on-device foundation model. This polish stage can be switched to cloud providers like OpenAI and Gemini or local Ollama models. The system is source-available on GitHub under BSL 1.1, and nothing leaves the device by default.
+The system under study is EnviousWispr, an application providing free, fully on-device dictation for macOS on Apple Silicon. When the user holds a hotkey and speaks, cleaned text is inserted at the cursor in under a second. Speech-to-text processing occurs entirely on-device using Parakeet as the default fast engine for 25 languages, with WhisperKit available for 99 languages. An active-by-default polish stage rewrites raw transcription into finished text using Apple's on-device foundation model. This polish stage can be switched to cloud providers like OpenAI and Gemini or local Ollama models. The system is open source on GitHub under GPLv3, and nothing leaves the device by default.
 
 ## 3. Task and evaluation
 
