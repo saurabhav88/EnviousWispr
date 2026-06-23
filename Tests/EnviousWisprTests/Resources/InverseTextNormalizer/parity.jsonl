@@ -2060,3 +2060,5 @@
 {"input": "the twenty-second of may", "expected": "the 22nd of may", "category": "numeric", "slice": "ap_gold"}
 {"input": "one hundred second video", "expected": "100 second video", "category": "numeric", "slice": "ap_gold"}
 {"input": "one hundred and second in line", "expected": "102nd in line", "category": "numeric", "slice": "ap_gold"}
+{"input": "a thousandth of a second", "expected": "a thousandth of a second", "category": "numeric", "slice": "ap_gold"}
+{"input": "a five-foot-tall person", "expected": "a 5-foot-tall person", "category": "numeric", "slice": "ap_gold"}

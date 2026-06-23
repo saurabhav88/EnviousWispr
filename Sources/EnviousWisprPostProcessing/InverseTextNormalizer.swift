@@ -465,6 +465,13 @@ public struct InverseTextNormalizer: Sendable {
         } else if firstMatch(#"^-(?:year|month|week|day)s?-old\b"#, after) != nil {
           // hyphenated age compound ("five-year-old") is one token; AP uses figures for ages.
           force = true
+        } else if after.first == "-",
+          (after.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? "")
+            .split(separator: "-").contains(where: {
+              Self.unitNouns.contains(Self.clean(String($0)))
+            })
+        {
+          force = true  // unit inside a hyphenated compound: "five-foot-tall" -> "5-foot-tall"
         }
       }
       if n >= Self.apThreshold || force { return " \(comma(n))\(tailAnd) " }
@@ -759,6 +766,9 @@ public struct InverseTextNormalizer: Sendable {
     let scalePat = #"\b(?:(?<lead>"# + Self.cardRun + #")\s+)?(?<s>"# + Self.ordScaleAlt + #")\b"#
     t = reSub(scalePat, t) { m in
       let sword = (m.g("s") ?? "").lowercased()
+      // fraction guard: "a thousandth of a second" is 1/1000, not the 1,000th -> leave spelled.
+      let afterScale = m.ns.substring(from: m.result.range.location + m.result.range.length)
+      if firstMatch(#"^\s+of\b"#, afterScale) != nil { return nil }
       let n: Int
       if let lead = m.g("lead") {
         // reconstruct the full cardinal phrase ('one thousand one hundredth' -> 'one thousand one
@@ -783,6 +793,7 @@ public struct InverseTextNormalizer: Sendable {
       let nxt = m.g("nxt") ?? ""
       // duration guard: "one hundred second video" is a 100-SECOND clip, not the 102nd.
       if ow == "second", Self.durationNouns.contains(nxt.lowercased()) { return nil }
+      if nxt.lowercased() == "of" { return nil }  // fraction ("a hundred and fiftieth of ...")
       guard let base = Self.wordsToInt(Self.splitWords((m.g("lead") ?? "").lowercased())) else {
         return nil
       }
