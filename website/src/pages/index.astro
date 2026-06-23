@@ -227,6 +227,8 @@ const jsonLdFaq = JSON.stringify({
         <span class="trust-item"><span class="trust-dot" aria-hidden="true"></span>No account needed</span>
         <span class="trust-item"><span class="trust-dot" aria-hidden="true"></span>Works offline</span>
       </div>
+
+      <p class="hero-brew reveal" style="--i:4.5">Prefer the terminal? <code>brew install --cask saurabhav88/tap/enviouswispr</code></p>
     </div>
   </section>
 
@@ -642,6 +644,8 @@ const jsonLdFaq = JSON.stringify({
           100% Private <span class="cdot" aria-hidden="true">&#183;</span>
           Free forever
         </p>
+
+        <p class="cta-brew">Or with Homebrew: <code>brew install --cask saurabhav88/tap/enviouswispr</code></p>
       </div>
     </div>
   </section>
@@ -708,6 +712,13 @@ const jsonLdFaq = JSON.stringify({
 .hero-trust {
   font-size: 13px; color: var(--text-3);
   display: flex; align-items: center; justify-content: center; gap: 24px; flex-wrap: wrap;
+}
+.hero-brew { font-size: 13px; color: var(--text-3); margin: 18px 0 0; }
+.cta-brew { font-size: 13px; color: var(--text-3); margin: 14px 0 0; }
+.hero-brew code, .cta-brew code {
+  font-family: var(--font-mono); font-size: 12.5px; color: var(--text-2);
+  background: var(--accent-soft); border: 1px solid var(--border-hover);
+  border-radius: 6px; padding: 3px 8px; user-select: all; overflow-wrap: anywhere;
 }
 .trust-item { display: flex; align-items: center; gap: 7px; }
 .trust-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }

@@ -116,6 +116,14 @@ See the [full release history](https://github.com/saurabhav88/EnviousWispr/relea
 
 ## Quick Start
 
+Install with [Homebrew](https://brew.sh):
+
+```bash
+brew install --cask saurabhav88/tap/enviouswispr
+```
+
+Or download manually:
+
 1. Download [EnviousWispr.dmg](https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg) from the latest release
 2. Drag to Applications, launch
 3. Grant **Microphone**, **Accessibility**, and (on first paste fallback) **Automation** permissions when prompted
