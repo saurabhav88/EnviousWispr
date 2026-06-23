@@ -455,14 +455,17 @@ def call_claude(model: str, system: str, user: str) -> str:
     missing/empty/non-string result, rather than handing junk to json.loads."""
     try:
         proc = subprocess.run(
-            # Lock the judge to pure text-in/JSON-out: NO tools available
-            # (`--tools ""` — `--allowed-tools` only pre-approves, it does not
-            # remove the built-ins), no MCP servers, and a neutral cwd so
-            # adversarial corpus text (anti_instruction / anti_hallucination
-            # cases) can't make it call a tool, hang on a permission prompt, or
-            # score with repo context.
+            # Lock the judge to pure text-in/JSON-out: `--safe-mode` disables
+            # ambient customizations (hooks/LSP/plugins) while KEEPING the
+            # subscription auth (`--bare` would strip auth too -> "Not logged in",
+            # breaking the $0 path); NO tools (`--tools ""` — `--allowed-tools`
+            # only pre-approves, it does not remove the built-ins); no MCP
+            # servers; neutral cwd. So adversarial corpus text (anti_instruction /
+            # anti_hallucination cases) and a configured user-hook can't make it
+            # call a tool, fire a hook, hang on a prompt, or score with repo context.
             ["claude", "-p", "--model", model, "--system-prompt", system,
-             "--tools", "", "--strict-mcp-config", "--output-format", "json"],
+             "--safe-mode", "--tools", "", "--strict-mcp-config",
+             "--output-format", "json"],
             input=user, capture_output=True, text=True, timeout=300,
             cwd=tempfile.gettempdir(), env=_judge_subprocess_env(),
         )
