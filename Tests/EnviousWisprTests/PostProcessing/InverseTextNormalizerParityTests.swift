@@ -178,4 +178,35 @@ struct InverseTextNormalizerParityTests {
   func categoryFixes(input: String, expected: String) {
     #expect(InverseTextNormalizer().normalize(input) == expected)
   }
+
+  // AP-style number formatting (#1187). Spell one-nine; digits for 10+; always-digit exceptions
+  // for money/percent/age/units/decimals/ranges/ordinals-10th+. Each line is the verbatim Python
+  // oracle output (the byte-parity fixtures lock the full set; these document the policy in-place).
+  @Test(
+    "AP number policy holds (oracle-verified)",
+    arguments: [
+      // the #1187 report: a sentence-initial spelled-out large number was passing through untouched
+      ("Nine hundred forty five.", "945."),
+      // spell out one-nine in prose (the founder feedback: "they said 1, it wrote 1")
+      ("I have two cats.", "I have two cats."),
+      ("twenty three people came", "23 people came"),
+      // exceptions still digitize sub-ten values
+      ("she is five years old", "she is 5 years old"),
+      ("walk five miles", "walk 5 miles"),
+      // per-token in a mixed sentence (one stays spelled, one converts)
+      ("nine out of ten dentists", "nine out of 10 dentists"),
+      // ranges -> hyphenated digits; small ordinals stay spelled, 10th+ convert
+      ("between three and seven", "between 3-7"),
+      ("the third option is best", "the third option is best"),
+      ("the twentieth century", "the 20th century"),
+      ("the hundred and first complaint", "the 101st complaint"),
+      // spoken decimals; money at sentence end keeps the dollar sign
+      ("negative point five", "negative 0.5"),
+      ("He paid fifteen hundred dollars.", "He paid $1,500."),
+      // brands/titles with a number word stay spelled
+      ("we ate at Five Guys", "we ate at Five Guys"),
+    ])
+  func apNumberPolicy(input: String, expected: String) {
+    #expect(InverseTextNormalizer().normalize(input) == expected)
+  }
 }

@@ -86,6 +86,37 @@ public struct InverseTextNormalizer: Sendable {
   static let numword: Set<String> = Set(units.keys).union(tens.keys).union(scales.keys)
     .union(["and"])
 
+  // ── AP-style number policy ──────────────────────────────────────────────────
+  static let apThreshold = 10  // spell out 1..9, digits for 10+
+  static let unitNouns: Set<String> = [
+    "miles", "mile", "feet", "foot", "inch", "inches", "yard", "yards", "pound", "pounds", "lb",
+    "lbs", "ounce", "ounces", "oz", "kg", "kilogram", "kilograms", "gram", "grams", "km",
+    "kilometer", "kilometers", "meter", "meters", "metre", "metres", "cm", "centimeter",
+    "centimeters", "liter", "liters", "litre", "litres", "gallon", "gallons", "cup", "cups",
+    "tablespoon", "tablespoons", "tbsp", "teaspoon", "teaspoons", "tsp", "degree", "degrees",
+    "mph", "percent", "milligram", "milligrams", "mg", "milliliter", "milliliters", "ml",
+    "millimeter", "millimeters", "mm",
+  ]
+  static let agePeriods: Set<String> = [
+    "year", "years", "month", "months", "week", "weeks", "day", "days",
+  ]
+  // compound-ordinal tails (additive): final ordinal word in 'one hundred (and) <tail>'.
+  static let ordTail: [String: Int] = [
+    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6, "seventh": 7,
+    "eighth": 8, "ninth": 9, "tenth": 10, "eleventh": 11, "twelfth": 12, "thirteenth": 13,
+    "fourteenth": 14, "fifteenth": 15, "sixteenth": 16, "seventeenth": 17, "eighteenth": 18,
+    "nineteenth": 19, "twentieth": 20, "thirtieth": 30, "fortieth": 40, "fiftieth": 50,
+    "sixtieth": 60, "seventieth": 70, "eightieth": 80, "ninetieth": 90,
+  ]
+  // scale ordinals: '(coeff) hundredth/thousandth/...' -> coeff*scale, suffix 'th'.
+  static let ordScale: [String: Int] = [
+    "hundredth": 100, "thousandth": 1000, "millionth": 1_000_000, "billionth": 1_000_000_000,
+  ]
+  /// `re.sub(r"[^a-z]", "", w.lower())` — strip to bare lowercase letters.
+  static func clean(_ w: String) -> String {
+    String(w.lowercased().unicodeScalars.filter { ("a"..."z").contains(Character($0)) })
+  }
+
   // MARK: - Precomputed alternations (longest-first, deterministic — strictly safe vs
   // Python's hash-ordered sets: \b-wrapped uses and backtracking make output identical).
 
@@ -106,11 +137,36 @@ public struct InverseTextNormalizer: Sendable {
   static let unitsTensAlt = alt(Set(units.keys).union(tens.keys))
   static let monthsAlt = alt(Array(months.keys))
   static let centuryAlt = alt(Array(century.keys))
+  // AP additions
+  static let numwordNoAnd = numword.subtracting(["and"])
+  static let numwordNoAndAlt = alt(numwordNoAnd)
+  // range/slash/by token: a number-word (no "and") OR an already-digit token.
+  static let rangeTok = alt(numwordNoAnd) + #"|\d[\d,]*"#
+  static let rangeTokFull = alt(numword) + #"|\d[\d,]*"#  // later tokens may be "and"
+  static let rangeRun = #"(?:"# + rangeTok + #")(?:\s+(?:"# + rangeTok + #"))*"#  // no "and" (between)
+  // to/through/slash/by endpoints allow an internal "and" so spoken hundreds parse whole
+  // ("one hundred and five to one hundred and ten" -> "105-110", not "100 5-100 and 10").
+  static let rangeRunAnd = #"(?:"# + rangeTok + #")(?:\s+(?:"# + rangeTokFull + #"))*"#
+  // bare number-word run (no "and"), for the cardinal pass.
+  static let numwordRun = #"(?:"# + numwordNoAndAlt + #")(?:\s+(?:"# + numwordAlt + #"))*"#
+  static let ordTailAlt = alt(Array(ordTail.keys))
+  static let ordScaleAlt = alt(Array(ordScale.keys))
+  static let cardRun = #"(?:"# + numwordAlt + #")(?:\s+(?:"# + numwordAlt + #"))*"#
 
   // MARK: - Public entry point
 
   public func normalize(_ text: String) -> String {
     var t = " " + text.trimmingCharacters(in: .whitespacesAndNewlines) + " "
+
+    // "shout" = the whole utterance is upper-case (typed in caps). In shout text a capitalized
+    // number word is a number, not a proper noun, so the cardinal pass converts it. Computed from
+    // the original text (capitalization is preserved through the passes). A Title fragment inside
+    // normal text ('TWELVE ANGRY MEN screened tonight') is NOT shout, so titles stay protected.
+    let lineAlpha = String(
+      text.unicodeScalars.filter {
+        ("A"..."Z").contains(Character($0)) || ("a"..."z").contains(Character($0))
+      })
+    let shout = lineAlpha.count > 1 && lineAlpha == lineAlpha.uppercased()
 
     // register-preserve (our enhancement): keep "quarter to/past N", "half past N" spelled,
     // plus ordinal idioms ("eleventh hour"). Shielded from the number passes via a sentinel.
@@ -119,14 +175,58 @@ public struct InverseTextNormalizer: Sendable {
       protected.append(m.whole)
       return " \u{0}\(protected.count - 1)\u{0} "
     }
+    let protectSub: (String) -> String = { val in
+      protected.append(val)
+      return " \u{0}\(protected.count - 1)\u{0} "
+    }
     t = reSub(#"\b(?:a |an )?(?:quarter|half)\s+(?:past|to)\s+\w+"#, t) { protect($0) }
     t = reSub(
       #"\beleventh hour\b|\bseventh heaven\b|\bthe fourth wall\b|\bthe fifth wheel\b"#
         + #"|\bthe fifth column\b|\bthe fourth estate\b|\bfirst among equals\b"#, t
     ) { protect($0) }
+    // AP "a hundred": shield approximations ("a couple/few/several/many hundred" stay spelled),
+    // then drop the article on a bare "a/an hundred" so the cardinal pass yields 100 (not "a 100").
+    t = reSub(#"\b(?:a |an )?(?:couple|few|several|many)\s+hundred\b"#, t) { protect($0) }
+    // lowercase only: a capitalized "A Hundred ..." is a title ("A Hundred Years of Solitude"),
+    // not a number — dropping its article would corrupt the title.
+    // not before a hyphenated compound ("a hundred-year lease" keeps its article); only bare
+    // "a hundred <noun>" drops the article so the cardinal yields 100.
+    t = reSub(#"\b(?:a|an)\s+(hundred\b)(?!-)"#, t, caseInsensitive: false) { m in
+      " " + (m.g(1) ?? "")
+    }
+    // idiom: keep "the whole nine yards" spelled despite the unit rule on "yards"
+    t = reSub(#"\bthe whole nine yards\b"#, t) { protect($0) }
+    // idiom "Catch-22" ONLY as a determiner-led noun phrase ("a/the/that catch twenty two"), so the
+    // literal verb usage "catch twenty two fish" still becomes "catch 22 fish".
+    t = reSub(#"\b(a|an|the|this|that|another)\s+catch[\s-]+twenty[\s-]+two\b"#, t) { m in
+      " \(m.g(1) ?? "") " + protectSub("Catch-22")
+    }
+    t = reSub(#"\b(a|an|the|this|that|another)\s+catch[\s-]+22\b"#, t) { m in
+      " \(m.g(1) ?? "") " + protectSub("Catch-22")
+    }
+    // join hyphenated number compounds: "twenty-two" -> "twenty two" so the run parses as 22.
+    // EXCLUDE "and": a hyphenated "and" ("one-and-done") is an idiom, not a spoken compound.
+    // First part any-case, second part LOWERCASE: joins "twenty-two" and sentence-start
+    // "Twenty-two" (-> 22) but NOT the Title "Twenty-Two" (a name; second part capitalized).
+    // second part may also be an ordinal tail ("twenty-first" -> "twenty first" -> "21st").
+    let hyphenJoinPat =
+      #"\b((?i:"# + Self.numwordNoAndAlt + #"))-(?=(?:"# + Self.numwordNoAndAlt + #"|"#
+      + Self.ordTailAlt + #")\b)"#
+    var prev = ""
+    while prev != t {
+      prev = t
+      t = reSub(hyphenJoinPat, t, caseInsensitive: false) { m in (m.g(1) ?? "") + " " }
+    }
 
     t = emails(t)
     t = urls(t)
+    // protect spoken dotted chains (versions / IP-like: "one dot two dot three", >=2 dots) so the
+    // 'dot'-decimal path can't partly convert them ("1.2 dot three"). A single "X dot Y" still
+    // becomes a decimal; only multi-dot chains are shielded and left for the AI-polish layer.
+    let dotPart =
+      #"(?:"# + Self.digitWordAlt + #"|\d[\d,]*)(?:\s+(?:"# + Self.digitWordAlt + #"|\d[\d,]*))*"#
+    let dotChainPat: String = #"\b"# + dotPart + #"(?:\s+dot\s+"# + dotPart + #"){2,}\b"#
+    t = reSub(dotChainPat, t) { protect($0) }
     t = decimals(t)
 
     t = moneyPct(t)  // currency + percent (re-run after years below)
@@ -161,9 +261,11 @@ public struct InverseTextNormalizer: Sendable {
 
     // date: MONTH ORDINAL YEAR(words) -> Month D, YYYY
     let ordAlt = Self.alt(Array(Self.ordinalWord.keys))
+    // year must be year-SHAPED (>=2 number words: "twenty twelve", "two thousand nine"); a single
+    // word ("On June second, five people signed up") is a count, not a year -> no false date match.
     let datePat =
-      #"\s(?<mon>"# + Self.monthsAlt + #")\s+(?<day>"# + ordAlt + #"|\d{1,2})\s+(?<yr>(?:"#
-      + Self.numwordAlt + #")(?:\s+(?:"# + Self.numwordAlt + #")){0,3})\s"#
+      #"\s(?<mon>"# + Self.monthsAlt + #")\s+(?<day>"# + ordAlt + #"|\d{1,2}),?\s+(?<yr>(?:"#
+      + Self.numwordAlt + #")(?:\s+(?:"# + Self.numwordAlt + #")){1,3})(?=[\s.,;:!?)\]”"']|$)"#
     t = reSub(datePat, t) { m in
       guard let mon = Self.months[(m.g("mon") ?? "").lowercased()] else { return nil }
       let dayraw = (m.g("day") ?? "").trimmingCharacters(in: .whitespaces)
@@ -211,19 +313,157 @@ public struct InverseTextNormalizer: Sendable {
       return " \(comma(n)) "
     }
 
-    // generic cardinals: longest runs of number-words -> int. Left case-SENSITIVE on purpose: a
-    // capitalized number word here has no unit/operator anchor, so it is ambiguous between a count
-    // and prose / a proper noun ("Hundred Acre Wood", "One Million Moms"). A scale word does NOT
-    // disambiguate (proper nouns use them too), so capitalized cardinals stay untouched and that
-    // context call is left to the AI-polish layer. (Unit-anchored caps ARE handled — see currency/
-    // percent/decimals below.)
-    let cardPat = #"(?:\b(?:"# + Self.numwordAlt + #")\b\s*){1,}"#
-    t = reSub(cardPat, t) { m in
-      let words = Self.splitWords(m.whole)
-      guard !words.isEmpty, m.whole.trimmingCharacters(in: .whitespaces) != "and",
-        let n = Self.wordsToInt(words)
+    // AP word-ranges / word-slashes / dimensions: BEFORE the cardinal threshold so spoken
+    // endpoints are digitized (a range/date is a numeric context -> digits regardless of size).
+    // Endpoints may be number-words OR already-digit tokens; pure-digit pairs defer to the guarded
+    // numeric passes below.
+    func rng(_ a: String, _ b: String) -> String? {
+      let digitCommaSpace: (String) -> Bool = { s in
+        !s.isEmpty && s.allSatisfy { ("0"..."9").contains($0) || $0 == "," || $0 == " " }
+      }
+      if digitCommaSpace(a) && digitCommaSpace(b) { return nil }  // pure-digit -> numeric pass owns it
+      guard let x = Self.wordsToInt(Self.splitWords(a.lowercased())),
+        let y = Self.wordsToInt(Self.splitWords(b.lowercased()))
       else { return nil }
-      return " \(comma(n)) "
+      return "\(comma(x))-\(comma(y))"  // group thousands ("one thousand to two thousand"->1,000-2,000)
+    }
+    let betweenPat =
+      #"\bbetween\s+(?<a>"# + Self.rangeRun + #")\s+and\s+(?<b>"# + Self.rangeRun + #")\b"#
+    // 'between A and B' uses no-"and" endpoints (the "and" is the separator). When an endpoint
+    // itself contains "and" ("between one hundred and five and one hundred and ten") the split is
+    // ambiguous, so DECLINE rather than corrupt: a trailing "and <number>" means the endpoint was
+    // truncated — leave the phrase spelled for the AI-polish layer.
+    let trailAndPat = #"^\s+and\s+(?:"# + Self.numwordAlt + #"|\d)"#  // number-word OR digit endpoint
+    t = reSub(betweenPat, t) { m in
+      let end = m.result.range.location + m.result.range.length
+      if firstMatch(trailAndPat, m.ns.substring(from: end)) != nil { return nil }
+      guard let r = rng(m.g("a") ?? "", m.g("b") ?? "") else { return nil }
+      return " between \(r) "
+    }
+    let toPat =
+      #"\b(?<a>"# + Self.rangeRunAnd + #")\s+(?:to|through)\s+(?<b>"# + Self.rangeRunAnd + #")\b"#
+    t = reSub(toPat, t) { m in
+      guard let r = rng(m.g("a") ?? "", m.g("b") ?? "") else { return nil }
+      return " \(r) "
+    }
+    // match ALL slash-separated parts (not just 2-3) so a 4+ chain isn't left half-rewritten.
+    let wslashPat =
+      #"\b(?<a>"# + Self.rangeRunAnd + #")(?:\s+slash\s+(?:"# + Self.rangeRunAnd + #"))+\b"#
+    t = reSub(wslashPat, t) { m in
+      let parts = splitOnSlash(m.whole)
+      let vals = parts.compactMap { Self.wordsToInt(Self.splitWords($0.lowercased())) }
+      guard vals.count == parts.count else { return nil }
+      return " " + vals.map { String($0) }.joined(separator: "/") + " "
+    }
+    // match ALL legs so a 3D size ("two by four by six" -> "2 by 4 by 6") is fully normalized.
+    let byPat = #"\b(?<a>"# + Self.rangeRunAnd + #")(?:\s+by\s+(?:"# + Self.rangeRunAnd + #"))+\b"#
+    t = reSub(byPat, t) { m in
+      let parts = splitOnBy(m.whole)
+      let legs = parts.compactMap { Self.wordsToInt(Self.splitWords($0.lowercased())) }
+      guard legs.count == parts.count else { return nil }
+      // idiom guard: "one by one" is prose ("do it one by one"), not a dimension. Narrow to
+      // all-ones AND no unit noun after (so "one by one inch" stays a real dimension). "two by
+      // two", "three by three", or any >=10 are dimensions and convert.
+      let end = m.result.range.location + m.result.range.length
+      let nxtAfter = Self.clean(Self.splitWords(m.ns.substring(from: end)).first ?? "")
+      if Set(legs) == [1], !Self.unitNouns.contains(nxtAfter) { return nil }
+      return " " + legs.map { comma($0) }.joined(separator: " by ") + " "
+    }
+
+    // generic cardinals -> AP policy. spell 1-9, digits 10+, with digit-forcing exceptions
+    // (age / measurement unit) and ALL-CAPS handling (shout convert / isolated emphasis / Title
+    // protect). A capitalized number word with no unit/operator anchor stays a word — it is
+    // ambiguous between a count and a proper noun ("Hundred Acre Wood", "One Million Moms"), left
+    // to the AI-polish layer. Unit-anchored caps ARE handled (see currency/percent/decimals).
+    // First token may NOT be "and" (else "cats and fifteen" matches as a run and drops the "and");
+    // subsequent tokens may be the full numword set ("one hundred and one").
+    let cardPat = #"\b(?:"# + Self.numwordNoAndAlt + #")\b(?:\s+(?:"# + Self.numwordAlt + #")\b)*"#
+    t = reSub(cardPat, t) { m in
+      let raw = m.whole
+      var words = Self.splitWords(raw)
+      if words.isEmpty || raw.trimmingCharacters(in: .whitespaces) == "and" { return nil }
+      // a trailing "and" is a conjunction, not part of the number ("Twenty and change"); strip it
+      // and re-append so it isn't swallowed (wordsToInt ignores "and", which would drop it).
+      var trailAnd = 0
+      while let last = words.last, last.lowercased() == "and" {
+        words.removeLast()
+        trailAnd += 1
+      }
+      if words.isEmpty { return nil }
+      let tailAnd = String(repeating: " and", count: trailAnd)
+      let start = m.result.range.location
+      let end = start + m.result.range.length
+      let after = m.ns.substring(from: end)
+      let toksAfter = Self.splitWords(after)
+      let nxt = toksAfter.first ?? ""
+      let nxtCap = nxt.first?.isUppercase ?? false
+      // a capitalized hyphenated compound ('Twenty-Two') is not joined (lowercase-only join) and
+      // the proper-noun guard can't see past the leading '-'; leave the whole compound spelled
+      // rather than convert only the first half into '20-Two'.
+      if after.first == "-",
+        Self.numword.contains(Self.clean(nxt)) || Self.ordTail[Self.clean(nxt)] != nil
+      {
+        return nil  // capitalized hyphenated compound/ordinal ("Twenty-Two","Twenty-First") -> leave
+      }
+      guard let n = Self.wordsToInt(words.map { $0.lowercased() }) else {
+        // dosage salvage: a failed run ending in a 1-9 word a unit noun anchors
+        // ('two five milligram' = count + dosage -> 'two 5 milligram'); keep the count spelled.
+        let lw = (words.last ?? "").lowercased()
+        if words.count >= 2, let v = Self.units[lw], (1..<Self.apThreshold).contains(v),
+          Self.unitNouns.contains(Self.clean(nxt))
+        {
+          return " \(words.dropLast().joined(separator: " ")) \(v)\(tailAnd) "
+        }
+        return nil
+      }
+      let firstCap = words[0].first?.isUppercase ?? false
+      let noninitialCap = words.dropFirst().contains { $0.first?.isUppercase ?? false }
+      let single = words.count == 1
+      let capsw: (String) -> Bool = { w in
+        !w.isEmpty && w.contains(where: { $0.isLetter }) && w == w.uppercased()
+      }
+      let runAllcaps = raw.contains(where: { $0.isLetter }) && raw == raw.uppercased()
+      var capsConvert = false
+      if runAllcaps {
+        if shout {
+          capsConvert = true
+        } else {
+          let prevW = Self.splitWords(m.ns.substring(to: start)).last ?? ""
+          if capsw(prevW) || capsw(nxt) { return nil }  // part of an all-caps Title -> leave
+          capsConvert = true  // isolated caps number = emphasis -> convert
+        }
+      }
+      if !capsConvert {
+        if noninitialCap { return nil }  // "One Million Moms"
+        if firstCap && single && nxtCap { return nil }  // brand "Hundred Acre Wood","Forty Niners"
+        if firstCap {
+          var before = m.ns.substring(to: start)
+          while let last = before.last, last.isWhitespace { before.removeLast() }
+          let sentinel: Set<Character> = [".", "!", "?", "\n", "\"", "'", "(", "["]
+          let sentenceInitial = before.isEmpty || sentinel.contains(before.last!)
+          if !sentenceInitial { return nil }  // capitalized mid-sentence, ambiguous -> spelled
+        }
+      }
+      var force = false
+      if n < Self.apThreshold {
+        let nxtw = Self.clean(nxt)
+        if Self.unitNouns.contains(nxtw) {
+          force = true
+        } else if nxtw == "square" || nxtw == "cubic", toksAfter.count >= 2,
+          Self.unitNouns.contains(Self.clean(toksAfter[1]))
+        {
+          force = true  // unit with a modifier: "two square miles", "two cubic meters"
+        } else if Self.agePeriods.contains(nxtw), toksAfter.count >= 2,
+          Self.clean(toksAfter[1]) == "old"
+        {
+          force = true
+        } else if firstMatch(#"^-(?:year|month|week|day)s?-old\b"#, after) != nil {
+          // hyphenated age compound ("five-year-old") is one token; AP uses figures for ages.
+          force = true
+        }
+      }
+      if n >= Self.apThreshold || force { return " \(comma(n))\(tailAnd) " }
+      return nil
     }
 
     // numeric slash-dates: "4 slash 6 slash 2,021" -> "4/6/2021". digit-slash-digit only.
@@ -241,6 +481,9 @@ public struct InverseTextNormalizer: Sendable {
       "\(m.g(1) ?? "")-\(m.g(2) ?? "")"
     }
 
+    // decimal percent: "5.5 percent" -> "5.5%" (the word-amount percent pass can't span the dot).
+    t = reSub(#"\b(\d[\d,]*\.\d+)\s+(?:percent|per\s+cent)\b"#, t) { m in "\(m.g(1) ?? "")% " }
+
     t = keepMagnitude(t)  // '$80,000,000'->'$80 million' (founder house style), keep the word
     t = applyPunct(t)
 
@@ -250,6 +493,16 @@ public struct InverseTextNormalizer: Sendable {
         of: "\u{0}\(i)\u{0}", with: p.trimmingCharacters(in: .whitespacesAndNewlines))
     }
     t = reSub(#"\s+([,.!?;:])"#, t, caseInsensitive: false) { m in m.g(1) }
+    t = reSub(#"([(\[“‘])\s+"#, t, caseInsensitive: false) { m in m.g(1) }  // open quote/bracket tight
+    t = reSub(#"\s+([)\]”’])"#, t, caseInsensitive: false) { m in m.g(1) }  // space before close tight
+    // straight-quoted number: tighten ONLY when a number is fully enclosed in straight quotes
+    // ('" 23 "' -> '"23"'). A single-sided rule corrupted adjacent quotes ('twenty "special"' ->
+    // '20"special"'), so require both quotes around the number.
+    t = reSub(#""\s+(\d[\d.,]*)\s+""#, t, caseInsensitive: false) { m in "\"\(m.g(1) ?? "")\"" }
+    // hyphenated compound modifier: converting "twenty-step" leaves "20 -step" (the cardinal pass
+    // re-emits " 20 " with pad spaces). Re-tighten "digit space-hyphen word" -> "digit-word".
+    t = reSub(#"(\d)\s+-(\w)"#, t, caseInsensitive: false) { m in "\(m.g(1) ?? "")-\(m.g(2) ?? "")"
+    }
     t = reSub(#"[ \t]+"#, t, caseInsensitive: false) { _ in " " }  // collapse spaces (keep newlines)
     return t.trimmingCharacters(in: .whitespacesAndNewlines)
   }
@@ -361,20 +614,23 @@ public struct InverseTextNormalizer: Sendable {
     }
   }
 
-  private func decimals(_ t: String) -> String {
+  private func decimals(_ t0: String) -> String {
+    var t = t0
+    let sep = #"(?:point|dot)"#  // 'dot' accepted alongside 'point' (spoken versions / measures)
+    let endB = #"(?=[\s.,;:!?)\]”"']|$)"#
+    func digsOf(_ s: String) -> String {
+      Self.splitWords(s.lowercased()).compactMap { Self.units[$0].map { String($0) } }.joined()
+    }
     let pat =
-      #"\s(?<w>(?:"# + Self.numtok + #")(?:\s+(?:"# + Self.numtok + #"))*)\s+point\s+"#
+      #"\s(?<w>(?:"# + Self.numtok + #")(?:\s+(?:"# + Self.numtok + #"))*)\s+"# + sep + #"\s+"#
       + #"(?<d>(?:"# + Self.digitWordAlt + #")(?:\s+(?:"# + Self.digitWordAlt + #"))*)"#
-      + #"(?:\s+(?<scale>million|billion|thousand))?\s"#
-    return reSub(pat, t) { m in
-      // 'point' anchors numeric intent, so lowercasing the captured amount is corruption-safe.
+      + #"(?:\s+(?<scale>million|billion|thousand))?"# + endB
+    t = reSub(pat, t) { m in
+      // 'point'/'dot' anchors numeric intent, so lowercasing the captured amount is corruption-safe.
       guard let whole = Self.wordsToInt(Self.splitWords((m.g("w") ?? "").lowercased())) else {
         return nil
       }
-      // Lowercase the fraction words too: the case-insensitive regex can capture 'Five' in
-      // 'Three Point Five', and Self.units[$0]! would force-unwrap nil on the capitalized key.
-      let digs = Self.splitWords((m.g("d") ?? "").lowercased()).map { String(Self.units[$0]!) }
-        .joined()
+      let digs = digsOf(m.g("d") ?? "")
       let scale = (m.g("scale") ?? "").trimmingCharacters(in: .whitespaces).lowercased()
       if !scale.isEmpty, let sv = Self.scales[scale] {
         let value = (Double("\(whole).\(digs)") ?? 0) * Double(sv)
@@ -382,16 +638,36 @@ public struct InverseTextNormalizer: Sendable {
       }
       return " \(whole).\(digs) "
     }
+    // leading decimal (no integer word): 'negative point five'->'-0.5', 'point three zero one'
+    // ->'0.301'. Fired only when unambiguous (sign word present, or >=3 fractional digits) so the
+    // everyday noun 'point' ('at this point one thing') is safe.
+    // LEADING decimal uses 'point' ONLY (never 'dot'): a leading 'dot N' is almost always a spoken
+    // dotted identifier / IP segment, not a decimal, so converting it would corrupt the address.
+    // (The main path keeps 'dot' — its required whole-number part disambiguates 'two dot oh'->2.0.)
+    let leadPat =
+      #"\s(?<sg>negative\s+|minus\s+)?point\s+(?<d>(?:"# + Self.digitWordAlt
+      + #")(?:\s+(?:"# + Self.digitWordAlt + #"))*)"# + endB
+    t = reSub(leadPat, t) { m in
+      let sign = (m.g("sg") ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+      let digs = digsOf(m.g("d") ?? "")
+      if sign.isEmpty && digs.count < 3 { return nil }
+      return " \(sign.isEmpty ? "" : "negative ")0.\(digs) "
+    }
+    return t
   }
 
   // MARK: - Currency / percent
 
   private func moneyPct(_ t0: String) -> String {
     var t = t0
+    // trailing boundary is a LOOKAHEAD (whitespace OR sentence punctuation OR end), not a consumed
+    // space — otherwise a sentence-final "...dollars." / "...percent." never fires. "per cent"
+    // (two words) is accepted alongside "percent".
+    let endB = #"(?=[\s.,;:!?)\]”"']|$)"#
     let curPat =
-      #"\s((?<d>(?:"# + Self.numtok + #")(?:\s+(?:"# + Self.numtok + #"))*)\s+dollars"#
+      #"\s((?<d>(?:"# + Self.numtok + #")(?:\s+(?:"# + Self.numtok + #"))*)\s+dollars?"#
       + #"(?:\s+and\s+(?<c>(?:"# + Self.numtok + #")(?:\s+(?:"# + Self.numtok
-      + #"))*)\s+cents)?)\s"#
+      + #"))*)\s+cents?)?)"# + endB
     // 'dollars'/'cents'/'percent' anchor numeric intent, so lowercasing the captured amount is
     // corruption-safe: a capitalized sentence-initial 'Twenty dollars'/'Twenty percent' is a number,
     // never prose. (Bare cardinals stay case-sensitive — see the cardinal pass above.)
@@ -405,14 +681,16 @@ public struct InverseTextNormalizer: Sendable {
       return " $\(comma(d)) "
     }
     let centsPat =
-      #"\s((?<c>(?:"# + Self.numtok + #")(?:\s+(?:"# + Self.numtok + #"))*)\s+cents)\s"#
+      #"\s((?<c>(?:"# + Self.numtok + #")(?:\s+(?:"# + Self.numtok + #"))*)\s+cents?)"# + endB
     t = reSub(centsPat, t) { m in
       guard let c = Self.wordsToInt(Self.splitWords((m.g("c") ?? "").lowercased())) else {
         return nil
       }
       return " $\(String(format: "%.2f", Double(c) / 100.0)) "
     }
-    let pctPat = #"\s((?:"# + Self.numtok + #")(?:\s+(?:"# + Self.numtok + #"))*)\s+percent\b"#
+    let pctPat =
+      #"\s((?:"# + Self.numtok + #")(?:\s+(?:"# + Self.numtok + #"))*)\s+(?:percent|per\s+cent)"#
+      + endB
     t = reSub(pctPat, t) { m in
       guard let n = Self.wordsToInt(Self.splitWords((m.g(1) ?? "").lowercased())) else {
         return nil
@@ -461,8 +739,42 @@ public struct InverseTextNormalizer: Sendable {
   private func ordinals(_ t0: String) -> String {
     var t = t0
     let unitAlt = Self.alt(Array(Self.ordUnit.keys))
+    // scale ordinals: 'one thousandth'->1,000th, 'two hundredth'->200th, bare 'thousandth'
+    // ->1,000th. Optional cardinal coefficient.
+    let scaleCard = [
+      "hundredth": "hundred", "thousandth": "thousand", "millionth": "million",
+      "billionth": "billion",
+    ]
+    let scalePat = #"\b(?:(?<lead>"# + Self.cardRun + #")\s+)?(?<s>"# + Self.ordScaleAlt + #")\b"#
+    t = reSub(scalePat, t) { m in
+      let sword = (m.g("s") ?? "").lowercased()
+      let n: Int
+      if let lead = m.g("lead") {
+        // reconstruct the full cardinal phrase ('one thousand one hundredth' -> 'one thousand one
+        // hundred' = 1100) instead of multiplying the lead (which overcounts compounds).
+        guard
+          let v = Self.wordsToInt(Self.splitWords((lead + " " + scaleCard[sword]!).lowercased()))
+        else { return nil }
+        n = v
+      } else {
+        n = Self.ordScale[sword]!  // bare 'thousandth' -> 1000th
+      }
+      return " \(comma(n))\(ordSuffix(n)) "
+    }
+    // additive compound with a SCALE lead: 'one hundred (and) tenth'->110th, 'hundred and first'
+    // ->101st. Lead must end in a scale word so this never touches 'twenty third' (comp owns that).
+    let leadScale =
+      #"(?:(?:"# + Self.numwordAlt + #")\s+)*(?:hundred|thousand|million|billion)(?:\s+and)?"#
+    let addPat = #"\b(?<lead>"# + leadScale + #")\s+(?<o>"# + Self.ordTailAlt + #")\b"#
+    t = reSub(addPat, t) { m in
+      guard let base = Self.wordsToInt(Self.splitWords((m.g("lead") ?? "").lowercased())) else {
+        return nil
+      }
+      let n = base + Self.ordTail[(m.g("o") ?? "").lowercased()]!
+      return " \(comma(n))\(ordSuffix(n)) "
+    }
     // compound: '<tens> <unit-ordinal>' -> 'Nth' ('seventy third'->73rd), capturing the next word
-    // so the 'second' duration guard fires ('thirty second video'->left).
+    // so the 'second' duration guard fires ('thirty second video'->left). Result is always >=21.
     let compPat =
       #"\b(?<t>"# + Self.tensAlt + #")\s+(?<u>"# + unitAlt + #")\b(?:\s+(?<nxt>[a-z]+))?"#
     t = reSub(compPat, t) { m in
@@ -473,19 +785,14 @@ public struct InverseTextNormalizer: Sendable {
       let tail = nxt.isEmpty ? "" : " " + nxt
       return " \(n)\(ordSuffix(n))\(tail) "
     }
-    // standalone unambiguous: 'fourth'->4th, 'fiftieth'->50th, 'twentieth'->20th
+    // standalone: 'tenth'->10th, 'twentieth'->20th. AP: spell first-ninth, so values <10 stay.
     let simpleAlt = Self.alt(Array(Self.ordStandalone.keys))
     t = reSub(#"\b(?:"# + simpleAlt + #")\b"#, t) { m in
       let n = Self.ordStandalone[m.whole.lowercased()]!
+      if n < Self.apThreshold { return nil }  // first-ninth stay spelled under AP
       return "\(n)\(ordSuffix(n))"
     }
-    // contextual first/second/third: only after 'the' or a month name.
-    let ctxAlt = Self.alt(Array(Self.ordContextual.keys))
-    let ctxPat = #"(?<lead>\b(?:the|"# + Self.monthsAlt + #")\s+)(?<w>"# + ctxAlt + #")\b"#
-    t = reSub(ctxPat, t) { m in
-      let n = Self.ordContextual[(m.g("w") ?? "").lowercased()]!
-      return "\(m.g("lead") ?? "")\(n)\(ordSuffix(n))"
-    }
+    // contextual first/second/third are all <10 under AP -> stay spelled (no conversion pass).
     return t
   }
 
