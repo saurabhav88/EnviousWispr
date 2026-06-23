@@ -334,6 +334,43 @@ find "$PROJ_ROOT/build/dSYMs" -maxdepth 2 -name '*.dSYM' -print | sort
 echo "==> [9/9] Create DMG"
 DMG_PATH="build/EnviousWispr-${VERSION}.dmg"
 rm -f "$DMG_PATH"
+
+# GPLv3 §6: the conveyed object code must ship the license text + clear
+# directions to the corresponding source. We drop three files into the DMG:
+#   LICENSE                 — the GPLv3 text (already at repo root)
+#   SOURCE.txt              — directions to the exact tagged source (this build's commit)
+#   THIRD-PARTY-NOTICES.txt — attribution for bundled MIT/Apache/BSD components
+# The build commit IS the tag commit on a tag-triggered release, so HEAD's sha
+# is the corresponding source.
+LICENSE_SRC="$PROJ_ROOT/LICENSE"
+NOTICES_SRC="$PROJ_ROOT/THIRD-PARTY-NOTICES.txt"
+test -f "$LICENSE_SRC"  || { echo "::error::LICENSE missing at $LICENSE_SRC"; exit 1; }
+test -f "$NOTICES_SRC"  || { echo "::error::THIRD-PARTY-NOTICES.txt missing at $NOTICES_SRC (run scripts/ci/gen-third-party-notices.sh)"; exit 1; }
+# Enforce notices freshness ON the release path (Codex code-diff r2): fail the
+# release if Package.resolved gained a dep with no notices entry, or the
+# committed notices are stale. --check needs no SwiftPM checkouts (works under
+# the Xcode/DerivedData build).
+"$PROJ_ROOT/scripts/ci/gen-third-party-notices.sh" --check
+COMMIT="$(git -C "$PROJ_ROOT" rev-parse HEAD)"
+DMG_EXTRAS="$PROJ_ROOT/build/dmg-extras"
+rm -rf "$DMG_EXTRAS"; mkdir -p "$DMG_EXTRAS"
+SOURCE_TXT="$DMG_EXTRAS/SOURCE.txt"
+cat > "$SOURCE_TXT" <<SOURCE_EOF
+EnviousWispr Corresponding Source
+
+This DMG contains object code for EnviousWispr version ${VERSION},
+built from git tag v${VERSION}, commit ${COMMIT}.
+
+The Corresponding Source for this binary is available at no charge:
+  Release page:  https://github.com/saurabhav88/EnviousWispr/releases/tag/v${VERSION}
+  Source (tar):  https://github.com/saurabhav88/EnviousWispr/archive/refs/tags/v${VERSION}.tar.gz
+  Git:           git clone https://github.com/saurabhav88/EnviousWispr.git && git checkout ${COMMIT}
+
+EnviousWispr is licensed under the GNU GPL version 3 (see LICENSE in this DMG).
+Build instructions: README.md and scripts/build-release-dmg.sh in the source.
+Third-party component licenses: see THIRD-PARTY-NOTICES.txt in this DMG.
+SOURCE_EOF
+
 create-dmg \
     --volname "EnviousWispr ${VERSION}" \
     --window-pos 200 120 \
@@ -341,6 +378,9 @@ create-dmg \
     --icon-size 100 \
     --icon "${APP_NAME}" 175 190 \
     --app-drop-link 425 190 \
+    --add-file LICENSE "$LICENSE_SRC" 175 300 \
+    --add-file SOURCE.txt "$SOURCE_TXT" 300 300 \
+    --add-file THIRD-PARTY-NOTICES.txt "$NOTICES_SRC" 425 300 \
     --no-internet-enable \
     "$DMG_PATH" \
     "$BUNDLE"
@@ -372,6 +412,26 @@ for HELPER in \
     fi
 done
 echo "    all 4 Sparkle update helpers present (Updater, Installer, Downloader, Autoupdate)"
+
+# GPLv3 §6: assert the license + source pointer + third-party notices actually
+# shipped in the DMG, with CONTENT checks (not just presence) so a stale or
+# wrong file fails the build before publish.
+LICENSE_IN_DMG="$PRECHECK_MOUNT/LICENSE"
+SOURCE_IN_DMG="$PRECHECK_MOUNT/SOURCE.txt"
+NOTICES_IN_DMG="$PRECHECK_MOUNT/THIRD-PARTY-NOTICES.txt"
+if ! { [[ -f "$LICENSE_IN_DMG" ]] && grep -q "GNU GENERAL PUBLIC LICENSE" "$LICENSE_IN_DMG" && grep -q "Version 3" "$LICENSE_IN_DMG"; }; then
+    echo "::error::GPLv3 LICENSE missing or wrong in DMG ($LICENSE_IN_DMG)"; exit 1
+fi
+if ! { [[ -f "$SOURCE_IN_DMG" ]] && grep -q "${VERSION}" "$SOURCE_IN_DMG" && grep -q "${COMMIT}" "$SOURCE_IN_DMG"; }; then
+    echo "::error::SOURCE.txt missing or not pinned to ${VERSION}/${COMMIT} in DMG"; exit 1
+fi
+if ! { [[ -f "$NOTICES_IN_DMG" ]] && grep -q "THIRD-PARTY NOTICES" "$NOTICES_IN_DMG" \
+        && grep -q "None of these components is GPL/LGPL" "$NOTICES_IN_DMG" \
+        && grep -q "FluidAudio" "$NOTICES_IN_DMG"; }; then
+    echo "::error::THIRD-PARTY-NOTICES.txt missing or not a valid notices file in DMG"; exit 1
+fi
+echo "    GPL compliance files present (LICENSE [GPLv3], SOURCE.txt [v${VERSION} @ ${COMMIT:0:8}], THIRD-PARTY-NOTICES.txt)"
+
 hdiutil detach "$PRECHECK_MOUNT"; rm -rf "$PRECHECK_MOUNT"
 trap - EXIT
 
