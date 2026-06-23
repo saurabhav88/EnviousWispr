@@ -495,15 +495,30 @@ jobs:
           VERSION: ${{ needs.preflight.outputs.version }}
         run: cp "build/EnviousWispr-${VERSION}.dmg" "build/EnviousWispr.dmg"
 
+      - name: Render curated release notes
+        # Render marketing-friendly notes from the in-app What's New copy (the single
+        # source of truth: WhatsNewContent.swift). Best-effort by design: on any
+        # failure the publish job falls back to GitHub's auto-generated notes, so this
+        # step can never block a release or ship it with a blank body.
+        continue-on-error: true
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          python3 scripts/ci/render-release-notes.py \
+            --version "$VERSION" --out build/release-notes-curated.md \
+          || echo "::warning::Could not render curated notes for v$VERSION; release will use auto-generated notes"
+
       - name: Upload release artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-artifacts-${{ needs.preflight.outputs.version }}
           retention-days: 30
+          if-no-files-found: warn
           path: |
             build/EnviousWispr-*.dmg
             build/EnviousWispr.dmg
             build/appcast-entry.xml
+            build/release-notes-curated.md
 
       - name: Upload dSYM artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -576,6 +591,32 @@ jobs:
             echo "==> Release $TAG does not exist — will create"
           fi
 
+      - name: Compose release notes
+        # If the build job rendered curated What's New notes, wrap them with the
+        # auto-generated PR changelog (collapsed) into the final release body. If no
+        # curated notes exist, leave no body file so the create step falls back to
+        # --generate-notes. This step never fails the release.
+        if: steps.check-release.outputs.exists == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+        run: |
+          set -uo pipefail
+          CURATED="build/release-notes-curated.md"
+          if [ -s "$CURATED" ]; then
+            AUTO=$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
+              -f tag_name="$TAG" --jq '.body' 2>/dev/null || true)
+            {
+              cat "$CURATED"
+              if [ -n "${AUTO:-}" ]; then
+                printf '\n<details>\n<summary>Full technical changelog</summary>\n\n%s\n\n</details>\n' "$AUTO"
+              fi
+            } > build/release-body.md
+            echo "==> Composed curated release notes ($(wc -l < build/release-body.md) lines)"
+          else
+            echo "::warning::No curated What's New notes found; release will use auto-generated notes"
+          fi
+
       - name: Create GitHub Release
         if: steps.check-release.outputs.exists == 'false' && inputs.dry_run != true
         env:
@@ -585,10 +626,17 @@ jobs:
         run: |
           # --repo is required on hosted runners: this job has no checkout, so a
           # fresh hosted workspace has no .git for gh to infer the repo from. (#1087)
+          if [ -s build/release-body.md ]; then
+            NOTES_ARGS=(--notes-file build/release-body.md)
+            echo "==> Using curated release notes"
+          else
+            NOTES_ARGS=(--generate-notes)
+            echo "==> Using auto-generated release notes (no curated notes available)"
+          fi
           gh release create "$TAG" \
             --repo "${{ github.repository }}" \
             --title "EnviousWispr v${VERSION}" \
-            --generate-notes \
+            "${NOTES_ARGS[@]}" \
             "build/EnviousWispr-${VERSION}.dmg" \
             "build/EnviousWispr.dmg"
 
@@ -598,9 +646,15 @@ jobs:
           VERSION: ${{ needs.preflight.outputs.version }}
           TAG: ${{ needs.preflight.outputs.tag }}
         run: |
-          # #1117: rehearsal — print the exact command that WOULD run, create nothing.
-          echo "DRY RUN: would run:"
-          echo "  gh release create \"$TAG\" --repo \"${{ github.repository }}\" --title \"EnviousWispr v${VERSION}\" --generate-notes build/EnviousWispr-${VERSION}.dmg build/EnviousWispr.dmg"
+          # #1117: rehearsal — print what WOULD run, create nothing.
+          if [ -s build/release-body.md ]; then
+            echo "DRY RUN: would create release $TAG with CURATED notes (--notes-file):"
+            echo "----------------------------------------"
+            cat build/release-body.md
+            echo "----------------------------------------"
+          else
+            echo "DRY RUN: would create release $TAG with AUTO-generated notes (--generate-notes)"
+          fi
           ls -la build/EnviousWispr-*.dmg build/EnviousWispr.dmg 2>/dev/null || echo "::warning::expected DMGs not found in dry-run download"
 
       - name: Upload assets to existing release (recovery only)
