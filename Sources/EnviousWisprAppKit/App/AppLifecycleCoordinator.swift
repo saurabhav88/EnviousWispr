@@ -154,17 +154,6 @@ final class AppLifecycleCoordinator {
         activeRecording: phase.isActive, appPhase: phase.telemetryLabel)
     }
 
-    if settings.onboardingState == .completed {
-      // Telemetry Bible Phase 0 (#1169): the standing settings snapshot now
-      // routes through one named seam (extended by Phase 3/4). Behavior-
-      // preserving — same event, same fields, same launch timing.
-      StandingSnapshotBuilder(
-        settings: settings,
-        keychainManager: keychainManager,
-        customWordsCoordinator: customWordsCoordinator
-      ).emit()
-    }
-
     // Run Apple Intelligence diagnostics via coordinator.
     // Handles: Sentry context, PostHog event, persistence, first-launch re-check.
     let isFreshInstall = settings.onboardingState != .completed
@@ -204,6 +193,22 @@ final class AppLifecycleCoordinator {
 
     // Begin smart polling if Accessibility is not yet granted.
     permissions.startMonitoring()
+
+    if settings.onboardingState == .completed {
+      // Telemetry Bible Phase 0 (#1169) seam, extended by Phase 3 (#1172) with
+      // microphone / Accessibility posture. Emitted AFTER refreshOnLaunch() so
+      // the posture fields reflect the settled launch state — in particular
+      // accessibility_warning_dismissed, which refreshOnLaunch() resets to false
+      // when Accessibility is denied (Codex code-diff review caught the stale
+      // pre-refresh read). The seven pre-existing settings fields are unaffected
+      // by ordering.
+      StandingSnapshotBuilder(
+        settings: settings,
+        keychainManager: keychainManager,
+        customWordsCoordinator: customWordsCoordinator,
+        permissions: permissions
+      ).emit()
+    }
 
     // Pre-warm LLM backend with a real inference request.
     LLMNetworkSession.shared.preWarmModel(

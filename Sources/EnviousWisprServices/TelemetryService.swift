@@ -204,6 +204,16 @@ public final class TelemetryService {
   // MARK: - Permissions
 
   public func permissionStatus(permission: String, status: String, context: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "permission.status",
+          stringProps: [
+            "permission": permission,
+            "status": status,
+            "context": context,
+          ]))
+    #endif
     PostHogSDK.shared.capture(
       "permission.status",
       properties: [
@@ -640,7 +650,9 @@ public final class TelemetryService {
   public func settingsSnapshot(
     asrBackend: String, llmProvider: String, recordingMode: String,
     fillerRemoval: Bool, customWordsCount: Int,
-    hasApiKeys: Bool, noiseSuppression: Bool
+    hasApiKeys: Bool, noiseSuppression: Bool,
+    microphoneStatus: String, accessibilityStatus: String,
+    accessibilityWarningDismissed: Bool
   ) {
     #if DEBUG
       testEventHook?(
@@ -650,12 +662,15 @@ public final class TelemetryService {
             "asr_backend": asrBackend,
             "llm_provider": llmProvider,
             "recording_mode": recordingMode,
+            "microphone_status": microphoneStatus,
+            "accessibility_status": accessibilityStatus,
           ],
           intProps: ["custom_words_count": customWordsCount],
           boolProps: [
             "filler_removal": fillerRemoval,
             "has_api_keys": hasApiKeys,
             "noise_suppression": noiseSuppression,
+            "accessibility_warning_dismissed": accessibilityWarningDismissed,
           ]))
     #endif
     PostHogSDK.shared.capture(
@@ -668,6 +683,9 @@ public final class TelemetryService {
         "custom_words_count": customWordsCount,
         "has_api_keys": hasApiKeys,
         "noise_suppression": noiseSuppression,
+        "microphone_status": microphoneStatus,
+        "accessibility_status": accessibilityStatus,
+        "accessibility_warning_dismissed": accessibilityWarningDismissed,
       ])
   }
 
