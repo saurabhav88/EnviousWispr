@@ -31,7 +31,12 @@ final class LLMModelDiscoveryCoordinator {
 
   /// Validate an API key and discover available models for the given provider.
   /// Pass `settings` to auto-correct model selection if the current model is unavailable.
-  func validateKeyAndDiscoverModels(provider: LLMProvider, settings: SettingsManager) async {
+  /// `source` (#1173) tags which user action drove the pass for telemetry; the
+  /// six refresh / provider-switch call sites take the default.
+  func validateKeyAndDiscoverModels(
+    provider: LLMProvider, settings: SettingsManager,
+    source: ApiKeyValidationSource = .modelDiscovery
+  ) async {
     keyValidationState = .validating
     isDiscoveringModels = true
 
@@ -42,6 +47,8 @@ final class LLMModelDiscoveryCoordinator {
       let keychainId =
         provider == .openAI ? KeychainManager.openAIKeyID : KeychainManager.geminiKeyID
       guard let key = try? keychainManager.retrieve(key: keychainId), !key.isEmpty else {
+        // Missing-key guard: no validation actually ran, so NO
+        // `api_key.validation_completed` event (#1173).
         keyValidationState = .invalid("No API key found")
         isDiscoveringModels = false
         return
@@ -57,6 +64,7 @@ final class LLMModelDiscoveryCoordinator {
         cacheModels(models, for: provider)
       }
       keyValidationState = .valid
+      emitValidationCompleted(provider: provider, result: "valid", source: source)
 
       settings.applyDiscoveredModels(models, for: provider)
     } catch LLMError.providerUnavailable {
@@ -66,15 +74,31 @@ final class LLMModelDiscoveryCoordinator {
           : "Apple Intelligence not available on this system."
       )
       discoveredModels = []
+      emitValidationCompleted(provider: provider, result: "provider_unavailable", source: source)
     } catch let error as LLMError where error == .invalidAPIKey {
       keyValidationState = .invalid("Invalid API key")
       discoveredModels = []
+      emitValidationCompleted(provider: provider, result: "invalid", source: source)
     } catch {
       keyValidationState = .invalid(error.localizedDescription)
       discoveredModels = []
+      emitValidationCompleted(provider: provider, result: "error", source: source)
     }
 
     isDiscoveringModels = false
+  }
+
+  /// #1173: emit `api_key.validation_completed` for a terminal validation result.
+  /// Provider identity only — never the key. Gated to OpenAI/Gemini (Codex r2):
+  /// Ollama and Apple Intelligence are keyless local providers, so their
+  /// discovery outcome is NOT an API-key validation and must stay out of the
+  /// `api_key.*` metrics.
+  private func emitValidationCompleted(
+    provider: LLMProvider, result: String, source: ApiKeyValidationSource
+  ) {
+    guard provider == .openAI || provider == .gemini else { return }
+    TelemetryService.shared.apiKeyValidationCompleted(
+      provider: provider.rawValue, result: result, source: source.rawValue)
   }
 
   /// Load cached models from UserDefaults for the given provider.

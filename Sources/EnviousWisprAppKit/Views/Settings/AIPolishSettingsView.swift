@@ -424,13 +424,13 @@ struct AIPolishSettingsView: View {
             guard saveKey(key: openAIKey, keychainId: KeychainManager.openAIKeyID) else { return }
             Task {
               await llmDiscovery.validateKeyAndDiscoverModels(
-                provider: .openAI, settings: settings)
+                provider: .openAI, settings: settings, source: .save)
             }
           } else {
             guard saveKey(key: geminiKey, keychainId: KeychainManager.geminiKeyID) else { return }
             Task {
               await llmDiscovery.validateKeyAndDiscoverModels(
-                provider: .gemini, settings: settings)
+                provider: .gemini, settings: settings, source: .save)
             }
           }
         }
@@ -1001,14 +1001,27 @@ struct AIPolishSettingsView: View {
         try? await Task.sleep(for: .seconds(2))
         validationStatus = ""
       }
+      TelemetryService.shared.apiKeyChanged(
+        provider: apiKeyProviderLabel(keychainId), action: "save", result: "success")
       return true
     } catch {
       aiPolishKeychainUILog.error(
         "Save key failed action=save keyID=\(keychainId, privacy: .public) error=\(String(describing: error), privacy: .public)"
       )
       validationStatus = AIPolishKeychainFailureMessage.text(for: error, action: .save)
+      TelemetryService.shared.apiKeyChanged(
+        provider: apiKeyProviderLabel(keychainId), action: "save", result: "failure")
       return false
     }
+  }
+
+  /// #1173: map a keychain id to the provider label used in API-key telemetry —
+  /// the same `LLMProvider.rawValue` vocabulary as `api_key.validation_completed`,
+  /// so both events group by the same provider. Never the key value.
+  private func apiKeyProviderLabel(_ keychainId: String) -> String {
+    if keychainId == KeychainManager.openAIKeyID { return LLMProvider.openAI.rawValue }
+    if keychainId == KeychainManager.geminiKeyID { return LLMProvider.gemini.rawValue }
+    return keychainId
   }
 
   /// Clears any "Failed: …" validation badge the moment the user resumes
@@ -1026,12 +1039,16 @@ struct AIPolishSettingsView: View {
     do {
       try keychainManager.delete(key: keychainId)
       validationStatus = ""
+      TelemetryService.shared.apiKeyChanged(
+        provider: apiKeyProviderLabel(keychainId), action: "remove", result: "success")
       return true
     } catch {
       aiPolishKeychainUILog.error(
         "Clear key failed action=clear keyID=\(keychainId, privacy: .public) error=\(String(describing: error), privacy: .public)"
       )
       validationStatus = AIPolishKeychainFailureMessage.text(for: error, action: .clear)
+      TelemetryService.shared.apiKeyChanged(
+        provider: apiKeyProviderLabel(keychainId), action: "remove", result: "failure")
       return false
     }
   }

@@ -113,13 +113,19 @@ import Testing
   ///   objects). Injected into the main Window scene; consumed by `DictationRuntime`,
   ///   `RecoveryCoordinator`, `PipelineSettingsSync`, and the Settings affordance. The
   ///   pre-#1171 count was already at the cap (30), so adding one home needs +1.
+  /// - 31 → 32 in #1173 (2026-06-23, Telemetry Bible Phase 4): App-owned
+  ///   `settingsChangeTelemetry` — the settings-funnel observer that emits
+  ///   coalesced `settings.changed` deltas + the onboarding-completion baseline.
+  ///   A narrow new App-owned home (the #763 direction: many narrow homes), held
+  ///   app-lifetime so it never deallocs and stops emitting. The pre-#1173 count
+  ///   was already at the cap (31), so adding one home needs +1.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 31,
+      count <= 32,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 31. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 32. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -227,14 +233,22 @@ import Testing
   /// `start()`. Net of deleting the `onNeedsPreloadObservation` wiring + the
   /// `whisperKitSetup` settingsSync arg. Cap set by the deterministic rule
   /// (post-change actual 831 + 10, rounded up to nearest 5 = 845).
+  /// Ratcheted 845→870 in #1173 (2026-06-23, Telemetry Bible Phase 4): the
+  /// composition root builds the App-owned `SettingsChangeTelemetry` home (its
+  /// `emitBaseline` closure constructs a `StandingSnapshotBuilder` for the
+  /// onboarding-completion baseline), adds one fan-out branch (`handle(key)`)
+  /// + its weak capture to the `settings.onChange` closure, and stores it. A
+  /// narrow new App-owned home (+1 stored property, ≤ 31) keeping the funnel the
+  /// single observation seam. Cap set by the deterministic rule (post-change
+  /// actual 857 + 10, rounded up to nearest 5 = 870).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 845,
+      lineCount <= 870,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 845. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 870. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

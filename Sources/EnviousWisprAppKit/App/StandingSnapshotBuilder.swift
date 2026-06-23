@@ -4,13 +4,16 @@ import EnviousWisprServices
 /// Telemetry Bible Phase 0 (#1169): the single home that builds and emits the
 /// standing settings/permission snapshot.
 ///
-/// Today it emits the launch-time `settings.snapshot` — a behavior-preserving
-/// extraction of the former inline block in `AppLifecycleCoordinator`
-/// (identical event, identical seven fields, identical launch timing). Phase 3
-/// (#1172) extends it with microphone / Accessibility posture; Phase 4 (#1173)
-/// adds the debounced change-driven re-emit. Telemetry is a limb: this never
-/// throws and must not block launch — Keychain reads stay `try?`-guarded so a
-/// read failure degrades to `hasApiKeys = false` exactly as before.
+/// It emits `settings.snapshot` — a comprehensive baseline of every user-facing
+/// setting (Phase 4 #1173), projected privacy-safe via `SettingsProjection`. The
+/// ten pre-existing fields stay byte-identical (Phase 0/3 contract); the rest
+/// ride in the `config` block. Emitted at launch (`AppLifecycleCoordinator`) AND
+/// at onboarding-completion (via the settings funnel), so a long-running app
+/// that rarely relaunches still has a current per-user baseline that the
+/// `settings.changed` deltas overlay. Phase 3 (#1172) added microphone /
+/// Accessibility posture. Telemetry is a limb: this never throws and must not
+/// block launch — Keychain reads stay `try?`-guarded so a read failure degrades
+/// to `hasApiKeys = false` exactly as before.
 @MainActor
 struct StandingSnapshotBuilder {
   private let settings: SettingsManager
@@ -50,7 +53,10 @@ struct StandingSnapshotBuilder {
       // it surfaces.
       microphoneStatus: permissions.microphoneStatusString,
       accessibilityStatus: permissions.accessibilityGranted ? "granted" : "denied",
-      accessibilityWarningDismissed: permissions.accessibilityWarningDismissed
+      accessibilityWarningDismissed: permissions.accessibilityWarningDismissed,
+      // Phase 4 (#1173): the comprehensive per-setting projection block (all
+      // other user-facing settings) for query-side holistic reconstruction.
+      config: SettingsProjection.snapshotConfig(s)
     )
   }
 }

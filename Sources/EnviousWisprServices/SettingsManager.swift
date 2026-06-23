@@ -47,6 +47,15 @@ public final class SettingsManager {
 
   public var onChange: ((SettingKey) -> Void)?
 
+  /// Telemetry Bible Phase 4 (#1173) support flag — true only while async model
+  /// DISCOVERY (`applyDiscoveredModels`) is auto-correcting a setting behind the
+  /// user's back, so the change observer can stamp that delta `source=system`.
+  /// Provider-switch canonicalization is deliberately NOT flagged — it is part of
+  /// the user's provider gesture and stays `source=user` (Codex r5). NOT a
+  /// product-behavior knob: it gates no logic, only the telemetry label. Set/
+  /// reset synchronously on the main actor (no `await` between, so no reentrancy).
+  public var isApplyingSystemWrite = false
+
   /// The store backing all user-preference reads/writes. Injected for testability;
   /// production resolves to `SettingsDefaults.store` (the build-shared suite, #923).
   /// EXCEPTION: the per-build `useXPCAudioService` knob deliberately uses
@@ -91,7 +100,12 @@ public final class SettingsManager {
         TelemetryService.shared.providerChanged(from: oldValue.rawValue, to: llmProvider.rawValue)
       }
       defaults.set(llmProvider.rawValue, forKey: "llmProvider")
-      // Canonicalize model for the new provider
+      // Canonicalize the model for the new provider. This is NOT flagged a system
+      // write (#1173 / Codex r5): it is a synchronous consequence of the user's
+      // provider pick, so the resulting `llm_model` delta stays `source=user`,
+      // consistent across providers (turning polish off from Apple Intelligence
+      // vs OpenAI both read `user`). Only async background discovery
+      // (`applyDiscoveredModels`) is `system`.
       if llmProvider == .appleIntelligence {
         llmModel = "apple-intelligence"
       } else if llmModel == "apple-intelligence" || llmModel.isEmpty {
@@ -398,6 +412,20 @@ public final class SettingsManager {
 
   public var activePolishInstructions: PolishInstructions { .default }
 
+  /// The model the runtime actually uses for the current provider — the SINGLE
+  /// source of truth (#1173). Apple Intelligence is a fixed literal; Ollama reads
+  /// `ollamaModel` (its picker-mirrored / discovery-resolved local model); cloud
+  /// providers read `llmModel`. `DictationSessionConfigFactory` and the settings
+  /// telemetry projection both read THIS, so neither re-derives the model from
+  /// raw fields that lag during a provider switch.
+  public var effectiveLLMModel: String {
+    switch llmProvider {
+    case .appleIntelligence: return "apple-intelligence"
+    case .ollama: return ollamaModel
+    case .openAI, .gemini, .none: return llmModel
+    }
+  }
+
   public var isPushToTalk: Bool {
     get { recordingMode == .pushToTalk }
     set { recordingMode = newValue ? .pushToTalk : .toggle }
@@ -605,6 +633,12 @@ public final class SettingsManager {
   ///   - provider: The provider these models belong to. Stale results (user already switched) are dropped.
   public func applyDiscoveredModels(_ models: [LLMModelInfo], for provider: LLMProvider) {
     guard provider == llmProvider else { return }
+    // System write (#1173): the model/ollamaModel mutations below are an
+    // auto-correction, not a user pick — tag their deltas `source=system`. The
+    // flag covers the full body (incl. the early-return `models.isEmpty` path)
+    // via `defer`.
+    isApplyingSystemWrite = true
+    defer { isApplyingSystemWrite = false }
     if models.isEmpty {
       llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
       return

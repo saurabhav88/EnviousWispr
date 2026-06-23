@@ -138,13 +138,8 @@ final class RecoveryCoordinator {
     let recoverySessionID = UUID().uuidString
     let keyData = RecoveryKeyStore.makeKey()
 
-    let resolvedModel: String = {
-      switch settings.llmProvider {
-      case .appleIntelligence: return "apple-intelligence"
-      case .ollama: return settings.ollamaModel
-      default: return settings.llmModel
-      }
-    }()
+    // #1173: single source of truth for the effective model.
+    let resolvedModel = settings.effectiveLLMModel
     let snapshot = RecordingSettingsSnapshot(
       backendType: backendType,
       backendSupportsLanguageDetection: supportsLanguageDetection,

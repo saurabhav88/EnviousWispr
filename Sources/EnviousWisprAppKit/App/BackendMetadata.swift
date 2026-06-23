@@ -44,7 +44,7 @@ final class BackendMetadata {
 
   var llmLabel: String {
     guard settings.llmProvider != .none else { return "LLM Deactivated" }
-    let model = settings.llmProvider == .ollama ? settings.ollamaModel : settings.llmModel
+    let model = settings.effectiveLLMModel  // #1173: single source of truth
     if model.isEmpty { return settings.llmProvider.displayName }
     if let info = llmDiscovery.discoveredModels.first(where: { $0.id == model }) {
       return info.displayName
