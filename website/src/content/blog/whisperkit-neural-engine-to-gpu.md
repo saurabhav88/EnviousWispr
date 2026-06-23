@@ -70,7 +70,7 @@ A few things worth keeping.
 
 This measurement is from a current Apple Silicon Mac. Older Macs will compile more slowly, and the configuration we used falls back gracefully on hardware without a usable GPU, so nobody ends up worse off than the Neural Engine path. We did not measure battery draw; the GPU likely draws more during the compile, but over a far shorter window. And this is one engine, the optional Whisper-based one. The default engine was already quick to start and we left it alone.
 
-You can read the engine configuration yourself. EnviousWispr is source-available, and the compute-unit choice lives in the Whisper backend in [the repository](https://github.com/saurabhav88/EnviousWispr).
+You can read the engine configuration yourself. EnviousWispr is open source, and the compute-unit choice lives in the Whisper backend in [the repository](https://github.com/saurabhav88/EnviousWispr).
 
 ## What changes for you
 

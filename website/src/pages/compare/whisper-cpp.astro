@@ -37,7 +37,7 @@ const faqJsonLd = JSON.stringify({
     { "@type": "Question", "name": "Can I use whisper.cpp for live dictation on Mac?", "acceptedAnswer": { "@type": "Answer", "text": "whisper.cpp has a real-time streaming mode, but it outputs to the terminal. There is no hotkey, no clipboard integration, and no paste-into-app workflow. EnviousWispr provides the full dictation experience." } },
     { "@type": "Question", "name": "Does EnviousWispr use whisper.cpp internally?", "acceptedAnswer": { "@type": "Answer", "text": "No. EnviousWispr uses Parakeet TDT (NVIDIA's CTC-based model) and WhisperKit (a Swift-native Whisper implementation via Core ML and the Neural Engine), not whisper.cpp's C/C++ approach." } },
     { "@type": "Question", "name": "Is EnviousWispr faster than whisper.cpp?", "acceptedAnswer": { "@type": "Answer", "text": "For live dictation on Apple Silicon Macs, EnviousWispr achieves a 0.43s median latency using engines tuned for the Neural Engine. whisper.cpp performance varies widely by model size, hardware, and build flags." } },
-    { "@type": "Question", "name": "Is EnviousWispr open source?", "acceptedAnswer": { "@type": "Answer", "text": "Source-available under the Business Source License 1.1. You can read, build, and inspect every line on GitHub. whisper.cpp is MIT licensed, which is more permissive for derivative works." } },
+    { "@type": "Question", "name": "Is EnviousWispr open source?", "acceptedAnswer": { "@type": "Answer", "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line on GitHub. whisper.cpp is MIT licensed, which is more permissive for derivative works." } },
     { "@type": "Question", "name": "What is the best whisper dictation tool for Mac?", "acceptedAnswer": { "@type": "Answer", "text": "If you want a developer library for scripting and batch processing, whisper.cpp is the standard. If you want a native Mac app with a hotkey, AI polish, custom words, and automatic clipboard pasting, EnviousWispr is built for that workflow." } },
     { "@type": "Question", "name": "Can whisper.cpp do AI polish or custom words?", "acceptedAnswer": { "@type": "Answer", "text": "No. whisper.cpp outputs raw transcription. Any post-processing requires additional tools or scripts. EnviousWispr includes AI polish and custom words as built-in features." } },
     { "@type": "Question", "name": "Do I need to know how to code to use EnviousWispr?", "acceptedAnswer": { "@type": "Answer", "text": "No. Download the DMG, drag to Applications, open, and start dictating. whisper.cpp requires comfort with the terminal, compiling from source, and managing model files manually." } },
@@ -416,7 +416,7 @@ const breadcrumbJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Source code</td>
-            <td><a href="https://github.com/saurabhav88/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Source-available</a> (BSL 1.1)</td>
+            <td><a href="https://github.com/saurabhav88/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Open source</a> (GPLv3)</td>
             <td><a href="https://github.com/ggerganov/whisper.cpp" style="color: var(--accent); text-decoration: underline;">Open source</a> (MIT)</td>
           </tr>
           <tr>
@@ -623,7 +623,7 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">📜</div>
         <div class="advantage-title">You want MIT licensing</div>
-        <p class="advantage-desc">whisper.cpp is MIT licensed with no restrictions. EnviousWispr is source-available under BSL 1.1. If you need to fork and build a competing product, whisper.cpp has more permissive terms.</p>
+        <p class="advantage-desc">whisper.cpp is MIT licensed with no restrictions. EnviousWispr is open source under GPLv3, a copyleft license. If you need to fork into a closed-source or proprietary product, whisper.cpp's MIT terms are more permissive; GPLv3 keeps derivative works open.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎛️</div>
@@ -676,7 +676,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source?</div>
-        <p class="faq-a">Source-available under the Business Source License 1.1. You can read, build, and inspect every line on GitHub. whisper.cpp is MIT licensed, which is more permissive for derivative works. If you want to audit the code, both projects are transparent.</p>
+        <p class="faq-a">Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line on GitHub. whisper.cpp is MIT licensed, which is more permissive for derivative works. If you want to audit the code, both projects are transparent.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What is the best whisper dictation tool for Mac?</div>

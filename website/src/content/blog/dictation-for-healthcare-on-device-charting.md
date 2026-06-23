@@ -117,7 +117,7 @@ If you want the full picture on the privacy architecture, the [on-device vs clou
 
 ## Getting started
 
-EnviousWispr is free to download. The source is available on GitHub under BSL 1.1.
+EnviousWispr is free to download. The source is open source on GitHub under GPLv3.
 
 1. [Download EnviousWispr](/#download), or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases).
 2. Drag it to Applications. On first launch, grant microphone and accessibility permissions.
