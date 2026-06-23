@@ -31,9 +31,14 @@ public final class PermissionsService {
     !accessibilityGranted && !accessibilityWarningDismissed
   }
 
-  public init() {
+  /// Injected so tests can drive a grant/revoke flip deterministically; defaults
+  /// to the live no-prompt system check in production.
+  private let accessibilityReader: () -> Bool
+
+  public init(accessibilityReader: @escaping () -> Bool = { AXIsProcessTrusted() }) {
+    self.accessibilityReader = accessibilityReader
     microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
-    accessibilityGranted = AXIsProcessTrusted()
+    accessibilityGranted = accessibilityReader()
   }
 
   /// Request microphone access. Returns true if granted.
@@ -48,6 +53,18 @@ public final class PermissionsService {
   /// Whether microphone permission has been granted.
   public var hasMicrophonePermission: Bool {
     microphoneStatus == .authorized
+  }
+
+  /// Microphone authorization as a stable, content-free telemetry string.
+  /// Telemetry Bible Phase 3 (#1172): fed into the launch `settings.snapshot`.
+  public var microphoneStatusString: String {
+    switch microphoneStatus {
+    case .authorized: return "authorized"
+    case .denied: return "denied"
+    case .restricted: return "restricted"
+    case .notDetermined: return "not_determined"
+    @unknown default: return "unknown"
+    }
   }
 
   /// Prompt the user to grant Accessibility permission in System Settings.
@@ -69,13 +86,23 @@ public final class PermissionsService {
   /// Detects revocation transitions (granted → revoked) and re-arms the warning.
   public func refreshAccessibilityStatus() {
     let wasGranted = accessibilityGranted
-    let nowGranted = AXIsProcessTrusted()
+    let nowGranted = accessibilityReader()
     accessibilityGranted = nowGranted
+
+    guard wasGranted != nowGranted else { return }
 
     // Revocation detected: re-arm the warning so it shows again.
     if wasGranted && !nowGranted {
       resetAccessibilityWarningDismissal()
     }
+
+    // Telemetry Bible Phase 3 (#1172): record the grant/revoke flip wherever the
+    // app already re-checks (background poll / onboarding / launch / pre-record).
+    // Limb: fire-and-forget metadata only, never blocks the heart path.
+    TelemetryService.shared.permissionStatus(
+      permission: "accessibility",
+      status: nowGranted ? "granted" : "denied",
+      context: "changed")
   }
 
   /// Mark the accessibility warning as dismissed by the user.

@@ -29,10 +29,14 @@ import Testing
       let suite = UserDefaults(suiteName: "StandingSnapshotBuilderTests-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       let customWords = CustomWordsCoordinator()
+      // Phase 3 (#1172): inject a granted Accessibility reader so the posture
+      // field is deterministic; microphone status is the machine's real value.
+      let permissions = PermissionsService(accessibilityReader: { true })
       let builder = StandingSnapshotBuilder(
         settings: settings,
         keychainManager: KeychainManager(),
-        customWordsCoordinator: customWords
+        customWordsCoordinator: customWords,
+        permissions: permissions
       )
 
       let box = EventBox()
@@ -56,6 +60,12 @@ import Testing
       // has_api_keys depends on the machine's Keychain/file backend, so assert
       // presence (not a fixed truth value) to stay deterministic across runs.
       #expect(event.boolProps["has_api_keys"] != nil)
+      // Phase 3 (#1172): permission posture fields.
+      #expect(event.stringProps["accessibility_status"] == "granted")
+      // microphone_status is the machine's real authorization, so assert
+      // presence rather than a fixed value.
+      #expect(event.stringProps["microphone_status"] != nil)
+      #expect(event.boolProps["accessibility_warning_dismissed"] != nil)
     }
   }
 
