@@ -41,13 +41,9 @@ enum DictationSessionConfigFactory {
     // the cascade entirely (TranscriptFinalizer:143 direct copyToClipboard),
     // depriving AX-denied users of both the diagnostic and the toast.
     let autoPaste = activePipelineIdle
-    let resolvedModel: String = {
-      switch settings.llmProvider {
-      case .appleIntelligence: return "apple-intelligence"
-      case .ollama: return settings.ollamaModel
-      default: return settings.llmModel
-      }
-    }()
+    // #1173: the single source of truth for the effective model (was an inline
+    // switch here; now shared with the settings telemetry projection).
+    let resolvedModel = settings.effectiveLLMModel
     return DictationSessionConfig(
       autoCopyToClipboard: settings.autoCopyToClipboard,
       inputMode: settings.recordingMode,

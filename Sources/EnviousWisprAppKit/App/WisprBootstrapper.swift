@@ -61,6 +61,11 @@ public final class WisprBootstrapper {
   /// live-dictation `LLMPolishStep`s pick it up once ready.
   let outputClassifierHolder: OutputClassifierHolder
 
+  /// Telemetry Bible Phase 4 (#1173). Observes the settings funnel for coalesced
+  /// `settings.changed` deltas + the onboarding-completion baseline. Held
+  /// app-lifetime (a weak-only hold would dealloc and silently stop emitting).
+  let settingsChangeTelemetry: SettingsChangeTelemetry
+
   public init() {
     // ===== Subsystem construction (epic #763) =====
     // `EnviousWisprApp` is the composition root: every subsystem is constructed
@@ -245,9 +250,31 @@ public final class WisprBootstrapper {
     SentryBreadcrumb.updateASRBackend(
       settings.selectedBackend == .whisperKit ? "whisperkit" : "parakeet")
 
-    settings.onChange = { [weak settingsSync, weak settings, outputClassifierHolder] key in
+    // #1173: settings-change telemetry observer. `emitBaseline` re-emits the
+    // comprehensive `settings.snapshot` at onboarding-completion (fixes the
+    // first-run gap for a long-running app). Built before the funnel is wired.
+    let settingsChangeTelemetry = SettingsChangeTelemetry(
+      settings: settings,
+      emitBaseline: { [keychainManager, customWordsCoordinator, permissions] in
+        StandingSnapshotBuilder(
+          settings: settings, keychainManager: keychainManager,
+          customWordsCoordinator: customWordsCoordinator, permissions: permissions
+        ).emit()
+      })
+    // #1173: drain a pending settings delta before any telemetry flush (quit /
+    // update-relaunch) so a change made inside the debounce window isn't lost.
+    TelemetryService.shared.onBeforeFlush = { [weak settingsChangeTelemetry] in
+      settingsChangeTelemetry?.flush()
+    }
+
+    settings.onChange = {
+      [weak settingsSync, weak settings, weak settingsChangeTelemetry, outputClassifierHolder] key
+      in
       guard let settingsSync, let settings else { return }
       settingsSync.handleSettingChanged(key, settings: settings)
+      // #1173: emit coalesced settings.changed deltas (fire-and-forget, never
+      // throws/awaits into the setter path).
+      settingsChangeTelemetry?.handle(key)
       // #1047: appearance is a view-shell concern (no pipeline sync) — apply it
       // to NSApp here so both the menu and the Settings picker take effect live.
       if key == .appearance {
@@ -587,6 +614,9 @@ public final class WisprBootstrapper {
 
     // #832/#913 PR8: App-owned output-safety classifier holder.
     self.outputClassifierHolder = outputClassifierHolder
+
+    // #1173: App-owned settings-change telemetry observer.
+    self.settingsChangeTelemetry = settingsChangeTelemetry
 
     // #1171 — launch the coordinator's reconcile worker + WhisperKit setup-state
     // observation and fire the initial reconcile. Wiring above (the picker /

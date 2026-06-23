@@ -39,6 +39,14 @@ import PostHog
   }
 #endif
 
+/// Telemetry Bible Phase 4 (#1173): which user action triggered an API-key
+/// validation pass. Threaded into `validateKeyAndDiscoverModels` (defaulted to
+/// `.modelDiscovery`); only the two Save buttons pass `.save`.
+public enum ApiKeyValidationSource: String, Sendable {
+  case save
+  case modelDiscovery = "model_discovery"
+}
+
 /// Thin wrapper — type-safe event names, no business logic.
 /// Limb: observes facts from domain objects, publishes to PostHog.
 @MainActor
@@ -647,24 +655,35 @@ public final class TelemetryService {
 
   // MARK: - Settings Snapshot
 
+  /// Telemetry Bible Phase 4 (#1173): `config` carries the comprehensive
+  /// per-setting projection block (all OTHER user-facing settings, privacy-
+  /// projected as low-cardinality strings — see `SettingsProjection`). The ten
+  /// pre-existing fields stay byte-identical (Phase 0/3 contract); `config` adds
+  /// the rest as flat `properties` keys so the holistic per-user config can be
+  /// reconstructed query-side from this baseline overlaid with `settings.changed`
+  /// deltas. Boolean settings appear as `on`/`off` strings in `config` and the
+  /// deltas (normalize against the legacy bool `filler_removal` in the query).
   public func settingsSnapshot(
     asrBackend: String, llmProvider: String, recordingMode: String,
     fillerRemoval: Bool, customWordsCount: Int,
     hasApiKeys: Bool, noiseSuppression: Bool,
     microphoneStatus: String, accessibilityStatus: String,
-    accessibilityWarningDismissed: Bool
+    accessibilityWarningDismissed: Bool,
+    config: [String: String] = [:]
   ) {
     #if DEBUG
+      var hookStrings: [String: String] = [
+        "asr_backend": asrBackend,
+        "llm_provider": llmProvider,
+        "recording_mode": recordingMode,
+        "microphone_status": microphoneStatus,
+        "accessibility_status": accessibilityStatus,
+      ]
+      hookStrings.merge(config) { _, new in new }
       testEventHook?(
         CapturedTelemetryEvent(
           name: "settings.snapshot",
-          stringProps: [
-            "asr_backend": asrBackend,
-            "llm_provider": llmProvider,
-            "recording_mode": recordingMode,
-            "microphone_status": microphoneStatus,
-            "accessibility_status": accessibilityStatus,
-          ],
+          stringProps: hookStrings,
           intProps: ["custom_words_count": customWordsCount],
           boolProps: [
             "filler_removal": fillerRemoval,
@@ -673,19 +692,97 @@ public final class TelemetryService {
             "accessibility_warning_dismissed": accessibilityWarningDismissed,
           ]))
     #endif
+    var props: [String: Any] = [
+      "asr_backend": asrBackend,
+      "llm_provider": llmProvider,
+      "recording_mode": recordingMode,
+      "filler_removal": fillerRemoval,
+      "custom_words_count": customWordsCount,
+      "has_api_keys": hasApiKeys,
+      "noise_suppression": noiseSuppression,
+      "microphone_status": microphoneStatus,
+      "accessibility_status": accessibilityStatus,
+      "accessibility_warning_dismissed": accessibilityWarningDismissed,
+    ]
+    props.merge(config) { _, new in new }
+    PostHogSDK.shared.capture("settings.snapshot", properties: props)
+  }
+
+  /// Telemetry Bible Phase 4 (#1173): a single user-facing setting changed
+  /// post-launch, coalesced into one truthful delta per logical setting (no-op
+  /// bursts skipped). `source` distinguishes a direct user change (`user`) from
+  /// a system auto-correction such as model canonicalization (`system`); both
+  /// are emitted so query-side reconstruction never goes stale. `from`/`to` are
+  /// privacy-projected (no raw model strings, key codes, or locked language
+  /// codes). Onboarding-time writes are suppressed (the onboarding-completion
+  /// baseline captures the final state).
+  public func settingsChanged(setting: String, from: String, to: String, source: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "settings.changed",
+          stringProps: [
+            "setting": setting,
+            "from": from,
+            "to": to,
+            "source": source,
+          ]))
+    #endif
     PostHogSDK.shared.capture(
-      "settings.snapshot",
+      "settings.changed",
       properties: [
-        "asr_backend": asrBackend,
-        "llm_provider": llmProvider,
-        "recording_mode": recordingMode,
-        "filler_removal": fillerRemoval,
-        "custom_words_count": customWordsCount,
-        "has_api_keys": hasApiKeys,
-        "noise_suppression": noiseSuppression,
-        "microphone_status": microphoneStatus,
-        "accessibility_status": accessibilityStatus,
-        "accessibility_warning_dismissed": accessibilityWarningDismissed,
+        "setting": setting,
+        "from": from,
+        "to": to,
+        "source": source,
+      ])
+  }
+
+  /// Telemetry Bible Phase 4 (#1173): an API key was saved or removed. `action`
+  /// is `save` (code can't cheaply tell first-add from overwrite) or `remove`;
+  /// `result` is `success` or `failure`. Key material is never logged.
+  public func apiKeyChanged(provider: String, action: String, result: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "api_key.changed",
+          stringProps: [
+            "provider": provider,
+            "action": action,
+            "result": result,
+          ]))
+    #endif
+    PostHogSDK.shared.capture(
+      "api_key.changed",
+      properties: [
+        "provider": provider,
+        "action": action,
+        "result": result,
+      ])
+  }
+
+  /// Telemetry Bible Phase 4 (#1173): an API-key validation actually ran and
+  /// reached a terminal result (`valid` / `invalid` / `provider_unavailable` /
+  /// `error`). NOT emitted for the missing-key guard (no validation ran).
+  /// `source` is `save` (user pressed Save) or `model_discovery` (a refresh /
+  /// provider-switch discovery pass).
+  public func apiKeyValidationCompleted(provider: String, result: String, source: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "api_key.validation_completed",
+          stringProps: [
+            "provider": provider,
+            "result": result,
+            "source": source,
+          ]))
+    #endif
+    PostHogSDK.shared.capture(
+      "api_key.validation_completed",
+      properties: [
+        "provider": provider,
+        "result": result,
+        "source": source,
       ])
   }
 
@@ -1208,6 +1305,14 @@ public final class TelemetryService {
   /// warning so the fallback is never a silent production steady state.
   public var flushContextProvider: (@MainActor () -> FlushContext)?
 
+  /// Telemetry Bible Phase 4 (#1173): drained synchronously at the START of every
+  /// flush so a debounced `settings.changed` delta still pending inside its
+  /// coalescing window (a setting changed <1 s before quit / update-relaunch) is
+  /// captured to PostHog's disk-backed queue before this flush schedules delivery.
+  /// Wired once by the composition root to `SettingsChangeTelemetry.flush()`; nil
+  /// in unit tests / before launch wiring (harmless no-op).
+  public var onBeforeFlush: (@MainActor () -> Void)?
+
   /// Best-effort, non-blocking flush. Used before a Sparkle relaunch and on
   /// normal termination. Emits `telemetry.flush_requested` (carrying `reason`,
   /// `active_recording`, `app_phase`) first; PostHog `capture` writes the event
@@ -1218,6 +1323,10 @@ public final class TelemetryService {
   /// (G3 is not observable app-side; delivery health is watched by the
   /// product-health integrity heartbeat, not here).
   public func flushTelemetry(reason: FlushReason) {
+    // #1173: drain any pending debounced settings delta first, so a change made
+    // just before quit/relaunch is captured (sync-to-disk) within this flush.
+    onBeforeFlush?()
+
     let context: FlushContext
     if let provided = flushContextProvider?() {
       context = provided

@@ -74,7 +74,7 @@ final class PipelineSettingsSync {
 
     // #295: seed eviction tracker. No initial eviction on app launch.
     lastEvictableOllamaModel = OllamaConnector.effectiveOllamaModel(
-      provider: settings.llmProvider, model: resolvedModel(settings)
+      provider: settings.llmProvider, model: settings.effectiveLLMModel
     )
 
     // #728: AppLogger defaults to debug=off / level=.info. Sync the persisted
@@ -182,23 +182,13 @@ final class PipelineSettingsSync {
     }
   }
 
-  /// Resolve the effective LLM model ID for the current provider.
-  /// Apple Intelligence has a fixed model; Ollama uses its own model field.
-  private func resolvedModel(_ settings: SettingsManager) -> String {
-    switch settings.llmProvider {
-    case .appleIntelligence: return "apple-intelligence"
-    case .ollama: return settings.ollamaModel
-    default: return settings.llmModel
-    }
-  }
-
   // MARK: - Ollama eviction on swap (#295)
 
   /// Fires best-effort unload when the tracked previous Ollama model differs
   /// from the new one. Also coalesces cascading .llmModel → .ollamaModel fires.
   private func reconcileOllamaEviction(settings: SettingsManager) {
     let new = OllamaConnector.effectiveOllamaModel(
-      provider: settings.llmProvider, model: resolvedModel(settings)
+      provider: settings.llmProvider, model: settings.effectiveLLMModel
     )
     let pre = lastEvictableOllamaModel
     guard let pre, pre != new else {
