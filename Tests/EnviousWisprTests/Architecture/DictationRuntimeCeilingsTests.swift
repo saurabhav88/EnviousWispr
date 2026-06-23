@@ -21,6 +21,12 @@ import Testing
 ///   recording subsystem internally (HeartControlRecovery + Finalizer +
 ///   Starter + HotkeyController) and calls `hotkeyController.install()`
 ///   as the last init step.
+/// - #1171 (Telemetry Bible Phase 2): line cap 200 → 215. EngineCoordinator
+///   owns engine selection/switching, so DR.init threads four new pass-through
+///   parameters to the Starter (`ensureSelectedReadyForPress`,
+///   `isEngineSwitching`, `beginMinting`, `endMinting`) plus their doc
+///   comments. No new stored property, collaborator, or method — pure init
+///   wiring; collaborator/closure-injected/method caps unchanged.
 @Suite struct DictationRuntimeCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/DictationRuntime/DictationRuntime.swift"
@@ -79,13 +85,16 @@ import Testing
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      count <= 200,
+      count <= 215,
       """
-      DictationRuntime line count exceeded: \(count) > 200. \
+      DictationRuntime line count exceeded: \(count) > 215. \
       Raise via Bible §30 only. PR10 ratcheted 100 → 200 to absorb the \
       7-collab field block + 6 façade methods + DR.init body building the \
       recording subsystem (HeartControlRecovery + Finalizer + Starter + \
-      HotkeyController) and calling `hotkeyController.install()` internally.
+      HotkeyController) and calling `hotkeyController.install()` internally. \
+      #1171 ratcheted 200 → 215 for the four EngineCoordinator pass-through \
+      init parameters (ensureSelectedReadyForPress, isEngineSwitching, \
+      beginMinting, endMinting) + their doc comments — no new state.
       """)
   }
 

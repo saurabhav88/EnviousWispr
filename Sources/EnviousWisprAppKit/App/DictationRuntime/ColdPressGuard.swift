@@ -41,6 +41,42 @@ enum ColdPressGuard {
     return false
   }
 
+  /// #1171 — start-of-recording engine reconciliation. The user pressed while the
+  /// active engine isn't the one they selected (a switch deferred while busy/
+  /// recovering hasn't applied yet, or a switch is in flight). Show the SAME
+  /// reactive caching pill for the SELECTED engine, then await the EngineCoordinator
+  /// driving the selected engine to ready (it owns the single-flight switch + warm),
+  /// and announce Ready when it lands. Mints no session — the user re-presses on the
+  /// now-correct engine. Factored here (like `handle`) to keep `RecordingStarter`
+  /// within its line ceiling.
+  static func reconcileSelectedBackend(
+    overlay: RecordingOverlayPanel,
+    selectedDriver: KernelDictationDriver,
+    selected: ASRBackendType,
+    ensureSelectedReady: @escaping @MainActor () async -> EngineCoordinator.PressReadiness
+  ) {
+    let label = selectedDriver.engineDisplayName
+    overlay.show(intent: .cachingModel(engineLabel: label))
+    Task { [overlay] in
+      // The coordinator switches to the selection AND warms it (single-flight,
+      // latest-wins), returning the outcome so we show the right pill for EVERY
+      // case — never leaving the misleading "getting ready" pill up when the
+      // selected engine cannot actually be prepared.
+      switch await ensureSelectedReady() {
+      case .ready:
+        overlay.show(intent: .engineReady)
+      case .notInstalled:
+        overlay.show(
+          intent: .warning(message: "\(label) isn't downloaded yet — open Settings to download it.")
+        )
+      case .notReady:
+        // Switched but not ready (failed warm / transient block): clear the
+        // caching pill; the next press retries via the cold-press path.
+        overlay.show(intent: .hidden)
+      }
+    }
+  }
+
   static func handle(
     overlay: RecordingOverlayPanel,
     active: KernelDictationDriver,

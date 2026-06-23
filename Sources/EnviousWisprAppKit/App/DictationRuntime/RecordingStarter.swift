@@ -58,6 +58,31 @@ final class RecordingStarter {
   /// legacy/test construction unchanged.
   let isRecovering: @MainActor () -> Bool
 
+  /// #1171 — drives the SELECTED engine to ready (the coordinator owns the
+  /// single-flight switch + warm) and returns the outcome (ready / notInstalled /
+  /// notReady). Bound to `EngineCoordinator.ensureSelectedReadyForPress`; default
+  /// `.notReady` keeps legacy/test construction unchanged. Used by the
+  /// start-of-recording safety check so a press can never record on an engine
+  /// other than the one the user selected.
+  let ensureSelectedReadyForPress: @MainActor () async -> EngineCoordinator.PressReadiness
+
+  /// #1171 — whether an engine switch is in flight. Bound to
+  /// `EngineCoordinator.isSwitching`; default no-switch keeps legacy/test
+  /// construction unchanged. A press during an in-flight switch routes through the
+  /// reactive pill rather than minting a session on a transient engine.
+  let isEngineSwitching: @MainActor () -> Bool
+
+  /// #1171 — the start-window state-gate. `beginMinting` is called the instant the
+  /// start path commits to minting (selected == active confirmed, no switch in
+  /// flight); while held, `EngineCoordinator` refuses to switch engines, so the
+  /// active engine cannot change out from under this start (the SuperWhisper
+  /// "Cannot switch in <starting> state" gate — race-free, replacing re-checks).
+  /// `endMinting` runs on every exit via `defer`. Bound to
+  /// `EngineCoordinator.beginMinting`/`.endMinting`; default no-ops keep legacy/test
+  /// construction unchanged.
+  let beginMinting: @MainActor () -> Void
+  let endMinting: @MainActor () -> Void
+
   var heartControlRecovery: HeartControlRecovery
   var recordingLockedAccess: DictationLifecycleCoordinator.RecordingLockedAccess
   var lastUserStopAccess: RecordingFinalizer.LastUserStopAccess
@@ -104,11 +129,22 @@ final class RecordingStarter {
       recoverySessionID: String, payload: Data
     )? = { _, _, _ in nil },
     cleanupRecoveryArm: @escaping @MainActor (String?) -> Void = { _ in },
-    isRecovering: @escaping @MainActor () -> Bool = { false }
+    isRecovering: @escaping @MainActor () -> Bool = { false },
+    ensureSelectedReadyForPress: @escaping @MainActor () async -> EngineCoordinator.PressReadiness =
+      {
+        .notReady
+      },
+    isEngineSwitching: @escaping @MainActor () -> Bool = { false },
+    beginMinting: @escaping @MainActor () -> Void = {},
+    endMinting: @escaping @MainActor () -> Void = {}
   ) {
     self.makeRecoveryDirective = makeRecoveryDirective
     self.cleanupRecoveryArm = cleanupRecoveryArm
     self.isRecovering = isRecovering
+    self.ensureSelectedReadyForPress = ensureSelectedReadyForPress
+    self.isEngineSwitching = isEngineSwitching
+    self.beginMinting = beginMinting
+    self.endMinting = endMinting
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.kernelDriver = kernelDriver
@@ -154,6 +190,11 @@ final class RecordingStarter {
         asrBackend: isWhisperKit ? "whisperkit" : "parakeet")
       return
     }
+    // #1171 — start-of-recording safety: never record on an engine other than the
+    // one the user selected (a switch deferred while busy/recovering may not have
+    // applied yet). Show the reactive #879 pill for the selected engine and bail;
+    // the user re-presses on the now-correct engine. Recovery precedence above.
+    if reconcileSelectedBackendIfNeeded() { return }
     lastRecordingResult?.polishError = nil
     // #879 — cold-boot press safety. A press on a not-ready engine must NOT mint
     // a recording session (no audio captured → none discarded). Hand off to the
@@ -172,6 +213,13 @@ final class RecordingStarter {
       if !warmRespawn { return }
     }
     let isWarmRespawn = readinessAtEntry != .ready
+    // #1171 — committed to minting on `active` (selected == active confirmed above,
+    // no switch in flight). Hold the start-window state-gate so the coordinator
+    // cannot switch the engine out from under us across the preWarm / recovery-arm
+    // awaits; released on every exit. This REPLACES the old re-check-after-await
+    // guards (which could never fully close the check→act window).
+    beginMinting()
+    defer { endMinting() }
     accessibilityRefresh()
     recordingOverlay.show(
       intent: .recording(audioLevel: 0),
@@ -258,6 +306,9 @@ final class RecordingStarter {
         recordingLockedAccess.set(false)
         return
       }
+      // #1171 — no engine-changed re-check here: the `beginMinting()` state-gate
+      // (held since before preWarm) guarantees the coordinator did NOT switch the
+      // active engine across these awaits, so `active` is still the user's choice.
       try await active.handle(event: .toggleRecording(config))
     } catch {
       heartControlRecovery.recover(
@@ -318,9 +369,8 @@ final class RecordingStarter {
   /// snapshot picks up the right paste capability.
   func toggle(source: TriggerSource) async {
     dictationLifecycleCoordinator?.cancelPendingWarning()
-    let active: KernelDictationDriver =
-      asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
     let isWK = asrManager.activeBackendType == .whisperKit
+    let active: KernelDictationDriver = isWK ? whisperKitKernelDriver : kernelDriver
     let isStartingFromIdle =
       !(isWK ? whisperKitKernelDriver.state.isActive : kernelDriver.state.isActive)
     var isWarmRespawn = false
@@ -334,6 +384,10 @@ final class RecordingStarter {
         TelemetryService.shared.recoveryPressBlocked(asrBackend: isWK ? "whisperkit" : "parakeet")
         return
       }
+      // #1171 — start-of-recording safety, same as the PTT path: never record on
+      // an engine other than the one the user selected; show the reactive pill for
+      // the selected engine and bail. Recovery precedence above.
+      if reconcileSelectedBackendIfNeeded() { return }
       lastRecordingResult?.polishError = nil
       // #879 — same cold-boot press safety as the PTT path. A toggle press that
       // would START on a not-ready engine shows the pill + warms instead of
@@ -349,6 +403,12 @@ final class RecordingStarter {
         if !isWarmRespawn { return }
       }
     }
+    // #1171 — committed to a START on `active` (selected == active confirmed in the
+    // gates above). Hold the start-window state-gate so the coordinator can't switch
+    // the engine out across the recovery-arm await; released on every exit. Only for
+    // a START (a STOP toggle never minted). Replaces the old re-check-after-await.
+    if isStartingFromIdle { beginMinting() }
+    defer { if isStartingFromIdle { endMinting() } }
     accessibilityRefresh()
     // #959: set the overlay latch immediately before the kernel dispatch (toggle
     // has no pre-warm abort path, but keep the set-just-before-dispatch rule).
@@ -387,6 +447,9 @@ final class RecordingStarter {
           recordingOverlay.show(intent: .recoveringLastRecording)
           return
         }
+        // #1171 — no engine-changed re-check here: the `beginMinting()` state-gate
+        // (held since before the recovery-arm await) guarantees the coordinator did
+        // NOT switch the active engine, so `active` is still the user's choice.
       }
       try await active.handle(event: .toggleRecording(config))
     } catch {
@@ -395,6 +458,23 @@ final class RecordingStarter {
         message: ModelLoadWatchdog.userMessage,
         setExternalError: active.setExternalError)
     }
+  }
+
+  /// #1171 — start-of-recording safety check. If the active engine isn't the one
+  /// the user selected (a switch deferred while busy/recovering hasn't applied
+  /// yet) OR a switch is in flight, hand off to
+  /// `ColdPressGuard.reconcileSelectedBackend` (reactive pill for the selected
+  /// engine + coordinator-driven swap + warm) and mint NO session. Returns true
+  /// when it handled the mismatch/in-flight switch (the caller must `return`).
+  private func reconcileSelectedBackendIfNeeded() -> Bool {
+    let selected = settings.selectedBackend
+    guard asrManager.activeBackendType != selected || isEngineSwitching() else { return false }
+    ColdPressGuard.reconcileSelectedBackend(
+      overlay: recordingOverlay,
+      selectedDriver: selected == .whisperKit ? whisperKitKernelDriver : kernelDriver,
+      selected: selected,
+      ensureSelectedReady: ensureSelectedReadyForPress)
+    return true
   }
 
   /// Build the per-recording config, arming crash recovery first when this is a

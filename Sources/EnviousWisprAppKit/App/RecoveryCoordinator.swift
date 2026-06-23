@@ -60,6 +60,21 @@ final class RecoveryCoordinator {
   /// recording). Read by the gate via an injected closure.
   private(set) var isRecovering = false
 
+  /// #1171 — fired after a recovery scan finishes AND `isRecovering` has cleared
+  /// (registered as a `defer` AFTER the `isRecovering = false` defer, so LIFO runs
+  /// it second). Lets the composition root poke `EngineCoordinator` so an engine
+  /// switch deferred because it arrived while recovery held the shared engine
+  /// applies now. Set by the root.
+  var onRecoveryComplete: (() -> Void)?
+
+  /// #1171 — whether an engine switch is in flight. The composition root binds
+  /// this to `EngineCoordinator.isSwitching` (setter injection, like
+  /// `onRecoveryComplete`, so the not-yet-built coordinator wires in after this
+  /// home). The contention guard reads it so a recovery scan never starts on top
+  /// of an in-flight switch (the symmetric direction: the coordinator defers a
+  /// switch while recovery is active). Default no-switch keeps tests unchanged.
+  var isEngineSwitching: () -> Bool = { false }
+
   /// Monotonic token bumped by `discardActiveRecovery()`. The replayer captures
   /// it per orphan and re-checks after every `await`: a mismatch means "discarded
   /// while my uncancellable batch transcribe was in flight" → drop the result,
@@ -308,11 +323,17 @@ final class RecoveryCoordinator {
 
     // Contention guard: never run the shared engine while a live dictation is in
     // flight (a recording can start in the launch window, including with recovery
-    // OFF). Defer the orphans to a future launch — they stay on disk.
-    guard !isDictationActive() else { return }
+    // OFF) OR while an engine switch is in flight (#1171 — a switch unloads/sets
+    // the active engine; starting recovery on top would race the shared engine).
+    // Defer the orphans to a future launch — they stay on disk.
+    guard !isDictationActive(), !isEngineSwitching() else { return }
 
     TelemetryService.shared.recoveryFound(count: recoverable.count)
     isRecovering = true
+    // #1171 — registered BEFORE the `isRecovering = false` defer so LIFO runs this
+    // SECOND (after the flag clears): the deferred-switch retry it triggers sees
+    // `isRecovering == false` and can apply. Only fires when recovery actually ran.
+    defer { onRecoveryComplete?() }
     // R1 (Codex REV-2, BLOCKER): clear the gate on EVERY exit — normal completion,
     // a thrown error, or an early return. A stuck `isRecovering = true` would
     // refuse every record-start and brick the heart path.

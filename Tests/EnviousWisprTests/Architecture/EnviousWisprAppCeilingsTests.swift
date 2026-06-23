@@ -104,13 +104,22 @@ import Testing
   ///   `transcriptWorkflowCoordinator` collapsed into a direct
   ///   `transcriptCoordinator` env injection (net zero — a rename), and
   ///   `polishService` dropped (−1). Lower-is-free.
+  /// - 30 → 31 in #1171 (2026-06-23, Telemetry Bible Phase 2): App-owned
+  ///   `engineCoordinator` — the sole owner of ASR-engine selection, status, and
+  ///   switching (reads the live selection + active engine, serializes switches
+  ///   through one mailbox, publishes one `EngineStatus`). A narrow new App-owned
+  ///   home that SHRINKS `PipelineSettingsSync` (three stored "want" vars + three
+  ///   methods deleted) — exactly the #763 direction (many narrow homes, not god
+  ///   objects). Injected into the main Window scene; consumed by `DictationRuntime`,
+  ///   `RecoveryCoordinator`, `PipelineSettingsSync`, and the Settings affordance. The
+  ///   pre-#1171 count was already at the cap (30), so adding one home needs +1.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 30,
+      count <= 31,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 30. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 31. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -211,14 +220,21 @@ import Testing
   /// `SparkleUpdateController.startUpdater()`, which tests exercise) to keep the
   /// notifier inert under unit tests. No new App-owned stored property. Cap set by
   /// the deterministic rule (post-change actual 774 + 10, rounded up to nearest 5 = 785).
+  /// Ratcheted 785→845 in #1171 (2026-06-23, Telemetry Bible Phase 2): the
+  /// composition root builds `EngineCoordinator` (its ~28-line injected
+  /// `Dependencies`), wires the picker / recovery / driver-state pokes + the
+  /// record-start ensure path, injects it into the main Window scene, and calls
+  /// `start()`. Net of deleting the `onNeedsPreloadObservation` wiring + the
+  /// `whisperKitSetup` settingsSync arg. Cap set by the deterministic rule
+  /// (post-change actual 831 + 10, rounded up to nearest 5 = 845).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 785,
+      lineCount <= 845,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 785. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 845. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

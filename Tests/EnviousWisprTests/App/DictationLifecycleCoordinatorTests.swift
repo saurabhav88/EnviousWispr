@@ -46,8 +46,7 @@ import Testing
       whisperKitKernelDriver: whisperKitKernelDriver,
       audioCapture: audio,
       asrManager: asr,
-      hotkeyService: hotkey,
-      whisperKitSetup: WhisperKitSetupService()
+      hotkeyService: hotkey
     )
     let transcriptCoordinator = TranscriptCoordinator(store: store)
     let lastRecordingResult = LastRecordingResult()

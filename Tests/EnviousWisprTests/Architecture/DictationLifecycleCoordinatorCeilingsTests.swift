@@ -103,10 +103,21 @@ import Testing
     // id + terminal KIND) to the recovery-cleanup closure in `install()`; the
     // closure type widened to `(String?, RecordingTerminalKind) -> Void`. No new
     // collaborator (count stays ≤ 11). Deterministic rule: actual 404 + 10 → 415.
+    // #1171 (Telemetry Bible Phase 2): raised 415 → 430 for the two-line
+    // `settingsSync.retryDeferredBackendSwitch(settings:)` call added to BOTH the
+    // Parakeet and WhisperKit `.error/.idle/.complete` terminal arms (applies an
+    // engine switch deferred while the recording was active). No new collaborator
+    // (count stays ≤ 11). Deterministic rule: actual 419 + 10 → round up to 430.
+    // #1171 EngineCoordinator refactor (2026-06-23): raised 430 → 445. The
+    // `retryDeferredBackendSwitch` terminal calls were REPLACED by a single
+    // setter-injected `onEngineRelevantStateChange` `var` closure fired on EVERY
+    // transition in both handlers (the coordinator now owns deferred-switch
+    // application + status refresh). Still a `var` closure (collaboratorCount stays
+    // ≤ 11). Deterministic rule: actual 434 + 10 → round up to nearest 5 = 445.
     #expect(
-      count <= 415,
+      count <= 445,
       """
-      DictationLifecycleCoordinator line count exceeded: \(count) > 415. \
+      DictationLifecycleCoordinator line count exceeded: \(count) > 445. \
       Raise via Bible §30 only.
       """)
   }

@@ -51,8 +51,10 @@ final class SetupCoordinator {
 
         // Exit immediately when WhisperKit isn't the active backend. Parakeet
         // users shouldn't pay CPU/memory cost warming a backend they never use.
-        // Backend switches fire settingsSync.onNeedsPreloadObservation, which
-        // restarts this observer; the re-entry sees the new activeBackendType.
+        // This observer covers launch + a download-completing-while-already-on-
+        // WhisperKit; warming AFTER a backend switch is owned by
+        // `EngineCoordinator` (#1171), so this observer is no longer restarted on
+        // a switch.
         guard self.asrManager.activeBackendType == .whisperKit else { return }
 
         let currentState = self.setupStateReader()

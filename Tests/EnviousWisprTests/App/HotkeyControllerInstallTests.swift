@@ -47,8 +47,7 @@ import Testing
       whisperKitKernelDriver: whisperKitKernelDriver,
       audioCapture: audio,
       asrManager: asr,
-      hotkeyService: hotkey,
-      whisperKitSetup: WhisperKitSetupService()
+      hotkeyService: hotkey
     )
     let lockBox = TestRecordingLockedBox()
     let lockAccess = DictationLifecycleCoordinator.RecordingLockedAccess(

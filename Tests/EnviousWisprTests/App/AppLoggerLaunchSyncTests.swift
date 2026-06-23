@@ -64,15 +64,13 @@ struct AppLoggerLaunchSyncTests {
     let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audioCapture, store: transcriptStore)
     let hotkeyService = HotkeyService()
-    let whisperKitSetup = WhisperKitSetupService()
 
     let sync = PipelineSettingsSync(
       kernelDriver: pipeline,
       whisperKitKernelDriver: whisperKitKernelDriver,
       audioCapture: audioCapture,
       asrManager: asrManager,
-      hotkeyService: hotkeyService,
-      whisperKitSetup: whisperKitSetup
+      hotkeyService: hotkeyService
     )
 
     // Configure persisted state: debug=on, level=.debug (the values that should

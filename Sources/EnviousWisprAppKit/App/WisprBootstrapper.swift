@@ -34,6 +34,8 @@ public final class WisprBootstrapper {
   let liveRecordingState: LiveRecordingState
   let lastRecordingResult: LastRecordingResult
   let backendMetadata: BackendMetadata
+  /// #1171 — the sole owner of ASR-engine selection, status, and switching.
+  let engineCoordinator: EngineCoordinator
   let dictationRuntime: DictationRuntime
   let hotkeyService: HotkeyService
   let appWindowCoordinator: AppWindowCoordinator
@@ -209,8 +211,7 @@ public final class WisprBootstrapper {
       whisperKitKernelDriver: whisperKitKernelDriver,
       audioCapture: audioCapture,
       asrManager: asrManager,
-      hotkeyService: hotkeyService,
-      whisperKitSetup: setup.whisperKitSetup
+      hotkeyService: hotkeyService
     )
     settingsSync.applyInitialSettings(settings)
 
@@ -238,10 +239,6 @@ public final class WisprBootstrapper {
       coordinator: customWordsCoordinator,
       packManager: vocabularyPackManager
     )
-
-    settingsSync.onNeedsPreloadObservation = { [weak setup] in
-      setup?.startPreloadObservation()
-    }
 
     // Restore persisted backend selection synchronously (no race with first record).
     asrManager.setInitialBackendType(settings.selectedBackend)
@@ -389,10 +386,49 @@ public final class WisprBootstrapper {
     recordingOverlay.setDiscardRecoveryHandler { [weak recoveryCoordinator] in
       recoveryCoordinator?.discardActiveRecovery()
     }
-    // #1063 PR2: block a Speech-Engine switch while recovery replays on the shared
-    // engine (a switch mid-recovery would unload the model and lose the spool).
-    settingsSync.isRecovering = { [weak recoveryCoordinator] in
-      recoveryCoordinator?.isRecovering ?? false
+    // #1171 — the single owner of ASR-engine selection, status, and switching.
+    // Reads the user's choice + active engine + readiness LIVE (no stored "want"
+    // copies); serializes switches through one mailbox; defers while a pipeline is
+    // active, recovery is replaying, or the active engine is mid-load; publishes
+    // one `EngineStatus`. Built here (after recoveryCoordinator, so it can read
+    // `isRecovering`; before BackendMetadata + DictationRuntime, which consume it).
+    let engineCoordinator = EngineCoordinator(
+      dependencies: EngineCoordinator.Dependencies(
+        selectedBackend: { settings.selectedBackend },
+        activeBackend: { [asrManager] in asrManager.activeBackendType },
+        readiness: { [kernelDriver, whisperKitKernelDriver] backend in
+          (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).engineReadiness
+        },
+        isEngineActive: { [kernelDriver, whisperKitKernelDriver] backend in
+          (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).state.isActive
+        },
+        isRecovering: { [weak recoveryCoordinator] in recoveryCoordinator?.isRecovering ?? false },
+        isInstalled: { [setup] backend in
+          backend == .parakeet ? true : setup.whisperKitSetup.setupState == .ready
+        },
+        stateLabel: { [kernelDriver, whisperKitKernelDriver] backend in
+          (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).state.telemetryLabel
+        },
+        performSwitch: { [asrManager] backend in
+          await asrManager.switchBackend(to: backend)
+          SentryBreadcrumb.updateASRBackend(backend == .whisperKit ? "whisperkit" : "parakeet")
+        },
+        warm: { [kernelDriver, whisperKitKernelDriver] backend in
+          await (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver)
+            .ensureEngineWarm(reason: .engineSwap)
+        }))
+    // The picker change notifies the coordinator (it reads the live selection).
+    settingsSync.onSelectedBackendChanged = { [weak engineCoordinator] in
+      engineCoordinator?.poke(.settingsChanged)
+    }
+    // #1063 PR2 / #1171: recovery never starts on top of an in-flight switch.
+    recoveryCoordinator.isEngineSwitching = { [weak engineCoordinator] in
+      engineCoordinator?.isSwitching ?? false
+    }
+    // #1171 — after a recovery scan finishes (engine free again), poke the
+    // coordinator so an engine switch deferred while recovery held the engine applies.
+    recoveryCoordinator.onRecoveryComplete = { [weak engineCoordinator] in
+      engineCoordinator?.poke(.recoveryComplete)
     }
     let lastRecordingResult = LastRecordingResult()
     let backendMetadata = BackendMetadata(
@@ -420,6 +456,11 @@ public final class WisprBootstrapper {
       recordingLockedAccess: recordingLockedAccess
     )
     dictationLifecycleCoordinator.install()
+    // #1171 — every pipeline state change pokes the coordinator: non-terminal
+    // transitions refresh engine status; terminals apply a deferred switch.
+    dictationLifecycleCoordinator.onEngineRelevantStateChange = { [weak engineCoordinator] in
+      engineCoordinator?.poke(.driverStateChanged)
+    }
 
     // PR8 of #763: heart-path event-routing home. PR10: also constructs
     // HotkeyController / RecordingStarter / RecordingFinalizer internally.
@@ -446,7 +487,16 @@ public final class WisprBootstrapper {
       },
       isCurrentSession: { [weak dictationLifecycleCoordinator] sessionID in
         dictationLifecycleCoordinator?.isCurrentSession(sessionID) ?? false
-      }
+      },
+      // #1171 — the start-of-recording safety check drives the SELECTED engine to
+      // ready (the coordinator owns the single-flight switch + warm) before
+      // recording, and gates a press during an in-flight switch.
+      ensureSelectedReadyForPress: { [weak engineCoordinator] in
+        await engineCoordinator?.ensureSelectedReadyForPress() ?? .notReady
+      },
+      isEngineSwitching: { [weak engineCoordinator] in engineCoordinator?.isSwitching ?? false },
+      beginMinting: { [weak engineCoordinator] in engineCoordinator?.beginMinting() },
+      endMinting: { [weak engineCoordinator] in engineCoordinator?.endMinting() }
     )
 
     // PR-B.2 of #763: window-lifecycle home.
@@ -515,6 +565,7 @@ public final class WisprBootstrapper {
     self.liveRecordingState = liveRecordingState
     self.lastRecordingResult = lastRecordingResult
     self.backendMetadata = backendMetadata
+    self.engineCoordinator = engineCoordinator
     self.dictationRuntime = dictationRuntime
     self.hotkeyService = hotkeyService
     self.appWindowCoordinator = appWindowCoordinator
@@ -536,6 +587,13 @@ public final class WisprBootstrapper {
 
     // #832/#913 PR8: App-owned output-safety classifier holder.
     self.outputClassifierHolder = outputClassifierHolder
+
+    // #1171 — launch the coordinator's reconcile worker + WhisperKit setup-state
+    // observation and fire the initial reconcile. Wiring above (the picker /
+    // recovery / driver-state pokes) is all set, so the worker drains correctly.
+    // At boot active == selected (`setInitialBackendType` above), so the first
+    // reconcile is a converged no-op.
+    engineCoordinator.start()
 
     // Initialize observability (PostHog + Sentry) unconditionally at launch.
     // #919: same timing as before — the shell's `App.init()` constructs this
@@ -675,6 +733,7 @@ private struct MainWindowRoot: View {
       .environment(b.liveRecordingState)
       .environment(b.lastRecordingResult)
       .environment(b.backendMetadata)
+      .environment(b.engineCoordinator)
       .environment(b.dictationRuntime)
       .environment(b.appWindowCoordinator)
       // The nine view-facing homes (epic #763).

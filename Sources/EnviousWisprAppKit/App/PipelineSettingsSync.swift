@@ -16,17 +16,14 @@ final class PipelineSettingsSync {
   private let audioCapture: any AudioCaptureInterface
   private let asrManager: any ASRManagerInterface
   private let hotkeyService: HotkeyService
-  private let whisperKitSetup: WhisperKitSetupService
 
-  /// Set by `EnviousWisprApp.init()` so backend/model changes can retrigger
-  /// preload observation without coupling this layer to the composition root.
-  var onNeedsPreloadObservation: (() -> Void)?
-
-  /// #1063 PR2 — true while the crash-recovery limb is replaying behind the pill.
-  /// A backend switch then would unload/reset the model mid-recovery, throwing the
-  /// in-flight transcribe and (one-attempt) deleting the spool — data loss. Set by
-  /// the composition root to `RecoveryCoordinator.isRecovering`; default no-recovery.
-  var isRecovering: () -> Bool = { false }
+  /// #1171 — fired when the user changes the engine picker. The composition root
+  /// binds this to `EngineCoordinator.poke(.settingsChanged)`; the coordinator is
+  /// the SOLE owner of engine selection / status / switching, so this settings
+  /// fanout only forwards the trigger (it no longer stores any "want" state or
+  /// calls `switchBackend`). Settable because the coordinator is built after this
+  /// home; default no-op keeps legacy/test construction unchanged.
+  var onSelectedBackendChanged: () -> Void = {}
 
   /// Tracks the last evictable Ollama model for #295. Independent of the
   /// kernel's polish step because SettingsManager's cascading didSet can
@@ -38,15 +35,13 @@ final class PipelineSettingsSync {
     whisperKitKernelDriver: KernelDictationDriver,
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
-    hotkeyService: HotkeyService,
-    whisperKitSetup: WhisperKitSetupService
+    hotkeyService: HotkeyService
   ) {
     self.kernelDriver = kernelDriver
     self.whisperKitKernelDriver = whisperKitKernelDriver
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.hotkeyService = hotkeyService
-    self.whisperKitSetup = whisperKitSetup
   }
 
   /// Seed live-mutable subsystems. Per-recording values are captured fresh
@@ -100,41 +95,11 @@ final class PipelineSettingsSync {
   func handleSettingChanged(_ key: SettingsManager.SettingKey, settings: SettingsManager) {
     switch key {
     case .selectedBackend:
-      // Don't switch backends while a pipeline is actively recording/transcribing,
-      // OR while crash recovery is replaying on the shared engine (#1063 PR2) — a
-      // switch would unload/reset the model mid-recovery and lose the spool.
-      // Like the pre-existing active-pipeline case, the switch is DROPPED (not
-      // queued): the persisted `selectedBackend` and the active engine can disagree
-      // until the next change/relaunch. Recovery is short (seconds), so the window
-      // is brief; a general deferred-apply mechanism is PR3 hardening (Codex r6 P2).
-      let parakeetActive = kernelDriver.state.isActive
-      let whisperKitActive = whisperKitKernelDriver.state.isActive
-      if parakeetActive || whisperKitActive || isRecovering() {
-        Task {
-          await AppLogger.shared.log(
-            "Backend switch blocked — pipeline active or recovery in progress",
-            level: .info, category: "PipelineSettingsSync"
-          )
-        }
-        break
-      }
-      let backend = settings.selectedBackend
-      Task { [weak self] in
-        await self?.asrManager.switchBackend(to: backend)
-        SentryBreadcrumb.updateASRBackend(backend == .whisperKit ? "whisperkit" : "parakeet")
-        if backend == .whisperKit {
-          await self?.whisperKitSetup.detectState()
-          self?.onNeedsPreloadObservation?()
-        } else {
-          // #879 — warm the newly-active Parakeet engine on swap so the first
-          // press after switching is instant. Without this, swapping to
-          // Parakeet leaves it cold until the first press (only launch warmed
-          // it, and only if it was the launch-selected backend). Idempotent +
-          // single-flighted; no-op if already loaded. WhisperKit warms via the
-          // observation path above.
-          await self?.kernelDriver.ensureEngineWarm(reason: .engineSwap)
-        }
-      }
+      // #1171 — the EngineCoordinator owns engine selection, status, and the
+      // switch operation (it reads `settings.selectedBackend` live, serializes
+      // switches through a single mailbox, and defers while recording/recovering).
+      // This fanout only notifies it of the picker change.
+      onSelectedBackendChanged()
     case .recordingMode:
       hotkeyService.recordingMode = settings.recordingMode
     case .llmProvider:

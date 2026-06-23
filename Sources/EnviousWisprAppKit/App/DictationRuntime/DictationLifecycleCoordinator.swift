@@ -104,6 +104,16 @@ final class DictationLifecycleCoordinator {
   /// branch is replaced by this signal.)
   var onRecordingEndedWithoutDurableSave: (String?, RecordingTerminalKind) -> Void = { _, _ in }
 
+  /// #1171 — fired on every pipeline state change (both drivers). The composition
+  /// root binds it to `EngineCoordinator.poke(.driverStateChanged)` so the
+  /// coordinator refreshes engine status on non-terminal transitions AND applies
+  /// an engine switch that was deferred while a recording was active once the
+  /// pipeline reaches a terminal. Replaces the former
+  /// `settingsSync.retryDeferredBackendSwitch` terminal calls (the coordinator now
+  /// owns deferred-switch application). Off-cap `var` closure; default no-op keeps
+  /// legacy/test construction unchanged.
+  var onEngineRelevantStateChange: () -> Void = {}
+
   /// Per-pipeline side-effect executors. Lazy so the closures can capture
   /// `self` after all stored properties are initialized.
   private lazy var parakeetStateHandler: PipelineStateChangeHandler =
@@ -207,6 +217,9 @@ final class DictationLifecycleCoordinator {
 
   private func handleParakeet(newState: PipelineState) {
     onPipelineStateChange?(newState)
+    // #1171 — every transition refreshes engine status; the terminal ones apply a
+    // switch deferred while this recording was active (coordinator-owned).
+    onEngineRelevantStateChange()
     switch newState {
     case .recording:
       hotkeyService.registerCancelHotkey()
@@ -223,6 +236,8 @@ final class DictationLifecycleCoordinator {
       // Session ended — retry any Ollama eviction deferred because the
       // frozen session pinned the old model.
       settingsSync.retryDeferredOllamaEviction(settings: settings)
+    // #1171 — a switch deferred while this recording was active is applied by
+    // the EngineCoordinator via `onEngineRelevantStateChange()` (fired above).
     // #1063 PR2: the recovery-spool cleanup is NO LONGER keyed off this
     // externalError-pinnable published state. It is driven by the kernel's RAW
     // terminal transition via `kernelDriver.onSessionEndedWithoutSave` (wired in
@@ -260,6 +275,8 @@ final class DictationLifecycleCoordinator {
   /// matching `.complete` plus the now-extinct `.ready`).
   private func handleWhisperKit(newState: PipelineState) {
     onPipelineStateChange?(newState)
+    // #1171 — see `handleParakeet`: refresh status + apply a deferred switch on terminal.
+    onEngineRelevantStateChange()
     switch newState {
     case .recording:
       hotkeyService.registerCancelHotkey()
@@ -271,6 +288,8 @@ final class DictationLifecycleCoordinator {
       recordingLockedAccess.set(false)
       hotkeyService.unregisterCancelHotkey()
       settingsSync.retryDeferredOllamaEviction(settings: settings)
+    // #1171 — a deferred switch is applied by the EngineCoordinator via
+    // `onEngineRelevantStateChange()` (fired above).
     // #1063 PR2: recovery-spool cleanup is driven by the kernel terminal signal
     // (`onSessionEndedWithoutSave`), not this published state — see the Parakeet
     // handler. Nothing to do here.
