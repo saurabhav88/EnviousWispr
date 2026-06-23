@@ -340,15 +340,19 @@ public struct InverseTextNormalizer: Sendable {
       guard let r = rng(m.g("a") ?? "", m.g("b") ?? "") else { return nil }
       return " between \(r) "
     }
+    // (?<![\d.]) so the endpoint can't begin at the fraction digit of an existing decimal
+    // ("version 1.2 to three" must not grab "2 to three").
     let toPat =
-      #"\b(?<a>"# + Self.rangeRunAnd + #")\s+(?:to|through)\s+(?<b>"# + Self.rangeRunAnd + #")\b"#
+      #"(?<![\d.])\b(?<a>"# + Self.rangeRunAnd + #")\s+(?:to|through)\s+(?<b>"# + Self.rangeRunAnd
+      + #")\b"#
     t = reSub(toPat, t) { m in
       guard let r = rng(m.g("a") ?? "", m.g("b") ?? "") else { return nil }
       return " \(r) "
     }
     // match ALL slash-separated parts (not just 2-3) so a 4+ chain isn't left half-rewritten.
     let wslashPat =
-      #"\b(?<a>"# + Self.rangeRunAnd + #")(?:\s+slash\s+(?:"# + Self.rangeRunAnd + #"))+\b"#
+      #"(?<![\d.])\b(?<a>"# + Self.rangeRunAnd + #")(?:\s+slash\s+(?:"# + Self.rangeRunAnd
+      + #"))+\b"#
     t = reSub(wslashPat, t) { m in
       let parts = splitOnSlash(m.whole)
       let vals = parts.compactMap { Self.wordsToInt(Self.splitWords($0.lowercased())) }
@@ -356,7 +360,8 @@ public struct InverseTextNormalizer: Sendable {
       return " " + vals.map { String($0) }.joined(separator: "/") + " "
     }
     // match ALL legs so a 3D size ("two by four by six" -> "2 by 4 by 6") is fully normalized.
-    let byPat = #"\b(?<a>"# + Self.rangeRunAnd + #")(?:\s+by\s+(?:"# + Self.rangeRunAnd + #"))+\b"#
+    let byPat =
+      #"(?<![\d.])\b(?<a>"# + Self.rangeRunAnd + #")(?:\s+by\s+(?:"# + Self.rangeRunAnd + #"))+\b"#
     t = reSub(byPat, t) { m in
       let parts = splitOnBy(m.whole)
       let legs = parts.compactMap { Self.wordsToInt(Self.splitWords($0.lowercased())) }
@@ -499,6 +504,12 @@ public struct InverseTextNormalizer: Sendable {
     // ('" 23 "' -> '"23"'). A single-sided rule corrupted adjacent quotes ('twenty "special"' ->
     // '20"special"'), so require both quotes around the number.
     t = reSub(#""\s+(\d[\d.,]*)\s+""#, t, caseInsensitive: false) { m in "\"\(m.g(1) ?? "")\"" }
+    // opening straight quote + padded number ('"Twenty..."' -> '" 20 ...' -> '"20 ...'): tighten
+    // ONLY in opening position (preceded by start or whitespace) so a CLOSING quote before a number
+    // ('he said "hi." 5 times') is never merged.
+    t = reSub(#"(^|\s)(["'])\s+(?=\d)"#, t, caseInsensitive: false) { m in
+      (m.g(1) ?? "") + (m.g(2) ?? "")
+    }
     // hyphenated compound modifier: converting "twenty-step" leaves "20 -step" (the cardinal pass
     // re-emits " 20 " with pad spaces). Re-tighten "digit space-hyphen word" -> "digit-word".
     t = reSub(#"(\d)\s+-(\w)"#, t, caseInsensitive: false) { m in "\(m.g(1) ?? "")-\(m.g(2) ?? "")"
