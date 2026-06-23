@@ -45,6 +45,10 @@ private final class RegexCache: @unchecked Sendable {
     defer { lock.unlock() }
     if let cached = store[key] { return cached }
     guard let compiled = try? NSRegularExpression(pattern: pattern, options: options) else {
+      // A malformed pattern would silently no-op the pass (and break oracle parity). Crash loudly
+      // in DEBUG/tests so it is caught at build time; in release the limb degrades gracefully
+      // (ITN must never crash the heart path) — the pass is skipped, raw text passes through.
+      assertionFailure("ITN regex failed to compile: \(pattern)")
       return nil
     }
     store[key] = compiled
@@ -99,9 +103,9 @@ func allMatches(_ pattern: String, _ s: String, caseInsensitive: Bool = true) ->
   }
 }
 
-/// `re.split(r"\s+slash\s+", s, flags=re.I)`.
-func splitOnSlash(_ s: String) -> [String] {
-  guard let re = RegexCache.shared.regex(#"\s+slash\s+"#, [.caseInsensitive]) else { return [s] }
+/// `re.split(pattern, s, flags=re.I)` for a separator pattern.
+private func splitOnPattern(_ s: String, _ pattern: String) -> [String] {
+  guard let re = RegexCache.shared.regex(pattern, [.caseInsensitive]) else { return [s] }
   let ns = s as NSString
   var parts: [String] = []
   var last = 0
@@ -112,6 +116,12 @@ func splitOnSlash(_ s: String) -> [String] {
   parts.append(ns.substring(with: NSRange(location: last, length: ns.length - last)))
   return parts
 }
+
+/// `re.split(r"\s+slash\s+", s, flags=re.I)`.
+func splitOnSlash(_ s: String) -> [String] { splitOnPattern(s, #"\s+slash\s+"#) }
+
+/// `re.split(r"\s+by\s+", s, flags=re.I)` — for chained dimensions ("two by four by six").
+func splitOnBy(_ s: String) -> [String] { splitOnPattern(s, #"\s+by\s+"#) }
 
 /// `f"{n:,}"` — thousands grouping, locale-independent (matches Python).
 func comma(_ n: Int) -> String {

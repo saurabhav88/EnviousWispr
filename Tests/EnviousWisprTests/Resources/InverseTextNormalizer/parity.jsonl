@@ -183,7 +183,7 @@
 {"input": "11th", "expected": "11th", "category": "numeric", "slice": "idempotence"}
 {"input": "sixty first", "expected": "61st", "category": "numeric", "slice": "gold"}
 {"input": "61st", "expected": "61st", "category": "numeric", "slice": "idempotence"}
-{"input": "fourth", "expected": "4th", "category": "numeric", "slice": "gold"}
+{"input": "fourth", "expected": "fourth", "category": "numeric", "slice": "gold"}
 {"input": "4th", "expected": "4th", "category": "numeric", "slice": "idempotence"}
 {"input": "seventy fourth", "expected": "74th", "category": "numeric", "slice": "gold"}
 {"input": "74th", "expected": "74th", "category": "numeric", "slice": "idempotence"}
@@ -191,7 +191,7 @@
 {"input": "94th", "expected": "94th", "category": "numeric", "slice": "idempotence"}
 {"input": "thirty fifth", "expected": "35th", "category": "numeric", "slice": "gold"}
 {"input": "35th", "expected": "35th", "category": "numeric", "slice": "idempotence"}
-{"input": "seventh", "expected": "7th", "category": "numeric", "slice": "gold"}
+{"input": "seventh", "expected": "seventh", "category": "numeric", "slice": "gold"}
 {"input": "7th", "expected": "7th", "category": "numeric", "slice": "idempotence"}
 {"input": "six to fifty five", "expected": "6-55", "category": "numeric", "slice": "gold"}
 {"input": "6-55", "expected": "6-55", "category": "numeric", "slice": "idempotence"}
@@ -961,22 +961,22 @@
 {"input": "Dear team:", "expected": "Dear team:", "category": "punctuation", "slice": "idempotence"}
 {"input": "it works comma but slowly period", "expected": "it works, but slowly.", "category": "punctuation", "slice": "gold"}
 {"input": "It works, but slowly.", "expected": "It works, but slowly.", "category": "punctuation", "slice": "idempotence"}
-{"input": "give me five", "expected": "give me 5", "category": "negative", "slice": "negative"}
-{"input": "on cloud nine", "expected": "on cloud 9", "category": "negative", "slice": "negative"}
+{"input": "give me five", "expected": "give me five", "category": "negative", "slice": "negative"}
+{"input": "on cloud nine", "expected": "on cloud nine", "category": "negative", "slice": "negative"}
 {"input": "a thousand thanks", "expected": "a thousand thanks", "category": "negative", "slice": "negative"}
-{"input": "one of a kind", "expected": "1 of a kind", "category": "negative", "slice": "negative"}
-{"input": "back to square one", "expected": "back to square 1", "category": "negative", "slice": "negative"}
+{"input": "one of a kind", "expected": "one of a kind", "category": "negative", "slice": "negative"}
+{"input": "back to square one", "expected": "back to square one", "category": "negative", "slice": "negative"}
 {"input": "at the eleventh hour", "expected": "at the eleventh hour", "category": "negative", "slice": "negative"}
 {"input": "a picture is worth a thousand words", "expected": "a picture is worth a thousand words", "category": "negative", "slice": "negative"}
-{"input": "two heads are better than one", "expected": "2 heads are better than 1", "category": "negative", "slice": "negative"}
-{"input": "it takes two to tango", "expected": "it takes 2 to tango", "category": "negative", "slice": "negative"}
+{"input": "two heads are better than one", "expected": "two heads are better than one", "category": "negative", "slice": "negative"}
+{"input": "it takes two to tango", "expected": "it takes two to tango", "category": "negative", "slice": "negative"}
 {"input": "in seventh heaven", "expected": "in seventh heaven", "category": "negative", "slice": "negative"}
-{"input": "the whole nine yards", "expected": "the whole 9 yards", "category": "negative", "slice": "negative"}
+{"input": "the whole nine yards", "expected": "the whole nine yards", "category": "negative", "slice": "negative"}
 {"input": "dressed to the nines", "expected": "dressed to the nines", "category": "negative", "slice": "negative"}
 {"input": "a million miles away", "expected": "a million miles away", "category": "negative", "slice": "negative"}
 {"input": "second to none", "expected": "second to none", "category": "negative", "slice": "negative"}
 {"input": "first things first", "expected": "first things first", "category": "negative", "slice": "negative"}
-{"input": "six of one half a dozen of the other", "expected": "6 of 1 half a dozen of the other", "category": "negative", "slice": "negative"}
+{"input": "six of one half a dozen of the other", "expected": "six of one half a dozen of the other", "category": "negative", "slice": "negative"}
 {"input": "let me think about that for a moment", "expected": "let me think about that for a moment", "category": "negative", "slice": "negative"}
 {"input": "i really appreciate you taking the time to look into this", "expected": "i really appreciate you taking the time to look into this", "category": "negative", "slice": "negative"}
 {"input": "can you walk me through how this works", "expected": "can you walk me through how this works", "category": "negative", "slice": "negative"}
@@ -1025,7 +1025,7 @@
 {"input": "You're like watching the market multiple times a day.", "expected": "You're like watching the market multiple times a day.", "category": "negative", "slice": "negative"}
 {"input": "I don't know anything about day trading.", "expected": "I don't know anything about day trading.", "category": "negative", "slice": "negative"}
 {"input": "Sounds good.", "expected": "Sounds good.", "category": "negative", "slice": "negative"}
-{"input": "By the way, no one's gonna be speaking foreign languages into parakeet, or at least they should not.", "expected": "By the way, no 1 's gonna be speaking foreign languages into parakeet, or at least they should not.", "category": "negative", "slice": "negative"}
+{"input": "By the way, no one's gonna be speaking foreign languages into parakeet, or at least they should not.", "expected": "By the way, no one's gonna be speaking foreign languages into parakeet, or at least they should not.", "category": "negative", "slice": "negative"}
 {"input": "Test.", "expected": "Test.", "category": "negative", "slice": "negative"}
 {"input": "Test. Test.", "expected": "Test. Test.", "category": "negative", "slice": "negative"}
 {"input": "Hmm.", "expected": "Hmm.", "category": "negative", "slice": "negative"}
@@ -1113,7 +1113,7 @@
 {"input": "Stand testing.", "expected": "Stand testing.", "category": "negative", "slice": "negative"}
 {"input": "So my question to you is, was this test valuable? Did it explain anything to you or are you saying there's just too much variance and it's not validating anything?", "expected": "So my question to you is, was this test valuable? Did it explain anything to you or are you saying there's just too much variance and it's not validating anything?", "category": "negative", "slice": "negative"}
 {"input": "we need to run these UAT tests but I don't think we need to like hyperfixate if sudden burst is not working properly. But things like normal speech and stuff", "expected": "we need to run these UAT tests but I don't think we need to like hyperfixate if sudden burst is not working properly. But things like normal speech and stuff", "category": "negative", "slice": "negative"}
-{"input": "I mean things that to me are equally as important is are we capturing the first part of a speech sentence? Are we making sure that nothing's getting clipped at the end of the recording?", "expected": "I mean things that to me are equally as important is are we capturing the 1st part of a speech sentence? Are we making sure that nothing's getting clipped at the end of the recording?", "category": "negative", "slice": "negative"}
+{"input": "I mean things that to me are equally as important is are we capturing the first part of a speech sentence? Are we making sure that nothing's getting clipped at the end of the recording?", "expected": "I mean things that to me are equally as important is are we capturing the first part of a speech sentence? Are we making sure that nothing's getting clipped at the end of the recording?", "category": "negative", "slice": "negative"}
 {"input": "Is the transcription engine able to batch properly on longer recordings?", "expected": "Is the transcription engine able to batch properly on longer recordings?", "category": "negative", "slice": "negative"}
 {"input": "How good is the engine at capturing short dictations?", "expected": "How good is the engine at capturing short dictations?", "category": "negative", "slice": "negative"}
 {"input": "If the user is pressing the record key but not saying anything, are we making sure that our engines aren't returning hallucinations?", "expected": "If the user is pressing the record key but not saying anything, are we making sure that our engines aren't returning hallucinations?", "category": "negative", "slice": "negative"}
@@ -1409,11 +1409,11 @@
 {"input": "he has twenty twenty vision", "expected": "he has 2020 vision", "category": "numeric", "slice": "ambiguity"}
 {"input": "the final score was twenty twenty", "expected": "the final score was 2020", "category": "numeric", "slice": "ambiguity"}
 {"input": "we won five to three", "expected": "we won 5-3", "category": "numeric", "slice": "ambiguity"}
-{"input": "i need five apples", "expected": "i need 5 apples", "category": "numeric", "slice": "ambiguity"}
+{"input": "i need five apples", "expected": "i need five apples", "category": "numeric", "slice": "ambiguity"}
 {"input": "i live at three twenty west thirty eighth street", "expected": "i live at three twenty west 38th street", "category": "numeric", "slice": "ambiguity"}
 {"input": "we picked three hundred twenty apples", "expected": "we picked 320 apples", "category": "numeric", "slice": "ambiguity"}
-{"input": "the store is on fifth avenue", "expected": "the store is on 5th avenue", "category": "numeric", "slice": "ambiguity"}
-{"input": "she finished in fifth place", "expected": "she finished in 5th place", "category": "negative", "slice": "negative"}
+{"input": "the store is on fifth avenue", "expected": "the store is on fifth avenue", "category": "numeric", "slice": "ambiguity"}
+{"input": "she finished in fifth place", "expected": "she finished in fifth place", "category": "negative", "slice": "negative"}
 {"input": "upgrade to version two point oh", "expected": "upgrade to version 2.0", "category": "numeric", "slice": "ambiguity"}
 {"input": "the gap was two point five inches", "expected": "the gap was 2.5 inches", "category": "numeric", "slice": "ambiguity"}
 {"input": "add a quarter cup of sugar", "expected": "add a quarter cup of sugar", "category": "negative", "slice": "negative"}
@@ -1423,18 +1423,18 @@
 {"input": "see section two zero three", "expected": "see section 203", "category": "numeric", "slice": "ambiguity"}
 {"input": "the meeting is at o eight hundred", "expected": "the meeting is at 800", "category": "time", "slice": "ambiguity"}
 {"input": "we sold eight hundred units", "expected": "we sold 800 units", "category": "numeric", "slice": "ambiguity"}
-{"input": "the deadline is march third", "expected": "the deadline is march 3rd", "category": "date", "slice": "ambiguity"}
+{"input": "the deadline is march third", "expected": "the deadline is march third", "category": "date", "slice": "ambiguity"}
 {"input": "the ratio is three to one", "expected": "the ratio is 3-1", "category": "numeric", "slice": "ambiguity"}
 {"input": "i ran a ten k this morning", "expected": "i ran a 10 k this morning", "category": "numeric", "slice": "ambiguity"}
 {"input": "they offered ten k more", "expected": "they offered 10 k more", "category": "currency", "slice": "ambiguity"}
 {"input": "interest is five percent", "expected": "interest is 5%", "category": "numeric", "slice": "ambiguity"}
-{"input": "about five of them agreed", "expected": "about 5 of them agreed", "category": "negative", "slice": "negative"}
-{"input": "meet me on the second", "expected": "meet me on the 2nd", "category": "date", "slice": "ambiguity"}
+{"input": "about five of them agreed", "expected": "about five of them agreed", "category": "negative", "slice": "negative"}
+{"input": "meet me on the second", "expected": "meet me on the second", "category": "date", "slice": "ambiguity"}
 {"input": "wait a second", "expected": "wait a second", "category": "negative", "slice": "negative"}
 {"input": "my pin is double oh seven five", "expected": "my pin is double 075", "category": "numeric", "slice": "ambiguity"}
 {"input": "it's worth twenty bucks", "expected": "it's worth 20 bucks", "category": "currency", "slice": "ambiguity"}
 {"input": "there are twenty bucks in the field", "expected": "there are 20 bucks in the field", "category": "negative", "slice": "negative"}
-{"input": "nine trillion seven hundred eighty nine billion three hundred eighty two million five hundred thirty six thousand one hundred thirty", "expected": "9 trillion 789,382,536,130", "category": "numeric", "slice": "public"}
+{"input": "nine trillion seven hundred eighty nine billion three hundred eighty two million five hundred thirty six thousand one hundred thirty", "expected": "nine trillion 789,382,536,130", "category": "numeric", "slice": "public"}
 {"input": "two hundred and fifty four", "expected": "254", "category": "numeric", "slice": "public"}
 {"input": "one hundred forty seven thousand four hundred fifty one", "expected": "147,451", "category": "numeric", "slice": "public"}
 {"input": "one million one hundred fifty six thousand one hundred seventy three", "expected": "1,156,173", "category": "numeric", "slice": "public"}
@@ -1443,11 +1443,11 @@
 {"input": "seventeen sextillion eight hundred fifty five quintillion thirty six quadrillion six hundred fifty seven trillion seven billion five hundred ninety six million one hundred ten thousand nine hundred forty nine", "expected": "17 sextillion 855 quintillion 36 quadrillion 657 trillion 7,596,110,949", "category": "numeric", "slice": "public"}
 {"input": "ten quadrillion ten trillion ten million one hundred thousand ten", "expected": "10 quadrillion 10 trillion 10,100,010", "category": "numeric", "slice": "public"}
 {"input": "minus twenty five thousand thirty seven", "expected": "minus 25,037", "category": "numeric", "slice": "public"}
-{"input": "one quadrillion two hundred sixty four trillion three hundred one billion nine hundred thirty eight million one hundred four", "expected": "1 quadrillion 264 trillion 301,938,000,104", "category": "numeric", "slice": "public"}
+{"input": "one quadrillion two hundred sixty four trillion three hundred one billion nine hundred thirty eight million one hundred four", "expected": "one quadrillion 264 trillion 301,938,000,104", "category": "numeric", "slice": "public"}
 {"input": "minus sixty", "expected": "minus 60", "category": "numeric", "slice": "public"}
 {"input": "forty six thousand six hundred sixty four", "expected": "46,664", "category": "numeric", "slice": "public"}
 {"input": "sixty", "expected": "60", "category": "numeric", "slice": "public"}
-{"input": "zero", "expected": "0", "category": "numeric", "slice": "public"}
+{"input": "zero", "expected": "zero", "category": "numeric", "slice": "public"}
 {"input": "two million three", "expected": "2,000,003", "category": "numeric", "slice": "public"}
 {"input": "one thousand thirteen", "expected": "1,013", "category": "numeric", "slice": "public"}
 {"input": "one thousand one", "expected": "1,001", "category": "numeric", "slice": "public"}
@@ -1472,7 +1472,7 @@
 {"input": "the twenty second of july twenty twelve", "expected": "the 22nd of july 2012", "category": "date", "slice": "public"}
 {"input": "the fifteenth of january", "expected": "the 15th of january", "category": "date", "slice": "public"}
 {"input": "the seventeenth of may twenty ten", "expected": "the 17th of may 2010", "category": "date", "slice": "public"}
-{"input": "january first", "expected": "january 1st", "category": "date", "slice": "public"}
+{"input": "january first", "expected": "january first", "category": "date", "slice": "public"}
 {"input": "july twenty second two thousand eight", "expected": "July 22, 2008", "category": "date", "slice": "public"}
 {"input": "june thirty", "expected": "june 30", "category": "date", "slice": "public"}
 {"input": "july twenty fifth twenty twelve", "expected": "July 25, 2012", "category": "date", "slice": "public"}
@@ -1530,7 +1530,7 @@
 {"input": "fifteen billion", "expected": "15 billion", "category": "numeric", "slice": "public"}
 {"input": "two million", "expected": "2 million", "category": "numeric", "slice": "public"}
 {"input": "eight million", "expected": "8 million", "category": "numeric", "slice": "public"}
-{"input": "point one two o five", "expected": "point 1205", "category": "numeric", "slice": "public"}
+{"input": "point one two o five", "expected": "0.1205", "category": "numeric", "slice": "public"}
 {"input": "minus sixty point two four zero zero", "expected": "minus 60.2400", "category": "numeric", "slice": "public"}
 {"input": "zero point two six", "expected": "0.26", "category": "numeric", "slice": "public"}
 {"input": "point zero two", "expected": "point 02", "category": "numeric", "slice": "public"}
@@ -1568,11 +1568,11 @@
 {"input": "a b c at g mail dot a b c", "expected": "a b c at g mail dot a b c", "category": "email", "slice": "public"}
 {"input": "a b c at a b c dot com", "expected": "a b c at a b c.com", "category": "email", "slice": "public"}
 {"input": "a s d f one two three at a b c dot com", "expected": "a s d f one two three at a b c.com", "category": "email", "slice": "public"}
-{"input": "a one b two at a b c dot com", "expected": "a 1 b 2 at a b c.com", "category": "email", "slice": "public"}
-{"input": "a b three dot s d d dot three at g mail dot com", "expected": "a b 3 dot s d d dot 3 at g mail.com", "category": "email", "slice": "public"}
-{"input": "dot three at g mail dot com", "expected": "dot 3 at g mail.com", "category": "email", "slice": "public"}
+{"input": "a one b two at a b c dot com", "expected": "a one b two at a b c.com", "category": "email", "slice": "public"}
+{"input": "a b three dot s d d dot three at g mail dot com", "expected": "a b three dot s d d dot three at g mail.com", "category": "email", "slice": "public"}
+{"input": "dot three at g mail dot com", "expected": "dot three at g mail.com", "category": "email", "slice": "public"}
 {"input": "one three at g mail dot com", "expected": "one three at g mail.com", "category": "email", "slice": "public"}
-{"input": "a b three hyphen s d d dash three at g mail dot com", "expected": "a b 3 hyphen s d d dash 3 at g mail.com", "category": "email", "slice": "public"}
+{"input": "a b three hyphen s d d dash three at g mail dot com", "expected": "a b three hyphen s d d dash three at g mail.com", "category": "email", "slice": "public"}
 {"input": "h t t p colon slash slash w w w dot o u r d a i l y n e w s dot com dot s m", "expected": "h t t p: slash slash w w w dot o u r d a i l y n e w s.com dot s m", "category": "url", "slice": "public"}
 {"input": "h t t p colon slash slash w w w dot c o m d a i l y n e w s dot a b dot s m", "expected": "h t t p: slash slash w w w dot c o m d a i l y n e w s dot a b dot s m", "category": "url", "slice": "public"}
 {"input": "h t t p colon slash slash w w w dot c o m d a i l y n e w s dot a b slash s m", "expected": "h t t p: slash slash w w w dot c o m d a i l y n e w s dot a b slash s m", "category": "url", "slice": "public"}
@@ -1589,11 +1589,11 @@
 {"input": "forty two thousand two hundred fifty nine per square meter", "expected": "42,259 per square meter", "category": "numeric", "slice": "public"}
 {"input": "minus two thousand twelve kilo liters", "expected": "minus 2012 kilo liters", "category": "numeric", "slice": "public"}
 {"input": "minus sixty six kilograms", "expected": "minus 66 kilograms", "category": "numeric", "slice": "public"}
-{"input": "two kilo watt hours", "expected": "2 kilo watt hours", "category": "numeric", "slice": "public"}
+{"input": "two kilo watt hours", "expected": "two kilo watt hours", "category": "numeric", "slice": "public"}
 {"input": "one point o o o o two eight cubic deci meters", "expected": "1.000028 cubic deci meters", "category": "numeric", "slice": "public"}
 {"input": "seven point five peta bytes", "expected": "7.5 peta bytes", "category": "numeric", "slice": "public"}
-{"input": "three hours", "expected": "3 hours", "category": "numeric", "slice": "public"}
-{"input": "one milli volt", "expected": "1 milli volt", "category": "numeric", "slice": "public"}
+{"input": "three hours", "expected": "three hours", "category": "numeric", "slice": "public"}
+{"input": "one milli volt", "expected": "one milli volt", "category": "numeric", "slice": "public"}
 {"input": "two cubic meters", "expected": "2 cubic meters", "category": "numeric", "slice": "public"}
 {"input": "ninety grams", "expected": "90 grams", "category": "numeric", "slice": "public"}
 {"input": "one hundred twenty four point three lumens", "expected": "124.3 lumens", "category": "numeric", "slice": "public"}
@@ -1621,17 +1621,17 @@
 {"input": "eighteen point five kilometers", "expected": "18.5 kilometers", "category": "numeric", "slice": "public"}
 {"input": "eighteen point five two square kilometers", "expected": "18.52 square kilometers", "category": "numeric", "slice": "public"}
 {"input": "eighteen point nine one square kilometers", "expected": "18.91 square kilometers", "category": "numeric", "slice": "public"}
-{"input": "eighteen point one four percent", "expected": "18.14 percent", "category": "numeric", "slice": "public"}
-{"input": "eighteen point one six percent", "expected": "18.16 percent", "category": "numeric", "slice": "public"}
+{"input": "eighteen point one four percent", "expected": "18.14%", "category": "numeric", "slice": "public"}
+{"input": "eighteen point one six percent", "expected": "18.16%", "category": "numeric", "slice": "public"}
 {"input": "eighteen point one square kilometers", "expected": "18.1 square kilometers", "category": "numeric", "slice": "public"}
-{"input": "eighteen point six percent", "expected": "18.6 percent", "category": "numeric", "slice": "public"}
+{"input": "eighteen point six percent", "expected": "18.6%", "category": "numeric", "slice": "public"}
 {"input": "eighteen point two two kilometers", "expected": "18.22 kilometers", "category": "numeric", "slice": "public"}
 {"input": "eighteen point zero kilometers", "expected": "18.0 kilometers", "category": "numeric", "slice": "public"}
-{"input": "eighteen point zero percent", "expected": "18.0 percent", "category": "numeric", "slice": "public"}
+{"input": "eighteen point zero percent", "expected": "18.0%", "category": "numeric", "slice": "public"}
 {"input": "eighteen square kilometers", "expected": "18 square kilometers", "category": "numeric", "slice": "public"}
 {"input": "eighteen thousand eight hundred giga watt hours", "expected": "18,800 giga watt hours", "category": "numeric", "slice": "public"}
 {"input": "eighteen thousand seven hundred hectares", "expected": "18,700 hectares", "category": "numeric", "slice": "public"}
-{"input": "eight hectares", "expected": "8 hectares", "category": "numeric", "slice": "public"}
+{"input": "eight hectares", "expected": "eight hectares", "category": "numeric", "slice": "public"}
 {"input": "eight hundred eighty five astronomical units", "expected": "885 astronomical units", "category": "numeric", "slice": "public"}
 {"input": "eight hundred eighty hectares", "expected": "880 hectares", "category": "numeric", "slice": "public"}
 {"input": "eight hundred eighty kilobytes", "expected": "880 kilobytes", "category": "numeric", "slice": "public"}
@@ -1681,21 +1681,21 @@
 {"input": "eight hundred twenty one point zero feet", "expected": "821.0 feet", "category": "numeric", "slice": "public"}
 {"input": "eight hundred two point eight nine kilometers", "expected": "802.89 kilometers", "category": "numeric", "slice": "public"}
 {"input": "eight hundred volts", "expected": "800 volts", "category": "numeric", "slice": "public"}
-{"input": "eight kilobits", "expected": "8 kilobits", "category": "numeric", "slice": "public"}
+{"input": "eight kilobits", "expected": "eight kilobits", "category": "numeric", "slice": "public"}
 {"input": "eight kilograms", "expected": "8 kilograms", "category": "numeric", "slice": "public"}
 {"input": "eight million two hundred thousand feet", "expected": "8.2 million feet", "category": "numeric", "slice": "public"}
 {"input": "eight point eight kilometers", "expected": "8.8 kilometers", "category": "numeric", "slice": "public"}
 {"input": "eight point eight meters", "expected": "8.8 meters", "category": "numeric", "slice": "public"}
 {"input": "eight point eight miles", "expected": "8.8 miles", "category": "numeric", "slice": "public"}
 {"input": "eight point five centimeters", "expected": "8.5 centimeters", "category": "numeric", "slice": "public"}
-{"input": "eight point five five percent", "expected": "8.55 percent", "category": "numeric", "slice": "public"}
+{"input": "eight point five five percent", "expected": "8.55%", "category": "numeric", "slice": "public"}
 {"input": "eight point five megawatts", "expected": "8.5 megawatts", "category": "numeric", "slice": "public"}
 {"input": "eight point five meters", "expected": "8.5 meters", "category": "numeric", "slice": "public"}
-{"input": "eight point five two percent", "expected": "8.52 percent", "category": "numeric", "slice": "public"}
-{"input": "eight point four four percent", "expected": "8.44 percent", "category": "numeric", "slice": "public"}
+{"input": "eight point five two percent", "expected": "8.52%", "category": "numeric", "slice": "public"}
+{"input": "eight point four four percent", "expected": "8.44%", "category": "numeric", "slice": "public"}
 {"input": "two dollars", "expected": "$2", "category": "currency", "slice": "public"}
-{"input": "one cent", "expected": "1 cent", "category": "currency", "slice": "public"}
-{"input": "four united states dollars and sixty nine cents", "expected": "4 united states dollars $0.69", "category": "currency", "slice": "public"}
+{"input": "one cent", "expected": "$0.01", "category": "currency", "slice": "public"}
+{"input": "four united states dollars and sixty nine cents", "expected": "four united states dollars $0.69", "category": "currency", "slice": "public"}
 {"input": "seventy five dollars sixty three", "expected": "$75 63", "category": "currency", "slice": "public"}
 {"input": "twenty nine dollars fifty cents", "expected": "$29 $0.50", "category": "currency", "slice": "public"}
 {"input": "eleven dollars and fifty one cents", "expected": "$11.51", "category": "currency", "slice": "public"}
@@ -1711,12 +1711,12 @@
 {"input": "one point six nine billion yuan", "expected": "1.69 billion yuan", "category": "currency", "slice": "public"}
 {"input": "one point four three six billion yuan", "expected": "1.436 billion yuan", "category": "currency", "slice": "public"}
 {"input": "four million yuan", "expected": "4 million yuan", "category": "currency", "slice": "public"}
-{"input": "one dollar", "expected": "1 dollar", "category": "currency", "slice": "public"}
+{"input": "one dollar", "expected": "$1", "category": "currency", "slice": "public"}
 {"input": "fifteen thousand dollars", "expected": "$15,000", "category": "currency", "slice": "public"}
 {"input": "one dollars", "expected": "$1", "category": "currency", "slice": "public"}
-{"input": "twenty dollar", "expected": "20 dollar", "category": "currency", "slice": "public"}
+{"input": "twenty dollar", "expected": "$20", "category": "currency", "slice": "public"}
 {"input": "twenty point five o six dollars", "expected": "20.506 dollars", "category": "currency", "slice": "public"}
-{"input": "point five o six dollars", "expected": "point 506 dollars", "category": "currency", "slice": "public"}
+{"input": "point five o six dollars", "expected": "0.506 dollars", "category": "currency", "slice": "public"}
 {"input": "eighteen dollars", "expected": "$18", "category": "currency", "slice": "public"}
 {"input": "eighteen million nine hundred twenty five thousand dollars", "expected": "$18.925 million", "category": "currency", "slice": "public"}
 {"input": "eighteen thousand eight hundred fifty four dollars", "expected": "$18,854", "category": "currency", "slice": "public"}
@@ -1744,9 +1744,9 @@
 {"input": "one fifty five dollars", "expected": "one fifty five dollars", "category": "currency", "slice": "public"}
 {"input": "fifteen hundred dollars", "expected": "$1,500", "category": "currency", "slice": "public"}
 {"input": "ninety nine hundred dollars", "expected": "$9,900", "category": "currency", "slice": "public"}
-{"input": "ninety nine hundred and fifteen dollars and one cent", "expected": "$9,915 1 cent", "category": "currency", "slice": "public"}
-{"input": "one hundredth", "expected": "1 hundredth", "category": "numeric", "slice": "public"}
-{"input": "twenty five thousand one hundred eleventh", "expected": "25,100 11th", "category": "numeric", "slice": "public"}
+{"input": "ninety nine hundred and fifteen dollars and one cent", "expected": "$9,915.01", "category": "currency", "slice": "public"}
+{"input": "one hundredth", "expected": "100th", "category": "numeric", "slice": "public"}
+{"input": "twenty five thousand one hundred eleventh", "expected": "25,111th", "category": "numeric", "slice": "public"}
 {"input": "second", "expected": "second", "category": "numeric", "slice": "public"}
 {"input": "zeroth", "expected": "zeroth", "category": "numeric", "slice": "public"}
 {"input": "first", "expected": "first", "category": "numeric", "slice": "public"}
@@ -1755,19 +1755,19 @@
 {"input": "thirteenth", "expected": "13th", "category": "numeric", "slice": "public"}
 {"input": "twenty first", "expected": "21st", "category": "numeric", "slice": "public"}
 {"input": "twenty third", "expected": "23rd", "category": "numeric", "slice": "public"}
-{"input": "one hundred eleventh", "expected": "100 11th", "category": "numeric", "slice": "public"}
-{"input": "one thousandth", "expected": "1 thousandth", "category": "numeric", "slice": "public"}
+{"input": "one hundred eleventh", "expected": "111th", "category": "numeric", "slice": "public"}
+{"input": "one thousandth", "expected": "1,000th", "category": "numeric", "slice": "public"}
 {"input": "one hundred twenty first", "expected": "100 21st", "category": "numeric", "slice": "public"}
 {"input": "eleven hundred twenty first", "expected": "1,100 21st", "category": "numeric", "slice": "public"}
 {"input": "tenth", "expected": "10th", "category": "numeric", "slice": "public"}
-{"input": "sixth", "expected": "6th", "category": "numeric", "slice": "public"}
+{"input": "sixth", "expected": "sixth", "category": "numeric", "slice": "public"}
 {"input": "nineteenth", "expected": "19th", "category": "numeric", "slice": "public"}
 {"input": "forty eighth", "expected": "48th", "category": "numeric", "slice": "public"}
 {"input": "seventy first", "expected": "71st", "category": "numeric", "slice": "public"}
 {"input": "forty second", "expected": "42nd", "category": "numeric", "slice": "public"}
 {"input": "seventeenth", "expected": "17th", "category": "numeric", "slice": "public"}
 {"input": "twentieth", "expected": "20th", "category": "numeric", "slice": "public"}
-{"input": "fifth", "expected": "5th", "category": "numeric", "slice": "public"}
+{"input": "fifth", "expected": "fifth", "category": "numeric", "slice": "public"}
 {"input": "one two three one two three five six seven eight", "expected": "123-123-5678", "category": "phone", "slice": "public"}
 {"input": "plus nine one one two three one two three five six seven eight", "expected": "plus nine one one two three one two three five six seven eight", "category": "phone", "slice": "public"}
 {"input": "plus forty four one two three one two three five six seven eight", "expected": "plus forty four one two three one two three five six seven eight", "category": "phone", "slice": "public"}
@@ -1777,15 +1777,15 @@
 {"input": "oh two three one two three five six seven eight", "expected": "023-123-5678", "category": "phone", "slice": "public"}
 {"input": "double oh three one two three five six seven eight", "expected": "double oh three one two three five six seven eight", "category": "phone", "slice": "public"}
 {"input": "four three two double seven three two one four three two one four three double zero five", "expected": "four three two double 732-143-2143 double 05", "category": "phone", "slice": "public"}
-{"input": "one two three dot one two three dot o dot four o", "expected": "one two three dot one two three dot o dot 40", "category": "phone", "slice": "public"}
-{"input": "one twenty three dot one two three dot o dot four o", "expected": "one twenty three dot one two three dot o dot 40", "category": "phone", "slice": "public"}
-{"input": "two two five dot double five dot o dot four o", "expected": "two two five dot double 5 dot o dot 40", "category": "phone", "slice": "public"}
-{"input": "two two five dot double five dot o dot forty five", "expected": "two two five dot double 5 dot o dot 45", "category": "phone", "slice": "public"}
-{"input": "ssn is seven double nine one two three double one three", "expected": "ssn is 7 double nine one two three double one three", "category": "phone", "slice": "public"}
+{"input": "one two three dot one two three dot o dot four o", "expected": "one two three dot one two three dot o dot four o", "category": "phone", "slice": "public"}
+{"input": "one twenty three dot one two three dot o dot four o", "expected": "one twenty three dot one two three dot o dot four o", "category": "phone", "slice": "public"}
+{"input": "two two five dot double five dot o dot four o", "expected": "two two five dot double five dot o dot four o", "category": "phone", "slice": "public"}
+{"input": "two two five dot double five dot o dot forty five", "expected": "two two five dot double 5.0 dot 45", "category": "phone", "slice": "public"}
+{"input": "ssn is seven double nine one two three double one three", "expected": "ssn is seven double nine one two three double one three", "category": "phone", "slice": "public"}
 {"input": "seven nine nine", "expected": "seven nine nine", "category": "phone", "slice": "public"}
-{"input": "a b nine", "expected": "a b 9", "category": "phone", "slice": "public"}
+{"input": "a b nine", "expected": "a b nine", "category": "phone", "slice": "public"}
 {"input": "a b c", "expected": "a b c", "category": "phone", "slice": "public"}
-{"input": "five w k r a three one", "expected": "5 w k r a three one", "category": "phone", "slice": "public"}
+{"input": "five w k r a three one", "expected": "five w k r a three one", "category": "phone", "slice": "public"}
 {"input": "x eighty six", "expected": "x 86", "category": "phone", "slice": "public"}
 {"input": "x three eighty six", "expected": "x three eighty six", "category": "phone", "slice": "public"}
 {"input": "a thirty six", "expected": "a 36", "category": "phone", "slice": "public"}
@@ -1814,10 +1814,10 @@
 {"input": "quarter to one", "expected": "quarter to one", "category": "time", "slice": "public"}
 {"input": "quarter to twelve", "expected": "quarter to twelve", "category": "time", "slice": "public"}
 {"input": "set alarm at ten to eleven pm", "expected": "set alarm at 10-11:00 PM", "category": "time", "slice": "public"}
-{"input": "one min to one am", "expected": "1 min to 1:00 AM", "category": "time", "slice": "public"}
-{"input": ", one", "expected": ", 1", "category": "negative", "slice": "negative"}
-{"input": ", one , two , three , four", "expected": ", 1, 2, 3, 4", "category": "negative", "slice": "negative"}
-{"input": "e s three", "expected": "e s 3", "category": "negative", "slice": "negative"}
+{"input": "one min to one am", "expected": "one min to 1:00 AM", "category": "time", "slice": "public"}
+{"input": ", one", "expected": ", one", "category": "negative", "slice": "negative"}
+{"input": ", one , two , three , four", "expected": ", one, two, three, four", "category": "negative", "slice": "negative"}
+{"input": "e s three", "expected": "e s three", "category": "negative", "slice": "negative"}
 {"input": "yahoo!", "expected": "yahoo!", "category": "negative", "slice": "negative"}
 {"input": "twenty!", "expected": "20!", "category": "negative", "slice": "negative"}
 {"input": "x", "expected": "x", "category": "negative", "slice": "negative"}
@@ -1885,14 +1885,180 @@
 {"input": "oh i see what you mean now", "expected": "oh i see what you mean now", "category": "negative", "slice": "negative"}
 {"input": "oh no not this again", "expected": "oh no not this again", "category": "negative", "slice": "negative"}
 {"input": "oh well these things happen", "expected": "oh well these things happen", "category": "negative", "slice": "negative"}
-{"input": "no one really knows for sure", "expected": "no 1 really knows for sure", "category": "negative", "slice": "negative"}
-{"input": "she is the one for this job", "expected": "she is the 1 for this job", "category": "negative", "slice": "negative"}
-{"input": "that is one way to look at it", "expected": "that is 1 way to look at it", "category": "negative", "slice": "negative"}
-{"input": "for one thing it is already late", "expected": "for 1 thing it is already late", "category": "negative", "slice": "negative"}
+{"input": "no one really knows for sure", "expected": "no one really knows for sure", "category": "negative", "slice": "negative"}
+{"input": "she is the one for this job", "expected": "she is the one for this job", "category": "negative", "slice": "negative"}
+{"input": "that is one way to look at it", "expected": "that is one way to look at it", "category": "negative", "slice": "negative"}
+{"input": "for one thing it is already late", "expected": "for one thing it is already late", "category": "negative", "slice": "negative"}
 {"input": "wait a second while i check", "expected": "wait a second while i check", "category": "negative", "slice": "negative"}
 {"input": "give me a second to think", "expected": "give me a second to think", "category": "negative", "slice": "negative"}
-{"input": "at one point i almost gave up", "expected": "at 1 point i almost gave up", "category": "negative", "slice": "negative"}
-{"input": "you are the one i trust", "expected": "you are the 1 i trust", "category": "negative", "slice": "negative"}
-{"input": "one more thing before you go", "expected": "1 more thing before you go", "category": "negative", "slice": "negative"}
-{"input": "hold on one sec", "expected": "hold on 1 sec", "category": "negative", "slice": "negative"}
+{"input": "at one point i almost gave up", "expected": "at one point i almost gave up", "category": "negative", "slice": "negative"}
+{"input": "you are the one i trust", "expected": "you are the one i trust", "category": "negative", "slice": "negative"}
+{"input": "one more thing before you go", "expected": "one more thing before you go", "category": "negative", "slice": "negative"}
+{"input": "hold on one sec", "expected": "hold on one sec", "category": "negative", "slice": "negative"}
 {"input": "it is half past caring honestly", "expected": "it is half past caring honestly", "category": "negative", "slice": "negative"}
+{"input": "I have two cats.", "expected": "I have two cats.", "category": "numeric", "slice": "ap_gold"}
+{"input": "He scored three goals.", "expected": "He scored three goals.", "category": "numeric", "slice": "ap_gold"}
+{"input": "seven samples remained", "expected": "seven samples remained", "category": "numeric", "slice": "ap_gold"}
+{"input": "there were four of us", "expected": "there were four of us", "category": "numeric", "slice": "ap_gold"}
+{"input": "we were on cloud nine", "expected": "we were on cloud nine", "category": "numeric", "slice": "ap_gold"}
+{"input": "it happened three times", "expected": "it happened three times", "category": "numeric", "slice": "ap_gold"}
+{"input": "nine lives", "expected": "nine lives", "category": "numeric", "slice": "ap_gold"}
+{"input": "one of them left", "expected": "one of them left", "category": "numeric", "slice": "ap_gold"}
+{"input": "we tested ninety four cases", "expected": "we tested 94 cases", "category": "numeric", "slice": "ap_gold"}
+{"input": "twenty three people came", "expected": "23 people came", "category": "numeric", "slice": "ap_gold"}
+{"input": "there are fifteen items", "expected": "there are 15 items", "category": "numeric", "slice": "ap_gold"}
+{"input": "ten dogs", "expected": "10 dogs", "category": "numeric", "slice": "ap_gold"}
+{"input": "nine dogs", "expected": "nine dogs", "category": "numeric", "slice": "ap_gold"}
+{"input": "eleven players", "expected": "11 players", "category": "numeric", "slice": "ap_gold"}
+{"input": "one hundred twenty three widgets", "expected": "123 widgets", "category": "numeric", "slice": "ap_gold"}
+{"input": "Twenty three people came.", "expected": "23 people came.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Nine hundred forty five.", "expected": "945.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Fifteen people on the call.", "expected": "15 people on the call.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Two hundred Americans attended.", "expected": "200 Americans attended.", "category": "numeric", "slice": "ap_gold"}
+{"input": "One thousand two hundred people attended.", "expected": "1,200 people attended.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Three of them left.", "expected": "Three of them left.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Five of us stayed.", "expected": "Five of us stayed.", "category": "numeric", "slice": "ap_gold"}
+{"input": "One thing I noticed.", "expected": "One thing I noticed.", "category": "numeric", "slice": "ap_gold"}
+{"input": "it cost five dollars", "expected": "it cost $5", "category": "numeric", "slice": "ap_gold"}
+{"input": "five percent growth", "expected": "5% growth", "category": "numeric", "slice": "ap_gold"}
+{"input": "call me at five pm", "expected": "call me at 5:00 PM", "category": "numeric", "slice": "ap_gold"}
+{"input": "three point five", "expected": "3.5", "category": "numeric", "slice": "ap_gold"}
+{"input": "we raised eighty million dollars last year", "expected": "we raised $80 million last year", "category": "numeric", "slice": "ap_gold"}
+{"input": "twenty twenty six is the target", "expected": "2026 is the target", "category": "numeric", "slice": "ap_gold"}
+{"input": "i was born in nineteen eighty seven", "expected": "i was born in 1987", "category": "numeric", "slice": "ap_gold"}
+{"input": "five million users", "expected": "5 million users", "category": "numeric", "slice": "ap_gold"}
+{"input": "nine billion dollars", "expected": "$9 billion", "category": "numeric", "slice": "ap_gold"}
+{"input": "she is five years old", "expected": "she is 5 years old", "category": "numeric", "slice": "ap_gold"}
+{"input": "my daughter is two years old", "expected": "my daughter is 2 years old", "category": "numeric", "slice": "ap_gold"}
+{"input": "the baby is eight months old", "expected": "the baby is 8 months old", "category": "numeric", "slice": "ap_gold"}
+{"input": "a two year old toddler", "expected": "a 2 year old toddler", "category": "numeric", "slice": "ap_gold"}
+{"input": "walk five miles", "expected": "walk 5 miles", "category": "numeric", "slice": "ap_gold"}
+{"input": "add two tablespoons", "expected": "add 2 tablespoons", "category": "numeric", "slice": "ap_gold"}
+{"input": "he is six feet tall", "expected": "he is 6 feet tall", "category": "numeric", "slice": "ap_gold"}
+{"input": "it weighs nine pounds", "expected": "it weighs 9 pounds", "category": "numeric", "slice": "ap_gold"}
+{"input": "drive three kilometers", "expected": "drive 3 kilometers", "category": "numeric", "slice": "ap_gold"}
+{"input": "set it to four degrees", "expected": "set it to 4 degrees", "category": "numeric", "slice": "ap_gold"}
+{"input": "five years later", "expected": "five years later", "category": "numeric", "slice": "ap_gold"}
+{"input": "five years of data", "expected": "five years of data", "category": "numeric", "slice": "ap_gold"}
+{"input": "two weeks from now", "expected": "two weeks from now", "category": "numeric", "slice": "ap_gold"}
+{"input": "pick a number from five to ten", "expected": "pick a number from 5-10", "category": "numeric", "slice": "ap_gold"}
+{"input": "between three and seven", "expected": "between 3-7", "category": "numeric", "slice": "ap_gold"}
+{"input": "we need six to eight people", "expected": "we need 6-8 people", "category": "numeric", "slice": "ap_gold"}
+{"input": "the meeting is four slash six", "expected": "the meeting is 4/6", "category": "numeric", "slice": "ap_gold"}
+{"input": "about a hundred people", "expected": "about 100 people", "category": "numeric", "slice": "ap_gold"}
+{"input": "a hundred and one dalmatians", "expected": "101 dalmatians", "category": "numeric", "slice": "ap_gold"}
+{"input": "a hundred thousand strong", "expected": "100,000 strong", "category": "numeric", "slice": "ap_gold"}
+{"input": "a couple hundred people", "expected": "a couple hundred people", "category": "numeric", "slice": "ap_gold"}
+{"input": "several hundred attendees", "expected": "several hundred attendees", "category": "numeric", "slice": "ap_gold"}
+{"input": "this is my first time", "expected": "this is my first time", "category": "numeric", "slice": "ap_gold"}
+{"input": "he finished ninth", "expected": "he finished ninth", "category": "numeric", "slice": "ap_gold"}
+{"input": "the third option is best", "expected": "the third option is best", "category": "numeric", "slice": "ap_gold"}
+{"input": "he finished tenth", "expected": "he finished 10th", "category": "numeric", "slice": "ap_gold"}
+{"input": "the twentieth century", "expected": "the 20th century", "category": "numeric", "slice": "ap_gold"}
+{"input": "she came in twenty first", "expected": "she came in 21st", "category": "numeric", "slice": "ap_gold"}
+{"input": "One Million Moms protested", "expected": "One Million Moms protested", "category": "numeric", "slice": "ap_gold"}
+{"input": "Hundred Acre Wood is fictional", "expected": "Hundred Acre Wood is fictional", "category": "numeric", "slice": "ap_gold"}
+{"input": "Seven Eleven is open late", "expected": "Seven Eleven is open late", "category": "numeric", "slice": "ap_gold"}
+{"input": "the Forty Niners won", "expected": "the Forty Niners won", "category": "numeric", "slice": "ap_gold"}
+{"input": "One Direction released an album", "expected": "One Direction released an album", "category": "numeric", "slice": "ap_gold"}
+{"input": "we ate at Five Guys", "expected": "we ate at Five Guys", "category": "numeric", "slice": "ap_gold"}
+{"input": "the movie Five Feet Apart", "expected": "the movie Five Feet Apart", "category": "numeric", "slice": "ap_gold"}
+{"input": "Oh my god that was close", "expected": "Oh my god that was close", "category": "numeric", "slice": "ap_gold"}
+{"input": "I have two cats and fifteen fish", "expected": "I have two cats and 15 fish", "category": "numeric", "slice": "ap_gold"}
+{"input": "nine out of ten dentists", "expected": "nine out of 10 dentists", "category": "numeric", "slice": "ap_gold"}
+{"input": "twelve out of fifteen passed", "expected": "12 out of 15 passed", "category": "numeric", "slice": "ap_gold"}
+{"input": "The order includes nine bolts, 10 washers and eleven nuts.", "expected": "The order includes nine bolts, 10 washers and 11 nuts.", "category": "numeric", "slice": "ap_gold"}
+{"input": "We need five to 10 volunteers.", "expected": "We need 5-10 volunteers.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The options are eight, nine and 10.", "expected": "The options are eight, nine and 10.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Use the five-step, 12-step and twenty-step plans.", "expected": "Use the five-step, 12-step and 20-step plans.", "category": "numeric", "slice": "ap_gold"}
+{"input": "She fired a twenty-one-gun salute.", "expected": "She fired a 21-gun salute.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Pack two-, four- and 12-packs separately.", "expected": "Pack two-, four- and 12-packs separately.", "category": "numeric", "slice": "ap_gold"}
+{"input": "This is a 10-item list with three sub-items and eleven notes.", "expected": "This is a 10-item list with three sub-items and 11 notes.", "category": "numeric", "slice": "ap_gold"}
+{"input": "She offered a three-point plan and a 12-point memo.", "expected": "She offered a three-point plan and a 12-point memo.", "category": "numeric", "slice": "ap_gold"}
+{"input": "A one-and-done rule ended the debate.", "expected": "A one-and-done rule ended the debate.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The password is four plus signs and two digits.", "expected": "The password is four plus signs and two digits.", "category": "numeric", "slice": "ap_gold"}
+{"input": "It was minus five degrees at dawn.", "expected": "It was minus 5 degrees at dawn.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The balance fell to negative ten.", "expected": "The balance fell to negative 10.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The fund posted minus five percent.", "expected": "The fund posted minus 5%.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The reading was negative point five.", "expected": "The reading was negative 0.5.", "category": "numeric", "slice": "ap_gold"}
+{"input": "He finished twenty third in the heat.", "expected": "He finished 23rd in the heat.", "category": "numeric", "slice": "ap_gold"}
+{"input": "This is the hundred and first complaint.", "expected": "This is the 101st complaint.", "category": "numeric", "slice": "ap_gold"}
+{"input": "She was the one hundred tenth caller.", "expected": "She was the 110th caller.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The twenty first century began with argument.", "expected": "The 21st century began with argument.", "category": "numeric", "slice": "ap_gold"}
+{"input": "He won his ninth and 10th games.", "expected": "He won his ninth and 10th games.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The one thousandth customer gets a prize.", "expected": "The 1,000th customer gets a prize.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The crowd was eleven hundred strong.", "expected": "The crowd was 1,100 strong.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The warehouse has fifteen hundred boxes.", "expected": "The warehouse has 1,500 boxes.", "category": "numeric", "slice": "ap_gold"}
+{"input": "He paid fifteen hundred dollars.", "expected": "He paid $1,500.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Pi starts three point one four one five.", "expected": "Pi starts 3.1415.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The release is version two dot zero zero.", "expected": "The release is version 2.00.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The batting average was point three zero one.", "expected": "The batting average was 0.301.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Say zero point zero zero five slowly.", "expected": "Say 0.005 slowly.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The file is named four dot txt.", "expected": "The file is named four dot txt.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Her GPA is three point oh.", "expected": "Her GPA is 3.0.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The company is worth two point five billion.", "expected": "The company is worth 2.5 billion.", "category": "numeric", "slice": "ap_gold"}
+{"input": "They counted nine hundred ninety nine thousand ballots.", "expected": "They counted 999,000 ballots.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The estimate was one hundred one million.", "expected": "The estimate was 101 million.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The debt hit seven hundred fifty billion.", "expected": "The debt hit 750 billion.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The town has one thousand one residents.", "expected": "The town has 1,001 residents.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The budget tops zero point nine trillion.", "expected": "The budget tops 0.9 trillion.", "category": "numeric", "slice": "ap_gold"}
+{"input": "TWELVE ANGRY MEN screened tonight.", "expected": "TWELVE ANGRY MEN screened tonight.", "category": "numeric", "slice": "ap_gold"}
+{"input": "I NEED TWELVE EGGS AND TWO PANS.", "expected": "I NEED 12 EGGS AND TWO PANS.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Twenty pilots arrived, but THIRTEEN left.", "expected": "20 pilots arrived, but 13 left.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Only five per cent responded.", "expected": "Only 5% responded.", "category": "numeric", "slice": "ap_gold"}
+{"input": "I ordered 12 apples and three oranges.", "expected": "I ordered 12 apples and three oranges.", "category": "numeric", "slice": "ap_gold"}
+{"input": "It is minus five degrees outside.", "expected": "It is minus 5 degrees outside.", "category": "numeric", "slice": "ap_gold"}
+{"input": "A low of negative ten degrees.", "expected": "A low of negative 10 degrees.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Absolute zero is minus two hundred seventy three degrees.", "expected": "Absolute zero is minus 273 degrees.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The hundred and first airborne division.", "expected": "The 101st airborne division.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Her twenty third birthday.", "expected": "Her 23rd birthday.", "category": "numeric", "slice": "ap_gold"}
+{"input": "He placed one hundred and second in the race.", "expected": "He placed 102nd in the race.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The rent is fifteen hundred dollars.", "expected": "The rent is $1,500.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Download version two point oh oh.", "expected": "Download version 2.00.", "category": "numeric", "slice": "ap_gold"}
+{"input": "It weighs zero dot five grams.", "expected": "It weighs 0.5 grams.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Two point five billion dollars.", "expected": "$2.5 billion.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Nine hundred ninety nine thousand people.", "expected": "999,000 people.", "category": "numeric", "slice": "ap_gold"}
+{"input": "TWENTY two people died.", "expected": "22 people died.", "category": "numeric", "slice": "ap_gold"}
+{"input": "I am one hundred percent sure.", "expected": "I am 100% sure.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Fifty five percent of the vote.", "expected": "55% of the vote.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Five point five percent interest.", "expected": "5.5% interest.", "category": "numeric", "slice": "ap_gold"}
+{"input": "I have 3 cats and four dogs.", "expected": "I have 3 cats and four dogs.", "category": "numeric", "slice": "ap_gold"}
+{"input": "She took 2 buses and walked three miles.", "expected": "She took 2 buses and walked 3 miles.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Bring one, 2, and three forms of ID.", "expected": "Bring one, 2, and three forms of ID.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Buy a two liter bottle and five gallon bucket.", "expected": "Buy a 2 liter bottle and 5 gallon bucket.", "category": "numeric", "slice": "ap_gold"}
+{"input": "The six inch by eight inch card fit.", "expected": "The 6 inch by 8 inch card fit.", "category": "numeric", "slice": "ap_gold"}
+{"input": "Take two five milligram tablets.", "expected": "Take two 5 milligram tablets.", "category": "numeric", "slice": "ap_gold"}
+{"input": "A ten year sentence.", "expected": "A 10 year sentence.", "category": "numeric", "slice": "ap_gold"}
+{"input": "one hundred and five to one hundred and ten", "expected": "105-110", "category": "numeric", "slice": "ap_gold"}
+{"input": "She said \"twenty three\" today", "expected": "She said \"23\" today", "category": "numeric", "slice": "ap_gold"}
+{"input": "The Twenty-Two Steps", "expected": "The Twenty-Two Steps", "category": "numeric", "slice": "ap_gold"}
+{"input": "I read A Hundred Years of Solitude", "expected": "I read A Hundred Years of Solitude", "category": "numeric", "slice": "ap_gold"}
+{"input": "one thousand to two thousand", "expected": "1,000-2,000", "category": "numeric", "slice": "ap_gold"}
+{"input": "one thousand one hundredth", "expected": "1,100th", "category": "numeric", "slice": "ap_gold"}
+{"input": "one thousand by two thousand pixels", "expected": "1,000 by 2,000 pixels", "category": "numeric", "slice": "ap_gold"}
+{"input": "Twenty-Two Steps", "expected": "Twenty-Two Steps", "category": "numeric", "slice": "ap_gold"}
+{"input": "one slash two slash three slash four", "expected": "1/2/3/4", "category": "numeric", "slice": "ap_gold"}
+{"input": "between one hundred and five and one hundred and ten", "expected": "between one hundred and five and one hundred and ten", "category": "numeric", "slice": "ap_gold"}
+{"input": "two dollars and one cent", "expected": "$2.01", "category": "numeric", "slice": "ap_gold"}
+{"input": "a five-year-old boy", "expected": "a 5-year-old boy", "category": "numeric", "slice": "ap_gold"}
+{"input": "two by four by six", "expected": "2 by 4 by 6", "category": "numeric", "slice": "ap_gold"}
+{"input": "June fourth, twenty twenty six", "expected": "June 4, 2026", "category": "numeric", "slice": "ap_gold"}
+{"input": "go one by one", "expected": "go one by one", "category": "numeric", "slice": "ap_gold"}
+{"input": "june second, twenty twenty six.", "expected": "June 2, 2026.", "category": "numeric", "slice": "ap_gold"}
+{"input": "twenty \"special\" items", "expected": "20 \"special\" items", "category": "numeric", "slice": "ap_gold"}
+{"input": "Twenty and change", "expected": "20 and change", "category": "numeric", "slice": "ap_gold"}
+{"input": "a hundred-year lease", "expected": "a 100-year lease", "category": "numeric", "slice": "ap_gold"}
+{"input": "version one dot two dot three", "expected": "version one dot two dot three", "category": "numeric", "slice": "ap_gold"}
+{"input": "two by two inch card", "expected": "2 by 2 inch card", "category": "numeric", "slice": "ap_gold"}
+{"input": "five point five per cent", "expected": "5.5%", "category": "numeric", "slice": "ap_gold"}
+{"input": "we need to catch twenty two fish", "expected": "we need to catch 22 fish", "category": "numeric", "slice": "ap_gold"}
+{"input": "it is a catch twenty two", "expected": "it is a Catch-22", "category": "numeric", "slice": "ap_gold"}
+{"input": "Twenty-two people came", "expected": "22 people came", "category": "numeric", "slice": "ap_gold"}
+{"input": "between one hundred and five and 110", "expected": "between 105 and 110", "category": "numeric", "slice": "ap_gold"}
+{"input": "On June second, five people signed up", "expected": "On June second, five people signed up", "category": "numeric", "slice": "ap_gold"}
+{"input": "twenty-first century", "expected": "21st century", "category": "numeric", "slice": "ap_gold"}
+{"input": "the twenty-second of may", "expected": "the 22nd of may", "category": "numeric", "slice": "ap_gold"}
+{"input": "one hundred second video", "expected": "100 second video", "category": "numeric", "slice": "ap_gold"}
+{"input": "one hundred and second in line", "expected": "102nd in line", "category": "numeric", "slice": "ap_gold"}
+{"input": "a thousandth of a second", "expected": "a thousandth of a second", "category": "numeric", "slice": "ap_gold"}
+{"input": "a five-foot-tall person", "expected": "a 5-foot-tall person", "category": "numeric", "slice": "ap_gold"}
