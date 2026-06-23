@@ -2058,3 +2058,5 @@
 {"input": "On June second, five people signed up", "expected": "On June second, five people signed up", "category": "numeric", "slice": "ap_gold"}
 {"input": "twenty-first century", "expected": "21st century", "category": "numeric", "slice": "ap_gold"}
 {"input": "the twenty-second of may", "expected": "the 22nd of may", "category": "numeric", "slice": "ap_gold"}
+{"input": "one hundred second video", "expected": "100 second video", "category": "numeric", "slice": "ap_gold"}
+{"input": "one hundred and second in line", "expected": "102nd in line", "category": "numeric", "slice": "ap_gold"}

@@ -765,13 +765,19 @@ public struct InverseTextNormalizer: Sendable {
     // ->101st. Lead must end in a scale word so this never touches 'twenty third' (comp owns that).
     let leadScale =
       #"(?:(?:"# + Self.numwordAlt + #")\s+)*(?:hundred|thousand|million|billion)(?:\s+and)?"#
-    let addPat = #"\b(?<lead>"# + leadScale + #")\s+(?<o>"# + Self.ordTailAlt + #")\b"#
+    let addPat =
+      #"\b(?<lead>"# + leadScale + #")\s+(?<o>"# + Self.ordTailAlt + #")\b(?:\s+(?<nxt>[a-z]+))?"#
     t = reSub(addPat, t) { m in
+      let ow = (m.g("o") ?? "").lowercased()
+      let nxt = m.g("nxt") ?? ""
+      // duration guard: "one hundred second video" is a 100-SECOND clip, not the 102nd.
+      if ow == "second", Self.durationNouns.contains(nxt.lowercased()) { return nil }
       guard let base = Self.wordsToInt(Self.splitWords((m.g("lead") ?? "").lowercased())) else {
         return nil
       }
-      let n = base + Self.ordTail[(m.g("o") ?? "").lowercased()]!
-      return " \(comma(n))\(ordSuffix(n)) "
+      let n = base + Self.ordTail[ow]!
+      let tail = nxt.isEmpty ? "" : " " + nxt
+      return " \(comma(n))\(ordSuffix(n))\(tail) "
     }
     // compound: '<tens> <unit-ordinal>' -> 'Nth' ('seventy third'->73rd), capturing the next word
     // so the 'second' duration guard fires ('thirty second video'->left). Result is always >=21.
