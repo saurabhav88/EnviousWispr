@@ -49,17 +49,24 @@ COMPONENTS=(
 # (a bump rarely changes the license text, only the displayed version).
 RESOLVED="${PROJ_ROOT}/Package.resolved"
 test -f "$RESOLVED" || { echo "error: $RESOLVED not found." >&2; exit 1; }
+# identity<TAB>version map from Package.resolved (version = semver or revision).
+resolved_map="$(python3 -c "
+import json
+d=json.load(open('$RESOLVED'))
+for p in d.get('pins',[]):
+    st=p.get('state',{})
+    v=st.get('version') or st.get('revision','')
+    print(p['identity']+'\t'+v)
+")"
+resolved_ids="$(cut -f1 <<< "$resolved_map" | sort)"
 covered_ids=""
 for entry in "${COMPONENTS[@]}"; do
   IFS='|' read -r _ _ _ _ _ ident <<< "$entry"
   [[ -n "$ident" ]] && covered_ids+="${ident}"$'\n'
 done
-resolved_ids="$(python3 -c "
-import json
-d=json.load(open('$RESOLVED'))
-print('\n'.join(sorted(p['identity'] for p in d.get('pins',[]))))
-")"
 miss=0
+# Coverage: every resolved direct dep must have an entry here (else it would
+# ship with no attribution).
 while IFS= read -r rid; do
   [[ -z "$rid" ]] && continue
   if ! grep -qxF "$rid" <<< "$covered_ids"; then
@@ -73,23 +80,38 @@ while IFS= read -r cid; do
     echo "warning: generator lists '$cid' but Package.resolved no longer has it — remove its entry." >&2
   fi
 done <<< "$covered_ids"
+# Version sync: a resolved direct dep that was bumped without updating this list
+# (and the notices) is a hard fail, not just stale display (cloud review #2).
+for entry in "${COMPONENTS[@]}"; do
+  IFS='|' read -r _ cversion _ _ _ ident <<< "$entry"
+  [[ -z "$ident" ]] && continue
+  rv="$(awk -F'\t' -v id="$ident" '$1==id{print $2}' <<< "$resolved_map")"
+  [[ -z "$rv" ]] && continue   # not resolved (handled by coverage above)
+  if [[ "$cversion" != *"${rv:0:8}"* ]]; then
+    echo "error: '$ident' version drift — Package.resolved has '${rv}' but generator lists '${cversion}'. Update the generator + regenerate the notices." >&2
+    miss=1
+  fi
+done
 [[ "$miss" -eq 1 ]] && exit 1
 
-# --check (release gate): verify the COMMITTED notices file names every covered
-# component, then exit. Needs no checkouts, so it runs on the release path.
+# --check (release gate): verify the COMMITTED notices file actually carries each
+# covered component's name + license + source URL (not just the name — cloud
+# review #2). Needs no checkouts, so it runs on the release path.
 if [[ "$MODE" == "check" ]]; then
   NOTICES="${PROJ_ROOT}/THIRD-PARTY-NOTICES.txt"
   test -f "$NOTICES" || { echo "error: $NOTICES missing — run the generator." >&2; exit 1; }
   stale=0
   for entry in "${COMPONENTS[@]}"; do
-    IFS='|' read -r name _ _ _ _ _ <<< "$entry"
-    if ! grep -qF "$name" "$NOTICES"; then
-      echo "error: THIRD-PARTY-NOTICES.txt does not name '$name' — regenerate it (scripts/ci/gen-third-party-notices.sh > THIRD-PARTY-NOTICES.txt)." >&2
-      stale=1
-    fi
+    IFS='|' read -r name _ license _ url _ <<< "$entry"
+    for needle in "$name" "$license" "$url"; do
+      if ! grep -qF "$needle" "$NOTICES"; then
+        echo "error: THIRD-PARTY-NOTICES.txt is missing '$needle' (component '$name') — regenerate it (scripts/ci/gen-third-party-notices.sh > THIRD-PARTY-NOTICES.txt)." >&2
+        stale=1
+      fi
+    done
   done
   [[ "$stale" -eq 1 ]] && exit 1
-  echo "third-party notices coverage OK (${#COMPONENTS[@]} components vs Package.resolved + committed notices)"
+  echo "third-party notices verified (${#COMPONENTS[@]} components: coverage + version sync vs Package.resolved + name/license/url in committed notices)"
   exit 0
 fi
 

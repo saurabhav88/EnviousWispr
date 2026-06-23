@@ -352,6 +352,17 @@ test -f "$NOTICES_SRC"  || { echo "::error::THIRD-PARTY-NOTICES.txt missing at $
 # the Xcode/DerivedData build).
 "$PROJ_ROOT/scripts/ci/gen-third-party-notices.sh" --check
 COMMIT="$(git -C "$PROJ_ROOT" rev-parse HEAD)"
+# If the advertised tag already exists, the build commit MUST be that tag's
+# commit, else SOURCE.txt would point at the wrong corresponding source. On a
+# tag-triggered release HEAD == tag commit by construction; this guards the
+# workflow_dispatch path where the checkout ref can differ from the tag input
+# (cloud review #1).
+if git -C "$PROJ_ROOT" rev-parse -q --verify "refs/tags/v${VERSION}^{commit}" >/dev/null 2>&1; then
+    TAG_COMMIT="$(git -C "$PROJ_ROOT" rev-parse "refs/tags/v${VERSION}^{commit}")"
+    if [[ "$TAG_COMMIT" != "$COMMIT" ]]; then
+        echo "::error::build commit ${COMMIT} != tag v${VERSION} commit ${TAG_COMMIT}; SOURCE.txt would advertise the wrong corresponding source."; exit 1
+    fi
+fi
 DMG_EXTRAS="$PROJ_ROOT/build/dmg-extras"
 rm -rf "$DMG_EXTRAS"; mkdir -p "$DMG_EXTRAS"
 SOURCE_TXT="$DMG_EXTRAS/SOURCE.txt"
