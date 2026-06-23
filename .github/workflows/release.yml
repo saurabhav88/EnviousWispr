@@ -600,12 +600,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.preflight.outputs.tag }}
+          COMMITISH: ${{ github.sha }}
         run: |
           set -uo pipefail
           CURATED="build/release-notes-curated.md"
           if [ -s "$CURATED" ]; then
+            # target_commitish is required by the generate-notes API when the tag
+            # does not yet exist (e.g. a workflow_dispatch release that creates the
+            # tag); it is ignored when the tag already exists (the normal tag-push
+            # path), so passing it always is safe and preserves the changelog in both.
             AUTO=$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
-              -f tag_name="$TAG" --jq '.body' 2>/dev/null || true)
+              -f tag_name="$TAG" -f target_commitish="$COMMITISH" --jq '.body' 2>/dev/null || true)
             {
               cat "$CURATED"
               if [ -n "${AUTO:-}" ]; then
