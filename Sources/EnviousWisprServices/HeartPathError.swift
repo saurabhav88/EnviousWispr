@@ -25,6 +25,11 @@ public enum HeartPathError: LocalizedError, Sendable {
   case xpcServerClientProxyNil(sessionID: UInt64?, consecutiveDrops: Int)
   case emptyAfterProcessing(route: String, wasPolishEnabled: Bool)
   case zombieEngineZeroPeak(sessionID: UInt64, durationMs: Int, route: String, sampleCount: Int)
+  // APPEND-ONLY: handled Sentry errors are fingerprinted on the bridged NSError
+  // `domain#code`, and a Swift enum's `_code` is its declaration ordinal — so
+  // inserting a case mid-enum shifts every later case's code and SPLITS existing
+  // Sentry issues. New cases go at the END (Codex #1174 PR-5b r1).
+  case audioEngineInterrupted(route: String, durationMs: Int)
 
   public var errorDescription: String? {
     switch self {
@@ -52,6 +57,8 @@ public enum HeartPathError: LocalizedError, Sendable {
     case .zombieEngineZeroPeak(let sessionID, let durationMs, let route, let sampleCount):
       return
         "Zombie engine: zero-peak \(sampleCount) samples over \(durationMs)ms (session \(sessionID), route=\(route))"
+    case .audioEngineInterrupted(let route, let durationMs):
+      return "Audio engine interrupted: recording lost after \(durationMs)ms (route=\(route))"
     }
   }
 }

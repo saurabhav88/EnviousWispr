@@ -15,7 +15,11 @@ public protocol AudioCaptureInterface: AnyObject {
 
   // Callback properties (read-write)
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)? { get set }
-  var onEngineInterrupted: (() -> Void)? { get set }
+  /// Fires when a live recording is lost to an audio-engine interruption. The
+  /// `EngineInterruptionCause` lets the consumer route the lost-dictation
+  /// capture for `.engineLost` only, suppressing the three already-owned causes
+  /// (issue #1174 A3).
+  var onEngineInterrupted: ((EngineInterruptionCause) -> Void)? { get set }
   var onVADAutoStop: (() -> Void)? { get set }
 
   // Telemetry callbacks (round-4 additions for #285 heart-path Sentry coverage).

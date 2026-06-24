@@ -238,7 +238,28 @@ final class KernelLifecycleTelemetrySink {
     case .failed(let reason):
       emitFailed(reason)
 
-    case .audioInterrupted:
+    case .audioInterrupted(let cause):
+      // Capture the lost dictation ONLY for `.engineLost` — a recording-losing
+      // audio interruption with no other owner (issue #1174 A3). The three other
+      // causes are already accounted for: `.captureSessionLost` by
+      // `captureSessionInterrupted`, `.xpcConnectionLost` by `onXPCServiceError`,
+      // and `.maxDurationReached` is a normal auto-stop, not a loss. Category is
+      // `.audioCaptureFailed` (matching the `captureSessionInterrupted` sibling),
+      // never `.xpcServiceError` — a benign device disconnect must not page the
+      // "XPC Service Crash >1/hr" alert.
+      switch cause {
+      case .engineLost:
+        let snapshot = recordingSnapshot()
+        emitCaptureError(
+          HeartPathError.audioEngineInterrupted(
+            route: snapshot?.audioRoute ?? audioCapture.currentAudioRoute,
+            durationMs: snapshot?.durationMs ?? 0),
+          .audioCaptureFailed, "audio",
+          ["was_recording": true, "backend": backend.rawValue],
+          snapshot: snapshot)
+      case .captureSessionLost, .xpcConnectionLost, .maxDurationReached:
+        break
+      }
       updateRecordingState(false, nil, nil)
 
     case .asrInterrupted(let wasRecording):

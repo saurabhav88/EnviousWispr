@@ -47,8 +47,11 @@ enum KernelLifecycleEvent: Equatable, Sendable {
   /// The session reached a `failed` terminal — a per-reason `captureError`.
   /// `model.load_wedged` is the `.modelWedged` case.
   case failed(RecordingFailureReason)
-  /// The session reached `audioInterrupted` — a microphone-disconnect event.
-  case audioInterrupted
+  /// The session reached `audioInterrupted` — a microphone / audio-engine
+  /// interruption mid-recording. Carries the `EngineInterruptionCause` so the
+  /// sink captures the lost dictation for `.engineLost` only, suppressing the
+  /// three already-owned causes (issue #1174 A3).
+  case audioInterrupted(cause: EngineInterruptionCause)
   /// The session reached `asrInterrupted` — the `captureError(xpcServiceError)`.
   /// Carries the `was_recording` flag the old TP:1145 captureError extra
   /// carried: `true` when entered from `.recording`, `false` when entered
@@ -182,6 +185,7 @@ final class KernelHeartPathTelemetryObserver {
         discardReason: kernel.discardReason,
         didLoadModelThisSession: kernel.didLoadModelThisSession,
         lastNoSpeechSource: kernel.lastNoSpeechSource,
+        lastAudioInterruptionCause: kernel.lastAudioInterruptionCause,
         isStreamingSession: kernel.isStreamingSession
       )
     else { return }
@@ -210,6 +214,7 @@ final class KernelHeartPathTelemetryObserver {
     discardReason: DiscardReason?,
     didLoadModelThisSession: Bool,
     lastNoSpeechSource: NoSpeechSource?,
+    lastAudioInterruptionCause: EngineInterruptionCause?,
     isStreamingSession: Bool
   ) -> KernelLifecycleEvent? {
     switch state {
@@ -222,7 +227,12 @@ final class KernelHeartPathTelemetryObserver {
     case .failed(let reason):
       return .failed(reason)
     case .audioInterrupted:
-      return .audioInterrupted
+      // The cause is a sibling observable stamped by `externalEngineInterrupted`
+      // before the `→ .audioInterrupted` transition (the terminal's only path),
+      // mirroring `discardReason` / `lastNoSpeechSource`. Default defensively to
+      // `.engineLost` (capture) if somehow absent — a lost recording at this
+      // terminal with no cause is still an unowned loss.
+      return .audioInterrupted(cause: lastAudioInterruptionCause ?? .engineLost)
     case .asrInterrupted:
       // Bridge matrix #3 — old TP:1145 reported `was_recording == state == .recording`
       // at crash time. The kernel reaches `.asrInterrupted` from either

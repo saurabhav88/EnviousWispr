@@ -237,6 +237,14 @@ final class RecordingSessionKernel {
   /// time to choose `.vadGate` or `.asrEmptyNoSpeech`. Reset on session start.
   private(set) var lastNoSpeechSource: NoSpeechSource?
 
+  /// Why the audio engine was interrupted for this session, or `nil` if the
+  /// session did not reach `.audioInterrupted`. Stamped immediately BEFORE the
+  /// `→ .audioInterrupted` transition in `externalEngineInterrupted(_:)` (the
+  /// terminal's only path). The observer reads it at lifecycle-event mapping
+  /// time so the sink captures the lost dictation for `.engineLost` only
+  /// (issue #1174 A3). Reset on session start.
+  private(set) var lastAudioInterruptionCause: EngineInterruptionCause?
+
   /// `true` if the kernel started this session in streaming mode. Set
   /// immediately BEFORE `adapter.beginSession(..., streaming:)`. The observer
   /// reads this at `.recording` lifecycle mapping time so the
@@ -1683,8 +1691,24 @@ final class RecordingSessionKernel {
   /// into the FSM. Replaces the removed direct subscription to
   /// `audioCapture.onEngineInterrupted`. Idempotent: a second call after a
   /// terminal short-circuits via `!state.isTerminal`.
-  func externalEngineInterrupted() {
+  func externalEngineInterrupted(_ cause: EngineInterruptionCause) {
     guard !state.isTerminal else { return }
+    // Stamp the cause + freeze the recording snapshot ONLY on the interruption
+    // that actually latches the exit (first-wins), BEFORE delivering it so the
+    // observer reads the right cause at the `→ .audioInterrupted` transition
+    // (the exit resolves the recording-loop continuation, which then calls
+    // `finishTerminal(.audioInterrupted)`). A later callback in the post-latch /
+    // pre-transition window — `state` still `.recording` but `recordingExitLatched`
+    // already true — has its exit ignored by `deliverRecordingExit`, so it must
+    // NOT overwrite the cause/snapshot the terminal will use (cloud review #1207:
+    // an already-owned `.xpcConnectionLost` / `.maxDurationReached` could otherwise
+    // be replaced by a stale `.engineLost` and get falsely captured). The guard
+    // mirrors `deliverRecordingExitIfCurrent`'s accept condition. The freeze
+    // reports real duration / route / backend (mirrors `routeASRInterruption`).
+    if state == .recording, !recordingExitLatched {
+      lastAudioInterruptionCause = cause
+      freezeRecordingSnapshot()
+    }
     deliverRecordingExitIfCurrent(.audioInterruption, sid: currentSessionID)
   }
 
@@ -2108,6 +2132,7 @@ final class RecordingSessionKernel {
     discardReason = nil
     didLoadModelThisSession = false
     lastNoSpeechSource = nil
+    lastAudioInterruptionCause = nil
     isStreamingSession = false
     pasteCount = 0
     forbiddenTransitionRejected = false

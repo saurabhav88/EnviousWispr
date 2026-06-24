@@ -6,8 +6,8 @@ import Foundation
 import Observation
 import Testing
 
-@testable import EnviousWisprAppKit
 @testable import EnviousWisprASR
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
@@ -148,7 +148,7 @@ private final class SettableAudioCapture: AudioCaptureInterface {
   var capturedSamples: [Float] = []
   var currentAudioRoute: String = "built_in_mic"
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
-  var onEngineInterrupted: (() -> Void)?
+  var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
   var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
@@ -198,7 +198,7 @@ private final class ObservableAudioCapture: AudioCaptureInterface {
   var capturedSamples: [Float] = []
   var currentAudioRoute: String = "built_in_mic"
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
-  var onEngineInterrupted: (() -> Void)?
+  var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
   var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?

@@ -71,9 +71,12 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
           self.parakeetBackend = backend
         case "whisperKit":
           let backend = WhisperKitBackend()
-          // TODO(#827): watchdog needs WhisperKit/CoreML model-load progress
-          // written to ProgressFile or XPCOperationSignalFile. Current upstream
-          // load has no progress callback.
+          // NOTE: this branch is unreachable on current main — the XPC ASR
+          // service is Parakeet-only (architecture.md FACT:
+          // xpc-asr-service-is-parakeet-only). WhisperKit loads IN-PROCESS via
+          // `WhisperKitEngineAdapter` → `WhisperKitBackend`, never here. The real
+          // in-process load duration + hang signal are already observed by the
+          // `coldstart.warmup_*` telemetry (`TelemetryService` / `ensureEngineWarm`).
           try await backend.prepare()
           self.whisperKitBackend = backend
         default:
@@ -187,8 +190,7 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
     language: String,
     enableTimestamps: Bool,
     reply: @escaping (NSError?) -> Void
-  )
-  {
+  ) {
     let signal = XPCOperationSignalFile.asr.makeEmitter(operationID: operationID)
     signal.emit(stage: "asr.start_streaming.received")
     guard let parakeet = parakeetBackend else {

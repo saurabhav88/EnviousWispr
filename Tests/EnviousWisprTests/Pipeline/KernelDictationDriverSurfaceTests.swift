@@ -86,7 +86,7 @@ import Testing
       // The external entry is idempotent at idle (terminal guard). Calling it
       // here proves the wire reaches the kernel — no exception thrown is the
       // signal; deeper FSM coverage lives in the kernel external-entry tests.
-      driver.handleEngineInterruption()
+      driver.handleEngineInterruption(.engineLost)
     }
 
     // MARK: 5. handleASRServiceInterruption routes to kernel.externalASRInterrupted

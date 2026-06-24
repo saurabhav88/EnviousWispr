@@ -358,16 +358,61 @@ import Testing
       ])
   }
 
-  @Test(".audioInterrupted emits updateRecordingState(false) and no captureError")
-  func audioInterruptedEmission() {
+  // #1174 A3 — matcher-set-adversarial: the `.audioInterrupted` capture gate
+  // flips on the cause. Only `.engineLost` (a lost dictation with no other owner)
+  // captures `.audioCaptureFailed`; the three already-owned causes
+  // (`.captureSessionLost`, `.xpcConnectionLost`, `.maxDurationReached`) must
+  // emit NO captureError, so A3 never double-counts a loss already owned by
+  // `captureSessionInterrupted` / `onXPCServiceError`, and never counts a normal
+  // max-duration auto-stop as a loss. Every case resets recording state.
+
+  @Test(".audioInterrupted(.engineLost) captures .audioCaptureFailed + resets state")
+  func audioInterruptedEngineLostCaptures() {
     let recorder = Recorder()
-    let sink = makeSink(recorder: recorder)
-    sink.emit(.audioInterrupted)
+    let sink = makeSink(recorder: recorder, backend: .whisperKit)
+    sink.emit(.audioInterrupted(cause: .engineLost))
+    #expect(recorder.captureErrors.count == 1)
+    #expect(recorder.captureErrors.first?.category == .audioCaptureFailed)
+    #expect(recorder.captureErrors.first?.stage == "audio")
+    #expect(
+      recorder.captureErrors.first?.errorDescription.contains("Audio engine interrupted") == true)
     #expect(
       recorder.recordingStates == [
         .init(active: false, backend: nil, isStreaming: nil)
       ])
-    #expect(recorder.captureErrors.isEmpty)
+  }
+
+  @Test(".audioInterrupted suppresses the three already-owned causes (no double-count)")
+  func audioInterruptedSuppressesOwnedCauses() {
+    for cause: EngineInterruptionCause in [
+      .captureSessionLost, .xpcConnectionLost, .maxDurationReached,
+    ] {
+      let recorder = Recorder()
+      let sink = makeSink(recorder: recorder)
+      sink.emit(.audioInterrupted(cause: cause))
+      #expect(
+        recorder.captureErrors.isEmpty,
+        "cause \(cause) must NOT emit a captureError (already owned / not a loss)")
+      #expect(
+        recorder.recordingStates == [
+          .init(active: false, backend: nil, isStreaming: nil)
+        ],
+        "cause \(cause) must still reset recording state")
+    }
+  }
+
+  @Test("exactly one EngineInterruptionCause captures at the .audioInterrupted terminal")
+  func audioInterruptedExactlyOneCauseCaptures() {
+    // CaseIterable guard — if a future cause is added, this forces an explicit
+    // capture/suppress decision rather than silently inheriting either branch.
+    var capturingCauses: [EngineInterruptionCause] = []
+    for cause in EngineInterruptionCause.allCases {
+      let recorder = Recorder()
+      let sink = makeSink(recorder: recorder)
+      sink.emit(.audioInterrupted(cause: cause))
+      if !recorder.captureErrors.isEmpty { capturingCauses.append(cause) }
+    }
+    #expect(capturingCauses == [.engineLost])
   }
 
   @Test(".asrInterrupted(wasRecording: true) emits captureError + state(false)")

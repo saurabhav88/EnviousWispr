@@ -31,7 +31,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   /// Called on the main actor when the audio engine is interrupted (e.g., device disconnect).
   /// The pipeline should transition to an error state when this fires.
-  public var onEngineInterrupted: (() -> Void)?
+  public var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
 
   /// Called when service-side VAD detects sustained silence after speech.
   /// No-op for in-process capture — VAD runs in the pipeline's monitorVAD() loop instead.
@@ -209,18 +209,27 @@ public final class AudioCaptureManager: AudioCaptureInterface {
           )
           self.isCapturing = false
           self.audioLevel = 0.0
-          self.onEngineInterrupted?()
+          // Direct-mode 60-min cap — a normal auto-stop, never captured as a loss.
+          self.onEngineInterrupted?(.maxDurationReached)
         }
       }
     }
     source.onBufferCaptured = onBufferCaptured
+    // Direct mode: an AVCaptureSession interruption is already captured by
+    // `onCaptureSessionInterruption` (→ `.audioCaptureFailed`), so tag it
+    // `.captureSessionLost` (suppress). An AVAudioEngine device disconnect has
+    // no other owner → `.engineLost` (capture). Resolve the discriminator to a
+    // value at bind time so the closure captures only the `Bool` (no strong
+    // `source` capture / retain cycle — matches the `sourceID`-only pattern).
+    let interruptionCause: EngineInterruptionCause =
+      source is AVCaptureSessionSource ? .captureSessionLost : .engineLost
     source.onInterrupted = { [weak self] in
       guard let self,
         self.activeSource.map({ ObjectIdentifier($0) }) == sourceID
       else { return }
       self.isCapturing = false
       self.audioLevel = 0.0
-      self.onEngineInterrupted?()
+      self.onEngineInterrupted?(interruptionCause)
     }
 
     // Forward heart-path telemetry callbacks (issue #285) — direct capture

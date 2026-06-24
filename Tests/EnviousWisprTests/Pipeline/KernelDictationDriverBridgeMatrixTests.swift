@@ -216,7 +216,7 @@ import Testing
       ] {
         let fx = makeFixture()
         await forceState(fx.kernel, to: state)
-        fx.driver.handleEngineInterruption()
+        fx.driver.handleEngineInterruption(.engineLost)
         await drain()
         // Driver public state must surface the mic-disconnect error.
         assertDriverIsError(fx.driver, contains: "Microphone disconnected")
@@ -229,7 +229,7 @@ import Testing
         let fx = makeFixture()
         await forceState(fx.kernel, to: state)
         let priorPipelineState = fx.driver.state
-        fx.driver.handleEngineInterruption()
+        fx.driver.handleEngineInterruption(.engineLost)
         await drain()
         #expect(fx.driver.state == priorPipelineState)
       }

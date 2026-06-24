@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
@@ -485,10 +486,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// was state-agnostic: emit Sentry+PostHog state change, cancel cleanup,
   /// flip UI to the mic-disconnect error. Bridge matrix #4 ports the old
   /// behavior for those states via `setExternalError`.
-  public func handleEngineInterruption() {
+  public func handleEngineInterruption(_ cause: EngineInterruptionCause) {
     switch kernel.state {
     case .recording:
-      kernel.externalEngineInterrupted()
+      kernel.externalEngineInterrupted(cause)
     case .preparing, .warmingUp, .stopping, .transcribing, .finalizing:
       // Direct PostHog state update — the kernel won't reach
       // `.audioInterrupted` from here, so the lifecycle sink's
