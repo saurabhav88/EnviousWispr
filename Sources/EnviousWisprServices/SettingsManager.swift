@@ -406,6 +406,22 @@ public final class SettingsManager {
     }
   }
 
+  #if DEBUG
+    /// DEV-ONLY per-build knob (AFM adapter PoC): when ON and EW_AFM_ADAPTER_PATH
+    /// is set, on-device Apple Intelligence polish runs through the local
+    /// `.fmadapter`. Lets the founder A/B adapter↔stock live on dev builds.
+    /// PER-BUILD EXCEPTION (#923), exactly like `useXPCAudioService`: persisted to
+    /// `UserDefaults.standard` (the build's own store), excluded from
+    /// `unifiedDefaultsKeys` + the #923 migration, NOT in the `SettingKey` enum
+    /// (no onChange/telemetry — the connector reads it fresh per dictation).
+    /// Compiled out of release entirely.
+    public var devAdapterPolishEnabled: Bool {
+      didSet {
+        UserDefaults.standard.set(devAdapterPolishEnabled, forKey: "devAdapterPolishEnabled")
+      }
+    }
+  #endif
+
   // MARK: - What's New
 
   public var lastSeenWhatsNewVersion: String {
@@ -612,6 +628,13 @@ public final class SettingsManager {
     // (the build's own store), never the shared `defaults`. Matches the bootstrap
     // read at WisprBootstrapper and stays out of unifiedDefaultsKeys.
     useXPCAudioService = UserDefaults.standard.object(forKey: "useXPCAudioService") as? Bool ?? true
+    #if DEBUG
+      // PER-BUILD EXCEPTION (#923), like useXPCAudioService: AFM adapter PoC dev
+      // knob, read from the build's own store, default ON. Stays out of
+      // unifiedDefaultsKeys + the migration. Compiled out of release.
+      devAdapterPolishEnabled =
+        UserDefaults.standard.object(forKey: "devAdapterPolishEnabled") as? Bool ?? true
+    #endif
 
     // Migration (issue #614, 2026-05-04): the Formal/Standard/Friendly preset axis and the
     // hidden custom-prompt path were removed. Drop their orphaned UserDefaults keys so the

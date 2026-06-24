@@ -681,6 +681,13 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       }
     }
 
+    #if DEBUG
+      /// DEV-ONLY (AFM adapter PoC): log adapter load/skip on the LLM channel.
+      private static func logAdapter(_ msg: String) {
+        Task { await AppLogger.shared.log("AFM " + msg, level: .info, category: "LLM") }
+      }
+    #endif
+
     @available(macOS 26.0, *)
     private func makeSession(
       instructions: PolishInstructions,
@@ -689,7 +696,45 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       // Permissive content-transformation guardrails — peer-ecosystem default
       // for text-transform apps. Prevents AFM from refusing to polish benign
       // dictation that happens to mention sensitive topics.
-      let model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
+      let model: SystemLanguageModel
+      #if DEBUG
+        // DEV-ONLY live test seam (AFM adapter PoC): when the per-build toggle is
+        // ON and EW_AFM_ADAPTER_PATH points at a local .fmadapter, polish through
+        // the tuned adapter so the founder can A/B it against stock Apple polish.
+        // A missing/corrupt path throws → logged "FAILED to load" → stock model.
+        // Read fresh per dictation so the Diagnostics toggle flips live, no relaunch.
+        // Compiled out of release entirely.
+        let adapterOn =
+          UserDefaults.standard.object(forKey: "devAdapterPolishEnabled") as? Bool ?? true
+        if adapterOn,
+          let adapterPath = ProcessInfo.processInfo.environment["EW_AFM_ADAPTER_PATH"],
+          !adapterPath.isEmpty
+        {
+          do {
+            let adapter = try SystemLanguageModel.Adapter(
+              fileURL: URL(fileURLWithPath: adapterPath))
+            // NOTE: we intentionally do NOT call the async `adapter.compile()`.
+            // makeSession is synchronous (and shared with the release stock path),
+            // and the Gate-1 PoC proved this exact load→adapter-model→generate path
+            // works on-device for ew_run5_v38.fmadapter with no explicit compile()
+            // (compile front-loads on-device prep; absent it, prep is lazy on first
+            // use). If a future adapter genuinely requires it, generation simply
+            // degrades to the raw-text limb and the "adapter active" UAT check fails
+            // loudly — acceptable for a DEBUG-only triage seam.
+            model = SystemLanguageModel(
+              adapter: adapter, guardrails: .permissiveContentTransformations)
+            Self.logAdapter("DEV adapter active: \((adapterPath as NSString).lastPathComponent)")
+          } catch {
+            Self.logAdapter(
+              "DEV adapter FAILED to load (\(adapterPath)): \(error) — using stock model")
+            model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
+          }
+        } else {
+          model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
+        }
+      #else
+        model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
+      #endif
 
       // Availability is verified at the entry of `polish(...)`, but re-check
       // here to stay safe if `makeSession` is ever reached from another

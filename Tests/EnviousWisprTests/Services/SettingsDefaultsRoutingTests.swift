@@ -109,6 +109,24 @@ struct SettingsDefaultsRoutingTests {
     UserDefaults.standard.removeObject(forKey: "useXPCAudioService")  // cleanup
   }
 
+  #if DEBUG
+    // AFM adapter PoC dev knob — same per-build contract as useXPCAudioService:
+    // writes to .standard (not the injected store) and stays out of the unified
+    // key set. DEBUG-gated because the property only exists in DEBUG builds.
+    @Test("devAdapterPolishEnabled writes to .standard and stays out of unified defaults")
+    func devAdapterStaysPerBuild() {
+      let suite = Self.freshSuite()
+      let settings = SettingsManager(defaults: suite)
+      settings.devAdapterPolishEnabled = false
+      // The per-build knob must NOT land in the injected (shared) suite.
+      #expect(suite.object(forKey: "devAdapterPolishEnabled") == nil)
+      #expect(UserDefaults.standard.object(forKey: "devAdapterPolishEnabled") as? Bool == false)
+      // And it must never join the unified key set.
+      #expect(Set(SettingsManager.unifiedDefaultsKeys).contains("devAdapterPolishEnabled") == false)
+      UserDefaults.standard.removeObject(forKey: "devAdapterPolishEnabled")  // cleanup
+    }
+  #endif
+
   // MARK: - Migration (effective-state, dev-store sentinel)
 
   @Test("dev migration copies explicit values, clears stale shared, sets dev sentinel")

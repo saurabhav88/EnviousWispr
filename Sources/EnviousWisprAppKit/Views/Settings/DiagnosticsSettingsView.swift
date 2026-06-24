@@ -22,6 +22,18 @@ struct DiagnosticsSettingsView: View {
   /// environment (see `AppEnvironmentKeys.swift`).
   private var asrManager: any ASRManagerInterface { asrManagerEnv! }
 
+  #if DEBUG
+    /// DEV-ONLY (AFM adapter PoC): surfaces whether EW_AFM_ADAPTER_PATH is set so
+    /// the founder can see the adapter toggle only takes effect when the dev app
+    /// was launched with the env var pointing at a `.fmadapter`.
+    private var adapterPathHint: String {
+      if let path = ProcessInfo.processInfo.environment["EW_AFM_ADAPTER_PATH"], !path.isEmpty {
+        return "Adapter: \((path as NSString).lastPathComponent)."
+      }
+      return "EW_AFM_ADAPTER_PATH not set — toggle has no effect until you relaunch with it set."
+    }
+  #endif
+
   var body: some View {
     @Bindable var settings = settings
     #if DEBUG
@@ -40,6 +52,22 @@ struct DiagnosticsSettingsView: View {
               .foregroundStyle(.stTextTertiary)
           }
         }
+        #if DEBUG
+          // DEV-ONLY (AFM adapter PoC): flip on-device Apple Intelligence polish
+          // between the tuned local .fmadapter and the stock model, live, to triage
+          // "is this the stock model or our adapter?". Debug builds only.
+          BrandedRow {
+            VStack(alignment: .leading, spacing: 4) {
+              Toggle("Use tuned on-device adapter (PoC)", isOn: $settings.devAdapterPolishEnabled)
+                .toggleStyle(BrandedToggleStyle())
+              Text(
+                "Debug builds only. ON routes Apple Intelligence polish through the local .fmadapter at EW_AFM_ADAPTER_PATH; OFF uses the stock model. Flips live on the next dictation. \(adapterPathHint)"
+              )
+              .font(.stHelper)
+              .foregroundStyle(.stTextTertiary)
+            }
+          }
+        #endif
         if settings.isDebugModeEnabled {
           BrandedRow {
             Picker("Log Level", selection: $settings.debugLogLevel) {
