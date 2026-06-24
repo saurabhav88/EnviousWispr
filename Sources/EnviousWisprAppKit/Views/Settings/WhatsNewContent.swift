@@ -26,6 +26,126 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.2.0
+
+    Entry(
+      id: "dark-mode",
+      icon: "circle.lefthalf.filled",
+      title: "Dark mode has arrived",
+      description:
+        "EnviousWispr now has a dark mode. Match your system automatically, or pick light or dark yourself in Settings. Easier on the eyes for late-night dictation.",
+      category: .newFeatures,
+      version: "2.2.0"
+    ),
+    Entry(
+      id: "hour-long-recordings",
+      icon: "clock",
+      title: "Record for up to an hour at a time",
+      description:
+        "You can now record for up to a full hour in one go. As you near the limit you get a gentle heads-up, and recording stops cleanly on its own so you never lose what you said.",
+      category: .newFeatures,
+      version: "2.2.0"
+    ),
+    Entry(
+      id: "sharper-on-device-polish",
+      icon: "wand.and.stars",
+      title: "Sharper on-device polish",
+      description:
+        "The built-in, fully on-device polish got a real tune-up. It cleans up filler and phrasing more reliably, keeps the natural way you start a sentence, and leaves your wording alone when it should.",
+      category: .smarterAIPolish,
+      version: "2.2.0"
+    ),
+    Entry(
+      id: "emoji-stay-put",
+      icon: "face.smiling",
+      title: "Your emoji stay put",
+      description:
+        "Dictate an emoji and it now stays exactly where you placed it after polish runs. No more emoji going missing or landing in the wrong spot.",
+      category: .smarterAIPolish,
+      version: "2.2.0"
+    ),
+    Entry(
+      id: "clearer-polish-failure-reasons",
+      icon: "exclamationmark.bubble",
+      title: "Clearer reasons when polish can't finish",
+      description:
+        "If cloud or on-device AI polish ever cannot finish, EnviousWispr now tells you specifically what happened and what to do, instead of a vague notice. Either way, your clean transcription is always delivered.",
+      category: .smarterAIPolish,
+      version: "2.2.0"
+    ),
+    Entry(
+      id: "crash-recovery",
+      icon: "arrow.clockwise.circle",
+      title: "Your words survive an unexpected quit",
+      description:
+        "If the app ever closes in the middle of a dictation, your recording is no longer lost. When you reopen EnviousWispr it quietly picks up where it left off and finishes turning your words into text.",
+      category: .fasterAndMoreReliable,
+      version: "2.2.0"
+    ),
+    Entry(
+      id: "ap-style-numbers",
+      icon: "textformat.123",
+      title: "Numbers written the way you would write them",
+      description:
+        "Numbers now come out the way you would actually type them: small ones spelled out, larger ones as digits, following the same style most newsrooms use. That means less cleanup for you.",
+      category: .fasterAndMoreReliable,
+      version: "2.2.0"
+    ),
+    Entry(
+      id: "no-clipped-last-words",
+      icon: "waveform",
+      title: "No more clipped last words",
+      description:
+        "We fixed a case where a quick, energetic word or two at the very end of a dictation could get trimmed off. Your full sentence now makes it through.",
+      category: .fasterAndMoreReliable,
+      version: "2.2.0"
+    ),
+    Entry(
+      id: "paste-never-waits-on-history",
+      icon: "checkmark.circle",
+      title: "Pasting never waits on saving",
+      description:
+        "Even if saving a dictation to your History runs into a snag, your words still land where you are typing. Delivery no longer waits on the archive.",
+      category: .fasterAndMoreReliable,
+      version: "2.2.0"
+    ),
+    Entry(
+      id: "voiceover-and-keyboard",
+      icon: "accessibility",
+      title: "Built for VoiceOver and keyboard navigation",
+      description:
+        "EnviousWispr now reads cleanly with VoiceOver and is fully operable from the keyboard. Its hotkey recorders, buttons, and update prompts announce themselves clearly and respond to keyboard control.",
+      category: .qualityOfLife,
+      version: "2.2.0"
+    ),
+    Entry(
+      id: "clearer-polish-on-older-macs",
+      icon: "sparkles",
+      title: "Clearer polish on older Macs",
+      description:
+        "On Macs that cannot run Apple's on-device polish, EnviousWispr no longer shows a confusing \"polish failed\" note. It simply hands you your clean transcription, and onboarding now explains your polish options up front.",
+      category: .qualityOfLife,
+      version: "2.2.0"
+    ),
+    Entry(
+      id: "words-stay-out-of-diagnostics",
+      icon: "lock.shield",
+      title: "Your words stay out of diagnostics",
+      description:
+        "We added another layer to make sure your dictated words can never end up in crash reports or diagnostics. What you say stays yours.",
+      category: .privacyAndSecurity,
+      version: "2.2.0"
+    ),
+    Entry(
+      id: "open-source-and-verifiable",
+      icon: "chevron.left.forwardslash.chevron.right",
+      title: "Open source, and easy to verify",
+      description:
+        "EnviousWispr is open source under the GPLv3 license, and every download now points you straight to the full source. You can see exactly what the app does.",
+      category: .privacyAndSecurity,
+      version: "2.2.0"
+    ),
+
     // MARK: - v2.1.4
 
     Entry(
