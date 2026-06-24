@@ -726,7 +726,8 @@ public final class WisprBootstrapper {
     // window-close abandon suppresses it).
     onboardingProgress.emitAbandonIfInFlight(
       reason: "app_quit", micStatus: permissions.microphoneStatusString,
-      accessibilityStatus: permissions.accessibilityGranted ? "granted" : "denied")
+      // Live read so a just-before-quit grant isn't logged denied (cloud Codex r3).
+      accessibilityStatus: permissions.accessibilityGrantedLive ? "granted" : "denied")
     appLifecycleCoordinator.runWillTerminate()
   }
 

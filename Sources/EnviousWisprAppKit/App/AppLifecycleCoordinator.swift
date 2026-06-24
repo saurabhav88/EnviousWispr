@@ -110,7 +110,10 @@ final class AppLifecycleCoordinator {
       onboardingProgress.emitAbandonIfInFlight(
         reason: "window_closed",
         micStatus: permissions.microphoneStatusString,
-        accessibilityStatus: permissions.accessibilityGranted ? "granted" : "denied")
+        // Live read (not the cached `accessibilityGranted`): a grant made in System
+        // Settings just before this close may not have hit the poll yet (cloud Codex
+        // review r3). Pure no-prompt read, no side effects.
+        accessibilityStatus: permissions.accessibilityGrantedLive ? "granted" : "denied")
     }
   }
 

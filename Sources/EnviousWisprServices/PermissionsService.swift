@@ -82,6 +82,16 @@ public final class PermissionsService {
     return trusted
   }
 
+  /// Live Accessibility read for a telemetry SEAM that must observe the RESOLVED
+  /// value, not the lagging `accessibilityGranted` cache (Telemetry Bible Phase 7,
+  /// cloud Codex review r3). A pure `AXIsProcessTrusted()` read (no prompt) with NO
+  /// side effects — unlike `refreshAccessibilityStatus()`, it does not mutate the
+  /// cache, re-arm the warning, or emit a `permission.status` flip event. Use it at
+  /// emit points (e.g. the onboarding-abandon posture) where the cache may still be
+  /// false in the ~2 s window after a grant but before the next poll/launch/pre-record
+  /// refresh. Injectable via the same `accessibilityReader` the init/refresh use.
+  public var accessibilityGrantedLive: Bool { accessibilityReader() }
+
   /// Re-check Accessibility permission using `AXIsProcessTrusted()` (no prompt).
   /// Detects revocation transitions (granted → revoked) and re-arms the warning.
   public func refreshAccessibilityStatus() {
