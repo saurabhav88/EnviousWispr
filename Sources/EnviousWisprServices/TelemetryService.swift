@@ -176,6 +176,13 @@ public final class TelemetryService {
       props["duration_seconds"] = String(format: "%.3f", d)
       props["$value"] = d
     }
+    #if DEBUG
+      // #1176: mirror so the E2 `duration_seconds` plumbing is unit-verifiable.
+      var stringProps = ["step": step, "result": result]
+      if let d = durationSeconds { stringProps["duration_seconds"] = String(format: "%.3f", d) }
+      testEventHook?(
+        CapturedTelemetryEvent(name: "onboarding.step_completed", stringProps: stringProps))
+    #endif
     PostHogSDK.shared.capture("onboarding.step_completed", properties: props)
   }
 
@@ -186,6 +193,61 @@ public final class TelemetryService {
         "asr_backend": asrBackend,
         "recording_mode": recordingMode,
       ])
+  }
+
+  /// Telemetry Bible Phase 7 (#1176): a first-run user was blocked on a setup
+  /// step (model-warmup failure or mic-permission denial). `permission` is absent
+  /// for non-permission steps. `durationSeconds` = time on this step before the
+  /// block. Lets us see WHICH step / permission stalls onboarding.
+  public func onboardingStepBlocked(
+    step: String, reason: String, permission: String? = nil, durationSeconds: Double? = nil
+  ) {
+    var props: [String: Any] = ["step": step, "reason": reason]
+    if let permission { props["permission"] = permission }
+    if let d = durationSeconds {
+      props["duration_seconds"] = String(format: "%.3f", d)
+      props["$value"] = d  // raw numeric for PostHog aggregation (matches step_completed)
+    }
+    #if DEBUG
+      var stringProps = ["step": step, "reason": reason]
+      if let permission { stringProps["permission"] = permission }
+      if let d = durationSeconds { stringProps["duration_seconds"] = String(format: "%.3f", d) }
+      testEventHook?(
+        CapturedTelemetryEvent(name: "onboarding.step_blocked", stringProps: stringProps))
+    #endif
+    PostHogSDK.shared.capture("onboarding.step_blocked", properties: props)
+  }
+
+  /// Telemetry Bible Phase 7 (#1176): a first-run user left setup incomplete via
+  /// window-close (`abandonReason=window_closed`) or app-quit (`app_quit`). Fired
+  /// exactly once per presentation (deduped by `OnboardingProgress.terminalEmitted`).
+  /// `elapsedSeconds` = total since the session began (distinct from a step's
+  /// `duration_seconds`). Carries the permission posture so an AX-blocked drop is
+  /// visible. `app_quit` is best-effort (a `kill -9` bypasses `applicationWillTerminate`).
+  public func onboardingAbandoned(
+    screen: String, step: String, elapsedSeconds: Double?,
+    micStatus: String, accessibilityStatus: String, abandonReason: String, source: String
+  ) {
+    var props: [String: Any] = [
+      "screen": screen, "step": step, "mic_status": micStatus,
+      "accessibility_status": accessibilityStatus, "abandon_reason": abandonReason,
+      "source": source,
+    ]
+    if let e = elapsedSeconds {
+      props["elapsed_seconds"] = String(format: "%.3f", e)
+      props["$value"] = e  // raw numeric for PostHog aggregation (matches step_completed)
+    }
+    #if DEBUG
+      var stringProps = [
+        "screen": screen, "step": step, "mic_status": micStatus,
+        "accessibility_status": accessibilityStatus, "abandon_reason": abandonReason,
+        "source": source,
+      ]
+      if let e = elapsedSeconds { stringProps["elapsed_seconds"] = String(format: "%.3f", e) }
+      testEventHook?(
+        CapturedTelemetryEvent(name: "onboarding.abandoned", stringProps: stringProps))
+    #endif
+    PostHogSDK.shared.capture("onboarding.abandoned", properties: props)
   }
 
   // MARK: - Audio System Events (issue #574)

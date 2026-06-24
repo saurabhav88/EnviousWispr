@@ -176,8 +176,23 @@ public final class SettingsManager {
       defaults.set(onboardingState.rawValue, forKey: "onboardingState")
       // Keep legacy key in sync so any existing observers see the right value.
       defaults.set(onboardingState == .completed, forKey: "hasCompletedOnboarding")
+      // #1176: a durable "ever completed" flag (NEVER reset, unlike the legacy key
+      // which a Diagnostics restart flips false). Lets onboarding telemetry label
+      // `source` as first_run vs diagnostics_restart in the SHARED settings store.
+      if onboardingState == .completed {
+        defaults.set(true, forKey: Self.onboardingEverCompletedKey)
+      }
       onChange?(.onboardingState)
     }
+  }
+
+  static let onboardingEverCompletedKey = "ew.onboarding.everCompleted"
+
+  /// #1176: true once the user has EVER finished onboarding (durable; survives a
+  /// Diagnostics restart). Read by the onboarding-abandon `source` label. Backfilled
+  /// from the legacy completion key in `init` for users who completed before this key.
+  public var onboardingEverCompleted: Bool {
+    defaults.bool(forKey: Self.onboardingEverCompletedKey)
   }
 
   /// Backward-compat computed property — true when onboarding is fully complete.
@@ -438,6 +453,14 @@ public final class SettingsManager {
   public init(defaults: UserDefaults? = nil) {
     let defaults = defaults ?? SettingsDefaults.store
     self.defaults = defaults
+    // #1176: backfill the durable everCompleted flag for users who completed
+    // onboarding before it existed — runs at launch, BEFORE any Diagnostics restart
+    // resets the legacy key, so their first restart still reads diagnostics_restart.
+    if !defaults.bool(forKey: Self.onboardingEverCompletedKey),
+      defaults.bool(forKey: "hasCompletedOnboarding")
+    {
+      defaults.set(true, forKey: Self.onboardingEverCompletedKey)
+    }
     selectedBackend =
       ASRBackendType(rawValue: defaults.string(forKey: "selectedBackend") ?? "")
       ?? SettingsDefaultValues.selectedBackend

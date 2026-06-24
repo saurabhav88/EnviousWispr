@@ -83,6 +83,28 @@ import Testing
 
       #expect(box.events.isEmpty)
     }
+
+    @MainActor
+    @Test(
+      "accessibilityGrantedLive reflects a fresh grant the cache hasn't seen, with no side effect")
+    func liveReadDivergesFromStaleCacheWithoutSideEffect() {
+      // #1176 cloud Codex review r3: the onboarding-abandon posture must observe the
+      // RESOLVED accessibility value, not the lagging cache.
+      var live = false
+      let svc = PermissionsService(accessibilityReader: { live })
+      #expect(svc.accessibilityGranted == false)  // cached at init
+
+      let box = EventBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        if event.name == "permission.status" { box.add(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      live = true  // user grants in System Settings, before any poll refresh
+      #expect(svc.accessibilityGrantedLive == true)  // live read sees it
+      #expect(svc.accessibilityGranted == false)  // pure read did NOT mutate the cache
+      #expect(box.events.isEmpty)  // and did NOT emit a flip event
+    }
   }
 
 #endif

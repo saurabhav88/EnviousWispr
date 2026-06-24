@@ -46,6 +46,8 @@ public final class WisprBootstrapper {
   // scenes' environment by the view factories.
   let settings: SettingsManager
   let permissions: PermissionsService
+  /// #1176: in-flight onboarding session, read at app-quit to emit abandon.
+  let onboardingProgress = OnboardingProgress()
   let asrManager: any ASRManagerInterface
   let customWordsCoordinator: CustomWordsCoordinator
   let contactsImportCoordinator: ContactsImportCoordinator
@@ -580,7 +582,8 @@ public final class WisprBootstrapper {
       liveRecordingState: liveRecordingState,
       menuBarController: menuBarController,
       appWindowCoordinator: appWindowCoordinator,
-      hotkeyService: hotkeyService
+      hotkeyService: hotkeyService,
+      onboardingProgress: onboardingProgress
     )
 
     self.navigationCoordinator = navigationCoordinator
@@ -717,6 +720,14 @@ public final class WisprBootstrapper {
   public func applicationWillTerminate() {
     // #1019: tear down the network path monitor + wake observer.
     updateTriggerCoordinator.stop()
+    // #1176: a Cocoa quit during onboarding is an abandon (best-effort — kill -9
+    // bypasses this). Capture BEFORE the Phase-1 flush in runWillTerminate so it is
+    // durable. Deduped by the box's terminal guard (a clean finish or a prior
+    // window-close abandon suppresses it).
+    onboardingProgress.emitAbandonIfInFlight(
+      reason: "app_quit", micStatus: permissions.microphoneStatusString,
+      // Live read so a just-before-quit grant isn't logged denied (cloud Codex r3).
+      accessibilityStatus: permissions.accessibilityGrantedLive ? "granted" : "denied")
     appLifecycleCoordinator.runWillTerminate()
   }
 
@@ -785,6 +796,7 @@ private struct MainWindowRoot: View {
           settings: b.settings,
           appWindowCoordinator: b.appWindowCoordinator,
           menuBarController: b.menuBarController,
+          onboardingProgress: b.onboardingProgress,
           isOnboardingPresented: $isOnboardingPresented
         )
       )
@@ -796,9 +808,10 @@ private struct OnboardingWindowRoot: View {
   let b: WisprBootstrapper
 
   var body: some View {
-    OnboardingV2View(onComplete: {
-      b.appWindowCoordinator.closeOnboardingWindow()
-    })
+    OnboardingV2View(
+      onComplete: { b.appWindowCoordinator.closeOnboardingWindow() },
+      onboardingProgress: b.onboardingProgress
+    )
     .environment(b.navigationCoordinator)
     .environment(b.languageSuggestionPresenter)
     .environment(b.dictationRuntime)
@@ -827,6 +840,9 @@ private struct ActionWirer: View {
   let appWindowCoordinator: AppWindowCoordinator
   /// PR-B.3 of #763: onboarding-dismissal icon refresh targets the menu home.
   let menuBarController: MenuBarController
+  /// #1176: begin a fresh onboarding session on every window open (first-run AND
+  /// Diagnostics restart both funnel through `openOnboardingAction`).
+  let onboardingProgress: OnboardingProgress
   @Binding var isOnboardingPresented: Bool
   @Environment(\.openWindow) private var openWindow
   @Environment(\.dismissWindow) private var dismissWindow
@@ -838,7 +854,14 @@ private struct ActionWirer: View {
         appWindowCoordinator.openMainWindowAction = { [openWindow] in
           openWindow(id: "main")
         }
-        appWindowCoordinator.openOnboardingAction = { [openWindow] in
+        appWindowCoordinator.openOnboardingAction = { [openWindow, onboardingProgress, settings] in
+          // #1176: every onboarding presentation funnels through here. `begin` starts
+          // a fresh session only when none is in flight, so a refocus of the open
+          // window (status-menu "Continue Setup…") never rewinds it — see the guard
+          // in `OnboardingProgress.begin`. `source` reads the durable everCompleted
+          // flag from the shared settings store.
+          let source = settings.onboardingEverCompleted ? "diagnostics_restart" : "first_run"
+          onboardingProgress.begin(source: source)
           openWindow(id: "onboarding")
         }
         appWindowCoordinator.dismissOnboardingAction = { [dismissWindow] in
