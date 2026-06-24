@@ -100,7 +100,46 @@ public final class HotkeyService {
 
   public private(set) var isSuspended = false
 
-  public init() {}
+  // MARK: - Telemetry (Telemetry Bible Phase 6, #1175)
+
+  /// Injected hotkey/input-silence telemetry. Default `.noop` keeps legacy/test
+  /// construction inert; the app wires `.live`. HotkeyService reports its own
+  /// input facts through this seam — it never reads pipeline state.
+  private let telemetry: HotkeyTelemetrySink
+
+  /// The action HotkeyService took with an accepted keydown — derived entirely
+  /// from its own state, no pipeline read. `cancel` covers both the Escape
+  /// cancel hotkey and a PTT triple-press cancel (told apart by `trigger`).
+  private enum PressAction: String {
+    case start, toggle, cancel, lock, stop
+    case ignoredProcessing = "ignored_processing"
+    case ignoredCooldown = "ignored_cooldown"
+  }
+
+  /// Which hotkey delivered the press.
+  private enum PressTrigger: String {
+    case ptt = "ptt_hotkey"
+    case toggle = "toggle_hotkey"
+    case cancel = "cancel_hotkey"
+  }
+
+  public init(telemetry: HotkeyTelemetrySink = .noop) {
+    self.telemetry = telemetry
+  }
+
+  /// Emit `hotkey.pressed` for an accepted keydown. Synchronous + cheap (computes
+  /// two strings, invokes the injected closure); the `.live` sink defers the
+  /// actual PostHog write off the input turn (heart path). The args ARE the
+  /// snapshot — no shared-state re-read.
+  private func emitHotkeyPressed(_ action: PressAction, trigger: PressTrigger) {
+    let inputMode = recordingMode.rawValue
+    // key_shape reflects the TRIGGERING hotkey: the cancel hotkey (Escape, a chord
+    // by default) vs the toggle/PTT hotkey (modifier-only by default). The PTT
+    // hands-free actions all ride the toggle key. (Codex code-diff #1.)
+    let keyCode = trigger == .cancel ? cancelKeyCode : toggleKeyCode
+    let keyShape = ModifierKeyCodes.isModifierOnly(keyCode) ? "modifier_only" : "chord"
+    telemetry.pressed(trigger.rawValue, inputMode, keyShape, action.rawValue)
+  }
 
   public func start() {
     guard !isEnabled else { return }
@@ -195,6 +234,8 @@ public final class HotkeyService {
           level: .info, category: "HotkeyService"
         )
       }
+      // #1175 (C3): a press that never commits is exactly an under-fire case.
+      emitHotkeyPressed(.ignoredProcessing, trigger: .ptt)
       isModifierHeld = false
       return
     }
@@ -210,6 +251,9 @@ public final class HotkeyService {
       debounceTask = nil
       recordingTask?.cancel()
       recordingTask = Task { await onStartRecording?() }
+      // #1175 (C3): emit AFTER the recording Task is created; the `.live` sink
+      // defers the actual write off this turn so it never delays the callback.
+      emitHotkeyPressed(.start, trigger: .ptt)
     } else if let startTime = recordingStartTime,
       Date().timeIntervalSince(startTime) <= Double(TimingConstants.handsFreeDebounceDelayMs)
         / 1000.0
@@ -227,6 +271,9 @@ public final class HotkeyService {
         isModifierHeld = false
         recordingTask?.cancel()
         recordingTask = Task { await onCancelRecording?() }
+        // #1175 (Codex code-diff #2): hands-free triple-press cancel is an
+        // accepted keydown too — distinguished from the Escape cancel by trigger.
+        emitHotkeyPressed(.cancel, trigger: .ptt)
       } else {
         // Double press → lock into hands-free
         Task {
@@ -243,6 +290,7 @@ public final class HotkeyService {
         // continue running. Cancelling it aborts preWarm/toggleRecording,
         // leaving the UI locked but no actual recording happening.
         Task { await onLocked?() }
+        emitHotkeyPressed(.lock, trigger: .ptt)
       }
     } else if isRecordingLocked {
       // Lock cooldown: ignore presses within 500ms of locking.
@@ -257,6 +305,9 @@ public final class HotkeyService {
             level: .info, category: "HotkeyService"
           )
         }
+        // #1175 (Codex code-diff #2): a cooldown finger-bounce is an accepted
+        // keydown that produces no recording action.
+        emitHotkeyPressed(.ignoredCooldown, trigger: .ptt)
         isModifierHeld = false
         return
       }
@@ -271,6 +322,8 @@ public final class HotkeyService {
       isModifierHeld = false
       recordingTask?.cancel()
       recordingTask = Task { await onStopRecording?() }
+      // #1175 (Codex code-diff #2): single press while locked stops the session.
+      emitHotkeyPressed(.stop, trigger: .ptt)
     }
   }
 
@@ -352,27 +405,41 @@ public final class HotkeyService {
     // Only install if the hotkey is modifier-only
     guard ModifierKeyCodes.isModifierOnly(toggleKeyCode) else { return }
 
-    globalModifierMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) {
-      [weak self] event in
-      // Global monitor callbacks may arrive off the main thread.
-      // Extract event data here (NSEvent is not Sendable).
-      let keyCode = event.keyCode
-      let flags = event.modifierFlags
-      DispatchQueue.main.async {
-        guard let self else { return }
-        MainActor.assumeIsolated {
-          self.handleFlagsChangedValues(keyCode: keyCode, flags: flags)
+    globalModifierMonitor = recordMonitorInstall(
+      NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) {
+        [weak self] event in
+        // Global monitor callbacks may arrive off the main thread.
+        // Extract event data here (NSEvent is not Sendable).
+        let keyCode = event.keyCode
+        let flags = event.modifierFlags
+        DispatchQueue.main.async {
+          guard let self else { return }
+          MainActor.assumeIsolated {
+            self.handleFlagsChangedValues(keyCode: keyCode, flags: flags)
+          }
         }
-      }
-    }
+      }, scope: "global")
 
-    localModifierMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) {
-      [weak self] event in
-      MainActor.assumeIsolated {
-        self?.handleFlagsChanged(event)
-      }
-      return event  // pass the event through
+    localModifierMonitor = recordMonitorInstall(
+      NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) {
+        [weak self] event in
+        MainActor.assumeIsolated {
+          self?.handleFlagsChanged(event)
+        }
+        return event  // pass the event through
+      }, scope: "local")
+  }
+
+  /// #1175 (C2): the single chokepoint for an `NSEvent` modifier-monitor install.
+  /// A `nil` return means a modifier-only hotkey is silently dead → report it.
+  /// Returns the monitor unchanged so the call site assigns it as before.
+  /// `internal` (not `private`) so the nil path is unit-testable without
+  /// abstracting the whole `NSEvent` stack.
+  func recordMonitorInstall(_ monitor: Any?, scope: String) -> Any? {
+    if monitor == nil {
+      telemetry.registrationFailed("nsevent_\(scope)", "toggle", nil, "modifier_only")
     }
+    return monitor
   }
 
   private func removeModifierMonitors() {
@@ -425,7 +492,16 @@ public final class HotkeyService {
       0,
       &ref
     )
-    return status == noErr ? ref : nil
+    guard status == noErr else {
+      // #1175: the noErr-but-silent trap means success can't confirm delivery, so
+      // we only report FAILURE. This is the single Carbon chokepoint — both the
+      // toggle and cancel registrations route through here.
+      let kind = id == HotkeyID.cancel.rawValue ? "cancel" : "toggle"
+      let keyShape = ModifierKeyCodes.isModifierOnly(keyCode) ? "modifier_only" : "chord"
+      telemetry.registrationFailed("carbon", kind, status, keyShape)
+      return nil
+    }
+    return ref
   }
 
   // MARK: - Event Dispatch
@@ -443,6 +519,7 @@ public final class HotkeyService {
       if recordingMode == .toggle {
         guard !isRelease else { return }
         Task { await onToggleRecording?() }
+        emitHotkeyPressed(.toggle, trigger: .toggle)
       } else {
         // Push-to-talk mode with hands-free support
         handleRecordAction(isPress: !isRelease)
@@ -452,6 +529,7 @@ public final class HotkeyService {
       guard !isRelease else { return }
       performCleanup()
       Task { await onCancelRecording?() }
+      emitHotkeyPressed(.cancel, trigger: .cancel)
 
     default:
       break
@@ -492,6 +570,7 @@ public final class HotkeyService {
         )
       }
       Task { await onToggleRecording?() }
+      emitHotkeyPressed(.toggle, trigger: .toggle)
     } else {
       // Push-to-talk mode with hands-free support
       handleRecordAction(isPress: isPress)
