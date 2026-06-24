@@ -1,0 +1,175 @@
+import EnviousWisprServices
+import Foundation
+import Testing
+
+@testable import EnviousWisprAppKit
+
+#if DEBUG
+
+  /// #1176 (Telemetry Bible Phase 7) — onboarding drop-off telemetry.
+  ///
+  /// Covers the `OnboardingProgress` session box (single-terminal dedup, re-entry
+  /// reset, source derivation) and the two new `TelemetryService` event payloads.
+  /// Synchronous bodies install + assert the process-global `testEventHook` with no
+  /// await between, so they are immune to the cross-test global-delegate flake class.
+  @MainActor
+  @Suite("Onboarding telemetry", .serialized)
+  struct OnboardingTelemetryTests {
+
+    final class Events: @unchecked Sendable {
+      private let lock = NSLock()
+      private var stored: [CapturedTelemetryEvent] = []
+      func add(_ e: CapturedTelemetryEvent) { lock.withLock { stored.append(e) } }
+      var all: [CapturedTelemetryEvent] { lock.withLock { stored } }
+      func named(_ n: String) -> [CapturedTelemetryEvent] { all.filter { $0.name == n } }
+    }
+
+    private func withHook(_ body: (Events) -> Void) {
+      let events = Events()
+      TelemetryService.shared.testEventHook = { @Sendable e in events.add(e) }
+      defer { TelemetryService.shared.testEventHook = nil }
+      body(events)
+    }
+
+    private func makeBox() -> OnboardingProgress { OnboardingProgress() }
+
+    /// A SettingsManager backed by a fresh ephemeral suite (never touches the real
+    /// shared store).
+    private func makeSettings() -> SettingsManager {
+      SettingsManager(defaults: UserDefaults(suiteName: "ewtest.\(UUID().uuidString)")!)
+    }
+
+    @Test("abandon fires once with screen/step/reason/source payload")
+    func abandonPayload() {
+      withHook { events in
+        let box = makeBox()
+        box.begin(source: "first_run")
+        box.update(screen: "setting_up", step: "permissions")
+        box.emitAbandonIfInFlight(
+          reason: "window_closed", micStatus: "denied", accessibilityStatus: "denied")
+        let a = events.named("onboarding.abandoned")
+        #expect(a.count == 1)
+        #expect(a.first?.stringProps["abandon_reason"] == "window_closed")
+        #expect(a.first?.stringProps["screen"] == "setting_up")
+        #expect(a.first?.stringProps["step"] == "permissions")
+        #expect(a.first?.stringProps["source"] == "first_run")
+        #expect(a.first?.stringProps["accessibility_status"] == "denied")
+      }
+    }
+
+    @Test("second terminal is deduped — window-close then app-quit emits once")
+    func terminalDedup() {
+      withHook { events in
+        let box = makeBox()
+        box.begin(source: "first_run")
+        box.emitAbandonIfInFlight(
+          reason: "window_closed", micStatus: "authorized", accessibilityStatus: "granted")
+        box.emitAbandonIfInFlight(
+          reason: "app_quit", micStatus: "authorized", accessibilityStatus: "granted")
+        #expect(events.named("onboarding.abandoned").count == 1)
+        #expect(
+          events.named("onboarding.abandoned").first?.stringProps["abandon_reason"]
+            == "window_closed")
+      }
+    }
+
+    @Test("markCompleted suppresses a later abandon (the complete/abandon race fix)")
+    func completeSuppressesAbandon() {
+      withHook { events in
+        let box = makeBox()
+        box.begin(source: "first_run")
+        box.markCompleted()
+        box.emitAbandonIfInFlight(
+          reason: "window_closed", micStatus: "authorized", accessibilityStatus: "granted")
+        #expect(events.named("onboarding.abandoned").isEmpty)
+      }
+    }
+
+    @Test("not-in-flight (no begin) emits nothing")
+    func notInFlightNoEmit() {
+      withHook { events in
+        let box = makeBox()
+        box.emitAbandonIfInFlight(
+          reason: "app_quit", micStatus: "authorized", accessibilityStatus: "granted")
+        #expect(events.named("onboarding.abandoned").isEmpty)
+      }
+    }
+
+    @Test("re-entry: a 2nd begin resets the terminal flag so a new abandon fires")
+    func reEntryResetsTerminal() {
+      withHook { events in
+        let box = makeBox()
+        box.begin(source: "first_run")
+        box.emitAbandonIfInFlight(
+          reason: "window_closed", micStatus: "denied", accessibilityStatus: "denied")
+        box.begin(source: "first_run")  // fresh session — resets terminalEmitted
+        box.emitAbandonIfInFlight(
+          reason: "app_quit", micStatus: "denied", accessibilityStatus: "denied")
+        let a = events.named("onboarding.abandoned")
+        #expect(a.count == 2)
+        // Never completed → both sessions are first_run (the source comes from the
+        // durable everCompleted flag, NOT the in-session count — Codex code-diff #1).
+        #expect(a.allSatisfy { $0.stringProps["source"] == "first_run" })
+        #expect(a.last?.stringProps["abandon_reason"] == "app_quit")
+      }
+    }
+
+    @Test("the caller-supplied source is carried into the abandon event")
+    func sourceCarriesThrough() {
+      withHook { events in
+        let box = makeBox()
+        box.begin(source: "diagnostics_restart")
+        box.emitAbandonIfInFlight(
+          reason: "window_closed", micStatus: "authorized", accessibilityStatus: "granted")
+        #expect(
+          events.named("onboarding.abandoned").first?.stringProps["source"] == "diagnostics_restart"
+        )
+      }
+    }
+
+    @Test("SettingsManager.onboardingEverCompleted is set on completion and never reset")
+    func everCompletedSetOnCompletionAndDurable() {
+      let s = makeSettings()
+      #expect(s.onboardingEverCompleted == false)
+      s.onboardingState = .completed
+      #expect(s.onboardingEverCompleted == true)
+      // A Diagnostics restart resets onboardingState (and the legacy key) but NOT
+      // the durable flag — so a restart is still labeled diagnostics_restart.
+      s.onboardingState = .notStarted
+      #expect(s.onboardingEverCompleted == true)
+    }
+
+    @Test("SettingsManager backfills everCompleted from the legacy key at init")
+    func everCompletedBackfillsFromLegacyKey() {
+      let d = UserDefaults(suiteName: "ewtest.\(UUID().uuidString)")!
+      d.set(true, forKey: "hasCompletedOnboarding")  // completed before the new key existed
+      let s = SettingsManager(defaults: d)  // init backfills
+      #expect(s.onboardingEverCompleted == true)
+    }
+
+    @Test("step_blocked payload")
+    func stepBlockedPayload() {
+      withHook { events in
+        TelemetryService.shared.onboardingStepBlocked(
+          step: "mic_permission", reason: "denied", permission: "microphone", durationSeconds: 1.5)
+        let b = events.named("onboarding.step_blocked")
+        #expect(b.count == 1)
+        #expect(b.first?.stringProps["step"] == "mic_permission")
+        #expect(b.first?.stringProps["reason"] == "denied")
+        #expect(b.first?.stringProps["permission"] == "microphone")
+      }
+    }
+
+    @Test("step_completed now carries duration_seconds")
+    func stepCompletedDuration() {
+      withHook { events in
+        TelemetryService.shared.onboardingStepCompleted(
+          step: "model_download", result: "completed", durationSeconds: 2.0)
+        let c = events.named("onboarding.step_completed")
+        #expect(c.count == 1)
+        #expect(c.first?.stringProps["duration_seconds"] == "2.000")
+      }
+    }
+  }
+
+#endif

@@ -110,6 +110,10 @@ final class OnboardingV2ViewModel {
     warmUp: @MainActor () async -> EngineWarmupOutcome, settings: SettingsManager
   ) async {
     settings.onboardingState = .settingUp
+    // #1176 (Codex code-diff #2): start the model_download clock here, before the
+    // disk preflight, so a disk-space block reports model-step time, not the
+    // welcome-screen dwell that preceded Get Started.
+    stepStartedAt = Date()
 
     // Disk space preflight — fail early with a friendly message instead of failing at 80%.
     if let attrs = try? FileManager.default.attributesOfFileSystem(
@@ -121,6 +125,7 @@ final class OnboardingV2ViewModel {
       downloadError =
         "Not enough disk space (\(freeMB) MB free). EnviousWispr needs about 1 GB to download and install the speech model."
       checklistStatuses[0] = .error(downloadError!)
+      blockStep("model_download", reason: "insufficient_disk_space")
       return
     }
 
@@ -143,6 +148,7 @@ final class OnboardingV2ViewModel {
       downloadError = friendly
       rawErrorDetails = "\(error)"
       checklistStatuses[0] = .error(friendly)
+      blockStep("model_download", reason: "model_warmup_failed")
       return
     }
 
@@ -150,7 +156,7 @@ final class OnboardingV2ViewModel {
     checklistStatuses[0] = .completed
     installQuip = ""
     stopQuipTimer()
-    TelemetryService.shared.onboardingStepCompleted(step: "model_download", result: "completed")
+    completeStep("model_download", result: "completed")
 
     do {
       checklistStatuses[1] = .inProgress
@@ -162,12 +168,12 @@ final class OnboardingV2ViewModel {
       // Onboarded users get Apple Intelligence via the canonical default; this
       // step stays a visual checklist beat + telemetry only.
       checklistStatuses[1] = .completed
-      TelemetryService.shared.onboardingStepCompleted(step: "ai_config", result: "completed")
+      completeStep("ai_config", result: "completed")
 
       checklistStatuses[2] = .inProgress
       try await Task.sleep(nanoseconds: 1_500_000_000)
       checklistStatuses[2] = .completed
-      TelemetryService.shared.onboardingStepCompleted(step: "hotkey_config", result: "completed")
+      completeStep("hotkey_config", result: "completed")
 
       try await Task.sleep(nanoseconds: 400_000_000)
       settings.onboardingState = .needsPermissions
@@ -287,8 +293,12 @@ final class OnboardingV2ViewModel {
   }
 
   func requestMicPermission(permissions: PermissionsService) async {
-    _ = await permissions.requestMicrophoneAccess()
+    let granted = await permissions.requestMicrophoneAccess()
     micGranted = permissions.hasMicrophonePermission
+    // #1176 (E1): a denied mic prompt is a concrete onboarding block.
+    if !granted {
+      blockStep("mic_permission", reason: "denied", permission: "microphone")
+    }
   }
 
   func openAccessibilitySettings(permissions: PermissionsService) {
@@ -309,6 +319,29 @@ final class OnboardingV2ViewModel {
     TelemetryService.shared.onboardingCompleted(
       asrBackend: settings.selectedBackend.rawValue, recordingMode: settings.recordingMode.rawValue)
   }
+
+  // MARK: - Step telemetry (Telemetry Bible Phase 7, #1176)
+
+  /// Start of the current step. `duration_seconds` on each step event = time since
+  /// the previous step event (reset on completion). Approximate for the artificial
+  /// visual-beat steps; meaningful for model_download warmup + permission on-screen time.
+  var stepStartedAt = Date()
+
+  /// Emit `onboarding.step_completed` with `duration_seconds`, then reset the clock
+  /// for the next step (E2).
+  func completeStep(_ step: String, result: String) {
+    TelemetryService.shared.onboardingStepCompleted(
+      step: step, result: result, durationSeconds: Date().timeIntervalSince(stepStartedAt))
+    stepStartedAt = Date()
+  }
+
+  /// Emit `onboarding.step_blocked` with `duration_seconds` (E1). Does NOT reset the
+  /// clock (the step is stuck, not advanced).
+  func blockStep(_ step: String, reason: String, permission: String? = nil) {
+    TelemetryService.shared.onboardingStepBlocked(
+      step: step, reason: reason, permission: permission,
+      durationSeconds: Date().timeIntervalSince(stepStartedAt))
+  }
 }
 
 // MARK: - Main View
@@ -326,6 +359,9 @@ struct OnboardingV2View: View {
   // replacing the prior direct `asrManager.loadModel()`.
   @Environment(DictationRuntime.self) private var dictationRuntime
   var onComplete: () -> Void
+  /// #1176: in-flight onboarding session + its single terminal abandon emit,
+  /// bootstrapper-owned and shared with the App-layer window-close / app-quit paths.
+  var onboardingProgress: OnboardingProgress
 
   @State private var viewModel = OnboardingV2ViewModel()
 
@@ -341,6 +377,9 @@ struct OnboardingV2View: View {
       case .ready:
         ReadyScreenV2(onComplete: {
           viewModel.finishOnboarding(settings: settings)
+          // #1176 (race fix): mark terminal BEFORE the window closes, so the
+          // unguarded window-close path sees it and does not also fire abandon.
+          onboardingProgress.markCompleted()
           onComplete()
         })
         .transition(Self.screenTransition)
@@ -351,6 +390,11 @@ struct OnboardingV2View: View {
     .frame(width: 460)
     .background(Color.obCardBg)
     .onAppear(perform: recoverFromPersistedState)
+    // #1176: mirror screen/stage into the session box for the abandon emitter.
+    // (The session `begin()` reset fires from `openOnboardingAction`, App-layer,
+    // so re-entry works even when the reused window skips a fresh onAppear.)
+    .onChange(of: viewModel.currentScreen) { syncProgressBox() }
+    .onChange(of: viewModel.setupPhase) { syncProgressBox() }
     // setupPhase is intentionally excluded from the id: changing phase at the end of
     // startSetup must NOT cancel the running task. currentScreen + retryCount are
     // sufficient triggers — retryCount bumps on retry, currentScreen bumps on navigation.
@@ -387,6 +431,29 @@ struct OnboardingV2View: View {
     case .completed:
       viewModel.currentScreen = .ready
     }
+    // #1176: `begin()` (the session reset) fires from `openOnboardingAction` so it
+    // is reliable even when a reused window skips a fresh onAppear; here we only
+    // mirror the resolved screen/step into the box.
+    syncProgressBox()
+  }
+
+  /// #1176: mirror the current screen + stage into the session box so the abandon
+  /// emitter (window-close / app-quit) reports WHERE the user was.
+  private func syncProgressBox() {
+    let screen: String
+    let step: String
+    switch viewModel.currentScreen {
+    case .welcome:
+      screen = "welcome"
+      step = "welcome"
+    case .settingUp:
+      screen = "setting_up"
+      step = viewModel.setupPhase == .permissions ? "permissions" : "model_setup"
+    case .ready:
+      screen = "ready"
+      step = "ready"
+    }
+    onboardingProgress.update(screen: screen, step: step)
   }
 }
 
@@ -858,8 +925,7 @@ private struct PermissionsPhaseView: View {
       if axNow && !viewModel.hasAppliedAxGrant {
         viewModel.hasAppliedAxGrant = true
         settings.autoCopyToClipboard = true
-        TelemetryService.shared.onboardingStepCompleted(
-          step: "accessibility_permission", result: "granted")
+        viewModel.completeStep("accessibility_permission", result: "granted")
       }
 
       // #735 revocation fix: mirror LIVE Accessibility state BOTH directions so a
@@ -872,7 +938,7 @@ private struct PermissionsPhaseView: View {
       // ways could flip a true flag false from stale cache.
       if permissions.hasMicrophonePermission && !viewModel.micGranted {
         viewModel.micGranted = true
-        TelemetryService.shared.onboardingStepCompleted(step: "mic_permission", result: "granted")
+        viewModel.completeStep("mic_permission", result: "granted")
       }
       // #735: showSkipLink no longer used (Skip-for-now backdoor removed); `elapsed` retained
       // so future telemetry can re-attach a "time-on-permissions-screen" event if needed.

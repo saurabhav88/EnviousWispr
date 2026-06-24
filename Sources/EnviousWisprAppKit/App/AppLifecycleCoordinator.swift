@@ -77,7 +77,10 @@ final class AppLifecycleCoordinator {
     liveRecordingState: LiveRecordingState,
     menuBarController: MenuBarController,
     appWindowCoordinator: AppWindowCoordinator,
-    hotkeyService: HotkeyService
+    hotkeyService: HotkeyService,
+    // #1176: captured in the onboarding-dismiss closure below (NOT stored — keeps
+    // this coordinator's stored-property ceiling clean).
+    onboardingProgress: OnboardingProgress
   ) {
     self.settings = settings
     self.permissions = permissions
@@ -99,8 +102,15 @@ final class AppLifecycleCoordinator {
     // Icon-refresh seam: the window coordinator's two onboarding-dismiss
     // callsites route through this closure. Was wired in `AppDelegate.attach`
     // before PR-B.4.
-    appWindowCoordinator.onOnboardingDismissed = { [weak menuBarController] in
+    appWindowCoordinator.onOnboardingDismissed = {
+      [weak menuBarController, onboardingProgress, permissions] in
       menuBarController?.updateIcon()
+      // #1176: the window closed before completion → record the abandon (deduped
+      // by the box's terminal guard, so a clean finish or a prior quit suppresses it).
+      onboardingProgress.emitAbandonIfInFlight(
+        reason: "window_closed",
+        micStatus: permissions.microphoneStatusString,
+        accessibilityStatus: permissions.accessibilityGranted ? "granted" : "denied")
     }
   }
 

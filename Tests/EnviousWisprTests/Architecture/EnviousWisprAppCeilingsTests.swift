@@ -119,13 +119,20 @@ import Testing
   ///   A narrow new App-owned home (the #763 direction: many narrow homes), held
   ///   app-lifetime so it never deallocs and stops emitting. The pre-#1173 count
   ///   was already at the cap (31), so adding one home needs +1.
+  /// - 32 → 33 in #1176 (2026-06-24, Telemetry Bible Phase 7): App-owned
+  ///   `onboardingProgress` — the in-flight onboarding session box that owns the
+  ///   single-terminal abandon dedup (complete / window-close / app-quit) and the
+  ///   re-entry reset. Bootstrapper-owned so `applicationWillTerminate` can emit the
+  ///   app-quit abandon and the App-layer window-close closure can call it, WITHOUT
+  ///   adding a stored property to any coordinator (the #763 direction: many narrow
+  ///   homes). The pre-#1176 count was already at the cap (32), so adding one home needs +1.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 32,
+      count <= 33,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 32. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 33. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -241,14 +248,21 @@ import Testing
   /// narrow new App-owned home (+1 stored property, ≤ 31) keeping the funnel the
   /// single observation seam. Cap set by the deterministic rule (post-change
   /// actual 857 + 10, rounded up to nearest 5 = 870).
+  /// Ratcheted 870→890 in #1176 (2026-06-24, Telemetry Bible Phase 7): the
+  /// composition root constructs the `OnboardingProgress` session box (+1 stored
+  /// property), threads it into `AppLifecycleCoordinator` (captured in the
+  /// onboarding-dismiss closure for the window-close abandon) and `OnboardingV2View`,
+  /// and emits the app-quit abandon in `applicationWillTerminate` before the
+  /// Phase-1 flush. Cap set by the deterministic rule (post-change actual 876 + 10,
+  /// rounded up to nearest 5 = 890).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 870,
+      lineCount <= 890,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 870. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 890. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }
