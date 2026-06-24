@@ -310,6 +310,43 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
     }
   }
 
+  // MARK: - Update stage split (#1178 Phase 9, B2)
+
+  /// Download/verify(extract) stage breadcrumbs. These 4 `SPUUpdaterDelegate` hooks are
+  /// optional (Sparkle calls them via `respondsToSelector`), so adding them is purely
+  /// additive — no control-flow change. `item.versionString` is the CFBundleVersion
+  /// compare key (Codex r2: NOT `displayVersionString`, which is UI text). Observation
+  /// only; never blocks Sparkle.
+  func updater(
+    _ updater: SPUUpdater, willDownloadUpdate item: SUAppcastItem, with request: NSMutableURLRequest
+  ) {
+    TelemetryService.shared.updateDownloadStarted(
+      version: item.versionString, isCritical: item.isCriticalUpdate)
+  }
+  func updater(_ updater: SPUUpdater, didDownloadUpdate item: SUAppcastItem) {
+    TelemetryService.shared.updateDownloadCompleted(
+      version: item.versionString, isCritical: item.isCriticalUpdate)
+  }
+  func updater(_ updater: SPUUpdater, willExtractUpdate item: SUAppcastItem) {
+    TelemetryService.shared.updateVerifyStarted(
+      version: item.versionString, isCritical: item.isCriticalUpdate)
+  }
+  func updater(_ updater: SPUUpdater, didExtractUpdate item: SUAppcastItem) {
+    TelemetryService.shared.updateVerifyCompleted(
+      version: item.versionString, isCritical: item.isCriticalUpdate)
+  }
+
+  /// Resolve the version-staleness bucket from plain fields (Codex r4: unit-testable
+  /// without constructing `SUAppcastItem`/`SPUUpdater`, whose inits are unavailable).
+  /// The latest is the pending `.available` version, else the latest item Sparkle
+  /// attached to a no-update error; neither known → `on_latest` by policy (Codex r1).
+  static func resolveStalenessBucket(
+    current: String, availableVersion: String?, latestFromErrorVersion: String?
+  ) -> String {
+    guard let latest = availableVersion ?? latestFromErrorVersion else { return "on_latest" }
+    return VersionStaleness.bucket(current: current, latest: latest)
+  }
+
   /// Issue #343: terminal "the cycle ended" hook. Fires diagnostic event,
   /// resolves service state, clears install-source.
   func updater(
@@ -340,6 +377,17 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
     let noUpdateReason = Self.noUpdateReason(from: error as NSError?)
     let checkKind = Self.checkKindString(updateCheck)
     let currentAppVersion = bundleVersionProvider()
+    // #1178 (Phase 9, B3): how stale is this user? The latest version is whatever
+    // Sparkle just resolved live — the pending `.available` update, else the latest
+    // item Sparkle attaches to a no-update error (`SPULatestAppcastItemFoundKey`).
+    // `pendingVersion == nil` is NOT proof of on-latest (Codex r1), so we check the
+    // error too; nil-both → on_latest by policy. No cache, no cross-session persistence.
+    let latestFromError =
+      ((error as NSError?)?.userInfo[SPULatestAppcastItemFoundKey] as? SUAppcastItem)?
+      .versionString
+    let stalenessBucket = Self.resolveStalenessBucket(
+      current: currentAppVersion, availableVersion: pendingVersion,
+      latestFromErrorVersion: latestFromError)
     TelemetryService.shared.updateSparkleCycleFinished(
       version: version,
       isCritical: isCritical,
@@ -347,7 +395,8 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
       errorCode: errorCode,
       noUpdateReason: noUpdateReason,
       checkKind: checkKind,
-      currentAppVersion: currentAppVersion
+      currentAppVersion: currentAppVersion,
+      versionStalenessBucket: stalenessBucket
     )
     // Issue #846: filter Sparkle's three benign terminal outcomes from
     // update.install_failed. Sparkle itself excludes them from its own logging
