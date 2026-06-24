@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 import OSLog
 import Security
@@ -19,20 +20,30 @@ public struct KeychainManager: Sendable {
   private let backend: KeyStorageBackend
   private let legacyStore: any LegacyKeyFileStorage
   private let keychainStore: any KeychainItemStorage
+  /// #1177 (Telemetry Bible Phase 8): the LLM module's quiet-limb telemetry sink. The
+  /// LLM module has no telemetry dependency, so the App composition root injects the
+  /// `.live` sink here (this is the LLM module's already-ubiquitous dependency) and it
+  /// is reached by Q3.3 (legacy-key cleanup, below) AND A6 (`LLMNetworkSession.preWarmModel`
+  /// reads it off the `keychainManager` it already receives). `internal` — module-visible
+  /// to `LLMNetworkSession`, injected via the public `init` param. Defaults to `.noop`,
+  /// so the ~43 test sites + the connector default-args stay silent.
+  let telemetrySink: LLMTelemetrySink
 
-  public init() {
+  public init(telemetrySink: LLMTelemetrySink = .noop) {
     let legacyStore = FileLegacyKeyStore()
     if Self.usesLegacyFilesForDefaultRuntime {
       self.init(
         backend: .legacyFiles,
         legacyStore: legacyStore,
-        keychainStore: SecurityKeychainItemStore()
+        keychainStore: SecurityKeychainItemStore(),
+        telemetrySink: telemetrySink
       )
     } else {
       self.init(
         backend: .keychain(service: Self.productionService),
         legacyStore: legacyStore,
-        keychainStore: SecurityKeychainItemStore()
+        keychainStore: SecurityKeychainItemStore(),
+        telemetrySink: telemetrySink
       )
     }
   }
@@ -40,11 +51,13 @@ public struct KeychainManager: Sendable {
   init(
     backend: KeyStorageBackend,
     legacyStore: any LegacyKeyFileStorage = FileLegacyKeyStore(),
-    keychainStore: any KeychainItemStorage = SecurityKeychainItemStore()
+    keychainStore: any KeychainItemStorage = SecurityKeychainItemStore(),
+    telemetrySink: LLMTelemetrySink = .noop
   ) {
     self.backend = backend
     self.legacyStore = legacyStore
     self.keychainStore = keychainStore
+    self.telemetrySink = telemetrySink
   }
 
   public func store(key: String, value: String) throws {
@@ -140,6 +153,11 @@ public struct KeychainManager: Sendable {
       Self.logger.error(
         "Legacy plaintext API key file remained on disk after Keychain migration; user-visible polish is unaffected but the security goal is not met. Will retry on next retrieve. account=\(key, privacy: .public) error=\(String(describing: error), privacy: .public)"
       )
+      // #1177 (Telemetry Bible Phase 8): a security goal silently failed — the plaintext
+      // key still sits on disk. The sink's `.live` emits a population event + a
+      // fingerprinted Sentry handled error (per-account); fire-and-forget, never the key
+      // material (only the account name). `.noop` everywhere except the App root.
+      telemetrySink.legacyKeyCleanupFailed(error, key)
     }
   }
 

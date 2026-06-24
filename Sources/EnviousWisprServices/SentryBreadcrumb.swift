@@ -347,6 +347,18 @@ public enum SentryBreadcrumb {
     /// actionable; carries `mechanism` / `hotkey_kind` / `os_status` / `key_shape`
     /// (metadata only — never the key codes).
     case hotkeyRegistrationFailed = "hotkey_registration_failed"
+    /// #1177 (Telemetry Bible Phase 8): the on-device output-safety classifier
+    /// failed to load at prewarm. Polish keeps working WITHOUT the extra safety net
+    /// (fails open) — persistent because it retries on every provider switch, so a
+    /// genuinely broken model surfaces as a recurring handled error. `fingerprintDetail`
+    /// is the load-failure reason, so distinct reasons get distinct issues.
+    case outputClassifierLoadFailed = "output_classifier_load_failed"
+    /// #1177 (Telemetry Bible Phase 8): a legacy plaintext API-key file could not be
+    /// deleted after migration to the Keychain. The user's polish is unaffected (the
+    /// Keychain value works), but the security goal — no plaintext key on disk — is
+    /// silently unmet until the next retrieve retries. Security-relevant + persistent,
+    /// so it earns a handled error (never the key material — only the account name).
+    case legacyKeyCleanupFailed = "legacy_key_cleanup_failed"
   }
 }
 

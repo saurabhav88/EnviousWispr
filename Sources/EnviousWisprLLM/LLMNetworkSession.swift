@@ -56,22 +56,42 @@ public final class LLMNetworkSession: Sendable {
       )
     else { return }
 
-    Task.detached { [session] in
+    // #1177 (Telemetry Bible Phase 8): A6 reads the LLM module's telemetry sink off
+    // the `keychainManager` it already receives (carried there because the LLM module
+    // has no telemetry dependency — KeychainManager is the App-injected seam). The
+    // sink is `Sendable`, so it crosses into the detached task cleanly.
+    Task.detached { [session, sink = keychainManager.telemetrySink] in
       let start = CFAbsoluteTimeGetCurrent()
       do {
         let (_, response) = try await session.data(for: request)
         let ms = Int(((CFAbsoluteTimeGetCurrent() - start) * 1000).rounded())
-        let status = (response as? HTTPURLResponse)?.statusCode.description ?? "n/a"
+        let statusCode = (response as? HTTPURLResponse)?.statusCode
+        let status = statusCode?.description ?? "n/a"
         await AppLogger.shared.log(
           "preWarm completed provider=\(provider.rawValue) model=\(model) duration_ms=\(ms) status=\(status)",
           level: .info, category: "LLM"
         )
+        // Cloud review (PR #1211): a non-2xx response does NOT throw (URLSession
+        // returns it), so it would otherwise log "completed" and never report the
+        // failure — mirror the A5 evict 2xx/non-2xx split. A missing status code
+        // (n/a) is NOT treated as a failure (that path already lacks a real signal).
+        if let code = statusCode, !(200...299).contains(code) {
+          sink.limbFailure(
+            "llm_prewarm", "prewarm", "failed", "\(provider.rawValue)_http_\(code)", ms)
+        }
       } catch {
         let ms = Int(((CFAbsoluteTimeGetCurrent() - start) * 1000).rounded())
         await AppLogger.shared.log(
           "preWarm failed provider=\(provider.rawValue) model=\(model) duration_ms=\(ms) error=\(String(describing: error))",
           level: .info, category: "LLM"
         )
+        // Best-effort cloud warm-up failed → first real polish pays a cold start.
+        // Population only (the polish call's own telemetry covers persistent issues);
+        // the sink hops to the @MainActor TelemetryService. Low-cardinality category:
+        // provider + URLError code, never any content.
+        let category =
+          "\(provider.rawValue)_\((error as? URLError)?.code.rawValue.description ?? "error")"
+        sink.limbFailure("llm_prewarm", "prewarm", "failed", category, ms)
       }
     }
   }

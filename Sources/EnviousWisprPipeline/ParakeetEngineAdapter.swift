@@ -452,7 +452,26 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
         level: .info, category: "Pipeline"
       )
     }
-    return await finalizeBatchRescue(batchSamples: batchSamples, diagnostics: diagnostics)
+    // Codex r1: store the rescue outcome locally so the emit can read whether the
+    // batch rescue recovered a transcript before returning it.
+    let outcome = await finalizeBatchRescue(batchSamples: batchSamples, diagnostics: diagnostics)
+    // #1177 (Telemetry Bible Phase 8): observe the quiet streaming-finalize failure.
+    // The heart was fine (batch rescue gave text, or raw fell through), but until now
+    // we never knew streaming broke. Fire ONLY on the genuine-failure branch — a
+    // CancellationError returned `.cancelled` and an empty-but-successful streaming
+    // result returned earlier without setting the flag. `@MainActor` adapter → direct
+    // emit, no hop. Metadata only (the error's type name, never any transcript).
+    if diagnostics.streamingFinalizeFailed == true {
+      let recovered: Bool = {
+        if case .transcript = outcome { return true } else { return false }
+      }()
+      TelemetryService.shared.limbFailureObserved(
+        limb: "asr_streaming", operation: "finalize",
+        result: recovered ? "rescued" : "failed",
+        errorCategory: diagnostics.streamingFinalizeErrorType ?? "unknown",
+        durationMs: nil)
+    }
+    return outcome
   }
 
   private func finalizeBatchRescue(
