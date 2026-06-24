@@ -181,7 +181,8 @@ struct SparkleUpdateControllerTests {
         errorCode: nil,
         noUpdateReason: nil,
         checkKind: "background",
-        currentAppVersion: "v-host"
+        currentAppVersion: "v-host",
+        versionStalenessBucket: "on_latest"
       )
       TelemetryService.shared.updateInstallCompleted(
         version: "v1", isCritical: false, source: "menu")
@@ -390,7 +391,8 @@ struct SparkleUpdateControllerTests {
         errorCode: "SUSparkleErrorDomain.1001",
         noUpdateReason: "on_latest_version",
         checkKind: "background",
-        currentAppVersion: "v2.0.4"
+        currentAppVersion: "v2.0.4",
+        versionStalenessBucket: "on_latest"
       )
 
       await Task.yield()
@@ -420,7 +422,8 @@ struct SparkleUpdateControllerTests {
         errorCode: nil,
         noUpdateReason: nil,
         checkKind: "user_initiated",
-        currentAppVersion: "v2.0.4"
+        currentAppVersion: "v2.0.4",
+        versionStalenessBucket: "on_latest"
       )
 
       await Task.yield()
@@ -470,6 +473,75 @@ struct SparkleUpdateControllerTests {
       #expect(evt?.stringProps["check_kind"] == "user_initiated")
       #expect(evt?.stringProps["current_app_version"] == "v2.0.4")
       #expect(evt?.stringProps["no_update_reason"] == "on_latest_version")
+    }
+
+    // MARK: - #1178 Phase 9 (B2 stage split + B3 staleness)
+
+    @Test("resolveStalenessBucket prefers .available, falls back to the error item, else on_latest")
+    func resolveStalenessBucketSources() {
+      // .available wins
+      #expect(
+        SparkleUpdateController.resolveStalenessBucket(
+          current: "2.0.0", availableVersion: "2.1.0", latestFromErrorVersion: "9.9.9")
+          == "minor_behind")
+      // no .available → fall back to the latest item Sparkle attached to a no-update error
+      #expect(
+        SparkleUpdateController.resolveStalenessBucket(
+          current: "1.0.0", availableVersion: nil, latestFromErrorVersion: "2.0.0")
+          == "major_behind")
+      // neither known → on_latest by policy (the common clean no-update cycle)
+      #expect(
+        SparkleUpdateController.resolveStalenessBucket(
+          current: "2.1.4", availableVersion: nil, latestFromErrorVersion: nil) == "on_latest")
+    }
+
+    @Test("the 4 download/verify stage events fire with version + is_critical")
+    func stageEventsFire() async {
+      let box = EventBox()
+      let originalHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        Task { @MainActor in box.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = originalHook }
+
+      TelemetryService.shared.updateDownloadStarted(version: "2.1.4", isCritical: true)
+      TelemetryService.shared.updateDownloadCompleted(version: "2.1.4", isCritical: true)
+      TelemetryService.shared.updateVerifyStarted(version: "2.1.4", isCritical: false)
+      TelemetryService.shared.updateVerifyCompleted(version: "2.1.4", isCritical: false)
+
+      await Task.yield()
+      await Task.yield()
+
+      let names = Set(box.events.map { $0.name })
+      #expect(
+        names.isSuperset(of: [
+          "update.download_started", "update.download_completed",
+          "update.verify_started", "update.verify_completed",
+        ]))
+      let dl = box.events.first { $0.name == "update.download_started" }
+      #expect(dl?.stringProps["version"] == "2.1.4")
+      #expect(dl?.boolProps["is_critical"] == true)
+    }
+
+    @Test("the cycle event carries version_staleness_bucket")
+    func cycleCarriesStalenessBucket() async {
+      let box = EventBox()
+      let originalHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        Task { @MainActor in box.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = originalHook }
+
+      TelemetryService.shared.updateSparkleCycleFinished(
+        version: "2.1.4", isCritical: false, source: "background", errorCode: nil,
+        noUpdateReason: nil, checkKind: "background", currentAppVersion: "2.0.0",
+        versionStalenessBucket: "minor_behind")
+
+      await Task.yield()
+      await Task.yield()
+
+      let evt = box.events.first { $0.name == "update.sparkle_cycle_finished" }
+      #expect(evt?.stringProps["version_staleness_bucket"] == "minor_behind")
     }
 
   #endif  // DEBUG

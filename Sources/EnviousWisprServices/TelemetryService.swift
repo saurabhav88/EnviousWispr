@@ -1307,7 +1307,8 @@ public final class TelemetryService {
     errorCode: String?,
     noUpdateReason: String?,
     checkKind: String,
-    currentAppVersion: String
+    currentAppVersion: String,
+    versionStalenessBucket: String  // #1178 (Phase 9, B3): on_latest/patch/minor/major_behind.
   ) {
     #if DEBUG
       var hookStringProps: [String: String] = [
@@ -1315,6 +1316,7 @@ public final class TelemetryService {
         "source": source,
         "check_kind": checkKind,
         "current_app_version": currentAppVersion,
+        "version_staleness_bucket": versionStalenessBucket,
       ]
       if let errorCode { hookStringProps["error_code"] = errorCode }
       if let noUpdateReason { hookStringProps["no_update_reason"] = noUpdateReason }
@@ -1331,10 +1333,39 @@ public final class TelemetryService {
       "source": source,
       "check_kind": checkKind,
       "current_app_version": currentAppVersion,
+      "version_staleness_bucket": versionStalenessBucket,
     ]
     if let errorCode { props["error_code"] = errorCode }
     if let noUpdateReason { props["no_update_reason"] = noUpdateReason }
     PostHogSDK.shared.capture("update.sparkle_cycle_finished", properties: props)
+  }
+
+  // MARK: - Update stage split (#1178 Phase 9, B2)
+
+  /// The download/verify(extract) stage breadcrumbs — finer than the cycle result, so we
+  /// can see WHERE an update stalls (download_started without download_completed = stuck
+  /// at download). Plain-field params (Codex r4) so the Sparkle delegate stays a thin
+  /// extractor and these are unit-testable via `testEventHook`. Metadata only.
+  public func updateDownloadStarted(version: String, isCritical: Bool) {
+    emitUpdateStage("update.download_started", version: version, isCritical: isCritical)
+  }
+  public func updateDownloadCompleted(version: String, isCritical: Bool) {
+    emitUpdateStage("update.download_completed", version: version, isCritical: isCritical)
+  }
+  public func updateVerifyStarted(version: String, isCritical: Bool) {
+    emitUpdateStage("update.verify_started", version: version, isCritical: isCritical)
+  }
+  public func updateVerifyCompleted(version: String, isCritical: Bool) {
+    emitUpdateStage("update.verify_completed", version: version, isCritical: isCritical)
+  }
+
+  private func emitUpdateStage(_ name: String, version: String, isCritical: Bool) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: name, stringProps: ["version": version], boolProps: ["is_critical": isCritical]))
+    #endif
+    PostHogSDK.shared.capture(name, properties: ["version": version, "is_critical": isCritical])
   }
 
   public func updateInstallCompleted(version: String, isCritical: Bool, source: String) {
