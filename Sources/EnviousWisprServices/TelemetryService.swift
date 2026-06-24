@@ -245,6 +245,57 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("dictation.invoked", properties: props)
   }
 
+  // MARK: - Hotkey / input (Telemetry Bible Phase 6, #1175)
+
+  /// A hotkey registration FAILED (Carbon `RegisterEventHotKey` returned
+  /// non-`noErr`, or an `NSEvent` modifier monitor installed `nil`). Emitted only
+  /// on failure — the actionable signal is the Sentry handled error composed in
+  /// `HotkeyTelemetrySink.live`; this is the PostHog breakdown by mechanism /
+  /// kind / key shape. `osStatus` present only for the Carbon path. Metadata
+  /// only — never the key codes.
+  public func hotkeyRegistration(
+    mechanism: String, hotkeyKind: String, osStatus: Int32?, keyShape: String
+  ) {
+    var props: [String: Any] = [
+      "mechanism": mechanism, "hotkey_kind": hotkeyKind, "key_shape": keyShape,
+    ]
+    if let osStatus { props["os_status"] = Int(osStatus) }
+    #if DEBUG
+      var intProps: [String: Int] = [:]
+      if let osStatus { intProps["os_status"] = Int(osStatus) }
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "hotkey.registration",
+          stringProps: [
+            "mechanism": mechanism, "hotkey_kind": hotkeyKind, "key_shape": keyShape,
+          ],
+          intProps: intProps))
+    #endif
+    PostHogSDK.shared.capture("hotkey.registration", properties: props)
+  }
+
+  /// A raw accepted hotkey keydown was routed to a recording action — the C3
+  /// denominator for `dictation.invoked` (which fires post-commit and under-fires
+  /// raw presses). Metadata only (low-cardinality enums; never the key codes).
+  public func hotkeyPressed(
+    triggerSource: String, inputMode: String, keyShape: String, pressAction: String
+  ) {
+    let props: [String: Any] = [
+      "trigger_source": triggerSource, "input_mode": inputMode,
+      "key_shape": keyShape, "press_action": pressAction,
+    ]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "hotkey.pressed",
+          stringProps: [
+            "trigger_source": triggerSource, "input_mode": inputMode,
+            "key_shape": keyShape, "press_action": pressAction,
+          ]))
+    #endif
+    PostHogSDK.shared.capture("hotkey.pressed", properties: props)
+  }
+
   public func dictationCompleted(
     result: String, inputMode: String, asrBackend: String,
     llmProvider: String?, fillerRemoval: Bool,

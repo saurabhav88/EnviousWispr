@@ -209,7 +209,9 @@ public final class WisprBootstrapper {
     // PR10 of #763 — shared `HotkeyService`. One owner so the single instance
     // threads into `HotkeyController`, `PipelineSettingsSync`,
     // `DictationLifecycleCoordinator`, and `AppDelegate` termination.
-    let hotkeyService = HotkeyService()
+    // #1175: the live telemetry sink is constructor-injected so it is in place
+    // before `start()` runs any registration (heart-path + bootstrap ordering).
+    let hotkeyService = HotkeyService(telemetry: .live)
 
     let settingsSync = PipelineSettingsSync(
       kernelDriver: kernelDriver,

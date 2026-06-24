@@ -341,6 +341,12 @@ public enum SentryBreadcrumb {
     /// — every dropped glyph is re-inserted — so this fires only on a regression.
     /// The user still got the polished text plus whatever was restored.
     case emojiRestoreIncomplete = "emoji_restore_incomplete"
+    /// #1175 (Telemetry Bible Phase 6): a hotkey registration failed — Carbon
+    /// `RegisterEventHotKey` returned non-`noErr`, or an `NSEvent` modifier
+    /// monitor installed `nil`. The affected hotkey will not fire. Rare and
+    /// actionable; carries `mechanism` / `hotkey_kind` / `os_status` / `key_shape`
+    /// (metadata only — never the key codes).
+    case hotkeyRegistrationFailed = "hotkey_registration_failed"
   }
 }
 
