@@ -1,6 +1,24 @@
 import EnviousWisprCore
 import Foundation
 
+/// #1177 (Telemetry Bible Phase 8): the result of an Ollama model eviction. Returned
+/// by `evictModel` (which never throws) so the Pipeline caller can observe a quiet
+/// eviction failure. Content-free metadata only.
+public struct OllamaEvictOutcome: Sendable {
+  /// `"unloaded"` (2xx), `"failed"` (non-2xx or transport error), or `"skipped"`
+  /// (empty model / bad URL — nothing to evict).
+  public let result: String
+  public let durationMs: Int
+  /// `"http_<status>"`, a `URLError` code, or `"invalid_url_or_empty"`.
+  public let reason: String
+
+  public init(result: String, durationMs: Int, reason: String) {
+    self.result = result
+    self.durationMs = durationMs
+    self.reason = reason
+  }
+}
+
 /// Ollama local LLM connector. Uses Ollama's native /api/chat endpoint
 /// for access to `think`, `keep_alive`, and timing telemetry.
 /// Requires Ollama to be running: https://ollama.com
@@ -164,12 +182,21 @@ public struct OllamaConnector: TranscriptPolisher {
   /// VRAM for its full window, which on constrained machines has disrupted
   /// CoreAudio BT audio (root cause for #286).
   ///
-  /// Fire-and-forget: returns void, swallows all errors, short timeout.
-  /// Uses `/api/generate` per Ollama docs — `keep_alive: 0` on `/api/chat`
-  /// is not a documented unload pattern.
-  public func evictModel(_ modelName: String) async {
+  /// Fire-and-forget from the heart-path view: swallows all errors, short timeout,
+  /// never throws. Uses `/api/generate` per Ollama docs — `keep_alive: 0` on
+  /// `/api/chat` is not a documented unload pattern.
+  ///
+  /// #1177 (Telemetry Bible Phase 8): returns an `OllamaEvictOutcome` so the Pipeline
+  /// caller (which has telemetry access; this LLM module does not) can observe a quiet
+  /// eviction FAILURE — a model that won't unload starves VRAM and has disrupted
+  /// CoreAudio BT audio (#286). `@discardableResult` (Codex r1): the previous callers
+  /// + tests treat it as fire-and-forget.
+  @discardableResult
+  public func evictModel(_ modelName: String) async -> OllamaEvictOutcome {
     let endpointURL = "\(baseURL)/api/generate"
-    guard !modelName.isEmpty, let url = URL(string: endpointURL) else { return }
+    guard !modelName.isEmpty, let url = URL(string: endpointURL) else {
+      return OllamaEvictOutcome(result: "skipped", durationMs: 0, reason: "invalid_url_or_empty")
+    }
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -184,18 +211,20 @@ public struct OllamaConnector: TranscriptPolisher {
       let (_, response) = try await networkExecutor(request)
       let status = (response as? HTTPURLResponse)?.statusCode ?? 0
       let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
-      let result = (200...299).contains(status) ? "unloaded" : "error"
+      let result = (200...299).contains(status) ? "unloaded" : "failed"
       await AppLogger.shared.log(
         "Ollama evict: model=\(modelName) result=\(result) http=\(status) duration_ms=\(elapsedMs)",
         level: .info, category: "LLM"
       )
+      return OllamaEvictOutcome(result: result, durationMs: elapsedMs, reason: "http_\(status)")
     } catch {
       let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
       let reason = (error as? URLError)?.code.rawValue.description ?? "error"
       await AppLogger.shared.log(
-        "Ollama evict: model=\(modelName) result=error reason=\(reason) duration_ms=\(elapsedMs)",
+        "Ollama evict: model=\(modelName) result=failed reason=\(reason) duration_ms=\(elapsedMs)",
         level: .info, category: "LLM"
       )
+      return OllamaEvictOutcome(result: "failed", durationMs: elapsedMs, reason: reason)
     }
   }
 

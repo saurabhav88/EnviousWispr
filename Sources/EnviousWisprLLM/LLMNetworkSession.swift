@@ -56,7 +56,11 @@ public final class LLMNetworkSession: Sendable {
       )
     else { return }
 
-    Task.detached { [session] in
+    // #1177 (Telemetry Bible Phase 8): A6 reads the LLM module's telemetry sink off
+    // the `keychainManager` it already receives (carried there because the LLM module
+    // has no telemetry dependency — KeychainManager is the App-injected seam). The
+    // sink is `Sendable`, so it crosses into the detached task cleanly.
+    Task.detached { [session, sink = keychainManager.telemetrySink] in
       let start = CFAbsoluteTimeGetCurrent()
       do {
         let (_, response) = try await session.data(for: request)
@@ -72,6 +76,13 @@ public final class LLMNetworkSession: Sendable {
           "preWarm failed provider=\(provider.rawValue) model=\(model) duration_ms=\(ms) error=\(String(describing: error))",
           level: .info, category: "LLM"
         )
+        // Best-effort cloud warm-up failed → first real polish pays a cold start.
+        // Population only (the polish call's own telemetry covers persistent issues);
+        // the sink hops to the @MainActor TelemetryService. Low-cardinality category:
+        // provider + URLError code, never any content.
+        let category =
+          "\(provider.rawValue)_\((error as? URLError)?.code.rawValue.description ?? "error")"
+        sink.limbFailure("llm_prewarm", "prewarm", "failed", category, ms)
       }
     }
   }

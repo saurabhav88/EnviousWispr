@@ -103,7 +103,16 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// `modelName` is empty. Swallows all errors; only logs.
   public func evictPreviousOllamaModel(_ modelName: String) async {
     guard !modelName.isEmpty else { return }
-    await OllamaConnector().evictModel(modelName)
+    let outcome = await OllamaConnector().evictModel(modelName)
+    // #1177 (Telemetry Bible Phase 8): observe a quiet eviction FAILURE — a model that
+    // won't unload lingers in VRAM and has disrupted CoreAudio BT audio (#286). The
+    // eviction itself stays fire-and-forget; this only reports the outcome. @MainActor
+    // step → direct emit. Fire only on failure (success/skip are non-events).
+    if outcome.result == "failed" {
+      TelemetryService.shared.limbFailureObserved(
+        limb: "ollama", operation: "evict", result: "failed",
+        errorCategory: outcome.reason, durationMs: outcome.durationMs)
+    }
   }
 
   /// Warm the configured LLM provider for the upcoming session — parity

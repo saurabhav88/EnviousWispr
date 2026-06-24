@@ -358,6 +358,39 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("hotkey.pressed", properties: props)
   }
 
+  /// #1177 (Telemetry Bible Phase 8): a limb failed quietly — the user still got
+  /// raw text or a small glitch, but until now we had zero signal. ONE event for
+  /// every quiet-limb site (ASR streaming finalize, output-safety classifier
+  /// prewarm, Ollama eviction, cloud pre-warm, legacy-key cleanup). Metadata only —
+  /// never transcript/content/key material. `durationMs` is mirrored to `$value`
+  /// for PostHog aggregation (Phase 6/7 precedent).
+  public func limbFailureObserved(
+    limb: String, operation: String, result: String,
+    errorCategory: String, durationMs: Int?
+  ) {
+    var props: [String: Any] = [
+      "limb": limb, "operation": operation, "result": result,
+      "error_category": errorCategory,
+    ]
+    if let durationMs {
+      props["duration_ms"] = durationMs
+      props["$value"] = durationMs
+    }
+    #if DEBUG
+      var intProps: [String: Int] = [:]
+      if let durationMs { intProps["duration_ms"] = durationMs }
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "limb.failure_observed",
+          stringProps: [
+            "limb": limb, "operation": operation, "result": result,
+            "error_category": errorCategory,
+          ],
+          intProps: intProps))
+    #endif
+    PostHogSDK.shared.capture("limb.failure_observed", properties: props)
+  }
+
   public func dictationCompleted(
     result: String, inputMode: String, asrBackend: String,
     llmProvider: String?, fillerRemoval: Bool,

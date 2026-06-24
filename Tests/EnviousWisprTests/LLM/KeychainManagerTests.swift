@@ -1,8 +1,22 @@
+import EnviousWisprCore
 import Foundation
 import Security
 import Testing
 
 @testable import EnviousWisprLLM
+
+/// #1177 (Telemetry Bible Phase 8): captures the legacy-key-cleanup-failed callback.
+private final class CleanupSinkSpy: @unchecked Sendable {
+  private let lock = NSLock()
+  private var _accounts: [String] = []
+  var accounts: [String] { lock.withLock { _accounts } }
+  func makeSink() -> LLMTelemetrySink {
+    LLMTelemetrySink(
+      limbFailure: { _, _, _, _, _ in },
+      legacyKeyCleanupFailed: { _, account in self.lock.withLock { self._accounts.append(account) }
+      })
+  }
+}
 
 @Suite("KeychainManager", .serialized)
 struct KeychainManagerTests {
@@ -552,6 +566,25 @@ struct KeychainManagerTests {
       try manager.delete(key: "business-workspace-admin-sa.json")
     }
     #expect(FileManager.default.fileExists(atPath: unrelated.path))
+  }
+
+  @Test("legacy-key cleanup failure during retrieve-migration fires the telemetry sink")
+  func legacyCleanupFailureFiresSink() throws {
+    // #1177 (Telemetry Bible Phase 8, Q3.3): retrieve migrates the legacy value into the
+    // Keychain then best-effort deletes the plaintext file; when that delete throws, the
+    // path stays fail-soft (still returns the value) but now reports a security-relevant
+    // handled error so a lingering plaintext key is no longer silent.
+    let spy = CleanupSinkSpy()
+    let manager = KeychainManager(
+      backend: .keychain(service: testService),
+      legacyStore: FailingDeleteLegacyStore(),  // retrieve → "legacy", delete → throws
+      keychainStore: InMemoryKeychainStore(),
+      telemetrySink: spy.makeSink())
+
+    let value = try manager.retrieve(key: KeychainManager.openAIKeyID)
+
+    #expect(value == "legacy")  // fail-soft: the user's key still works
+    #expect(spy.accounts == [KeychainManager.openAIKeyID])  // the cleanup failure was observed
   }
 
   private var testService: String { "com.enviouswispr.tests.api-keys" }

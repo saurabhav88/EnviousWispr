@@ -255,14 +255,21 @@ import Testing
   /// and emits the app-quit abandon in `applicationWillTerminate` before the
   /// Phase-1 flush. Cap set by the deterministic rule (post-change actual 876 + 10,
   /// rounded up to nearest 5 = 890).
+  /// Ratcheted 890→905 in #1177 (2026-06-24, Telemetry Bible Phase 8a): the
+  /// composition root injects the `.live` LLM-module telemetry sink into
+  /// `KeychainManager` (Q3.3 + A6 seam) AND emits the Q3.1 output-safety classifier
+  /// prewarm-failure telemetry (population event + Sentry handled error) from the
+  /// App-layer `prewarmOutputClassifierIfNeeded` catch — its natural emit site. No
+  /// new stored property; real wiring, not comment growth. Cap by the deterministic
+  /// rule (post-change actual 902 + ~3, rounded up to nearest 5 = 905).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 890,
+      lineCount <= 905,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 890. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 905. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

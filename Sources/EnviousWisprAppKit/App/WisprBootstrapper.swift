@@ -83,7 +83,10 @@ public final class WisprBootstrapper {
     // pinned Dark never flashes white. `.system` clears the override (follow OS).
     AppearanceController.apply(settings.appearancePreference)
     let permissions = PermissionsService()
-    let keychainManager = KeychainManager()
+    // #1177 (Telemetry Bible Phase 8): inject the live LLM-module telemetry sink at the
+    // composition root. This is the ONLY KeychainManager that gets `.live`; it carries
+    // the sink for the legacy-key-cleanup (Q3.3) + cloud-prewarm (A6) quiet limbs.
+    let keychainManager = KeychainManager(telemetrySink: .live)
     let recordingOverlay = RecordingOverlayPanel()
     let audioDeviceList = AudioDeviceList()
     let captureTelemetry = CaptureTelemetryState()
@@ -673,9 +676,20 @@ public final class WisprBootstrapper {
           level: .info, category: "LLM")
       } catch {
         let reason = (error as? OutputClassifierError)?.reason.rawValue ?? "load_failed"
+        let elapsedMs = Int(
+          Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000)
         await AppLogger.shared.log(
           "[OutputClassifier] preWarm failed reason=\(reason) — fail open to raw/sync-filtered polish",
           level: .info, category: "LLM")
+        // #1177 (Telemetry Bible Phase 8): the polish path silently lost its safety
+        // net. Population event for the aggregate fail-open rate + a handled error
+        // (this retries on every provider switch, so a genuinely broken model becomes
+        // a recurring issue grouped per-reason). @MainActor static → direct emit.
+        TelemetryService.shared.limbFailureObserved(
+          limb: "output_safety", operation: "classifier_prewarm", result: "fell_open",
+          errorCategory: reason, durationMs: elapsedMs)
+        SentryBreadcrumb.captureError(
+          error, category: .outputClassifierLoadFailed, stage: "llm", fingerprintDetail: reason)
       }
     }
   }
