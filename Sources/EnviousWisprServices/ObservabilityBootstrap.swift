@@ -102,6 +102,18 @@ public enum ObservabilityBootstrap {
     // Set stable tags that rarely change — available on every event including fatal crashes
     SentrySDK.configureScope { scope in
       scope.setTag(value: environment == "development" ? "debug" : "release", key: "app.build_type")
+      // Mark deliberate fault-injection launches so the Sentry-triage routine can
+      // exclude crash-tests deterministically (#1218) instead of by a prose note.
+      // Forward-only: absence means "not known-synthetic", never "known-real".
+      // HOST-SCOPE BY DESIGN: the audio/ASR XPC helpers are launchd `serviceName`
+      // services (`AudioCaptureProxy` NSXPCConnection) that do NOT inherit this env
+      // var, and the fault kinds (force_xpc_kill / force_cancel / buffer-drop) are
+      // host-initiated and captured host-side via `onXPCServiceError` — so helper
+      // events are never fault-injection signals to tag. A genuine helper crash stays
+      // untagged and visible (the gate's create-dev-fatal branch), which is correct.
+      if ProcessInfo.processInfo.environment["EW_FAULT_INJECTION"] == "1" {
+        scope.setTag(value: "true", key: "synthetic")
+      }
     }
   }
 
