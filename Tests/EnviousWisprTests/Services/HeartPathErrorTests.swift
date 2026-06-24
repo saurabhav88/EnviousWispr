@@ -43,6 +43,7 @@ struct HeartPathErrorTests {
       .xpcServerClientProxyNil(sessionID: 1, consecutiveDrops: 5),
       .emptyAfterProcessing(route: "built_in_mic", wasPolishEnabled: true),
       .zombieEngineZeroPeak(sessionID: 7, durationMs: 9000, route: "bt", sampleCount: 145360),
+      .audioEngineInterrupted(route: "built_in_mic", durationMs: 3200),
     ]
 
     for heart in cases {

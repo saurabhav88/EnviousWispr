@@ -76,7 +76,7 @@ struct FakeAudioCaptureTests {
   func interruptionFiresCallback() {
     let capture = FakeAudioCapture()
     var interrupted = false
-    capture.onEngineInterrupted = { interrupted = true }
+    capture.onEngineInterrupted = { _ in interrupted = true }
     capture.raiseEngineInterruption()
     #expect(interrupted == true)
   }

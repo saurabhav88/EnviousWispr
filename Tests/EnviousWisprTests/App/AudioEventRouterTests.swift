@@ -3,8 +3,8 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
-@testable import EnviousWisprAppKit
 @testable import EnviousWisprASR
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
 @testable import EnviousWisprLLM
 @testable import EnviousWisprPipeline
@@ -227,7 +227,7 @@ struct AudioEventRouterTests {
       }
     )
 
-    audio.onEngineInterrupted?()
+    audio.onEngineInterrupted?(.engineLost)
 
     #expect(resolverCallCount == 1)
     withExtendedLifetime(router) {}

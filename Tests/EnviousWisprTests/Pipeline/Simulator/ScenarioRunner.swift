@@ -1,3 +1,4 @@
+import EnviousWisprAudio
 import Foundation
 
 @testable import EnviousWisprPipeline
@@ -158,8 +159,8 @@ struct ScenarioRunner {
       // match the production path PR-4b.4 wires (App router → driver → kernel).
       kernel?.externalCaptureStalled(context.capture.makeStallContext())
     case .interrupt, .routeChange:
-      // The audio-interruption channel (C5).
-      kernel?.externalEngineInterrupted()
+      // The audio-interruption channel (C5). A genuine engine loss → captured.
+      kernel?.externalEngineInterrupted(.engineLost)
     case .permissionDenied:
       context.capture.permissionDenied = true
     case .startFailure:

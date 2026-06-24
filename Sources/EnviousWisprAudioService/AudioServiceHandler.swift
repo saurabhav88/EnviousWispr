@@ -90,10 +90,17 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
       }
     }
 
-    // Engine interruption callback: fires on @MainActor.
-    manager.onEngineInterrupted = { [weak self] in
+    // Engine interruption callback: fires on @MainActor. Relay the cause's raw
+    // value across XPC so the host can suppress the non-loss max-duration cap
+    // while still capturing genuine losses. The host collapses every loss cause
+    // to `.engineLost` (AVCaptureSession interruptions have no separate relay
+    // across the boundary, so they have no other owner there) and suppresses
+    // only `.maxDurationReached`. See `AudioCaptureProxy.engineInterrupted(cause:)`
+    // (issue #1174 A3).
+    manager.onEngineInterrupted = { [weak self] cause in
+      let raw = cause.rawValue
       self?.xpcSendQueue.async { [weak self] in
-        self?.clientProxy?.engineInterrupted()
+        self?.clientProxy?.engineInterrupted(cause: raw)
       }
     }
   }

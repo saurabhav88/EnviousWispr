@@ -62,7 +62,7 @@ private final class ExtrasAudioCapture: AudioCaptureInterface {
   var capturedSamples: [Float] = []
   var currentAudioRoute: String = "built_in_mic"
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
-  var onEngineInterrupted: (() -> Void)?
+  var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
   var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?

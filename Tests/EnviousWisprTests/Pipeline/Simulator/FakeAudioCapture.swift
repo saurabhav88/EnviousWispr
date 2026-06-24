@@ -72,7 +72,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
   // MARK: AudioCaptureInterface — callbacks
 
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
-  var onEngineInterrupted: (() -> Void)?
+  var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
   // XPC-only telemetry callbacks — a direct (non-XPC) source leaves these nil.
@@ -188,9 +188,11 @@ final class FakeAudioCapture: AudioCaptureInterface {
   }
 
   /// Raise an engine interruption (mic disconnect / route change mid-session) —
-  /// the audio-interruption path.
-  func raiseEngineInterruption() {
-    onEngineInterrupted?()
+  /// the audio-interruption path. Defaults to `.engineLost` (the captured case)
+  /// so existing callers keep their behavior; pass a cause to exercise the
+  /// suppress paths.
+  func raiseEngineInterruption(cause: EngineInterruptionCause = .engineLost) {
+    onEngineInterrupted?(cause)
   }
 
   /// Fire the VAD auto-stop callback.

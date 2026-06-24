@@ -59,7 +59,7 @@ import Testing
     driver.onStateChange = { _ in }
     driver.onOverlayIntentChange = { _ in }  // #930 — App-consumed overlay channel
     driver.setExternalError("probe")
-    driver.handleEngineInterruption()
+    driver.handleEngineInterruption(.engineLost)
     driver.handleASRServiceInterruption()
     driver.reset()
     #expect(true, "reaching this line means the public surface compiled")

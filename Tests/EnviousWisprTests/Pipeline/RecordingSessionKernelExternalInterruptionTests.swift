@@ -1,3 +1,4 @@
+import EnviousWisprAudio
 import EnviousWisprCore
 import Foundation
 import Testing
@@ -60,7 +61,7 @@ import Testing
       await startToRecording(wrapper)
       #expect(kernel.state == .recording)
 
-      kernel.externalEngineInterrupted()
+      kernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
 
       #expect(kernel.state == .audioInterrupted)
@@ -102,12 +103,12 @@ import Testing
       let kernel = wrapper.testKernel
 
       await startToRecording(wrapper)
-      kernel.externalEngineInterrupted()
+      kernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
       let firstTerminal = kernel.state
       #expect(firstTerminal == .audioInterrupted)
 
-      kernel.externalEngineInterrupted()
+      kernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
       #expect(kernel.state == firstTerminal)
     }
@@ -152,7 +153,7 @@ import Testing
       let kernel = wrapper.testKernel
       #expect(kernel.state == .idle)
 
-      kernel.externalEngineInterrupted()
+      kernel.externalEngineInterrupted(.engineLost)
       kernel.externalASRInterrupted()
       kernel.externalCaptureStalled(context.capture.makeStallContext())
       await wrapper.drainReadyWork()
@@ -172,7 +173,7 @@ import Testing
       await wrapper.drainReadyWork()
       #expect(kernel.state == .cancelled)
 
-      kernel.externalEngineInterrupted()
+      kernel.externalEngineInterrupted(.engineLost)
       kernel.externalASRInterrupted()
       kernel.externalCaptureStalled(context.capture.makeStallContext())
       await wrapper.drainReadyWork()
@@ -188,7 +189,7 @@ import Testing
       let kernel = wrapper.testKernel
 
       await startToRecording(wrapper)
-      kernel.externalEngineInterrupted()
+      kernel.externalEngineInterrupted(.engineLost)
       // Second call lands BEFORE the first has settled — the FSM is still in
       // `.recording` so the guard does not bite yet. The forward path picks
       // up one exit signal; the second is overwritten in `pendingRecordingExit`
@@ -201,6 +202,33 @@ import Testing
       #expect(
         kernel.state == .audioInterrupted || kernel.state == .asrInterrupted,
         "exactly one of the two interruption terminals must win")
+    }
+
+    @Test("a second engine interruption in the post-latch window preserves the FIRST cause")
+    func doubleEngineFirstCauseWins() async {
+      // #1207 cloud review: the exit is first-wins via `recordingExitLatched`, so
+      // the stamped `lastAudioInterruptionCause` must be first-wins too. A second
+      // callback arriving after the first latched the exit (state still
+      // `.recording`) must NOT overwrite the cause the `.audioInterrupted` terminal
+      // will use — else an already-owned `.xpcConnectionLost` could be replaced by
+      // a stale `.engineLost` and falsely captured (or vice-versa).
+      let (_, wrapper) = makeWrapper()
+      let kernel = wrapper.testKernel
+
+      await startToRecording(wrapper)
+      // First (latching) interruption: an already-owned XPC break → must be the
+      // cause the terminal carries (so the sink suppresses it).
+      kernel.externalEngineInterrupted(.xpcConnectionLost)
+      // Second, in the post-latch / pre-transition window: a genuine engine loss.
+      // Its exit is ignored; it must NOT overwrite the stamped cause.
+      kernel.externalEngineInterrupted(.engineLost)
+      await wrapper.drainReadyWork()
+
+      #expect(kernel.state == .audioInterrupted)
+      #expect(
+        kernel.lastAudioInterruptionCause == .xpcConnectionLost,
+        "the FIRST (latching) cause must survive; got \(String(describing: kernel.lastAudioInterruptionCause))"
+      )
     }
 
     // MARK: 6. Capture-stall cross-domain sessionID

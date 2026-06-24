@@ -91,8 +91,12 @@ import Foundation
   func audioBufferCaptured(_ data: Data, frameCount: Int, audioLevel: Float)
 
   /// The audio engine was interrupted (device disconnect, emergency teardown, max-duration cap).
-  /// The proxy should transition pipelines to error state.
-  func engineInterrupted()
+  /// The proxy should transition pipelines to error state. `cause` is the
+  /// `EngineInterruptionCause` raw value so the host can suppress the telemetry
+  /// capture for the non-loss `max_duration_reached` cap while still capturing
+  /// genuine losses (issue #1174 A3). Unknown / legacy values map to
+  /// `engine_lost` at the host.
+  func engineInterrupted(cause: String)
 
   /// Service-side VAD detected sustained silence after speech — auto-stop should trigger.
   func vadAutoStopTriggered()

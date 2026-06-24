@@ -32,7 +32,12 @@ import Testing
       #expect(event(.completed) == .pipelineCompleted)
       #expect(event(.cancelled) == .cancelled)
       #expect(event(.noSpeech) == .noSpeech(.vadGate))
-      #expect(event(.audioInterrupted) == .audioInterrupted)
+      // #1174 A3 — absent cause defaults defensively to `.engineLost` (capture).
+      #expect(event(.audioInterrupted) == .audioInterrupted(cause: .engineLost))
+      // The stamped cause threads through unchanged (here an already-owned one).
+      #expect(
+        event(.audioInterrupted, lastAudioInterruptionCause: .xpcConnectionLost)
+          == .audioInterrupted(cause: .xpcConnectionLost))
       // Default priorState `.idle` → wasRecording == false (the non-recording
       // path); the routing test below covers the `.recording` → true case
       // and the `.transcribing` → false case.
@@ -220,6 +225,7 @@ import Testing
       discardReason: DiscardReason? = nil,
       didLoadModelThisSession: Bool = false,
       lastNoSpeechSource: NoSpeechSource? = nil,
+      lastAudioInterruptionCause: EngineInterruptionCause? = nil,
       isStreamingSession: Bool = false
     ) -> KernelLifecycleEvent? {
       KernelHeartPathTelemetryObserver.lifecycleEvent(
@@ -228,6 +234,7 @@ import Testing
         discardReason: discardReason,
         didLoadModelThisSession: didLoadModelThisSession,
         lastNoSpeechSource: lastNoSpeechSource,
+        lastAudioInterruptionCause: lastAudioInterruptionCause,
         isStreamingSession: isStreamingSession)
     }
 

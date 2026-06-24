@@ -28,7 +28,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   // MARK: - Callbacks
 
   public var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
-  public var onEngineInterrupted: (() -> Void)?
+  public var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   public var onVADAutoStop: (() -> Void)?
 
   // MARK: - Round-4 telemetry callbacks (issue #285)
@@ -608,7 +608,9 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
           proxy.captureGeneration &+= 1
           proxy.bufferContinuation?.finish()
           proxy.bufferContinuation = nil
-          proxy.onEngineInterrupted?()
+          // XPC connection break — `onXPCServiceError` (below) is the sole owner
+          // of this capture, so tag `.xpcConnectionLost` (A3 suppresses it).
+          proxy.onEngineInterrupted?(.xpcConnectionLost)
           // Fire telemetry callback — idle interruptions stay silent (§3.4 row 2).
           proxy.onXPCServiceError?(
             XPCErrorContext(
@@ -652,7 +654,9 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
           proxy.captureGeneration &+= 1
           proxy.bufferContinuation?.finish()
           proxy.bufferContinuation = nil
-          proxy.onEngineInterrupted?()
+          // XPC connection break — `onXPCServiceError` (below) is the sole owner
+          // of this capture, so tag `.xpcConnectionLost` (A3 suppresses it).
+          proxy.onEngineInterrupted?(.xpcConnectionLost)
         }
         proxy.needsReinit = true
         // Invalidation is always a telemetry signal — connection is gone.
@@ -844,10 +848,12 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
     }
   }
 
-  /// Service's audio engine was interrupted (device disconnect, emergency teardown).
-  /// Matches interruptionHandler contract: only fires onEngineInterrupted during active capture.
-  /// Idle interruptions are transient — just set needsReinit.
-  nonisolated public func engineInterrupted() {
+  /// Service's audio engine was interrupted (device disconnect, emergency
+  /// teardown, max-duration cap). Matches interruptionHandler contract: only
+  /// fires onEngineInterrupted during active capture. Idle interruptions are
+  /// transient — just set needsReinit. `cause` is the relayed
+  /// `EngineInterruptionCause` raw value (issue #1174 A3).
+  nonisolated public func engineInterrupted(cause: String) {
     Task { @MainActor [weak self] in
       guard let self else { return }
       if self.isCapturing {
@@ -859,7 +865,13 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
         self.captureGeneration &+= 1
         self.bufferContinuation?.finish()
         self.bufferContinuation = nil
-        self.onEngineInterrupted?()
+        // The service relays ALL its interruptions through this one channel.
+        // Every loss cause collapses to `.engineLost` (no other owner across the
+        // XPC boundary — there is no capture-session relay, so an XPC-mode
+        // AVCaptureSession interruption must be captured here too); only the hard
+        // max-duration cap is preserved so it stays suppressed exactly as in
+        // direct mode (issue #1174 A3).
+        self.onEngineInterrupted?(EngineInterruptionCause.hostCause(forRelayedRawValue: cause))
       }
       self.needsReinit = true
     }

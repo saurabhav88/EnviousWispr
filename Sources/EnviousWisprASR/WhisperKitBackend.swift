@@ -159,9 +159,15 @@ public actor WhisperKitBackend: ASRBackend {
       computeOptions: dictationComputeOptions,
       download: false
     )
-    // TODO(#827): watchdog needs CoreML/WhisperKit model-load progress or a
-    // service process-liveness signal owned upstream. Do not wrap this in a
-    // wall-clock timeout.
+    // Load-duration timing + the hang signal for this in-process WhisperKit load
+    // already exist: `ensureEngineWarm` emits `coldstart.warmup_started` /
+    // `_completed {duration_ms}` / `_failed` (and `launch.model_preload_completed`)
+    // for the launch / engine-swap paths where the model actually cold-loads, so
+    // a hang shows up as `warmup_started` with no terminal. What is still missing
+    // is a FINE-GRAINED progress callback: upstream `WhisperKit(config)` exposes
+    // no per-step load progress, so an automatic hang WATCHDOG stays deferred for
+    // lack of a defended-timeout distribution — NOT for lack of timing data. Do
+    // not wrap this in a wall-clock timeout (timeout-numbers-need-distribution-evidence).
     let kit = try await WhisperKit(config)
     self.whisperKit = kit
     isReady = true

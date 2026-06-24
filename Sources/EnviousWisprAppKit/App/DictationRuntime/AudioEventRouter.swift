@@ -54,7 +54,7 @@ final class AudioEventRouter {
       }
     }
 
-    audioCapture.onEngineInterrupted = { [weak self] in
+    audioCapture.onEngineInterrupted = { [weak self] cause in
       guard let self else { return }
       let pState = self.kernelDriver.state
       let wkState = self.whisperKitKernelDriver.state
@@ -72,9 +72,9 @@ final class AudioEventRouter {
         ])
       switch self.resolveActiveCaptureBackend() {
       case .parakeet:
-        self.kernelDriver.handleEngineInterruption()
+        self.kernelDriver.handleEngineInterruption(cause)
       case .whisperKit:
-        self.whisperKitKernelDriver.handleEngineInterruption()
+        self.whisperKitKernelDriver.handleEngineInterruption(cause)
       case nil:
         break
       }
