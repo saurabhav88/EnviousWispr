@@ -114,6 +114,26 @@ import Testing
       }
     }
 
+    @Test("refocus: a 2nd begin while in-flight does NOT rewind the session")
+    func refocusPreservesInFlightSession() {
+      withHook { events in
+        let box = makeBox()
+        box.begin(source: "first_run")
+        box.update(screen: "setting_up", step: "permissions")
+        // The status-menu "Continue Setup…" re-enters openOnboardingAction on the
+        // already-open window — begin must no-op, NOT reset screen/step to welcome.
+        box.begin(source: "diagnostics_restart")
+        box.emitAbandonIfInFlight(
+          reason: "window_closed", micStatus: "denied", accessibilityStatus: "denied")
+        let a = events.named("onboarding.abandoned")
+        #expect(a.count == 1)
+        // Preserved the real position + the original source, not the refocus values.
+        #expect(a.first?.stringProps["screen"] == "setting_up")
+        #expect(a.first?.stringProps["step"] == "permissions")
+        #expect(a.first?.stringProps["source"] == "first_run")
+      }
+    }
+
     @Test("the caller-supplied source is carried into the abandon event")
     func sourceCarriesThrough() {
       withHook { events in

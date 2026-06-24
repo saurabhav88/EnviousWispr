@@ -854,11 +854,11 @@ private struct ActionWirer: View {
           openWindow(id: "main")
         }
         appWindowCoordinator.openOnboardingAction = { [openWindow, onboardingProgress, settings] in
-          // #1176: every onboarding presentation (first-run, Diagnostics restart,
-          // queued replay) funnels through here — begin a fresh session (reset the
-          // dedup flag + clock, re-entry safe; reliable even when the reused window
-          // skips onAppear). `source` reads the durable everCompleted flag from the
-          // shared settings store, so a restart after completion is labeled correctly.
+          // #1176: every onboarding presentation funnels through here. `begin` starts
+          // a fresh session only when none is in flight, so a refocus of the open
+          // window (status-menu "Continue Setup…") never rewinds it — see the guard
+          // in `OnboardingProgress.begin`. `source` reads the durable everCompleted
+          // flag from the shared settings store.
           let source = settings.onboardingEverCompleted ? "diagnostics_restart" : "first_run"
           onboardingProgress.begin(source: source)
           openWindow(id: "onboarding")

@@ -21,16 +21,24 @@ final class OnboardingProgress {
   private var source: String = "first_run"
   private var terminalEmitted: Bool = false
 
-  /// Called whenever onboarding is presented incomplete. Resets the session so a
-  /// Diagnostics restart is fresh — no stale timestamp, no stale terminal flag
-  /// (re-entry safe). `source` is supplied by the caller from
-  /// `SettingsManager.onboardingEverCompleted` (the durable flag in the SHARED
-  /// settings store — Codex code-diff r4: the box must not read the wrong defaults
-  /// domain, and the durable completion flag belongs in the settings home).
+  /// Called whenever onboarding is presented. Starts a FRESH session only when no
+  /// session is in flight — i.e. on a first-run open or a genuine restart (every
+  /// terminal, clean-finish or abandon, sets `terminalEmitted`, so the guard lets
+  /// the next open reset). A refocus of an already-open window (the status-menu
+  /// "Continue Setup…" item re-enters this on the single reused SwiftUI window)
+  /// finds a live session and is a no-op — it must NOT rewind the clock or reset
+  /// screen/step back to "welcome", which would under-count elapsed and mislabel a
+  /// subsequent abandon (cloud Codex review PR #1210). `source` is supplied by the
+  /// caller from `SettingsManager.onboardingEverCompleted` (the durable flag in the
+  /// SHARED settings store — Codex code-diff r4: the box must not read the wrong
+  /// defaults domain, and the durable completion flag belongs in the settings home).
   func begin(source: String) {
+    guard sessionStartedAt == nil || terminalEmitted else { return }
     self.source = source
     sessionStartedAt = Date()
     terminalEmitted = false
+    screen = "welcome"
+    step = "welcome"
   }
 
   /// Mirror the current screen/step as the user advances (read at terminal).
