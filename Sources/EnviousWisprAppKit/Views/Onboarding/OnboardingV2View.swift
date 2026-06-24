@@ -40,6 +40,20 @@ final class OnboardingV2ViewModel {
   var setupPhase: SetupPhase = .checklist
   var checklistStatuses: [ChecklistItemStatus] = [.pending, .pending, .pending]
 
+  /// The checklist beat the user is currently on, derived from the observable
+  /// statuses (cloud Codex r4) so the abandon event reports the real sub-step
+  /// instead of a coarse "model_setup". The active beat is the first not-yet-
+  /// completed item; all-completed means the user is on the last beat, about to
+  /// advance to permissions.
+  static let checklistStepNames = ["model_download", "ai_config", "hotkey_config"]
+  var activeChecklistStep: String {
+    for (i, status) in checklistStatuses.enumerated() {
+      if case .completed = status { continue }
+      return Self.checklistStepNames[min(i, Self.checklistStepNames.count - 1)]
+    }
+    return Self.checklistStepNames.last!
+  }
+
   var micGranted = false
   var accessibilityGranted = false
   /// #735: one-time guard so the grant telemetry + autoCopy default fire once per
@@ -327,11 +341,27 @@ final class OnboardingV2ViewModel {
   /// visual-beat steps; meaningful for model_download warmup + permission on-screen time.
   var stepStartedAt = Date()
 
+  /// Floor for `stepStartedAt`, supplied by the view from `OnboardingProgress.sessionStart`
+  /// (cloud Codex r4). The permissions-phase `completeStep`s (accessibility/mic grant)
+  /// fire OUTSIDE `startSetup`, which is the only place that refreshes `stepStartedAt`;
+  /// on a reused-window reopen onto the permissions screen, `stepStartedAt` is stale, so
+  /// a grant would report a duration inflated by the time the window was closed. Flooring
+  /// the step start at the current session's start clamps every duration to time-in-this-
+  /// session. nil before the view wires it (then no clamp — the forward path is unaffected
+  /// because `stepStartedAt` is always >= the session start on the forward path).
+  var sessionStartFloor: (@MainActor () -> Date?)?
+
+  /// `stepStartedAt`, never earlier than the current session start.
+  private func clampedStepStart() -> Date {
+    if let floor = sessionStartFloor?(), floor > stepStartedAt { return floor }
+    return stepStartedAt
+  }
+
   /// Emit `onboarding.step_completed` with `duration_seconds`, then reset the clock
   /// for the next step (E2).
   func completeStep(_ step: String, result: String) {
     TelemetryService.shared.onboardingStepCompleted(
-      step: step, result: result, durationSeconds: Date().timeIntervalSince(stepStartedAt))
+      step: step, result: result, durationSeconds: Date().timeIntervalSince(clampedStepStart()))
     stepStartedAt = Date()
   }
 
@@ -340,7 +370,7 @@ final class OnboardingV2ViewModel {
   func blockStep(_ step: String, reason: String, permission: String? = nil) {
     TelemetryService.shared.onboardingStepBlocked(
       step: step, reason: reason, permission: permission,
-      durationSeconds: Date().timeIntervalSince(stepStartedAt))
+      durationSeconds: Date().timeIntervalSince(clampedStepStart()))
   }
 }
 
@@ -395,6 +425,10 @@ struct OnboardingV2View: View {
     // so re-entry works even when the reused window skips a fresh onAppear.)
     .onChange(of: viewModel.currentScreen) { syncProgressBox() }
     .onChange(of: viewModel.setupPhase) { syncProgressBox() }
+    // #1176 (cloud Codex r4): the checklist beats (model_download/ai_config/
+    // hotkey_config) advance via `checklistStatuses` while `setupPhase` stays
+    // `.checklist`, so re-sync on each beat so the abandon reports the real sub-step.
+    .onChange(of: viewModel.checklistStatuses) { syncProgressBox() }
     // setupPhase is intentionally excluded from the id: changing phase at the end of
     // startSetup must NOT cancel the running task. currentScreen + retryCount are
     // sufficient triggers — retryCount bumps on retry, currentScreen bumps on navigation.
@@ -431,6 +465,10 @@ struct OnboardingV2View: View {
     case .completed:
       viewModel.currentScreen = .ready
     }
+    // #1176 (cloud Codex r4): wire the per-step duration floor to the box's session
+    // start. Set-once is reliable even if a later reused-window reopen skips this
+    // onAppear — the closure captures the stable box reference.
+    viewModel.sessionStartFloor = { [onboardingProgress] in onboardingProgress.sessionStart }
     // #1176: `begin()` (the session reset) fires from `openOnboardingAction` so it
     // is reliable even when a reused window skips a fresh onAppear; here we only
     // mirror the resolved screen/step into the box.
@@ -448,7 +486,9 @@ struct OnboardingV2View: View {
       step = "welcome"
     case .settingUp:
       screen = "setting_up"
-      step = viewModel.setupPhase == .permissions ? "permissions" : "model_setup"
+      // #1176 (cloud Codex r4): report the real checklist beat, not a coarse
+      // "model_setup" that collapses model_download / ai_config / hotkey_config.
+      step = viewModel.setupPhase == .permissions ? "permissions" : viewModel.activeChecklistStep
     case .ready:
       screen = "ready"
       step = "ready"

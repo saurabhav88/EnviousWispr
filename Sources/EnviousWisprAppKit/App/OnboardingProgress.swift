@@ -21,6 +21,14 @@ final class OnboardingProgress {
   private var source: String = "first_run"
   private var terminalEmitted: Bool = false
 
+  /// The current session's start (nil when no session is in flight). The view uses
+  /// this as a FLOOR for per-step durations: a reused-window reopen keeps a stale
+  /// `stepStartedAt`, so a step completed just after reopen would otherwise report a
+  /// duration inflated by the time the window was closed. Flooring at the session
+  /// start clamps any step duration to time-spent-in-THIS-session — the box's
+  /// session is the single authority for session-scoped timing (cloud Codex r4).
+  var sessionStart: Date? { sessionStartedAt }
+
   /// Called whenever onboarding is presented. Starts a FRESH session only when no
   /// session is in flight — i.e. on a first-run open or a genuine restart (every
   /// terminal, clean-finish or abandon, sets `terminalEmitted`, so the guard lets

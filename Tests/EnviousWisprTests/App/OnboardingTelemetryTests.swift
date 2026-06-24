@@ -212,6 +212,55 @@ import Testing
         #expect(c.first?.stringProps["duration_seconds"] == "2.000")
       }
     }
+
+    @Test("activeChecklistStep reports the real beat from the observable statuses")
+    func activeChecklistStepDerivation() {
+      // #1176 cloud Codex r4: the abandon must report the real checklist beat, not a
+      // coarse "model_setup" — derived from the @Published checklistStatuses.
+      let vm = OnboardingV2ViewModel()
+      #expect(vm.activeChecklistStep == "model_download")  // all pending
+      vm.checklistStatuses = [.completed, .inProgress, .pending]
+      #expect(vm.activeChecklistStep == "ai_config")
+      vm.checklistStatuses = [.completed, .completed, .inProgress]
+      #expect(vm.activeChecklistStep == "hotkey_config")
+      vm.checklistStatuses = [.completed, .completed, .completed]
+      #expect(vm.activeChecklistStep == "hotkey_config")  // all done → last beat
+    }
+
+    @Test("step_completed duration is floored at the session start (reused-window staleness)")
+    func stepDurationClampedToSession() {
+      // #1176 cloud Codex r4: the permissions completeStep fires outside startSetup, so a
+      // reused-window reopen leaves stepStartedAt stale; flooring at the session start
+      // clamps the duration to time-in-this-session instead of inflating by the closed time.
+      withHook { events in
+        let vm = OnboardingV2ViewModel()
+        vm.stepStartedAt = Date(timeIntervalSinceNow: -3600)  // stale: 1h ago (window was closed)
+        let sessionStart = Date(timeIntervalSinceNow: -2)  // this session began ~2s ago
+        vm.sessionStartFloor = { sessionStart }
+        vm.completeStep("accessibility_permission", result: "granted")
+        let dur =
+          Double(
+            events.named("onboarding.step_completed").first?
+              .stringProps["duration_seconds"] ?? "0") ?? 0
+        #expect(dur < 60)  // clamped to the session, not the stale ~3600
+      }
+    }
+
+    @Test("step_completed uses the live step clock on the forward path (floor does not over-clamp)")
+    func stepDurationForwardPathUnclamped() {
+      withHook { events in
+        let vm = OnboardingV2ViewModel()
+        // Forward path: the step started AFTER the session began → use the step clock.
+        vm.sessionStartFloor = { Date(timeIntervalSinceNow: -100) }  // session began long ago
+        vm.stepStartedAt = Date(timeIntervalSinceNow: -3)  // this step started 3s ago
+        vm.completeStep("model_download", result: "completed")
+        let dur =
+          Double(
+            events.named("onboarding.step_completed").first?
+              .stringProps["duration_seconds"] ?? "0") ?? 0
+        #expect(dur >= 2 && dur < 20)  // ~3s (the step clock), NOT 100s (the floor)
+      }
+    }
   }
 
 #endif
