@@ -7,15 +7,16 @@
 # Bible if the new edge represents an architectural decision):
 #   EnviousWispr           -> AppKit (thin launchable shell; #919). Imports ONLY the kit.
 #   EnviousWisprAppKit     -> Core, Storage, PostProcessing, Audio, Services, ASR, LLM, Pipeline, Contacts (app-shell library; #919, top of stack)
-#   EnviousWisprAudioService -> Core, Audio (XPC executable)
-#   EnviousWisprASRService -> Core, ASR, Audio (XPC executable)
+#   EnviousWisprAudioService -> Core, Audio, ObservabilityCore (XPC executable)
+#   EnviousWisprASRService -> Core, ASR, Audio, ObservabilityCore (XPC executable)
 #   EnviousWisprPipeline   -> Core, ASR, Audio, LLM, PostProcessing, Services, Storage
 #   EnviousWisprASR        -> Core, Audio
-#   EnviousWisprServices   -> Core
+#   EnviousWisprServices   -> Core, ObservabilityCore
 #   EnviousWisprLLM        -> Core
 #   EnviousWisprAudio      -> Core
 #   EnviousWisprPostProcessing -> Core
 #   EnviousWisprContacts   -> Core (Contacts-framework shim; #636, App-layer-scoped leaf)
+#   EnviousWisprObservabilityCore -> (no app deps; Sentry-only privacy/crash leaf; #1174)
 #   EnviousWisprStorage    -> Core
 #   EnviousWisprCore       -> (no app deps)
 #
@@ -28,16 +29,17 @@ set -euo pipefail
 permitted_imports_for() {
   case "$1" in
     EnviousWisprCore)              echo "" ;;
+    EnviousWisprObservabilityCore) echo "" ;;
     EnviousWisprAudio)             echo "EnviousWisprCore" ;;
     EnviousWisprASR)               echo "EnviousWisprCore EnviousWisprAudio" ;;
     EnviousWisprPostProcessing)    echo "EnviousWisprCore" ;;
     EnviousWisprContacts)          echo "EnviousWisprCore" ;;
     EnviousWisprStorage)           echo "EnviousWisprCore" ;;
     EnviousWisprLLM)               echo "EnviousWisprCore" ;;
-    EnviousWisprServices)          echo "EnviousWisprCore" ;;
+    EnviousWisprServices)          echo "EnviousWisprCore EnviousWisprObservabilityCore" ;;
     EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
-    EnviousWisprAudioService)      echo "EnviousWisprCore EnviousWisprAudio" ;;
-    EnviousWisprASRService)        echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio" ;;
+    EnviousWisprAudioService)      echo "EnviousWisprCore EnviousWisprAudio EnviousWisprObservabilityCore" ;;
+    EnviousWisprASRService)        echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprObservabilityCore" ;;
     EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprPipeline EnviousWisprContacts" ;;
     EnviousWispr)                  echo "EnviousWisprAppKit" ;;
     *)                             return 1 ;;
