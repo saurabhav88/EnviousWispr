@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""TIK reopen/severity eligibility gate (issue #1143).
+"""TIK Sentry-triage eligibility gates (issue #1143 reopen, #1218 create).
 
-Pure decision function for the TIK Sentry-triage routine. Given the post-close
-event set for a closed fingerprint plus the fix-version boundary, decide whether
-a recurrence is a real regression (reopen), pre-fix-tail noise (hold), or
-unprovable (ambiguous -> fail open).
+Two pure decision functions for the TIK Sentry-triage routine, sharing the
+`is_development()` dev-detector and a fail-open philosophy (anything unprovable
+stays VISIBLE, never silently suppressed):
+  - `decide()` (#1143) -- the REOPEN gate. Given the post-close event set for a
+    closed fingerprint plus the fix-version boundary, decide whether a recurrence is
+    a real regression (reopen), pre-fix-tail noise (hold), or unprovable (ambiguous).
+  - `decide_create()` (#1218) -- the CREATE gate. Given the event list for a NEW
+    fingerprint that has no GitHub issue, decide whether it becomes a ticket (create),
+    is deliberate fault-injection noise (suppress), or is a dev-only self-healed error
+    to list in the run digest (digest). See its own docstring for the branch order.
 
 DESIGN INVARIANTS (council 2026-06-21, 2 rounds; Codex grounded review 3 rounds):
   - HOLD requires PROOF. Anything we cannot prove benign fails OPEN (ambiguous ->
@@ -356,13 +362,167 @@ def _out(verdict, reason, eligible_user_count=0, eligible_count=0,
     }
 
 
+# ---- create-path decision (issue #1218) ------------------------------------
+#
+# Path A of the routine (a brand-new Sentry fingerprint with no GitHub issue) had
+# NO environment gate -- it created a ticket for every new fingerprint, so dev-only,
+# self-healed, single-event errors from the founder's dogfood machine became tracked
+# issues (#1192-#1215). `decide_create` is the create-path sibling of `decide()`. It
+# deliberately does NOT reuse `decide()`: that one is reopen-shaped (built around
+# closed_at + post-close partitioning); a create decision has no close boundary and a
+# different question ("should this exist at all"). Both share the `is_development()`
+# dev-detector -- the single authority for "is this dev" -- and the same fail-open
+# philosophy: anything we cannot PROVE is dev-only-and-self-healed becomes a VISIBLE
+# create, never a silent drop.
+
+# Create-path verdict -> action family. The routine Path A branches on `family`.
+#   create  : file the GitHub issue (real production signal, untagged dev fatal, or
+#             fail-open on unclassifiable input).
+#   suppress: do NOT file; deliberate fault-injection noise (every event synthetic).
+#   digest  : do NOT file; list the fingerprint in the run-summary DEV_DIGEST so the
+#             founder still sees it at a glance (the dev-only self-healed class).
+CREATE_VERDICT_FAMILY = {
+    "create": "create",
+    "create-dev-fatal": "create",
+    "suppress-synthetic": "suppress",
+    "digest-dev-only": "digest",
+}
+
+# Create-path verdicts that SUPPRESS a ticket (do not create). On a truncated event
+# list (the fetch hit the page cap with more pages pending) a hidden later page could
+# carry a real production/fatal event, so any of these must fail OPEN (downgrade to
+# create) when `events_truncated` is set -- mirrors the reopen gate's `_HOLD_VERDICTS`.
+_CREATE_SUPPRESSING_VERDICTS = {"suppress-synthetic", "digest-dev-only"}
+
+
+def _effective_level(event: dict, issue_level) -> str | None:
+    """Per-event `level`, falling back to the issue/latest-event level Path A reads.
+
+    Returns the lowercased level string, or None when neither is present/usable. None
+    means 'cannot classify' -> the caller fails OPEN to create, never digests."""
+    for src in (event.get("level"), issue_level):
+        if isinstance(src, str) and src.strip():
+            return src.strip().lower()
+    return None
+
+
+def decide_create(data: dict) -> dict:
+    """Create-path eligibility gate (#1218): should a NEW fingerprint become a ticket?
+
+    Input (JSON): {events: [{environment, build_type, release, level, synthetic,
+    user_id, dateCreated}], issue_level, events_truncated}. `issue_level` is the
+    aggregate/latest-event level Path A severity already reads -- the per-event `level`
+    fallback. Operates over the event LIST (not a scalar) so a multi-event fingerprint
+    partitions correctly. Output: {verdict, family, reason, dev_count, event_count};
+    family in {create, suppress, digest}. Fails OPEN (create) on empty/unclassifiable
+    input AND on a truncated event list (unread pages could hide a real event).
+    """
+    result = _decide_create_inner(data)
+    # A digest/suppress decision is only valid on a PROVABLY COMPLETE event list. The
+    # `events_truncated` flag is REQUIRED on the input and is this gate's ONLY
+    # completeness signal -- unlike the reopen gate, which ALSO has _inputs_incomplete
+    # (closed_at + per-event timestamps) as a second guard. So treat a MISSING flag as
+    # "not proven complete" (default True) and downgrade any suppressing verdict to a
+    # visible create, exactly as an explicit `events_truncated=true` does. A hidden
+    # later page could carry a production or fatal event; fail open, never silent-suppress.
+    if (result["verdict"] in _CREATE_SUPPRESSING_VERDICTS
+            and _as_bool(data.get("events_truncated", True))):
+        return _out_create(
+            "create",
+            f"cannot {result['family']} on a truncated event list "
+            f"(unread pages could hide a production/fatal event); fail open",
+            dev_count=result.get("dev_count", 0),
+            event_count=result.get("event_count", 0))
+    return result
+
+
+def _decide_create_inner(data: dict) -> dict:
+    events = data.get("events") if isinstance(data.get("events"), list) else []
+    issue_level = data.get("issue_level")
+
+    # No events (empty list / missing fetch / unparseable) -> fail OPEN to create.
+    # Never silently drop a potential real issue (mirrors the reopen gate's invariant).
+    if not events:
+        return _out_create("create",
+                           "no events to classify (empty / missing / fetch failure); fail open")
+
+    dev = [e for e in events if is_development(e)]
+
+    # 1. Any production (non-dev) event -> create. Real customer signal; create as today.
+    if len(dev) < len(events):
+        return _out_create("create",
+                           "at least one production event; real signal, create as today",
+                           dev_count=len(dev), event_count=len(events))
+
+    # All events are dev from here. A `synthetic=true` event is a DELIBERATE
+    # fault-injection test -- it never justifies a ticket, so exclude every synthetic
+    # event from the dev signal and classify on the non-synthetic remainder. Excluding
+    # here (not just in the all-synthetic branch) is what stops a tagged synthetic fatal
+    # mixed with an untagged handled error from creating a ticket for a crash test
+    # (Codex #1218 review).
+    nonsynthetic = [e for e in events if not _as_bool(e.get("synthetic"))]
+
+    # 2. Every event synthetic (no real signal left) -> suppress. Deliberate test noise.
+    if not nonsynthetic:
+        return _out_create("suppress-synthetic",
+                           "all events dev and synthetic=true (deliberate fault-injection test)",
+                           dev_count=len(dev), event_count=len(events))
+
+    # The issue/latest-event level fallback is EXACT only for a single-event fingerprint
+    # (latest == the only event). In a multi-event list, copying the latest level onto a
+    # DIFFERENT event whose own level is missing could mask a fatal -> allow the fallback
+    # only when the whole list is one event; otherwise a missing per-event level is
+    # unclassifiable (None) and fails open at branch 5 (Codex #1218 review).
+    allow_level_fallback = len(events) == 1
+    levels = [_effective_level(e, issue_level if allow_level_fallback else None)
+              for e in nonsynthetic]
+
+    # 3. A non-synthetic (untagged) dev fatal -> create (dev canary). An untagged dev
+    #    crash could be a real new-crash; fail toward visible. Synthetic fatals were
+    #    excluded above, so this catches only genuine dev crashes.
+    if any(lvl == "fatal" for lvl in levels):
+        return _out_create("create-dev-fatal",
+                           "untagged dev fatal; a real dev crash is canary-worthy, create",
+                           dev_count=len(dev), event_count=len(events))
+
+    # 4. All non-synthetic dev events are handled errors -> digest. The #1192-#1215
+    #    class: handled, self-healed, no customer signal. No ticket.
+    if all(lvl == "error" for lvl in levels):
+        return _out_create("digest-dev-only",
+                           "all-dev handled error, self-healed, no customer signal; digest not ticket",
+                           dev_count=len(dev), event_count=len(events))
+
+    # 5. The non-synthetic level set is not provably all-handled-error (mixed / warning /
+    #    info / unknown) -> fail OPEN to create. We stay silent ONLY when we can PROVE
+    #    the dev-only-self-healed class; anything else stays visible.
+    return _out_create("create",
+                       "dev events but level set not provably all-handled-error; fail open",
+                       dev_count=len(dev), event_count=len(events))
+
+
+def _out_create(verdict, reason, dev_count=0, event_count=0):
+    return {
+        "verdict": verdict,
+        "family": CREATE_VERDICT_FAMILY[verdict],
+        "reason": reason,
+        "dev_count": dev_count,
+        "event_count": event_count,
+    }
+
+
 def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    create_mode = "--create" in argv  # default (no flag) stays the reopen gate -> decide()
     try:
         raw = sys.stdin.read()
         data = json.loads(raw)
-        result = decide(data)
+        result = decide_create(data) if create_mode else decide(data)
     except Exception as exc:  # noqa: BLE001 -- fail OPEN on any helper error
-        result = _out("ambiguous", f"helper error: {type(exc).__name__}: {exc}")
+        # Fail-open shape differs per gate: reopen -> ambiguous (visible reopen),
+        # create -> create (visible new ticket). Neither can become a silent drop.
+        result = (_out_create("create", f"helper error: {type(exc).__name__}: {exc}")
+                  if create_mode
+                  else _out("ambiguous", f"helper error: {type(exc).__name__}: {exc}"))
     print(json.dumps(result))
     return 0
 

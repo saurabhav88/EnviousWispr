@@ -104,7 +104,7 @@ Read this once before the detail sections below. The detail sections are the law
     1b. For EACH shortId in `CLOSED_RECENT` not already in 1a's results, a per-shortId Sentry query (regression watch — covers cold issues that won't appear in the top 50).
     Filter 1a by `lastSeen` within 25h. 1b is unconditional (no time filter).
 2. For each Sentry issue, search GitHub by `sentry-issue-id {shortId}`. Route:
-    - No GitHub issue and no cross-reference hit (Step 2.6) → **Path A** create.
+    - No GitHub issue and no cross-reference hit (Step 2.6) → **Path A**, which now runs the **Step 6.5 create-path eligibility gate** before creating (dev-only self-healed → digest, deliberate fault-injection → suppress, real signal / untagged dev fatal / unclassifiable → create).
     - Open GitHub issue → **Path B** update if throttle allows.
     - Closed GitHub issue → **Path C** reopen + regression comment.
     - Ambiguous (multiple distinct GitHub issues for one shortId) → log + skip; never create.
@@ -133,6 +133,7 @@ If the step DOES document a per-step recovery, follow that recovery and continue
 - **MCP auth-expiry policy** (any GitHub MCP returns "authoriz" / "token expired" / "re-authorization"): trigger the hard policy below — STOP all further GitHub interaction (read AND write) and exit cleanly. The auth-expiry policy is BROADER than other per-step recoveries: it terminates the run.
 - **Path A Step 1 Sentry event-fetch failure**: skip that one Sentry issue, continue to the next.
 - **Path A Step 4 git-tag miss**: fall back to HEAD with a noted caveat in the issue body.
+- **Path A Step 6.5 events-list fetch failure** (any page non-200/non-JSON) **or helper non-zero/unparseable output**: these are NOT errors — fail OPEN (`family=create`) and proceed to Step 7 create. An unclassifiable new fingerprint must stay visible; never silent-suppress. (Mirrors the Step 2.6.5 fail-open invariant.)
 - **Path A Step 7 issue-create failure**: log + skip that one Sentry issue, continue to the next.
 - **Path A Step 8 sub-issue link failure** (including the 422 "already exists" case): log and continue. Same rule for Path C step 3 sub-issue link.
 - **Path C step 1 Sentry event-fetch failure**: fall through with `event = null`, do NOT skip the reopen, use the fail-soft regression-comment template (5b). Same rule when `git show {tag}:{filename}` fails or the tag is missing in step 4.
@@ -156,9 +157,22 @@ This protects against duplicate-issue creation when MCP search returns false-emp
 Maintain an in-memory set `WRITTEN_THIS_RUN` keyed by Sentry `shortId`. The check is performed at **branch entry**, not on every individual write within a multi-step branch:
 
 - **Branch entry** (= the moment Step 2 routing decides Path A vs Path B vs Path C for a Sentry shortId): check `WRITTEN_THIS_RUN` for the key. If present, skip the entire branch silently. Do NOT re-execute any of its steps.
-- **Within a branch** (Path A's 8 steps, Path C's 6 steps): the branch-entry rule does NOT block subsequent writes in the same branch invocation. Each branch states explicitly when its key is added — at the END of the write sequence (Path A: end of step 8 after sub-link; Path B: end of comment write; Path C: end of step 6 after label add).
+- **Within a branch** (Path A's 8 steps, Path C's 6 steps): the branch-entry rule does NOT block subsequent writes in the same branch invocation. Each branch states explicitly when its key is added — at the END of the write sequence (Path A: end of step 8 after sub-link, OR — when the Step 6.5 gate routes to `digest`/`suppress` — at that short-circuit, which adds the key and SKIPS steps 7–8; Path B: end of comment write; Path C: end of step 6 after label add).
 
 This protects against duplicate writes if logic branches re-evaluate the same issue twice in one run, AND against multi-step branches self-blocking after the first write.
+
+## Dev-only digest (end of run)
+
+Maintain an in-memory `DEV_DIGEST` list. The Step 6.5 create-path gate appends one line to it for every fingerprint it routes to `digest-dev-only` (all-dev, handled, self-healed — the #1192–#1215 class that should NOT become a ticket but stays visible at a glance).
+
+At the **END of the run**, if `DEV_DIGEST` is non-empty, log it as ONE block:
+```
+Step 6.5 dev-only digest (not ticketed):
+  {line}
+  {line}
+  ...
+```
+This is the founder's daily canary: dev-only self-healed fingerprints that did not earn a ticket but are worth a glance (e.g. an organic dev bug hiding among rebuild churn would show up as a repeated digest line across runs). If `DEV_DIGEST` is empty, log nothing — no ticket, no noise.
 
 ## Tool usage
 
@@ -478,6 +492,27 @@ Where start = max(1, lineNo-10) and end = lineNo+10. If the tag doesn't exist, u
 For Path A (new issue) and Path B (open issue), `userCount`/`count` are the Sentry issue aggregate. **For Path C reopens (and ambiguous fail-opens), use the eligibility gate's `eligible_user_count` / `eligible_count` (post-close, production, fix-containing partition) in place of `userCount`/`count` — NEVER the lifetime aggregate.** Scoring a reopen off the lifetime aggregate is exactly the #979 false-P0 (11 lifetime users, all pre-fix → P0). When the verdict is `ambiguous` (counts are 0 because nothing is provably eligible), default the reopen to the LOWEST tier consistent with a visible-triage signal (P3) unless the latest event is `level=fatal`.
 
 **6. Hypothesis fail-soft:** Write the Hypothesis section ONLY if you can name a specific function AND a plausible precondition failure from the stack + source you read. If the evidence is insufficient, write `> Hypothesis pending — stack trace insufficient. Investigation needed.` Do NOT fabricate confident-sounding prose on weak evidence.
+
+**6.5. Create-path eligibility gate (run BEFORE Step 7 create).** A brand-new fingerprint is NOT automatically a ticket. Dev-only, self-healed, single-event errors from the founder's dogfood/test machine (the #1192–#1215 class) must NOT become tracked issues. This gate decides **create vs digest vs suppress**, reusing the SAME `is_development` authority as the reopen gate (Step 2.6.5) — it does NOT add a second dev classifier. Step 3's release-string heuristic stays for label/tag derivation only.
+
+**A. Fetch the events LIST** (Step 1 fetched only `/events/latest/` — ONE event; partitioning a multi-event fingerprint needs the list):
+```bash
+curl -sD - -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
+  "https://us.sentry.io/api/0/organizations/envious-labs-llc/issues/{id}/events/?full=true&statsPeriod=90d&per_page=100"
+```
+**PAGINATE** exactly as Step 2.6.5 does: follow the `Link:` response header while it contains `rel="next"; results="true"; cursor="<c>"`, refetch with `&cursor=<c>`, accumulate; cap at 10 pages (1000 events) as a runaway guard. **If the cap is hit with `results="true"` still pending, set `events_truncated=true` in the helper input** — a partial list must NEVER yield a `digest`/`suppress` (page 11 could hold a production or fatal event the gate never saw); the helper downgrades any non-`create` verdict to `create` when `events_truncated=true`. Per event extract: `environment`, `app.build_type`, `release`, the `synthetic` tag, AND `level` — all from the `tags[]` array (`{key,value}` pairs, NOT top-level; `level` may also appear top-level on the event — either source is fine). **`synthetic`** is present ONLY on deliberate fault-injection launches (value `"true"`); its absence means "not known-synthetic", never "known-real". **`level` fallback:** pass the issue/latest-event `level` that Step 5 reads as `issue_level`. The helper applies it as a per-event fallback ONLY for a single-event fingerprint (latest == the only event); in a MULTI-event list a missing per-event `level` is unclassifiable and fails open to `create`, so include each event's own `level` whenever the events API returns it. For a single-event fingerprint, latest == the only event. **If ANY page fetch fails (non-200/non-JSON): fail OPEN — skip the gate and proceed to Step 7 create** (an unclassifiable fingerprint must stay visible; never silent-suppress).
+
+**B. Run the deterministic helper** (`--create` routes to `decide_create`; the verdict math is unit-tested in `test_tik_eligibility.py`, NOT prose):
+```bash
+echo '{"events":[{"environment":"<env>","build_type":"<bt>","release":"<rel>","level":"<lvl>","synthetic":"true"}, ...],"issue_level":"<level Step 5 reads>","events_truncated":<bool>}' \
+  | python3 workers/sentry-triage/tik_eligibility.py --create
+```
+Returns `{verdict, family, reason, dev_count, event_count}`. `family` is one of `create` / `digest` / `suppress`. **`events_truncated` is REQUIRED** — set it `true` only when step A hit the page cap with more pages pending, else `false`. The helper treats a MISSING flag as not-proven-complete and **fails open to `create`** (it cannot confirm a `digest`/`suppress` is safe without it), so always pass it explicitly. A non-zero exit or unparseable output → treat as `family=create` (fail open).
+
+**Branch on `family`:**
+- **`create`** (verdicts `create` / `create-dev-fatal`, incl. fail-open) — a real production event, an untagged dev fatal (a real dev crash is canary-worthy), or unclassifiable input. **Proceed to Step 7** create exactly as today.
+- **`digest`** (verdict `digest-dev-only`) — all-dev, handled, self-healed; no customer signal. Do NOT create. Append ONE line to the in-memory `DEV_DIGEST` list: `{shortId} | {crash-site file or culprit/metadata.type, whatever is bound} | {release} | dev-only, self-healed, {event_count} event(s)`. Add `shortId` to `WRITTEN_THIS_RUN`. SKIP Steps 7–8.
+- **`suppress`** (verdict `suppress-synthetic`) — every event tagged `synthetic=true` (deliberate fault-injection crash-test). Do NOT create. Log one line: `Step 6.5 suppress: {shortId} synthetic fault-injection, not ticketed.` Add `shortId` to `WRITTEN_THIS_RUN`. SKIP Steps 7–8.
 
 **7. Create GitHub issue** via `mcp__github__issue_write`. Do NOT add `shortId` to `WRITTEN_THIS_RUN` here — the add happens at end of step 8 so the sub-issue link in step 8 isn't blocked by the global rule.
 
