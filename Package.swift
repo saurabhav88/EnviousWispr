@@ -31,6 +31,17 @@ let package = Package(
       name: "EnviousWisprCore",
       path: "Sources/EnviousWisprCore"
     ),
+    // Sentry-only privacy + crash-reporting leaf (#1174): the single home for
+    // the event sanitizer + the helper Sentry bootstrap shared by the app (via
+    // Services) AND both XPC helpers. Keeps the redactor one source of truth and
+    // contains the Sentry SDK to exactly the modules that need it.
+    .target(
+      name: "EnviousWisprObservabilityCore",
+      dependencies: [
+        .product(name: "Sentry", package: "sentry-cocoa")
+      ],
+      path: "Sources/EnviousWisprObservabilityCore"
+    ),
     .target(
       name: "EnviousWisprStorage",
       dependencies: ["EnviousWisprCore"],
@@ -62,6 +73,7 @@ let package = Package(
       name: "EnviousWisprServices",
       dependencies: [
         "EnviousWisprCore",
+        "EnviousWisprObservabilityCore",
         .product(name: "PostHog", package: "posthog-ios"),
         .product(name: "Sentry", package: "sentry-cocoa"),
       ],
@@ -130,6 +142,7 @@ let package = Package(
       dependencies: [
         "EnviousWisprCore",
         "EnviousWisprAudio",
+        "EnviousWisprObservabilityCore",
       ],
       path: "Sources/EnviousWisprAudioService",
       exclude: ["Resources"]
@@ -140,6 +153,7 @@ let package = Package(
         "EnviousWisprCore",
         "EnviousWisprASR",
         "EnviousWisprAudio",
+        "EnviousWisprObservabilityCore",
         .product(name: "WhisperKit", package: "argmax-oss-swift"),
         "FluidAudio",
       ],
@@ -161,6 +175,7 @@ let package = Package(
       name: "EnviousWisprTests",
       dependencies: [
         "EnviousWisprCore",
+        "EnviousWisprObservabilityCore",
         "EnviousWisprPostProcessing",
         "EnviousWisprLLM",
         "EnviousWisprPipeline",

@@ -123,6 +123,11 @@ plutil -replace CFBundleShortVersionString -string "$VERSION" "$BUNDLE/Contents/
 plutil -replace CFBundleVersion -string "$VERSION" "$BUNDLE/Contents/Info.plist"
 for XPC_SVC in "$BUNDLE/Contents/XPCServices"/*.xpc; do
     [[ -d "$XPC_SVC" ]] || continue
+    # SentryDSN: helper crash reporting (#1174). Stamped UNCONDITIONALLY (empty
+    # when the secret is unset), same pattern as the app stamp above, so the
+    # archive-time placeholder never survives. HelperObservability treats an
+    # empty value as "no DSN, skip" — never a real DSN.
+    plutil -replace SentryDSN -string "${SENTRY_DSN:-}" "$XPC_SVC/Contents/Info.plist"
     plutil -replace CFBundleShortVersionString -string "$VERSION" "$XPC_SVC/Contents/Info.plist"
     plutil -replace CFBundleVersion -string "$VERSION" "$XPC_SVC/Contents/Info.plist"
 done
@@ -141,6 +146,16 @@ if [[ -n "${SENTRY_DSN:-}" ]]; then
     test "$SENTRY_VALUE" = "$SENTRY_DSN"
     [[ "$SENTRY_VALUE" != *'$('* ]]
     unset SENTRY_VALUE
+    # #1174: helper crash reporting requires the DSN to reach BOTH XPC plists.
+    # REQUIRED verify (not optional) — a missing helper DSN silently loses helper
+    # crash visibility in release. Same plutil-stamp guard as the app above.
+    for XPC_PLIST in "$BUNDLE/Contents/XPCServices"/*.xpc/Contents/Info.plist; do
+        [[ -f "$XPC_PLIST" ]] || continue
+        XPC_SENTRY_VALUE="$(/usr/libexec/PlistBuddy -c 'Print :SentryDSN' "$XPC_PLIST")"
+        test "$XPC_SENTRY_VALUE" = "$SENTRY_DSN"
+        [[ "$XPC_SENTRY_VALUE" != *'$('* ]]
+        unset XPC_SENTRY_VALUE
+    done
 fi
 FEED_VALUE="$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP_PLIST")"
 test "$FEED_VALUE" = "$FEED_URL"

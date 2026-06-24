@@ -207,8 +207,17 @@ let project = Project(
   ],
   settings: projectSettings,
   targets: [
-    // ---- 9 first-party modules (native static frameworks) ----
+    // ---- first-party modules (native static frameworks) ----
     firstPartyLibrary("EnviousWisprCore", dependencies: []),
+    // Sentry-only privacy + crash-reporting leaf (#1174). The single home for
+    // the event sanitizer + the helper Sentry bootstrap, shared by the app (via
+    // Services) AND both XPC helpers — so the redactor has one source of truth
+    // and the Sentry SDK stays contained to exactly the modules that need it.
+    firstPartyLibrary(
+      "EnviousWisprObservabilityCore",
+      dependencies: [
+        .package(product: "Sentry")
+      ]),
     firstPartyLibrary(
       "EnviousWisprStorage",
       dependencies: [
@@ -229,6 +238,7 @@ let project = Project(
       "EnviousWisprServices",
       dependencies: [
         .target(name: "EnviousWisprCore"),
+        .target(name: "EnviousWisprObservabilityCore"),
         .package(product: "PostHog"),
         .package(product: "Sentry"),
       ]),
@@ -304,6 +314,8 @@ let project = Project(
       dependencies: [
         .target(name: "EnviousWisprCore"),
         .target(name: "EnviousWisprAudio"),
+        // Sentry-only crash-reporting bootstrap for this helper (#1174).
+        .target(name: "EnviousWisprObservabilityCore"),
         // Transitive FluidAudio C-target modules (see Pipeline note above).
         .package(product: "FluidAudio"),
       ],
@@ -324,6 +336,8 @@ let project = Project(
         .target(name: "EnviousWisprCore"),
         .target(name: "EnviousWisprASR"),
         .target(name: "EnviousWisprAudio"),
+        // Sentry-only crash-reporting bootstrap for this helper (#1174).
+        .target(name: "EnviousWisprObservabilityCore"),
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
       ],
@@ -391,6 +405,9 @@ let project = Project(
       dependencies: firstPartyTargetDeps + [
         .target(name: "EnviousWisprAppKit"),
         .target(name: "EnviousWisprContacts"),
+        // HelperObservabilityConfigTests imports the module directly; Xcode test
+        // targets need every direct import as a declared edge (#1174).
+        .target(name: "EnviousWisprObservabilityCore"),
         .package(product: "FluidAudio"),
         .package(product: "Sparkle"),
       ],
