@@ -26,19 +26,23 @@ final class OnboardingProgress {
   /// terminal, clean-finish or abandon, sets `terminalEmitted`, so the guard lets
   /// the next open reset). A refocus of an already-open window (the status-menu
   /// "Continue Setup…" item re-enters this on the single reused SwiftUI window)
-  /// finds a live session and is a no-op — it must NOT rewind the clock or reset
-  /// screen/step back to "welcome", which would under-count elapsed and mislabel a
-  /// subsequent abandon (cloud Codex review PR #1210). `source` is supplied by the
-  /// caller from `SettingsManager.onboardingEverCompleted` (the durable flag in the
-  /// SHARED settings store — Codex code-diff r4: the box must not read the wrong
-  /// defaults domain, and the durable completion flag belongs in the settings home).
+  /// finds a live session and is a no-op — it must NOT rewind the clock (cloud
+  /// Codex review PR #1210).
+  ///
+  /// Deliberately does NOT touch `screen`/`step`: the view owns the position and
+  /// pushes it via `update(...)`. Resetting to "welcome" here mislabels the
+  /// reused-window reopen-after-abandon case — that window keeps its `viewModel`
+  /// and skips `.onAppear`, so no re-sync corrects an assumed "welcome" back to the
+  /// real screen; carrying the last observed position is the honest value (cloud
+  /// Codex review r2). `source` is supplied by the caller from
+  /// `SettingsManager.onboardingEverCompleted` (the durable flag in the SHARED
+  /// settings store — Codex code-diff r4: the box must not read the wrong defaults
+  /// domain, and the durable completion flag belongs in the settings home).
   func begin(source: String) {
     guard sessionStartedAt == nil || terminalEmitted else { return }
     self.source = source
     sessionStartedAt = Date()
     terminalEmitted = false
-    screen = "welcome"
-    step = "welcome"
   }
 
   /// Mirror the current screen/step as the user advances (read at terminal).

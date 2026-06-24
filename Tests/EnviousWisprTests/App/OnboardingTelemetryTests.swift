@@ -134,6 +134,28 @@ import Testing
       }
     }
 
+    @Test("reopen after abandon reports the last observed position, not welcome")
+    func reopenAfterAbandonKeepsLastPosition() {
+      withHook { events in
+        let box = makeBox()
+        box.begin(source: "first_run")
+        box.update(screen: "setting_up", step: "permissions")
+        box.emitAbandonIfInFlight(
+          reason: "window_closed", micStatus: "denied", accessibilityStatus: "denied")
+        // Reopen the single-instance window: terminalEmitted was set, so begin starts
+        // a fresh session — but the reused SwiftUI window keeps its viewModel and skips
+        // onAppear, so syncProgressBox never re-fires. begin must NOT have reset the
+        // position to "welcome"; the honest value is the last observed screen/step.
+        box.begin(source: "first_run")
+        box.emitAbandonIfInFlight(
+          reason: "app_quit", micStatus: "denied", accessibilityStatus: "denied")
+        let a = events.named("onboarding.abandoned")
+        #expect(a.count == 2)
+        #expect(a.last?.stringProps["screen"] == "setting_up")
+        #expect(a.last?.stringProps["step"] == "permissions")
+      }
+    }
+
     @Test("the caller-supplied source is carried into the abandon event")
     func sourceCarriesThrough() {
       withHook { events in
