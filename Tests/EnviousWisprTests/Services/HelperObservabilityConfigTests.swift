@@ -133,4 +133,26 @@ struct HelperObservabilityConfigTests {
     var startCalled = false
     var scopeCalled = false
   }
+
+  // MARK: - captureHandledError (#1177 Phase 8b)
+
+  @Test("handled-error event groups by category and carries only the content-free detail")
+  func handledErrorEventShape() {
+    let event = HelperObservability.makeHandledErrorEvent(
+      category: "vad#prepare_failed", detail: "FluidAudio.VadError")
+    #expect(event.message?.formatted == "vad#prepare_failed")
+    #expect(event.fingerprint == ["helper_handled_error", "vad#prepare_failed"])
+    #expect((event.extra?["detail"] as? String) == "FluidAudio.VadError")
+    // The audio service feeds an error TYPE name, never a transcript — assert the
+    // transcript sentinel can never appear via this path.
+    let serialized = "\(String(describing: event.message)) \(String(describing: event.extra))"
+    #expect(!serialized.contains(Self.marker))
+  }
+
+  @Test("handled-error event omits empty detail")
+  func handledErrorEventOmitsEmptyDetail() {
+    let event = HelperObservability.makeHandledErrorEvent(category: "vad#prepare_failed")
+    #expect(event.extra?["detail"] == nil)
+    #expect(event.fingerprint == ["helper_handled_error", "vad#prepare_failed"])
+  }
 }
