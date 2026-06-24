@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprObservabilityCore
 import Foundation
 
 /// XPC service handler — composes an AudioCaptureManager and bridges its lifecycle
@@ -364,6 +365,15 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
       do {
         try await detector.prepare()
       } catch {
+        // #1177 (Telemetry Bible Phase 8b, A4): the VAD model failed to load, so
+        // silence auto-stop is silently disabled for this recording (the user must
+        // stop manually). Previously a bare `return` with not even a log. Report it
+        // as an in-process handled error (this runs in the audio XPC service, which
+        // has its own Sentry but cannot reach the host's PostHog / SentryBreadcrumb).
+        // Content-free (error type name only); fail-open continues — the heart path
+        // (capture) is unaffected, only the auto-stop limb is lost.
+        HelperObservability.captureHandledError(
+          category: "vad#prepare_failed", detail: String(reflecting: type(of: error)))
         return
       }
 

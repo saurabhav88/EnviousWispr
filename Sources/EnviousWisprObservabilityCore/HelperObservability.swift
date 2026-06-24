@@ -141,4 +141,39 @@ public enum HelperObservability {
       scope.setTag(value: config.bundleId, key: "xpc.service_bundle_id")
     }
   }
+
+  /// #1177 (Telemetry Bible Phase 8b): capture a HANDLED error from a helper process.
+  /// The host's `SentryBreadcrumb.captureError` lives in `EnviousWisprServices`, which
+  /// the XPC helpers do NOT import — so a helper-process limb failure (the audio
+  /// service's VAD `prepare()`, today a silent bare `return`) reports through this
+  /// in-process Sentry path instead, under the same `process.role=audio_xpc` scope as
+  /// helper crashes. There is no PostHog in a helper process, so this is Sentry-only.
+  ///
+  /// Content-free: `category` is a stable `"<domain>#<detail>"` descriptor and `detail`
+  /// is an error-type name — never user content. The event still passes through the
+  /// started SDK's `beforeSend` sanitizer (`SentryEventSanitizer`) like every other
+  /// event. A LIMB: if the SDK never started (missing/empty DSN, the common dev case),
+  /// `SentrySDK.capture` is a no-op, so this never throws and never blocks the heart
+  /// path (audio capture). `fingerprint` groups all occurrences of one category into a
+  /// single issue (rare + grouped → no alert fatigue), kept apart from native crashes
+  /// by the `helper_handled_error` namespace.
+  public static func captureHandledError(category: String, detail: String = "") {
+    SentrySDK.capture(event: makeHandledErrorEvent(category: category, detail: detail))
+  }
+
+  /// The PURE event builder for `captureHandledError` — the asserted surface the unit
+  /// tests check WITHOUT a live SDK (mirrors the `makeConfig` / `apply` testability
+  /// pattern). `.error` level for parity with the host's `SentryBreadcrumb.captureError`;
+  /// fingerprint groups one category into one issue; `detail` is attached as extra only
+  /// when present. Never carries user content — callers pass error-type names / stable
+  /// descriptors, and the started SDK's `beforeSend` sanitizer is the final backstop.
+  public static func makeHandledErrorEvent(category: String, detail: String = "") -> Event {
+    let event = Event(level: .error)
+    event.message = SentryMessage(formatted: category)
+    event.fingerprint = ["helper_handled_error", category]
+    if !detail.isEmpty {
+      event.extra = ["detail": detail]
+    }
+    return event
+  }
 }
