@@ -27,6 +27,7 @@ import random
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 import urllib.error
@@ -71,10 +72,20 @@ APPLE_ENRICHMENT_SUFFIX = (
     "If unsure about a correction, leave unchanged."
 )
 
-# Hardcoded judge for bench mode. Same as gpt-4o-mini's cross-family judge in
-# JUDGE_FOR so bench-mode output and CI output use the same scoring instrument.
-# gemini-3-pro-preview was retired (404 as of 2026-06); 3.1 is the live successor.
-BENCH_JUDGE_MODEL = "gemini-3.1-pro-preview"
+# Bench-mode judge. Defaults to on-subscription Claude (Sonnet) via the headless
+# Claude Code CLI — $0 at the margin, vs the paid Gemini/OpenAI APIs (#1196: a
+# local prompt sweep on 2026-06-19 burned ~$19 in Gemini judge calls). Sonnet is
+# cross-family to every current bench provider (apple-intelligence / gpt-4o-mini /
+# gemini-3-flash), preserving the cross-family-judge design. For a final paid
+# receipt, override with EW_BENCH_JUDGE=gemini-3.1-pro-preview (or any gpt*/gemini*
+# id) — every consumer reads this constant, and the resolved id is stamped in the
+# bench report. The CI gate judge is JUDGE_FOR below and is intentionally NOT
+# affected by this env var.
+CLAUDE_JUDGE_MODEL_ID = "claude-sonnet-4-6"
+# Cap concurrent headless `claude` judge subprocesses (tier-bench fans out judge
+# chunks on a thread pool). Keeps a sweep from spawning ~8 CLI instances at once.
+CLAUDE_JUDGE_MAX_WORKERS = 3
+BENCH_JUDGE_MODEL = os.environ.get("EW_BENCH_JUDGE", CLAUDE_JUDGE_MODEL_ID)
 BENCH_JUDGE_REPLICATIONS = 2
 BENCH_BOOTSTRAP_RESAMPLES = 2000
 # Replication wobble thresholds — exceed either and the report flags
@@ -424,6 +435,92 @@ def call_gemini(model: str, system: str, user: str, json_mime: bool = False) -> 
     return "".join(p.get("text", "") for p in parts).strip()
 
 
+def _judge_subprocess_env() -> dict:
+    """Env for the headless Claude judge with Anthropic/Bedrock/Vertex routing
+    vars stripped, so the judge always uses the logged-in SUBSCRIPTION ($0 at the
+    margin) and never an inherited paid API key / Bedrock route — which would
+    defeat the cost goal AND could fail on a stale key (#1196 Codex code-diff).
+    The subscription credential lives in ~/.claude, not env, so it survives."""
+    return {k: v for k, v in os.environ.items()
+            if not k.startswith("ANTHROPIC_")
+            and k not in ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX")}
+
+
+def call_claude(model: str, system: str, user: str) -> str:
+    """On-subscription judge via the headless Claude Code CLI ($0 at the margin;
+    no API key read). Returns the assistant text (a JSON array, possibly fenced)
+    for the shared fence-strip + json.loads path in the judge functions. The CLI
+    has no temperature knob — bench reps + the rep-wobble flag are the stability
+    net (#1196). Validates the result envelope and fails loud on a CLI error or a
+    missing/empty/non-string result, rather than handing junk to json.loads."""
+    try:
+        proc = subprocess.run(
+            # Lock the judge to pure text-in/JSON-out: `--safe-mode` disables
+            # ambient customizations (hooks/LSP/plugins) while KEEPING the
+            # subscription auth (`--bare` would strip auth too -> "Not logged in",
+            # breaking the $0 path); NO tools (`--tools ""` — `--allowed-tools`
+            # only pre-approves, it does not remove the built-ins); no MCP
+            # servers; neutral cwd. So adversarial corpus text (anti_instruction /
+            # anti_hallucination cases) and a configured user-hook can't make it
+            # call a tool, fire a hook, hang on a prompt, or score with repo context.
+            ["claude", "-p", "--model", model, "--system-prompt", system,
+             "--safe-mode", "--tools", "", "--strict-mcp-config",
+             "--output-format", "json"],
+            input=user, capture_output=True, text=True, timeout=300,
+            cwd=tempfile.gettempdir(), env=_judge_subprocess_env(),
+        )
+    except subprocess.TimeoutExpired:
+        # Bound the call like the HTTP judges (timeout=300); a stalled CLI must
+        # surface as a judge failure, not hang tier-bench's as_completed forever.
+        raise RuntimeError("claude judge: CLI timed out after 300s")
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"claude judge: CLI exited {proc.returncode}: {(proc.stderr or '').strip()[:300]}")
+    try:
+        env = json.loads(proc.stdout)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(
+            f"claude judge: CLI did not return a JSON envelope ({e}); got {proc.stdout[:200]!r}")
+    if env.get("is_error") or env.get("subtype") != "success":
+        raise RuntimeError(
+            f"claude judge: CLI error envelope (subtype={env.get('subtype')!r}): "
+            f"{str(env.get('result'))[:200]}")
+    result = env.get("result")
+    if not isinstance(result, str) or not result.strip():
+        raise RuntimeError(
+            f"claude judge: envelope 'result' missing/empty/non-string (type={type(result).__name__})")
+    return result.strip()
+
+
+def _dispatch_judge(model: str, system: str, user: str, json_mime: bool) -> str:
+    """Route a judge call to the backend selected by model-id prefix and return
+    the raw assistant text (a JSON array, possibly fenced) for the caller to
+    fence-strip + json.loads. `claude*`/`sonnet*` -> on-subscription Claude CLI
+    ($0); `gpt*` -> OpenAI; else -> Gemini. `json_mime` is a Gemini-only knob
+    (the OpenAI + Claude paths instruct JSON via the system prompt)."""
+    if model.startswith(("claude", "sonnet")):
+        return call_claude(model, system, user)
+    if model.startswith("gpt"):
+        return call_openai(model, system, user)
+    return call_gemini(model, system, user, json_mime=json_mime)
+
+
+def _preflight_claude_judge(judge_model: str) -> None:
+    """If the bench judge is Claude, verify the CLI is installed AND logged in
+    BEFORE generating candidates — otherwise mode_bench/mode_tier_bench burn the
+    full polish spend (paid OpenAI/Gemini + local AFM time) only to fail at the
+    first judge call (#1196 Codex code-diff). No-op for HTTP judges."""
+    if not judge_model.startswith(("claude", "sonnet")):
+        return
+    try:
+        call_claude(judge_model, "You output only JSON.", "Reply with exactly: []")
+    except Exception as e:
+        print(f"INFRA-ERROR: Claude judge CLI unavailable/unauthed ({e}); aborting before "
+              f"generating candidates. Run `claude` once to log in, or set EW_BENCH_JUDGE "
+              f"to a paid judge id.", file=sys.stderr)
+        sys.exit(2)
+
+
 # ---------- polish ----------
 
 
@@ -460,10 +557,7 @@ def judge_chunk(judge_model: str, cases: list) -> list:
         for c in cases
     ]
     user = "Score these items:\n" + json.dumps(items, ensure_ascii=False)
-    if judge_model.startswith("gpt"):
-        raw = call_openai(judge_model, JUDGE_SYSTEM, user)
-    else:
-        raw = call_gemini(judge_model, JUDGE_SYSTEM, user, json_mime=True)
+    raw = _dispatch_judge(judge_model, JUDGE_SYSTEM, user, json_mime=True)
     raw = raw.strip()
     # Strip markdown fences if judge wrapped output anyway.
     if raw.startswith("```"):
@@ -1488,6 +1582,7 @@ def mode_bench(out_name: str | None, corpus_path: Path | None, sleep_seconds: fl
     if not cases:
         print(f"INFRA-ERROR: corpus at {corpus} has zero cases", file=sys.stderr)
         return 2
+    _preflight_claude_judge(BENCH_JUDGE_MODEL)
 
     ts = datetime.utcnow().strftime("%Y-%m-%dT%H%M%S")
     run_dir = OUT_DIR / (out_name or f"afm-bench-{ts}")
@@ -1743,10 +1838,7 @@ def judge_tier_chunk(judge_model: str, cases: list) -> list:
         for c in cases
     ]
     user = "Score these polished dictations:\n" + json.dumps(items, ensure_ascii=False)
-    if judge_model.startswith("gpt"):
-        raw = call_openai(judge_model, JUDGE_SYSTEM_TIER, user)
-    else:
-        raw = call_gemini(judge_model, JUDGE_SYSTEM_TIER, user, json_mime=True)
+    raw = _dispatch_judge(judge_model, JUDGE_SYSTEM_TIER, user, json_mime=True)
     raw = raw.strip()
     if raw.startswith("```"):
         ls = raw.splitlines()
@@ -1820,6 +1912,7 @@ def mode_tier_bench(providers: list, corpus_path: Path | None, out_name: str | N
         print(f"INFRA-ERROR: corpus {corpus} empty", file=sys.stderr)
         return 2
     judge = BENCH_JUDGE_MODEL  # shared judge instrument (see JUDGE_FOR / BENCH_JUDGE_MODEL)
+    _preflight_claude_judge(judge)
     ts = datetime.utcnow().strftime("%Y-%m-%dT%H%M%S")
     run_dir = OUT_DIR / (out_name or f"tier-bench-{ts}")
     cand_dir = run_dir / "candidates"
@@ -1884,7 +1977,11 @@ def mode_tier_bench(providers: list, corpus_path: Path | None, out_name: str | N
     # on a bounded pool (founder: "parallel man, no need to wait for sequential").
     # A chunk that fails just drops its cases, which surface as missing -> INFRA-ERROR.
     workers = min(8, max(1, (os.cpu_count() or 4) - 1))
-    print(f"\n[tier-bench] judging (absolute, tier rubric) — {workers} workers")
+    # Each Claude judge call is a headless CLI subprocess; cap fan-out so a sweep
+    # doesn't spawn ~8 `claude` instances at once (#1196). HTTP judges keep the pool.
+    if judge.startswith(("claude", "sonnet")):
+        workers = min(workers, CLAUDE_JUDGE_MAX_WORKERS)
+    print(f"\n[tier-bench] judging (absolute, tier rubric) — {workers} workers — judge: {judge}")
     scores: dict = {prov: {} for prov in providers}
     work = []  # (provider, chunk_index, chunk)
     for prov in providers:
