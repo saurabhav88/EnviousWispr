@@ -689,9 +689,10 @@ public final class TelemetryService {
     // ratio; `tailRefusedReason` = why an eligible tail was refused. Metadata only.
     usedTailPreservation: Bool? = nil, recoveredTailMs: Int? = nil,
     tailVoicedFraction: Double? = nil, tailRefusedReason: String? = nil,
-    // #1232 tail-clip telemetry (omit-on-nil; numbers/booleans only — no audio
-    // or text). `tailClipClass` = clean / suspected_capture_clip /
-    // suspected_asr_drop / unknown; the rest are the classifier's lead signals.
+    // #1232 tail-clip telemetry (recalibrated #1236; omit-on-nil; numbers/booleans
+    // only — no audio or text). `tailClipClass` = asr_complete / suspected_asr_drop
+    // / unknown; `asrLastTokenGapMs` = untranscribed-tail drop metric; the rest are
+    // the classifier's lead signals.
     tailClipClass: String? = nil, captureTrailingSilenceMs: Int? = nil,
     captureTail200Rms: Double? = nil, captureTail200Peak: Double? = nil,
     asrInputDurationMs: Int? = nil, asrLastTokenEndMs: Int? = nil,

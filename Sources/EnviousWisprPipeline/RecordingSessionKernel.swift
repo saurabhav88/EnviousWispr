@@ -1326,8 +1326,20 @@ final class RecordingSessionKernel {
         adapter.capabilities.decodesConditionedBatchSamples
         && (adapter as? ASREngineTelemetryProviding)?
           .lastASRDiagnostics?.batchRescueAttempted == true
+      // The token gap is trustworthy ONLY when the decoded buffer was the VAD-trimmed
+      // SPEECH buffer. Every raw-fed path (too-aggressive raw fallback, soft-onset raw
+      // preservation, padding, or a SampleFilter no-op on empty/sub-threshold segments)
+      // leaves raw trailing silence/noise, so the gap would mislabel a normal dictation
+      // as a drop (cloud + local Codex P2, #1238). Pass nil there so the classifier
+      // sees no gap and returns .unknown.
+      let decodedTailVadConfirmed = TailClipDiagnostics.decodedTailIsVadConfirmed(
+        usedRawFallbackAfterVAD: conditioned.usedRawFallbackAfterVAD,
+        usedRawSoftOnsetPreservation: conditioned.usedRawSoftOnsetPreservation,
+        samplesPaddedToMinimum: conditioned.samplesPaddedToMinimum,
+        filteredSampleCount: conditioned.filteredSampleCount,
+        rawSampleCount: captureResult.samples.count)
       let decodedInputAuthoritative =
-        (tailEligible || cameFromBatchRescue) && !conditioned.samplesPaddedToMinimum
+        (tailEligible || cameFromBatchRescue) && decodedTailVadConfirmed
       let decodedInputCount = decodedInputAuthoritative ? asrSamples.count : nil
       let tailClip = TailClipDiagnostics.compute(
         rawSamples: captureResult.samples,

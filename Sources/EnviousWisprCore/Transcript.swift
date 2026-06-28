@@ -59,11 +59,12 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var recoveredTailMs: Int?
   public var tailVoicedFraction: Double?
   public var tailRefusedReason: String?
-  /// #1232 tail-clip telemetry: release-safe classifier + lead signals carried
-  /// onto `asr.completed`. Numbers/booleans only — no audio or text. All optional
-  /// (additive Codable, back-compatible with pre-#1232 transcripts on disk).
-  /// `tailClipClassification` = clean / suspected_capture_clip /
-  /// suspected_asr_drop / unknown.
+  /// #1232 tail-clip telemetry (recalibrated #1236): release-safe classifier + lead
+  /// signals carried onto `asr.completed`. Numbers/booleans only — no audio or text.
+  /// All optional (additive Codable, back-compatible with pre-#1232 transcripts on
+  /// disk). `tailClipClassification` = asr_complete / suspected_asr_drop / unknown.
+  /// `asrLastTokenGapMs` = untranscribed tail on the decoded timeline (headline
+  /// ASR-drop metric).
   public var tailClipClassification: String?
   public var captureTrailingSilenceMs: Int?
   public var captureTail200Rms: Double?
