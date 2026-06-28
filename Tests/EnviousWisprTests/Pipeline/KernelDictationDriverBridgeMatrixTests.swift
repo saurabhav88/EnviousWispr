@@ -55,7 +55,7 @@ import Testing
         vad: FakeVADSignalSource(),
         currentTick: { 0 }, sleepTicks: { _ in },
         processText: { raw, _ in raw },
-        store: { _ in }, deliver: { _ in .pasted },
+        store: { _, _ in }, deliver: { _ in .pasted },
         minimumRecordingTicks: 0)
       let observer = KernelHeartPathTelemetryObserver(
         kernel: kernel, audioCapture: FakeAudioCapture(),

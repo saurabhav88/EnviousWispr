@@ -163,7 +163,7 @@ final class RecordingSessionKernel {
   private let processText:
     @MainActor (_ raw: String, _ onPolishStarted: @escaping @MainActor () -> Void)
       async throws -> String
-  private let store: @MainActor (_ text: String) async throws -> Void
+  private let store: @MainActor (_ text: String, _ transcriptID: UUID) async throws -> Void
   private let deliver: @MainActor (_ text: String) async -> KernelDeliveryOutcome
 
   // MARK: Wedge-detection tuning
@@ -473,7 +473,7 @@ final class RecordingSessionKernel {
     processText: @escaping @MainActor (
       _ raw: String, _ onPolishStarted: @escaping @MainActor () -> Void
     ) async throws -> String,
-    store: @escaping @MainActor (_ text: String) async throws -> Void,
+    store: @escaping @MainActor (_ text: String, _ transcriptID: UUID) async throws -> Void,
     deliver: @escaping @MainActor (_ text: String) async -> KernelDeliveryOutcome,
     wedgeStallTicks: Int = 2,
     minimumRecordingTicks: Int = 5,
@@ -1304,6 +1304,21 @@ final class RecordingSessionKernel {
     let asrEnd = CFAbsoluteTimeGetCurrent()
     markASRTimingEnd()
 
+    // #1230 — one id minted here, before the outcome switch, so it (a) names the
+    // debug audio-archive folder for EVERY post-decode outcome and (b) is
+    // threaded through `runFinalizing` → `store` → `Transcript(id:)` on the
+    // `.transcript` path, making the History entry id == the archive folder name.
+    let transcriptID = UUID()
+    // #1230 archive metadata collected across the switch cases, read once by the
+    // single archive call after it. Setting these is data collection, not a
+    // second archive site (mirrors how `telemetryState` is stamped per case).
+    // DEBUG-only: the archive that reads them is DEBUG-only, so gating here keeps
+    // the release build free of write-only-variable warnings.
+    #if DEBUG
+      var archiveClassification = "notEvaluated"
+      var archiveSpeechEvidence = false
+    #endif
+
     switch outcome {
     case .transcript(let result):
       // PR-5 Rung 5 Pass 2 #8 — `result.processingTime` is the adapter's
@@ -1384,7 +1399,11 @@ final class RecordingSessionKernel {
           + "lastTokenEndMs=\(tailClip.asrLastTokenEndMs.map(String.init) ?? "n/a") "
           + "tokenGapMs=\(tailClip.asrLastTokenGapMs.map(String.init) ?? "n/a") "
           + "chunked=\(tailClip.asrChunked.map(String.init) ?? "n/a")")
-      await runFinalizing(sid, asrText: result.text)
+      // #1230 — the tail-clip verdict is the diagnostic key for a clipped take.
+      #if DEBUG
+        archiveClassification = tailClip.classification.rawValue
+      #endif
+      await runFinalizing(sid, asrText: result.text, transcriptID: transcriptID)
     case .empty(let hadSpeechEvidence):
       mergeAdapterDiagnosticsIntoASREmpty()
       // #964 R2: if we reached ASR only because raw energy beat the dead-air
@@ -1395,6 +1414,11 @@ final class RecordingSessionKernel {
       // segments were empty, so it owns the final routing decision.
       let effectiveSpeechEvidence =
         hadSpeechEvidence && !attemptedFromEnergyDespiteNoSegments
+      // #1230 — distinguishes the asrEmpty vs noSpeech archive label; the audio
+      // is saved by the single post-switch archive call (no per-terminal dump).
+      #if DEBUG
+        archiveSpeechEvidence = effectiveSpeechEvidence
+      #endif
       if !effectiveSpeechEvidence {
         // Stamp BEFORE the transition so the observer reads the source
         // at `.noSpeech` mapping time (PR-4b.2 §3.6 r7).
@@ -1423,37 +1447,6 @@ final class RecordingSessionKernel {
             level: .info, category: "Pipeline"
           )
         }
-        #if DEBUG
-          // #979 diagnostic: dogfood builds save the audio pair for this
-          // terminal so the next local occurrence answers the production
-          // fork (real short word lost vs non-speech transient that fooled
-          // the voice detector). DEBUG-only; local disk; bounded retention.
-          let rawSamples = captureResult.samples
-          // Codex P2 (r1+r2): dump what the engine ACTUALLY decoded.
-          // WhisperKit ignores the conditioned buffer and decodes the raw
-          // capture padded to the transcription minimum — reuse the SAME
-          // routing helper the adapter calls so the fed WAV matches the
-          // failing decode byte-for-byte.
-          let fedSamples =
-            adapter.capabilities.decodesConditionedBatchSamples
-            ? asrSamples
-            : WhisperKitPipelineSpeechRouting.paddedASRSamples(
-              rawSamples: captureResult.samples,
-              minimumSamples: AudioConstants.minimumTranscriptionSamples)
-          let sidRaw = sid.raw.uuidString
-          Task.detached(priority: .utility) {
-            // Task.detached (not Task): file IO off the kernel's actor; no
-            // cancellation or ordering relationship with the session — the
-            // dump must survive the session reaching its terminal state.
-            let prefix = ASREmptyCaptureDump.dump(
-              raw: rawSamples, fed: fedSamples, sessionID: sidRaw)
-            await AppLogger.shared.log(
-              prefix.map { "ASR-empty capture dumped: \($0)-{raw,fed}.wav" }
-                ?? "ASR-empty capture dump FAILED (diagnostic limb, ignored)",
-              level: .info, category: "Pipeline"
-            )
-          }
-        #endif
       }
       finishTerminal(
         effectiveSpeechEvidence ? .failed(.asrEmpty) : .noSpeech, sid: sid)
@@ -1468,11 +1461,116 @@ final class RecordingSessionKernel {
         (adapter as? ASREngineTelemetryProviding)?.lastFailureError ?? error
       finishTerminal(.failed(.asrFailed), sid: sid)
     }
+
+    // #1230 — the single dictation-audio archive call. Runs AFTER the outcome
+    // switch (so delivery on the `.transcript` path has already happened) and
+    // for EVERY post-decode outcome (the switch above is exhaustive over
+    // `ASREngineOutcome`), guarded only by "raw samples present." Pre-decode
+    // terminals return before this point and are correctly never archived. The
+    // actual file IO runs in a detached, failure-isolated task off the kernel's
+    // actor — nothing here touches the heart path's latency.
+    #if DEBUG
+      if !captureResult.samples.isEmpty {
+        let archiveID = transcriptID
+        let archiveSid = sid.raw.uuidString
+        let archiveRaw = captureResult.samples
+        // What the engine ACTUALLY decoded, so the #1237 chunk replay is faithful
+        // (Codex r6). `asrSamples` (the conditioned batch buffer) is the decode
+        // input ONLY for a conditioned-batch decode — a batch session or a
+        // streaming session that fell to batch rescue. A streaming WIN decoded the
+        // raw live feed (`acceptAudio` forwards `captureResult.samples`, not the
+        // conditioned buffer — :1150-1163 / :1878), so raw.wav is authoritative and
+        // there is no distinct fed buffer. WhisperKit always decodes the raw
+        // capture padded to the transcription minimum.
+        let decodesConditionedBatch = adapter.capabilities.decodesConditionedBatchSamples
+        let cameFromBatchRescue =
+          decodesConditionedBatch
+          && (adapter as? ASREngineTelemetryProviding)?
+            .lastASRDiagnostics?.batchRescueAttempted == true
+        let archiveFed: [Float]
+        if Self.dictationFedUsesBatchBuffer(
+          decodesConditionedBatch: decodesConditionedBatch,
+          isStreaming: isStreamingSession,
+          cameFromBatchRescue: cameFromBatchRescue)
+        {
+          archiveFed = asrSamples
+        } else if decodesConditionedBatch {
+          archiveFed = []  // streaming win: raw.wav is the decoded audio
+        } else {
+          archiveFed = WhisperKitPipelineSpeechRouting.paddedASRSamples(
+            rawSamples: captureResult.samples,
+            minimumSamples: AudioConstants.minimumTranscriptionSamples)
+        }
+        var archiveOutcome = Self.dictationArchiveOutcome(
+          for: outcome, effectiveSpeechEvidence: archiveSpeechEvidence)
+        // A `.transcript` decode whose finalization did NOT reach `.completed`
+        // (empty after polish → `.failed(.emptyAfterProcessing)`, or superseded
+        // mid-finalize) is not a real completion — relabel so it stays distinct
+        // from normal completions in the metadata (Codex r6 P3). `runFinalizing`
+        // has already run by here, so `state` holds the terminal verdict.
+        if case .transcript = outcome, !(isCurrent(sid) && state == .completed) {
+          archiveOutcome = .finalizationFailed
+        }
+        let archiveClass = archiveClassification
+        let archiveBackend = adapter.engineIdentity.backendType.rawValue
+        Task.detached(priority: .utility) {
+          let path = await DictationAudioArchive.archive(
+            transcriptID: archiveID,
+            sid: archiveSid,
+            raw: archiveRaw,
+            fed: archiveFed,
+            outcome: archiveOutcome,
+            classification: archiveClass,
+            backend: archiveBackend)
+          await AppLogger.shared.log(
+            path.map { "Dictation audio archived: \($0)" }
+              ?? "Dictation audio archive skipped/failed (diagnostic limb, ignored)",
+            level: .info, category: "Pipeline"
+          )
+        }
+      }
+    #endif
   }
+
+  #if DEBUG
+    /// Maps the exhaustive `ASREngineOutcome` to the archive's terminal label.
+    /// Compiler-checked exhaustiveness is the coverage freeze: a new outcome
+    /// case forces a conscious decision here, and `DictationAudioArchiveTests`
+    /// locks the mapping. `effectiveSpeechEvidence` only differentiates the
+    /// `.empty` terminal (asrEmpty vs noSpeech); ignored otherwise.
+    nonisolated static func dictationArchiveOutcome(
+      for outcome: ASREngineOutcome,
+      effectiveSpeechEvidence: Bool
+    ) -> DictationAudioArchive.Outcome {
+      switch outcome {
+      case .transcript: return .completed
+      case .empty: return effectiveSpeechEvidence ? .asrEmpty : .noSpeech
+      case .cancelled: return .cancelled
+      case .failed(.wedged): return .wedged
+      case .failed: return .failed
+      }
+    }
+
+    /// Whether the conditioned batch buffer (`asrSamples`) is the buffer the
+    /// engine actually decoded — true ONLY for a conditioned-batch decode: a
+    /// batch session, or a streaming session that fell back to batch rescue. A
+    /// streaming WIN decodes the raw live feed (`acceptAudio` forwards the raw
+    /// capture, not the conditioned buffer), so `asrSamples` is NOT its decode
+    /// input and `raw.wav` is the faithful replay. Same `tailEligible ||
+    /// cameFromBatchRescue` identity the tail-clip diagnostics use. Returns false
+    /// for WhisperKit (decodes raw padded to the transcription minimum).
+    nonisolated static func dictationFedUsesBatchBuffer(
+      decodesConditionedBatch: Bool,
+      isStreaming: Bool,
+      cameFromBatchRescue: Bool
+    ) -> Bool {
+      decodesConditionedBatch && (!isStreaming || cameFromBatchRescue)
+    }
+  #endif
 
   /// The finalizing phase — the transcript is in hand, the safe point is in
   /// force (PR-1 §B.5). Cancel / interruption from here are ignored.
-  private func runFinalizing(_ sid: SessionID, asrText: String) async {
+  private func runFinalizing(_ sid: SessionID, asrText: String, transcriptID: UUID) async {
     transition(to: .finalizing)
     finalizingSubStatus = .transcribing
 
@@ -1504,7 +1602,7 @@ final class RecordingSessionKernel {
     transcriptReadyForDelivery = true
 
     do {
-      try await store(processed)
+      try await store(processed, transcriptID)
     } catch {
       // #1167: the history save is best-effort — `store` absorbs storage
       // failures internally (records them on the finalization outcome +

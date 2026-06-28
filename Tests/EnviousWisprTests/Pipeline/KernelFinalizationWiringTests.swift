@@ -110,7 +110,7 @@ import Testing
     let floored = try await wiring.processText(
       "call me at two zero three nine five four eight eight seven nine"
     ) {}
-    try await wiring.store(floored)
+    try await wiring.store(floored, UUID())
     _ = await wiring.deliver(floored)
 
     let metrics = try #require(outcome.transcript?.metrics)
@@ -130,7 +130,7 @@ import Testing
     let wiring = makeWiring(outcome: outcome, context: context, save: { saved.transcript = $0 })
 
     let result = try await wiring.processText("hello there friend") {}
-    try await wiring.store(result)
+    try await wiring.store(result, UUID())
     _ = await wiring.deliver(result)
 
     #expect(result == "hello there friend")
@@ -208,7 +208,7 @@ import Testing
     let wiring = makeWiring(outcome: outcome, steps: steps, save: { saved.transcript = $0 })
 
     let result = try await wiring.processText("Other apps") {}
-    try await wiring.store(result)
+    try await wiring.store(result, UUID())
 
     // The unit-level proxy for "history row shows no AI badge" (#1022).
     let transcript = try #require(saved.transcript)
@@ -228,7 +228,7 @@ import Testing
     let saved = SavedTranscriptBox()
     let wiring = makeWiring(outcome: outcome, save: { saved.transcript = $0 })
 
-    try await wiring.store("polished text")
+    try await wiring.store("polished text", UUID())
 
     #expect(saved.transcript?.text == "raw asr text")
     #expect(saved.transcript?.polishedText == "polished text")
@@ -257,7 +257,7 @@ import Testing
       telemetryState: telemetryState)
     // Best-effort: the save throw is absorbed — `store` does NOT propagate it,
     // so the kernel proceeds to deliver instead of routing a terminal failure.
-    try await wiring.store("the delivered words")
+    try await wiring.store("the delivered words", UUID())
     #expect(outcome.historySaved == false)
     #expect(outcome.historySaveError != nil)
     // The transcript is set BEFORE the save attempt, so completion telemetry +

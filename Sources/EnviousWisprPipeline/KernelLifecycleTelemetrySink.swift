@@ -514,7 +514,7 @@ final class KernelLifecycleTelemetrySink {
       // Sentry->GitHub triage) to a context-only breadcrumb. Frequency still
       // lives in PostHog pipeline.failed (error_code "Couldn't catch that --
       // try again"); engineering evidence still lives in the DEBUG
-      // ASREmptyCaptureDump. Both untouched.
+      // DictationAudioArchive. Both untouched.
       breadcrumb(
         "asr", "ASR returned empty text despite speech evidence",
         telemetryState.asrEmptyDiagnostics?.sentryExtra() ?? ["backend": backend.rawValue])

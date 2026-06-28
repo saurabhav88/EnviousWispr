@@ -156,7 +156,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
         _ = limb.degradeToRaw
         return raw
       },
-      store: { _ in
+      store: { _, _ in
         // #1167: a throwing save models the best-effort store seam. The kernel
         // ABSORBS the throw (records it on the finalization outcome) and still
         // proceeds to deliver + `.completed` — it no longer routes a terminal
