@@ -81,7 +81,7 @@ detect_lane_from_diff() {
   if echo "$changed_files" | grep -qE '^(Sources/|Tests/|Package\.swift|Package\.resolved|Project\.swift|Tuist\.swift|Workspace\.swift|Tuist/)'; then
     lanes="$lanes Code"
   fi
-  if echo "$changed_files" | grep -qE '^(website/|assets/|content-engine/)'; then
+  if echo "$changed_files" | grep -qE '^(website/|assets/)'; then
     lanes="$lanes Content"
   fi
   if echo "$changed_files" | grep -qE '^\.github/workflows/|dependabot'; then
