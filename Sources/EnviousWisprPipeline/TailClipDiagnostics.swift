@@ -128,13 +128,15 @@ struct TailClipDiagnostics: Sendable, Equatable {
   }
 
   /// Pure classifier. `lastTokenGapMs` is the untranscribed speaking tail on the
-  /// decoded timeline; `tailIsDeadAir` is the shared #964 dead-air verdict.
+  /// decoded timeline (nil unless the gap is authoritative — see
+  /// `decodedTailIsVadConfirmed`, enforced kernel-side); `tailIsDeadAir` is the
+  /// shared #964 dead-air verdict.
   static func classify(
     lastTokenGapMs: Int?,
     tailIsDeadAir: Bool
   ) -> Classification {
-    // No authoritative token timing (WhisperKit / streaming / padded) — cannot
-    // judge the ASR tail.
+    // No authoritative token timing (WhisperKit / streaming / padded / raw-fed) —
+    // cannot judge the ASR tail.
     guard let gap = lastTokenGapMs else { return .unknown }
     // A dead-air tail means the audio ended in silence: the decoder stopping at
     // the last spoken word is correct, nothing was dropped, regardless of the gap.
@@ -143,6 +145,35 @@ struct TailClipDiagnostics: Sendable, Equatable {
     if gap >= asrDropMinMs { return .suspectedASRDrop }
     if gap <= asrCompleteMaxMs { return .asrComplete }
     return .unknown  // gray band between the thresholds
+  }
+
+  /// The token gap is a trustworthy "untranscribed speech" signal ONLY when the
+  /// decoded input was the VAD-TRIMMED speech buffer. Every raw-fed conditioning
+  /// path leaves raw trailing silence/noise after the last word, so the gap would
+  /// be measured against unconfirmed audio and could mislabel a normal dictation as
+  /// `suspected_asr_drop` (cloud + local Codex P2, #1238): the too-aggressive raw
+  /// fallback, #843 soft-onset raw preservation, short-utterance padding, and the
+  /// `SampleFilter` no-op for empty/sub-threshold segments (where
+  /// `filteredSampleCount == rawSampleCount`). The kernel passes a nil
+  /// `decodedInputSampleCount` to `compute` whenever this returns false, so the
+  /// classifier sees no gap and returns `.unknown`.
+  ///
+  /// Conservative by design: a fully-voiced edge-to-edge dictation also has
+  /// `filteredSampleCount == rawSampleCount` (nothing to trim) and is treated as
+  /// not-confirmed → `.unknown`. That errs toward losing signal, never toward a
+  /// false `suspected_asr_drop`; such dictations are rare (most have some trimmed
+  /// lead/trail/inter-word silence).
+  static func decodedTailIsVadConfirmed(
+    usedRawFallbackAfterVAD: Bool,
+    usedRawSoftOnsetPreservation: Bool,
+    samplesPaddedToMinimum: Bool,
+    filteredSampleCount: Int,
+    rawSampleCount: Int
+  ) -> Bool {
+    !usedRawFallbackAfterVAD
+      && !usedRawSoftOnsetPreservation
+      && !samplesPaddedToMinimum
+      && filteredSampleCount < rawSampleCount
   }
 
   /// RMS + peak of a sample slice. Empty slice → zeros.
