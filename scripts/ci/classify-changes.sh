@@ -17,8 +17,8 @@
 #
 # Classify contract (lifted VERBATIM from the pre-#1151 inline step):
 #   - a change to pr-check.yml / main-post-merge.yml self-forces a full build
-#   - any path outside (website/ docs/ .github/ content-engine/ .claude/
-#     CLAUDE.md) forces a full build
+#   - any path outside (website/ docs/ .github/ .claude/ CLAUDE.md) forces a
+#     full build
 #   - otherwise content-only -> skip
 #   Empty input -> true: the here-string feeds grep one blank line, which is
 #   NOT excluded, so the verbatim classifier over-builds. Preserved as-is; an
@@ -34,7 +34,7 @@ classify() {
   if grep -qE '^\.github/workflows/(pr-check|main-post-merge)\.yml$' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     echo "==> CI build workflow changed — full Xcode build required"
-  elif grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)' <<<"$changed"; then
+  elif grep -qvE '^(website/|docs/|\.github/|\.claude/|CLAUDE\.md)' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     echo "==> Swift source changes detected — full Xcode build required"
   else

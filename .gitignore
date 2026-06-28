@@ -193,7 +193,6 @@ scripts/eval/corpus/alias-holdout-private.jsonl
 scripts/freeze-suite/compare-output.json
 scripts/freeze-suite/variance-log.jsonl
 docs/
-content-engine/
 Brand Assets/
 .beads/
 workers/weekly-digest/.wrangler/
