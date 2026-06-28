@@ -417,6 +417,16 @@ struct KernelFinalizationWiring {
       recoveredTailMs: telemetryState.asrCompletedTelemetry?.recoveredTailMs,
       tailVoicedFraction: telemetryState.asrCompletedTelemetry?.tailVoicedFraction,
       tailRefusedReason: telemetryState.asrCompletedTelemetry?.tailRefusedReason,
+      // #1232 tail-clip telemetry — kernel-computed classifier + lead signals,
+      // read from the shared telemetry state. Carried onto `asr.completed`.
+      tailClipClassification: telemetryState.asrCompletedTelemetry?.tailClipClassification,
+      captureTrailingSilenceMs: telemetryState.asrCompletedTelemetry?.captureTrailingSilenceMs,
+      captureTail200Rms: telemetryState.asrCompletedTelemetry?.captureTail200Rms,
+      captureTail200Peak: telemetryState.asrCompletedTelemetry?.captureTail200Peak,
+      asrInputDurationMs: telemetryState.asrCompletedTelemetry?.asrInputDurationMs,
+      asrLastTokenEndMs: telemetryState.asrCompletedTelemetry?.asrLastTokenEndMs,
+      asrLastTokenGapMs: telemetryState.asrCompletedTelemetry?.asrLastTokenGapMs,
+      asrChunked: telemetryState.asrCompletedTelemetry?.asrChunked,
       // #761 deterministic emoji-restore facts (counts only). Populated only on
       // an AFM run; nil for cloud / Ollama / no-polish and pre-#761 records.
       emojiInInput: outcome.emojiRan ? outcome.emojiInInput : nil,

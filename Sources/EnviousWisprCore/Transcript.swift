@@ -59,6 +59,19 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var recoveredTailMs: Int?
   public var tailVoicedFraction: Double?
   public var tailRefusedReason: String?
+  /// #1232 tail-clip telemetry: release-safe classifier + lead signals carried
+  /// onto `asr.completed`. Numbers/booleans only — no audio or text. All optional
+  /// (additive Codable, back-compatible with pre-#1232 transcripts on disk).
+  /// `tailClipClassification` = clean / suspected_capture_clip /
+  /// suspected_asr_drop / unknown.
+  public var tailClipClassification: String?
+  public var captureTrailingSilenceMs: Int?
+  public var captureTail200Rms: Double?
+  public var captureTail200Peak: Double?
+  public var asrInputDurationMs: Int?
+  public var asrLastTokenEndMs: Int?
+  public var asrLastTokenGapMs: Int?
+  public var asrChunked: Bool?
   /// Deterministic post-polish emoji-restore telemetry (#761). Populated only for
   /// Apple on-device (AFM) polish; nil for cloud providers, no-polish dictations,
   /// and pre-#761 transcripts on disk (additive optional Codable, back-compatible).
@@ -99,6 +112,14 @@ public struct ExecutionMetrics: Codable, Sendable {
     recoveredTailMs: Int? = nil,
     tailVoicedFraction: Double? = nil,
     tailRefusedReason: String? = nil,
+    tailClipClassification: String? = nil,
+    captureTrailingSilenceMs: Int? = nil,
+    captureTail200Rms: Double? = nil,
+    captureTail200Peak: Double? = nil,
+    asrInputDurationMs: Int? = nil,
+    asrLastTokenEndMs: Int? = nil,
+    asrLastTokenGapMs: Int? = nil,
+    asrChunked: Bool? = nil,
     emojiInInput: Int? = nil,
     emojiDropped: Int? = nil,
     emojiRestored: Int? = nil,
@@ -131,6 +152,14 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.recoveredTailMs = recoveredTailMs
     self.tailVoicedFraction = tailVoicedFraction
     self.tailRefusedReason = tailRefusedReason
+    self.tailClipClassification = tailClipClassification
+    self.captureTrailingSilenceMs = captureTrailingSilenceMs
+    self.captureTail200Rms = captureTail200Rms
+    self.captureTail200Peak = captureTail200Peak
+    self.asrInputDurationMs = asrInputDurationMs
+    self.asrLastTokenEndMs = asrLastTokenEndMs
+    self.asrLastTokenGapMs = asrLastTokenGapMs
+    self.asrChunked = asrChunked
     self.emojiInInput = emojiInInput
     self.emojiDropped = emojiDropped
     self.emojiRestored = emojiRestored

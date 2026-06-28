@@ -98,8 +98,18 @@ public actor ParakeetBackend: ASRBackend {
       language: "en",
       duration: fluidResult.duration,
       processingTime: elapsed,
-      backendType: .parakeet
+      backendType: .parakeet,
+      tokenTimingSummary: Self.tokenTimingSummary(from: fluidResult.tokenTimings)
     )
+  }
+
+  /// Numbers-only summary of FluidAudio token timings for tail-clip diagnostics (#1232).
+  /// We keep only the count and the end time (ms) of the last token — never token text.
+  /// Used to compute how far the decoded text reached vs the captured audio.
+  private static func tokenTimingSummary(from timings: [TokenTiming]?) -> ASRTokenTimingSummary? {
+    guard let timings else { return nil }
+    let lastEndMs = timings.map(\.endTime).max().map { Int(($0 * 1000).rounded()) }
+    return ASRTokenTimingSummary(tokenCount: timings.count, lastTokenEndMs: lastEndMs)
   }
 
   // MARK: - Streaming ASR

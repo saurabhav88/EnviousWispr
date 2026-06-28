@@ -1313,6 +1313,27 @@ final class RecordingSessionKernel {
       // `WhisperKitPipeline.swift:1161-1168` `asr_s` semantic. Sentry/app.log
       // ASR-completed payload reads this field; PostHog latency telemetry
       // is already adapter-emitted and unaffected.
+      // #1232 tail-clip diagnostics. Pure compute from signals already in hand;
+      // never alters delivery. `asrSamples` is the authoritative decoded buffer
+      // (the token timings come from decoding IT) in two cases: an eligible
+      // Parakeet batch session, OR a streaming session whose finalize fell back
+      // to the batch rescue — the rescue decodes the conditioned `asrSamples`, so
+      // its tokens map onto that timeline (Codex P2). Streaming that returned
+      // text from the live feed, and WhisperKit (decodes its own raw buffer), are
+      // NOT authoritative. In every authoritative case padding would inflate the
+      // gap, so require unpadded (Codex r4).
+      let cameFromBatchRescue =
+        adapter.capabilities.decodesConditionedBatchSamples
+        && (adapter as? ASREngineTelemetryProviding)?
+          .lastASRDiagnostics?.batchRescueAttempted == true
+      let decodedInputAuthoritative =
+        (tailEligible || cameFromBatchRescue) && !conditioned.samplesPaddedToMinimum
+      let decodedInputCount = decodedInputAuthoritative ? asrSamples.count : nil
+      let tailClip = TailClipDiagnostics.compute(
+        rawSamples: captureResult.samples,
+        vadSegments: vadSegments,
+        decodedInputSampleCount: decodedInputCount,
+        lastTokenEndMs: result.tokenTimingSummary?.lastTokenEndMs)
       telemetryState.asrCompletedTelemetry = KernelASRCompletedTelemetry(
         durationSeconds: result.processingTime,
         charCount: result.text.trimmingCharacters(in: .whitespacesAndNewlines).count,
@@ -1330,8 +1351,27 @@ final class RecordingSessionKernel {
         usedTailPreservation: usedTailPreservation,
         recoveredTailMs: recoveredTailMs,
         tailVoicedFraction: tailVoicedFractionForTelemetry,
-        tailRefusedReason: tailRefusedReason
+        tailRefusedReason: tailRefusedReason,
+        tailClipClassification: tailClip.classification.rawValue,
+        captureTrailingSilenceMs: tailClip.trailingSilenceMs,
+        captureTail200Rms: Double(tailClip.tail200RMS),
+        captureTail200Peak: Double(tailClip.tail200Peak),
+        asrInputDurationMs: tailClip.asrInputDurationMs,
+        asrLastTokenEndMs: tailClip.asrLastTokenEndMs,
+        asrLastTokenGapMs: tailClip.asrLastTokenGapMs,
+        asrChunked: tailClip.asrChunked
       )
+      // #1232 debug-log line: the per-dictation tail-clip verdict + lead signals,
+      // greppable in app.log next to the conditioner line for live triage.
+      log(
+        "tailclip class=\(tailClip.classification.rawValue) "
+          + "trailingSilenceMs=\(tailClip.trailingSilenceMs.map(String.init) ?? "n/a") "
+          + "tail200Peak=\(String(format: "%.4f", tailClip.tail200Peak)) "
+          + "tail200Rms=\(String(format: "%.4f", tailClip.tail200RMS)) "
+          + "asrInputMs=\(tailClip.asrInputDurationMs.map(String.init) ?? "n/a") "
+          + "lastTokenEndMs=\(tailClip.asrLastTokenEndMs.map(String.init) ?? "n/a") "
+          + "tokenGapMs=\(tailClip.asrLastTokenGapMs.map(String.init) ?? "n/a") "
+          + "chunked=\(tailClip.asrChunked.map(String.init) ?? "n/a")")
       await runFinalizing(sid, asrText: result.text)
     case .empty(let hadSpeechEvidence):
       mergeAdapterDiagnosticsIntoASREmpty()
