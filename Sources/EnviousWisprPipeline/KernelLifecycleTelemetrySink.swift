@@ -391,6 +391,18 @@ final class KernelLifecycleTelemetrySink {
     if let refusedReason = telemetryState.asrCompletedTelemetry?.tailRefusedReason {
       payload["tail_refused_reason"] = refusedReason
     }
+    // #1232 tail-clip telemetry (omit-on-nil, numbers/booleans only — no audio
+    // or text). Lets cross-session triage tell capture-clip from ASR-drop.
+    if let t = telemetryState.asrCompletedTelemetry {
+      if let cls = t.tailClipClassification { payload["tail_clip_class"] = cls }
+      if let v = t.captureTrailingSilenceMs { payload["capture_trailing_silence_ms"] = v }
+      if let v = t.captureTail200Rms { payload["capture_tail_200_rms"] = v }
+      if let v = t.captureTail200Peak { payload["capture_tail_200_peak"] = v }
+      if let v = t.asrInputDurationMs { payload["asr_input_duration_ms"] = v }
+      if let v = t.asrLastTokenEndMs { payload["asr_last_token_end_ms"] = v }
+      if let v = t.asrLastTokenGapMs { payload["asr_last_token_gap_ms"] = v }
+      if let v = t.asrChunked { payload["asr_chunked"] = v }
+    }
     return payload
   }
 

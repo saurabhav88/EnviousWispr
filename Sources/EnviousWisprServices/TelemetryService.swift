@@ -119,7 +119,12 @@ public final class TelemetryService {
         latencySeconds: asrLat, charCount: t.text.count,
         tailDroppedMs: m?.tailDroppedMs, tailHadEnergy: m?.tailHadEnergy,
         usedTailPreservation: m?.usedTailPreservation, recoveredTailMs: m?.recoveredTailMs,
-        tailVoicedFraction: m?.tailVoicedFraction, tailRefusedReason: m?.tailRefusedReason)
+        tailVoicedFraction: m?.tailVoicedFraction, tailRefusedReason: m?.tailRefusedReason,
+        tailClipClass: m?.tailClipClassification,
+        captureTrailingSilenceMs: m?.captureTrailingSilenceMs,
+        captureTail200Rms: m?.captureTail200Rms, captureTail200Peak: m?.captureTail200Peak,
+        asrInputDurationMs: m?.asrInputDurationMs, asrLastTokenEndMs: m?.asrLastTokenEndMs,
+        asrLastTokenGapMs: m?.asrLastTokenGapMs, asrChunked: m?.asrChunked)
     }
     if let llmLat = m?.llmLatencySeconds, llmLat > 0, t.llmProvider != nil {
       llmPolishCompleted(
@@ -683,7 +688,14 @@ public final class TelemetryService {
     // `tailPreservedMs` = ms appended back; `tailVoicedFraction` = sustained-voice
     // ratio; `tailRefusedReason` = why an eligible tail was refused. Metadata only.
     usedTailPreservation: Bool? = nil, recoveredTailMs: Int? = nil,
-    tailVoicedFraction: Double? = nil, tailRefusedReason: String? = nil
+    tailVoicedFraction: Double? = nil, tailRefusedReason: String? = nil,
+    // #1232 tail-clip telemetry (omit-on-nil; numbers/booleans only — no audio
+    // or text). `tailClipClass` = clean / suspected_capture_clip /
+    // suspected_asr_drop / unknown; the rest are the classifier's lead signals.
+    tailClipClass: String? = nil, captureTrailingSilenceMs: Int? = nil,
+    captureTail200Rms: Double? = nil, captureTail200Peak: Double? = nil,
+    asrInputDurationMs: Int? = nil, asrLastTokenEndMs: Int? = nil,
+    asrLastTokenGapMs: Int? = nil, asrChunked: Bool? = nil
   ) {
     var properties: [String: Any] = [
       "backend": backend,
@@ -699,6 +711,16 @@ public final class TelemetryService {
     if let recoveredTailMs { properties["tail_preserved_ms"] = recoveredTailMs }
     if let tailVoicedFraction { properties["tail_voiced_fraction"] = tailVoicedFraction }
     if let tailRefusedReason { properties["tail_refused_reason"] = tailRefusedReason }
+    if let tailClipClass { properties["tail_clip_class"] = tailClipClass }
+    if let captureTrailingSilenceMs {
+      properties["capture_trailing_silence_ms"] = captureTrailingSilenceMs
+    }
+    if let captureTail200Rms { properties["capture_tail_200_rms"] = captureTail200Rms }
+    if let captureTail200Peak { properties["capture_tail_200_peak"] = captureTail200Peak }
+    if let asrInputDurationMs { properties["asr_input_duration_ms"] = asrInputDurationMs }
+    if let asrLastTokenEndMs { properties["asr_last_token_end_ms"] = asrLastTokenEndMs }
+    if let asrLastTokenGapMs { properties["asr_last_token_gap_ms"] = asrLastTokenGapMs }
+    if let asrChunked { properties["asr_chunked"] = asrChunked }
     PostHogSDK.shared.capture("asr.completed", properties: properties)
   }
 
