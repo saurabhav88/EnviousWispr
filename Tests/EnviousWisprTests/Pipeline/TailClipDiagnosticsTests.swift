@@ -4,108 +4,90 @@ import Testing
 
 @testable import EnviousWisprPipeline
 
-@Suite("Tail-clip diagnostics (#1232) — classifier + compute boundaries")
+@Suite("Tail-clip diagnostics (#1232/#1236) — recalibrated classifier + compute boundaries")
 struct TailClipDiagnosticsTests {
 
-  // MARK: - clean
+  // MARK: - classify(): asr_complete
 
-  @Test("Clean: trailing silence >= 150ms wins regardless of tail energy")
-  func cleanBySilence() {
+  @Test("asr_complete: token gap at the <=250 boundary, energetic")
+  func completeAtBoundary() {
     #expect(
-      TailClipDiagnostics.classify(
-        trailingSilenceMs: 150, tailIsDeadAir: false, lastTokenGapMs: 0) == .clean)
+      TailClipDiagnostics.classify(lastTokenGapMs: 250, tailIsDeadAir: false) == .asrComplete)
   }
 
-  @Test("Clean: dead-air tail even with zero trailing silence")
-  func cleanByDeadAir() {
+  @Test("asr_complete: a dead-air tail is complete even with a huge gap (user trailed off)")
+  func completeByDeadAirDespiteGap() {
     #expect(
-      TailClipDiagnostics.classify(
-        trailingSilenceMs: 0, tailIsDeadAir: true, lastTokenGapMs: 0) == .clean)
+      TailClipDiagnostics.classify(lastTokenGapMs: 5000, tailIsDeadAir: true) == .asrComplete)
   }
 
-  // MARK: - suspected capture clip
+  // MARK: - classify(): suspected_asr_drop
 
-  @Test("Capture clip: gate satisfied + token gap at the <=300 boundary")
-  func clipByTokenGapBoundary() {
+  @Test("asr_drop: token gap at the >=500 boundary, energetic")
+  func dropAtBoundary() {
     #expect(
-      TailClipDiagnostics.classify(
-        trailingSilenceMs: 0, tailIsDeadAir: false, lastTokenGapMs: 300)
-        == .suspectedCaptureClip)
+      TailClipDiagnostics.classify(lastTokenGapMs: 500, tailIsDeadAir: false) == .suspectedASRDrop)
   }
 
-  @Test("Capture clip: gate satisfied at 40ms boundary + small token gap")
-  func clipAtGateBoundary() {
+  @Test("asr_drop: real-clip magnitude (2825ms energetic tail) is a drop")
+  func dropRealClipMagnitude() {
     #expect(
-      TailClipDiagnostics.classify(
-        trailingSilenceMs: 40, tailIsDeadAir: false, lastTokenGapMs: 100)
-        == .suspectedCaptureClip)
+      TailClipDiagnostics.classify(lastTokenGapMs: 2825, tailIsDeadAir: false) == .suspectedASRDrop)
   }
 
-  // MARK: - suspected ASR drop
+  // MARK: - classify(): unknown
 
-  @Test("ASR drop: gate satisfied, token gap at the >=500 boundary")
-  func dropByTokenGapBoundary() {
+  @Test("unknown: energetic tail in the gray band (250,500)")
+  func unknownGrayBand() {
     #expect(
-      TailClipDiagnostics.classify(
-        trailingSilenceMs: 0, tailIsDeadAir: false, lastTokenGapMs: 500)
-        == .suspectedASRDrop)
+      TailClipDiagnostics.classify(lastTokenGapMs: 400, tailIsDeadAir: false) == .unknown)
   }
 
-  // MARK: - unknown
-
-  @Test("Unknown: gate satisfied but token gap in the ambiguous (300,500) band")
-  func unknownAmbiguousGap() {
-    #expect(
-      TailClipDiagnostics.classify(
-        trailingSilenceMs: 0, tailIsDeadAir: false, lastTokenGapMs: 400) == .unknown)
-  }
-
-  @Test(
-    "Unknown: energetic tail but no VAD segment (nil trailing silence) cannot establish the gate")
-  func unknownNoGate() {
-    #expect(
-      TailClipDiagnostics.classify(
-        trailingSilenceMs: nil, tailIsDeadAir: false, lastTokenGapMs: 100)
-        == .unknown)
-  }
-
-  @Test("Unknown: gate satisfied, energetic tail, but no token gap available")
-  func unknownNoGap() {
-    #expect(
-      TailClipDiagnostics.classify(
-        trailingSilenceMs: 0, tailIsDeadAir: false, lastTokenGapMs: nil) == .unknown)
-  }
-
-  @Test("Gate boundary: trailing silence just over the gate (41ms) with small gap is unknown")
-  func gateJustAbove() {
-    #expect(
-      TailClipDiagnostics.classify(
-        trailingSilenceMs: 41, tailIsDeadAir: false, lastTokenGapMs: 100)
-        == .unknown)
+  @Test("unknown: no authoritative token timing (nil) cannot be judged")
+  func unknownNilGap() {
+    #expect(TailClipDiagnostics.classify(lastTokenGapMs: nil, tailIsDeadAir: false) == .unknown)
+    // nil dominates even if the tail looks dead-air — we still have no gap to judge.
+    #expect(TailClipDiagnostics.classify(lastTokenGapMs: nil, tailIsDeadAir: true) == .unknown)
   }
 
   // MARK: - compute()
 
-  @Test("compute: trailing silence = (rawCount - lastVadEnd) / 16, and energetic tail")
-  func computeTrailingSilence() {
-    var raw = [Float](repeating: 0.03, count: 16000)  // 1000ms
-    raw[15999] = 0.2
-    let segs = [SpeechSegment(startSample: 0, endSample: 15040)]  // 960 samples tail = 60ms
+  @Test("compute: real drop — energetic tail, no trailing silence, large gap → suspected_asr_drop")
+  func computeRealDrop() {
+    let raw = [Float](repeating: 0.03, count: 16000)  // energetic to the end
+    let segs = [SpeechSegment(startSample: 0, endSample: 16000)]  // trailing silence 0
     let d = TailClipDiagnostics.compute(
-      rawSamples: raw, vadSegments: segs, decodedInputSampleCount: 16000, lastTokenEndMs: nil)
-    #expect(d.trailingSilenceMs == 60)
-    #expect(d.tail200Peak > RecordingSessionKernel.DeadAirFloor.peak)
+      rawSamples: raw, vadSegments: segs, decodedInputSampleCount: 16000, lastTokenEndMs: 100)
+    #expect(d.trailingSilenceMs == 0)
+    #expect(d.asrLastTokenGapMs == 900)
+    #expect(d.classification == .suspectedASRDrop)
   }
 
-  @Test("compute: token gap = inputDuration - lastTokenEnd; chunked threshold")
-  func computeTokenGapAndChunk() {
-    let raw = [Float](repeating: 0.0, count: 100)
+  @Test("compute: gap is NOT silence-corrected — raw trailing silence does not cancel a drop")
+  func computeNoSilenceSubtraction() {
+    // Energetic throughout; VAD ends at 8000 of 16000 → raw trailingSilence 500ms.
+    // asrInput 1000ms, last token 300ms → gap 700ms. The gap lives on the decoded
+    // (filtered) timeline, so raw trailing silence must NOT be subtracted (Codex P2):
+    // it stays 700ms → suspected_asr_drop, not hidden as complete.
+    let raw = [Float](repeating: 0.03, count: 16000)
+    let segs = [SpeechSegment(startSample: 0, endSample: 8000)]
+    let d = TailClipDiagnostics.compute(
+      rawSamples: raw, vadSegments: segs, decodedInputSampleCount: 16000, lastTokenEndMs: 300)
+    #expect(d.trailingSilenceMs == 500)
+    #expect(d.asrLastTokenGapMs == 700)
+    #expect(d.classification == .suspectedASRDrop)
+  }
+
+  @Test("compute: dead-air tail is complete even with a large gap; chunked flag set")
+  func computeDeadAirLargeGapChunked() {
+    let raw = [Float](repeating: 0.0, count: 6400)  // silent tail → dead air
     let d = TailClipDiagnostics.compute(
       rawSamples: raw, vadSegments: [], decodedInputSampleCount: 320_000, lastTokenEndMs: 19000)
     #expect(d.asrInputDurationMs == 20000)
     #expect(d.asrLastTokenGapMs == 1000)
     #expect(d.asrChunked == true)
-    #expect(d.trailingSilenceMs == nil)
+    #expect(d.trailingSilenceMs == nil)  // no VAD segment
+    #expect(d.classification == .asrComplete)  // dead-air overrides the large gap
   }
 
   @Test("compute: negative raw token gap is clamped to zero")
@@ -125,30 +107,26 @@ struct TailClipDiagnosticsTests {
     #expect(d.asrInputDurationMs == nil)
     #expect(d.asrChunked == nil)
     #expect(d.asrLastTokenGapMs == nil)
+    #expect(d.classification == .unknown)
   }
 
-  // Codex P2 regression: a faint last word concentrated in ONE 40ms window has
-  // peak and whole-400ms-slice RMS below the dead-air floors, but its local
-  // window RMS clears `windowRms` — so the shared #964 helper reports NOT
-  // dead-air and the clip is no longer hidden as `.clean`. With the gate
-  // satisfied and a small token gap, it classifies as a suspected capture clip.
-  @Test("compute: faint last word in one window is NOT dead-air (window-RMS catch)")
+  // Window-RMS catch (#964 helper) still matters under the new model: a faint last
+  // word concentrated in one 40ms window stays below the whole-slice peak/RMS floors
+  // but lifts a local window, so the tail is NOT dead-air. With a large gap that
+  // routes to suspected_asr_drop; were it mistaken for dead-air it would be wrongly
+  // called asr_complete.
+  @Test("compute: faint last word in one window is NOT dead-air → energetic drop path")
   func computeFaintTailWindowRmsCatch() {
-    // 400ms tail = 6400 samples, silent except the final 640-sample (40ms)
-    // window at 0.003: window RMS 0.003 >= 0.002 floor; whole-slice RMS
-    // ~0.00095 < 0.00125; peak 0.003 < 0.006 → only the window check trips.
-    var raw = [Float](repeating: 0.0, count: 6400)
-    for i in 5760..<6400 { raw[i] = 0.003 }
-    let segs = [SpeechSegment(startSample: 0, endSample: 6400)]  // trailing silence 0 → gate satisfied
+    var raw = [Float](repeating: 0.0, count: 16000)
+    for i in 15360..<16000 { raw[i] = 0.003 }  // faint 40ms window at the very end
+    let segs = [SpeechSegment(startSample: 0, endSample: 16000)]  // trailing silence 0
     let d = TailClipDiagnostics.compute(
-      rawSamples: raw, vadSegments: segs, decodedInputSampleCount: 6400, lastTokenEndMs: 300)
-    #expect(d.trailingSilenceMs == 0)
-    // The scalar-only check (peak + whole-400ms RMS) would have called this
-    // dead air — both clear the floor — yet the loudest-window RMS does not.
+      rawSamples: raw, vadSegments: segs, decodedInputSampleCount: 16000, lastTokenEndMs: 300)
+    // The scalar-only check (peak + whole-400ms RMS) would have called this dead air.
     #expect(d.tail400Peak < RecordingSessionKernel.DeadAirFloor.peak)
     #expect(d.tail400RMS < RecordingSessionKernel.DeadAirFloor.rms)
-    #expect(d.asrLastTokenGapMs == 100)
-    #expect(d.classification == .suspectedCaptureClip)
+    #expect(d.asrLastTokenGapMs == 700)
+    #expect(d.classification == .suspectedASRDrop)
   }
 
   @Test("energy: empty slice returns zeros")

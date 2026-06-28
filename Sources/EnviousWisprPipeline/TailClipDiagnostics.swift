@@ -1,26 +1,47 @@
 import EnviousWisprCore
 import Foundation
 
-/// Numbers-only end-of-dictation tail-clip diagnostics (#1232).
+/// Numbers-only end-of-dictation tail-clip diagnostics (#1232, recalibrated #1236).
 ///
-/// Classifies a finished dictation as clean / suspected capture-clip /
-/// suspected ASR-drop from signals already in hand at ASR completion, so the
-/// recurring lost-last-words problem can be triaged from logs/telemetry WITHOUT
-/// saving audio. Pure + `nonisolated` so the classifier boundary cases unit-test
-/// without spinning up a kernel. Release-safe: only counts, durations, and
-/// energy — never audio samples or transcript text.
+/// Labels a finished dictation `asr_complete` / `suspected_asr_drop` / `unknown`
+/// from signals already in hand at ASR completion, so the recurring lost-last-words
+/// problem can be triaged from logs/telemetry WITHOUT saving audio. Pure +
+/// `nonisolated` so the boundary cases unit-test without a kernel. Release-safe:
+/// only counts, durations, and energy — never audio samples or transcript text.
 ///
-/// Three host-side signals (the cross-process capture-append counter, "#4", is a
-/// separate follow-up — see docs/feature-requests/plan-2026-06-28-tailclip-measurement4-append-stats.md):
-/// `trailingSilenceMs` is a GATE only (it is ~0 by design whenever speech is
-/// still open at stop, because VAD finalize closes the open segment at the raw
-/// end). The lead discriminators are tail energy (was the buffer still loud at
-/// the very end?) and the ASR last-token gap (did decoded text reach the audio end?).
+/// HONEST SCOPE (validated empirically 2026-06-28 + GPT/Gemini council + Codex):
+/// these host-side signals detect ONLY an **ASR/chunking tail drop** — audio that
+/// WAS captured and fed to the decoder but never emitted as tokens (the live #1099
+/// repro: a 30s chunked dictation, last token at 27.76s of 30.58s of input). A true
+/// **capture-layer clip** (the mic delivered-but-not-appended race) is INVISIBLE
+/// here: truncated audio makes the decoder reach the truncated end with a tiny gap,
+/// indistinguishable from a clean stop. Detecting that needs the deferred
+/// delivered-vs-appended counters (#1233). So `asr_complete` means "the decoder
+/// transcribed through the end of the audio it was given" — it does NOT certify the
+/// capture layer.
+///
+/// The earlier `suspected_capture_clip` label was REMOVED (#1236): a small token gap
+/// means the decoder reached the end = healthy, so flagging it as a capture clip was
+/// inverted and fired on ~100% of normal dictations. `trailingSilenceMs` is a raw
+/// covariate only — it is ~0 by construction whenever speech is open at stop (VAD
+/// finalize closes the open segment at the raw end), so it never gates.
+///
+/// Lead discriminator: the ASR token gap (`asrInputDurationMs - lastTokenEndMs`). The
+/// decoded input is the VAD-FILTERED buffer (trailing silence already trimmed before
+/// decode), so the gap is already "untranscribed SPEAKING at the tail" — do NOT
+/// subtract `trailingSilenceMs`, which lives on the raw-capture timeline and would
+/// cancel a real drop (Codex P2, #1236). Tail energy is the covariate: a large gap
+/// with a DEAD-AIR tail is natural trailing silence (complete), not a drop.
 struct TailClipDiagnostics: Sendable, Equatable {
   enum Classification: String, Sendable {
-    case clean
-    case suspectedCaptureClip = "suspected_capture_clip"
+    /// The decoder transcribed through the end of the captured audio. Does NOT
+    /// certify the capture layer (a mic-cut clip looks identical — see #1233).
+    case asrComplete = "asr_complete"
+    /// Energetic speech remained after the last transcribed word — the decoder
+    /// dropped the tail (the #1099 ASR/chunking drop).
     case suspectedASRDrop = "suspected_asr_drop"
+    /// Not enough authoritative signal to judge (non-Parakeet-batch decode, or the
+    /// gray band between the thresholds).
     case unknown
   }
 
@@ -35,6 +56,8 @@ struct TailClipDiagnostics: Sendable, Equatable {
   /// decoded / includes synthetic silence, so these would be wrong — omit.
   let asrInputDurationMs: Int?
   let asrLastTokenEndMs: Int?
+  /// The ASR token gap on the decoded (VAD-filtered) timeline = untranscribed
+  /// speaking at the tail. The headline ASR-drop metric. Nil when not authoritative.
   let asrLastTokenGapMs: Int?
   let asrChunked: Bool?
   let classification: Classification
@@ -45,12 +68,14 @@ struct TailClipDiagnostics: Sendable, Equatable {
   /// (`ASRConstants.maxModelSamples`, 240k = 15s). Mirrors that constant.
   static let chunkThresholdSamples = 240_000
 
-  // MARK: - Classification thresholds (CALIBRATION CANDIDATES — see issue #1232)
-  // Tune from the first 200-500 dogfood dictations.
-  static let gateSilenceMs = 40
-  static let cleanSilenceMs = 150
-  static let tokenGapClipMaxMs = 300
-  static let tokenGapDropMinMs = 500
+  // MARK: - Classification thresholds (CALIBRATION CANDIDATES — see #1236)
+  // Empirical 2026-06-28: clean dictations sat at untranscribed-tail 0-185ms; the
+  // one real drop at 2825ms; a marginal synthetic at 556ms. Tune from the first
+  // 200-500 dogfood dictations once the recalibrated signal accumulates.
+  /// At/under this much untranscribed speaking tail, the decoder reached the end.
+  static let asrCompleteMaxMs = 250
+  /// At/over this much energetic untranscribed tail, the decoder dropped it.
+  static let asrDropMinMs = 500
 
   /// - Parameter decodedInputSampleCount: the sample count the engine ACTUALLY
   ///   decoded, or nil when that is not the unpadded conditioned batch buffer
@@ -73,23 +98,23 @@ struct TailClipDiagnostics: Sendable, Equatable {
     let (rms200, peak200) = energy(of: rawSamples.suffix(200 * samplesPerMs))
     let tail400 = Array(rawSamples.suffix(400 * samplesPerMs))
     let (rms400, peak400) = energy(of: tail400[...])
-    // Dead-air verdict over the 400ms tail via the SHARED #964 helper, so it
-    // checks peak, whole-slice RMS, AND the loudest-40ms-window RMS. A faint
-    // last word concentrated in one window stays below the whole-slice RMS/peak
-    // floors but lifts a local window — the scalar-only check would have hidden
-    // that clip as `.clean` (Codex P2). Delegating keeps this from drifting from
-    // the no-speech gate.
+    // Dead-air verdict over the 400ms tail via the SHARED #964 helper (peak,
+    // whole-slice RMS, AND loudest-40ms-window RMS) — the covariate that separates
+    // a genuine ASR drop (energetic tail) from a user trailing off into silence
+    // (dead-air tail), without drifting from the no-speech gate.
     let tailIsDeadAir = RecordingSessionKernel.rawAudioIsDeadAir(tail400, peak: peak400)
 
     let asrInputDurationMs = decodedInputSampleCount.map { $0 / samplesPerMs }
+    // The gap is measured on the decoded (VAD-filtered) timeline; do NOT subtract
+    // raw trailingSilenceMs — the filtered buffer already excludes it, and mixing
+    // timelines would cancel a real drop (Codex P2, #1236).
     let gapMs: Int? =
       asrInputDurationMs.flatMap { dur in lastTokenEndMs.map { Swift.max(0, dur - $0) } }
     let chunked = decodedInputSampleCount.map { $0 > chunkThresholdSamples }
 
     let classification = classify(
-      trailingSilenceMs: trailingSilenceMs,
-      tailIsDeadAir: tailIsDeadAir,
-      lastTokenGapMs: gapMs)
+      lastTokenGapMs: gapMs,
+      tailIsDeadAir: tailIsDeadAir)
 
     return TailClipDiagnostics(
       trailingSilenceMs: trailingSilenceMs,
@@ -102,30 +127,22 @@ struct TailClipDiagnostics: Sendable, Equatable {
       classification: classification)
   }
 
-  /// Pure classifier. `tailIsDeadAir` is the shared #964 dead-air verdict over
-  /// the tail slice (computed in `compute`), so this never drifts from the
-  /// no-speech gate.
+  /// Pure classifier. `lastTokenGapMs` is the untranscribed speaking tail on the
+  /// decoded timeline; `tailIsDeadAir` is the shared #964 dead-air verdict.
   static func classify(
-    trailingSilenceMs: Int?,
-    tailIsDeadAir: Bool,
-    lastTokenGapMs: Int?
+    lastTokenGapMs: Int?,
+    tailIsDeadAir: Bool
   ) -> Classification {
-    // Clean: a clear trailing-silence cushion means the user finished and paused.
-    if let ts = trailingSilenceMs, ts >= cleanSilenceMs { return .clean }
-    // Clean: a dead-air tail (no recoverable energy in the last 400ms) — nothing was cut.
-    if tailIsDeadAir { return .clean }
-
-    // Past here the tail is energetic. The gate requires the buffer to actually
-    // end on speech (little/no trailing silence); without a VAD segment we
-    // cannot establish the gate, so we cannot accuse the capture/decode.
-    guard let ts = trailingSilenceMs, ts <= gateSilenceMs else { return .unknown }
-
-    // Discriminate by how far the decoded text reached vs the audio end.
-    if let gap = lastTokenGapMs {
-      if gap <= tokenGapClipMaxMs { return .suspectedCaptureClip }
-      if gap >= tokenGapDropMinMs { return .suspectedASRDrop }
-    }
-    return .unknown
+    // No authoritative token timing (WhisperKit / streaming / padded) — cannot
+    // judge the ASR tail.
+    guard let gap = lastTokenGapMs else { return .unknown }
+    // A dead-air tail means the audio ended in silence: the decoder stopping at
+    // the last spoken word is correct, nothing was dropped, regardless of the gap.
+    if tailIsDeadAir { return .asrComplete }
+    // Energetic tail: the gap is real untranscribed speaking.
+    if gap >= asrDropMinMs { return .suspectedASRDrop }
+    if gap <= asrCompleteMaxMs { return .asrComplete }
+    return .unknown  // gray band between the thresholds
   }
 
   /// RMS + peak of a sample slice. Empty slice → zeros.

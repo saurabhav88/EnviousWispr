@@ -78,10 +78,11 @@ struct KernelASRCompletedTelemetry {
   var recoveredTailMs: Int? = nil
   var tailVoicedFraction: Double? = nil
   var tailRefusedReason: String? = nil
-  // #1232 tail-clip telemetry: release-safe classifier + lead signals. All
-  // numbers/booleans, no audio or text. `tailClipClassification` is one of
-  // clean / suspected_capture_clip / suspected_asr_drop / unknown. nil → sink
-  // omits the key (e.g. non-transcript outcomes).
+  // #1232 tail-clip telemetry (recalibrated #1236): release-safe classifier + lead
+  // signals. All numbers/booleans, no audio or text. `tailClipClassification` is one
+  // of asr_complete / suspected_asr_drop / unknown. `asrLastTokenGapMs` is the
+  // headline drop metric (untranscribed tail on the decoded timeline). nil → sink
+  // omits the key.
   var tailClipClassification: String? = nil
   var captureTrailingSilenceMs: Int? = nil
   var captureTail200Rms: Double? = nil
