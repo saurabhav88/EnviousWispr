@@ -31,7 +31,7 @@ import Testing
       currentTick: { 0 },
       sleepTicks: { _ in },
       processText: { raw, _ in raw },
-      store: { _ in },
+      store: { _, _ in },
       deliver: { _ in .pasted },
       minimumRecordingTicks: 0,
       telemetryState: telemetryState)
@@ -60,7 +60,7 @@ import Testing
       currentTick: { 0 },
       sleepTicks: { _ in },
       processText: { raw, _ in raw },
-      store: { _ in },
+      store: { _, _ in },
       deliver: { _ in .pasted },
       minimumRecordingTicks: 0,
       telemetryState: telemetryState)

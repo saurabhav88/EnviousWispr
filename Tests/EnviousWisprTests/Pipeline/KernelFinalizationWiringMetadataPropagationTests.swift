@@ -52,9 +52,14 @@ import Testing
       },
       pasteCompletionRegistry: nil)
 
-    try await wiring.store("hi")
+    // #1230 — the kernel mints the id and threads it in so the saved History
+    // entry's id equals the debug audio-archive folder name. Assert the closure
+    // honors the passed id rather than defaulting a fresh UUID.
+    let mintedID = UUID()
+    try await wiring.store("hi", mintedID)
 
     let transcript = try #require(saved.transcript)
+    #expect(transcript.id == mintedID)
     #expect(transcript.language == "es")
     #expect(transcript.duration == 1.5)
     #expect(transcript.processingTime == 0.2)

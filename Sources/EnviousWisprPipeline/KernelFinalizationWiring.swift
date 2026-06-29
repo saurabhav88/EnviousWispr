@@ -128,7 +128,7 @@ struct KernelFinalizationWiring {
   let processText:
     @MainActor (_ raw: String, _ onPolishStarted: @escaping @MainActor () -> Void)
       async throws -> String
-  let store: @MainActor (_ text: String) async throws -> Void
+  let store: @MainActor (_ text: String, _ transcriptID: UUID) async throws -> Void
   let deliver: @MainActor (_ text: String) async -> KernelDeliveryOutcome
   let currentTick: @MainActor () -> UInt64
   let sleepTicks: @MainActor (Int) async -> Void
@@ -249,8 +249,9 @@ struct KernelFinalizationWiring {
     // and finishes `.completed`. The crash-recovery spool is retained (cleanup is
     // gated on `historySaved`), so History self-heals on next launch. Clipboard
     // behavior is unchanged (`pipeline-mechanics.md` RULE: clipboard-restore-is-sacred).
-    store = { text in
+    store = { text, transcriptID in
       let transcript = Transcript(
+        id: transcriptID,
         text: outcome.rawText ?? text,
         polishedText: outcome.polishedText,
         language: adapter.lastResult?.language,
