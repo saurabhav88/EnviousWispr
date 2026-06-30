@@ -8,11 +8,18 @@ import Sentry
 /// Limb: missing keys log a warning and skip initialization — never crashes the app.
 public enum ObservabilityBootstrap {
 
-  /// Detect environment from bundle ID: dev builds use `.dev` suffix.
-  private static var environment: String {
+  /// Bundle-id-derived environment ("development" | "production"), computed once at
+  /// first access — independent of whether Sentry/PostHog init has run yet. Public so
+  /// `SentryBreadcrumb.handledErrorFingerprint` can split dev/prod into separate Sentry
+  /// issues (#1229). A nil `bundleIdentifier` deterministically falls to "production",
+  /// never an "unknown" state.
+  public static let currentEnvironment: String = {
     let bundleID = Bundle.main.bundleIdentifier ?? ""
     return bundleID.hasSuffix(".dev") ? "development" : "production"
-  }
+  }()
+
+  /// Detect environment from bundle ID: dev builds use `.dev` suffix.
+  private static var environment: String { currentEnvironment }
 
   /// App version from bundle (e.g. "1.6.2" for release, "v1.6.1-14-g...-dev" for dev)
   private static var appVersion: String {

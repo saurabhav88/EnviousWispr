@@ -29,6 +29,28 @@ import Testing
 /// by guarantee 4 (producers never put transcript text in a field) and would
 /// only need the full key-allowlist rebuild if a regulator-grade claim were
 /// required. So the sentinel below is transcript-SHAPED for denylist surfaces.
+
+/// File-scope `private` fixture reproducing the shape of `EmojiRestoreAnomaly`
+/// (`EmojiRestoreStep.swift`) — a file-scope `private` Swift error type. Its
+/// bridged `NSError.domain` carries the same `(unknown context at $ptr)`
+/// artifact as a nested `private` type (#1229; empirically verified via
+/// `swiftc` — the descriptor fix is type-shape-agnostic).
+private enum FileScopeFixtureError: Error {
+  case boom
+}
+
+/// Wrapper exposing a `private`-nested fixture reproducing the shape of
+/// `RecoveryReplayError` / `RecoveryArmError` / `NilCollaboratorError` (all
+/// `private` nested inside their owning type). The real types are `private`
+/// in other modules and unreachable from this test file (#1229) — this
+/// fixture exercises the identical `(unknown context at $ptr)` branch.
+private struct NestedFixtureWrapper {
+  private enum NestedFixtureError: Error {
+    case boom
+  }
+  static func makeError() -> Error { NestedFixtureError.boom }
+}
+
 @Suite("Sentry/PostHog redaction tripwire (#1095)")
 struct SentryEventSanitizerTests {
 
@@ -76,6 +98,47 @@ struct SentryEventSanitizerTests {
     let descriptor = SentryBreadcrumb.structuredDescriptor(err)
     #expect(descriptor == "MyDomain#7")
     #expect(descriptor.contains(shortPhrase) == false)
+  }
+
+  // MARK: - Layer A: (unknown context) normalization (#1229)
+
+  /// A `private`/nested Swift error type's bridged `NSError.domain` demangles to
+  /// `…(unknown context at $<ptr>).TypeName` — long enough (>100 chars) to trip
+  /// the `>100`-char denylist rule below and wipe the whole message to
+  /// `[REDACTED]`, with a per-launch pointer that also fragments grouping. The
+  /// descriptor must normalize this to the plain simple type name instead.
+  @Test("file-scope private error descriptor normalizes (unknown context) to the simple type name")
+  func fileScopePrivateErrorDescriptorNormalizes() {
+    let descriptor = SentryBreadcrumb.structuredDescriptor(FileScopeFixtureError.boom)
+    #expect(descriptor == "FileScopeFixtureError#0")
+    #expect(descriptor.contains("(unknown context") == false)
+    #expect(descriptor.contains("$") == false)
+    #expect(descriptor.count < 100)
+
+    let event = Event(level: .error)
+    event.message = SentryMessage(
+      formatted:
+        "\(SentryBreadcrumb.ErrorCategory.recoveryTranscribeFailed.rawValue): \(descriptor)"
+    )
+    let sanitized = ObservabilityBootstrap.sanitizeSentryEvent(event)
+    #expect(sanitized.message?.formatted == "recovery_transcribe_failed: FileScopeFixtureError#0")
+  }
+
+  @Test("nested private error descriptor normalizes (unknown context) to the simple type name")
+  func nestedPrivateErrorDescriptorNormalizes() {
+    let descriptor = SentryBreadcrumb.structuredDescriptor(NestedFixtureWrapper.makeError())
+    #expect(descriptor == "NestedFixtureError#0")
+    #expect(descriptor.contains("(unknown context") == false)
+    #expect(descriptor.contains("$") == false)
+    #expect(descriptor.count < 100)
+
+    let event = Event(level: .error)
+    event.message = SentryMessage(
+      formatted:
+        "\(SentryBreadcrumb.ErrorCategory.recoveryTranscribeFailed.rawValue): \(descriptor)"
+    )
+    let sanitized = ObservabilityBootstrap.sanitizeSentryEvent(event)
+    #expect(sanitized.message?.formatted == "recovery_transcribe_failed: NestedFixtureError#0")
   }
 
   // MARK: - Layer D: denylist scrubs transcript-length content from every surface

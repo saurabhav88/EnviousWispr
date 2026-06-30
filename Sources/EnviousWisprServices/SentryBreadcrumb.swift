@@ -200,24 +200,44 @@ public enum SentryBreadcrumb {
   /// user content — so dictation text can never reach the message surface, even if
   /// a future error type interpolated a transcript into its `localizedDescription`.
   /// See #1095. `internal` (not `private`) so the redaction tripwire can pin it.
+  ///
+  /// A `private` or file-scope-`private` Swift error type's bridged `NSError.domain`
+  /// demangles to `…(unknown context at $<runtime-ptr>).TypeName` — long enough to trip
+  /// the on-device redactor's `>100`-char heuristic (wiping the whole message to
+  /// `[REDACTED]`), and the per-launch pointer fragments Sentry grouping. When the
+  /// domain carries that artifact, fall back to the plain simple type name instead
+  /// (#1229).
   nonisolated static func structuredDescriptor(_ error: any Error) -> String {
     let ns = error as NSError
+    if ns.domain.contains("(unknown context at ") {
+      return "\(type(of: error))#\(ns.code)"
+    }
     return "\(ns.domain)#\(ns.code)"
   }
 
   /// Stable Sentry grouping key for a handled error: namespace + category + the
-  /// underlying error signature (`domain#code`). The namespace avoids colliding
-  /// with native-crash groups; the category is the defect class; the signature
-  /// splits distinct root causes that share a broad category so they do not
-  /// silently merge into one issue (#1144). The optional `detail` adds a further
+  /// underlying error signature (`domain#code`) + environment. The namespace avoids
+  /// colliding with native-crash groups; the category is the defect class; the
+  /// signature splits distinct root causes that share a broad category so they do
+  /// not silently merge into one issue (#1144). The optional `detail` adds a further
   /// split for error types whose root cause lives in an associated value the
-  /// bridged `domain#code` cannot distinguish (#945 — `LLMError.classified`).
+  /// bridged `domain#code` cannot distinguish (#945 — `LLMError.classified`). The
+  /// trailing `environment` keeps dev-machine and real-user failures as separate,
+  /// individually-alerting Sentry issues now that `structuredDescriptor` no longer
+  /// carries a per-launch pointer to do that incidentally (#1229) — without it,
+  /// stabilizing the descriptor would merge dev and prod into one issue, and the
+  /// Sentry-triage worker only alerts on "issue created", so a real-user occurrence
+  /// landing on an already-dev-created issue would never alert.
   /// `nonisolated` + pure so the non-`@MainActor` test suite calls it directly.
+  /// `environment` defaults to the real bundle-derived value but is injectable so a
+  /// single test process can assert both the dev and prod branches.
   nonisolated static func handledErrorFingerprint(
-    for category: ErrorCategory, error: any Error, detail: String? = nil
+    for category: ErrorCategory, error: any Error, detail: String? = nil,
+    environment: String = ObservabilityBootstrap.currentEnvironment
   ) -> [String] {
     var fingerprint = ["handled_error", category.rawValue, structuredDescriptor(error)]
     if let detail { fingerprint.append(detail) }
+    fingerprint.append(environment)
     return fingerprint
   }
 
