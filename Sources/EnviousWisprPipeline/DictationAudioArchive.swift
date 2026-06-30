@@ -43,6 +43,15 @@ import Foundation
     /// over byte-count avoids a recursive stat on every prune.
     static let maxRetainedDirectories = 500
 
+    /// The enablement gate's two sources, OR'd: the ad-hoc env var (`envValue`,
+    /// the raw `ProcessInfo` lookup so this stays a pure function) and the
+    /// persisted Settings toggle (#1247), which survives rebuilds. Extracted so
+    /// the OR logic itself has direct unit coverage independent of the
+    /// directory/XCTest seam in `archive(...)`.
+    static func isArchiveOptedIn(envValue: String?, settingsOptIn: Bool) -> Bool {
+      envValue == "1" || settingsOptIn
+    }
+
     /// The terminal outcome label written to `meta.json`. `CaseIterable` so the
     /// coverage freeze test can lock the set — a new terminal label is a
     /// conscious test change, never a silent gap.
@@ -91,13 +100,22 @@ import Foundation
       backend: String,
       now: Date = Date(),
       directory: URL? = nil,
-      maxRetained: Int = DictationAudioArchive.maxRetainedDirectories
+      maxRetained: Int = DictationAudioArchive.maxRetainedDirectories,
+      settingsOptIn: Bool = false
     ) async -> String? {
       guard !raw.isEmpty else { return nil }
-      // Production/contributor builds: off unless explicitly opted in. Tests
-      // pass an explicit `directory:` and bypass both gates.
+      // Production/contributor builds: off unless explicitly opted in (env var,
+      // for ad-hoc dev runs, or the persisted Settings toggle, #1247, which
+      // survives rebuilds). Tests pass an explicit `directory:` and bypass both
+      // gates.
       if directory == nil {
-        guard ProcessInfo.processInfo.environment[optInEnvVar] == "1" else { return nil }
+        guard
+          isArchiveOptedIn(
+            envValue: ProcessInfo.processInfo.environment[optInEnvVar], settingsOptIn: settingsOptIn
+          )
+        else {
+          return nil
+        }
         // Full-suite kernel tests exercise the real terminals; without this the
         // dogfood corpus would be contaminated by synthetic buffers.
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil

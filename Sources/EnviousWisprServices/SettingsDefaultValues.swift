@@ -58,6 +58,9 @@ enum SettingsDefaultValues {
   static let crashRecoveryEnabled = true
 
   static let isDebugModeEnabled = false
+  // #1247: off by default, matching the privacy-strict rationale above — local
+  // mic-audio retention is opt-in only, never silently on.
+  static let isDictationAudioArchiveEnabled = false
   static let debugLogLevel: DebugLogLevel = .info
   static let useExtendedThinking = false
 

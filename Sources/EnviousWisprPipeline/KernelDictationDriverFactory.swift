@@ -86,6 +86,10 @@ public enum KernelDictationDriverFactory {
     /// nil when no classifier (tests, or before prewarm). Read lazily at polish
     /// time by `LLMPolishStep`.
     package let outputClassifierHolder: OutputClassifierHolder?
+    /// #1247: persisted Settings opt-in for the DEBUG-only dictation-audio
+    /// archive (#1230), read once at app launch. Forwarded into the kernel's
+    /// `dictationAudioArchiveOptIn` init parameter.
+    package let dictationAudioArchiveOptIn: Bool
 
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct. `@MainActor`
@@ -102,7 +106,8 @@ public enum KernelDictationDriverFactory {
       captureTelemetry: CaptureTelemetryState,
       pasteCompletionRegistry: PasteCompletionRegistry,
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
-      outputClassifierHolder: OutputClassifierHolder? = nil
+      outputClassifierHolder: OutputClassifierHolder? = nil,
+      dictationAudioArchiveOptIn: Bool = false
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
@@ -113,6 +118,7 @@ public enum KernelDictationDriverFactory {
       self.pasteCompletionRegistry = pasteCompletionRegistry
       self.captureErrorSink = captureErrorSink
       self.outputClassifierHolder = outputClassifierHolder
+      self.dictationAudioArchiveOptIn = dictationAudioArchiveOptIn
     }
   }
 
@@ -134,6 +140,9 @@ public enum KernelDictationDriverFactory {
     /// App-owned output-safety classifier holder (#832/#913 PR8). See
     /// `ParakeetInputs.outputClassifierHolder`.
     package let outputClassifierHolder: OutputClassifierHolder?
+    /// #1247: persisted Settings opt-in for the DEBUG-only dictation-audio
+    /// archive (#1230). See `ParakeetInputs.dictationAudioArchiveOptIn`.
+    package let dictationAudioArchiveOptIn: Bool
 
     /// Explicit package init — same reasoning as `ParakeetInputs.init`.
     /// `languageDetector` is intentionally non-optional (no default) so the
@@ -153,7 +162,8 @@ public enum KernelDictationDriverFactory {
       captureTelemetry: CaptureTelemetryState,
       pasteCompletionRegistry: PasteCompletionRegistry,
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
-      outputClassifierHolder: OutputClassifierHolder? = nil
+      outputClassifierHolder: OutputClassifierHolder? = nil,
+      dictationAudioArchiveOptIn: Bool = false
     ) {
       self.audioCapture = audioCapture
       self.whisperKitBackend = whisperKitBackend
@@ -165,6 +175,7 @@ public enum KernelDictationDriverFactory {
       self.pasteCompletionRegistry = pasteCompletionRegistry
       self.captureErrorSink = captureErrorSink
       self.outputClassifierHolder = outputClassifierHolder
+      self.dictationAudioArchiveOptIn = dictationAudioArchiveOptIn
     }
   }
 
@@ -217,7 +228,8 @@ public enum KernelDictationDriverFactory {
       captureTelemetry: inputs.captureTelemetry,
       pasteCompletionRegistry: inputs.pasteCompletionRegistry,
       captureErrorSink: inputs.captureErrorSink,
-      outputClassifierHolder: inputs.outputClassifierHolder)
+      outputClassifierHolder: inputs.outputClassifierHolder,
+      dictationAudioArchiveOptIn: inputs.dictationAudioArchiveOptIn)
   }
 
   /// Build the driver stack for the WhisperKit engine. PR-5 Rung 5 flips the
@@ -245,7 +257,8 @@ public enum KernelDictationDriverFactory {
       captureTelemetry: inputs.captureTelemetry,
       pasteCompletionRegistry: inputs.pasteCompletionRegistry,
       captureErrorSink: inputs.captureErrorSink,
-      outputClassifierHolder: inputs.outputClassifierHolder)
+      outputClassifierHolder: inputs.outputClassifierHolder,
+      dictationAudioArchiveOptIn: inputs.dictationAudioArchiveOptIn)
   }
 
   /// Engine-agnostic assembler. The two package entry points construct their
@@ -262,7 +275,8 @@ public enum KernelDictationDriverFactory {
     captureTelemetry: CaptureTelemetryState,
     pasteCompletionRegistry: PasteCompletionRegistry,
     captureErrorSink: @escaping HeartPathCaptureErrorSink,
-    outputClassifierHolder: OutputClassifierHolder? = nil
+    outputClassifierHolder: OutputClassifierHolder? = nil,
+    dictationAudioArchiveOptIn: Bool = false
   ) -> KernelDictationDriver {
     // 1. LimbSteps — same instances driver + wiring hold by reference.
     // #832/#913 PR8: the live-dictation LLMPolishStep receives the app-owned
@@ -380,7 +394,8 @@ public enum KernelDictationDriverFactory {
       markASRTimingEnd: {
         outcome.asrEndedAtSeconds = CFAbsoluteTimeGetCurrent()
       },
-      telemetryState: telemetryState
+      telemetryState: telemetryState,
+      dictationAudioArchiveOptIn: dictationAudioArchiveOptIn
     )
     telemetryRelay.kernel = kernel
 

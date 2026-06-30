@@ -158,7 +158,8 @@ public final class WisprBootstrapper {
         keychainManager: keychainManager,
         captureTelemetry: captureTelemetry,
         pasteCompletionRegistry: pasteCompletionRegistry,
-        outputClassifierHolder: outputClassifierHolder
+        outputClassifierHolder: outputClassifierHolder,
+        dictationAudioArchiveOptIn: settings.isDictationAudioArchiveEnabled
       ))
 
     // W6: language-flip telemetry wired via a closure so `EnviousWisprASR`
@@ -195,7 +196,8 @@ public final class WisprBootstrapper {
         keychainManager: keychainManager,
         captureTelemetry: captureTelemetry,
         pasteCompletionRegistry: pasteCompletionRegistry,
-        outputClassifierHolder: outputClassifierHolder
+        outputClassifierHolder: outputClassifierHolder,
+        dictationAudioArchiveOptIn: settings.isDictationAudioArchiveEnabled
       ))
 
     // Phase F (#501) — `SetupCoordinator` needs `asrManager` + the WhisperKit

@@ -82,8 +82,9 @@ enum SettingsProjection {
     case .cancelKeyCode, .cancelModifiers: return .cancelHotkeyShape
     // Not instrumented.
     case .selectedBackend, .onboardingState, .hasCompletedOnboarding,
-      .isDebugModeEnabled, .debugLogLevel, .whisperKitLanguage, .selectedInputDeviceUID,
-      .noiseSuppression, .preferredInputDeviceIDOverride, .useXPCAudioService:
+      .isDebugModeEnabled, .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage,
+      .selectedInputDeviceUID, .noiseSuppression, .preferredInputDeviceIDOverride,
+      .useXPCAudioService:
       return nil
     }
   }
