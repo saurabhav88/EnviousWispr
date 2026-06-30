@@ -6,8 +6,8 @@
 # it ships (not discovered weeks later as a hole in attribution):
 #
 #   (a) OFF-SITE download links (README) MUST be the canonical tagged doorway:
-#       https://enviouswispr.com/download?...utm_source/medium/campaign...
-#       and NEVER a raw GitHub .dmg (that bypasses our analytics entirely).
+#       https://enviouswispr.com/download?source=github_readme&utm_source=...&
+#       utm_medium=...&utm_campaign=...  — and NEVER a raw GitHub .dmg.
 #
 #   (b) ON-SITE blog prose download links MUST point at the on-site /#download
 #       section, NEVER a raw GitHub .dmg / releases URL (those fire no event and
@@ -15,6 +15,14 @@
 #       doorway (that would self-refer + double-count). The repo root
 #       https://github.com/saurabhav88/EnviousWispr is allowed for source /
 #       transparency links; it is not a download path.
+#
+# Rule (a) validates the doorway link by PARSING its query string the same way the
+# Cloudflare resolver does (website/functions/download.js: the FIRST value of a
+# repeated key wins — URLSearchParams.get — and ?source is lowercased). Parsing,
+# not regex matching, is deliberate: query SEMANTICS (which value wins, ordering,
+# duplicate keys, near-miss values, utm_source masquerade, empty values, case)
+# are a finite enumerable space the parser handles in one pass, where a substring
+# regex leaks one new shape per review round.
 #
 # On-site download BUTTONS in Astro (Nav/Footer/hero/compare CTAs) deliberately
 # keep their raw .dmg href + data-download-source attribute; the page JS fires
@@ -44,6 +52,48 @@ DOORWAY_MISUSE_RES=(
   'href=[^>]*/download'
 )
 
+REQUIRED_README_SOURCE="github_readme"
+
+# Parse a /download URL's query the way the resolver does and validate it as a
+# correctly-tagged README doorway link. Echoes a problem summary and returns 1 if
+# not valid; returns 0 if valid. First value of a repeated key wins; ?source is
+# lowercased (mirrors download.js resolveSourceBucket / URLSearchParams.get).
+validate_readme_doorway_link() {
+  local url="$1"
+  local query=""
+  case "$url" in *\?*) query="${url#*\?}" ;; esac
+
+  local source="" usrc="" umed="" ucamp=""
+  local have_source=0 have_usrc=0 have_umed=0 have_ucamp=0
+  local kv k v old_ifs="$IFS"
+  IFS='&'
+  for kv in $query; do
+    k="${kv%%=*}"
+    case "$kv" in *=*) v="${kv#*=}" ;; *) v="" ;; esac
+    case "$k" in
+      source)       if [ "$have_source" = 0 ]; then source="$v"; have_source=1; fi ;;
+      utm_source)   if [ "$have_usrc"   = 0 ]; then usrc="$v";   have_usrc=1;   fi ;;
+      utm_medium)   if [ "$have_umed"   = 0 ]; then umed="$v";   have_umed=1;   fi ;;
+      utm_campaign) if [ "$have_ucamp"  = 0 ]; then ucamp="$v";  have_ucamp=1;  fi ;;
+    esac
+  done
+  IFS="$old_ifs"
+
+  source="$(printf '%s' "$source" | tr '[:upper:]' '[:lower:]')"
+
+  local problems=""
+  [ "$source" = "$REQUIRED_README_SOURCE" ] || problems="${problems} resolved source='${source:-<none>}' (must be ${REQUIRED_README_SOURCE});"
+  [ -n "$usrc" ]  || problems="${problems} utm_source missing/empty;"
+  [ -n "$umed" ]  || problems="${problems} utm_medium missing/empty;"
+  [ -n "$ucamp" ] || problems="${problems} utm_campaign missing/empty;"
+
+  if [ -n "$problems" ]; then
+    printf '%s' "${problems# }"
+    return 1
+  fi
+  return 0
+}
+
 # Lint a given root directory. Echoes violations, returns non-zero if any found.
 lint_root() {
   local root="$1"
@@ -55,27 +105,19 @@ lint_root() {
   if [ -f "$readme" ]; then
     # (a) no raw .dmg download links in README
     if hit=$(grep -nE "$DMG_RE" "$readme"); then
-      echo "::error::README.md has a raw GitHub .dmg download link; use the tagged doorway https://enviouswispr.com/download?source=...&utm_source=...&utm_medium=...&utm_campaign=..." >&2
+      echo "::error::README.md has a raw GitHub .dmg download link; use the tagged doorway https://enviouswispr.com/download?source=github_readme&utm_source=...&utm_medium=...&utm_campaign=..." >&2
       echo "$hit" >&2
       fail=1
     fi
-    # (a) every enviouswispr.com/download link in README must carry utm_source/medium/campaign
-    #     AND pin source=github_readme. The doorway resolver gives an explicit ?source=
-    #     priority over utm_*, so a stray source= (e.g. source=reddit) would mis-bucket a
-    #     README click even with valid UTMs; the README surface IS github_readme.
+    # (a) every enviouswispr.com/download link in README must be a correctly-tagged
+    #     doorway, validated by parsing its query (see validate_readme_doorway_link).
+    local link why
     while IFS= read -r link; do
       [ -z "$link" ] && continue
-      if ! { echo "$link" | grep -q 'utm_source=' \
-          && echo "$link" | grep -q 'utm_medium=' \
-          && echo "$link" | grep -q 'utm_campaign='; }; then
-        echo "::error::README.md /download link missing utm_source/medium/campaign: $link" >&2
-        fail=1
-      fi
-      # Anchor on a query-param boundary ([?&]) so utm_source=github_readme does NOT
-      # satisfy the requirement, and end-anchor (&|$) so a near-miss value like
-      # source=github_readme_old (which the resolver would not recognize) is rejected.
-      if ! echo "$link" | grep -qE '[?&]source=github_readme(&|$)'; then
-        echo "::error::README.md /download link must pin an explicit ?source=github_readme (the README surface bucket; utm_source does not count): $link" >&2
+      if why=$(validate_readme_doorway_link "$link"); then
+        :
+      else
+        echo "::error::README.md /download link is not a correctly-tagged doorway ($why): $link" >&2
         fail=1
       fi
     done < <(grep -oE 'enviouswispr\.com/download[^)"[:space:]]*' "$readme" || true)
@@ -113,80 +155,74 @@ self_test() {
   trap 'rm -rf "${tmp:-}"' EXIT
   mkdir -p "$tmp/website/src/content/blog"
 
-  # GOOD fixture: tagged README doorway + on-site /#download blog + repo-root source link.
-  printf '%s\n' \
-    '[Download DMG](https://enviouswispr.com/download?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=enviouswispr-evergreen-readme)' \
-    '[full release history](https://github.com/saurabhav88/EnviousWispr/releases)' \
-    > "$tmp/README.md"
-  printf '%s\n' \
-    '[Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr).' \
-    > "$tmp/website/src/content/blog/good.md"
-  if ! lint_root "$tmp" >/dev/null 2>&1; then
-    echo "SELF-TEST FAIL: clean fixture was rejected" >&2; return 1
-  fi
+  # ---- README doorway-link matrix (parser unit tests; the whole query-shape space) ----
+  # GOOD: must validate. Covers canonical, order-independence, and case (resolver lowercases).
+  local D='https://enviouswispr.com/download'
+  local good=(
+    "$D?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=x"
+    "$D?utm_source=github&utm_medium=referral&utm_campaign=x&source=github_readme"
+    "$D?source=GitHub_Readme&utm_source=github&utm_medium=referral&utm_campaign=x"
+  )
+  # BAD: must be rejected. Each row is one cell of the failure space.
+  local bad=(
+    "$D?utm_source=github&utm_medium=referral&utm_campaign=x"                                   # no source param
+    "$D?source=reddit&utm_source=github&utm_medium=referral&utm_campaign=x"                     # foreign source
+    "$D?source=github_readme_old&utm_source=github&utm_medium=referral&utm_campaign=x"          # near-miss value
+    "$D?utm_source=github_readme&utm_medium=referral&utm_campaign=x"                            # utm_source masquerade, no real source
+    "$D?source=reddit&utm_source=github&utm_medium=referral&utm_campaign=x&source=github_readme" # duplicate, foreign first wins
+    "$D?source=&utm_source=github&utm_medium=referral&utm_campaign=x&source=github_readme"      # duplicate, empty first wins
+    "$D?source=github_readme&utm_source=github&utm_campaign=x"                                  # missing utm_medium
+    "$D?source=github_readme&utm_source=&utm_medium=referral&utm_campaign=x"                    # empty utm value
+    "$D"                                                                                        # bare, no query
+  )
+  local u
+  for u in "${good[@]}"; do
+    if ! validate_readme_doorway_link "$u" >/dev/null; then
+      echo "SELF-TEST FAIL: good doorway link rejected: $u" >&2; return 1
+    fi
+  done
+  for u in "${bad[@]}"; do
+    if validate_readme_doorway_link "$u" >/dev/null; then
+      echo "SELF-TEST FAIL: bad doorway link accepted: $u" >&2; return 1
+    fi
+  done
 
-  # BAD 1: raw .dmg in README (rolling /latest/ shape)
-  echo '[dl](https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg)' > "$tmp/README.md"
-  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: README raw .dmg not caught" >&2; return 1; fi
+  # ---- README raw-.dmg matrix (lint_root integration) ----
+  local dmg=(
+    'https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg'   # rolling
+    'https://github.com/saurabhav88/EnviousWispr/releases/download/v1.2.3/EnviousWispr.dmg'   # pinned
+    'https://github.com/saurabhav88/EnviousWispr/releases/download/v2.2.0/EnviousWispr-2.2.0.dmg' # versioned filename
+  )
+  for u in "${dmg[@]}"; do
+    echo "[dl]($u)" > "$tmp/README.md"
+    if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: README raw .dmg accepted: $u" >&2; return 1; fi
+  done
 
-  # BAD 1b: raw .dmg in README (pinned /releases/download/<tag>/ asset shape)
-  echo '[dl](https://github.com/saurabhav88/EnviousWispr/releases/download/v1.2.3/EnviousWispr.dmg)' > "$tmp/README.md"
-  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: README versioned raw .dmg not caught" >&2; return 1; fi
+  # restore a good README so blog-only fixtures are isolated
+  echo "[Download DMG]($D?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=enviouswispr-evergreen-readme)" > "$tmp/README.md"
+  printf '%s\n' '[Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr).' > "$tmp/website/src/content/blog/good.md"
+  if ! lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: clean fixture rejected" >&2; return 1; fi
 
-  # BAD 1c: raw .dmg with a VERSIONED filename (real release assets, e.g. EnviousWispr-2.2.0.dmg)
-  echo '[dl](https://github.com/saurabhav88/EnviousWispr/releases/download/v2.2.0/EnviousWispr-2.2.0.dmg)' > "$tmp/README.md"
-  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: README versioned-filename .dmg not caught" >&2; return 1; fi
-
-  # BAD 2: README /download link without utm
-  echo '[dl](https://enviouswispr.com/download?source=github_readme)' > "$tmp/README.md"
-  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: untagged README doorway not caught" >&2; return 1; fi
-
-  # BAD 2b: README /download link with valid UTMs but a wrong/foreign source bucket.
-  # The resolver gives explicit ?source= priority over utm_*, so this would mis-bucket.
-  echo '[dl](https://enviouswispr.com/download?source=reddit&utm_source=github&utm_medium=referral&utm_campaign=enviouswispr-evergreen-readme)' > "$tmp/README.md"
-  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: README wrong source bucket not caught" >&2; return 1; fi
-
-  # BAD 2c: utm_source=github_readme but NO explicit ?source= (substring trap — the
-  # resolver only honors a real ?source=, so this must be caught despite the match).
-  echo '[dl](https://enviouswispr.com/download?utm_source=github_readme&utm_medium=referral&utm_campaign=x)' > "$tmp/README.md"
-  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: README utm_source masquerading as source not caught" >&2; return 1; fi
-
-  # BAD 2d: near-miss source value the resolver would NOT recognize as github_readme
-  echo '[dl](https://enviouswispr.com/download?source=github_readme_old&utm_source=github&utm_medium=referral&utm_campaign=x)' > "$tmp/README.md"
-  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: README near-miss source value not caught" >&2; return 1; fi
-
-  # restore a good README so blog-only failures are isolated
-  echo '[Download DMG](https://enviouswispr.com/download?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=enviouswispr-evergreen-readme)' > "$tmp/README.md"
-
-  # BAD 3: raw .dmg in blog
-  echo '[dl](https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg)' > "$tmp/website/src/content/blog/bad.md"
-  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: blog raw .dmg not caught" >&2; return 1; fi
-  rm "$tmp/website/src/content/blog/bad.md"
-
-  # BAD 4: releases page link in blog
-  echo '[grab it](https://github.com/saurabhav88/EnviousWispr/releases)' > "$tmp/website/src/content/blog/bad.md"
-  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: blog releases URL not caught" >&2; return 1; fi
-  rm "$tmp/website/src/content/blog/bad.md"
-
-  # BAD 5: off-site doorway misuse in blog — inline markdown link
-  echo '[get it](/download?source=blog)' > "$tmp/website/src/content/blog/bad.md"
-  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: blog inline /download misuse not caught" >&2; return 1; fi
-
-  # BAD 5b: off-site doorway misuse — markdown reference definition
+  # ---- blog matrix: every (link form x target) cell ----
+  local blogbad=(
+    '[dl](https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg)' # raw .dmg
+    '[dl](https://github.com/saurabhav88/EnviousWispr/releases/download/v2.2.0/EnviousWispr-2.2.0.dmg)' # raw versioned .dmg
+    '[grab it](https://github.com/saurabhav88/EnviousWispr/releases)'                            # releases page
+    '[get it](/download?source=blog)'                                                            # inline doorway
+    '<a href="/download?source=blog">get it</a>'                                                 # html href doorway
+    '[get it](https://enviouswispr.com/download?source=blog)'                                    # absolute doorway
+  )
+  for line in "${blogbad[@]}"; do
+    echo "$line" > "$tmp/website/src/content/blog/bad.md"
+    if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: blog bad link accepted: $line" >&2; return 1; fi
+  done
+  # reference-style doorway misuse (two-line form)
   printf '%s\n\n%s\n' '[get it][dl]' '[dl]: /download?source=blog' > "$tmp/website/src/content/blog/bad.md"
-  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: blog reference-style /download misuse not caught" >&2; return 1; fi
-
-  # BAD 5c: off-site doorway misuse — raw HTML href
-  echo '<a href="/download?source=blog">get it</a>' > "$tmp/website/src/content/blog/bad.md"
-  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: blog HTML href /download misuse not caught" >&2; return 1; fi
-
-  # BAD 5d: off-site doorway misuse — absolute doorway URL
-  echo '[get it](https://enviouswispr.com/download?source=blog)' > "$tmp/website/src/content/blog/bad.md"
-  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: blog absolute /download misuse not caught" >&2; return 1; fi
+  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: blog reference-style doorway accepted" >&2; return 1; fi
   rm "$tmp/website/src/content/blog/bad.md"
 
-  # GOOD: on-site /#download anchor in all forms must NOT trip the doorway check
-  printf '%s\n\n%s\n%s\n' '[dl](/#download) and [ref][r] and <a href="/#download">x</a>' '[r]: /#download' '' > "$tmp/website/src/content/blog/good2.md"
+  # GOOD: on-site /#download in every link form must NOT trip the doorway check
+  printf '%s\n\n%s\n' '[dl](/#download) and [ref][r] and <a href="/#download">x</a>' '[r]: /#download' > "$tmp/website/src/content/blog/good2.md"
   if ! lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: on-site /#download wrongly rejected" >&2; return 1; fi
   rm "$tmp/website/src/content/blog/good2.md"
 
