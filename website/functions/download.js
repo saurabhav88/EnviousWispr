@@ -29,8 +29,21 @@ const KNOWN_BUCKETS = new Set([
 // captured but tagged excluded_reason='bot_ua' so the KPI can exclude them while we
 // retain audit visibility. (Cloudflare's own request analytics counts the full,
 // incl-bot volume separately — this is just the PostHog-side hygiene.)
+//
+// Match crawler/fetcher SIGNATURES, not bare app names. Real preview fetchers carry
+// "bot"/"crawl" (Discordbot, TelegramBot, Slackbot, redditbot, twitterbot, ...) so the
+// generic tokens already cover them, plus the non-"bot" fetchers named explicitly. We
+// deliberately do NOT match bare "discord"/"slack"/"whatsapp"/"telegram"/"pinterest":
+// those also appear in the UAs of real humans clicking from an in-app WebView, and
+// tagging them bot would lose real downloads — the very off-site clicks this doorway
+// exists to count. (Cloud review, PR #1240.)
 const BOT_UA =
-  /bot|crawl|spider|slurp|slack|discord|facebookexternalhit|whatsapp|telegram|preview|scanner|monitor|curl|wget|python-requests|headless|bingpreview|embedly|redditbot|twitterbot|linkedinbot|pinterest|vkshare|w3c_validator/i;
+  /bot|crawl|spider|slurp|facebookexternalhit|bingpreview|embedly|vkshare|preview|scanner|monitor|curl|wget|python-requests|headless|w3c_validator/i;
+
+// Exported for unit testing the bot heuristic without the Cloudflare runtime.
+export function isLikelyBot(ua) {
+  return BOT_UA.test(ua || "");
+}
 
 function refHost(referer) {
   try {
@@ -109,7 +122,7 @@ export async function onRequest(context) {
     const utmMedium = q.get("utm_medium");
 
     const { bucket, excludedReason } = resolveSourceBucket({
-      isBot: BOT_UA.test(ua),
+      isBot: isLikelyBot(ua),
       explicit,
       utmSource,
       utmMedium,
