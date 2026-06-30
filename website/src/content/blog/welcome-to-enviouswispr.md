@@ -38,7 +38,7 @@ A few things that make it worth using day-to-day:
 
 ## Getting started
 
-Download the `.dmg` from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases), open it, and drag EnviousWispr to your Applications folder. On first launch you'll grant microphone access and the app will download its speech recognition model automatically. This takes a minute or two once and never again. Any M-series Mac running macOS Sonoma 14 or later works.
+Download EnviousWispr from the [download section](/#download), open the `.dmg`, and drag EnviousWispr to your Applications folder. On first launch you'll grant microphone access and the app will download its speech recognition model automatically. This takes a minute or two once and never again. Any M-series Mac running macOS Sonoma 14 or later works.
 
 For a step-by-step walkthrough, see our [Getting Started in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) guide. And if you want to understand why on-device processing matters, read our [on-device vs. cloud dictation comparison](/blog/on-device-vs-cloud-dictation-privacy/).
 

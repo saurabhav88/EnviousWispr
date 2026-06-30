@@ -39,7 +39,7 @@ For a deeper look at the full pipeline, from microphone input through transcript
 
 Getting started takes about five minutes:
 
-1. **Download and install.** Grab the `.dmg` from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases), drag to Applications, launch. Grant microphone access when macOS asks.
+1. **Download and install.** [Download EnviousWispr free](/#download), drag the `.dmg` to Applications, launch. Grant microphone access when macOS asks.
 
 2. **Wait for the speech model.** The speech model downloads automatically on first launch. No model selection needed. The first download takes a few minutes. After that, it's cached locally.
 
@@ -103,7 +103,7 @@ We cover this comparison in much more depth in [On-Device vs Cloud Dictation: Wh
 
 ## Getting started
 
-EnviousWispr is free and takes a few minutes to set up. [Download EnviousWispr free](/#download) or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). The speech model downloads automatically on first launch. Set your hotkey and start dictating. Zero accounts, zero subscriptions, zero cloud dependencies.
+EnviousWispr is free and takes a few minutes to set up. [Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). The speech model downloads automatically on first launch. Set your hotkey and start dictating. Zero accounts, zero subscriptions, zero cloud dependencies.
 
 If you want to understand the full transcription and post-processing pipeline before diving in, start with [How It Works](/how-it-works/).
 

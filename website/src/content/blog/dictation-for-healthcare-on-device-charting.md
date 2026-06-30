@@ -119,7 +119,7 @@ If you want the full picture on the privacy architecture, the [on-device vs clou
 
 EnviousWispr is free to download. The source is open source on GitHub under GPLv3.
 
-1. [Download EnviousWispr](/#download), or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases).
+1. [Download EnviousWispr](/#download), or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr).
 2. Drag it to Applications. On first launch, grant microphone and accessibility permissions.
 3. The speech model downloads automatically. This takes a minute or two and is cached locally from then on.
 4. Pick a hotkey that doesn't collide with your EMR shortcuts. Hold to record, release to transcribe.

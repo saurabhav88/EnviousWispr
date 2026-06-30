@@ -85,7 +85,7 @@ Do that ten times a day and you've replaced 45 minutes of typing with 15 minutes
 
 ## Get Started in Five Minutes
 
-EnviousWispr is free. [Download EnviousWispr free](/#download) and drag it to Applications, or grab the `.dmg` directly from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Grant microphone access on first launch. That's the whole setup: no account, no subscription.
+EnviousWispr is free. [Download EnviousWispr free](/#download) and drag it to Applications, or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). Grant microphone access on first launch. That's the whole setup: no account, no subscription.
 
 The speech model downloads automatically on first launch. After that initial setup (a few minutes), everything runs locally and never needs to phone home again.
 

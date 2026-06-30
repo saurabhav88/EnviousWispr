@@ -96,7 +96,7 @@ Dictation is also entirely on-demand; it only records when you actively initiate
 
 If you're dealing with RSI, the last thing you need is a setup process that involves extensive typing and configuration. EnviousWispr is designed to work with minimal setup:
 
-1. **Download the app.** [Get EnviousWispr free](/#download) or grab it from [GitHub releases](https://github.com/saurabhav88/EnviousWispr/releases) and open the .dmg.
+1. **Download the app.** [Get EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr).
 2. **Grant permissions.** macOS will ask for microphone and accessibility access on first launch.
 3. **Start speaking.** Hold the hotkey and talk, or double-press to lock recording for extended dictation.
 

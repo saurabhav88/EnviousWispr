@@ -107,7 +107,7 @@ And since EnviousWispr only records when you're actively holding the hotkey, the
 
 ## Getting Started
 
-EnviousWispr is [free](https://github.com/saurabhav88/EnviousWispr). Works out of the box. No account creation, no payment. [Download EnviousWispr free](/#download), or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Grant microphone and accessibility permissions, and you're dictating within a couple of minutes.
+EnviousWispr is [free](https://github.com/saurabhav88/EnviousWispr). Works out of the box. No account creation, no payment. [Download EnviousWispr free](/#download), or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). Grant microphone and accessibility permissions, and you're dictating within a couple of minutes.
 
 Start small. Pick one high-volume context (Slack replies or email) and commit to dictating instead of typing for a full day. You'll feel awkward for the first hour. By the end of the day, you'll notice how much less your hands hurt.
 

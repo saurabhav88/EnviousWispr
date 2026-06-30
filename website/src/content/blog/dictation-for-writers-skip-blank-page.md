@@ -119,7 +119,7 @@ You can read more about [how the pipeline works](/how-it-works/), from microphon
 
 EnviousWispr is free. You don't need an account, a subscription, or an API key.
 
-[Download EnviousWispr free](/#download) or grab the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases). Install it, grant microphone and accessibility permissions, and you're dictating within a few minutes. The speech model downloads automatically. Try dictating your next first draft instead of typing it, and let the polish keep it in your voice.
+[Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). Install it, grant microphone and accessibility permissions, and you're dictating within a few minutes. The speech model downloads automatically. Try dictating your next first draft instead of typing it, and let the polish keep it in your voice.
 
 The blank page problem doesn't go away. But when you can speak your way past it, it stops being the thing that kills your morning.
 

@@ -43,7 +43,7 @@ Here's how to go from zero to dictating first drafts that actually sound like yo
 
 ### Step 1: Install EnviousWispr
 
-Download the latest `.dmg` from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Drag it to Applications. On first launch, macOS will ask for microphone and accessibility permissions; grant both.
+[Download EnviousWispr free](/#download). Drag the `.dmg` to Applications. On first launch, macOS will ask for microphone and accessibility permissions; grant both.
 
 No account. No API key. No subscription. It's free.
 
@@ -118,7 +118,7 @@ The first few sessions feel awkward. You'll over-explain, stumble, repeat yourse
 
 EnviousWispr is free and yours to keep. No strings.
 
-1. [Download EnviousWispr free](/#download), or grab the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases)
+1. [Download EnviousWispr free](/#download), or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr)
 2. Leave AI polish on; it's built to keep your voice intact
 3. Dictate your next first draft
 
