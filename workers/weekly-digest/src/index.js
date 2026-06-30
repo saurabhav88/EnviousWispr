@@ -59,26 +59,11 @@ async function fetchCloudflareStats(env, dateFrom, dateTo) {
     }
   }`;
 
-  // Separate query for referrers — uses httpRequestsAdaptiveGroups
-  const refQuery = `query {
-    viewer {
-      zones(filter: {zoneTag: "${env.CF_ZONE_ID}"}) {
-        httpRequestsAdaptiveGroups(
-          limit: 10
-          filter: {
-            date_geq: "${dateFrom}"
-            date_leq: "${dateTo}"
-            requestSource: "eyeball"
-          }
-          orderBy: [count_DESC]
-        ) {
-          count
-          dimensions { refererHost }
-        }
-      }
-    }
-  }`;
-
+  // NOTE: the former "Top Referrers" query (httpRequestsAdaptiveGroups { refererHost })
+  // was removed (#1243): refererHost is rejected by the Cloudflare API on the zone
+  // dataset (the valid field, clientRefererHost, is paid-only), so the section was
+  // silently empty. Download attribution now comes from PostHog source_bucket — see
+  // the "Download Sources" field built from fetchPostHogStats.
   const opts = {
     method: "POST",
     headers: {
@@ -88,16 +73,10 @@ async function fetchCloudflareStats(env, dateFrom, dateTo) {
     },
   };
 
-  const [mainRes, refRes] = await Promise.all([
-    fetch("https://api.cloudflare.com/client/v4/graphql", {
-      ...opts,
-      body: JSON.stringify({ query }),
-    }).then((r) => r.json()),
-    fetch("https://api.cloudflare.com/client/v4/graphql", {
-      ...opts,
-      body: JSON.stringify({ query: refQuery }),
-    }).then((r) => r.json()),
-  ]);
+  const mainRes = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    ...opts,
+    body: JSON.stringify({ query }),
+  }).then((r) => r.json());
 
   const zone = mainRes?.data?.viewer?.zones?.[0];
   const totals = zone?.totals || [];
@@ -117,19 +96,11 @@ async function fetchCloudflareStats(env, dateFrom, dateTo) {
     }
   }
 
-  // Top referrers
-  const refZone = refRes?.data?.viewer?.zones?.[0];
-  const refGroups = refZone?.httpRequestsAdaptiveGroups || [];
-  const referrers = refGroups
-    .filter((r) => r.dimensions?.refererHost && r.dimensions.refererHost !== "enviouswispr.com")
-    .slice(0, 5)
-    .map((r) => ({ host: r.dimensions.refererHost, count: r.count }));
-
   const topCountries = Object.entries(countries)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
-  return { totalRequests, totalPageViews, totalUniques, topCountries, referrers };
+  return { totalRequests, totalPageViews, totalUniques, topCountries };
 }
 
 // ── GitHub Release Downloads ──────────────────────────────────
@@ -163,7 +134,7 @@ async function fetchGitHubDownloads(env) {
 
 async function fetchPostHogStats(env, dateFrom, dateTo) {
   const apiKey = env.POSTHOG_PERSONAL_API_KEY;
-  if (!apiKey) return { weeklyActiveUsers: "?", newUsers: "?", downloadClicks: "?" };
+  if (!apiKey) return { weeklyActiveUsers: "?", newUsers: "?", downloadIntents: "?", downloadSources: null, botExcluded: "?" };
 
   const headers = {
     Authorization: `Bearer ${apiKey}`,
@@ -183,20 +154,15 @@ async function fetchPostHogStats(env, dateFrom, dateTo) {
     ],
   };
 
-  // Download button clicks on website (autocaptured link clicks to DMG)
-  const clickQuery = {
-    kind: "TrendsQuery",
-    dateRange: { date_from: dateFrom, date_to: dateTo },
-    interval: "week",
-    series: [
-      {
-        kind: "EventsNode",
-        event: "download_clicked",
-        math: "total",
-        custom_name: "Download clicks",
-      },
-    ],
-  };
+  // Download intents (7d) = on-site clicks + non-bot off-site doorway redirects.
+  // HogQL (not TrendsQuery) because the union + bot-exclusion needs coalesce() on a
+  // property; bare property names do NOT resolve in HogQL — must be properties.<name>.
+  const intentsQuery = { kind: "HogQLQuery", query: downloadIntentsHogQL(dateFrom, dateTo) };
+  // Off-site download sources (non-bot) grouped by canonical source_bucket.
+  const sourcesQuery = { kind: "HogQLQuery", query: downloadSourcesHogQL(dateFrom, dateTo) };
+  // Off-site bot hits excluded this week — integrity line (surfaces a bot surge OR
+  // over-aggressive filtering).
+  const botQuery = { kind: "HogQLQuery", query: botExcludedHogQL(dateFrom, dateTo) };
 
   // Website pageviews
   const pvQuery = {
@@ -211,50 +177,122 @@ async function fetchPostHogStats(env, dateFrom, dateTo) {
 
   const queryUrl = `https://us.posthog.com/api/projects/${env.POSTHOG_PROJECT_ID}/query/`;
 
-  const [wauRes, clickRes, pvRes] = await Promise.all([
-    fetch(queryUrl, { method: "POST", headers, body: JSON.stringify({ query: wauQuery }) })
+  const post = (query) =>
+    fetch(queryUrl, { method: "POST", headers, body: JSON.stringify({ query }) })
       .then((r) => r.json())
-      .catch(() => null),
-    fetch(queryUrl, { method: "POST", headers, body: JSON.stringify({ query: clickQuery }) })
-      .then((r) => r.json())
-      .catch(() => null),
-    fetch(queryUrl, { method: "POST", headers, body: JSON.stringify({ query: pvQuery }) })
-      .then((r) => r.json())
-      .catch(() => null),
+      .catch(() => null);
+
+  const [wauRes, pvRes, intentsRes, sourcesRes, botRes] = await Promise.all([
+    post(wauQuery),
+    post(pvQuery),
+    post(intentsQuery),
+    post(sourcesQuery),
+    post(botQuery),
   ]);
 
-  const extractTotal = (res, seriesIdx = 0) => {
-    try {
-      const series = res?.results?.[seriesIdx];
-      if (!series) return "?";
-      // aggregated_value can be null for weekly intervals; sum the data array instead
-      if (series.aggregated_value != null) return series.aggregated_value;
-      if (Array.isArray(series.data)) return series.data.reduce((a, b) => a + b, 0);
-      return "?";
-    } catch {
-      return "?";
-    }
-  };
-
   return {
-    weeklyActiveUsers: extractTotal(wauRes, 0),
-    newUsers: extractTotal(wauRes, 1),
-    downloadClicks: extractTotal(clickRes, 0),
-    websitePageViews: extractTotal(pvRes, 0),
-    websiteVisitors: extractTotal(pvRes, 1),
+    weeklyActiveUsers: extractTrendTotal(wauRes, 0),
+    newUsers: extractTrendTotal(wauRes, 1),
+    websitePageViews: extractTrendTotal(pvRes, 0),
+    websiteVisitors: extractTrendTotal(pvRes, 1),
+    downloadIntents: extractHogScalar(intentsRes),
+    downloadSources: extractHogRows(sourcesRes),
+    botExcluded: extractHogScalar(botRes),
   };
+}
+
+// ── Helpers (pure; exported for node --test) ──────────────────
+
+// HogQL query builders. NOTE: every event-property ref MUST be properties.<name>
+// (bare names do not resolve in PostHog HogQL). The union/bot predicate is the
+// single shared DEFINITION (mirrored by the PostHog ping function; see
+// .claude/knowledge/analytics-operations.md). #1243
+export function downloadIntentsHogQL(dateFrom, dateTo) {
+  return `SELECT count() FROM events WHERE toDate(timestamp) >= toDate('${dateFrom}') AND toDate(timestamp) <= toDate('${dateTo}') AND (event = 'download_clicked' OR (event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = ''))`;
+}
+export function downloadSourcesHogQL(dateFrom, dateTo) {
+  return `SELECT properties.source_bucket AS bucket, count() AS n FROM events WHERE event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = '' AND toDate(timestamp) >= toDate('${dateFrom}') AND toDate(timestamp) <= toDate('${dateTo}') GROUP BY bucket ORDER BY n DESC LIMIT 8`;
+}
+export function botExcludedHogQL(dateFrom, dateTo) {
+  return `SELECT count() FROM events WHERE event = 'download_redirect' AND coalesce(properties.excluded_reason, '') != '' AND toDate(timestamp) >= toDate('${dateFrom}') AND toDate(timestamp) <= toDate('${dateTo}')`;
+}
+
+// TrendsQuery total extractor (aggregated_value or summed data array).
+export function extractTrendTotal(res, seriesIdx = 0) {
+  try {
+    const series = res?.results?.[seriesIdx];
+    if (!series) return "?";
+    if (series.aggregated_value != null) return series.aggregated_value;
+    if (Array.isArray(series.data)) return series.data.reduce((a, b) => a + b, 0);
+    return "?";
+  } catch {
+    return "?";
+  }
+}
+
+// HogQLQuery scalar (first cell of first row, e.g. a count()).
+export function extractHogScalar(res) {
+  try {
+    const v = res?.results?.[0]?.[0];
+    return v == null ? "?" : v;
+  } catch {
+    return "?";
+  }
+}
+
+// HogQLQuery rows (array of [col0, col1, ...]). Returns null (NOT []) on a failed
+// or malformed response, so a query error is distinguishable from a genuine empty
+// week — a real empty array means "zero off-site downloads", null means "unknown".
+export function extractHogRows(res) {
+  return Array.isArray(res?.results) ? res.results : null;
+}
+
+// Canonical source_bucket -> human label for the digest (concise; the live ping
+// uses its own slightly longer phrasing). Unknown/null -> "Other".
+export const SOURCE_LABELS = {
+  github_readme: "GitHub README",
+  github_release: "GitHub",
+  blog: "Blog",
+  directory_alternativeto: "AlternativeTo",
+  directory_macupdate: "MacUpdate",
+  directory_other: "Directory listing",
+  linkedin: "LinkedIn",
+  reddit: "Reddit",
+  x: "X",
+  youtube: "YouTube",
+  medium: "Medium",
+  facebook: "Facebook",
+  hackernews: "Hacker News",
+  producthunt: "Product Hunt",
+  discord: "Discord",
+  ai_assistant: "AI assistant",
+  newsletter: "Newsletter",
+  direct_or_dark: "Direct / untracked",
+  unknown_referrer: "Unrecognized site",
+};
+export function sourceLabel(bucket) {
+  return (bucket && SOURCE_LABELS[bucket]) || "Other";
+}
+
+// Render the source-breakdown rows ([[bucket, n], ...]) for the embed.
+// null (query failed/unknown) and [] (genuine zero) render differently so a
+// telemetry outage never masquerades as a true zero-source week.
+export function formatSourceBreakdown(rows) {
+  if (rows == null || !Array.isArray(rows)) return "Sources unavailable";
+  if (rows.length === 0) return "No off-site downloads yet";
+  return rows
+    .map(([bucket, n]) => `${sourceLabel(bucket)}: ${Number(n).toLocaleString()}`)
+    .join("\n");
 }
 
 // ── Discord Embed ─────────────────────────────────────────────
 
-function buildEmbed(weekStart, weekEnd, cf, gh, ph) {
+export function buildEmbed(weekStart, weekEnd, cf, gh, ph) {
   const topCountriesStr = cf.topCountries
     .map(([name, count]) => `${name}: ${count.toLocaleString()}`)
     .join("\n") || "No data";
 
-  const referrersStr = cf.referrers
-    .map((r) => `${r.host}: ${r.count.toLocaleString()}`)
-    .join("\n") || "Direct / none tracked";
+  const sourcesStr = formatSourceBreakdown(ph.downloadSources);
 
   return {
     embeds: [
@@ -277,7 +315,7 @@ function buildEmbed(weekStart, weekEnd, cf, gh, ph) {
             value: [
               `**Tracked Visitors:** ${ph.websiteVisitors ?? "—"}`,
               `**Tracked Page Views:** ${ph.websitePageViews ?? "—"}`,
-              `**Download Clicks:** ${ph.downloadClicks ?? "—"}`,
+              `**Download Intents (7d):** ${ph.downloadIntents ?? "—"}`,
             ].join("\n"),
             inline: true,
           },
@@ -308,8 +346,8 @@ function buildEmbed(weekStart, weekEnd, cf, gh, ph) {
             inline: false,
           },
           {
-            name: "🔗 Top Referrers",
-            value: `\`\`\`\n${referrersStr}\n\`\`\``,
+            name: "⬇️ Download Sources (7d)",
+            value: `\`\`\`\n${sourcesStr}\n\`\`\`\nOff-site bots excluded: ${ph.botExcluded ?? "—"}`,
             inline: true,
           },
           {
