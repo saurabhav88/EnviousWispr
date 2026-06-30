@@ -60,6 +60,16 @@ REQUIRED_README_SOURCE="github_readme"
 # lowercased (mirrors download.js resolveSourceBucket / URLSearchParams.get).
 validate_readme_doorway_link() {
   local url="$1"
+
+  # Path identity: the canonical route is exactly /download. Strip scheme (if any),
+  # host, query, and fragment, then require the path to be exactly "download" — so a
+  # typo like /download-old, /downloads, or /download/extra is rejected even when the
+  # query is perfectly tagged. (URL identity = path x query; both axes are validated.)
+  local after_scheme="${url#*://}"
+  local path_and_query="${after_scheme#*/}"
+  local path="${path_and_query%%\?*}"
+  path="${path%%#*}"
+
   local query=""
   case "$url" in *\?*) query="${url#*\?}" ;; esac
 
@@ -82,6 +92,7 @@ validate_readme_doorway_link() {
   source="$(printf '%s' "$source" | tr '[:upper:]' '[:lower:]')"
 
   local problems=""
+  [ "$path" = "download" ] || problems="${problems} path='/${path}' (must be /download);"
   [ "$source" = "$REQUIRED_README_SOURCE" ] || problems="${problems} resolved source='${source:-<none>}' (must be ${REQUIRED_README_SOURCE});"
   [ -n "$usrc" ]  || problems="${problems} utm_source missing/empty;"
   [ -n "$umed" ]  || problems="${problems} utm_medium missing/empty;"
@@ -120,7 +131,7 @@ lint_root() {
         echo "::error::README.md /download link is not a correctly-tagged doorway ($why): $link" >&2
         fail=1
       fi
-    done < <(grep -oE 'enviouswispr\.com/download[^)"[:space:]]*' "$readme" || true)
+    done < <(grep -oE 'https?://enviouswispr\.com/download[^)"[:space:]]*' "$readme" || true)
   fi
 
   if [ -d "$blog" ]; then
@@ -174,6 +185,9 @@ self_test() {
     "$D?source=github_readme&utm_source=github&utm_campaign=x"                                  # missing utm_medium
     "$D?source=github_readme&utm_source=&utm_medium=referral&utm_campaign=x"                    # empty utm value
     "$D"                                                                                        # bare, no query
+    "https://enviouswispr.com/download-old?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=x"   # path typo (suffix)
+    "https://enviouswispr.com/downloads?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=x"      # path typo (plural)
+    "https://enviouswispr.com/download/extra?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=x" # extra path segment
   )
   local u
   for u in "${good[@]}"; do
