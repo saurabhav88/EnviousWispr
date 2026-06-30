@@ -60,12 +60,19 @@ lint_root() {
       fail=1
     fi
     # (a) every enviouswispr.com/download link in README must carry utm_source/medium/campaign
+    #     AND pin source=github_readme. The doorway resolver gives an explicit ?source=
+    #     priority over utm_*, so a stray source= (e.g. source=reddit) would mis-bucket a
+    #     README click even with valid UTMs; the README surface IS github_readme.
     while IFS= read -r link; do
       [ -z "$link" ] && continue
       if ! { echo "$link" | grep -q 'utm_source=' \
           && echo "$link" | grep -q 'utm_medium=' \
           && echo "$link" | grep -q 'utm_campaign='; }; then
         echo "::error::README.md /download link missing utm_source/medium/campaign: $link" >&2
+        fail=1
+      fi
+      if ! echo "$link" | grep -q 'source=github_readme'; then
+        echo "::error::README.md /download link must pin source=github_readme (the README surface bucket): $link" >&2
         fail=1
       fi
     done < <(grep -oE 'enviouswispr\.com/download[^)"[:space:]]*' "$readme" || true)
@@ -127,8 +134,13 @@ self_test() {
   echo '[dl](https://enviouswispr.com/download?source=github_readme)' > "$tmp/README.md"
   if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: untagged README doorway not caught" >&2; return 1; fi
 
+  # BAD 2b: README /download link with valid UTMs but a wrong/foreign source bucket.
+  # The resolver gives explicit ?source= priority over utm_*, so this would mis-bucket.
+  echo '[dl](https://enviouswispr.com/download?source=reddit&utm_source=github&utm_medium=referral&utm_campaign=enviouswispr-evergreen-readme)' > "$tmp/README.md"
+  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: README wrong source bucket not caught" >&2; return 1; fi
+
   # restore a good README so blog-only failures are isolated
-  echo '[Download DMG](https://enviouswispr.com/download?utm_source=github&utm_medium=referral&utm_campaign=enviouswispr-evergreen-readme)' > "$tmp/README.md"
+  echo '[Download DMG](https://enviouswispr.com/download?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=enviouswispr-evergreen-readme)' > "$tmp/README.md"
 
   # BAD 3: raw .dmg in blog
   echo '[dl](https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg)' > "$tmp/website/src/content/blog/bad.md"
