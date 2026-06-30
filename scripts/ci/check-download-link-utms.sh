@@ -25,12 +25,12 @@
 #   scripts/ci/check-download-link-utms.sh --self-test  # verify the linter logic
 set -euo pipefail
 
-# Any raw GitHub release asset URL for the .dmg — both the rolling
-# /releases/latest/download/... shape AND a pinned /releases/download/<tag>/...
-# asset. The doorway anchor text "[EnviousWispr.dmg](https://enviouswispr.com/
-# download?...)" is NOT matched: its URL is enviouswispr.com, not a github
-# releases asset path.
-DMG_RE='github\.com/saurabhav88/EnviousWispr/releases/[^)"[:space:]]*EnviousWispr\.dmg'
+# Any raw GitHub release .dmg asset URL: the rolling /releases/latest/download/...
+# shape AND pinned /releases/download/<tag>/... assets, regardless of filename
+# (release assets are versioned, e.g. EnviousWispr-2.2.0.dmg). The doorway anchor
+# text "[EnviousWispr.dmg](https://enviouswispr.com/download?...)" is NOT matched:
+# its URL is enviouswispr.com, not a github releases asset path.
+DMG_RE='github\.com/saurabhav88/EnviousWispr/releases/[^)"[:space:]]*\.dmg'
 RELEASES_RE='github\.com/saurabhav88/EnviousWispr/releases'
 # Off-site /download doorway used as a link TARGET in on-site blog prose, across
 # every link form: inline markdown ](.../download, reference def ]: /download,
@@ -72,8 +72,9 @@ lint_root() {
         fail=1
       fi
       # Anchor on a query-param boundary ([?&]) so utm_source=github_readme does NOT
-      # satisfy the explicit-source requirement (the resolver only honors a real ?source=).
-      if ! echo "$link" | grep -qE '[?&]source=github_readme'; then
+      # satisfy the requirement, and end-anchor (&|$) so a near-miss value like
+      # source=github_readme_old (which the resolver would not recognize) is rejected.
+      if ! echo "$link" | grep -qE '[?&]source=github_readme(&|$)'; then
         echo "::error::README.md /download link must pin an explicit ?source=github_readme (the README surface bucket; utm_source does not count): $link" >&2
         fail=1
       fi
@@ -132,6 +133,10 @@ self_test() {
   echo '[dl](https://github.com/saurabhav88/EnviousWispr/releases/download/v1.2.3/EnviousWispr.dmg)' > "$tmp/README.md"
   if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: README versioned raw .dmg not caught" >&2; return 1; fi
 
+  # BAD 1c: raw .dmg with a VERSIONED filename (real release assets, e.g. EnviousWispr-2.2.0.dmg)
+  echo '[dl](https://github.com/saurabhav88/EnviousWispr/releases/download/v2.2.0/EnviousWispr-2.2.0.dmg)' > "$tmp/README.md"
+  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: README versioned-filename .dmg not caught" >&2; return 1; fi
+
   # BAD 2: README /download link without utm
   echo '[dl](https://enviouswispr.com/download?source=github_readme)' > "$tmp/README.md"
   if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: untagged README doorway not caught" >&2; return 1; fi
@@ -145,6 +150,10 @@ self_test() {
   # resolver only honors a real ?source=, so this must be caught despite the match).
   echo '[dl](https://enviouswispr.com/download?utm_source=github_readme&utm_medium=referral&utm_campaign=x)' > "$tmp/README.md"
   if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: README utm_source masquerading as source not caught" >&2; return 1; fi
+
+  # BAD 2d: near-miss source value the resolver would NOT recognize as github_readme
+  echo '[dl](https://enviouswispr.com/download?source=github_readme_old&utm_source=github&utm_medium=referral&utm_campaign=x)' > "$tmp/README.md"
+  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: README near-miss source value not caught" >&2; return 1; fi
 
   # restore a good README so blog-only failures are isolated
   echo '[Download DMG](https://enviouswispr.com/download?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=enviouswispr-evergreen-readme)' > "$tmp/README.md"
