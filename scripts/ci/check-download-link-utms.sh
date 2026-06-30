@@ -71,8 +71,10 @@ lint_root() {
         echo "::error::README.md /download link missing utm_source/medium/campaign: $link" >&2
         fail=1
       fi
-      if ! echo "$link" | grep -q 'source=github_readme'; then
-        echo "::error::README.md /download link must pin source=github_readme (the README surface bucket): $link" >&2
+      # Anchor on a query-param boundary ([?&]) so utm_source=github_readme does NOT
+      # satisfy the explicit-source requirement (the resolver only honors a real ?source=).
+      if ! echo "$link" | grep -qE '[?&]source=github_readme'; then
+        echo "::error::README.md /download link must pin an explicit ?source=github_readme (the README surface bucket; utm_source does not count): $link" >&2
         fail=1
       fi
     done < <(grep -oE 'enviouswispr\.com/download[^)"[:space:]]*' "$readme" || true)
@@ -138,6 +140,11 @@ self_test() {
   # The resolver gives explicit ?source= priority over utm_*, so this would mis-bucket.
   echo '[dl](https://enviouswispr.com/download?source=reddit&utm_source=github&utm_medium=referral&utm_campaign=enviouswispr-evergreen-readme)' > "$tmp/README.md"
   if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: README wrong source bucket not caught" >&2; return 1; fi
+
+  # BAD 2c: utm_source=github_readme but NO explicit ?source= (substring trap — the
+  # resolver only honors a real ?source=, so this must be caught despite the match).
+  echo '[dl](https://enviouswispr.com/download?utm_source=github_readme&utm_medium=referral&utm_campaign=x)' > "$tmp/README.md"
+  if lint_root "$tmp" >/dev/null 2>&1; then echo "SELF-TEST FAIL: README utm_source masquerading as source not caught" >&2; return 1; fi
 
   # restore a good README so blog-only failures are isolated
   echo '[Download DMG](https://enviouswispr.com/download?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=enviouswispr-evergreen-readme)' > "$tmp/README.md"
