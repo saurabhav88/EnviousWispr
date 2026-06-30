@@ -90,7 +90,7 @@ For developers working on proprietary codebases, under NDA, or at companies with
 
 ## Getting started
 
-[Download EnviousWispr free](/#download) or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). On first launch, grant microphone and accessibility permissions. The speech model downloads automatically.
+[Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). On first launch, grant microphone and accessibility permissions. The speech model downloads automatically.
 
 To set up for developer use:
 

@@ -98,7 +98,7 @@ That's the kind of reply that, when typed, often gets shortened to "New endpoint
 
 ## Getting started
 
-EnviousWispr is [free](https://github.com/saurabhav88/EnviousWispr). Just download and go. [Download EnviousWispr free](/#download) and set up your hotkey in minutes, or grab it directly from the [latest release on GitHub](https://github.com/saurabhav88/EnviousWispr/releases).
+EnviousWispr is [free](https://github.com/saurabhav88/EnviousWispr). Just download and go. [Download EnviousWispr free](/#download) and set up your hotkey in minutes, or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr).
 
 ## Related Posts
 

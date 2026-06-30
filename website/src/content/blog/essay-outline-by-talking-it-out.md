@@ -82,7 +82,7 @@ If you're dictating rough notes one minute and drafting polished outline text th
 
 A few things make this approach a good fit for the student workflow.
 
-**It's free.** Download EnviousWispr from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases) and start using it. No sign-up form, no credit card, no strings. For students already buried in textbook costs and software subscriptions, that matters.
+**It's free.** [Download EnviousWispr free](/#download) and start using it. No sign-up form, no credit card, no strings. For students already buried in textbook costs and software subscriptions, that matters.
 
 **Nothing leaves your Mac.** Your spoken drafts, your half-formed thesis ideas, your rough arguments: all processed locally using on-device speech recognition. No recordings uploaded to a cloud service. No third-party server storing your academic work. That's relevant if you're working on original research or just prefer not to feed your essay drafts into someone else's training data.
 
@@ -92,7 +92,7 @@ A few things make this approach a good fit for the student workflow.
 
 ## Get started
 
-If you've got a paper due and the outline isn't cooperating, try talking it out. [Get EnviousWispr free](/#download), or download it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Spend one minute speaking your argument out loud, in ordered points, and let the polish structure it.
+If you've got a paper due and the outline isn't cooperating, try talking it out. [Get EnviousWispr free](/#download), or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). Spend one minute speaking your argument out loud, in ordered points, and let the polish structure it.
 
 ## Related Posts
 

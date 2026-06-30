@@ -87,7 +87,7 @@ Kids are finally asleep. You have twenty things rattling around your head: appoi
 
 ## Getting started
 
-[Download EnviousWispr free](/#download), or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Open the `.dmg`, drag it to Applications, and launch. Grant microphone access and the speech model downloads automatically on first launch.
+[Download EnviousWispr free](/#download), or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). Open the `.dmg`, drag it to Applications, and launch. Grant microphone access and the speech model downloads automatically on first launch.
 
 The first model download takes a few minutes. After that, you're set. Download it, grant permissions, dictate. That's the whole setup: no cloud service to trust with your family's audio.
 

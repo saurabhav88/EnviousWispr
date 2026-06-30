@@ -85,6 +85,6 @@ Dictation is not a magic wand. It produces first drafts faster than typing. The 
 
 ## Where to start
 
-If you only try one thing this week, dictate the first draft of your next piece of writing instead of typing it. Use whatever tool you already have, or [download EnviousWispr free](https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg) if you want an on-device starting point. Compare your dictated draft against what a typed draft of the same piece usually feels like. Either it sticks because the voice comes through, or it does not.
+If you only try one thing this week, dictate the first draft of your next piece of writing instead of typing it. Use whatever tool you already have, or [download EnviousWispr free](/#download) if you want an on-device starting point. Compare your dictated draft against what a typed draft of the same piece usually feels like. Either it sticks because the voice comes through, or it does not.
 
 *Sizing up dictation tools for creative work? See [vs WisprFlow](/compare/wisprflow/), [vs Superwhisper](/compare/superwhisper/), or [browse all comparisons](/compare/).*

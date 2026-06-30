@@ -98,7 +98,7 @@ If you already have EnviousWispr installed, you can start dictating episode scri
 3. Hold the hotkey and talk through your next episode's cold open
 4. Look at the output. Adjust how you say it. Try again
 
-If you don't have EnviousWispr yet, [download it free](https://enviouswispr.com/#download). No account, no subscription, runs on macOS Sonoma or later on any Apple Silicon Mac. The source is also [on GitHub](https://github.com/saurabhav88/EnviousWispr/releases) if you want to inspect it first. For longer scripts, switch to hands-free mode and talk through the whole episode without touching the keyboard.
+If you don't have EnviousWispr yet, [download it free](https://enviouswispr.com/#download). No account, no subscription, runs on macOS Sonoma or later on any Apple Silicon Mac. The source is also [on GitHub](https://github.com/saurabhav88/EnviousWispr) if you want to inspect it first. For longer scripts, switch to hands-free mode and talk through the whole episode without touching the keyboard.
 
 ## Related Posts
 

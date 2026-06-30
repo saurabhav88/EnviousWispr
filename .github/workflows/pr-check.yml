@@ -325,6 +325,12 @@ jobs:
           scripts/ci/classify-changes.sh --self-test
           scripts/ci/check-pr-check-fetch-depth.sh
 
+      - name: Download-link lint (doorway tagging + on-site /#download)
+        run: |
+          set -euo pipefail
+          scripts/ci/check-download-link-utms.sh --self-test
+          scripts/ci/check-download-link-utms.sh
+
       - name: Require both build lanes
         run: |
           if [ "${{ needs.build-debug.result }}" != "success" ] || [ "${{ needs.build-release.result }}" != "success" ]; then

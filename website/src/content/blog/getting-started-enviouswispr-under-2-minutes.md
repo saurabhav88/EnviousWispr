@@ -25,7 +25,7 @@ This guide walks you through every step, from the initial download to your first
 
 ## Step 1: Download the .dmg
 
-Head to the [EnviousWispr releases page on GitHub](https://github.com/saurabhav88/EnviousWispr/releases) and grab the latest `.dmg` file. It's a standard macOS disk image. Open it, drag EnviousWispr into your Applications folder, and launch it.
+Head to the [download section](/#download) and grab the latest `.dmg` file. It's a standard macOS disk image. Open it, drag EnviousWispr into your Applications folder, and launch it.
 
 EnviousWispr requires an Apple Silicon Mac (M1 or later) running macOS Sonoma 14 or later. From a MacBook Air to a Mac Studio, transcription finishes in a second or two.
 
@@ -141,6 +141,6 @@ Now that you're set up, explore what EnviousWispr can do for your specific workf
 
 That's the full setup, from install to your first dictation in under two minutes, with optional customization whenever you're ready for it. Free to download, no account required. A hotkey, your voice, and polished text in whatever app you're working in.
 
-[Download EnviousWispr free](/#download) and start dictating, or grab it directly from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases).
+[Download EnviousWispr free](/#download) and start dictating, or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr).
 
 *Switching from another tool? See how EnviousWispr compares: [vs WisprFlow](/compare/wisprflow/), [vs Superwhisper](/compare/superwhisper/), [vs MacWhisper](/compare/macwhisper/), [vs VoiceInk](/compare/voiceink/), [vs Apple Dictation](/compare/apple-dictation/), or [browse all comparisons](/compare/).*

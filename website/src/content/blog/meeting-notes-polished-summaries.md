@@ -84,7 +84,7 @@ A few tips for getting started:
 
 ## Get started
 
-[Download EnviousWispr free](/#download), or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). It's free; install it and start dictating. No registration, no payment. The speech model downloads automatically on first launch. Leave AI polish on and let it shape your dictation automatically.
+[Download EnviousWispr free](/#download), or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). It's free; install it and start dictating. No registration, no payment. The speech model downloads automatically on first launch. Leave AI polish on and let it shape your dictation automatically.
 
 ## Related Posts
 

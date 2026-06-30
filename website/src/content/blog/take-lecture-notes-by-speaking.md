@@ -17,7 +17,7 @@ Here's how to set that up with EnviousWispr, a free dictation app that runs enti
 
 ## Step 1: Install EnviousWispr in five minutes
 
-Download the `.dmg` from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases) and drag the app to your Applications folder. On first launch, macOS will ask for microphone access; grant it. The speech model downloads automatically on first launch. No model selection needed. This takes a few minutes the first time and never again after that.
+Download EnviousWispr from the [download section](/#download) and drag the app to your Applications folder. On first launch, macOS will ask for microphone access; grant it. The speech model downloads automatically on first launch. No model selection needed. This takes a few minutes the first time and never again after that.
 
 It's free. No account walls, no trial periods. You're a student, and your budget matters.
 
@@ -86,7 +86,7 @@ And unlike cloud-based dictation tools, EnviousWispr processes everything on-dev
 
 If you're ready to try voice notes for students, the setup takes less than five minutes:
 
-1. [Download EnviousWispr free](/#download) or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases)
+1. [Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr)
 2. Grant microphone access on first launch (the speech model downloads automatically)
 3. Double-press your hotkey to activate hands-free mode
 5. Leave AI polish on and let it shape your notes as you speak

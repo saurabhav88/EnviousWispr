@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest"><img src="https://img.shields.io/github/v/release/saurabhav88/EnviousWispr?style=flat-square&label=latest&color=7c3aed" alt="Latest Release" /></a>
-  <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg"><img src="https://img.shields.io/badge/download-DMG-black?style=flat-square" alt="Download DMG" /></a>
+  <a href="https://enviouswispr.com/download?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=enviouswispr-evergreen-readme"><img src="https://img.shields.io/badge/download-DMG-black?style=flat-square" alt="Download DMG" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-7c3aed?style=flat-square" alt="License GPLv3" /></a>
   <a href="https://enviouswispr.com"><img src="https://img.shields.io/badge/web-enviouswispr.com-7c3aed?style=flat-square" alt="Website" /></a>
   <a href="https://x.com/EnviousLabs"><img src="https://img.shields.io/badge/follow-@EnviousLabs-black?style=flat-square&logo=x" alt="Follow on X" /></a>
@@ -124,7 +124,7 @@ brew install --cask saurabhav88/tap/enviouswispr
 
 Or download manually:
 
-1. Download [EnviousWispr.dmg](https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg) from the latest release
+1. Download [EnviousWispr.dmg](https://enviouswispr.com/download?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=enviouswispr-evergreen-readme) from the latest release
 2. Drag to Applications, launch
 3. Grant **Microphone**, **Accessibility**, and (on first paste fallback) **Automation** permissions when prompted
 4. Set your preferred hotkey in Settings > Shortcuts

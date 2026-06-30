@@ -118,7 +118,7 @@ A few things worth knowing when using developer dictation daily.
 
 If you want to try dictating git commits, here's the minimal setup.
 
-1. [Download EnviousWispr free](/#download) or grab it directly from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases) and grant it microphone and accessibility permissions on first launch
+1. [Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr) and grant it microphone and accessibility permissions on first launch
 2. The speech model downloads automatically on first launch. No model selection needed.
 3. Leave AI polish on for direct, technical output; type your `type(scope):` prefix and dictate the body.
 4. Open your terminal, hold the hotkey, describe your change, release

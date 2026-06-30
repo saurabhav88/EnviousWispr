@@ -95,7 +95,7 @@ The best workflow uses both. Dictate the rough draft. Type the edits. That's the
 
 ## Getting started
 
-[Download EnviousWispr free](https://enviouswispr.com/#download), no account, no subscription required. It takes a couple of minutes to set up on any Apple Silicon Mac running macOS Sonoma or later. On first launch, grant microphone access and the speech model downloads automatically. No model selection needed. The source is also [on GitHub](https://github.com/saurabhav88/EnviousWispr/releases).
+[Download EnviousWispr free](https://enviouswispr.com/#download), no account, no subscription required. It takes a couple of minutes to set up on any Apple Silicon Mac running macOS Sonoma or later. On first launch, grant microphone access and the speech model downloads automatically. No model selection needed. The source is also [on GitHub](https://github.com/saurabhav88/EnviousWispr).
 
 Then try this: open whatever you're working on, hold the hotkey, and talk through your next paragraph. See what comes back. The more you speak in your natural voice, the more the output matches how you write.
 

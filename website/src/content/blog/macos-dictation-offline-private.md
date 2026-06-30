@@ -126,7 +126,7 @@ Getting started takes a few minutes, and the setup itself is designed to require
 
 ### Install
 
-1. Download the latest `.dmg` from [GitHub Releases](https://github.com/saurabhav88/EnviousWispr/releases)
+1. [Download EnviousWispr free](/#download)
 2. Drag EnviousWispr to your Applications folder
 3. Launch the app
 
@@ -165,6 +165,6 @@ For people who rely on voice input as their primary way of writing, those aren't
 - [Dictation for Remote Workers Tired of Typing](/blog/dictation-remote-workers-tired-of-typing/). On-device speech-to-text fits naturally into Slack, email, and ticket workflows.
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). From download to first dictation.
 
-If you want to try it, [download EnviousWispr free](/#download) and start dictating, or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Skip the sign-up form. There isn't one. Just the app and your voice, with no audio leaving your Mac.
+If you want to try it, [download EnviousWispr free](/#download) and start dictating, or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). Skip the sign-up form. There isn't one. Just the app and your voice, with no audio leaving your Mac.
 
 *See how EnviousWispr compares to built-in options: [vs Apple Dictation](/compare/apple-dictation/), [vs Google Docs Voice Typing](/compare/google-docs-voice-typing/), or [browse all comparisons](/compare/).*
