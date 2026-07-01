@@ -200,6 +200,14 @@ final class RecordingSessionKernel {
   private let markASRTimingEnd: @MainActor () -> Void
   private let telemetryState: KernelTelemetryState
 
+  /// #1247: live read of the persisted Settings opt-in for the DEBUG-only
+  /// dictation-audio archive (#1230). A closure (not a frozen `Bool`) so
+  /// flipping the toggle off stops archiving on the VERY NEXT dictation, not
+  /// only after a relaunch — cloud review (PR #1250) flagged the asymmetric
+  /// risk of an off-flip silently continuing to save mic audio until quit.
+  /// ORs with the `EW_KEEP_DICTATION_AUDIO` env var at the archive call site.
+  private let dictationAudioArchiveOptInProvider: @MainActor () -> Bool
+
   // MARK: Observable surface
 
   /// The current FSM state. Callers observe; they never mutate it.
@@ -482,7 +490,8 @@ final class RecordingSessionKernel {
     markPipelineTimingStart: @escaping @MainActor () -> Void = {},
     markASRTimingStart: @escaping @MainActor (_ streaming: Bool) -> Void = { _ in },
     markASRTimingEnd: @escaping @MainActor () -> Void = {},
-    telemetryState: KernelTelemetryState = KernelTelemetryState()
+    telemetryState: KernelTelemetryState = KernelTelemetryState(),
+    dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false }
   ) {
     self.adapter = adapter
     self.audioCapture = audioCapture
@@ -500,6 +509,7 @@ final class RecordingSessionKernel {
     self.markASRTimingStart = markASRTimingStart
     self.markASRTimingEnd = markASRTimingEnd
     self.telemetryState = telemetryState
+    self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
   }
 
   // MARK: Driver entry points (PR-1 §A.2 trigger vocabulary)
@@ -1513,6 +1523,7 @@ final class RecordingSessionKernel {
         }
         let archiveClass = archiveClassification
         let archiveBackend = adapter.engineIdentity.backendType.rawValue
+        let archiveSettingsOptIn = dictationAudioArchiveOptInProvider()
         Task.detached(priority: .utility) {
           let path = await DictationAudioArchive.archive(
             transcriptID: archiveID,
@@ -1521,7 +1532,8 @@ final class RecordingSessionKernel {
             fed: archiveFed,
             outcome: archiveOutcome,
             classification: archiveClass,
-            backend: archiveBackend)
+            backend: archiveBackend,
+            settingsOptIn: archiveSettingsOptIn)
           await AppLogger.shared.log(
             path.map { "Dictation audio archived: \($0)" }
               ?? "Dictation audio archive skipped/failed (diagnostic limb, ignored)",

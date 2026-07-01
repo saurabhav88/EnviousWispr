@@ -159,6 +159,18 @@ import Testing
       #expect(path == nil)
     }
 
+    @Test("settingsOptIn satisfies the enablement gate independent of the env var")
+    func settingsOptInSatisfiesGate() {
+      // #1247: the persisted Settings toggle is a second source for the one
+      // enablement gate `DictationAudioArchive.archive()` checks — proves the
+      // OR condition directly, since `directory:` (used by every other test in
+      // this suite) bypasses the gate entirely and can't observe it.
+      #expect(DictationAudioArchive.isArchiveOptedIn(envValue: nil, settingsOptIn: true))
+      #expect(DictationAudioArchive.isArchiveOptedIn(envValue: "1", settingsOptIn: false))
+      #expect(!DictationAudioArchive.isArchiveOptedIn(envValue: nil, settingsOptIn: false))
+      #expect(!DictationAudioArchive.isArchiveOptedIn(envValue: "0", settingsOptIn: false))
+    }
+
     @Test("prune keeps the newest N directories by modification time")
     func pruneByTime() async throws {
       let dir = try tempDir()

@@ -113,6 +113,28 @@ struct DiagnosticsSettingsView: View {
             }
           }
         }
+        #if DEBUG
+          // Intentionally NOT gated by `isDebugModeEnabled` above (Codex review,
+          // #1247): the archive opt-in is a sticky, independently-persisted flag,
+          // so if it's already on, the control that turns it off must stay
+          // visible regardless of whether debug mode is currently toggled —
+          // otherwise active mic-audio retention could be invisible. `#if DEBUG`
+          // keeps the row itself out of release, where the archive doesn't exist.
+          BrandedRow(showDivider: false) {
+            VStack(alignment: .leading, spacing: 4) {
+              Toggle(
+                "Save dictation audio for debugging",
+                isOn: $settings.isDictationAudioArchiveEnabled
+              )
+              .toggleStyle(BrandedToggleStyle())
+              Text(
+                "Saves a local copy of each dictation's audio for diagnosing transcription issues. Stored only on this Mac, newest 500 recordings kept. Persists across rebuilds. Applies starting with your very next dictation."
+              )
+              .font(.stHelper)
+              .foregroundStyle(.stTextTertiary)
+            }
+          }
+        #endif
       }
 
       // ── Log Files ─────────────────────────────────────────────────────
