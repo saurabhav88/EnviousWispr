@@ -26,6 +26,27 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.2.1
+
+    Entry(
+      id: "tail-clip-recovery",
+      icon: "waveform.badge.checkmark",
+      title: "Long dictations keep every last word",
+      description:
+        "Fixed a long-standing bug where the end of a longer dictation could go missing if you paused mid-sentence near the finish. The speech engine now catches and recovers those moments, so your closing words always land.",
+      category: .fasterAndMoreReliable,
+      version: "2.2.1"
+    ),
+    Entry(
+      id: "cloud-polish-facelift",
+      icon: "cloud.bolt",
+      title: "Cloud AI polish got a facelift",
+      description:
+        "If you bring your own OpenAI or Gemini key, polish just got a major upgrade. We rewrote the prompt from the ground up and benchmarked it across 1,890 real dictation cases: pass rates jumped from about 70% to about 92%. You'll notice the difference most in paragraph breaks when you change topics, spoken lists becoming real lists, cleaner handling of mid-sentence self-corrections, grammar fixes, and emoji staying exactly where you put them.",
+      category: .smarterAIPolish,
+      version: "2.2.1"
+    ),
+
     // MARK: - v2.2.0
 
     Entry(
