@@ -128,7 +128,7 @@ struct DiagnosticsSettingsView: View {
               )
               .toggleStyle(BrandedToggleStyle())
               Text(
-                "Saves a local copy of each dictation's audio for diagnosing transcription issues. Stored only on this Mac, newest 500 recordings kept. Persists across rebuilds. Takes effect the next time the app starts, not the current session."
+                "Saves a local copy of each dictation's audio for diagnosing transcription issues. Stored only on this Mac, newest 500 recordings kept. Persists across rebuilds. Applies starting with your very next dictation."
               )
               .font(.stHelper)
               .foregroundStyle(.stTextTertiary)

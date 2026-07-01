@@ -178,7 +178,7 @@ final class PipelineSettingsSync {
     case .crashRecoveryEnabled:
       break  // #1063: read by the recovery wiring at capture start, not the live pipeline.
     case .isDictationAudioArchiveEnabled:
-      break  // #1247: read once at kernel construction (WisprBootstrapper); not live-mirrored.
+      break  // #1247: kernel pulls this live via `dictationAudioArchiveOptInProvider` — no push needed here.
     case .appearance:
       break  // UI-only; applied to NSApp.appearance by the app shell (#1047).
     }

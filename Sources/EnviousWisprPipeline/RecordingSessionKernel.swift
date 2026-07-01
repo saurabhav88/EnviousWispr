@@ -200,10 +200,13 @@ final class RecordingSessionKernel {
   private let markASRTimingEnd: @MainActor () -> Void
   private let telemetryState: KernelTelemetryState
 
-  /// #1247: persisted Settings opt-in for the DEBUG-only dictation-audio
-  /// archive (#1230), read once at kernel construction (`WisprBootstrapper`).
+  /// #1247: live read of the persisted Settings opt-in for the DEBUG-only
+  /// dictation-audio archive (#1230). A closure (not a frozen `Bool`) so
+  /// flipping the toggle off stops archiving on the VERY NEXT dictation, not
+  /// only after a relaunch — cloud review (PR #1250) flagged the asymmetric
+  /// risk of an off-flip silently continuing to save mic audio until quit.
   /// ORs with the `EW_KEEP_DICTATION_AUDIO` env var at the archive call site.
-  private let dictationAudioArchiveOptIn: Bool
+  private let dictationAudioArchiveOptInProvider: @MainActor () -> Bool
 
   // MARK: Observable surface
 
@@ -488,7 +491,7 @@ final class RecordingSessionKernel {
     markASRTimingStart: @escaping @MainActor (_ streaming: Bool) -> Void = { _ in },
     markASRTimingEnd: @escaping @MainActor () -> Void = {},
     telemetryState: KernelTelemetryState = KernelTelemetryState(),
-    dictationAudioArchiveOptIn: Bool = false
+    dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false }
   ) {
     self.adapter = adapter
     self.audioCapture = audioCapture
@@ -506,7 +509,7 @@ final class RecordingSessionKernel {
     self.markASRTimingStart = markASRTimingStart
     self.markASRTimingEnd = markASRTimingEnd
     self.telemetryState = telemetryState
-    self.dictationAudioArchiveOptIn = dictationAudioArchiveOptIn
+    self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
   }
 
   // MARK: Driver entry points (PR-1 §A.2 trigger vocabulary)
@@ -1520,7 +1523,7 @@ final class RecordingSessionKernel {
         }
         let archiveClass = archiveClassification
         let archiveBackend = adapter.engineIdentity.backendType.rawValue
-        let archiveSettingsOptIn = dictationAudioArchiveOptIn
+        let archiveSettingsOptIn = dictationAudioArchiveOptInProvider()
         Task.detached(priority: .utility) {
           let path = await DictationAudioArchive.archive(
             transcriptID: archiveID,
