@@ -204,3 +204,6 @@ routine-session-logs-*/
 
 # Local research workbenches (classifier retraining data, eval corpora) — never tracked
 /artifacts/
+
+# Swift/clang module cache created by CLI builds in the worktree
+.cache/

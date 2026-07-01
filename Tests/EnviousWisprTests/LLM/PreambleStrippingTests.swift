@@ -75,6 +75,20 @@ struct PreambleStrippingTests {
     #expect(input.strippingLLMPreamble() == "Hello world")
   }
 
+  // #1255 Codex r5: the fixed cloud prompt sends no <transcript> sandwich, so the cloud
+  // connectors pass stripTranscriptTags: false — a user who dictates literal tags must get
+  // them back verbatim, while preamble/acknowledgment stripping still applies.
+  @Test("cloud path (stripTranscriptTags: false) preserves literal transcript tags")
+  func transcriptTagsPreservedOnCloudPath() {
+    let literal = "<transcript>Hello world</transcript>"
+    #expect(literal.strippingLLMPreamble(stripTranscriptTags: false) == literal)
+
+    let withPreamble = "Here is the cleaned text:\n<transcript>keep me</transcript>"
+    #expect(
+      withPreamble.strippingLLMPreamble(stripTranscriptTags: false)
+        == "<transcript>keep me</transcript>")
+  }
+
   // MARK: - Combined patterns
 
   @Test("acknowledgment + preamble line both stripped")

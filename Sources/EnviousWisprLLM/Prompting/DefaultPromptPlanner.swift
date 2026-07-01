@@ -7,10 +7,21 @@ public struct DefaultPromptPlanner: PromptPlanning {
   public init() {}
 
   public func plan(input: PromptBuildInput) -> PolishPlan {
-    let mode = TranscriptAnalyzer.analyzeMode(
-      transcript: input.transcript,
-      appName: input.appName
-    )
+    // #1255: the cloud providers (OpenAI/Gemini) use one fixed, modeless prompt. Force their
+    // plan mode to `.message` so the builder (which ignores mode), the downstream output
+    // validator (`LLMPolishStep` passes `plan.mode` into `validatePolishOutput`), and the
+    // `polish_mode` telemetry all share ONE consistent policy that matches the eval mirror.
+    // Ollama keeps the analyzer's mode because its per-model builders still format by mode.
+    let mode: PolishMode
+    switch input.provider {
+    case .openAI, .gemini:
+      mode = .message
+    default:
+      mode = TranscriptAnalyzer.analyzeMode(
+        transcript: input.transcript,
+        appName: input.appName
+      )
+    }
 
     // Multilingual v1 (W3): filter polish vocabulary for the active
     // confidence tier + script guardrail BEFORE handing it to the builder.
@@ -28,7 +39,7 @@ public struct DefaultPromptPlanner: PromptPlanning {
   /// Ollama running non-Gemma models gets OpenAI-style prose prompt.
   public static func builder(for provider: LLMProvider, modelID: String) -> any PromptBuilder {
     switch family(for: provider, modelID: modelID) {
-    case .geminiPlain: return GeminiPromptBuilder()
+    case .cloudFixed: return CloudFixedPromptBuilder()
     case .openAIProse: return OpenAIPromptBuilder()
     case .gemmaFewShot: return GemmaPromptBuilder()
     }
@@ -37,10 +48,9 @@ public struct DefaultPromptPlanner: PromptPlanning {
   /// Map (provider, modelID) to a PromptFamily.
   public static func family(for provider: LLMProvider, modelID: String) -> PromptFamily {
     switch provider {
-    case .gemini:
-      return .geminiPlain
-    case .openAI:
-      return .openAIProse
+    case .openAI, .gemini:
+      // Strong cloud models: one fixed prompt, no per-transcript mode selection (#1255).
+      return .cloudFixed
     case .ollama:
       if modelID.lowercased().contains("gemma") {
         return .gemmaFewShot

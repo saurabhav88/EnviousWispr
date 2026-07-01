@@ -54,8 +54,14 @@ extension String {
   ///   2. Only strip when wrapper shape is present. This prevents false-stripping
   ///      user dictation that happens to start with "Sure, here is the plan..."
   ///      (which flows into prose without a colon).
-  ///   3. Strip `<transcript>` wrapper tags if echoed back.
-  func strippingLLMPreamble() -> String {
+  ///   3. Strip `<transcript>` wrapper tags if echoed back — ONLY when
+  ///      `stripTranscriptTags` is true. That cleanup exists for the sandwich
+  ///      prompt paths (Ollama, Apple) whose user message wraps the transcript in
+  ///      `<transcript>` tags the model can echo. The fixed cloud prompt (#1255)
+  ///      sends NO sandwich, so stripping those tags there would delete a user's
+  ///      literal dictated `<transcript>` text (XML, prompt notes); cloud callers
+  ///      pass `false` (Codex code-review r5).
+  func strippingLLMPreamble(stripTranscriptTags: Bool = true) -> String {
     var result = self.trimmingCharacters(in: .whitespacesAndNewlines)
 
     // Helper — does the first line look like an assistant-emitted preamble?
@@ -132,12 +138,15 @@ extension String {
     }
 
     // Strip <transcript> wrapper if echoed back (may be truncated at token limit).
-    // Case-insensitive so both <transcript> and <TRANSCRIPT> are handled.
-    result = result.replacingOccurrences(
-      of: "</?transcript>",
-      with: "",
-      options: [.regularExpression, .caseInsensitive]
-    ).trimmingCharacters(in: .whitespacesAndNewlines)
+    // Case-insensitive so both <transcript> and <TRANSCRIPT> are handled. Skipped on
+    // the no-sandwich cloud path so literal dictated tags survive (see doc above).
+    if stripTranscriptTags {
+      result = result.replacingOccurrences(
+        of: "</?transcript>",
+        with: "",
+        options: [.regularExpression, .caseInsensitive]
+      ).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     return result
   }

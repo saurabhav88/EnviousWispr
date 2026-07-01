@@ -221,7 +221,7 @@ public struct GeminiConnector: TranscriptPolisher {
 
     return LLMResult(
       polishedText: fullText.trimmingCharacters(in: .whitespacesAndNewlines)
-        .strippingLLMPreamble()
+        .strippingLLMPreamble(stripTranscriptTags: false)
     )
   }
 
@@ -302,7 +302,7 @@ public struct GeminiConnector: TranscriptPolisher {
 
     return LLMResult(
       polishedText: responseText.trimmingCharacters(in: .whitespacesAndNewlines)
-        .strippingLLMPreamble()
+        .strippingLLMPreamble(stripTranscriptTags: false)
     )
   }
 

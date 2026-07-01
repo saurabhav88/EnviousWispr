@@ -1,11 +1,13 @@
 import EnviousWisprCore
 
-/// Builds prompts for OpenAI models using V2 sandwich framing.
+/// Builds prose-style prompts for the `.openAIProse` family. Since #1255 this serves ONLY
+/// Ollama non-Gemma models (llama3.2, qwen, mistral, phi, ...); the OpenAI and Gemini cloud
+/// providers moved to `CloudFixedPromptBuilder`. It keeps the per-mode formatting rules
+/// because weaker local models still benefit from the explicit scaffolding.
 /// Uses the shared `buildSandwichUserMessage` helper from PromptV2Support.swift for
-/// user-message wrapping. OpenAI owns its own mode-specific allowed-edits list,
-/// ASR-awareness clause, appName context block, language override prefix, short-text
-/// guard, and custom vocabulary rendering. Gemini-specific system text (`V2SystemBase`)
-/// and mode clauses (`formattingClause`) are NOT used by this builder.
+/// user-message wrapping, plus its own mode-specific allowed-edits list, ASR-awareness
+/// clause, appName context block, language override prefix, short-text guard, and custom
+/// vocabulary rendering.
 struct OpenAIPromptBuilder: PromptBuilder {
   init() {}
 

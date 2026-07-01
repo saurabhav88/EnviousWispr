@@ -27,14 +27,20 @@ struct PromptPlannerTests {
 
   // MARK: - PromptFamily selection
 
-  @Test("Gemini -> geminiPlain")
+  @Test("Gemini -> cloudFixed")
   func geminiFamily() {
-    #expect(DefaultPromptPlanner.family(for: .gemini, modelID: "gemini-2.0-flash") == .geminiPlain)
+    #expect(DefaultPromptPlanner.family(for: .gemini, modelID: "gemini-2.0-flash") == .cloudFixed)
+    #expect(
+      DefaultPromptPlanner.builder(for: .gemini, modelID: "gemini-2.0-flash")
+        is CloudFixedPromptBuilder)
   }
 
-  @Test("OpenAI -> openAIProse")
+  @Test("OpenAI -> cloudFixed")
   func openAIFamily() {
-    #expect(DefaultPromptPlanner.family(for: .openAI, modelID: "gpt-4o-mini") == .openAIProse)
+    #expect(DefaultPromptPlanner.family(for: .openAI, modelID: "gpt-4o-mini") == .cloudFixed)
+    #expect(
+      DefaultPromptPlanner.builder(for: .openAI, modelID: "gpt-4o-mini")
+        is CloudFixedPromptBuilder)
   }
 
   @Test("Ollama + gemma model -> gemmaFewShot")
@@ -66,24 +72,42 @@ struct PromptPlannerTests {
 
   // MARK: - Mode routing through planner
 
-  @Test("short transcript -> inline mode in plan")
+  // Mode routing through the planner is now meaningful ONLY for the mode-driven Ollama
+  // path; the cloud providers are forced to `.message` (see cloudForcesMessageMode).
+
+  @Test("short transcript -> inline mode in plan (Ollama)")
   func shortTranscriptMode() {
-    let plan = planner.plan(input: makeInput(transcript: "hey call me back"))
+    let plan = planner.plan(
+      input: makeInput(transcript: "hey call me back", provider: .ollama, modelID: "llama3.2"))
     #expect(plan.mode == .inline)
   }
 
-  @Test("medium transcript -> message mode in plan")
+  @Test("medium transcript -> message mode in plan (Ollama)")
   func mediumTranscriptMode() {
     let words = Array(repeating: "word", count: 50).joined(separator: " ")
-    let plan = planner.plan(input: makeInput(transcript: words))
+    let plan = planner.plan(
+      input: makeInput(transcript: words, provider: .ollama, modelID: "llama3.2"))
     #expect(plan.mode == .message)
   }
 
-  @Test("long transcript -> structured mode in plan")
+  @Test("long transcript -> structured mode in plan (Ollama)")
   func longTranscriptMode() {
     let words = Array(repeating: "word", count: 120).joined(separator: " ")
-    let plan = planner.plan(input: makeInput(transcript: words))
+    let plan = planner.plan(
+      input: makeInput(transcript: words, provider: .ollama, modelID: "llama3.2"))
     #expect(plan.mode == .structured)
+  }
+
+  @Test("cloud providers force .message mode regardless of length (#1255)")
+  func cloudForcesMessageMode() {
+    let short = planner.plan(
+      input: makeInput(
+        transcript: "hey call me back", provider: .gemini, modelID: "gemini-2.5-flash"))
+    #expect(short.mode == .message)
+    let longText = Array(repeating: "word", count: 120).joined(separator: " ")
+    let longPlan = planner.plan(
+      input: makeInput(transcript: longText, provider: .openAI, modelID: "gpt-4o"))
+    #expect(longPlan.mode == .message)
   }
 
   // MARK: - Plan produces valid envelope
@@ -95,30 +119,34 @@ struct PromptPlannerTests {
     #expect(plan.envelope.messages[0].role == .system)
   }
 
-  @Test("plan with empty transcript still produces valid output")
+  @Test("plan with empty transcript still produces valid output (Ollama analyzer -> inline)")
   func emptyTranscript() {
-    let plan = planner.plan(input: makeInput(transcript: ""))
+    let plan = planner.plan(
+      input: makeInput(transcript: "", provider: .ollama, modelID: "llama3.2"))
     #expect(!plan.envelope.messages.isEmpty)
     #expect(plan.mode == .inline)
   }
 
   // MARK: - Builder selection produces correct prompt style
 
-  @Test("Gemini plan uses V2 editor-role system and sandwich user message")
+  @Test("Gemini plan uses the fixed v6 prompt with a plain user message")
   func geminiPlanStyle() {
     let plan = planner.plan(input: makeInput(provider: .gemini, modelID: "gemini-2.5-flash"))
     let system = plan.envelope.messages[0].content
     let user = plan.envelope.messages[1].content
-    #expect(system.contains("transcript polisher for direct paste"))
-    #expect(!system.contains("<transcript>"))
-    #expect(user.contains("<transcript>"))
+    #expect(system.contains("You are the writing assistant inside a dictation app"))
+    #expect(user.hasPrefix("Transcript to clean:"))
+    #expect(!user.contains("<transcript>"))
   }
 
-  @Test("OpenAI plan uses prose format with sandwich framing")
+  @Test("OpenAI plan uses the fixed v6 prompt with a plain user message")
   func openAIPlanStyle() {
     let plan = planner.plan(input: makeInput(provider: .openAI, modelID: "gpt-4o-mini"))
+    let system = plan.envelope.messages[0].content
     let user = plan.envelope.messages[1].content
-    #expect(user.contains("<transcript>"))
+    #expect(system.contains("You are the writing assistant inside a dictation app"))
+    #expect(user.hasPrefix("Transcript to clean:"))
+    #expect(!user.contains("<transcript>"))
   }
 
   @Test("Ollama Gemma plan uses few-shot prompt style")
