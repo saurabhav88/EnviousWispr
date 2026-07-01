@@ -197,7 +197,7 @@ public struct OpenAIConnector: TranscriptPolisher {
 
     return LLMResult(
       polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
-        .strippingLLMPreamble()
+        .strippingLLMPreamble(stripTranscriptTags: false)
     )
   }
 

@@ -36,7 +36,6 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/eval"))
 
 from acceptance_gate import (  # noqa: E402
-    USER_TEMPLATE,
     MissingSecretError,
     _apple_polish_subprocess,
     _apply_validator,

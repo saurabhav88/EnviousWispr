@@ -2,29 +2,11 @@ import EnviousWisprCore
 
 // MARK: - Shared V2 prompt components
 //
-// Shared building blocks used by V2 sandwich-framed polish prompts. Currently consumed by
-// GeminiPromptBuilder (all three) and OpenAIPromptBuilder (buildSandwichUserMessage only).
-// GemmaPromptBuilder uses few-shot examples and does not share these helpers.
-
-/// V2 system base text used by GeminiPromptBuilder. Defines editor-not-conversation role,
-/// multilingual preservation, ASR awareness, and the allowed-edits list. Mode-specific
-/// formatting and the final return clause are appended per builder.
-///
-/// NOT used by OpenAIPromptBuilder, which owns its own mode-specific rule text.
-let V2SystemBase = """
-  You are a transcript polisher for direct paste.
-
-  Your job is editing, not conversation. Preserve the speaker's meaning, tone, facts, and language. Keep the same language(s) and script(s). Never translate. Preserve code-switching between languages.
-
-  This is speech-to-text output. Make minimal edits, but do clean up spoken disfluencies.
-
-  Allowed edits:
-  - Remove filler words (um, uh, like, you know), stutters, repeated words, and false starts
-  - When the speaker revises or replaces earlier wording (e.g., "X, actually Y", "not X, I mean Y", "X, no wait, Y"), keep only the final intended wording
-  - Fix phonetically similar but contextually wrong words based on context
-  - Normalize punctuation and capitalization
-  - Format numbers, dates, times, phone numbers, emails, and URLs when unambiguous; if uncertain, preserve the spoken form
-  """
+// Shared building block for V2 sandwich-framed polish prompts. Since #1255 the only
+// consumer is `OpenAIPromptBuilder` (the `.openAIProse` family = Ollama non-Gemma models).
+// The former `V2SystemBase` + `formattingClause` were used only by the deleted
+// `GeminiPromptBuilder` (Gemini moved to `CloudFixedPromptBuilder`) and were removed.
+// `GemmaPromptBuilder` uses few-shot examples and does not share this helper.
 
 /// V2 user-message template. Wraps the transcript in `<transcript>` tags with an explicit
 /// anti-instruction clause. Literal `<transcript>` or `</transcript>` substrings in the
@@ -46,24 +28,4 @@ func buildSandwichUserMessage(transcript: String) -> String {
     \(safeTranscript)
     </transcript>
     """
-}
-
-/// V2 mode-specific formatting clause used by GeminiPromptBuilder. Appended to the system
-/// prompt after context and before short-text guard.
-///
-/// NOT used by OpenAIPromptBuilder, which has per-mode allowed-edits lists.
-func formattingClause(for mode: PolishMode) -> String {
-  switch mode {
-  case .inline:
-    return "Formatting: output one paragraph only. No bullets, headers, or line breaks."
-  case .message:
-    return
-      "Formatting: use paragraph breaks for clear topic shifts. Use bullet points (- item) when the speaker clearly listed 3+ items. No headers unless explicitly dictated."
-  case .structured:
-    return
-      "Formatting: organize into readable paragraphs on clear topic shifts. Use bullet points (- item) for lists of 3+ items. Use short section labels only if content clearly has sections."
-  case .edit:
-    return
-      "Formatting: use paragraph breaks for clear topic shifts. Use bullet points (- item) when the speaker clearly listed items. No headers unless explicitly dictated."
-  }
 }
