@@ -92,13 +92,26 @@ enable_app_file_logging() {
     exit 2
   fi
 
-  # Quit ALL running dev instances by executable path (same policy as
-  # build-dev-app.sh Step 2): only one dev EW runs at a time, and a bundle-id
-  # quit is unreliable when several worktrees share the .dev id.
+  # Quit ALL running dev instances: Cocoa quit first (only Cocoa terminate runs
+  # applicationWillTerminate, letting the audio/ASR helpers exit cleanly —
+  # Tests/RuntimeUAT/SCENARIOS.md; a raw kill here could leave helpers alive and
+  # contaminate the signpost capture), then a path-scoped TERM/wait/KILL sweep
+  # to enforce the one-dev-instance policy (the bundle-id quit alone is
+  # unreliable when several worktrees share the .dev id).
+  osascript <<OSA 2>/dev/null || true
+if application id "$APP_BUNDLE_ID" is running then
+  tell application id "$APP_BUNDLE_ID" to quit
+end if
+OSA
   dev_pids() { pgrep -f "EnviousWispr Local.app/Contents/MacOS/EnviousWispr" 2>/dev/null || true; }
+  helper_pids() { pgrep -f "EnviousWispr Local.app/Contents/XPCServices/" 2>/dev/null || true; }
+  for _ in $(seq 1 50); do [ -z "$(dev_pids)" ] && break; sleep 0.1; done
   for pid in $(dev_pids); do kill -TERM "$pid" 2>/dev/null || true; done
   for _ in $(seq 1 50); do [ -z "$(dev_pids)" ] && break; sleep 0.1; done
   for pid in $(dev_pids); do kill -9 "$pid" 2>/dev/null || true; done
+  # Reap any orphaned audio/ASR helpers so they can't pollute the benchmark.
+  for _ in $(seq 1 30); do [ -z "$(helper_pids)" ] && break; sleep 0.1; done
+  for pid in $(helper_pids); do kill -TERM "$pid" 2>/dev/null || true; done
   sleep 0.3
 
   open "$DEV_APP_PATH"
