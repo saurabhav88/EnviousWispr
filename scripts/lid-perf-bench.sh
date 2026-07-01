@@ -92,18 +92,14 @@ enable_app_file_logging() {
     exit 2
   fi
 
-  osascript <<OSA 2>/dev/null || true
-if application id "$APP_BUNDLE_ID" is running then
-  tell application id "$APP_BUNDLE_ID" to quit
-end if
-OSA
-
-  for _ in $(seq 1 30); do
-    if ! pgrep -f "EnviousWispr Local.app/Contents/MacOS/EnviousWispr" >/dev/null 2>&1; then
-      break
-    fi
-    sleep 0.1
-  done
+  # Quit ALL running dev instances by executable path (same policy as
+  # build-dev-app.sh Step 2): only one dev EW runs at a time, and a bundle-id
+  # quit is unreliable when several worktrees share the .dev id.
+  dev_pids() { pgrep -f "EnviousWispr Local.app/Contents/MacOS/EnviousWispr" 2>/dev/null || true; }
+  for pid in $(dev_pids); do kill -TERM "$pid" 2>/dev/null || true; done
+  for _ in $(seq 1 50); do [ -z "$(dev_pids)" ] && break; sleep 0.1; done
+  for pid in $(dev_pids); do kill -9 "$pid" 2>/dev/null || true; done
+  sleep 0.3
 
   open "$DEV_APP_PATH"
   sleep 3
