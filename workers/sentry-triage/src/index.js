@@ -5,10 +5,19 @@
  * severity, deduplicates via KV, and fires a Claude Code Routine for P0-P2 issues.
  *
  * Read-only pipeline: the downstream Routine creates/updates GitHub issues.
- * This Worker never touches GitHub directly (except the daily-cap Discord alert).
+ * This Worker never touches GitHub directly (except the Discord alerts it posts
+ * directly: P3 new-issue pings, the daily Routine cap alert, and Routine-fire
+ * failures). Every Discord alert is enriched with a source label (#1229): a
+ * best-effort fetch of the issue's latest Sentry event reads safe, already-scrubbed
+ * metadata (category, stage, environment, build type, OS, device) and renders
+ * whether the failure came from the founder's own test build or a real user.
+ * Fails open to the basic embed on any fetch error — an alert is never lost.
  */
 
 const DISCORD_COLOR = { P0: 0xe74c3c, P1: 0xe67e22, P2: 0xf1c40f, P3: 0x95a5a6 };
+const SENTRY_ORG = "envious-labs-llc";
+const SENTRY_FETCH_TIMEOUT_MS = 5000;
+const FIELD_MAX_CHARS = 200;
 
 // ── Entry point ──────────────────────────────────────────────────────────────
 
@@ -195,8 +204,11 @@ async function handleTriage(body, env) {
 
   // P3: Discord ping only, no Routine
   if (priority === "P3") {
-    await postDiscord(env.DISCORD_WEBHOOK_URL, buildP3Embed(issueId, title, permalink, timesSeen, userCount));
-    console.log(`[sentry-triage] P3 issue ${issueId} — Discord ping only`);
+    const embed = await buildSourceLabeledEmbed({
+      issueId, title, permalink, timesSeen, userCount, priority, env,
+    });
+    await postDiscord(env.DISCORD_WEBHOOK_URL, embed);
+    console.log(`[sentry-triage] P3 issue ${issueId} - Discord ping only`);
     return;
   }
 
@@ -213,8 +225,12 @@ async function handleTriage(body, env) {
   if (capCount >= 13 && priority !== "P0") {
     // Cap at 13 to leave 2 headroom. P0 always bypasses — a critical crash at 11pm
     // should never be silently dropped because the day was busy.
-    console.warn(`[sentry-triage] Daily Routine count at ${capCount}/15 — blocking ${priority}, posting Discord alert`);
-    await postDiscord(env.DISCORD_WEBHOOK_URL, buildCapAlertEmbed(capCount, issueId, title, permalink));
+    console.warn(`[sentry-triage] Daily Routine count at ${capCount}/15 - blocking ${priority}, posting Discord alert`);
+    const sourceLabel = await fetchSourceLabel(issueId, env);
+    await postDiscord(
+      env.DISCORD_WEBHOOK_URL,
+      buildCapAlertEmbed(capCount, issueId, title, permalink, sourceLabel)
+    );
     return;
   }
 
@@ -285,14 +301,15 @@ async function handleTriage(body, env) {
     // resets at midnight UTC when the date rolls over. No TTL needed.
     await env.SENTRY_DEDUP.put(capKey, String(capCount + 1));
 
-    console.log(`[sentry-triage] Routine fired for ${issueId} (${priority}) — session: ${sessionUrl}`);
+    console.log(`[sentry-triage] Routine fired for ${issueId} (${priority}) - session: ${sessionUrl}`);
   } catch (err) {
     console.error(`[sentry-triage] Routine fire failed for ${issueId}:`, err.message);
 
     // Fallback: post Discord alert so nothing is silently dropped
+    const sourceLabel = await fetchSourceLabel(issueId, env);
     await postDiscord(
       env.DISCORD_WEBHOOK_URL,
-      buildFailureEmbed(issueId, title, permalink, priority, err.message)
+      buildFailureEmbed(issueId, title, permalink, priority, err.message, sourceLabel)
     );
 
     // Clear pending state so next event retries
@@ -323,39 +340,183 @@ async function postDiscord(webhookUrl, embed) {
   });
 }
 
-function buildP3Embed(issueId, title, permalink, timesSeen, userCount) {
+// ── Source enrichment (#1229) ─────────────────────────────────────────────────
+//
+// Best-effort: fetch the issue's latest Sentry event and read already-scrubbed
+// metadata (the on-device redactor ran before any of this left the user's Mac)
+// to label whether the failure is the founder's own test build or a real user,
+// plus surface category/stage/version/OS/device safely. Every call site fails
+// open to the basic embed shape on any fetch error — an alert is never lost.
+
+/** Safe-metadata allowlist (#1229 §3 PR-A step 6) — every value Discord ever shows. */
+const SAFE_METADATA_FIELDS = [
+  "category",
+  "stage",
+  "environment",
+  "buildType",
+  "release",
+  "osVersion",
+  "deviceModel",
+];
+
+export function truncate(value, max = FIELD_MAX_CHARS) {
+  if (typeof value !== "string") return value;
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+/** Fetch the latest event for a Sentry issue. Throws on any non-200/timeout/parse failure. */
+async function fetchLatestEvent(issueId, env) {
+  const url = `https://us.sentry.io/api/0/organizations/${SENTRY_ORG}/issues/${issueId}/events/latest/`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${env.SENTRY_AUTH_TOKEN}` },
+    signal: AbortSignal.timeout(SENTRY_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new Error(`Sentry events/latest fetch failed: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * Pull the safe-metadata allowlist out of a Sentry event. `category` / `stage` /
+ * `environment` / `buildType` / `release` live in `tags[]` ({key,value} pairs,
+ * NOT top-level — SentryBreadcrumb sets error.category/pipeline.stage as event
+ * tags and ObservabilityBootstrap sets environment/app.build_type as scope tags,
+ * all merged into the same tags[] array server-side). `osVersion` / `deviceModel`
+ * live under `contexts.os`/`contexts.device` (CONTEXTS, not tags) — confirmed
+ * empirically against a real captured event during PR-B's round-trip (#1229).
+ */
+export function extractMetadata(event) {
+  const tags = Array.isArray(event?.tags) ? event.tags : [];
+  const tagValue = (key) => tags.find((t) => t?.key === key)?.value ?? null;
+
   return {
-    title: `[Sentry P3] ${title}`,
-    color: DISCORD_COLOR.P3,
+    category: tagValue("error.category"),
+    stage: tagValue("pipeline.stage"),
+    environment: tagValue("environment"),
+    buildType: tagValue("app.build_type"),
+    release: tagValue("release"),
+    osVersion: event?.contexts?.os?.version ?? null,
+    deviceModel: event?.contexts?.device?.model ?? null,
+  };
+}
+
+/**
+ * Three-state source classifier (#1229). Never defaults missing metadata to
+ * "real user" — an older app version or a fetch that returned partial tags
+ * must read as unknown, not silently assumed safe-to-ignore.
+ */
+export function classifySource(metadata) {
+  const { environment, buildType } = metadata ?? {};
+  if (environment === "development" || buildType === "debug") {
+    return "🧪 Your test build (dev/debug)";
+  }
+  if (environment === "production" && buildType === "release") {
+    return "👤 Real user (release)";
+  }
+  return "❓ Unknown source (metadata missing)";
+}
+
+/** Best-effort source label for the cap-alert / failure embeds. Null on fetch failure. */
+async function fetchSourceLabel(issueId, env) {
+  try {
+    const event = await fetchLatestEvent(issueId, env);
+    return classifySource(extractMetadata(event));
+  } catch (err) {
+    console.error(`[sentry-triage] Latest-event fetch failed for ${issueId}:`, err.message);
+    return null;
+  }
+}
+
+/** Readable headline: prefer the safe error.category tag over a possibly-stale title. */
+export function readableHeadline(title, metadata) {
+  return metadata?.category ?? title;
+}
+
+export function metadataFields(metadata) {
+  const what = [metadata.category, metadata.stage].filter(Boolean).join(" / ") || "unknown";
+  const system =
+    [metadata.osVersion ? `macOS ${metadata.osVersion}` : null, metadata.deviceModel]
+      .filter(Boolean)
+      .join(", ") || "unknown";
+  return { what, system };
+}
+
+export function buildEnrichedEmbed({ issueId, title, permalink, timesSeen, userCount, priority, metadata }) {
+  const { what, system } = metadataFields(metadata);
+  return {
+    title: `[Sentry ${priority}] ${truncate(readableHeadline(title, metadata))}`,
+    color: DISCORD_COLOR[priority] ?? DISCORD_COLOR.P3,
     fields: [
-      { name: "Impact", value: `${userCount} user(s), ${timesSeen} occurrences`, inline: true },
+      { name: "Source", value: classifySource(metadata), inline: true },
+      { name: "What", value: truncate(what), inline: true },
+      {
+        name: "Impact",
+        value: `Sentry issue totals: ${userCount} user(s) · ${timesSeen} occurrences`,
+        inline: true,
+      },
+      { name: "Version", value: truncate(metadata.release ?? "unknown"), inline: true },
+      { name: "System", value: truncate(system), inline: true },
       { name: "Sentry", value: `[${issueId}](${permalink})`, inline: true },
     ],
-    footer: { text: "EnviousWispr Sentry Triage • P3 (below threshold — no Routine)" },
+    footer: { text: `EnviousWispr Sentry Triage. ${priority}` },
     timestamp: new Date().toISOString(),
   };
 }
 
-function buildCapAlertEmbed(capCount, issueId, title, permalink) {
+export function buildFailOpenEmbed({ issueId, title, permalink, timesSeen, userCount, priority }) {
+  return {
+    title: `[Sentry ${priority}] ${truncate(title)}`,
+    color: DISCORD_COLOR[priority] ?? DISCORD_COLOR.P3,
+    fields: [
+      { name: "Source", value: "❓ Unknown source (Sentry fetch failed)", inline: true },
+      {
+        name: "Impact",
+        value: `Sentry issue totals: ${userCount} user(s) · ${timesSeen} occurrences`,
+        inline: true,
+      },
+      { name: "Sentry", value: `[${issueId}](${permalink})`, inline: true },
+      { name: "Details", value: "Details unavailable. Sentry fetch failed.", inline: false },
+    ],
+    footer: { text: `EnviousWispr Sentry Triage. ${priority}` },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/** Orchestrator for the P3 new-issue embed: enrich, fail open on any error. */
+async function buildSourceLabeledEmbed({ issueId, title, permalink, timesSeen, userCount, priority, env }) {
+  try {
+    const event = await fetchLatestEvent(issueId, env);
+    const metadata = extractMetadata(event);
+    return buildEnrichedEmbed({ issueId, title, permalink, timesSeen, userCount, priority, metadata });
+  } catch (err) {
+    console.error(`[sentry-triage] Latest-event fetch failed for ${issueId}:`, err.message);
+    return buildFailOpenEmbed({ issueId, title, permalink, timesSeen, userCount, priority });
+  }
+}
+
+export function buildCapAlertEmbed(capCount, issueId, title, permalink, sourceLabel) {
   return {
     title: "⚠️ Sentry Triage Daily Cap Reached",
     color: 0xff0000,
     description: `Daily Routine cap hit (${capCount}/15). Issue not triaged automatically.`,
     fields: [
-      { name: "Missed Issue", value: `[${issueId}](${permalink}) — ${title}` },
+      { name: "Missed Issue", value: truncate(`[${issueId}](${permalink}). ${title}`) },
+      { name: "Source", value: sourceLabel ?? "❓ Unknown source (Sentry fetch failed)" },
     ],
-    footer: { text: "EnviousWispr Sentry Triage • Check claude.ai/settings/usage" },
+    footer: { text: "EnviousWispr Sentry Triage. Check claude.ai/settings/usage" },
     timestamp: new Date().toISOString(),
   };
 }
 
-function buildFailureEmbed(issueId, title, permalink, priority, errMsg) {
+export function buildFailureEmbed(issueId, title, permalink, priority, errMsg, sourceLabel) {
   return {
     title: `[Sentry ${priority}] Routine fire failed`,
     color: 0xff0000,
     description: `Failed to fire Routine for [${issueId}](${permalink}). Manual triage required.`,
     fields: [
       { name: "Issue", value: title },
+      { name: "Source", value: sourceLabel ?? "❓ Unknown source (Sentry fetch failed)" },
       { name: "Error", value: errMsg.slice(0, 200) },
     ],
     footer: { text: "EnviousWispr Sentry Triage • Routine failure" },

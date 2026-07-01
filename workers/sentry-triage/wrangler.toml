@@ -1,3 +1,16 @@
+# Secrets (set via `wrangler secret put <NAME>`, not committed here):
+#   SENTRY_WEBHOOK_SECRET — HMAC key for verifying inbound Sentry webhooks.
+#   DISCORD_WEBHOOK_URL   — Discord channel webhook for triage alerts.
+#   ROUTINE_TOKEN / ROUTINE_TRIGGER_ID — fires the TIK/TOK Claude Code Routine.
+#   SENTRY_AUTH_TOKEN     — a personal Sentry token scoped to event:read ONLY
+#     (keystore: sentry-triage-worker-token), used to fetch a captured issue's
+#     latest event (category/stage/environment/build_type/release tags +
+#     OS/device contexts) for the source-labeled, detail-rich Discord embed
+#     (#1229). NOT the keystore's `sentry-auth-token` — that one is scoped to
+#     CI release uploads only and 403s on event reads (org tokens on this
+#     Sentry plan only support the org:ci scope; event:read requires a
+#     personal token instead). The worker never writes back to Sentry.
+
 name = "enviouswispr-sentry-triage"
 main = "src/index.js"
 compatibility_date = "2026-04-15"
