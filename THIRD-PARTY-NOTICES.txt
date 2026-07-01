@@ -38,7 +38,7 @@ SOFTWARE.
 
 --------------------------------------------------------------------------------
 FluidAudio
-  Version: 46e96f40 (fork saurabhav88/FluidAudio)
+  Version: d5fcca4f (fork saurabhav88/FluidAudio)
   License: Apache-2.0
   Source:  https://github.com/saurabhav88/FluidAudio
 --------------------------------------------------------------------------------
