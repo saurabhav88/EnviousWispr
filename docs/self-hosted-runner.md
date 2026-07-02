@@ -92,8 +92,10 @@ TOKEN=$(gh api repos/saurabhav88/EnviousWispr/actions/runners/registration-token
 ```
 
 Registering the runner does NOT put it back in the release pipeline by itself.
-`release.yml` currently has zero `self-hosted` references (all jobs run on
-GitHub-hosted `macos-26`); re-adding the `self-hosted, enviouswispr-release`
+`release.yml` currently has zero `self-hosted` references — `build-release-artifacts`
+and `publish-github-release` run on hosted `macos-26`, the other four jobs
+(`preflight`, `publish-appcast`, `upload-sentry-dsyms`, `release-summary`) run on
+`ubuntu-latest`; re-adding the `self-hosted, enviouswispr-release`
 labels to any workflow `runs-on:` line is a separate, deliberate decision —
 don't do it as a side effect of re-registering.
 
