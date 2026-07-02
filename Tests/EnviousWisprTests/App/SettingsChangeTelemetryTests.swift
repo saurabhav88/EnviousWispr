@@ -242,11 +242,14 @@ import Testing
       // Published first-party name: verbatim (canonicalized).
       #expect(project("eg-1") == "eg-1")
       #expect(project("eg-1:latest") == "eg-1")
-      // First-party-prefixed but unpublished: fixed literal, NEVER the raw string —
-      // a user naming their own model eg-1-acme-client must not leak the name.
-      #expect(project("eg-1-q4") == "eg-1-variant")
-      #expect(project("eg-1-acme-client") == "eg-1-variant")
-      #expect(project("eg-10") == "eg-1-variant")
+      // First-party TAG (ours, but the tagged form isn't a published catalog name):
+      // fixed literal, never the raw tag string.
+      #expect(project("eg-1:q4") == "eg-1-variant")
+      // User-controlled lookalikes are NOT first-party (cloud review r3): custom,
+      // never verbatim, never the family label.
+      #expect(project("eg-1-q4") == "custom")
+      #expect(project("eg-1-acme-client") == "custom")
+      #expect(project("eg-10") == "custom")
       // Everything else: custom.
       #expect(project("someones-finetune") == "custom")
     }

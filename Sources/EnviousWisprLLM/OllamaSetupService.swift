@@ -159,11 +159,14 @@ public final class OllamaSetupService {
   ]
 
   /// The single definition of "this Ollama model id is our own first-party model"
-  /// (#1269, cloud review r1). Any `eg-1*` tag is EG-1 family by construction —
-  /// the prompt planner routes these to the EG-1 training prompt, and telemetry
-  /// may report their names (our published strings, never user data).
+  /// (#1269, cloud review r1-r3). EXACT match only: the model `eg-1` or a tag of it
+  /// (`eg-1:latest`, `eg-1:q4`). Deliberately NOT a loose prefix — a user-named
+  /// `eg-10` or `eg-1-acme-client` is a DIFFERENT model that must route through the
+  /// normal heuristics and report `custom` in telemetry. Future first-party variants
+  /// ship as `curatedPrivateCatalog` entries, not as prefix carve-outs.
   public nonisolated static func isFirstPartyModel(_ modelID: String) -> Bool {
-    canonicalModelName(modelID).lowercased().hasPrefix("eg-1")
+    let lower = modelID.lowercased()
+    return canonicalModelName(lower) == "eg-1" || lower.hasPrefix("eg-1:")
   }
 
   /// Dynamic catalog: downloaded models first (with real metadata), then undownloaded suggestions.

@@ -88,21 +88,26 @@ struct PromptPlannerTests {
     #expect(DefaultPromptPlanner.family(for: .ollama, modelID: "EG-1") == .egOneFixed)
   }
 
-  // Adversarial: prefix match is deliberate — any `eg-1*` tag is first-party by
-  // construction (documented in the plan). A future variant like `eg-1.5` routes here.
-  @Test("Ollama + eg-1-style variant tag -> egOneFixed (prefix rule, accepted)")
-  func egOnePrefixVariant() {
-    #expect(DefaultPromptPlanner.family(for: .ollama, modelID: "eg-1-q4") == .egOneFixed)
+  @Test("Ollama + eg-1:q4 tag -> egOneFixed (tags of the published model are ours)")
+  func egOneTagVariant() {
+    #expect(DefaultPromptPlanner.family(for: .ollama, modelID: "eg-1:q4") == .egOneFixed)
   }
 
-  // Adversarial non-intended class: a name merely CONTAINING eg-1 (not as prefix)
-  // must NOT route to the tuned prompt; "gemma-eg-1" hits the gemma rule.
-  @Test("Ollama + gemma-eg-1 -> gemmaFewShot (prefix rule does not fire mid-name)")
+  // Adversarial non-intended class (cloud review r3): user-named lookalikes are
+  // DIFFERENT models and must route through the normal heuristics, not our prompt.
+  @Test("Ollama + eg-10 / eg-1-q4 lookalikes -> normal heuristics, not egOneFixed")
+  func egOneLookalikesNotRouted() {
+    #expect(DefaultPromptPlanner.family(for: .ollama, modelID: "eg-10") == .openAIProse)
+    #expect(DefaultPromptPlanner.family(for: .ollama, modelID: "eg-1-q4") == .openAIProse)
+    #expect(DefaultPromptPlanner.family(for: .ollama, modelID: "eg-1-acme-client") == .openAIProse)
+  }
+
+  @Test("Ollama + gemma-eg-1 -> gemmaFewShot (contains eg-1 mid-name, gemma rule wins)")
   func egOneMidNameDoesNotMatch() {
     #expect(DefaultPromptPlanner.family(for: .ollama, modelID: "gemma-eg-1") == .gemmaFewShot)
   }
 
-  @Test("Ollama + lego-eg-1 -> openAIProse (contains but not prefix)")
+  @Test("Ollama + lego-eg-1 -> openAIProse (contains but not the model)")
   func egOneContainsButNotPrefix() {
     #expect(DefaultPromptPlanner.family(for: .ollama, modelID: "lego-eg-1") == .openAIProse)
   }

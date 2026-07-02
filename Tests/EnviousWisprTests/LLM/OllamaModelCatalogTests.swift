@@ -91,12 +91,17 @@ struct OllamaModelCatalogTests {
     #expect(!undownloaded.contains { OllamaSetupService.canonicalModelName($0.name) == "eg-1" })
   }
 
-  @Test("isFirstPartyModel matches the eg-1 family exactly like planner routing")
+  @Test("isFirstPartyModel matches ONLY eg-1 and its tags (cloud review r3)")
   func firstPartyDefinition() {
     #expect(OllamaSetupService.isFirstPartyModel("eg-1"))
     #expect(OllamaSetupService.isFirstPartyModel("eg-1:latest"))
+    #expect(OllamaSetupService.isFirstPartyModel("eg-1:q4"))
     #expect(OllamaSetupService.isFirstPartyModel("EG-1"))
-    #expect(OllamaSetupService.isFirstPartyModel("eg-1-q4"))
+    // User-controlled lookalikes are NOT ours: different model, normal routing,
+    // custom telemetry (reviewer examples eg-10 / eg-1-acme-client).
+    #expect(!OllamaSetupService.isFirstPartyModel("eg-10"))
+    #expect(!OllamaSetupService.isFirstPartyModel("eg-1-q4"))
+    #expect(!OllamaSetupService.isFirstPartyModel("eg-1-acme-client"))
     #expect(!OllamaSetupService.isFirstPartyModel("gemma-eg-1"))
     #expect(!OllamaSetupService.isFirstPartyModel("lego-eg-1"))
     #expect(!OllamaSetupService.isFirstPartyModel("llama3.2"))
