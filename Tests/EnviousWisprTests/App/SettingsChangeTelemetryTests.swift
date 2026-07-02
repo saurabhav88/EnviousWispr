@@ -230,6 +230,27 @@ import Testing
       #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "llama3.2")
     }
 
+    @Test("EG-1 projection: published verbatim, lookalikes get the fixed variant label (#1269)")
+    func egOneProjectionTiers() {
+      func project(_ model: String) -> String? {
+        let suite = UserDefaults(suiteName: "SCT-eg1-\(UUID().uuidString)")!
+        let settings = SettingsManager(defaults: suite)
+        settings.llmProvider = .ollama
+        settings.ollamaModel = model
+        return SettingsProjection.value(for: .llmModel, settings: settings)
+      }
+      // Published first-party name: verbatim (canonicalized).
+      #expect(project("eg-1") == "eg-1")
+      #expect(project("eg-1:latest") == "eg-1")
+      // First-party-prefixed but unpublished: fixed literal, NEVER the raw string —
+      // a user naming their own model eg-1-acme-client must not leak the name.
+      #expect(project("eg-1-q4") == "eg-1-variant")
+      #expect(project("eg-1-acme-client") == "eg-1-variant")
+      #expect(project("eg-10") == "eg-1-variant")
+      // Everything else: custom.
+      #expect(project("someones-finetune") == "custom")
+    }
+
     @Test("Ollama discovery correction emits one source=system delta")
     func ollamaDiscoveryIsSystem() {
       let (settings, telemetry, box, _) = makeHarness()
