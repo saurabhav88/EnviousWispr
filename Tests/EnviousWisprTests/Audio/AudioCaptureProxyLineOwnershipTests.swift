@@ -134,21 +134,26 @@ struct AudioCaptureProxyLineOwnershipTests {
       for waiter in parked { waiter.resume() }
     }
 
-    /// Signal-based wait: resumes on the next recorded signal, nil-timeout
-    /// backstop so a regression fails fast instead of hanging the runner.
+    /// Signal-based wait: resumes on the next recorded signal, with a timeout
+    /// backstop that RESUMES the parked continuation directly (cloud Codex
+    /// P2 on PR #1274: cancelling a task suspended in `withCheckedContinuation`
+    /// does not resume it — the old shape would hang the runner on a genuine
+    /// handler regression instead of failing fast). Same parked-waiter shape
+    /// as `DriverStateWaiter` in AudioEventRouterTests.
     func waitForNextSignal(timeout: Duration = .seconds(3)) async -> Bool {
       let before = signals.count
-      let waitTask = Task { @MainActor in
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-          if signals.count > before { cont.resume() } else { waiters.append(cont) }
+      await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+        waiters.append(cont)
+        Task { @MainActor [weak self] in
+          try? await Task.sleep(for: timeout)
+          guard let self else { return }
+          // Timeout backstop: drain any still-parked waiters. A signal that
+          // arrived first already drained the list, making this a no-op.
+          let parked = self.waiters
+          self.waiters = []
+          for waiter in parked { waiter.resume() }
         }
       }
-      let timeoutTask = Task { @MainActor in
-        try? await Task.sleep(for: timeout)
-        waitTask.cancel()
-      }
-      await waitTask.value
-      timeoutTask.cancel()
       return signals.count > before
     }
   }
