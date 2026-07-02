@@ -455,6 +455,21 @@ public actor WhisperKitBackend: ASRBackend {
     // the handle is what actually matters.
     loadTask?.cancel()
     loadTask = nil
+
+    // Codex code-diff review (medium effort, #1275): mirror the loadTask
+    // handling immediately above for `warmupTask` — without this, an
+    // in-flight or fail-open-timed-out warm-up keeps running and retaining
+    // its captured `WhisperKit` instance after unload, so the old model can
+    // stay in memory doing CoreML work while the backend is supposed to be
+    // unloaded (or while a new load is starting). Cancellation is
+    // best-effort for the same reason as `loadTask` (CoreML decode is
+    // uncancellable cooperatively); clearing the handles is what stops US
+    // from later draining or reporting on a task tied to a discarded model.
+    warmupTask?.cancel()
+    warmupTask = nil
+    warmupTaskGeneration = nil
+    warmupBudgetExhausted = nil
+
     whisperKit = nil
     isReady = false
   }
