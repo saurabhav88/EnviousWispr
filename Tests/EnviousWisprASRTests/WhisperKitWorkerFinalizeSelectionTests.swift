@@ -168,12 +168,22 @@ struct WorkerFinalizeBoundaryTests {
       [makeResult(text: "the beginning of the sentence")],
       [makeResult(text: "the rest of the sentence")],  // tail decode result
     ])
+    // Adversarial-review finding (#1275): the original 20ms cadence / 30ms
+    // sleep gave only ~1.5x margin (10ms) for the first decode to land
+    // before cancel() — a real CI-flakiness risk under scheduler contention,
+    // since typical OS scheduler jitter is a roughly fixed few-ms magnitude
+    // rather than a percentage of the interval. The sleep must land strictly
+    // between one cadence tick (≥1 decode fires) and two (the fake's second
+    // scripted entry, meant for the LATER tail-decode call, is never
+    // consumed by a second cadence decode) — 40ms cadence / 60ms sleep keeps
+    // the same 50% margin ratio but doubles the absolute buffer on each side
+    // (20ms vs 10ms), meaningfully more robust to scheduler jitter.
     let worker = WhisperKitIncrementalWorker(
-      whisperKit: fake, decodingOptions: DecodingOptions(), cadence: .milliseconds(20))
+      whisperKit: fake, decodingOptions: DecodingOptions(), cadence: .milliseconds(40))
 
     let samples = [Float](repeating: 0, count: shortModeSampleCount)
     await worker.start(audioSamplesProvider: { (samples: samples, count: samples.count) })
-    try await Task.sleep(for: .milliseconds(30))
+    try await Task.sleep(for: .milliseconds(60))
     await worker.cancel()  // stop after exactly one short-mode decode
 
     // Large uncovered tail with actual signal (not silence) so the RMS gate
