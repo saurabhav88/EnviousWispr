@@ -54,6 +54,13 @@ public protocol AudioCaptureInterface: AnyObject {
   /// into "no_audio_captured".
   var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)? { get set }
 
+  /// Fires once per resolved start-op retry in the XPC proxy (#1194): a
+  /// pre-capture start operation hit a dead-line signature, the proxy
+  /// reacquired the connection and resent exactly once, and the retry either
+  /// recovered or exhausted. Diagnostic-only — consumers must not branch
+  /// control flow on it. Direct sources have no XPC layer and leave nil.
+  var onAudioStartRetryResolved: ((AudioStartRetryContext) -> Void)? { get set }
+
   /// Fires on the first route resolution and on every subsequent resolution
   /// where sourceType or reason differs from the prior call. No-op on
   /// warm-reuse resolutions that produce the same decision.

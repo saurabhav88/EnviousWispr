@@ -8,6 +8,13 @@ import Testing
 /// collaborator), sub-binned into collaborator / closure-injected slots so the
 /// test fails with a specific message. Caps lower-is-free, raise via the
 /// Bible §30 changelog.
+///
+/// Bible §30 entry (#1194, 2026-07-02): line ceiling 125 → 137. The router
+/// gained one wiring block (`onAudioStartRetryResolved` →
+/// `TelemetryService.audioStartRetryResolved`), consistent with its existing
+/// role as the audio-callback → telemetry wiring home (state-ownership row 9).
+/// No new collaborator slot, no new closure-injected dependency, no new
+/// import — only the line count moved.
 @Suite struct AudioEventRouterCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/DictationRuntime/AudioEventRouter.swift"
@@ -55,9 +62,9 @@ import Testing
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      count <= 125,
+      count <= 137,
       """
-      AudioEventRouter line count exceeded: \(count) > 125. \
+      AudioEventRouter line count exceeded: \(count) > 137. \
       Raise via Bible §30 only.
       """)
   }

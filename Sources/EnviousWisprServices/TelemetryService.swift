@@ -622,6 +622,24 @@ public final class TelemetryService {
       ])
   }
 
+  /// #1194 — one event per resolved audio start-op retry: a record press hit a
+  /// dead XPC line (idle-reap race), the proxy reacquired the connection and
+  /// resent once. `outcome=recovered` is a silent same-press save;
+  /// `outcome=exhausted` means the press failed with today's UX after the
+  /// bounded retry. Privacy: four low-cardinality strings/ints only.
+  public func audioStartRetryResolved(
+    stage: String, trigger: String, outcome: String, recoveryMs: Int
+  ) {
+    PostHogSDK.shared.capture(
+      "coldstart.audio_line_retry",
+      properties: [
+        "stage": stage,
+        "trigger": trigger,
+        "outcome": outcome,
+        "recovery_ms": recoveryMs,
+      ])
+  }
+
   // MARK: - Crash-recovery (#1063 PR2)
   //
   // Privacy: state/counts/buckets only — never transcript text, audio, or
