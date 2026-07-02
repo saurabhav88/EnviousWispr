@@ -102,6 +102,22 @@ public actor WhisperKitBackend: ASRBackend {
   /// "not ready yet" into a 20-second stall on irrelevant background work.
   private var warmupTaskGeneration: UInt64?
 
+  /// The `loadGeneration` whose warm-up already burned its one 20s fail-open
+  /// budget in `runWarmup()` itself (i.e. the background warm-up timed out).
+  /// `nil` when the current generation's warm-up has not (yet) exhausted its
+  /// budget. Codex code-diff review (medium effort, #1275): without this,
+  /// `readyKitAfterWarmupDrain()` re-awaits the SAME already-timed-out task
+  /// with its own fresh 20s deadline, so the first real caller after a
+  /// wedged warm-up could pay a SECOND 20s stall on top of the first —
+  /// turning an invisible background hiccup into up to 40s of user-facing
+  /// latency, defeating the fail-open design. Once a generation's budget is
+  /// marked exhausted (by `runWarmup`'s own timeout, or by a caller's drain
+  /// timeout), every subsequent caller for that generation skips the await
+  /// entirely and vends the kit immediately — accepting the same
+  /// theoretical concurrent-decode risk the design already documents as
+  /// unproven-but-low-probability, exactly once per generation, never twice.
+  private var warmupBudgetExhausted: UInt64?
+
   /// Duration of the most recent warm-up inference, in milliseconds. `nil`
   /// when no warm-up has completed yet (still loading, threw, or timed out).
   /// Read by telemetry as an optional property on the existing
@@ -284,6 +300,8 @@ public actor WhisperKitBackend: ASRBackend {
     // `.completed` below sets a fresh one, so a throw/timeout on THIS load
     // must not leave a prior load's stale duration attached to telemetry.
     lastWarmupInferenceMs = nil
+    // This generation has not spent its fail-open budget yet.
+    if warmupBudgetExhausted == generation { warmupBudgetExhausted = nil }
 
     let silence = [Float](repeating: 0, count: 16_000)  // 1s at 16kHz
     let opts = makeDecodeOptions(from: .default, sampleCount: silence.count)
@@ -301,6 +319,10 @@ public actor WhisperKitBackend: ASRBackend {
     warmupTaskGeneration = generation
 
     guard let outcome = await withDeadline(seconds: 20, operation: { await task.value }) else {
+      // Codex code-diff review (medium effort, #1275): mark this generation's
+      // budget spent so `readyKitAfterWarmupDrain()` never re-awaits the same
+      // stuck task with a second fresh 20s deadline.
+      warmupBudgetExhausted = generation
       await AppLogger.shared.log(
         "WhisperKit warm-up: timed_out (20s fail-open ceiling)",
         level: .info, category: "WhisperKitBackend"
@@ -357,14 +379,33 @@ public actor WhisperKitBackend: ASRBackend {
   /// request could pay up to 20 extra seconds waiting on background work for
   /// a model that no longer exists, instead of immediately falling through
   /// to `guard isReady` and returning nil.
+  ///
+  /// Codex code-diff review (medium effort, #1275): if THIS generation's
+  /// warm-up already spent its 20s budget inside `runWarmup()` itself
+  /// (`warmupBudgetExhausted == loadGeneration`), do not re-await the same
+  /// stuck task with a second fresh deadline — the real caller vends
+  /// immediately instead of paying up to 40s total (20s in the background
+  /// warm-up + 20s here) for what the fail-open design intended to cost at
+  /// most 20s of invisible background time.
   private func readyKitAfterWarmupDrain() async -> WhisperKit? {
     if let pending = warmupTask, warmupTaskGeneration == loadGeneration {
       let generation = loadGeneration
+      if warmupBudgetExhausted == generation {
+        warmupTask = nil
+        warmupTaskGeneration = nil
+        await AppLogger.shared.log(
+          "WhisperKit warm-up: budget already exhausted — vending kit without re-draining",
+          level: .info, category: "WhisperKitBackend"
+        )
+        guard isReady else { return nil }
+        return whisperKit
+      }
       let outcome = await withDeadline(seconds: 20, operation: { await pending.value })
       if warmupTaskGeneration == generation {
         warmupTask = nil
         warmupTaskGeneration = nil
         if outcome == nil {
+          warmupBudgetExhausted = generation
           await AppLogger.shared.log(
             "WhisperKit warm-up: drain also timed_out after 20s — vending kit anyway",
             level: .info, category: "WhisperKitBackend"
