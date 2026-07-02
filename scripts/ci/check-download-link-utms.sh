@@ -92,13 +92,16 @@ validate_readme_doorway_link() {
   # host, query, and fragment, then require the path to be exactly "download" — so a
   # typo like /download-old, /downloads, or /download/extra is rejected even when the
   # query is perfectly tagged. (URL identity = path x query; both axes are validated.)
-  local after_scheme="${url#*://}"
+  # Browser fragment semantics: the fragment starts at the FIRST '#'; everything after
+  # it (including a '?') never reaches the server. Strip it up front so a fragment can
+  # neither smuggle tags past the lint nor glue itself onto the last param value (#1251).
+  local without_fragment="${url%%#*}"
+  local after_scheme="${without_fragment#*://}"
   local path_and_query="${after_scheme#*/}"
   local path="${path_and_query%%\?*}"
-  path="${path%%#*}"
 
   local query=""
-  case "$url" in *\?*) query="${url#*\?}" ;; esac
+  case "$without_fragment" in *\?*) query="${without_fragment#*\?}" ;; esac
 
   local source="" usrc="" umed="" ucamp=""
   local have_source=0 have_usrc=0 have_umed=0 have_ucamp=0
@@ -203,6 +206,7 @@ self_test() {
     "$D?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=$C"         # canonical
     "$D?utm_source=github&utm_medium=referral&utm_campaign=$C&source=github_readme"          # order-independent (source last)
     "$D?source=GitHub_Readme&utm_source=github&utm_medium=referral&utm_campaign=$C"          # case (resolver lowercases source)
+    "$D?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=$C#install"   # fragment AFTER query: browser still sends all tags
   )
   # BAD: must be rejected. Each row is one cell of the failure space.
   local bad=(
@@ -217,6 +221,8 @@ self_test() {
     "$D?source=github_readme&utm_source=reddit&utm_medium=referral&utm_campaign=$C"          # wrong utm_source value
     "$D?source=github_readme&utm_source=github&utm_medium=cpc&utm_campaign=$C"               # wrong utm_medium value
     "$D?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=wrong"       # wrong utm_campaign value
+    "$D#x?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=$C"       # fragment BEFORE query: browser sends NO params (#1251)
+    "$D#source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=$C"          # fragment-only, no real query
     "$D"                                                                                     # bare, no query
     "https://enviouswispr.com/download-old?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=$C"   # path typo (suffix)
     "https://enviouswispr.com/downloads?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=$C"      # path typo (plural)
