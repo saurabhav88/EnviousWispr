@@ -8,10 +8,27 @@ import Foundation
 /// embedded `EnviousWisprAudioService`. Real audio capture runs in the service process;
 /// the proxy handles connection lifecycle, buffer reconstruction, and state management.
 ///
-/// **Connection lifecycle (Step 1.5 design rules):**
-/// - `interruptionHandler`: if capturing → user-visible failure (reset state, fire onEngineInterrupted).
-///   If idle → transient (set needsReinit only). Always keep the same connection.
-/// - `invalidationHandler`: terminal — nil connection, recreate on next use.
+/// **Connection lifecycle (#1194 single-funnel ownership):**
+/// - The connection and its monotonically increasing generation live in a
+///   `ConnectionSlot` whose private members make `install` / `retire` the only
+///   mutation paths — compiler-enforced (private members + let-bound reference
+///   type, so nothing outside the slot can touch the fields or swap the slot).
+/// - Every fresh connection gets generation-stamped handlers and an
+///   unconditional config replay (`replayConfig()`). There is no reinit flag —
+///   no path can forget to set one.
+/// - Every death signal (invalidation, interruption, watchdog wedge, per-call
+///   transport error) funnels into `reportLineDeath(generation:cause:wasCapturing:)`.
+///   Retirement is generation-guarded, so a stale event about a retired
+///   predecessor is provably inert — including handler Tasks already queued
+///   when the slot moved on.
+/// - Pre-capture start ops (`start_engine` / `begin_capture` /
+///   `start_engine_prewarm`) retry exactly once on a fresh connection via
+///   `withStartRetry`, replaying the failed stage's service-side prefix
+///   (`begin_capture` re-runs `start_engine` — a fresh connection reaches a
+///   brand-new service world). `stopCapture` never retries (non-idempotent).
+/// - The `engineInterrupted(cause:)` service relay is an ENGINE event with no
+///   connection identity on the wire; it stays outside the funnel and keeps
+///   the connection (see its doc).
 @MainActor
 @Observable
 public final class AudioCaptureProxy: AudioCaptureInterface {
@@ -38,6 +55,10 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   public var onXPCServiceError: ((XPCErrorContext) -> Void)?
   public var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
   public var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
+
+  /// #1194: fires once per resolved start-op retry (recovered or exhausted).
+  /// Diagnostic-only — consumers must not branch control flow on it.
+  public var onAudioStartRetryResolved: ((AudioStartRetryContext) -> Void)?
 
   /// Monotonic capture-session counter — returns `activeCaptureGeneration` so
   /// the id stays stable across the `stopCapture` bump (which flips
@@ -69,10 +90,48 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     }
   }
 
-  // MARK: - XPC connection state
+  // MARK: - XPC connection state (#1194 single-funnel ownership)
 
-  private var connection: NSXPCConnection?
-  private var needsReinit = false
+  /// Sole owner of the XPC connection + its generation. Mutation is possible
+  /// ONLY through `install` / `retire` — compiler-enforced: the members are
+  /// `private` to the nested type (invisible to the outer class), and the
+  /// proxy holds it as a `let`-bound reference type, so the slot can neither
+  /// be reached around nor swapped wholesale. The TYPE is internal (not
+  /// private) solely so unit tests can exercise install/retire semantics
+  /// in isolation via `@testable import`.
+  @MainActor
+  final class ConnectionSlot {
+    private(set) var generation: UInt64 = 0
+    private var connection: NSXPCConnection?
+
+    var current: (connection: NSXPCConnection, generation: UInt64)? {
+      connection.map { ($0, generation) }
+    }
+
+    /// Retire generation `gen`. No-op (returns false) unless `gen` is current —
+    /// this is the stale-event guard. Neutralizes handlers before invalidating
+    /// as best-effort hygiene; correctness does NOT depend on it (an
+    /// already-queued handler Task is stopped by ITS generation check).
+    func retire(_ gen: UInt64) -> Bool {
+      guard gen == generation, let conn = connection else { return false }
+      conn.invalidationHandler = nil
+      conn.interruptionHandler = nil
+      conn.invalidate()
+      connection = nil
+      return true
+    }
+
+    /// Install a fresh connection, retiring any current one. Returns the new
+    /// generation for handler stamping.
+    func install(_ conn: NSXPCConnection) -> UInt64 {
+      _ = retire(generation)
+      generation &+= 1
+      connection = conn
+      return generation
+    }
+  }
+
+  private let slot = ConnectionSlot()
 
   /// AsyncStream continuation for buffer delivery from service → pipeline.
   private var bufferContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
@@ -132,6 +191,18 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     ///
     /// See `Tests/RuntimeUAT/SCENARIOS.md` for negative-control documentation.
     package var forceStallRemainingBuffers: Int = 0
+
+    /// #1194 fault-injection seam: when > 0, the next N START operations
+    /// (`start_engine` / `begin_capture` / `start_engine_prewarm`, including
+    /// their retry/prefix stages) are treated as wedged by
+    /// `withAudioXPCOperationSignal` before dispatch — no transport error, no
+    /// invalidation: exactly the watchdog-only wedge shape. Decrements per
+    /// forced wedge until 0. Never touches `stop_capture`.
+    ///
+    /// `package` access: driven end-to-end via `DebugFaultEndpoint`
+    /// (`force_audio_wedge_start(N)`) → `Tests/RuntimeUAT/faultInjection.py`.
+    /// Inert in release builds — this property does not exist outside DEBUG.
+    package var forceWedgeNextStartOps: Int = 0
   #endif
 
   public init() {}
@@ -148,9 +219,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
       currentAudioRoute = "built_in_mic"
     }
 
-    ensureConnection()
-    resendConfigIfNeeded()
-    try await withAudioXPCOperationSignal(stage: "start_engine") { operationID in
+    try await withStartRetry(stage: "start_engine") { operationID in
       try await self.awaitStartEnginePhaseReply(operationID: operationID)
     }
   }
@@ -175,8 +244,6 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   public func beginCapturePhase(recoveryPayload: Data?) async throws
     -> AsyncStream<AVAudioPCMBuffer>
   {
-    ensureConnection()
-
     // Finish any stale continuation from a previous session.
     bufferContinuation?.finish()
     bufferContinuation = nil
@@ -188,7 +255,18 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
       self.bufferContinuation = continuation
     }
 
-    try await withAudioXPCOperationSignal(stage: "begin_capture") { operationID in
+    // Retry prefix: a fresh connection reaches a brand-new service world with
+    // no engine, so a `begin_capture` resend must re-run `start_engine` first
+    // (device UIDs ride the message; config was replayed at acquisition).
+    try await withStartRetry(
+      stage: "begin_capture",
+      prefix: {
+        try await self.withAudioXPCOperationSignal(stage: "start_engine_retry_prefix") {
+          operationID in
+          try await self.awaitStartEnginePhaseReply(operationID: operationID)
+        }
+      }
+    ) { operationID in
       try await self.awaitBeginCaptureReply(
         operationID: operationID, recoveryPayload: recoveryPayload)
     }
@@ -326,16 +404,24 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     try await withCheckedThrowingContinuation {
       (cont: CheckedContinuation<CaptureResult, any Error>) in
       let guard_ = OneShotContinuation(cont)
-      serviceProxy { proxy in
-        proxy.stopCapture(operationID: operationID) { sampleData, vadData in
-          let samples = Self.dataToFloats(sampleData)
-          let segments = Self.decodeVADSegments(vadData)
-          guard_.resume(returning: CaptureResult(samples: samples, vadSegments: segments))
-        }
-      } onProxyError: { [weak self] in
-        self?.reportXPCReplyFailure(stage: "stop_capture", sessionID: endingSession)
-        guard_.resume(returning: CaptureResult(samples: []))
-      }
+      // capturingTeardownOnCallError: false — stopCapture owns its own state
+      // teardown (below the await) and deliberately does NOT fire
+      // onEngineInterrupted on a stop failure; a call-error here is
+      // retire-only and onXPCReplyFailed is the sole caller-visible signal.
+      serviceProxy(
+        { proxy in
+          proxy.stopCapture(operationID: operationID) { sampleData, vadData in
+            let samples = Self.dataToFloats(sampleData)
+            let segments = Self.decodeVADSegments(vadData)
+            guard_.resume(returning: CaptureResult(samples: samples, vadSegments: segments))
+          }
+        },
+        onProxyError: { [weak self] in
+          self?.reportXPCReplyFailure(stage: "stop_capture", sessionID: endingSession)
+          guard_.resume(returning: CaptureResult(samples: []))
+        },
+        capturingTeardownOnCallError: false
+      )
     }
   }
 
@@ -345,8 +431,10 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
   public func buildEngine(noiseSuppression: Bool) {
     noiseSuppressionEnabled = noiseSuppression
-    ensureConnection()
-    resendConfigIfNeeded()
+    // If acquisition created a fresh line, replayConfig already sent the new
+    // value (the property is set above, before acquisition). The explicit send
+    // below covers the reused-line case; buildEngine is idempotent service-side.
+    acquireConnection()
     serviceProxy { proxy in proxy.buildEngine(noiseSuppression: noiseSuppression) }
   }
 
@@ -363,13 +451,12 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
       currentAudioRoute = "built_in_mic"
     }
 
-    ensureConnection()
-    resendConfigIfNeeded()
+    acquireConnection()
     let connMs = Self.ms(ContinuousClock.now - proxyStart)
     // Phase 1: start engine
     let enginePhaseStart = ContinuousClock.now
     do {
-      try await withAudioXPCOperationSignal(stage: "start_engine_prewarm") { operationID in
+      try await withStartRetry(stage: "start_engine_prewarm") { operationID in
         try await self.awaitStartEnginePhaseReply(operationID: operationID)
       }
     } catch {
@@ -427,6 +514,29 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     parentCancellationBehavior: WatcherParentCancellationBehavior = .returnCancellation,
     _ work: @MainActor @escaping (String) async throws -> T
   ) async throws -> T {
+    // Record the generation this operation dispatches on, so a wedge retires
+    // exactly the line it observed — never a fresh replacement (§3.3).
+    let dispatchedGen = slot.current?.generation
+
+    #if DEBUG
+      // #1194 fault-injection: watchdog-only wedge shape for UAT scenario 5.
+      if forceWedgeNextStartOps > 0, Self.isStartStage(stage) {
+        forceWedgeNextStartOps -= 1
+        let remaining = forceWedgeNextStartOps
+        Task {
+          await AppLogger.shared.log(
+            "[AudioCaptureProxy] forced wedge (DEBUG) stage=\(stage) remaining=\(remaining)",
+            level: .info, category: "XPC"
+          )
+        }
+        if let dispatchedGen {
+          reportLineDeath(generation: dispatchedGen, cause: .wedged, wasCapturing: false)
+        }
+        throw XPCOperationSignalWedgeError(
+          service: "Audio", stage: stage, observedPhase: "forced_wedge")
+      }
+    #endif
+
     let operationID = UUID().uuidString
     let signal = XPCOperationSignalWatcher(file: .audio, operationID: operationID)
     signal.start()
@@ -450,7 +560,19 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
       throw error
     case .wedged:
       operationTask.cancel()
-      handleAudioXPCOperationWedge(stage: stage, operationID: operationID, snapshot: snapshot)
+      Task {
+        await AppLogger.shared.log(
+          "[AudioCaptureProxy] signal watchdog fired stage=\(stage) operationID=\(operationID) phase=\(snapshot.lastObservedPhase) silenceMs=\(snapshot.silenceMs)",
+          level: .info, category: "XPC"
+        )
+      }
+      // The wedge is a first-class line-death event in the same funnel as the
+      // handlers (§3.3). Retire-only (`wasCapturing: false`): the thrown error
+      // below is the caller-visible signal, and the only wedge-able stage with
+      // an active capture (`stop_capture`) owns its own state teardown.
+      if let dispatchedGen {
+        reportLineDeath(generation: dispatchedGen, cause: .wedged, wasCapturing: false)
+      }
       throw XPCOperationSignalWedgeError(
         service: "Audio",
         stage: stage,
@@ -459,91 +581,189 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     }
   }
 
-  private func handleAudioXPCOperationWedge(
+  #if DEBUG
+    /// Stages eligible for the `forceWedgeNextStartOps` fault seam — the three
+    /// pre-capture start ops plus their retry/prefix stages. Never `stop_capture`.
+    nonisolated private static func isStartStage(_ stage: String) -> Bool {
+      stage.hasPrefix("start_engine") || stage.hasPrefix("begin_capture")
+    }
+  #endif
+
+  // MARK: - Start-op retry (#1194)
+
+  /// Runs one idempotent pre-capture start op with a bounded single retry.
+  ///
+  /// The three start ops are retry-safe: `isCapturing` is false throughout
+  /// (flipped only after `beginCapturePhase`'s XPC call succeeds), so no audio
+  /// exists to lose or duplicate. The retry always lands on a NEW connection,
+  /// which reaches a brand-new service-side world (fresh `AudioServiceHandler`
+  /// + fresh `AudioCaptureManager` per accepted connection) — duplicate
+  /// delivery to a surviving world is structurally impossible.
+  ///
+  /// Bounded-once semantics: exactly one reacquire-and-resend per public call,
+  /// shared across both error shapes (wedge / unreachable) and including the
+  /// `prefix` — a prefix failure counts as exhaustion, never a nested retry.
+  /// Exhaustion propagates the retry's error unchanged (same types as today).
+  /// Internal (not private) so unit tests can drive it with injected operations.
+  func withStartRetry<T: Sendable>(
     stage: String,
-    operationID: String,
-    snapshot: WatcherSnapshot
+    prefix: (@MainActor () async throws -> Void)? = nil,
+    _ operation: @MainActor @escaping (String) async throws -> T
+  ) async throws -> T {
+    let firstGen = acquireConnection()
+    do {
+      return try await withAudioXPCOperationSignal(stage: stage, operation)
+    } catch let firstError where isLineDeathSignature(firstError) {
+      let retryStarted = ContinuousClock.now
+      // Converge, don't stack: the wedge branch / per-call error path already
+      // reported this generation's death, making this a guarded no-op there;
+      // it is the primary reporter only when the failure surfaced without a
+      // death report (e.g. dispatch on an already-empty slot). If a sibling
+      // already retired firstGen and acquired a fresh line, acquireConnection
+      // below reuses it instead of stacking a second connection.
+      reportLineDeath(
+        generation: firstGen, cause: Self.lineDeathCause(of: firstError), wasCapturing: false)
+      acquireConnection()
+      do {
+        try await prefix?()
+        let value = try await withAudioXPCOperationSignal(stage: "\(stage)_retry", operation)
+        emitRetryResolved(
+          stage: stage, trigger: firstError, outcome: "recovered", since: retryStarted)
+        return value
+      } catch {
+        emitRetryResolved(
+          stage: stage, trigger: firstError, outcome: "exhausted", since: retryStarted)
+        throw error
+      }
+    }
+  }
+
+  /// The two dead-line signatures that trigger the single start retry. Device
+  /// errors and service-reply NSErrors never match — they propagate unretried.
+  private func isLineDeathSignature(_ error: any Error) -> Bool {
+    if error is XPCOperationSignalWedgeError { return true }
+    if case XPCTransportError.serviceUnreachable = error { return true }
+    return false
+  }
+
+  nonisolated private static func lineDeathCause(of error: any Error) -> LineDeathCause {
+    error is XPCOperationSignalWedgeError ? .wedged : .callError
+  }
+
+  private func emitRetryResolved(
+    stage: String, trigger: any Error, outcome: String, since: ContinuousClock.Instant
   ) {
+    let ctx = AudioStartRetryContext(
+      stage: stage,
+      trigger: trigger is XPCOperationSignalWedgeError ? "wedged" : "service_unreachable",
+      outcome: outcome,
+      recoveryMs: Self.ms(ContinuousClock.now - since)
+    )
     Task {
       await AppLogger.shared.log(
-        "[AudioCaptureProxy] signal watchdog fired stage=\(stage) operationID=\(operationID) phase=\(snapshot.lastObservedPhase) silenceMs=\(snapshot.silenceMs)",
+        "[AudioCaptureProxy] start retry resolved stage=\(ctx.stage) trigger=\(ctx.trigger) outcome=\(ctx.outcome) recoveryMs=\(ctx.recoveryMs)",
         level: .info, category: "XPC"
       )
     }
-    connection?.invalidate()
-    connection = nil
-    needsReinit = true
+    onAudioStartRetryResolved?(ctx)
   }
 
-  // MARK: - Config re-send after crash
+  // MARK: - XPC connection management (#1194)
 
-  /// Replays configuration to the service after a crash/relaunch.
-  /// Clears needsReinit after the XPC call is dispatched. Note: buildEngine is fire-and-forget
-  /// (no reply handler), so we cannot detect if the service actually processed the config.
-  /// If the service crashes during replay, the next interruptionHandler will re-set needsReinit.
-  /// This is acceptable because buildEngine is idempotent — replay on next attempt is safe.
-  private func resendConfigIfNeeded() {
-    guard needsReinit else { return }
-    serviceProxy { [self] proxy in
-      proxy.buildEngine(noiseSuppression: noiseSuppressionEnabled)
-      // Replay VAD config so service rebuilds its SilenceDetector after crash.
-      if let vad = vadConfig {
-        proxy.configureVAD(
-          autoStop: vad.autoStop, silenceTimeout: vad.silenceTimeout,
-          sensitivity: vad.sensitivity, energyGate: vad.energyGate)
-      }
-      // Replay warm engine policy so service uses correct idle timeout.
-      proxy.setWarmEnginePolicy(warmEnginePolicy.rawValue)
-      needsReinit = false
-    }
-  }
-
-  // MARK: - XPC connection management
-
-  private func ensureConnection() {
-    guard connection == nil else { return }
+  /// The single acquisition funnel. Fully synchronous — no suspension between
+  /// create, stamp, install handlers, and config replay — so it is atomic on
+  /// the MainActor and cannot race itself. Reuses a live line when one exists.
+  /// Internal (not private) so unit tests can observe generation movement.
+  @discardableResult
+  func acquireConnection() -> UInt64 {
+    if let live = slot.current { return live.generation }
 
     let conn = NSXPCConnection(serviceName: XPCServiceName.audioService)
     conn.remoteObjectInterface = NSXPCInterface(with: AudioServiceProtocol.self)
     conn.exportedInterface = NSXPCInterface(with: AudioServiceClientProtocol.self)
     conn.exportedObject = self
 
-    // DESIGN RULE: Interruption while isCapturing == true is a user-visible capture failure.
-    // Interruption while idle is transient — just set needsReinit.
-    //
-    // IMPORTANT(Step 3+): Step 1.5 proved kill -9 fires interruptionHandler for embedded
-    // XPC services. During active capture, this IS the crash signal. The connection stays
-    // valid — the next XPC call auto-relaunches the service via launchd.
-    // CRITICAL: interruptionHandler and invalidationHandler run on XPC dispatch queues,
-    // NOT MainActor. Closures defined inside @MainActor methods inherit that isolation in
-    // Swift 6, causing dispatch_assert_queue_fail when XPC calls them. Extract to
-    // nonisolated static to break the isolation inheritance.
-    conn.interruptionHandler = Self.makeInterruptionHandler(proxy: self)
-    conn.invalidationHandler = Self.makeInvalidationHandler(proxy: self)
+    let gen = slot.install(conn)
+
+    // CRITICAL: interruptionHandler and invalidationHandler run on XPC dispatch
+    // queues, NOT MainActor. Closures defined inside @MainActor methods inherit
+    // that isolation in Swift 6, causing dispatch_assert_queue_fail when XPC
+    // calls them. Extract to nonisolated static to break the inheritance. Each
+    // handler is stamped with THIS connection's generation.
+    conn.interruptionHandler = Self.makeInterruptionHandler(proxy: self, generation: gen)
+    conn.invalidationHandler = Self.makeInvalidationHandler(proxy: self, generation: gen)
 
     conn.resume()
-    connection = conn
 
-    // Verify service is alive — this ping triggers launchd to spawn the service.
-    serviceProxy { proxy in proxy.ping { _ in } }
+    // Unconditional config replay on every fresh line — there is no reinit
+    // flag to forget. The sends also trigger launchd to spawn the service.
+    replayConfig()
+    return gen
+  }
+
+  /// Replays stored configuration to a freshly acquired connection. All three
+  /// items are fire-and-forget; per-item ordering against the start ops is
+  /// proven in the plan (§3.2): VAD is applied synchronously on delivery
+  /// service-side (the one start-critical item), the other two are not
+  /// consumed in the start window. buildEngine is idempotent service-side.
+  private func replayConfig() {
+    serviceProxy { [self] proxy in
+      proxy.buildEngine(noiseSuppression: noiseSuppressionEnabled)
+      if let vad = vadConfig {
+        proxy.configureVAD(
+          autoStop: vad.autoStop, silenceTimeout: vad.silenceTimeout,
+          sensitivity: vad.sensitivity, energyGate: vad.energyGate)
+      }
+      proxy.setWarmEnginePolicy(warmEnginePolicy.rawValue)
+    }
   }
 
   /// Gets the remote proxy with error handling.
-  /// `onProxyError` is called if the proxy can't be obtained (connection nil or cast fails)
-  /// AND if the XPC framework delivers a per-call error (service crashed mid-call).
-  /// This is critical: when the service dies after a call is dispatched but before it replies,
-  /// the XPC error handler fires but the reply handler does NOT. Without routing the error
-  /// to `onProxyError`, any pending continuation hangs forever.
+  /// `onProxyError` is called if the proxy can't be obtained (no live line or
+  /// cast fails) AND if the XPC framework delivers a per-call error (service
+  /// crashed mid-call). This is critical: when the service dies after a call is
+  /// dispatched but before it replies, the XPC error handler fires but the
+  /// reply handler does NOT. Without routing the error to `onProxyError`, any
+  /// pending continuation hangs forever.
+  ///
+  /// #1194: every per-call transport error also reports line death for the
+  /// generation the call dispatched on (the v1 hole where this path mutated
+  /// nothing, leaving a half-dead connection for the next use, is closed
+  /// structurally). The report precedes `onProxyError` so a retrying caller
+  /// always finds the slot already retired.
+  ///
+  /// `wasCapturing` is read LIVE at error time (Codex code-diff r1 [P2]):
+  /// because `retire` stale-guards the connection-level handlers, the per-call
+  /// error is often the ONLY observer of a mid-capture service death (e.g. a
+  /// streaming `getSamplesSnapshot` or a live `setWarmEnginePolicy` send in
+  /// flight when the helper dies) — hard-coding `false` here would skip the
+  /// capturing teardown forever and wedge the recording. The one caller that
+  /// owns its own teardown (`stopCapture`) suppresses this via
+  /// `capturingTeardownOnCallError: false`, preserving its no-double-fire
+  /// contract (`onXPCReplyFailed` stays the sole caller-visible stop signal).
   private func serviceProxy(
     _ work: (any AudioServiceProtocol) -> Void,
-    onProxyError: (() -> Void)? = nil
+    onProxyError: (() -> Void)? = nil,
+    capturingTeardownOnCallError: Bool = true
   ) {
-    guard let conn = connection else {
+    guard let live = slot.current else {
       onProxyError?()
       return
     }
-    let proxy = conn.remoteObjectProxyWithErrorHandler(
-      Self.makeXPCErrorHandler(onProxyError: onProxyError))
+    let dispatchedGen = live.generation
+    let proxy = live.connection.remoteObjectProxyWithErrorHandler(
+      Self.makeXPCErrorHandler { [weak self] in
+        guard let self else {
+          onProxyError?()
+          return
+        }
+        self.reportLineDeath(
+          generation: dispatchedGen,
+          cause: .callError,
+          wasCapturing: capturingTeardownOnCallError && self.isCapturing
+        )
+        onProxyError?()
+      })
     guard let service = proxy as? AudioServiceProtocol else {
       onProxyError?()
       return
@@ -579,120 +799,182 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
   /// Build the XPC interruptionHandler in a nonisolated context.
   /// Same isolation-escape pattern as makeXPCErrorHandler.
-  nonisolated private static func makeInterruptionHandler(proxy: AudioCaptureProxy) -> @Sendable ()
-    -> Void
-  {
+  ///
+  /// #1194: stamped with the generation of the connection it is installed on.
+  /// After the MainActor hop it reports line death for ITS generation only —
+  /// a stale hop about a retired predecessor fails `reportLineDeath`'s retire
+  /// guard and is provably inert, even when the hop's Task was already queued
+  /// before the slot moved on. Internal (not private) so unit tests can invoke
+  /// the constructed handler directly.
+  nonisolated static func makeInterruptionHandler(
+    proxy: AudioCaptureProxy, generation: UInt64
+  ) -> @Sendable () -> Void {
     return { [weak proxy] in
-
       Task { @MainActor [weak proxy] in
         guard let proxy else { return }
-        let wasCapturing = proxy.isCapturing
         await AppLogger.shared.log(
-          "[AudioCaptureProxy] XPC interruptionHandler fired — wasCapturing=\(wasCapturing)",
+          "[AudioCaptureProxy] XPC interruptionHandler fired gen=\(generation) wasCapturing=\(proxy.isCapturing)",
           level: .info, category: "XPC"
         )
-        if wasCapturing {
-          // Cancel pending stall watchdog before the session ends.
-          proxy.stallWorkItem?.cancel()
-          proxy.stallWorkItem = nil
-          let endingSession = proxy.activeCaptureGeneration
-          // #455: compute duration BEFORE flipping isCapturing / resetting
-          // captureStartUptimeNs so the breadcrumb has a real number.
-          let firedAt = DispatchTime.now().uptimeNanoseconds
-          let durationNs: UInt64? =
-            proxy.captureStartUptimeNs > 0 && firedAt >= proxy.captureStartUptimeNs
-            ? (firedAt - proxy.captureStartUptimeNs) : nil
-          proxy.isCapturing = false
-          proxy.captureStartUptimeNs = 0  // #455
-          proxy.audioLevel = 0
-          proxy.captureGeneration &+= 1
-          proxy.bufferContinuation?.finish()
-          proxy.bufferContinuation = nil
-          // XPC connection break — `onXPCServiceError` (below) is the sole owner
-          // of this capture, so tag `.xpcConnectionLost` (A3 suppresses it).
-          proxy.onEngineInterrupted?(.xpcConnectionLost)
-          // Fire telemetry callback — idle interruptions stay silent (§3.4 row 2).
-          proxy.onXPCServiceError?(
-            XPCErrorContext(
-              kind: .interruptCapturing,
-              sessionID: endingSession,
-              recordingDurationNs: durationNs
-            )
-          )
-        }
-        proxy.needsReinit = true
+        proxy.reportLineDeath(
+          generation: generation, cause: .interrupted, wasCapturing: proxy.isCapturing)
       }
     }
   }
 
-  /// Build the XPC invalidationHandler in a nonisolated context.
-  nonisolated private static func makeInvalidationHandler(proxy: AudioCaptureProxy) -> @Sendable ()
-    -> Void
-  {
+  /// Build the XPC invalidationHandler in a nonisolated context. Same
+  /// generation-stamping contract as `makeInterruptionHandler` — the v1 race
+  /// where a stale invalidation hop clobbered a freshly created replacement
+  /// (the handler nil'd `connection` with no identity check) dies here.
+  nonisolated static func makeInvalidationHandler(
+    proxy: AudioCaptureProxy, generation: UInt64
+  ) -> @Sendable () -> Void {
     return { [weak proxy] in
-
       Task { @MainActor [weak proxy] in
         guard let proxy else { return }
+        await AppLogger.shared.log(
+          "[AudioCaptureProxy] XPC invalidationHandler fired gen=\(generation) wasCapturing=\(proxy.isCapturing)",
+          level: .info, category: "XPC"
+        )
+        proxy.reportLineDeath(
+          generation: generation, cause: .invalidated, wasCapturing: proxy.isCapturing)
+      }
+    }
+  }
 
-        proxy.connection = nil
-        let wasCapturing = proxy.isCapturing
-        let endingSession = proxy.activeCaptureGeneration
-        // #455: compute duration BEFORE flipping isCapturing / resetting
-        // captureStartUptimeNs so the breadcrumb has a real number. Idle
-        // invalidations have no active session and so no duration to report.
-        let firedAt = DispatchTime.now().uptimeNanoseconds
-        let durationNs: UInt64? =
-          wasCapturing && proxy.captureStartUptimeNs > 0
-            && firedAt >= proxy.captureStartUptimeNs
-          ? (firedAt - proxy.captureStartUptimeNs) : nil
-        if wasCapturing {
-          proxy.stallWorkItem?.cancel()
-          proxy.stallWorkItem = nil
-          proxy.isCapturing = false
-          proxy.captureStartUptimeNs = 0  // #455
-          proxy.audioLevel = 0
-          proxy.captureGeneration &+= 1
-          proxy.bufferContinuation?.finish()
-          proxy.bufferContinuation = nil
-          // XPC connection break — `onXPCServiceError` (below) is the sole owner
-          // of this capture, so tag `.xpcConnectionLost` (A3 suppresses it).
-          proxy.onEngineInterrupted?(.xpcConnectionLost)
-        }
-        proxy.needsReinit = true
-        // Invalidation is always a telemetry signal — connection is gone.
-        proxy.onXPCServiceError?(
+  // MARK: - Line death (#1194)
+
+  /// What killed the line. Determines which caller-visible signals fire on
+  /// retirement (`reportLineDeath`) — the existing Sentry taxonomy
+  /// (interruptCapturing / invalidateCapturing / invalidateIdle) is preserved
+  /// per cause.
+  enum LineDeathCause: String, Sendable {
+    case invalidated, interrupted, wedged, callError
+  }
+
+  /// The single generation-guarded consumer for every line-death signal:
+  /// connection invalidation, connection interruption, watchdog wedge, and
+  /// per-call transport error all land here (§3.3). The four uncoordinated
+  /// mutation paths this replaces are gone.
+  ///
+  /// Idempotent per generation: retiring an already-retired (or never-current)
+  /// generation is a logged no-op, so double reports and stale handler hops
+  /// are structurally harmless.
+  ///
+  /// `wasCapturing` is caller-supplied, not read from state: the wedge
+  /// reporters and the stop path hard-code `false` (retire-only —
+  /// `stopCapture` owns its own teardown and today deliberately does NOT fire
+  /// `onEngineInterrupted` on a stop failure; that contract is preserved),
+  /// while handlers and non-stop per-call errors pass the live `isCapturing`
+  /// so a mid-capture death always runs the teardown exactly once.
+  /// Internal (not private) so unit tests can characterize the transition.
+  func reportLineDeath(generation: UInt64, cause: LineDeathCause, wasCapturing: Bool) {
+    guard slot.retire(generation) else {
+      // Stale event about a retired predecessor — provably inert. Log-only
+      // by design: app.log is the diagnosis surface for discards.
+      let currentGen = slot.generation
+      Task {
+        await AppLogger.shared.log(
+          "[AudioCaptureProxy] stale line-death discarded gen=\(generation) cause=\(cause.rawValue) currentGen=\(currentGen)",
+          level: .info, category: "XPC"
+        )
+      }
+      return
+    }
+    Task {
+      await AppLogger.shared.log(
+        "[AudioCaptureProxy] line death gen=\(generation) cause=\(cause.rawValue) wasCapturing=\(wasCapturing)",
+        level: .info, category: "XPC"
+      )
+    }
+
+    let endingSession = activeCaptureGeneration
+    // #455: compute duration BEFORE flipping isCapturing / resetting
+    // captureStartUptimeNs so the breadcrumb has a real number. Idle deaths
+    // have no active session and so no duration to report.
+    let firedAt = DispatchTime.now().uptimeNanoseconds
+    let durationNs: UInt64? =
+      wasCapturing && captureStartUptimeNs > 0 && firedAt >= captureStartUptimeNs
+      ? (firedAt - captureStartUptimeNs) : nil
+
+    if wasCapturing {
+      // Capturing-teardown side effects, byte-identical to the former
+      // interruption/invalidation handlers.
+      stallWorkItem?.cancel()
+      stallWorkItem = nil
+      isCapturing = false
+      captureStartUptimeNs = 0  // #455
+      audioLevel = 0
+      captureGeneration &+= 1
+      bufferContinuation?.finish()
+      bufferContinuation = nil
+      // XPC connection break — `onXPCServiceError` (below) is the sole owner
+      // of this capture, so tag `.xpcConnectionLost` (A3 suppresses it).
+      onEngineInterrupted?(.xpcConnectionLost)
+    }
+
+    switch cause {
+    case .invalidated:
+      // Invalidation is always a telemetry signal — the connection is gone.
+      onXPCServiceError?(
+        XPCErrorContext(
+          kind: wasCapturing ? .invalidateCapturing : .invalidateIdle,
+          sessionID: wasCapturing ? endingSession : nil,
+          recordingDurationNs: durationNs
+        )
+      )
+    case .interrupted, .callError:
+      // Idle events stay silent end-to-end (today's contract). A CAPTURING
+      // call error is the transport-loss-during-capture shape whose Sentry
+      // signal previously arrived via the interruption handler — that handler
+      // is now stale-guarded once this retire runs, so the signal is re-homed
+      // here under the same `interruptCapturing` kind (Codex code-diff r1 [P2]).
+      if wasCapturing {
+        onXPCServiceError?(
           XPCErrorContext(
-            kind: wasCapturing ? .invalidateCapturing : .invalidateIdle,
-            sessionID: wasCapturing ? endingSession : nil,
+            kind: .interruptCapturing,
+            sessionID: endingSession,
             recordingDurationNs: durationNs
           )
         )
       }
+    case .wedged:
+      // Retire-only: the thrown error is the caller-visible signal. No
+      // wedge-able stage runs while capturing — the only one that could
+      // (`stop_capture`) hard-codes `wasCapturing: false` because stopCapture
+      // owns its own teardown.
+      break
     }
   }
 
   // MARK: - V2 fault-injection (DEBUG only, issue #291)
 
   #if DEBUG
-    /// Invalidates the active XPC connection synchronously. Fires the existing
-    /// `invalidationHandler` path, which sets `connection = nil`, flips
+    /// Terminates the active XPC line synchronously through the #1194 funnel:
+    /// reports an `.invalidated` line death for the current generation, which
+    /// retires the slot (invalidating the connection), flips
     /// `isCapturing = false`, finishes the buffer continuation, and emits the
-    /// `onXPCServiceError(.invalidateCapturing)` telemetry callback.
+    /// `onXPCServiceError(.invalidateCapturing / .invalidateIdle)` telemetry
+    /// callback — the same observable effect as the pre-#1194
+    /// `connection?.invalidate()`, now deterministic AND synchronous (no
+    /// async handler hop).
     ///
     /// Drives Lane A scenario A4 ("audio XPC service kill") via the DEBUG
     /// localhost endpoint. Equivalent in effect to a real audio service crash
-    /// mid-stream — but deterministic and synchronous.
+    /// mid-stream.
     ///
     /// `package` access: callable from `DebugFaultEndpoint` in the app target.
     /// Inert in release builds.
     package func forceConnectionTerminationNow() {
-      connection?.invalidate()
+      guard let live = slot.current else { return }
+      reportLineDeath(
+        generation: live.generation, cause: .invalidated, wasCapturing: isCapturing)
     }
   #endif
 
   // MARK: - VAD Interface (Step 5)
 
-  /// Stored VAD config — forwarded to service, replayed after crash via resendConfigIfNeeded().
+  /// Stored VAD config — forwarded to service, replayed on every fresh connection via replayConfig().
   private var vadConfig:
     (autoStop: Bool, silenceTimeout: Double, sensitivity: Float, energyGate: Bool)?
 
@@ -849,10 +1131,20 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
   }
 
   /// Service's audio engine was interrupted (device disconnect, emergency
-  /// teardown, max-duration cap). Matches interruptionHandler contract: only
-  /// fires onEngineInterrupted during active capture. Idle interruptions are
-  /// transient — just set needsReinit. `cause` is the relayed
+  /// teardown, max-duration cap). Only fires onEngineInterrupted during
+  /// active capture; idle relays are no-ops. `cause` is the relayed
   /// `EngineInterruptionCause` raw value (issue #1174 A3).
+  ///
+  /// #1194: deliberately OUTSIDE the line-death funnel. This is an ENGINE
+  /// event, not a LINE event — it arrives over the exported-object channel
+  /// with no connection identity on the wire, so it cannot be
+  /// generation-guarded, and retiring the current line on it would let a
+  /// stale relay from a dying predecessor world kill a healthy fresh line.
+  /// The relaying service world is by definition ALIVE with its config intact
+  /// (a crashed process fires the connection-level interruptionHandler
+  /// instead, which IS in the funnel), so the connection is kept and nothing
+  /// needs replaying — the next `start_engine` re-prepares the engine with
+  /// device UIDs riding its own arguments.
   nonisolated public func engineInterrupted(cause: String) {
     Task { @MainActor [weak self] in
       guard let self else { return }
@@ -873,7 +1165,9 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
         // direct mode (issue #1174 A3).
         self.onEngineInterrupted?(EngineInterruptionCause.hostCause(forRelayedRawValue: cause))
       }
-      self.needsReinit = true
+      // #1194: the former `needsReinit = true` here is deleted with nothing
+      // replacing it — any FRESH line gets an unconditional config replay at
+      // acquisition, and the relaying (alive) world keeps its config.
     }
   }
 

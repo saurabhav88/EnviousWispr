@@ -33,6 +33,7 @@ run_scenario("A5_proxy_buffer_drop_watchdog")
 | Real OS-level audio interruption (BT codec switch, Zoom mic-grab, AVAudioEngineConfigurationChange) | See `docs/LANE_B_AUDIO_TESTS.md` (HITL only — not synthetic-viable, see `docs/audits/2026-05-02-v2-synthetic-viability-codex.txt`) | hardware/HITL |
 | Pipeline stuck after ASR service crash | A3_asr_xpc_kill | xpc |
 | Pipeline stuck after audio service crash | A4_audio_xpc_kill | xpc |
+| Record press silently fails on a dead/reaped audio line (first-press cold-start race, #1194) | A10_audio_start_wedge_retry | xpc |
 | Cancel mid-record leaks task / state | A2_force_cancel | timing |
 | Rapid stop/start corrupts state | A1_rapid_stop_start | timing |
 | Live setting toggle doesn't apply mid-record | A6_settings_storm | settings |
@@ -122,6 +123,13 @@ During an active recording, attempt to flip `selectedBackend` via the Speech Eng
 
 **Negative control:** remove `if parakeetActive || whisperKitActive { break }` in `PipelineSettingsSync.handleSettingChanged(.selectedBackend, …)`. Active recording aborts on backend toggle.
 
+### A10_audio_start_wedge_retry (Lane A — xpc, #1194)
+Backends: both. Budget: 20s. Mechanism: xpc.
+
+Arm `force_audio_wedge_start(1)` while idle, then press record. The next START operation (`start_engine` / `begin_capture` / `start_engine_prewarm`) throws the watchdog wedge error before dispatch — no transport error, no invalidation: the one dead-line shape where ONLY the operation watchdog notices. The #1194 bounded retry must retire the wedged line, reacquire a fresh connection (with config replay + prefix), and resend once — the press succeeds silently. Verdict from app.log: `forced wedge (DEBUG)`, `line death ... cause=wedged`, `start retry resolved ... outcome=recovered`.
+
+**Negative control:** arm `force_audio_wedge_start(2)` — the retry wedges too, exhausting the single-retry budget; the press fails with today's error UX and app.log shows `outcome=exhausted`. (Equivalently: remove the `withStartRetry` catch in `AudioCaptureProxy`.)
+
 ### B1_bluetooth_route_flip (Lane B — bt-route, founder-required)
 Backends: both. Budget: 15s. Mechanism: bt-route.
 
@@ -151,6 +159,7 @@ Fixed command set (no arbitrary RPC):
 | Command | Effect |
 |---|---|
 | `force_proxy_buffer_drop(N)` | Drop next N buffers inside `AudioCaptureProxy.audioBufferCaptured` (host-side proxy queue). Tests proxy watchdog only — does NOT exercise real audio-stack interruption recovery. |
+| `force_audio_wedge_start(N)` | Treat the next N audio START operations as wedged inside `AudioCaptureProxy.withAudioXPCOperationSignal` (#1194) — no transport error, no invalidation. Never affects `stop_capture`. |
 | `force_cancel` | Invoke `forceCancelNow()` on the active backend's pipeline |
 | `force_xpc_kill` | Invalidate `ASRManagerProxy` connection mid-stream |
 | `force_audio_xpc_kill` | Invalidate `AudioCaptureProxy` connection mid-stream |

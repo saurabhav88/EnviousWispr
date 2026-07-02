@@ -79,6 +79,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
   var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
   var onXPCServiceError: ((XPCErrorContext) -> Void)?
   var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
+  var onAudioStartRetryResolved: ((AudioStartRetryContext) -> Void)?
   var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
 
   // MARK: AudioCaptureInterface — configuration (inert storage)

@@ -109,6 +109,28 @@ public struct XPCReplyFailureContext: Sendable {
   }
 }
 
+/// Context for one resolved start-op retry inside `AudioCaptureProxy` (#1194).
+/// Reported via `onAudioStartRetryResolved` after the bounded
+/// reacquire-and-resend resolves either way. Diagnostic-only: consumers must
+/// not branch control flow on it. No PII — four low-cardinality fields.
+public struct AudioStartRetryContext: Sendable {
+  /// The failed public stage: `start_engine` | `begin_capture` | `start_engine_prewarm`.
+  public let stage: String
+  /// What killed the first attempt: `wedged` | `service_unreachable`.
+  public let trigger: String
+  /// `recovered` (silent same-press save) | `exhausted` (today's failure UX).
+  public let outcome: String
+  /// Line-death detection → retry resolution latency in milliseconds.
+  public let recoveryMs: Int
+
+  public init(stage: String, trigger: String, outcome: String, recoveryMs: Int) {
+    self.stage = stage
+    self.trigger = trigger
+    self.outcome = outcome
+    self.recoveryMs = recoveryMs
+  }
+}
+
 /// Classifies XPC interruption / invalidation events for the `onXPCServiceError`
 /// callback on `AudioCaptureInterface`. Exhaustive: any new XPC channel
 /// requires adding a case, which the compiler enforces at every consumer

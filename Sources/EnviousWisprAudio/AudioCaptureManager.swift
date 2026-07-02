@@ -59,6 +59,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// Only the XPC proxy invokes this; direct-mode manager leaves nil.
   public var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
 
+  /// Only the XPC proxy invokes this (#1194); direct-mode manager leaves nil.
+  public var onAudioStartRetryResolved: ((AudioStartRetryContext) -> Void)?
+
   /// Fired by `resolveSource()` — initial resolution + changed-only afterwards.
   public var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
 

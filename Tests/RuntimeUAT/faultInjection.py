@@ -191,6 +191,24 @@ def force_proxy_buffer_drop(n: int) -> str:
     return send(f"force_proxy_buffer_drop({n})")
 
 
+def force_audio_wedge_start(n: int) -> str:
+    """Treat the next N audio START operations as wedged (#1194).
+
+    Sets AudioCaptureProxy.forceWedgeNextStartOps via the DEBUG endpoint: the
+    next N start ops (start_engine / begin_capture / start_engine_prewarm,
+    including retry stages) throw the watchdog wedge error BEFORE dispatch —
+    no transport error, no invalidation. This is the watchdog-only wedge
+    shape: with n=1 the press's first attempt wedges and the bounded retry
+    recovers on a fresh connection; with n=2 the retry wedges too and the
+    press fails with outcome=exhausted. Never affects stop_capture.
+
+    Verdicts come from app.log ("forced wedge (DEBUG)", "line death",
+    "start retry resolved ... outcome=recovered|exhausted"), per
+    uat-verdicts-from-app-log.
+    """
+    return send(f"force_audio_wedge_start({n})")
+
+
 # ──────────────────────────── helpers ────────────────────────────
 
 
@@ -1118,6 +1136,63 @@ def A9_backend_switch_mid_record(**_) -> dict:
         "pipeline_state_after_settle": pipeline_state_after_settle,
         "switch_was_blocked": switch_was_blocked,
         "post_backend_userdefaults": _read_setting("selectedBackend"),
+    }
+
+
+
+APP_LOG_PATH = Path("~/Library/Logs/EnviousWispr/app.log").expanduser()
+
+
+@scenario(
+    ScenarioMeta(
+        name="A10_audio_start_wedge_retry",
+        lane="A",
+        family="xpc",
+        backends=["both"],
+        runtime_budget_seconds=20.0,
+        founder_required=False,
+        negative_control="Arm force_audio_wedge_start(2) instead of 1 (exhausts the single retry) — the press fails with outcome=exhausted instead of recovering",
+        description="Arm force_audio_wedge_start(1) while idle, then press record: the first start op wedges (watchdog-only shape — no transport error, no invalidation) and the bounded #1194 retry recovers on a fresh connection within the same press",
+    )
+)
+def A10_audio_start_wedge_retry(**_) -> dict:
+    """User behavior: the user presses record at the exact moment the audio
+    XPC line has silently died (idle-reap race, #1194) in the one shape that
+    produces NO error callback and NO invalidation — only the operation
+    watchdog notices. The press must still succeed: the proxy retires the
+    wedged line, reacquires, replays the prefix, and resends once.
+
+    Verdict source is app.log (`uat-verdicts-from-app-log`): the scenario
+    asserts the forced-wedge marker, the line-death transition, and
+    `start retry resolved ... outcome=recovered` all appeared during the
+    press, alongside the pipeline reaching a terminal state.
+    """
+    log_offset = APP_LOG_PATH.stat().st_size if APP_LOG_PATH.exists() else 0
+    reply = force_audio_wedge_start(1)
+    if not _start_recording_locked():
+        return {
+            "terminal": False,
+            "reason": "could not enter recording (retry did not save the press?)",
+            "state": query_state(),
+            "reply": reply,
+        }
+    with _TTSAudio():
+        time.sleep(1.5)
+    stopped = _stop_recording_locked()
+    terminated = assert_terminated(timeout_s=8.0)
+
+    tail = ""
+    if APP_LOG_PATH.exists():
+        with open(APP_LOG_PATH, "r", errors="replace") as f:
+            f.seek(log_offset)
+            tail = f.read()
+    return {
+        "reply": reply,
+        "stopped": stopped,
+        **terminated,
+        "forced_wedge_logged": "forced wedge (DEBUG)" in tail,
+        "line_death_logged": "line death" in tail and "cause=wedged" in tail,
+        "retry_recovered": "start retry resolved" in tail and "outcome=recovered" in tail,
     }
 
 

@@ -108,6 +108,17 @@ final class AudioEventRouter {
       )
     }
 
+    // #1194: forward resolved start-op retries to PostHog. Diagnostic-only —
+    // the proxy already wrote the app.log line; this is the fleet-level signal.
+    audioCapture.onAudioStartRetryResolved = { ctx in
+      TelemetryService.shared.audioStartRetryResolved(
+        stage: ctx.stage,
+        trigger: ctx.trigger,
+        outcome: ctx.outcome,
+        recoveryMs: ctx.recoveryMs
+      )
+    }
+
     // Kernel-owned path: leave a preinstalled single-slot owner intact.
     // If unclaimed, install the legacy App-router fallback.
     if audioCapture.onVADAutoStop == nil {
