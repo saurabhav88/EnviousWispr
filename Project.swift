@@ -368,6 +368,13 @@ let project = Project(
         "Sources/EnviousWispr/Resources/AppIcon.icns",
         .folderReference(path: "Sources/EnviousWisprLLM/Resources/OutputClassifier.mlpackage"),
         .folderReference(path: "Sources/EnviousWisprLLM/Resources/OutputClassifierTokenizer"),
+        // #1271: EG-1 native polish — the model manifest and the bundled
+        // llama-server inference binary ride the APP target (Bundle.main,
+        // Contents/Resources), same route as the classifier above. The
+        // binary is a nested Mach-O: build-dev-app.sh and
+        // build-release-dmg.sh sign it in the inside-out order.
+        "Sources/EnviousWispr/Resources/eg1-manifest.json",
+        "Sources/EnviousWispr/Resources/llama-server",
       ],
       entitlements: .file(path: "Sources/EnviousWispr/Resources/EnviousWispr.entitlements"),
       // #919: the thin shell links ONLY the kit (the kit static-links the

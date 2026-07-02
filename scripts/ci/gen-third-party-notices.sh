@@ -32,14 +32,19 @@ CO="${PROJ_ROOT}/.build/checkouts"
 COMPONENTS=(
   "WhisperKit (argmax-oss-swift)|1.0.0|MIT|argmax-oss-swift/LICENSE|https://github.com/argmaxinc/argmax-oss-swift|argmax-oss-swift"
   "FluidAudio|d5fcca4f (fork saurabhav88/FluidAudio)|Apache-2.0|FluidAudio/LICENSE|https://github.com/saurabhav88/FluidAudio|fluidaudio"
-  "PostHog iOS|3.61.0|MIT|posthog-ios/LICENSE|https://github.com/PostHog/posthog-ios|posthog-ios"
-  "Sentry Cocoa|9.18.0|MIT|sentry-cocoa/LICENSE.md|https://github.com/getsentry/sentry-cocoa|sentry-cocoa"
+  "PostHog iOS|3.62.4|MIT|posthog-ios/LICENSE|https://github.com/PostHog/posthog-ios|posthog-ios"
+  "Sentry Cocoa|9.19.0|MIT|sentry-cocoa/LICENSE.md|https://github.com/getsentry/sentry-cocoa|sentry-cocoa"
   "Sparkle|2.9.3|MIT (with bundled BSD/MIT components)|Sparkle/LICENSE|https://github.com/sparkle-project/Sparkle|sparkle"
   "swift-argument-parser|1.7.1|Apache-2.0|swift-argument-parser/LICENSE.txt|https://github.com/apple/swift-argument-parser|swift-argument-parser"
   "fastcluster (bundled in FluidAudio)|n/a|BSD-2-Clause|FluidAudio/ThirdPartyLicenses/fastcluster-LICENSE.md|https://github.com/dmuellner/fastcluster|"
   "VBx (bundled in FluidAudio)|n/a|Apache-2.0|FluidAudio/ThirdPartyLicenses/vbx-LICENSE.md|https://github.com/BUTSpeechFIT/VBx|"
   "PLCrashReporter + protobuf-c (bundled in PostHog)|n/a|MIT / Apache-2.0|posthog-ios/vendor/PHPLCrashReporter/LICENSE|https://github.com/microsoft/plcrashreporter|"
   "libwebp (bundled in PostHog)|n/a|BSD-3-Clause|posthog-ios/vendor/libwebp/COPYING|https://chromium.googlesource.com/webm/libwebp|"
+  # llama.cpp is NOT a SwiftPM dep — the bundled llama-server binary is built
+  # from a pinned commit (see Sources/EnviousWispr/Resources/
+  # llama-server-PROVENANCE.md); its MIT license text is vendored in-repo,
+  # hence the repo: path scheme (#1271 Codex code-diff r6).
+  "llama.cpp (bundled llama-server binary)|fdb1db87|MIT|repo:Sources/EnviousWispr/Resources/llama-server-LICENSE.txt|https://github.com/ggml-org/llama.cpp|"
 )
 
 # --- Cross-check the DIRECT-dep coverage against Package.resolved (Codex #2) ---
@@ -133,7 +138,14 @@ printf 'None of these components is GPL/LGPL-licensed.\n\n'
 
 for entry in "${COMPONENTS[@]}"; do
   IFS='|' read -r name version license relpath url _ident <<< "$entry"
-  lf="${CO}/${relpath}"
+  # repo:-prefixed paths resolve against the repo root (vendored license
+  # texts for non-SwiftPM components, e.g. the built llama-server binary);
+  # everything else resolves under .build/checkouts as before.
+  if [[ "$relpath" == repo:* ]]; then
+    lf="${PROJ_ROOT}/${relpath#repo:}"
+  else
+    lf="${CO}/${relpath}"
+  fi
   if [[ ! -f "$lf" ]]; then
     echo "error: license file not found: ${lf}" >&2
     exit 1

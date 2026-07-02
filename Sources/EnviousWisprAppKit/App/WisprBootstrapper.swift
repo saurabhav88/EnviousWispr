@@ -52,6 +52,8 @@ public final class WisprBootstrapper {
   let customWordsCoordinator: CustomWordsCoordinator
   let contactsImportCoordinator: ContactsImportCoordinator
   let setup: SetupCoordinator
+  /// #1271 — EG-1 native runtime home (model store + inference server).
+  let egOneRuntime: EGOneRuntime
   let audioDeviceList: AudioDeviceList
   let aiAvailability: AIAvailabilityCoordinator
   let keychainManager: KeychainManager
@@ -136,6 +138,20 @@ public final class WisprBootstrapper {
     // `state-ownership.md` shared-infra-homes-not-feature-services.)
     let pasteCompletionRegistry = PasteCompletionRegistry()
 
+    // #1271 — EG-1 native runtime: shared-infra home, threaded into both
+    // kernel drivers + crash recovery. Launch-start below so dictation never
+    // depends on settings opening; `isActiveProvider` is a LIVE read (r2).
+    let egOneRuntime = EGOneRuntime()
+    egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
+    egOneRuntime.onEvent = EGOneTelemetryBridge.handler
+    // Exactly one path sweeps orphans — a detached sweep alongside a spawn
+    // would race it and kill the fresh server (Codex r10 P1).
+    if settings.llmProvider == .egOne {
+      egOneRuntime.startIfActiveProvider()
+    } else {
+      egOneRuntime.sweepStaleServersAtLaunch()
+    }
+
     // PR-5 Rung 5 (#827): the VAD signal source is App-owned and shared
     // between both kernel drivers. `audioCapture.onVADAutoStop` is bound
     // exactly once here; the factory's `assembleDriver` no longer binds
@@ -159,7 +175,8 @@ public final class WisprBootstrapper {
         captureTelemetry: captureTelemetry,
         pasteCompletionRegistry: pasteCompletionRegistry,
         outputClassifierHolder: outputClassifierHolder,
-        dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled }
+        dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
+        egOneRuntime: egOneRuntime
       ))
 
     // W6: language-flip telemetry wired via a closure so `EnviousWisprASR`
@@ -197,7 +214,8 @@ public final class WisprBootstrapper {
         captureTelemetry: captureTelemetry,
         pasteCompletionRegistry: pasteCompletionRegistry,
         outputClassifierHolder: outputClassifierHolder,
-        dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled }
+        dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
+        egOneRuntime: egOneRuntime
       ))
 
     // Phase F (#501) — `SetupCoordinator` needs `asrManager` + the WhisperKit
@@ -225,7 +243,8 @@ public final class WisprBootstrapper {
       whisperKitKernelDriver: whisperKitKernelDriver,
       audioCapture: audioCapture,
       asrManager: asrManager,
-      hotkeyService: hotkeyService
+      hotkeyService: hotkeyService,
+      egOneRuntime: egOneRuntime
     )
     settingsSync.applyInitialSettings(settings)
 
@@ -397,6 +416,7 @@ public final class WisprBootstrapper {
       transcriptCoordinator: transcriptCoordinator,
       keychainManager: keychainManager,
       outputClassifierHolder: outputClassifierHolder,
+      egOneRuntime: egOneRuntime,
       // Best-effort: the snapshot carries only the custom-words version, so recovery
       // applies the user's CURRENT words (pack terms omitted) — normal-quality, not
       // byte-exact. `+ 1` keeps the cache generation non-zero so terms take effect.
@@ -616,6 +636,7 @@ public final class WisprBootstrapper {
     self.customWordsCoordinator = customWordsCoordinator
     self.contactsImportCoordinator = contactsImportCoordinator
     self.setup = setup
+    self.egOneRuntime = egOneRuntime
     self.audioDeviceList = audioDeviceList
     self.aiAvailability = aiAvailability
     self.keychainManager = keychainManager
@@ -734,6 +755,10 @@ public final class WisprBootstrapper {
   }
 
   public func applicationWillTerminate() {
+    // #1271: kill the EG-1 child SYNCHRONOUSLY — `Process` children survive
+    // parent exit (Codex r1 proved empirically); crash orphans are reaped by
+    // the stale-sweep in EGOneServerManager.start on next launch.
+    egOneRuntime.terminateServerForAppQuit()
     // #1019: tear down the network path monitor + wake observer.
     updateTriggerCoordinator.stop()
     // #1176: a Cocoa quit during onboarding is an abandon (best-effort — kill -9
@@ -801,6 +826,7 @@ private struct MainWindowRoot: View {
       .environment(b.customWordsCoordinator)
       .environment(b.contactsImportCoordinator)
       .environment(b.setup)
+      .environment(b.egOneRuntime)
       .environment(b.audioDeviceList)
       .environment(b.aiAvailability)
       .environment(b.llmDiscovery)

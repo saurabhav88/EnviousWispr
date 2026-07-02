@@ -140,6 +140,7 @@ struct AIPolishSettingsView: View {
   @Environment(SetupCoordinator.self) private var setup
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
   @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
+  @Environment(EGOneRuntime.self) private var egOne
   @Environment(\.keychainManager) private var keychainManagerEnv
 
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
@@ -159,7 +160,9 @@ struct AIPolishSettingsView: View {
   }
 
   private var showModelSection: Bool {
+    // EG-1 excluded: one fixed first-party model, no model picker (#1271).
     settings.llmProvider != .none && settings.llmProvider != .appleIntelligence
+      && settings.llmProvider != .egOne
   }
 
   private var ollamaShowsManageModels: Bool {
@@ -180,10 +183,11 @@ struct AIPolishSettingsView: View {
           BrandedRow {
             Picker("LLM Provider", selection: $settings.llmProvider) {
               Text("Off").tag(LLMProvider.none)
+              Text("EG-1 (Recommended local model)").tag(LLMProvider.egOne)
+              Text("Apple Intelligence").tag(LLMProvider.appleIntelligence)
               Text("OpenAI").tag(LLMProvider.openAI)
               Text("Google Gemini").tag(LLMProvider.gemini)
               Text("Local (Ollama)").tag(LLMProvider.ollama)
-              Text("Apple Intelligence").tag(LLMProvider.appleIntelligence)
             }
           }
 
@@ -214,6 +218,13 @@ struct AIPolishSettingsView: View {
           if settings.llmProvider == .appleIntelligence {
             BrandedRow(showDivider: false) {
               appleIntelligenceStatus
+            }
+          }
+
+          // EG-1 native model (#1271)
+          if settings.llmProvider == .egOne {
+            BrandedRow(showDivider: false) {
+              egOneStatusContent
             }
           }
         },
@@ -333,6 +344,10 @@ struct AIPolishSettingsView: View {
         }
       } else if settings.llmProvider == .appleIntelligence {
         Task { await aiAvailability.checkAvailability(trigger: "settings_open") }
+      } else if settings.llmProvider == .egOne {
+        // #1271: settings-open is one of the two probe moments (the other is
+        // provider activation via PipelineSettingsSync). No background polling.
+        egOne.activateAndProbe()
       } else if settings.llmProvider != .none {
         llmDiscovery.loadCachedModels(for: settings.llmProvider)
       }
@@ -357,6 +372,13 @@ struct AIPolishSettingsView: View {
         Task { await setup.ollamaSetup.detectState() }
       case .appleIntelligence:
         Task { await aiAvailability.checkAvailability(trigger: "provider_switch") }
+      case .egOne:
+        // Fixed local model — no API key, no model discovery. Routing it
+        // into the default key-provider path would hand the discovery
+        // coordinator an empty model list and let it overwrite `llmModel`
+        // (#1271 Codex r7). Activation/probe rides PipelineSettingsSync;
+        // the status section's own onAppear probe covers settings-open.
+        break
       default:
         llmDiscovery.loadCachedModels(for: newProvider)
         Task {
@@ -770,6 +792,162 @@ struct AIPolishSettingsView: View {
         .controlSize(.small)
       }
     }
+  }
+
+  // MARK: - EG-1 native model (#1271)
+
+  /// Whole-section content for the EG-1 provider: explainer with the
+  /// founder-approved benchmark claim (real numbers, no competitor names),
+  /// download flow with size disclosure, the green/yellow/red activation
+  /// pill (a REAL inference probe, never process-exists), Remove Model, and
+  /// the 8 GB heads-up. Copy rules: no em or en dashes in these strings.
+  @ViewBuilder
+  private var egOneStatusContent: some View {
+    Text(
+      "EG-1 is our own polish model, tuned specifically for dictation. "
+        + "It matches leading cloud models on our 1,890-case benchmark "
+        + "(94.7% behavior score) while running entirely on this Mac. "
+        + "Nothing you dictate ever leaves your device."
+    )
+    .font(.stHelper)
+    .foregroundStyle(Color.stTextTertiary)
+    .fixedSize(horizontal: false, vertical: true)
+
+    if isLowMemoryMac {
+      Label(
+        "This Mac has 8 GB of memory. EG-1 may run slower here. "
+          + "Dictation always works, even when polish is unavailable.",
+        systemImage: "exclamationmark.triangle"
+      )
+      .font(.stHelper)
+      .foregroundStyle(.stWarning)
+      .fixedSize(horizontal: false, vertical: true)
+    }
+
+    switch egOne.installState {
+    case .notInstalled:
+      HStack {
+        Text("One-time download: 2.7 GB")
+          .font(.stHelper)
+          .foregroundStyle(Color.stTextTertiary)
+        Spacer()
+        Button("Download EG-1") { egOne.startDownload() }
+      }
+    case .downloading(let fraction):
+      VStack(alignment: .leading, spacing: 4) {
+        ProgressView(value: max(0, min(1, fraction))) {
+          Text("Downloading EG-1 (2.7 GB)")
+            .font(.stHelper)
+        }
+        Button("Cancel") { egOne.cancelDownload() }
+          .buttonStyle(.borderless)
+          .font(.stHelper)
+      }
+    case .verifying:
+      HStack {
+        ProgressView().controlSize(.small)
+        Text("Verifying download integrity")
+          .font(.stHelper)
+          .foregroundStyle(Color.stTextTertiary)
+      }
+    case .failed(let failure):
+      Text(egOneFailureCopy(failure))
+        .font(.stHelper)
+        .foregroundStyle(.stError)
+        .fixedSize(horizontal: false, vertical: true)
+      Button("Try Again") { egOne.startDownload() }
+    case .installed:
+      HStack {
+        Text("Status:")
+        Spacer()
+        egOneHealthLabel
+        Button {
+          egOne.activateAndProbe()
+        } label: {
+          Image(systemName: "arrow.clockwise")
+        }
+        .buttonStyle(.borderless)
+        .help("Test that EG-1 is live")
+        .accessibilityLabel("Test that EG-1 is live")
+      }
+      if let reason = egOneHealthDetail {
+        Text(reason)
+          .font(.stHelper)
+          .foregroundStyle(Color.stTextTertiary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Button("Remove Model") {
+        egOne.removeModel()
+        settings.llmProvider = .appleIntelligence
+      }
+      .buttonStyle(.borderless)
+      .font(.stHelper)
+    }
+  }
+
+  @ViewBuilder
+  private var egOneHealthLabel: some View {
+    switch egOne.health {
+    case .green:
+      Label("Live", systemImage: "checkmark.circle.fill")
+        .foregroundStyle(.stSuccess)
+    case .yellow:
+      Label("Attention", systemImage: "exclamationmark.triangle.fill")
+        .foregroundStyle(.stWarning)
+    case .red:
+      Label("Not working", systemImage: "xmark.circle.fill")
+        .foregroundStyle(.stError)
+    }
+  }
+
+  /// Plain-language reason line under the health pill (nil for green).
+  private var egOneHealthDetail: String? {
+    switch egOne.health {
+    case .green:
+      return nil
+    case .yellow(let reason):
+      switch reason {
+      case "starting": return "The model is starting up. This takes a few seconds."
+      case "paused_for_memory":
+        return "Paused to free memory for other apps. Use the refresh button to restart it."
+      case "probe_slow": return "Working, but responding slowly right now."
+      case "probe_output_unexpected":
+        return "The model responded, but not as expected. Try re-downloading it."
+      case "downloading", "verifying": return nil
+      default: return "Something needs attention. Try the refresh button."
+      }
+    case .red(let reason):
+      switch reason {
+      case "download_required": return "Download the model to get started."
+      case "app_update_required":
+        return "This model needs a newer version of EnviousWispr."
+      case "crashed_twice":
+        return "The model stopped twice in a row. Use the refresh button to try again."
+      default: return "Not running. Use the refresh button to try again."
+      }
+    }
+  }
+
+  private func egOneFailureCopy(_ failure: EGOneModelStore.EGOneDownloadFailure) -> String {
+    switch failure {
+    case .network:
+      return "Could not download the model from models.enviouslabs.co. "
+        + "Check your connection. On a managed network, ask IT to allow this domain."
+    case .checksum:
+      return "The download did not verify correctly and was discarded. Please try again."
+    case .disk:
+      return "Not enough free disk space. The download needs about 6 GB free during install."
+    case .cancelled:
+      return "Download canceled. Your progress is saved."
+    case .rangeUnsupported, .http:
+      return "The download server had a problem. Please try again in a few minutes."
+    case .stubURL:
+      return "This build has no download source configured."
+    }
+  }
+
+  private var isLowMemoryMac: Bool {
+    ProcessInfo.processInfo.physicalMemory <= (8 << 30)
   }
 
   // MARK: - Apple Intelligence Status

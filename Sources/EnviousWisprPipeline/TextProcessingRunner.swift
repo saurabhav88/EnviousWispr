@@ -166,10 +166,18 @@ internal final class TextProcessingRunner {
         // (they signal a transient network issue the user should see).
         let isAppleIntelligencePolishTimeout =
           isTimeout && polishProviderAtStart == .appleIntelligence
+        // #1271: an EG-1 polish timeout (the local 4B model on a very long
+        // dictation) is the same class of silent skip as the AFM timeout —
+        // raw deterministically-cleaned text ships, no "AI polish failed".
+        // Cloud-provider timeouts still surface (transient network signal).
+        let isEGOnePolishTimeout = isTimeout && polishProviderAtStart == .egOne
         let reason: String
         if isAppleIntelligencePolishTimeout {
           reason =
             "skipped: on-device AI polish timed out on a long dictation, using deterministic text"
+        } else if isEGOnePolishTimeout {
+          reason =
+            "skipped: EG-1 polish timed out on a long dictation, using deterministic text"
         } else if isTimeout {
           reason = "timed out"
         } else if let cw = contextWindowSkip {
@@ -194,11 +202,20 @@ internal final class TextProcessingRunner {
         // `providerUnavailable` (Ollama down), `requestFailed` (cloud 5xx),
         // `invalidAPIKey` — locked by the adversarial tests in
         // TextProcessingRunnerTests.
+        // #1271: EVERY `egOneSkipped` reason joins the silent set — the
+        // first-party local limb degrades quietly to deterministic text
+        // (not ready / download pending / crashed / input too long), same
+        // contract as the AFM family above. Locked by the adversarial
+        // tests in TextProcessingRunnerTests.
         let isSilentPolishSkip: Bool
+        var egOneSkipReason: String?
         if let llmError = error as? LLMError {
           switch llmError {
           case .unsupportedInputLanguage, .outputLanguageDrift, .frameworkUnavailable:
             isSilentPolishSkip = true
+          case .egOneSkipped(let skipReason):
+            isSilentPolishSkip = true
+            egOneSkipReason = skipReason.rawValue
           default:
             isSilentPolishSkip = false
           }
@@ -212,6 +229,7 @@ internal final class TextProcessingRunner {
         let isCancellationLike = (error as? URLError)?.code == .cancelled
         if step.errorSurfacePolicy == .surface && !isSilentPolishSkip
           && contextWindowSkip == nil && !isAppleIntelligencePolishTimeout
+          && !isEGOnePolishTimeout
           && !isCancellationLike
         {
           if let provider = polishProviderAtStart, provider != .appleIntelligence {
@@ -266,6 +284,13 @@ internal final class TextProcessingRunner {
         } else if isAppleIntelligencePolishTimeout {
           TelemetryService.shared.polishSkipped(
             provider: LLMProvider.appleIntelligence.rawValue, reason: "context_window_timeout")
+        } else if isEGOnePolishTimeout {
+          // #1271: one `local_polish_` prefix family for every EG-1 skip mode.
+          TelemetryService.shared.polishSkipped(
+            provider: LLMProvider.egOne.rawValue, reason: "local_polish_timeout")
+        } else if let egOneSkipReason {
+          TelemetryService.shared.polishSkipped(
+            provider: LLMProvider.egOne.rawValue, reason: egOneSkipReason)
         }
         // #657 (2026-05-05): emit cap-trip telemetry when WordCorrectionStep
         // exceeds its 3s `maxDuration`. The step's result was discarded; raw

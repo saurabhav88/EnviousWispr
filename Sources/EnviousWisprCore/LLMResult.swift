@@ -6,16 +6,25 @@ public enum LLMProvider: String, Codable, CaseIterable, Sendable {
   case gemini
   case ollama
   case appleIntelligence
+  case egOne
   case none
 }
 
 extension LLMProvider {
+  /// Canonical model-identity literal for the first-party EG-1 provider.
+  /// Core and Services cannot import EnviousWisprLLM (where the model
+  /// manifest lives), so identity at this layer is a fixed literal — the
+  /// same pattern as `apple-intelligence`. `EGOneRuntime` refuses to
+  /// activate a manifest whose model name disagrees with this value.
+  public static let egOneModelName = "eg-1"
+
   public var displayName: String {
     switch self {
     case .openAI: return "OpenAI"
     case .gemini: return "Gemini"
     case .ollama: return "Ollama"
     case .appleIntelligence: return "Apple Intelligence"
+    case .egOne: return "EG-1"
     case .none: return "None"
     }
   }
@@ -29,6 +38,7 @@ extension LLMProvider {
     case .gemini: return "gemini-2.0-flash"
     case .ollama: return ollamaModel
     case .appleIntelligence: return "apple-intelligence"
+    case .egOne: return LLMProvider.egOneModelName
     case .none: return ""
     }
   }
@@ -40,7 +50,7 @@ extension LLMProvider {
       return model.hasPrefix("gemini-2.5") || model.hasPrefix("gemini-3")
     case .openAI:
       return model.hasPrefix("o1") || model.hasPrefix("o3") || model.hasPrefix("o4")
-    case .ollama, .appleIntelligence, .none:
+    case .ollama, .appleIntelligence, .egOne, .none:
       return false
     }
   }

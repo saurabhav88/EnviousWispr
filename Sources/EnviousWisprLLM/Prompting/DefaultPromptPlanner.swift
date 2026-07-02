@@ -70,6 +70,12 @@ public struct DefaultPromptPlanner: PromptPlanning {
         return .gemmaFewShot
       }
       return .openAIProse
+    case .egOne:
+      // Native EG-1 (#1271): the bundled first-party server always runs the
+      // model's training prompt. Model identity is manifest-enforced by
+      // `EGOneRuntime` (activation refuses a name/template mismatch), so no
+      // per-model-id heuristics apply here.
+      return .egOneFixed
     case .appleIntelligence, .none:
       // Should not reach planner. Fallback to openAI prose.
       return .openAIProse
