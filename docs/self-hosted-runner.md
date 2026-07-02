@@ -1,13 +1,15 @@
 # Self-Hosted GitHub Actions Runner
 
-> **DECOMMISSIONED (#1087, 2026-06-20).** The release pipeline (`release.yml`) was
-> migrated to GitHub-hosted `macos-26` runners with ephemeral-keychain signing —
-> all 6 jobs now `runs-on: macos-26`, so no machine at rest holds the signing cert.
-> The "Why" below is obsolete: hosted `macos-26` carries the macOS 26 SDK and
-> already runs our build + FoundationModels probe. The runner is unregistered only
-> AFTER the first real hosted release succeeds; until then it stays registered as a
-> one-revert fallback. The setup/recovery instructions below are retained for the
-> record (re-registration recipe if a self-hosted lane is ever needed again).
+> **FULLY DECOMMISSIONED (#1087, 2026-07-02).** The release pipeline (`release.yml`)
+> migrated to GitHub-hosted runners (PR #1113, 2026-06-20) with ephemeral-keychain
+> signing — no machine at rest holds the signing cert. Two real releases shipped
+> clean end-to-end on hosted (v2.2.0 2026-06-24, v2.2.1 2026-07-01). The runner
+> (`enviouswispr-release`) has now been fully removed: unregistered from GitHub
+> (`gh api --method DELETE .../actions/runners/22`) and the local install at
+> `~/actions-runner/` deleted. Everything below — Current Setup, Workflow Split,
+> Managing the Runner, Recovery — is HISTORICAL, describing a runner that no longer
+> exists. Retained only as the re-registration recipe if a self-hosted lane is ever
+> needed again.
 
 ## Why (obsolete — see banner)
 
@@ -25,13 +27,13 @@ free, fast, and fully controlled.
 - **Service plist:** `~/Library/LaunchAgents/actions.runner.saurabhav88-EnviousWispr.enviouswispr-release.plist`
 - **Logs:** `~/Library/Logs/actions.runner.saurabhav88-EnviousWispr.enviouswispr-release/`
 
-## Workflow Split
+## Workflow Split (historical — as of decommission)
 
 | Workflow | Runner | Purpose |
 |----------|--------|---------|
 | `pr-check.yml` → `build-debug` / `build-release` | `macos-26` (hosted) | Xcode/Tuist build lanes — debug build + XPC hygiene + debug tests ‖ release build + FoundationModels compile probe |
 | `pr-check.yml` → `build-check` | `ubuntu-latest` (hosted) | Required-gate aggregator over both build lanes (`needs: [build-debug, build-release]`) |
-| `release.yml` → `build-release-artifacts` | `self-hosted, enviouswispr-release` | Full release: Xcode/Tuist archive + inside-out sign (embeds the Developer ID provisioning profile) + notarize + DMG |
+| `release.yml` → `build-release-artifacts` | `macos-26` (hosted, since #1113) | Full release: Xcode/Tuist archive + inside-out sign (embeds the Developer ID provisioning profile) + notarize + DMG. Formerly `self-hosted, enviouswispr-release`; that runner no longer exists. |
 
 ## Release Toolchain (Xcode engine, #913)
 
@@ -43,7 +45,7 @@ Release builds run on the Xcode build engine via Tuist (not SwiftPM). The runner
 
 The build/sign/DMG mechanics live in `scripts/build-release-dmg.sh` (the release workflow calls it), so a local release proof runs identical code to CI. GitHub Action `run:` steps are non-interactive, so the script resolves `mise` by absolute path (the interactive `mise` shell function is absent in CI shells).
 
-## Managing the Runner
+## Managing the Runner (historical — commands assume a runner exists again; see Recovery below)
 
 ```bash
 # Check status
