@@ -369,6 +369,24 @@ import Testing
       #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "gpt-5-mini")
     }
 
+    @Test("EG-1's fixed literal never leaks into a cloud provider's model")
+    func egOneLiteralSweptOnProviderSwitch() {
+      let suite = UserDefaults(suiteName: "SCT-eg1sweep-\(UUID().uuidString)")!
+      let settings = SettingsManager(defaults: suite)
+      // Apple Intelligence → EG-1 pins the fixed literal.
+      settings.llmProvider = .appleIntelligence
+      settings.llmProvider = .egOne
+      #expect(settings.effectiveLLMModel == LLMProvider.egOneModelName)
+      // Switching to a cloud provider must sweep the literal to that
+      // provider's default (#1271 Codex r7: "eg-1" reached OpenAI as a
+      // model name and every polish call failed until discovery repaired it).
+      settings.llmProvider = .openAI
+      #expect(settings.llmModel == "gpt-4o-mini")
+      settings.llmProvider = .egOne
+      settings.llmProvider = .gemini
+      #expect(settings.llmModel == "gemini-2.0-flash")
+    }
+
     @Test("Language lock projects to mode only, never the code")
     func languageModeProjection() {
       let (settings, telemetry, box, _) = makeHarness()

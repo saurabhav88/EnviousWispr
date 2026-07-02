@@ -157,6 +157,10 @@ enum SettingsProjection {
     let id = settings.effectiveLLMModel
     switch settings.llmProvider {
     case .appleIntelligence: return "apple-intelligence"
+    // #1271: native EG-1 — the model id is OUR fixed literal from the
+    // manifest contract (`effectiveLLMModel` returns `eg-1`), never user
+    // input, so verbatim is safe by construction.
+    case .egOne: return LLMProvider.egOneModelName
     case .none: return "none"
     case .ollama:
       let canonical = OllamaSetupService.canonicalModelName(id)

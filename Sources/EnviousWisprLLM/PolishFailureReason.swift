@@ -202,9 +202,10 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
       case .requestFailed(let msg):
         return msg.contains("server error") ? .providerServerError : .badRequest
       case .frameworkUnavailable, .modelNotReady,
-        .unsupportedInputLanguage, .outputLanguageDrift:
-        // Apple-Intelligence-only / silent-skip cases the runner never routes
-        // here (AFM is excluded; language gates are silent skips). Defensive.
+        .unsupportedInputLanguage, .outputLanguageDrift, .egOneSkipped:
+        // Silent-skip cases the runner never routes here (AFM is excluded;
+        // language gates and EG-1 bypasses, #1271, are silent skips).
+        // Defensive.
         return .unknown
       }
     }

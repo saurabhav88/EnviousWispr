@@ -103,6 +103,13 @@ echo "==> Step 7: Verifying deployed bundle..."
   || { echo "ERROR: audio XPC id mismatch"; exit 1; }
 [ "$(plutil -extract CFBundleIdentifier raw "$APP_PATH/Contents/XPCServices/$ASR_XPC/Contents/Info.plist")" = "$ASR_XPC_ID" ] \
   || { echo "ERROR: asr XPC id mismatch"; exit 1; }
+# #1271: EG-1 inference server + manifest must ship in Resources. On dev the
+# binary runs with its ad-hoc linker signature (no hardened runtime); release
+# signs it Developer ID in build-release-dmg.sh step [5.5/6].
+[ -x "$APP_PATH/Contents/Resources/llama-server" ] \
+  || { echo "ERROR: EG-1 llama-server missing from Resources (#1271)"; exit 1; }
+[ -f "$APP_PATH/Contents/Resources/eg1-manifest.json" ] \
+  || { echo "ERROR: eg1-manifest.json missing from Resources (#1271)"; exit 1; }
 
 # Post-copy signature verification (non-strict: ditto+xattr can perturb xattrs
 # but not the seal; this confirms the copied bundle is still validly signed).

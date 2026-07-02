@@ -207,3 +207,5 @@ routine-session-logs-*/
 
 # Swift/clang module cache created by CLI builds in the worktree
 .cache/
+.derivedData-review/
+.build-review/

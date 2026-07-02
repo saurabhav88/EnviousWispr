@@ -59,8 +59,28 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // Intelligence output (the path where AFM can compose artifacts). Injected
     // via init — fail-open when nil (not yet prewarmed / load failed).
     case .appleIntelligence: AppleIntelligenceConnector(classifier: classifier)
+    // #1271: the EG-1 connector needs the live server endpoint, which this
+    // three-argument seam does not carry. `process()` routes `.egOne`
+    // through `makeEGOnePolisher` + `egOneRuntime` BEFORE consulting this
+    // factory; reaching this case means no runtime handle was injected —
+    // return nil and let the call site's `.egOne` branch throw the silent
+    // bypass (never the surfaced `providerUnavailable`).
+    case .egOne: nil
     case .none: nil
     }
+  }
+
+  /// EG-1 runtime handle (#1271), injected by the composition root through
+  /// `KernelDictationDriverFactory` / `RecoveryTextProcessor` — same
+  /// threading as `keychainManager`. Nil (standalone callsites, tests, or
+  /// pre-wiring) means every `.egOne` polish silently skips.
+  public var egOneRuntime: (any EGOneEndpointProviding)?
+
+  /// Test seam for `.egOne` (mirrors `makePolisher` for the other
+  /// providers): production builds the localhost connector from the live
+  /// endpoint; tests substitute a spy without a real server.
+  var makeEGOnePolisher: @MainActor (EGOneEndpoint) -> any TranscriptPolisher = {
+    EGOneConnector(endpoint: $0)
   }
 
   /// Holds the app-owned output-safety classifier (#832/#913 PR8). Read LAZILY
@@ -86,6 +106,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   public var maxDuration: Duration {
     switch llmProvider {
     case .ollama: return .seconds(15)
+    // #1271: EG-1 runs the same class of local generation as Ollama (a 4B
+    // model at local token rates on long dictations) — same 15 s budget,
+    // precedent-cited from the `.ollama` line above. A timeout is a SILENT
+    // skip for this provider (TextProcessingRunner), never a surfaced error.
+    case .egOne: return .seconds(15)
     case .appleIntelligence: return .seconds(10)
     case .openAI, .gemini, .none: return .seconds(5)
     }
@@ -212,8 +237,36 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       )
     }
 
-    guard let polisher = makePolisher(provider, keychainManager, outputClassifierHolder?.classifier)
-    else {
+    // #1271: EG-1 resolves its polisher from the live server endpoint, not
+    // the keychain-shaped factory. Every unavailability here is a SILENT
+    // bypass (`egOneSkipped`), never the surfaced `providerUnavailable` —
+    // a local limb that is not ready must degrade to raw text quietly.
+    let polisher: any TranscriptPolisher
+    if provider == .egOne {
+      guard let runtime = egOneRuntime else {
+        throw LLMError.egOneSkipped(.notReady)
+      }
+      guard let endpoint = await runtime.activeEndpoint() else {
+        throw LLMError.egOneSkipped(.notReady)
+      }
+      // Context preflight: polish whole or skip whole, never a silent
+      // truncation. WORST-CASE on both sides (Codex r15+r16): input at
+      // ~1 token/char (true for unsegmented CJK; a 3x overestimate for
+      // Latin) plus the SAME output cap the request later sends
+      // (`max(text.count, 256)`, r14) plus prompt overhead. Conservative
+      // by design — it bounds polishable dictations at ~8k chars, well
+      // past the product's 5-minute dictation target; anything longer
+      // silently pastes raw rather than risking truncated polish.
+      let outputBudget = max(context.text.count, LLMConstants.ollamaMaxTokens)
+      if context.text.count + outputBudget + 256 > endpoint.contextTokens {
+        throw LLMError.egOneSkipped(.inputTooLong)
+      }
+      polisher = makeEGOnePolisher(endpoint)
+    } else if let made = makePolisher(
+      provider, keychainManager, outputClassifierHolder?.classifier)
+    {
+      polisher = made
+    } else {
       SentryBreadcrumb.captureError(
         LLMError.providerUnavailable, category: .providerInitFailed, stage: "polish")
       throw LLMError.providerUnavailable
@@ -245,6 +298,18 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
           ? LLMConstants.ollamaThinkingMaxTokens
           : LLMConstants.ollamaMaxTokens
         return max(context.text.count / 3 + 100, floor)
+      }
+      if provider == .egOne {
+        // #1271: character-count cap, same CJK-safe shape as the cloud path
+        // below (Codex r14) — the Ollama-style `count/3` estimate assumes
+        // spaced Latin text and under-budgets unsegmented scripts (a 3,000-
+        // char Japanese dictation needs ~3,000 output tokens, not ~1,100),
+        // letting llama-server stop at the cap and paste a TRUNCATED polish.
+        // Latin gets ~4x headroom; the tight 256 floor stays (fixed-prompt
+        // instruct tune, no thinking tokens) and the 15 s budget bounds
+        // wall-clock — an over-long generation now times out to silent raw
+        // instead of truncating.
+        return max(context.text.count, LLMConstants.ollamaMaxTokens)
       }
       // OpenAI reasoning models include reasoning in max_completion_tokens — keep generous.
       if reasoningEffort != nil { return LLMConstants.defaultMaxTokens }
@@ -609,7 +674,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       return (useExtendedThinking ? LLMConstants.defaultThinkingBudget : 0, nil)
     case .openAI:
       return (nil, useExtendedThinking ? "medium" : "low")
-    case .ollama, .appleIntelligence, .none:
+    case .ollama, .appleIntelligence, .egOne, .none:
       return (nil, nil)
     }
   }

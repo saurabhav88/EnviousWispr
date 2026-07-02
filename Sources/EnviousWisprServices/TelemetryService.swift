@@ -781,6 +781,20 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("llm.polish_skipped", properties: props)
   }
 
+  /// #1271: EG-1 native model download funnel + health transitions. Content-
+  /// free by construction: model identity comes from OUR manifest, reasons
+  /// are a closed string set, and no transcript or prompt content exists on
+  /// this path. `eg1.health_changed` is emitted on TRANSITION ONLY (the
+  /// runtime debounces identical states by construction).
+  public func egOneDownloadEvent(name: String, properties: [String: String]) {
+    let event = "eg1.\(name)"
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(name: event, stringProps: properties, boolProps: [:]))
+    #endif
+    PostHogSDK.shared.capture(event, properties: properties)
+  }
+
   public func pasteCompleted(tier: String, targetApp: String?, result: String, latencyMs: Int) {
     var props: [String: Any] = [
       "tier": tier,

@@ -126,13 +126,20 @@ import Testing
   ///   app-quit abandon and the App-layer window-close closure can call it, WITHOUT
   ///   adding a stored property to any coordinator (the #763 direction: many narrow
   ///   homes). The pre-#1176 count was already at the cap (32), so adding one home needs +1.
+  /// - 33 → 34 in #1271 (2026-07-02, EG-1 native integration): App-owned
+  ///   `egOneRuntime` — single owner of the first-party polish model store +
+  ///   inference server, consumed by BOTH the pipeline (endpoint at polish
+  ///   time) and the settings UI (download/health). The composition root is
+  ///   the one valid home for a shared runtime (`state-ownership.md`
+  ///   shared-infra-homes-not-feature-services; council round 1 rejected a
+  ///   settings-setup owner). Plan §3b named this +1 as the accepted cost.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 33,
+      count <= 34,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 33. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 34. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -262,14 +269,24 @@ import Testing
   /// App-layer `prewarmOutputClassifierIfNeeded` catch — its natural emit site. No
   /// new stored property; real wiring, not comment growth. Cap by the deterministic
   /// rule (post-change actual 902 + ~3, rounded up to nearest 5 = 905).
+  /// Ratcheted 905→930 in #1271 (2026-07-02, EG-1 native integration): the
+  /// composition root constructs `EGOneRuntime`, launch-starts it when the
+  /// persisted provider is EG-1, threads it into both kernel-driver input
+  /// structs + the crash-recovery replayer + `PipelineSettingsSync`
+  /// (provider-change lifecycle), installs the telemetry bridge (mapping
+  /// logic itself extracted to `EGOneTelemetryBridge` to keep the root
+  /// thin), kills the child synchronously on terminate, and
+  /// `.environment`-injects it — real wiring for the new App-owned home
+  /// (see the 33→34 stored-property entry above). Cap by the deterministic
+  /// rule (post-change actual 928 + ~2, rounded up to nearest 5 = 930).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 905,
+      lineCount <= 930,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 905. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 930. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

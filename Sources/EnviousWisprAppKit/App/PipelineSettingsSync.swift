@@ -35,14 +35,29 @@ final class PipelineSettingsSync {
     whisperKitKernelDriver: KernelDictationDriver,
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
-    hotkeyService: HotkeyService
+    hotkeyService: HotkeyService,
+    egOneRuntime: EGOneRuntime? = nil
   ) {
     self.kernelDriver = kernelDriver
     self.whisperKitKernelDriver = whisperKitKernelDriver
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.hotkeyService = hotkeyService
+    self.egOneRuntime = egOneRuntime
+    // #1271 matrix gap 3: Remove Model defers while a recording froze
+    // `.egOne`. The pinned-session authority is THIS class (it owns both
+    // drivers), so it wires the runtime's read itself.
+    egOneRuntime?.isPinnedInFlight = { [weak self] in
+      self?.isEGOnePinnedInFlight() ?? false
+    }
   }
+
+  /// #1271 (Codex r2): EG-1 server lifecycle follows the PROVIDER SETTING,
+  /// and this class is the canonical settings→pipeline side-effect route
+  /// (same home as the Ollama eviction below). Switch to EG-1 → server up +
+  /// probe; switch away → server down (a multi-GB child never lingers past
+  /// its selection, the #295 RAM lesson).
+  private let egOneRuntime: EGOneRuntime?
 
   /// Seed live-mutable subsystems. Per-recording values are captured fresh
   /// at each `startRecording` and are not seeded here.
@@ -107,6 +122,8 @@ final class PipelineSettingsSync {
       // frozen value from `DictationSessionConfig`; live steps are seeded per
       // recording, so nothing to mirror here since #1106 removed re-polish.
       reconcileOllamaEviction(settings: settings)
+      // #1271: EG-1 server follows the provider selection live.
+      reconcileEGOneActivation(settings: settings)
     case .llmModel:
       if settings.llmProvider == .ollama {
         settings.ollamaModel = settings.llmModel
@@ -188,6 +205,50 @@ final class PipelineSettingsSync {
 
   /// Fires best-effort unload when the tracked previous Ollama model differs
   /// from the new one. Also coalesces cascading .llmModel → .ollamaModel fires.
+  /// Set when a switch away from EG-1 arrived while a recording had `.egOne`
+  /// frozen in its session config — stopping the server then would silently
+  /// degrade that recording's polish to raw (#1271 Codex r7). The terminal
+  /// pipeline transition retries (same shape as the Ollama eviction defer).
+  private var egOneDeactivationPending = false
+
+  /// EG-1 server follows the provider selection live: activate on switch-to,
+  /// stop on switch-away — but never underneath an in-flight session that
+  /// froze `.egOne` at recording start.
+  private func reconcileEGOneActivation(settings: SettingsManager) {
+    guard let egOneRuntime else { return }
+    if settings.llmProvider == .egOne {
+      egOneDeactivationPending = false
+      egOneRuntime.activateAndProbe()
+      return
+    }
+    if isEGOnePinnedInFlight() {
+      egOneDeactivationPending = true
+      return
+    }
+    egOneDeactivationPending = false
+    egOneRuntime.deactivate()
+  }
+
+  /// Retry a deferred EG-1 shutdown AND a deferred model removal after an
+  /// in-flight session ends. Called alongside `retryDeferredOllamaEviction`
+  /// on terminal pipeline states. Idempotent: each retry no-ops unless
+  /// actually pending.
+  func retryDeferredEGOneDeactivation(settings: SettingsManager) {
+    egOneRuntime?.retryPendingRemoval()
+    guard egOneDeactivationPending else { return }
+    reconcileEGOneActivation(settings: settings)
+  }
+
+  /// True if either pipeline's frozen `DictationSessionConfig` targets EG-1.
+  /// Single authority (#1271 matrix gap 3) — the runtime's Remove Model
+  /// defer reads it through the closure the bootstrapper wires.
+  func isEGOnePinnedInFlight() -> Bool {
+    for cfg in [kernelDriver.currentSessionConfig, whisperKitKernelDriver.currentSessionConfig] {
+      if cfg?.llmProvider == .egOne { return true }
+    }
+    return false
+  }
+
   private func reconcileOllamaEviction(settings: SettingsManager) {
     let new = OllamaConnector.effectiveOllamaModel(
       provider: settings.llmProvider, model: settings.effectiveLLMModel

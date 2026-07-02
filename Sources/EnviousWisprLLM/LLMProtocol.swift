@@ -181,6 +181,14 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
   /// kept distinct from `requestFailed` so it never surfaces as "AI polish
   /// failed" in the UI.
   case outputLanguageDrift(expected: String, actual: String)
+  /// EG-1 (first-party local server) per-request unavailability (#1271).
+  /// Semantics: BYPASS, exactly like the AFM silent-skip family — the user
+  /// gets deterministic-cleaned raw text, no provider stamp, no "AI polish
+  /// failed" pill. The runner adds this to `isSilentPolishSkip` and emits
+  /// `llm.polish_skipped` with the carried reason. NON-retryable by
+  /// `LLMRetryPolicy` (the connector already performs the single
+  /// connection-refused retry that covers the restart-once window).
+  case egOneSkipped(EGOneSkipReason)
   /// A cloud/Ollama polish failure carrying its specific classified reason
   /// (#945). The single adapter that threads the rich `PolishFailureReason`
   /// catalog through the existing `throws LLMError` contract: connectors throw
@@ -207,6 +215,9 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
         "Apple Intelligence does not support the input language '\(code)' for on-device polishing."
     case .outputLanguageDrift(let expected, let actual):
       return "LLM polish output drifted from expected language '\(expected)' to '\(actual)'."
+    case .egOneSkipped(let reason):
+      // Silent bypass — never an on-screen notice; log/debug reads only.
+      return "EG-1 polish skipped (\(reason.rawValue))."
     case .classified(let reason):
       // The user-facing, provider-specific notice is composed by the runner via
       // `reason.composedMessage(provider:)`. This generic description exists only
@@ -231,10 +242,30 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
       return a == b
     case (.outputLanguageDrift(let le, let la), .outputLanguageDrift(let re, let ra)):
       return le == re && la == ra
+    case (.egOneSkipped(let a), .egOneSkipped(let b)):
+      return a == b
     case (.classified(let a), .classified(let b)):
       return a == b
     default:
       return false
     }
   }
+}
+
+/// Why an EG-1 polish was silently bypassed (#1271). Raw values are the
+/// `llm.polish_skipped` telemetry reason strings — one `local_polish_`
+/// prefix so a single analytics query captures every EG-1 skip mode
+/// (mirrors the AFM `context_window_` prefix family).
+public enum EGOneSkipReason: String, Sendable, Equatable {
+  /// Provider selected but no runtime handle / server not ready (booting,
+  /// paused for memory pressure, or failed).
+  case notReady = "local_polish_not_ready"
+  /// Model artifact not downloaded/verified yet.
+  case downloadPending = "local_polish_download_pending"
+  /// Server unreachable mid-request (crashed; connector already retried
+  /// once to cover the restart window).
+  case crashed = "local_polish_crashed"
+  /// Input exceeds the manifest context budget — polish whole or not at
+  /// all, never a silent truncation.
+  case inputTooLong = "local_polish_input_too_long"
 }

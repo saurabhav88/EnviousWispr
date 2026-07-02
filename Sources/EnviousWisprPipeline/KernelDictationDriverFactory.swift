@@ -92,6 +92,10 @@ public enum KernelDictationDriverFactory {
     /// frozen value, so an off-flip stops archiving on the very next
     /// dictation (cloud review, PR #1250).
     package let dictationAudioArchiveOptInProvider: @MainActor () -> Bool
+    /// #1271: EG-1 runtime handle for `LLMPolishStep` — same
+    /// composition-root threading as `keychainManager`. Nil (tests,
+    /// pre-wiring) means every `.egOne` polish silently skips.
+    package let egOneRuntime: (any EGOneEndpointProviding)?
 
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct. `@MainActor`
@@ -109,7 +113,8 @@ public enum KernelDictationDriverFactory {
       pasteCompletionRegistry: PasteCompletionRegistry,
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
       outputClassifierHolder: OutputClassifierHolder? = nil,
-      dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false }
+      dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
+      egOneRuntime: (any EGOneEndpointProviding)? = nil
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
@@ -121,6 +126,7 @@ public enum KernelDictationDriverFactory {
       self.captureErrorSink = captureErrorSink
       self.outputClassifierHolder = outputClassifierHolder
       self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
+      self.egOneRuntime = egOneRuntime
     }
   }
 
@@ -146,6 +152,8 @@ public enum KernelDictationDriverFactory {
     /// dictation-audio archive (#1230). See
     /// `ParakeetInputs.dictationAudioArchiveOptInProvider`.
     package let dictationAudioArchiveOptInProvider: @MainActor () -> Bool
+    /// #1271: EG-1 runtime handle. See `ParakeetInputs.egOneRuntime`.
+    package let egOneRuntime: (any EGOneEndpointProviding)?
 
     /// Explicit package init — same reasoning as `ParakeetInputs.init`.
     /// `languageDetector` is intentionally non-optional (no default) so the
@@ -166,7 +174,8 @@ public enum KernelDictationDriverFactory {
       pasteCompletionRegistry: PasteCompletionRegistry,
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
       outputClassifierHolder: OutputClassifierHolder? = nil,
-      dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false }
+      dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
+      egOneRuntime: (any EGOneEndpointProviding)? = nil
     ) {
       self.audioCapture = audioCapture
       self.whisperKitBackend = whisperKitBackend
@@ -179,6 +188,7 @@ public enum KernelDictationDriverFactory {
       self.captureErrorSink = captureErrorSink
       self.outputClassifierHolder = outputClassifierHolder
       self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
+      self.egOneRuntime = egOneRuntime
     }
   }
 
@@ -232,7 +242,8 @@ public enum KernelDictationDriverFactory {
       pasteCompletionRegistry: inputs.pasteCompletionRegistry,
       captureErrorSink: inputs.captureErrorSink,
       outputClassifierHolder: inputs.outputClassifierHolder,
-      dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider)
+      dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider,
+      egOneRuntime: inputs.egOneRuntime)
   }
 
   /// Build the driver stack for the WhisperKit engine. PR-5 Rung 5 flips the
@@ -261,7 +272,8 @@ public enum KernelDictationDriverFactory {
       pasteCompletionRegistry: inputs.pasteCompletionRegistry,
       captureErrorSink: inputs.captureErrorSink,
       outputClassifierHolder: inputs.outputClassifierHolder,
-      dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider)
+      dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider,
+      egOneRuntime: inputs.egOneRuntime)
   }
 
   /// Engine-agnostic assembler. The two package entry points construct their
@@ -279,13 +291,17 @@ public enum KernelDictationDriverFactory {
     pasteCompletionRegistry: PasteCompletionRegistry,
     captureErrorSink: @escaping HeartPathCaptureErrorSink,
     outputClassifierHolder: OutputClassifierHolder? = nil,
-    dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false }
+    dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
+    egOneRuntime: (any EGOneEndpointProviding)? = nil
   ) -> KernelDictationDriver {
     // 1. LimbSteps — same instances driver + wiring hold by reference.
     // #832/#913 PR8: the live-dictation LLMPolishStep receives the app-owned
     // output-safety classifier holder (read lazily at polish time).
     let llmPolish = LLMPolishStep(keychainManager: keychainManager)
     llmPolish.outputClassifierHolder = outputClassifierHolder
+    // #1271: EG-1 runtime handle (nil-safe — a missing handle means `.egOne`
+    // polishes silently skip, never crash or surface).
+    llmPolish.egOneRuntime = egOneRuntime
     // #761: `emojiRestore` is the final limb, always-on and data-driven (it
     // no-ops when no emoji were dropped) — NOT gated on the converter toggle, so
     // a mid-dictation toggle flip can never strand an already-inserted glyph.

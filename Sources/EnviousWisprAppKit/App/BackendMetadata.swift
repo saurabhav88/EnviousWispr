@@ -38,6 +38,7 @@ final class BackendMetadata {
     switch settings.llmProvider {
     case .none: "Off"
     case .appleIntelligence: "Apple Intelligence"
+    case .egOne: "EG-1"  // #1271: fixed name, like Apple Intelligence above
     default: llmLabel
     }
   }

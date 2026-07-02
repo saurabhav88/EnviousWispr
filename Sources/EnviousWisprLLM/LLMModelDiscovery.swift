@@ -39,6 +39,10 @@ public struct LLMModelDiscovery: Sendable {
       modelIDs = try await fetchOllamaModels()
     case .appleIntelligence:
       return appleIntelligenceModelInfo()
+    case .egOne:
+      // #1271: fixed first-party model — nothing to discover; the settings
+      // row renders manifest identity from `EGOneRuntime`, not from here.
+      return []
     case .none:
       return []
     }
@@ -326,6 +330,7 @@ public struct LLMModelDiscovery: Sendable {
     case .openAI: return await probeOpenAI(modelID: id, apiKey: apiKey)
     case .ollama: return true  // If model appears in tags list, it's available
     case .appleIntelligence: return true
+    case .egOne: return true  // #1271: availability is the health probe's job, not discovery's
     case .none: return false
     }
   }

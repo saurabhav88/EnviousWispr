@@ -46,13 +46,17 @@ public final class RecoveryTextProcessor {
   private var recordedLanguage: String?
 
   public init(
-    keychainManager: KeychainManager, outputClassifierHolder: OutputClassifierHolder? = nil
+    keychainManager: KeychainManager, outputClassifierHolder: OutputClassifierHolder? = nil,
+    egOneRuntime: (any EGOneEndpointProviding)? = nil
   ) {
     let llmPolish = LLMPolishStep(keychainManager: keychainManager)
     // Standalone (no live kernel attached): no streaming/lifecycle callbacks.
     llmPolish.onWillProcess = nil
     llmPolish.onToken = nil
     llmPolish.outputClassifierHolder = outputClassifierHolder
+    // #1271: recovery polishes through the SAME EG-1 server as live dictation
+    // (or silently skips when it is not ready) — never crashes on a nil handle.
+    llmPolish.egOneRuntime = egOneRuntime
     // `emojiRestore` is the final limb (#761): always-on and data-driven, it
     // no-ops unless the recovered take polished under Apple Intelligence and a
     // glyph was dropped, so it needs no settings from the snapshot.

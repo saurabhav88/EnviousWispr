@@ -211,6 +211,18 @@ else
         codesign "${SIGN_FLAGS[@]}" --entitlements "$ENT" "$XPC_SVC"
     done
     test -n "$AUDIO_XPC"; test -n "$ASR_XPC"
+    # 5.5. EG-1 inference server (#1271) — a bare Mach-O in Contents/Resources,
+    # signed like Sparkle's Autoupdate (a missed bare Mach-O is exactly the
+    # class that failed v1.5.2/v1.5.3 notarization). Must be sealed BEFORE the
+    # main-app signature covers the bundle.
+    EG1_SERVER="$BUNDLE/Contents/Resources/llama-server"
+    if [[ -f "$EG1_SERVER" ]]; then
+        echo "    [5.5/6] eg-1 server: llama-server"
+        codesign "${SIGN_FLAGS[@]}" "$EG1_SERVER"
+    else
+        echo "::error::EG-1 llama-server missing from Contents/Resources (#1271)"
+        exit 1
+    fi
     # 6. Embed the Developer ID provisioning profile, THEN the main app bundle.
     # keychain-access-groups is a RESTRICTED entitlement; AMFI requires the embedded
     # profile to authorize it at launch (TN3125). The profile is sealed by the

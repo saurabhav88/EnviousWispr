@@ -107,12 +107,29 @@ public final class SettingsManager {
       // consistent across providers (turning polish off from Apple Intelligence
       // vs OpenAI both read `user`). Only async background discovery
       // (`applyDiscoveredModels`) is `system`.
-      if llmProvider == .appleIntelligence {
-        llmModel = "apple-intelligence"
-      } else if llmModel == "apple-intelligence" || llmModel.isEmpty {
+      canonicalizeLLMModelForProvider()
+      onChange?(.llmProvider)
+    }
+  }
+
+  /// Canonicalize `llmModel` for the current provider (single authority —
+  /// called from the provider didSet AND init). Fixed-literal providers
+  /// (Apple Intelligence, EG-1) pin their literal; switching AWAY from one
+  /// must sweep that literal too, or a cloud provider inherits it as its
+  /// model name and every polish request fails until discovery repairs it
+  /// (#1271 Codex r7: only "apple-intelligence" was swept, so "eg-1"
+  /// leaked into OpenAI/Gemini).
+  private func canonicalizeLLMModelForProvider() {
+    let fixedLiterals = ["apple-intelligence", LLMProvider.egOneModelName]
+    switch llmProvider {
+    case .appleIntelligence:
+      llmModel = "apple-intelligence"
+    case .egOne:
+      llmModel = LLMProvider.egOneModelName
+    case .openAI, .gemini, .ollama, .none:
+      if fixedLiterals.contains(llmModel) || llmModel.isEmpty {
         llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
       }
-      onChange?(.llmProvider)
     }
   }
 
@@ -463,6 +480,9 @@ public final class SettingsManager {
   public var effectiveLLMModel: String {
     switch llmProvider {
     case .appleIntelligence: return "apple-intelligence"
+    // #1271: fixed literal, the apple-intelligence pattern — Services cannot
+    // import the LLM-module manifest; version detail rides eg1.* telemetry.
+    case .egOne: return LLMProvider.egOneModelName
     case .ollama: return ollamaModel
     case .openAI, .gemini, .none: return llmModel
     }
@@ -680,11 +700,7 @@ public final class SettingsManager {
     hasUnreadWhatsNew = (storedWhatsNew != WhatsNewConstants.currentContentVersion)
 
     // Canonicalize provider-coupled model names after all properties are loaded.
-    if llmProvider == .appleIntelligence {
-      llmModel = "apple-intelligence"
-    } else if llmModel == "apple-intelligence" || llmModel.isEmpty {
-      llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
-    }
+    canonicalizeLLMModelForProvider()
   }
 
   /// Apply discovered models from async discovery. SettingsManager decides whether to update.
