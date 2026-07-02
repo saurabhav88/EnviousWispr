@@ -143,8 +143,10 @@ enum SettingsProjection {
   /// is on a known-safe allowlist, otherwise `custom`. This makes a private local
   /// model name impossible to leak regardless of the brief provider/model lag
   /// after a switch (Codex r7 pivot):
-  /// - Ollama: the SHIPPED catalog only (canonicalized). The user's own pulled
-  ///   models are NOT an allowlist — a private finetune name collapses to `custom`.
+  /// - Ollama: the SHIPPED catalog + our FIRST-PARTY curated-private names (EG-1,
+  ///   #1269) — both are our own published strings, not user data. USER-pulled
+  ///   model names are still NOT an allowlist — a private finetune name collapses
+  ///   to `custom`.
   /// - OpenAI / Gemini: a curated set of known public cloud ids (date-snapshot
   ///   suffix normalized away). A stale local id carried over before discovery
   ///   corrects `llmModel` is not on this list → `custom`, never the raw name.
@@ -157,7 +159,8 @@ enum SettingsProjection {
     case .ollama:
       let canonical = OllamaSetupService.canonicalModelName(id)
       let catalog = Set(
-        OllamaSetupService.modelCatalog.map { OllamaSetupService.canonicalModelName($0.name) })
+        (OllamaSetupService.modelCatalog + OllamaSetupService.curatedPrivateCatalog)
+          .map { OllamaSetupService.canonicalModelName($0.name) })
       return catalog.contains(canonical) ? canonical : "custom"
     case .openAI, .gemini:
       let base = stripDateSnapshotSuffix(id)

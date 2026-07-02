@@ -11,12 +11,14 @@ public struct DefaultPromptPlanner: PromptPlanning {
     // plan mode to `.message` so the builder (which ignores mode), the downstream output
     // validator (`LLMPolishStep` passes `plan.mode` into `validatePolishOutput`), and the
     // `polish_mode` telemetry all share ONE consistent policy that matches the eval mirror.
-    // Ollama keeps the analyzer's mode because its per-model builders still format by mode.
+    // #1269: EG-1 (via Ollama) is modeless the same way — same forced `.message` policy.
+    // Other Ollama models keep the analyzer's mode because their builders format by mode.
+    let family = Self.family(for: input.provider, modelID: input.modelID)
     let mode: PolishMode
-    switch input.provider {
-    case .openAI, .gemini:
+    switch family {
+    case .cloudFixed, .egOneFixed:
       mode = .message
-    default:
+    case .openAIProse, .gemmaFewShot:
       mode = TranscriptAnalyzer.analyzeMode(
         transcript: input.transcript,
         appName: input.appName
@@ -30,7 +32,7 @@ public struct DefaultPromptPlanner: PromptPlanning {
     // `polishVocabulary` so pack terms can never reach this path.
     let filtered = applyVocabularyPolicy(to: input)
 
-    let builder = Self.builder(for: input.provider, modelID: input.modelID)
+    let builder = Self.builder(for: family)
     let envelope = builder.build(input: filtered, mode: mode)
     return PolishPlan(mode: mode, envelope: envelope)
   }
@@ -38,10 +40,16 @@ public struct DefaultPromptPlanner: PromptPlanning {
   /// Select builder by provider + model family, not just provider.
   /// Ollama running non-Gemma models gets OpenAI-style prose prompt.
   public static func builder(for provider: LLMProvider, modelID: String) -> any PromptBuilder {
-    switch family(for: provider, modelID: modelID) {
+    builder(for: family(for: provider, modelID: modelID))
+  }
+
+  /// Select builder for an already-computed family (single family computation in `plan`).
+  static func builder(for family: PromptFamily) -> any PromptBuilder {
+    switch family {
     case .cloudFixed: return CloudFixedPromptBuilder()
     case .openAIProse: return OpenAIPromptBuilder()
     case .gemmaFewShot: return GemmaPromptBuilder()
+    case .egOneFixed: return EGOnePromptBuilder()
     }
   }
 
@@ -52,6 +60,11 @@ public struct DefaultPromptPlanner: PromptPlanning {
       // Strong cloud models: one fixed prompt, no per-transcript mode selection (#1255).
       return .cloudFixed
     case .ollama:
+      // EG-1 (our tuned model, #1269) first: explicit precedence for the first-party
+      // model over the generic family heuristics below.
+      if modelID.lowercased().hasPrefix("eg-1") {
+        return .egOneFixed
+      }
       if modelID.lowercased().contains("gemma") {
         return .gemmaFewShot
       }
