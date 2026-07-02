@@ -82,6 +82,11 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// any subsequent `@MainActor` reader without an intervening `await`.
   private var cachedReadiness: ASREngineReadiness = .notReady
 
+  /// #1275: synchronously-readable cache of the backend's most recent
+  /// warm-up inference duration, refreshed alongside `cachedReadiness`
+  /// wherever `warmUp()` observes the backend reaching `.ready`.
+  private var cachedWarmupInferenceMs: Int?
+
   // MARK: Engine state
 
   /// Issue #445: held `prepare()` task so `cancel()` can cancel its host
@@ -215,6 +220,9 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
 
   var readiness: ASREngineReadiness { cachedReadiness }
 
+  /// #1275: read-only pass-through of the cached warm-up duration.
+  var lastWarmupInferenceMs: Int? { cachedWarmupInferenceMs }
+
   // MARK: ASREngineAdapter — warm-up
 
   /// Idempotent, sessionless warm-up. Held `prepareTask` so `cancel()` can
@@ -225,6 +233,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   func warmUp() async throws {
     if await backend.isReady {
       cachedReadiness = .ready
+      cachedWarmupInferenceMs = await backend.lastWarmupInferenceMs
       return
     }
     cachedReadiness = .warming
@@ -240,6 +249,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
       // reports a false success on an unready engine.
       let ready = await captured.isReady
       cachedReadiness = ready ? .ready : .notReady
+      cachedWarmupInferenceMs = ready ? await captured.lastWarmupInferenceMs : nil
       guard ready else { throw ASRLoadSupersededError() }
     } catch {
       prepareTask = nil
@@ -251,13 +261,14 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// Cache-only warm-up — intentionally a near no-op for WhisperKit.
   ///
   /// Earlier drafts dispatched `prepareIfCached()` here on a detached `Task`
-  /// to silently load a cached model during the kernel's `preWarm` hop. But
-  /// `WhisperKitBackend.prepareIfCached()` does NOT participate in
-  /// `prepare()`'s `loadTask` single-flight guard at
-  /// `WhisperKitBackend.swift:61-97` — so a detached `prepareIfCached` racing
-  /// the kernel's spawned `warmUp()` (which calls `prepare()`) can launch
-  /// two concurrent CoreML loads, doubling cold-start work and memory
-  /// pressure (Codex code-diff r5).
+  /// to silently load a cached model during the kernel's `preWarm` hop, but a
+  /// detached `prepareIfCached` racing the kernel's spawned `warmUp()`
+  /// (which calls `prepare()`) risked two concurrent CoreML loads. #1275
+  /// routed `prepareIfCached()` through the SAME `loadTask` single-flight
+  /// owner `prepare()` uses (`WhisperKitBackend.swift`'s `loadIfNeeded`), so
+  /// that specific race is now closed at the backend layer regardless of
+  /// caller. This adapter still does not dispatch a detached
+  /// `prepareIfCached` here, since it remains unnecessary:
   ///
   /// In the kernel-driven flow, the kernel's spawned `warmUp()` path
   /// already calls `prepare()`, which internally checks
@@ -266,10 +277,13 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// the cached-load optimization is preserved by `prepare()`'s own cache
   /// branch, and the single-flight guard prevents duplicate loads.
   ///
-  /// Side effect: keep `cachedReadiness` refreshed against the backend's
-  /// current state so a recently-unloaded model is reported as `.notReady`.
+  /// Side effect: keep `cachedReadiness`/`cachedWarmupInferenceMs` refreshed
+  /// against the backend's current state so a recently-unloaded model is
+  /// reported as `.notReady`.
   func warmUpFromCache() async throws {
-    cachedReadiness = await backend.isReady ? .ready : .notReady
+    let ready = await backend.isReady
+    cachedReadiness = ready ? .ready : .notReady
+    cachedWarmupInferenceMs = ready ? await backend.lastWarmupInferenceMs : nil
   }
 
   /// WhisperKit / CoreML exposes no model-load progress signal. The kernel
@@ -1161,6 +1175,10 @@ extension WhisperKitEngineAdapter {
 package protocol WhisperKitBackendDriving: Actor {
   var isReady: Bool { get }
   var modelVariantName: String { get }
+  /// #1275 item A: duration of the most recent silent warm-up inference, in
+  /// milliseconds. `nil` until the first load's warm-up reaches a terminal
+  /// state (completed/threw/timed-out — only `.completed` sets it).
+  var lastWarmupInferenceMs: Int? { get }
   func prepare() async throws
   // periphery:ignore - protocol requirement (witnessed by WhisperKitBackend)
   func prepareIfCached() async throws -> Bool

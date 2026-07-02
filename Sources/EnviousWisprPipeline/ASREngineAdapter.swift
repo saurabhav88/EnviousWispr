@@ -212,6 +212,12 @@ package protocol ASREngineAdapter: AnyObject {
   /// Current warm-up / load readiness.
   var readiness: ASREngineReadiness { get }
 
+  /// #1275: duration of the most recent silent warm-up inference, in
+  /// milliseconds. `nil` for adapters without this concept (default, e.g.
+  /// Parakeet) or before the first load's warm-up completes. Read only for
+  /// an optional telemetry property — no consumer branches on it.
+  var lastWarmupInferenceMs: Int? { get }
+
   // MARK: Warm-up
 
   /// Idempotent, sessionless warm-up — drives `readiness` toward `.ready`.
@@ -377,6 +383,9 @@ extension ASREngineAdapter {
   /// generic warmup label. Concrete adapters override when they observe
   /// real phase strings.
   public var lastObservedPhase: String { "warmup" }
+
+  /// Default: no warm-up-inference concept (Parakeet). WhisperKit overrides.
+  public var lastWarmupInferenceMs: Int? { nil }
 
   // PR-5 Rung 2A: no-op defaults for the three optional hooks. Adapters
   // with meaningful semantics override; the others inherit these.

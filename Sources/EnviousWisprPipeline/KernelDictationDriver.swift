@@ -235,10 +235,15 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// model load via `adapter.warmUp()` — idempotent and single-flighted by the
   /// backend (`WhisperKitBackend.loadTask` / `ASRManager.inFlightLoadTask`), so a
   /// press landing during a launch/onboarding warm-up JOINS the in-flight load
-  /// rather than starting a second compile. "Loaded" already means "first press
-  /// instant" (measured 2026-06-01: no first-inference penalty), so this drives
-  /// the normal load only — no `prewarm` (it would load twice) and no
-  /// dummy-transcribe.
+  /// rather than starting a second compile. This drives the normal load only
+  /// — no `prewarm` (it would load twice). #1275: the earlier "loaded already
+  /// means first press instant, no dummy-transcribe" claim here (measured
+  /// 2026-06-01) turned out to be path-dependent — a warm-cache relaunch
+  /// showed a real first-decode penalty, contradicting that cold-load
+  /// measurement. WhisperKit's backend now runs its own silent warm-up
+  /// inference inside `loadFromPath` before flipping `isReady`, so "loaded"
+  /// now genuinely means "first press instant" regardless of load path; see
+  /// `whisperkit-research.md` for the full finding.
   ///
   /// Never throws into callers (a warm-up failure must not crash the heart-path
   /// press); it returns an `EngineWarmupOutcome` instead. Most callers discard
@@ -270,7 +275,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       residentModelLostWhileIdle = false  // #959: load succeeded — drop stale marker.
       let ms = Self.elapsedMs(since: start)
       TelemetryService.shared.coldStartWarmupCompleted(
-        engine: engine, reason: reason.telemetryToken, durationMs: ms)
+        engine: engine, reason: reason.telemetryToken, durationMs: ms,
+        inferenceWarmupMs: adapter.lastWarmupInferenceMs)
       if reason == .launch {
         TelemetryService.shared.launchModelPreloadCompleted(
           backend: engine, result: warmupInFlight ? "joined_in_flight" : "success",

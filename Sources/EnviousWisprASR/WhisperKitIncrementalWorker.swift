@@ -17,6 +17,35 @@ package struct IncrementalResult: Sendable {
   package let tailDecodeMs: Int
 }
 
+/// Narrow seam over WhisperKit's transcribe entry point, mirroring
+/// `WhisperKitBackendDriving`. Lets `WhisperKitIncrementalWorker` be
+/// characterization-tested with a fake decoder instead of a loaded model.
+package protocol WhisperKitTranscribing: Sendable {
+  func transcribe(audioArray: [Float], decodeOptions: DecodingOptions?) async throws
+    -> [TranscriptionResult]
+}
+
+// Retroactive @unchecked Sendable: WhisperKit (upstream, @preconcurrency-imported)
+// has mutable stored properties so it cannot auto-synthesize Sendable, but every
+// caller of the shared instance in this package already goes through actor
+// isolation (WhisperKitBackend) or the drain gate (`readyKitAfterWarmupDrain`)
+// that serializes access — the same safety argument the rest of this file
+// already relies on when passing `WhisperKit` across actor boundaries under
+// `@preconcurrency import WhisperKit`.
+extension WhisperKit: @retroactive @unchecked Sendable {}
+
+extension WhisperKit: WhisperKitTranscribing {
+  // Explicit wrapper: WhisperKit's real `transcribe(audioArray:decodeOptions:callback:segmentCallback:)`
+  // has two additional defaulted parameters, which structural witness matching
+  // does not bridge automatically. Forward to it explicitly.
+  package func transcribe(audioArray: [Float], decodeOptions: DecodingOptions?) async throws
+    -> [TranscriptionResult]
+  {
+    try await self.transcribe(
+      audioArray: audioArray, decodeOptions: decodeOptions, callback: nil, segmentCallback: nil)
+  }
+}
+
 /// Periodically transcribes the growing audio buffer during recording.
 /// Purely an internal latency optimization — no UI, no streaming model.
 ///
@@ -25,9 +54,9 @@ package struct IncrementalResult: Sendable {
 /// - Long recordings (>30s): use clipTimestamps to only decode new audio (efficient)
 /// - On finalize: async tail decode covers speech after the last worker result
 package actor WhisperKitIncrementalWorker: WhisperKitIncrementalSession {
-  private let whisperKit: WhisperKit
+  private let whisperKit: any WhisperKitTranscribing
   private let baseDecodingOptions: DecodingOptions
-  private let cadence: Duration = .seconds(3)
+  private let cadence: Duration
   private let longRecordingThreshold: Int = 16000 * 30
 
   private var accumulatedText: String = ""
@@ -40,9 +69,83 @@ package actor WhisperKitIncrementalWorker: WhisperKitIncrementalSession {
   private var running = false
   private var loopTask: Task<Void, Never>?
 
-  package init(whisperKit: WhisperKit, decodingOptions: DecodingOptions) {
+  /// `cadence` defaults to the shipped 3s cycle; tests inject a near-zero
+  /// value so the run loop's boundary behavior can be characterized without
+  /// waiting on real wall-clock time (#1275).
+  package init(
+    whisperKit: any WhisperKitTranscribing, decodingOptions: DecodingOptions,
+    cadence: Duration = .seconds(3)
+  ) {
     self.whisperKit = whisperKit
     self.baseDecodingOptions = decodingOptions
+    self.cadence = cadence
+  }
+
+  /// Selects the finalize candidate text. Long-mode prefers `accumulatedText`
+  /// (the clipped incremental accumulation) but falls back to `lastFullResult`
+  /// when the recording only crossed the 30s boundary between the worker's
+  /// last short-mode decode and finalize — `lastFullResult` still covers
+  /// exactly `lastResultSampleCount` samples and the tail decode covers the
+  /// remainder, so it is a valid candidate, not a discard signal (#1275).
+  package static func selectCandidateText(
+    isLong: Bool,
+    accumulatedText: String,
+    lastFullResult: String?
+  ) -> String? {
+    guard isLong else { return lastFullResult }
+    let trimmed = accumulatedText.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? lastFullResult : accumulatedText
+  }
+
+  /// Joins the worker's candidate text with the tail decode's text, trimming
+  /// a duplicated overlap at the seam when the tail's start literally
+  /// repeats the end of the candidate — the deliberate 1.0s audio overlap
+  /// (`overlapStartSeconds` above) re-decodes the same speech, and WhisperKit
+  /// can emit a partial-token continuation split across both decodes (e.g.
+  /// candidate ends "...lingerie outside?", tail starts "gerie outside?").
+  ///
+  /// Case-insensitive longest-common-affix between the last `maxWindow`
+  /// characters of `candidate` and the first `maxWindow` characters of
+  /// `tail`, bounded to a span plausibly produced by the ~1s audio overlap.
+  /// Punctuation and whitespace are compared literally (not stripped) — a
+  /// diverging trailing punctuation mark only prevents a match, it never
+  /// causes an incorrect trim. Trims ONLY from `tail`'s prefix; `candidate`
+  /// is never modified, and no text is removed without a positive seam
+  /// match (no match → today's naive `candidate + " " + tail` join).
+  ///
+  /// Known residual risk (accepted, #1275 §7): a genuine word repeated by
+  /// the speaker exactly at the seam (e.g. "...standing outside outside in
+  /// the rain") is indistinguishable from acoustic-overlap duplication from
+  /// text alone, so this can wrongly trim one copy. The trimmer anchors
+  /// strictly on the seam (candidate suffix vs tail prefix), never a global
+  /// dedup, to keep this risk local to the boundary.
+  package static func joinWithOverlapTrim(_ candidate: String, _ tail: String) -> String {
+    guard !tail.isEmpty else { return candidate }
+    guard !candidate.isEmpty else { return tail }
+
+    let maxWindow = 80
+    let candidateWindow = Array(candidate.suffix(maxWindow)).map { Character($0.lowercased()) }
+    let tailWindow = Array(tail.prefix(maxWindow)).map { Character($0.lowercased()) }
+
+    var overlapLength = 0
+    let maxK = min(candidateWindow.count, tailWindow.count)
+    if maxK > 0 {
+      for k in stride(from: maxK, through: 1, by: -1) {
+        if candidateWindow.suffix(k).elementsEqual(tailWindow.prefix(k)) {
+          overlapLength = k
+          break
+        }
+      }
+    }
+
+    guard overlapLength > 0 else {
+      return candidate + " " + tail
+    }
+
+    let trimStart = tail.index(tail.startIndex, offsetBy: overlapLength)
+    let trimmedTail = String(tail[trimStart...]).trimmingCharacters(in: .whitespaces)
+    guard !trimmedTail.isEmpty else { return candidate }
+    return candidate + " " + trimmedTail
   }
 
   package func start(
@@ -82,7 +185,9 @@ package actor WhisperKitIncrementalWorker: WhisperKitIncrementalSession {
       )
     }
 
-    let candidateText = isLong ? accumulatedText : lastFullResult
+    let candidateText = Self.selectCandidateText(
+      isLong: isLong, accumulatedText: accumulatedText, lastFullResult: lastFullResult
+    )
     let hasText =
       candidateText != nil
       && !candidateText!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -151,17 +256,27 @@ package actor WhisperKitIncrementalWorker: WhisperKitIncrementalSession {
 
       let tailMs = Int((CFAbsoluteTimeGetCurrent() - tailStart) * 1000)
 
+      // Implied 30s-window count spanned by this decode's clip range. WhisperKit
+      // always encodes a fixed 30s window per pass — a value >1 here means the
+      // clip range exceeds one window (stale worker, large uncovered tail).
+      // Measurement only (#1275 item C): never silently clamp the clip start,
+      // since that would drop uncovered audio unless the worker text already
+      // represents it.
+      let clipSpanSeconds = Float(paddedSamples.count) / 16000.0 - overlapStartSeconds
+      let impliedWindowCount = max(1, Int(ceil(Double(clipSpanSeconds) / 30.0)))
+
       await AppLogger.shared.log(
         "TAIL_DIAG: workerText=[\(candidateText?.suffix(60) ?? "nil")] "
           + "tailText=[\(tailText.suffix(60))] "
           + "overlapStart=\(String(format: "%.1f", overlapStartSeconds))s "
           + "uncoveredDuration=\(String(format: "%.1f", tailDurationSeconds))s "
-          + "tailDecodeMs=\(tailMs)",
+          + "tailDecodeMs=\(tailMs) "
+          + "impliedWindows=\(impliedWindowCount)",
         level: .info, category: "WhisperKitWorker"
       )
 
       if !tailText.isEmpty {
-        let finalText = candidateText! + " " + tailText
+        let finalText = Self.joinWithOverlapTrim(candidateText!, tailText)
         return IncrementalResult(
           text: finalText, samplesCovered: finalSamples.count,
           decodeCount: decodeCount, totalDecodeTimeMs: totalDecodeTimeMs,
