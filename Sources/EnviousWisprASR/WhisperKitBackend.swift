@@ -51,6 +51,12 @@ public actor WhisperKitBackend: ASRBackend {
   /// the guard.
   private var loadTask: Task<Void, Error>?
 
+  /// #1275 (Codex r2 P2): monotonic generation stamp, mirroring
+  /// `ASRManagerProxy.loadGeneration` (`ASRManagerProxy.swift:53`). Bumped by
+  /// `unload()` so a `loadFromPath` in-flight at unload time can never write
+  /// `isReady = true` after the fact on a since-cleared `whisperKit`.
+  private var loadGeneration: UInt64 = 0
+
   /// #1275 item A: outcome of the silent warm-up inference run at load time.
   private enum WarmupOutcome: Sendable {
     case completed(ms: Int)
@@ -192,6 +198,14 @@ public actor WhisperKitBackend: ASRBackend {
   }
 
   private func loadFromPath(_ modelPath: String) async throws {
+    // #1275 (Codex r2 P2): capture the generation before any await. `unload()`
+    // bumps it, so a load/warm-up whose completion races an unload can never
+    // resurrect `isReady = true` on a since-cleared `whisperKit` — the same
+    // established pattern `ASRManagerProxy.loadGeneration` uses for the
+    // identical class of race (`ASRManagerProxy.swift:53`), reused here
+    // rather than inventing a new mechanism.
+    let gen = loadGeneration
+
     let config = WhisperKitConfig(
       model: modelVariant,
       modelFolder: modelPath,
@@ -208,6 +222,7 @@ public actor WhisperKitBackend: ASRBackend {
     // lack of a defended-timeout distribution — NOT for lack of timing data. Do
     // not wrap this in a wall-clock timeout (timeout-numbers-need-distribution-evidence).
     let kit = try await WhisperKit(config)
+    guard gen == loadGeneration else { throw ASRLoadSupersededError() }
     self.whisperKit = kit
 
     // #1275 item A: one silent warm-up inference before flipping isReady, so
@@ -216,6 +231,7 @@ public actor WhisperKitBackend: ASRBackend {
     // flips isReady, since the model IS loaded and usable; only the
     // first-press latency win is lost.
     await runWarmup(kit: kit)
+    guard gen == loadGeneration else { throw ASRLoadSupersededError() }
     isReady = true
   }
 
@@ -258,9 +274,14 @@ public actor WhisperKitBackend: ASRBackend {
       return
     }
 
-    // Per actor-reentrancy-await: only clear the handle if no newer warm-up
-    // (from an interleaved unload/reload during this await) replaced it.
-    if warmupToken == token { warmupTask = nil }
+    // Per actor-reentrancy-await: only clear the handle — and only record the
+    // outcome — if no newer warm-up (from an interleaved unload/reload during
+    // this await) replaced it. Without this token check, an abandoned load's
+    // late completion could overwrite a NEWER load's `lastWarmupInferenceMs`
+    // with stale data (the same class of race Codex r2 P2 found for
+    // `isReady`, closed here too rather than leaving a sibling gap).
+    guard warmupToken == token else { return }
+    warmupTask = nil
 
     switch outcome {
     case .completed(let ms):
@@ -333,6 +354,9 @@ public actor WhisperKitBackend: ASRBackend {
   }
 
   public func unload() async {
+    // #1275 (Codex r2 P2): supersede any in-flight loadFromPath BEFORE
+    // clearing state, so its post-await guards see the bumped generation.
+    loadGeneration &+= 1
     whisperKit = nil
     isReady = false
   }
