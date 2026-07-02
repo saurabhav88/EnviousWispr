@@ -209,4 +209,43 @@ struct InverseTextNormalizerParityTests {
   func apNumberPolicy(input: String, expected: String) {
     #expect(InverseTextNormalizer().normalize(input) == expected)
   }
+
+  // Codex-finding regressions from PR #1191's review. Fix 1: keep-magnitude must never rewrite
+  // a PARTIAL comma group (a complete comma-grouped number is never followed by ",digit", so the
+  // (?!,\d) guard only blocks backtracked prefixes). Fix 2: the pad-space rejoin must accept our
+  // own ordinal-suffix emissions ("23rd"), not only bare digits ("20").
+  @Test(
+    "Codex-finding regressions hold (#1201/#1202)",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/1201", "scale ordinals >= billion"),
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/1202", "hyphenated ordinal rejoin"),
+    arguments: [
+      // #1201: billion-scale ordinal survives keep-magnitude intact (was "1 million,000th")
+      ("one billionth", "1,000,000,000th"),
+      // leading coefficient on a billion-scale ordinal (was "2 million,000th")
+      ("two billionth", "2,000,000,000th"),
+      // same defect class through the currency-decimal guard: the (?!\.\d) block on the full
+      // match let keep-magnitude backtrack onto the "5,000,000" prefix (was "$5 million,000.00")
+      ("$5,000,000,000.00", "$5,000,000,000.00"),
+      // keep-magnitude positives must keep converting (guard is partial-groups only)
+      ("we raised eighty million dollars", "we raised $80 million"),
+      ("the deal was worth three billion dollars", "the deal was worth $3 billion"),
+      // millionth was accidentally safe before the fix and must stay safe after it
+      ("one millionth", "1,000,000th"),
+      // fraction guard unaffected: "of" keeps the spelled form
+      ("a billionth of a second", "a billionth of a second"),
+      // plural / multiplier suffixes ride the same partial-group class: preserve unchanged
+      // (old code corrupted both to "1 million,000s" / "1 million,000x")
+      ("the count is in the 1,000,000,000s now", "the count is in the 1,000,000,000s now"),
+      ("roughly 1,000,000,000x faster", "roughly 1,000,000,000x faster"),
+      // #1202: hyphenated compound-ordinal modifier rejoins (was "23rd -century art")
+      ("twenty-third-century art", "23rd-century art"),
+      ("her twenty-first-birthday party", "her 21st-birthday party"),
+      // digit-cardinal rejoin (pre-existing behavior) must keep working
+      ("a twenty-step process", "a 20-step process"),
+      // hyphen followed by a space is prose punctuation, never rejoined
+      ("she came 3rd - not bad", "she came 3rd - not bad"),
+    ])
+  func codexFindingRegressions(input: String, expected: String) {
+    #expect(InverseTextNormalizer().normalize(input) == expected)
+  }
 }
