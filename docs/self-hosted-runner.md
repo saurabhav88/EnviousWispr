@@ -66,27 +66,35 @@ tail -f ~/Library/Logs/actions.runner.saurabhav88-EnviousWispr.enviouswispr-rele
 
 ## Recovery: Re-register Runner
 
-If the runner token expires or the runner needs re-registration:
+`~/actions-runner/` was deleted as part of the 2026-07-02 decommission, so
+re-establishing the runner is a fresh install, not a token refresh against an
+existing directory:
 
 ```bash
-cd ~/actions-runner
+# Download + extract a fresh runner package (get the current version/URL from
+# https://github.com/actions/runner/releases)
+mkdir ~/actions-runner && cd ~/actions-runner
+curl -o actions-runner-osx-arm64-VERSION.tar.gz -L https://github.com/actions/runner/releases/download/vVERSION/actions-runner-osx-arm64-VERSION.tar.gz
+tar xzf actions-runner-osx-arm64-VERSION.tar.gz
 
-# Get new token
+# Get a registration token
 TOKEN=$(gh api repos/saurabhav88/EnviousWispr/actions/runners/registration-token --method POST --jq '.token')
 
-# Remove old config
-./config.sh remove --token "$TOKEN"
-
-# Re-register
+# Register
 ./config.sh --url https://github.com/saurabhav88/EnviousWispr \
   --token "$TOKEN" \
   --name enviouswispr-release \
   --labels self-hosted,macOS,apple-silicon,enviouswispr-release \
   --unattended --replace
 
-# Restart service
+# Install + start service
 ./svc.sh install && ./svc.sh start
 ```
+
+Re-adding the `self-hosted, enviouswispr-release` labels to any workflow after
+registering is a separate, deliberate step — see `NEVER re-add its labels to a
+workflow` in `.claude/knowledge/distribution.md` FACT:
+self-hosted-release-runner-decommissioned before doing so.
 
 ## Updating the Runner
 
