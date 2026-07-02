@@ -268,4 +268,9 @@ public enum EGOneSkipReason: String, Sendable, Equatable {
   /// Input exceeds the manifest context budget — polish whole or not at
   /// all, never a silent truncation.
   case inputTooLong = "local_polish_input_too_long"
+  /// The server stopped generation at the max_tokens cap
+  /// (finish_reason == length): the content is a PARTIAL rewrite, and
+  /// pasting it would be exactly the silent truncation the contract
+  /// forbids (#1271 cloud review). Skip whole → raw fallback.
+  case outputTruncated = "local_polish_output_truncated"
 }

@@ -103,10 +103,23 @@ struct EGOneServerManagerTests {
 @Suite("EGOneConnector response cleanup (#1271)")
 struct EGOneConnectorResponseTests {
 
-  private static func wireData(content: String) throws -> Data {
+  private static func wireData(content: String, finishReason: String = "stop") throws -> Data {
     try JSONSerialization.data(withJSONObject: [
-      "choices": [["message": ["role": "assistant", "content": content]]]
+      "choices": [
+        ["message": ["role": "assistant", "content": content], "finish_reason": finishReason]
+      ]
     ])
+  }
+
+  /// finish_reason == length means the content is a PARTIAL rewrite — it
+  /// must skip whole (silent raw), never paste truncated polish
+  /// (#1271 cloud review P2).
+  @Test func lengthFinishSkipsWholeInsteadOfPastingTruncation() throws {
+    let data = try Self.wireData(
+      content: "Move the meeting to", finishReason: "length")
+    #expect(throws: LLMError.egOneSkipped(.outputTruncated)) {
+      _ = try EGOneConnector.parseSuccess(data: data)
+    }
   }
 
   @Test func echoedTranscriptWrapperIsStripped() throws {

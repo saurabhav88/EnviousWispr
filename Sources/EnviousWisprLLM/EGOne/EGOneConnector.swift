@@ -105,6 +105,16 @@ public struct EGOneConnector: TranscriptPolisher {
   /// with a canned wire payload.
   static func parseSuccess(data: Data) throws -> LLMResult {
     let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    // finish_reason == "length" means generation STOPPED at the max_tokens
+    // cap — the content is a partial rewrite. Accepting it pastes a
+    // truncated polish, the exact failure the EG-1 contract forbids; the
+    // token budgets make this rare, this check makes it impossible
+    // (#1271 cloud review P2).
+    if let finish = (json?["choices"] as? [[String: Any]])?.first?["finish_reason"] as? String,
+      finish == "length"
+    {
+      throw LLMError.egOneSkipped(.outputTruncated)
+    }
     guard let choices = json?["choices"] as? [[String: Any]],
       let message = choices.first?["message"] as? [String: Any],
       let content = message["content"] as? String,
