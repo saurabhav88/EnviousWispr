@@ -119,18 +119,27 @@ package actor WhisperKitIncrementalWorker: WhisperKitIncrementalSession {
   /// text alone, so this can wrongly trim one copy. The trimmer anchors
   /// strictly on the seam (candidate suffix vs tail prefix), never a global
   /// dedup, to keep this risk local to the boundary.
+  ///
+  /// `minOverlap` (Codex r1 P2): a 1-3 character coincidental match (e.g.
+  /// candidate "I am" / tail "amazing today" sharing "am") is far more
+  /// likely to be an unrelated word boundary than genuine acoustic overlap
+  /// — trimming on it corrupts normal continuations ("I am azing today").
+  /// 6 characters comfortably covers the shortest confirmed real overlap
+  /// case ("gerie " — 6 chars, from the founder's `lingerie`/`gerie` repro)
+  /// while excluding short coincidences.
   package static func joinWithOverlapTrim(_ candidate: String, _ tail: String) -> String {
     guard !tail.isEmpty else { return candidate }
     guard !candidate.isEmpty else { return tail }
 
     let maxWindow = 80
+    let minOverlap = 6
     let candidateWindow = Array(candidate.suffix(maxWindow)).map { Character($0.lowercased()) }
     let tailWindow = Array(tail.prefix(maxWindow)).map { Character($0.lowercased()) }
 
     var overlapLength = 0
     let maxK = min(candidateWindow.count, tailWindow.count)
-    if maxK > 0 {
-      for k in stride(from: maxK, through: 1, by: -1) {
+    if maxK >= minOverlap {
+      for k in stride(from: maxK, through: minOverlap, by: -1) {
         if candidateWindow.suffix(k).elementsEqual(tailWindow.prefix(k)) {
           overlapLength = k
           break

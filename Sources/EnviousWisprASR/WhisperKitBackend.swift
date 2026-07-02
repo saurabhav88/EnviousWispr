@@ -231,6 +231,10 @@ public actor WhisperKitBackend: ASRBackend {
   private func runWarmup(kit: WhisperKit) async {
     warmupToken &+= 1
     let token = warmupToken
+    // Codex r1 P3: clear the PREVIOUS load's value before this run — only
+    // `.completed` below sets a fresh one, so a throw/timeout on THIS load
+    // must not leave a prior load's stale duration attached to telemetry.
+    lastWarmupInferenceMs = nil
 
     let silence = [Float](repeating: 0, count: 16_000)  // 1s at 16kHz
     let opts = makeDecodeOptions(from: .default, sampleCount: silence.count)
@@ -279,11 +283,28 @@ public actor WhisperKitBackend: ASRBackend {
   /// by reading `whisperKit` directly, so a request can never race a
   /// straggling orphaned warm-up decode from a prior timeout (no proven
   /// concurrent-decode safety on one `WhisperKit` instance).
+  ///
+  /// Codex r1 P1: draining the orphan with NO deadline defeated the whole
+  /// point of the 20s fail-open ceiling — a genuinely wedged warm-up would
+  /// then block every subsequent press indefinitely instead of just its own
+  /// decode. The drain reuses the SAME 20s fail-open budget; if it ALSO
+  /// expires, the handle is cleared anyway and the kit is vended regardless
+  /// (accepting the same theoretical concurrent-decode risk the design
+  /// already documents as unproven-but-low-probability, rather than
+  /// re-paying an unbounded wait on every future press).
   private func readyKitAfterWarmupDrain() async -> WhisperKit? {
     if let pending = warmupTask {
       let token = warmupToken
-      _ = await pending.value
-      if warmupToken == token { warmupTask = nil }
+      let outcome = await withDeadline(seconds: 20, operation: { await pending.value })
+      if warmupToken == token {
+        warmupTask = nil
+        if outcome == nil {
+          await AppLogger.shared.log(
+            "WhisperKit warm-up: drain also timed_out after 20s — vending kit anyway",
+            level: .info, category: "WhisperKitBackend"
+          )
+        }
+      }
     }
     guard isReady else { return nil }
     return whisperKit

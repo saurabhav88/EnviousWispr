@@ -221,6 +221,14 @@ struct JoinWithOverlapTrimTests {
     #expect(result == "hello there, how are you completely unrelated continuation text")
   }
 
+  @Test(
+    "short coincidental match below minOverlap does not trim (Codex r1 P2 repro: 'I am' / 'amazing today')"
+  )
+  func test_shortCoincidentalMatch_belowMinOverlap_noTrim() {
+    let result = WhisperKitIncrementalWorker.joinWithOverlapTrim("I am", "amazing today")
+    #expect(result == "I am amazing today")
+  }
+
   @Test("empty tail returns candidate unchanged")
   func test_emptyTail_returnsCandidate() {
     let result = WhisperKitIncrementalWorker.joinWithOverlapTrim("candidate text", "")
