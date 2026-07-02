@@ -91,10 +91,11 @@ TOKEN=$(gh api repos/saurabhav88/EnviousWispr/actions/runners/registration-token
 ./svc.sh install && ./svc.sh start
 ```
 
-Re-adding the `self-hosted, enviouswispr-release` labels to any workflow after
-registering is a separate, deliberate step — see `NEVER re-add its labels to a
-workflow` in `.claude/knowledge/distribution.md` FACT:
-self-hosted-release-runner-decommissioned before doing so.
+Registering the runner does NOT put it back in the release pipeline by itself.
+`release.yml` currently has zero `self-hosted` references (all jobs run on
+GitHub-hosted `macos-26`); re-adding the `self-hosted, enviouswispr-release`
+labels to any workflow `runs-on:` line is a separate, deliberate decision —
+don't do it as a side effect of re-registering.
 
 ## Updating the Runner
 
