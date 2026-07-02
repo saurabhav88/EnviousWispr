@@ -26,7 +26,7 @@
 
 ## Demo
 
-https://github.com/user-attachments/assets/ff3e9cec-7fd5-4998-8a11-5a12204d0e58
+https://github.com/user-attachments/assets/45cd462f-2c21-453d-9000-15a3b457a5ed
 
 ## What is this?
 
