@@ -519,7 +519,10 @@ public struct InverseTextNormalizer: Sendable {
     }
     // hyphenated compound modifier: converting "twenty-step" leaves "20 -step" (the cardinal pass
     // re-emits " 20 " with pad spaces). Re-tighten "digit space-hyphen word" -> "digit-word".
-    t = reSub(#"(\d)\s+-(\w)"#, t, caseInsensitive: false) { m in "\(m.g(1) ?? "")-\(m.g(2) ?? "")"
+    // The compound-ordinal pass emits the same pad-space artifact ending in our own lowercase
+    // suffix ("twenty-third-century" -> "23rd -century" #1202), so accept an optional st/nd/rd/th.
+    t = reSub(#"(\d(?:st|nd|rd|th)?)\s+-(\w)"#, t, caseInsensitive: false) {
+      m in "\(m.g(1) ?? "")-\(m.g(2) ?? "")"
     }
     t = reSub(#"[ \t]+"#, t, caseInsensitive: false) { _ in " " }  // collapse spaces (keep newlines)
     return t.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -830,7 +833,11 @@ public struct InverseTextNormalizer: Sendable {
     // ONLY comma-grouped numbers: everything WE render >=1000 carries commas, so a bare digit
     // run (8000000, an ID/phone/account/serial) is passthrough input and must NOT collapse.
     // (?!\.\d) so '$5,000,000.00' is not split into '$5 million.00'.
-    return reSub(#"(?<cur>\$)?(?<n>\d{1,3}(?:,\d{3})+)\b(?!\.\d)"#, t, caseInsensitive: false) {
+    // (?!,\d) so a backtracked PARTIAL comma group never rewrites: a complete comma-grouped
+    // number is never followed by ",digit" (greedy match would have consumed it), so this only
+    // fires where \b failed on the full figure — ordinal suffixes ('1,000,000,000th' #1201),
+    // decimals past the (?!\.\d) block ('$5,000,000,000.00'), plurals ('1,000,000,000s').
+    return reSub(#"(?<cur>\$)?(?<n>\d{1,3}(?:,\d{3})+)\b(?!\.\d)(?!,\d)"#, t, caseInsensitive: false) {
       m in
       let cur = m.g("cur") ?? ""
       guard let n = Int((m.g("n") ?? "").replacingOccurrences(of: ",", with: "")) else {
