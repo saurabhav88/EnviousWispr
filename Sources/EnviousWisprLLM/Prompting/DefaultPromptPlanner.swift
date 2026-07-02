@@ -61,8 +61,9 @@ public struct DefaultPromptPlanner: PromptPlanning {
       return .cloudFixed
     case .ollama:
       // EG-1 (our tuned model, #1269) first: explicit precedence for the first-party
-      // model over the generic family heuristics below.
-      if modelID.lowercased().hasPrefix("eg-1") {
+      // model over the generic family heuristics below. Single first-party definition
+      // shared with telemetry: `OllamaSetupService.isFirstPartyModel`.
+      if OllamaSetupService.isFirstPartyModel(modelID) {
         return .egOneFixed
       }
       if modelID.lowercased().contains("gemma") {

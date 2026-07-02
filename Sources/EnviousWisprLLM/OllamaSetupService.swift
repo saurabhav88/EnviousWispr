@@ -158,6 +158,14 @@ public final class OllamaSetupService {
       qualityTier: .best, downloadSize: "~2.9 GB")
   ]
 
+  /// The single definition of "this Ollama model id is our own first-party model"
+  /// (#1269, cloud review r1). Any `eg-1*` tag is EG-1 family by construction —
+  /// the prompt planner routes these to the EG-1 training prompt, and telemetry
+  /// may report their names (our published strings, never user data).
+  public nonisolated static func isFirstPartyModel(_ modelID: String) -> Bool {
+    canonicalModelName(modelID).lowercased().hasPrefix("eg-1")
+  }
+
   /// Dynamic catalog: downloaded models first (with real metadata), then undownloaded suggestions.
   public var dynamicCatalog: [OllamaModelCatalogEntry] {
     Self.dynamicCatalog(from: downloadedModels)

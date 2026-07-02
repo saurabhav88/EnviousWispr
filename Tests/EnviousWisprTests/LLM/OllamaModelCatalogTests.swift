@@ -91,6 +91,17 @@ struct OllamaModelCatalogTests {
     #expect(!undownloaded.contains { OllamaSetupService.canonicalModelName($0.name) == "eg-1" })
   }
 
+  @Test("isFirstPartyModel matches the eg-1 family exactly like planner routing")
+  func firstPartyDefinition() {
+    #expect(OllamaSetupService.isFirstPartyModel("eg-1"))
+    #expect(OllamaSetupService.isFirstPartyModel("eg-1:latest"))
+    #expect(OllamaSetupService.isFirstPartyModel("EG-1"))
+    #expect(OllamaSetupService.isFirstPartyModel("eg-1-q4"))
+    #expect(!OllamaSetupService.isFirstPartyModel("gemma-eg-1"))
+    #expect(!OllamaSetupService.isFirstPartyModel("lego-eg-1"))
+    #expect(!OllamaSetupService.isFirstPartyModel("llama3.2"))
+  }
+
   @Test("unknown custom model still gets inferred metadata (unchanged behavior)")
   func unknownModelInferred() {
     let catalog = OllamaSetupService.dynamicCatalog(from: [downloaded("someones-finetune:7b")])
