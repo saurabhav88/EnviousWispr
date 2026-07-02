@@ -109,7 +109,9 @@ public final class OllamaSetupService {
   // MARK: - Model Catalog
 
   /// Curated suggestions for users who haven't downloaded models yet.
-  public static let modelCatalog: [OllamaModelCatalogEntry] = [
+  /// `nonisolated`: immutable Sendable constant, readable from the pure catalog
+  /// assembly (`dynamicCatalog(from:)`) and telemetry without a MainActor hop.
+  public nonisolated static let modelCatalog: [OllamaModelCatalogEntry] = [
     OllamaModelCatalogEntry(
       name: "gemma3n:e4b", displayName: "Gemma 3 Nano (4B)", parameterCount: "4B",
       qualityTier: .best, downloadSize: "~6 GB"),
@@ -145,14 +147,46 @@ public final class OllamaSetupService {
       downloadSize: "~1.7 GB"),
   ]
 
+  /// First-party curated metadata for models that are NOT publicly pullable (#1269).
+  /// Entries here overlay display metadata onto a model the user already has, but are
+  /// NEVER offered as undownloaded suggestions — `ollama pull` would 404 on them, so a
+  /// suggestion row would render a dead Download button. EG-1 distribution ships
+  /// separately (see the tuned-polish-provider wiring plan).
+  public nonisolated static let curatedPrivateCatalog: [OllamaModelCatalogEntry] = [
+    OllamaModelCatalogEntry(
+      name: "eg-1", displayName: "EG-1", parameterCount: "4B",
+      qualityTier: .best, downloadSize: "~2.9 GB")
+  ]
+
+  /// The single definition of "this Ollama model id is our own first-party model"
+  /// (#1269, cloud review r1-r3). EXACT match only: the model `eg-1` or a tag of it
+  /// (`eg-1:latest`, `eg-1:q4`). Deliberately NOT a loose prefix — a user-named
+  /// `eg-10` or `eg-1-acme-client` is a DIFFERENT model that must route through the
+  /// normal heuristics and report `custom` in telemetry. Future first-party variants
+  /// ship as `curatedPrivateCatalog` entries, not as prefix carve-outs.
+  public nonisolated static func isFirstPartyModel(_ modelID: String) -> Bool {
+    let lower = modelID.lowercased()
+    return canonicalModelName(lower) == "eg-1" || lower.hasPrefix("eg-1:")
+  }
+
   /// Dynamic catalog: downloaded models first (with real metadata), then undownloaded suggestions.
   public var dynamicCatalog: [OllamaModelCatalogEntry] {
+    Self.dynamicCatalog(from: downloadedModels)
+  }
+
+  /// Pure catalog assembly (extracted for testability, #1269 — behavior unchanged).
+  nonisolated static func dynamicCatalog(from downloadedModels: [OllamaDownloadedModel])
+    -> [OllamaModelCatalogEntry]
+  {
     let canonicalDownloaded = Set(downloadedModels.map(\.canonicalName))
 
     // Build catalog entries from downloaded models
     let downloadedEntries: [OllamaModelCatalogEntry] = downloadedModels.map { model in
-      // Overlay curated metadata if we have a catalog match
-      if let curated = Self.modelCatalog.first(where: {
+      // Overlay curated metadata if we have a catalog match. First-party private
+      // entries (EG-1) participate in the overlay only — the suggestions section
+      // below deliberately draws from `modelCatalog` alone (#1269), so a not-yet-
+      // downloaded private model can never render a dead public Download row.
+      if let curated = (Self.modelCatalog + Self.curatedPrivateCatalog).first(where: {
         Self.canonicalModelName($0.name) == model.canonicalName
       }) {
         return OllamaModelCatalogEntry(

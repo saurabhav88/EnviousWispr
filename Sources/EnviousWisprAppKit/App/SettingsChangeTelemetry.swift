@@ -143,8 +143,12 @@ enum SettingsProjection {
   /// is on a known-safe allowlist, otherwise `custom`. This makes a private local
   /// model name impossible to leak regardless of the brief provider/model lag
   /// after a switch (Codex r7 pivot):
-  /// - Ollama: the SHIPPED catalog only (canonicalized). The user's own pulled
-  ///   models are NOT an allowlist — a private finetune name collapses to `custom`.
+  /// - Ollama: verbatim names come ONLY from strings we published — the SHIPPED
+  ///   catalog + the curated-private first-party catalog (EG-1, #1269). A model
+  ///   that merely LOOKS first-party (user names their own model `eg-1-something`;
+  ///   `isFirstPartyModel` prefix match) emits the fixed literal `eg-1-variant`,
+  ///   never the raw string. Everything else collapses to `custom`. No
+  ///   user-authored name can ever be emitted (#1269 cloud review r2).
   /// - OpenAI / Gemini: a curated set of known public cloud ids (date-snapshot
   ///   suffix normalized away). A stale local id carried over before discovery
   ///   corrects `llmModel` is not on this list → `custom`, never the raw name.
@@ -156,9 +160,16 @@ enum SettingsProjection {
     case .none: return "none"
     case .ollama:
       let canonical = OllamaSetupService.canonicalModelName(id)
-      let catalog = Set(
-        OllamaSetupService.modelCatalog.map { OllamaSetupService.canonicalModelName($0.name) })
-      return catalog.contains(canonical) ? canonical : "custom"
+      // Verbatim ONLY for published names (shipped catalog + curated-private).
+      let published = Set(
+        (OllamaSetupService.modelCatalog + OllamaSetupService.curatedPrivateCatalog)
+          .map { OllamaSetupService.canonicalModelName($0.name) })
+      if published.contains(canonical) { return canonical }
+      // First-party-prefixed but unpublished (a future EG variant we haven't
+      // cataloged, or a user-named eg-1* model): fixed literal, never the raw
+      // string — routing may treat it as ours, telemetry must not leak the name.
+      if OllamaSetupService.isFirstPartyModel(id) { return "eg-1-variant" }
+      return "custom"
     case .openAI, .gemini:
       let base = stripDateSnapshotSuffix(id)
       return cloudModelAllowlist.contains(base) ? base : "custom"

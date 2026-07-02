@@ -12,4 +12,9 @@ public enum PromptFamily: String, Sendable {
   /// One fixed prompt for the strong cloud providers (OpenAI, Gemini). No per-transcript
   /// mode selection — formatting is decided by in-prompt rules, like Apple Intelligence (#1255).
   case cloudFixed
+
+  /// The exact training prompt for EG-1, the EnviousWispr-tuned local model served via
+  /// Ollama (#1269). Mode-independent like `cloudFixed`; the tuned behaviors live in the
+  /// model weights, and the prompt must match training byte-for-byte.
+  case egOneFixed
 }

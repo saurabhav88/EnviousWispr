@@ -53,6 +53,68 @@ struct OllamaModelCatalogTests {
     #expect(OllamaSetupService.parseParameterSize("500m") != nil)
   }
 
+  // MARK: - EG-1 curated-private catalog visibility (#1269)
+
+  private func downloaded(_ name: String, sizeGB: Double = 2.9) -> OllamaDownloadedModel {
+    OllamaDownloadedModel(
+      exactName: name,
+      canonicalName: OllamaSetupService.canonicalModelName(name),
+      parameterSize: "4B",
+      parameterBillions: 4.0,
+      fileSizeBytes: Int64(sizeGB * 1_000_000_000),
+      displayName: name
+    )
+  }
+
+  @Test("eg-1 never appears as an undownloaded suggestion (no dead Download row)")
+  func egOneAbsentWhenNotDownloaded() {
+    let catalog = OllamaSetupService.dynamicCatalog(from: [])
+    #expect(!catalog.contains { OllamaSetupService.canonicalModelName($0.name) == "eg-1" })
+    // The public catalog rows are all still offered.
+    #expect(catalog.count == OllamaSetupService.modelCatalog.count)
+  }
+
+  @Test("downloaded eg-1 gets the curated first-party overlay")
+  func egOneCuratedOverlayWhenDownloaded() {
+    let catalog = OllamaSetupService.dynamicCatalog(from: [downloaded("eg-1:latest")])
+    let row = catalog.first { OllamaSetupService.canonicalModelName($0.name) == "eg-1" }
+    #expect(row != nil)
+    #expect(row?.displayName == "EG-1")
+    #expect(row?.qualityTier == .best)
+    #expect(row?.isDownloaded == true)
+  }
+
+  @Test("curated-private entries do not leak into suggestions when other models are downloaded")
+  func privateCatalogNeverSuggested() {
+    let catalog = OllamaSetupService.dynamicCatalog(from: [downloaded("llama3.2:latest")])
+    let undownloaded = catalog.filter { !$0.isDownloaded }
+    #expect(!undownloaded.contains { OllamaSetupService.canonicalModelName($0.name) == "eg-1" })
+  }
+
+  @Test("isFirstPartyModel matches ONLY eg-1 and its tags (cloud review r3)")
+  func firstPartyDefinition() {
+    #expect(OllamaSetupService.isFirstPartyModel("eg-1"))
+    #expect(OllamaSetupService.isFirstPartyModel("eg-1:latest"))
+    #expect(OllamaSetupService.isFirstPartyModel("eg-1:q4"))
+    #expect(OllamaSetupService.isFirstPartyModel("EG-1"))
+    // User-controlled lookalikes are NOT ours: different model, normal routing,
+    // custom telemetry (reviewer examples eg-10 / eg-1-acme-client).
+    #expect(!OllamaSetupService.isFirstPartyModel("eg-10"))
+    #expect(!OllamaSetupService.isFirstPartyModel("eg-1-q4"))
+    #expect(!OllamaSetupService.isFirstPartyModel("eg-1-acme-client"))
+    #expect(!OllamaSetupService.isFirstPartyModel("gemma-eg-1"))
+    #expect(!OllamaSetupService.isFirstPartyModel("lego-eg-1"))
+    #expect(!OllamaSetupService.isFirstPartyModel("llama3.2"))
+  }
+
+  @Test("unknown custom model still gets inferred metadata (unchanged behavior)")
+  func unknownModelInferred() {
+    let catalog = OllamaSetupService.dynamicCatalog(from: [downloaded("someones-finetune:7b")])
+    let row = catalog.first { $0.name == "someones-finetune:7b" }
+    #expect(row != nil)
+    #expect(row?.isDownloaded == true)
+  }
+
   // MARK: - Canonical Name
 
   @Test("strips :latest suffix")
