@@ -51,6 +51,23 @@ public actor WhisperKitBackend: ASRBackend {
   /// the guard.
   private var loadTask: Task<Void, Error>?
 
+  /// #1275 (Codex arch-consult finding 4): identity guard for `loadTask`
+  /// cleanup, mirroring `ASRManagerProxy`'s `loadTaskSeq`/`activeLoadTaskID`
+  /// (`ASRManagerProxy.swift:55-62,157-164`). `loadIfNeeded`'s cleanup must
+  /// only nil `loadTask` if it still IS the task this call created — without
+  /// this, a superseded load's late completion/throw can clobber a NEWER
+  /// load's task handle (repro: load A starts (task A, gen 0), `unload()`
+  /// fires (gen 1, A cancelled but CoreML load is uncancellable so A keeps
+  /// running), load B starts (sees `loadTask == nil`, creates task B, gen 1),
+  /// A's `WhisperKit(config)` finally resolves late, A's generation check
+  /// correctly throws, but A's catch-block cleanup does `loadTask = nil` —
+  /// clobbering B's still-in-flight handle, letting a 3rd concurrent load C
+  /// start and double real CoreML load cost). Deliberately separate from
+  /// `loadGeneration`: that guards stale READINESS writes after unload/reload;
+  /// this guards stale TASK-HANDLE cleanup — different failure modes.
+  private var loadTaskSeq: UInt64 = 0
+  private var activeLoadTaskID: UInt64 = 0
+
   /// #1275 (Codex r2 P2): monotonic generation stamp, mirroring
   /// `ASRManagerProxy.loadGeneration` (`ASRManagerProxy.swift:53`). Bumped by
   /// `unload()` so a `loadFromPath` in-flight at unload time can never write
@@ -156,14 +173,21 @@ public actor WhisperKitBackend: ASRBackend {
       let modelPath = try await resolveModelPath()
       try await loadFromPath(modelPath)
     }
+
+    loadTaskSeq &+= 1
+    let myTaskID = loadTaskSeq
     loadTask = task
-    do {
-      try await task.value
-      loadTask = nil
-    } catch {
-      loadTask = nil
-      throw error
+    activeLoadTaskID = myTaskID
+    defer {
+      // Identity guard: only clear the handle if it still belongs to THIS
+      // call. A superseded load's late completion must not clobber a newer
+      // load's in-flight task handle (finding 4 above).
+      if activeLoadTaskID == myTaskID {
+        loadTask = nil
+      }
     }
+
+    try await task.value
   }
 
   /// WhisperKit 0.12+ model folder artifacts required for a successful load.
