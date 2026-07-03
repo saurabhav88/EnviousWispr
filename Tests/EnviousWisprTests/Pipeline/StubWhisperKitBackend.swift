@@ -24,6 +24,9 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
   /// from this value on every transition.
   var isReady = false
   var modelVariantName: String = "stub-whisperkit-large-v3"
+  /// #1275: stub for the warm-up-inference duration read. Defaults nil
+  /// (matches a fresh backend before any load's warm-up completes).
+  var lastWarmupInferenceMs: Int?
   var prepareThrows: (any Error)?
   var prepareIfCachedThrows: (any Error)?
   var prepareIfCachedResult: Bool = true

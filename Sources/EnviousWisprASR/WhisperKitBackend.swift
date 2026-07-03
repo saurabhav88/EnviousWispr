@@ -40,13 +40,90 @@ public actor WhisperKitBackend: ASRBackend {
   private let modelVariant: String = WhisperKitBackend.defaultModelVariant()
   private var whisperKit: WhisperKit?
 
-  /// Issue #445: single-flight guard for `prepare()`. Prevents duplicate
-  /// `MLModel.load` work when the pipeline watchdog cancels its host await
-  /// and a subsequent press calls `prepare()` again before the first one's
-  /// background load returns. CoreML model loading is uncancellable
-  /// cooperatively, so we cannot stop the in-flight load — but we can stop
-  /// it from doubling.
+  /// Issue #445: single-flight guard for `prepare()`/`prepareIfCached()`.
+  /// Prevents duplicate `MLModel.load` work when the pipeline watchdog
+  /// cancels its host await and a subsequent press calls `prepare()` again
+  /// before the first one's background load returns. CoreML model loading is
+  /// uncancellable cooperatively, so we cannot stop the in-flight load — but
+  /// we can stop it from doubling. #1275: both `prepare()` and
+  /// `prepareIfCached()` now join this SAME task via `loadIfNeeded(resolveModelPath:)` —
+  /// previously `prepareIfCached()` called `loadFromPath` directly, bypassing
+  /// the guard.
   private var loadTask: Task<Void, Error>?
+
+  /// #1275 (Codex arch-consult finding 4): identity guard for `loadTask`
+  /// cleanup, mirroring `ASRManagerProxy`'s `loadTaskSeq`/`activeLoadTaskID`
+  /// (`ASRManagerProxy.swift:55-62,157-164`). `loadIfNeeded`'s cleanup must
+  /// only nil `loadTask` if it still IS the task this call created — without
+  /// this, a superseded load's late completion/throw can clobber a NEWER
+  /// load's task handle (repro: load A starts (task A, gen 0), `unload()`
+  /// fires (gen 1, A cancelled but CoreML load is uncancellable so A keeps
+  /// running), load B starts (sees `loadTask == nil`, creates task B, gen 1),
+  /// A's `WhisperKit(config)` finally resolves late, A's generation check
+  /// correctly throws, but A's catch-block cleanup does `loadTask = nil` —
+  /// clobbering B's still-in-flight handle, letting a 3rd concurrent load C
+  /// start and double real CoreML load cost). Deliberately separate from
+  /// `loadGeneration`: that guards stale READINESS writes after unload/reload;
+  /// this guards stale TASK-HANDLE cleanup — different failure modes.
+  private var loadTaskSeq: UInt64 = 0
+  private var activeLoadTaskID: UInt64 = 0
+
+  /// #1275 (Codex r2 P2): monotonic generation stamp, mirroring
+  /// `ASRManagerProxy.loadGeneration` (`ASRManagerProxy.swift:53`). Bumped by
+  /// `unload()` so a `loadFromPath` in-flight at unload time can never write
+  /// `isReady = true` after the fact on a since-cleared `whisperKit`.
+  private var loadGeneration: UInt64 = 0
+
+  /// #1275 item A: outcome of the silent warm-up inference run at load time.
+  private enum WarmupOutcome: Sendable {
+    case completed(ms: Int)
+    case threw(desc: String)
+  }
+
+  /// Handle to the in-flight (or, after a fail-open timeout, orphaned)
+  /// warm-up task. Drained — never blindly awaited — by
+  /// `readyKitAfterWarmupDrain()`, the single gate every shared-instance
+  /// caller (`transcribe`/`observeLID`/`makeIncrementalSession`) must pass
+  /// through before touching `whisperKit`.
+  private var warmupTask: Task<WarmupOutcome, Never>?
+
+  /// The `loadGeneration` value `warmupTask` belongs to. `nil` when no task
+  /// is tracked. Consolidates what was a separate `warmupToken` counter
+  /// (adversarial-review finding, #1275) into the SAME generation stamp
+  /// `unload()` already bumps: a `warmupTask` left behind by a load that has
+  /// since been superseded (by `unload()`, not just by a newer warm-up
+  /// within the same load) is now recognizable as stale by comparing this
+  /// against the CURRENT `loadGeneration` — not just against a later
+  /// warm-up's own token. This closes a race the separate-counter version
+  /// missed: `readyKitAfterWarmupDrain()` would otherwise await a fail-open
+  /// timeout on an ORPHANED warm-up from a load that `unload()` already
+  /// discarded, while a completely independent newer load is still in its
+  /// (multi-second) CoreML load phase — turning what should be an immediate
+  /// "not ready yet" into a 20-second stall on irrelevant background work.
+  private var warmupTaskGeneration: UInt64?
+
+  /// The `loadGeneration` whose warm-up already burned its one 20s fail-open
+  /// budget in `runWarmup()` itself (i.e. the background warm-up timed out).
+  /// `nil` when the current generation's warm-up has not (yet) exhausted its
+  /// budget. Codex code-diff review (medium effort, #1275): without this,
+  /// `readyKitAfterWarmupDrain()` re-awaits the SAME already-timed-out task
+  /// with its own fresh 20s deadline, so the first real caller after a
+  /// wedged warm-up could pay a SECOND 20s stall on top of the first —
+  /// turning an invisible background hiccup into up to 40s of user-facing
+  /// latency, defeating the fail-open design. Once a generation's budget is
+  /// marked exhausted (by `runWarmup`'s own timeout, or by a caller's drain
+  /// timeout), every subsequent caller for that generation skips the await
+  /// entirely and vends the kit immediately — accepting the same
+  /// theoretical concurrent-decode risk the design already documents as
+  /// unproven-but-low-probability, exactly once per generation, never twice.
+  private var warmupBudgetExhausted: UInt64?
+
+  /// Duration of the most recent warm-up inference, in milliseconds. `nil`
+  /// when no warm-up has completed yet (still loading, threw, or timed out).
+  /// Read by telemetry as an optional property on the existing
+  /// `coldstart.warmup_completed` event — absent for pre-#1275 rows and for
+  /// Parakeet (query by presence, never a new event).
+  package private(set) var lastWarmupInferenceMs: Int?
 
   /// Exposes the configured model variant name (e.g. `openai_whisper-large-v3-v20240930_turbo`).
   /// Read-only; used by telemetry to tag per-transcription events with the model in use.
@@ -62,38 +139,18 @@ public actor WhisperKitBackend: ASRBackend {
   public func prepare() async throws {
     guard !isReady else { return }  // Idempotent — skip if already loaded
 
-    // Issue #445: single-flight. If a prior prepare() call is still loading
-    // (e.g. its host await was cancelled by the pipeline watchdog but the
-    // underlying CoreML load is still grinding), await the existing task
-    // instead of spawning a parallel load.
-    if let existing = loadTask {
-      try await existing.value
-      return
-    }
-
-    let task = Task<Void, Error> {
+    let variant = modelVariant
+    try await loadIfNeeded {
       // Use cached model path from WhisperKitSetupService (no network call).
       // Falls back to WhisperKit.download() if path not found (handles edge cases
       // like user-initiated record when cache was cleared).
-      let modelPath: String
-      if let cached = WhisperKitSetupService.getLocalModelPath(variant: modelVariant) {
-        modelPath = cached
-      } else {
-        // TODO(#827): watchdog needs WhisperKit download progress wired into
-        // this fallback path if product keeps allowing first-record downloads.
-        let folder = try await WhisperKit.download(variant: modelVariant, progressCallback: nil)
-        modelPath = folder.path
+      if let cached = WhisperKitSetupService.getLocalModelPath(variant: variant) {
+        return cached
       }
-
-      try await loadFromPath(modelPath)
-    }
-    loadTask = task
-    do {
-      try await task.value
-      loadTask = nil
-    } catch {
-      loadTask = nil
-      throw error
+      // TODO(#827): watchdog needs WhisperKit download progress wired into
+      // this fallback path if product keeps allowing first-record downloads.
+      let folder = try await WhisperKit.download(variant: variant, progressCallback: nil)
+      return folder.path
     }
   }
 
@@ -108,8 +165,45 @@ public actor WhisperKitBackend: ASRBackend {
     guard let cached = WhisperKitSetupService.getLocalModelPath(variant: modelVariant) else {
       return false  // Model not cached or cache incomplete — skip silently.
     }
-    try await loadFromPath(cached)
+    try await loadIfNeeded { cached }
     return true
+  }
+
+  /// Issue #445 + #1275: single owner of the `loadTask` single-flight
+  /// lifecycle for BOTH `prepare()` and `prepareIfCached()`. Previously
+  /// `prepareIfCached()` called `loadFromPath` directly, bypassing this
+  /// guard — a latent double-load race (documented at
+  /// `WhisperKitEngineAdapter.swift` near the `prepareIfCached` call site).
+  /// If a prior load is still in flight (e.g. its host await was cancelled
+  /// by the pipeline watchdog but the underlying CoreML load is still
+  /// grinding), join the existing task instead of spawning a parallel load.
+  private func loadIfNeeded(resolveModelPath: @escaping @Sendable () async throws -> String)
+    async throws
+  {
+    if let existing = loadTask {
+      try await existing.value
+      return
+    }
+
+    let task = Task<Void, Error> {
+      let modelPath = try await resolveModelPath()
+      try await loadFromPath(modelPath)
+    }
+
+    loadTaskSeq &+= 1
+    let myTaskID = loadTaskSeq
+    loadTask = task
+    activeLoadTaskID = myTaskID
+    defer {
+      // Identity guard: only clear the handle if it still belongs to THIS
+      // call. A superseded load's late completion must not clobber a newer
+      // load's in-flight task handle (finding 4 above).
+      if activeLoadTaskID == myTaskID {
+        loadTask = nil
+      }
+    }
+
+    try await task.value
   }
 
   /// WhisperKit 0.12+ model folder artifacts required for a successful load.
@@ -153,6 +247,14 @@ public actor WhisperKitBackend: ASRBackend {
   }
 
   private func loadFromPath(_ modelPath: String) async throws {
+    // #1275 (Codex r2 P2): capture the generation before any await. `unload()`
+    // bumps it, so a load/warm-up whose completion races an unload can never
+    // resurrect `isReady = true` on a since-cleared `whisperKit` — the same
+    // established pattern `ASRManagerProxy.loadGeneration` uses for the
+    // identical class of race (`ASRManagerProxy.swift:53`), reused here
+    // rather than inventing a new mechanism.
+    let gen = loadGeneration
+
     let config = WhisperKitConfig(
       model: modelVariant,
       modelFolder: modelPath,
@@ -169,14 +271,156 @@ public actor WhisperKitBackend: ASRBackend {
     // lack of a defended-timeout distribution — NOT for lack of timing data. Do
     // not wrap this in a wall-clock timeout (timeout-numbers-need-distribution-evidence).
     let kit = try await WhisperKit(config)
+    guard gen == loadGeneration else { throw ASRLoadSupersededError() }
     self.whisperKit = kit
+
+    // #1275 item A: one silent warm-up inference before flipping isReady, so
+    // the first real press never pays the (path-dependent) first-decode
+    // penalty measured 2026-07-02. Fails open — a throw or timeout still
+    // flips isReady, since the model IS loaded and usable; only the
+    // first-press latency win is lost.
+    await runWarmup(kit: kit, generation: gen)
+    guard gen == loadGeneration else { throw ASRLoadSupersededError() }
     isReady = true
+  }
+
+  /// Runs the silent warm-up inference (1s of digital silence, decoded
+  /// through the SAME production option builder every real transcribe call
+  /// uses) and records its terminal status. Wrapped in a 20s fail-open
+  /// deadline (founder-approved exception to timeout-numbers-into-evidence,
+  /// #1275 Gate 2 — this bounds an invisible background task, never a
+  /// user-facing wait; a too-large value costs nothing in the healthy case,
+  /// a too-small value merely reverts to today's behavior). On timeout the
+  /// task handle is left in `warmupTask` for `readyKitAfterWarmupDrain()` to
+  /// drain later — never re-awaited here, since `withDeadline` abandons it.
+  /// `generation` is the `loadGeneration` this warm-up belongs to (captured
+  /// by the caller, `loadFromPath`, before any await).
+  private func runWarmup(kit: WhisperKit, generation: UInt64) async {
+    // Codex r1 P3: clear the PREVIOUS load's value before this run — only
+    // `.completed` below sets a fresh one, so a throw/timeout on THIS load
+    // must not leave a prior load's stale duration attached to telemetry.
+    lastWarmupInferenceMs = nil
+    // This generation has not spent its fail-open budget yet.
+    if warmupBudgetExhausted == generation { warmupBudgetExhausted = nil }
+
+    let silence = [Float](repeating: 0, count: 16_000)  // 1s at 16kHz
+    let opts = makeDecodeOptions(from: .default, sampleCount: silence.count)
+
+    let task = Task<WarmupOutcome, Never> {
+      let start = CFAbsoluteTimeGetCurrent()
+      do {
+        _ = try await kit.transcribe(audioArray: silence, decodeOptions: opts)
+        return .completed(ms: Int((CFAbsoluteTimeGetCurrent() - start) * 1000))
+      } catch {
+        return .threw(desc: error.localizedDescription)
+      }
+    }
+    warmupTask = task
+    warmupTaskGeneration = generation
+
+    guard let outcome = await withDeadline(seconds: 20, operation: { await task.value }) else {
+      // Codex code-diff review (medium effort, #1275): mark this generation's
+      // budget spent so `readyKitAfterWarmupDrain()` never re-awaits the same
+      // stuck task with a second fresh 20s deadline.
+      warmupBudgetExhausted = generation
+      await AppLogger.shared.log(
+        "WhisperKit warm-up: timed_out (20s fail-open ceiling)",
+        level: .info, category: "WhisperKitBackend"
+      )
+      return
+    }
+
+    // Per actor-reentrancy-await: only clear the handle — and only record the
+    // outcome — if this generation is still the one `warmupTask` is tracking
+    // (no interleaved unload/reload replaced it during this await). Without
+    // this check, an abandoned load's late completion could overwrite a
+    // NEWER load's `lastWarmupInferenceMs` with stale data (the same class
+    // of race Codex r2 P2 found for `isReady`, closed here too).
+    guard warmupTaskGeneration == generation else { return }
+    warmupTask = nil
+    warmupTaskGeneration = nil
+
+    switch outcome {
+    case .completed(let ms):
+      lastWarmupInferenceMs = ms
+      await AppLogger.shared.log(
+        "WhisperKit warm-up: completed(\(ms)ms)",
+        level: .info, category: "WhisperKitBackend"
+      )
+    case .threw(let desc):
+      await AppLogger.shared.log(
+        "WhisperKit warm-up: threw(\(desc))",
+        level: .info, category: "WhisperKitBackend"
+      )
+    }
+  }
+
+  /// Single vend gate for the shared `WhisperKit` instance. Every
+  /// shared-instance caller (`transcribe`, `observeLID`,
+  /// `makeIncrementalSession`) MUST obtain the kit through this helper, never
+  /// by reading `whisperKit` directly, so a request can never race a
+  /// straggling orphaned warm-up decode from a prior timeout (no proven
+  /// concurrent-decode safety on one `WhisperKit` instance).
+  ///
+  /// Codex r1 P1: draining the orphan with NO deadline defeated the whole
+  /// point of the 20s fail-open ceiling — a genuinely wedged warm-up would
+  /// then block every subsequent press indefinitely instead of just its own
+  /// decode. The drain reuses the SAME 20s fail-open budget; if it ALSO
+  /// expires, the handle is cleared anyway and the kit is vended regardless
+  /// (accepting the same theoretical concurrent-decode risk the design
+  /// already documents as unproven-but-low-probability, rather than
+  /// re-paying an unbounded wait on every future press).
+  ///
+  /// Adversarial-review finding (#1275): only drain a `warmupTask` that
+  /// belongs to the CURRENT `loadGeneration`. A `warmupTask` left behind by
+  /// a load `unload()` has since superseded is irrelevant to a request that
+  /// arrives while a completely independent newer load is still in its
+  /// (multi-second) CoreML load phase — draining it anyway meant such a
+  /// request could pay up to 20 extra seconds waiting on background work for
+  /// a model that no longer exists, instead of immediately falling through
+  /// to `guard isReady` and returning nil.
+  ///
+  /// Codex code-diff review (medium effort, #1275): if THIS generation's
+  /// warm-up already spent its 20s budget inside `runWarmup()` itself
+  /// (`warmupBudgetExhausted == loadGeneration`), do not re-await the same
+  /// stuck task with a second fresh deadline — the real caller vends
+  /// immediately instead of paying up to 40s total (20s in the background
+  /// warm-up + 20s here) for what the fail-open design intended to cost at
+  /// most 20s of invisible background time.
+  private func readyKitAfterWarmupDrain() async -> WhisperKit? {
+    if let pending = warmupTask, warmupTaskGeneration == loadGeneration {
+      let generation = loadGeneration
+      if warmupBudgetExhausted == generation {
+        warmupTask = nil
+        warmupTaskGeneration = nil
+        await AppLogger.shared.log(
+          "WhisperKit warm-up: budget already exhausted — vending kit without re-draining",
+          level: .info, category: "WhisperKitBackend"
+        )
+        guard isReady else { return nil }
+        return whisperKit
+      }
+      let outcome = await withDeadline(seconds: 20, operation: { await pending.value })
+      if warmupTaskGeneration == generation {
+        warmupTask = nil
+        warmupTaskGeneration = nil
+        if outcome == nil {
+          warmupBudgetExhausted = generation
+          await AppLogger.shared.log(
+            "WhisperKit warm-up: drain also timed_out after 20s — vending kit anyway",
+            level: .info, category: "WhisperKitBackend"
+          )
+        }
+      }
+    }
+    guard isReady else { return nil }
+    return whisperKit
   }
 
   public func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws
     -> ASRResult
   {
-    guard isReady, let kit = whisperKit else { throw ASRError.notReady }
+    guard let kit = await readyKitAfterWarmupDrain() else { throw ASRError.notReady }
 
     let paddedSamples = Self.padAudioWithSilence(audioSamples)
     let decodeOptions = makeDecodeOptions(from: options, sampleCount: paddedSamples.count)
@@ -196,6 +440,36 @@ public actor WhisperKitBackend: ASRBackend {
   }
 
   public func unload() async {
+    // #1275 (Codex r2 P2): supersede any in-flight loadFromPath BEFORE
+    // clearing state, so its post-await guards see the bumped generation.
+    loadGeneration &+= 1
+    // Adversarial-review finding (#1275): also clear `loadTask` — mirrors
+    // `ASRManagerProxy.unloadModel()`'s `inFlightLoadTask?.cancel(); nil`
+    // (`ASRManagerProxy.swift:226,233-234`). Without this, a `prepare()`
+    // called right after `unload()` would join the now-doomed task via
+    // `loadIfNeeded`'s single-flight join instead of starting a fresh load —
+    // the doomed task's generation check (`loadFromPath`) throws
+    // `ASRLoadSupersededError`, which would then wrongly fail a legitimate
+    // new load request instead of ever starting one. Cancellation is
+    // best-effort (CoreML loading is uncancellable cooperatively); nil-ing
+    // the handle is what actually matters.
+    loadTask?.cancel()
+    loadTask = nil
+
+    // Codex code-diff review (medium effort, #1275): mirror the loadTask
+    // handling immediately above for `warmupTask` — without this, an
+    // in-flight or fail-open-timed-out warm-up keeps running and retaining
+    // its captured `WhisperKit` instance after unload, so the old model can
+    // stay in memory doing CoreML work while the backend is supposed to be
+    // unloaded (or while a new load is starting). Cancellation is
+    // best-effort for the same reason as `loadTask` (CoreML decode is
+    // uncancellable cooperatively); clearing the handles is what stops US
+    // from later draining or reporting on a task tied to a discarded model.
+    warmupTask?.cancel()
+    warmupTask = nil
+    warmupTaskGeneration = nil
+    warmupBudgetExhausted = nil
+
     whisperKit = nil
     isReady = false
   }
@@ -212,7 +486,7 @@ public actor WhisperKitBackend: ASRBackend {
   package func makeIncrementalSession(options: TranscriptionOptions)
     async -> (any WhisperKitIncrementalSession)?
   {
-    guard let kit = whisperKit else { return nil }
+    guard let kit = await readyKitAfterWarmupDrain() else { return nil }
     let opts = makeDecodeOptions(from: options, sampleCount: 0)
     return WhisperKitIncrementalWorker(whisperKit: kit, decodingOptions: opts)
   }
@@ -230,7 +504,7 @@ public actor WhisperKitBackend: ASRBackend {
     samples: [Float],
     maxWindows: Int
   ) async -> LIDObservationBatch {
-    guard let kit = whisperKit else { return .unavailable }
+    guard let kit = await readyKitAfterWarmupDrain() else { return .unavailable }
 
     let sampleRate = LanguageDetectorThresholds.sampleRate
     let totalSamples = samples.count

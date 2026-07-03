@@ -550,15 +550,23 @@ public final class TelemetryService {
   }
 
   /// Cold-boot warm-up reached `.ready`. `durationMs` is `ready_at − warmup_started_at`.
-  public func coldStartWarmupCompleted(engine: String, reason: String, durationMs: Int) {
-    PostHogSDK.shared.capture(
-      "coldstart.warmup_completed",
-      properties: [
-        "engine": engine,
-        "reason": reason,
-        "duration_ms": durationMs,
-        "$value": Double(durationMs) / 1000.0,
-      ])
+  /// #1275: `inferenceWarmupMs` is an optional property carrying the WhisperKit
+  /// silent warm-up inference's own duration (nested inside `durationMs`, not
+  /// additive) — absent/nil for Parakeet and for pre-#1275 rows. Query by
+  /// presence; no consumer branches on magnitude.
+  public func coldStartWarmupCompleted(
+    engine: String, reason: String, durationMs: Int, inferenceWarmupMs: Int? = nil
+  ) {
+    var properties: [String: Any] = [
+      "engine": engine,
+      "reason": reason,
+      "duration_ms": durationMs,
+      "$value": Double(durationMs) / 1000.0,
+    ]
+    if let inferenceWarmupMs {
+      properties["inference_warmup_ms"] = inferenceWarmupMs
+    }
+    PostHogSDK.shared.capture("coldstart.warmup_completed", properties: properties)
   }
 
   /// Cold-boot warm-up failed — the engine stays not-ready and the next press
