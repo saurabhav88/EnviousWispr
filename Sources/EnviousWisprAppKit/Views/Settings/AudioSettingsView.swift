@@ -29,14 +29,12 @@ struct AudioSettingsView: View {
             Text(
               "Built-in microphone selected automatically. Bluetooth headphones cannot record and play audio simultaneously — using the built-in mic avoids degrading your audio playback."
             )
-            .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
+            .settingsReadingCopy()
           } else {
             Text(
               "Select which microphone to use for recording. \"Auto\" prefers the built-in mic when Bluetooth audio output is active."
             )
-            .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
+            .settingsReadingCopy()
           }
         }
       } footer: {
@@ -58,8 +56,7 @@ struct AudioSettingsView: View {
             Text(
               "Keeps the microphone engine active after dictation so the next recording starts instantly and captures your first words."
             )
-            .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
+            .settingsReadingCopy()
             if settings.warmEnginePolicy == .always {
               Text(
                 "Always keeps the microphone engine active. The macOS microphone indicator may remain visible and power usage may increase."

@@ -30,8 +30,7 @@ struct YourWordsView: View {
               Text(
                 "Custom terms, vocabulary packs, and learning sources EnviousWispr uses to recognize what you say."
               )
-              .font(.stHelper)
-              .foregroundStyle(.stTextSecondary)
+              .settingsReadingCopy()
             }
             Spacer()
             Button {
