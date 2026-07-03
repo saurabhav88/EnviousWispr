@@ -366,6 +366,11 @@ struct AIPolishSettingsView: View {
     @Bindable var settings = settings
 
     SettingsContentView {
+      // ── Brand signature: breathing rainbow waveform over a luminous aurora.
+      // Perf-gated (animates only when the window is truly visible + active),
+      // decorative + accessibility-hidden (#1299).
+      SettingsSignatureView()
+
       // ── AI Polish master switch (slide toggle, on its own card) ──
       BrandedSection {
         BrandedRow(showDivider: false) {
