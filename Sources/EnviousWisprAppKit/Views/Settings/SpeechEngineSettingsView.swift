@@ -170,7 +170,11 @@ struct SpeechEngineSettingsView: View {
       }
 
       // ── Section 4: Transcription Mode ────────────────────────────────
-      if settings.selectedBackend == .parakeet {
+      // #1276 Step 2 (PR-2): the "Live transcription" toggle now shows for both
+      // engines (it binds the same `useStreamingASR`). On WhisperKit with
+      // Auto-detect language, live transcription safely uses clean batch instead
+      // (the footnote explains why); a picked language streams.
+      if settings.selectedBackend == .parakeet || settings.selectedBackend == .whisperKit {
         BrandedSection(header: "Transcription Mode") {
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 4) {
@@ -181,6 +185,15 @@ struct SpeechEngineSettingsView: View {
               )
               .font(.stHelper)
               .foregroundStyle(.stTextTertiary)
+              if settings.selectedBackend == .whisperKit,
+                isAutoLanguage(settings.languageMode)
+              {
+                Text(
+                  "Live transcription needs a selected language. With Auto-detect, EnviousWispr uses clean batch transcription for accuracy."
+                )
+                .font(.stHelper)
+                .foregroundStyle(.stTextTertiary)
+              }
             }
           }
         } footer: {

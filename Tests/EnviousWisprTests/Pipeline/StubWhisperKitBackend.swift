@@ -42,6 +42,9 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
   /// When set, `makeIncrementalSession` returns this session; otherwise nil
   /// (mirrors the "model not loaded" path).
   var incrementalSessionFactory: (@Sendable () -> (any WhisperKitIncrementalSession)?)?
+  /// When set, `makeStreamingSession` returns this session; otherwise nil
+  /// (mirrors the "model not loaded" path). #1276 PR-2.
+  var streamingSessionFactory: (@Sendable () -> (any WhisperKitIncrementalSession)?)?
 
   /// When set, `transcribe(...)` yields N times before returning — models a
   /// decode suspended in WhisperKit while a new session begins.
@@ -56,6 +59,7 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
   var lastTranscribeOptions: TranscriptionOptions = .default
   var observeLIDCount = 0
   var makeIncrementalSessionCount = 0
+  var makeStreamingSessionCount = 0
   var unloadCount = 0
 
   // Signal-based waiter for `transcribeCount`. Tests await
@@ -74,6 +78,11 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
     _ v: (@Sendable () -> (any WhisperKitIncrementalSession)?)?
   ) {
     incrementalSessionFactory = v
+  }
+  func setStreamingSessionFactory(
+    _ v: (@Sendable () -> (any WhisperKitIncrementalSession)?)?
+  ) {
+    streamingSessionFactory = v
   }
   func setSlowTranscribe(_ v: Bool) { slowTranscribe = v }
   func setPrepareIfCachedResult(_ v: Bool) { prepareIfCachedResult = v }
@@ -136,6 +145,13 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
   {
     makeIncrementalSessionCount += 1
     return incrementalSessionFactory?()
+  }
+
+  func makeStreamingSession(options: TranscriptionOptions) async
+    -> (any WhisperKitIncrementalSession)?
+  {
+    makeStreamingSessionCount += 1
+    return streamingSessionFactory?()
   }
 
   /// #959: when set, `unload()` blocks (models a wedged in-process CoreML

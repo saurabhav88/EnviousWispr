@@ -35,10 +35,13 @@ import Testing
 
   // MARK: Capabilities + readiness
 
-  @Test("capabilities: WhisperKit decodes batch-only, detects language, ignores conditioned batch")
+  @Test("capabilities: WhisperKit streams (PR-2), detects language, ignores conditioned batch")
   func capabilities() {
     let adapter = WhisperKitEngineAdapter(backend: StubWhisperKitBackend())
-    #expect(adapter.capabilities.supportsStreaming == false)
+    // #1308 (Step 2, PR-2): WhisperKit now advertises streaming so the kernel's
+    // `useStreamingASR && supportsStreaming` gate can route the Live-transcription
+    // toggle through it (the adapter still degrades to batch for auto language).
+    #expect(adapter.capabilities.supportsStreaming == true)
     #expect(adapter.capabilities.supportsLanguageDetection == true)
     // #950 — WhisperKit ignores `batchSamples` and decodes the raw capture, so
     // the VAD trim does not touch its ASR input; tail-trim diagnostic excluded.
@@ -582,6 +585,136 @@ import Testing
     #expect(mks == 0)
     let txCount = await backend.transcribeCount
     #expect(txCount == 1)
+  }
+
+  // MARK: Streaming routing matrix (#1308, PR-2)
+
+  @Test("streaming ON + locked language: starts the streaming session; its flush is authoritative")
+  func streamingLockedUsesSession() async throws {
+    let backend = StubWhisperKitBackend()
+    let stubSession = StubIncrementalSession(result: .accepted(text: "streamed-text"))
+    await backend.setStreamingSessionFactory({ stubSession })
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: "en"), streaming: true)
+    let started = await stubSession.startCount
+    #expect(started == 1, "streaming session started for streaming ON + locked")
+    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "streamed-text", "streaming flush text is authoritative")
+    #expect(result.language == "en")
+    let mss = await backend.makeStreamingSessionCount
+    #expect(mss == 1)
+    let txCount = await backend.transcribeCount
+    #expect(txCount == 0, "no batch decode when streaming flush succeeds")
+  }
+
+  @Test("streaming ON + auto language: degrades to clean batch, no streaming session")
+  func streamingAutoDegradesToBatch() async throws {
+    let backend = StubWhisperKitBackend()
+    let stubSession = StubIncrementalSession(result: .accepted(text: "should-not-run"))
+    await backend.setStreamingSessionFactory({ stubSession })
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "auto-batch", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: true)
+    let mss = await backend.makeStreamingSessionCount
+    #expect(mss == 0, "auto language never vends a streaming session")
+    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "auto-batch")
+    let txCount = await backend.transcribeCount
+    #expect(txCount == 1, "auto + streaming ON runs clean batch")
+  }
+
+  @Test("streaming ON + locked but model not ready (nil vend): fail-open to clean batch")
+  func streamingModelNotReadyFailsOpen() async throws {
+    let backend = StubWhisperKitBackend()
+    // No streamingSessionFactory set → makeStreamingSession returns nil.
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "fallback-batch", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: "en"), streaming: true)
+    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "fallback-batch", "nil streaming vend → clean batch fallback")
+    let txCount = await backend.transcribeCount
+    #expect(txCount == 1)
+  }
+
+  @Test("streaming ON + locked but flush returns empty: fail-open to clean batch")
+  func streamingEmptyFlushFailsOpen() async throws {
+    let backend = StubWhisperKitBackend()
+    let stubSession = StubIncrementalSession(result: .rejected())
+    await backend.setStreamingSessionFactory({ stubSession })
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "rescue-batch", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: "en"), streaming: true)
+    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "rescue-batch", "empty streaming flush → clean batch fallback")
+    let mss = await backend.makeStreamingSessionCount
+    #expect(mss == 1, "streaming session was started")
+    let txCount = await backend.transcribeCount
+    #expect(txCount == 1, "batch fallback ran after empty flush")
+  }
+
+  @Test("streaming OFF + locked: no streaming session, clean batch")
+  func streamingOffUsesBatch() async throws {
+    let backend = StubWhisperKitBackend()
+    let stubSession = StubIncrementalSession(result: .accepted(text: "should-not-run"))
+    await backend.setStreamingSessionFactory({ stubSession })
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "off-batch", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: "en"), streaming: false)
+    let mss = await backend.makeStreamingSessionCount
+    #expect(mss == 0, "toggle off never vends a streaming session")
+    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "off-batch")
   }
 
   // MARK: Finalize — coordinate space (council F1 / OQ-1)

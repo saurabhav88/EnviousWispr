@@ -504,6 +504,22 @@ public actor WhisperKitBackend: ASRBackend {
     return WhisperKitIncrementalWorker(whisperKit: kit, decodingOptions: opts)
   }
 
+  // #1276 Step 2 (PR-2): vend the authoritative streaming session for the "Live
+  // transcription" toggle's ON + locked-language path. Mirrors
+  // `makeIncrementalSession` (same nil-on-not-loaded contract, same
+  // `readyKitAfterWarmupDrain` vend) but constructs the confirmed-segment
+  // `WhisperKitStreamingSession`. `sampleCount: 0` forces `chunkingStrategy: .none`
+  // in the base options (the session sets `clipTimestamps = [lastConfirmedSec]` and
+  // keeps `.none` per cycle; it must NEVER inherit the `>30s -> .vad` branch that
+  // would re-chunk the whole growing buffer, F2).
+  package func makeStreamingSession(options: TranscriptionOptions)
+    async -> (any WhisperKitIncrementalSession)?
+  {
+    guard let kit = await readyKitAfterWarmupDrain() else { return nil }
+    let opts = makeDecodeOptions(from: options, sampleCount: 0)
+    return WhisperKitStreamingSession(whisperKit: kit, decodingOptions: opts)
+  }
+
   // R2 (#360): vend Sendable LID observations so the non-Sendable WhisperKit
   // handle never crosses an actor boundary. The window-loop logic is
   // migrated verbatim from `LanguageDetector.runMultiWindowLID` (the previous
