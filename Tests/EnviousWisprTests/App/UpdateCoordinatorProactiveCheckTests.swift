@@ -224,15 +224,12 @@ struct UpdateCoordinatorProactiveCheckTests {
 
   #if DEBUG
 
-    /// Sendable storage box for the `@Sendable` testEventHook closure.
-    @MainActor final class EventBox { var events: [CapturedTelemetryEvent] = [] }
-
     @Test("emits proactive_check_triggered fired=true when it fires")
-    func emitsTelemetryFiredTrue() async {
-      let box = EventBox()
+    func emitsTelemetryFiredTrue() async throws {
+      let waiter = TelemetryEventWaiter()
       let originalHook = TelemetryService.shared.testEventHook
       TelemetryService.shared.testEventHook = { @Sendable event in
-        Task { @MainActor in box.events.append(event) }
+        MainActor.assumeIsolated { waiter.record(event) }
       }
       defer { TelemetryService.shared.testEventHook = originalHook }
 
@@ -240,23 +237,18 @@ struct UpdateCoordinatorProactiveCheckTests {
       let fake = FakeProactiveUpdater(autoChecks: true, lastCheck: nil)
       coordinator.checkForUpdatesProactively(trigger: "launch", probe: fake)
 
-      await Task.yield()
-      await Task.yield()
-
-      let evt = box.events.first { $0.name == "update.proactive_check_triggered" }
-      #expect(
-        evt != nil, "Expected update.proactive_check_triggered. Got \(box.events.map(\.name)).")
-      #expect(evt?.stringProps["trigger"] == "launch")
-      #expect(evt?.stringProps["reason"] == "fired")
-      #expect(evt?.boolProps["fired"] == true)
+      let evt = try await waiter.waitForEvent(named: "update.proactive_check_triggered")
+      #expect(evt.stringProps["trigger"] == "launch")
+      #expect(evt.stringProps["reason"] == "fired")
+      #expect(evt.boolProps["fired"] == true)
     }
 
     @Test("emits proactive_check_triggered fired=false when cooldown-skipped")
-    func emitsTelemetryFiredFalseOnCooldownSkip() async {
-      let box = EventBox()
+    func emitsTelemetryFiredFalseOnCooldownSkip() async throws {
+      let waiter = TelemetryEventWaiter()
       let originalHook = TelemetryService.shared.testEventHook
       TelemetryService.shared.testEventHook = { @Sendable event in
-        Task { @MainActor in box.events.append(event) }
+        MainActor.assumeIsolated { waiter.record(event) }
       }
       defer { TelemetryService.shared.testEventHook = originalHook }
 
@@ -268,14 +260,10 @@ struct UpdateCoordinatorProactiveCheckTests {
       let fake = FakeProactiveUpdater(autoChecks: true, lastCheck: nil)
       coordinator.checkForUpdatesProactively(trigger: "foreground", now: now, probe: fake)
 
-      await Task.yield()
-      await Task.yield()
-
-      let evt = box.events.first { $0.name == "update.proactive_check_triggered" }
-      #expect(evt != nil)
-      #expect(evt?.stringProps["trigger"] == "foreground")
-      #expect(evt?.stringProps["reason"] == "cooldown")
-      #expect(evt?.boolProps["fired"] == false)
+      let evt = try await waiter.waitForEvent(named: "update.proactive_check_triggered")
+      #expect(evt.stringProps["trigger"] == "foreground")
+      #expect(evt.stringProps["reason"] == "cooldown")
+      #expect(evt.boolProps["fired"] == false)
     }
 
   #endif  // DEBUG

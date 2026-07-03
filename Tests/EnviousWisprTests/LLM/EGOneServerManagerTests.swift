@@ -88,9 +88,21 @@ struct EGOneServerManagerTests {
     config.serverBinaryURL = URL(fileURLWithPath: "/usr/bin/true")
     config.extraArguments = []
     await manager.start(configuration: config)
-    // Give the termination handler a beat to land.
-    try await Task.sleep(for: .milliseconds(500))
-    let state = await manager.state
+    // Process death is observed asynchronously via `terminationHandler`, so
+    // `start()` can return before the terminal `.failed` state lands. Poll the
+    // REAL terminal state (bounded, fail-fast) instead of guessing a fixed
+    // sleep the CI runner might overshoot: the process dies in <10ms locally so
+    // this exits on the first poll; the 5s ceiling is jitter-proof headroom on
+    // a contended runner. `Task.sleep` here is the poll cadence, not a
+    // correctness-bearing wait (#1283).
+    var state = await manager.state
+    var polls = 0
+    while polls < 200 {
+      if case .failed = state { break }
+      try await Task.sleep(for: .milliseconds(25))
+      state = await manager.state
+      polls += 1
+    }
     #expect(
       state == .failed(reason: "crashed_during_start")
         || state == .failed(reason: "server_never_became_ready"))

@@ -109,22 +109,11 @@ struct DualModePolishTelemetryTests {
   // compile in both flavors. Coverage is preserved in dev test runs.
   #if DEBUG
 
-    /// Sendable storage box for the testEventHook closure. The hook runs on the
-    /// MainActor (TelemetryService is @MainActor) and `box.value` is only
-    /// touched from the main thread, but Swift 6 strict concurrency requires
-    /// the closure capture to be `Sendable`-safe.
-    @MainActor
-    final class EventBox {
-      var value: CapturedTelemetryEvent?
-    }
-
     @Test("TelemetryService emits the filter properties when populated")
-    func telemetryServiceEmitsNewProperties() async {
-      let box = EventBox()
+    func telemetryServiceEmitsNewProperties() async throws {
+      let waiter = TelemetryEventWaiter()
       TelemetryService.shared.testEventHook = { @Sendable event in
-        Task { @MainActor in
-          if event.name == "llm.polish_completed" { box.value = event }
-        }
+        MainActor.assumeIsolated { waiter.record(event) }
       }
       defer { TelemetryService.shared.testEventHook = nil }
 
@@ -137,24 +126,18 @@ struct DualModePolishTelemetryTests {
         fellBackToRaw: true
       )
 
-      // Allow the dispatched hook task to run.
-      await Task.yield()
-      try? await Task.sleep(nanoseconds: 5_000_000)
-
-      let event = try? #require(box.value)
-      #expect(event?.stringProps["provider"] == "appleIntelligence")
-      #expect(event?.stringProps["router_mode"] == nil)
-      #expect(event?.stringProps["filter_tripped"] == "code_shape_guard")
-      #expect(event?.boolProps["fell_back_to_raw"] == true)
+      let event = try await waiter.waitForEvent(named: "llm.polish_completed")
+      #expect(event.stringProps["provider"] == "appleIntelligence")
+      #expect(event.stringProps["router_mode"] == nil)
+      #expect(event.stringProps["filter_tripped"] == "code_shape_guard")
+      #expect(event.boolProps["fell_back_to_raw"] == true)
     }
 
     @Test("TelemetryService omits polish properties for cloud providers (nil params)")
-    func telemetryServiceOmitsForCloudProvider() async {
-      let box = EventBox()
+    func telemetryServiceOmitsForCloudProvider() async throws {
+      let waiter = TelemetryEventWaiter()
       TelemetryService.shared.testEventHook = { @Sendable event in
-        Task { @MainActor in
-          if event.name == "llm.polish_completed" { box.value = event }
-        }
+        MainActor.assumeIsolated { waiter.record(event) }
       }
       defer { TelemetryService.shared.testEventHook = nil }
 
@@ -163,22 +146,17 @@ struct DualModePolishTelemetryTests {
         result: "success", latencySeconds: 1.2
       )
 
-      await Task.yield()
-      try? await Task.sleep(nanoseconds: 5_000_000)
-
-      let event = try? #require(box.value)
-      #expect(event?.stringProps["provider"] == "openai")
-      #expect(event?.stringProps["filter_tripped"] == nil)
-      #expect(event?.boolProps["fell_back_to_raw"] == nil)
+      let event = try await waiter.waitForEvent(named: "llm.polish_completed")
+      #expect(event.stringProps["provider"] == "openai")
+      #expect(event.stringProps["filter_tripped"] == nil)
+      #expect(event.boolProps["fell_back_to_raw"] == nil)
     }
 
     @Test("TelemetryService emits fell_back_to_raw=false distinctly from absent")
-    func telemetryServiceEmitsFalseFellBack() async {
-      let box = EventBox()
+    func telemetryServiceEmitsFalseFellBack() async throws {
+      let waiter = TelemetryEventWaiter()
       TelemetryService.shared.testEventHook = { @Sendable event in
-        Task { @MainActor in
-          if event.name == "llm.polish_completed" { box.value = event }
-        }
+        MainActor.assumeIsolated { waiter.record(event) }
       }
       defer { TelemetryService.shared.testEventHook = nil }
 
@@ -189,13 +167,10 @@ struct DualModePolishTelemetryTests {
         fellBackToRaw: false
       )
 
-      await Task.yield()
-      try? await Task.sleep(nanoseconds: 5_000_000)
-
-      let event = try? #require(box.value)
-      #expect(event?.boolProps["fell_back_to_raw"] == false)
+      let event = try await waiter.waitForEvent(named: "llm.polish_completed")
+      #expect(event.boolProps["fell_back_to_raw"] == false)
       // filter_tripped absent (passed nil) — schema cleanliness
-      #expect(event?.stringProps["filter_tripped"] == nil)
+      #expect(event.stringProps["filter_tripped"] == nil)
     }
 
   #endif  // DEBUG (testEventHook tests)
@@ -411,12 +386,10 @@ struct DualModePolishTelemetryTests {
   #if DEBUG
 
     @Test("TelemetryService emits fallback_reason when passed")
-    func telemetryServiceEmitsFallbackReason() async {
-      let box = EventBox()
+    func telemetryServiceEmitsFallbackReason() async throws {
+      let waiter = TelemetryEventWaiter()
       TelemetryService.shared.testEventHook = { @Sendable event in
-        Task { @MainActor in
-          if event.name == "llm.polish_completed" { box.value = event }
-        }
+        MainActor.assumeIsolated { waiter.record(event) }
       }
       defer { TelemetryService.shared.testEventHook = nil }
 
@@ -426,21 +399,16 @@ struct DualModePolishTelemetryTests {
         filterTripped: nil, fellBackToRaw: true,
         fallbackReason: "no_change")
 
-      await Task.yield()
-      try? await Task.sleep(nanoseconds: 5_000_000)
-
-      let event = try? #require(box.value)
-      #expect(event?.stringProps["fallback_reason"] == "no_change")
-      #expect(event?.boolProps["fell_back_to_raw"] == true)
+      let event = try await waiter.waitForEvent(named: "llm.polish_completed")
+      #expect(event.stringProps["fallback_reason"] == "no_change")
+      #expect(event.boolProps["fell_back_to_raw"] == true)
     }
 
     @Test("TelemetryService omits fallback_reason when nil (cloud / not a fallback)")
-    func telemetryServiceOmitsFallbackReasonWhenNil() async {
-      let box = EventBox()
+    func telemetryServiceOmitsFallbackReasonWhenNil() async throws {
+      let waiter = TelemetryEventWaiter()
       TelemetryService.shared.testEventHook = { @Sendable event in
-        Task { @MainActor in
-          if event.name == "llm.polish_completed" { box.value = event }
-        }
+        MainActor.assumeIsolated { waiter.record(event) }
       }
       defer { TelemetryService.shared.testEventHook = nil }
 
@@ -448,11 +416,8 @@ struct DualModePolishTelemetryTests {
         provider: "openai", model: "gpt-4o-mini",
         result: "success", latencySeconds: 1.0)
 
-      await Task.yield()
-      try? await Task.sleep(nanoseconds: 5_000_000)
-
-      let event = try? #require(box.value)
-      #expect(event?.stringProps["fallback_reason"] == nil)
+      let event = try await waiter.waitForEvent(named: "llm.polish_completed")
+      #expect(event.stringProps["fallback_reason"] == nil)
     }
 
   #endif  // DEBUG

@@ -352,29 +352,36 @@ struct EngineCoordinatorTests {
 
   #if DEBUG
     @Test("idle apply emits change_applied with from/to + defer_ms/switch_ms")
-    func telemetryChangeApplied() async {
-      let box = EventBox()
-      TelemetryService.shared.testEventHook = { @Sendable e in box.append(e) }
+    func telemetryChangeApplied() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable e in
+        MainActor.assumeIsolated { waiter.record(e) }
+      }
       defer { TelemetryService.shared.testEventHook = nil }
 
       let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
       let c = fake.makeStartedCoordinator()
       fake.selected = .whisperKit
       c.poke(.settingsChanged)
-      _ = await enginePoll { fake.active == .whisperKit }
 
-      let applied = box.all.first { $0.name == "settings.change_applied" }
-      #expect(applied?.stringProps["to"] == "whisperKit")
-      #expect(applied?.stringProps["from"] == "parakeet")
-      #expect(applied?.boolProps["deferred"] == false)
-      #expect(applied?.intProps["switch_ms"] != nil)
-      #expect(applied?.intProps["defer_ms"] != nil)
+      // Wait on the telemetry EVENT, not the engine STATE: `fake.active` is set
+      // inside the fake switch, but `settings.change_applied` is emitted only
+      // after `performSwitch` returns — polling state then reading the box was
+      // the signal mismatch (#1283).
+      let applied = try await waiter.waitForEvent(named: "settings.change_applied")
+      #expect(applied.stringProps["to"] == "whisperKit")
+      #expect(applied.stringProps["from"] == "parakeet")
+      #expect(applied.boolProps["deferred"] == false)
+      #expect(applied.intProps["switch_ms"] != nil)
+      #expect(applied.intProps["defer_ms"] != nil)
     }
 
     @Test("deferred apply emits change_blocked(pipeline_active) then change_applied(deferred)")
-    func telemetryBlockedThenDeferredApplied() async {
-      let box = EventBox()
-      TelemetryService.shared.testEventHook = { @Sendable e in box.append(e) }
+    func telemetryBlockedThenDeferredApplied() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable e in
+        MainActor.assumeIsolated { waiter.record(e) }
+      }
       defer { TelemetryService.shared.testEventHook = nil }
 
       let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
@@ -384,23 +391,30 @@ struct EngineCoordinatorTests {
       c.poke(.settingsChanged)
       _ = await enginePoll { c.status.blockedReason == .pipelineActive }
 
-      let blocked = box.all.first { $0.name == "settings.change_blocked" }
+      // `settings.change_blocked` is emitted synchronously with the blocked
+      // state (Codex-confirmed not a mismatch), so the state poll is a valid
+      // proxy; read it from the recorded history.
+      let blocked = waiter.events.first { $0.name == "settings.change_blocked" }
       #expect(blocked?.stringProps["reason"] == "pipeline_active")
       #expect(blocked?.stringProps["requested"] == "whisperKit")
 
       fake.parakeetActive = false
       c.poke(.driverStateChanged)
-      _ = await enginePoll { fake.active == .whisperKit }
-      let applied = box.all.first {
-        $0.name == "settings.change_applied" && $0.stringProps["to"] == "whisperKit"
-      }
-      #expect(applied?.boolProps["deferred"] == true)
+      // Deferred apply: wait on the EVENT, not `fake.active` — the deferred
+      // `settings.change_applied` is emitted after performSwitch returns (#1283).
+      let applied = try await waiter.waitForEvent(
+        matching: {
+          $0.name == "settings.change_applied" && $0.stringProps["to"] == "whisperKit"
+        }, describedAs: "settings.change_applied(to: whisperKit)")
+      #expect(applied.boolProps["deferred"] == true)
     }
 
     @Test("change_blocked is emitted once per epoch per reason")
     func telemetryBlockedOncePerEpoch() async {
-      let box = EventBox()
-      TelemetryService.shared.testEventHook = { @Sendable e in box.append(e) }
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable e in
+        MainActor.assumeIsolated { waiter.record(e) }
+      }
       defer { TelemetryService.shared.testEventHook = nil }
 
       let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
@@ -413,7 +427,10 @@ struct EngineCoordinatorTests {
       c.poke(.driverStateChanged)
       c.poke(.driverStateChanged)
       _ = await enginePoll(.milliseconds(120)) { false }
-      let blockedCount = box.all.filter {
+      // Negative window: the first blocked event landed synchronously with the
+      // blocked state above; the 120ms drain proves no SECOND emit. Count from
+      // the recorded history.
+      let blockedCount = waiter.events.filter {
         $0.name == "settings.change_blocked" && $0.stringProps["reason"] == "pipeline_active"
       }.count
       #expect(blockedCount == 1, "blocked telemetry must fire once per epoch, got \(blockedCount)")
@@ -421,8 +438,10 @@ struct EngineCoordinatorTests {
 
     @Test("a superseded switch emits engine.switch_superseded")
     func telemetrySuperseded() async {
-      let box = EventBox()
-      TelemetryService.shared.testEventHook = { @Sendable e in box.append(e) }
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable e in
+        MainActor.assumeIsolated { waiter.record(e) }
+      }
       defer { TelemetryService.shared.testEventHook = nil }
 
       let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
@@ -437,13 +456,15 @@ struct EngineCoordinatorTests {
       _ = await enginePoll { c.isSwitching }
       latch.release()
       _ = await enginePoll { fake.active == .parakeet && !c.isSwitching }
-      #expect(box.all.contains { $0.name == "engine.switch_superseded" })
+      #expect(waiter.events.contains { $0.name == "engine.switch_superseded" })
     }
 
     @Test("a failed warm emits engine.warm(failed) + engine.switch_failed")
-    func telemetryWarmFailed() async {
-      let box = EventBox()
-      TelemetryService.shared.testEventHook = { @Sendable e in box.append(e) }
+    func telemetryWarmFailed() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable e in
+        MainActor.assumeIsolated { waiter.record(e) }
+      }
       defer { TelemetryService.shared.testEventHook = nil }
 
       let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
@@ -451,26 +472,17 @@ struct EngineCoordinatorTests {
       let c = fake.makeStartedCoordinator()
       fake.selected = .whisperKit
       c.poke(.settingsChanged)
-      _ = await enginePoll {
-        if case .failed = c.status.switchPhase { return true }
-        return false
-      }
-      #expect(box.all.contains { $0.name == "engine.switch_failed" })
-      #expect(
-        box.all.contains { $0.name == "engine.warm" && $0.stringProps["outcome"] == "failed" })
+      // Wait on the EVENTS, not `switchPhase` state: `engine.warm(failed)` and
+      // `engine.switch_failed` are emitted after the warm attempt returns, while
+      // switchPhase flips inside it — the signal mismatch (#1283). History makes
+      // the two waits order-independent.
+      _ = try await waiter.waitForEvent(named: "engine.switch_failed")
+      _ = try await waiter.waitForEvent(
+        matching: { $0.name == "engine.warm" && $0.stringProps["outcome"] == "failed" },
+        describedAs: "engine.warm(outcome: failed)")
     }
   #endif
 }
-
-#if DEBUG
-  /// Sendable capture box for the DEBUG `testEventHook`.
-  private final class EventBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var events: [CapturedTelemetryEvent] = []
-    func append(_ e: CapturedTelemetryEvent) { lock.withLock { events.append(e) } }
-    var all: [CapturedTelemetryEvent] { lock.withLock { events } }
-  }
-#endif
 
 /// A one-shot MainActor latch so a test can hold a switch/warm `await` open and
 /// assert mid-flight state, then release it.

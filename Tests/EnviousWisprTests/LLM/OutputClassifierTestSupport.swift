@@ -59,6 +59,15 @@ final class StubOutputClassifier: OutputClassifierProtocol, @unchecked Sendable 
   let behavior: Behavior
   init(_ behavior: Behavior) { self.behavior = behavior }
 
+  /// Set true only when a `.blockSync` body runs to completion. Lets a test
+  /// assert the deadline returned the caller BEFORE the block finished — a
+  /// relative-ordering signal that needs no wall-clock bound (#1283).
+  private let finishLock = NSLock()
+  private var _didFinishBlock = false
+  var didFinishBlock: Bool {
+    finishLock.withLock { _didFinishBlock }
+  }
+
   func score(input: String, polished: String) async throws -> Double {
     switch behavior {
     case let .score(value):
@@ -71,6 +80,7 @@ final class StubOutputClassifier: OutputClassifierProtocol, @unchecked Sendable 
       // stuck Core ML inference. `usleep` is a blocking C syscall (Thread.sleep
       // is banned in async contexts). The deadline must bound the caller anyway.
       usleep(UInt32(seconds * 1_000_000))
+      finishLock.withLock { _didFinishBlock = true }
       return then
     case .throwError:
       throw OutputClassifierError.disabled(.inferenceError)

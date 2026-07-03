@@ -66,17 +66,22 @@ import Testing
   @Test("non-cooperative synchronous block is bounded by the deadline and fails open")
   func nonCooperativeBlockFailsOpen() async {
     // A stuck synchronous inference (500ms thread block, ignores cancellation):
-    // the 50ms deadline must still return the sync result well before the block
-    // ends — proving withDeadline does not await the abandoned operation.
-    let clock = ContinuousClock()
-    let elapsed = await clock.measure {
-      let result = await EnviousOutputFilter.filterWithClassifier(
-        input: Self.cleanInput, output: Self.cleanOutput,
-        classifier: StubOutputClassifier(.blockSync(seconds: 0.5, then: 0.99)))
-      #expect(result.fellBackToRaw == false)
-      #expect(result.tripped == nil)
-    }
-    #expect(elapsed < .milliseconds(400), "deadline did not bound the caller: \(elapsed)")
+    // the 50ms deadline must return the sync result BEFORE the block ends —
+    // proving withDeadline does not await the abandoned operation. The outcome
+    // (fellBackToRaw == false) already proves the timed-out 0.99 discard was
+    // never applied; `didFinishBlock == false` additionally proves the CALLER
+    // was released before the 500ms block finished. This relative ordering is
+    // robust at any runner speed — no wall-clock bound to flake on a slow CI
+    // runner (#1283, replaces the prior `elapsed < 400ms` measurement).
+    let classifier = StubOutputClassifier(.blockSync(seconds: 0.5, then: 0.99))
+    let result = await EnviousOutputFilter.filterWithClassifier(
+      input: Self.cleanInput, output: Self.cleanOutput, classifier: classifier)
+    #expect(result.fellBackToRaw == false)
+    #expect(result.tripped == nil)
+    #expect(
+      classifier.didFinishBlock == false,
+      "deadline did not bound the caller: the 500ms block finished before filterWithClassifier returned"
+    )
   }
 
   @Test("NaN score fails open")
