@@ -613,6 +613,11 @@ import Testing
     #expect(mss == 1)
     let txCount = await backend.transcribeCount
     #expect(txCount == 0, "no batch decode when streaming flush succeeds")
+    // Codex r4 P2: streaming success must still set the locked language-detection
+    // state so downstream polish keeps per-language custom vocabulary.
+    #expect(adapter.lastLanguageDetection?.lang == "en")
+    #expect(adapter.lastLanguageDetection?.tier == .locked)
+    #expect(adapter.lastLanguageDetection?.abstained == false)
   }
 
   @Test("streaming ON + auto language: degrades to clean batch, no streaming session")

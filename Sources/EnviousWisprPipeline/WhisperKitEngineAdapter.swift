@@ -1064,6 +1064,19 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     }
     let flushMs = Int((CFAbsoluteTimeGetCurrent() - flushStart) * 1000)
     let audioDurationSec = Double(result.samplesCovered) / AudioConstants.sampleRate
+    // Preserve the locked-language detection state the batch finalize would have
+    // set via `LanguageDetector.detect(.locked)` (Codex r4 P2). Streaming only
+    // runs for a picked language, so it never calls LID — but downstream polish
+    // (`DefaultPromptPlanner`) treats `whisperKit && languageDetection == nil` as
+    // low confidence and DROPS per-language custom vocabulary. Mirror the locked
+    // short-circuit result (`LanguageDetector.swift:160-170`) exactly. Synchronous
+    // (no await after the stale guard) so no concurrent `beginSession(B)` can tear
+    // this write.
+    if let lockedCode = decodeOptions.language {
+      lastLanguageDetection = LanguageDetectionResult(
+        lang: lockedCode, confidence: 1.0, margin: 1.0, tier: .locked,
+        voicedDuration: audioDurationSec, abstained: false, usedSessionPrior: false)
+    }
     var diagnostics = KernelASRAdapterDiagnostics()
     diagnostics.rawSampleCount = result.samplesCovered
     diagnostics.lidCaptureSessionID = sessionIDForLog
