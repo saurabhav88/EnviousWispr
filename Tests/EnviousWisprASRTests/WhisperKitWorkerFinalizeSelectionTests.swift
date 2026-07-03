@@ -63,19 +63,6 @@ struct SelectCandidateTextTests {
 private actor FakeWhisperKitTranscribing: WhisperKitTranscribing {
   private var scriptedResults: [[TranscriptionResult]]
   private(set) var callCount = 0
-  // CI flakiness fix (#1275): resolved from within `transcribe()` itself, so a
-  // caller can await "the Nth decode call has actually happened" instead of a
-  // fixed wall-clock sleep. A prior version of this fake had no such signal,
-  // forcing tests to guess a sleep duration (20ms/40ms cadence, 30ms/60ms
-  // sleep) that a real CI runner's scheduler jitter could still miss —
-  // exactly the failure mode `timeout-numbers-need-distribution-evidence`
-  // warns about. Resolving inside the SAME actor as the call, before
-  // returning, plus Swift's actor-reentrancy guarantee that the worker actor
-  // runs its post-transcribe state update (`decodeCount += 1`, etc.)
-  // synchronously with no intervening `await` before its next suspension
-  // point, makes a subsequent `worker.cancel()` call race-free: it is
-  // guaranteed to observe that update rather than a stale pre-decode state.
-  private var waiters: [(threshold: Int, continuation: CheckedContinuation<Void, Never>)] = []
 
   init(scriptedResults: [[TranscriptionResult]]) {
     self.scriptedResults = scriptedResults
@@ -86,22 +73,24 @@ private actor FakeWhisperKitTranscribing: WhisperKitTranscribing {
   {
     let index = callCount
     callCount += 1
-    let reached = callCount
-    waiters.removeAll { waiter in
-      guard reached >= waiter.threshold else { return false }
-      waiter.continuation.resume()
-      return true
-    }
     guard index < scriptedResults.count else { return [] }
     return scriptedResults[index]
   }
+}
 
-  /// Suspends until `transcribe()` has been called at least `n` times.
-  func waitForCallCount(_ n: Int) async {
-    if callCount >= n { return }
-    await withCheckedContinuation { continuation in
-      waiters.append((threshold: n, continuation: continuation))
-    }
+/// CI flakiness fix (#1275): a fixed wall-clock sleep can't answer "has
+/// decode N actually been RECORDED by the worker yet" — a prior version of
+/// this test signaled on the fake decoder merely being CALLED, which Codex's
+/// cloud review correctly flagged as still racy: there is no guaranteed
+/// ordering between the fake's actor returning control to the worker's
+/// `runLoop` and a separately-resumed test task calling `cancel()`. This
+/// polls the worker's OWN `currentDecodeCount` (the actual state every
+/// assertion here depends on) in a tight `Task.yield()` loop — no proxy,
+/// no wall-clock guess, and no meaningful spin cost since each check is a
+/// cheap actor property read.
+private func waitForDecodeCount(_ n: Int, on worker: WhisperKitIncrementalWorker) async {
+  while await worker.currentDecodeCount < n {
+    await Task.yield()
   }
 }
 
@@ -135,7 +124,7 @@ struct WorkerFinalizeBoundaryTests {
     await worker.start(audioSamplesProvider: { (samples: samples, count: samples.count) })
     // CI flakiness fix (#1275): deterministic signal instead of a fixed
     // sleep — wait for the second scripted decode to actually happen.
-    await fake.waitForCallCount(2)
+    await waitForDecodeCount(2, on: worker)
 
     // finalSamples crosses the 30s boundary; the tail beyond shortModeSampleCount
     // is silence (all zeros), so the RMS gate skips the tail decode — this
@@ -160,7 +149,7 @@ struct WorkerFinalizeBoundaryTests {
     let samples = [Float](repeating: 0, count: 300_000)
     await worker.start(audioSamplesProvider: { (samples: samples, count: samples.count) })
     // CI flakiness fix (#1275): deterministic signal instead of a fixed sleep.
-    await fake.waitForCallCount(1)
+    await waitForDecodeCount(1, on: worker)
 
     // isLong = count > threshold (strict), so exactly the threshold is short-mode.
     let finalSamples = [Float](repeating: 0, count: Self.longRecordingThreshold)
@@ -180,7 +169,7 @@ struct WorkerFinalizeBoundaryTests {
     let samples = [Float](repeating: 0, count: 300_000)
     await worker.start(audioSamplesProvider: { (samples: samples, count: samples.count) })
     // CI flakiness fix (#1275): deterministic signal instead of a fixed sleep.
-    await fake.waitForCallCount(1)
+    await waitForDecodeCount(1, on: worker)
 
     let finalSamples = [Float](repeating: 0, count: Self.longRecordingThreshold + 1)
     let result = await worker.finalize(finalSamples: finalSamples, speechSegments: [])
@@ -203,8 +192,9 @@ struct WorkerFinalizeBoundaryTests {
     // then 60ms after a widen-and-hope pass) still failed on a real CI
     // runner under scheduler contention — "did decode #1 actually complete
     // yet" cannot be answered by guessing a duration long enough. Replaced
-    // with a signal from the fake itself (`waitForCallCount`): wait for the
-    // first `transcribe()` call to actually happen, then cancel immediately.
+    // with `waitForDecodeCount`, which polls the worker's own recorded state
+    // (not a proxy for it — Codex cloud review flagged an earlier version
+    // that signaled on the fake decoder merely being called as still racy).
     // A generous cadence (500ms) means even a slow-to-resume test task has
     // enormous margin before the loop's own next sleep could complete and
     // fire a second decode — the risk this test guards against.
@@ -213,7 +203,7 @@ struct WorkerFinalizeBoundaryTests {
 
     let samples = [Float](repeating: 0, count: shortModeSampleCount)
     await worker.start(audioSamplesProvider: { (samples: samples, count: samples.count) })
-    await fake.waitForCallCount(1)  // deterministic: the first decode has happened
+    await waitForDecodeCount(1, on: worker)  // deterministic: the first decode has been recorded
     await worker.cancel()  // stop after exactly one short-mode decode
 
     // Large uncovered tail with actual signal (not silence) so the RMS gate

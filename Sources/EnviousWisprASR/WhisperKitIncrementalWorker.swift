@@ -69,6 +69,15 @@ package actor WhisperKitIncrementalWorker: WhisperKitIncrementalSession {
   private var running = false
   private var loopTask: Task<Void, Never>?
 
+  /// Test-only observability seam (Codex cloud review, #1275): the real
+  /// signal tests need is "has the loop actually recorded N decodes," not a
+  /// proxy for it. `decodeCount` only increments AFTER `runLoop` resumes from
+  /// its `await whisperKit.transcribe(...)` call and stores the result — so
+  /// polling this directly (unlike waiting on the fake decoder being merely
+  /// CALLED) is race-free: it reflects worker state, not decoder-call timing
+  /// that has no guaranteed ordering against it across the actor boundary.
+  package var currentDecodeCount: Int { decodeCount }
+
   /// `cadence` defaults to the shipped 3s cycle; tests inject a near-zero
   /// value so the run loop's boundary behavior can be characterized without
   /// waiting on real wall-clock time (#1275).
