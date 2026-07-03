@@ -12,21 +12,28 @@ import Foundation
 // `supportsLanguageDetection: true`) and lifts the WhisperKit-engine-internal
 // orchestration from `WhisperKitPipeline.swift`: model load + cancellation
 // (#445 held `prepareTask`), `warmUpFromCache` (cache-only preload, no
-// network), `beginSession` (cancel pending model unload, start incremental
-// worker in `.locked` mode only), `acceptAudio` (retained-PCM accumulator,
-// bounded to ~19 MB), `observeSpeechSegments` (store voiced ranges from the
-// kernel's VAD), `finalize` (LID → transcribe with `clipTimestamps` derived
-// from observed segments → incremental-worker-then-batch-fallback decode),
-// `cancel` (cancels held tasks + worker), `applyUnloadPolicy` (delay-then-
+// network), `beginSession` (cancel pending model unload), `acceptAudio`
+// (retained-PCM accumulator, bounded), `observeSpeechSegments` (store voiced
+// ranges from the kernel's VAD), `finalize` (LID → transcribe with
+// `clipTimestamps` derived from observed segments → single clean batch
+// decode), `cancel` (cancels held tasks), `applyUnloadPolicy` (delay-then-
 // unload timer mirroring `scheduleModelUnloadIfNeeded`), `cancelPendingUnload`
 // (Rung 2B kernel hook).
+//
+// #1307 (Step 2, PR-1): the incremental decode worker + tail-stitch is no
+// longer started or consulted on any path — every finalize now runs ONE clean
+// batch decode over the authoritative capture buffer, which removes the
+// worker's structural mid-phrase-duplication and wrong-ending bugs. The worker
+// type (`WhisperKitIncrementalWorker`) and its vend (`makeIncrementalSession`)
+// remain present-but-unreferenced by production for Step 3 to delete with a
+// freeze test.
 //
 // Scope (epic §4): an adapter owns its own ASR and rescue and NOTHING else —
 // no capture, no finalization, no paste, no UI, no FSM, no kernel state. The
 // adapter holds legitimate engine-session bookkeeping (a session ID, decode
-// options, an `isTerminal`/`isCancelled` pair, the retained PCM (live worker
-// only), the authoritative batch-capture buffer, the observed speech segments,
-// the LID result, held async-task handles).
+// options, an `isTerminal`/`isCancelled` pair, the retained PCM buffer, the
+// authoritative batch-capture buffer, the observed speech segments, the LID
+// result, held async-task handles).
 //
 // Coordinate-space (epic §0.5 LESSON `observeSpeechSegments-coordinate-space`;
 // hardened by PR-5 Rung 5 UAT #827): the kernel's `observeSpeechSegments` hands
@@ -44,8 +51,10 @@ import Foundation
 // (always 0 in practice — retainedPCM is SHORTER, not longer) left segment ends
 // overrunning the buffer and WhisperKit threw "Audio samples are nil" on
 // alternating recordings. Restored OLD `WhisperKitPipeline.swift:614-615`
-// single-capture-coordinate parity. `retainedPCM` now feeds ONLY the live
-// incremental worker (best-effort, tolerates the lossiness). The Parakeet
+// single-capture-coordinate parity. After #1307 removed the incremental
+// worker, `retainedPCM` has no production reader; it is still accumulated so
+// the #827 coordinate-regression tests keep exercising the capture-vs-shadow
+// distinction, and it is removed with the worker in Step 3. The Parakeet
 // adapter MUST use `batchSamples`; this adapter MUST NOT.
 
 /// The kernel-facing `ASREngineAdapter` conformer for WhisperKit. Drives the
@@ -94,13 +103,6 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// The backend's single-flight guard handles the orphan that keeps grinding.
   private var prepareTask: Task<Void, Error>?
 
-  /// The incremental decoding worker — present only in `.locked` language
-  /// mode. `WhisperKitPipeline.swift:519-530`: in `.auto` mode the worker
-  /// would snapshot the legacy language and decode with the wrong language;
-  /// post-LID batch decode is the only correct path. The worker reads
-  /// `retainedPCM` via its provider closure.
-  private var incrementalWorker: (any WhisperKitIncrementalSession)?
-
   /// Pending model-unload timer armed by `applyUnloadPolicy(_:)`.
   /// `cancelPendingUnload()` (the Rung 2B kernel hook called pre-`beginSession`)
   /// and `beginSession` (defense-in-depth) both cancel it.
@@ -109,14 +111,16 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   // MARK: Audio + speech segments
 
   /// Live per-buffer accumulation from every `acceptAudio(_:)`, fed via
-  /// `onBufferCaptured` during capture. Used ONLY by the incremental worker's
-  /// live `audioSamplesProvider` (locked-language mode). It is NOT the
+  /// `onBufferCaptured` during capture. Historically the incremental worker's
+  /// live `audioSamplesProvider` read it; after #1307 removed the worker it has
+  /// NO production reader. It is still accumulated (and asserted by the #827
+  /// coordinate-regression tests) so the capture-vs-shadow distinction stays
+  /// under test, and is removed with the worker in Step 3. It is NOT the
   /// batch-decode buffer: this stream is async/lossy and diverges in length
   /// from the kernel's authoritative `captureResult.samples`, so using it for
   /// the post-stop batch decode caused the "Audio samples are nil" alternating
   /// failure (PR-5 Rung 5 UAT #827). Batch decode uses `batchCaptureSamples`
-  /// instead. The worker stays best-effort by design and tolerates the
-  /// lossiness; the batch path does not. Cleared on `cancel()` / `finalize()`.
+  /// instead. Cleared on `cancel()` / `finalize()`.
   private var retainedPCM: [Float] = []
 
   /// The authoritative raw capture audio for batch decode — the kernel's
@@ -297,13 +301,10 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   // MARK: ASREngineAdapter — session lifecycle
 
   /// Begin a session. WhisperKit doesn't stream — `streaming` is ignored for
-  /// the live-stream decision. In `.locked` language mode (`options.language`
-  /// non-nil) the incremental worker is started so finalize can use its
-  /// best-effort result before falling back to batch. In `.auto` mode
-  /// (language nil) the worker is intentionally skipped — see
-  /// `WhisperKitPipeline.swift:519-530` for the rationale (the worker
-  /// snapshots language at start; in `.auto` it would decode with the wrong
-  /// language).
+  /// the live-stream decision. #1307: every session finalizes through one
+  /// clean batch decode on stop (both `.locked` and `.auto` language modes);
+  /// no incremental worker is started on any path. This removes the worker's
+  /// structural mid-phrase-duplication and wrong-ending bugs.
   func beginSession(_ id: SessionID, options: TranscriptionOptions, streaming: Bool) async throws {
     sessionID = id
     decodeOptions = options
@@ -332,71 +333,17 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     modelUnloadTask?.cancel()
     modelUnloadTask = nil
 
-    // Cancel + drop any orphan worker from a prior session — if the previous
-    // session was superseded before finalize/cancel cleared the handle, the
-    // worker would still be installed and the auto-mode branch below would
-    // erroneously route through it (Codex code-diff r3 defect 2). Fire the
-    // cancel detached so beginSession stays nominally fast; the worker
-    // itself is safe to discard immediately since no caller holds it.
-    if let orphan = incrementalWorker {
-      incrementalWorker = nil
-      Task { await orphan.cancel() }
-    }
-
     // Refresh cached readiness — backend may have been unloaded by a prior
     // session's policy timer that fired while idle.
     cachedReadiness = await backend.isReady ? .ready : .notReady
 
-    // `.locked` mode → start the worker. In `.auto` mode language is unknown
-    // until LID runs at finalize, so the worker is skipped.
-    if options.language != nil {
-      if let session = await backend.makeIncrementalSession(options: options) {
-        // Stale-beginSession guard: a `cancel()` + new `beginSession(B)`
-        // during the `makeIncrementalSession` await must NOT let this
-        // stale install land on the fresh session — otherwise `finalize`
-        // for B would see a non-nil `incrementalWorker` from A and route
-        // through it (Codex code-diff r6).
-        guard sessionID == id, !isCancelled else {
-          await session.cancel()
-          return
-        }
-        incrementalWorker = session
-        await session.start(audioSamplesProvider: { @MainActor [weak self] in
-          let samples = self?.retainedPCM ?? []
-          return (samples: samples, count: samples.count)
-        })
-        // Stale-beginSession guard AFTER `session.start`: if a `cancel()` +
-        // new `beginSession(B)` landed during the start await, the worker
-        // was installed under the wrong session. Uninstall + cancel it
-        // (Codex r7 matrix S6).
-        guard sessionID == id, !isCancelled else {
-          if (incrementalWorker as AnyObject?) === (session as AnyObject) {
-            incrementalWorker = nil
-          }
-          await session.cancel()
-          return
-        }
-        Task {
-          await AppLogger.shared.log(
-            "WhisperKit recording started (batch mode, incremental worker: on)",
-            level: .info, category: "WhisperKitEngineAdapter"
-          )
-        }
-      } else {
-        Task {
-          await AppLogger.shared.log(
-            "WhisperKit recording started (batch mode, incremental worker: off, model not loaded)",
-            level: .info, category: "WhisperKitEngineAdapter"
-          )
-        }
-      }
-    } else {
-      Task {
-        await AppLogger.shared.log(
-          "WhisperKit recording started (batch mode, incremental worker: off, auto language mode)",
-          level: .info, category: "WhisperKitEngineAdapter"
-        )
-      }
+    // #1307: no incremental worker on any path — finalize batch-decodes on stop.
+    let languageForLog = options.language ?? "auto"
+    Task {
+      await AppLogger.shared.log(
+        "WhisperKit recording started (batch mode, language: \(languageForLog))",
+        level: .info, category: "WhisperKitEngineAdapter"
+      )
     }
   }
 
@@ -437,15 +384,14 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   }
 
   /// Finalize: LID → transcribe with `clipTimestamps` derived from observed
-  /// segments → incremental-worker-result-or-batch-fallback. After `cancel()`,
-  /// returns `.cancelled`. **MUST NOT use `batchSamples`** (it is the kernel's
-  /// VAD-filtered `conditioned.samples`, a different coordinate) — see the
-  /// coordinate-space note above and the protocol comment at
+  /// segments → one clean batch decode (#1307: no incremental worker). After
+  /// `cancel()`, returns `.cancelled`. **MUST NOT use `batchSamples`** (it is
+  /// the kernel's VAD-filtered `conditioned.samples`, a different coordinate) —
+  /// see the coordinate-space note above and the protocol comment at
   /// `ASREngineAdapter.swift:240-247`. Batch-decodes `batchCaptureSamples` (the
   /// authoritative raw `captureResult.samples` handed in by
   /// `observeSpeechSegments`) so segment-derived `clipTimestamps` stay
-  /// coordinate-aligned (#827). `retainedPCM` feeds only the live incremental
-  /// worker, never this batch decode.
+  /// coordinate-aligned (#827), via the single `runBatchFallback()` helper.
   func finalize(batchSamples: [Float]?) async -> ASREngineOutcome {
     _ = batchSamples  // intentionally ignored — see coordinate-space note
     lastFailureError = nil
@@ -606,9 +552,9 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
 
     // Stale guard after the `peekMemory()` await: a `beginSession(B)` during
     // this hop must not let the stale A finalize keep reading mutable
-    // `incrementalWorker`/`decodeOptions` for the rest of finalize. The
-    // downstream guards catch session B's state AFTER the next awaits, but
-    // an early bail here prevents reading session B's worker between
+    // `decodeOptions` for the rest of finalize. The downstream guard inside
+    // `runBatchFallback` catches session B's state AFTER the decode await, but
+    // an early bail here prevents reading session B's decode options between
     // LID telemetry and the decode (Codex code-diff r3 defect 1).
     guard sessionID == session, !isCancelled else {
       return isCancelled ? .cancelled : .empty(hadSpeechEvidence: true)
@@ -643,8 +589,10 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
       )
     }
 
-    // Decode — worker-result first, batch fallback. Diagnostics surface
-    // through `lastASRDiagnostics` on every terminal outcome.
+    // Decode — one clean batch over the authoritative capture buffer (#1307:
+    // the incremental worker + tail-stitch is gone; `.locked` and `.auto` both
+    // finalize here). Diagnostics surface through `lastASRDiagnostics` on every
+    // terminal outcome.
     var diagnostics = KernelASRAdapterDiagnostics()
     diagnostics.rawSampleCount = rawSamples.count
     // PR-5 Rung 4.5 (#827): LID perf-signpost transport for kernel-side
@@ -657,195 +605,39 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     diagnostics.lidVoicedDurationSec = voicedDurationSec
     diagnostics.lidWindowCount = lidWindowCount
     diagnostics.lidClipKind = clipKind
+    // #1307: batch is the primary (only) decode now, not a worker rescue.
+    diagnostics.batchRescueAttempted = false
 
     let asrText: String
     let asrLanguage: String?
     let asrStart = CFAbsoluteTimeGetCurrent()
 
-    if let worker = incrementalWorker {
-      // Snapshot the worker handle for THIS session — if session B starts
-      // while this await is suspended, `incrementalWorker` may already point
-      // at B's worker. Clear only the captured handle on the post-await
-      // session-match path (Codex code-diff r2 defect 2).
-      let capturedWorker = worker
-      let workerResult = await capturedWorker.finalize(
-        finalSamples: rawSamples, speechSegments: speechSegments)
-      if sessionID == session, !isCancelled {
-        // Only A's worker handle can be cleared. If session B is now
-        // current, its worker stays installed.
-        if (incrementalWorker as AnyObject?) === (capturedWorker as AnyObject) {
-          incrementalWorker = nil
-        }
-      } else {
-        return isCancelled ? .cancelled : .empty(hadSpeechEvidence: true)
-      }
-      diagnostics.incrementalAccepted = workerResult.accepted
-      diagnostics.incrementalResultChars =
-        workerResult.text?.trimmingCharacters(in: .whitespacesAndNewlines).count
-      diagnostics.incrementalDecodeCount = workerResult.decodeCount
-      diagnostics.incrementalSamplesCovered = workerResult.samplesCovered
-      diagnostics.incrementalStrategy = workerResult.strategy
-      diagnostics.incrementalMode = workerResult.mode
-      diagnostics.incrementalTailDecodeMs = workerResult.tailDecodeMs
-
-      if workerResult.accepted, let text = workerResult.text,
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      {
-        asrText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        asrLanguage = decodeOptions.language
-        Task {
-          [
-            text = asrText, strategy = workerResult.strategy, mode = workerResult.mode,
-            decodes = workerResult.decodeCount, tailMs = workerResult.tailDecodeMs,
-            covered = workerResult.samplesCovered, totalSamples = rawSamples.count
-          ] in
-          let coveragePct =
-            totalSamples > 0
-            ? String(format: "%.1f", Double(covered) / Double(totalSamples) * 100)
-            : "0"
-          await AppLogger.shared.log(
-            "WhisperKit finalize: strategy=\(strategy), mode=\(mode), "
-              + "decodes=\(decodes), tailDecodeMs=\(tailMs), "
-              + "coverage=\(covered)/\(totalSamples) (\(coveragePct)%) chars=\(text.count)",
-            level: .info, category: "WhisperKitEngineAdapter"
-          )
-        }
-      } else {
-        // Batch fallback over the raw capture buffer. PR-5 Rung 5 Pass 2 #7:
-        // log the fallback reason so debug-build readers can grep app.log
-        // for the worker→batch handoff (parity with the OLD
-        // `WhisperKitPipeline.swift:898-914` fallback log).
-        Task {
-          [
-            decodes = workerResult.decodeCount,
-            samplesCovered = workerResult.samplesCovered,
-            totalSamples = rawSamples.count,
-            strategy = workerResult.strategy,
-            mode = workerResult.mode,
-            chars = (workerResult.text ?? "").count
-          ] in
-          let coveragePct =
-            totalSamples > 0
-            ? String(format: "%.1f", Double(samplesCovered) / Double(totalSamples) * 100)
-            : "0"
-          await AppLogger.shared.log(
-            "WhisperKit incremental worker rejected — falling back to batch "
-              + "(strategy=\(strategy), mode=\(mode), decodes=\(decodes), "
-              + "coverage=\(samplesCovered)/\(totalSamples) (\(coveragePct)%), chars=\(chars))",
-            level: .info, category: "WhisperKitEngineAdapter"
-          )
-        }
-        let batchFallbackStart = CFAbsoluteTimeGetCurrent()
-        logLIDPerfSignpost(
-          "t_asr_start",
-          sessionID: sessionIDForLog,
-          voicedDuration: voicedDurationSec,
-          lidWindowCount: lidWindowCount,
-          clipKind: clipKind
-        )
-        diagnostics.batchRescueAttempted = true
-        let batchOutcome = await runBatchDecode(samples: asrSamples)
-        logLIDPerfSignpost(
-          "t_asr_end",
-          sessionID: sessionIDForLog,
-          voicedDuration: voicedDurationSec,
-          lidWindowCount: lidWindowCount,
-          clipKind: clipKind
-        )
-        // Stale guard immediately after the decode await — a stale
-        // failure/cancel from session A MUST NOT clobber session B's
-        // state (Codex code-diff r2 defect 3).
-        guard sessionID == session, !isCancelled else {
-          return isCancelled ? .cancelled : .empty(hadSpeechEvidence: true)
-        }
-        switch batchOutcome {
-        case .success(let result):
-          let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-          diagnostics.batchRescueResultChars = trimmed.count
-          asrText = trimmed
-          asrLanguage = result.language
-          // PR-5 Rung 5 Pass 2 #7: log batch timing so worker→batch
-          // fallback duration is debuggable (OLD `WhisperKitPipeline.swift:945-950`).
-          let batchMs = Int((CFAbsoluteTimeGetCurrent() - batchFallbackStart) * 1000)
-          Task { [chars = trimmed.count] in
-            await AppLogger.shared.log(
-              "WhisperKit batch fallback complete: chars=\(chars) (\(batchMs)ms)",
-              level: .info, category: "WhisperKitEngineAdapter"
-            )
-          }
-        case .cancelled:
-          isTerminal = true
-          clearSessionBuffers()
-          return .cancelled
-        case .failed(let error):
-          // PR-5 Rung 5 Pass 2 #4: app.log line for the decode-failure
-          // path — without it the user sees "ASR Failed" and the local
-          // debug log has zero signature to grep (the UAT-caught gap).
-          // Sentry still receives the error via `lastFailureError` →
-          // `KernelLifecycleTelemetrySink`.
-          Task { [desc = error.localizedDescription] in
-            await AppLogger.shared.log(
-              "WhisperKit batch-fallback decode failed: \(desc)",
-              level: .info, category: "WhisperKitEngineAdapter"
-            )
-          }
-          lastFailureError = error
-          lastASRDiagnostics = diagnostics
-          isTerminal = true
-          clearSessionBuffers()
-          return .failed(.decodeFailed)
-        }
-      }
-    } else {
-      // `.auto` mode (or worker setup failed): batch only.
-      logLIDPerfSignpost(
-        "t_asr_start",
-        sessionID: sessionIDForLog,
-        voicedDuration: voicedDurationSec,
-        lidWindowCount: lidWindowCount,
-        clipKind: clipKind
-      )
-      diagnostics.batchRescueAttempted = false
-      let batchOutcome = await runBatchDecode(samples: asrSamples)
-      logLIDPerfSignpost(
-        "t_asr_end",
-        sessionID: sessionIDForLog,
-        voicedDuration: voicedDurationSec,
-        lidWindowCount: lidWindowCount,
-        clipKind: clipKind
-      )
-      // Stale guard immediately after the decode await — a stale
-      // failure/cancel from session A MUST NOT clobber session B's
-      // state (Codex code-diff r2 defect 3).
-      guard sessionID == session, !isCancelled else {
-        return isCancelled ? .cancelled : .empty(hadSpeechEvidence: true)
-      }
-      switch batchOutcome {
-      case .success(let result):
-        let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        diagnostics.batchRescueResultChars = trimmed.count
-        asrText = trimmed
-        asrLanguage = result.language
-      case .cancelled:
-        isTerminal = true
-        clearSessionBuffers()
-        return .cancelled
-      case .failed(let error):
-        // PR-5 Rung 5 Pass 2 #4: app.log line for the auto-mode batch
-        // decode-failure path — same parity rationale as the
-        // worker→batch fallback failure branch above.
-        Task { [desc = error.localizedDescription] in
-          await AppLogger.shared.log(
-            "WhisperKit batch decode failed: \(desc)",
-            level: .info, category: "WhisperKitEngineAdapter"
-          )
-        }
-        lastFailureError = error
-        lastASRDiagnostics = diagnostics
-        isTerminal = true
-        clearSessionBuffers()
-        return .failed(.decodeFailed)
-      }
+    switch await runBatchFallback(
+      asrSamples: asrSamples,
+      session: session,
+      sessionIDForLog: sessionIDForLog,
+      voicedDurationSec: voicedDurationSec,
+      lidWindowCount: lidWindowCount,
+      clipKind: clipKind,
+      diagnostics: &diagnostics
+    ) {
+    case .success(let text, let language):
+      asrText = text
+      asrLanguage = language
+    case .stale(let outcome):
+      // Session changed under the decode await — return without mutating
+      // adapter state (a stale session-A finalize must not clobber B).
+      return outcome
+    case .cancelled:
+      isTerminal = true
+      clearSessionBuffers()
+      return .cancelled
+    case .failed(let error):
+      lastFailureError = error
+      lastASRDiagnostics = diagnostics
+      isTerminal = true
+      clearSessionBuffers()
+      return .failed(.decodeFailed)
     }
 
     let asrEnd = CFAbsoluteTimeGetCurrent()
@@ -925,9 +717,9 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     batchCaptureSamples.removeAll()
   }
 
-  /// Idempotent discard. Cancels held tasks (prepare, model-unload timer) and
-  /// the incremental worker; clears retained audio + segments + capture buffer
-  /// + LID result.
+  /// Idempotent discard. Cancels held tasks (prepare, model-unload timer);
+  /// clears retained audio + segments + capture buffer + LID result. (#1307:
+  /// no incremental worker to cancel.)
   func cancel() async {
     isCancelled = true
     isTerminal = true
@@ -938,10 +730,6 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     prepareTask = nil
     modelUnloadTask?.cancel()
     modelUnloadTask = nil
-    if let worker = incrementalWorker {
-      incrementalWorker = nil
-      await worker.cancel()
-    }
     cachedReadiness = await backend.isReady ? .ready : .notReady
   }
 
@@ -1076,6 +864,83 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     } catch is CancellationError {
       return .cancelled
     } catch {
+      return .failed(error)
+    }
+  }
+
+  /// The `finalize`-facing result of the single batch-decode path.
+  private enum BatchFallbackResult {
+    case success(text: String, language: String?)
+    /// Session changed under the decode await — `finalize` returns this
+    /// verbatim WITHOUT mutating adapter state (a stale session-A finalize must
+    /// not clobber session B).
+    case stale(ASREngineOutcome)
+    case cancelled
+    case failed(any Error)
+  }
+
+  /// The one batch-decode authority for `finalize` (#1307: every path routes
+  /// here now the worker is gone). Owns the `t_asr_start`/`t_asr_end` perf
+  /// signposts, the post-decode stale guard, and the completion/failure log
+  /// lines so batch entry lives in ONE place. Mutates
+  /// `diagnostics.batchRescueResultChars` on success; all adapter-state writes
+  /// (terminal flag, buffers, `lastFailureError`) stay in `finalize`.
+  private func runBatchFallback(
+    asrSamples: [Float],
+    session: SessionID,
+    sessionIDForLog: UInt64,
+    voicedDurationSec: Double,
+    lidWindowCount: Int,
+    clipKind: String,
+    diagnostics: inout KernelASRAdapterDiagnostics
+  ) async -> BatchFallbackResult {
+    let batchStart = CFAbsoluteTimeGetCurrent()
+    logLIDPerfSignpost(
+      "t_asr_start",
+      sessionID: sessionIDForLog,
+      voicedDuration: voicedDurationSec,
+      lidWindowCount: lidWindowCount,
+      clipKind: clipKind
+    )
+    let batchOutcome = await runBatchDecode(samples: asrSamples)
+    logLIDPerfSignpost(
+      "t_asr_end",
+      sessionID: sessionIDForLog,
+      voicedDuration: voicedDurationSec,
+      lidWindowCount: lidWindowCount,
+      clipKind: clipKind
+    )
+    // Stale guard immediately after the decode await — a stale failure/cancel
+    // from session A MUST NOT clobber session B's state (Codex code-diff r2
+    // defect 3).
+    guard sessionID == session, !isCancelled else {
+      return .stale(isCancelled ? .cancelled : .empty(hadSpeechEvidence: true))
+    }
+    switch batchOutcome {
+    case .success(let result):
+      let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+      diagnostics.batchRescueResultChars = trimmed.count
+      let batchMs = Int((CFAbsoluteTimeGetCurrent() - batchStart) * 1000)
+      Task { [chars = trimmed.count] in
+        await AppLogger.shared.log(
+          "WhisperKit batch decode complete: chars=\(chars) (\(batchMs)ms)",
+          level: .info, category: "WhisperKitEngineAdapter"
+        )
+      }
+      return .success(text: trimmed, language: result.language)
+    case .cancelled:
+      return .cancelled
+    case .failed(let error):
+      // PR-5 Rung 5 Pass 2 #4: app.log line for the decode-failure path — the
+      // user sees "ASR Failed" and the debug log needs a signature to grep.
+      // Sentry still receives the error via `lastFailureError` →
+      // `KernelLifecycleTelemetrySink`.
+      Task { [desc = error.localizedDescription] in
+        await AppLogger.shared.log(
+          "WhisperKit batch decode failed: \(desc)",
+          level: .info, category: "WhisperKitEngineAdapter"
+        )
+      }
       return .failed(error)
     }
   }

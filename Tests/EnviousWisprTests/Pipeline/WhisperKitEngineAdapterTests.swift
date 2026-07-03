@@ -188,28 +188,9 @@ import Testing
 
   // MARK: Session lifecycle
 
-  @Test(".auto mode (language nil) does NOT start the incremental worker")
-  func autoModeSkipsWorker() async throws {
-    let backend = StubWhisperKitBackend()
-    let adapter = WhisperKitEngineAdapter(backend: backend)
-    try await adapter.beginSession(SessionID(), options: .default, streaming: false)
-    let count = await backend.makeIncrementalSessionCount
-    #expect(count == 0)
-  }
-
-  @Test(".locked mode (language non-nil) starts the incremental worker")
-  func lockedModeStartsWorker() async throws {
-    let backend = StubWhisperKitBackend()
-    let stubSession = StubIncrementalSession(result: .rejected())
-    await backend.setIncrementalSessionFactory({ stubSession })
-    let adapter = WhisperKitEngineAdapter(backend: backend)
-    let options = TranscriptionOptions(language: "en")
-    try await adapter.beginSession(SessionID(), options: options, streaming: false)
-    let count = await backend.makeIncrementalSessionCount
-    #expect(count == 1)
-    let starts = await stubSession.startCount
-    #expect(starts == 1)
-  }
+  // #1307: worker-start behavior is now frozen to zero — see
+  // `noPathStartsWorker` in the "Finalize — single clean batch" section, which
+  // pins the whole (language × streaming) grid to no worker starts.
 
   @Test(
     "beginSession clears lastResult, lastASRDiagnostics, lastFailureError, lastLanguageDetection, PCM, segments"
@@ -265,29 +246,8 @@ import Testing
       "stale buffer was appended to fresh session's retainedPCM")
   }
 
-  @Test(
-    "beginSession cancels and drops any orphan incremental worker from a prior session (Codex r3 defect 2)"
-  )
-  func beginSessionCancelsOrphanWorker() async throws {
-    let backend = StubWhisperKitBackend()
-    let stubSession = StubIncrementalSession(result: .rejected())
-    await backend.setIncrementalSessionFactory({ stubSession })
-    let adapter = WhisperKitEngineAdapter(backend: backend)
-    // Session A: locked mode, worker is installed.
-    try await adapter.beginSession(
-      SessionID(), options: TranscriptionOptions(language: "en"), streaming: false)
-    let starts1 = await stubSession.startCount
-    #expect(starts1 == 1, "worker installed for session A")
-    // Session B: auto mode, no factory provided this time. The orphan must
-    // be cancelled and dropped so auto mode does NOT enter the worker path.
-    await backend.setIncrementalSessionFactory(nil)
-    try await adapter.beginSession(SessionID(), options: .default, streaming: false)
-    // Signal-wait for the detached worker.cancel() task, rather than racing a
-    // fixed yield budget (#875).
-    await stubSession.waitForCancelCount(1)
-    let cancels = await stubSession.cancelCount
-    #expect(cancels == 1, "orphan worker must be cancelled on beginSession")
-  }
+  // #1307 removed the orphan-worker-cancel path (no worker is ever installed),
+  // so the former `beginSessionCancelsOrphanWorker` test no longer applies.
 
   @Test("acceptAudio is bounded by retainedPCMCap")
   func acceptAudioCappedAtMaxRecording() async throws {
@@ -545,38 +505,44 @@ import Testing
     #expect(adapter.lastLanguageDetection == nil)
   }
 
-  // MARK: Finalize — incremental worker
+  // MARK: Finalize — single clean batch (#1307: no incremental worker)
 
-  @Test("workerAcceptedResultUsedDirectly: accepted worker result skips batch decode")
-  func workerAcceptedResultUsedDirectly() async throws {
+  /// Old-worker-not-started freeze (plan §11): no path in `beginSession`
+  /// constructs the incremental worker. Parametrized over both language modes
+  /// AND both `streaming` flags so the whole (language × streaming) grid is
+  /// pinned to zero worker starts — automating the "grep proves zero call
+  /// sites" check at local test time. Step 3 adds the type-deletion freeze.
+  @Test(
+    "no path starts the incremental worker (#1307 freeze)",
+    arguments: [
+      (TranscriptionOptions(language: "en"), false),
+      (TranscriptionOptions(language: "en"), true),
+      (TranscriptionOptions.default, false),
+      (TranscriptionOptions.default, true),
+    ])
+  func noPathStartsWorker(options: TranscriptionOptions, streaming: Bool) async throws {
     let backend = StubWhisperKitBackend()
+    // A factory is available — the freeze proves the adapter never CALLS it,
+    // not merely that none was provided.
     let stubSession = StubIncrementalSession(result: .accepted(text: "worker-text"))
     await backend.setIncrementalSessionFactory({ stubSession })
     let adapter = WhisperKitEngineAdapter(backend: backend)
-    let sid = SessionID()
-    let options = TranscriptionOptions(language: "en")
-    try await adapter.beginSession(sid, options: options, streaming: false)
-    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
-    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
-    let outcome = await adapter.finalize(batchSamples: nil)
-    guard case .transcript(let result) = outcome else {
-      Issue.record("expected .transcript, got \(outcome)")
-      return
-    }
-    #expect(result.text == "worker-text")
-    let txCount = await backend.transcribeCount
-    #expect(txCount == 0, "accepted worker result skips batch decode")
+    try await adapter.beginSession(SessionID(), options: options, streaming: streaming)
+    let mks = await backend.makeIncrementalSessionCount
+    #expect(
+      mks == 0,
+      "no worker vended for (language: \(options.language ?? "auto"), streaming: \(streaming))")
+    let starts = await stubSession.startCount
+    #expect(starts == 0, "worker never started")
   }
 
-  @Test("workerRejectedFallsBackToBatch: rejected worker result triggers batch decode")
-  func workerRejectedFallsBackToBatch() async throws {
+  @Test("lockedModeGoesStraightToBatch: .locked finalize runs one clean batch decode")
+  func lockedModeGoesStraightToBatch() async throws {
     let backend = StubWhisperKitBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "batch-text", language: "en", duration: 1, processingTime: 0.1,
         backendType: .whisperKit))
-    let stubSession = StubIncrementalSession(result: .rejected())
-    await backend.setIncrementalSessionFactory({ stubSession })
     let adapter = WhisperKitEngineAdapter(backend: backend)
     let sid = SessionID()
     let options = TranscriptionOptions(language: "en")
@@ -590,11 +556,13 @@ import Testing
     }
     #expect(result.text == "batch-text")
     let txCount = await backend.transcribeCount
-    #expect(txCount == 1)
+    #expect(txCount == 1, "exactly one batch decode, no worker")
+    let mks = await backend.makeIncrementalSessionCount
+    #expect(mks == 0)
   }
 
-  @Test("workerNotStartedInAutoMode: .auto mode never creates a worker; finalize goes to batch")
-  func workerNotStartedInAutoMode() async throws {
+  @Test("autoModeGoesStraightToBatch: .auto finalize runs one clean batch decode")
+  func autoModeGoesStraightToBatch() async throws {
     let backend = StubWhisperKitBackend()
     await backend.setTranscribeResult(
       ASRResult(
