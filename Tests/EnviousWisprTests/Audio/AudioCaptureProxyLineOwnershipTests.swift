@@ -337,60 +337,68 @@ struct AudioCaptureProxyLineOwnershipTests {
     #expect(recorder.signalsExceptIdleInvalidation.isEmpty)
   }
 
-  @Test("forced wedge then clean retry: recovered, exactly one resend, prefix ran")
-  func forcedWedgeRecovers() async throws {
-    let proxy = AudioCaptureProxy()
-    let recorder = SignalRecorder()
-    recorder.install(on: proxy)
-    proxy.forceWedgeNextStartOps = 1
+  // `forceWedgeNextStartOps` is a DEBUG-only fault seam (AudioCaptureProxy,
+  // #if DEBUG); the tests that drive it compile only in DEBUG so the release
+  // test target builds.
+  #if DEBUG
+    @Test("forced wedge then clean retry: recovered, exactly one resend, prefix ran")
+    func forcedWedgeRecovers() async throws {
+      let proxy = AudioCaptureProxy()
+      let recorder = SignalRecorder()
+      recorder.install(on: proxy)
+      proxy.forceWedgeNextStartOps = 1
 
-    var opCount = 0
-    var prefixCount = 0
-    let value = try await proxy.withStartRetry(
-      stage: "begin_capture",
-      prefix: { prefixCount += 1 }
-    ) { _ in
-      opCount += 1
-      return "ok"
-    }
-
-    #expect(value == "ok")
-    // The forced wedge throws BEFORE dispatch, so the operation ran only on
-    // the retry — after the prefix.
-    #expect(opCount == 1)
-    #expect(prefixCount == 1)
-    #expect(
-      recorder.signalsExceptIdleInvalidation == [
-        .retryResolved(stage: "begin_capture", trigger: "wedged", outcome: "recovered")
-      ])
-  }
-
-  @Test("wedge on both attempts: exhausted, same error type, budget not doubled")
-  func doubleWedgeExhausts() async {
-    let proxy = AudioCaptureProxy()
-    let recorder = SignalRecorder()
-    recorder.install(on: proxy)
-    proxy.forceWedgeNextStartOps = 2
-
-    var opCount = 0
-    do {
-      _ = try await proxy.withStartRetry(stage: "start_engine") { _ -> Int in
+      var opCount = 0
+      var prefixCount = 0
+      let value = try await proxy.withStartRetry(
+        stage: "begin_capture",
+        prefix: { prefixCount += 1 }
+      ) { _ in
         opCount += 1
-        return 0
+        return "ok"
       }
-      Issue.record("expected exhaustion to throw")
-    } catch {
-      #expect(error is XPCOperationSignalWedgeError)
-    }
 
-    #expect(opCount == 0, "both attempts wedged before dispatch")
-    #expect(
-      proxy.forceWedgeNextStartOps == 0, "exactly two forced wedges consumed — one retry, not more")
-    #expect(
-      recorder.signalsExceptIdleInvalidation == [
-        .retryResolved(stage: "start_engine", trigger: "wedged", outcome: "exhausted")
-      ])
-  }
+      #expect(value == "ok")
+      // The forced wedge throws BEFORE dispatch, so the operation ran only on
+      // the retry — after the prefix.
+      #expect(opCount == 1)
+      #expect(prefixCount == 1)
+      #expect(
+        recorder.signalsExceptIdleInvalidation == [
+          .retryResolved(stage: "begin_capture", trigger: "wedged", outcome: "recovered")
+        ])
+    }
+  #endif
+
+  #if DEBUG
+    @Test("wedge on both attempts: exhausted, same error type, budget not doubled")
+    func doubleWedgeExhausts() async {
+      let proxy = AudioCaptureProxy()
+      let recorder = SignalRecorder()
+      recorder.install(on: proxy)
+      proxy.forceWedgeNextStartOps = 2
+
+      var opCount = 0
+      do {
+        _ = try await proxy.withStartRetry(stage: "start_engine") { _ -> Int in
+          opCount += 1
+          return 0
+        }
+        Issue.record("expected exhaustion to throw")
+      } catch {
+        #expect(error is XPCOperationSignalWedgeError)
+      }
+
+      #expect(opCount == 0, "both attempts wedged before dispatch")
+      #expect(
+        proxy.forceWedgeNextStartOps == 0,
+        "exactly two forced wedges consumed — one retry, not more")
+      #expect(
+        recorder.signalsExceptIdleInvalidation == [
+          .retryResolved(stage: "start_engine", trigger: "wedged", outcome: "exhausted")
+        ])
+    }
+  #endif
 
   @Test("unreachable first, clean retry: recovered with service_unreachable trigger")
   func unreachableThenRecovers() async throws {
@@ -413,70 +421,74 @@ struct AudioCaptureProxyLineOwnershipTests {
       ])
   }
 
-  @Test("wedge then unreachable: single shared budget, retry's error propagates")
-  func wedgeThenUnreachableExhausts() async {
-    let proxy = AudioCaptureProxy()
-    let recorder = SignalRecorder()
-    recorder.install(on: proxy)
-    proxy.forceWedgeNextStartOps = 1
+  #if DEBUG
+    @Test("wedge then unreachable: single shared budget, retry's error propagates")
+    func wedgeThenUnreachableExhausts() async {
+      let proxy = AudioCaptureProxy()
+      let recorder = SignalRecorder()
+      recorder.install(on: proxy)
+      proxy.forceWedgeNextStartOps = 1
 
-    var opCount = 0
-    do {
-      _ = try await proxy.withStartRetry(stage: "start_engine") { _ -> Int in
-        opCount += 1
-        throw XPCTransportError.serviceUnreachable
-      }
-      Issue.record("expected exhaustion to throw")
-    } catch {
-      // The RETRY's error propagates — one of today's two exact types.
-      guard case XPCTransportError.serviceUnreachable = error else {
-        Issue.record("unexpected error type: \(error)")
-        return
-      }
-    }
-
-    #expect(opCount == 1, "retry ran once; the wedge-then-error shape must not double the budget")
-    #expect(
-      recorder.signalsExceptIdleInvalidation == [
-        .retryResolved(stage: "start_engine", trigger: "wedged", outcome: "exhausted")
-      ])
-  }
-
-  @Test("prefix failure counts as exhaustion — no nested retry")
-  func prefixFailureExhausts() async {
-    let proxy = AudioCaptureProxy()
-    let recorder = SignalRecorder()
-    recorder.install(on: proxy)
-    proxy.forceWedgeNextStartOps = 1
-
-    var opCount = 0
-    var prefixCount = 0
-    do {
-      _ = try await proxy.withStartRetry(
-        stage: "begin_capture",
-        prefix: {
-          prefixCount += 1
+      var opCount = 0
+      do {
+        _ = try await proxy.withStartRetry(stage: "start_engine") { _ -> Int in
+          opCount += 1
           throw XPCTransportError.serviceUnreachable
         }
-      ) { _ -> Int in
-        opCount += 1
-        return 0
+        Issue.record("expected exhaustion to throw")
+      } catch {
+        // The RETRY's error propagates — one of today's two exact types.
+        guard case XPCTransportError.serviceUnreachable = error else {
+          Issue.record("unexpected error type: \(error)")
+          return
+        }
       }
-      Issue.record("expected exhaustion to throw")
-    } catch {
-      guard case XPCTransportError.serviceUnreachable = error else {
-        Issue.record("unexpected error type: \(error)")
-        return
-      }
-    }
 
-    #expect(prefixCount == 1)
-    #expect(opCount == 0, "operation never dispatched after the prefix failed")
-    #expect(
-      recorder.signalsExceptIdleInvalidation == [
-        .retryResolved(stage: "begin_capture", trigger: "wedged", outcome: "exhausted")
-      ])
-  }
+      #expect(opCount == 1, "retry ran once; the wedge-then-error shape must not double the budget")
+      #expect(
+        recorder.signalsExceptIdleInvalidation == [
+          .retryResolved(stage: "start_engine", trigger: "wedged", outcome: "exhausted")
+        ])
+    }
+  #endif
+
+  #if DEBUG
+    @Test("prefix failure counts as exhaustion — no nested retry")
+    func prefixFailureExhausts() async {
+      let proxy = AudioCaptureProxy()
+      let recorder = SignalRecorder()
+      recorder.install(on: proxy)
+      proxy.forceWedgeNextStartOps = 1
+
+      var opCount = 0
+      var prefixCount = 0
+      do {
+        _ = try await proxy.withStartRetry(
+          stage: "begin_capture",
+          prefix: {
+            prefixCount += 1
+            throw XPCTransportError.serviceUnreachable
+          }
+        ) { _ -> Int in
+          opCount += 1
+          return 0
+        }
+        Issue.record("expected exhaustion to throw")
+      } catch {
+        guard case XPCTransportError.serviceUnreachable = error else {
+          Issue.record("unexpected error type: \(error)")
+          return
+        }
+      }
+
+      #expect(prefixCount == 1)
+      #expect(opCount == 0, "operation never dispatched after the prefix failed")
+      #expect(
+        recorder.signalsExceptIdleInvalidation == [
+          .retryResolved(stage: "begin_capture", trigger: "wedged", outcome: "exhausted")
+        ])
+    }
+  #endif
 
   @Test("device-shaped errors propagate unretried")
   func deviceErrorsDoNotRetry() async {
