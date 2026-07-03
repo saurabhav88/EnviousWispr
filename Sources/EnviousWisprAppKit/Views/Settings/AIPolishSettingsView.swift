@@ -180,23 +180,43 @@ struct AIPolishSettingsView: View {
       BrandedSection(
         header: "LLM Provider",
         content: {
-          BrandedRow {
-            Picker("LLM Provider", selection: $settings.llmProvider) {
-              Text("Off").tag(LLMProvider.none)
-              Text("EG-1 (Recommended local model)").tag(LLMProvider.egOne)
-              Text("Apple Intelligence").tag(LLMProvider.appleIntelligence)
-              Text("OpenAI").tag(LLMProvider.openAI)
-              Text("Google Gemini").tag(LLMProvider.gemini)
-              Text("Local (Ollama)").tag(LLMProvider.ollama)
+          BrandedRow(showDivider: settings.llmProvider != .none) {
+            Toggle(
+              isOn: Binding(
+                get: { settings.llmProvider != .none },
+                set: { isOn in
+                  if isOn {
+                    // Restore the last real engine; fall back to the default if
+                    // none was ever remembered (guards against `.none`, #1285).
+                    settings.llmProvider =
+                      settings.lastLLMProvider == .none
+                      ? .appleIntelligence : settings.lastLLMProvider
+                  } else {
+                    settings.llmProvider = .none
+                  }
+                }
+              )
+            ) {
+              Text("AI Polish")
             }
           }
 
           if settings.llmProvider == .none {
-            BrandedRow {
+            BrandedRow(showDivider: false) {
               Text("Turn on AI polish to automatically fix grammar, punctuation, and formatting.")
                 .font(.stHelper)
                 .foregroundStyle(Color.stTextTertiary)
                 .fixedSize(horizontal: false, vertical: true)
+            }
+          } else {
+            BrandedRow {
+              Picker("LLM Provider", selection: $settings.llmProvider) {
+                Text("EG-1 (Recommended local model)").tag(LLMProvider.egOne)
+                Text("Apple Intelligence").tag(LLMProvider.appleIntelligence)
+                Text("OpenAI").tag(LLMProvider.openAI)
+                Text("Google Gemini").tag(LLMProvider.gemini)
+                Text("Local (Ollama)").tag(LLMProvider.ollama)
+              }
             }
           }
 

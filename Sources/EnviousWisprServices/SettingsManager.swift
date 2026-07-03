@@ -67,7 +67,7 @@ public final class SettingsManager {
   /// (the #923 migration's source of truth). Excludes `useXPCAudioService`
   /// (per-build XPC debug knob) and `noiseSuppression` (removed/forced-off).
   public nonisolated static let unifiedDefaultsKeys: [String] = [
-    "selectedBackend", "recordingMode", "llmProvider", "llmModel", "ollamaModel",
+    "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
     "autoCopyToClipboard", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
@@ -108,7 +108,27 @@ public final class SettingsManager {
       // vs OpenAI both read `user`). Only async background discovery
       // (`applyDiscoveredModels`) is `system`.
       canonicalizeLLMModelForProvider()
+      // Remember the last real engine so the top on/off toggle can restore it
+      // when polish is turned back on (#1285). `.none` is the "off" state, not
+      // an engine, so it is never remembered. Maintained here (and seeded in
+      // init) so SettingsManager is the single owner of the remembered engine.
+      if llmProvider != .none {
+        lastLLMProvider = llmProvider
+      }
       onChange?(.llmProvider)
+    }
+  }
+
+  /// The last non-off polish engine the user selected. Backs the AI Polish
+  /// on/off toggle (#1285): turning polish off sets `llmProvider = .none`;
+  /// turning it back on restores this. Plain stored property with a persisting
+  /// `didSet` (NOT an observed setting with an `onChange` case) — nothing in the
+  /// pipeline reconciles on it, it is pure UI memory. Seeded in `init` with an
+  /// explicit write-through because Swift does not fire `didSet` for init
+  /// assignments.
+  public var lastLLMProvider: LLMProvider {
+    didSet {
+      defaults.set(lastLLMProvider.rawValue, forKey: "lastLLMProvider")
     }
   }
 
@@ -514,9 +534,21 @@ public final class SettingsManager {
     recordingMode =
       RecordingMode(rawValue: defaults.string(forKey: "recordingMode") ?? "")
       ?? SettingsDefaultValues.recordingMode
-    llmProvider =
+    let resolvedProvider =
       LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "")
       ?? SettingsDefaultValues.llmProvider
+    llmProvider = resolvedProvider
+    // Seed the remembered engine. If the key is already stored, honor it.
+    // Otherwise seed from the resolved provider (existing users keep their
+    // engine as the restore target) or the default when that is off. Write
+    // through explicitly: `didSet` does not fire on init assignment, so
+    // without this an upgrading user who toggles off then quits before ever
+    // switching engines would lose their remembered engine (#1285).
+    let seededLastProvider =
+      LLMProvider(rawValue: defaults.string(forKey: "lastLLMProvider") ?? "")
+      ?? (resolvedProvider != .none ? resolvedProvider : SettingsDefaultValues.lastLLMProvider)
+    lastLLMProvider = seededLastProvider
+    defaults.set(seededLastProvider.rawValue, forKey: "lastLLMProvider")
     llmModel = defaults.string(forKey: "llmModel") ?? LLMProvider.defaultModel(for: .openAI)
     ollamaModel = defaults.string(forKey: "ollamaModel") ?? SettingsDefaultValues.ollamaModel
     autoCopyToClipboard =
