@@ -280,7 +280,10 @@ struct AudioLevelBar: View {
   }
 }
 
-/// Pipeline status badge in toolbar — hidden when idle/complete/error, minimal during active states.
+/// Pipeline status badge in toolbar — renders nothing when idle/complete/error
+/// (so it never shows in the resting frame), minimal during active states. It is
+/// the only in-window phase cue on pages without the History status row, so the
+/// toolbar keeps it alongside the record button.
 struct StatusBadge: View {
   // PR7 of #763: live phase resolves through LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
@@ -332,19 +335,45 @@ struct RecordButton: View {
 
   var body: some View {
     let state = liveRecordingState.pipelineState
+    let recording = state == .recording
     Button {
       Task {
         await dictationRuntime.toggleRecording(source: .toolbar)
       }
     } label: {
-      Label(
-        state == .recording ? "Stop" : "Record",
-        systemImage: state == .recording ? "stop.circle.fill" : "mic.circle.fill"
+      HStack(spacing: 6) {
+        Image(systemName: recording ? "stop.fill" : "mic.fill")
+          .font(.system(size: 11, weight: .semibold))
+        Text(recording ? "Stop" : "Record")
+          .font(.system(size: 13, weight: .semibold))
+      }
+      .foregroundStyle(.white)
+      .padding(.horizontal, 13)
+      .padding(.vertical, 6)
+      .background(
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+          .fill(
+            LinearGradient(
+              colors: recording
+                ? [
+                  Color(.sRGB, red: 0.855, green: 0.302, blue: 0.302, opacity: 1),
+                  Color(.sRGB, red: 0.722, green: 0.208, blue: 0.161, opacity: 1),
+                ]
+                : [
+                  Color(.sRGB, red: 0.604, green: 0.361, blue: 0.965, opacity: 1),
+                  Color(.sRGB, red: 0.486, green: 0.227, blue: 0.929, opacity: 1),
+                ],
+              startPoint: .top, endPoint: .bottom))
       )
-      .foregroundStyle(state == .recording ? Color.stError : Color.stAccent)
+      .overlay(
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+          .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
+      )
+      .shadow(color: (recording ? Color.stError : Color.stAccent).opacity(0.35), radius: 5, y: 2)
+      .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
-    .labelStyle(.titleAndIcon)
-    .disabled(state.isActive && state != .recording)
-    .help(state == .recording ? "Stop recording" : "Start recording")
+    .buttonStyle(.plain)
+    .disabled(state.isActive && !recording)
+    .help(recording ? "Stop recording" : "Start recording")
   }
 }

@@ -805,10 +805,10 @@ private struct MainWindowRoot: View {
 
   var body: some View {
     UnifiedWindowView()
-      // 710 covers the pinned sidebar (200) + the NavigationSplitView divider
-      // (~8, AX-measured) + the History pane floors (230 + 8 + 260 = 498), so
-      // the window can never crush any column (#1024).
-      .frame(minWidth: 710, minHeight: 400)
+      // 750 = two-card frame chrome (outer inset 28 + sidebar 200 + spacing 14 =
+      // 242) + the History split floors inside the detail card (230+8+260=498),
+      // so the window can never crush the History split (#1024; #1296 frame).
+      .frame(minWidth: 750, minHeight: 400)
       .environment(b.navigationCoordinator)
       .environment(b.diagnosticsCoordinator)
       .environment(b.languageSuggestionPresenter)

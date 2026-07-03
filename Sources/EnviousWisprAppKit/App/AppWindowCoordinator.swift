@@ -71,10 +71,13 @@ final class AppWindowCoordinator {
       guard let window = notification.object as? NSWindow else { return }
       MainActor.assumeIsolated {
         guard let self else { return }
-        // Capture the main window reference on first titled window appearance.
-        if self.mainWindow == nil, window.styleMask.contains(.titled),
-          window.title == AppConstants.appName
-        {
+        // Capture the main window on the first close of a window we can
+        // positively identify as ours. See `isMainWindow` — matching by scene
+        // identity (not merely "titled and not onboarding") keeps a transient
+        // titled dialog, e.g. Sparkle's attended-update window, from being
+        // mistaken for the main window and flipping the app to `.accessory`
+        // while the real window is still open (#1296 review).
+        if self.mainWindow == nil, self.isMainWindow(window) {
           self.mainWindow = window
         }
         // Match by identity so status-bar/panel windows never trigger the reset.
@@ -82,6 +85,19 @@ final class AppWindowCoordinator {
         NSApp.setActivationPolicy(.accessory)
       }
     }
+  }
+
+  /// Positively identifies our main window, the SwiftUI `Window("", id: "main")`.
+  /// It carries the "main" scene identifier and an intentionally blank title (the
+  /// toolbar wordmark is the identity). Preferring the scene identifier, with a
+  /// blank-title fallback, means titled system dialogs (Sparkle's attended-update
+  /// window, save/open panels — all of which carry non-empty titles) never match.
+  private func isMainWindow(_ window: NSWindow) -> Bool {
+    guard window.styleMask.contains(.titled) else { return false }
+    if window.identifier?.rawValue.contains("main") == true { return true }
+    // Fallback: the main window is the only titled window with a blank title;
+    // onboarding ("Setup") and system dialogs all carry non-empty titles.
+    return window.title.isEmpty
   }
 
   /// Remove both window-close observers. Called once from
@@ -102,8 +118,8 @@ final class AppWindowCoordinator {
     if let action = openMainWindowAction {
       action()
     } else {
-      // Fallback: find and show an existing window
-      for window in NSApp.windows where window.title == AppConstants.appName {
+      // Fallback: find and show the existing main window by scene identity.
+      for window in NSApp.windows where isMainWindow(window) {
         window.makeKeyAndOrderFront(nil)
         break
       }

@@ -36,6 +36,12 @@ extension Color {
     lightRGB: (1, 1, 1, 1), darkRGB: (0.125, 0.106, 0.169, 1))  // #ffffff / #201b2b
   static let stSidebarBg = stDynamic(
     lightRGB: (0.910, 0.886, 0.961, 1), darkRGB: (0.102, 0.086, 0.137, 1))  // #e8e2f5 / #1a1623
+  // The window canvas BEHIND the two floating frame cards (sidebar + content).
+  // Deliberately darker than every card surface so both panels read as raised,
+  // uniformly-inset cards on a common ground (founder, 2026-07-03: sidebar and
+  // content as two equal, equally-spaced bordered cards).
+  static let stWindowBg = stDynamic(
+    lightRGB: (0.867, 0.835, 0.933, 1), darkRGB: (0.051, 0.043, 0.071, 1))  // #ddd5ee / #0d0b12
 
   // Text
   //
@@ -48,12 +54,24 @@ extension Color {
     lightRGB: (0.290, 0.239, 0.376, 1), darkRGB: (0.667, 0.635, 0.749, 1))  // #4a3d60 / #aaa2bf
   static let stTextTertiary = stDynamic(
     lightRGB: (0.420, 0.369, 0.525, 1), darkRGB: (0.478, 0.447, 0.565, 1))  // #6b5e86 / #7a7290
+  // Reading-copy body: a "whiter grey" — clearly brighter than the secondary
+  // grey (which the founder disliked), sitting just under the near-white
+  // primary of labels/titles so descriptions read calm but not dim (#1296 pass).
+  static let stTextBody = stDynamic(
+    lightRGB: (0.200, 0.176, 0.278, 1), darkRGB: (0.835, 0.820, 0.886, 1))  // #332d47 / #d5d1e2
 
   // Accent
   static let stAccent = stDynamic(
     lightRGB: (0.486, 0.227, 0.929, 1), darkRGB: (0.655, 0.545, 0.980, 1))  // #7c3aed / #a78bfa
   static let stAccentLight = stDynamic(
     lightRGB: (0.486, 0.227, 0.929, 0.09), darkRGB: (0.655, 0.545, 0.980, 0.16))
+  // Solid brand purple for FILLED selected surfaces that carry white text/glyphs
+  // (segmented pills, filled check badges). Stays the darker brand #7c3aed in
+  // BOTH modes — the desaturated lavender `stAccent` is for text/outlines only;
+  // as a fill under white it reads washed-out (founder, 2026-07-03). Dark mode
+  // lifts it a hair (#8b46f0) so the pill still pops on the night surface.
+  static let stAccentSolid = stDynamic(
+    lightRGB: (0.486, 0.227, 0.929, 1), darkRGB: (0.545, 0.275, 0.941, 1))  // #7c3aed / #8b46f0
 
   // Toggle
   static let stToggleOn = stDynamic(
@@ -82,20 +100,44 @@ extension ShapeStyle where Self == Color {
   static var stTextPrimary: Color { Color.stTextPrimary }
   static var stTextSecondary: Color { Color.stTextSecondary }
   static var stTextTertiary: Color { Color.stTextTertiary }
+  static var stTextBody: Color { Color.stTextBody }
   static var stAccent: Color { Color.stAccent }
+  static var stAccentSolid: Color { Color.stAccentSolid }
   static var stSuccess: Color { Color.stSuccess }
   static var stWarning: Color { Color.stWarning }
   static var stError: Color { Color.stError }
 }
 
 // MARK: - Settings Font Tokens
+//
+// One small type scale, four roles, used across every Settings page:
+//   • stSectionHeader — the small uppercased eyebrow above a card/group.
+//   • stRowTitle      — the lead line of a row (control name, engine name).
+//   • stBody          — descriptions + explainer paragraphs (the reading copy).
+//   • stHelper        — captions, hints, status, footnotes (the quiet microcopy).
+// Hierarchy comes from SIZE + WEIGHT, not colour: titles and body share the
+// near-white primary colour so a page never has a bright paragraph shouting
+// over a dim title. Only stHelper steps down to a quieter colour.
 
 extension Font {
-  static let stSectionHeader = Font.system(size: 11.5, weight: .bold)
-  static let stHelper = Font.system(size: 11.5)
-  /// Reading-copy body: multi-sentence explainers and section descriptions.
-  /// Medium weight reads crisper on the dark night-comfort surfaces (halation).
-  static let stBody = Font.system(size: 14, weight: .medium)
+  // 14pt is the FLOOR for every piece of Settings text — nothing renders
+  // smaller (founder directive 2026-07-03). Hierarchy is built UP from 14 with
+  // weight and the title size bump, never down with a smaller size.
+
+  /// Section eyebrow: uppercased label above a card or group ("ON THIS MAC").
+  static let stSectionHeader = Font.system(size: 14, weight: .semibold)
+  /// Row / control title: the lead line of a whole section/card (its subject,
+  /// e.g. "AI Polish", an engine name). Used sparingly, one per section.
+  static let stRowTitle = Font.system(size: 16, weight: .semibold)
+  /// Sub-row / control label: the lead line of a control row inside a section
+  /// (e.g. "Language suggestions"). Emphasis via weight, not a bigger size.
+  static let stRowLabel = Font.system(size: 14, weight: .semibold)
+  /// Reading-copy body: descriptions and multi-sentence explainers. Regular
+  /// weight, primary (near-white) colour, one uniform size everywhere.
+  static let stBody = Font.system(size: 14, weight: .regular)
+  /// Caption / hint / status microcopy: footnotes, link hints, status lines.
+  /// Same 14pt floor as body; it reads quieter through colour, not size.
+  static let stHelper = Font.system(size: 14)
 }
 
 // MARK: - Settings Layout Constants
@@ -105,7 +147,17 @@ enum SettingsLayout {
   static let rowPaddingH: CGFloat = 14
   static let rowPaddingV: CGFloat = 12
   static let sectionSpacing: CGFloat = 18
-  static let contentTop: CGFloat = 20
+  // Gap between the top bar and the first content card (the page-header card),
+  // so the bar reads as chrome and the header as the first content object.
+  static let contentTop: CGFloat = 18
   static let contentH: CGFloat = 24
   static let contentBottom: CGFloat = 32
+
+  // Two-card window frame (#1296): the sidebar card and content card are each
+  // inset from the window edge by `windowFrameInset` and separated from one
+  // another by the same value, so the spacing reads uniform on all sides. Their
+  // corner radius is a touch larger than the inner setting cards so the frame
+  // cards clearly contain the content cards rather than competing with them.
+  static let windowCardRadius: CGFloat = 18
+  static let windowFrameInset: CGFloat = 14
 }

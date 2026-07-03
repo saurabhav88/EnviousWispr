@@ -91,7 +91,7 @@ struct CustomWordEditSheet: View {
             ForEach(word.aliases, id: \.self) { alias in
               HStack(spacing: 3) {
                 Text(alias)
-                  .font(.system(size: 11))
+                  .font(.stHelper)
                 Button {
                   word.aliases.removeAll { $0 == alias }
                 } label: {
@@ -131,7 +131,7 @@ struct CustomWordEditSheet: View {
       if let saveError {
         Label(saveError, systemImage: "exclamationmark.triangle.fill")
           .font(.stHelper)
-          .foregroundStyle(.red)
+          .foregroundStyle(.stError)
           .fixedSize(horizontal: false, vertical: true)
       }
 
@@ -182,14 +182,14 @@ struct CustomWordEditSheet: View {
           ProgressView().controlSize(.small)
           Text("Getting AI suggestions...")
             .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
+            .foregroundStyle(.stTextSecondary)
         }
         .padding(.leading, 20)
         .padding(.bottom, 28)
       } else if noSuggestionsAvailable {
         Text("No suggestions available")
           .font(.stHelper)
-          .foregroundStyle(.stTextTertiary)
+          .foregroundStyle(.stTextSecondary)
           .padding(.leading, 20)
           .padding(.bottom, 28)
       }

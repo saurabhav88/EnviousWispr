@@ -34,14 +34,14 @@ struct VocabularyPackDetailSheet: View {
           "\(terms.count) \(terms.count == 1 ? "word" : "words") · the variants under each are examples of the mistakes it catches, not the full set"
         )
         .font(.stHelper)
-        .foregroundStyle(.stTextTertiary)
+        .foregroundStyle(.stTextSecondary)
         .fixedSize(horizontal: false, vertical: true)
       }
 
       // Search
       HStack(spacing: 6) {
         Image(systemName: "magnifyingglass")
-          .foregroundStyle(.stTextTertiary)
+          .foregroundStyle(.stTextSecondary)
           .font(.system(size: 12))
         TextField("Search words or variants", text: $searchQuery)
           .textFieldStyle(.plain)
@@ -50,7 +50,7 @@ struct VocabularyPackDetailSheet: View {
             searchQuery = ""
           } label: {
             Image(systemName: "xmark.circle.fill")
-              .foregroundStyle(.stTextTertiary)
+              .foregroundStyle(.stTextSecondary)
               .font(.system(size: 12))
           }
           .buttonStyle(.plain)
@@ -75,7 +75,7 @@ struct VocabularyPackDetailSheet: View {
             : "No matches for \"\(searchQuery)\"."
         )
         .font(.stHelper)
-        .foregroundStyle(.stTextTertiary)
+        .foregroundStyle(.stTextSecondary)
         .frame(maxWidth: .infinity, alignment: .center)
         Spacer()
       } else {
@@ -108,16 +108,16 @@ struct VocabularyPackDetailSheet: View {
   private func termRow(_ term: CustomWord) -> some View {
     VStack(alignment: .leading, spacing: 5) {
       Text(term.canonical)
-        .font(.body)
+        .settingsRowLabel()
       if term.aliases.isEmpty {
         Text("No spoken variants")
-          .font(.system(size: 11))
-          .foregroundStyle(.stTextTertiary)
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
       } else {
         WrappingHStack(spacing: 6) {
           ForEach(sortedAliases(term), id: \.self) { alias in
             Text(alias)
-              .font(.system(size: 11))
+              .font(.stHelper)
               .padding(.horizontal, 6)
               .padding(.vertical, 3)
               .background(Color.stAccentLight)

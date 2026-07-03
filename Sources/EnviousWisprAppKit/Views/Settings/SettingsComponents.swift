@@ -1,30 +1,118 @@
 import SwiftUI
 
-// MARK: - Reading-copy modifier
+// MARK: - Text role modifiers
 
 extension View {
+  /// The subject of a whole section/card: a control's name or an engine's name.
+  /// Near-white primary at title size + weight, so the section header always
+  /// reads louder than its own description. Opt in via `.settingsRowTitle()`.
+  func settingsRowTitle() -> some View {
+    self
+      .font(.stRowTitle)
+      .foregroundStyle(.stTextPrimary)
+  }
+
+  /// The lead line of a control row inside a section (e.g. "Language
+  /// suggestions"). Near-white primary, emphasised by weight not size.
+  func settingsRowLabel() -> some View {
+    self
+      .font(.stRowLabel)
+      .foregroundStyle(.stTextPrimary)
+  }
+
   /// The single authority for "reading paragraph" styling in Settings: body
-  /// font (14 medium) + primary text colour + vertical wrapping. Multi-sentence
-  /// explainers and section descriptions opt in via `.settingsReadingCopy()`.
-  /// Labels, hints, captions, pagination, and status text stay on the microcopy
-  /// tokens (`stHelper` + secondary/tertiary) and must NOT adopt this.
+  /// font (14 regular) + the whiter-grey body colour + vertical wrapping.
+  /// Descriptions and multi-sentence explainers opt in via
+  /// `.settingsReadingCopy()`. Hints, captions, status, and footnotes stay on
+  /// the quiet microcopy token (`stHelper`) and must NOT adopt this.
   func settingsReadingCopy() -> some View {
     self
       .font(.stBody)
-      .foregroundStyle(.stTextPrimary)
+      .foregroundStyle(.stTextBody)
       .fixedSize(horizontal: false, vertical: true)
+  }
+}
+
+// MARK: - Per-page header
+
+/// The header that introduces each settings page: a lavender icon tile, the
+/// page title, and a one-line subtitle. Rendered as its OWN card (same surface
+/// and radius as the setting cards) so it lives inside the content area with the
+/// options and never blends into the top bar (founder decision, 2026-07-03,
+/// Option B). Injected as the first card of `SettingsContentView`.
+struct SettingsPageHeader: View {
+  let icon: String
+  let title: String
+  let subtitle: String
+
+  var body: some View {
+    HStack(spacing: 14) {
+      Image(systemName: icon)
+        .font(.system(size: 21, weight: .medium))
+        .foregroundStyle(.stAccent)
+        .frame(width: 46, height: 46)
+        .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+          RoundedRectangle(cornerRadius: 12)
+            .strokeBorder(Color.stAccent.opacity(0.28), lineWidth: 1)
+        )
+        .accessibilityHidden(true)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+          .font(.system(size: 22, weight: .semibold))
+          .foregroundStyle(.stTextPrimary)
+        if !subtitle.isEmpty {
+          Text(subtitle).settingsReadingCopy()
+        }
+      }
+
+      Spacer(minLength: 0)
+    }
+    .padding(16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.stSectionBg)
+    .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+    .overlay(
+      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
+        .strokeBorder(Color.stDivider, lineWidth: 1)
+    )
+  }
+}
+
+// MARK: - Row leading icon
+
+/// The brand-accent leading glyph for a settings row (mockup #4). Fixed width so
+/// every row's text starts on the same vertical line regardless of glyph shape.
+struct SettingsRowIcon: View {
+  let systemName: String
+  var body: some View {
+    Image(systemName: systemName)
+      .font(.system(size: 16, weight: .medium))
+      .foregroundStyle(.stAccent)
+      .frame(width: 26, alignment: .center)
+      .accessibilityHidden(true)  // decorative; the row's label is the identifier
   }
 }
 
 // MARK: - Settings Content Container
 
 /// Replaces `Form { }.formStyle(.grouped)` with a branded ScrollView layout.
+/// When the environment carries a `settingsPageSection`, the page-header card is
+/// rendered as the first item so it scrolls with the setting cards (Option B).
 struct SettingsContentView<Content: View>: View {
+  @Environment(\.settingsPageSection) private var pageSection
   @ViewBuilder let content: Content
 
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+        if let pageSection {
+          SettingsPageHeader(
+            icon: pageSection.icon,
+            title: pageSection.label,
+            subtitle: pageSection.subtitle)
+        }
         content
       }
       .padding(.top, SettingsLayout.contentTop)
@@ -34,6 +122,10 @@ struct SettingsContentView<Content: View>: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.stPageBg)
     .tint(.stAccent)
+    // 14pt floor for the whole page: bare `Text` and native control labels
+    // inherit body size, so nothing renders below 14 unless a role modifier
+    // steps it UP (title 16, eyebrow 14 semibold). Founder directive 2026-07-03.
+    .font(.stBody)
   }
 }
 
@@ -60,7 +152,8 @@ struct BrandedSection<Content: View, Footer: View>: View {
       if let header {
         Text(header.uppercased())
           .font(.stSectionHeader)
-          .foregroundStyle(.stTextTertiary)
+          .tracking(0.6)
+          .foregroundStyle(.stAccent)
           .padding(.leading, 4)
           .padding(.bottom, 6)
       }
@@ -91,6 +184,150 @@ extension BrandedSection where Footer == EmptyView {
     self.header = header
     self.content = content()
     self.footer = EmptyView()
+  }
+}
+
+// MARK: - Branded Panel (header-inside-card)
+
+/// A section rendered as ONE self-contained card that owns all of its content:
+/// a purple eyebrow (optionally with a leading brand icon), a description, the
+/// control(s), and any footnote — all inside a single bordered surface. This is
+/// the "clear ownership" layout (mockup, 2026-07-03) where nothing floats above
+/// or below the card. Contrast with `BrandedSection`, whose eyebrow sits above
+/// the card and footer below it.
+struct BrandedPanel<Content: View, Footnote: View>: View {
+  let icon: String?
+  let header: String
+  let description: String?
+  @ViewBuilder let content: Content
+  @ViewBuilder let footnote: Footnote
+
+  init(
+    icon: String? = nil,
+    header: String,
+    description: String? = nil,
+    @ViewBuilder content: () -> Content,
+    @ViewBuilder footnote: () -> Footnote
+  ) {
+    self.icon = icon
+    self.header = header
+    self.description = description
+    self.content = content()
+    self.footnote = footnote()
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      VStack(alignment: .leading, spacing: 5) {
+        HStack(spacing: 8) {
+          if let icon {
+            Image(systemName: icon)
+              .font(.system(size: 16, weight: .semibold))
+              .foregroundStyle(.stAccent)
+              .accessibilityHidden(true)
+          }
+          Text(header.uppercased())
+            .font(.stSectionHeader)
+            .tracking(0.6)
+            .foregroundStyle(.stAccent)
+        }
+        if let description {
+          Text(description).settingsReadingCopy()
+        }
+      }
+
+      content
+
+      footnote
+    }
+    .padding(18)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.stSectionBg)
+    .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+    .overlay(
+      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
+        .strokeBorder(Color.stDivider, lineWidth: 1)
+    )
+  }
+}
+
+extension BrandedPanel where Footnote == EmptyView {
+  init(
+    icon: String? = nil,
+    header: String,
+    description: String? = nil,
+    @ViewBuilder content: () -> Content
+  ) {
+    self.icon = icon
+    self.header = header
+    self.description = description
+    self.content = content()
+    self.footnote = EmptyView()
+  }
+}
+
+/// A quiet inset "note" box for use inside a `BrandedPanel`: a purple info glyph
+/// plus microcopy, on a recessed rounded surface. Used for the frozen-per-
+/// recording notice so it reads as owned by its card, not floating beneath it.
+struct InsetNotice: View {
+  let text: String
+  var systemImage: String = "info.circle"
+  var tint: Color = .stAccent
+
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Image(systemName: systemImage)
+        .font(.system(size: 14, weight: .medium))
+        .foregroundStyle(tint)
+        .accessibilityHidden(true)
+      Text(text)
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 10)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.stPageBg, in: RoundedRectangle(cornerRadius: 9))
+    .overlay(
+      RoundedRectangle(cornerRadius: 9).strokeBorder(Color.stDivider, lineWidth: 1)
+    )
+  }
+}
+
+/// Canonical microcopy shared by the frozen-per-recording notices so the string
+/// lives in one place across the footer and inset-notice renderings.
+enum SettingsCopy {
+  static let frozenPerRecording =
+    "Changes made during a recording apply to the next recording."
+}
+
+/// Page-level banner stating that this page's settings freeze at recording start.
+/// The rule is page-wide, so it appears ONCE at the top of a page rather than
+/// repeated in every card (founder, 2026-07-03). Accent-tinted so it reads as a
+/// standing notice above the cards, not part of any one of them.
+struct FrozenPerRecordingBanner: View {
+  var body: some View {
+    HStack(spacing: 9) {
+      Image(systemName: "info.circle")
+        .font(.system(size: 14, weight: .medium))
+        .foregroundStyle(.stAccent)
+        .accessibilityHidden(true)
+      Text(SettingsCopy.frozenPerRecording)
+        .font(.stHelper)
+        .foregroundStyle(.stTextBody)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 11)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 10))
+    .overlay(
+      RoundedRectangle(cornerRadius: 10)
+        .strokeBorder(Color.stAccent.opacity(0.25), lineWidth: 1)
+    )
   }
 }
 
@@ -129,9 +366,9 @@ struct BrandedRow<Content: View>: View {
 /// slot or inline under affected controls.
 struct FrozenPerRecordingFootnote: View {
   var body: some View {
-    Text("Changes made during a recording apply to the next recording.")
-      .font(.caption)
-      .foregroundStyle(.stTextTertiary)
+    Text(SettingsCopy.frozenPerRecording)
+      .font(.stHelper)
+      .foregroundStyle(.stTextSecondary)
   }
 }
 
@@ -219,8 +456,8 @@ struct BrandedSlider<V: BinaryFloatingPoint>: View where V.Stride: BinaryFloatin
         Text(label)
         Spacer()
         Text(String(format: format, Double(value)))
-          .font(.caption)
-          .fontWeight(.medium)
+          .font(.stHelper)
+          .fontWeight(.semibold)
           .foregroundStyle(.stAccent)
           .padding(.horizontal, 6)
           .padding(.vertical, 1)
@@ -228,10 +465,10 @@ struct BrandedSlider<V: BinaryFloatingPoint>: View where V.Stride: BinaryFloatin
           .clipShape(RoundedRectangle(cornerRadius: 4))
       }
       HStack(spacing: 8) {
-        Text(lowLabel).font(.caption2).foregroundStyle(.stTextTertiary)
+        Text(lowLabel).font(.stHelper).foregroundStyle(.stTextSecondary)
         Slider(value: $value, in: range, step: step)
           .tint(.stAccent)
-        Text(highLabel).font(.caption2).foregroundStyle(.stTextTertiary)
+        Text(highLabel).font(.stHelper).foregroundStyle(.stTextSecondary)
       }
     }
   }
@@ -239,13 +476,15 @@ struct BrandedSlider<V: BinaryFloatingPoint>: View where V.Stride: BinaryFloatin
 
 // MARK: - Branded Segmented Picker
 
-/// Custom drawn segmented control matching the brand palette.
+/// Custom drawn segmented control matching the brand palette. The selected
+/// segment is a solid brand-accent pill with white text (mockup #4); each
+/// segment may carry an optional leading SF Symbol.
 struct BrandedSegmentedPicker<T: Hashable>: View {
-  let options: [(label: String, value: T)]
+  let options: [(label: String, systemImage: String?, value: T)]
   @Binding var selection: T
 
   var body: some View {
-    HStack(spacing: 0) {
+    HStack(spacing: 4) {
       ForEach(options.indices, id: \.self) { index in
         let option = options[index]
         let isSelected = selection == option.value
@@ -253,29 +492,33 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
         Button {
           selection = option.value
         } label: {
-          Text(option.label)
-            .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular))
-            .foregroundStyle(isSelected ? Color.stAccent : .stTextSecondary)
-            .padding(.vertical, 6)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
-            .background(isSelected ? Color.stAccentLight : Color.clear)
+          HStack(spacing: 6) {
+            if let symbol = option.systemImage {
+              Image(systemName: symbol)
+                .font(.system(size: 12.5, weight: .semibold))
+            }
+            Text(option.label)
+              .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+          }
+          .foregroundStyle(isSelected ? Color.white : .stTextSecondary)
+          .padding(.vertical, 7)
+          .padding(.horizontal, 12)
+          .frame(maxWidth: .infinity)
+          .contentShape(Rectangle())
+          .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+              .fill(isSelected ? Color.stAccentSolid : Color.clear)
+          )
         }
         .buttonStyle(.plain)
         .accessibilityValue(isSelected ? "selected" : "")
-
-        if index < options.count - 1 {
-          Divider()
-            .frame(height: 16)
-            .overlay(Color.stDivider)
-        }
       }
     }
+    .padding(3)
     .background(Color.stPageBg)
-    .clipShape(RoundedRectangle(cornerRadius: 8))
+    .clipShape(RoundedRectangle(cornerRadius: 10))
     .overlay(
-      RoundedRectangle(cornerRadius: 8)
+      RoundedRectangle(cornerRadius: 10)
         .strokeBorder(Color.stDivider, lineWidth: 1)
     )
   }
@@ -302,7 +545,7 @@ struct BrandedStatusRow: View {
         if let helperText, !isGranted {
           Text(helperText)
             .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
+            .foregroundStyle(.stTextSecondary)
         }
       }
 

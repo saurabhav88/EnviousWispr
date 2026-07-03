@@ -19,12 +19,11 @@ struct LearningSection: View {
           HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
               Text("Learn from my transcripts")
-                .font(.body)
+                .settingsRowLabel()
               Text(
                 "EnviousWispr will watch for edits to text it just pasted, to suggest custom words. Edits stay on this Mac."
               )
-              .font(.stHelper)
-              .foregroundStyle(.stTextTertiary)
+              .settingsReadingCopy()
             }
             Spacer()
             Toggle("", isOn: .constant(false))
@@ -34,7 +33,7 @@ struct LearningSection: View {
           }
           Text("Coming soon")
             .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
+            .foregroundStyle(.stTextSecondary)
             .padding(.top, 2)
         }
       }
@@ -45,12 +44,11 @@ struct LearningSection: View {
           HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
               Text("Import from Contacts")
-                .font(.body)
+                .settingsRowLabel()
               Text(
                 "Add the names of people you know to your word list, so dictation spells them right."
               )
-              .font(.stHelper)
-              .foregroundStyle(.stTextTertiary)
+              .settingsReadingCopy()
             }
             Spacer()
             importControl
@@ -59,7 +57,7 @@ struct LearningSection: View {
           if case .imported(let count) = contactsImport.phase {
             Label(addedFeedback(count), systemImage: "checkmark.circle.fill")
               .font(.stHelper)
-              .foregroundStyle(.green)
+              .foregroundStyle(.stSuccess)
           }
           if let progress = contactsImport.enrichmentProgress {
             Label(
@@ -67,25 +65,26 @@ struct LearningSection: View {
               systemImage: "sparkles"
             )
             .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
+            .foregroundStyle(.stTextSecondary)
           }
           if case .failed(let message) = contactsImport.phase {
             Text(message)
               .font(.stHelper)
-              .foregroundStyle(.red)
+              .foregroundStyle(.stError)
           }
           if contactsImport.phase == .denied {
             Text("Contacts access is off. Turn it on in System Settings, then try again.")
               .font(.stHelper)
-              .foregroundStyle(.stTextTertiary)
+              .foregroundStyle(.stTextSecondary)
           }
 
-          Toggle("Keep in sync on launch", isOn: $settings.contactsSyncOnLaunchEnabled)
-            .toggleStyle(BrandedToggleStyle())
-            .padding(.top, 2)
+          Toggle(isOn: $settings.contactsSyncOnLaunchEnabled) {
+            Text("Keep in sync on launch").settingsRowLabel()
+          }
+          .toggleStyle(BrandedToggleStyle())
+          .padding(.top, 2)
           Text("Check for new contacts each time EnviousWispr starts. Off by default.")
-            .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
+            .settingsReadingCopy()
         }
       }
     }

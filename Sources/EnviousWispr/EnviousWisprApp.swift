@@ -30,10 +30,15 @@ struct EnviousWisprApp: App {
   }
 
   var body: some Scene {
-    Window(bootstrapper.mainWindowTitle, id: "main") {
+    // Blank title so macOS doesn't render the window name in the compact
+    // toolbar (it would duplicate the centered wordmark); the centered toolbar
+    // item is the visible identity. AppWindowCoordinator identifies this window
+    // structurally (titled, not the onboarding window), not by title string.
+    Window("", id: "main") {
       bootstrapper.mainWindowContent()
     }
     .defaultSize(width: 820, height: 600)
+    .windowToolbarStyle(.unifiedCompact)
 
     // Onboarding window — non-resizable, centered, auto-opens on first launch.
     Window(bootstrapper.onboardingWindowTitle, id: "onboarding") {

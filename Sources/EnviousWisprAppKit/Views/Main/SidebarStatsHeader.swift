@@ -26,18 +26,18 @@ struct SidebarStatsHeader: View {
       HStack(spacing: 8) {
         HStack(spacing: 4) {
           Image(systemName: "magnifyingglass")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.stTextTertiary)
           TextField("Search transcripts", text: $tc.searchQuery)
             .textFieldStyle(.plain)
             .font(.caption)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
-        .background(.fill.quinary, in: RoundedRectangle(cornerRadius: 6))
+        .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 6))
 
         Text("\(transcriptCoordinator.transcriptCount)")
           .font(.caption.bold())
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.stTextSecondary)
           .monospacedDigit()
       }
       .opacity(isRecording ? 0.4 : 1.0)
@@ -82,7 +82,7 @@ struct ModelStatusBar: View {
 
         Text("Engine")
           .font(.caption)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.stTextSecondary)
           .layoutPriority(1)
 
         Spacer(minLength: 8)
@@ -90,16 +90,17 @@ struct ModelStatusBar: View {
         Text(modelName)
           .font(.caption)
           .fontWeight(.medium)
+          .foregroundStyle(.stTextPrimary)
           .lineLimit(1)
           .truncationMode(.middle)
           .help(modelName)
 
         Text("·")
-          .foregroundStyle(.tertiary)
+          .foregroundStyle(.stTextTertiary)
 
         Text(statusText)
           .font(.caption)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.stTextSecondary)
           .lineLimit(1)
           .layoutPriority(1)
       }
@@ -111,7 +112,7 @@ struct ModelStatusBar: View {
 
         Text("AI Polish")
           .font(.caption)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.stTextSecondary)
           .layoutPriority(1)
 
         Spacer(minLength: 8)
@@ -119,6 +120,7 @@ struct ModelStatusBar: View {
         Text(polishLabel)
           .font(.caption)
           .fontWeight(.medium)
+          .foregroundStyle(.stTextPrimary)
           .lineLimit(1)
           .truncationMode(.middle)
           .help(polishLabel)
@@ -129,7 +131,8 @@ struct ModelStatusBar: View {
     .background(
       RoundedRectangle(cornerRadius: 6)
         .fill(
-          isRecording ? AnyShapeStyle(Color.stError.opacity(0.1)) : AnyShapeStyle(.fill.quinary))
+          isRecording
+            ? AnyShapeStyle(Color.stError.opacity(0.1)) : AnyShapeStyle(Color.stSectionBg))
     )
     .accessibilityElement(children: .combine)
   }
@@ -137,6 +140,6 @@ struct ModelStatusBar: View {
   private var dotColor: Color {
     if isRecording { return .stError }
     if hasError { return .stError }
-    return isLoaded ? .stSuccess : .secondary
+    return isLoaded ? .stSuccess : .stTextTertiary
   }
 }

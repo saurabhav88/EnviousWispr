@@ -6,21 +6,11 @@ struct WhatsNewSettingsView: View {
 
   var body: some View {
     SettingsContentView {
-      VStack(alignment: .leading, spacing: 4) {
-        Text("What's New")
-          .font(.system(size: 20, weight: .semibold))
-          .foregroundStyle(.stTextSecondary)
-        Text("Here's what improved in recent updates.")
-          .font(.stHelper)
-          .foregroundStyle(.stTextTertiary)
-      }
-      .padding(.bottom, 4)
-
+      // Page title + subtitle now come from the injected page-header card.
       ForEach(WhatsNewContent.groupedByVersion, id: \.version) { versionGroup in
         // Version header
         Text("v\(versionGroup.version)")
-          .font(.system(size: 15, weight: .bold))
-          .foregroundStyle(.stTextSecondary)
+          .settingsRowTitle()
           .padding(.top, 8)
 
         // Category sections within this version
@@ -35,10 +25,9 @@ struct WhatsNewSettingsView: View {
                     .frame(width: 24, alignment: .center)
                   VStack(alignment: .leading, spacing: 2) {
                     Text(entry.title)
-                      .font(.system(size: 13, weight: .semibold))
+                      .settingsRowLabel()
                     Text(entry.description)
-                      .font(.stHelper)
-                      .foregroundStyle(.stTextTertiary)
+                      .settingsReadingCopy()
                   }
                 }
               }
@@ -55,10 +44,13 @@ struct WhatsNewSettingsView: View {
 
 // MARK: - Sidebar Row
 
-/// Sidebar row for the "What's New" tab. Uses TimelineView + gradient mask
-/// for reliable animation inside a macOS NavigationSplitView List.
-struct WhatsNewSidebarRow: View {
+/// The "What's New" sidebar glyph: an animated rainbow sweep over the icon when
+/// there are unread items, else a plain icon in the given tint. Extracted so the
+/// custom sidebar rows can reuse it (TimelineView + gradient mask animate
+/// reliably inside a macOS NavigationSplitView).
+struct WhatsNewSidebarGlyph: View {
   let isUnread: Bool
+  var restColor: Color = .stAccent
 
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -72,16 +64,6 @@ struct WhatsNewSidebarRow: View {
   ]
 
   var body: some View {
-    Label {
-      Text("What's New")
-    } icon: {
-      icon
-        .frame(width: 16, height: 16)
-    }
-  }
-
-  @ViewBuilder
-  private var icon: some View {
     if isUnread {
       TimelineView(.animation(minimumInterval: reduceMotion ? 1.0 : (1.0 / 30.0))) { context in
         let t = context.date.timeIntervalSinceReferenceDate
@@ -94,14 +76,14 @@ struct WhatsNewSidebarRow: View {
         )
         .mask(
           Image(systemName: "sparkle.magnifyingglass")
-            .font(.system(size: 14, weight: .semibold))
+            .font(.system(size: 15, weight: .semibold))
         )
         .compositingGroup()
       }
     } else {
       Image(systemName: "sparkle.magnifyingglass")
-        .font(.system(size: 14, weight: .semibold))
-        .foregroundStyle(.primary)
+        .font(.system(size: 15, weight: .medium))
+        .foregroundStyle(restColor)
     }
   }
 }
