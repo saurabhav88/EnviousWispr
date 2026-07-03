@@ -21,6 +21,10 @@ enum SettingsDefaultValues {
   // which made the real default ambiguous. Apple Intelligence is on-device; on
   // machines without it the polish limb degrades to raw text (heart path safe).
   static let llmProvider: LLMProvider = .appleIntelligence
+  // The engine restored when the AI Polish on/off toggle is turned back on and
+  // no engine was ever remembered (#1285). Mirrors the default engine so a
+  // fresh install that toggles off then on lands on Apple Intelligence.
+  static let lastLLMProvider: LLMProvider = llmProvider
   static let ollamaModel = "llama3.2"
 
   static let autoCopyToClipboard = true

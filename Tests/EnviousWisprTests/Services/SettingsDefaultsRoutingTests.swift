@@ -127,6 +127,30 @@ struct SettingsDefaultsRoutingTests {
     }
   #endif
 
+  // MARK: - lastLLMProvider (#1285 AI Polish on/off toggle memory)
+
+  @Test("lastLLMProvider persists to the injected store and is in the unified key set")
+  func lastLLMProviderPersists() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    settings.llmProvider = .openAI
+    #expect(suite.string(forKey: "lastLLMProvider") == LLMProvider.openAI.rawValue)
+    // Reload from the same store → the remembered engine survives.
+    #expect(SettingsManager(defaults: suite).lastLLMProvider == .openAI)
+    #expect(SettingsManager.unifiedDefaultsKeys.contains("lastLLMProvider"))
+  }
+
+  @Test("fresh install seeds lastLLMProvider to the default engine and writes it through")
+  func lastLLMProviderFreshSeed() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    #expect(settings.lastLLMProvider == SettingsDefaultValues.lastLLMProvider)
+    // Write-through: init must persist the seed even though didSet does not fire
+    // on init assignment (the upgrade-toggle-off-then-quit data-loss guard).
+    #expect(
+      suite.string(forKey: "lastLLMProvider") == SettingsDefaultValues.lastLLMProvider.rawValue)
+  }
+
   // MARK: - Migration (effective-state, dev-store sentinel)
 
   @Test("dev migration copies explicit values, clears stale shared, sets dev sentinel")
