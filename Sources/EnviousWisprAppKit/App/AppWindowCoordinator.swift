@@ -93,15 +93,11 @@ final class AppWindowCoordinator {
   /// blank-title fallback, means titled system dialogs (Sparkle's attended-update
   /// window, save/open panels — all of which carry non-empty titles) never match.
   private func isMainWindow(_ window: NSWindow) -> Bool {
-    guard window.styleMask.contains(.titled) else { return false }
-    // Definitive: our `Window(id: "main")` scene carries the "main" identifier.
-    if window.identifier?.rawValue.contains("main") == true { return true }
-    // Fallback for when the scene identifier is unavailable: the main window is
-    // the only top-level titled window with a blank title. Reject sheets and
-    // attached/child windows so a transient blank-title sheet is never mistaken
-    // for it (cloud review #1311); onboarding ("Setup") and system dialogs carry
-    // non-empty titles and are excluded by the blank-title test.
-    return window.title.isEmpty && !window.isSheet && window.parent == nil
+    // The main window carries the app name as its title (visually suppressed by
+    // the principal toolbar item, but still set for the Window menu / VoiceOver).
+    // Match on it: onboarding ("Setup"), Sparkle's update dialog, and save/open
+    // panels all carry different titles, so none is mistaken for the main window.
+    window.styleMask.contains(.titled) && window.title == AppConstants.appName
   }
 
   /// Remove both window-close observers. Called once from

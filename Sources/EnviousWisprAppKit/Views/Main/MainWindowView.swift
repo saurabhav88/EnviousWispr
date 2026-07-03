@@ -326,6 +326,22 @@ struct StatusBadge: View {
   }
 }
 
+/// Hides the main window's titlebar title text while leaving `window.title` set.
+/// The centered toolbar wordmark is the only visible identity, but the Window
+/// menu, window switcher, and VoiceOver still read the app name (cloud review
+/// #1311). Attached inside the main window's content, so `window` is always it.
+struct MainWindowTitleHider: NSViewRepresentable {
+  func makeNSView(context: Context) -> NSView { NSView() }
+
+  func updateNSView(_ nsView: NSView, context: Context) {
+    // Defer until the view is in a window; `.hidden` suppresses the titlebar
+    // text without clearing `title`, so assistive tech keeps the name.
+    DispatchQueue.main.async {
+      nsView.window?.titleVisibility = .hidden
+    }
+  }
+}
+
 /// Record/stop button in the toolbar.
 struct RecordButton: View {
   // PR7 of #763: live phase resolves through LiveRecordingState.

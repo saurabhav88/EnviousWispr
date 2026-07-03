@@ -26,6 +26,9 @@ struct UnifiedWindowView: View {
       .padding(SettingsLayout.windowFrameInset)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .background(Color.stWindowBg)
+      // Keep the app name as the window title (Window menu / VoiceOver) but hide
+      // its titlebar text so it doesn't duplicate the centered wordmark (#1311).
+      .background(MainWindowTitleHider())
       .toolbar {
         // macOS 26 wraps each toolbar item in a Liquid Glass capsule; hide it on
         // the principal item so the centered wordmark sits flush on the bar with
