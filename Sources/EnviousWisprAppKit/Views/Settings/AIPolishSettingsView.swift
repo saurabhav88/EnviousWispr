@@ -184,14 +184,23 @@ struct AIPolishSettingsView: View {
       egOneHealth: egOne.health,
       appleStatus: aiAvailability.latestReport?.overallStatus,
       cloudValidation: llmDiscovery.keyValidationState,
+      cloudKeyPresent: settings.llmProvider == .openAI
+        ? !openAIKey.isEmpty
+        : (settings.llmProvider == .gemini ? !geminiKey.isEmpty : false),
       ollamaSetup: setup.ollamaSetup.setupState)
   }
 
   /// Rail + detail as the two-column master-detail from the approved mockup:
   /// a fixed-width rail on the left, the selected engine's detail on the right.
-  /// The settings window's 710pt minimum guarantees both columns fit, so this
-  /// is always side-by-side (no `HSplitView`, which clips under width pressure —
+  /// Always side-by-side (no `HSplitView`, which clips under width pressure —
   /// `hsplitview-never-compresses`); the detail column flexes for wider windows.
+  ///
+  /// At the settings window's 710pt minimum the usable content width is smaller
+  /// than the window (the ~200pt NavigationSplitView sidebar + divider and the
+  /// SettingsContentView horizontal padding come off the top), so the detail
+  /// column is compact but still functional there; it opens up as the window
+  /// widens. The rail is intentionally narrow to hand the detail as much of
+  /// that width as possible (cloud review PR #1293, #1286).
   @ViewBuilder
   private var providerSelectionSurface: some View {
     let selection = Binding(

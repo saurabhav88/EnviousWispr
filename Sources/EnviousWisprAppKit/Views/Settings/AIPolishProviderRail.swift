@@ -54,6 +54,7 @@ enum ProviderStatusMapping {
     egOneHealth: EGOneHealth,
     appleStatus: AIAvailabilityStatus?,
     cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState,
+    cloudKeyPresent: Bool = false,
     ollamaSetup: OllamaSetupState
   ) -> ProviderStatus {
     switch provider {
@@ -62,7 +63,7 @@ enum ProviderStatusMapping {
     case .appleIntelligence:
       return apple(appleStatus)
     case .openAI, .gemini:
-      return cloud(cloudValidation)
+      return cloud(cloudValidation, keyPresent: cloudKeyPresent)
     case .ollama:
       return ollama(ollamaSetup)
     case .none:
@@ -114,13 +115,21 @@ enum ProviderStatusMapping {
     }
   }
 
-  // Cloud (OpenAI / Gemini): keyed entirely off key validation state.
+  // Cloud (OpenAI / Gemini): keyed off validation state. `.idle` means we have
+  // not validated this session — which is the normal state when a saved key is
+  // loaded from the Keychain on settings-open (onAppear does not re-validate).
+  // Showing "Key needed" there would falsely alarm a user with a working saved
+  // key, so idle-with-a-key reads as the neutral "Not checked"; only idle with
+  // NO key reads as "Key needed" (cloud review PR #1293, #1286).
   private static func cloud(
-    _ state: LLMModelDiscoveryCoordinator.KeyValidationState
+    _ state: LLMModelDiscoveryCoordinator.KeyValidationState,
+    keyPresent: Bool
   ) -> ProviderStatus {
     switch state {
     case .idle:
-      return ProviderStatus(label: "Key needed", tone: .needsSetup)
+      return keyPresent
+        ? ProviderStatus(label: "Not checked", tone: .unavailable)
+        : ProviderStatus(label: "Key needed", tone: .needsSetup)
     case .validating:
       return ProviderStatus(label: "Validating", tone: .needsSetup)
     case .valid:
@@ -200,8 +209,10 @@ enum PolishRailCatalog {
 /// side-by-side and needs no adaptive width measurement.
 enum PolishRailMetrics {
   /// Fixed rail column width. Sized to fit the longest engine name
-  /// ("Apple Intelligence") beside a 32pt logo tile without truncation.
-  static let railWidth: CGFloat = 232
+  /// ("Apple Intelligence") beside a 32pt logo tile at full size, while leaving
+  /// the detail column as much room as possible at narrow window widths (the
+  /// rail row name also shrinks slightly before it would ever truncate).
+  static let railWidth: CGFloat = 216
   /// Gap between the rail and the detail column.
   static let columnGap: CGFloat = 16
 }
@@ -388,6 +399,7 @@ struct ProviderRailRow: View {
               .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
               .foregroundStyle(isSelected ? Color.stAccent : Color.stTextSecondary)
               .lineLimit(1)
+              .minimumScaleFactor(0.85)
             if entry.recommended {
               Image(systemName: "star.fill")
                 .font(.system(size: 10))

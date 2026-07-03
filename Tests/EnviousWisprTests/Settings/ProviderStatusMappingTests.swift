@@ -22,6 +22,7 @@ struct ProviderStatusMappingTests {
     egOneHealth: EGOneHealth = .green,
     appleStatus: AIAvailabilityStatus? = .available,
     cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState = .valid,
+    cloudKeyPresent: Bool = false,
     ollamaSetup: OllamaSetupState = .ready
   ) -> ProviderStatus {
     ProviderStatusMapping.status(
@@ -30,6 +31,7 @@ struct ProviderStatusMappingTests {
       egOneHealth: egOneHealth,
       appleStatus: appleStatus,
       cloudValidation: cloudValidation,
+      cloudKeyPresent: cloudKeyPresent,
       ollamaSetup: ollamaSetup)
   }
 
@@ -116,11 +118,22 @@ struct ProviderStatusMappingTests {
     #expect(status(for: .openAI, cloudValidation: .validating).tone == .needsSetup)
   }
 
-  @Test("Cloud idle → Key needed / needs-setup")
-  func cloudIdle() {
-    let s = status(for: .gemini, cloudValidation: .idle)
+  @Test("Cloud idle with NO key → Key needed / needs-setup")
+  func cloudIdleNoKey() {
+    let s = status(for: .gemini, cloudValidation: .idle, cloudKeyPresent: false)
     #expect(s.label == "Key needed")
     #expect(s.tone == .needsSetup)
+  }
+
+  @Test("Cloud idle WITH a saved key → neutral Not checked, never a false Key needed")
+  func cloudIdleWithSavedKey() {
+    // A saved key loaded on settings-open leaves validation .idle; the chip must
+    // not alarm the user with "Key needed" (cloud review PR #1293).
+    for p in [LLMProvider.openAI, .gemini] {
+      let s = status(for: p, cloudValidation: .idle, cloudKeyPresent: true)
+      #expect(s.label == "Not checked")
+      #expect(s.tone == .unavailable)
+    }
   }
 
   @Test("Cloud invalid → Key needed / error")
