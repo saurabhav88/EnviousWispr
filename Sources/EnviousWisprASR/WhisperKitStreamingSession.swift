@@ -189,16 +189,21 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
       let combined = appendText(confirmedText, tailText)
       return streamingResult(text: combined, samplesCovered: count, tailDecodeMs: tailMs)
     } catch {
-      // Flush tail decode failed — return the confirmed prefix. The adapter
-      // treats a nil/empty authoritative result as its cue to run the clean
-      // batch fallback over the authoritative capture buffer (heart stays alive).
+      // Flush tail decode FAILED after a prefix was already confirmed. Return
+      // `accepted: false` even when the prefix is non-empty (Codex r1 P2): the
+      // confirmed prefix is missing the unconfirmed tail, so shipping it as
+      // authoritative would silently drop the end of the dictation. `accepted:
+      // false` forces the adapter to fall through to the clean batch decode over
+      // the authoritative capture buffer, which re-transcribes the COMPLETE audio
+      // (heart stays alive AND the tail is recovered). The prefix is carried only
+      // for diagnostics.
       let tailMs = Int((CFAbsoluteTimeGetCurrent() - tailStart) * 1000)
       let trimmed = confirmedText.trimmingCharacters(in: .whitespacesAndNewlines)
       return IncrementalResult(
         text: trimmed.isEmpty ? nil : confirmedText,
         samplesCovered: count, decodeCount: decodeCount,
         totalDecodeTimeMs: totalDecodeTimeMs,
-        accepted: !trimmed.isEmpty, mode: "streaming",
+        accepted: false, mode: "streaming",
         strategy: "streaming_flush_failed", tailDecodeMs: tailMs)
     }
   }

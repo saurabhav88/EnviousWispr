@@ -25,19 +25,27 @@ import Testing
   /// Scripted fake decoder — returns each entry in order, one per `transcribe`
   /// call. Records every `audioArray` it was handed so a test can prove WHICH
   /// buffer the flush decoded (single-coordinate assertion).
+  private struct FakeDecodeError: Error {}
+
   private actor FakeDecoder: WhisperKitTranscribing {
     private var scripted: [[TranscriptionResult]]
+    /// Call index (0-based) on which `transcribe` throws instead of returning.
+    private let throwOnCall: Int?
     private(set) var callCount = 0
     private(set) var lastAudioArray: [Float] = []
     private(set) var seenAudioCounts: [Int] = []
 
-    init(scripted: [[TranscriptionResult]]) { self.scripted = scripted }
+    init(scripted: [[TranscriptionResult]], throwOnCall: Int? = nil) {
+      self.scripted = scripted
+      self.throwOnCall = throwOnCall
+    }
 
     func transcribe(audioArray: [Float], decodeOptions: DecodingOptions?) async throws
       -> [TranscriptionResult]
     {
       let index = callCount
       callCount += 1
+      if index == throwOnCall { throw FakeDecodeError() }
       lastAudioArray = audioArray
       seenAudioCounts.append(audioArray.count)
       guard index < scripted.count else { return [] }
@@ -149,6 +157,31 @@ import Testing
     let callsAfter = await fake.callCount
     #expect(callsAfter == callsBefore, "no tail decode for a sub-minimum uncovered tail")
     #expect(r.text == "a b", "confirmed text returned as-is (segments c/d unconfirmed and dropped)")
+  }
+
+  // MARK: Flush failure forces fallback (Codex r1 P2)
+
+  @Test(
+    "flush tail decode throwing after a confirmed prefix returns accepted=false (forces batch fallback)"
+  )
+  func flushThrowForcesFallback() async throws {
+    // Cycle 0 confirms a prefix (4 segments, N=2 -> confirm "one two"); cycle 1 is
+    // the flush tail decode, which THROWS. Even though a non-empty prefix exists,
+    // the result must be accepted=false so the adapter re-transcribes the COMPLETE
+    // audio via the clean batch fallback (not ship a truncated prefix).
+    let segs = [seg(0, 1, "one"), seg(1, 2, "two"), seg(2, 3, "three"), seg(3, 5, "four")]
+    let fake = FakeDecoder(scripted: [[result("one two three four", segs)]], throwOnCall: 1)
+    let s = WhisperKitStreamingSession(
+      whisperKit: fake, decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1))
+    let pcm = [Float](repeating: 0.4, count: 96_000)  // 6s — tail well above the gate
+    await s.start(audioSamplesProvider: fixedProvider(pcm))
+    await waitForDecode(1, s)
+    let confirmed = await s.confirmedTextForTests
+    #expect(confirmed == "one two", "prefix was confirmed before the flush")
+    let r = await s.finalize(finalSamples: [], speechSegments: [])
+    #expect(!r.accepted, "flush-failure result must be rejected so the adapter falls back to batch")
+    #expect(r.strategy == "streaming_flush_failed")
   }
 
   // MARK: Cleanup-once
