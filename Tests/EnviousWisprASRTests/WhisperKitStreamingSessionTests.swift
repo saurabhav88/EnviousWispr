@@ -91,10 +91,12 @@ import Testing
     let r = await s.finalize(finalSamples: [Float](repeating: -9.0, count: 5), speechSegments: [])
     #expect(r.accepted)
     #expect(r.text == "hello world")
-    // The decoder's last call must have seen the 48k streamPCM, never the 5-sample garbage.
+    // The decoder's last call must have seen the 48k streamPCM (plus the 0.5s
+    // trailing-silence flush padding = 8000 samples), never the 5-sample garbage.
     let seen = await fake.lastAudioArray
-    #expect(seen.count == 48_000, "flush decoded streamingPCM (48000), not finalSamples")
-    #expect(seen.first == Float(0.5))
+    #expect(seen.count == 48_000 + 8_000, "flush decoded padded streamingPCM, not finalSamples")
+    #expect(seen.first == Float(0.5), "leading samples are the real audio, not garbage")
+    #expect(seen.last == Float(0), "trailing silence padding applied for last-word context")
   }
 
   // MARK: Confirmation holdback

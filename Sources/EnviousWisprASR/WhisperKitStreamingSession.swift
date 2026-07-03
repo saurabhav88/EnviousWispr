@@ -195,8 +195,18 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     var opts = baseDecodingOptions
     opts.clipTimestamps = [flushConfirmedSec]
     opts.windowClipTime = 0
+    // Pad the flush with 0.5s trailing silence before the tail decode (Codex r3
+    // P2) — WhisperKit drops the last words on an unpadded decode when audio ends
+    // right after speech, and since a non-empty tail is accepted as authoritative
+    // the batch fallback would not repair it. The batch path
+    // (`WhisperKitPipelineSpeechRouting.paddedASRSamples`) and the old tail worker
+    // both pad; match them. The trailing padding does not shift `clipTimestamps`
+    // (a start-seek at `flushConfirmedSec`), and the gate above ran on the
+    // UNPADDED audio so the silence never affects the energy/duration decision.
+    let paddedSamples = WhisperKitBackend.padAudioWithSilence(samples)
     do {
-      let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: opts)
+      let results = try await whisperKit.transcribe(
+        audioArray: paddedSamples, decodeOptions: opts)
       let tailText = joinedSegmentText(results)
       let tailMs = Int((CFAbsoluteTimeGetCurrent() - tailStart) * 1000)
       guard !tailText.isEmpty else {
