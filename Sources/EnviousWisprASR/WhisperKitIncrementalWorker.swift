@@ -127,6 +127,28 @@ package actor WhisperKitIncrementalWorker: WhisperKitIncrementalSession {
   /// 6 characters comfortably covers the shortest confirmed real overlap
   /// case ("gerie " — 6 chars, from the founder's `lingerie`/`gerie` repro)
   /// while excluding short coincidences.
+  ///
+  /// KNOWN REGRESSION, not fixed by this trimmer, shipped intentionally as
+  /// documented residual risk (#1275, Live UAT 2026-07-02): this only
+  /// catches a duplicate anchored at the LITERAL seam — candidate's exact
+  /// suffix matching tail's exact prefix. It does NOT catch a duplicate
+  /// where the tail's decode window re-transcribes a phrase from EARLIER in
+  /// candidate (not candidate's trailing edge). Live-repro: dictating "Can
+  /// you double check the numbers in the spreadsheet before I send it to
+  /// the client" produced candidate "...the numbers in the spreadsheet?"
+  /// and tail "e numbers in the spreadsheet before..." — the duplicated
+  /// phrase "the numbers in the spreadsheet" sits mid-candidate, not at its
+  /// suffix, so no seam match exists for this function to find; the raw
+  /// ASR text ships with the phrase duplicated (LLM Polish sometimes, not
+  /// always, cleans it up downstream — do not rely on that). Root cause is
+  /// structural: this function's suffix/prefix seam-matching approach
+  /// cannot express "the tail re-covers audio already transcribed earlier
+  /// in candidate, not just at the boundary." Fixing this properly means
+  /// replacing the whole re-transcribe-and-textually-stitch design with
+  /// WhisperKit's official streaming mechanism (confirmed-vs-hypothesis
+  /// text via LocalAgreement, `AudioStreamTranscriber`), which never emits
+  /// two independent text spans that need post-hoc joining in the first
+  /// place — see #1276 (filed as this bug's structural fix, not a patch).
   package static func joinWithOverlapTrim(_ candidate: String, _ tail: String) -> String {
     guard !tail.isEmpty else { return candidate }
     guard !candidate.isEmpty else { return tail }
