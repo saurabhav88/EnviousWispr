@@ -53,11 +53,30 @@ final class StubOutputClassifier: OutputClassifierProtocol, @unchecked Sendable 
   enum Behavior: Sendable {
     case score(Double)
     case sleep(seconds: Double, then: Double)
-    case blockSync(seconds: Double, then: Double)  // non-cooperative thread block
+    /// A NON-cooperative block (ignores cancellation) that parks the calling
+    /// cooperative-pool thread — polling a test-owned release flag with a
+    /// blocking `usleep`, like a stuck Core ML `MLModel.prediction`. It does NOT
+    /// complete until the test calls `releaseGate()` (or a ~10s iteration cap
+    /// elapses as a safety net). Lets a test prove `withDeadline` released the
+    /// caller at the deadline DETERMINISTICALLY: while the gate is still closed
+    /// the block cannot have completed, so `didFinishBlock` is false the instant
+    /// the caller returns — no wall-clock bound, no post-return reschedule race
+    /// (#1283, cloud-review r1/r2). A regression that AWAITED the block would
+    /// only return after the cap, failing cleanly instead of hanging.
+    case gatedBlock(then: Double)
     case throwError
   }
   let behavior: Behavior
   init(_ behavior: Behavior) { self.behavior = behavior }
+
+  private let lock = NSLock()
+  private var _released = false
+  private var _didFinishBlock = false
+  /// True once a `.gatedBlock` body has run to completion. Deterministically
+  /// false while the gate is still closed (before `releaseGate()`).
+  var didFinishBlock: Bool { lock.withLock { _didFinishBlock } }
+  /// Release a parked `.gatedBlock` so its thread can complete and free.
+  func releaseGate() { lock.withLock { _released = true } }
 
   func score(input: String, polished: String) async throws -> Double {
     switch behavior {
@@ -66,11 +85,18 @@ final class StubOutputClassifier: OutputClassifierProtocol, @unchecked Sendable 
     case let .sleep(seconds, then):
       try await Task.sleep(for: .seconds(seconds))
       return then
-    case let .blockSync(seconds, then):
-      // Synchronous, NON-cooperative block (ignores cancellation) — models a
-      // stuck Core ML inference. `usleep` is a blocking C syscall (Thread.sleep
-      // is banned in async contexts). The deadline must bound the caller anyway.
-      usleep(UInt32(seconds * 1_000_000))
+    case let .gatedBlock(then):
+      // Non-cooperative park: blocks the pool thread by polling the release flag
+      // with a 1ms `usleep` (a blocking syscall, allowed from async unlike
+      // `DispatchSemaphore.wait`). The ~10_000-iteration (~10s) cap is a safety
+      // net for a regression that awaits the block — it never binds the happy
+      // path, which is released within ~1ms of `releaseGate()`.
+      var iterations = 0
+      while iterations < 10_000, !lock.withLock({ _released }) {
+        usleep(1000)
+        iterations += 1
+      }
+      lock.withLock { _didFinishBlock = true }
       return then
     case .throwError:
       throw OutputClassifierError.disabled(.inferenceError)
