@@ -94,10 +94,14 @@ final class AppWindowCoordinator {
   /// window, save/open panels — all of which carry non-empty titles) never match.
   private func isMainWindow(_ window: NSWindow) -> Bool {
     guard window.styleMask.contains(.titled) else { return false }
+    // Definitive: our `Window(id: "main")` scene carries the "main" identifier.
     if window.identifier?.rawValue.contains("main") == true { return true }
-    // Fallback: the main window is the only titled window with a blank title;
-    // onboarding ("Setup") and system dialogs all carry non-empty titles.
-    return window.title.isEmpty
+    // Fallback for when the scene identifier is unavailable: the main window is
+    // the only top-level titled window with a blank title. Reject sheets and
+    // attached/child windows so a transient blank-title sheet is never mistaken
+    // for it (cloud review #1311); onboarding ("Setup") and system dialogs carry
+    // non-empty titles and are excluded by the blank-title test.
+    return window.title.isEmpty && !window.isSheet && window.parent == nil
   }
 
   /// Remove both window-close observers. Called once from
