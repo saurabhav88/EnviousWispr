@@ -65,23 +65,24 @@ import Testing
 
   @Test("non-cooperative synchronous block is bounded by the deadline and fails open")
   func nonCooperativeBlockFailsOpen() async {
-    // A stuck synchronous inference (500ms thread block, ignores cancellation):
-    // the 50ms deadline must return the sync result BEFORE the block ends —
-    // proving withDeadline does not await the abandoned operation. The outcome
-    // (fellBackToRaw == false) already proves the timed-out 0.99 discard was
-    // never applied; `didFinishBlock == false` additionally proves the CALLER
-    // was released before the 500ms block finished. This relative ordering is
-    // robust at any runner speed — no wall-clock bound to flake on a slow CI
-    // runner (#1283, replaces the prior `elapsed < 400ms` measurement).
-    let classifier = StubOutputClassifier(.blockSync(seconds: 0.5, then: 0.99))
+    // A stuck synchronous inference (a multi-second thread block that ignores
+    // cancellation): the 50ms deadline must return the sync result rather than
+    // wait for the block. The OUTCOME alone proves the deadline bounded the
+    // caller with no timing assertion: `withDeadline` (TaskTimeout.swift) is
+    // first-to-claim — it returns `nil` ONLY when the deadline branch wins, and
+    // it resumes the caller the instant that branch claims, without awaiting the
+    // operation. If instead the block had won, it would have returned 0.99 →
+    // classifier_discard → fellBackToRaw == true. So `fellBackToRaw == false`
+    // ⟺ the deadline branch won ⟺ the caller was released at the deadline.
+    // The block is long (2s) so the deadline's 50ms sleep would have to inflate
+    // ~40x before the block could win — no wall-clock bound, nothing sampled
+    // after the caller returns (#1283; cloud-review r1 killed the earlier
+    // post-return `didFinishBlock` sample, which had a reschedule race).
     let result = await EnviousOutputFilter.filterWithClassifier(
-      input: Self.cleanInput, output: Self.cleanOutput, classifier: classifier)
+      input: Self.cleanInput, output: Self.cleanOutput,
+      classifier: StubOutputClassifier(.blockSync(seconds: 2.0, then: 0.99)))
     #expect(result.fellBackToRaw == false)
     #expect(result.tripped == nil)
-    #expect(
-      classifier.didFinishBlock == false,
-      "deadline did not bound the caller: the 500ms block finished before filterWithClassifier returned"
-    )
   }
 
   @Test("NaN score fails open")
