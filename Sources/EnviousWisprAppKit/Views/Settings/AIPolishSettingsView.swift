@@ -172,157 +172,232 @@ struct AIPolishSettingsView: View {
     }
   }
 
-  var body: some View {
+  // MARK: - Provider rail (#1286)
+
+  /// The single at-a-glance status for the selected engine, read from the same
+  /// coordinators the inline controls use (no cross-provider leak). Rendered
+  /// once, in the detail header.
+  private var currentProviderStatus: ProviderStatus {
+    ProviderStatusMapping.status(
+      for: settings.llmProvider,
+      egOneInstall: egOne.installState,
+      egOneHealth: egOne.health,
+      appleStatus: aiAvailability.latestReport?.overallStatus,
+      cloudValidation: llmDiscovery.keyValidationState,
+      ollamaSetup: setup.ollamaSetup.setupState)
+  }
+
+  /// Rail + detail as the two-column master-detail from the approved mockup:
+  /// a fixed-width rail on the left, the selected engine's detail on the right.
+  /// The settings window's 710pt minimum guarantees both columns fit, so this
+  /// is always side-by-side (no `HSplitView`, which clips under width pressure —
+  /// `hsplitview-never-compresses`); the detail column flexes for wider windows.
+  @ViewBuilder
+  private var providerSelectionSurface: some View {
+    let selection = Binding(
+      get: { settings.llmProvider },
+      set: { settings.llmProvider = $0 })
+
+    HStack(alignment: .top, spacing: PolishRailMetrics.columnGap) {
+      ProviderRail(selection: selection)
+        .frame(width: PolishRailMetrics.railWidth, alignment: .leading)
+      providerDetailPane
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  /// The full detail column for the selected engine: identity header, then a
+  /// stack of cards — setup (key / model download / status), the model picker
+  /// (cloud + Ollama), the "Why use ___" explainer (every engine), and the
+  /// advanced toggle (reasoning models). Everything for the engine lives in one
+  /// column; only Ollama's full model catalog stays below the rail (#1286).
+  @ViewBuilder
+  private var providerDetailPane: some View {
     @Bindable var settings = settings
+    VStack(alignment: .leading, spacing: 14) {
+      if let entry = PolishRailCatalog.entry(for: settings.llmProvider) {
+        ProviderDetailHeader(entry: entry, status: currentProviderStatus)
+      }
 
-    SettingsContentView {
-      // ── Section 1: LLM Provider ───────────────────────────────
-      BrandedSection(
-        header: "LLM Provider",
-        content: {
-          BrandedRow(showDivider: settings.llmProvider != .none) {
-            Toggle(
-              isOn: Binding(
-                get: { settings.llmProvider != .none },
-                set: { isOn in
-                  if isOn {
-                    // Restore the last real engine; fall back to the default if
-                    // none was ever remembered (guards against `.none`, #1285).
-                    settings.llmProvider =
-                      settings.lastLLMProvider == .none
-                      ? .appleIntelligence : settings.lastLLMProvider
-                  } else {
-                    settings.llmProvider = .none
-                  }
-                }
-              )
-            ) {
-              Text("AI Polish")
-            }
-          }
+      detailCard {
+        providerSubConfig
+      }
 
-          if settings.llmProvider == .none {
-            BrandedRow(showDivider: false) {
-              Text("Turn on AI polish to automatically fix grammar, punctuation, and formatting.")
-                .font(.stHelper)
-                .foregroundStyle(Color.stTextTertiary)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-          } else {
-            BrandedRow {
-              Picker("LLM Provider", selection: $settings.llmProvider) {
-                Text("EG-1 (Recommended local model)").tag(LLMProvider.egOne)
-                Text("Apple Intelligence").tag(LLMProvider.appleIntelligence)
-                Text("OpenAI").tag(LLMProvider.openAI)
-                Text("Google Gemini").tag(LLMProvider.gemini)
-                Text("Local (Ollama)").tag(LLMProvider.ollama)
-              }
-            }
-          }
-
-          // Nested API key row — only for cloud providers
-          if isCloudProvider {
-            BrandedRow {
-              apiKeyRow
-            }
-          }
-
-          // Ollama wizard
-          if settings.llmProvider == .ollama {
-            BrandedRow {
-              ollamaSetupContent
-            }
-          }
-
-          // Apple Intelligence status
-          if settings.llmProvider == .appleIntelligence {
-            BrandedRow(showDivider: false) {
-              appleIntelligenceStatus
-            }
-          }
-
-          // EG-1 native model (#1271)
-          if settings.llmProvider == .egOne {
-            BrandedRow(showDivider: false) {
-              egOneStatusContent
-            }
-          }
-        },
-        footer: {
-          if isCloudProvider {
-            if settings.llmProvider == .openAI {
-              Link(
-                "Get your free API key at platform.openai.com",
-                destination: URL(string: "https://platform.openai.com/api-keys")!
-              )
-              .font(.stHelper)
-            } else if settings.llmProvider == .gemini {
-              Link(
-                "Get your free API key at aistudio.google.com",
-                destination: URL(string: "https://aistudio.google.com/apikey")!
-              )
-              .font(.stHelper)
-            }
-          }
-        })
-
-      // ── Section 3: Model ──────────────────────────────────────
       if showModelSection {
-        BrandedSection(header: "Model") {
-          BrandedRow(showDivider: false) {
-            HStack {
-              Picker("Model", selection: $settings.llmModel) {
-                if llmDiscovery.discoveredModels.isEmpty
-                  && !llmDiscovery.isDiscoveringModels
-                {
-                  Text(
-                    settings.llmModel.isEmpty
-                      ? (settings.llmProvider == .ollama
-                        ? "No models found"
-                        : "Save API key to discover models")
-                      : settings.llmModel
-                  )
-                  .tag(settings.llmModel)
-                }
-
-                modelPickerSections
-              }
-
-              if settings.llmProvider == .ollama {
-                ollamaWarmupIndicator
-              } else if llmDiscovery.isDiscoveringModels {
-                ProgressView()
-                  .controlSize(.small)
-              } else {
-                Button {
-                  Task {
-                    await llmDiscovery.validateKeyAndDiscoverModels(
-                      provider: settings.llmProvider, settings: settings)
-                  }
-                } label: {
-                  Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.borderless)
-                .help("Refresh available models")
-                .accessibilityLabel("Refresh available models")
-              }
-            }
-          }
-        } footer: {
+        detailCard(label: "Model") {
+          modelSelectorRow
           FrozenPerRecordingFootnote()
         }
       }
 
-      // ── Section 3.5: Why use <Provider> (cloud only) ─────────
-      if isCloudProvider {
-        BrandedSection(header: cloudProviderExplainerHeader) {
-          BrandedRow(showDivider: false) {
-            cloudProviderExplainer
+      detailCard(label: providerExplainerHeader) {
+        providerExplainer
+      }
+
+      if isReasoningModel {
+        detailCard(label: "Advanced") {
+          VStack(alignment: .leading, spacing: 4) {
+            Toggle("Deep reasoning", isOn: $settings.useExtendedThinking)
+              .toggleStyle(BrandedToggleStyle())
+            Text("Takes longer but handles complex formatting instructions better.")
+              .font(.stHelper)
+              .foregroundStyle(Color.stTextTertiary)
           }
+          FrozenPerRecordingFootnote()
+        }
+      }
+    }
+  }
+
+  /// A titled card in the detail column: an optional uppercase label above a
+  /// bordered content box, matching the mockup's stacked-card detail.
+  @ViewBuilder
+  private func detailCard(
+    label: String? = nil, @ViewBuilder content: () -> some View
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      if let label, !label.isEmpty {
+        Text(label.uppercased())
+          .font(.system(size: 10, weight: .semibold))
+          .tracking(0.6)
+          .foregroundStyle(Color.stTextTertiary)
+      }
+      VStack(alignment: .leading, spacing: 10) {
+        content()
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(16)
+      .background(
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+          .fill(Color.stSectionBg)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+          .strokeBorder(Color.stDivider, lineWidth: 1)
+      )
+    }
+  }
+
+  /// The setup content for the selected engine (API key, Ollama wizard, Apple
+  /// status, or EG-1 status). Behavior, setters, and side effects unchanged;
+  /// only the container moved into the detail column (#1286).
+  @ViewBuilder
+  private var providerSubConfig: some View {
+    if isCloudProvider {
+      apiKeyRow
+      if settings.llmProvider == .openAI {
+        Link(
+          "Get your free API key at platform.openai.com",
+          destination: URL(string: "https://platform.openai.com/api-keys")!
+        )
+        .font(.stHelper)
+      } else if settings.llmProvider == .gemini {
+        Link(
+          "Get your free API key at aistudio.google.com",
+          destination: URL(string: "https://aistudio.google.com/apikey")!
+        )
+        .font(.stHelper)
+      }
+    }
+    if settings.llmProvider == .ollama {
+      ollamaSetupContent
+    }
+    if settings.llmProvider == .appleIntelligence {
+      appleIntelligenceStatus
+    }
+    if settings.llmProvider == .egOne {
+      egOneStatusContent
+    }
+  }
+
+  /// The model picker row (cloud + Ollama), lifted into the detail column.
+  @ViewBuilder
+  private var modelSelectorRow: some View {
+    @Bindable var settings = settings
+    HStack {
+      Picker("Model", selection: $settings.llmModel) {
+        if llmDiscovery.discoveredModels.isEmpty
+          && !llmDiscovery.isDiscoveringModels
+        {
+          Text(
+            settings.llmModel.isEmpty
+              ? (settings.llmProvider == .ollama
+                ? "No models found"
+                : "Save API key to discover models")
+              : settings.llmModel
+          )
+          .tag(settings.llmModel)
+        }
+
+        modelPickerSections
+      }
+
+      if settings.llmProvider == .ollama {
+        ollamaWarmupIndicator
+      } else if llmDiscovery.isDiscoveringModels {
+        ProgressView()
+          .controlSize(.small)
+      } else {
+        Button {
+          Task {
+            await llmDiscovery.validateKeyAndDiscoverModels(
+              provider: settings.llmProvider, settings: settings)
+          }
+        } label: {
+          Image(systemName: "arrow.clockwise")
+        }
+        .buttonStyle(.borderless)
+        .help("Refresh available models")
+        .accessibilityLabel("Refresh available models")
+      }
+    }
+  }
+
+  var body: some View {
+    @Bindable var settings = settings
+
+    SettingsContentView {
+      // ── AI Polish master switch (slide toggle, on its own card) ──
+      BrandedSection {
+        BrandedRow(showDivider: false) {
+          Toggle(
+            isOn: Binding(
+              get: { settings.llmProvider != .none },
+              set: { isOn in
+                if isOn {
+                  // Restore the last real engine; fall back to the default if
+                  // none was ever remembered (guards against `.none`, #1285).
+                  settings.llmProvider =
+                    settings.lastLLMProvider == .none
+                    ? .appleIntelligence : settings.lastLLMProvider
+                } else {
+                  settings.llmProvider = .none
+                }
+              }
+            )
+          ) {
+            VStack(alignment: .leading, spacing: 2) {
+              Text("AI Polish")
+                .font(.system(size: 13, weight: .medium))
+              Text("Automatically fix grammar, punctuation, and formatting.")
+                .font(.stHelper)
+                .foregroundStyle(Color.stTextTertiary)
+            }
+          }
+          .toggleStyle(BrandedToggleStyle())
         }
       }
 
-      // Manage Models for Ollama (always expanded)
+      // ── Engine picker: master-detail rail lifted onto the page so
+      // the rail and the detail read as elevated cards, not dark-on-dark
+      // nested boxes (#1286 polish pass). Same `llmProvider` setter.
+      if settings.llmProvider != .none {
+        providerSelectionSurface
+      }
+
+      // Manage Models for Ollama stays a full-width section below the rail —
+      // the one exception to the single-column detail (the catalog is a long
+      // list). Its selected-model setup + explainer live in the detail column.
       if settings.llmProvider == .ollama,
         ollamaShowsManageModels
       {
@@ -330,23 +405,6 @@ struct AIPolishSettingsView: View {
           BrandedRow(showDivider: false) {
             ollamaModelCatalogView
           }
-        }
-      }
-
-      // ── Section 4: Advanced ───────────────────────────────────
-      if isReasoningModel {
-        BrandedSection(header: "Advanced") {
-          BrandedRow(showDivider: false) {
-            VStack(alignment: .leading, spacing: 4) {
-              Toggle("Deep reasoning", isOn: $settings.useExtendedThinking)
-                .toggleStyle(BrandedToggleStyle())
-              Text("Takes longer but handles complex formatting instructions better.")
-                .font(.stHelper)
-                .foregroundStyle(Color.stTextTertiary)
-            }
-          }
-        } footer: {
-          FrozenPerRecordingFootnote()
         }
       }
     }
@@ -591,7 +649,116 @@ struct AIPolishSettingsView: View {
     }
   }
 
-  // MARK: - Cloud Provider Explainer (#617)
+  // MARK: - Provider Explainer ("Why use ___")
+
+  /// The "Why use ___" card label for every engine (#1286). Cloud reuses the
+  /// existing #617 header.
+  private var providerExplainerHeader: String {
+    switch settings.llmProvider {
+    case .openAI, .gemini: return cloudProviderExplainerHeader
+    case .appleIntelligence: return "Why use Apple Intelligence"
+    case .ollama: return "Why use Local (Ollama)"
+    case .egOne: return "Why use EG-1"
+    case .none: return ""
+    }
+  }
+
+  /// The explainer body per engine. Cloud reuses the existing #617 copy; the
+  /// on-device engines get parallel copy so all five match (#1286). No em or
+  /// en dashes in any of these strings.
+  @ViewBuilder
+  private var providerExplainer: some View {
+    switch settings.llmProvider {
+    case .openAI, .gemini:
+      cloudProviderExplainer
+    case .appleIntelligence:
+      appleIntelligenceExplainer
+    case .ollama:
+      ollamaExplainer
+    case .egOne:
+      egOneExplainer
+    case .none:
+      EmptyView()
+    }
+  }
+
+  @ViewBuilder
+  private var egOneExplainer: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(
+        "EG-1 is the model we trained ourselves, tuned only for cleaning up dictation. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage."
+      )
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+
+      Text(
+        "One model, no choices. There are no sizes to pick and no per-use cost. We maintain EG-1 and keep improving it, so you get consistent cleanup without tuning anything."
+      )
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+
+      Text(
+        "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there."
+      )
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  @ViewBuilder
+  private var appleIntelligenceExplainer: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(
+        "Apple Intelligence uses Apple's on-device model, built into macOS. It is free, needs no API key, and nothing you dictate leaves your Mac. It is a solid choice for short, everyday dictation."
+      )
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+
+      Text(
+        "When to use it. Reach for Apple Intelligence when you want zero setup and clean results on short notes. For longer recordings, lists, or code, EG-1 or a cloud model handles structure better."
+      )
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+
+      Text(
+        "Requires macOS 26 or later. On earlier versions this option is unavailable and your text is pasted exactly as transcribed."
+      )
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  @ViewBuilder
+  private var ollamaExplainer: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(
+        "Local (Ollama) runs open models on your Mac through Ollama, a free tool you install once. Nothing you dictate leaves your device, and there is no API key or per-use cost."
+      )
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+
+      Text(
+        "These are general open models, not tuned for dictation the way EG-1 is. Quality depends on the model you download, and larger models run slower. You pick and manage the models yourself in the list below."
+      )
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+
+      Text(
+        "When to use it. Choose Ollama if you want to run a specific open model on device or to experiment. For the best on-device cleanup with no setup, EG-1 is simpler."
+      )
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+    }
+  }
 
   private var cloudProviderExplainerHeader: String {
     settings.llmProvider == .openAI ? "Why use OpenAI" : "Why use Gemini"
@@ -681,7 +848,7 @@ struct AIPolishSettingsView: View {
         ollamaStepIndicators(current: 1)
 
         Text(
-          "Ollama runs AI models privately on your Mac — no cloud, no API keys, completely free."
+          "Ollama runs AI models privately on your Mac. No cloud, no API keys, completely free."
         )
         .font(.stHelper)
         .foregroundStyle(Color.stTextTertiary)
@@ -823,16 +990,8 @@ struct AIPolishSettingsView: View {
   /// the 8 GB heads-up. Copy rules: no em or en dashes in these strings.
   @ViewBuilder
   private var egOneStatusContent: some View {
-    Text(
-      "EG-1 is our own polish model, tuned specifically for dictation. "
-        + "It matches leading cloud models on our 1,890-case benchmark "
-        + "(94.7% behavior score) while running entirely on this Mac. "
-        + "Nothing you dictate ever leaves your device."
-    )
-    .font(.stHelper)
-    .foregroundStyle(Color.stTextTertiary)
-    .fixedSize(horizontal: false, vertical: true)
-
+    // The pitch (tuned, on-device, benchmark) lives in the "Why use EG-1" card
+    // now (#1286); this card is just the actionable status/download/remove.
     if isLowMemoryMac {
       Label(
         "This Mac has 8 GB of memory. EG-1 may run slower here. "
@@ -974,11 +1133,8 @@ struct AIPolishSettingsView: View {
 
   @ViewBuilder
   private var appleIntelligenceStatus: some View {
-    Text("On-device model — no internet or API key required.")
-      .font(.stHelper)
-      .foregroundStyle(Color.stTextTertiary)
-
-    // Status row
+    // The "no internet or API key" pitch lives in the "Why use Apple
+    // Intelligence" card now (#1286); this card is just the status row.
     HStack {
       Text("Status:")
       Spacer()
