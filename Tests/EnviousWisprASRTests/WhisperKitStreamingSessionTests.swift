@@ -232,6 +232,71 @@ import Testing
     #expect(r.text == "one two")
   }
 
+  // MARK: In-flight decode serialization (Codex r5 P2)
+
+  /// Tracks concurrent `transcribe` calls and blocks the FIRST (loop) decode
+  /// until released, so a test can prove the flush never starts a second decode
+  /// while the loop decode is still in flight (WhisperKit decode is not
+  /// cancellable mid-run — two concurrent transcribes on one model corrupt state).
+  private actor GateDecoder: WhisperKitTranscribing {
+    private(set) var active = 0
+    private(set) var maxActive = 0
+    private(set) var loopEntered = false
+    private var released = false
+    private var callCount = 0
+    private let loopResult: [TranscriptionResult]
+    private let flushResult: [TranscriptionResult]
+
+    init(loopResult: [TranscriptionResult], flushResult: [TranscriptionResult]) {
+      self.loopResult = loopResult
+      self.flushResult = flushResult
+    }
+
+    func release() { released = true }
+
+    func transcribe(audioArray: [Float], decodeOptions: DecodingOptions?) async throws
+      -> [TranscriptionResult]
+    {
+      let idx = callCount
+      callCount += 1
+      active += 1
+      maxActive = max(maxActive, active)
+      defer { active -= 1 }
+      if idx == 0 {
+        loopEntered = true
+        while !released { await Task.yield() }  // block the loop decode until released
+        return loopResult
+      }
+      return flushResult  // the flush tail decode
+    }
+  }
+
+  @Test(
+    "finalize serializes the flush behind an in-flight loop decode (never two concurrent transcribes)"
+  )
+  func flushSerializesWithLoopDecode() async throws {
+    let loop = result(
+      "one two three four",
+      [seg(0, 1, "one"), seg(1, 2, "two"), seg(2, 3, "three"), seg(3, 5, "four")])
+    let flush = result("before I send it", [seg(2, 5, "before I send it")])
+    let dec = GateDecoder(loopResult: [loop], flushResult: [flush])
+    let s = WhisperKitStreamingSession(
+      whisperKit: dec, decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1))
+    let pcm = [Float](repeating: 0.4, count: 96_000)  // 6s, tail above the gate
+    await s.start(audioSamplesProvider: fixedProvider(pcm))
+    // Wait until the loop decode has entered and is blocked.
+    while !(await dec.loopEntered) { await Task.yield() }
+    // Finalize now: it must await the in-flight loop decode before flushing.
+    async let outcome = s.finalize(finalSamples: [], speechSegments: [])
+    await dec.release()  // let the loop decode return; finalize then flushes
+    let r = await outcome
+    let maxActive = await dec.maxActive
+    #expect(maxActive == 1, "flush must not overlap the in-flight loop decode")
+    #expect(r.accepted)
+    #expect(r.text?.contains("before I send it") == true, "flush tail appended after serialization")
+  }
+
   // MARK: Cleanup-once
 
   @Test("cancel stops the loop and a subsequent finalize does not decode")

@@ -161,8 +161,21 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   ) async -> IncrementalResult {
     running = false
     finished = true
+    let loop = loopTask
     loopTask?.cancel()
     loopTask = nil
+
+    // Serialize the flush behind any in-flight loop decode (Codex r5 P2).
+    // WhisperKit's `transcribe` is NOT cooperatively cancellable mid-run, so
+    // cancelling the loop task does not stop an in-flight decode on the shared
+    // `whisperKit` instance. Starting the flush tail decode while that decode is
+    // still running would put TWO concurrent transcribes on one model session and
+    // corrupt decoder state. Await the loop's full exit first: if the loop is
+    // sleeping between cycles, `cancel()` interrupts the sleep and this returns
+    // immediately; if it is mid-decode, this waits (bounded by that decode) for it
+    // to return — the loop then sees `finished` and drops its result without
+    // mutating confirmed state. Only then is the flush decode the sole transcribe.
+    await loop?.value
 
     // Capture + drop the provider so a defensive second finalize cannot re-run a
     // tail decode (it returns the confirmed text below instead).
