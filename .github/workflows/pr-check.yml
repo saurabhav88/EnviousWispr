@@ -80,13 +80,16 @@ jobs:
           "$HOME/.local/bin/mise" install tuist@4.195.11
           "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version
 
-      - name: Generate Xcode project
+      # tuist generate's internal `xcodebuild -resolvePackageDependencies` call
+      # passes no -derivedDataPath, so it resolves into Xcode's global default
+      # DerivedData location — NOT the .derivedData/CI path this job caches —
+      # paying a full, uncached network resolution every run (issue #1295).
+      # Redirecting the global default here, before generate runs and before
+      # the cache is restored, makes that resolve land somewhere the cache
+      # below actually covers.
+      - name: Configure DerivedData cache redirect
         if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist generate --no-open
-          # Generated project / DerivedData must never be committed.
-          git status --porcelain -- '*.xcodeproj' '*.xcworkspace' '.derivedData'
+        run: scripts/ci/configure-tuist-deriveddata-cache.sh "$GITHUB_WORKSPACE/${{ env.DERIVED_DATA_PATH }}"
 
       - name: Compute Xcode build cache key
         id: xcode-cache-key
@@ -102,6 +105,12 @@ jobs:
       # Rolling key (github.sha suffix) so the primary key is never an exact hit
       # here. pr-check.yml is restore-only by design — main-post-merge.yml is the
       # sole writer (issue #804). restore-keys fall through to the freshest cache.
+      # The third path entry is a glob (issue #1295): the redirect above makes
+      # tuist generate's implicit resolve write into a per-project hash-named
+      # subfolder under .derivedData/CI (Xcode's normal global-default naming),
+      # a different shape from the flat SourcePackages/Build the explicit
+      # -derivedDataPath build step below writes to. The glob covers both
+      # without the workflow needing to predict the hash name.
       - name: Restore Xcode build cache
         id: xcode-cache
         if: steps.changes.outputs.needs_build == 'true'
@@ -110,6 +119,7 @@ jobs:
           path: |
             .derivedData/CI/SourcePackages
             .derivedData/CI/Build
+            .derivedData/CI/*/SourcePackages
           key: ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-
@@ -120,6 +130,18 @@ jobs:
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           echo "==> Xcode cache (debug lane): matched=${{ steps.xcode-cache.outputs.cache-matched-key }} hit=${{ steps.xcode-cache.outputs.cache-hit }}"
+
+      - name: Generate Xcode project
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist generate --no-open
+          # Generated project / DerivedData must never be committed.
+          git status --porcelain -- '*.xcodeproj' '*.xcworkspace' '.derivedData'
+
+      - name: Log DerivedData package-resolution location
+        if: steps.changes.outputs.needs_build == 'true'
+        run: find "$DERIVED_DATA_PATH" -maxdepth 3 -type d -name SourcePackages -print 2>/dev/null || true
 
       - name: Build (debug, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
@@ -230,12 +252,11 @@ jobs:
           "$HOME/.local/bin/mise" install tuist@4.195.11
           "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version
 
-      - name: Generate Xcode project
+      # See build-debug's "Configure DerivedData cache redirect" comment
+      # (issue #1295) — same rationale, mirrored for this lane.
+      - name: Configure DerivedData cache redirect
         if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist generate --no-open
-          git status --porcelain -- '*.xcodeproj' '*.xcworkspace' '.derivedData'
+        run: scripts/ci/configure-tuist-deriveddata-cache.sh "$GITHUB_WORKSPACE/${{ env.DERIVED_DATA_PATH }}"
 
       - name: Compute Xcode build cache key
         id: xcode-cache-key
@@ -256,6 +277,7 @@ jobs:
           path: |
             .derivedData/CI/SourcePackages
             .derivedData/CI/Build
+            .derivedData/CI/*/SourcePackages
           key: ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-
@@ -266,6 +288,17 @@ jobs:
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           echo "==> Xcode cache (release lane): matched=${{ steps.xcode-cache.outputs.cache-matched-key }} hit=${{ steps.xcode-cache.outputs.cache-hit }}"
+
+      - name: Generate Xcode project
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist generate --no-open
+          git status --porcelain -- '*.xcodeproj' '*.xcworkspace' '.derivedData'
+
+      - name: Log DerivedData package-resolution location
+        if: steps.changes.outputs.needs_build == 'true'
+        run: find "$DERIVED_DATA_PATH" -maxdepth 3 -type d -name SourcePackages -print 2>/dev/null || true
 
       - name: Build (release, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
