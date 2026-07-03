@@ -23,8 +23,7 @@ struct AppearanceSettingsView: View {
               selection: $settings.appearancePreference
             )
             Text("System follows your Mac and switches automatically. Light and Dark pin a look.")
-              .font(.stHelper)
-              .foregroundStyle(.stTextTertiary)
+              .settingsReadingCopy()
           }
         }
       }

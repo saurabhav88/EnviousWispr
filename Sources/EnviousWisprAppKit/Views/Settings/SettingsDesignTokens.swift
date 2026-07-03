@@ -38,6 +38,12 @@ extension Color {
     lightRGB: (0.910, 0.886, 0.961, 1), darkRGB: (0.102, 0.086, 0.137, 1))  // #e8e2f5 / #1a1623
 
   // Text
+  //
+  // Primary is the reading-copy colour: near-black in light, near-white in dark.
+  // The dark value is capped below pure white (~92%) to limit halation on the
+  // night-comfort surfaces while staying markedly crisper than the secondary grey.
+  static let stTextPrimary = stDynamic(
+    lightRGB: (0.059, 0.039, 0.102, 1), darkRGB: (0.925, 0.914, 0.957, 1))  // #0f0a1a / #ece9f4
   static let stTextSecondary = stDynamic(
     lightRGB: (0.290, 0.239, 0.376, 1), darkRGB: (0.667, 0.635, 0.749, 1))  // #4a3d60 / #aaa2bf
   static let stTextTertiary = stDynamic(
@@ -73,6 +79,7 @@ extension Color {
 // MARK: - ShapeStyle Shorthands (enables `.stAccent` in `.foregroundStyle()`)
 
 extension ShapeStyle where Self == Color {
+  static var stTextPrimary: Color { Color.stTextPrimary }
   static var stTextSecondary: Color { Color.stTextSecondary }
   static var stTextTertiary: Color { Color.stTextTertiary }
   static var stAccent: Color { Color.stAccent }
@@ -86,15 +93,18 @@ extension ShapeStyle where Self == Color {
 extension Font {
   static let stSectionHeader = Font.system(size: 11.5, weight: .bold)
   static let stHelper = Font.system(size: 11.5)
+  /// Reading-copy body: multi-sentence explainers and section descriptions.
+  /// Medium weight reads crisper on the dark night-comfort surfaces (halation).
+  static let stBody = Font.system(size: 14, weight: .medium)
 }
 
 // MARK: - Settings Layout Constants
 
 enum SettingsLayout {
-  static let sectionRadius: CGFloat = 12
+  static let sectionRadius: CGFloat = 14
   static let rowPaddingH: CGFloat = 14
-  static let rowPaddingV: CGFloat = 10
-  static let sectionSpacing: CGFloat = 16
+  static let rowPaddingV: CGFloat = 12
+  static let sectionSpacing: CGFloat = 18
   static let contentTop: CGFloat = 20
   static let contentH: CGFloat = 24
   static let contentBottom: CGFloat = 32

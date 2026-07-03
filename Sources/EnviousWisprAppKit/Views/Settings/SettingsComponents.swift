@@ -1,5 +1,21 @@
 import SwiftUI
 
+// MARK: - Reading-copy modifier
+
+extension View {
+  /// The single authority for "reading paragraph" styling in Settings: body
+  /// font (14 medium) + primary text colour + vertical wrapping. Multi-sentence
+  /// explainers and section descriptions opt in via `.settingsReadingCopy()`.
+  /// Labels, hints, captions, pagination, and status text stay on the microcopy
+  /// tokens (`stHelper` + secondary/tertiary) and must NOT adopt this.
+  func settingsReadingCopy() -> some View {
+    self
+      .font(.stBody)
+      .foregroundStyle(.stTextPrimary)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+}
+
 // MARK: - Settings Content Container
 
 /// Replaces `Form { }.formStyle(.grouped)` with a branded ScrollView layout.

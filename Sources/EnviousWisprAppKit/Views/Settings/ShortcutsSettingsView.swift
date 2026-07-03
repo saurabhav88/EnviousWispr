@@ -38,8 +38,7 @@ struct ShortcutsSettingsView: View {
                 ? "Hold the hotkey to record, release to stop."
                 : "Press the hotkey to start recording, press again to stop."
             )
-            .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
+            .settingsReadingCopy()
             if settings.isPushToTalk {
               Text("Double-press to go hands-free. Triple-press to cancel.")
                 .font(.stHelper)
@@ -58,8 +57,7 @@ struct ShortcutsSettingsView: View {
         }
         BrandedRow(showDivider: false) {
           Text("Press this to discard the current recording and return to idle.")
-            .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
+            .settingsReadingCopy()
         }
       }
     }

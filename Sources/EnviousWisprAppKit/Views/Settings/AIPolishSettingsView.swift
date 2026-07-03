@@ -565,9 +565,7 @@ struct AIPolishSettingsView: View {
       Text(
         "\(isOpenAI ? "OpenAI" : "Gemini") polish sends only transcribed text, never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response."
       )
-      .font(.stHelper)
-      .foregroundStyle(Color.stTextTertiary)
-      .fixedSize(horizontal: false, vertical: true)
+      .settingsReadingCopy()
     }
   }
 
@@ -697,23 +695,17 @@ struct AIPolishSettingsView: View {
       Text(
         "EG-1 is the model we trained ourselves, tuned only for cleaning up dictation. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage."
       )
-      .font(.stHelper)
-      .foregroundStyle(Color.stTextSecondary)
-      .fixedSize(horizontal: false, vertical: true)
+      .settingsReadingCopy()
 
       Text(
         "One model, no choices. There are no sizes to pick and no per-use cost. We maintain EG-1 and keep improving it, so you get consistent cleanup without tuning anything."
       )
-      .font(.stHelper)
-      .foregroundStyle(Color.stTextSecondary)
-      .fixedSize(horizontal: false, vertical: true)
+      .settingsReadingCopy()
 
       Text(
         "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there."
       )
-      .font(.stHelper)
-      .foregroundStyle(Color.stTextSecondary)
-      .fixedSize(horizontal: false, vertical: true)
+      .settingsReadingCopy()
     }
   }
 
@@ -723,23 +715,17 @@ struct AIPolishSettingsView: View {
       Text(
         "Apple Intelligence uses Apple's on-device model, built into macOS. It is free, needs no API key, and nothing you dictate leaves your Mac. It is a solid choice for short, everyday dictation."
       )
-      .font(.stHelper)
-      .foregroundStyle(Color.stTextSecondary)
-      .fixedSize(horizontal: false, vertical: true)
+      .settingsReadingCopy()
 
       Text(
         "When to use it. Reach for Apple Intelligence when you want zero setup and clean results on short notes. For longer recordings, lists, or code, EG-1 or a cloud model handles structure better."
       )
-      .font(.stHelper)
-      .foregroundStyle(Color.stTextSecondary)
-      .fixedSize(horizontal: false, vertical: true)
+      .settingsReadingCopy()
 
       Text(
         "Requires macOS 26 or later. On earlier versions this option is unavailable and your text is pasted exactly as transcribed."
       )
-      .font(.stHelper)
-      .foregroundStyle(Color.stTextSecondary)
-      .fixedSize(horizontal: false, vertical: true)
+      .settingsReadingCopy()
     }
   }
 
@@ -749,23 +735,17 @@ struct AIPolishSettingsView: View {
       Text(
         "Local (Ollama) runs open models on your Mac through Ollama, a free tool you install once. Nothing you dictate leaves your device, and there is no API key or per-use cost."
       )
-      .font(.stHelper)
-      .foregroundStyle(Color.stTextSecondary)
-      .fixedSize(horizontal: false, vertical: true)
+      .settingsReadingCopy()
 
       Text(
         "These are general open models, not tuned for dictation the way EG-1 is. Quality depends on the model you download, and larger models run slower. You pick and manage the models yourself in the list below."
       )
-      .font(.stHelper)
-      .foregroundStyle(Color.stTextSecondary)
-      .fixedSize(horizontal: false, vertical: true)
+      .settingsReadingCopy()
 
       Text(
         "When to use it. Choose Ollama if you want to run a specific open model on device or to experiment. For the best on-device cleanup with no setup, EG-1 is simpler."
       )
-      .font(.stHelper)
-      .foregroundStyle(Color.stTextSecondary)
-      .fixedSize(horizontal: false, vertical: true)
+      .settingsReadingCopy()
     }
   }
 
@@ -780,23 +760,17 @@ struct AIPolishSettingsView: View {
         Text(
           "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends the transcript to OpenAI under your API account."
         )
-        .font(.stHelper)
-        .foregroundStyle(Color.stTextSecondary)
-        .fixedSize(horizontal: false, vertical: true)
+        .settingsReadingCopy()
 
         Text(
           "Picking the right model. OpenAI sells several sizes inside each generation. For dictation cleanup, look for Mini in the name. Those are tuned for fast, light tasks and run roughly 3 to 10 times cheaper than the flagships. Nano is even smaller and faster. The unsuffixed flagships (GPT-5, GPT-4.1) and anything labeled Pro are overkill for this job."
         )
-        .font(.stHelper)
-        .foregroundStyle(Color.stTextSecondary)
-        .fixedSize(horizontal: false, vertical: true)
+        .settingsReadingCopy()
 
         Text(
           "Locked models? Those aren't blocked by EnviousWispr. Your OpenAI API key doesn't currently have access to them. OpenAI gates some models behind spend tier or organization verification."
         )
-        .font(.stHelper)
-        .foregroundStyle(Color.stTextSecondary)
-        .fixedSize(horizontal: false, vertical: true)
+        .settingsReadingCopy()
 
         Link(
           "How OpenAI model availability works by usage tier",
@@ -812,23 +786,17 @@ struct AIPolishSettingsView: View {
         Text(
           "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends the transcript to Google under your Gemini API account."
         )
-        .font(.stHelper)
-        .foregroundStyle(Color.stTextSecondary)
-        .fixedSize(horizontal: false, vertical: true)
+        .settingsReadingCopy()
 
         Text(
           "Picking the right model. Gemini sells two sizes inside each generation. For dictation cleanup, look for Flash in the name. Those are tuned for fast, light tasks. Pro models are overkill: slightly smarter on hard reasoning, slower and pricier on a job that doesn't need it."
         )
-        .font(.stHelper)
-        .foregroundStyle(Color.stTextSecondary)
-        .fixedSize(horizontal: false, vertical: true)
+        .settingsReadingCopy()
 
         Text(
           "Locked models? Those aren't blocked by EnviousWispr. Your Gemini API key doesn't currently have access to them. Some Gemini models are gated by region, billing tier, or preview status."
         )
-        .font(.stHelper)
-        .foregroundStyle(Color.stTextSecondary)
-        .fixedSize(horizontal: false, vertical: true)
+        .settingsReadingCopy()
 
         Link(
           "Gemini API rate limits by tier",

@@ -49,8 +49,7 @@ struct SpeechEngineSettingsView: View {
               ? "Powered by Parakeet — fast English transcription with built-in punctuation."
               : "Powered by WhisperKit — broader language support with optimized quality defaults."
           )
-          .font(.stHelper)
-          .foregroundStyle(.stTextTertiary)
+          .settingsReadingCopy()
         }
         if let notice = engineSwitchDeferredNotice {
           BrandedRow(showDivider: false) {
@@ -230,8 +229,7 @@ struct SpeechEngineSettingsView: View {
             Text(
               "The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s)."
             )
-            .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
+            .settingsReadingCopy()
           }
         }
         if settings.modelUnloadPolicy == .immediately {
@@ -305,9 +303,7 @@ struct SpeechEngineSettingsView: View {
         Text(
           "WhisperKit requires a ~1.5 GB model download. It runs fully on your Mac — no internet needed after setup."
         )
-        .font(.stHelper)
-        .foregroundStyle(.stTextTertiary)
-        .fixedSize(horizontal: false, vertical: true)
+        .settingsReadingCopy()
 
         HStack {
           Button("Download WhisperKit Model") {
