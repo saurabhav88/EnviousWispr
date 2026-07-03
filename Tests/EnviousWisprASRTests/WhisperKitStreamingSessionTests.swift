@@ -142,14 +142,14 @@ import Testing
     #expect(text.contains("before I send it"), "tail appended: \(text)")
   }
 
-  // MARK: Hallucination-tail gate
+  // MARK: Tail gate
 
-  @Test("flush skips the tail decode when the uncovered tail is below the minimum voiced duration")
-  func hallucinationTailGate() async throws {
+  @Test("flush skips the tail decode for a negligibly-short (sub-100ms) tail")
+  func negligibleTailSkipped() async throws {
     // With N=2 the first 2 of 4 segments confirm, so `lastConfirmedSec` = seg[1].end
-    // = 3.8. The buffer is 4.0s, so the uncovered tail is 0.2s (< 0.4s min) → the
-    // flush must NOT run a tail decode (only the loop decode ran).
-    let segs = [seg(0, 2, "a"), seg(2, 3.8, "b"), seg(3.8, 3.9, "c"), seg(3.9, 4.0, "d")]
+    // = 3.95. The buffer is 4.0s, so the uncovered tail is 0.05s (< 100ms) → too
+    // short to carry a word → skip the tail decode, accept the prefix.
+    let segs = [seg(0, 2, "a"), seg(2, 3.95, "b"), seg(3.95, 3.97, "c"), seg(3.97, 4.0, "d")]
     let (s, fake) = session([[result("a b c d", segs)]], N: 2)
     let pcm = [Float](repeating: 0.3, count: 64_000)  // 4.0s
     await s.start(audioSamplesProvider: fixedProvider(pcm))
@@ -157,8 +157,31 @@ import Testing
     let callsBefore = await fake.callCount
     let r = await s.finalize(finalSamples: [], speechSegments: [])
     let callsAfter = await fake.callCount
-    #expect(callsAfter == callsBefore, "no tail decode for a sub-minimum uncovered tail")
-    #expect(r.text == "a b", "confirmed text returned as-is (segments c/d unconfirmed and dropped)")
+    #expect(callsAfter == callsBefore, "no tail decode for a sub-100ms tail")
+    #expect(r.text == "a b", "confirmed prefix accepted as complete")
+  }
+
+  @Test("a SHORT but voiced tail (150-400ms) is decoded, not dropped (Codex r6 P2)")
+  func shortVoicedTailIsDecoded() async throws {
+    // Confirmed prefix "one two" (lastConfirmedSec = seg[1].end = 3.8). The buffer
+    // is 4.05s → a 0.25s VOICED tail. Under the old 0.4s duration gate this was
+    // skipped and the prefix accepted, silently dropping a real final word. Now it
+    // is decoded (energy is the silence signal, not duration): the flush tail
+    // returns "yes" and it is appended.
+    let cycle = result(
+      "one two three four",
+      [seg(0, 1, "one"), seg(1, 2, "two"), seg(2, 3, "three"), seg(3, 3.8, "four")])
+    let tail = result("yes", [seg(3.8, 4.05, "yes")])
+    let (s, fake) = session([[cycle], [tail]], N: 2)
+    let pcm = [Float](repeating: 0.4, count: 64_800)  // 4.05s voiced (RMS 0.4 > floor)
+    await s.start(audioSamplesProvider: fixedProvider(pcm))
+    await waitForDecode(1, s)
+    let callsBefore = await fake.callCount
+    let r = await s.finalize(finalSamples: [], speechSegments: [])
+    let callsAfter = await fake.callCount
+    #expect(callsAfter == callsBefore + 1, "short voiced tail IS decoded")
+    #expect(r.accepted)
+    #expect(r.text == "one two yes", "short final word appended, not dropped")
   }
 
   // MARK: Flush failure forces fallback (Codex r1 P2)

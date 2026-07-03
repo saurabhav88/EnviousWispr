@@ -67,11 +67,13 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   /// stalls. 25s leaves headroom under the 30s window.
   private let maxUnconfirmedWindowSec: Float = 25.0
 
-  /// Minimum voiced tail (seconds) below which the flush SKIPS the tail decode —
-  /// decoding near-silence invites the YouTube-corpus "Thank you" hallucination
-  /// (whisperkit-research.md FACT: whisper-yt-corpus-artifact). The confirmed
-  /// text is already complete when the uncovered tail is this short.
-  private let minVoicedTailSec: Float = 0.4
+  /// Minimum uncovered-tail duration (seconds) below which the flush skips the
+  /// tail decode and accepts the confirmed prefix — a sub-100ms tail is too short
+  /// to carry a word (matches `WhisperKitIncrementalWorker`'s 1600-sample /
+  /// ~100ms tail threshold). Above this, a VOICED tail (see `tailEnergyFloor`) is
+  /// always decoded so short final words are not dropped (Codex r6 P2); the
+  /// hallucination guard is the ENERGY floor, not this duration.
+  private let minVoicedTailSec: Float = 0.1
 
   /// RMS energy floor for the uncovered tail — below this the tail is treated as
   /// silence and the flush skips it (the confirmed prefix is the complete
@@ -190,12 +192,15 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     let durationSec = Float(count) / 16_000.0
     let uncoveredTailSec = durationSec - flushConfirmedSec
 
-    // Tail gate (energy-aware, mirrors `WhisperKitIncrementalWorker`'s tail-decode
-    // gate): skip the flush decode when the uncovered tail is too short OR too
-    // quiet. A near-silence tail decoded anyway invites the YouTube-corpus
-    // "Thank you" hallucination, and when the confirmed prefix already covers all
-    // the speech it IS the complete transcript — accepting it (rather than forcing
-    // a needless full re-batch) preserves the streaming speed win.
+    // Tail gate (mirrors `WhisperKitIncrementalWorker`'s tail-decode gate exactly:
+    // uncovered > ~100ms AND RMS > 0.001). ENERGY is the silence signal, not
+    // duration: skip the flush decode and accept the confirmed prefix as complete
+    // ONLY when the uncovered tail is genuine trailing SILENCE (low energy) or is
+    // negligibly short (< 100ms, sub-word). A near-silence decode invites the
+    // YouTube-corpus "Thank you" hallucination, and a quiet/negligible tail means
+    // the prefix already IS the complete transcript. Crucially, a SHORT-BUT-VOICED
+    // tail (e.g. a final "yes" at 150-400ms) is NOT skipped — it is decoded below,
+    // so short final words are never silently dropped (Codex r6 P2).
     let tailStartIdx = max(0, min(count, Int(flushConfirmedSec * 16_000)))
     let tailSlice = tailStartIdx < count ? Array(samples[tailStartIdx..<count]) : []
     let tailRMS = rms(tailSlice)
