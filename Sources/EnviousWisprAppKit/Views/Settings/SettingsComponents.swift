@@ -146,14 +146,27 @@ struct BrandedToggleStyle: ToggleStyle {
       HStack {
         configuration.label
         Spacer()
-        toggleTrack(isOn: configuration.isOn)
+        BrandedToggleTrack(isOn: configuration.isOn)
       }
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    // The style is a plain Button, so VoiceOver would otherwise announce only
+    // "button" with no state. Surface on/off as an accessibility value + toggle
+    // trait so the switch state is spoken (#1298; validate keyboard + VO in UAT).
+    .accessibilityValue(configuration.isOn ? "On" : "Off")
+    .accessibilityAddTraits(.isToggle)
   }
+}
 
-  private func toggleTrack(isOn: Bool) -> some View {
+/// The 38x22 track + knob, extracted into a `View` so it can read
+/// `accessibilityReduceMotion` and gate the springy knob animation. The toggle
+/// STATE commits immediately (the Button flips `isOn`); this spring is cosmetic.
+private struct BrandedToggleTrack: View {
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  let isOn: Bool
+
+  var body: some View {
     ZStack(alignment: isOn ? .trailing : .leading) {
       Capsule()
         .fill(isOn ? Color.stToggleOn : Color.stToggleOff)
@@ -165,7 +178,8 @@ struct BrandedToggleStyle: ToggleStyle {
         .frame(width: 18, height: 18)
         .padding(2)
     }
-    .animation(.easeInOut(duration: 0.15), value: isOn)
+    .animation(
+      reduceMotion ? nil : .spring(response: 0.30, dampingFraction: 0.62), value: isOn)
   }
 }
 
