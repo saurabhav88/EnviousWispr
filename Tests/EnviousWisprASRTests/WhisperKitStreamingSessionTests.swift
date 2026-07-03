@@ -184,6 +184,52 @@ import Testing
     #expect(r.strategy == "streaming_flush_failed")
   }
 
+  @Test(
+    "a voiced tail that decodes to empty returns accepted=false (forces batch fallback, Codex r2 P2)"
+  )
+  func emptyTailForcesFallback() async throws {
+    // Cycle 0 confirms "one two"; the flush tail decode (cycle 1) succeeds but
+    // returns EMPTY text over a voiced tail (audio present, passes the energy
+    // gate). Shipping the prefix would drop the ending, so accepted=false forces
+    // the adapter to re-transcribe the complete audio via batch.
+    let segs = [seg(0, 1, "one"), seg(1, 2, "two"), seg(2, 3, "three"), seg(3, 5, "four")]
+    let fake = FakeDecoder(scripted: [[result("one two three four", segs)], [result("", [])]])
+    let s = WhisperKitStreamingSession(
+      whisperKit: fake, decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1))
+    let pcm = [Float](repeating: 0.4, count: 96_000)  // 6s voiced tail (RMS 0.4 > floor)
+    await s.start(audioSamplesProvider: fixedProvider(pcm))
+    await waitForDecode(1, s)
+    let r = await s.finalize(finalSamples: [], speechSegments: [])
+    #expect(!r.accepted, "empty voiced-tail decode must be rejected (no truncated prefix)")
+    #expect(r.strategy == "streaming_tail_empty_fallback")
+  }
+
+  @Test("a short/quiet tail is skipped and the confirmed prefix is accepted as complete")
+  func quietTailAcceptsPrefix() async throws {
+    // Confirmed prefix "one two"; the uncovered tail is voiced-duration-long but
+    // near-silent (RMS below the floor), so it is genuine trailing silence — skip
+    // the tail decode and accept the prefix (preserve the streaming speed win, no
+    // needless re-batch).
+    let segs = [seg(0, 1, "one"), seg(1, 2, "two"), seg(2, 3, "three"), seg(3, 5, "four")]
+    let cycle = result("one two three four", segs)
+    // Loud confirmed region then a quiet tail: first 2s at 0.4, then 4s near-zero.
+    var pcm = [Float](repeating: 0.4, count: 32_000)
+    pcm += [Float](repeating: 0.0001, count: 64_000)  // quiet tail (RMS ~0.0001 < floor)
+    let fake = FakeDecoder(scripted: [[cycle]])
+    let s = WhisperKitStreamingSession(
+      whisperKit: fake, decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1))
+    await s.start(audioSamplesProvider: fixedProvider(pcm))
+    await waitForDecode(1, s)
+    let callsBefore = await fake.callCount
+    let r = await s.finalize(finalSamples: [], speechSegments: [])
+    let callsAfter = await fake.callCount
+    #expect(callsAfter == callsBefore, "quiet tail is not decoded")
+    #expect(r.accepted, "confirmed prefix accepted as the complete transcript")
+    #expect(r.text == "one two")
+  }
+
   // MARK: Cleanup-once
 
   @Test("cancel stops the loop and a subsequent finalize does not decode")

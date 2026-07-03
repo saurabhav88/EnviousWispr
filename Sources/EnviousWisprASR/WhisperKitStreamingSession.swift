@@ -73,6 +73,13 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   /// text is already complete when the uncovered tail is this short.
   private let minVoicedTailSec: Float = 0.4
 
+  /// RMS energy floor for the uncovered tail — below this the tail is treated as
+  /// silence and the flush skips it (the confirmed prefix is the complete
+  /// transcript). Matches `WhisperKitIncrementalWorker`'s tail-decode energy gate
+  /// (`rms > 0.001`), so a tail that clears BOTH the duration and energy gates but
+  /// still decodes empty is a genuine silent drop → force the batch fallback.
+  private let tailEnergyFloor: Float = 0.001
+
   // MARK: Confirmed-stream state (single owner: the serial loop / finalize)
 
   /// The frozen, confirmed transcript prefix — confirmed segment texts joined by
@@ -170,10 +177,16 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     let durationSec = Float(count) / 16_000.0
     let uncoveredTailSec = durationSec - flushConfirmedSec
 
-    // Hallucination-tail gate: a tail shorter than the minimum voiced duration is
-    // effectively silence; decoding it invites the "Thank you" artifact. The
-    // confirmed text is already complete.
-    guard uncoveredTailSec >= minVoicedTailSec, !samples.isEmpty else {
+    // Tail gate (energy-aware, mirrors `WhisperKitIncrementalWorker`'s tail-decode
+    // gate): skip the flush decode when the uncovered tail is too short OR too
+    // quiet. A near-silence tail decoded anyway invites the YouTube-corpus
+    // "Thank you" hallucination, and when the confirmed prefix already covers all
+    // the speech it IS the complete transcript — accepting it (rather than forcing
+    // a needless full re-batch) preserves the streaming speed win.
+    let tailStartIdx = max(0, min(count, Int(flushConfirmedSec * 16_000)))
+    let tailSlice = tailStartIdx < count ? Array(samples[tailStartIdx..<count]) : []
+    let tailRMS = rms(tailSlice)
+    guard uncoveredTailSec >= minVoicedTailSec, tailRMS > tailEnergyFloor, !samples.isEmpty else {
       return streamingResult(
         text: confirmedText, samplesCovered: count, tailDecodeMs: 0)
     }
@@ -186,26 +199,42 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
       let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: opts)
       let tailText = joinedSegmentText(results)
       let tailMs = Int((CFAbsoluteTimeGetCurrent() - tailStart) * 1000)
+      guard !tailText.isEmpty else {
+        // A VOICED tail (passed the energy gate) that decodes to nothing is a
+        // silent drop, not silence — do NOT ship the truncated prefix (Codex r2
+        // P2, mirrors the worker's `tail_empty_fallback`). Force the adapter to
+        // re-transcribe the COMPLETE audio via the clean batch fallback.
+        return forceFallbackResult(strategy: "streaming_tail_empty_fallback", tailMs: tailMs)
+      }
       let combined = appendText(confirmedText, tailText)
       return streamingResult(text: combined, samplesCovered: count, tailDecodeMs: tailMs)
     } catch {
-      // Flush tail decode FAILED after a prefix was already confirmed. Return
-      // `accepted: false` even when the prefix is non-empty (Codex r1 P2): the
-      // confirmed prefix is missing the unconfirmed tail, so shipping it as
-      // authoritative would silently drop the end of the dictation. `accepted:
-      // false` forces the adapter to fall through to the clean batch decode over
-      // the authoritative capture buffer, which re-transcribes the COMPLETE audio
-      // (heart stays alive AND the tail is recovered). The prefix is carried only
-      // for diagnostics.
+      // Flush tail decode THREW after a prefix was already confirmed (Codex r1 P2)
+      // — same reasoning as the empty-tail branch: force the batch fallback rather
+      // than ship a prefix missing the unconfirmed tail.
       let tailMs = Int((CFAbsoluteTimeGetCurrent() - tailStart) * 1000)
-      let trimmed = confirmedText.trimmingCharacters(in: .whitespacesAndNewlines)
-      return IncrementalResult(
-        text: trimmed.isEmpty ? nil : confirmedText,
-        samplesCovered: count, decodeCount: decodeCount,
-        totalDecodeTimeMs: totalDecodeTimeMs,
-        accepted: false, mode: "streaming",
-        strategy: "streaming_flush_failed", tailDecodeMs: tailMs)
+      return forceFallbackResult(strategy: "streaming_flush_failed", tailMs: tailMs)
     }
+  }
+
+  /// A flush result that forces the adapter to fall back to the clean batch
+  /// decode (`accepted: false`). The confirmed prefix is carried only for
+  /// diagnostics — the adapter re-transcribes the complete audio, which is both
+  /// heart-safe and recovers the dropped tail.
+  private func forceFallbackResult(strategy: String, tailMs: Int) -> IncrementalResult {
+    let trimmed = confirmedText.trimmingCharacters(in: .whitespacesAndNewlines)
+    return IncrementalResult(
+      text: trimmed.isEmpty ? nil : confirmedText,
+      samplesCovered: 0, decodeCount: decodeCount,
+      totalDecodeTimeMs: totalDecodeTimeMs,
+      accepted: false, mode: "streaming",
+      strategy: strategy, tailDecodeMs: tailMs)
+  }
+
+  private func rms(_ samples: [Float]) -> Float {
+    guard !samples.isEmpty else { return 0 }
+    let sumSquares = samples.reduce(Float(0)) { $0 + $1 * $1 }
+    return (sumSquares / Float(samples.count)).squareRoot()
   }
 
   package func cancel() {
