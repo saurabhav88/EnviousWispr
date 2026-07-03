@@ -387,7 +387,10 @@ struct ProviderStatusChip: View {
 struct ProviderRailRow: View {
   let entry: PolishRailProvider
   let isSelected: Bool
+  let namespace: Namespace.ID
   let onSelect: () -> Void
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var hovering = false
 
   var body: some View {
     Button(action: onSelect) {
@@ -416,17 +419,36 @@ struct ProviderRailRow: View {
       .padding(.horizontal, 12)
       .padding(.vertical, 11)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
-          .fill(isSelected ? Color.stAccentLight : Color.clear)
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
-          .strokeBorder(isSelected ? Color.stAccent : Color.clear, lineWidth: 1.5)
-      )
+      // ONE moving highlight (matchedGeometryEffect) so selection glides between
+      // rows. Only the selected row renders it; SwiftUI interpolates position on
+      // the animated selection change. Solid accent fill + stroke stay the
+      // primary selected signal (high-contrast / differentiate-without-colour);
+      // the brand rainbow is an ADDITIVE tint on the same edge. #1298.
+      .background {
+        if isSelected {
+          RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(Color.stAccentLight)
+            .overlay(
+              RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.stAccent, lineWidth: 1.5)
+            )
+            .overlay(
+              RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.obRainbow, lineWidth: 1.5)
+                .opacity(0.5)
+            )
+            .matchedGeometryEffect(id: "railSelection", in: namespace)
+        }
+      }
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    // Subtle hover lift. scaleEffect is a render transform applied AFTER layout,
+    // so the row's frame and hover hit-region do not move (no jitter loop); it
+    // only grows (1.006), never shrinks. Gated on reduce-motion. #1298.
+    .scaleEffect(hovering && !reduceMotion ? 1.006 : 1.0)
+    .onHover { hovering = $0 }
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(.isButton)
     .accessibilityLabel("\(entry.name), \(entry.isLocal ? "on this Mac" : "cloud")")
@@ -448,6 +470,10 @@ struct ProviderRailRow: View {
 /// state home (plan §3b).
 struct ProviderRail: View {
   @Binding var selection: LLMProvider
+  /// Shared namespace so the single selection highlight glides between rows
+  /// (matchedGeometryEffect) instead of jumping. #1298.
+  @Namespace private var selectionNS
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
@@ -474,7 +500,14 @@ struct ProviderRail: View {
     ProviderRailRow(
       entry: entry,
       isSelected: selection == entry.provider,
-      onSelect: { selection = entry.provider })
+      namespace: selectionNS,
+      onSelect: {
+        // State commits immediately; the spring only animates the highlight
+        // glide. Gated on reduce-motion (instant end state).
+        withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.82)) {
+          selection = entry.provider
+        }
+      })
   }
 
   private func groupHeader(_ title: String) -> some View {
