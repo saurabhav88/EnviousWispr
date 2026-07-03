@@ -1,6 +1,8 @@
 import Foundation
 import Observation
 
+// no-op: forces a real Swift build for #1295 CI-cache warm-restore benchmark
+
 /// PR7 of epic #763. Owns post-recording polish/error state — the single
 /// observable fact "did the last polish fail, and with what message" — for
 /// views to render an error banner after a recording completes.
