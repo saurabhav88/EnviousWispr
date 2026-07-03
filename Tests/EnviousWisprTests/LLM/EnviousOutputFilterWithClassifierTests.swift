@@ -65,24 +65,29 @@ import Testing
 
   @Test("non-cooperative synchronous block is bounded by the deadline and fails open")
   func nonCooperativeBlockFailsOpen() async {
-    // A stuck synchronous inference (a multi-second thread block that ignores
-    // cancellation): the 50ms deadline must return the sync result rather than
-    // wait for the block. The OUTCOME alone proves the deadline bounded the
-    // caller with no timing assertion: `withDeadline` (TaskTimeout.swift) is
-    // first-to-claim — it returns `nil` ONLY when the deadline branch wins, and
-    // it resumes the caller the instant that branch claims, without awaiting the
-    // operation. If instead the block had won, it would have returned 0.99 →
-    // classifier_discard → fellBackToRaw == true. So `fellBackToRaw == false`
-    // ⟺ the deadline branch won ⟺ the caller was released at the deadline.
-    // The block is long (2s) so the deadline's 50ms sleep would have to inflate
-    // ~40x before the block could win — no wall-clock bound, nothing sampled
-    // after the caller returns (#1283; cloud-review r1 killed the earlier
-    // post-return `didFinishBlock` sample, which had a reschedule race).
+    // A stuck inference that ignores cancellation: the 50ms deadline must
+    // release the caller BEFORE the block completes. The block parks on a gate
+    // the test controls, making the ordering DETERMINISTIC — no wall-clock
+    // bound, no post-return reschedule race (cloud-review r1/r2, #1283):
+    //  - while the gate is still closed the block provably cannot have
+    //    finished, so `didFinishBlock` must be false the instant
+    //    `filterWithClassifier` returns — this proves the caller was released at
+    //    the deadline, not after awaiting the block (the promptness guarantee);
+    //  - the outcome (`fellBackToRaw == false`) proves the abandoned 0.99 was
+    //    never applied (a block that won → classifier_discard → true);
+    //  - a regression that AWAITED the block would only return after the block's
+    //    ~10s safety cap, by which point `didFinishBlock` is true — caught as a
+    //    clean failure, not a hang.
+    let classifier = StubOutputClassifier(.gatedBlock(then: 0.99))
     let result = await EnviousOutputFilter.filterWithClassifier(
-      input: Self.cleanInput, output: Self.cleanOutput,
-      classifier: StubOutputClassifier(.blockSync(seconds: 2.0, then: 0.99)))
+      input: Self.cleanInput, output: Self.cleanOutput, classifier: classifier)
     #expect(result.fellBackToRaw == false)
     #expect(result.tripped == nil)
+    #expect(
+      classifier.didFinishBlock == false,
+      "withDeadline must release the caller at the 50ms deadline, before the abandoned block completes"
+    )
+    classifier.releaseGate()  // release the parked block so its pool thread frees promptly
   }
 
   @Test("NaN score fails open")
