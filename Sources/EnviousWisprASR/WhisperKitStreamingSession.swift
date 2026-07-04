@@ -399,9 +399,9 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   ///     structurally cannot (benchmark arm S5).
   /// Empty/thrown decode → the same clean-batch fallback as the segment path.
   private func finalizeLocalAgreement(samples: [Float], count: Int) async -> IncrementalResult {
-    let releasedTail = retainedUnconfirmedSegments.map(\.text)
-      .joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-    let releaseText = appendText(confirmedText, releasedTail)
+    // Raw token concatenation (self-spacing; CJK-safe — cloud review P2).
+    // `streamingResult` trims the edges.
+    let releaseText = confirmedText + retainedUnconfirmedSegments.map(\.text).joined()
 
     // Exact bookkeeping: audio that arrived after the last decode pulled the
     // buffer. `lastDecodeSampleCount` is the sample count that decode saw.
@@ -424,16 +424,22 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     let paddedSamples = WhisperKitBackend.padAudioWithSilence(samples)
     do {
       let results = try await whisperKit.transcribe(audioArray: paddedSamples, decodeOptions: opts)
-      let bufferText = joinedSegmentText(results)
+      // RAW segment concatenation (self-spacing; CJK-safe — cloud review P2):
+      // WhisperKit segment texts carry their own leading space in whitespace
+      // scripts and none in unsegmented scripts; a hardcoded " " join would
+      // inject spaces into ja/zh/th output.
+      let bufferText = results.flatMap(\.segments).map(\.text).joined()
       let tailMs = Int((CFAbsoluteTimeGetCurrent() - tailStart) * 1000)
-      guard !bufferText.isEmpty else {
+      guard !bufferText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         // Voiced fresh audio decoding to nothing is a silent drop — force the
         // clean-batch fallback rather than ship a truncated transcript.
         return forceFallbackResult(strategy: "streaming_buffer_empty_fallback", tailMs: tailMs)
       }
       // `scrolledOutText` + the buffer decode IS the transcript (confirmedText
       // already contains the scrolled-out prefix — never combine those two).
-      let combined = appendText(scrolledOutText, bufferText)
+      // Raw concat again: scrolled-out tokens end unpadded and the decode's
+      // first token carries its own leading space where the script uses one.
+      let combined = scrolledOutText + bufferText
       return streamingResult(text: combined, samplesCovered: count, tailDecodeMs: tailMs)
     } catch {
       let tailMs = Int((CFAbsoluteTimeGetCurrent() - tailStart) * 1000)
@@ -721,14 +727,20 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
 
     // Retain the uncommitted remainder for the benchmark's release-only arm
     // (set before the commitCount>0 guard, mirroring the segment path).
+    // Retained text is the RAW token (self-spacing, see the commit loop) —
+    // the release path concatenates these without a separator.
     retainedUnconfirmedSegments = words[commitCount...].map {
-      BenchmarkSegment(text: trimmed($0), start: $0.start, end: $0.end)
+      BenchmarkSegment(text: $0.word, start: $0.start, end: $0.end)
     }
     previousHypothesisWords = Array(words[commitCount...])
 
     if commitCount > 0 {
+      // RAW token concatenation, never a hardcoded " " join (cloud review P2):
+      // WhisperKit word tokens carry their own leading space in whitespace
+      // scripts and none in unsegmented scripts (ja/zh/th/...), so raw concat
+      // reproduces exactly what the decoder emitted for BOTH classes.
       for word in words[0..<commitCount] {
-        confirmedText = appendText(confirmedText, trimmed(word))
+        confirmedText += word.word
       }
       committedWordsInBuffer.append(contentsOf: words[0..<commitCount])
       // Monotonic guard: never move the confirmed second backwards.
@@ -759,21 +771,21 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
         return sentenceEnders.contains(last)
       })?.end
       if let boundary {
-        trimBuffer(at: boundary, trimmedWord: trimmed)
+        trimBuffer(at: boundary)
       } else if bufferEnd - bufferStartSec > maxUnconfirmedWindowSec,
         let lastCommitted = committedWordsInBuffer.last(where: { $0.end <= latestAllowed })
       {
-        trimBuffer(at: lastCommitted.end, trimmedWord: trimmed)
+        trimBuffer(at: lastCommitted.end)
       }
     }
   }
 
   /// Move the buffer origin to `boundary`: committed words before it scroll
   /// out (their text becomes conditioning-prompt material).
-  private func trimBuffer(at boundary: Float, trimmedWord: (WordTiming) -> String) {
+  private func trimBuffer(at boundary: Float) {
     guard boundary > bufferStartSec else { return }
     for word in committedWordsInBuffer where word.end <= boundary {
-      scrolledOutText = appendText(scrolledOutText, trimmedWord(word))
+      scrolledOutText += word.word  // raw token concat (self-spacing)
     }
     committedWordsInBuffer.removeAll { $0.end <= boundary }
     bufferStartSec = boundary

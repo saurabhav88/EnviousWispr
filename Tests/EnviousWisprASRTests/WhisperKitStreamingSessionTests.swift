@@ -389,7 +389,14 @@ import Testing
     }
   }
 
+  /// Mimics WhisperKit's raw word tokens for a whitespace script: each word
+  /// carries its own LEADING space (the session concatenates raw tokens).
   private func word(_ start: Float, _ end: Float, _ text: String) -> WordTiming {
+    WordTiming(word: " " + text, tokens: [], start: start, end: end, probability: 1.0)
+  }
+
+  /// A raw token WITHOUT a leading space (unsegmented scripts: ja/zh/th...).
+  private func cjkWord(_ start: Float, _ end: Float, _ text: String) -> WordTiming {
     WordTiming(word: text, tokens: [], start: start, end: end, probability: 1.0)
   }
 
@@ -426,7 +433,9 @@ import Testing
     let provider = GrowingProvider(start: 80_000, cap: 112_000)
     await s.start(audioSamplesProvider: { await provider.pull() })
     await waitForDecode(2, s)
-    #expect(await s.confirmedTextForTests == "the meeting went", "agreed prefix committed")
+    #expect(
+      (await s.confirmedTextForTests).trimmingCharacters(in: .whitespaces) == "the meeting went",
+      "agreed prefix committed")
     #expect(await s.lastConfirmedSecForTests == 3.0, "advanced to last committed word end")
     await s.cancel()
   }
@@ -452,7 +461,9 @@ import Testing
     let provider = GrowingProvider(start: 80_000, cap: 112_000)
     await s.start(audioSamplesProvider: { await provider.pull() })
     await waitForDecode(2, s)
-    #expect(await s.confirmedTextForTests == "the meeting", "commit stops at disagreement")
+    #expect(
+      (await s.confirmedTextForTests).trimmingCharacters(in: .whitespaces) == "the meeting",
+      "commit stops at disagreement")
     #expect(await s.lastConfirmedSecForTests == 2.0)
     await s.cancel()
   }
@@ -501,9 +512,37 @@ import Testing
     // real audio (5.0s at decode 1), NOT 9.5 — proven by "well" (starts 4.2)
     // surviving the committed-cut filter in a later cycle instead of being
     // dropped against a poisoned 9.5s committedEnd.
-    #expect(await s.confirmedTextForTests == "the meeting went")
+    #expect(
+      (await s.confirmedTextForTests).trimmingCharacters(in: .whitespaces) == "the meeting went")
     let lastSec = await s.lastConfirmedSecForTests
     #expect(lastSec <= 6.0, "committed end clamped to real audio, not the padded 9.5s")
+    await s.cancel()
+  }
+
+  @Test("LA raw-token concat injects no spaces into unsegmented scripts (cloud review P2)")
+  func localAgreementPreservesUnsegmentedScript() async throws {
+    // Japanese-style tokens carry NO leading space; joining them with " "
+    // would corrupt the transcript. Raw concatenation must reproduce the
+    // decoder's own text for both script classes.
+    let d1 = result(
+      "会議は明日",
+      [
+        seg(0, 3, "会議は明日").with(words: [
+          cjkWord(0, 1, "会議"), cjkWord(1, 2, "は"), cjkWord(2, 3, "明日"),
+        ])
+      ])
+    let d2 = result(
+      "会議は明日です",
+      [
+        seg(0, 4, "会議は明日です").with(words: [
+          cjkWord(0, 1, "会議"), cjkWord(1, 2, "は"), cjkWord(2, 3, "明日"), cjkWord(3, 4, "です"),
+        ])
+      ])
+    let (s, _) = laSession([[d1], [d2]])
+    let provider = GrowingProvider(start: 80_000, cap: 112_000)
+    await s.start(audioSamplesProvider: { await provider.pull() })
+    await waitForDecode(2, s)
+    #expect(await s.confirmedTextForTests == "会議は明日", "no injected spaces between tokens")
     await s.cancel()
   }
 
