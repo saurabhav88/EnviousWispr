@@ -164,6 +164,9 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// flush_throw. Surfaced through `KernelASRAdapterDiagnostics`.
   private var sessionStreamingRequested = false
   private var sessionStreamingDegradeReason = "none"
+  /// #1309: preserved from a degraded streaming flush so the batch fallback's
+  /// diagnostics still carry the stop-mid-decode signal.
+  private var sessionStopWhileDecodeInFlight: Bool?
 
   /// The adapter-owned LOSSLESS audio the streaming session reads — the single
   /// coordinate the whole streaming path lives in (§3.2). Fed by `acceptAudio`
@@ -375,6 +378,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     // at begin; flush_empty / flush_throw at finalize).
     sessionStreamingRequested = streaming
     sessionStreamingDegradeReason = streaming ? "none" : "disabled"
+    sessionStopWhileDecodeInFlight = nil
     lastLanguageDetection = nil
     retainedPCM.removeAll(keepingCapacity: true)
     observedSpeechSegments.removeAll()
@@ -763,6 +767,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     diagnostics.streamingFinalPath =
       ["flush_empty", "flush_throw"].contains(sessionStreamingDegradeReason)
       ? "fallback_batch" : "clean_batch"
+    diagnostics.stopWhileDecodeInFlight = sessionStopWhileDecodeInFlight
     // PR-5 Rung 4.5 (#827): LID perf-signpost transport for kernel-side
     // `t_release` and wiring-side `t_clipboard_write` emits. Populated here
     // so every terminal write of `lastASRDiagnostics` carries them. Uses the
@@ -1084,9 +1089,12 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     let trimmed = (result.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     guard result.accepted, !trimmed.isEmpty else {
       // Streaming produced nothing usable — fall through to the batch fallback.
-      // #1309: record WHY streaming degraded for the fallback's diagnostics.
+      // #1309: record WHY streaming degraded — and preserve the stop-mid-decode
+      // signal — for the batch fallback's diagnostics (Codex r1 P2: dropping it
+      // here loses the field exactly when a mid-decode stop broke the flush).
       sessionStreamingDegradeReason =
         result.strategy == "streaming_flush_failed" ? "flush_throw" : "flush_empty"
+      sessionStopWhileDecodeInFlight = result.stopWhileDecodeInFlight
       Task { [strategy = result.strategy] in
         await AppLogger.shared.log(
           "WhisperKit streaming flush empty (strategy=\(strategy)) — falling back to batch",

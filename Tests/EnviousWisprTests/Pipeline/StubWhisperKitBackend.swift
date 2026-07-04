@@ -253,7 +253,7 @@ extension IncrementalResult {
     )
   }
 
-  static func rejected() -> IncrementalResult {
+  static func rejected(stopWhileDecodeInFlight: Bool = false) -> IncrementalResult {
     IncrementalResult(
       text: nil,
       samplesCovered: 0,
@@ -262,7 +262,8 @@ extension IncrementalResult {
       accepted: false,
       mode: "stub-mode",
       strategy: "stub-strategy",
-      tailDecodeMs: 0
+      tailDecodeMs: 0,
+      stopWhileDecodeInFlight: stopWhileDecodeInFlight
     )
   }
 }

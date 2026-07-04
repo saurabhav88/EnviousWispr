@@ -692,7 +692,8 @@ import Testing
   @Test("streaming ON + locked but flush returns empty: fail-open to clean batch")
   func streamingEmptyFlushFailsOpen() async throws {
     let backend = StubWhisperKitBackend()
-    let stubSession = StubIncrementalSession(result: .rejected())
+    let stubSession = StubIncrementalSession(
+      result: .rejected(stopWhileDecodeInFlight: true))
     await backend.setStreamingSessionFactory({ stubSession })
     await backend.setTranscribeResult(
       ASRResult(
@@ -714,11 +715,14 @@ import Testing
     #expect(mss == 1, "streaming session was started")
     let txCount = await backend.transcribeCount
     #expect(txCount == 1, "batch fallback ran after empty flush")
-    // #1309: flush produced nothing → fallback_batch with flush_empty.
+    // #1309: flush produced nothing → fallback_batch with flush_empty, and the
+    // stop-mid-decode signal survives into the fallback's diagnostics
+    // (Codex r1 P2 — it matters most exactly when the flush broke).
     let diag = adapter.lastASRDiagnostics
     #expect(diag?.streamingEffective == false)
     #expect(diag?.streamingDegradeReason == "flush_empty")
     #expect(diag?.streamingFinalPath == "fallback_batch")
+    #expect(diag?.stopWhileDecodeInFlight == true)
   }
 
   @Test("streaming OFF + locked: no streaming session, clean batch")

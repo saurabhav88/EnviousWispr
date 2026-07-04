@@ -1400,7 +1400,7 @@ final class RecordingSessionKernel {
         // #1309 effective-path streaming telemetry. Requested comes from the
         // kernel's own capability gate; effective/degrade/path from the
         // adapter's diagnostics. WhisperKit-only (nil for Parakeet → omitted).
-        streamingRequested: adapterDiag != nil ? isStreamingSession : nil,
+        streamingRequested: adapterDiag?.streamingEffective != nil ? isStreamingSession : nil,
         streamingEffective: adapterDiag?.streamingEffective,
         streamingDegradeReason: adapterDiag?.streamingDegradeReason,
         streamingFinalPath: adapterDiag?.streamingFinalPath,
