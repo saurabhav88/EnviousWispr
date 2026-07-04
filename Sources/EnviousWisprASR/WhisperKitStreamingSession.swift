@@ -661,9 +661,23 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     // (0.1s tolerance for re-decode jitter, as in `HypothesisBuffer.insert`)
     // and inside REAL audio (a word stamped past the buffered sample count is
     // a hallucination in the 30s window's silence padding — never commit it).
+    // A word that STARTS inside real audio but whose END stretched into the
+    // padding is kept with its end CLAMPED to real audio (cloud review P1):
+    // committing an out-of-range end would poison `committedEnd` and cut every
+    // subsequent real word (the filter below compares against it), stalling
+    // the stream. Clamping (not dropping) also protects a genuine final word
+    // whose timestamp merely bled into the trailing pad.
     let realAudioEndSec = Float(currentSampleCount) / 16_000.0
     let committedEnd = committedWordsInBuffer.last?.end ?? bufferStartSec
-    var words = allWords.filter { $0.start >= committedEnd - 0.1 && $0.start < realAudioEndSec }
+    var words =
+      allWords
+      .filter { $0.start >= committedEnd - 0.1 && $0.start < realAudioEndSec }
+      .map { w -> WordTiming in
+        guard w.end > realAudioEndSec else { return w }
+        var clamped = w
+        clamped.end = realAudioEndSec
+        return clamped
+      }
     // 1b. CUT — seam ngram dedup: if the head of the fresh words repeats the
     // tail of the committed words (jitter let a duplicate slip past the
     // timestamp filter), drop the repeated head (1..5-gram, longest first).

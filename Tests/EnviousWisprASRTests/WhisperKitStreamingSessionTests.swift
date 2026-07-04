@@ -472,6 +472,41 @@ import Testing
     await s.cancel()
   }
 
+  @Test("LA clamps a word end stretched into the silence padding (cloud review P1)")
+  func localAgreementClampsPaddedWordEnd() async throws {
+    // The decoder can stamp a word's END inside the padded region while its
+    // start is real. Committing that raw end would poison the committed cut
+    // and filter out every subsequent real word. The clamp keeps the word but
+    // bounds its end at real audio, so bookkeeping stays sane.
+    // Provider: 80k samples = 5.0s of real audio. Word "went" claims 2.0-9.5.
+    let d1 = result(
+      "the meeting went",
+      [
+        seg(0, 9.5, "the meeting went").with(words: [
+          word(0, 1, "the"), word(1, 2, "meeting"), word(2, 9.5, "went"),
+        ])
+      ])
+    let d2 = result(
+      "the meeting went well",
+      [
+        seg(0, 9.5, "the meeting went well").with(words: [
+          word(0, 1, "the"), word(1, 2, "meeting"), word(2, 9.5, "went"), word(4.2, 4.8, "well"),
+        ])
+      ])
+    let (s, _) = laSession([[d1], [d2]])
+    let provider = GrowingProvider(start: 80_000, cap: 112_000)
+    await s.start(audioSamplesProvider: { await provider.pull() })
+    await waitForDecode(2, s)
+    // "the meeting went" agreed → committed; "went"'s end must be clamped to
+    // real audio (5.0s at decode 1), NOT 9.5 — proven by "well" (starts 4.2)
+    // surviving the committed-cut filter in a later cycle instead of being
+    // dropped against a poisoned 9.5s committedEnd.
+    #expect(await s.confirmedTextForTests == "the meeting went")
+    let lastSec = await s.lastConfirmedSecForTests
+    #expect(lastSec <= 6.0, "committed end clamped to real audio, not the padded 9.5s")
+    await s.cancel()
+  }
+
   // MARK: LocalAgreement finalize (release fast path vs bounded buffer decode)
 
   /// Two-phase provider: the loop decode sees `loopCount` samples; after
