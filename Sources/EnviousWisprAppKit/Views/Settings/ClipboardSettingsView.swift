@@ -11,18 +11,27 @@ struct ClipboardSettingsView: View {
     SettingsContentView {
       BrandedSection(header: "Clipboard") {
         BrandedRow {
-          Toggle("Auto-copy to clipboard", isOn: $settings.autoCopyToClipboard)
-            .toggleStyle(BrandedToggleStyle())
+          Toggle(isOn: $settings.autoCopyToClipboard) {
+            HStack(spacing: 11) {
+              SettingsRowIcon(systemName: "doc.on.clipboard")
+              Text("Auto-copy to clipboard").settingsRowLabel()
+            }
+          }
+          .toggleStyle(BrandedToggleStyle())
         }
         BrandedRow(showDivider: false) {
-          VStack(alignment: .leading, spacing: 4) {
-            Toggle(
-              "Restore clipboard after paste", isOn: $settings.restoreClipboardAfterPaste
-            )
-            .toggleStyle(BrandedToggleStyle())
-            Text("Saves and restores whatever was on your clipboard before pasting the transcript.")
-              .font(.stHelper)
-              .foregroundStyle(.stTextTertiary)
+          HStack(alignment: .top, spacing: 11) {
+            SettingsRowIcon(systemName: "arrow.uturn.backward")
+            VStack(alignment: .leading, spacing: 4) {
+              Toggle(isOn: $settings.restoreClipboardAfterPaste) {
+                Text("Restore clipboard after paste").settingsRowLabel()
+              }
+              .toggleStyle(BrandedToggleStyle())
+              Text(
+                "Saves and restores whatever was on your clipboard before pasting the transcript."
+              )
+              .settingsReadingCopy()
+            }
           }
         }
       } footer: {

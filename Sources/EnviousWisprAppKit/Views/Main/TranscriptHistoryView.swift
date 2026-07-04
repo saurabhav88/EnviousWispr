@@ -26,7 +26,16 @@ struct TranscriptHistoryView: View {
       ) { transcript in
         TranscriptRowView(transcript: transcript)
           .tag(transcript.id)
+          // Paint the row background with the page colour so macOS's default
+          // grey selection highlight is replaced — our card's accent ring is the
+          // only selection signal.
+          .listRowBackground(Color.stPageBg)
+          .listRowSeparator(.hidden)
+          .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
       }
+      .listStyle(.plain)
+      .scrollContentBackground(.hidden)
+      .background(Color.stPageBg)
       .opacity(isRecording ? 0.4 : 1.0)
       .animation(.easeInOut(duration: 0.3), value: isRecording)
       .overlay {
@@ -66,19 +75,35 @@ struct TranscriptHistoryView: View {
   }
 }
 
-/// A single row in the transcript history list.
+/// A single row in the transcript history list, rendered as a bordered card.
+/// The selected card carries an accent ring and a dot on its timestamp (mockup
+/// #27); selection state is derived from the coordinator, not a new feature.
 struct TranscriptRowView: View {
   let transcript: Transcript
+  @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
+
+  private var isSelected: Bool {
+    transcriptCoordinator.selectedTranscriptID == transcript.id
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text(transcript.createdAt, format: .dateTime.month().day().hour().minute())
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+      HStack(spacing: 5) {
+        if isSelected {
+          Circle()
+            .fill(Color.stAccent)
+            .frame(width: 7, height: 7)
+            .accessibilityHidden(true)
+        }
+        Text(transcript.createdAt, format: .dateTime.month().day().hour().minute())
+          .font(.caption.monospaced())
+          .foregroundStyle(.stTextSecondary)
+      }
 
       Text(transcript.displayText)
         .lineLimit(3)
         .font(.body)
+        .foregroundStyle(.stTextPrimary)
 
       HStack(spacing: 6) {
         if transcript.isRecovered == true {
@@ -91,8 +116,8 @@ struct TranscriptRowView: View {
           .font(.caption2)
           .padding(.horizontal, 5)
           .padding(.vertical, 2)
-          .background(.teal.opacity(0.15), in: Capsule())
-          .foregroundStyle(.teal)
+          .background(Color.stSuccess.opacity(0.15), in: Capsule())
+          .foregroundStyle(.stSuccess)
           .accessibilityLabel("Recovered recording")
         }
 
@@ -104,18 +129,36 @@ struct TranscriptRowView: View {
           .font(.caption2)
           .padding(.horizontal, 5)
           .padding(.vertical, 2)
-          .background(.purple.opacity(0.15), in: Capsule())
-          .foregroundStyle(.purple)
+          .background(Color.stAccent.opacity(0.16), in: Capsule())
+          .foregroundStyle(.stAccent)
         }
 
         Text(transcript.backendType.displayName)
           .font(.caption2)
           .padding(.horizontal, 5)
           .padding(.vertical, 2)
-          .background(.fill.tertiary, in: Capsule())
-          .foregroundStyle(.secondary)
+          .background(Color.stTextSecondary.opacity(0.14), in: Capsule())
+          .foregroundStyle(.stTextSecondary)
       }
     }
-    .padding(.vertical, 8)
+    .padding(12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background {
+      // Opaque base so nothing bleeds through, plus a faint accent wash when
+      // selected (matches the mockup's subtly purple-tinted active card).
+      ZStack {
+        RoundedRectangle(cornerRadius: 12).fill(Color.stSectionBg)
+        if isSelected {
+          RoundedRectangle(cornerRadius: 12).fill(Color.stAccent.opacity(0.12))
+        }
+      }
+    }
+    .overlay(
+      RoundedRectangle(cornerRadius: 12)
+        .strokeBorder(
+          isSelected ? Color.stAccent : Color.stDivider,
+          lineWidth: isSelected ? 2 : 1)
+    )
+    .contentShape(RoundedRectangle(cornerRadius: 12))
   }
 }

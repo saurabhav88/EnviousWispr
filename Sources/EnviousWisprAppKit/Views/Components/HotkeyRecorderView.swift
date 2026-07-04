@@ -101,6 +101,15 @@ struct HotkeyRecorderColors {
 /// A reusable view for recording keyboard shortcuts.
 /// Click to start recording, press a key combo to set, click again or press Escape to cancel.
 struct HotkeyRecorderView: View {
+  /// Visual layout. `.compact` is the original inline label + small field row.
+  /// `.prominent` renders a large edit button with no inline label (the caller
+  /// supplies its own title column, mockup #26) — the key symbol reads big with a
+  /// "Click to change" affordance line and a reset link below when non-default.
+  enum Style {
+    case compact
+    case prominent
+  }
+
   @Binding var keyCode: UInt16
   @Binding var modifiers: NSEvent.ModifierFlags
 
@@ -108,6 +117,7 @@ struct HotkeyRecorderView: View {
   let defaultModifiers: NSEvent.ModifierFlags
   let label: String
   var colors: HotkeyRecorderColors = .system
+  var style: Style = .compact
 
   // PR10 of #763: hotkey suspend/resume dispatch through DictationRuntime
   // façade; the shared HotkeyService is no longer accessible via the former root state.
@@ -115,7 +125,25 @@ struct HotkeyRecorderView: View {
 
   @State private var isRecording = false
 
+  private var isDefault: Bool {
+    keyCode == defaultKeyCode && modifiers == defaultModifiers
+  }
+
   var body: some View {
+    Group {
+      switch style {
+      case .compact: compactBody
+      case .prominent: prominentBody
+      }
+    }
+    .onDisappear {
+      stopRecording()
+    }
+  }
+
+  // MARK: - Compact (inline label + small field)
+
+  private var compactBody: some View {
     HStack {
       Text(label)
         .foregroundStyle(colors.label)
@@ -141,31 +169,10 @@ struct HotkeyRecorderView: View {
         RoundedRectangle(cornerRadius: 6)
           .stroke(isRecording ? colors.recordingBorder : Color.clear, lineWidth: 1)
       )
-      // Overlay a zero-size KeyCaptureView so it can steal first responder
-      // without affecting visual layout.
-      .overlay(
-        KeyCaptureView(isRecording: isRecording, onKeyEvent: handleKeyEvent)
-          .frame(width: 0, height: 0)
-          .allowsHitTesting(false),
-        alignment: .center
-      )
-      .contentShape(Rectangle())
-      .onTapGesture {
-        toggleRecording()
-      }
-      .accessibilityElement(children: .combine)
-      .accessibilityAddTraits(.isButton)
-      .accessibilityLabel(label)
-      .accessibilityValue(
-        isRecording
-          ? "Recording, press a key combination"
-          : KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
-      )
-      .accessibilityHint("Activates recording. Then press the key combination you want.")
-      .accessibilityAction { toggleRecording() }
+      .modifier(keyCaptureBehavior)
 
       // Reset button
-      if keyCode != defaultKeyCode || modifiers != defaultModifiers {
+      if !isDefault {
         Button(action: resetToDefault) {
           Image(systemName: "arrow.counterclockwise")
             .foregroundStyle(colors.resetIcon)
@@ -175,9 +182,68 @@ struct HotkeyRecorderView: View {
         .accessibilityLabel("Reset shortcut to default")
       }
     }
-    .onDisappear {
-      stopRecording()
+  }
+
+  // MARK: - Prominent (big edit button)
+
+  private var prominentBody: some View {
+    VStack(alignment: .trailing, spacing: 6) {
+      HStack(spacing: 12) {
+        Image(systemName: "keyboard")
+          .font(.system(size: 16, weight: .medium))
+          .foregroundStyle(.stAccent)
+          .accessibilityHidden(true)
+        Spacer(minLength: 0)
+        VStack(spacing: 2) {
+          if isRecording {
+            Text("Press keys...")
+              .font(.system(size: 17, weight: .semibold))
+              .foregroundStyle(.stAccent)
+          } else {
+            Text(KeySymbols.format(keyCode: keyCode, modifiers: modifiers))
+              .font(.system(size: 17, weight: .semibold))
+              .foregroundStyle(.stTextPrimary)
+            Text("Click to change")
+              .font(.stHelper)
+              .foregroundStyle(.stTextTertiary)
+          }
+        }
+        Spacer(minLength: 0)
+      }
+      .padding(.horizontal, 16)
+      .frame(maxWidth: .infinity, minHeight: 62)
+      .background(
+        isRecording ? Color.stAccentLight : Color.stPageBg,
+        in: RoundedRectangle(cornerRadius: 10)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 10)
+          .strokeBorder(Color.stAccent, lineWidth: isRecording ? 2 : 1.5)
+      )
+      .modifier(keyCaptureBehavior)
+
+      if !isDefault {
+        Button("Reset to default", action: resetToDefault)
+          .buttonStyle(.plain)
+          .font(.stHelper)
+          .foregroundStyle(.stAccent)
+          .accessibilityLabel("Reset shortcut to default")
+      }
     }
+  }
+
+  // MARK: - Shared capture behaviour
+
+  /// The first-responder capture overlay, tap-to-record, and accessibility that
+  /// both styles share. Factored out so the two layouts stay in lockstep.
+  private var keyCaptureBehavior: some ViewModifier {
+    KeyCaptureBehavior(
+      isRecording: isRecording,
+      label: label,
+      valueDescription: KeySymbols.format(keyCode: keyCode, modifiers: modifiers),
+      onKeyEvent: handleKeyEvent,
+      onToggle: toggleRecording
+    )
   }
 
   private func toggleRecording() {
@@ -238,5 +304,41 @@ struct HotkeyRecorderView: View {
   private func resetToDefault() {
     keyCode = defaultKeyCode
     modifiers = defaultModifiers
+  }
+}
+
+// MARK: - KeyCaptureBehavior
+
+/// The shared interaction layer for both `HotkeyRecorderView` styles: a zero-size
+/// `KeyCaptureView` overlay that steals first responder while recording, plus
+/// tap-to-toggle and the button accessibility. Applied to whatever visual field
+/// each style draws so the two never drift apart.
+private struct KeyCaptureBehavior: ViewModifier {
+  let isRecording: Bool
+  let label: String
+  let valueDescription: String
+  let onKeyEvent: (NSEvent) -> Void
+  let onToggle: () -> Void
+
+  func body(content: Content) -> some View {
+    content
+      // Overlay a zero-size KeyCaptureView so it can steal first responder
+      // without affecting visual layout.
+      .overlay(
+        KeyCaptureView(isRecording: isRecording, onKeyEvent: onKeyEvent)
+          .frame(width: 0, height: 0)
+          .allowsHitTesting(false),
+        alignment: .center
+      )
+      .contentShape(Rectangle())
+      .onTapGesture { onToggle() }
+      .accessibilityElement(children: .combine)
+      .accessibilityAddTraits(.isButton)
+      .accessibilityLabel(label)
+      .accessibilityValue(
+        isRecording ? "Recording, press a key combination" : valueDescription
+      )
+      .accessibilityHint("Activates recording. Then press the key combination you want.")
+      .accessibilityAction { onToggle() }
   }
 }

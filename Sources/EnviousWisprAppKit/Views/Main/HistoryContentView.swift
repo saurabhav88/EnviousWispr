@@ -65,6 +65,7 @@ struct HistoryContentView: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color.stPageBg)
     .task {
       transcriptCoordinator.load()
     }

@@ -33,7 +33,7 @@ struct CustomTermsSection: View {
       BrandedRow(showDivider: true) {
         HStack(spacing: 6) {
           Image(systemName: "magnifyingglass")
-            .foregroundStyle(.stTextTertiary)
+            .foregroundStyle(.stTextSecondary)
             .font(.system(size: 12))
           TextField("Search by name, alias, or category", text: $searchQuery)
             .textFieldStyle(.plain)
@@ -46,7 +46,7 @@ struct CustomTermsSection: View {
               searchQuery = ""
             } label: {
               Image(systemName: "xmark.circle.fill")
-                .foregroundStyle(.stTextTertiary)
+                .foregroundStyle(.stTextSecondary)
                 .font(.system(size: 12))
             }
             .buttonStyle(.plain)
@@ -64,7 +64,7 @@ struct CustomTermsSection: View {
               : "No matches for \"\(searchQuery)\"."
           )
           .font(.stHelper)
-          .foregroundStyle(.stTextTertiary)
+          .foregroundStyle(.stTextSecondary)
         }
       } else {
         ForEach(Array(pagedWords.enumerated()), id: \.element.id) { idx, word in
@@ -75,7 +75,7 @@ struct CustomTermsSection: View {
                   .font(.body)
                 Text(usageSubtitle(for: word))
                   .font(.stHelper)
-                  .foregroundStyle(.stTextTertiary)
+                  .foregroundStyle(.stTextSecondary)
               }
               Spacer()
               Button("Edit") {

@@ -30,10 +30,15 @@ struct EnviousWisprApp: App {
   }
 
   var body: some Scene {
+    // Real title (app name) so the Window menu, window switcher, and VoiceOver
+    // have a name for this window; the visible title text is suppressed by the
+    // principal toolbar item (the centered wordmark is the visible identity).
+    // AppWindowCoordinator identifies this window by this title.
     Window(bootstrapper.mainWindowTitle, id: "main") {
       bootstrapper.mainWindowContent()
     }
     .defaultSize(width: 820, height: 600)
+    .windowToolbarStyle(.unifiedCompact)
 
     // Onboarding window — non-resizable, centered, auto-opens on first launch.
     Window(bootstrapper.onboardingWindowTitle, id: "onboarding") {
