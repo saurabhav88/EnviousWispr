@@ -6,7 +6,7 @@ import Foundation
 //
 // The authoritative WhisperKit live-transcription session — the "Live
 // transcription" toggle's ON path for a picked (locked) language. Unlike the
-// best-effort `WhisperKitIncrementalWorker` (which re-decodes and string-stitches
+// deleted best-effort incremental worker (#1315; it re-decoded and string-stitched
 // a separate tail, structurally producing the mid-phrase-duplication and
 // wrong-ending bugs #1276 fixes), this session runs ONE growing decode stream
 // compared against ITSELF via segment-count-lag holdback, so neither meshing bug
@@ -128,7 +128,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
 
   /// Minimum uncovered-tail duration (seconds) below which the flush skips the
   /// tail decode and accepts the confirmed prefix — a sub-100ms tail is too short
-  /// to carry a word (matches `WhisperKitIncrementalWorker`'s 1600-sample /
+  /// to carry a word (matches the deleted worker's 1600-sample /
   /// ~100ms tail threshold). Above this, a VOICED tail (see `tailEnergyFloor`) is
   /// always decoded so short final words are not dropped (Codex r6 P2); the
   /// hallucination guard is the ENERGY floor, not this duration.
@@ -136,7 +136,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
 
   /// RMS energy floor for the uncovered tail — below this the tail is treated as
   /// silence and the flush skips it (the confirmed prefix is the complete
-  /// transcript). Matches `WhisperKitIncrementalWorker`'s tail-decode energy gate
+  /// transcript). Matches the deleted worker's tail-decode energy gate
   /// (`rms > 0.001`), so a tail that clears BOTH the duration and energy gates but
   /// still decodes empty is a genuine silent drop → force the batch fallback.
   private let tailEnergyFloor: Float = 0.001
@@ -353,7 +353,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     let durationSec = Float(count) / 16_000.0
     let uncoveredTailSec = durationSec - flushConfirmedSec
 
-    // Tail gate (mirrors `WhisperKitIncrementalWorker`'s tail-decode gate exactly:
+    // Tail gate (mirrors the deleted worker's tail-decode gate exactly:
     // uncovered > ~100ms AND RMS > 0.001). ENERGY is the silence signal, not
     // duration: skip the flush decode and accept the confirmed prefix as complete
     // ONLY when the uncovered tail is genuine trailing SILENCE (low energy) or is

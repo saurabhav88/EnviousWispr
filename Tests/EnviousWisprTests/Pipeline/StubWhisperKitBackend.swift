@@ -39,9 +39,6 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
     backendType: .whisperKit
   )
   var observeLIDResult: LIDObservationBatch = .observations([])
-  /// When set, `makeIncrementalSession` returns this session; otherwise nil
-  /// (mirrors the "model not loaded" path).
-  var incrementalSessionFactory: (@Sendable () -> (any WhisperKitIncrementalSession)?)?
   /// When set, `makeStreamingSession` returns this session; otherwise nil
   /// (mirrors the "model not loaded" path). #1276 PR-2.
   var streamingSessionFactory: (@Sendable () -> (any WhisperKitIncrementalSession)?)?
@@ -58,7 +55,6 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
   var lastTranscribeSamples: [Float] = []
   var lastTranscribeOptions: TranscriptionOptions = .default
   var observeLIDCount = 0
-  var makeIncrementalSessionCount = 0
   var makeStreamingSessionCount = 0
   var unloadCount = 0
 
@@ -74,11 +70,6 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
   func setTranscribeResult(_ v: ASRResult) { transcribeResult = v }
   func setTranscribeThrows(_ v: (any Error)?) { transcribeThrows = v }
   func setObserveLIDResult(_ v: LIDObservationBatch) { observeLIDResult = v }
-  func setIncrementalSessionFactory(
-    _ v: (@Sendable () -> (any WhisperKitIncrementalSession)?)?
-  ) {
-    incrementalSessionFactory = v
-  }
   func setStreamingSessionFactory(
     _ v: (@Sendable () -> (any WhisperKitIncrementalSession)?)?
   ) {
@@ -140,12 +131,6 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
     return observeLIDResult
   }
 
-  func makeIncrementalSession(options: TranscriptionOptions) async
-    -> (any WhisperKitIncrementalSession)?
-  {
-    makeIncrementalSessionCount += 1
-    return incrementalSessionFactory?()
-  }
 
   func makeStreamingSession(options: TranscriptionOptions) async
     -> (any WhisperKitIncrementalSession)?

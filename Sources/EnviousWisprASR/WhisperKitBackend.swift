@@ -411,7 +411,7 @@ public actor WhisperKitBackend: ASRBackend {
 
   /// Single vend gate for the shared `WhisperKit` instance. Every
   /// shared-instance caller (`transcribe`, `observeLID`,
-  /// `makeIncrementalSession`) MUST obtain the kit through this helper, never
+  /// `makeStreamingSession`) MUST obtain the kit through this helper, never
   /// by reading the state's kit directly, so a request can never race a
   /// straggling orphaned warm-up decode from a prior timeout (no proven
   /// concurrent-decode safety on one `WhisperKit` instance).
@@ -489,24 +489,10 @@ public actor WhisperKitBackend: ASRBackend {
 
   // MARK: - Private
 
-  // R2 (#360): vend an opaque incremental session so Pipeline does not need
-  // the WhisperKit handle. Returns nil when the model is not loaded; caller
-  // must treat as "incremental unavailable" and fall back to batch transcribe
-  // (which itself will throw `ASRError.notReady` if the model is also nil —
-  // both paths gate on the same `whisperKit` reference). See
-  // `docs/feature-requests/issue-360-2026-04-30-r2-approach-c-plus-lid-split.md`
-  // §9 for the honest fallback semantics.
-  package func makeIncrementalSession(options: TranscriptionOptions)
-    async -> (any WhisperKitIncrementalSession)?
-  {
-    guard let kit = await readyKitAfterWarmupDrain() else { return nil }
-    let opts = makeDecodeOptions(from: options, sampleCount: 0)
-    return WhisperKitIncrementalWorker(whisperKit: kit, decodingOptions: opts)
-  }
 
   // #1276 Step 2 (PR-2): vend the authoritative streaming session for the "Live
   // transcription" toggle's ON + locked-language path. Mirrors
-  // `makeIncrementalSession` (same nil-on-not-loaded contract, same
+  // the deleted worker vend (same nil-on-not-loaded contract, same
   // `readyKitAfterWarmupDrain` vend) but constructs the confirmed-segment
   // `WhisperKitStreamingSession`. `sampleCount: 0` forces `chunkingStrategy: .none`
   // in the base options (the session sets `clipTimestamps = [lastConfirmedSec]` and
