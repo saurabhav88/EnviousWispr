@@ -189,6 +189,15 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
   /// `LLMRetryPolicy` (the connector already performs the single
   /// connection-refused retry that covers the restart-once window).
   case egOneSkipped(EGOneSkipReason)
+  /// #1305: the Ollama readiness preflight found local polish not usable —
+  /// server down (`.providerUnreachable`) or armed model not installed
+  /// (`.modelUnavailable`). Thrown by the `LLMPolishStep` entry gate BEFORE any
+  /// polisher construction or connector retry loop. Semantics: a SURFACED SKIP,
+  /// the third class between Failure and Bypass — `polishedText` nil, no
+  /// provider stamp, user notice YES (skipped tone, pinned copy in
+  /// `PolishFailureReason.ollamaPreflightSkipMessage`), Sentry capture NO,
+  /// PostHog `llm.polish_skipped` YES. Non-retryable by `LLMRetryPolicy`.
+  case localPolishNotReady(PolishFailureReason)
   /// A cloud/Ollama polish failure carrying its specific classified reason
   /// (#945). The single adapter that threads the rich `PolishFailureReason`
   /// catalog through the existing `throws LLMError` contract: connectors throw
@@ -218,6 +227,11 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
     case .egOneSkipped(let reason):
       // Silent bypass — never an on-screen notice; log/debug reads only.
       return "EG-1 polish skipped (\(reason.rawValue))."
+    case .localPolishNotReady(let reason):
+      // Surfaced skip (#1305) — the on-screen notice is the pinned copy in
+      // `PolishFailureReason.ollamaPreflightSkipMessage`, composed by the
+      // runner. This generic description exists only for logs.
+      return "Local polish not ready (\(reason.telemetryTag))."
     case .classified(let reason):
       // The user-facing, provider-specific notice is composed by the runner via
       // `reason.composedMessage(provider:)`. This generic description exists only
@@ -243,6 +257,8 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
     case (.outputLanguageDrift(let le, let la), .outputLanguageDrift(let re, let ra)):
       return le == re && la == ra
     case (.egOneSkipped(let a), .egOneSkipped(let b)):
+      return a == b
+    case (.localPolishNotReady(let a), .localPolishNotReady(let b)):
       return a == b
     case (.classified(let a), .classified(let b)):
       return a == b

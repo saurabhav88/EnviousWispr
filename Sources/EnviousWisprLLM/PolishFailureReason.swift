@@ -163,6 +163,38 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     "\(leadIn.text) \(message(provider: provider))"
   }
 
+  /// #1305: the pinned surfaced-skip notice for the Ollama readiness PREFLIGHT
+  /// path only (server down / model missing found before any attempt started).
+  /// Nil for every other reason. Deliberately distinct from the mid-flight
+  /// `composedMessage` copy: at preflight time no attempt failed, so the tone
+  /// is the skip lead-in (which `isSkipNotice` and the completion planner
+  /// already recognize), and the "no model is installed" wording never implies
+  /// a visible selection the picker may honestly not show. Mid-flight failures
+  /// on a running server keep today's `composedMessage(provider:)` copy.
+  public var ollamaPreflightSkipMessage: String? {
+    switch self {
+    case .providerUnreachable:
+      return "\(LeadIn.skipped.text) Ollama isn't running. Start it in Settings → AI Polish."
+    case .modelUnavailable:
+      return
+        "\(LeadIn.skipped.text) no model is installed in Ollama. Download one in Settings → AI Polish."
+    default:
+      return nil
+    }
+  }
+
+  /// #1305: the `llm.polish_skipped` reason string for the Ollama preflight
+  /// path. Joins the existing `local_polish_` prefix family (EG-1's
+  /// `EGOneSkipReason`) so one analytics query prefix captures every local
+  /// polish skip mode. Content-free; nil for non-preflight reasons.
+  public var ollamaPreflightSkipTelemetryReason: String? {
+    switch self {
+    case .providerUnreachable: return "local_polish_ollama_server_down"
+    case .modelUnavailable: return "local_polish_ollama_model_missing"
+    default: return nil
+    }
+  }
+
   /// Whether a composed notice string represents a "skipped" (not-really-broken)
   /// outcome rather than a hard failure. Keyed off the single `LeadIn.skipped.text`
   /// constant that `composedMessage` also uses, so it can never drift from the
@@ -201,6 +233,10 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
         return .modelUnavailable
       case .requestFailed(let msg):
         return msg.contains("server error") ? .providerServerError : .badRequest
+      case .localPolishNotReady(let reason):
+        // #1305: the runner handles this case on its dedicated surfaced-skip
+        // arm before reaching here. Defensive unwrap for any other caller.
+        return reason
       case .frameworkUnavailable, .modelNotReady,
         .unsupportedInputLanguage, .outputLanguageDrift, .egOneSkipped:
         // Silent-skip cases the runner never routes here (AFM is excluded;

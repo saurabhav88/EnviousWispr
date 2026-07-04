@@ -146,6 +146,9 @@ struct EGOnePipelineRoutingTests {
     let step = LLMPolishStep(keychainManager: KeychainManager())
     step.llmProvider = .ollama
     step.llmModel = "llama3.2"
+    // #1305: report ready so this stays a MID-FLIGHT surfacing test (the
+    // preflight gate would otherwise intercept, and would probe a real socket).
+    step.ollamaReadinessProbe = { _ in .ready }
     struct Down: TranscriptPolisher {
       func polish(
         text: String, instructions: PolishInstructions, config: LLMProviderConfig,

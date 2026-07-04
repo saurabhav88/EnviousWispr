@@ -1292,7 +1292,16 @@ struct AIPolishSettingsView: View {
             }
           } else if entry.isDownloaded {
             Button {
-              setup.ollamaSetup.deleteModel(name: entry.name)
+              // #1305: sequence delete → discovery refresh so the model picker
+              // (and the armed selection, via applyDiscoveredModels) never
+              // keeps showing a model that no longer exists. The Task outlives
+              // a dismissed view harmlessly — discovery targets app-owned
+              // coordinators.
+              Task {
+                await setup.ollamaSetup.deleteModel(name: entry.name)
+                await llmDiscovery.validateKeyAndDiscoverModels(
+                  provider: .ollama, settings: settings)
+              }
             } label: {
               Text("Delete")
                 .foregroundStyle(.stError)

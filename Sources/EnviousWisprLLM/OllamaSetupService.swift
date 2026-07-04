@@ -501,38 +501,48 @@ public final class OllamaSetupService {
   }
 
   /// Delete a model by name via DELETE /api/delete.
-  public func deleteModel(name: String) {
-    Task {
-      guard let url = URL(string: "\(Self.baseURL)/api/delete") else { return }
-      let body: [String: Any] = ["model": name]
-      var request = URLRequest(url: url)
-      request.httpMethod = "DELETE"
-      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-      request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-      request.timeoutInterval = 30
+  ///
+  /// #1305: `async` (was fire-and-forget inside its own Task) — returns after
+  /// the server delete + `downloadedModels` mutation complete, so the delete
+  /// button can sequence a discovery refresh on completion and the picker never
+  /// disagrees with reality. Still never throws: errors remain swallow-and-log,
+  /// so callers that don't sequence behave exactly as before. `transport` is a
+  /// test seam (mirrors `OllamaConnector.networkExecutor`, #901) so the
+  /// mutation-before-return contract is assertable without a live server.
+  public func deleteModel(
+    name: String,
+    transport: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil
+  ) async {
+    guard let url = URL(string: "\(Self.baseURL)/api/delete") else { return }
+    let body: [String: Any] = ["model": name]
+    var request = URLRequest(url: url)
+    request.httpMethod = "DELETE"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+    request.timeoutInterval = 30
 
-      do {
-        let (_, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-          downloadedModels.removeAll(where: { $0.exactName == name })
-          // Reset warm-up if the deleted model was warmed or warming
-          let canonical = Self.canonicalModelName(name)
-          switch warmupState {
-          case .warm(let m, _) where m == canonical,
-            .warming(let m) where m == canonical:
-            resetWarmup()
-          default:
-            break
-          }
-          // If current model was deleted, update setup state
-          if downloadedModels.isEmpty {
-            setupState = .runningNoModels
-            UserDefaults.standard.set(false, forKey: Self.lastKnownStateKey)
-          }
+    let send = transport ?? { try await URLSession.shared.data(for: $0) }
+    do {
+      let (_, response) = try await send(request)
+      if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+        downloadedModels.removeAll(where: { $0.exactName == name })
+        // Reset warm-up if the deleted model was warmed or warming
+        let canonical = Self.canonicalModelName(name)
+        switch warmupState {
+        case .warm(let m, _) where m == canonical,
+          .warming(let m) where m == canonical:
+          resetWarmup()
+        default:
+          break
         }
-      } catch {
-        // Silently ignore delete errors -- user can try again
+        // If current model was deleted, update setup state
+        if downloadedModels.isEmpty {
+          setupState = .runningNoModels
+          UserDefaults.standard.set(false, forKey: Self.lastKnownStateKey)
+        }
       }
+    } catch {
+      // Silently ignore delete errors -- user can try again
     }
   }
 

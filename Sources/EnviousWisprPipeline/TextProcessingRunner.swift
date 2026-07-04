@@ -171,6 +171,22 @@ internal final class TextProcessingRunner {
         // raw deterministically-cleaned text ships, no "AI polish failed".
         // Cloud-provider timeouts still surface (transient network signal).
         let isEGOnePolishTimeout = isTimeout && polishProviderAtStart == .egOne
+        // #1305: the Ollama readiness preflight found local polish not usable
+        // (server down / model missing) BEFORE any attempt started. This is
+        // the third, SURFACED-SKIP class between Failure and Bypass: user
+        // notice YES (pinned skipped-tone copy), Sentry capture NO (an
+        // expected, non-crashing state the user can sit in for hours —
+        // per-dictation error events would flood the tracker without signal),
+        // PostHog `llm.polish_skipped` YES. Mid-flight failures on a running
+        // server (post-preflight races, 5xx) keep the full surfaced-failure
+        // path below. Locked by the adversarial tests in
+        // TextProcessingRunnerCaptureTests.
+        var localPolishSkipReason: PolishFailureReason?
+        if let llmError = error as? LLMError,
+          case .localPolishNotReady(let notReady) = llmError
+        {
+          localPolishSkipReason = notReady
+        }
         let reason: String
         if isAppleIntelligencePolishTimeout {
           reason =
@@ -182,6 +198,8 @@ internal final class TextProcessingRunner {
           reason = "timed out"
         } else if let cw = contextWindowSkip {
           reason = "skipped: too long for on-device AI polish (\(cw.stage.rawValue))"
+        } else if let notReady = localPolishSkipReason {
+          reason = "skipped: Ollama polish not ready (\(notReady.telemetryTag)), using raw text"
         } else {
           reason = "failed: \(error.localizedDescription)"
         }
@@ -227,7 +245,14 @@ internal final class TextProcessingRunner {
         // `CancellationError` is already short-circuited above
         // (`catch is CancellationError`); this covers the URL-loading variant.
         let isCancellationLike = (error as? URLError)?.code == .cancelled
-        if step.errorSurfacePolicy == .surface && !isSilentPolishSkip
+        if step.errorSurfacePolicy == .surface, let skipReason = localPolishSkipReason {
+          // #1305 surfaced skip: set the pinned skipped-tone notice, fire NO
+          // Sentry capture (that is the point of the class). The composed
+          // fallback covers a defensive future reason without pinned copy.
+          polishError =
+            skipReason.ollamaPreflightSkipMessage
+            ?? skipReason.composedMessage(provider: .ollama)
+        } else if step.errorSurfacePolicy == .surface && !isSilentPolishSkip
           && contextWindowSkip == nil && !isAppleIntelligencePolishTimeout
           && !isEGOnePolishTimeout
           && !isCancellationLike
@@ -291,6 +316,13 @@ internal final class TextProcessingRunner {
         } else if let egOneSkipReason {
           TelemetryService.shared.polishSkipped(
             provider: LLMProvider.egOne.rawValue, reason: egOneSkipReason)
+        } else if let skipReason = localPolishSkipReason?.ollamaPreflightSkipTelemetryReason {
+          // #1305: preflight skips ride the same lightweight `local_polish_`
+          // reason family as EG-1 — the observability split between "preflight
+          // said not ready" (here) and "mid-flight failure on a running
+          // server" (the capture path above) falls out of the reason strings.
+          TelemetryService.shared.polishSkipped(
+            provider: LLMProvider.ollama.rawValue, reason: skipReason)
         }
         // #657 (2026-05-05): emit cap-trip telemetry when WordCorrectionStep
         // exceeds its 3s `maxDuration`. The step's result was discarded; raw

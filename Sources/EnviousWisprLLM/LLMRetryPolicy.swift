@@ -26,6 +26,12 @@ enum LLMRetryPolicy {
         // window already happened inside `EGOneConnector`. Retrying here
         // would stack retries and delay the raw-text fallback.
         return false
+      case .localPolishNotReady:
+        // EXPLICIT (#1305): the Ollama preflight found the server down or the
+        // model missing BEFORE any attempt started. Retrying would reintroduce
+        // the doomed-wait the preflight exists to remove; the next dictation
+        // re-probes fresh.
+        return false
       default: return false
       }
     }

@@ -70,6 +70,10 @@ struct TextProcessingRunnerCaptureTests {
     step.llmProvider = provider
     step.llmModel = model
     step.makePolisher = { _, _, _ in ThrowingPolisher(makeError: makeError) }
+    // #1305: the .ollama entry gate consults a readiness probe before the
+    // polisher. These are MID-FLIGHT-path tests (failure on a running server),
+    // so the probe reports ready — and never touches a real network.
+    step.ollamaReadinessProbe = { _ in .ready }
     return step
   }
 

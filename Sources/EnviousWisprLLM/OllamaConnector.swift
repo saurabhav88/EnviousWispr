@@ -19,6 +19,21 @@ public struct OllamaEvictOutcome: Sendable {
   }
 }
 
+/// #1305: the instant answer to "is an Ollama polish attempt worth starting?"
+/// Returned by `OllamaConnector.preflightReadiness(model:)`; consumed by the
+/// polish-entry gate in `LLMPolishStep`. Per-attempt truth — callers must NOT
+/// cache it across dictations (the user can quit/start Ollama at any time).
+public enum OllamaReadiness: Sendable, Equatable {
+  /// Server responded and the tags list contains the model — attempt polish.
+  case ready
+  /// Transport error, timeout, non-2xx, or unparseable body — "Ollama is not
+  /// responding" class.
+  case serverDown
+  /// Server responded with a parsed tags list that has no canonical match for
+  /// the model (or the model string is empty — nothing armed).
+  case modelMissing
+}
+
 /// Ollama local LLM connector. Uses Ollama's native /api/chat endpoint
 /// for access to `think`, `keep_alive`, and timing telemetry.
 /// Requires Ollama to be running: https://ollama.com
@@ -171,6 +186,79 @@ public struct OllamaConnector: TranscriptPolisher {
       polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
         .strippingLLMPreamble()
     )
+  }
+
+  // MARK: - Readiness Preflight (#1305)
+
+  /// Dedicated session for the readiness probe: ephemeral, 1.0s request AND
+  /// resource timeouts. Separate from `LLMNetworkSession` so a probe against a
+  /// down server can never occupy or reconfigure the polish session, and so the
+  /// probe's aggressive timeout never leaks into real polish requests.
+  private static let readinessSession: URLSession = {
+    let config = URLSessionConfiguration.ephemeral
+    config.timeoutIntervalForRequest = 1.0
+    config.timeoutIntervalForResource = 1.0
+    return URLSession(configuration: config)
+  }()
+
+  /// One GET /api/tags on this connector's `baseURL` (the same base the polish
+  /// request uses, so probe truth cannot diverge from request truth), answering
+  /// the three-state readiness question. Localhost-only by construction — the
+  /// probe never touches any external host.
+  ///
+  /// Never throws and performs no retries: every transport failure, timeout,
+  /// non-2xx, and unparseable body maps to `.serverDown`. The session timeouts
+  /// bound the request; `withDeadline` is the absolute wall-clock net on top so
+  /// a socket-accept wedge cannot hang the caller past ~1s either.
+  ///
+  /// `executor`/`deadlineSeconds` are test seams (deterministic classification
+  /// + deadline behavior without a live server); production callers use the
+  /// defaults.
+  public func preflightReadiness(
+    model: String,
+    executor: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil,
+    deadlineSeconds: Double = 1.0
+  ) async -> OllamaReadiness {
+    // Empty model string → nothing armed → modelMissing by definition,
+    // without spending a network round trip.
+    guard !model.isEmpty else { return .modelMissing }
+    guard let url = URL(string: "\(baseURL)/api/tags") else { return .serverDown }
+    var mutableRequest = URLRequest(url: url)
+    mutableRequest.httpMethod = "GET"
+    let request = mutableRequest  // immutable copy for the @Sendable closure below
+    let transport = executor ?? { try await Self.readinessSession.data(for: $0) }
+    let outcome = await withDeadline(seconds: deadlineSeconds) { () -> OllamaReadiness in
+      do {
+        let (data, response) = try await transport(request)
+        return Self.classifyReadiness(data: data, response: response, model: model)
+      } catch {
+        return .serverDown
+      }
+    }
+    // Deadline elapsed with no answer — the server is wedged, treat as down.
+    return outcome ?? .serverDown
+  }
+
+  /// Pure response → readiness classifier (#1305). Membership uses
+  /// `OllamaSetupService.canonicalModelName` (equates `llama2` and
+  /// `llama2:latest`), never raw string equality. Unit-testable without
+  /// network mocking, mirroring `classify(statusCode:bodyString:)` below.
+  static func classifyReadiness(
+    data: Data, response: URLResponse, model: String
+  ) -> OllamaReadiness {
+    guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+      return .serverDown
+    }
+    guard
+      let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+      let models = json["models"] as? [[String: Any]]
+    else {
+      return .serverDown
+    }
+    let target = OllamaSetupService.canonicalModelName(model)
+    let installed = models.compactMap { $0["name"] as? String }
+      .map(OllamaSetupService.canonicalModelName)
+    return installed.contains(target) ? .ready : .modelMissing
   }
 
   // MARK: - Eviction (#295)
