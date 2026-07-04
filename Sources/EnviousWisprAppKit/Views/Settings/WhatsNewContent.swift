@@ -26,6 +26,54 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.3.0
+
+    Entry(
+      id: "eg1-native-polish",
+      icon: "sparkles",
+      title: "Meet EG-1, our new recommended polish engine",
+      description:
+        "EnviousWispr now ships its own AI polish model, trained specifically for dictation, and it is remarkably strong: a 94.7% pass rate across our 1,890-case benchmark, edging out the big cloud models. It shines exactly where built-in Apple Intelligence falls short: turning spoken lists into real lists, honoring your mid-sentence self-corrections, and breaking long dictations into clean paragraphs. It is fast, typically polishing a dictation in under a second, and completely offline: download it once and it runs entirely on your Mac, no account, no API key, no internet after setup. EG-1 is our recommended engine going forward.",
+      category: .newFeatures,
+      version: "2.3.0"
+    ),
+    Entry(
+      id: "whisperkit-engine-redesign",
+      icon: "waveform.badge.mic",
+      title: "The All Languages engine, redesigned",
+      description:
+        "We rebuilt the All Languages engine from the ground up to transcribe live while you speak as well as in one pass at the end of a recording. Your text now lands almost immediately when you stop, no matter how long you talked, first words come through quicker, and the redesign makes the engine more robust: fewer imagined phrases like a stray \"thank you\" during quiet moments, and no more text going missing or repeating in longer recordings. To stream live, pick a specific language in Settings; with Auto-detect on, the engine waits for the full recording so it can identify your language accurately.",
+      category: .newFeatures,
+      version: "2.3.0"
+    ),
+    Entry(
+      id: "settings-redesign",
+      icon: "paintbrush",
+      title: "Settings got a full visual refresh",
+      description:
+        "We updated the Settings page to be easier to read and navigate. Settings and History now share one polished, unified look, with roomier spacing, easier-to-read text, and a redesigned AI Polish tab where each engine has its own card with everything you need to set it up.",
+      category: .qualityOfLife,
+      version: "2.3.0"
+    ),
+    Entry(
+      id: "ollama-misconfig-fix",
+      icon: "checkmark.seal",
+      title: "Smoother behavior when Ollama polish is not set up right",
+      description:
+        "If Ollama polish is selected but not properly set up, say the model is missing or Ollama is not running, the app no longer misbehaves. It tells you clearly what is wrong and delivers your unpolished text right away.",
+      category: .betterOllamaSupport,
+      version: "2.3.0"
+    ),
+    Entry(
+      id: "ordinal-numbers-fix",
+      icon: "textformat.123",
+      title: "Smarter built-in number handling",
+      description:
+        "We improved the always-on, non-AI part of the pipeline that formats spoken numbers. Phrases like \"two hundredth anniversary\" and \"third-largest city\" now come out exactly right instead of turning into odd digit mixes.",
+      category: .fasterAndMoreReliable,
+      version: "2.3.0"
+    ),
+
     // MARK: - v2.2.1
 
     Entry(
