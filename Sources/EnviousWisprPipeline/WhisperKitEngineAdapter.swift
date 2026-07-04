@@ -446,7 +446,11 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// then runs the clean batch fallback (fail-open, heart stays alive).
   private func startStreamingSession(_ id: SessionID, options: TranscriptionOptions) async {
     guard let session = await backend.makeStreamingSession(options: options) else {
-      sessionStreamingDegradeReason = "model_not_ready"
+      // Stale guard (cloud r2): a cancel + beginSession(B) during the vend
+      // await must not overwrite B's per-session telemetry state.
+      if sessionID == id, !isCancelled {
+        sessionStreamingDegradeReason = "model_not_ready"
+      }
       Task {
         await AppLogger.shared.log(
           "WhisperKit recording started (batch mode, streaming requested but model not loaded)",
@@ -772,8 +776,10 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
       ? "fallback_batch" : "clean_batch"
     if let flush = sessionDegradedFlushResult {
       // A streaming session ran before this fallback: carry its counters.
+      // `samplesCovered` is 0 by construction on a forced fallback — omit it
+      // rather than report zero coverage as fact (cloud r2).
       diagnostics.incrementalDecodeCount = flush.decodeCount
-      diagnostics.incrementalSamplesCovered = flush.samplesCovered
+      diagnostics.incrementalSamplesCovered = flush.samplesCovered > 0 ? flush.samplesCovered : nil
       diagnostics.incrementalTailDecodeMs = flush.tailDecodeMs
       diagnostics.stopWhileDecodeInFlight = flush.stopWhileDecodeInFlight
       diagnostics.streamingMaxUnconfirmedWindowSec =
