@@ -1,4 +1,6 @@
 import EnviousWisprCore
+import Foundation
+
 @preconcurrency import WhisperKit
 
 /// Opaque handle to a WhisperKit-backed incremental transcription session.
