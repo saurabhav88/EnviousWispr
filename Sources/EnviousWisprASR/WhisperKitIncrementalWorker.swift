@@ -23,6 +23,12 @@ package struct IncrementalResult: Sendable {
 package protocol WhisperKitTranscribing: Sendable {
   func transcribe(audioArray: [Float], decodeOptions: DecodingOptions?) async throws
     -> [TranscriptionResult]
+  /// Tokenize text into decoder token IDs for `DecodingOptions.promptTokens`
+  /// (prior-text conditioning / `condition_on_previous_text`). Returns `[]` if the
+  /// tokenizer is not loaded. Lets the streaming session feed the confirmed prefix
+  /// as context on each decode so the model does not hallucinate a trailing
+  /// "thank you" on a breath tail (#1276 investigation: decoding blind = the cause).
+  func encodeText(_ text: String) -> [Int]
 }
 
 // Retroactive @unchecked Sendable: WhisperKit (upstream, @preconcurrency-imported)
@@ -43,6 +49,14 @@ extension WhisperKit: WhisperKitTranscribing {
   {
     try await self.transcribe(
       audioArray: audioArray, decodeOptions: decodeOptions, callback: nil, segmentCallback: nil)
+  }
+
+  package func encodeText(_ text: String) -> [Int] {
+    // Leading space matters: OpenAI's reference transcribe.py tokenizes the
+    // conditioning prompt as `" " + prompt.strip()` so the tokens land on the
+    // space-prefixed BPE distribution the decoder was trained on (verified in
+    // the prefill trace: words tokenize as `Ġ`-prefixed IDs with this form).
+    tokenizer?.encode(text: " " + text.trimmingCharacters(in: .whitespaces)) ?? []
   }
 }
 

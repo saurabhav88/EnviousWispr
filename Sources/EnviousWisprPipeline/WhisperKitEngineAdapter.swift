@@ -21,12 +21,18 @@ import Foundation
 // (Rung 2B kernel hook).
 //
 // #1307 (Step 2, PR-1): the incremental decode worker + tail-stitch is no
-// longer started or consulted on any path — every finalize now runs ONE clean
-// batch decode over the authoritative capture buffer, which removes the
-// worker's structural mid-phrase-duplication and wrong-ending bugs. The worker
-// type (`WhisperKitIncrementalWorker`) and its vend (`makeIncrementalSession`)
-// remain present-but-unreferenced by production for Step 3 to delete with a
-// freeze test.
+// longer started or consulted on any path; the worker's structural
+// mid-phrase-duplication and wrong-ending bugs are gone. The worker type
+// (`WhisperKitIncrementalWorker`) and its vend (`makeIncrementalSession`) remain
+// present-but-unreferenced by production for Step 3 to delete with a freeze test.
+//
+// #1308 (Step 2, PR-2): the "Live transcription" toggle. On + a picked (locked)
+// language starts the authoritative `WhisperKitStreamingSession` (confirmed-
+// segment holdback, single-coordinate `streamingPCM`, Parakeet feed-task drain
+// ported wholesale) whose flush IS the transcript — meshing-free by construction
+// (one growing stream compared against itself, no second independent decode).
+// Every other path (toggle off, or on + auto language) finalizes through the
+// PR-1 clean batch decode. Routing lives in `beginSession(streaming:)`.
 //
 // Scope (epic §4): an adapter owns its own ASR and rescue and NOTHING else —
 // no capture, no finalization, no paste, no UI, no FSM, no kernel state. The
@@ -139,6 +145,39 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// `finalize()` commits.
   private var observedSpeechSegments: [SpeechSegment] = []
 
+  // MARK: Streaming session (#1276 Step 2, PR-2)
+
+  /// The authoritative live-transcription session, present only when the "Live
+  /// transcription" toggle is ON and the language is picked (locked). Its
+  /// `finalize` output IS the transcript (not a best-effort rescue). `nil` on the
+  /// toggle-OFF and auto-language paths, which finalize through the clean batch
+  /// decode (PR-1). Reuses the `WhisperKitIncrementalSession` seam (#360).
+  private var streamingSession: (any WhisperKitIncrementalSession)?
+
+  /// `true` between a successful streaming-session start and finalize/cancel.
+  private var streamingActive = false
+
+  /// The adapter-owned LOSSLESS audio the streaming session reads — the single
+  /// coordinate the whole streaming path lives in (§3.2). Fed by `acceptAudio`
+  /// via retained `streamingFeedTasks` (Parakeet's drain pattern ported
+  /// wholesale) and pulled by the session's provider closure (loop + flush). It
+  /// is DISTINCT from the lossy `retainedPCM` and from `batchCaptureSamples`
+  /// (the batch path's authoritative buffer): the streaming flush never reads
+  /// `finalSamples`/`batchCaptureSamples`, so the pre-roll coordinate mismatch is
+  /// structurally irrelevant. Bounded by the same recording cap. Cleared on
+  /// `beginSession` / `cancel` / `finalize`.
+  private var streamingPCM: [Float] = []
+
+  /// In-flight streaming-feed tasks — each `acceptAudio` appends the buffer's
+  /// samples to `streamingPCM` on its own retained `Task`, and `finalize` awaits
+  /// every handle (`drainStreamingFeeds`) before the session flush, so a non-empty
+  /// streaming result is never finalized missing tail buffers. Awaiting the actual
+  /// task handle IS the completion signal — no wall-clock deadline (mirrors
+  /// `ParakeetEngineAdapter.feedTasks`; RULE: port-proven-patterns-wholesale).
+  /// Cleared at `beginSession` / `cancel`; a value snapshot is drained at
+  /// `finalize`.
+  private var streamingFeedTasks: [Task<Void, Never>] = []
+
   /// Cap on `retainedPCM` — `maxRecordingDuration` worth of 16 kHz mono samples
   /// (3600 s * 16 kHz = 57.6 M Float = ~230 MB; #1060 raised the cap 300→3600).
   /// Mirrors Parakeet's cap so the two engines size memory the same way. On
@@ -210,15 +249,19 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     ASREngineIdentity(backendType: .whisperKit)
   }
 
-  /// WhisperKit decodes batch-only (no streaming) and runs engine-internal
-  /// LID. Static — the kernel branches on `capabilities`, never on engine
-  /// identity (epic §3.4).
+  /// WhisperKit runs engine-internal LID and, since #1276 Step 2 (PR-2),
+  /// advertises streaming: the kernel's existing `useStreamingASR &&
+  /// supportsStreaming` gate then routes the "Live transcription" toggle through
+  /// `beginSession(streaming: true)`. The adapter still degrades to the clean
+  /// batch decode when it cannot safely stream (auto language, model not ready);
+  /// the capability only says "you may ask me to stream." Static — the kernel
+  /// branches on `capabilities`, never on engine identity (epic §3.4).
   var capabilities: ASREngineCapabilities {
     // decodesConditionedBatchSamples: false — WhisperKit ignores `batchSamples`
     // and decodes the raw capture via clipTimestamps (#950 tail-trim diagnostic
     // is meaningless for it; the VAD trim does not drop its ASR input).
     ASREngineCapabilities(
-      supportsStreaming: false, supportsLanguageDetection: true,
+      supportsStreaming: true, supportsLanguageDetection: true,
       decodesConditionedBatchSamples: false)
   }
 
@@ -300,11 +343,17 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
 
   // MARK: ASREngineAdapter — session lifecycle
 
-  /// Begin a session. WhisperKit doesn't stream — `streaming` is ignored for
-  /// the live-stream decision. #1307: every session finalizes through one
-  /// clean batch decode on stop (both `.locked` and `.auto` language modes);
-  /// no incremental worker is started on any path. This removes the worker's
-  /// structural mid-phrase-duplication and wrong-ending bugs.
+  /// Begin a session. #1276 Step 2 (PR-2) routing on `(streaming, language)`:
+  /// - `streaming && locked` (language non-nil): start the authoritative
+  ///   `WhisperKitStreamingSession` — live confirmed-segment decoding whose flush
+  ///   IS the transcript.
+  /// - `streaming && auto` (language nil): DEGRADE to the clean batch decode (no
+  ///   session). Streaming commits to one language at the first cycle and
+  ///   WhisperKit's sub-second in-decoder LID is unreliable (the garble trap);
+  ///   auto stays batch until Ship 2 adds confidence-gated early-LID.
+  /// - `!streaming` (toggle off): the clean batch decode (PR-1).
+  /// Both non-streaming paths finalize through the single `runBatchFallback()`
+  /// helper, so neither meshing bug can occur on any path.
   func beginSession(_ id: SessionID, options: TranscriptionOptions, streaming: Bool) async throws {
     sessionID = id
     decodeOptions = options
@@ -320,6 +369,11 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     // without `observeSpeechSegments` can never decode a prior session's audio
     // (#827).
     batchCaptureSamples.removeAll(keepingCapacity: true)
+    // Reset streaming state for the fresh session (Parakeet-parity: clear feed
+    // handles + the lossless buffer at every session start).
+    streamingActive = false
+    streamingPCM.removeAll(keepingCapacity: true)
+    streamingFeedTasks.removeAll()
     // PR-5 Rung 4.5 (#827): the audio-capture session id is read at
     // finalize entry into a function-local snapshot, not here — kernel
     // calls `beginSession` BEFORE `beginCapturePhase` mints the id, and
@@ -333,33 +387,111 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     modelUnloadTask?.cancel()
     modelUnloadTask = nil
 
+    // Cancel + drop any orphan streaming session from a prior session that was
+    // superseded before finalize/cancel cleared the handle (mirrors PR-1's old
+    // orphan-worker cancel). AWAITED, not detached (Codex r2 P1): the orphan's
+    // in-flight decode is not cooperatively cancellable, and vending a new
+    // streaming session before it fully exits would put two concurrent
+    // transcribes on the same WhisperKit instance. `cancel()` returns only
+    // after the orphan's loop has exited, bounded by that single decode.
+    if let orphan = streamingSession {
+      streamingSession = nil
+      await orphan.cancel()
+    }
+
     // Refresh cached readiness — backend may have been unloaded by a prior
     // session's policy timer that fired while idle.
     cachedReadiness = await backend.isReady ? .ready : .notReady
 
-    // #1307: no incremental worker on any path — finalize batch-decodes on stop.
-    let languageForLog = options.language ?? "auto"
+    // Streaming ON + locked language → start the authoritative streaming session.
+    if streaming, options.language != nil {
+      await startStreamingSession(id, options: options)
+    } else {
+      let reason = streaming ? "auto language, batch (Ship 2)" : "toggle off"
+      let languageForLog = options.language ?? "auto"
+      Task {
+        await AppLogger.shared.log(
+          "WhisperKit recording started (batch mode, language: \(languageForLog), \(reason))",
+          level: .info, category: "WhisperKitEngineAdapter"
+        )
+      }
+    }
+  }
+
+  /// Start the streaming session under the stale-beginSession guards (a
+  /// `cancel()` + new `beginSession(B)` during the `makeStreamingSession` / `start`
+  /// await must not let a stale session install on the fresh session). On a
+  /// model-not-ready vend (`nil`) the adapter stays in batch mode — `finalize`
+  /// then runs the clean batch fallback (fail-open, heart stays alive).
+  private func startStreamingSession(_ id: SessionID, options: TranscriptionOptions) async {
+    guard let session = await backend.makeStreamingSession(options: options) else {
+      Task {
+        await AppLogger.shared.log(
+          "WhisperKit recording started (batch mode, streaming requested but model not loaded)",
+          level: .info, category: "WhisperKitEngineAdapter"
+        )
+      }
+      return
+    }
+    guard sessionID == id, !isCancelled else {
+      await session.cancel()
+      return
+    }
+    streamingSession = session
+    streamingActive = true
+    await session.start(audioSamplesProvider: { @MainActor [weak self] in
+      let samples = self?.streamingPCM ?? []
+      return (samples: samples, count: samples.count)
+    })
+    // Stale-beginSession guard AFTER `start`: if a cancel + new beginSession(B)
+    // landed during the start await, this session installed under the wrong
+    // session — uninstall + cancel it.
+    guard sessionID == id, !isCancelled else {
+      if (streamingSession as AnyObject?) === (session as AnyObject) {
+        streamingSession = nil
+        streamingActive = false
+      }
+      await session.cancel()
+      return
+    }
     Task {
       await AppLogger.shared.log(
-        "WhisperKit recording started (batch mode, language: \(languageForLog))",
+        "WhisperKit recording started (streaming, language: \(options.language ?? "?"))",
         level: .info, category: "WhisperKitEngineAdapter"
       )
     }
   }
 
-  /// Accept one captured buffer. Always appends to `retainedPCM` (bounded by
-  /// `retainedPCMCap`). A call after a terminal session is a no-op
-  /// (PR-1 §B.2.2). WhisperKit has no live stream — buffers are batched
-  /// until `finalize`.
+  /// Accept one captured buffer. Always appends to `retainedPCM` (kept for the
+  /// #827 coordinate tests until Step 3). For a streaming session, ALSO appends
+  /// the samples to the lossless `streamingPCM` on a retained `Task` in
+  /// `streamingFeedTasks`, which `finalize` drains before the flush (Parakeet's
+  /// feed-task-handle pattern). A call after a terminal session is a no-op.
   func acceptAudio(_ buffer: AudioBufferHandoff) {
     // Drop late buffers from a prior session — PR-1 §B.3 / FSM invariant 7:
     // a buffer whose `sessionID` is not the kernel's current session is
     // dropped. Without this gate, a delayed handoff after `beginSession(B)`
-    // would land in session B's `retainedPCM` and misalign the
-    // segment-derived `clipTimestamps` for batch decode (Codex code-diff r3
-    // defect 3).
+    // would land in session B's buffers and misalign coordinates (Codex
+    // code-diff r3 defect 3).
     guard !isTerminal, !isCancelled, buffer.sessionID == sessionID else { return }
     appendRetainedPCM(from: buffer.buffer)
+    guard streamingActive else { return }
+    // Mirror Parakeet's per-buffer hand-off: dispatch the streamingPCM append on
+    // its own retained `@MainActor` task and keep the handle so `finalize` awaits
+    // it. The buffer is MainActor-confined here; capturing it carries no
+    // cross-actor transfer.
+    let pcmBuffer = buffer.buffer
+    let handoffSession = buffer.sessionID
+    let task = Task { @MainActor [weak self] in
+      guard let self else { return }
+      // Re-check on the MainActor hop: a cancel or new beginSession between
+      // dispatch and now must not feed this buffer into a fresh session's
+      // streamingPCM (stale-feed race).
+      guard self.sessionID == handoffSession, self.streamingActive, !self.isTerminal
+      else { return }
+      self.appendStreamingPCM(from: pcmBuffer)
+    }
+    streamingFeedTasks.append(task)
   }
 
   /// Store the kernel's authoritative raw capture audio (`captureResult.samples`)
@@ -422,6 +554,17 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     // the prior outcome.
     guard let session = sessionID, !isTerminal else {
       return .empty(hadSpeechEvidence: false)
+    }
+
+    // #1276 Step 2 (PR-2): if a streaming session ran, its flush IS the
+    // transcript (authoritative). Drain the feed tasks so `streamingPCM` is
+    // complete, flush, and use the result. On an empty/failed flush the helper
+    // returns nil and finalize falls through to the clean batch decode over the
+    // authoritative capture buffer (fail-open — raw text always lands, G4).
+    if let streamingOutcome = await finalizeStreamingSession(
+      session: session, sessionIDForLog: sessionIDForLog)
+    {
+      return streamingOutcome
     }
 
     // No-speech gating is kernel-owned in the new model
@@ -715,21 +858,31 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     retainedPCM.removeAll()
     observedSpeechSegments.removeAll()
     batchCaptureSamples.removeAll()
+    streamingPCM.removeAll()
   }
 
-  /// Idempotent discard. Cancels held tasks (prepare, model-unload timer);
-  /// clears retained audio + segments + capture buffer + LID result. (#1307:
-  /// no incremental worker to cancel.)
+  /// Idempotent discard. Cancels held tasks (prepare, model-unload timer) and the
+  /// streaming session; drops streaming feed handles; clears retained audio +
+  /// segments + capture buffer + streaming buffer + LID result.
   func cancel() async {
     isCancelled = true
     isTerminal = true
     lastResult = nil
     lastLanguageDetection = nil
+    // Drop feed-task handles — a `finalize()` after `cancel()` short-circuits to
+    // `.cancelled` and never drains; the tasks themselves see `isTerminal` / the
+    // session mismatch and skip (mirrors `ParakeetEngineAdapter.discardSession`).
+    streamingFeedTasks.removeAll()
     clearSessionBuffers()
     prepareTask?.cancel()
     prepareTask = nil
     modelUnloadTask?.cancel()
     modelUnloadTask = nil
+    if let live = streamingSession {
+      streamingSession = nil
+      streamingActive = false
+      await live.cancel()
+    }
     cachedReadiness = await backend.isReady ? .ready : .notReady
   }
 
@@ -846,6 +999,110 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     let remaining = Self.retainedPCMCap - retainedPCM.count
     let take = min(count, remaining)
     retainedPCM.append(contentsOf: UnsafeBufferPointer(start: channel, count: take))
+  }
+
+  /// Append the buffer's Float32 samples to the lossless `streamingPCM` the
+  /// streaming session reads, bounded by the same recording cap. Runs on
+  /// `@MainActor` from a retained `streamingFeedTasks` task (#1276 PR-2).
+  private func appendStreamingPCM(from buffer: AVAudioPCMBuffer) {
+    guard streamingPCM.count < Self.retainedPCMCap else { return }
+    let count = Int(buffer.frameLength)
+    guard count > 0, let channel = buffer.floatChannelData?[0] else { return }
+    let remaining = Self.retainedPCMCap - streamingPCM.count
+    let take = min(count, remaining)
+    streamingPCM.append(contentsOf: UnsafeBufferPointer(start: channel, count: take))
+  }
+
+  // MARK: Streaming flush (#1276 Step 2, PR-2)
+
+  /// Await every dispatched streaming-feed task so `streamingPCM` holds the whole
+  /// recording before the session flush — a non-empty streaming result is never
+  /// finalized missing tail buffers still queued behind `acceptAudio`. Awaiting
+  /// the task handles IS the completion signal; no wall-clock deadline (ported
+  /// wholesale from `ParakeetEngineAdapter.drainStreamingFeeds`,
+  /// RULE: port-proven-patterns-wholesale). Iterates a value snapshot and does
+  /// NOT clear `streamingFeedTasks` — only `beginSession`/`cancel` clear it — so a
+  /// session beginning during this drain's await cannot have its fresh feed
+  /// handles dropped here.
+  private func drainStreamingFeeds() async {
+    let snapshot = streamingFeedTasks
+    for task in snapshot { await task.value }
+  }
+
+  /// Flush the streaming session and turn its authoritative result into the
+  /// finalize outcome. Returns:
+  /// - a `.transcript` outcome on a non-empty flush (its text IS the transcript),
+  /// - a terminal `.cancelled`/`.empty` on a stale-session race (no state mutation
+  ///   that could clobber a fresh session),
+  /// - `nil` when no streaming session ran OR the flush produced nothing usable —
+  ///   `finalize` then falls through to the clean batch decode (fail-open, G4).
+  private func finalizeStreamingSession(
+    session: SessionID, sessionIDForLog: UInt64
+  ) async -> ASREngineOutcome? {
+    guard streamingActive, let live = streamingSession else { return nil }
+    await drainStreamingFeeds()
+    let flushStart = CFAbsoluteTimeGetCurrent()
+    // The session ignores both params (single-coordinate design §3.2): it flushes
+    // over its own `streamingPCM`, pulled via the retained provider.
+    let result = await live.finalize(finalSamples: [], speechSegments: [])
+    // Stale guard after the flush await — a cancel + new beginSession during the
+    // flush must not let this stale finalize clobber the fresh session.
+    guard sessionID == session, !isCancelled else {
+      return isCancelled ? .cancelled : .empty(hadSpeechEvidence: true)
+    }
+    // Clear only THIS session's handle (a fresh session's stays installed).
+    if (streamingSession as AnyObject?) === (live as AnyObject) {
+      streamingSession = nil
+      streamingActive = false
+    }
+    let trimmed = (result.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard result.accepted, !trimmed.isEmpty else {
+      // Streaming produced nothing usable — fall through to the batch fallback.
+      Task { [strategy = result.strategy] in
+        await AppLogger.shared.log(
+          "WhisperKit streaming flush empty (strategy=\(strategy)) — falling back to batch",
+          level: .info, category: "WhisperKitEngineAdapter"
+        )
+      }
+      return nil
+    }
+    let flushMs = Int((CFAbsoluteTimeGetCurrent() - flushStart) * 1000)
+    let audioDurationSec = Double(result.samplesCovered) / AudioConstants.sampleRate
+    // Preserve the locked-language detection state the batch finalize would have
+    // set via `LanguageDetector.detect(.locked)` (Codex r4 P2). Streaming only
+    // runs for a picked language, so it never calls LID — but downstream polish
+    // (`DefaultPromptPlanner`) treats `whisperKit && languageDetection == nil` as
+    // low confidence and DROPS per-language custom vocabulary. Mirror the locked
+    // short-circuit result (`LanguageDetector.swift:160-170`) exactly. Synchronous
+    // (no await after the stale guard) so no concurrent `beginSession(B)` can tear
+    // this write.
+    if let lockedCode = decodeOptions.language {
+      lastLanguageDetection = LanguageDetectionResult(
+        lang: lockedCode, confidence: 1.0, margin: 1.0, tier: .locked,
+        voicedDuration: audioDurationSec, abstained: false, usedSessionPrior: false)
+    }
+    var diagnostics = KernelASRAdapterDiagnostics()
+    diagnostics.rawSampleCount = result.samplesCovered
+    diagnostics.lidCaptureSessionID = sessionIDForLog
+    lastASRDiagnostics = diagnostics
+    isTerminal = true
+    clearSessionBuffers()
+    let asrResult = ASRResult(
+      text: trimmed,
+      language: decodeOptions.language,
+      duration: audioDurationSec,
+      processingTime: Double(flushMs) / 1000.0,
+      backendType: .whisperKit
+    )
+    lastResult = asrResult
+    Task { [chars = trimmed.count, decodes = result.decodeCount, tailMs = result.tailDecodeMs] in
+      await AppLogger.shared.log(
+        "WhisperKit streaming flush complete: chars=\(chars), decodes=\(decodes), "
+          + "tailDecodeMs=\(tailMs) (\(flushMs)ms total)",
+        level: .info, category: "WhisperKitEngineAdapter"
+      )
+    }
+    return .transcript(asrResult)
   }
 
   // MARK: Batch decode helper
@@ -1050,6 +1307,11 @@ package protocol WhisperKitBackendDriving: Actor {
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
   func observeLID(samples: [Float], maxWindows: Int) async -> LIDObservationBatch
   func makeIncrementalSession(options: TranscriptionOptions) async
+    -> (any WhisperKitIncrementalSession)?
+  // #1276 Step 2 (PR-2): vend the authoritative streaming session (locked-language
+  // Live-transcription path). Same nil-on-not-loaded contract as
+  // `makeIncrementalSession`.
+  func makeStreamingSession(options: TranscriptionOptions) async
     -> (any WhisperKitIncrementalSession)?
   func unload() async
 }

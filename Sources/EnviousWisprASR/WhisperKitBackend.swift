@@ -504,6 +504,38 @@ public actor WhisperKitBackend: ASRBackend {
     return WhisperKitIncrementalWorker(whisperKit: kit, decodingOptions: opts)
   }
 
+  // #1276 Step 2 (PR-2): vend the authoritative streaming session for the "Live
+  // transcription" toggle's ON + locked-language path. Mirrors
+  // `makeIncrementalSession` (same nil-on-not-loaded contract, same
+  // `readyKitAfterWarmupDrain` vend) but constructs the confirmed-segment
+  // `WhisperKitStreamingSession`. `sampleCount: 0` forces `chunkingStrategy: .none`
+  // in the base options (the session sets `clipTimestamps = [lastConfirmedSec]` and
+  // keeps `.none` per cycle; it must NEVER inherit the `>30s -> .vad` branch that
+  // would re-chunk the whole growing buffer, F2).
+  package func makeStreamingSession(options: TranscriptionOptions)
+    async -> (any WhisperKitIncrementalSession)?
+  {
+    guard let kit = await readyKitAfterWarmupDrain() else { return nil }
+    var opts = makeDecodeOptions(from: options, sampleCount: 0)
+    // LocalAgreement-2 confirmation is word-level — word timings are required
+    // regardless of the caller's timestamp preference (without them the session
+    // silently falls back to segment-lag confirmation).
+    opts.wordTimestamps = true
+    // #1276 PR-2 benchmark winner (120-clip founder-audio replay, 2026-07-04):
+    // the UFAL whisper_streaming BUFFER architecture — word-level
+    // LocalAgreement-2 over a sentence-trimmed buffer (committed speech stays
+    // in the decode window, giving every decode full context). Trailing
+    // phantom-phrase hallucination 3/107 clips and dropped endings 18/107 vs
+    // 14/107 and 49/107 for the padded-tail stitch this replaces.
+    // `conditionOnPriorText` stays OFF: measured on this model
+    // (large-v3-turbo CoreML), a `<|startofprev|>` prompt makes the decoder
+    // intermittently EOT whole speech-filled windows empty (WhisperKit trace,
+    // investigation log 2026-07-04) — the buffer shape alone is the winner.
+    return WhisperKitStreamingSession(
+      whisperKit: kit, decodingOptions: opts,
+      conditionOnPriorText: false, localAgreement: true)
+  }
+
   // R2 (#360): vend Sendable LID observations so the non-Sendable WhisperKit
   // handle never crosses an actor boundary. The window-loop logic is
   // migrated verbatim from `LanguageDetector.runMultiWindowLID` (the previous
