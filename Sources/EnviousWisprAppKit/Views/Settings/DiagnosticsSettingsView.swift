@@ -49,7 +49,7 @@ struct DiagnosticsSettingsView: View {
               .toggleStyle(BrandedToggleStyle())
             Text("Persists across relaunches. Toggle with Cmd+Shift+D from anywhere.")
               .font(.stHelper)
-              .foregroundStyle(.stTextTertiary)
+              .foregroundStyle(.stTextSecondary)
           }
         }
         #if DEBUG
@@ -64,7 +64,7 @@ struct DiagnosticsSettingsView: View {
                 "Debug builds only. ON routes Apple Intelligence polish through the local .fmadapter at EW_AFM_ADAPTER_PATH; OFF uses the stock model. Flips live on the next dictation. \(adapterPathHint)"
               )
               .font(.stHelper)
-              .foregroundStyle(.stTextTertiary)
+              .foregroundStyle(.stTextSecondary)
             }
           }
         #endif
@@ -94,7 +94,7 @@ struct DiagnosticsSettingsView: View {
                   "Forces the onboarding Apple Intelligence note. Pair with \"Restart Onboarding…\" to see each state. Debug builds only."
                 )
                 .font(.stHelper)
-                .foregroundStyle(.stTextTertiary)
+                .foregroundStyle(.stTextSecondary)
               }
             }
           #endif
@@ -109,7 +109,7 @@ struct DiagnosticsSettingsView: View {
                 "Re-runs the onboarding flow without wiping app state. Disabled during recording."
               )
               .font(.stHelper)
-              .foregroundStyle(.stTextTertiary)
+              .foregroundStyle(.stTextSecondary)
             }
           }
         }
@@ -131,7 +131,7 @@ struct DiagnosticsSettingsView: View {
                 "Saves a local copy of each dictation's audio for diagnosing transcription issues. Stored only on this Mac, newest 500 recordings kept. Persists across rebuilds. Applies starting with your very next dictation."
               )
               .font(.stHelper)
-              .foregroundStyle(.stTextTertiary)
+              .foregroundStyle(.stTextSecondary)
             }
           }
         #endif
@@ -169,7 +169,7 @@ struct DiagnosticsSettingsView: View {
             "Logs are stored at ~/Library/Logs/EnviousWispr/. Maximum 10 MB per file, 5 files retained."
           )
           .font(.stHelper)
-          .foregroundStyle(.stTextTertiary)
+          .foregroundStyle(.stTextSecondary)
         }
       }
 
@@ -180,7 +180,7 @@ struct DiagnosticsSettingsView: View {
             "All log events are also sent to the macOS unified logging system. View them in Console.app by filtering for subsystem: com.enviouswispr.app"
           )
           .font(.stHelper)
-          .foregroundStyle(.stTextTertiary)
+          .foregroundStyle(.stTextSecondary)
         }
         BrandedRow(showDivider: false) {
           Button("Open Console.app") {
@@ -198,7 +198,7 @@ struct DiagnosticsSettingsView: View {
               ProgressView()
                 .controlSize(.small)
               Text(diagnostics.benchmark.progress)
-                .font(.caption)
+                .font(.stHelper)
             }
           }
         } else {
@@ -221,14 +221,14 @@ struct DiagnosticsSettingsView: View {
             ForEach(diagnostics.benchmark.results) { result in
               HStack {
                 Text(result.label)
-                  .font(.caption)
+                  .font(.stHelper)
                 Spacer()
                 Text(String(format: "%.2fs", result.processingTime))
-                  .font(.caption)
+                  .font(.stHelper)
                   .monospacedDigit()
                 Text(String(format: "%.0fx RT", result.rtf))
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+                  .font(.stHelper)
+                  .foregroundStyle(.stTextSecondary)
                   .monospacedDigit()
               }
             }
@@ -239,13 +239,13 @@ struct DiagnosticsSettingsView: View {
           BrandedRow {
             VStack(alignment: .leading, spacing: 4) {
               Text("Pipeline Benchmark Results")
-                .font(.caption).bold()
+                .font(.stRowLabel)
               HStack {
                 Text("Batch ASR:")
                 Spacer()
                 Text(String(format: "%.3fs", pipeline.batchASRTime))
                   .monospacedDigit()
-              }.font(.caption)
+              }.font(.stHelper)
 
               if let streamTime = pipeline.streamingFinalizeTime {
                 HStack {
@@ -253,7 +253,7 @@ struct DiagnosticsSettingsView: View {
                   Spacer()
                   Text(String(format: "%.3fs", streamTime))
                     .monospacedDigit()
-                }.font(.caption)
+                }.font(.stHelper)
               }
 
               if let wer = pipeline.werDelta {
@@ -263,7 +263,7 @@ struct DiagnosticsSettingsView: View {
                   Text(String(format: "%.1f%%", wer * 100))
                     .monospacedDigit()
                     .foregroundStyle(wer <= 0.02 ? .stSuccess : .stWarning)
-                }.font(.caption)
+                }.font(.stHelper)
               }
 
               HStack {
@@ -271,7 +271,7 @@ struct DiagnosticsSettingsView: View {
                 Spacer()
                 Text(String(format: "%.1fs", pipeline.audioDuration))
                   .monospacedDigit()
-              }.font(.caption)
+              }.font(.stHelper)
             }
           }
         }
@@ -281,7 +281,7 @@ struct DiagnosticsSettingsView: View {
             Text("Model status:")
             Spacer()
             Text(asrManager.isModelLoaded ? "Loaded" : "Unloaded")
-              .foregroundStyle(asrManager.isModelLoaded ? .stSuccess : .secondary)
+              .foregroundStyle(asrManager.isModelLoaded ? .stSuccess : .stTextSecondary)
           }
         }
       }

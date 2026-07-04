@@ -55,7 +55,7 @@ struct LanguageLockSheet: View {
   private var searchField: some View {
     HStack(spacing: 8) {
       Image(systemName: "magnifyingglass")
-        .foregroundStyle(.stTextTertiary)
+        .foregroundStyle(.stTextSecondary)
       TextField("Search by name or code", text: $searchText)
         .textFieldStyle(.plain)
         .accessibilityLabel("Search languages")
@@ -76,7 +76,7 @@ struct LanguageLockSheet: View {
     VStack(alignment: .leading, spacing: 6) {
       Text("RECENT")
         .font(.stSectionHeader)
-        .foregroundStyle(.stTextTertiary)
+        .foregroundStyle(.stTextSecondary)
         .padding(.leading, 4)
 
       VStack(alignment: .leading, spacing: 0) {
@@ -100,7 +100,7 @@ struct LanguageLockSheet: View {
     VStack(alignment: .leading, spacing: 6) {
       Text("ALL LANGUAGES")
         .font(.stSectionHeader)
-        .foregroundStyle(.stTextTertiary)
+        .foregroundStyle(.stTextSecondary)
         .padding(.leading, 4)
 
       if filtered.isEmpty {
@@ -108,7 +108,7 @@ struct LanguageLockSheet: View {
           HStack {
             Text("No language matches your search.")
               .font(.stHelper)
-              .foregroundStyle(.stTextTertiary)
+              .foregroundStyle(.stTextSecondary)
             Spacer()
           }
           .padding(.horizontal, 14)
@@ -147,11 +147,10 @@ struct LanguageLockSheet: View {
         HStack(spacing: 10) {
           VStack(alignment: .leading, spacing: 2) {
             Text(entry.nativeName)
-              .font(.system(size: 13, weight: .medium))
-              .foregroundStyle(.primary)
+              .settingsRowLabel()
             Text("\(entry.englishName) · \(entry.code)")
-              .font(.system(size: 11))
-              .foregroundStyle(.stTextTertiary)
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
           }
           Spacer()
           if isSelected {

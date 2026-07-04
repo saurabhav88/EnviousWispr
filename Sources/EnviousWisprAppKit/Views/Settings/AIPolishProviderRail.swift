@@ -399,8 +399,8 @@ struct ProviderRailRow: View {
         VStack(alignment: .leading, spacing: 2) {
           HStack(spacing: 6) {
             Text(entry.name)
-              .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
-              .foregroundStyle(isSelected ? Color.stAccent : Color.stTextSecondary)
+              .font(.system(size: 14, weight: .semibold))
+              .foregroundStyle(isSelected ? Color.stAccent : Color.stTextPrimary)
               .lineLimit(1)
               .minimumScaleFactor(0.85)
             if entry.recommended {
@@ -410,8 +410,8 @@ struct ProviderRailRow: View {
             }
           }
           Text(entry.tagline)
-            .font(.system(size: 11.5))
-            .foregroundStyle(Color.stTextTertiary)
+            .font(.stHelper)
+            .foregroundStyle(Color.stTextSecondary)
             .lineLimit(1)
         }
         Spacer(minLength: 0)
@@ -512,9 +512,9 @@ struct ProviderRail: View {
 
   private func groupHeader(_ title: String) -> some View {
     Text(title.uppercased())
-      .font(.system(size: 11, weight: .semibold))
+      .font(.stSectionHeader)
       .tracking(0.9)
-      .foregroundStyle(Color.stTextTertiary)
+      .foregroundStyle(Color.stAccent)
       .padding(.horizontal, 12)
       .padding(.bottom, 3)
       .accessibilityHidden(true)
@@ -543,13 +543,12 @@ struct ProviderDetailHeader: View {
       VStack(alignment: .leading, spacing: 2) {
         HStack(spacing: 7) {
           Text(entry.name)
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(Color.stTextSecondary)
+            .settingsRowTitle()
           if entry.recommended {
             Text("Recommended")
-              .font(.system(size: 10, weight: .semibold))
+              .font(.system(size: 14, weight: .semibold))
               .foregroundStyle(Color.stAccent)
-              .padding(.horizontal, 7)
+              .padding(.horizontal, 8)
               .padding(.vertical, 2)
               .background(
                 Capsule().fill(Color.stAccentLight))
@@ -557,7 +556,7 @@ struct ProviderDetailHeader: View {
         }
         Text("\(entry.tagline) · \(privacyLine)")
           .font(.stHelper)
-          .foregroundStyle(Color.stTextTertiary)
+          .foregroundStyle(Color.stTextSecondary)
           .lineLimit(1)
           .truncationMode(.tail)
       }

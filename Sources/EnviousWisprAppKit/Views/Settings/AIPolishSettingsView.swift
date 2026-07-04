@@ -246,11 +246,12 @@ struct AIPolishSettingsView: View {
       if isReasoningModel {
         detailCard(label: "Advanced") {
           VStack(alignment: .leading, spacing: 4) {
-            Toggle("Deep reasoning", isOn: $settings.useExtendedThinking)
-              .toggleStyle(BrandedToggleStyle())
+            Toggle(isOn: $settings.useExtendedThinking) {
+              Text("Deep reasoning").settingsRowLabel()
+            }
+            .toggleStyle(BrandedToggleStyle())
             Text("Takes longer but handles complex formatting instructions better.")
-              .font(.stHelper)
-              .foregroundStyle(Color.stTextTertiary)
+              .settingsReadingCopy()
           }
           FrozenPerRecordingFootnote()
         }
@@ -267,9 +268,9 @@ struct AIPolishSettingsView: View {
     VStack(alignment: .leading, spacing: 8) {
       if let label, !label.isEmpty {
         Text(label.uppercased())
-          .font(.system(size: 10, weight: .semibold))
+          .font(.stSectionHeader)
           .tracking(0.6)
-          .foregroundStyle(Color.stTextTertiary)
+          .foregroundStyle(Color.stAccent)
       }
       VStack(alignment: .leading, spacing: 10) {
         content()
@@ -366,11 +367,6 @@ struct AIPolishSettingsView: View {
     @Bindable var settings = settings
 
     SettingsContentView {
-      // ── Brand signature: breathing rainbow waveform over a luminous aurora.
-      // Perf-gated (animates only when the window is truly visible + active),
-      // decorative + accessibility-hidden (#1299).
-      SettingsSignatureView()
-
       // ── AI Polish master switch (slide toggle, on its own card) ──
       BrandedSection {
         BrandedRow(showDivider: false) {
@@ -390,12 +386,11 @@ struct AIPolishSettingsView: View {
               }
             )
           ) {
-            VStack(alignment: .leading, spacing: 2) {
-              Text("AI Polish")
-                .font(.system(size: 13, weight: .medium))
+            VStack(alignment: .leading, spacing: 3) {
+              Text("Enable AI Polish")
+                .settingsRowTitle()
               Text("Automatically fix grammar, punctuation, and formatting.")
-                .font(.stHelper)
-                .foregroundStyle(Color.stTextTertiary)
+                .settingsReadingCopy()
             }
           }
           .toggleStyle(BrandedToggleStyle())
@@ -513,7 +508,7 @@ struct AIPolishSettingsView: View {
     VStack(alignment: .leading, spacing: 6) {
       Text(isOpenAI ? "OpenAI API Key" : "Google Gemini API Key")
         .font(.stHelper)
-        .foregroundStyle(Color.stTextTertiary)
+        .foregroundStyle(Color.stTextSecondary)
       HStack(spacing: 8) {
         if isOpenAI {
           SecureField("sk-proj-…", text: $openAIKey)
@@ -580,14 +575,14 @@ struct AIPolishSettingsView: View {
   private var validationBadge: some View {
     if validationStatus.hasPrefix("Failed") {
       Text(validationStatus)
-        .font(.caption)
+        .font(.stHelper)
         .foregroundStyle(.stError)
     } else {
       switch llmDiscovery.keyValidationState {
       case .idle:
         if !validationStatus.isEmpty {
           Text(validationStatus)
-            .font(.caption)
+            .font(.stHelper)
             .foregroundStyle(validationStatus.contains("Saved") ? .stSuccess : .stError)
         }
       case .validating:
@@ -596,14 +591,14 @@ struct AIPolishSettingsView: View {
             .controlSize(.mini)
           Text("Validating…")
             .font(.stHelper)
-            .foregroundStyle(Color.stTextTertiary)
+            .foregroundStyle(Color.stTextSecondary)
         }
       case .valid:
         HStack(spacing: 4) {
           Image(systemName: "checkmark.circle.fill")
             .foregroundStyle(.stSuccess)
           Text("Valid")
-            .font(.caption)
+            .font(.stHelper)
             .foregroundStyle(.stSuccess)
         }
       case .invalid(let message):
@@ -611,7 +606,7 @@ struct AIPolishSettingsView: View {
           Image(systemName: "xmark.circle.fill")
             .foregroundStyle(.stError)
           Text(message)
-            .font(.caption)
+            .font(.stHelper)
             .foregroundStyle(.stError)
         }
       }
@@ -822,7 +817,7 @@ struct AIPolishSettingsView: View {
         ProgressView()
           .controlSize(.small)
         Text("Checking Ollama installation...")
-          .foregroundStyle(Color.stTextTertiary)
+          .foregroundStyle(Color.stTextSecondary)
       }
 
     case .notInstalled:
@@ -833,7 +828,7 @@ struct AIPolishSettingsView: View {
           "Ollama runs AI models privately on your Mac. No cloud, no API keys, completely free."
         )
         .font(.stHelper)
-        .foregroundStyle(Color.stTextTertiary)
+        .foregroundStyle(Color.stTextSecondary)
 
         HStack {
           Button("Download Ollama") {
@@ -849,7 +844,7 @@ struct AIPolishSettingsView: View {
 
         Text("After installing, come back and click refresh.")
           .font(.stHelper)
-          .foregroundStyle(Color.stTextTertiary)
+          .foregroundStyle(Color.stTextSecondary)
       }
 
     case .installedNotRunning:
@@ -858,7 +853,7 @@ struct AIPolishSettingsView: View {
 
         Text("Ollama is installed but isn't running yet.")
           .font(.stHelper)
-          .foregroundStyle(Color.stTextTertiary)
+          .foregroundStyle(Color.stTextSecondary)
 
         HStack {
           Button("Start Ollama") {
@@ -872,7 +867,7 @@ struct AIPolishSettingsView: View {
 
         Text("Or run `ollama serve` in Terminal.")
           .font(.stHelper)
-          .foregroundStyle(Color.stTextTertiary)
+          .foregroundStyle(Color.stTextSecondary)
       }
 
     case .runningNoModels:
@@ -881,7 +876,7 @@ struct AIPolishSettingsView: View {
 
         Text("Ollama needs a language model to polish your text.")
           .font(.stHelper)
-          .foregroundStyle(Color.stTextTertiary)
+          .foregroundStyle(Color.stTextSecondary)
 
         HStack {
           Button("Download \(settings.ollamaModel)") {
@@ -895,7 +890,7 @@ struct AIPolishSettingsView: View {
 
         Text("About 2 GB download. Runs entirely on your Mac.")
           .font(.stHelper)
-          .foregroundStyle(Color.stTextTertiary)
+          .foregroundStyle(Color.stTextSecondary)
       }
 
     case .pullingModel(let progress, let status):
@@ -907,15 +902,15 @@ struct AIPolishSettingsView: View {
 
         HStack {
           Text(status)
-            .font(.caption2)
-            .foregroundStyle(Color.stTextTertiary)
+            .font(.stHelper)
+            .foregroundStyle(Color.stTextSecondary)
             .lineLimit(1)
           Spacer()
           if progress > 0 {
             Text("\(Int(progress * 100))%")
-              .font(.caption2)
+              .font(.stHelper)
               .monospacedDigit()
-              .foregroundStyle(Color.stTextTertiary)
+              .foregroundStyle(Color.stTextSecondary)
           }
           Button("Cancel") {
             setup.ollamaSetup.cancelPull()
@@ -938,7 +933,7 @@ struct AIPolishSettingsView: View {
 
       Text("You're all set! Select a model above.")
         .font(.stHelper)
-        .foregroundStyle(Color.stTextTertiary)
+        .foregroundStyle(Color.stTextSecondary)
 
     case .error(let message):
       VStack(alignment: .leading, spacing: 8) {
@@ -947,7 +942,7 @@ struct AIPolishSettingsView: View {
 
         Text(message)
           .font(.stHelper)
-          .foregroundStyle(Color.stTextTertiary)
+          .foregroundStyle(Color.stTextSecondary)
 
         Button("Try Again") {
           Task {
@@ -990,7 +985,7 @@ struct AIPolishSettingsView: View {
       HStack {
         Text("One-time download: 2.7 GB")
           .font(.stHelper)
-          .foregroundStyle(Color.stTextTertiary)
+          .foregroundStyle(Color.stTextSecondary)
         Spacer()
         Button("Download EG-1") { egOne.startDownload() }
       }
@@ -1009,7 +1004,7 @@ struct AIPolishSettingsView: View {
         ProgressView().controlSize(.small)
         Text("Verifying download integrity")
           .font(.stHelper)
-          .foregroundStyle(Color.stTextTertiary)
+          .foregroundStyle(Color.stTextSecondary)
       }
     case .failed(let failure):
       Text(egOneFailureCopy(failure))
@@ -1034,7 +1029,7 @@ struct AIPolishSettingsView: View {
       if let reason = egOneHealthDetail {
         Text(reason)
           .font(.stHelper)
-          .foregroundStyle(Color.stTextTertiary)
+          .foregroundStyle(Color.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
       Button("Remove Model") {
@@ -1138,7 +1133,7 @@ struct AIPolishSettingsView: View {
     {
       Text(report.userVisibleMessage)
         .font(.stHelper)
-        .foregroundStyle(Color.stTextTertiary)
+        .foregroundStyle(Color.stTextSecondary)
     }
 
     #if DEBUG
@@ -1169,11 +1164,11 @@ struct AIPolishSettingsView: View {
           .foregroundStyle(.stError)
       case .unknown:
         Label("Unknown", systemImage: "questionmark.circle")
-          .foregroundStyle(Color.stTextTertiary)
+          .foregroundStyle(Color.stTextSecondary)
       }
     } else {
       Text("Not checked")
-        .foregroundStyle(Color.stTextTertiary)
+        .foregroundStyle(Color.stTextSecondary)
     }
   }
 
@@ -1191,12 +1186,12 @@ struct AIPolishSettingsView: View {
               Spacer()
               Text(gate.result.summary)
                 .font(.caption2)
-                .foregroundStyle(Color.stTextTertiary)
+                .foregroundStyle(Color.stTextSecondary)
                 .lineLimit(1)
               if let ms = gate.result.durationMs {
                 Text("\(ms)ms")
                   .font(.caption2)
-                  .foregroundStyle(Color.stTextTertiary)
+                  .foregroundStyle(Color.stTextSecondary)
               }
             }
           }
@@ -1208,7 +1203,7 @@ struct AIPolishSettingsView: View {
             Text("Total: \(report.checkDurationMs)ms")
           }
           .font(.caption2)
-          .foregroundStyle(Color.stTextTertiary)
+          .foregroundStyle(Color.stTextSecondary)
 
           Button("Copy Diagnostics") {
             aiAvailability.copyDiagnosticsToClipboard()
@@ -1227,23 +1222,23 @@ struct AIPolishSettingsView: View {
       case .passed:
         Image(systemName: "checkmark.circle.fill")
           .foregroundStyle(.stSuccess)
-          .font(.caption2)
+          .font(.stHelper)
       case .failed:
         Image(systemName: "xmark.circle.fill")
           .foregroundStyle(.stError)
-          .font(.caption2)
+          .font(.stHelper)
       case .skipped:
         Image(systemName: "minus.circle")
-          .foregroundStyle(Color.stTextTertiary)
-          .font(.caption2)
+          .foregroundStyle(Color.stTextSecondary)
+          .font(.stHelper)
       case .timedOut:
         Image(systemName: "clock.badge.exclamationmark")
           .foregroundStyle(.stWarning)
-          .font(.caption2)
+          .font(.stHelper)
       case .unknown:
         Image(systemName: "questionmark.circle")
-          .foregroundStyle(Color.stTextTertiary)
-          .font(.caption2)
+          .foregroundStyle(Color.stTextSecondary)
+          .font(.stHelper)
       }
     }
   #endif
@@ -1264,17 +1259,17 @@ struct AIPolishSettingsView: View {
           VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 4) {
               Text(entry.displayName)
-                .font(.caption)
+                .font(.stHelper)
               Text("(\(entry.qualityTier.label))")
-                .font(.caption)
+                .font(.stHelper)
                 .foregroundStyle(
                   entry.qualityTier == .best
                     ? Color.stAccent
                     : (entry.qualityTier == .medium ? Color.secondary : Color.stWarning))
             }
             Text("\(entry.parameterCount) · \(entry.downloadSize)")
-              .font(.caption2)
-              .foregroundStyle(Color.stTextTertiary)
+              .font(.stHelper)
+              .foregroundStyle(Color.stTextSecondary)
           }
 
           Spacer()
@@ -1283,7 +1278,7 @@ struct AIPolishSettingsView: View {
             // Active pull for THIS row: show progress + Cancel.
             HStack(spacing: 8) {
               Text("Downloading… \(Int(setup.ollamaSetup.pullProgress * 100))%")
-                .font(.caption)
+                .font(.stHelper)
                 .foregroundStyle(Color.secondary)
                 .monospacedDigit()
               Button {
@@ -1395,19 +1390,19 @@ struct AIPolishSettingsView: View {
       if current > 1 {
         Label("Installed", systemImage: "checkmark.circle.fill")
           .foregroundStyle(.stSuccess)
-          .font(.caption)
+          .font(.stHelper)
       }
       if current > 2 {
         Label("Running", systemImage: "checkmark.circle.fill")
           .foregroundStyle(.stSuccess)
-          .font(.caption)
+          .font(.stHelper)
       }
 
       let stepLabels = ["Install Ollama", "Start Ollama", "Download a Model"]
       let label = currentLabel ?? stepLabels[current - 1]
       Label(label, systemImage: "\(current).circle.fill")
         .foregroundStyle(Color.stAccent)
-        .font(.caption.bold())
+        .font(.stSectionHeader)
     }
   }
 

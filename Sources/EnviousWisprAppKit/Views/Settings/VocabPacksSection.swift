@@ -17,7 +17,7 @@ struct VocabPacksSection: View {
         BrandedRow(showDivider: false) {
           Text("No vocabulary packs available.")
             .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
+            .foregroundStyle(.stTextSecondary)
         }
       } else {
         ForEach(Array(ids.enumerated()), id: \.element) { index, id in
@@ -28,10 +28,10 @@ struct VocabPacksSection: View {
                   .font(.body)
                 Text(id.blurb)
                   .font(.stHelper)
-                  .foregroundStyle(.stTextTertiary)
+                  .foregroundStyle(.stTextSecondary)
                 Text(rowDetail(for: id))
                   .font(.stHelper)
-                  .foregroundStyle(.stTextTertiary)
+                  .foregroundStyle(.stTextSecondary)
                   .padding(.top, 2)
               }
               Spacer()

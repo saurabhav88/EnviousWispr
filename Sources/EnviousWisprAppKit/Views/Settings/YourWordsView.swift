@@ -19,40 +19,31 @@ struct YourWordsView: View {
     @Bindable var settings = settings
 
     SettingsContentView {
-      // Header
-      BrandedSection {
-        BrandedRow(showDivider: false) {
-          HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-              Text("Your Words")
-                .font(.title3)
-                .bold()
-              Text(
-                "Custom terms, vocabulary packs, and learning sources EnviousWispr uses to recognize what you say."
-              )
-              .settingsReadingCopy()
-            }
-            Spacer()
-            Button {
-              addingNewTerm = true
-            } label: {
-              Label("Add term", systemImage: "plus")
-            }
-          }
+      // "Add term" action (the page title + description now live in the page header).
+      HStack {
+        Spacer()
+        Button {
+          addingNewTerm = true
+        } label: {
+          Label("Add term", systemImage: "plus")
         }
       }
 
       // Master toggle (preserves the Enable custom words switch from the old view)
       BrandedSection {
         BrandedRow(showDivider: false) {
-          VStack(alignment: .leading, spacing: 4) {
-            Toggle("Enable custom words", isOn: $settings.wordCorrectionEnabled)
+          HStack(alignment: .top, spacing: 11) {
+            SettingsRowIcon(systemName: "textformat.abc")
+            VStack(alignment: .leading, spacing: 4) {
+              Toggle(isOn: $settings.wordCorrectionEnabled) {
+                Text("Enable custom words").settingsRowLabel()
+              }
               .toggleStyle(BrandedToggleStyle())
-            Text(
-              "Automatically fix words the speech engine gets wrong using your custom list below."
-            )
-            .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
+              Text(
+                "Automatically fix words the speech engine gets wrong using your custom list below."
+              )
+              .settingsReadingCopy()
+            }
           }
         }
       }
