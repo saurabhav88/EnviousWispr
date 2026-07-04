@@ -22,9 +22,9 @@ import Foundation
 //
 // #1307 (Step 2, PR-1): the incremental decode worker + tail-stitch is no
 // longer started or consulted on any path; the worker's structural
-// mid-phrase-duplication and wrong-ending bugs are gone. The worker type
-// (`WhisperKitIncrementalWorker`) and its vend (`makeIncrementalSession`) remain
-// present-but-unreferenced by production for Step 3 to delete with a freeze test.
+// mid-phrase-duplication and wrong-ending bugs are gone. #1315 (Step 3)
+// deleted the worker type and its vend outright; a freeze test blocks their
+// return.
 //
 // #1308 (Step 2, PR-2): the "Live transcription" toggle. On + a picked (locked)
 // language starts the authoritative `WhisperKitStreamingSession` (confirmed-
@@ -1374,11 +1374,9 @@ package protocol WhisperKitBackendDriving: Actor {
   func prepareIfCached() async throws -> Bool
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
   func observeLID(samples: [Float], maxWindows: Int) async -> LIDObservationBatch
-  func makeIncrementalSession(options: TranscriptionOptions) async
-    -> (any WhisperKitIncrementalSession)?
-  // #1276 Step 2 (PR-2): vend the authoritative streaming session (locked-language
-  // Live-transcription path). Same nil-on-not-loaded contract as
-  // `makeIncrementalSession`.
+  // #1276 Step 2 (PR-2): vend the authoritative streaming session
+  // (locked-language Live-transcription path). Nil when the model is not
+  // loaded (the adapter stays in batch mode, fail-open).
   func makeStreamingSession(options: TranscriptionOptions) async
     -> (any WhisperKitIncrementalSession)?
   func unload() async
@@ -1387,6 +1385,6 @@ package protocol WhisperKitBackendDriving: Actor {
 // Retroactive conformance — `WhisperKitBackend` already has every requirement
 // at the right access level (`isReady` public, `modelVariantName` package,
 // `prepare()` public, `prepareIfCached()` package, `transcribe(...)` public,
-// `observeLID(...)` package, `makeIncrementalSession(...)` package, `unload()`
+// `observeLID(...)` package, `makeStreamingSession(...)` package, `unload()`
 // public). No method additions needed in `EnviousWisprASR`.
 extension WhisperKitBackend: WhisperKitBackendDriving {}

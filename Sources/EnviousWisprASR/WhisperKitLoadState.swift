@@ -144,7 +144,7 @@ enum LoadEvent {
   /// The warm-up inference blew its 20s fail-open budget in `runWarmup`.
   case warmupTimedOut(generation: UInt64)
   /// A shared-instance caller wants the kit (`transcribe`/`observeLID`/
-  /// `makeIncrementalSession`).
+  /// `makeStreamingSession`).
   case vendRequested
   /// The vend gate finished draining an orphan warm-up.
   case drainResolved(didTimeOut: Bool, generation: UInt64)
