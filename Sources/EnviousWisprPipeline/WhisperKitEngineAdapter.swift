@@ -164,9 +164,12 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// flush_throw. Surfaced through `KernelASRAdapterDiagnostics`.
   private var sessionStreamingRequested = false
   private var sessionStreamingDegradeReason = "none"
-  /// #1309: preserved from a degraded streaming flush so the batch fallback's
-  /// diagnostics still carry the stop-mid-decode signal.
-  private var sessionStopWhileDecodeInFlight: Bool?
+  /// #1309: the WHOLE degraded streaming-flush result, preserved so the batch
+  /// fallback's diagnostics still carry every streaming counter (decode count,
+  /// coverage, tail-decode time, stop-mid-decode) — the telemetry matters most
+  /// exactly for degraded sessions (Codex r2: field-by-field preservation kept
+  /// losing the next field; preserve the source record once).
+  private var sessionDegradedFlushResult: IncrementalResult?
 
   /// The adapter-owned LOSSLESS audio the streaming session reads — the single
   /// coordinate the whole streaming path lives in (§3.2). Fed by `acceptAudio`
@@ -378,7 +381,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     // at begin; flush_empty / flush_throw at finalize).
     sessionStreamingRequested = streaming
     sessionStreamingDegradeReason = streaming ? "none" : "disabled"
-    sessionStopWhileDecodeInFlight = nil
+    sessionDegradedFlushResult = nil
     lastLanguageDetection = nil
     retainedPCM.removeAll(keepingCapacity: true)
     observedSpeechSegments.removeAll()
@@ -767,7 +770,15 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     diagnostics.streamingFinalPath =
       ["flush_empty", "flush_throw"].contains(sessionStreamingDegradeReason)
       ? "fallback_batch" : "clean_batch"
-    diagnostics.stopWhileDecodeInFlight = sessionStopWhileDecodeInFlight
+    if let flush = sessionDegradedFlushResult {
+      // A streaming session ran before this fallback: carry its counters.
+      diagnostics.incrementalDecodeCount = flush.decodeCount
+      diagnostics.incrementalSamplesCovered = flush.samplesCovered
+      diagnostics.incrementalTailDecodeMs = flush.tailDecodeMs
+      diagnostics.stopWhileDecodeInFlight = flush.stopWhileDecodeInFlight
+      diagnostics.streamingMaxUnconfirmedWindowSec =
+        Double(WhisperKitStreamingSession.defaultMaxUnconfirmedWindowSec)
+    }
     // PR-5 Rung 4.5 (#827): LID perf-signpost transport for kernel-side
     // `t_release` and wiring-side `t_clipboard_write` emits. Populated here
     // so every terminal write of `lastASRDiagnostics` carries them. Uses the
@@ -1089,12 +1100,12 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     let trimmed = (result.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     guard result.accepted, !trimmed.isEmpty else {
       // Streaming produced nothing usable — fall through to the batch fallback.
-      // #1309: record WHY streaming degraded — and preserve the stop-mid-decode
-      // signal — for the batch fallback's diagnostics (Codex r1 P2: dropping it
-      // here loses the field exactly when a mid-decode stop broke the flush).
+      // #1309: record WHY streaming degraded and preserve the whole flush
+      // result — the batch fallback's diagnostics re-stamp every streaming
+      // counter from it (Codex r1/r2).
       sessionStreamingDegradeReason =
         result.strategy == "streaming_flush_failed" ? "flush_throw" : "flush_empty"
-      sessionStopWhileDecodeInFlight = result.stopWhileDecodeInFlight
+      sessionDegradedFlushResult = result
       Task { [strategy = result.strategy] in
         await AppLogger.shared.log(
           "WhisperKit streaming flush empty (strategy=\(strategy)) — falling back to batch",

@@ -723,6 +723,10 @@ import Testing
     #expect(diag?.streamingDegradeReason == "flush_empty")
     #expect(diag?.streamingFinalPath == "fallback_batch")
     #expect(diag?.stopWhileDecodeInFlight == true)
+    // Codex r2: the flush's counters survive the fallback too.
+    #expect(diag?.incrementalDecodeCount == 0)
+    #expect(diag?.incrementalTailDecodeMs == 0)
+    #expect(diag?.streamingMaxUnconfirmedWindowSec == 25.0)
   }
 
   @Test("streaming OFF + locked: no streaming session, clean batch")
