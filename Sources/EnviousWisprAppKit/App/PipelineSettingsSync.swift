@@ -106,6 +106,15 @@ final class PipelineSettingsSync {
     }
   }
 
+  /// #1305: whether a `.llmModel` change should mirror into `ollamaModel` (the
+  /// remembered Ollama preference). "" means "nothing armed" — discovery found
+  /// no installed models — and must never overwrite the remembered preference,
+  /// which powers the Download-suggestion copy in Settings. Non-empty picks
+  /// mirror exactly as before. Pure + static so it is directly unit-testable.
+  static func shouldMirrorLLMModelToOllama(provider: LLMProvider, llmModel: String) -> Bool {
+    provider == .ollama && !llmModel.isEmpty
+  }
+
   /// Handle a settings change by forwarding to the appropriate subsystem.
   func handleSettingChanged(_ key: SettingsManager.SettingKey, settings: SettingsManager) {
     switch key {
@@ -125,7 +134,9 @@ final class PipelineSettingsSync {
       // #1271: EG-1 server follows the provider selection live.
       reconcileEGOneActivation(settings: settings)
     case .llmModel:
-      if settings.llmProvider == .ollama {
+      if Self.shouldMirrorLLMModelToOllama(
+        provider: settings.llmProvider, llmModel: settings.llmModel)
+      {
         settings.ollamaModel = settings.llmModel
       }
       reconcileOllamaEviction(settings: settings)

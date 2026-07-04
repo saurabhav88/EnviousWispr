@@ -198,8 +198,11 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       language: result.language ?? Self.lockedLanguage(recovered.settings?.languageMode),
       duration: recoveredSeconds,
       backendType: result.backendType,
-      llmProvider: recovered.settings?.llmProvider,
-      llmModel: recovered.settings?.llmModel,
+      // #1305: stamp provider/model ONLY when polish actually produced output —
+      // the live path never stamps on a failed/skipped polish, and the settings
+      // snapshot would otherwise label a raw recovered transcript AI-polished.
+      llmProvider: textOutcome.polishedText != nil ? recovered.settings?.llmProvider : nil,
+      llmModel: textOutcome.polishedText != nil ? recovered.settings?.llmModel : nil,
       recoverySessionID: id,
       isRecovered: true)
 

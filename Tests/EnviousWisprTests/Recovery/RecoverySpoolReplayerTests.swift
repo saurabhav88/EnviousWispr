@@ -217,4 +217,23 @@ struct RecoverySpoolReplayerTests {
     #expect(h.asr.transcribeCallCount == 0, "no transcribe runs after Discard during load")
     #expect(h.transcriptCoordinator.transcripts.isEmpty)
   }
+
+  @Test("a recovered transcript with NO polish output carries no provider/model stamp (#1305)")
+  func nilPolishCarriesNoProviderStamp() async throws {
+    // The snapshot's llmProvider/llmModel describe what was CONFIGURED at
+    // record time, not what ran. This spool's snapshot disables polish
+    // (provider "none"), so `polishedText` is nil — the saved transcript must
+    // not be labeled with any provider, matching the live path's
+    // no-stamp-on-skip contract. Pre-#1305 the replayer stamped the snapshot
+    // values unconditionally.
+    let h = Self.makeHarness()
+    let id = "stamp-\(UUID().uuidString)"
+    try await Self.seedSpool(h, id: id, samples: [0.3, 0.2])
+    let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+    #expect(outcome == .recovered)
+    let saved = try #require(h.transcriptCoordinator.transcripts.first)
+    #expect(saved.polishedText == nil)
+    #expect(saved.llmProvider == nil)
+    #expect(saved.llmModel == nil)
+  }
 }

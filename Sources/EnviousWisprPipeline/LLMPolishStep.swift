@@ -83,6 +83,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     EGOneConnector(endpoint: $0)
   }
 
+  /// #1305 test seam (mirrors `makeEGOnePolisher`): the Ollama readiness
+  /// preflight consulted by the `.ollama` entry gate in `process()`.
+  /// Production probes the real connector (one GET /api/tags on the same base
+  /// URL polish would use, ~1s hard ceiling); tests inject a fixed answer so
+  /// the gate is exercised without a live server.
+  var ollamaReadinessProbe: @MainActor (String) async -> OllamaReadiness = { model in
+    await OllamaConnector().preflightReadiness(model: model)
+  }
+
   /// Holds the app-owned output-safety classifier (#832/#913 PR8). Read LAZILY
   /// at polish time (not at build time) so the value set after async prewarm is
   /// picked up by the next polish. Nil for standalone callsites without one.
@@ -235,6 +244,26 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         "LLM polish requested: provider=\(provider.rawValue), model=\(model)",
         level: .verbose, category: "LLM"
       )
+    }
+
+    // #1305: Ollama readiness preflight — mirror of the `.egOne` gate below,
+    // sitting exactly where "a polish attempt for this provider is about to
+    // start" is knowable and BEFORE any polisher construction or connector
+    // retry loop. Not-ready is a SURFACED SKIP (notice yes, Sentry no —
+    // TextProcessingRunner owns that policy), so the user gets raw text
+    // essentially instantly instead of ~4s of doomed retries (#1305 root
+    // symptom). The probe uses the entry-snapshot `model`, so a mid-polish
+    // settings change cannot tear it; the answer is per-attempt truth, never
+    // cached across dictations.
+    if provider == .ollama {
+      switch await ollamaReadinessProbe(model) {
+      case .ready:
+        break
+      case .serverDown:
+        throw LLMError.localPolishNotReady(.providerUnreachable)
+      case .modelMissing:
+        throw LLMError.localPolishNotReady(.modelUnavailable)
+      }
     }
 
     // #1271: EG-1 resolves its polisher from the live server endpoint, not

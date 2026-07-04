@@ -146,7 +146,15 @@ public final class SettingsManager {
       llmModel = "apple-intelligence"
     case .egOne:
       llmModel = LLMProvider.egOneModelName
-    case .openAI, .gemini, .ollama, .none:
+    case .ollama:
+      // #1305: empty stays empty for Ollama — refilling from `ollamaModel`
+      // here silently re-armed the phantom picker selection at every launch
+      // after discovery had cleared it. Only discovery and an explicit user
+      // pick may arm an Ollama model; fixed literals still get swept.
+      if fixedLiterals.contains(llmModel) {
+        llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
+      }
+    case .openAI, .gemini, .none:
       if fixedLiterals.contains(llmModel) || llmModel.isEmpty {
         llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
       }
@@ -748,7 +756,23 @@ public final class SettingsManager {
     isApplyingSystemWrite = true
     defer { isApplyingSystemWrite = false }
     if models.isEmpty {
-      llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
+      // #1305: for Ollama, empty discovery means NOTHING is installed — arming
+      // the remembered `ollamaModel` name here was the root cause of the
+      // phantom-model bug (a picker selection and dictation model no /api/tags
+      // list contains). "" is the explicit "nothing armed" state the picker
+      // already renders as "No models found". `ollamaModel` (the remembered
+      // preference) DELIBERATELY stays untouched — it powers the
+      // Download-suggestion copy, and although `effectiveLLMModel` keeps
+      // returning it for dictation configs, every polish attempt is guarded by
+      // the readiness preflight in `LLMPolishStep` (the stale name probes as
+      // model-missing and skips instantly); dictation-time truth is owned by
+      // that gate, not by clearing this field. Cloud providers keep the
+      // default-fill (their catalogs are never legitimately empty; an empty
+      // result is a discovery hiccup).
+      llmModel =
+        llmProvider == .ollama
+        ? ""
+        : LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
       return
     }
     if !models.contains(where: { $0.id == llmModel && $0.isAvailable }) {
