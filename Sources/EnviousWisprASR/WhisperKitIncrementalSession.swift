@@ -1,6 +1,5 @@
 import EnviousWisprCore
 import Foundation
-
 @preconcurrency import WhisperKit
 
 /// Opaque handle to a WhisperKit-backed incremental transcription session.
@@ -35,12 +34,15 @@ package protocol WhisperKitIncrementalSession: Sendable {
 
   /// #1309: the user's stop arrived — snapshot any telemetry that must
   /// reflect the STOP moment (the adapter drains feed tasks before calling
-  /// `finalize`, so state can change in between). Default no-op.
+  /// `finalize`, so state can change in between).
+  ///
+  /// Deliberately NO extension default: a defaulted async no-op plus a
+  /// synchronous conformer implementation lets a concrete-typed `await`
+  /// call resolve to the no-op instead of the conformer's method (Swift
+  /// prefers the async overload in async contexts), silently dropping the
+  /// snapshot — the #1309 flaky-test root cause. Conformers with nothing to
+  /// snapshot implement an explicit `async` no-op.
   func noteStopRequested() async
-}
-
-extension WhisperKitIncrementalSession {
-  package func noteStopRequested() async {}
 }
 
 // MARK: - Shared incremental-decode types (#1315: moved here when the

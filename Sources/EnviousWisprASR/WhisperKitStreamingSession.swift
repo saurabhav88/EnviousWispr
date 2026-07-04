@@ -491,7 +491,11 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     return (sumSquares / Float(samples.count)).squareRoot()
   }
 
-  package func noteStopRequested() {
+  // Keep `async`, exactly matching the protocol requirement — a synchronous
+  // signature here combined with any defaulted async overload silently skips
+  // the snapshot on concrete-typed calls (#1309 flaky-test root cause; see
+  // the requirement's doc in WhisperKitIncrementalSession.swift).
+  package func noteStopRequested() async {
     guard !stopSnapshotTaken else { return }
     stopSnapshotTaken = true
     stoppedMidDecode = loopDecodeInFlight

@@ -131,7 +131,6 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
     return observeLIDResult
   }
 
-
   func makeStreamingSession(options: TranscriptionOptions) async
     -> (any WhisperKitIncrementalSession)?
   {
@@ -187,6 +186,10 @@ actor StubIncrementalSession: WhisperKitIncrementalSession {
   ) async {
     startCount += 1
   }
+
+  // Explicit no-op — the protocol deliberately has no default (see
+  // `WhisperKitIncrementalSession.noteStopRequested` doc).
+  func noteStopRequested() async {}
 
   func finalize(
     finalSamples: [Float],
