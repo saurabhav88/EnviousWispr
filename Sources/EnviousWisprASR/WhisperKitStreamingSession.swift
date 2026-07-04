@@ -461,12 +461,20 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     return (sumSquares / Float(samples.count)).squareRoot()
   }
 
-  package func cancel() {
+  package func cancel() async {
     running = false
     finished = true
+    let loop = loopTask
     loopTask?.cancel()
     loopTask = nil
     audioSamplesProvider = nil
+    // Await the loop's full exit, exactly like `finalize` (Codex r2 P1):
+    // WhisperKit's `transcribe` is not cooperatively cancellable mid-run, so
+    // returning while a loop decode is still in flight would let a quick next
+    // recording start a SECOND concurrent transcribe on the same model and
+    // corrupt decoder state. The loop sees `finished` on resume and drops its
+    // result; this wait is bounded by that single decode.
+    await loop?.value
   }
 
   // MARK: - Benchmark capture (rulebook §5.0 / §5.3) — replay runner ONLY.

@@ -389,10 +389,14 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
 
     // Cancel + drop any orphan streaming session from a prior session that was
     // superseded before finalize/cancel cleared the handle (mirrors PR-1's old
-    // orphan-worker cancel). Fire the cancel detached so beginSession stays fast.
+    // orphan-worker cancel). AWAITED, not detached (Codex r2 P1): the orphan's
+    // in-flight decode is not cooperatively cancellable, and vending a new
+    // streaming session before it fully exits would put two concurrent
+    // transcribes on the same WhisperKit instance. `cancel()` returns only
+    // after the orphan's loop has exited, bounded by that single decode.
     if let orphan = streamingSession {
       streamingSession = nil
-      Task { await orphan.cancel() }
+      await orphan.cancel()
     }
 
     // Refresh cached readiness — backend may have been unloaded by a prior

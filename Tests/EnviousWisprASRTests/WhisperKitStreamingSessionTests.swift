@@ -338,6 +338,36 @@ import Testing
     #expect(r.text == nil || r.text?.isEmpty == true, "no transcript after cancel")
   }
 
+  @Test("cancel returns only after an in-flight loop decode exits (Codex r2 P1)")
+  func cancelAwaitsInFlightDecode() async throws {
+    // WhisperKit transcribes are not safely concurrent: cancel must block
+    // until the (non-cancellable) in-flight decode returns, so a quick next
+    // recording can never start a second transcribe on the same model.
+    actor Flag {
+      var isSet = false
+      func set() { isSet = true }
+    }
+    let loop = result("one two three", [seg(0, 1, "one"), seg(1, 2, "two"), seg(2, 3, "three")])
+    let dec = GateDecoder(loopResult: [loop], flushResult: [])
+    let s = WhisperKitStreamingSession(
+      whisperKit: dec, decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1))
+    let pcm = [Float](repeating: 0.4, count: 96_000)
+    await s.start(audioSamplesProvider: fixedProvider(pcm))
+    while !(await dec.loopEntered) { await Task.yield() }  // decode now blocked in-flight
+    let done = Flag()
+    Task {
+      await s.cancel()
+      await done.set()
+    }
+    // Bounded yields: a buggy early-returning cancel completes well within these.
+    for _ in 0..<100 { await Task.yield() }
+    #expect(await done.isSet == false, "cancel must block while the decode is in flight")
+    await dec.release()
+    while !(await done.isSet) { await Task.yield() }  // signal, not clock
+    #expect(await dec.active == 0, "no decode still in flight after cancel returns")
+  }
+
   // MARK: LocalAgreement-2 (#1276 PR-2 — UFAL HypothesisBuffer.flush port)
 
   /// Provider whose sample count grows by one decode-gate quantum per pull, so a
