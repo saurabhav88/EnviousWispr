@@ -57,6 +57,26 @@ if [ -n "$(dev_pids)" ]; then
   exit 1
 fi
 
+# Reap dev llama-server helpers (EG-1 polish engines). Every dev app instance
+# was just quit, so any dev-bundle llama-server still alive here is an orphan
+# by construction — including servers whose worktree bundle was deleted after
+# a merge (the app's own crash sweep is exact-binary-path scoped, so no future
+# launch can ever reap those; 10 accumulated over one week of parallel
+# worktree sessions, each pinning the model in RAM — 2026-07-04). Scope by the
+# dev bundle path ("EnviousWispr Local.app/..."): prod runs from
+# /Applications/EnviousWispr.app and never matches. pgrep -f matches anywhere
+# in the command line, so verify argv[0] IS the helper binary before killing —
+# a sibling build's codesign invocation merely MENTIONING the path must
+# survive (same trap as the in-app sweep, #1271 seam review).
+dev_llama_pids() { pgrep -f "EnviousWispr Local.app/Contents/Resources/llama-server" 2>/dev/null || true; }
+for pid in $(dev_llama_pids); do
+  case "$(ps -o comm= -p "$pid" 2>/dev/null || true)" in
+    *"EnviousWispr Local.app/Contents/Resources/llama-server")
+      kill -TERM "$pid" 2>/dev/null || true
+      echo "    reaped orphaned dev llama-server (pid $pid)" ;;
+  esac
+done
+
 # ─── Step 3: Generate the Xcode project (gitignored, never committed) ─────────
 echo "==> Step 3: Generating Xcode project (Tuist)..."
 mise x tuist@4.195.11 -- tuist generate --no-open
