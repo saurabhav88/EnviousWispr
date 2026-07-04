@@ -434,7 +434,18 @@ struct KernelFinalizationWiring {
       emojiDropped: outcome.emojiRan ? outcome.emojiDropped : nil,
       emojiRestored: outcome.emojiRan ? outcome.emojiRestored : nil,
       emojiRestoreIncomplete: outcome.emojiRan ? outcome.emojiRestoreIncomplete : nil,
-      emojiLatencyMs: outcome.emojiRan ? outcome.emojiLatencyMs : nil
+      emojiLatencyMs: outcome.emojiRan ? outcome.emojiLatencyMs : nil,
+      // #1309 effective-path streaming telemetry — kernel-assembled from the
+      // adapter's diagnostics (WhisperKit only; nil omitted). `streamingMode`
+      // above stays the REQUESTED mode.
+      streamingEffective: telemetryState.asrCompletedTelemetry?.streamingEffective,
+      streamingDegradeReason: telemetryState.asrCompletedTelemetry?.streamingDegradeReason,
+      streamingFinalPath: telemetryState.asrCompletedTelemetry?.streamingFinalPath,
+      streamingDecodeCount: telemetryState.asrCompletedTelemetry?.streamingDecodeCount,
+      streamingCoveredSec: telemetryState.asrCompletedTelemetry?.streamingCoveredSec,
+      tailDecodeSec: telemetryState.asrCompletedTelemetry?.tailDecodeSec,
+      maxUnconfirmedWindowSec: telemetryState.asrCompletedTelemetry?.maxUnconfirmedWindowSec,
+      stopWhileDecodeInFlight: telemetryState.asrCompletedTelemetry?.stopWhileDecodeInFlight
     )
     outcome.transcript = transcript
   }

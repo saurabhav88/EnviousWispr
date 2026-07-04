@@ -618,6 +618,14 @@ import Testing
     #expect(adapter.lastLanguageDetection?.lang == "en")
     #expect(adapter.lastLanguageDetection?.tier == .locked)
     #expect(adapter.lastLanguageDetection?.abstained == false)
+    // #1309 effective-path telemetry: streaming delivered the transcript.
+    let diag = adapter.lastASRDiagnostics
+    #expect(diag?.streamingEffective == true)
+    #expect(diag?.streamingDegradeReason == "none")
+    #expect(diag?.streamingFinalPath == "streaming_flush")
+    #expect(diag?.incrementalDecodeCount == 1)
+    #expect(diag?.stopWhileDecodeInFlight == false)
+    #expect(diag?.streamingMaxUnconfirmedWindowSec == 25.0)
   }
 
   @Test("streaming ON + auto language: degrades to clean batch, no streaming session")
@@ -644,6 +652,12 @@ import Testing
     #expect(result.text == "auto-batch")
     let txCount = await backend.transcribeCount
     #expect(txCount == 1, "auto + streaming ON runs clean batch")
+    // #1309: requested-but-degraded — the auto-language case (the issue's
+    // named test scenario: requested=true, effective=false, reason=auto_language).
+    let diag = adapter.lastASRDiagnostics
+    #expect(diag?.streamingEffective == false)
+    #expect(diag?.streamingDegradeReason == "auto_language")
+    #expect(diag?.streamingFinalPath == "clean_batch")
   }
 
   @Test("streaming ON + locked but model not ready (nil vend): fail-open to clean batch")
@@ -668,6 +682,11 @@ import Testing
     #expect(result.text == "fallback-batch", "nil streaming vend → clean batch fallback")
     let txCount = await backend.transcribeCount
     #expect(txCount == 1)
+    // #1309: model-not-ready degrade.
+    let diag = adapter.lastASRDiagnostics
+    #expect(diag?.streamingEffective == false)
+    #expect(diag?.streamingDegradeReason == "model_not_ready")
+    #expect(diag?.streamingFinalPath == "clean_batch")
   }
 
   @Test("streaming ON + locked but flush returns empty: fail-open to clean batch")
@@ -695,6 +714,11 @@ import Testing
     #expect(mss == 1, "streaming session was started")
     let txCount = await backend.transcribeCount
     #expect(txCount == 1, "batch fallback ran after empty flush")
+    // #1309: flush produced nothing → fallback_batch with flush_empty.
+    let diag = adapter.lastASRDiagnostics
+    #expect(diag?.streamingEffective == false)
+    #expect(diag?.streamingDegradeReason == "flush_empty")
+    #expect(diag?.streamingFinalPath == "fallback_batch")
   }
 
   @Test("streaming OFF + locked: no streaming session, clean batch")
@@ -720,6 +744,11 @@ import Testing
       return
     }
     #expect(result.text == "off-batch")
+    // #1309: not requested → disabled / clean_batch.
+    let diag = adapter.lastASRDiagnostics
+    #expect(diag?.streamingEffective == false)
+    #expect(diag?.streamingDegradeReason == "disabled")
+    #expect(diag?.streamingFinalPath == "clean_batch")
   }
 
   // MARK: Finalize — coordinate space (council F1 / OQ-1)

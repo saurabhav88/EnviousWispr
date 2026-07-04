@@ -85,6 +85,21 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var emojiRestored: Int?
   public var emojiRestoreIncomplete: Bool?
   public var emojiLatencyMs: Double?
+  /// #1309 effective-path streaming telemetry (WhisperKit only; nil for
+  /// Parakeet and pre-#1309 transcripts on disk — additive optional Codable,
+  /// back-compatible). `streamingMode` above is the REQUESTED mode (kernel
+  /// capability gate); these describe what actually ran. Metadata only.
+  /// `streamingDegradeReason` = none / disabled / auto_language /
+  /// model_not_ready / flush_empty / flush_throw. `streamingFinalPath` =
+  /// streaming_flush / clean_batch / fallback_batch / failed.
+  public var streamingEffective: Bool?
+  public var streamingDegradeReason: String?
+  public var streamingFinalPath: String?
+  public var streamingDecodeCount: Int?
+  public var streamingCoveredSec: Double?
+  public var tailDecodeSec: Double?
+  public var maxUnconfirmedWindowSec: Double?
+  public var stopWhileDecodeInFlight: Bool?
 
   public init(
     asrLatencySeconds: Double? = nil,
@@ -125,7 +140,15 @@ public struct ExecutionMetrics: Codable, Sendable {
     emojiDropped: Int? = nil,
     emojiRestored: Int? = nil,
     emojiRestoreIncomplete: Bool? = nil,
-    emojiLatencyMs: Double? = nil
+    emojiLatencyMs: Double? = nil,
+    streamingEffective: Bool? = nil,
+    streamingDegradeReason: String? = nil,
+    streamingFinalPath: String? = nil,
+    streamingDecodeCount: Int? = nil,
+    streamingCoveredSec: Double? = nil,
+    tailDecodeSec: Double? = nil,
+    maxUnconfirmedWindowSec: Double? = nil,
+    stopWhileDecodeInFlight: Bool? = nil
   ) {
     self.asrLatencySeconds = asrLatencySeconds
     self.llmLatencySeconds = llmLatencySeconds
@@ -166,6 +189,14 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.emojiRestored = emojiRestored
     self.emojiRestoreIncomplete = emojiRestoreIncomplete
     self.emojiLatencyMs = emojiLatencyMs
+    self.streamingEffective = streamingEffective
+    self.streamingDegradeReason = streamingDegradeReason
+    self.streamingFinalPath = streamingFinalPath
+    self.streamingDecodeCount = streamingDecodeCount
+    self.streamingCoveredSec = streamingCoveredSec
+    self.tailDecodeSec = tailDecodeSec
+    self.maxUnconfirmedWindowSec = maxUnconfirmedWindowSec
+    self.stopWhileDecodeInFlight = stopWhileDecodeInFlight
   }
 }
 

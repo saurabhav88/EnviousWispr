@@ -157,6 +157,14 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// `true` between a successful streaming-session start and finalize/cancel.
   private var streamingActive = false
 
+  /// #1309 effective-path telemetry, per session. `sessionStreamingRequested`
+  /// mirrors the kernel's capability-gate decision as handed to `beginSession`;
+  /// the degrade reason narrows as the session progresses:
+  /// none / disabled / auto_language / model_not_ready / flush_empty /
+  /// flush_throw. Surfaced through `KernelASRAdapterDiagnostics`.
+  private var sessionStreamingRequested = false
+  private var sessionStreamingDegradeReason = "none"
+
   /// The adapter-owned LOSSLESS audio the streaming session reads — the single
   /// coordinate the whole streaming path lives in (§3.2). Fed by `acceptAudio`
   /// via retained `streamingFeedTasks` (Parakeet's drain pattern ported
@@ -362,6 +370,11 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     lastResult = nil
     lastASRDiagnostics = nil
     lastFailureError = nil
+    // #1309 effective-path telemetry: reset per session. The degrade reason
+    // is refined as the session progresses (auto_language / model_not_ready
+    // at begin; flush_empty / flush_throw at finalize).
+    sessionStreamingRequested = streaming
+    sessionStreamingDegradeReason = streaming ? "none" : "disabled"
     lastLanguageDetection = nil
     retainedPCM.removeAll(keepingCapacity: true)
     observedSpeechSegments.removeAll()
@@ -407,6 +420,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     if streaming, options.language != nil {
       await startStreamingSession(id, options: options)
     } else {
+      if streaming { sessionStreamingDegradeReason = "auto_language" }
       let reason = streaming ? "auto language, batch (Ship 2)" : "toggle off"
       let languageForLog = options.language ?? "auto"
       Task {
@@ -425,6 +439,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// then runs the clean batch fallback (fail-open, heart stays alive).
   private func startStreamingSession(_ id: SessionID, options: TranscriptionOptions) async {
     guard let session = await backend.makeStreamingSession(options: options) else {
+      sessionStreamingDegradeReason = "model_not_ready"
       Task {
         await AppLogger.shared.log(
           "WhisperKit recording started (batch mode, streaming requested but model not loaded)",
@@ -738,6 +753,16 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     // terminal outcome.
     var diagnostics = KernelASRAdapterDiagnostics()
     diagnostics.rawSampleCount = rawSamples.count
+    // #1309 effective-path telemetry: this is the batch finalize, so streaming
+    // did not deliver the transcript. `fallback_batch` when a streaming
+    // session ran and degraded at flush; `clean_batch` when streaming never
+    // ran (toggle off / auto language / model not ready). The .failed exit
+    // below overrides `finalPath` to "failed".
+    diagnostics.streamingEffective = false
+    diagnostics.streamingDegradeReason = sessionStreamingDegradeReason
+    diagnostics.streamingFinalPath =
+      ["flush_empty", "flush_throw"].contains(sessionStreamingDegradeReason)
+      ? "fallback_batch" : "clean_batch"
     // PR-5 Rung 4.5 (#827): LID perf-signpost transport for kernel-side
     // `t_release` and wiring-side `t_clipboard_write` emits. Populated here
     // so every terminal write of `lastASRDiagnostics` carries them. Uses the
@@ -777,6 +802,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
       return .cancelled
     case .failed(let error):
       lastFailureError = error
+      diagnostics.streamingFinalPath = "failed"  // #1309
       lastASRDiagnostics = diagnostics
       isTerminal = true
       clearSessionBuffers()
@@ -1058,6 +1084,9 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     let trimmed = (result.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     guard result.accepted, !trimmed.isEmpty else {
       // Streaming produced nothing usable — fall through to the batch fallback.
+      // #1309: record WHY streaming degraded for the fallback's diagnostics.
+      sessionStreamingDegradeReason =
+        result.strategy == "streaming_flush_failed" ? "flush_throw" : "flush_empty"
       Task { [strategy = result.strategy] in
         await AppLogger.shared.log(
           "WhisperKit streaming flush empty (strategy=\(strategy)) — falling back to batch",
@@ -1084,6 +1113,17 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     var diagnostics = KernelASRAdapterDiagnostics()
     diagnostics.rawSampleCount = result.samplesCovered
     diagnostics.lidCaptureSessionID = sessionIDForLog
+    // #1309 effective-path telemetry: streaming ran and its flush IS the
+    // transcript.
+    diagnostics.streamingEffective = true
+    diagnostics.streamingDegradeReason = "none"
+    diagnostics.streamingFinalPath = "streaming_flush"
+    diagnostics.incrementalDecodeCount = result.decodeCount
+    diagnostics.incrementalSamplesCovered = result.samplesCovered
+    diagnostics.incrementalTailDecodeMs = result.tailDecodeMs
+    diagnostics.stopWhileDecodeInFlight = result.stopWhileDecodeInFlight
+    diagnostics.streamingMaxUnconfirmedWindowSec =
+      Double(WhisperKitStreamingSession.defaultMaxUnconfirmedWindowSec)
     lastASRDiagnostics = diagnostics
     isTerminal = true
     clearSessionBuffers()

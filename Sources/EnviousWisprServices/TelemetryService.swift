@@ -124,7 +124,18 @@ public final class TelemetryService {
         captureTrailingSilenceMs: m?.captureTrailingSilenceMs,
         captureTail200Rms: m?.captureTail200Rms, captureTail200Peak: m?.captureTail200Peak,
         asrInputDurationMs: m?.asrInputDurationMs, asrLastTokenEndMs: m?.asrLastTokenEndMs,
-        asrLastTokenGapMs: m?.asrLastTokenGapMs, asrChunked: m?.asrChunked)
+        asrLastTokenGapMs: m?.asrLastTokenGapMs, asrChunked: m?.asrChunked,
+        // #1309: requested restated from the metrics' streamingMode only when
+        // the effective-path facts are present (WhisperKit; Parakeet omits all).
+        streamingRequested: m?.streamingEffective != nil ? m?.streamingMode : nil,
+        streamingEffective: m?.streamingEffective,
+        streamingDegradeReason: m?.streamingDegradeReason,
+        streamingFinalPath: m?.streamingFinalPath,
+        streamingDecodeCount: m?.streamingDecodeCount,
+        streamingCoveredSec: m?.streamingCoveredSec,
+        tailDecodeSec: m?.tailDecodeSec,
+        maxUnconfirmedWindowSec: m?.maxUnconfirmedWindowSec,
+        stopWhileDecodeInFlight: m?.stopWhileDecodeInFlight)
     }
     if let llmLat = m?.llmLatencySeconds, llmLat > 0, t.llmProvider != nil {
       llmPolishCompleted(
@@ -722,7 +733,19 @@ public final class TelemetryService {
     tailClipClass: String? = nil, captureTrailingSilenceMs: Int? = nil,
     captureTail200Rms: Double? = nil, captureTail200Peak: Double? = nil,
     asrInputDurationMs: Int? = nil, asrLastTokenEndMs: Int? = nil,
-    asrLastTokenGapMs: Int? = nil, asrChunked: Bool? = nil
+    asrLastTokenGapMs: Int? = nil, asrChunked: Bool? = nil,
+    // #1309 effective-path streaming telemetry (WhisperKit only; omit-on-nil;
+    // metadata only — no audio/content). `streamingRequested` = the kernel's
+    // capability-gate decision; `streamingEffective` = a streaming flush
+    // delivered the transcript; `streamingDegradeReason` = none / disabled /
+    // auto_language / model_not_ready / flush_empty / flush_throw;
+    // `streamingFinalPath` = streaming_flush / clean_batch / fallback_batch /
+    // failed.
+    streamingRequested: Bool? = nil, streamingEffective: Bool? = nil,
+    streamingDegradeReason: String? = nil, streamingFinalPath: String? = nil,
+    streamingDecodeCount: Int? = nil, streamingCoveredSec: Double? = nil,
+    tailDecodeSec: Double? = nil, maxUnconfirmedWindowSec: Double? = nil,
+    stopWhileDecodeInFlight: Bool? = nil
   ) {
     var properties: [String: Any] = [
       "backend": backend,
@@ -748,6 +771,21 @@ public final class TelemetryService {
     if let asrLastTokenEndMs { properties["asr_last_token_end_ms"] = asrLastTokenEndMs }
     if let asrLastTokenGapMs { properties["asr_last_token_gap_ms"] = asrLastTokenGapMs }
     if let asrChunked { properties["asr_chunked"] = asrChunked }
+    if let streamingRequested { properties["streaming_requested"] = streamingRequested }
+    if let streamingEffective { properties["streaming_effective"] = streamingEffective }
+    if let streamingDegradeReason {
+      properties["streaming_degrade_reason"] = streamingDegradeReason
+    }
+    if let streamingFinalPath { properties["final_path"] = streamingFinalPath }
+    if let streamingDecodeCount { properties["streaming_decode_count"] = streamingDecodeCount }
+    if let streamingCoveredSec { properties["streaming_covered_sec"] = streamingCoveredSec }
+    if let tailDecodeSec { properties["tail_decode_sec"] = tailDecodeSec }
+    if let maxUnconfirmedWindowSec {
+      properties["max_unconfirmed_window_sec"] = maxUnconfirmedWindowSec
+    }
+    if let stopWhileDecodeInFlight {
+      properties["stop_while_decode_in_flight"] = stopWhileDecodeInFlight
+    }
     PostHogSDK.shared.capture("asr.completed", properties: properties)
   }
 

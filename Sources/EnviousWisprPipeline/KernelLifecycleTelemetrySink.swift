@@ -369,6 +369,15 @@ final class KernelLifecycleTelemetrySink {
     if let incremental = telemetryState.asrCompletedTelemetry?.incrementalAccepted {
       payload["incremental"] = incremental
     }
+    // #1309 effective-path streaming facts (WhisperKit only; nil omitted).
+    if let t = telemetryState.asrCompletedTelemetry {
+      if let v = t.streamingRequested { payload["streaming_requested"] = v }
+      if let v = t.streamingEffective { payload["streaming_effective"] = v }
+      if let v = t.streamingDegradeReason { payload["streaming_degrade_reason"] = v }
+      if let v = t.streamingFinalPath { payload["final_path"] = v }
+      if let v = t.streamingDecodeCount { payload["streaming_decode_count"] = v }
+      if let v = t.stopWhileDecodeInFlight { payload["stop_while_decode_in_flight"] = v }
+    }
     // #950 tail-trim diagnostic (eligible Parakeet batch only; nil omitted).
     // `tail_dropped_ms` always present when set (incl. 0); `tail_had_energy` only
     // when a tail was dropped. Metadata only — no audio/content.

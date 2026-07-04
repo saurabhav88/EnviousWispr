@@ -121,7 +121,10 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   /// exceeds this, confirm the oldest unconfirmed segment(s) so the per-cycle
   /// decode window stays under one 30s WhisperKit window even if confirmation
   /// stalls. 25s leaves headroom under the 30s window.
-  private let maxUnconfirmedWindowSec: Float = 25.0
+  /// Single source for the hard window bound — telemetry echoes it (#1309).
+  package static let defaultMaxUnconfirmedWindowSec: Float = 25.0
+  private let maxUnconfirmedWindowSec: Float =
+    WhisperKitStreamingSession.defaultMaxUnconfirmedWindowSec
 
   /// Minimum uncovered-tail duration (seconds) below which the flush skips the
   /// tail decode and accepts the confirmed prefix — a sub-100ms tail is too short
@@ -159,6 +162,14 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   /// arm S1's "release-only" material (rulebook §5.0). The segment-lag
   /// finalize ignores it. Empty until the first decode.
   private var retainedUnconfirmedSegments: [BenchmarkSegment] = []
+
+  /// True while a loop decode is inside `whisperKit.transcribe` — read by
+  /// finalize (after awaiting the loop's exit) to stamp the #1309
+  /// `stop_while_decode_in_flight` telemetry field.
+  private var loopDecodeInFlight = false
+  /// Snapshot of `loopDecodeInFlight` at finalize entry (#1309 telemetry),
+  /// stamped onto every result this finalize produces.
+  private var stoppedMidDecode = false
 
   private var running = false
   /// Set exactly once at the first terminal (`finalize`/`cancel`) so a late loop
@@ -266,6 +277,8 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     decodeCount = 0
     totalDecodeTimeMs = 0
     retainedUnconfirmedSegments = []
+    stoppedMidDecode = false
+    loopDecodeInFlight = false
     previousHypothesisWords = []
     bufferStartSec = 0
     committedWordsInBuffer = []
@@ -291,6 +304,9 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     finalSamples: [Float],
     speechSegments: [SpeechSegment]
   ) async -> IncrementalResult {
+    // #1309 telemetry: was a loop decode still in flight when stop arrived?
+    // Snapshot BEFORE awaiting the loop's exit (which clears the flag).
+    stoppedMidDecode = loopDecodeInFlight
     running = false
     finished = true
     let loop = loopTask
@@ -458,7 +474,8 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
       samplesCovered: 0, decodeCount: decodeCount,
       totalDecodeTimeMs: totalDecodeTimeMs,
       accepted: false, mode: "streaming",
-      strategy: strategy, tailDecodeMs: tailMs)
+      strategy: strategy, tailDecodeMs: tailMs,
+      stopWhileDecodeInFlight: stoppedMidDecode)
   }
 
   private func rms(_ samples: [Float]) -> Float {
@@ -568,7 +585,9 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
       }
       let decodeStart = CFAbsoluteTimeGetCurrent()
       do {
+        loopDecodeInFlight = true
         let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: opts)
+        loopDecodeInFlight = false
         // Re-check terminal state AFTER the decode await before mutating confirmed
         // state — a finalize/cancel during the decode must win.
         guard running, !finished, !Task.isCancelled else { break }
@@ -585,6 +604,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
         let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - decodeStart) * 1000)
         totalDecodeTimeMs += elapsedMs
       } catch {
+        loopDecodeInFlight = false
         if !Task.isCancelled {
           await AppLogger.shared.log(
             "WhisperKit streaming decode failed: \(error.localizedDescription)",
@@ -861,6 +881,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
       samplesCovered: samplesCovered, decodeCount: decodeCount,
       totalDecodeTimeMs: totalDecodeTimeMs,
       accepted: !trimmed.isEmpty, mode: "streaming",
-      strategy: "streaming", tailDecodeMs: tailDecodeMs)
+      strategy: "streaming", tailDecodeMs: tailDecodeMs,
+      stopWhileDecodeInFlight: stoppedMidDecode)
   }
 }
