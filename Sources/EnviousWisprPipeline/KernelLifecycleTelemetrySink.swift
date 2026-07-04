@@ -376,6 +376,9 @@ final class KernelLifecycleTelemetrySink {
       if let v = t.streamingDegradeReason { payload["streaming_degrade_reason"] = v }
       if let v = t.streamingFinalPath { payload["final_path"] = v }
       if let v = t.streamingDecodeCount { payload["streaming_decode_count"] = v }
+      if let v = t.streamingCoveredSec { payload["streaming_covered_sec"] = v }
+      if let v = t.tailDecodeSec { payload["tail_decode_sec"] = v }
+      if let v = t.maxUnconfirmedWindowSec { payload["max_unconfirmed_window_sec"] = v }
       if let v = t.stopWhileDecodeInFlight { payload["stop_while_decode_in_flight"] = v }
     }
     // #950 tail-trim diagnostic (eligible Parakeet batch only; nil omitted).
