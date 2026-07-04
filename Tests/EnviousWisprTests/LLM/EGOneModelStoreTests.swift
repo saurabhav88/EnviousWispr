@@ -352,6 +352,163 @@ struct EGOneModelStoreTests {
     #expect(state == .installed(version: "v1"))
   }
 
+  // MARK: - Cancel→retry drain gate (#1287 / #1279)
+
+  /// Poll the actor state to a terminal value (house pattern:
+  /// `completePartialInstallsWithoutNetwork`).
+  private func awaitTerminalState(
+    _ store: EGOneModelStore, sourceLocation: SourceLocation = #_sourceLocation
+  ) async throws -> EGOneModelStore.InstallState {
+    var state = await store.state
+    for _ in 0..<100 {
+      if case .installed = state { return state }
+      if case .failed = state { return state }
+      try await Task.sleep(for: .milliseconds(50))  // settle: poll actor state to terminal
+      state = await store.state
+    }
+    return state
+  }
+
+  /// Thread-safe state-sequence recorder for observer-ordering assertions.
+  /// `@unchecked Sendable`: all mutation behind the NSLock.
+  final class StateRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _states: [EGOneModelStore.InstallState] = []
+    func add(_ s: EGOneModelStore.InstallState) {
+      lock.lock()
+      _states.append(s)
+      lock.unlock()
+    }
+    var states: [EGOneModelStore.InstallState] {
+      lock.lock()
+      defer { lock.unlock() }
+      return _states
+    }
+    var downloadingCount: Int {
+      states.reduce(0) { count, s in
+        if case .downloading = s { return count + 1 }
+        return count
+      }
+    }
+  }
+
+  /// The invariant is EXCLUSION while a cancelled predecessor drains: the
+  /// accepted retry publishes `.downloading` once at acceptance (instant
+  /// Cancel, no dead Try Again button) and its download body must not run —
+  /// observable as the ABSENCE of the body's own `.downloading` re-publish,
+  /// which is cheap synchronous actor work and lands within a few yields
+  /// whenever the body (incorrectly) starts. Negative-control validated:
+  /// removing the drain await flips `downloadingCount` to 2 inside the
+  /// yield window.
+  @Test func retryWaitsForPriorDrainBeforeTouchingPartial() async throws {
+    let content = Data("model-bytes-drain-gate".utf8)
+    let (store, manifest, dir) = try Self.makeFixture(content: content)
+    let partial = dir.appendingPathComponent("\(manifest.artifactFileName).partial")
+    try content.write(to: partial)
+
+    let recorder = StateRecorder()
+    await store.setStateObserver { recorder.add($0) }  // fires once with .notInstalled
+    // Pre-warm the shared logger: the download body's first suspension is a
+    // log call, and first-time logger init would otherwise stretch the
+    // un-gated body's latency past the absence window below, masking a
+    // missing gate (found via negative control).
+    await AppLogger.shared.log("drain-gate test warm-up", level: .debug, category: "LLM")
+
+    // Held predecessor: finishes only when the stream is finished.
+    let (releases, releaseCont) = AsyncStream.makeStream(of: Void.self)
+    let drain = Task { for await _ in releases {} }
+    await store.seedDrainingTaskForTest(drain)
+
+    let accepted = await store.startDownload()
+    #expect(accepted == true)
+    // Pre-drain publish: instant progress state (complete partial → 1.0).
+    #expect(await store.state == .downloading(fractionCompleted: 1.0))
+    #expect(recorder.downloadingCount == 1)
+
+    // Absence window in which an un-gated body would re-publish
+    // `.downloading` and begin mutating disk (~ms with the logger warm).
+    for _ in 0..<200 { await Task.yield() }
+    try await Task.sleep(for: .milliseconds(150))  // settle: absence-of-effect window for the gated body
+    #expect(
+      recorder.downloadingCount == 1,
+      "download body must not run while the drain is held (no re-publish)")
+    #expect(
+      try Data(contentsOf: partial) == content, "partial bytes must be untouched while drain held")
+    #expect(
+      !FileManager.default.fileExists(
+        atPath: dir.appendingPathComponent(manifest.artifactFileName).path),
+      "no install may happen behind a held drain")
+
+    releaseCont.finish()
+    let terminal = try await awaitTerminalState(store)
+    #expect(terminal == .installed(version: "v1"))
+    #expect(recorder.downloadingCount >= 2, "released body re-publishes and completes")
+  }
+
+  /// Cancel must stash the live task as the drain (single-flight reopens
+  /// only through the gate), and a double-cancel must NOT clobber the stash
+  /// with nil — cancel → cancel → Try Again would otherwise reopen the race.
+  @Test func cancelStashesLiveTaskAsDrainAndDoubleCancelKeepsIt() async throws {
+    let content = Data("model-bytes-stash".utf8)
+    let (store, manifest, dir) = try Self.makeFixture(content: content)
+    try content.write(to: dir.appendingPathComponent("\(manifest.artifactFileName).partial"))
+
+    let (releases, releaseCont) = AsyncStream.makeStream(of: Void.self)
+    let drain = Task { for await _ in releases {} }
+    await store.seedDrainingTaskForTest(drain)
+
+    // T1 is accepted and blocks awaiting the held drain — a live download task.
+    #expect(await store.startDownload() == true)
+    await store.cancelDownload()
+    #expect(await store.hasPendingDrainForTest == true, "cancel stashes the live task")
+    #expect(await store.state == .failed(.cancelled))
+
+    await store.cancelDownload()  // double-cancel
+    #expect(await store.hasPendingDrainForTest == true, "nil task must not clobber the stash")
+
+    // Retry is accepted and chains behind the whole drain lineage.
+    #expect(await store.startDownload() == true)
+    #expect(await store.hasPendingDrainForTest == false, "retry consumed the drain slot")
+    releaseCont.finish()
+    let terminal = try await awaitTerminalState(store)
+    #expect(terminal == .installed(version: "v1"))
+  }
+
+  /// A retry that was cancelled AND whose files were removed while it
+  /// awaited the drain must never touch disk afterwards: no recreated
+  /// `.partial`, no `.resume.json`, state stays `.notInstalled`.
+  @Test func staleRetryNeverTouchesDiskAfterGenerationBump() async throws {
+    let content = Data("model-bytes-stale-retry".utf8)
+    let (store, manifest, dir) = try Self.makeFixture(content: content)
+    let partial = dir.appendingPathComponent("\(manifest.artifactFileName).partial")
+    let identity = dir.appendingPathComponent("\(manifest.artifactFileName).resume.json")
+    try content.write(to: partial)
+
+    let (releases, releaseCont) = AsyncStream.makeStream(of: Void.self)
+    let drain = Task { for await _ in releases {} }
+    await store.seedDrainingTaskForTest(drain)
+    await AppLogger.shared.log("stale-retry test warm-up", level: .debug, category: "LLM")
+
+    #expect(await store.startDownload() == true)  // T1 awaits the held drain
+    try await store.removeModel()  // bumps generation, deletes files
+    #expect(await store.state == .notInstalled)
+
+    releaseCont.finish()  // T1 unblocks — its staleness stop must return
+    // Absence window: an un-guarded stale body's first disk mutation
+    // (partial re-creation in fetchArtifact) is synchronous actor work right
+    // after the drain resumes, so this settle discriminates. Negative-control
+    // validated: removing the staleness stop recreates the partial here.
+    for _ in 0..<200 { await Task.yield() }
+    try await Task.sleep(for: .milliseconds(100))  // settle: absence-of-effect window for the stale retry
+    #expect(
+      !FileManager.default.fileExists(atPath: partial.path),
+      "stale retry must not recreate the partial")
+    #expect(
+      !FileManager.default.fileExists(atPath: identity.path),
+      "stale retry must not write resume identity")
+    #expect(await store.state == .notInstalled)
+  }
+
   // MARK: - Download-completion keyed off the request flag (#1271 Codex r17)
 
   /// `.installed` re-emissions from refreshes (launch, activation, settings

@@ -46,6 +46,14 @@ public actor EGOneModelStore {
   /// publish its terminal state over a retry's live state nor clear the
   /// retry's task handle.
   private var downloadGeneration = 0
+  /// The most recently cancelled/superseded download task, possibly still
+  /// draining its URLSession delegate queue (#1287): its `ChunkAppendDelegate`
+  /// may deliver late `didReceive` appends to the shared `.partial` until
+  /// `didCompleteWithError` fires. The next `startDownload` awaits this task's
+  /// completion before touching the partial — task completion IS the drain
+  /// signal (the delegate's continuation resumes only on terminal completion,
+  /// and `fetchArtifact`'s defer then closes the handle).
+  private var drainingTask: Task<Void, Never>?
   private(set) var state: InstallState = .notInstalled
   /// Progress callback for the UI facade (set once by `EGOneRuntime`).
   private var onStateChange: (@Sendable (InstallState) -> Void)?
@@ -113,6 +121,9 @@ public actor EGOneModelStore {
   public func removeModel() throws {
     downloadGeneration += 1
     downloadTask?.cancel()
+    // Guarded stash (#1287): a nil downloadTask (double-cancel, self-cleared
+    // task) must not clobber a predecessor that is still draining.
+    if let live = downloadTask { drainingTask = live }
     downloadTask = nil
     let fm = FileManager.default
     for url in [installedArtifactURL, installedManifestURL, tempArtifactURL, resumeIdentityURL] {
@@ -147,7 +158,27 @@ public actor EGOneModelStore {
     }
     downloadGeneration += 1
     let generation = downloadGeneration
+    let drain = drainingTask
+    drainingTask = nil
+    // Publish BEFORE the drain wait (#1287): the user gets an instant
+    // progress card with a live Cancel button. Without this, a slow or
+    // wedged drain leaves the failed card up while single-flight silently
+    // rejects every further Try Again tap — a dead button.
+    transition(to: .downloading(fractionCompleted: existingFraction()), ifGeneration: generation)
     downloadTask = Task { [weak self] in
+      if let drain {
+        await AppLogger.shared.log(
+          "EG-1 retry waiting for cancelled download to drain", level: .debug, category: "LLM")
+        let waitStart = ContinuousClock.now
+        // Drain barrier (#1287): the predecessor's task finishes only after
+        // its delegate delivered terminal completion (no further didReceive
+        // possible) and its partial-file handle closed. Signal-based; no
+        // timer — Cancel stays live during the wait via the publish above.
+        await drain.value
+        await AppLogger.shared.log(
+          "EG-1 drain wait finished in \(ContinuousClock.now - waitStart)",
+          level: .debug, category: "LLM")
+      }
       await self?.runDownload(generation: generation)
       await self?.clearTask(generation: generation)
     }
@@ -157,6 +188,8 @@ public actor EGOneModelStore {
   public func cancelDownload() {
     downloadGeneration += 1
     downloadTask?.cancel()
+    // Guarded stash (#1287): see removeModel.
+    if let live = downloadTask { drainingTask = live }
     downloadTask = nil
     // `.verifying` is INCLUDED (#1271 matrix gap 2): the cancelled task's
     // own `.failed(.cancelled)` transition is generation-suppressed, so
@@ -173,6 +206,11 @@ public actor EGOneModelStore {
     guard generation == downloadGeneration else { return }
     downloadTask = nil
   }
+
+  /// Test seams for the drain gate (#1287). `internal`, house pattern
+  /// alongside `verifyAndInstall` / `applyDownloadProgress`.
+  func seedDrainingTaskForTest(_ task: Task<Void, Never>) { drainingTask = task }
+  var hasPendingDrainForTest: Bool { drainingTask != nil }
 
   /// State publication gate for download-task transitions: a stale task
   /// (cancelled, superseded by a retry) may not publish.
@@ -193,6 +231,11 @@ public actor EGOneModelStore {
   }
 
   private func runDownload(generation: Int) async {
+    // Post-drain staleness stop (#1287): a retry cancelled, superseded, or
+    // removed while it awaited the predecessor's drain must not touch disk —
+    // without this it would recreate the directory/partial and open a
+    // network fetch whose state is then silently generation-suppressed.
+    guard generation == downloadGeneration else { return }
     do {
       try FileManager.default.createDirectory(
         at: directory, withIntermediateDirectories: true)
