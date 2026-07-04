@@ -167,9 +167,13 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   /// finalize (after awaiting the loop's exit) to stamp the #1309
   /// `stop_while_decode_in_flight` telemetry field.
   private var loopDecodeInFlight = false
-  /// Snapshot of `loopDecodeInFlight` at finalize entry (#1309 telemetry),
-  /// stamped onto every result this finalize produces.
+  /// Snapshot of `loopDecodeInFlight` at the STOP moment (#1309 telemetry),
+  /// stamped onto every result this finalize produces. Captured by
+  /// `noteStopRequested()` (called by the adapter BEFORE its feed drain — a
+  /// decode can finish during the drain, which would undercount the exact
+  /// case the field measures); finalize entry is the fallback capture point.
   private var stoppedMidDecode = false
+  private var stopSnapshotTaken = false
 
   private var running = false
   /// Set exactly once at the first terminal (`finalize`/`cancel`) so a late loop
@@ -278,6 +282,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     totalDecodeTimeMs = 0
     retainedUnconfirmedSegments = []
     stoppedMidDecode = false
+    stopSnapshotTaken = false
     loopDecodeInFlight = false
     previousHypothesisWords = []
     bufferStartSec = 0
@@ -305,8 +310,10 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     speechSegments: [SpeechSegment]
   ) async -> IncrementalResult {
     // #1309 telemetry: was a loop decode still in flight when stop arrived?
-    // Snapshot BEFORE awaiting the loop's exit (which clears the flag).
-    stoppedMidDecode = loopDecodeInFlight
+    // Prefer the `noteStopRequested()` snapshot (taken before the adapter's
+    // feed drain); fall back to finalize-entry state, BEFORE awaiting the
+    // loop's exit (which clears the flag).
+    if !stopSnapshotTaken { stoppedMidDecode = loopDecodeInFlight }
     running = false
     finished = true
     let loop = loopTask
@@ -482,6 +489,12 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     guard !samples.isEmpty else { return 0 }
     let sumSquares = samples.reduce(Float(0)) { $0 + $1 * $1 }
     return (sumSquares / Float(samples.count)).squareRoot()
+  }
+
+  package func noteStopRequested() {
+    guard !stopSnapshotTaken else { return }
+    stopSnapshotTaken = true
+    stoppedMidDecode = loopDecodeInFlight
   }
 
   package func cancel() async {

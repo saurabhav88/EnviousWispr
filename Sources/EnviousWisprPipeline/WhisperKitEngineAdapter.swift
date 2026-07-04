@@ -1082,6 +1082,9 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     session: SessionID, sessionIDForLog: UInt64
   ) async -> ASREngineOutcome? {
     guard streamingActive, let live = streamingSession else { return nil }
+    // #1309: snapshot stop-moment telemetry BEFORE the feed drain — a decode
+    // can finish during the drain and undercount stop_while_decode_in_flight.
+    await live.noteStopRequested()
     await drainStreamingFeeds()
     let flushStart = CFAbsoluteTimeGetCurrent()
     // The session ignores both params (single-coordinate design §3.2): it flushes
