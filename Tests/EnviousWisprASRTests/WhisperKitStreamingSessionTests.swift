@@ -546,6 +546,29 @@ import Testing
     await s.cancel()
   }
 
+  @Test("a wordless decode is not marked heard: finalize decodes instead of instant-releasing")
+  func wordlessDecodeNotMarkedHeard() async throws {
+    // Decode 1 returns segments WITHOUT word timings over voiced audio: the
+    // cycle holds and the audio must NOT count as heard (cloud review P2), so
+    // the loop keeps retrying and finalize takes the bounded buffer-decode
+    // path — never the instant release (which would emit an empty result).
+    // The loop may consume any number of scripted entries before finalize
+    // (retry-by-design), so every entry carries the same wordless hypothesis
+    // and the assertion is on the OUTCOME: a decoded transcript, not a release.
+    let wordless = result("the meeting went well", [seg(0, 3, "the meeting went well")])
+    let (s, fake) = laFinalizeSession(Array(repeating: [wordless], count: 64))
+    let pcm = [Float](repeating: 0.3, count: 48_000)
+    await s.start(audioSamplesProvider: fixedProvider(pcm))
+    await waitForDecode(1, s)
+    let callsBeforeFinalize = await fake.callCount
+    let r = await s.finalize(finalSamples: [], speechSegments: [])
+    #expect(r.accepted)
+    #expect(r.text == "the meeting went well", "buffer decode recovered the unheard audio")
+    #expect(
+      await fake.callCount > callsBeforeFinalize,
+      "finalize ran the bounded decode, not instant release")
+  }
+
   // MARK: LocalAgreement finalize (release fast path vs bounded buffer decode)
 
   /// Two-phase provider: the loop decode sees `loopCount` samples; after

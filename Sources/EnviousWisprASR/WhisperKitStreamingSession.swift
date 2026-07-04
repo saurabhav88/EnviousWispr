@@ -572,8 +572,15 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
         // Re-check terminal state AFTER the decode await before mutating confirmed
         // state — a finalize/cancel during the decode must win.
         guard running, !finished, !Task.isCancelled else { break }
-        applyConfirmation(from: results, currentSampleCount: count)
-        lastDecodeSampleCount = count
+        let heard = applyConfirmation(from: results, currentSampleCount: count)
+        // Only mark this audio as heard when the decode actually produced a
+        // hypothesis (cloud review P2): a wordless/empty decode leaves
+        // `lastDecodeSampleCount` behind, so the next cycle retries the same
+        // audio and — critically — finalize's caught-up fast path cannot
+        // instant-release over voiced audio that never transcribed (its energy
+        // gate routes genuine silence to release, fresh speech to the bounded
+        // buffer decode).
+        if heard { lastDecodeSampleCount = count }
         decodeCount += 1
         let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - decodeStart) * 1000)
         totalDecodeTimeMs += elapsedMs
@@ -590,10 +597,15 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   /// Freeze the confirmable prefix of this cycle's segments into `confirmedText`
   /// and advance `lastConfirmedSec`. Confirms `count - N` by default, and
   /// force-confirms more if the unconfirmed window would otherwise exceed
-  /// `maxUnconfirmedWindowSec`.
-  private func applyConfirmation(from results: [TranscriptionResult], currentSampleCount: Int) {
+  /// `maxUnconfirmedWindowSec`. Returns whether the decode produced a usable
+  /// hypothesis ("heard") — the loop only advances `lastDecodeSampleCount` when
+  /// it did (cloud review P2; see the call site).
+  @discardableResult
+  private func applyConfirmation(
+    from results: [TranscriptionResult], currentSampleCount: Int
+  ) -> Bool {
     let segments = results.flatMap { $0.segments }
-    guard !segments.isEmpty else { return }
+    guard !segments.isEmpty else { return !localAgreement }
 
     // LocalAgreement-2 path: owns EVERY decode in buffer mode. Never falls
     // through to the segment path — that path assumes the decode window began
@@ -601,8 +613,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     // so segment-lag confirmation would re-confirm already-committed audio and
     // duplicate the transcript prefix (Codex r1 P2).
     if localAgreement {
-      applyLocalAgreement(segments: segments, currentSampleCount: currentSampleCount)
-      return
+      return applyLocalAgreement(segments: segments, currentSampleCount: currentSampleCount)
     }
 
     let latestEnd = max(segments.last?.end ?? lastConfirmedSec, lastConfirmedSec)
@@ -625,13 +636,14 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
       BenchmarkSegment(text: $0.text, start: $0.start, end: $0.end)
     }
 
-    guard confirmCount > 0 else { return }
+    guard confirmCount > 0 else { return true }
 
     for segment in segments[0..<confirmCount] {
       confirmedText = appendText(confirmedText, segment.text)
     }
     // Monotonic guard: never move the confirmed second backwards.
     lastConfirmedSec = max(lastConfirmedSec, segments[confirmCount - 1].end)
+    return true
   }
 
   /// UFAL whisper_streaming confirmation (port of `HypothesisBuffer.insert()`
@@ -649,15 +661,17 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   ///      the words before it out of the buffer; their text becomes prompt
   ///      material (`scrolledOutText`). Force-trim at the last committed word
   ///      if the buffer passes `maxUnconfirmedWindowSec` with no sentence end.
-  /// A decode with NO word timings (a `wordTimestamps` misconfiguration —
-  /// `makeStreamingSession` forces it on) holds the cycle: no commit, no state
-  /// change. Persistently wordless decodes therefore never confirm anything and
-  /// finalize fails open to the clean-batch fallback.
+  /// A decode with NO word timings holds the cycle: no commit, no state
+  /// change, and returns false ("not heard") so the loop keeps
+  /// `lastDecodeSampleCount` behind and finalize can never instant-release
+  /// over audio that produced no hypothesis (cloud review P2). Persistently
+  /// wordless decodes therefore never confirm anything and finalize fails
+  /// open to the bounded buffer decode / clean-batch fallback.
   private func applyLocalAgreement(
     segments: [TranscriptionSegment], currentSampleCount: Int
-  ) {
+  ) -> Bool {
     let allWords = segments.flatMap { $0.words ?? [] }
-    guard !allWords.isEmpty else { return }
+    guard !allWords.isEmpty else { return false }
 
     func trimmed(_ w: WordTiming) -> String {
       w.word.trimmingCharacters(in: .whitespaces)
@@ -712,13 +726,12 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     // 2b. FORCE-COMMIT — the deadlock breaker (measured 2026-07-04 on an 85s
     // clip): if agreement stalls (e.g. an unstable hypothesis alternating
     // between cycles) nothing commits → nothing trims → the window freezes
-    // while real audio grows past the 30s Whisper window and the ENDING is
-    // never decoded at all. When the buffer breaches the hard bound, commit
-    // the oldest unagreed words (they have survived in the window across many
-    // cycles) up to the retention line so the trim below can advance.
-    let realBufferEnd = min(
-      max(allWords.last?.end ?? bufferStartSec, bufferStartSec), realAudioEndSec)
-    if realBufferEnd - bufferStartSec > maxUnconfirmedWindowSec {
+    // while real audio grows past the 30s Whisper window. The trigger is
+    // CAPTURED audio, not the last word timestamp (cloud review P2): a decoder
+    // that stops emitting word timestamps must not disarm the breaker.
+    if realAudioEndSec - bufferStartSec > maxUnconfirmedWindowSec {
+      let realBufferEnd = min(
+        max(allWords.last?.end ?? bufferStartSec, bufferStartSec), realAudioEndSec)
       let forceLine = realBufferEnd - minRetainedBufferSec
       while commitCount < words.count, words[commitCount].end <= forceLine {
         commitCount += 1
@@ -762,7 +775,10 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     //     PADDING of the 30s window (a word stamped at 99s on an 85s clip);
     //     trimming past real audio empties every later decode and loses the
     //     tail.
-    let bufferEnd = realBufferEnd
+    // The trim trigger and retention line are based on CAPTURED audio (cloud
+    // review P2) so a stalled decoder cannot freeze the origin while audio
+    // keeps growing past the 30s Whisper window.
+    let bufferEnd = realAudioEndSec
     if bufferEnd - bufferStartSec > bufferTrimSec {
       let latestAllowed = bufferEnd - minRetainedBufferSec
       let sentenceEnders: Set<Character> = [".", "?", "!"]
@@ -772,18 +788,34 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
       })?.end
       if let boundary {
         trimBuffer(at: boundary)
-      } else if bufferEnd - bufferStartSec > maxUnconfirmedWindowSec,
-        let lastCommitted = committedWordsInBuffer.last(where: { $0.end <= latestAllowed })
-      {
-        trimBuffer(at: lastCommitted.end)
+      } else if bufferEnd - bufferStartSec > maxUnconfirmedWindowSec {
+        if let lastCommitted = committedWordsInBuffer.last(where: { $0.end <= latestAllowed }) {
+          trimBuffer(at: lastCommitted.end)
+        } else if bufferEnd - bufferStartSec > maxUnconfirmedWindowSec + 5 {
+          // Nothing committed to trim to and the buffer is past the hard 30s
+          // Whisper window: advance the origin to the retention line anyway.
+          // The skipped span produced no stable hypothesis across ~10+ decode
+          // cycles — keeping it only freezes the stream (measured deadlock);
+          // dropping it trades demonstrably untranscribable audio for a live
+          // window. Mirrors UFAL's unconditional buffer bound.
+          trimBuffer(at: latestAllowed, force: true)
+        }
       }
     }
+    return true
   }
 
   /// Move the buffer origin to `boundary`: committed words before it scroll
   /// out (their text becomes conditioning-prompt material).
-  private func trimBuffer(at boundary: Float) {
+  private func trimBuffer(at boundary: Float, force: Bool = false) {
     guard boundary > bufferStartSec else { return }
+    // A forced advance may cut into the retained hypothesis region; words the
+    // agreement was still holding before the new origin can never re-decode,
+    // so drop them from the comparison state too (they stay un-committed).
+    if force {
+      previousHypothesisWords.removeAll { $0.end <= boundary }
+      retainedUnconfirmedSegments.removeAll { $0.end <= boundary }
+    }
     for word in committedWordsInBuffer where word.end <= boundary {
       scrolledOutText += word.word  // raw token concat (self-spacing)
     }
