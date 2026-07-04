@@ -29,4 +29,13 @@ package protocol WhisperKitIncrementalSession: Sendable {
   /// Cancel the incremental loop without producing a result. Used on PTT
   /// cancel and on stop-recording-too-short paths.
   func cancel() async
+
+  /// #1309: the user's stop arrived — snapshot any telemetry that must
+  /// reflect the STOP moment (the adapter drains feed tasks before calling
+  /// `finalize`, so state can change in between). Default no-op.
+  func noteStopRequested() async
+}
+
+extension WhisperKitIncrementalSession {
+  package func noteStopRequested() async {}
 }

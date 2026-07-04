@@ -1371,6 +1371,7 @@ final class RecordingSessionKernel {
         vadSegments: vadSegments,
         decodedInputSampleCount: decodedInputCount,
         lastTokenEndMs: result.tokenTimingSummary?.lastTokenEndMs)
+      let adapterDiag = (adapter as? ASREngineTelemetryProviding)?.lastASRDiagnostics
       telemetryState.asrCompletedTelemetry = KernelASRCompletedTelemetry(
         durationSeconds: result.processingTime,
         charCount: result.text.trimmingCharacters(in: .whitespacesAndNewlines).count,
@@ -1379,8 +1380,7 @@ final class RecordingSessionKernel {
         // PR-5 Rung 5 Pass 2 r2 #B1: carry the incremental-vs-batch outcome into
         // the ASR-completed Sentry breadcrumb (parity with OLD
         // `WhisperKitPipeline.swift:1049-1052`). nil for Parakeet.
-        incrementalAccepted: (adapter as? ASREngineTelemetryProviding)?
-          .lastASRDiagnostics?.incrementalAccepted,
+        incrementalAccepted: adapterDiag?.incrementalAccepted,
         // #950 tail-trim diagnostic (eligible Parakeet batch only; nil omitted).
         droppedTailMs: tailDroppedMs,
         tailHadEnergy: tailHadEnergy,
@@ -1396,7 +1396,21 @@ final class RecordingSessionKernel {
         asrInputDurationMs: tailClip.asrInputDurationMs,
         asrLastTokenEndMs: tailClip.asrLastTokenEndMs,
         asrLastTokenGapMs: tailClip.asrLastTokenGapMs,
-        asrChunked: tailClip.asrChunked
+        asrChunked: tailClip.asrChunked,
+        // #1309 effective-path streaming telemetry. Requested comes from the
+        // kernel's own capability gate; effective/degrade/path from the
+        // adapter's diagnostics. WhisperKit-only (nil for Parakeet → omitted).
+        streamingRequested: adapterDiag?.streamingEffective != nil ? isStreamingSession : nil,
+        streamingEffective: adapterDiag?.streamingEffective,
+        streamingDegradeReason: adapterDiag?.streamingDegradeReason,
+        streamingFinalPath: adapterDiag?.streamingFinalPath,
+        streamingDecodeCount: adapterDiag?.incrementalDecodeCount,
+        streamingCoveredSec: adapterDiag?.incrementalSamplesCovered.map {
+          Double($0) / AudioConstants.sampleRate
+        },
+        tailDecodeSec: adapterDiag?.incrementalTailDecodeMs.map { Double($0) / 1000.0 },
+        maxUnconfirmedWindowSec: adapterDiag?.streamingMaxUnconfirmedWindowSec,
+        stopWhileDecodeInFlight: adapterDiag?.stopWhileDecodeInFlight
       )
       // #1232 debug-log line: the per-dictation tail-clip verdict + lead signals,
       // greppable in app.log next to the conditioner line for live triage.

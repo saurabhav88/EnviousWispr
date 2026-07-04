@@ -671,6 +671,25 @@ import Testing
     #expect(r.strategy == "streaming_buffer_empty_fallback")
   }
 
+  @Test("stop_while_decode_in_flight reflects the STOP moment, not finalize entry (Codex r3)")
+  func stopSnapshotTakenAtStopMoment() async throws {
+    // Stop arrives while a decode is blocked in flight (noteStopRequested);
+    // the decode then finishes BEFORE finalize runs (the adapter's feed-drain
+    // window). The result must still report stop_while_decode_in_flight=true.
+    let loop = result("the meeting", [seg(0, 2, "the meeting")])
+    let dec = GateDecoder(loopResult: [loop], flushResult: [loop])
+    let s = WhisperKitStreamingSession(
+      whisperKit: dec, decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1))
+    let pcm = [Float](repeating: 0.4, count: 96_000)
+    await s.start(audioSamplesProvider: fixedProvider(pcm))
+    while !(await dec.loopEntered) { await Task.yield() }  // decode blocked in flight
+    await s.noteStopRequested()  // the user's stop — decode still running
+    await dec.release()  // decode finishes during the "drain window"
+    let r = await s.finalize(finalSamples: [], speechSegments: [])
+    #expect(r.stopWhileDecodeInFlight == true, "stop-moment snapshot wins over finalize-entry state")
+  }
+
   // MARK: Bounded conditioning prompt (UFAL prompt() 200-char suffix)
 
   @Test("promptSuffix returns short text whole and bounds long text at a word boundary")

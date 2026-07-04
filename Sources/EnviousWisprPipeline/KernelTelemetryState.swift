@@ -91,9 +91,33 @@ struct KernelASRCompletedTelemetry {
   var asrLastTokenEndMs: Int? = nil
   var asrLastTokenGapMs: Int? = nil
   var asrChunked: Bool? = nil
+  // #1309 effective-path streaming telemetry (WhisperKit only; nil omitted).
+  // `mode` above is the REQUESTED mode (kernel capability gate);
+  // `streamingRequested` restates it as an explicit boolean so the event can
+  // filter requested-vs-effective without string parsing. All metadata.
+  var streamingRequested: Bool? = nil
+  var streamingEffective: Bool? = nil
+  var streamingDegradeReason: String? = nil
+  var streamingFinalPath: String? = nil
+  var streamingDecodeCount: Int? = nil
+  var streamingCoveredSec: Double? = nil
+  var tailDecodeSec: Double? = nil
+  var maxUnconfirmedWindowSec: Double? = nil
+  var stopWhileDecodeInFlight: Bool? = nil
 }
 
 struct KernelASRAdapterDiagnostics {
+  // #1309 effective-path telemetry (WhisperKit adapter; nil for Parakeet).
+  // `streamingEffective`: did a streaming flush deliver the transcript.
+  // `streamingDegradeReason`: none / disabled / auto_language /
+  // model_not_ready / flush_empty / flush_throw.
+  // `streamingFinalPath`: streaming_flush / clean_batch / fallback_batch / failed.
+  var streamingEffective: Bool? = nil
+  var streamingDegradeReason: String? = nil
+  var streamingFinalPath: String? = nil
+  var stopWhileDecodeInFlight: Bool? = nil
+  var streamingMaxUnconfirmedWindowSec: Double? = nil
+
   var streamingResultChars: Int? = nil
   var streamingFinalizeFailed: Bool? = nil
   var streamingFinalizeErrorType: String? = nil

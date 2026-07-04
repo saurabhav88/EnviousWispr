@@ -15,6 +15,9 @@ package struct IncrementalResult: Sendable {
   package let mode: String
   package let strategy: String
   package let tailDecodeMs: Int
+  /// #1309: a loop decode was still in flight when finalize/stop arrived
+  /// (streaming session only; the worker never sets it). Telemetry metadata.
+  package var stopWhileDecodeInFlight: Bool = false
 }
 
 /// Narrow seam over WhisperKit's transcribe entry point, mirroring
