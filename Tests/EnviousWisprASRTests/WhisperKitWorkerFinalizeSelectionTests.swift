@@ -61,6 +61,7 @@ struct SelectCandidateTextTests {
 /// call, so a test can assert exactly what the worker's run loop and tail
 /// decode saw.
 private actor FakeWhisperKitTranscribing: WhisperKitTranscribing {
+    nonisolated func encodeText(_ text: String) -> [Int] { [] }
   private var scriptedResults: [[TranscriptionResult]]
   private(set) var callCount = 0
 

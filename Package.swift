@@ -18,6 +18,11 @@ let package = Package(
     // scripts/eval/alias_runner. Purely additive — no production code
     // imports change. (#637)
     .library(name: "EnviousWisprPostProcessing", targets: ["EnviousWisprPostProcessing"]),
+    // Exposed for the tail-finalization eval harness at scripts/eval/tail_runner,
+    // which drives the shipped WhisperKitStreamingSession through the benchmark-only
+    // TailBenchmarkHarness facade. Purely additive — no production code imports
+    // change. (#1276 PR-2)
+    .library(name: "EnviousWisprASR", targets: ["EnviousWisprASR"]),
   ],
   dependencies: [
     .package(url: "https://github.com/argmaxinc/argmax-oss-swift", from: "1.0.0"),

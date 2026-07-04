@@ -516,8 +516,19 @@ public actor WhisperKitBackend: ASRBackend {
     async -> (any WhisperKitIncrementalSession)?
   {
     guard let kit = await readyKitAfterWarmupDrain() else { return nil }
-    let opts = makeDecodeOptions(from: options, sampleCount: 0)
-    return WhisperKitStreamingSession(whisperKit: kit, decodingOptions: opts)
+    var opts = makeDecodeOptions(from: options, sampleCount: 0)
+    // LocalAgreement-2 confirmation is word-level — word timings are required
+    // regardless of the caller's timestamp preference (without them the session
+    // silently falls back to segment-lag confirmation).
+    opts.wordTimestamps = true
+    // #1276 PR-2 benchmark winner (120-clip founder-audio replay, 2026-07-04):
+    // the UFAL whisper_streaming architecture — prior-text conditioning +
+    // word-level LocalAgreement-2 over a sentence-trimmed buffer. Trailing
+    // phantom-phrase hallucination: 1/109 clips vs 14/109 for the padded-tail
+    // stitch this replaces.
+    return WhisperKitStreamingSession(
+      whisperKit: kit, decodingOptions: opts,
+      conditionOnPriorText: true, localAgreement: true)
   }
 
   // R2 (#360): vend Sendable LID observations so the non-Sendable WhisperKit

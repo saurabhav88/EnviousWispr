@@ -28,6 +28,7 @@ import Testing
   private struct FakeDecodeError: Error {}
 
   private actor FakeDecoder: WhisperKitTranscribing {
+    nonisolated func encodeText(_ text: String) -> [Int] { [] }
     private var scripted: [[TranscriptionResult]]
     /// Call index (0-based) on which `transcribe` throws instead of returning.
     private let throwOnCall: Int?
@@ -262,6 +263,7 @@ import Testing
   /// while the loop decode is still in flight (WhisperKit decode is not
   /// cancellable mid-run — two concurrent transcribes on one model corrupt state).
   private actor GateDecoder: WhisperKitTranscribing {
+    nonisolated func encodeText(_ text: String) -> [Int] { [] }
     private(set) var active = 0
     private(set) var maxActive = 0
     private(set) var loopEntered = false
@@ -336,9 +338,239 @@ import Testing
     #expect(r.text == nil || r.text?.isEmpty == true, "no transcript after cancel")
   }
 
+  // MARK: LocalAgreement-2 (#1276 PR-2 — UFAL HypothesisBuffer.flush port)
+
+  /// Provider whose sample count grows by one decode-gate quantum per pull, so a
+  /// test can drive MULTIPLE loop decodes (the fixed provider only ever allows
+  /// one: no new audio after the first).
+  private actor GrowingProvider {
+    private var count: Int
+    private let step: Int
+    private let cap: Int
+    init(start: Int, step: Int = 16_000, cap: Int) {
+      self.count = start
+      self.step = step
+      self.cap = cap
+    }
+    func pull() -> (samples: [Float], count: Int) {
+      let c = count
+      count = min(cap, count + step)
+      return ([Float](repeating: 0.3, count: c), c)
+    }
+  }
+
+  private func word(_ start: Float, _ end: Float, _ text: String) -> WordTiming {
+    WordTiming(word: text, tokens: [], start: start, end: end, probability: 1.0)
+  }
+
+  private func laSession(
+    _ scripted: [[TranscriptionResult]]
+  ) -> (WhisperKitStreamingSession, FakeDecoder) {
+    let fake = FakeDecoder(scripted: scripted)
+    let s = WhisperKitStreamingSession(
+      whisperKit: fake, decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1),
+      localAgreement: true)
+    return (s, fake)
+  }
+
+  @Test("LocalAgreement-2 commits the longest common word prefix of consecutive hypotheses")
+  func localAgreementCommitsAgreedPrefix() async throws {
+    // Decode 1: no previous hypothesis → nothing commits, all words held back.
+    // Decode 2 agrees on all 3 previous words → they commit; "well" is held.
+    let d1 = result(
+      "the meeting went",
+      [
+        seg(0, 3, "the meeting went").with(words: [
+          word(0, 1, "the"), word(1, 2, "meeting"), word(2, 3, "went"),
+        ])
+      ])
+    let d2 = result(
+      "the meeting went well",
+      [
+        seg(0, 4, "the meeting went well").with(words: [
+          word(0, 1, "the"), word(1, 2, "meeting"), word(2, 3, "went"), word(3, 4, "well"),
+        ])
+      ])
+    let (s, _) = laSession([[d1], [d2]])
+    let provider = GrowingProvider(start: 80_000, cap: 112_000)
+    await s.start(audioSamplesProvider: { await provider.pull() })
+    await waitForDecode(2, s)
+    #expect(await s.confirmedTextForTests == "the meeting went", "agreed prefix committed")
+    #expect(await s.lastConfirmedSecForTests == 3.0, "advanced to last committed word end")
+    await s.cancel()
+  }
+
+  @Test("LocalAgreement-2 holds back words past the first disagreement")
+  func localAgreementStopsAtDisagreement() async throws {
+    // Decode 2 disagrees at word 3 ("went" vs "want") → only the first 2 commit.
+    let d1 = result(
+      "the meeting went",
+      [
+        seg(0, 3, "the meeting went").with(words: [
+          word(0, 1, "the"), word(1, 2, "meeting"), word(2, 3, "went"),
+        ])
+      ])
+    let d2 = result(
+      "the meeting want well",
+      [
+        seg(0, 4, "the meeting want well").with(words: [
+          word(0, 1, "the"), word(1, 2, "meeting"), word(2, 3, "want"), word(3, 4, "well"),
+        ])
+      ])
+    let (s, _) = laSession([[d1], [d2]])
+    let provider = GrowingProvider(start: 80_000, cap: 112_000)
+    await s.start(audioSamplesProvider: { await provider.pull() })
+    await waitForDecode(2, s)
+    #expect(await s.confirmedTextForTests == "the meeting", "commit stops at disagreement")
+    #expect(await s.lastConfirmedSecForTests == 2.0)
+    await s.cancel()
+  }
+
+  @Test("LocalAgreement falls back to segment holdback when word timings are absent")
+  func localAgreementFallsBackWithoutWordTimings() async throws {
+    // Same shape as confirmationHoldback but with the LA flag ON and no words:
+    // the segment-count-lag path must still confirm count-N segments.
+    let segs = [seg(0, 1, "one"), seg(1, 2, "two"), seg(2, 3, "three"), seg(3, 4, "four")]
+    let (s, _) = laSession([[result("one two three four", segs)]])
+    let pcm = [Float](repeating: 0.3, count: 64_000)
+    await s.start(audioSamplesProvider: fixedProvider(pcm))
+    await waitForDecode(1, s)
+    #expect(await s.confirmedTextForTests == "one two", "segment path used as fallback")
+    #expect(await s.lastConfirmedSecForTests == 2.0)
+    await s.cancel()
+  }
+
+  // MARK: LocalAgreement finalize (release fast path vs bounded buffer decode)
+
+  /// Two-phase provider: the loop decode sees `loopCount` samples; after
+  /// `advance()`, finalize's pull sees `finalCount` (fresh audio at stop).
+  private actor TwoPhaseProvider {
+    private let loopCount: Int
+    private let finalCount: Int
+    private var advanced = false
+    init(loopCount: Int, finalCount: Int) {
+      self.loopCount = loopCount
+      self.finalCount = finalCount
+    }
+    func advance() { advanced = true }
+    func pull() -> (samples: [Float], count: Int) {
+      let n = advanced ? finalCount : loopCount
+      return ([Float](repeating: 0.3, count: n), n)
+    }
+  }
+
+  /// LA session for finalize tests. The fresh audio in these tests is kept
+  /// UNDER the loop's 16k-sample decode gate (so a loop cycle can never race
+  /// finalize for the next scripted result) but OVER finalize's 100ms voiced
+  /// gate — the finalize path under test is deterministically the only
+  /// consumer of scripted[1].
+  private func laFinalizeSession(
+    _ scripted: [[TranscriptionResult]]
+  ) -> (WhisperKitStreamingSession, FakeDecoder) {
+    let fake = FakeDecoder(scripted: scripted)
+    let s = WhisperKitStreamingSession(
+      whisperKit: fake, decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1),
+      localAgreement: true)
+    return (s, fake)
+  }
+
+  @Test("LA finalize releases instantly (no decode) when the stream is caught up")
+  func laFinalizeCaughtUpReleases() async throws {
+    // One decode heard ALL the audio; nothing commits (no previous hypothesis)
+    // so both words are the retained hypothesis. Finalize must release
+    // confirmed+retained with ZERO further inference.
+    let d1 = result(
+      "the meeting",
+      [
+        seg(0, 2, "the meeting").with(words: [
+          word(0, 1, "the"), word(1, 2, "meeting"),
+        ])
+      ])
+    let (s, fake) = laFinalizeSession([[d1]])
+    let pcm = [Float](repeating: 0.3, count: 48_000)
+    await s.start(audioSamplesProvider: fixedProvider(pcm))
+    await waitForDecode(1, s)
+    let r = await s.finalize(finalSamples: [], speechSegments: [])
+    #expect(r.accepted)
+    #expect(r.text == "the meeting", "released the retained hypothesis")
+    #expect(r.tailDecodeMs == 0, "no decode at stop")
+    #expect(await fake.callCount == 1, "finalize ran zero inference")
+    #expect(r.strategy == "streaming")
+  }
+
+  @Test("LA finalize runs ONE bounded buffer decode when fresh speech arrived at stop")
+  func laFinalizeFreshSpeechDecodesBuffer() async throws {
+    let d1 = result(
+      "the meeting",
+      [
+        seg(0, 2, "the meeting").with(words: [
+          word(0, 1, "the"), word(1, 2, "meeting"),
+        ])
+      ])
+    let dFinal = result(
+      "the meeting went well",
+      [seg(0, 4, "the meeting went well")])
+    let (s, fake) = laFinalizeSession([[d1], [dFinal]])
+    let provider = TwoPhaseProvider(loopCount: 48_000, finalCount: 56_000)
+    await s.start(audioSamplesProvider: { await provider.pull() })
+    await waitForDecode(1, s)
+    await provider.advance()  // 0.5s fresh voiced audio: below the loop gate, above the finalize gate
+    let r = await s.finalize(finalSamples: [], speechSegments: [])
+    #expect(r.accepted)
+    #expect(r.text == "the meeting went well", "buffer decode output IS the transcript")
+    #expect(await fake.callCount == 2, "exactly one finalize decode")
+  }
+
+  @Test("LA finalize forces batch fallback when the buffer decode returns empty")
+  func laFinalizeEmptyBufferDecodeForcesFallback() async throws {
+    let d1 = result(
+      "the meeting",
+      [
+        seg(0, 2, "the meeting").with(words: [
+          word(0, 1, "the"), word(1, 2, "meeting"),
+        ])
+      ])
+    let dFinal = result("", [])
+    let (s, _) = laFinalizeSession([[d1], [dFinal]])
+    let provider = TwoPhaseProvider(loopCount: 48_000, finalCount: 56_000)
+    await s.start(audioSamplesProvider: { await provider.pull() })
+    await waitForDecode(1, s)
+    await provider.advance()
+    let r = await s.finalize(finalSamples: [], speechSegments: [])
+    #expect(!r.accepted, "voiced fresh audio decoding empty must not ship truncated")
+    #expect(r.strategy == "streaming_buffer_empty_fallback")
+  }
+
+  // MARK: Bounded conditioning prompt (UFAL prompt() 200-char suffix)
+
+  @Test("promptSuffix returns short text whole and bounds long text at a word boundary")
+  func promptSuffixBounds() {
+    #expect(WhisperKitStreamingSession.promptSuffix(of: "short text") == "short text")
+    let longText = (1...100).map { "word\($0)" }.joined(separator: " ")  // ~690 chars
+    let suffix = WhisperKitStreamingSession.promptSuffix(of: longText)
+    #expect(suffix.count <= 200, "bounded to the budget")
+    #expect(longText.hasSuffix(suffix), "a true suffix of the source")
+    let firstWord = suffix.split(separator: " ").first.map(String.init) ?? ""
+    #expect(longText.contains(" " + firstWord + " "), "starts at a word boundary, no partial word")
+    // Degenerate: one unbroken 300-char token — no space to trim at; must not crash.
+    let unbroken = String(repeating: "a", count: 300)
+    #expect(WhisperKitStreamingSession.promptSuffix(of: unbroken).count <= 200)
+  }
+
   // MARK: Helpers
 
   private func waitForDecode(_ n: Int, _ s: WhisperKitStreamingSession) async {
     while await s.currentDecodeCount < n { await Task.yield() }
+  }
+}
+
+/// Test sugar: attach word timings to a segment without repeating the full init.
+extension TranscriptionSegment {
+  fileprivate func with(words: [WordTiming]) -> TranscriptionSegment {
+    var copy = self
+    copy.words = words
+    return copy
   }
 }
