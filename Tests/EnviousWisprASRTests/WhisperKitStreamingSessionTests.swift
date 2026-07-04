@@ -427,17 +427,18 @@ import Testing
     await s.cancel()
   }
 
-  @Test("LocalAgreement falls back to segment holdback when word timings are absent")
-  func localAgreementFallsBackWithoutWordTimings() async throws {
-    // Same shape as confirmationHoldback but with the LA flag ON and no words:
-    // the segment-count-lag path must still confirm count-N segments.
+  @Test("LocalAgreement holds a wordless decode: no confirmation, no duplicated prefix")
+  func localAgreementHoldsWordlessDecode() async throws {
+    // LA-mode decodes begin at bufferStartSec, so segment-lag confirmation on a
+    // wordless decode would re-confirm already-committed audio and duplicate
+    // the transcript (Codex r1 P2). A wordless cycle must change NOTHING.
     let segs = [seg(0, 1, "one"), seg(1, 2, "two"), seg(2, 3, "three"), seg(3, 4, "four")]
     let (s, _) = laSession([[result("one two three four", segs)]])
     let pcm = [Float](repeating: 0.3, count: 64_000)
     await s.start(audioSamplesProvider: fixedProvider(pcm))
     await waitForDecode(1, s)
-    #expect(await s.confirmedTextForTests == "one two", "segment path used as fallback")
-    #expect(await s.lastConfirmedSecForTests == 2.0)
+    #expect(await s.confirmedTextForTests == "", "wordless decode held, nothing confirmed")
+    #expect(await s.lastConfirmedSecForTests == 0.0)
     await s.cancel()
   }
 

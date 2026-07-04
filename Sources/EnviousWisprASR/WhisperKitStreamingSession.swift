@@ -38,9 +38,9 @@ import Foundation
 //     (single-coordinate design, §3.2): the coordinates were learned from
 //     `streamingPCM`, not `finalSamples`.
 //
-// FALLBACK ALGORITHM (`localAgreement: false`, and per-cycle when word timings
-// are absent — lifted from WhisperKit's `AudioStreamTranscriber` segment-holdback
-// loop, whisperkit-research.md FACT: audiostreamtranscriber-actual-mechanism):
+// FALLBACK ALGORITHM (`localAgreement: false` — lifted from WhisperKit's
+// `AudioStreamTranscriber` segment-holdback loop, whisperkit-research.md
+// FACT: audiostreamtranscriber-actual-mechanism):
 //   - Decode the window from `lastConfirmedSec`; if
 //     `segments.count > requiredSegmentsForConfirmation` (N=2), freeze the prefix
 //     `count-N` segments into confirmed text and advance `lastConfirmedSec`;
@@ -192,8 +192,9 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   /// When true, confirmation runs the UFAL whisper_streaming architecture
   /// (word-level LocalAgreement-2 over a sentence-trimmed audio buffer) instead
   /// of the segment-count lag + advancing window. Requires `wordTimestamps` in
-  /// the decode options; falls back to the segment path when word timings are
-  /// absent. ON in the shipped construction (the 120-clip benchmark winner,
+  /// the decode options (`makeStreamingSession` forces it on); a wordless
+  /// decode holds its cycle rather than confirming (see `applyLocalAgreement`).
+  /// ON in the shipped construction (the 120-clip benchmark winner,
   /// 2026-07-04); the parameter default stays OFF so tests and callers opt in
   /// explicitly.
   ///
@@ -580,11 +581,13 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     let segments = results.flatMap { $0.segments }
     guard !segments.isEmpty else { return }
 
-    // LocalAgreement-2 path (under test): word-level agreement commit. Falls
-    // through to the segment path when word timings are absent.
-    if localAgreement,
+    // LocalAgreement-2 path: owns EVERY decode in buffer mode. Never falls
+    // through to the segment path — that path assumes the decode window began
+    // at `lastConfirmedSec`, but buffer-mode decodes begin at `bufferStartSec`,
+    // so segment-lag confirmation would re-confirm already-committed audio and
+    // duplicate the transcript prefix (Codex r1 P2).
+    if localAgreement {
       applyLocalAgreement(segments: segments, currentSampleCount: currentSampleCount)
-    {
       return
     }
 
@@ -632,17 +635,15 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   ///      the words before it out of the buffer; their text becomes prompt
   ///      material (`scrolledOutText`). Force-trim at the last committed word
   ///      if the buffer passes `maxUnconfirmedWindowSec` with no sentence end.
-  /// Returns false when word timings are absent (caller falls back to the
-  /// segment-count-lag path).
+  /// A decode with NO word timings (a `wordTimestamps` misconfiguration —
+  /// `makeStreamingSession` forces it on) holds the cycle: no commit, no state
+  /// change. Persistently wordless decodes therefore never confirm anything and
+  /// finalize fails open to the clean-batch fallback.
   private func applyLocalAgreement(
     segments: [TranscriptionSegment], currentSampleCount: Int
-  ) -> Bool {
+  ) {
     let allWords = segments.flatMap { $0.words ?? [] }
-    guard !allWords.isEmpty else {
-      // No word timings: either wordTimestamps is off (fall back, return
-      // false) or the decode was genuinely empty of words (nothing to do).
-      return segments.allSatisfy { $0.text.trimmingCharacters(in: .whitespaces).isEmpty }
-    }
+    guard !allWords.isEmpty else { return }
 
     func trimmed(_ w: WordTiming) -> String {
       w.word.trimmingCharacters(in: .whitespaces)
@@ -743,7 +744,6 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
         trimBuffer(at: lastCommitted.end, trimmedWord: trimmed)
       }
     }
-    return true
   }
 
   /// Move the buffer origin to `boundary`: committed words before it scroll

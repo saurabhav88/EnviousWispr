@@ -522,13 +522,18 @@ public actor WhisperKitBackend: ASRBackend {
     // silently falls back to segment-lag confirmation).
     opts.wordTimestamps = true
     // #1276 PR-2 benchmark winner (120-clip founder-audio replay, 2026-07-04):
-    // the UFAL whisper_streaming architecture — prior-text conditioning +
-    // word-level LocalAgreement-2 over a sentence-trimmed buffer. Trailing
-    // phantom-phrase hallucination: 1/109 clips vs 14/109 for the padded-tail
-    // stitch this replaces.
+    // the UFAL whisper_streaming BUFFER architecture — word-level
+    // LocalAgreement-2 over a sentence-trimmed buffer (committed speech stays
+    // in the decode window, giving every decode full context). Trailing
+    // phantom-phrase hallucination 3/107 clips and dropped endings 18/107 vs
+    // 14/107 and 49/107 for the padded-tail stitch this replaces.
+    // `conditionOnPriorText` stays OFF: measured on this model
+    // (large-v3-turbo CoreML), a `<|startofprev|>` prompt makes the decoder
+    // intermittently EOT whole speech-filled windows empty (WhisperKit trace,
+    // investigation log 2026-07-04) — the buffer shape alone is the winner.
     return WhisperKitStreamingSession(
       whisperKit: kit, decodingOptions: opts,
-      conditionOnPriorText: true, localAgreement: true)
+      conditionOnPriorText: false, localAgreement: true)
   }
 
   // R2 (#360): vend Sendable LID observations so the non-Sendable WhisperKit
