@@ -78,7 +78,8 @@ public actor ParakeetBackend: ASRBackend {
     ModelDownloadManager.verifyChecksum()
 
     let manager = AsrManager(config: .default)
-    try await manager.initialize(models: loadedModels)
+    // v0.15.4 API: initialize(models:) became loadModels(_:).
+    try await manager.loadModels(loadedModels)
     self.fluidAsrManager = manager
 
     isReady = true
@@ -90,7 +91,12 @@ public actor ParakeetBackend: ASRBackend {
     guard isReady, let manager = fluidAsrManager else { throw ASRError.notReady }
 
     let startTime = CFAbsoluteTimeGetCurrent()
-    let fluidResult = try await manager.transcribe(audioSamples, source: .microphone)
+    // v0.15.4 API: the caller owns decoder state (fresh per one-shot batch decode;
+    // upstream's ChunkProcessor also makes fresh state per chunk internally) and the
+    // `source:` parameter is gone. Language hint intentionally NOT passed in PR-2
+    // (parity with the d5fcca4 behavior); G7 language propagation ships in PR-4.
+    var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
+    let fluidResult = try await manager.transcribe(audioSamples, decoderState: &decoderState)
     let elapsed = CFAbsoluteTimeGetCurrent() - startTime
 
     return ASRResult(
@@ -126,7 +132,9 @@ public actor ParakeetBackend: ASRBackend {
 
     let config = SlidingWindowAsrConfig.streaming
     let manager = SlidingWindowAsrManager(config: config)
-    try await manager.start(models: models, source: .microphone)
+    // v0.15.4 API: start(models:source:) split into loadModels(_:) + startStreaming(source:).
+    try await manager.loadModels(models)
+    try await manager.startStreaming(source: .microphone)
     self.streamingManager = manager
     self.streamingStartTime = CFAbsoluteTimeGetCurrent()
   }
