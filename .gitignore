@@ -58,6 +58,10 @@ playwright-report/
 
 # Historical benchmark output — regenerable, untracked
 benchmark-results/
+# ASR bench corpus + repro clips: contains REAL founder voice recordings.
+# NEVER commit audio to this public repo (founder decision 2026-07-05, #1329).
+# Corpus lives local-only; nightly encrypted restic backup covers it.
+.repro-clips/
 test-results/
 .playwright-mcp/
 
