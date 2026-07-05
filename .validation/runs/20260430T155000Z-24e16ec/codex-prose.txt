@@ -1,1 +1,0 @@
-(See codex-review.txt for full diff review of script + tests)
