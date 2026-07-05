@@ -6,8 +6,6 @@ import Testing
 /// file lines from raw Swift source — no test instantiates a home, because
 /// the homes pull in real AppKit / audio / ASR machinery that should not
 /// boot inside a unit test.
-///
-/// Skeleton authored in `.codex/2026-05-18-pr5-plus-revision-r2-final.md` § 2.
 enum CeilingsTestSupport {
   static func source(at path: String) throws -> String {
     try String(contentsOf: RepoRoot.sourceURL(path), encoding: .utf8)
