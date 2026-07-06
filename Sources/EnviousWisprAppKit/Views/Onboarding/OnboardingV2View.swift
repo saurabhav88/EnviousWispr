@@ -73,6 +73,13 @@ final class OnboardingV2ViewModel {
   var downloadDetail: String = ""
   private var progressPollTimer: Timer?
 
+  /// #1339 minimal liveness (G8): when the listing phase started, so the
+  /// subtitle can escalate honestly ("Preparing speech model…" → after a short
+  /// delay "Still working: checking download source…") instead of freezing on
+  /// one static string for the whole stall window. Set when the poll first
+  /// observes the listing phase; cleared when the phase moves on.
+  var listingPhaseSince: Date?
+
   /// Quirky installation message, cycled during the compilation phase.
   var installQuip: String = ""
   private var quipTimer: Timer?
@@ -203,6 +210,10 @@ final class OnboardingV2ViewModel {
     installQuip = ""
     stopQuipTimer()
     checklistStatuses = [.pending, .pending, .pending]
+    // #1339: fresh attempt, fresh escalation clock — a stale listing-phase
+    // timestamp from the failed attempt must not flash "Still working" at
+    // second zero of the retry.
+    listingPhaseSince = nil
     retryCount += 1
   }
 
@@ -220,6 +231,14 @@ final class OnboardingV2ViewModel {
         self.downloadProgress = state.fraction
         self.downloadPhase = state.phase
         self.downloadDetail = state.detail
+
+        // #1339 (G8): track how long the listing phase has been showing so
+        // the subtitle can escalate instead of freezing on one string.
+        if state.phase == ModelLoadStallPolicy.listingPhase {
+          if self.listingPhaseSince == nil { self.listingPhaseSince = Date() }
+        } else {
+          self.listingPhaseSince = nil
+        }
 
         // Start quip timer when compilation begins (fraction >= 0.5)
         if state.fraction >= 0.5 && self.quipTimer == nil {
@@ -283,6 +302,14 @@ final class OnboardingV2ViewModel {
 
   /// Maps raw error descriptions to user-friendly messages.
   private static func friendlyError(_ error: any Error) -> String {
+    // #1339: the sessionless stall guard classifies a detected listing stall
+    // as a WedgeError — surface the stall-specific message, not a raw
+    // transport string. (The download did not fail outright; the source hung.)
+    if error is ModelLoadWatchdog.WedgeError {
+      return
+        "Setup is taking longer than expected. Check your internet connection or VPN, then try again."
+    }
+
     let desc = error.localizedDescription.lowercased()
 
     if desc.contains("timed out") || desc.contains("timeout") {
@@ -675,7 +702,7 @@ private struct ChecklistPhaseView: View {
   }
 
   /// Returns live status text for the model setup row.
-  /// During download: "Downloading... X MB of 23 MB"
+  /// During download: "Downloading model files... X MB of 483 MB"
   /// During compilation: cycles through quirky installation quips
   private func downloadSubtitle(for index: Int, fallback: String) -> String {
     guard index == 0, viewModel.checklistStatuses[0].isInProgress else { return fallback }
@@ -688,6 +715,16 @@ private struct ChecklistPhaseView: View {
     let phase = viewModel.downloadPhase
     let detail = viewModel.downloadDetail
     if phase.isEmpty { return fallback }
+
+    // #1339 (G8): honest staged copy for the listing window. The raw phase
+    // token is a status string, not user copy; and a long listing wait must
+    // visibly escalate so the screen never reads as frozen.
+    if phase == ModelLoadStallPolicy.listingPhase {
+      if let since = viewModel.listingPhaseSince, Date().timeIntervalSince(since) > 10 {
+        return "Still working: checking download source…"
+      }
+      return "Preparing speech model…"
+    }
     return detail.isEmpty ? phase : "\(phase) \(detail)"
   }
 }

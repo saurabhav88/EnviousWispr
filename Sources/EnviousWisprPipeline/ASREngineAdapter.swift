@@ -240,6 +240,14 @@ package protocol ASREngineAdapter: AnyObject {
   /// `ParakeetEngineAdapter` via the XPC `loadProgressTickReporter`) override.
   var lastObservedPhase: String { get }
 
+  /// #1339: whether the sessionless warm-up wedge guard may arm over this
+  /// adapter's loads. True ONLY when the underlying load's progress lands in
+  /// the shared progress file the guard polls. Defaults to `false` (see the
+  /// protocol extension) — an adapter must opt in, because arming without a
+  /// live signal source turns the listing deadline into a false-positive
+  /// cancel of healthy long loads (Codex PR-1 r1 P2).
+  var warmupStallGuardEligible: Bool { get }
+
   // MARK: Session lifecycle
 
   /// Begin a recording session under `id`. `streaming` carries the kernel's
@@ -394,4 +402,11 @@ extension ASREngineAdapter {
   public func observeSpeechSegments(
     _ segments: [SpeechSegment], rawCaptureSamples: [Float]
   ) {}
+}
+
+extension ASREngineAdapter {
+  /// #1339 safe default: not eligible. `ParakeetEngineAdapter` opts in when
+  /// its manager feeds the shared progress file; signal-free adapters
+  /// (WhisperKit) and in-process managers stay uncovered.
+  public var warmupStallGuardEligible: Bool { false }
 }

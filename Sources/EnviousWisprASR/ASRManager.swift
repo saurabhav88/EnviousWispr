@@ -111,7 +111,7 @@ public final class ASRManager: ASRManagerInterface {
       // #959: capture the load generation; refuse to mark loaded if superseded.
       let gen = self.loadGeneration
       self.downloadProgress = 0
-      self.downloadPhase = "Preparing download..."
+      self.downloadPhase = ModelLoadStallPolicy.listingPhase
       self.downloadDetail = ""
 
       // For Parakeet, use the progress-reporting variant so in-process path also reports progress.

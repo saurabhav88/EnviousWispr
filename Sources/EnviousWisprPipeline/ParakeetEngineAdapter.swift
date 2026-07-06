@@ -165,6 +165,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// kernel runs signal-based warm-up wedge detection.
   var loadProgress: AsyncStream<ASRLoadProgressTick>? { loadStream }
 
+  /// #1339: eligible only when the manager's load progress lands in the
+  /// shared progress file the wedge guard polls (XPC proxy yes; in-process
+  /// ASRManager no — its progress never touches the file, so the guard would
+  /// read permanent silence and cancel a healthy long download).
+  var warmupStallGuardEligible: Bool { asrManager.feedsSharedProgressFile }
+
   private func emitLoadTick() {
     loadMarker += 1
     loadContinuation.yield(ASRLoadProgressTick(marker: loadMarker))

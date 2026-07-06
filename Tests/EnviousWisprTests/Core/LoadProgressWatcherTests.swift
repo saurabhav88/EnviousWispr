@@ -331,4 +331,127 @@ struct LoadProgressWatcherTests {
     #expect(watcher.hasFired, "silence past sticky-maxGap ratio must fire")
     watcher.stop()
   }
+
+  // MARK: - #1339 phase-aware listing-stall gate
+
+  /// Watcher configured like the sessionless warm-up guard: listing phase
+  /// token + a deterministic deadline the ManualClock can cross.
+  private func listingAwareWatcher(_ clock: ManualClock, deadline: TimeInterval = 120)
+    -> LoadProgressWatcher
+  {
+    LoadProgressWatcher(
+      currentTime: { clock.now },
+      listingPhase: ModelLoadStallPolicy.listingPhase,
+      listingStallDeadlineSeconds: deadline)
+  }
+
+  @Test("#1339: single listing signal then silence past the deadline FIRES")
+  func listingStallFiresAtDeadline() async {
+    let clock = ManualClock()
+    let watcher = listingAwareWatcher(clock)
+    watcher.start()
+    // The P0 shape: exactly one "Preparing download..." signal, then silence.
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.listingPhase)
+    clock.tick(seconds: 119.9)
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.listingPhase)
+    #expect(!watcher.hasFired, "just below the listing deadline must not fire")
+    clock.tick(seconds: 0.2)
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.listingPhase)
+    #expect(watcher.hasFired, "listing silence past the deadline is the P0 stall — must fire")
+    let snap = watcher.snapshot
+    #expect(snap.signalCountTotal == 1)
+    #expect(snap.lastObservedPhase == ModelLoadStallPolicy.listingPhase)
+    watcher.stop()
+  }
+
+  @Test("#1339: single NON-listing signal then long silence does NOT fire (adversarial class)")
+  func nonListingSingleSignalStaysCovered() async {
+    let clock = ManualClock()
+    let watcher = listingAwareWatcher(clock)
+    watcher.start()
+    // Same silence shape, different phase — the deadline is scoped to the
+    // listing window only; other single-signal quiets keep the #445 deferral.
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: "Installing model...")
+    clock.tick(seconds: 500)
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: "Installing model...")
+    #expect(
+      !watcher.hasFired,
+      "the listing deadline must not become a generic single-signal timeout")
+    watcher.stop()
+  }
+
+  @Test("#1339: NO signal at all fires past the deadline (dead service)")
+  func preFirstSignalFiresWithDeadline() async {
+    let clock = ManualClock()
+    let watcher = listingAwareWatcher(clock)
+    watcher.start()
+    for _ in 0..<10 {
+      clock.tick(seconds: 13)  // evaluations at 13s..130s, crossing the 120s deadline
+      watcher.observeTick(observedMtime: nil, observedPhase: "")
+    }
+    #expect(
+      watcher.hasFired,
+      "a service that never writes a single progress signal must fire the deadline")
+    let snap = watcher.snapshot
+    #expect(snap.signalCountTotal == 0)
+    watcher.stop()
+  }
+
+  @Test("#1339: progressing download runs past the deadline WITHOUT firing")
+  func progressingTransferNeverDeadlined() async {
+    let clock = ManualClock()
+    let watcher = listingAwareWatcher(clock)
+    watcher.start()
+    // Listing completes quickly, then bytes flow: signals every 2s for 200s
+    // (well past the 120s deadline). A progressing transfer must never be
+    // wall-clock-killed (plan E1) — only the ratio gate governs it.
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.listingPhase)
+    clock.tick(seconds: 2)
+    for i in 1..<100 {
+      watcher.observeTick(observedMtime: mtime(i), observedPhase: "Downloading model files...")
+      clock.tick(seconds: 2)
+    }
+    #expect(
+      !watcher.hasFired,
+      "a slow but progressing transfer must never hit a wall-clock deadline")
+    #expect(watcher.snapshot.totalAttemptDurationMs >= 200_000)
+    watcher.stop()
+  }
+
+  @Test("#1339: listing that resolves before the deadline hands off to the ratio gate")
+  func listingHandsOffToRatioGate() async {
+    let clock = ManualClock()
+    let watcher = listingAwareWatcher(clock)
+    watcher.start()
+    // Healthy listing: 5s to first byte (below deadline), then download
+    // signals. Once 2+ signals exist, the ratio gate owns detection — a
+    // silence past 5x the worst gap fires, exactly as before #1339.
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.listingPhase)
+    clock.tick(seconds: 5)
+    watcher.observeTick(observedMtime: mtime(1), observedPhase: "Downloading model files...")
+    #expect(!watcher.hasFired, "healthy listing handoff must not fire")
+    // maxGap = 5s → ratio threshold 25s. 24.9s of silence: no fire.
+    clock.tick(seconds: 24.9)
+    watcher.observeTick(observedMtime: mtime(1), observedPhase: "Downloading model files...")
+    #expect(!watcher.hasFired)
+    // Past the ratio threshold: fire (mid-download wedge).
+    clock.tick(seconds: 0.2)
+    watcher.observeTick(observedMtime: mtime(1), observedPhase: "Downloading model files...")
+    #expect(watcher.hasFired, "mid-download wedge past the ratio gate must still fire")
+    watcher.stop()
+  }
+
+  @Test("#1339: default init (no deadline) preserves the pre-#1339 listing-stall behavior")
+  func defaultsPreserveLegacyBehavior() async {
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(currentTime: { clock.now })
+    watcher.start()
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.listingPhase)
+    clock.tick(seconds: 10_000)
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.listingPhase)
+    #expect(
+      !watcher.hasFired,
+      "without an injected deadline the watcher keeps the deliberate #445 deferral")
+    watcher.stop()
+  }
 }
