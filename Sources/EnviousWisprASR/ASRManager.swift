@@ -18,6 +18,9 @@ public final class ASRManager: ASRManagerInterface {
   /// Issue #445: in-process variant. Tests do not drive a progress-file stream,
   /// so this stays unset at runtime; the protocol requires it.
   public var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
+  /// #1348 Phase 2: delivery-managed Parakeet loads are cache-only (see
+  /// `ASRManagerInterface.parakeetCacheOnly`).
+  public var parakeetCacheOnly = false
   private var idleTimer: Timer?
   private var lastTranscriptionTime: Date?
   /// Single-flight guard: if a load is already in progress, callers await it instead of starting a new one.
@@ -116,13 +119,23 @@ public final class ASRManager: ASRManagerInterface {
 
       // For Parakeet, use the progress-reporting variant so in-process path also reports progress.
       if self.activeBackendType == .parakeet {
-        try await self.parakeetBackend.prepare { [weak self] fraction, phase, detail in
+        let progress: ProgressCallback = { [weak self] fraction, phase, detail in
           Task { @MainActor [weak self] in
             guard let self, !self.isModelLoaded else { return }
             self.downloadProgress = fraction
             self.downloadPhase = phase
             self.downloadDetail = detail
           }
+        }
+        // #1348 Phase 2: cache-only is Parakeet+FluidAudio-concrete behavior
+        // (the offline switch lives in that library), so the delivery mode
+        // downcasts to the concrete backend this manager itself constructed —
+        // not a kernel-side identity gate (capability rule applies to
+        // adapters/kernel; injected test mocks keep the legacy path).
+        if self.parakeetCacheOnly, let parakeet = self.parakeetBackend as? ParakeetBackend {
+          try await parakeet.prepare(cacheOnly: true, progressCallback: progress)
+        } else {
+          try await self.parakeetBackend.prepare(progressCallback: progress)
         }
       } else {
         try await self.activeBackend.prepare()

@@ -52,6 +52,14 @@ let package = Package(
       dependencies: ["EnviousWisprCore"],
       path: "Sources/EnviousWisprStorage"
     ),
+    // #1348 Phase 2: the owned model-delivery layer (manifest-pinned fetch,
+    // verification, admission). Leaf module: Core only — never imports
+    // ASR/LLM/Pipeline (D4 placement). Backend adapters consume it downward.
+    .target(
+      name: "EnviousWisprModelDelivery",
+      dependencies: ["EnviousWisprCore"],
+      path: "Sources/EnviousWisprModelDelivery"
+    ),
     .target(
       name: "EnviousWisprPostProcessing",
       dependencies: ["EnviousWisprCore"],
@@ -111,6 +119,7 @@ let package = Package(
         "EnviousWisprASR",
         "EnviousWisprAudio",
         "EnviousWisprLLM",
+        "EnviousWisprModelDelivery",
         "EnviousWisprPostProcessing",
         "EnviousWisprServices",
         "EnviousWisprStorage",
@@ -129,6 +138,7 @@ let package = Package(
       dependencies: [
         "EnviousWisprCore",
         "EnviousWisprStorage",
+        "EnviousWisprModelDelivery",
         "EnviousWisprPostProcessing",
         "EnviousWisprAudio",
         "EnviousWisprServices",
@@ -181,6 +191,7 @@ let package = Package(
       dependencies: [
         "EnviousWisprCore",
         "EnviousWisprObservabilityCore",
+        "EnviousWisprModelDelivery",
         "EnviousWisprPostProcessing",
         "EnviousWisprLLM",
         "EnviousWisprPipeline",
@@ -198,6 +209,7 @@ let package = Package(
       dependencies: [
         "EnviousWisprCore",
         "EnviousWisprASR",
+        "FluidAudio",
       ],
       path: "Tests/EnviousWisprASRTests"
     ),

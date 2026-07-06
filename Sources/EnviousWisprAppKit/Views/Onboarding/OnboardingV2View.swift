@@ -302,6 +302,12 @@ final class OnboardingV2ViewModel {
 
   /// Maps raw error descriptions to user-friendly messages.
   private static func friendlyError(_ error: any Error) -> String {
+    // #1348 Phase 2: typed delivery failures render the D6 state copy from
+    // the single copy authority (ModelDeliveryCopy) — never inline strings.
+    if let delivery = error as? ParakeetDeliveryError {
+      return ModelDeliveryCopy.message(reason: delivery.reason, detail: delivery.detail)
+    }
+
     // #1339: the sessionless stall guard classifies a detected listing stall
     // as a WedgeError — surface the stall-specific message, not a raw
     // transport string. (The download did not fail outright; the source hung.)

@@ -36,11 +36,12 @@ permitted_imports_for() {
     EnviousWisprContacts)          echo "EnviousWisprCore" ;;
     EnviousWisprStorage)           echo "EnviousWisprCore" ;;
     EnviousWisprLLM)               echo "EnviousWisprCore" ;;
+    EnviousWisprModelDelivery)     echo "EnviousWisprCore" ;;
     EnviousWisprServices)          echo "EnviousWisprCore EnviousWisprObservabilityCore" ;;
-    EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
+    EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
     EnviousWisprAudioService)      echo "EnviousWisprCore EnviousWisprAudio EnviousWisprObservabilityCore" ;;
     EnviousWisprASRService)        echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprObservabilityCore" ;;
-    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprPipeline EnviousWisprContacts" ;;
+    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPipeline EnviousWisprContacts" ;;
     EnviousWispr)                  echo "EnviousWisprAppKit" ;;
     *)                             return 1 ;;
   esac

@@ -25,14 +25,32 @@ public actor ParakeetBackend: ASRBackend {
 
   /// Total download size shown in the progress detail (#1339). The pinned
   /// Parakeet v3 set (4 model dirs + vocab + loose json/txt) measures
-  /// 483,256,769 bytes — byte-verified against the pinned upstream revision
-  /// in `workers/parakeet-mirror/expected-manifest.json`.
+  /// 483,256,769 bytes — byte-verified in `workers/parakeet-mirror/
+  /// expected-manifest.json` (in-repo since #1348 PR-2a; the bundled
+  /// `parakeet-delivery-manifest.json` derives from it).
   static let totalDownloadMB = 483
 
   public init() {}
 
   public func prepare() async throws {
-    try await prepare(progressCallback: nil)
+    try await prepare(cacheOnly: false, progressCallback: nil)
+  }
+
+  public func prepare(progressCallback: ProgressCallback?) async throws {
+    try await prepare(cacheOnly: false, progressCallback: progressCallback)
+  }
+
+  /// #1348 Phase 2: whether this process may let FluidAudio touch the
+  /// network. Cache-only is the delivery-managed invariant — the host admits
+  /// verified bytes into FluidAudio's default cache and the service ONLY
+  /// loads them; a cache miss must throw typed (`OfflineError.modelMissing`
+  /// for model dirs, `AsrModelsError` for the vocab), never silently re-enter
+  /// the borrowed downloader. Deterministic last-writer per prepare (the XPC
+  /// handler serializes loads and unloads the previous backend first), so
+  /// flipping the delivery flag works without a service restart.
+  /// `internal` for the legacy-after-cache-only unit test.
+  static func configureOfflineMode(cacheOnly: Bool) {
+    DownloadUtils.enforceOffline = cacheOnly
   }
 
   /// Prepare with optional progress reporting.
@@ -46,8 +64,13 @@ public actor ParakeetBackend: ASRBackend {
   ///
   /// Stall detection is host-side (#1339): the kernel's session detector and
   /// the sessionless warm-up guard watch the shared progress file this
-  /// callback feeds. Checksum spot-check stays in ModelDownloadManager.verifyChecksum().
-  public func prepare(progressCallback: ProgressCallback?) async throws {
+  /// callback feeds.
+  ///
+  /// `cacheOnly` (#1348 Phase 2): load the host-admitted cache with
+  /// FluidAudio's own offline switch armed — zero network in this process.
+  /// The legacy path (`cacheOnly: false`) stays byte-identical for the
+  /// staged-rollout window (D5 §5), minus the deleted inert checksum no-op.
+  public func prepare(cacheOnly: Bool, progressCallback: ProgressCallback?) async throws {
     let handler: DownloadUtils.ProgressHandler? = progressCallback.map {
       callback -> DownloadUtils.ProgressHandler in
       { progress in
@@ -78,11 +101,17 @@ public actor ParakeetBackend: ASRBackend {
       }
     }
 
-    let loadedModels = try await AsrModels.downloadAndLoad(version: .v3, progressHandler: handler)
+    Self.configureOfflineMode(cacheOnly: cacheOnly)
+    let loadedModels: AsrModels
+    if cacheOnly {
+      // Delivery-managed: the default cache was admitted by the host's hash
+      // gate before this call; enforceOffline (armed above) turns any gap
+      // into a typed throw the host maps to its repair path.
+      loadedModels = try await AsrModels.loadFromCache(version: .v3, progressHandler: handler)
+    } else {
+      loadedModels = try await AsrModels.downloadAndLoad(version: .v3, progressHandler: handler)
+    }
     self.fluidModels = loadedModels
-
-    // Verify checksum if configured
-    ModelDownloadManager.verifyChecksum()
 
     let manager = AsrManager(config: .default)
     // v0.15.4 API: initialize(models:) became loadModels(_:).

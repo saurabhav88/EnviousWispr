@@ -133,13 +133,22 @@ import Testing
   ///   the one valid home for a shared runtime (`state-ownership.md`
   ///   shared-infra-homes-not-feature-services; council round 1 rejected a
   ///   settings-setup owner). Plan §3b named this +1 as the accepted cost.
+  /// - 34 → 35 in #1348 Phase 2 (2026-07-06): App-owned `modelDelivery` —
+  ///   the owned model-delivery home (single `ModelDeliveryController` +
+  ///   Parakeet registration from the bundled trust-root manifest +
+  ///   `model_delivery.*` telemetry bridge + the observable UI mirror the
+  ///   settings row renders). The composition root is the one valid home for
+  ///   a shared delivery layer consumed by BOTH the Parakeet driver (via the
+  ///   Pipeline handle) and the settings UI (Cancel/Resume) — same shape as
+  ///   `egOneRuntime` above. The Phase 2 plan §3b/§14 named this +1 as the
+  ///   accepted cost; pre-#1348 count was at the cap (34).
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 34,
+      count <= 35,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 34. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 35. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -279,14 +288,21 @@ import Testing
   /// `.environment`-injects it — real wiring for the new App-owned home
   /// (see the 33→34 stored-property entry above). Cap by the deterministic
   /// rule (post-change actual 928 + ~2, rounded up to nearest 5 = 930).
+  /// Ratcheted 930→945 in #1348 Phase 2 (2026-07-06): the composition root
+  /// constructs `ModelDeliveryHome`, threads its Parakeet handle into the
+  /// Parakeet driver inputs, stores + `.environment`-injects the home (see
+  /// the 34→35 stored-property entry above) — real wiring for the owned
+  /// model-delivery layer; all logic lives in the home/bridge, not here.
+  /// Cap by the deterministic rule (post-change actual 943 + ~2, rounded up
+  /// to nearest 5 = 945).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 930,
+      lineCount <= 945,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 930. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 945. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

@@ -77,6 +77,41 @@ public final class ASRManagerProxy: ASRManagerInterface {
     self.connectionPreflight = connectionPreflight ?? { $0.ensureConnection() }
   }
 
+  /// #1348 Phase 2: when true, Parakeet loads are delivery-managed — the XPC
+  /// call carries `cacheOnly: true` so the service loads the host-admitted
+  /// cache with FluidAudio's offline switch armed (it can never download).
+  /// Set by `ParakeetEngineAdapter` from the delivery flag before each
+  /// warm-up; false = legacy in-service download path, bit-for-bit.
+  public var parakeetCacheOnly = false
+
+  /// #1348 Phase 2 (grounded r2 blocker 1 — forced helper recycle): after a
+  /// proxy-level error on the load path (nil connection, interface/selector
+  /// mismatch, remote-proxy failure), drop the connection so the NEXT call
+  /// respawns the helper from the CURRENT bundle binary via
+  /// `ensureConnection()`. Builds on the shipped invalidate→terminate→respawn
+  /// machinery (`cancelInFlightLoad` doc); `internal` for the recycle test.
+  func recycleConnectionAfterProxyError() {
+    // Deliberate recycle OWNS the cleanup synchronously: detach the async
+    // handlers before invalidating, or the invalidation handler can fire
+    // AFTER the adapter's one-shot retry installed its new load task and
+    // bump the generation out from under it — turning a successful retry
+    // into ASRLoadSupersededError (code-diff r5 P2). No session is active on
+    // this path (the load just failed), so the handlers' interruption
+    // duties are moot; their state resets happen right here.
+    if let conn = connection {
+      conn.invalidationHandler = nil
+      conn.interruptionHandler = nil
+      conn.invalidate()
+    }
+    connection = nil
+    needsReinit = true
+  }
+
+  /// Test accessors for the recycle path (#1348; r3-precise scope: the
+  /// reachable `onProxyError` behavior, not the OS callback).
+  var needsReinitForTesting: Bool { needsReinit }
+  var hasConnectionForTesting: Bool { connection != nil }
+
   /// Invalidate whatever load is current: bump the generation so an in-flight
   /// `loadModel()` completion (even one whose `isModelLoaded` is still `false`)
   /// is superseded, and log the `ready → notReady` transition tagged with cause.
@@ -136,10 +171,15 @@ public final class ASRManagerProxy: ASRManagerInterface {
       try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
         let guard_ = OneShotContinuationASR(cont)
         self.serviceProxy { proxy in
-          proxy.loadModel(backendType: self.activeBackendType.rawValue) { nsError in
+          let cacheOnly = self.parakeetCacheOnly && self.activeBackendType == .parakeet
+          proxy.loadModel(backendType: self.activeBackendType.rawValue, cacheOnly: cacheOnly) {
+            nsError in
             if let error = nsError { guard_.resume(throwing: error) } else { guard_.resume() }
           }
         } onProxyError: {
+          // #1348: force a helper recycle so the next attempt reconnects to
+          // the current bundle binary (grounded r2 blocker 1).
+          self.recycleConnectionAfterProxyError()
           guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
         }
       }
@@ -706,10 +746,13 @@ extension OneShotContinuationASR where T == Void {
   func resume() { resume(returning: ()) }
 }
 
-enum XPCASRTransportError: LocalizedError {
+// `package` (#1348 Phase 2): ParakeetEngineAdapter's one-shot stale-helper
+// retry matches on this type — narrowest visibility that crosses the module
+// (architecture-rules minimize-visibility).
+package enum XPCASRTransportError: LocalizedError {
   case serviceUnreachable
 
-  var errorDescription: String? {
+  package var errorDescription: String? {
     switch self {
     case .serviceUnreachable: return "XPC ASR service is unreachable."
     }

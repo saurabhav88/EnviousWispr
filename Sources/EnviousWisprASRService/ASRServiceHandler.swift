@@ -37,7 +37,7 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
 
   // MARK: - Model Lifecycle
 
-  func loadModel(backendType: String, reply: @escaping (NSError?) -> Void) {
+  func loadModel(backendType: String, cacheOnly: Bool, reply: @escaping (NSError?) -> Void) {
     nonisolated(unsafe) let safeReply = reply
     Task { @MainActor in
       do {
@@ -61,7 +61,12 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
           let progressFile = ProgressFile.shared
           progressFile.clear()
 
-          try await backend.prepare { fraction, phase, detail in
+          // #1348 Phase 2: cacheOnly = delivery-managed — the host admitted a
+          // verified cache before this call; FluidAudio's offline switch is
+          // armed inside prepare so this process can never download. The
+          // progress callback still feeds the shared file for the COMPILE/
+          // LOAD phase (the download phase is host-fed under delivery mode).
+          try await backend.prepare(cacheOnly: cacheOnly) { fraction, phase, detail in
             // Hot path — runs on URLSession delegate thread. File write is fast.
             progressFile.write(fraction: fraction, phase: phase, detail: detail)
           }

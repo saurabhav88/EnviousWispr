@@ -54,6 +54,11 @@ public final class WisprBootstrapper {
   let setup: SetupCoordinator
   /// #1271 — EG-1 native runtime home (model store + inference server).
   let egOneRuntime: EGOneRuntime
+  /// #1348 Phase 2: owned model-delivery home (controller + Parakeet
+  /// registration + telemetry bridge + observable UI mirror). The +1 stored
+  /// property is the plan's named cost (ceiling 34 -> 35, Bible entry in
+  /// EnviousWisprAppCeilingsTests).
+  let modelDelivery: ModelDeliveryHome
   let audioDeviceList: AudioDeviceList
   let aiAvailability: AIAvailabilityCoordinator
   let keychainManager: KeychainManager
@@ -157,6 +162,11 @@ public final class WisprBootstrapper {
     // exactly once here; the factory's `assembleDriver` no longer binds
     // (Codex r2 new defect 1). Without this, the second driver's
     // construction would silently overwrite the first driver's VAD callback.
+    // #1348 Phase 2 — owned model delivery. Constructed before the Parakeet
+    // driver so the adapter receives the handle; a failed bundled-manifest
+    // load leaves the handle nil (legacy path), unit-tested can't-happen.
+    let modelDelivery = ModelDeliveryHome()
+
     let vadSource = KernelDictationDriverFactory.makeSharedVADSignalSource(
       audioCapture: audioCapture)
 
@@ -176,7 +186,8 @@ public final class WisprBootstrapper {
         pasteCompletionRegistry: pasteCompletionRegistry,
         outputClassifierHolder: outputClassifierHolder,
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
-        egOneRuntime: egOneRuntime
+        egOneRuntime: egOneRuntime,
+        parakeetDelivery: modelDelivery.parakeetHandle
       ))
 
     // W6: language-flip telemetry wired via a closure so `EnviousWisprASR`
@@ -637,6 +648,7 @@ public final class WisprBootstrapper {
     self.contactsImportCoordinator = contactsImportCoordinator
     self.setup = setup
     self.egOneRuntime = egOneRuntime
+    self.modelDelivery = modelDelivery
     self.audioDeviceList = audioDeviceList
     self.aiAvailability = aiAvailability
     self.keychainManager = keychainManager
@@ -818,6 +830,7 @@ private struct MainWindowRoot: View {
       .environment(b.lastRecordingResult)
       .environment(b.backendMetadata)
       .environment(b.engineCoordinator)
+      .environment(b.modelDelivery)
       .environment(b.dictationRuntime)
       .environment(b.appWindowCoordinator)
       // The nine view-facing homes (epic #763).
