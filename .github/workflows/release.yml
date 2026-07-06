@@ -1129,11 +1129,17 @@ jobs:
           gh workflow run bump-cask.yml -R saurabhav88/homebrew-tap -f version="${VERSION}"
           echo "==> Dispatched (fire-and-forget). The tap workflow reconciles the cask; it is idempotent + self-healing."
 
-      # #1368: a continue-on-error step does NOT fail the job, so bare `failure()`
-      # would never fire — check the dispatch step OUTCOME (mirrors appcast).
-      # Uses the current-repo GITHUB_TOKEN (issues:write above), NOT the tap App token.
-      - name: Report cask dispatch failure
-        if: steps.dispatch-cask.outcome == 'failure' && inputs.dry_run != true
+      # #1368: fire when EITHER the App-token mint failed (e.g. the App lacks tap
+      # access/actions:write — cloud review P2) OR the dispatch failed. The mint
+      # step is not continue-on-error, so a mint failure hard-fails the job and
+      # skips later steps unless we use a status function — `!cancelled()` lets
+      # this run after that failure. A continue-on-error dispatch failure needs
+      # the explicit OUTCOME check (bare `failure()` never fires for it). Uses the
+      # current-repo GITHUB_TOKEN (issues:write above), NOT the tap App token.
+      - name: Report cask trigger failure
+        if: >
+          !cancelled() && inputs.dry_run != true &&
+          (steps.app-token.outcome == 'failure' || steps.dispatch-cask.outcome == 'failure')
         env:
           GH_TOKEN: ${{ github.token }}
           # #1368 (Codex r3 P2): this job has no checkout, so `gh` can't infer the
@@ -1144,10 +1150,10 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          echo "::warning::Homebrew cask dispatch failed for v${VERSION} — cask may be stale. Filing an issue."
+          echo "::warning::Homebrew cask auto-bump could not be triggered for v${VERSION} — cask may be stale. Filing an issue."
           gh issue create \
             --title "Homebrew cask auto-bump failed for v${VERSION}" \
-            --body "$(printf 'The release pipeline could not dispatch the tap cask bump for v%s.\n\nRelease shipped fine (this is a non-blocking limb), but Homebrew may be stale.\n\nRun: %s\n\nManual fix: gh workflow run bump-cask.yml -R saurabhav88/homebrew-tap -f version=%s' "${VERSION}" "${RUN_URL}" "${VERSION}")" \
+            --body "$(printf 'The release pipeline could not trigger the tap cask bump for v%s (App-token mint or workflow dispatch failed).\n\nRelease shipped fine (this is a non-blocking limb), but Homebrew may be stale.\n\nRun: %s\n\nManual fix: gh workflow run bump-cask.yml -R saurabhav88/homebrew-tap -f version=%s' "${VERSION}" "${RUN_URL}" "${VERSION}")" \
             --label "bug" || echo "::warning::Could not file the cask-failure issue (labels/perms?)."
           # #1368 (Codex P2): fail the job so needs.bump-homebrew-cask.result ==
           # 'failure' → release-summary surfaces the cask follow-up + Discord alert.
