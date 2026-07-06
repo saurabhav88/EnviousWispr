@@ -209,6 +209,7 @@ let package = Package(
       dependencies: [
         "EnviousWisprCore",
         "EnviousWisprASR",
+        "FluidAudio",
       ],
       path: "Tests/EnviousWisprASRTests"
     ),
