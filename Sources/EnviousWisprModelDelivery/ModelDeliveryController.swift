@@ -101,6 +101,12 @@ public actor ModelDeliveryController {
     var drainingTask: Task<DeliveryOutcome, Never>?
     /// Bytes reserved on this volume while the fetch runs (D4 §2 ledger).
     var reservedBytes: Int64 = 0
+    /// Fixed inputs for reservation shrink math: progress callbacks report
+    /// CUMULATIVE bytes, so the reservation is recomputed from these each
+    /// tick — never decremented repeatedly (code-diff r1 P2).
+    var reservationRemainingBase: Int64 = 0
+    var reservationProgressBaseline: Int64 = 0
+    var reservationHeadroom: Double = 1.0
     /// First-wins cancel latch: ties the cancel EVENT to the winning exit so
     /// a racing failure can't double-emit (audit-all-terminal-paths rule).
     var cancelLatched = false
@@ -277,7 +283,12 @@ public actor ModelDeliveryController {
 
     let componentsToFetch = Set(manifest.filesByComponent.map(\.component))
       .subtracting(validation.verifiedComponents)
-    let repairedCount = validation.failedComponents.count
+    // Repair means something WAS there and got replaced — a cold install's
+    // all-missing components are a normal first download, not a repair
+    // (code-diff r1 P3: first-run metrics must not read as repair storms).
+    let repairedCount = validation.failedComponents.filter {
+      admission.componentHasAnyFile($0)
+    }.count
 
     // Everything already valid in place → admit without any fetch (legacy
     // migration path). No attempt events: no fetch sequence existed (D3).
@@ -309,6 +320,7 @@ public actor ModelDeliveryController {
     let staging = stagingDirectory(for: registration)
     let fetchFiles = manifest.files.filter { componentsToFetch.contains($0.component) }
     let stagedBytes = stagedByteCount(of: fetchFiles, in: staging)
+    let verifiedInPlaceBytes = manifest.totalBytes - fetchFiles.reduce(0) { $0 + $1.sizeBytes }
     let remainingBytes = fetchFiles.reduce(Int64(0)) { $0 + $1.sizeBytes } - stagedBytes
     let required = Int64(Double(max(0, remainingBytes)) * manifest.admission.headroomFactor)
     let otherReservations = entries.reduce(Int64(0)) { sum, kv in
@@ -323,14 +335,19 @@ public actor ModelDeliveryController {
         .attemptFailed(reason: failure.reason, failingSourceID: nil, detail: failure.detail))
       return .failed(failure)
     }
-    entries[identity]?.reservedBytes = required
+    if var entry = entries[identity] {
+      entry.reservedBytes = required
+      entry.reservationRemainingBase = max(0, remainingBytes)
+      entry.reservationProgressBaseline = verifiedInPlaceBytes + stagedBytes
+      entry.reservationHeadroom = manifest.admission.headroomFactor
+      entries[identity] = entry
+    }
 
     // Accepted: this is the attempt_started line (accept-gated, EG-1
     // discipline; resumed truth from disk).
     let resumed = stagedBytes > 0
     emit(identity, .attemptStarted(resumed: resumed))
     let startedAt = ContinuousClock.now
-    let verifiedInPlaceBytes = manifest.totalBytes - fetchFiles.reduce(0) { $0 + $1.sizeBytes }
     setState(
       identity,
       .downloading(
@@ -426,10 +443,13 @@ public actor ModelDeliveryController {
     guard entries[identity]?.generation == generation,
       case .downloading = entries[identity]?.state
     else { return }
-    // Shrink the reservation as bytes land (D4 §2).
+    // Shrink the reservation as bytes land (D4 §2): recomputed from the
+    // acceptance-time baseline because `bytes` is CUMULATIVE — remaining =
+    // base - landed, reserved = remaining x headroom.
     if var entry = entries[identity] {
-      let manifestHeadroom = entry.reservedBytes
-      entry.reservedBytes = max(0, manifestHeadroom - bytes)
+      let landed = max(0, bytes - entry.reservationProgressBaseline)
+      let remaining = max(0, entry.reservationRemainingBase - landed)
+      entry.reservedBytes = Int64(Double(remaining) * entry.reservationHeadroom)
       entries[identity] = entry
     }
     setState(
@@ -511,10 +531,20 @@ public actor ModelDeliveryController {
     }
   }
 
-  /// Production disk probe — same key EG-1 ships (`EGOneModelStore`).
+  /// Production disk probe — same key EG-1 ships (`EGOneModelStore`), but
+  /// walked to the NEAREST EXISTING ancestor: on a fresh install the install
+  /// dir does not exist yet, and a nil probe treated as "unknown" would
+  /// bypass the insufficient-disk preflight entirely (code-diff r1 P2).
   public static let volumeAvailableBytes: @Sendable (URL) -> Int64? = { url in
-    let values = try? url.deletingLastPathComponent()
-      .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+    var probe = url.standardizedFileURL
+    let fm = FileManager.default
+    while !fm.fileExists(atPath: probe.path) {
+      let parent = probe.deletingLastPathComponent()
+      guard parent.path != probe.path else { break }
+      probe = parent
+    }
+    let values = try? probe.resourceValues(
+      forKeys: [.volumeAvailableCapacityForImportantUsageKey])
     return values?.volumeAvailableCapacityForImportantUsage
   }
 

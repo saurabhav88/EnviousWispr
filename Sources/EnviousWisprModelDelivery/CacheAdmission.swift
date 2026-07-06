@@ -160,6 +160,16 @@ struct CacheAdmission {
     try JSONEncoder().encode(marker).write(to: markerURL, options: .atomic)
   }
 
+  /// Whether ANY manifest file of this component exists in the install dir
+  /// (distinguishes repair-of-damage from a cold first download).
+  func componentHasAnyFile(_ component: String) -> Bool {
+    let fm = FileManager.default
+    return manifest.files.contains { file in
+      file.component == component
+        && fm.fileExists(atPath: installDirectory.appendingPathComponent(file.path).path)
+    }
+  }
+
   /// Delete a failed component from the install dir (repair pipeline).
   func removeComponent(_ component: String) {
     try? FileManager.default.removeItem(
