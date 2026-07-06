@@ -50,8 +50,14 @@ import Testing
     try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
     try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
     let sources = [
-      ["id": "our_copy", "baseURL": "https://controller-mirror.invalid.example/\(UUID().uuidString)/"],
-      ["id": "backup", "baseURL": "https://controller-upstream.invalid.example/\(UUID().uuidString)/"],
+      [
+        "id": "our_copy",
+        "baseURL": "https://controller-mirror.invalid.example/\(UUID().uuidString)/",
+      ],
+      [
+        "id": "backup",
+        "baseURL": "https://controller-upstream.invalid.example/\(UUID().uuidString)/",
+      ],
     ]
     let manifest = try DeliveryManifest.load(
       from: ManifestFixture.manifestJSON(files: files, sources: sources))
@@ -98,6 +104,50 @@ import Testing
     #expect(log.names == ["failed:insufficient_disk"], "no started before preflight acceptance")
     let state = await controller.state(of: registration.manifest.identity)
     #expect(state == .failed(failure))
+  }
+
+  @Test func lateObserversSeeReplayedStateAndBufferedEvents() async throws {
+    // Launch-window race (drill 12, 2026-07-06): a preflight reject lands in
+    // milliseconds, BEFORE the app's observers attach (they register from
+    // Tasks after init). Late attach must still see the terminal state
+    // (settings row renders the failure copy) and the buffered events
+    // (telemetry funnel keeps attempt_failed). A SECOND event observer gets
+    // no history — replaying to two renderers would double-count telemetry.
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in 1 })  // nothing fits
+    let outcome = await controller.ensureModelAvailable(registration)
+    guard case .failed(let failure) = outcome else {
+      Issue.record("expected failure, got \(outcome)")
+      return
+    }
+
+    let log = EventLog()
+    await controller.addEventObserver { _, event in log.append(event) }
+    #expect(log.names == ["failed:insufficient_disk"], "pre-attach events drain to first observer")
+
+    let secondLog = EventLog()
+    await controller.addEventObserver { _, event in secondLog.append(event) }
+    #expect(secondLog.names.isEmpty, "second observer sees only future events")
+
+    let replayed = ReplayedStates()
+    await controller.addStateObserver { _, state in replayed.append(state) }
+    #expect(replayed.snapshot.contains(.failed(failure)), "state replayed on attach")
+  }
+
+  private final class ReplayedStates: @unchecked Sendable {
+    private let lock = NSLock()
+    private var states: [DeliveryState] = []
+    func append(_ state: DeliveryState) {
+      lock.lock()
+      states.append(state)
+      lock.unlock()
+    }
+    var snapshot: [DeliveryState] {
+      lock.lock()
+      defer { lock.unlock() }
+      return states
+    }
   }
 
   @Test func validCacheAdmitsInPlaceWithNoAttemptEvents() async throws {

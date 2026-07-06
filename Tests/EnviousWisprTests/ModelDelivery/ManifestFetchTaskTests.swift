@@ -107,6 +107,12 @@ final class DeliveryStubProtocol: URLProtocol {
       #expect(outcome.sourcesUsed == 1)
       #expect(outcome.finalSourceID == "our_copy")
       #expect(outcome.bytesDownloaded == manifest.totalBytes)
+      // Verified files must not leave resume sidecars behind — promotion
+      // renames staged component dirs wholesale, so a surviving sidecar
+      // would pollute the install dir (drill 12 follow-up, 2026-07-06).
+      let leftovers = ((try? FileManager.default.subpathsOfDirectory(atPath: staging.path)) ?? [])
+        .filter { $0.hasSuffix(".resume.json") }
+      #expect(leftovers.isEmpty, "no resume sidecars after verified completion")
     }
   }
 

@@ -60,6 +60,7 @@ struct ManifestFetchTask {
       if CacheAdmission.sizeMatches(url: stagedURL, expected: file.sizeBytes),
         await CacheAdmission.streamingSHA256(of: stagedURL) == file.sha256
       {
+        discardResumeIdentity(at: stagedURL)
         completedBytes += file.sizeBytes
         onProgress(completedBytes, manifest.totalBytes)
         continue
@@ -96,6 +97,10 @@ struct ManifestFetchTask {
               failingSourceID: source.id)
           }
           fetched = true
+          // The resume identity's job ends when the file verifies — clearing
+          // it here keeps sidecars out of the promoted cache (the manifest
+          // stays the exhaustive truth for the install dir).
+          discardResumeIdentity(at: stagedURL)
           completedBytes += file.sizeBytes
           onProgress(completedBytes, manifest.totalBytes)
         } catch let failure as DeliveryFailure where failure.reason != .cancelled {
@@ -257,6 +262,10 @@ struct ManifestFetchTask {
 
   private func discardPartial(at stagedURL: URL) {
     try? FileManager.default.removeItem(at: stagedURL)
+    discardResumeIdentity(at: stagedURL)
+  }
+
+  private func discardResumeIdentity(at stagedURL: URL) {
     try? FileManager.default.removeItem(
       at: URL(fileURLWithPath: stagedURL.path + ".resume.json"))
   }

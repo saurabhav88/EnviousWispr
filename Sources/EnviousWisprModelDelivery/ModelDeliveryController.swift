@@ -115,6 +115,9 @@ public actor ModelDeliveryController {
   private var entries: [ModelIdentity: Entry] = [:]
   private var stateObservers: [@Sendable (ModelIdentity, DeliveryState) -> Void] = []
   private var eventObservers: [@Sendable (ModelIdentity, DeliveryEvent) -> Void] = []
+  /// Events emitted before the first event observer attaches (see
+  /// `addEventObserver` — the launch-window race). Bounded in `emit`.
+  private var pendingEvents: [(ModelIdentity, DeliveryEvent)] = []
   private let defaults: UserDefaults
   /// Test seam for disk capacity (production reads the volume).
   private let availableDiskBytes: @Sendable (URL) -> Int64?
@@ -130,16 +133,37 @@ public actor ModelDeliveryController {
 
   // MARK: - Observation (one stream, two renderers — D6)
 
+  /// Attach-time replay: observers register from `Task`s after init, so a
+  /// fast first attempt (a preflight reject takes milliseconds) can reach a
+  /// terminal state before anyone listens. Without replay the UI mirror
+  /// stays `.notReady` forever — a dead engine with no failure copy and no
+  /// Try Again (drill 12, 2026-07-06). Each new observer immediately sees
+  /// the current state of every known identity.
   public func addStateObserver(
     _ observer: @escaping @Sendable (ModelIdentity, DeliveryState) -> Void
   ) {
     stateObservers.append(observer)
+    for (identity, entry) in entries {
+      observer(identity, entry.state)
+    }
   }
 
+  /// Events emitted before the FIRST observer attaches are buffered and
+  /// drained to it in order (telemetry for a launch-window failure must not
+  /// be lost — same race as the state replay above). Observers attaching
+  /// after the first see only future events: replaying history to a second
+  /// renderer would double-count telemetry.
   public func addEventObserver(
     _ observer: @escaping @Sendable (ModelIdentity, DeliveryEvent) -> Void
   ) {
+    let isFirst = eventObservers.isEmpty
     eventObservers.append(observer)
+    if isFirst {
+      for (identity, event) in pendingEvents {
+        observer(identity, event)
+      }
+      pendingEvents.removeAll()
+    }
   }
 
   public func state(of identity: ModelIdentity) -> DeliveryState {
@@ -311,11 +335,7 @@ public actor ModelDeliveryController {
           untouchedComponents: validation.verifiedComponents)
       } catch {
         let failure = DeliveryFailure(reason: .cacheRepairFailed, detail: "admit_in_place")
-        setState(identity, .failed(failure), ifGeneration: generation)
-        emit(
-          identity,
-          .attemptFailed(reason: failure.reason, failingSourceID: nil, detail: failure.detail))
-        return .failed(failure)
+        return await finishFailed(identity, failure, generation: generation)
       }
       setState(identity, .admitted, ifGeneration: generation)
       return .admitted
@@ -347,11 +367,7 @@ public actor ModelDeliveryController {
     // staged bytes out of required instead.
     if available - otherReservations < required {
       let failure = DeliveryFailure(reason: .insufficientDisk, detail: "preflight:\(required)")
-      setState(identity, .failed(failure), ifGeneration: generation)
-      emit(
-        identity,
-        .attemptFailed(reason: failure.reason, failingSourceID: nil, detail: failure.detail))
-      return .failed(failure)
+      return await finishFailed(identity, failure, generation: generation)
     }
     if var entry = entries[identity] {
       entry.reservedBytes = required
@@ -428,24 +444,41 @@ public actor ModelDeliveryController {
     } catch is CancellationError {
       return finishCancelled(identity, generation: generation)
     } catch let failure as DeliveryFailure {
-      setState(identity, .failed(failure), ifGeneration: generation)
-      emit(
-        identity,
-        .attemptFailed(
-          reason: failure.reason, failingSourceID: failure.failingSourceID, detail: failure.detail))
-      await AppLogger.shared.log(
-        "Model delivery failed \(identity.cacheKey): \(failure.reason.rawValue)",
-        level: .info, category: "Delivery")
-      return .failed(failure)
+      return await finishFailed(identity, failure, generation: generation)
     } catch {
       let failure = ManifestFetchTask.classifyTransportError(error, sourceID: nil)
-      setState(identity, .failed(failure), ifGeneration: generation)
-      emit(
-        identity,
-        .attemptFailed(
-          reason: failure.reason, failingSourceID: failure.failingSourceID, detail: failure.detail))
-      return .failed(failure)
+      return await finishFailed(identity, failure, generation: generation)
     }
+  }
+
+  /// The ONE terminal-failure exit: state, event, and the app.log line move
+  /// together — a failure class that skips any of the three is invisible to
+  /// one of its consumers (drill 12 found the preflight reject silent in
+  /// app.log while the catch path logged, 2026-07-06).
+  private func finishFailed(
+    _ identity: ModelIdentity, _ failure: DeliveryFailure, generation: Int
+  ) async -> DeliveryOutcome {
+    // Terminal-winner gate, failure side (code-diff r9 P2 — twin of the
+    // completed path's no-await slice, exhaustive r7 P1): a racing cancel()
+    // or a superseding startAttempt() bumped the generation, so that winner
+    // owns the terminal event — a stale attempt must not emit or log a
+    // second one (attempt_failed + cancel for one attempt). It only reports
+    // its outcome; deliberately NOT finishCancelled(), whose latch-reset
+    // branch could emit a spurious cancel when a new attempt already reset
+    // `cancelLatched`.
+    guard entries[identity]?.generation == generation else {
+      return .cancelled(resumable: hasStagedPartials(identity: identity))
+    }
+    setState(identity, .failed(failure), ifGeneration: generation)
+    emit(
+      identity,
+      .attemptFailed(
+        reason: failure.reason, failingSourceID: failure.failingSourceID, detail: failure.detail))
+    let detailSuffix = failure.detail.map { " (\($0))" } ?? ""
+    await AppLogger.shared.log(
+      "Model delivery failed \(identity.cacheKey): \(failure.reason.rawValue)\(detailSuffix)",
+      level: .info, category: "Delivery")
+    return .failed(failure)
   }
 
   /// Cancel exit: the cancel EVENT is owned by `cancel()` (first-wins latch);
@@ -512,6 +545,14 @@ public actor ModelDeliveryController {
   }
 
   private func emit(_ identity: ModelIdentity, _ event: DeliveryEvent) {
+    guard !eventObservers.isEmpty else {
+      // Pre-attach buffer (drained by the first `addEventObserver`). Bounded:
+      // a launch window emits a handful of events; if something pathological
+      // floods before attach, keep the EARLIEST — attempt_started/failed at
+      // the front are the ones the funnel cannot lose.
+      if pendingEvents.count < 64 { pendingEvents.append((identity, event)) }
+      return
+    }
     for observer in eventObservers { observer(identity, event) }
   }
 
