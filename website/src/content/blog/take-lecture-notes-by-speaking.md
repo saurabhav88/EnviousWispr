@@ -31,7 +31,7 @@ Hands-free mode detects natural pauses in your speech, so each thought gets proc
 
 ## Step 3: Tune the polish step for lecture notes
 
-Raw transcription is useful, but the real power for students is in post-processing. EnviousWispr runs your transcribed text through an LLM that cleans it up, removing filler words like "um" and "uh," fixing punctuation, and producing polished output. Post-processing can run on-device (Apple Intelligence, Ollama) or via cloud providers (OpenAI, Gemini).
+Raw transcription is useful, but the real power for students is in post-processing. EnviousWispr runs your transcribed text through an LLM that cleans it up, removing filler words like "um" and "uh," fixing punctuation, and producing polished output. Post-processing can run on-device (Apple Intelligence, EG-1, Ollama) or via cloud providers (OpenAI, Gemini).
 
 The polish works well for lecture notes: it cleans up your speech into clear, well-punctuated prose without making it overly stiff.
 

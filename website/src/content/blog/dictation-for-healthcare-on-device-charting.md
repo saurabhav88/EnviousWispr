@@ -29,12 +29,12 @@ A few practical problems with cloud dictation in a clinical setting:
 
 ## What on-device dictation gets you
 
-EnviousWispr runs the entire pipeline on your Mac. The audio is captured, transcribed via on-device speech recognition through Core ML on the Neural Engine, and cleaned up by an LLM that can also run on-device using Apple Intelligence or Ollama. Nothing leaves your machine unless you explicitly choose a cloud LLM provider for the polish step (and you can pick on-device polish to keep the whole pipeline local).
+EnviousWispr runs the entire pipeline on your Mac. The audio is captured, transcribed via on-device speech recognition through Core ML on the Neural Engine, and cleaned up by an LLM that can also run on-device using Apple Intelligence, EG-1, or Ollama. Nothing leaves your machine unless you explicitly choose a cloud LLM provider for the polish step (and you can pick on-device polish to keep the whole pipeline local).
 
 This is architecture, not policy. A few things follow from it:
 
 - **No vendor sees the audio.** The recording is processed in memory and discarded. There's no server log, no retention window, no third-party audit chain to navigate.
-- **No BAA needed for the dictation step itself.** Your existing EMR vendor's BAA still covers the chart that ends up in their system. EnviousWispr just hands you polished text on the clipboard or pastes it into the focused field; it has no role in storing or transmitting patient data.
+- **No BAA needed for the dictation step itself.** Your existing EMR vendor's BAA still covers the chart that ends up in their system. EnviousWispr just hands you polished text on the clipboard or pastes it into the focused field; with on-device polish, it never stores or transmits patient data.
 - **No internet required.** Charting in a basement office with bad WiFi, a rural clinic with patchy coverage, or a hospital floor where corporate WiFi is locked down all work the same way. Local speech recognition does not care.
 - **The economics are different.** EnviousWispr is free. There's no per-seat license, no annual renewal, no usage-based billing.
 
@@ -106,12 +106,12 @@ What still matters in your full clinical workflow:
 - The EMR you paste into still has its own data flow, retention policy, and BAA obligations.
 - Your screen lock, login security, and physical access to the workstation still apply.
 - Anyone walking past while you're dictating can hear what you say.
-- If you choose a cloud LLM provider for the polish step, the cleaned-up text (without the original audio) goes through that provider. Use on-device polish (Apple Intelligence or Ollama) to keep the whole pipeline local.
+- If you choose a cloud LLM provider for the polish step, the cleaned-up text (without the original audio) goes through that provider. Use on-device polish (Apple Intelligence, EG-1, or Ollama) to keep the whole pipeline local.
 
 What changes:
 
 - The audio never reaches a vendor. There's no recording stored anywhere outside your Mac's working memory.
-- No new BAA is required for the dictation step.
+- With on-device polish, no new BAA is required for the dictation step.
 
 If you want the full picture on the privacy architecture, the [on-device vs cloud privacy post](/blog/on-device-vs-cloud-dictation-privacy/) covers what each approach does with your data and what that implies.
 

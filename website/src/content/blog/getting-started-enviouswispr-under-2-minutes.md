@@ -8,7 +8,7 @@ draft: false
 author: "Saurabh Vaish"
 faqs:
   - question: "Do I need an account or API key to use EnviousWispr?"
-    answer: "No. EnviousWispr works fully offline out of the box with the default Parakeet engine. There is no signup, no email confirmation, and no API key to paste in. You can optionally bring your own OpenAI or Anthropic key later if you want cloud AI polish, but it is opt-in."
+    answer: "No. EnviousWispr works fully offline out of the box with the default Parakeet engine. There is no signup, no email confirmation, and no API key to paste in. You can optionally bring your own OpenAI or Gemini key later if you want cloud AI polish, but it is opt-in."
   - question: "Which permissions does EnviousWispr request, and why?"
     answer: "Up to three, all granted through standard macOS prompts. Microphone access lets the app capture your voice. Accessibility access lets the app paste polished text into the app you are typing in (Tier 1 direct insertion and Tier 2 simulated Cmd+V). Automation access is prompted only the first time the AppleScript paste fallback (Tier 2b) is needed, when both faster paste paths fail. None of these permissions sends data anywhere."
   - question: "What if my Mac is too old to run EnviousWispr?"
@@ -73,7 +73,7 @@ That's the before and after. You spoke naturally, with filler words and run-on p
 
 ### What the post-processing does
 
-By default, EnviousWispr's post-processing pipeline removes filler words like "um," "uh," and "like," fixes punctuation, and produces clean prose. You can run this on-device with Apple Intelligence or Ollama, or use a cloud provider like OpenAI or Gemini. If you want to understand [how the full pipeline works](/how-it-works/), we've documented each stage in detail.
+By default, EnviousWispr's post-processing pipeline removes filler words like "um," "uh," and "like," fixes punctuation, and produces clean prose. You can run this on-device with Apple Intelligence, EG-1, or Ollama, or use a cloud provider like OpenAI or Gemini. If you want to understand [how the full pipeline works](/how-it-works/), we've documented each stage in detail.
 
 You don't need to configure anything for this to work. The defaults are designed to produce clean, readable text out of the box.
 

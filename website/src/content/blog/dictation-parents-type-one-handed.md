@@ -20,7 +20,7 @@ The built-in macOS dictation works, sort of. But it sends audio to Apple's serve
 
 For a lot of people, that's fine. For parents, it's a different calculation. Your mic picks up more than just your voice. It hears your toddler's tantrum, your partner's phone call, your baby monitor in the background. The question isn't whether those cloud services are malicious. It's whether you want all of that ambient family audio uploaded somewhere you can't inspect or control.
 
-EnviousWispr runs on-device speech recognition via Core ML on your Mac's Neural Engine. Post-processing (cleaning up filler words, fixing punctuation) can run on-device with Apple Intelligence or Ollama, or through cloud APIs like OpenAI and Gemini. No audio leaves your Mac. No account required. Nothing to sign up for. You can read exactly [how the pipeline works](/how-it-works/) if you're curious about the technical details.
+EnviousWispr runs on-device speech recognition via Core ML on your Mac's Neural Engine. Post-processing (cleaning up filler words, fixing punctuation) can run on-device with Apple Intelligence, EG-1, or Ollama, or through cloud APIs like OpenAI and Gemini. No audio leaves your Mac. No account required. Nothing to sign up for. You can read exactly [how the pipeline works](/how-it-works/) if you're curious about the technical details.
 
 ## Push-to-talk vs. hands-free: picking the right mode
 

@@ -62,7 +62,7 @@ The output adapts as your task changes, automatically. You speak naturally every
 
 Here's the thing about dictating work communication: the content is often sensitive. You're discussing project timelines, personnel decisions, client details, internal strategy. Sending those audio recordings to a cloud server for transcription is a risk most remote workers don't think about until it's too late.
 
-EnviousWispr runs on-device speech recognition locally on your Mac via Core ML on the Neural Engine. Your recordings never leave your device. The post-processing (the part that cleans up filler words and adjusts tone) can run on-device with Apple Intelligence or Ollama, or through cloud APIs like OpenAI and Gemini.
+EnviousWispr runs on-device speech recognition locally on your Mac via Core ML on the Neural Engine. Your recordings never leave your device. The post-processing (the part that cleans up filler words and adjusts tone) can run on-device with Apple Intelligence, EG-1, or Ollama, or through cloud APIs like OpenAI and Gemini.
 
 No sign-up required. No subscription. No API keys. No audio uploaded to a vendor's server. If you're dictating a sensitive personnel update or a client contract revision, that content stays exactly where it should: on your machine.
 

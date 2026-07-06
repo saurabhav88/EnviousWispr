@@ -60,7 +60,7 @@ This is the highest-volume, lowest-effort win. Most Slack messages are conversat
 
 ### Email replies
 
-Email typically demands a slightly more polished tone. This is where post-processing helps. EnviousWispr runs your transcription through an LLM (on-device via Apple Intelligence or Ollama, or cloud via OpenAI or Gemini) that cleans up filler words, fixes punctuation, and smooths out the rough edges. You speak casually and get a message that reads like you took the time to write it carefully.
+Email typically demands a slightly more polished tone. This is where post-processing helps. EnviousWispr runs your transcription through an LLM (on-device via Apple Intelligence, EG-1, or Ollama, or cloud via OpenAI or Gemini) that cleans up filler words, fixes punctuation, and smooths out the rough edges. You speak casually and get a message that reads like you took the time to write it carefully.
 
 ### Meeting follow-ups
 

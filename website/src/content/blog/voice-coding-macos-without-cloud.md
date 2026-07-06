@@ -31,7 +31,7 @@ EnviousWispr runs transcription locally using two backends: Parakeet, a streamin
 
 Here's what that means in practice: your audio goes from your microphone to a local model running on your hardware. No network request. No API call. No server. The transcription pipeline runs entirely within your Mac's process space, and the audio buffer is discarded after processing.
 
-Post-processing works similarly. After transcription, the raw text passes through an LLM that cleans up filler words, fixes punctuation, and shapes the formatting to match what you said. Post-processing can run on-device (Apple Intelligence, Ollama) or via cloud providers (OpenAI, Gemini), depending on your preference.
+Post-processing works similarly. After transcription, the raw text passes through an LLM that cleans up filler words, fixes punctuation, and shapes the formatting to match what you said. Post-processing can run on-device (Apple Intelligence, EG-1, Ollama) or via cloud providers (OpenAI, Gemini), depending on your preference.
 
 For a deeper look at the full pipeline, from microphone input through transcription to polished output, see the [How It Works](/how-it-works/) page.
 
