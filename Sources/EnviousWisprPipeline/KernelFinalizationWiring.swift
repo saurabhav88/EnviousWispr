@@ -117,7 +117,8 @@ struct KernelFinalizationWiring {
   static let tickDurationSeconds: Double = 0.1
 
   /// Wedge window in ticks: `10 x 100 ms = 1.0 s`. Above `LoadProgressWatcher`'s
-  /// 0.8 s silence floor (`LoadProgressWatcher.swift:41`) with a 200 ms margin —
+  /// default 0.8 s silence floor (`silenceFloorSeconds` init default) with a
+  /// 200 ms margin —
   /// the kernel's cadence detector cannot false-positive a wedge sooner than
   /// today's shipped detector is even allowed to (no arbitrary timeout; both
   /// values are precedent-derived).
