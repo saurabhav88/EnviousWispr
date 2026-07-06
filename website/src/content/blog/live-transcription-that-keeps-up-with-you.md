@@ -15,7 +15,7 @@ faqs:
   - question: "Does live transcription send my audio to the cloud?"
     answer: "No. Live transcription runs entirely on your Mac, the same as regular transcription. The audio never leaves your device in either mode. The only difference is when the work happens: while you speak instead of after you stop."
   - question: "Why does live transcription turn off when Auto-detect language is on?"
-    answer: "Live transcription has to commit to one language within the first second or two of your recording, which is not enough audio to detect a language reliably. With Auto-detect on, EnviousWispr waits and decides the language from your whole recording instead, which is far more accurate. Pick a specific language in Settings to stream live."
+    answer: "Live transcription has to commit to one language within the first second or two of your recording, which is not enough audio to detect a language reliably. With Auto-detect on, EnviousWispr waits until you stop and decides the language from more of your opening audio instead, which is far more accurate. Pick a specific language in Settings to stream live."
   - question: "Does live transcription work with the Fast engine too?"
     answer: "Yes. The Fast engine has transcribed live for a while. What is new is that the All Languages engine, the one that covers 99 languages and the toughest audio, now does it too."
   - question: "Is live transcription less accurate?"
@@ -46,7 +46,7 @@ There is one setting that turns this off on purpose: Auto-detect language.
 
 Live transcription has to commit to a language on its very first pass, a second or two into your recording. That is almost no audio to judge from. If it guessed wrong there, every confirmed word after that would be in the wrong language, and confirmed words cannot be taken back.
 
-So with Auto-detect on, EnviousWispr does the careful thing instead: it waits until you finish, listens to the whole recording, and decides the language with all the evidence in hand. You get the traditional end-of-recording wait, and in exchange you get the right language essentially every time. The app notes this right under the toggle, so it is never a mystery.
+So with Auto-detect on, EnviousWispr does the careful thing instead: it waits until you finish, then judges the language from your opening audio, seconds of it, rather than the split second live mode would have to decide from. You get the traditional end-of-recording wait, and in exchange you get the right language essentially every time. The app notes this right under the toggle, so it is never a mystery.
 
 If you dictate in one language, the fix is simple: pick it. Settings, Transcription, Language. Locked to a specific language, the All Languages engine streams live.
 
