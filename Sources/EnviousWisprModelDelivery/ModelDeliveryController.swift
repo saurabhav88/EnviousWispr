@@ -327,7 +327,13 @@ public actor ModelDeliveryController {
       kv.key == identity ? sum : sum + kv.value.reservedBytes
     }
     let available = availableDiskBytes(registration.installDirectory) ?? .max
-    if available - otherReservations + stagedBytes < required {
+    // Staged partials are NOT reclaimable headroom here: `remainingBytes`
+    // already excludes them (they are kept and resumed, not re-downloaded),
+    // so adding them to `available` would double-count and let a resumed
+    // attempt start into ENOSPC (code-diff r2 P2). EG-1's reclaimable rule
+    // applied to a REQUIRED computed from the full artifact size; ours nets
+    // staged bytes out of required instead.
+    if available - otherReservations < required {
       let failure = DeliveryFailure(reason: .insufficientDisk, detail: "preflight:\(required)")
       setState(identity, .failed(failure), ifGeneration: generation)
       emit(
