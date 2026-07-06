@@ -44,7 +44,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does EnviousWispr work without internet?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. All speech recognition runs on-device using Apple Silicon and the Parakeet or WhisperKit model. Your audio never leaves your Mac. AI polish is optional. The default polish provider is Apple Intelligence, which is also on-device on supported Macs. If you bring your own OpenAI or Gemini API key, only the transcribed text (not the audio) is sent to that provider for polishing."
+        "text": "Yes. All speech recognition runs on-device using Apple Silicon and the Parakeet or WhisperKit model. Your audio never leaves your Mac. AI polish is optional and can also run fully on-device: EG-1, our own model, on any supported Mac, or Apple Intelligence on macOS 26 and later. If you bring your own OpenAI or Gemini API key, only the transcribed text (not the audio) is sent to that provider for polishing."
       }
     },
     {
@@ -68,7 +68,7 @@ const faqJsonLd = JSON.stringify({
       "name": "What is the difference between push-to-talk and hands-free mode?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Push-to-talk means you hold a hotkey while speaking and release to transcribe. It is the default and the most precise mode. Hands-free mode listens continuously and transcribes when you pause. It is useful when typing is not an option, for example during accessibility-driven dictation or when both hands are occupied."
+        "text": "Push-to-talk means you hold a hotkey while speaking and release to transcribe. It is the default mode. Hands-free mode listens continuously and transcribes when you pause. It is useful when typing is not an option, for example during accessibility-driven dictation or when both hands are occupied."
       }
     },
     {
@@ -84,7 +84,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Which languages does EnviousWispr support?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "The default Parakeet engine handles English. Switching the backend to WhisperKit unlocks 90+ languages. Both run on-device on Apple Silicon."
+        "text": "The default Parakeet engine handles English. Switching the backend to WhisperKit supports 90+ languages. Both run on-device on Apple Silicon."
       }
     },
     {
@@ -214,6 +214,39 @@ const faqJsonLd = JSON.stringify({
 .stat-label { font-size: 13px; color: var(--text-2); font-weight: 500; }
 .stat-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
 
+/* ── Choose Your Polish Engine ── */
+.engines-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 44px; }
+.engine-card { background: #fff; border: 1px solid var(--border-hover); border-radius: var(--radius-card); padding: 26px 22px; display: flex; flex-direction: column; transition: transform 0.2s, box-shadow 0.2s; }
+.engine-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(124,58,237,0.10); }
+.engine-card.featured { border-color: rgba(124,58,237,0.4); box-shadow: 0 0 0 1px rgba(124,58,237,0.15), 0 12px 40px rgba(124,58,237,0.10); }
+.engine-badge { display: inline-block; align-self: flex-start; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 4px 10px; margin-bottom: 14px; }
+.engine-badge.accent { color: var(--accent); background: var(--accent-soft); border-color: rgba(124,58,237,0.3); }
+.engine-card h3 { font-size: 18px; font-weight: 700; letter-spacing: -0.4px; color: var(--text); margin-bottom: 8px; }
+.engine-card p { font-size: 14px; line-height: 1.6; color: var(--text-2); flex: 1; }
+.engine-meta { margin-top: 16px; font-size: 12px; color: var(--text-3); font-weight: 500; }
+
+.bench { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 32px; }
+.bench-head { text-align: center; margin-bottom: 24px; }
+.bench-head h3 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; color: var(--text); margin-bottom: 8px; }
+.bench-head p { font-size: 14px; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.bench-rows { display: flex; flex-direction: column; gap: 14px; max-width: 720px; margin: 0 auto; }
+.bench-row { display: grid; grid-template-columns: 190px 1fr 56px; align-items: center; gap: 14px; }
+.bench-label { font-size: 13px; font-weight: 600; color: var(--text); text-align: right; }
+.bench-tag { display: inline-block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--accent); background: var(--accent-soft); border-radius: var(--radius-pill); padding: 1px 6px; margin-left: 4px; vertical-align: middle; }
+.bench-tag.cloud { color: var(--text-3); background: var(--border); }
+.bench-track { height: 26px; background: rgba(124,58,237,0.06); border-radius: 8px; overflow: hidden; }
+.bench-bar { height: 100%; border-radius: 8px; background: linear-gradient(90deg, #4169e1, #7c3aed); }
+.bench-bar.eg1 { background: var(--rainbow-full); }
+.bench-val { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--text); }
+.bench-note { text-align: center; font-size: 12px; color: var(--text-3); margin: 20px auto 0; line-height: 1.5; max-width: 620px; }
+@media (max-width: 900px) { .engines-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) {
+  .engines-grid { grid-template-columns: 1fr; }
+  .bench { padding: 22px 16px; }
+  .bench-row { grid-template-columns: 96px 1fr 46px; gap: 8px; }
+  .bench-label { font-size: 11px; }
+}
+
 /* ── Features ── */
 .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
 .feat-card { background: #fff; border: 1px solid var(--border-hover); border-radius: var(--radius-card); padding: 28px 24px; transition: transform 0.2s, box-shadow 0.2s; }
@@ -294,7 +327,7 @@ const faqJsonLd = JSON.stringify({
         <div class="step-number">Step 03</div>
         <div class="step-icon">✨</div>
         <div class="step-title">Polish</div>
-        <p class="step-desc">Grammar is fixed, filler words are removed, and your meaning is preserved automatically, in the tone you choose.</p>
+        <p class="step-desc">Grammar is fixed, filler words are removed, and your meaning is preserved automatically.</p>
       </div>
       <div class="step-card reveal" id="step-paste">
         <div class="step-number">Step 04</div>
@@ -412,12 +445,12 @@ const faqJsonLd = JSON.stringify({
       <div class="stat-card reveal">
         <div class="stat-value">2</div>
         <div class="stat-label">Speech engines</div>
-        <div class="stat-detail">WhisperKit + Apple</div>
+        <div class="stat-detail">WhisperKit + Parakeet</div>
       </div>
       <div class="stat-card reveal">
         <div class="stat-value">5</div>
-        <div class="stat-label">AI providers</div>
-        <div class="stat-detail">Off, Apple, Ollama, OpenAI, Gemini</div>
+        <div class="stat-label">Polish engines</div>
+        <div class="stat-detail">EG-1, Apple, Ollama, OpenAI, Gemini</div>
       </div>
       <div class="stat-card reveal">
         <div class="stat-value">0</div>
@@ -433,6 +466,69 @@ const faqJsonLd = JSON.stringify({
   </div>
 </section>
 
+<!-- Choose Your Polish Engine -->
+<section class="section" aria-label="Polish engines">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill accent">AI Polish</div>
+      <h2 class="section-title">Choose how your text gets cleaned up</h2>
+      <p class="section-sub">Turn cleanup on and pick your engine. Each one is good at something different, and every option except a cloud key runs on your Mac.</p>
+    </div>
+
+    <div class="engines-grid reveal-stagger">
+      <div class="engine-card reveal" style="--i:0">
+        <span class="engine-badge">Start instantly</span>
+        <h3>Apple's built-in AI</h3>
+        <p>On the latest macOS, cleanup runs on-device with nothing extra to download. The zero-setup way to get started.</p>
+        <div class="engine-meta">On-device &middot; macOS 26+ &middot; No download</div>
+      </div>
+      <div class="engine-card featured reveal" style="--i:1">
+        <span class="engine-badge accent">Recommended</span>
+        <h3>EG-1, our own model</h3>
+        <p>We tuned it just for dictation cleanup: it turns a spoken list into a real list, breaks a wall of talk into clean paragraphs, and keeps only the corrected version when you fix yourself mid-sentence. Runs fully on your Mac.</p>
+        <div class="engine-meta">On-device &middot; macOS 14+ &middot; One-time download &middot; Free</div>
+      </div>
+      <div class="engine-card reveal" style="--i:2">
+        <span class="engine-badge">Your call</span>
+        <h3>Your own local model</h3>
+        <p>Run any local model through Ollama, fully offline, if you would rather bring your own.</p>
+        <div class="engine-meta">On-device &middot; Bring your own model</div>
+      </div>
+      <div class="engine-card reveal" style="--i:3">
+        <span class="engine-badge">Your call</span>
+        <h3>Your OpenAI or Gemini key</h3>
+        <p>Prefer a cloud model? Add your own key. Only your text is sent, never audio, and we ask the provider not to keep it.</p>
+        <div class="engine-meta">Cloud &middot; Your own key &middot; Text only</div>
+      </div>
+    </div>
+
+    <div class="bench reveal">
+      <div class="bench-head">
+        <h3>How EG-1 compares on cleanup quality</h3>
+        <p>Share of 1,890 real dictation cases each model cleaned up correctly, scored on the same cases by the same judge.</p>
+      </div>
+      <div class="bench-rows">
+        <div class="bench-row">
+          <span class="bench-label">EG-1 <span class="bench-tag">on-device</span></span>
+          <div class="bench-track"><div class="bench-bar eg1" style="width:93.7%;"></div></div>
+          <span class="bench-val">93.7%</span>
+        </div>
+        <div class="bench-row">
+          <span class="bench-label">Gemini 3.5 Flash <span class="bench-tag cloud">cloud</span></span>
+          <div class="bench-track"><div class="bench-bar" style="width:92.6%;"></div></div>
+          <span class="bench-val">92.6%</span>
+        </div>
+        <div class="bench-row">
+          <span class="bench-label">GPT-5.4-mini <span class="bench-tag cloud">cloud</span></span>
+          <div class="bench-track"><div class="bench-bar" style="width:83.8%;"></div></div>
+          <span class="bench-val">83.8%</span>
+        </div>
+      </div>
+      <p class="bench-note">Our own benchmark, not an independent review. The eval harness and prompts are public; the test cases are personal dictations and stay private.</p>
+    </div>
+  </div>
+</section>
+
 <!-- Features Deep Dive -->
 <section class="section" aria-label="Features">
   <div class="container">
@@ -444,12 +540,12 @@ const faqJsonLd = JSON.stringify({
       <div class="feat-card reveal">
         <div class="feat-icon">🧠</div>
         <div class="feat-title">On-device transcription</div>
-        <p class="feat-desc">Powered by WhisperKit and Apple Speech, transcription runs entirely on your Mac. No audio ever leaves your device.</p>
+        <p class="feat-desc">Powered by WhisperKit and Parakeet, transcription runs entirely on your Mac. No audio ever leaves your device.</p>
       </div>
       <div class="feat-card reveal">
         <div class="feat-icon">✏️</div>
         <div class="feat-title">Smart polish</div>
-        <p class="feat-desc">Filler words removed, grammar corrected, your meaning preserved. Choose your tone: clean, formal, or casual.</p>
+        <p class="feat-desc">Filler words removed, grammar corrected, your meaning preserved. Runs on-device with EG-1 or Apple Intelligence, or with your own OpenAI or Gemini key.</p>
       </div>
       <div class="feat-card reveal">
         <div class="feat-icon">🎯</div>
@@ -469,7 +565,7 @@ const faqJsonLd = JSON.stringify({
       <div class="feat-card reveal">
         <div class="feat-icon">🔌</div>
         <div class="feat-title">Multiple AI providers</div>
-        <p class="feat-desc">Use on-device polish with Apple Intelligence or Ollama, or bring your own OpenAI or Gemini key. Cloud polish requests include <code>store: false</code> so providers are asked not to retain the text.</p>
+        <p class="feat-desc">Use on-device polish with EG-1 (our own model), Apple Intelligence, or Ollama, or bring your own OpenAI or Gemini key. Cloud polish requests include <code>store: false</code> so providers are asked not to retain the text.</p>
       </div>
       <div class="feat-card reveal">
         <div class="feat-icon">🔤</div>
@@ -485,6 +581,11 @@ const faqJsonLd = JSON.stringify({
         <div class="feat-icon">⚙️</div>
         <div class="feat-title">Streaming pipeline</div>
         <p class="feat-desc">Recording, transcription, and AI polishing run in parallel. The result arrives almost the moment you stop speaking.</p>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-icon">🌊</div>
+        <div class="feat-title">Live transcription</div>
+        <p class="feat-desc">With the All Languages engine, watch your words appear live as you speak. The text lands almost the moment you stop, no matter how long you talked.</p>
       </div>
     </div>
   </div>
