@@ -69,6 +69,7 @@ struct ManifestFetchTask {
       // source is abandoned the remainder of the attempt stays on the next
       // source (D3: failover is inside one attempt; sources_used 1|2).
       var fetched = false
+      var localRetryUsed = false
       while !fetched {
         let source = sources[sourceIndex]
         do {
@@ -77,11 +78,20 @@ struct ManifestFetchTask {
             progressBase: completedBytes)
           bytesDownloaded += written
 
-          // Hash gate BEFORE this file counts (invariant 1). A mismatch is a
-          // source problem (wrong/corrupt object), so it fails over.
+          // Hash gate BEFORE this file counts (invariant 1).
           try Task.checkCancellation()
           guard await CacheAdmission.streamingSHA256(of: stagedURL) == file.sha256 else {
             discardPartial(at: stagedURL)
+            // A mismatch on bytes this run did NOT download (written == 0:
+            // the complete-partial fast path served a stale corrupt staged
+            // file) is a LOCAL staging problem, not the source's — discard
+            // and retry the SAME source once before any blame/failover
+            // (code-diff r6 P2). A mismatch on freshly downloaded bytes is
+            // a source problem and fails over as before.
+            if written == 0, !localRetryUsed {
+              localRetryUsed = true
+              continue
+            }
             throw DeliveryFailure(
               reason: .integrityMismatch, detail: "sha256:\(file.component)",
               failingSourceID: source.id)

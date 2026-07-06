@@ -264,6 +264,30 @@ final class DeliveryStubProtocol: URLProtocol {
     }
   }
 
+  @Test func corruptFullSizeStagedFileSelfHealsFromSameSource() async throws {
+    // A stale complete-size-but-corrupt staged file is a LOCAL problem: it
+    // must be discarded and refetched from the SAME source, not blamed on
+    // the source as integrity_mismatch (code-diff r6 P2).
+    let files = [ManifestFixture.smallFiles[2]]
+    let manifest = try ManifestFixture.manifest(files: files)
+    let staging = try makeStaging()
+    try await withStubs {
+      let full = files[0].content
+      let stagedURL = staging.appendingPathComponent(files[0].path)
+      try FileManager.default.createDirectory(
+        at: stagedURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try Data("bad&&&&".utf8).write(to: stagedURL)  // full size, wrong bytes
+
+      DeliveryStubProtocol.enqueue(
+        url: "https://mirror.invalid.example/base/vocab.json",
+        .init(status: 200, headers: ["Content-Length": String(full.count)], body: full))
+      let outcome = try await task(manifest: manifest, staging: staging).run()
+      #expect(outcome.sourcesUsed == 1, "self-heal must not fail over")
+      #expect(outcome.finalSourceID == "our_copy")
+      #expect(outcome.bytesDownloaded == Int64(full.count))
+    }
+  }
+
   // MARK: Pure decision tables
 
   @Test func resumeIdentityDiscardMatrix() throws {
