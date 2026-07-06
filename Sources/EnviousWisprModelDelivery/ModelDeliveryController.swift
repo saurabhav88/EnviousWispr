@@ -200,6 +200,10 @@ public actor ModelDeliveryController {
     // delegate delivered terminal completion and file handles closed —
     // signal-based, no timer (EG-1 #1287).
     _ = await task.value
+    // The generation bump above orphaned the attempt's own clearTask, so
+    // release the ledger here — a cancelled download must not keep blocking
+    // other identities' disk preflight (code-diff r5 P2).
+    entries[identity]?.reservedBytes = 0
     let resumable = hasStagedPartials(identity: identity)
     setState(identity, .cancelled(resumable: resumable))
     emit(identity, .cancel(phaseAtCancel: phaseAtCancel(identity: identity), resumable: resumable))

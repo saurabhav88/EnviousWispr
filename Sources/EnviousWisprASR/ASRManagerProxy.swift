@@ -91,7 +91,18 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// `ensureConnection()`. Builds on the shipped invalidate→terminate→respawn
   /// machinery (`cancelInFlightLoad` doc); `internal` for the recycle test.
   func recycleConnectionAfterProxyError() {
-    connection?.invalidate()
+    // Deliberate recycle OWNS the cleanup synchronously: detach the async
+    // handlers before invalidating, or the invalidation handler can fire
+    // AFTER the adapter's one-shot retry installed its new load task and
+    // bump the generation out from under it — turning a successful retry
+    // into ASRLoadSupersededError (code-diff r5 P2). No session is active on
+    // this path (the load just failed), so the handlers' interruption
+    // duties are moot; their state resets happen right here.
+    if let conn = connection {
+      conn.invalidationHandler = nil
+      conn.interruptionHandler = nil
+      conn.invalidate()
+    }
     connection = nil
     needsReinit = true
   }
