@@ -31,7 +31,7 @@ CO="${PROJ_ROOT}/.build/checkouts"
 # this list does not cover, so the notices can't silently go stale (Codex #2).
 COMPONENTS=(
   "WhisperKit (argmax-oss-swift)|1.0.0|MIT|argmax-oss-swift/LICENSE|https://github.com/argmaxinc/argmax-oss-swift|argmax-oss-swift"
-  "FluidAudio|d5fcca4f (fork saurabhav88/FluidAudio)|Apache-2.0|FluidAudio/LICENSE|https://github.com/saurabhav88/FluidAudio|fluidaudio"
+  "FluidAudio|e7948e1a (fork saurabhav88/FluidAudio)|Apache-2.0|FluidAudio/LICENSE|https://github.com/saurabhav88/FluidAudio|fluidaudio"
   "PostHog iOS|3.62.4|MIT|posthog-ios/LICENSE|https://github.com/PostHog/posthog-ios|posthog-ios"
   "Sentry Cocoa|9.19.0|MIT|sentry-cocoa/LICENSE.md|https://github.com/getsentry/sentry-cocoa|sentry-cocoa"
   "Sparkle|2.9.3|MIT (with bundled BSD/MIT components)|Sparkle/LICENSE|https://github.com/sparkle-project/Sparkle|sparkle"
