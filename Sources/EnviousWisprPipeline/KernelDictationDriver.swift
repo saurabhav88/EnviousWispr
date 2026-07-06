@@ -129,6 +129,10 @@ package final class SessionlessLoadWedgeGuard {
 
   func arm() {
     watcher.start()
+    Task { @MainActor [reasonToken] in
+      await AppLogger.shared.log(
+        "[WedgeGuard] armed reason=\(reasonToken)", level: .debug, category: "ASR")
+    }
     pollTask = Task { @MainActor [weak self] in
       while let self, !Task.isCancelled {
         let raw = ProgressFile.shared.modificationTime()
@@ -148,6 +152,12 @@ package final class SessionlessLoadWedgeGuard {
       self.didFire = true
       let snap = self.watcher.snapshot
       let backend = self.adapter.engineIdentity.rawValue
+      // Live-UAT + field-diagnosis evidence line (verdicts read app.log).
+      await AppLogger.shared.log(
+        "[WedgeGuard] sessionless wedge fired reason=\(self.reasonToken) backend=\(backend) "
+          + "phase=\(snap.lastObservedPhase) silence_ms=\(snap.silenceMs) "
+          + "signals=\(snap.signalCountTotal) total_ms=\(snap.totalAttemptDurationMs)",
+        level: .info, category: "ASR")
       SentryBreadcrumb.captureError(
         ModelLoadWatchdog.WedgeError(),
         category: .modelLoadWedged,
