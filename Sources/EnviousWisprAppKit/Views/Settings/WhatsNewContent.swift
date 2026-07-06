@@ -26,6 +26,18 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.3.1
+
+    Entry(
+      id: "reliable-first-run-download",
+      icon: "arrow.down.circle",
+      title: "First-run setup downloads are far more reliable",
+      description:
+        "Setting up EnviousWispr downloads a speech model, and on some networks that download could stall and leave you stuck before you ever got to dictate. We rebuilt how the app fetches it: the download now resumes on its own if your connection drops, falls back to a backup source when needed, and can no longer hang forever. If setup gets interrupted, reopening the app picks up right where it left off instead of starting over.",
+      category: .fasterAndMoreReliable,
+      version: "2.3.1"
+    ),
+
     // MARK: - v2.3.0
 
     Entry(
