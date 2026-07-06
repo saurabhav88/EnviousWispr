@@ -39,11 +39,16 @@ import Foundation
 @MainActor
 public final class LoadProgressWatcher {
   /// Minimum silence (seconds) before the watcher can fire, even if the ratio
-  /// gate is met. Matches `AVCaptureSessionSource` first-buffer liveness latch
-  /// (800ms) — the only foreground-user-watching silence threshold in our
-  /// codebase. Treats "user staring at screen waiting for state to advance"
-  /// as the relevant analogue.
-  private let floorSeconds: TimeInterval = 0.8
+  /// gate is met. The 0.8s default matches `AVCaptureSessionSource`'s
+  /// first-buffer liveness latch — the right beat for XPC lifecycle signals.
+  ///
+  /// #1339 made this injectable: for INTERNET TRANSFER watching the 0.8s beat
+  /// is wrong — the 2026-07-05 Live UAT drill showed a cold edge read of the
+  /// 445MB encoder object producing a legitimate multi-second first-byte gap,
+  /// and a ratio threshold derived from the dense small-file ticks before it
+  /// (~2.5s) killed a HEALTHY fresh-install download. Download watchers pass
+  /// `ModelLoadStallPolicy.transferSilenceFloorSeconds` instead.
+  private let floorSeconds: TimeInterval
 
   /// Multiplier applied to the worst observed inter-signal gap to compute
   /// the ratio threshold. 5x is the statistical "definitely abnormal" ratio.
@@ -107,12 +112,14 @@ public final class LoadProgressWatcher {
     },
     requiresObservedGap: Bool = true,
     listingPhase: String? = nil,
-    listingStallDeadlineSeconds: TimeInterval? = nil
+    listingStallDeadlineSeconds: TimeInterval? = nil,
+    silenceFloorSeconds: TimeInterval = 0.8
   ) {
     self.currentTime = currentTime
     self.requiresObservedGap = requiresObservedGap
     self.listingPhase = listingPhase
     self.listingStallDeadlineSeconds = listingStallDeadlineSeconds
+    self.floorSeconds = silenceFloorSeconds
   }
 
   /// Begin a new attempt. Resets all per-attempt state.
@@ -307,6 +314,15 @@ public enum ModelLoadStallPolicy {
   /// post-ship via the `model_download.listing_ms` probe; source-aware
   /// deadlines (our-copy ~8-10s) arrive with the mirror-first source work.
   public static let listingStallDeadlineSeconds: TimeInterval = 120
+
+  /// Minimum mid-stream silence before a download-watching ratio gate may
+  /// fire. Defended by the 2026-07-05 Live UAT drill (#1339): a COLD edge
+  /// read of the 445MB encoder object produced a legitimate multi-second
+  /// first-byte gap, and the 0.8s XPC-beat floor let a ~2.5s ratio threshold
+  /// kill a healthy fresh-install download. 15s comfortably clears observed
+  /// cold-TTFB (~3-5s) while still surfacing a genuinely dead mid-stream
+  /// transfer fast. PROVISIONAL — tuned post-ship from download telemetry.
+  public static let transferSilenceFloorSeconds: TimeInterval = 15
 }
 
 /// Diagnostic snapshot of a `LoadProgressWatcher`'s per-attempt state.

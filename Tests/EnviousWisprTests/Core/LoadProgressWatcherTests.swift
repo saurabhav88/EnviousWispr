@@ -441,6 +441,64 @@ struct LoadProgressWatcherTests {
     watcher.stop()
   }
 
+  @Test(
+    "#1339 drill regression: a cold big-file first-byte gap does NOT fire with the transfer floor"
+  )
+  func coldFirstByteGapDoesNotFireWithTransferFloor() async {
+    // The 2026-07-05 Live UAT drill shape: dense ticks from listing + small
+    // files (~0.5s cadence), then the 445MB object's COLD first-byte gap of
+    // ~3s. With the 0.8s floor the ratio threshold (0.5s x 5 = 2.5s) killed
+    // the healthy download; the transfer floor (15s) must ride the gap out.
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(
+      currentTime: { clock.now },
+      listingPhase: ModelLoadStallPolicy.listingPhase,
+      listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds,
+      silenceFloorSeconds: ModelLoadStallPolicy.transferSilenceFloorSeconds)
+    watcher.start()
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.listingPhase)
+    for i in 1..<10 {
+      clock.tick(seconds: 0.5)
+      watcher.observeTick(observedMtime: mtime(i), observedPhase: "Downloading model files...")
+    }
+    // Cold first-byte gap: 3s of silence — the ratio gate (2.5s) is met but
+    // the 15s transfer floor holds.
+    clock.tick(seconds: 3)
+    watcher.observeTick(observedMtime: mtime(9), observedPhase: "Downloading model files...")
+    #expect(!watcher.hasFired, "a cold first-byte gap must never kill a healthy download")
+    // Boundary: total silence just below the floor — still no fire.
+    clock.tick(seconds: 11.9)
+    watcher.observeTick(observedMtime: mtime(9), observedPhase: "Downloading model files...")
+    #expect(!watcher.hasFired, "total silence just below the transfer floor must not fire")
+    // A genuinely dead mid-stream transfer still fires once past the floor.
+    clock.tick(seconds: 0.2)
+    watcher.observeTick(observedMtime: mtime(9), observedPhase: "Downloading model files...")
+    #expect(watcher.hasFired, "true mid-stream death past the transfer floor must fire")
+    watcher.stop()
+  }
+
+  @Test("#1339 drill regression: the DEFAULT 0.8s floor still fires on the same gap (opt-in fix)")
+  func defaultFloorStillFiresOnColdGap() async {
+    // Negative pair for the test above: without the injected transfer floor,
+    // the identical signal shape fires at the ratio threshold. Locks the fix
+    // as opt-in — XPC lifecycle watchers keep the 0.8s beat unchanged.
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(
+      currentTime: { clock.now },
+      listingPhase: ModelLoadStallPolicy.listingPhase,
+      listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds)
+    watcher.start()
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.listingPhase)
+    for i in 1..<10 {
+      clock.tick(seconds: 0.5)
+      watcher.observeTick(observedMtime: mtime(i), observedPhase: "Downloading model files...")
+    }
+    clock.tick(seconds: 3)
+    watcher.observeTick(observedMtime: mtime(9), observedPhase: "Downloading model files...")
+    #expect(watcher.hasFired, "the default floor lets the ratio gate fire on a 3s gap")
+    watcher.stop()
+  }
+
   @Test("#1339: default init (no deadline) preserves the pre-#1339 listing-stall behavior")
   func defaultsPreserveLegacyBehavior() async {
     let clock = ManualClock()

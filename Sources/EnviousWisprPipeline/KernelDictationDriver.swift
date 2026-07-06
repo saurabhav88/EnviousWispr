@@ -123,7 +123,15 @@ package final class SessionlessLoadWedgeGuard {
     self.staleBaselineMtime = ProgressFile.shared.modificationTime()
     self.watcher = LoadProgressWatcher(
       listingPhase: ModelLoadStallPolicy.listingPhase,
-      listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds
+      listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds,
+      // #1339 drill regression (2026-07-05): this guard watches an INTERNET
+      // TRANSFER, and the default 0.8s XPC-beat silence floor let the ratio
+      // gate fire during the 445MB encoder object's legitimate cold
+      // first-byte gap (~3-5s), killing a healthy fresh-install download —
+      // and its recovery (generation bump) cancels the whole load. The
+      // transfer floor rides out cold-TTFB while still surfacing a genuinely
+      // dead mid-stream transfer within seconds.
+      silenceFloorSeconds: ModelLoadStallPolicy.transferSilenceFloorSeconds
     )
   }
 
