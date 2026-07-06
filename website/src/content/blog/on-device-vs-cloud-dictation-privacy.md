@@ -2,10 +2,12 @@
 title: "On-Device vs Cloud Dictation: Which Is Private on Mac?"
 description: "Cloud dictation uploads your voice; on-device dictation keeps it on your Mac. Here's what happens to your audio in each, and which Mac apps do which."
 pubDate: 2026-03-23
-updatedDate: 2026-05-15
+updatedDate: 2026-07-06
 tags: ["privacy", "dictation", "comparison", "on-device", "speech-to-text"]
 author: "Saurabh Vaish"
 faqs:
+  - question: "What is on-device dictation?"
+    answer: "On-device dictation turns your speech into text entirely on your own computer, with nothing sent to a server. On a Mac, the speech model runs locally on Apple Silicon, so your voice never leaves the device and it works offline. Optional AI cleanup can also stay on-device, using Apple Intelligence, EG-1, or Ollama, or use a cloud provider if you choose."
   - question: "Is on-device dictation as accurate as cloud dictation?"
     answer: "On modern hardware, yes. On-device speech recognition models running natively via Core ML on Apple Silicon achieve word error rates under 2% on standard benchmarks, competitive with leading cloud speech APIs. For most English dictation, you won't notice a meaningful difference."
   - question: "Does on-device dictation work offline?"
@@ -141,6 +143,10 @@ If you want to try on-device dictation on your Mac:
 The speech model downloads automatically on first launch. After that, you're dictating privately, offline, with nothing standing between you and your text. The [getting started guide](/blog/getting-started-enviouswispr-under-2-minutes/) walks through the full first-run setup in under two minutes. If you run into issues, [open an issue on GitHub](https://github.com/saurabhav88/EnviousWispr).
 
 ## Frequently asked questions
+
+### What is on-device dictation?
+
+On-device dictation turns your speech into text entirely on your own computer, with nothing sent to a server. On a Mac, the speech model runs locally on Apple Silicon, so your voice never leaves the device and it works offline. Optional AI cleanup can also stay on-device, using Apple Intelligence, EG-1, or Ollama, or use a cloud provider if you choose.
 
 ### Is on-device dictation as accurate as cloud dictation?
 
