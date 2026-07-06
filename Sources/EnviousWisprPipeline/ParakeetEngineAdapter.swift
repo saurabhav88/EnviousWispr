@@ -177,6 +177,13 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 
     do {
       try await asrManager.loadModel()
+    } catch is XPCASRTransportError {
+      // One-shot stale-helper retry, ANY mode (code-diff r3): a proxy-level
+      // error (incl. an old helper rejecting the new selector after an app
+      // update) already recycled the connection in the proxy's errorHandler;
+      // the retry connects to the freshly spawned helper from the current
+      // bundle. A second transport failure propagates as before.
+      try await asrManager.loadModel()
     } catch let error where deliveryActive && !(error is ASRLoadSupersededError) {
       // One-shot load-miss repair (#1348 grounded r1 revision 7): a
       // cache-only load failure (raced deletion, missed corruption) gets ONE

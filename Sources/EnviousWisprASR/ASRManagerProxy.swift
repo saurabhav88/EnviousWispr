@@ -735,10 +735,13 @@ extension OneShotContinuationASR where T == Void {
   func resume() { resume(returning: ()) }
 }
 
-enum XPCASRTransportError: LocalizedError {
+// `package` (#1348 Phase 2): ParakeetEngineAdapter's one-shot stale-helper
+// retry matches on this type — narrowest visibility that crosses the module
+// (architecture-rules minimize-visibility).
+package enum XPCASRTransportError: LocalizedError {
   case serviceUnreachable
 
-  var errorDescription: String? {
+  package var errorDescription: String? {
     switch self {
     case .serviceUnreachable: return "XPC ASR service is unreachable."
     }
