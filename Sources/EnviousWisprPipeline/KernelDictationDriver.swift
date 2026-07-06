@@ -149,7 +149,6 @@ package final class SessionlessLoadWedgeGuard {
       // Same-tick completion race: a load that just finished is healthy —
       // never tear down a ready engine (mirrors the kernel loop's check).
       guard self.adapter.readiness != .ready else { return }
-      self.didFire = true
       let snap = self.watcher.snapshot
       let backend = self.adapter.engineIdentity.rawValue
       // Live-UAT + field-diagnosis evidence line (verdicts read app.log).
@@ -158,6 +157,20 @@ package final class SessionlessLoadWedgeGuard {
           + "phase=\(snap.lastObservedPhase) silence_ms=\(snap.silenceMs) "
           + "signals=\(snap.signalCountTotal) total_ms=\(snap.totalAttemptDurationMs)",
         level: .info, category: "ASR")
+      // Deadline-edge race (cloud review, PR #1345): the log await above is a
+      // suspension point — the load can complete and `disarm()` cancel this
+      // task while it is parked. Cancellation does not stop a running task,
+      // so re-check both signals here. Everything from this guard to
+      // `recoverFromWedge()` is synchronous on MainActor, so a ready engine
+      // can no longer be torn down and no wedge telemetry is emitted for a
+      // load that actually finished.
+      guard !Task.isCancelled, self.adapter.readiness != .ready else {
+        await AppLogger.shared.log(
+          "[WedgeGuard] fire aborted — load completed during fire reason=\(self.reasonToken)",
+          level: .info, category: "ASR")
+        return
+      }
+      self.didFire = true
       SentryBreadcrumb.captureError(
         ModelLoadWatchdog.WedgeError(),
         category: .modelLoadWedged,
