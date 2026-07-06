@@ -1058,11 +1058,110 @@ jobs:
           echo "==> Sentry release v${VERSION} finalized with dSYMs."
 
   # ==========================================================================
+  # LIMB Job D2 — Bump Homebrew cask (#1368)
+  # After the GitHub Release publishes, auto-trigger the tap's bump-cask.yml so
+  # `brew install --cask saurabhav88/tap/enviouswispr` never lags the release.
+  # The bump LOGIC lives in the tap (bump-cask.yml); this only DISPATCHES it,
+  # passing the just-published version explicitly (never relies on the tap's
+  # `releases/latest` resolution, which can be cache-stale seconds after publish).
+  # Cross-repo dispatch uses the release-bot App token scoped to the tap with
+  # actions:write. Fail-open: a dispatch failure never blocks the release; it
+  # files a visible issue (not a silent stale cask) and the tap's weekly cron +
+  # manual `gh workflow run bump-cask.yml -R saurabhav88/homebrew-tap` remain.
+  # ==========================================================================
+  bump-homebrew-cask:
+    # #1368: LIMB — pure `gh` dispatch. Linux-eligible.
+    needs: [preflight, build-release-artifacts, publish-github-release]
+    # #1368: fire only on events that actually PUBLISH a GitHub Release — a tag
+    # push, a full run, or a release-only recovery. appcast-only/sentry-only/
+    # build-only never publish a release (that job is skipped), so no cask bump.
+    # The `publish-github-release == success` gate is the real guard (Codex r2 P1:
+    # never bump for a version whose release/DMGs did not ship); the mode OR scopes
+    # intent + keeps the dry-run/edge cases clean.
+    if: |
+      always() && (
+        github.event_name == 'push' ||
+        inputs.mode == 'full' ||
+        inputs.mode == 'release-only'
+      ) && (
+        needs.preflight.result == 'success'
+      ) && (
+        needs.publish-github-release.result == 'success'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write   # #1368: the failure-alert step files an issue via the repo GITHUB_TOKEN
+    steps:
+      # App token scoped to the TAP repo with ONLY actions:write (least privilege).
+      # #1368: gated on dry_run so a rehearsal never mints a token or dispatches.
+      - name: Generate GitHub App token (tap, actions:write)
+        if: inputs.dry_run != true
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: saurabhav88
+          repositories: homebrew-tap
+          permission-actions: write
+
+      - name: DRY RUN — cask bump (no-op)
+        if: inputs.dry_run == true
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          # #1368: rehearsal — no token minted above, so no dispatch is possible.
+          echo "DRY RUN: would dispatch the Homebrew cask bump for v${VERSION}:"
+          echo "  gh workflow run bump-cask.yml -R saurabhav88/homebrew-tap -f version=${VERSION}"
+
+      - name: Dispatch cask bump
+        id: dispatch-cask
+        if: inputs.dry_run != true
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "==> Dispatching bump-cask.yml on saurabhav88/homebrew-tap for v${VERSION}"
+          gh workflow run bump-cask.yml -R saurabhav88/homebrew-tap -f version="${VERSION}"
+          echo "==> Dispatched (fire-and-forget). The tap workflow reconciles the cask; it is idempotent + self-healing."
+
+      # #1368: a continue-on-error step does NOT fail the job, so bare `failure()`
+      # would never fire — check the dispatch step OUTCOME (mirrors appcast).
+      # Uses the current-repo GITHUB_TOKEN (issues:write above), NOT the tap App token.
+      - name: Report cask dispatch failure
+        if: steps.dispatch-cask.outcome == 'failure' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # #1368 (Codex r3 P2): this job has no checkout, so `gh` can't infer the
+          # repo — set GH_REPO so `gh issue create` targets this repo (see
+          # gotchas-release.md RULE: hosted-publish-job-needs-repo-or-checkout).
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          echo "::warning::Homebrew cask dispatch failed for v${VERSION} — cask may be stale. Filing an issue."
+          gh issue create \
+            --title "Homebrew cask auto-bump failed for v${VERSION}" \
+            --body "$(printf 'The release pipeline could not dispatch the tap cask bump for v%s.\n\nRelease shipped fine (this is a non-blocking limb), but Homebrew may be stale.\n\nRun: %s\n\nManual fix: gh workflow run bump-cask.yml -R saurabhav88/homebrew-tap -f version=%s' "${VERSION}" "${RUN_URL}" "${VERSION}")" \
+            --label "bug" || echo "::warning::Could not file the cask-failure issue (labels/perms?)."
+          # #1368 (Codex P2): fail the job so needs.bump-homebrew-cask.result ==
+          # 'failure' → release-summary surfaces the cask follow-up + Discord alert.
+          # A continue-on-error dispatch alone would leave the job green and hide
+          # the stale cask. Mirrors the appcast "Report failure" limb. Heart jobs
+          # already shipped, so a red limb never blocks the release.
+          exit 1
+
+  # ==========================================================================
   # Job E — Release Summary
   # Always runs. Single truth source for what shipped and what didn't.
   # ==========================================================================
   release-summary:
-    needs: [preflight, build-release-artifacts, publish-github-release, publish-appcast, upload-sentry-dsyms]
+    needs: [preflight, build-release-artifacts, publish-github-release, publish-appcast, upload-sentry-dsyms, bump-homebrew-cask]
     if: always() && needs.preflight.result == 'success'
     runs-on: ubuntu-latest   # #1117: pure-bash summary
     timeout-minutes: 5
@@ -1077,6 +1176,7 @@ jobs:
           RELEASE_RESULT: ${{ needs.publish-github-release.result }}
           APPCAST_RESULT: ${{ needs.publish-appcast.result }}
           SENTRY_RESULT: ${{ needs.upload-sentry-dsyms.result }}
+          CASK_RESULT: ${{ needs.bump-homebrew-cask.result }}
           DRY_RUN: ${{ inputs.dry_run }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
@@ -1106,6 +1206,7 @@ jobs:
           RELEASE_STATUS=$(status_emoji "$RELEASE_RESULT")
           APPCAST_STATUS=$(status_emoji "$APPCAST_RESULT")
           SENTRY_STATUS=$(status_emoji "$SENTRY_RESULT")
+          CASK_STATUS=$(status_emoji "$CASK_RESULT")
 
           # Determine if manual follow-up is needed
           NEEDS_FOLLOWUP="No"
@@ -1118,6 +1219,10 @@ jobs:
             NEEDS_FOLLOWUP="Yes"
             FOLLOWUP_ITEMS="${FOLLOWUP_ITEMS}\n- Sentry: \`gh workflow run release.yml -f mode=sentry-only -f tag=${TAG} -f source_run_id=${SOURCE_RUN}\`"
           fi
+          if [[ "$CASK_RESULT" != "success" && "$CASK_RESULT" != "skipped" ]]; then
+            NEEDS_FOLLOWUP="Yes"
+            FOLLOWUP_ITEMS="${FOLLOWUP_ITEMS}\n- Homebrew cask: \`gh workflow run bump-cask.yml -R saurabhav88/homebrew-tap -f version=${VERSION}\`"
+          fi
 
           cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
           ## ${SUMMARY_TITLE}
@@ -1128,6 +1233,7 @@ jobs:
           | GitHub Release | ${RELEASE_STATUS} \`${RELEASE_RESULT}\` | **HEART** |
           | Appcast | ${APPCAST_STATUS} \`${APPCAST_RESULT}\` | limb |
           | Sentry dSYMs | ${SENTRY_STATUS} \`${SENTRY_RESULT}\` | limb |
+          | Homebrew cask | ${CASK_STATUS} \`${CASK_RESULT}\` | limb |
 
           | Detail | Value |
           |---|---|
