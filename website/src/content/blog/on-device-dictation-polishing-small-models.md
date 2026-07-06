@@ -127,3 +127,7 @@ This is an internal, judge-scored, English-centric benchmark. The pass rates are
 ## 12. Future work
 
 The mapped gaps in language preservation, revision handling, and homophones are the priority research targets. A learned detector that more precisely identifies when the on-device model has refused or mangled its output is in development. It is not yet shipped, and this report does not claim it as deployed. The system already performs deterministic, non-model text editing before the model runs. The direction is to extend this deterministic layer to more mechanical edits (capitalization, additional filler, light grammar), reserving the model budget for edits that need judgment.
+
+## Postscript: from this research to EG-1
+
+Since this study, we shipped EG-1, our own on-device model tuned specifically for dictation polishing. It runs locally on Apple Silicon inside the same deterministic and reliability layers described here, and ships as a free, optional download in [EnviousWispr](/how-it-works/). It is the production continuation of the work reported here.
