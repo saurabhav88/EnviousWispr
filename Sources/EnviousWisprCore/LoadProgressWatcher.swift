@@ -80,14 +80,39 @@ public final class LoadProgressWatcher {
   /// `@MainActor`.
   private let currentTime: @MainActor () -> TimeInterval
 
+  /// Issue #1339: phase-aware listing-stall gate. The one wedge shape the
+  /// ratio gate deliberately cannot catch is the first-run listing stall —
+  /// exactly one signal ("Preparing download..." at fraction 0), then silence
+  /// while the remote host's repo-listing call hangs. `requiresObservedGap`
+  /// correctly refuses to fire the 800ms floor on a single signal, so that
+  /// stall previously hung forever (the #445-deferred hole).
+  ///
+  /// When BOTH `listingPhase` and `listingStallDeadlineSeconds` are injected,
+  /// two additional defended firings unlock:
+  ///   - single-signal: last observed phase == `listingPhase` and silence
+  ///     since that signal exceeds the deadline;
+  ///   - pre-first-signal: no signal ever observed and time since `start()`
+  ///     exceeds the deadline (service never wrote progress at all).
+  /// The deadline is a PROVISIONAL dial (production-tuned via the
+  /// `model_download.listing_ms` probe, plan §3a): healthy listing→first-byte
+  /// is seconds; the abandonment floor observed in production is 7 minutes.
+  /// Byte-transfer/compile phases (signalCount >= 2) stay governed by the
+  /// existing ratio gate, unchanged.
+  private let listingPhase: String?
+  private let listingStallDeadlineSeconds: TimeInterval?
+
   public init(
     currentTime: @escaping @MainActor () -> TimeInterval = {
       ProcessInfo.processInfo.systemUptime
     },
-    requiresObservedGap: Bool = true
+    requiresObservedGap: Bool = true,
+    listingPhase: String? = nil,
+    listingStallDeadlineSeconds: TimeInterval? = nil
   ) {
     self.currentTime = currentTime
     self.requiresObservedGap = requiresObservedGap
+    self.listingPhase = listingPhase
+    self.listingStallDeadlineSeconds = listingStallDeadlineSeconds
   }
 
   /// Begin a new attempt. Resets all per-attempt state.
@@ -145,7 +170,29 @@ public final class LoadProgressWatcher {
 
     // No new signal this tick — evaluate silence against gates.
     guard lastSignalAt != nil else {
-      // Pre-first-signal: do not fire. Coverage hole acknowledged in plan §2.2.
+      // Pre-first-signal. With the #1339 listing deadline injected, a load
+      // whose service never writes a single progress signal (dead service,
+      // pre-listing crash) fires after the defended deadline instead of
+      // hanging forever. Without the deadline, the original #445 deferral
+      // stands: do not fire.
+      if let deadline = listingStallDeadlineSeconds,
+        now - attemptStartedAt > deadline
+      {
+        fire()
+      }
+      return
+    }
+
+    // #1339 single-signal listing-stall gate: exactly one signal observed,
+    // and it was the listing phase — the remote repo-listing call is hanging.
+    // Fires on the defended deadline; healthy loads leave listing in seconds.
+    if signalCount == 1,
+      let deadline = listingStallDeadlineSeconds,
+      let listing = listingPhase,
+      lastObservedPhase == listing,
+      now - (lastSignalAt ?? attemptStartedAt) > deadline
+    {
+      fire()
       return
     }
     // Codex finding (2026-05-07): require at least one observed inter-signal
@@ -161,11 +208,7 @@ public final class LoadProgressWatcher {
       guard !requiresObservedGap else { return }
       let silence = now - (lastSignalAt ?? attemptStartedAt)
       if silence > floorSeconds {
-        fired = true
-        if let cont = continuation {
-          continuation = nil
-          cont.resume()
-        }
+        fire()
       }
       return
     }
@@ -173,11 +216,17 @@ public final class LoadProgressWatcher {
     let ratioThreshold = maxGapSeconds * abnormalRatio
     let threshold = max(floorSeconds, ratioThreshold)
     if silence > threshold {
-      fired = true
-      if let cont = continuation {
-        continuation = nil
-        cont.resume()
-      }
+      fire()
+    }
+  }
+
+  /// Single fire path: latches `fired` and resumes any pending `wedged()`
+  /// consumer. All observeTick gates funnel here.
+  private func fire() {
+    fired = true
+    if let cont = continuation {
+      continuation = nil
+      cont.resume()
     }
   }
 
@@ -237,6 +286,27 @@ public final class LoadProgressWatcher {
       totalAttemptDurationMs: Int((now - attemptStartedAt) * 1000)
     )
   }
+}
+
+/// Shared model-download stall policy (#1339). Single authority for the
+/// listing-phase token and the listing-stall deadline so the service-side
+/// phase writer (`ParakeetBackend`), the host-side progress seam
+/// (`ASRManagerProxy`), and the sessionless wedge guard
+/// (`KernelDictationDriver`) can never drift apart on the literal or the dial.
+public enum ModelLoadStallPolicy {
+  /// The exact phase string the XPC service writes to the shared progress
+  /// file while the remote host's repo-file-listing call is in flight. The
+  /// wedge guard keys its single-signal stall gate on this token.
+  public static let listingPhase = "Preparing download..."
+
+  /// PROVISIONAL listing-stall deadline (plan §3a, issue #1339): fires only
+  /// on ABSENCE of progress in the listing window (one signal then silence,
+  /// or no signal at all) — never on a progressing transfer. Defended by
+  /// production distribution: healthy listing→first-byte is seconds; the
+  /// abandonment floor observed in production is 7 minutes (420s). Tuned
+  /// post-ship via the `model_download.listing_ms` probe; source-aware
+  /// deadlines (our-copy ~8-10s) arrive with the mirror-first source work.
+  public static let listingStallDeadlineSeconds: TimeInterval = 120
 }
 
 /// Diagnostic snapshot of a `LoadProgressWatcher`'s per-attempt state.

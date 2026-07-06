@@ -5,7 +5,7 @@ import Foundation
 /// Verifies the SHA-256 checksum of the downloaded Parakeet encoder model.
 ///
 /// Heart bootstrap helper. `ParakeetBackend` downloads the model via FluidAudio
-/// directly (using `StallTracker` for stall detection) and calls
+/// directly and calls
 /// `verifyChecksum()` afterward as defense-in-depth. A mismatch logs a warning
 /// but never blocks — a corrupted model is surfaced, not fatally gated.
 enum ModelDownloadManager {
@@ -49,44 +49,5 @@ enum ModelDownloadManager {
         )
       }
     }
-  }
-}
-
-// MARK: - Stall Tracker
-
-/// Thread-safe stall detector. Uses NSLock — zero actor overhead on the download thread.
-/// Called from FluidAudio's URLSession delegate thread; must not block or create Tasks.
-final class StallTracker: @unchecked Sendable {
-  private let timeout: TimeInterval
-  private let lock = NSLock()
-  private var lastProgressTime: CFAbsoluteTime
-  private var lastFraction: Double = 0
-  private var _isStalled = false
-
-  init(timeout: TimeInterval) {
-    self.timeout = timeout
-    self.lastProgressTime = CFAbsoluteTimeGetCurrent()
-  }
-
-  /// Record a progress update. Called from the download delegate thread — must be fast.
-  func recordProgress(fraction: Double) {
-    lock.lock()
-    if fraction > lastFraction + 0.001 {
-      lastProgressTime = CFAbsoluteTimeGetCurrent()
-      lastFraction = fraction
-    }
-    // Check for stall inline — no separate monitor task needed
-    let elapsed = CFAbsoluteTimeGetCurrent() - lastProgressTime
-    if elapsed >= timeout && lastFraction < 0.5 && lastFraction > 0 {
-      _isStalled = true
-    }
-    lock.unlock()
-  }
-
-  /// Whether a stall has been detected.
-  var isStalled: Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    return _isStalled
   }
 }

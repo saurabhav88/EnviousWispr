@@ -66,7 +66,23 @@ public protocol ASRManagerInterface: AnyObject {
   /// path guidance (closure beats `any Protocol` existential dispatch).
   var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)? { get set }
 
+  /// #1339: whether this manager's `loadModel()` progress lands in the shared
+  /// progress file (`ProgressFile.shared`). Only the XPC proxy does — the
+  /// in-process `ASRManager` reports through its own callback and never
+  /// touches the file. The sessionless warm-up wedge guard polls that file,
+  /// so it must arm ONLY over a file-backed load; arming over an in-process
+  /// load would read permanent silence and cancel a healthy long first-run
+  /// download at the deadline (Codex PR-1 r1 P2). Defaults to `false` — a
+  /// manager must opt IN to file-backed stall detection.
+  var feedsSharedProgressFile: Bool { get }
+
   // Crash notification — fires when XPC ASR service dies during an active session.
   // Wired by the former root state to route to the active pipeline (same pattern as AudioCaptureProxy.onEngineInterrupted).
   var onServiceInterrupted: (() -> Void)? { get set }
+}
+
+extension ASRManagerInterface {
+  /// #1339 safe default: managers do NOT feed the shared progress file unless
+  /// they explicitly opt in (`ASRManagerProxy` does).
+  public var feedsSharedProgressFile: Bool { false }
 }

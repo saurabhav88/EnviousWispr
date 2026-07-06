@@ -81,6 +81,133 @@ struct LimbSteps {
   let emojiRestore: EmojiRestoreStep
 }
 
+/// Issue #1339: sessionless model-load wedge guard for `ensureEngineWarm`.
+///
+/// The record-press path runs the kernel's session-scoped wedge detection
+/// inside `RecordingSessionKernel.warmUp(sid)`. The sessionless warm-up
+/// entries (onboarding / launch / engineSwap / coldPress prewarm) previously
+/// had NO consumer at all — a first-run listing stall hung "Preparing
+/// download..." forever with no Retry and no telemetry (the r/macapps P0).
+///
+/// One guard is armed per sessionless warm-up attempt (single-flighted by the
+/// driver's `sessionlessWedgeGuard` slot). It feeds a `LoadProgressWatcher`
+/// from an 8Hz poll of the shared progress file — the same signal source the
+/// host proxy polls. Reading the file here (instead of consuming
+/// `adapter.loadProgress`) avoids contending for that single-consumer
+/// AsyncStream, which a mid-attempt record-press session may claim for the
+/// kernel's own detector.
+///
+/// On a wedge it emits the existing `.modelLoadWedged` captured event +
+/// PostHog `wedge_detected` (same payload fields as the session path), then
+/// drives the existing heavy recovery (`adapter.recoverFromWedge()` →
+/// `cancelInFlightLoad` → XPC invalidation), which unblocks the parked load
+/// with a throw that `ensureEngineWarm` classifies via `didFire`.
+///
+/// Stale-file trap (mirrors the host proxy's 2026-05-07 Codex finding): the
+/// guard arms BEFORE `loadModel()` clears the progress file, so early reads
+/// may see a PREVIOUS load's file. The mtime observed at arm time is a
+/// baseline, not a signal — the watcher sees `nil` until the mtime changes.
+@MainActor
+package final class SessionlessLoadWedgeGuard {
+  private let watcher: LoadProgressWatcher
+  private let adapter: any ASREngineAdapter
+  private let reasonToken: String
+  private var pollTask: Task<Void, Never>?
+  private var fireTask: Task<Void, Never>?
+  private let staleBaselineMtime: Date?
+  private(set) var didFire = false
+
+  init(adapter: any ASREngineAdapter, reasonToken: String) {
+    self.adapter = adapter
+    self.reasonToken = reasonToken
+    self.staleBaselineMtime = ProgressFile.shared.modificationTime()
+    self.watcher = LoadProgressWatcher(
+      listingPhase: ModelLoadStallPolicy.listingPhase,
+      listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds
+    )
+  }
+
+  func arm() {
+    watcher.start()
+    Task { @MainActor [reasonToken] in
+      await AppLogger.shared.log(
+        "[WedgeGuard] armed reason=\(reasonToken)", level: .debug, category: "ASR")
+    }
+    pollTask = Task { @MainActor [weak self] in
+      while let self, !Task.isCancelled {
+        let raw = ProgressFile.shared.modificationTime()
+        let mtime = (raw == self.staleBaselineMtime) ? nil : raw
+        let phase = ProgressFile.shared.read()?.phase ?? ""
+        self.watcher.observeTick(observedMtime: mtime, observedPhase: phase)
+        try? await Task.sleep(nanoseconds: 125_000_000)
+      }
+    }
+    fireTask = Task { @MainActor [weak self] in
+      guard let self else { return }
+      await self.watcher.wedged()
+      guard self.watcher.hasFired, !Task.isCancelled else { return }
+      // Same-tick completion race: a load that just finished is healthy —
+      // never tear down a ready engine (mirrors the kernel loop's check).
+      guard self.adapter.readiness != .ready else { return }
+      let snap = self.watcher.snapshot
+      let backend = self.adapter.engineIdentity.rawValue
+      // Live-UAT + field-diagnosis evidence line (verdicts read app.log).
+      await AppLogger.shared.log(
+        "[WedgeGuard] sessionless wedge fired reason=\(self.reasonToken) backend=\(backend) "
+          + "phase=\(snap.lastObservedPhase) silence_ms=\(snap.silenceMs) "
+          + "signals=\(snap.signalCountTotal) total_ms=\(snap.totalAttemptDurationMs)",
+        level: .info, category: "ASR")
+      // Deadline-edge race (cloud review, PR #1345): the log await above is a
+      // suspension point — the load can complete and `disarm()` cancel this
+      // task while it is parked. Cancellation does not stop a running task,
+      // so re-check both signals here. Everything from this guard to
+      // `recoverFromWedge()` is synchronous on MainActor, so a ready engine
+      // can no longer be torn down and no wedge telemetry is emitted for a
+      // load that actually finished.
+      guard !Task.isCancelled, self.adapter.readiness != .ready else {
+        await AppLogger.shared.log(
+          "[WedgeGuard] fire aborted — load completed during fire reason=\(self.reasonToken)",
+          level: .info, category: "ASR")
+        return
+      }
+      self.didFire = true
+      SentryBreadcrumb.captureError(
+        ModelLoadWatchdog.WedgeError(),
+        category: .modelLoadWedged,
+        stage: "asr",
+        extra: [
+          "backend": backend,
+          "silence_ms": snap.silenceMs,
+          "observed_max_gap_ms": snap.maxGapMs,
+          "observed_phase": snap.lastObservedPhase,
+          "signal_count_total": snap.signalCountTotal,
+          "first_signal_latency_ms": snap.firstSignalLatencyMs ?? -1,
+          "total_attempt_duration_ms": snap.totalAttemptDurationMs,
+          "warmup_reason": reasonToken,
+          "sessionless": true,
+        ])
+      TelemetryService.shared.modelLoadWedged(
+        backend: backend,
+        stage: "sessionless_warmup",
+        silenceMs: snap.silenceMs,
+        observedMaxGapMs: snap.maxGapMs,
+        observedPhase: snap.lastObservedPhase,
+        signalCountTotal: snap.signalCountTotal,
+        firstSignalLatencyMs: snap.firstSignalLatencyMs,
+        totalAttemptDurationMs: snap.totalAttemptDurationMs)
+      await self.adapter.recoverFromWedge()
+    }
+  }
+
+  func disarm() {
+    watcher.stop()
+    pollTask?.cancel()
+    pollTask = nil
+    fireTask?.cancel()
+    fireTask = nil
+  }
+}
+
 /// Wraps `RecordingSessionKernel` as the App layer's recording driver.
 @MainActor
 @Observable
@@ -196,6 +323,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   public var onApproachingMaxDuration: ((TimeInterval) -> Void)?
 
+  /// #1339 — the single active sessionless load-wedge guard, or nil when no
+  /// sessionless warm-up attempt is in flight. The driver-level single-flight
+  /// slot: exactly one guard per underlying load attempt, asserted by the
+  /// topology test. Package-visible for that test only.
+  @ObservationIgnored
+  package private(set) var sessionlessWedgeGuard: SessionlessLoadWedgeGuard?
+
   /// Heart-path error sink for the driver's own direct `.asrInterrupted`
   /// captureError emit. Defaulted to the production global so the only behavior
   /// change is testability — the factory threads the same injected sink it
@@ -270,6 +404,33 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     let start = ContinuousClock.now
     TelemetryService.shared.coldStartWarmupStarted(
       engine: engine, reason: reason.telemetryToken, warmupInFlight: warmupInFlight)
+    // #1339: arm the sessionless load-wedge guard — exactly one per attempt.
+    // Gated to file-backed signal sources (`warmupStallGuardEligible`:
+    // Parakeet-over-XPC yes; WhisperKit and the in-process debug manager are
+    // signal-free for the guard's poll and stay uncovered — Codex r1 P2) and
+    // to the driver-level single-flight slot (a concurrent second warm-up
+    // joins the same underlying load; the first caller's guard covers it).
+    // The record-press session path never enters here — the kernel runs its
+    // own detector.
+    var wedgeGuard: SessionlessLoadWedgeGuard?
+    if adapter.warmupStallGuardEligible, sessionlessWedgeGuard == nil {
+      let armed = SessionlessLoadWedgeGuard(
+        adapter: adapter, reasonToken: reason.telemetryToken)
+      sessionlessWedgeGuard = armed
+      wedgeGuard = armed
+      armed.arm()
+    }
+    // Joined callers (armed slot taken) must still CLASSIFY a wedge fire:
+    // capture the live guard — theirs or the armer's — before awaiting, so
+    // the catch below reads `didFire` from the guard that actually covered
+    // this load (Codex r1 P2 #2). The reference outlives the armer's disarm.
+    let observedGuard = wedgeGuard ?? sessionlessWedgeGuard
+    defer {
+      if let wedgeGuard {
+        wedgeGuard.disarm()
+        sessionlessWedgeGuard = nil
+      }
+    }
     do {
       try await adapter.warmUp()
       residentModelLostWhileIdle = false  // #959: load succeeded — drop stale marker.
@@ -284,14 +445,20 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       }
       return .ready
     } catch {
+      // #1339: a guard fire tears down the parked load via XPC invalidation,
+      // so the throw seen here is a transport/supersession error — classify it
+      // as the wedge it actually is so onboarding shows the stall-specific
+      // copy + Retry instead of a raw transport string.
+      let classified: any Error =
+        (observedGuard?.didFire == true) ? ModelLoadWatchdog.WedgeError() : error
       TelemetryService.shared.coldStartWarmupFailed(
         engine: engine, reason: reason.telemetryToken,
-        error: String(describing: error))
+        error: String(describing: classified))
       if reason == .launch {
         TelemetryService.shared.launchModelPreloadCompleted(
           backend: engine, result: "failed", durationMs: Self.elapsedMs(since: start))
       }
-      return .failed(error)
+      return .failed(classified)
     }
   }
 

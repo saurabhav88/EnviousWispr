@@ -211,6 +211,12 @@ final class FakeEngine: ASREngineAdapter {
     loadProgressAbsent ? nil : loadStream
   }
 
+  /// #1339: the simulator opts in whenever it exposes a load stream so the
+  /// driver topology tests can exercise guard arm/disarm without a real
+  /// progress file (the guard never FIRES in tests — firing is watcher-level
+  /// tested with a ManualClock).
+  var warmupStallGuardEligible: Bool { !loadProgressAbsent }
+
   /// `nil` when the engine exposes no finalize-progress stream.
   var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? {
     finalizeProgressAbsent ? nil : finalizeStream

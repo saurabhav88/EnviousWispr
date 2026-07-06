@@ -15,7 +15,21 @@ public final class ProgressFile: Sendable {
 
   /// Well-known path both processes can find.
   /// Uses /tmp/ which is accessible to both the app and its XPC services.
-  private let filePath: String = "/tmp/com.enviouswispr.download-progress"
+  ///
+  /// #1339: DEBUG builds (the dev bundle + its DEBUG-compiled XPC services)
+  /// use a separate path so a dev app and the production app running side by
+  /// side never cross-read each other's download progress. Before this split,
+  /// one app's download made the other's progress UI show phantom movement —
+  /// and worse, would have fed the sessionless wedge guard false "progress"
+  /// signals that mask a genuinely stalled load. Same-variant processes
+  /// (app + its own XPC service) always agree on the path because they are
+  /// compiled together. Two same-variant instances cannot run concurrently
+  /// (LaunchServices for release; one-dev-instance policy for dev).
+  #if DEBUG
+    private let filePath: String = "/tmp/com.enviouswispr.download-progress.dev"
+  #else
+    private let filePath: String = "/tmp/com.enviouswispr.download-progress"
+  #endif
 
   private init() {}
 

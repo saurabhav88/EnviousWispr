@@ -23,6 +23,12 @@ public actor ParakeetBackend: ASRBackend {
 
   public var supportsStreaming: Bool { true }
 
+  /// Total download size shown in the progress detail (#1339). The pinned
+  /// Parakeet v3 set (4 model dirs + vocab + loose json/txt) measures
+  /// 483,256,769 bytes — byte-verified against the pinned upstream revision
+  /// in `workers/parakeet-mirror/expected-manifest.json`.
+  static let totalDownloadMB = 483
+
   public init() {}
 
   public func prepare() async throws {
@@ -38,31 +44,32 @@ public actor ParakeetBackend: ASRBackend {
   /// - `downloadRepo()` only fires on the first `loadModels()` call — subsequent calls find
   ///   files cached and skip. We map directly from FluidAudio's fraction.
   ///
-  /// Stall detection and checksum verification are handled by StallTracker (lock-based,
-  /// zero overhead on the download thread) and ModelDownloadManager.verifyChecksum().
+  /// Stall detection is host-side (#1339): the kernel's session detector and
+  /// the sessionless warm-up guard watch the shared progress file this
+  /// callback feeds. Checksum spot-check stays in ModelDownloadManager.verifyChecksum().
   public func prepare(progressCallback: ProgressCallback?) async throws {
-    let stallTracker = StallTracker(timeout: 20)
-
     let handler: DownloadUtils.ProgressHandler? = progressCallback.map {
       callback -> DownloadUtils.ProgressHandler in
       { progress in
-        // Update stall tracker — lock-based, zero overhead on download thread
-        stallTracker.recordProgress(fraction: progress.fractionCompleted)
-
         let phase: String
         let detail: String
 
         switch progress.phase {
         case .listing:
-          phase = "Preparing download..."
+          // Single authority for this token: the host-side stall guard keys
+          // its listing-stall gate on it (ModelLoadStallPolicy, #1339).
+          phase = ModelLoadStallPolicy.listingPhase
           detail = ""
         case .downloading:
           phase = "Downloading model files..."
-          // Raw download is ~23MB (CoreML source files). The 460MB on disk
-          // is from CoreML compilation which happens in the .compiling phase.
+          // #1339: honest byte counter. The real payload is ~483MB of
+          // already-compiled Core ML artifacts (445MB encoder weights); the
+          // old "23 MB" label was the decoder file alone. Fraction [0, 0.5]
+          // is FluidAudio's byte-weighted download half.
           let downloadPct = min(progress.fractionCompleted * 2.0, 1.0)
-          let downloadedMB = Int(downloadPct * 23)
-          detail = "\(downloadedMB) MB of 23 MB (\(Int(downloadPct * 100))%)"
+          let downloadedMB = Int(downloadPct * Double(Self.totalDownloadMB))
+          detail =
+            "\(downloadedMB) MB of \(Self.totalDownloadMB) MB (\(Int(downloadPct * 100))%)"
         case .compiling(let modelName):
           phase = "Installing model..."
           detail = modelName

@@ -469,6 +469,60 @@ import Testing
     #expect(h.adapter.readiness != .ready)
   }
 
+  // MARK: #1339 — sessionless wedge-guard topology
+
+  @Test("#1339: sessionless warm-up arms EXACTLY ONE wedge guard, single slot, disarmed on exit")
+  func sessionlessWedgeGuardSingleSlot() async {
+    let h = makeDriver(behavior: .slowLoad(ticksToReady: 3))
+    #expect(h.driver.sessionlessWedgeGuard == nil, "no guard before any warm-up")
+    // First sessionless warm-up parks inside the fake's logical-clock sleep.
+    let first = Task { @MainActor in _ = await h.driver.ensureEngineWarm(reason: .onboarding) }
+    await drainUntil { h.adapter.warmUpCallCount == 1 }
+    #expect(h.driver.sessionlessWedgeGuard != nil, "guard armed for the in-flight warm-up")
+    let armed = h.driver.sessionlessWedgeGuard
+    // A concurrent second sessionless warm-up (the onboarding-vs-launch /
+    // prewarm race window) must NOT arm a second guard — the slot is single.
+    let second = Task { @MainActor in _ = await h.driver.ensureEngineWarm(reason: .launch) }
+    await drainUntil { h.adapter.warmUpCallCount == 2 }
+    #expect(
+      h.driver.sessionlessWedgeGuard === armed,
+      "the race window must not stack a second wedge consumer on one load")
+    h.clock.advance(by: 3)
+    _ = await first.value
+    _ = await second.value
+    #expect(h.driver.sessionlessWedgeGuard == nil, "guard disarmed after the attempt resolves")
+    #expect(h.adapter.readiness == .ready)
+  }
+
+  @Test("#1339: signal-free adapter (loadProgress == nil) never arms the guard")
+  func signalFreeAdapterNeverArmsGuard() async {
+    let h = makeDriver(behavior: .slowLoad(ticksToReady: 2), loadProgressAbsent: true)
+    let warm = Task { @MainActor in _ = await h.driver.ensureEngineWarm(reason: .onboarding) }
+    await drainUntil { h.adapter.warmUpCallCount == 1 }
+    #expect(
+      h.driver.sessionlessWedgeGuard == nil,
+      "a signal-free engine (WhisperKit) must stay uncovered — no watcher, no deadline")
+    h.clock.advance(by: 2)
+    _ = await warm.value
+    #expect(h.driver.sessionlessWedgeGuard == nil)
+  }
+
+  @Test("#1339: guard re-arms cleanly on a retry after a failed attempt")
+  func guardReArmsOnRetry() async {
+    let h = makeDriver(behavior: .wedgeOnLoad)
+    await h.adapter.cancel()  // makes warmUp throw immediately (no park)
+    let outcome = await h.driver.ensureEngineWarm(reason: .onboarding)
+    guard case .failed = outcome else {
+      Issue.record("expected .failed, got \(outcome)")
+      return
+    }
+    #expect(h.driver.sessionlessWedgeGuard == nil, "guard released after the failed attempt")
+    // Retry: the slot must be free to arm again (Retry re-drives the load).
+    let retry = Task { @MainActor in _ = await h.driver.ensureEngineWarm(reason: .onboarding) }
+    _ = await retry.value
+    #expect(h.driver.sessionlessWedgeGuard == nil, "and released again after the retry resolves")
+  }
+
   // MARK: Helpers
 
   private struct Harness {
@@ -476,10 +530,16 @@ import Testing
     let kernel: RecordingSessionKernel
     let outcome: KernelFinalizationOutcome
     let adapter: FakeEngine
+    let clock: FakeClock
   }
 
-  private func makeDriver(behavior: FakeEngineBehavior = .batchSuccess(text: "x")) -> Harness {
-    let adapter = FakeEngine(behavior: behavior, clock: FakeClock())
+  private func makeDriver(
+    behavior: FakeEngineBehavior = .batchSuccess(text: "x"),
+    loadProgressAbsent: Bool = false
+  ) -> Harness {
+    let clock = FakeClock()
+    let adapter = FakeEngine(
+      behavior: behavior, clock: clock, loadProgressAbsent: loadProgressAbsent)
     let kernel = RecordingSessionKernel(
       adapter: adapter,
       audioCapture: FakeAudioCapture(),
@@ -507,7 +567,7 @@ import Testing
       kernel: kernel, observer: observer, outcome: outcome,
       context: KernelSessionContext(), steps: steps, adapter: adapter)
     driver.start()
-    return Harness(driver: driver, kernel: kernel, outcome: outcome, adapter: adapter)
+    return Harness(driver: driver, kernel: kernel, outcome: outcome, adapter: adapter, clock: clock)
   }
 
   private func drainUntil(_ condition: @MainActor () -> Bool) async {

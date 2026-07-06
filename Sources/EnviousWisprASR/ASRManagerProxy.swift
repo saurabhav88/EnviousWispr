@@ -113,7 +113,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
       let gen = self.loadGeneration
       // Reset progress state before starting.
       self.downloadProgress = 0
-      self.downloadPhase = "Preparing download..."
+      self.downloadPhase = ModelLoadStallPolicy.listingPhase
       self.downloadDetail = ""
 
       self.connectionPreflight(self)
@@ -186,6 +186,11 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// existing private state — adds no behavior and no new stored property.
   // periphery:ignore - test seam
   internal var progressPollTimerForTesting: Timer? { progressPollTimer }
+
+  /// #1339: the proxy's load progress IS the shared progress file (the XPC
+  /// service writes it; the 8Hz poll above reads it) — the sessionless wedge
+  /// guard may arm over this manager's loads.
+  public var feedsSharedProgressFile: Bool { true }
 
   internal func startProgressPolling() {
     stopProgressPolling()
