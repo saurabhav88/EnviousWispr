@@ -11,8 +11,9 @@ import Foundation
 ///
 /// Verification is BLOCKING by design: a GGUF that does not hash to the
 /// manifest's SHA-256 is deleted and never served (a corrupt LLM produces
-/// plausible-looking wrong output, unlike a corrupt ASR model — stricter
-/// than `ModelDownloadManager.verifyChecksum()`'s advisory check).
+/// plausible-looking wrong output, unlike a corrupt ASR model). The same
+/// blocking hash gate now guards ASR delivery too (#1348
+/// `EnviousWisprModelDelivery`, born from this store).
 public actor EGOneModelStore {
   public enum InstallState: Sendable, Equatable {
     case notInstalled

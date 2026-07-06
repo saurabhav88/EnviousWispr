@@ -26,10 +26,12 @@ import Foundation
 package enum KernelAdapterFactory {
 
   /// The single Parakeet adapter construction site in `Sources/`.
+  /// `delivery` (#1348 Phase 2): nil = legacy in-service download path.
   package static func makeParakeetAdapter(
-    asrManager: any ASRManagerInterface
+    asrManager: any ASRManagerInterface,
+    delivery: ParakeetDeliveryHandle? = nil
   ) -> any ASREngineAdapter {
-    ParakeetEngineAdapter(asrManager: asrManager)
+    ParakeetEngineAdapter(asrManager: asrManager, delivery: delivery)
   }
 
   /// The single WhisperKit adapter construction site in `Sources/`.

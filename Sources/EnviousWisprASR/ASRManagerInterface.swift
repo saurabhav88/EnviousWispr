@@ -30,6 +30,11 @@ public protocol ASRManagerInterface: AnyObject {
   var downloadDetail: String { get }
 
   // Model lifecycle
+  /// #1348 Phase 2: when true, Parakeet loads are delivery-managed cache-only
+  /// (the host admits verified bytes first; the load layer may never
+  /// download). Set by `ParakeetEngineAdapter` from the delivery flag before
+  /// each warm-up. Both conformers honor it on their Parakeet prepare path.
+  var parakeetCacheOnly: Bool { get set }
   func loadModel() async throws
   func unloadModel() async  // periphery:ignore - called via existential type (ASRManager idle timer)
   func setInitialBackendType(_ type: ASRBackendType)
@@ -85,4 +90,13 @@ extension ASRManagerInterface {
   /// #1339 safe default: managers do NOT feed the shared progress file unless
   /// they explicitly opt in (`ASRManagerProxy` does).
   public var feedsSharedProgressFile: Bool { false }
+
+  /// #1348 safe default for test doubles: no delivery mode. BOTH production
+  /// conformers (`ASRManager`, `ASRManagerProxy`) declare real storage, so
+  /// their witnesses win; a mock that ignores writes is semantically correct
+  /// (mocks never download).
+  public var parakeetCacheOnly: Bool {
+    get { false }
+    set {}
+  }
 }

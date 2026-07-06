@@ -503,6 +503,9 @@ public final class TelemetryService {
     var properties: [String: Any] = [
       "backend": backend,
       "stage": stage,
+      // #1348 D3 reconciliation: joinable with model_delivery.* datasets.
+      "reason_class": "watchdog_fired",
+      "family": backend == "whisperKit" ? "whisper_kit" : backend,
     ]
     if let silenceMs { properties["silence_ms"] = silenceMs }
     if let observedMaxGapMs { properties["observed_max_gap_ms"] = observedMaxGapMs }
@@ -852,6 +855,19 @@ public final class TelemetryService {
   /// runtime debounces identical states by construction).
   public func egOneDownloadEvent(name: String, properties: [String: String]) {
     let event = "eg1.\(name)"
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(name: event, stringProps: properties, boolProps: [:]))
+    #endif
+    PostHogSDK.shared.capture(event, properties: properties)
+  }
+
+  /// #1348 Phase 2: owned model-delivery funnel (`model_delivery.*`, D3
+  /// schema). Content-free by construction: identity fields come from OUR
+  /// bundled manifest, reasons/details are closed string sets, and no user
+  /// content exists on this path (EG-1 bridge precedent).
+  public func modelDeliveryEvent(name: String, properties: [String: String]) {
+    let event = "model_delivery.\(name)"
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(name: event, stringProps: properties, boolProps: [:]))

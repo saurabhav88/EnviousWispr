@@ -19,8 +19,12 @@ import Foundation
   /// Load the specified ASR backend.
   /// - Parameters:
   ///   - backendType: "parakeet" or "whisperKit"
+  ///   - cacheOnly: #1348 Phase 2 — when true (delivery-managed Parakeet),
+  ///     the service loads the host-admitted cache with FluidAudio's offline
+  ///     switch armed and can NEVER download; a cache miss throws typed.
+  ///     False preserves the legacy in-service download path bit-for-bit.
   ///   - reply: nil on success, NSError on failure.
-  func loadModel(backendType: String, reply: @escaping (NSError?) -> Void)
+  func loadModel(backendType: String, cacheOnly: Bool, reply: @escaping (NSError?) -> Void)
 
   /// Unload the current model and free memory.
   func unloadModel(reply: @escaping () -> Void)

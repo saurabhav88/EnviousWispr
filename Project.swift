@@ -187,6 +187,7 @@ func firstPartyLibrary(
 let firstPartyTargetDeps: [TargetDependency] = [
   .target(name: "EnviousWisprCore"),
   .target(name: "EnviousWisprStorage"),
+  .target(name: "EnviousWisprModelDelivery"),
   .target(name: "EnviousWisprPostProcessing"),
   .target(name: "EnviousWisprAudio"),
   .target(name: "EnviousWisprServices"),
@@ -220,6 +221,13 @@ let project = Project(
       ]),
     firstPartyLibrary(
       "EnviousWisprStorage",
+      dependencies: [
+        .target(name: "EnviousWisprCore")
+      ]),
+    // #1348 Phase 2: owned model-delivery layer. Leaf: Core only (D4
+    // placement — never imports ASR/LLM/Pipeline; consumers import it).
+    firstPartyLibrary(
+      "EnviousWisprModelDelivery",
       dependencies: [
         .target(name: "EnviousWisprCore")
       ]),
@@ -265,6 +273,7 @@ let project = Project(
         .target(name: "EnviousWisprASR"),
         .target(name: "EnviousWisprAudio"),
         .target(name: "EnviousWisprLLM"),
+        .target(name: "EnviousWisprModelDelivery"),
         .target(name: "EnviousWisprPostProcessing"),
         .target(name: "EnviousWisprServices"),
         .target(name: "EnviousWisprStorage"),
@@ -374,6 +383,9 @@ let project = Project(
         // binary is a nested Mach-O: build-dev-app.sh and
         // build-release-dmg.sh sign it in the inside-out order.
         "Sources/EnviousWispr/Resources/eg1-manifest.json",
+        // #1348 Phase 2: Parakeet delivery manifest — the bundled trust root
+        // (contract 4a). Same Bundle.main route as eg1-manifest.json.
+        "Sources/EnviousWispr/Resources/parakeet-delivery-manifest.json",
         "Sources/EnviousWispr/Resources/llama-server",
       ],
       entitlements: .file(path: "Sources/EnviousWispr/Resources/EnviousWispr.entitlements"),

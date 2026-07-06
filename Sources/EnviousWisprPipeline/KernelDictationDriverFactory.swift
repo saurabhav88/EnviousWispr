@@ -96,6 +96,10 @@ public enum KernelDictationDriverFactory {
     /// composition-root threading as `keychainManager`. Nil (tests,
     /// pre-wiring) means every `.egOne` polish silently skips.
     package let egOneRuntime: (any EGOneEndpointProviding)?
+    /// #1348 Phase 2: Parakeet delivery handle — nil (tests, or a failed
+    /// bundled-manifest load, which a unit test makes can't-happen in
+    /// release) means the legacy in-service download path.
+    package let parakeetDelivery: ParakeetDeliveryHandle?
 
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct. `@MainActor`
@@ -114,7 +118,8 @@ public enum KernelDictationDriverFactory {
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
       outputClassifierHolder: OutputClassifierHolder? = nil,
       dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
-      egOneRuntime: (any EGOneEndpointProviding)? = nil
+      egOneRuntime: (any EGOneEndpointProviding)? = nil,
+      parakeetDelivery: ParakeetDeliveryHandle? = nil
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
@@ -127,6 +132,7 @@ public enum KernelDictationDriverFactory {
       self.outputClassifierHolder = outputClassifierHolder
       self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
       self.egOneRuntime = egOneRuntime
+      self.parakeetDelivery = parakeetDelivery
     }
   }
 
@@ -231,7 +237,8 @@ public enum KernelDictationDriverFactory {
     // `KernelAdapterFactory` (the single construction site). This file no
     // longer names a concrete adapter type in code (EngineIdentityFreezeTests
     // Test B); it assembles around the opaque `any ASREngineAdapter` returned.
-    let adapter = KernelAdapterFactory.makeParakeetAdapter(asrManager: inputs.asrManager)
+    let adapter = KernelAdapterFactory.makeParakeetAdapter(
+      asrManager: inputs.asrManager, delivery: inputs.parakeetDelivery)
     return assembleDriver(
       adapter: adapter,
       audioCapture: inputs.audioCapture,

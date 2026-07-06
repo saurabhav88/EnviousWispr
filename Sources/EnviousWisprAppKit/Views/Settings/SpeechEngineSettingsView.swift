@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprModelDelivery
 import EnviousWisprServices
 import SwiftUI
 
@@ -11,6 +12,9 @@ struct SpeechEngineSettingsView: View {
   /// window's environment. Drives the subtle "applies after the current
   /// dictation" hint (silent in the main UX).
   @Environment(EngineCoordinator.self) private var engineCoordinator: EngineCoordinator?
+  // #1348 Phase 2: delivery state mirror for the Parakeet download row.
+  // Optional — nil in previews/tests that don't inject the home.
+  @Environment(ModelDeliveryHome.self) private var modelDelivery: ModelDeliveryHome?
 
   @State private var showLanguageLockSheet: Bool = false
 
@@ -218,6 +222,37 @@ struct SpeechEngineSettingsView: View {
         }
       }
 
+      // ── Delivery row (#1348 Phase 2, D6 states 2/3/4/5/7/8/10/11): shows
+      // ONLY while the Parakeet model download/repair is in a user-relevant
+      // state — invisible when admitted (D6: visible iff the user must act
+      // or wait). Same state stream onboarding renders; second renderer.
+      if settings.selectedBackend == .parakeet, let modelDelivery,
+        let row = parakeetDeliveryRow(modelDelivery.parakeetState)
+      {
+        BrandedSection(header: "Speech Model") {
+          BrandedRow(showDivider: false) {
+            HStack(alignment: .top, spacing: 11) {
+              SettingsRowIcon(systemName: "arrow.down.circle")
+              VStack(alignment: .leading, spacing: 4) {
+                Text(row.title).settingsRowLabel()
+                if let detail = row.detail {
+                  Text(detail).settingsReadingCopy()
+                }
+              }
+              Spacer()
+              if row.showsCancel {
+                Button("Cancel") { modelDelivery.cancelParakeetDownload() }
+                  .buttonStyle(.bordered)
+              }
+              if let action = row.actionLabel {
+                Button(action) { modelDelivery.resumeParakeetDownload() }
+                  .buttonStyle(.borderedProminent)
+              }
+            }
+          }
+        }
+      }
+
       // ── Section 4: Transcription Mode ────────────────────────────────
       // #1276 Step 2 (PR-2): the "Live transcription" toggle now shows for both
       // engines (it binds the same `useStreamingASR`). On WhisperKit with
@@ -331,6 +366,34 @@ struct SpeechEngineSettingsView: View {
 
   /// True when the current mode is `.auto`. Defined as a free helper so the
   /// Toggle binding stays trivially readable.
+  /// D6 row model for the delivery state; nil = render nothing (notReady /
+  /// admitted are silent in settings).
+  private func parakeetDeliveryRow(_ state: DeliveryState) -> (
+    title: String, detail: String?, showsCancel: Bool, actionLabel: String?
+  )? {
+    switch state {
+    case .notReady, .admitted:
+      return nil
+    case .preparing(let validating):
+      return (
+        validating ? "Checking speech model files..." : "Preparing download...", nil, false, nil)
+    case .downloading(_, let bytesWritten, let totalBytes):
+      let mb = Int(Double(bytesWritten) / 1_048_576)
+      let totalMB = Int(Double(totalBytes) / 1_048_576)
+      return ("Downloading speech model...", "\(mb) MB of \(totalMB) MB", true, nil)
+    case .verifying:
+      return ("Verifying download...", nil, false, nil)
+    case .cancelled:
+      return ("Download paused. Resume anytime.", nil, false, "Resume")
+    case .failed(let failure):
+      return (
+        "Speech model download failed.",
+        ModelDeliveryCopy.message(reason: failure.reason, detail: failure.detail),
+        false, "Try Again")
+    }
+  }
+
+
   private func isAutoLanguage(_ mode: LanguageMode) -> Bool {
     if case .auto = mode { return true }
     return false

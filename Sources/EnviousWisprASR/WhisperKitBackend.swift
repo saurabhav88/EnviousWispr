@@ -371,7 +371,7 @@ public actor WhisperKitBackend: ASRBackend {
 
   /// WhisperKit 0.12+ model folder artifacts required for a successful load.
   /// Aligned with `WhisperKit.loadModels()` at
-  /// `.build/checkouts/WhisperKit/Sources/WhisperKit/Core/WhisperKit.swift:372-381`
+  /// `.build/checkouts/argmax-oss-swift/Sources/WhisperKit/Core/WhisperKit.swift:372-381`
   /// — it hard-fails when any of these three are missing. `TextDecoderContextPrefill`
   /// is intentionally excluded: upstream loads it conditionally and tolerates its
   /// absence, so requiring it here would over-reject otherwise-valid caches.
