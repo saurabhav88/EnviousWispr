@@ -42,7 +42,7 @@ EnviousWispr handles this with on-device LLM post-processing tuned specifically 
 
 After EnviousWispr transcribes your speech, it runs the text through a local LLM for post-processing. The default polish removes filler words, fixes punctuation, and tightens structure without flattening your phrasing into corporate prose. The result is a clean first draft that sounds like you, not like a robot or a memo.
 
-That processing can run fully on-device with Apple Intelligence or Ollama, without sending your words anywhere.
+That processing can run fully on-device with Apple Intelligence, EG-1, or Ollama, without sending your words anywhere.
 
 For writers who want their voice preserved, the polish is built to edit, not reword. It keeps your meaning, tone, and phrasing intact, so your em dashes, your parentheticals, and your intentional fragments survive the cleanup. Keep a passage as loose stream of consciousness and the polish leaves your flow alone; the output always sounds like you, not a template.
 
@@ -105,7 +105,7 @@ The draft won't be perfect. That's the point. It doesn't need to be perfect; it 
 
 If you're dictating early drafts, unpublished ideas, or sensitive client work, where that audio goes matters. Most cloud dictation tools send your recordings to external servers for processing. That means your unfinished novel, your half-formed article, your notes about a source. All of it passes through someone else's infrastructure.
 
-EnviousWispr runs entirely on your Mac. Transcription happens locally using on-device speech recognition via Core ML. Post-processing can run fully on-device with Apple Intelligence or Ollama. Your recordings never leave your device. For writers working on anything unpublished or confidential, that's not a minor detail.
+EnviousWispr runs entirely on your Mac. Transcription happens locally using on-device speech recognition via Core ML. Post-processing can run fully on-device with Apple Intelligence, EG-1, or Ollama. Your recordings never leave your device. For writers working on anything unpublished or confidential, that's not a minor detail.
 
 You can read more about [how the pipeline works](/how-it-works/), from microphone input through transcription and AI cleanup to final output. For a detailed comparison of on-device and cloud-based dictation, see [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/).
 

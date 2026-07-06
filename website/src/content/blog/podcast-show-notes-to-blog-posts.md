@@ -67,7 +67,7 @@ Two minutes of speaking replaced forty-five minutes of typing. The show notes ar
 
 If you're discussing unreleased episodes, guest conversations, or sensitive business topics, privacy matters. Cloud transcription services process your audio on someone else's servers. For podcasters working with embargoed content, pre-release interviews, or paid subscriber material, that's a real concern.
 
-EnviousWispr runs transcription locally using on-device speech recognition via Core ML on your Mac's Neural Engine. Your audio never leaves your device. Post-processing (the step that formats your dictation into show notes or blog prose) can also run on-device via Apple Intelligence or Ollama. No audio uploads, no cloud processing, no third-party access to your content.
+EnviousWispr runs transcription locally using on-device speech recognition via Core ML on your Mac's Neural Engine. Your audio never leaves your device. Post-processing (the step that formats your dictation into show notes or blog prose) can also run on-device via Apple Intelligence, EG-1, or Ollama. No audio uploads, no cloud processing, no third-party access to your content.
 
 This isn't a privacy policy promise. It's an architectural fact. The app works without an internet connection. Your recordings, your transcriptions, and your formatted output all stay on your machine unless you explicitly configure an external API.
 

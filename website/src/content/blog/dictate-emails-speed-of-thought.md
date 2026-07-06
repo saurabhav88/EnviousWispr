@@ -50,7 +50,7 @@ Here's where the executive dictation tool conversation gets uncomfortable. Most 
 
 When you dictate an email about a pending acquisition, a personnel decision, or quarterly numbers before they're public, that audio travels to a data center you don't control. It gets processed on hardware you can't audit. The provider's privacy policy might be fine today and different after the next acquisition or policy update.
 
-EnviousWispr runs on-device speech recognition via Core ML on the Neural Engine in every M-series chip. Post-processing (the LLM step that cleans up your text) can run on-device with Apple Intelligence or Ollama, or through cloud APIs like OpenAI and Gemini. Your recordings never leave your Mac unless you explicitly configure an external API.
+EnviousWispr runs on-device speech recognition via Core ML on the Neural Engine in every M-series chip. Post-processing (the LLM step that cleans up your text) can run on-device with Apple Intelligence, EG-1, or Ollama, or through cloud APIs like OpenAI and Gemini. Your recordings never leave your Mac unless you explicitly configure an external API.
 
 No audio uploaded. No transcripts stored on someone else's server. This isn't a privacy feature bolted onto a cloud product. It's how the entire system works by default. For a detailed comparison of on-device and cloud dictation approaches, see [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/).
 

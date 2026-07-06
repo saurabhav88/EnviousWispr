@@ -13,7 +13,7 @@ That's the question we kept asking, and it's why we built EnviousWispr.
 
 EnviousWispr runs entirely on your Mac. Your voice recordings never leave your device. Transcription happens locally using on-device speech recognition models optimized for Apple Silicon via Core ML.
 
-Post-processing (correcting punctuation, cleaning up filler words, adjusting tone) can run fully on-device with Apple Intelligence or Ollama, or via a cloud provider like OpenAI or Gemini if you prefer. From microphone to clipboard, nothing touches the internet unless you choose a cloud AI provider.
+Post-processing (correcting punctuation, cleaning up filler words, adjusting tone) can run fully on-device with Apple Intelligence, EG-1, or Ollama, or via a cloud provider like OpenAI or Gemini if you prefer. From microphone to clipboard, nothing touches the internet unless you choose a cloud AI provider.
 
 ## What it does
 
@@ -62,7 +62,7 @@ The pipeline has four steps, and they run in parallel on Apple Silicon, which is
 
 1. **Record.** Hold the global hotkey (configurable), speak, release. EnviousWispr captures audio from your microphone with a pre-roll buffer so your first words are never clipped.
 2. **Transcribe.** On-device speech recognition runs natively via Core ML on Apple Silicon. The primary engine handles English with streaming transcription that overlaps with recording. A secondary engine covers 100+ languages.
-3. **Polish.** Your choice of AI provider (OpenAI, Gemini, Ollama, Apple Intelligence, or none) removes filler words, fixes punctuation, and shapes the output to your selected writing style.
+3. **Polish.** Your choice of AI provider (OpenAI, Gemini, Ollama, Apple Intelligence, or none) removes filler words, fixes punctuation, and shapes the output to match how you speak.
 4. **Paste.** The polished text pastes directly into whatever app has keyboard focus. Your previous clipboard contents are preserved and restored automatically.
 
 See [how the transcription pipeline works in detail](/how-it-works/) if you want to go deeper on any of these steps.

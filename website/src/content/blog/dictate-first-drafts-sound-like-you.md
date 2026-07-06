@@ -30,7 +30,7 @@ EnviousWispr splits the work into two stages: transcription and post-processing.
 
 Here's what makes the difference for writers:
 
-- **On-device polish that keeps your voice.** Your local LLM (Apple Intelligence, Ollama) or a cloud API (OpenAI, Gemini) cleans up the raw transcription: filler words go, punctuation gets fixed, structure tightens, but your contractions, sentence fragments, and rhythm stay intact. The polish is tuned for natural-sounding output, not corporate sameness.
+- **On-device polish that keeps your voice.** Your local LLM (Apple Intelligence, EG-1, Ollama) or a cloud API (OpenAI, Gemini) cleans up the raw transcription: filler words go, punctuation gets fixed, structure tightens, but your contractions, sentence fragments, and rhythm stay intact. The polish is tuned for natural-sounding output, not corporate sameness.
 - **An editor, not a rewriter.** The polish is built to edit, not reword. It preserves your meaning, tone, and phrasing, and never translates or rewrites what you said. Your em dashes, your intentional fragments, your rhythm survive the cleanup.
 
 It also adapts to length: a quick aside stays a clean line, while a longer piece comes back as clean, readable prose. You don't switch anything between drafting and client-facing work; the polish keeps your voice either way.
@@ -58,7 +58,7 @@ The speech model downloads automatically on first launch. Once that's done (a fe
 
 There's nothing to configure. The polish reads what you said and matches it.
 
-Post-processing can run on-device (Apple Intelligence, Ollama) or through cloud APIs (OpenAI, Gemini). Your raw dictation never leaves your device unless you explicitly configure an external API.
+Post-processing can run on-device (Apple Intelligence, EG-1, Ollama) or through cloud APIs (OpenAI, Gemini). Your raw dictation never leaves your device unless you explicitly configure an external API.
 
 ### Step 3: Dictate Your First Draft
 
