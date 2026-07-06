@@ -97,7 +97,7 @@ Transcription gets your words down. AI polish cleans them up: it drops filler, f
 | **Ollama** | Bring your own local model (3B or larger recommended) | On-device | varies |
 | **OpenAI / Gemini** | Bring-your-own-key cloud polish, text only | Cloud (your key) | none |
 
-**EG-1** is our own AI model, fine-tuned specifically for dictation cleanup and optimized for Apple Silicon. It runs entirely on your Mac with no internet required, and it closes the gaps a general on-device model leaves: reliably turning a spoken list into a real list, splitting a wall of speech into clean paragraphs, and keeping only the corrected version when you fix yourself mid-sentence. Because it is our own model rather than Apple's, it works across the full supported range (macOS 14 and later), not just macOS 26.
+**EG-1** is our own AI model, fine-tuned specifically for dictation cleanup and optimized for Apple Silicon. It runs entirely on your Mac with no internet required, and it closes the gaps a general on-device model leaves: reliably turning a spoken list into a real list, splitting a wall of speech into clean paragraphs, and keeping only the corrected version when you fix yourself mid-sentence. Because it is our own model rather than Apple's, it works across the full supported range (macOS 14 and later), not just macOS 26. EG-1 is distributed under its own model license, not the GPLv3 that covers the app code (see [License](#license)).
 
 On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, ahead of both GPT-5.4-mini (83.8%) and Gemini 3.5 Flash (92.6%) on the same cases with the same judge. This is our own benchmark, not an independent review. The eval harness and the exact prompts are public in [`scripts/eval/`](scripts/eval/) so you can inspect or rerun them; the test cases are personal dictations and stay private.
 
@@ -210,5 +210,7 @@ Built by [Envious Labs](https://enviouslabs.co)
 EnviousWispr is open source under the [GNU General Public License v3](LICENSE) (GPLv3), an OSI-approved license. You can read, build, modify, and redistribute the code under the terms of the GPL, including for commercial purposes; distributed derivative works must also be licensed under the GPLv3 with their source available.
 
 Copyright (C) 2024-2026 Envious Labs LLC.
+
+**The EG-1 model is not open source.** The GPLv3 covers the EnviousWispr application code only. EG-1's model weights are not part of this repository; they download separately and are distributed under the [EG-1 Community Model License](EG-1-MODEL-LICENSE.txt). You are free to download and use EG-1 within EnviousWispr, but you may not redistribute, re-host, mirror, or bundle the model into other products, or use its output to train other models. EG-1 is a fine-tuned derivative of Qwen3-4B-Instruct-2507 (Apache-2.0); this license applies to the fine-tuned weights.
 
 The EnviousWispr name and logo are trademarks of Envious Labs and are not covered by the GPL.
