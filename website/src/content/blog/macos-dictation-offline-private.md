@@ -14,7 +14,7 @@ faqs:
   - question: "Is on-device dictation accurate enough for medical or accessibility use?"
     answer: "On Apple Silicon Macs, on-device speech recognition reaches word error rates competitive with leading cloud APIs for English dictation. For accessibility users who rely on voice input as a primary modality, that accuracy plus the predictability of no network failures is usually the deciding factor. For medical dictation, accuracy matters but the on-device privacy story usually matters more."
   - question: "What happens if I dictate while completely offline?"
-    answer: "Everything works the same. EnviousWispr captures audio, runs transcription via Core ML, and pastes polished text into your app. The only feature that needs network is optional cloud AI polish (OpenAI, Gemini); on-device polish via Apple Intelligence, EG-1, or Ollama still works offline, as does raw transcription with no polish at all."
+    answer: "Everything works the same. EnviousWispr captures audio, runs transcription via Core ML, and pastes polished text into your app. The only feature that needs network is optional cloud AI polish (OpenAI, Gemini); on-device polish via Apple Intelligence, EG-1, or Ollama still works offline once its model is installed, as does raw transcription with no polish at all."
   - question: "Is there a free offline dictation app for Mac?"
     answer: "Yes. EnviousWispr is free to download, requires no account, and runs entirely on your Mac. There is no usage cap, no trial period, and no subscription tier. You can use it indefinitely without ever creating an account or connecting to a server."
 ---
