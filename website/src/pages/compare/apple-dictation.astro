@@ -103,7 +103,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does EnviousWispr work offline?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Transcription runs entirely on-device after a one-time model download. AI polish can also run locally via Apple Intelligence or Ollama. No internet required for the full pipeline."
+        "text": "Transcription runs entirely on-device after a one-time model download. AI polish can also run locally via EG-1, Apple Intelligence, or Ollama. No internet required for the full pipeline."
       }
     },
     {
@@ -445,7 +445,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">Apple Intelligence</span>, Ollama (on-device), or BYO OpenAI/Gemini key</td>
+            <td><span class="table-highlight">EG-1, Apple Intelligence,</span> Ollama (on-device), or BYO OpenAI/Gemini key</td>
             <td><span class="table-cross">None</span></td>
           </tr>
           <tr>
@@ -553,7 +553,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🧠</div>
         <div class="advantage-title">AI polish cleans your words</div>
-        <p class="advantage-desc">Apple Dictation gives you raw transcription. EnviousWispr pipes text through <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">AI polish</a> to remove filler words, fix grammar, and format paragraphs. Choose Apple Intelligence, Ollama, or your own OpenAI/Gemini key.</p>
+        <p class="advantage-desc">Apple Dictation gives you raw transcription. EnviousWispr pipes text through <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">AI polish</a> to remove filler words, fix grammar, and format paragraphs. Choose EG-1, Apple Intelligence, Ollama, or your own OpenAI/Gemini key.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📖</div>
@@ -601,12 +601,12 @@ const faqJsonLd = JSON.stringify({
       <div class="speed-card reveal">
         <div class="speed-value">1.5s</div>
         <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">Apple Intelligence on-device</div>
+        <div class="speed-detail">EG-1 or Apple, on-device</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0s</div>
         <div class="speed-label">Timeout limit</div>
-        <div class="speed-detail">No cutoff. Dictate as long as you need.</div>
+        <div class="speed-detail">No inactivity timeout. Up to a full hour per recording.</div>
       </div>
     </div>
     <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings.</p>
@@ -639,7 +639,7 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-title">AI polish transforms raw speech</div>
         <div class="deep-dive-body">
           <p>Apple Dictation gives you exactly what you said, including every "um," "uh," "you know," and false start. For quick one-liners, that is fine. For anything longer, you end up editing the transcript to make it readable.</p>
-          <p>EnviousWispr pipes transcription through an AI polish step that removes filler words, fixes grammar, formats paragraphs, and adjusts tone. You can choose Apple Intelligence (fully on-device), Ollama (local open-source models), or bring your own OpenAI or Gemini API key.</p>
+          <p>EnviousWispr pipes transcription through an AI polish step that removes filler words, fixes grammar, formats paragraphs, and adjusts tone. You can choose EG-1 (our own on-device model), Apple Intelligence (fully on-device), Ollama (local open-source models), or bring your own OpenAI or Gemini API key.</p>
           <p>The polish layer includes hallucination safeguards: short transcripts bypass the LLM entirely, output length is validated against input length, and preamble artifacts ("Certainly! Here is...") are stripped automatically. Your dictated text is wrapped in XML tags with explicit instructions to polish, not answer or rewrite.</p>
           <div class="deep-dive-detail">
             <strong>How it works:</strong> Context-aware prompts include the target app name, detected language, and ASR error patterns. Sandwich framing wraps the transcript in &lt;transcript&gt; tags to prevent prompt injection. Output exceeding 3x input length is rejected as probable hallucination, falling back to raw text.
@@ -719,7 +719,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr work offline?</div>
-        <p class="faq-a">Transcription runs entirely on-device after a one-time model download. AI polish can also run locally via Apple Intelligence or Ollama. No internet required for the full pipeline.</p>
+        <p class="faq-a">Transcription runs entirely on-device after a one-time model download. AI polish can also run locally via EG-1, Apple Intelligence, or Ollama. No internet required for the full pipeline.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How accurate is EnviousWispr compared to Apple Dictation?</div>

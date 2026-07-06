@@ -135,7 +135,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does VoiceInk have AI text enhancement?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. VoiceInk offers AI formatting through system prompts with LLM providers. EnviousWispr supports 4 AI polish providers including Apple Intelligence (fully on-device), Ollama (on-device), and cloud providers with your own API key, plus built-in hallucination safeguards."
+        "text": "Yes. VoiceInk offers AI formatting through system prompts with LLM providers. EnviousWispr supports 5 AI polish engines including EG-1 (our own on-device model), Apple Intelligence (fully on-device), Ollama (on-device), and cloud providers with your own API key, plus built-in hallucination safeguards."
       }
     }
   ]
@@ -443,12 +443,12 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">4 providers:</span> Apple Intelligence, Ollama (both on-device), OpenAI, Gemini (BYO key)</td>
+            <td><span class="table-highlight">5 providers:</span> EG-1, Apple Intelligence, Ollama (all three on-device), OpenAI, Gemini (BYO key)</td>
             <td>AI formatting via system prompts with LLM providers</td>
           </tr>
           <tr>
             <td>Offline AI polish</td>
-            <td><span class="table-check">Yes</span> (Apple Intelligence or Ollama, no API key needed)</td>
+            <td><span class="table-check">Yes</span> (EG-1, Apple Intelligence, or Ollama, no API key needed)</td>
             <td><span class="table-cross">Requires cloud LLM</span> for AI formatting</td>
           </tr>
           <tr>
@@ -565,8 +565,8 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#129504;</div>
-        <div class="advantage-title">4 AI polish providers</div>
-        <p class="advantage-desc">Apple Intelligence and Ollama run fully on-device with no API key. Or bring your own OpenAI or Gemini key. VoiceInk offers AI formatting through system prompts with cloud LLMs.</p>
+        <div class="advantage-title">5 on-device + cloud polish engines</div>
+        <p class="advantage-desc">EG-1, Apple Intelligence, and Ollama run fully on-device with no API key. Or bring your own OpenAI or Gemini key. VoiceInk offers AI formatting through system prompts with cloud LLMs.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#128295;</div>
@@ -611,7 +611,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
-          <div>AI polish runs locally (Apple Intelligence or Ollama) or with your own API key. If you use a cloud provider, only the text transcript is sent.</div>
+          <div>AI polish runs locally (EG-1, Apple Intelligence, or Ollama) or with your own API key. If you use a cloud provider, only the text transcript is sent.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
@@ -661,7 +661,7 @@ const faqJsonLd = JSON.stringify({
       <div class="speed-card reveal">
         <div class="speed-value">1.5s</div>
         <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">Apple Intelligence on-device</div>
+        <div class="speed-detail">EG-1 or Apple, on-device</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0ms</div>
@@ -780,7 +780,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What is AI polish and does VoiceInk have it?</div>
-        <p class="faq-a">AI polish is a post-transcription step that fixes grammar, removes filler words, and formats your text using a language model. EnviousWispr supports Apple Intelligence, Ollama (both on-device), and cloud providers with your own API key. VoiceInk offers AI formatting through system prompts with cloud LLM providers.</p>
+        <p class="faq-a">AI polish is a post-transcription step that fixes grammar, removes filler words, and formats your text using a language model. EnviousWispr supports EG-1, Apple Intelligence, Ollama (all on-device), and cloud providers with your own API key. VoiceInk offers AI formatting through system prompts with cloud LLM providers.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which app is better for non-English languages?</div>
@@ -788,7 +788,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does VoiceInk have AI text enhancement?</div>
-        <p class="faq-a">Yes. VoiceInk offers AI formatting through system prompts with LLM providers. EnviousWispr supports 4 AI polish providers including Apple Intelligence (fully on-device), Ollama (on-device), OpenAI, and Gemini, plus built-in hallucination safeguards that reject fabricated output.</p>
+        <p class="faq-a">Yes. VoiceInk offers AI formatting through system prompts with LLM providers. EnviousWispr supports 5 AI polish engines including EG-1 (our own on-device model), Apple Intelligence (fully on-device), Ollama (on-device), OpenAI, and Gemini, plus built-in hallucination safeguards that reject fabricated output.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from VoiceInk easily?</div>
@@ -800,7 +800,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is there a free alternative to VoiceInk?</div>
-        <p class="faq-a">Yes. EnviousWispr is a free, on-device dictation app for Apple Silicon Macs. It uses Parakeet TDT for fast English transcription and includes an AI polish pipeline with 4 providers. No account or payment required.</p>
+        <p class="faq-a">Yes. EnviousWispr is a free, on-device dictation app for Apple Silicon Macs. It uses Parakeet TDT for fast English transcription and includes an AI polish pipeline with 5 providers. No account or payment required.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source?</div>

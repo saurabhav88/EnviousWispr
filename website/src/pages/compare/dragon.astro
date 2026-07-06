@@ -79,7 +79,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Is Dragon dictation free?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "No. Dragon Professional Individual costs approximately $699 for a one-time license. The consumer version (Dragon Home) has been discontinued. EnviousWispr is completely free with no license fee or subscription."
+        "text": "Dragon dropped its Mac version in 2018, so there is no Dragon for Apple Silicon. Dragon Professional for Windows has cost around $699 one-time. Either way, Dragon does not run on a Mac, and EnviousWispr is completely free with no license fee or subscription."
       }
     },
     {
@@ -95,7 +95,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does EnviousWispr work offline?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Transcription runs entirely on-device and works without internet after the initial model download. AI polish can also run offline using Apple Intelligence or a local Ollama model."
+        "text": "Transcription runs entirely on-device and works without internet after the initial model download. AI polish can also run offline using EG-1, Apple Intelligence, or a local Ollama model."
       }
     },
     {
@@ -111,7 +111,7 @@ const faqJsonLd = JSON.stringify({
       "name": "What happened to Dragon after Microsoft bought Nuance?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Microsoft completed its acquisition of Nuance in March 2022. Since then, Dragon consumer products have been effectively sidelined. The focus shifted to enterprise healthcare (DAX Copilot). Dragon Professional Individual is still sold but receives minimal updates."
+        "text": "Microsoft completed its acquisition of Nuance in March 2022. Since then, Dragon consumer products have been effectively sidelined. The focus shifted to enterprise healthcare (DAX Copilot), and Dragon Professional remains a Windows-only product that receives minimal updates."
       }
     },
     {
@@ -152,8 +152,8 @@ const faqJsonLd = JSON.stringify({
 ---
 
 <BaseLayout
-  title="EnviousWispr vs Dragon: Free Mac Dictation"
-  description="Dragon costs $700 and dropped Mac support. EnviousWispr is free on-device dictation for Apple Silicon Macs. No account required."
+  title="Dragon for Mac Alternative: EnviousWispr (Dragon Mac Discontinued)"
+  description="Dragon for Mac was discontinued, and Nuance's consumer Dragon is now sidelined under Microsoft. EnviousWispr is free, on-device dictation for Apple Silicon Macs. No account required."
   activePage="compare"
   ogImage="/images/og/dragon.png"
   canonicalPath="/compare/dragon/"
@@ -362,12 +362,12 @@ const faqJsonLd = JSON.stringify({
       <span class="vs-circle">VS</span>
       <span class="vs-brand">Dragon</span>
     </div>
-    <h1 class="reveal">Dragon is $700, Windows-only, and discontinued on Mac</h1>
-    <p class="page-header-sub reveal">Dragon pioneered dictation. But it dropped Mac support, costs $700, and has no AI polish. EnviousWispr is free, runs on Apple Silicon, and works offline.</p>
+    <h1 class="reveal">Dragon for Mac is discontinued. EnviousWispr is the modern replacement</h1>
+    <p class="page-header-sub reveal">Dragon pioneered dictation, but its Mac version was discontinued and Nuance's consumer Dragon is now sidelined under Microsoft. EnviousWispr is free, runs on Apple Silicon, and works offline.</p>
     <div class="hero-pills reveal">
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        Free, not $700
+        Free and current
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -424,7 +424,7 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Price</td>
             <td><span class="table-highlight">Free. No subscription, no license fee.</span></td>
-            <td>~$699 one-time (Professional)*</td>
+            <td>Windows only (~$699); no Mac version*</td>
           </tr>
           <tr>
             <td>Account required</td>
@@ -453,12 +453,12 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Offline AI polish</td>
-            <td><span class="table-highlight">Yes.</span> Apple Intelligence or local Ollama models.</td>
+            <td><span class="table-highlight">Yes.</span> EG-1, Apple Intelligence, or local Ollama models.</td>
             <td><span class="table-cross">No AI polish at all</span></td>
           </tr>
           <tr>
             <td>AI polish / LLM providers</td>
-            <td><span class="table-highlight">4 providers:</span> Apple Intelligence, Ollama, OpenAI, Gemini</td>
+            <td><span class="table-highlight">5 providers:</span> EG-1, Apple Intelligence, Ollama, OpenAI, Gemini</td>
             <td><span class="table-cross">None</span></td>
           </tr>
           <tr>
@@ -560,8 +560,8 @@ const faqJsonLd = JSON.stringify({
     <div class="advantages-grid">
       <div class="advantage-card reveal">
         <div class="advantage-icon">$0</div>
-        <div class="advantage-title">Free, not $700</div>
-        <p class="advantage-desc">Dragon Professional costs roughly $699 for a single license. EnviousWispr is free. No subscription, no license key, no activation server. Download and use it.</p>
+        <div class="advantage-title">Free, no license fee</div>
+        <p class="advantage-desc">Dragon Professional for Windows costs around $699 for a single license, and it does not run on a Mac at all. EnviousWispr is free. No subscription, no license key, no activation server. Download and use it.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🍎</div>
@@ -571,7 +571,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">✨</div>
         <div class="advantage-title">AI polish built in</div>
-        <p class="advantage-desc">Dragon gives you a raw transcript. EnviousWispr can clean up filler words, fix punctuation, and restructure sentences using Apple Intelligence or a local Ollama model. No extra software, no cloud dependency unless you choose it.</p>
+        <p class="advantage-desc">Dragon gives you a raw transcript. EnviousWispr can clean up filler words, fix punctuation, and restructure sentences using EG-1, Apple Intelligence, or a local Ollama model. No extra software, no cloud dependency unless you choose it.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
@@ -616,7 +616,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
-          <div>AI polish cleans up the transcript. Runs on-device with Apple Intelligence or Ollama, or with your own cloud API key if you choose.</div>
+          <div>AI polish cleans up the transcript. Runs on-device with EG-1, Apple Intelligence, or Ollama, or with your own cloud API key if you choose.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
@@ -675,7 +675,7 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-title">Modern AI polish, not just raw transcript</div>
         <div class="deep-dive-body">
           <p>Dragon gives you a transcript and expects you to fix it. It has no concept of LLM-based post-processing. Dragon was built in an era before large language models existed, and Nuance has not retrofitted this capability.</p>
-          <p>EnviousWispr integrates four LLM providers for Smart Polish: Apple Intelligence (fully on-device), Ollama (local models like Llama or Mistral), and cloud options via OpenAI or Gemini if you bring your own API key. The polish step removes filler words, fixes punctuation, restructures awkward phrasings, and adapts to the app you are dictating into.</p>
+          <p>EnviousWispr integrates five polish engines for Smart Polish: EG-1 (our own on-device model), Apple Intelligence (fully on-device), Ollama (local models like Llama or Mistral), and cloud options via OpenAI or Gemini if you bring your own API key. The polish step removes filler words, fixes punctuation, restructures awkward phrasings, and adapts to the app you are dictating into.</p>
           <p>The system is context-aware. Dictating into Slack? The polish keeps it conversational. Writing an email? It formalizes. And all cloud providers only receive the text transcript, never your audio.</p>
           <div class="deep-dive-detail">
             <strong>Technical detail:</strong> Smart Polish uses sandwich prompt framing with XML-tagged transcript boundaries to prevent hallucination. Output validation rejects responses longer than 3x the input. Short transcripts (3 words or fewer) bypass the LLM entirely. Preamble stripping removes "Certainly!" artifacts automatically.
@@ -703,7 +703,7 @@ const faqJsonLd = JSON.stringify({
       <div class="speed-card reveal">
         <div class="speed-value">1.5s</div>
         <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">Apple Intelligence on-device</div>
+        <div class="speed-detail">EG-1 or Apple, on-device</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0s</div>
@@ -767,7 +767,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is Dragon dictation free?</div>
-        <p class="faq-a">No. Dragon Professional Individual costs approximately $699 for a one-time license. The consumer version (Dragon Home) has been discontinued. EnviousWispr is completely free with no license fee or subscription.</p>
+        <p class="faq-a">Dragon dropped its Mac version in 2018, so there is no Dragon for Apple Silicon. Dragon Professional for Windows has cost around $699 one-time. Either way, Dragon does not run on a Mac, and EnviousWispr is completely free with no license fee or subscription.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Do I need to train EnviousWispr to recognize my voice?</div>
@@ -775,7 +775,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr work offline?</div>
-        <p class="faq-a">Transcription runs entirely on-device and works without internet after the initial model download. AI polish can also run offline using Apple Intelligence or a local Ollama model. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">getting started guide</a> for setup.</p>
+        <p class="faq-a">Transcription runs entirely on-device and works without internet after the initial model download. AI polish can also run offline using EG-1, Apple Intelligence, or a local Ollama model. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">getting started guide</a> for setup.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can EnviousWispr do voice commands like Dragon?</div>
@@ -783,7 +783,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What happened to Dragon after Microsoft bought Nuance?</div>
-        <p class="faq-a">Microsoft completed its acquisition of Nuance in March 2022. Since then, Dragon consumer products have been effectively sidelined. The focus shifted to enterprise healthcare (DAX Copilot). Dragon Professional Individual is still sold but receives minimal updates.</p>
+        <p class="faq-a">Microsoft completed its acquisition of Nuance in March 2022. Since then, Dragon consumer products have been effectively sidelined. The focus shifted to enterprise healthcare (DAX Copilot), and Dragon Professional remains a Windows-only product that receives minimal updates.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source?</div>

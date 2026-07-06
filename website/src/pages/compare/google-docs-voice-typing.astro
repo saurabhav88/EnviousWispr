@@ -370,12 +370,12 @@ const breadcrumbJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">Apple Intelligence</span> or Ollama on-device; OpenAI/Gemini with your own key</td>
+            <td><span class="table-highlight">EG-1, Apple Intelligence,</span> or Ollama on-device; OpenAI/Gemini with your own key</td>
             <td><span class="table-cross">None</span></td>
           </tr>
           <tr>
             <td>Offline AI polish</td>
-            <td><span class="table-check">Yes</span> (Apple Intelligence or Ollama, fully local)</td>
+            <td><span class="table-check">Yes</span> (EG-1, Apple Intelligence, or Ollama, fully local)</td>
             <td><span class="table-cross">No.</span> Entire tool requires internet.</td>
           </tr>
           <tr>
@@ -483,7 +483,7 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">✨</div>
         <div class="advantage-title">AI polish and cleanup</div>
-        <p class="advantage-desc">EnviousWispr removes filler words, fixes grammar, and polishes your text with AI. Use Apple Intelligence on-device or bring your own API key. Google's voice typing gives you raw dictation only.</p>
+        <p class="advantage-desc">EnviousWispr removes filler words, fixes grammar, and polishes your text with AI. Use EG-1 or Apple Intelligence on-device, or bring your own API key. Google's voice typing gives you raw dictation only.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📝</div>
@@ -582,7 +582,7 @@ const breadcrumbJsonLd = JSON.stringify({
         <div class="deep-dive-title">Privacy: on-device vs cloud</div>
         <div class="deep-dive-body">
           <p>Google Docs Voice Typing requires a constant internet connection. Your audio is streamed to Google's servers, processed by their speech recognition API, and the text result is sent back. Google's <a href="https://policies.google.com/privacy" style="color: var(--accent); text-decoration: underline;">privacy policy</a> governs how that audio data is handled.</p>
-          <p>EnviousWispr processes audio entirely on your Mac using the Apple Silicon Neural Engine. The audio buffer never leaves your device. After transcription, the audio is discarded. If you use on-device AI polish (Apple Intelligence or Ollama), the entire pipeline is local. No audio or text is uploaded anywhere.</p>
+          <p>EnviousWispr processes audio entirely on your Mac using the Apple Silicon Neural Engine. The audio buffer never leaves your device. After transcription, the audio is discarded. If you use on-device AI polish (EG-1, Apple Intelligence, or Ollama), the entire pipeline is local. No audio or text is uploaded anywhere.</p>
           <p>If you opt into a cloud LLM for polish (OpenAI, Gemini), only the text transcript is sent, never the audio, and you provide your own API key. You control the relationship with the provider directly.</p>
           <div class="deep-dive-detail">
             <strong>Privacy by architecture:</strong> EnviousWispr does not have a server. There is no account system, no cloud backend, and no telemetry on your dictated content. The app sends anonymous usage analytics (PostHog) and crash reports (Sentry), but your actual text and audio never leave your machine.
@@ -610,7 +610,7 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="speed-card reveal">
         <div class="speed-value">1.5s</div>
         <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">Apple Intelligence on-device</div>
+        <div class="speed-detail">EG-1 or Apple, on-device</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0ms</div>

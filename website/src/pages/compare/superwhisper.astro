@@ -87,7 +87,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Can I use EnviousWispr completely offline?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using Apple Intelligence (macOS 15+) or Ollama with a local model."
+        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model."
       }
     },
     {
@@ -95,7 +95,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does Superwhisper have offline AI polish?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Superwhisper's transcription works offline via Whisper. However, their AI polish features appear to require cloud connectivity. EnviousWispr's Apple Intelligence and Ollama integrations run entirely on your Mac."
+        "text": "Superwhisper's transcription works offline via Whisper. However, their AI polish features appear to require cloud connectivity. EnviousWispr's EG-1, Apple Intelligence, and Ollama integrations run entirely on your Mac."
       }
     },
     {
@@ -437,12 +437,12 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">Apple Intelligence or Ollama on-device;</span> OpenAI/Gemini with your own key</td>
+            <td><span class="table-highlight">EG-1, Apple Intelligence, or Ollama on-device;</span> OpenAI/Gemini with your own key</td>
             <td>Cloud AI via GPT-5, Claude, Llama 4, Grok, Gemini, Ministral (requires Pro)</td>
           </tr>
           <tr>
             <td>Offline AI polish</td>
-            <td><span class="table-check">Yes</span> (Apple Intelligence or Ollama, fully on-device)</td>
+            <td><span class="table-check">Yes</span> (EG-1, Apple Intelligence, or Ollama, fully on-device)</td>
             <td>Not specified (cloud AI models listed require internet)</td>
           </tr>
           <tr>
@@ -570,7 +570,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔑</div>
         <div class="advantage-title">Your choice of AI polish</div>
-        <p class="advantage-desc">Apple Intelligence and Ollama run entirely on-device. Want cloud speed? Bring your own OpenAI or Gemini key. You control which services touch your text. Superwhisper's cloud AI requires a Pro subscription.</p>
+        <p class="advantage-desc">EG-1, Apple Intelligence, and Ollama run entirely on-device. Want cloud speed? Bring your own OpenAI or Gemini key. You control which services touch your text. Superwhisper's cloud AI requires a Pro subscription.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📖</div>
@@ -605,7 +605,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
-          <div>AI polish runs locally (Apple Intelligence or Ollama) or with your own API key. If you use a cloud provider, only the text transcript is sent; you control the key.</div>
+          <div>AI polish runs locally (EG-1, Apple Intelligence, or Ollama) or with your own API key. If you use a cloud provider, only the text transcript is sent; you control the key.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
@@ -655,7 +655,7 @@ const faqJsonLd = JSON.stringify({
       <div class="speed-card reveal">
         <div class="speed-value">1.5s</div>
         <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">Apple Intelligence on-device</div>
+        <div class="speed-detail">EG-1 or Apple, on-device</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0ms</div>
@@ -770,11 +770,11 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>
-        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using Apple Intelligence (macOS 15+) or Ollama with a local model. Cloud AI providers like OpenAI or Gemini are optional and require your own API key.</p>
+        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud AI providers like OpenAI or Gemini are optional and require your own API key.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Superwhisper have offline AI polish?</div>
-        <p class="faq-a">Superwhisper's transcription works offline via Whisper. However, their AI polish features (writing modes powered by GPT, Claude, Llama, etc.) appear to require cloud connectivity. Their website does not specify an offline AI polish option. EnviousWispr's Apple Intelligence and Ollama integrations run entirely on your Mac.</p>
+        <p class="faq-a">Superwhisper's transcription works offline via Whisper. However, their AI polish features (writing modes powered by GPT, Claude, Llama, etc.) appear to require cloud connectivity. Their website does not specify an offline AI polish option. EnviousWispr's EG-1, Apple Intelligence, and Ollama integrations run entirely on your Mac.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr really free?</div>
