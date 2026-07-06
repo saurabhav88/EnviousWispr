@@ -142,6 +142,11 @@ test("HEAD returns headers without body", async () => {
 
 // --- Range grid ---
 const range = (h) => req(`/${REPO}/resolve/main/${BIG}`, { headers: { range: h } });
+// Cloud review #1355: ignored/malformed range headers fall back to a full 200
+// body — assert those on the SMALL file so the stub never materializes the
+// 445MB encoder just to check a status code. Range MATH stays on BIG.
+const rangeSmall = (h) =>
+  req(`/${REPO}/resolve/main/${SMALL}`, { headers: { range: h } });
 
 test("bounded range: 206 with correct content-range and length", async () => {
   const r = await range("bytes=0-1023");
@@ -205,17 +210,17 @@ test("zero-suffix (bytes=-0): 416", async () => {
 });
 
 test("malformed range is ignored: full 200", async () => {
-  const r = await range("bytes=abc");
+  const r = await rangeSmall("bytes=abc");
   assert.equal(r.status, 200);
 });
 
 test("multi-range is ignored: full 200 (RFC-permitted)", async () => {
-  const r = await range("bytes=0-1,5-9");
+  const r = await rangeSmall("bytes=0-1,5-9");
   assert.equal(r.status, 200);
 });
 
 test("empty range value (bytes=-): ignored, full 200", async () => {
-  const r = await range("bytes=-");
+  const r = await rangeSmall("bytes=-");
   assert.equal(r.status, 200);
 });
 
