@@ -2,6 +2,7 @@
 title: "Structural Engineering for Small Language Models in On-Device Dictation Polishing"
 description: "We brought a roughly 3-billion-parameter on-device model to within six to eight points of frontier cloud models on a 300-case dictation-polishing benchmark. Here is the result and the engineering it took."
 pubDate: 2026-05-30
+updatedDate: 2026-07-06
 tags: ["on-device", "small-language-models", "apple-intelligence", "dictation", "benchmarks", "privacy"]
 author: "Saurabh Vaish"
 keywords: ["on-device dictation", "small language model polishing", "Apple Intelligence on-device model", "private speech to text", "on-device vs cloud language model"]
