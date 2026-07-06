@@ -23,9 +23,11 @@ public final class ModelDeliveryHome {
 
   /// Observable mirror of the Parakeet delivery state for SwiftUI renderers.
   public private(set) var parakeetState: DeliveryState = .notReady
-  /// Monotonic apply guard: MainActor hops can land out of order under load
-  /// (EG-1 `installStateSeqApplied` precedent).
-  private var stateSeq: UInt64 = 0
+  /// Monotonic apply guard (EG-1 `installStateSeqApplied` precedent, made
+  /// REAL per exhaustive r7 finding 7): the sequence is minted at observer-
+  /// receive time (controller actor, in publish order) and a MainActor hop
+  /// that lands out of order is dropped.
+  private var lastAppliedStateSeq: UInt64 = 0
   /// D3 base prop: whether NO admitted Parakeet cache existed at launch —
   /// computed once during observer wiring (before any warm-up can run) and
   /// flipped false on the first admission this session. Approximates "at
@@ -59,6 +61,7 @@ public final class ModelDeliveryHome {
   private func wireObservers(identity: ModelIdentity) {
     let home = self
     let registration = parakeetRegistration
+    let sequencer = StateSequencer()
     Task {
       if let registration {
         let admitted = await controller.isAdmitted(registration)
@@ -66,8 +69,12 @@ public final class ModelDeliveryHome {
       }
       await controller.addStateObserver { observedIdentity, state in
         guard observedIdentity == identity else { return }
+        // Mint the sequence HERE (publish order on the controller actor);
+        // apply on MainActor only if newer than the last applied.
+        let seq = sequencer.next()
         Task { @MainActor in
-          home.stateSeq &+= 1
+          guard seq > home.lastAppliedStateSeq else { return }
+          home.lastAppliedStateSeq = seq
           home.parakeetState = state
           if case .admitted = state { home.parakeetFirstRun = false }
         }
@@ -137,6 +144,9 @@ enum ModelDeliveryTelemetryBridge {
       "revision": identity.revision,
       "variant": identity.variant,
       "first_run": String(firstRun),
+      // D3 base prop; refined per event below (n/a where no source applies —
+      // exhaustive r7 finding 8).
+      "source_id": "n/a",
       "schema_version": "1",
     ]
     let name: String
@@ -151,11 +161,15 @@ enum ModelDeliveryTelemetryBridge {
       props["bytes_downloaded_bucket"] = bytesBucket
       props["sources_used"] = String(sourcesUsed)
       props["final_source_id"] = finalSourceID
+      props["source_id"] = finalSourceID
       props["repaired_components_count"] = String(repaired)
     case .attemptFailed(let reason, let failingSourceID, let detail):
       name = "attempt_failed"
       props["reason"] = reason.rawValue
-      if let failingSourceID { props["failing_source_id"] = failingSourceID }
+      if let failingSourceID {
+        props["failing_source_id"] = failingSourceID
+        props["source_id"] = failingSourceID
+      }
       if let detail { props["detail"] = detail }
     case .sourceFailover(let reason):
       name = "source_failover"
@@ -174,5 +188,19 @@ enum ModelDeliveryTelemetryBridge {
       props["value"] = value
     }
     TelemetryService.shared.modelDeliveryEvent(name: name, properties: props)
+  }
+}
+
+/// Lock-protected monotonic counter for the state observer's apply guard —
+/// minted on the controller actor's publish path, compared on MainActor.
+private final class StateSequencer: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value: UInt64 = 0
+
+  func next() -> UInt64 {
+    lock.withLock {
+      value &+= 1
+      return value
+    }
   }
 }

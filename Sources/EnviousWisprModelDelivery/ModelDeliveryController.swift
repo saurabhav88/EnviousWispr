@@ -199,11 +199,19 @@ public actor ModelDeliveryController {
     // Drain barrier: the attempt task finishes only after its URLSession
     // delegate delivered terminal completion and file handles closed —
     // signal-based, no timer (EG-1 #1287).
-    _ = await task.value
+    let outcome = await task.value
     // The generation bump above orphaned the attempt's own clearTask, so
     // release the ledger here — a cancelled download must not keep blocking
     // other identities' disk preflight (code-diff r5 P2).
     entries[identity]?.reservedBytes = 0
+    if case .admitted = outcome {
+      // Completion won the race (its terminal slice ran before our bump was
+      // observed): the cache IS admitted — no cancel event, no cancelled
+      // state (exhaustive r7 P1: one terminal event per attempt).
+      entries[identity]?.cancelLatched = false
+      setState(identity, .admitted)
+      return .nothingToCancel
+    }
     let resumable = hasStagedPartials(identity: identity)
     setState(identity, .cancelled(resumable: resumable))
     emit(identity, .cancel(phaseAtCancel: phaseAtCancel(identity: identity), resumable: resumable))
@@ -383,8 +391,16 @@ public actor ModelDeliveryController {
 
     do {
       let outcome = try await fetchTask.run()
-      try Task.checkCancellation()
-      setState(identity, .verifying, ifGeneration: generation)
+      // Terminal-winner gate (exhaustive r7 P1): from here through the
+      // completed emit there is NO await, so this is one synchronous actor
+      // slice — a racing cancel() either bumped the generation BEFORE this
+      // check (cancellation wins; no promote, no completed event) or runs
+      // AFTER the slice (completion won; cancel() sees .admitted and emits
+      // nothing). completed + cancel can never both fire for one attempt.
+      guard entries[identity]?.generation == generation, !Task.isCancelled else {
+        return finishCancelled(identity, generation: generation)
+      }
+      setState(identity, .verifying)
       try admission.promoteAndAdmit(
         stagedComponents: componentsToFetch, stagingDirectory: staging,
         untouchedComponents: validation.verifiedComponents)
@@ -402,7 +418,7 @@ public actor ModelDeliveryController {
           bytesDownloadedBucket: Self.bytesBucket(outcome.bytesDownloaded),
           sourcesUsed: outcome.sourcesUsed, finalSourceID: outcome.finalSourceID,
           repairedComponentsCount: repairedCount))
-      setState(identity, .admitted, ifGeneration: generation)
+      setState(identity, .admitted)
       try? FileManager.default.removeItem(at: staging)
       await AppLogger.shared.log(
         "Model delivery admitted \(identity.cacheKey)", level: .info, category: "Delivery")

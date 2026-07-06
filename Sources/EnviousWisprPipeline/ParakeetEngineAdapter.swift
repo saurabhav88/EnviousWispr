@@ -176,29 +176,37 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     }
 
     do {
-      try await asrManager.loadModel()
-    } catch is XPCASRTransportError {
-      // One-shot stale-helper retry, ANY mode (code-diff r3): a proxy-level
-      // error (incl. an old helper rejecting the new selector after an app
-      // update) already recycled the connection in the proxy's errorHandler;
-      // the retry connects to the freshly spawned helper from the current
-      // bundle. A second transport failure propagates as before.
-      try await asrManager.loadModel()
+      try await loadModelWithTransportRecovery()
     } catch let error where deliveryActive && !(error is ASRLoadSupersededError) {
       // One-shot load-miss repair (#1348 grounded r1 revision 7): a
       // cache-only load failure (raced deletion, missed corruption) gets ONE
       // revalidate/repair pass and ONE retry; a second failure is terminal.
       // Owner is THIS warm-up sequence (a local, not stored state) — callers
       // cannot duplicate it because warm-up is single-flighted upstream.
-      // deliveryActive guarantees the handle exists; a nil here would be a
-      // logic error, so fail the warm-up rather than crash.
+      // Composed AROUND the transport recovery (exhaustive r7 finding 6) so
+      // a stale-helper retry that then misses the cache still gets its
+      // repair pass. deliveryActive guarantees the handle exists; a nil here
+      // would be a logic error, so fail the warm-up rather than crash.
       guard let delivery, case .admitted = await delivery.repair() else { throw error }
-      try await asrManager.loadModel()
+      try await loadModelWithTransportRecovery()
     }
     // #959: a superseded load throws from `loadModel()`, but recheck readiness
     // anyway so any "returned but not actually loaded" path reports failure to
     // `ensureEngineWarm()` instead of a false "warm-up succeeded".
     guard asrManager.isModelLoaded else { throw ASRLoadSupersededError() }
+  }
+
+  /// One load with one-shot stale-helper recovery, ANY mode (code-diff r3):
+  /// a proxy-level error (incl. an old helper rejecting the new selector
+  /// after an app update) already recycled the connection in the proxy's
+  /// errorHandler; the retry connects to the freshly spawned helper. A
+  /// second transport failure propagates.
+  private func loadModelWithTransportRecovery() async throws {
+    do {
+      try await asrManager.loadModel()
+    } catch is XPCASRTransportError {
+      try await asrManager.loadModel()
+    }
   }
 
   /// Latest phase string observed by the in-flight `loadProgressTickReporter`,

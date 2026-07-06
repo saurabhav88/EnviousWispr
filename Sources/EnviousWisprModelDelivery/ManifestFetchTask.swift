@@ -68,27 +68,26 @@ struct ManifestFetchTask {
       // Per-file fetch with ordered failover. Failover is STICKY: once a
       // source is abandoned the remainder of the attempt stays on the next
       // source (D3: failover is inside one attempt; sources_used 1|2).
+      // LOCAL problems never blame the source: any outcome tainted by
+      // pre-existing staged bytes (complete-corrupt fast path, resumed-onto-
+      // corrupt-prefix hash fail, 416 on a stale range) gets ONE clean
+      // same-source retry after discarding the partial (r6 P2 + exhaustive
+      // r7 findings 1/2).
       var fetched = false
       var localRetryUsed = false
       while !fetched {
         let source = sources[sourceIndex]
         do {
-          let written = try await fetchOneFile(
+          let result = try await fetchOneFile(
             file, from: source, to: stagedURL,
             progressBase: completedBytes)
-          bytesDownloaded += written
+          bytesDownloaded += result.bytesReceived
 
           // Hash gate BEFORE this file counts (invariant 1).
           try Task.checkCancellation()
           guard await CacheAdmission.streamingSHA256(of: stagedURL) == file.sha256 else {
             discardPartial(at: stagedURL)
-            // A mismatch on bytes this run did NOT download (written == 0:
-            // the complete-partial fast path served a stale corrupt staged
-            // file) is a LOCAL staging problem, not the source's — discard
-            // and retry the SAME source once before any blame/failover
-            // (code-diff r6 P2). A mismatch on freshly downloaded bytes is
-            // a source problem and fails over as before.
-            if written == 0, !localRetryUsed {
+            if result.usedLocalBytes, !localRetryUsed {
               localRetryUsed = true
               continue
             }
@@ -100,6 +99,12 @@ struct ManifestFetchTask {
           completedBytes += file.sizeBytes
           onProgress(completedBytes, manifest.totalBytes)
         } catch let failure as DeliveryFailure where failure.reason != .cancelled {
+          if failure.detail == "http_416_local", !localRetryUsed {
+            // Stale-range 416: the partial is already discarded; one clean
+            // same-source retry from byte zero (exhaustive r7 finding 2).
+            localRetryUsed = true
+            continue
+          }
           if failure.detail?.hasPrefix("length_mismatch_html") == true {
             sawHTMLInterception = true
           }
@@ -129,10 +134,21 @@ struct ManifestFetchTask {
 
   // MARK: - One file
 
+  /// What one file-fetch did — the caller's self-heal policy needs to know
+  /// whether LOCAL bytes participated (exhaustive r7 findings 1/2: a hash
+  /// mismatch on a run that consumed a local partial is retried on the SAME
+  /// source after discarding, never blamed on the source first).
+  struct FileFetchResult {
+    let bytesReceived: Int64
+    /// True when pre-existing staged bytes fed the verify (complete-partial
+    /// fast path or a ranged resume).
+    let usedLocalBytes: Bool
+  }
+
   private func fetchOneFile(
     _ file: DeliveryManifest.File, from source: DeliveryManifest.Source, to stagedURL: URL,
     progressBase: Int64
-  ) async throws -> Int64 {
+  ) async throws -> FileFetchResult {
     let fm = FileManager.default
     let fileURL = source.baseURL.appendingPathComponent(file.path)
     let identityURL = resumeIdentityURL(for: file)
@@ -142,7 +158,9 @@ struct ManifestFetchTask {
     // A COMPLETE partial goes straight back to the caller's verify — a
     // `bytes=<size>-` request answers 416 and would strand retries (EG-1
     // Codex r1 P2; the checksum is the authority for a complete file).
-    if existingBytes == file.sizeBytes { return 0 }
+    if existingBytes == file.sizeBytes {
+      return FileFetchResult(bytesReceived: 0, usedLocalBytes: true)
+    }
 
     // Validate resume identity: if the remote object changed under the URL,
     // the partial is garbage — discard and restart (EG-1 semantics).
@@ -215,16 +233,20 @@ struct ManifestFetchTask {
     case .nonSuccessStatus:
       let status = outcome.response.statusCode
       if status == 416 {
-        // The ONE failure a retry can never heal on this partial: discard so
-        // the next try starts clean (EG-1 seam review).
+        // A 416 on a ranged resume is healed by discarding the partial and
+        // retrying the SAME source from byte zero (exhaustive r7 finding 2)
+        // — the caller's local-retry policy handles it via usedLocalBytes;
+        // discard here so the retry starts clean (EG-1 seam review).
         discardPartial(at: stagedURL)
+        throw DeliveryFailure(
+          reason: .source4xx, detail: "http_416_local", failingSourceID: source.id)
       }
       throw DeliveryFailure(
         reason: Self.classifyHTTPStatus(status), detail: "http_\(status)",
         failingSourceID: source.id)
     }
 
-    return outcome.bytesReceived
+    return FileFetchResult(bytesReceived: outcome.bytesReceived, usedLocalBytes: existingBytes > 0)
   }
 
   // MARK: - Helpers

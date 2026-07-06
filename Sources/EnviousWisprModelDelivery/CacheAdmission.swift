@@ -56,11 +56,20 @@ struct CacheAdmission {
       marker.manifestDigest == manifest.manifestDigest,
       marker.files.count == manifest.files.count
     else { return false }
+    // The MANIFEST is the truth for WHAT must exist and its size; the marker
+    // only contributes the admission-time mtime stamp. A corrupt marker with
+    // the right digest/count can never bless a different file set
+    // (exhaustive r7 finding 4).
+    let stampsByPath = Dictionary(
+      marker.files.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
     let fm = FileManager.default
-    for stamp in marker.files {
-      let url = installDirectory.appendingPathComponent(stamp.path)
+    for file in manifest.files {
+      guard let stamp = stampsByPath[file.path], stamp.sizeBytes == file.sizeBytes else {
+        return false
+      }
+      let url = installDirectory.appendingPathComponent(file.path)
       guard let attrs = try? fm.attributesOfItem(atPath: url.path),
-        (attrs[.size] as? Int64) == stamp.sizeBytes,
+        (attrs[.size] as? Int64) == file.sizeBytes,
         let mtime = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970,
         mtime == stamp.mtime
       else { return false }
@@ -134,9 +143,16 @@ struct CacheAdmission {
 
     // (3) Orphan cleanup: the manifest is the exhaustive truth for this repo
     // dir; unlisted entries are stale revisions' leftovers or foreign debris.
+    // A FAILED delete must block admission — writing the marker over a dir
+    // the manifest says is dirty would admit a state we could not produce
+    // (exhaustive r7 finding 5).
     if let entries = try? fm.contentsOfDirectory(atPath: installDirectory.path) {
       for entry in entries where !componentRoots.contains(entry) {
-        try? fm.removeItem(at: installDirectory.appendingPathComponent(entry))
+        do {
+          try fm.removeItem(at: installDirectory.appendingPathComponent(entry))
+        } catch {
+          throw DeliveryFailure(reason: .cacheRepairFailed, detail: "orphan_cleanup")
+        }
       }
     }
 
