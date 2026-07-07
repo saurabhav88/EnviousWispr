@@ -177,6 +177,17 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   /// Derived at startEnginePhase time from the same BT detection logic as CaptureRouteResolver.
   public private(set) var currentAudioRoute: String = "unknown"
 
+  /// App-side route resolver run at every capture (re)start so the proxy's
+  /// derived route carries the full reason, not just the coarse BT label
+  /// (#1376). `.automatic` policy — the proxy never uses the debug overrides.
+  private let routeResolver = CaptureRouteResolver()
+  /// The last app-side route decision — backs the changed-only `onRouteResolved`
+  /// fire and the derived `currentResolvedRoute`.
+  private var lastRouteDecision: CaptureRouteDecision?
+  /// The resolved-route transports observed for the current session (#1376).
+  /// Telemetry-only observation — nothing branches capture on it.
+  public private(set) var currentResolvedRoute: ResolvedRouteTransports?
+
   #if DEBUG
     /// V2 fault-injection seam (issue #291). When > 0, the next N captured
     /// buffers are silently dropped before reaching the continuation or
@@ -209,15 +220,31 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
   // MARK: - Core lifecycle
 
+  /// Run the full route resolver app-side and stash the derived route facts so
+  /// `currentAudioRoute` + `currentResolvedRoute` reflect the last actual start
+  /// (#1376). Called from every path that (re)starts capture. Replaces the
+  /// former coarse inline Bluetooth-output check; the coarse label is preserved
+  /// exactly via `CaptureRouteReason.coarseAudioRouteLabel`. Fires
+  /// `onRouteResolved` per the interface's changed-only contract.
+  private func deriveResolvedRoute() {
+    let decision = routeResolver.resolve(
+      preferredInputDeviceUID: preferredInputDeviceIDOverride,
+      noiseSuppression: noiseSuppressionEnabled
+    )
+    let prior = lastRouteDecision
+    lastRouteDecision = decision
+    currentAudioRoute = decision.reason.coarseAudioRouteLabel
+    currentResolvedRoute = ResolvedRouteTransports.derive(
+      decision: decision,
+      preferredInputDeviceIDOverride: preferredInputDeviceIDOverride,
+      selectedInputDeviceUID: selectedInputDeviceUID
+    )
+    guard CaptureRouteDecision.routeResolvedChanged(from: prior, to: decision) else { return }
+    onRouteResolved?(decision, prior.map { $0.sourceType != decision.sourceType } ?? false)
+  }
+
   public func startEnginePhase() async throws {
-    // Derive route label app-side (same BT check as CaptureRouteResolver).
-    if let outID = AudioDeviceEnumerator.defaultOutputDeviceID(),
-      AudioDeviceEnumerator.isBluetoothDevice(outID)
-    {
-      currentAudioRoute = "capture_session_bt"
-    } else {
-      currentAudioRoute = "built_in_mic"
-    }
+    deriveResolvedRoute()
 
     try await withStartRetry(stage: "start_engine") { operationID in
       try await self.awaitStartEnginePhaseReply(operationID: operationID)
@@ -261,6 +288,9 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     try await withStartRetry(
       stage: "begin_capture",
       prefix: {
+        // A retry re-sends start_engine on a fresh line — re-derive so the
+        // route reflects the actual (possibly changed) start (#1376).
+        self.deriveResolvedRoute()
         try await self.withAudioXPCOperationSignal(stage: "start_engine_retry_prefix") {
           operationID in
           try await self.awaitStartEnginePhaseReply(operationID: operationID)
@@ -338,7 +368,14 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
       formatMismatchObserved: false,
       inputDeviceUIDPreferred: preferredInputDeviceIDOverride.isEmpty
         ? nil : preferredInputDeviceIDOverride,
-      inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID()
+      inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+      selectedTransport: currentResolvedRoute?.selected,
+      effectiveTransport: currentResolvedRoute?.effective,
+      routeReason: currentResolvedRoute?.routeReason,
+      routeFallbackReason: currentResolvedRoute?.routeFallbackReason,
+      inputSelectionMode: currentResolvedRoute?.inputSelectionMode,
+      outputTransport: currentResolvedRoute?.outputTransport,
+      routeResolutionSource: currentResolvedRoute?.routeResolutionSource
     )
     onCaptureStalled?(ctx)
   }
@@ -441,15 +478,9 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   public func preWarm() async throws {
     let proxyStart = ContinuousClock.now
 
-    // Derive route label so Sentry telemetry is populated even when
-    // startEnginePhase() is skipped on the next recording (warm engine reuse).
-    if let outID = AudioDeviceEnumerator.defaultOutputDeviceID(),
-      AudioDeviceEnumerator.isBluetoothDevice(outID)
-    {
-      currentAudioRoute = "capture_session_bt"
-    } else {
-      currentAudioRoute = "built_in_mic"
-    }
+    // Derive the route so telemetry is populated even when startEnginePhase()
+    // is skipped on the next recording (warm engine reuse).
+    deriveResolvedRoute()
 
     acquireConnection()
     let connMs = Self.ms(ContinuousClock.now - proxyStart)

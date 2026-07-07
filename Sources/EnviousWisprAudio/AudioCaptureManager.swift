@@ -143,20 +143,30 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   /// Low-cardinality audio route label derived from the last route decision.
   public var currentAudioRoute: String {
-    guard let decision = lastRouteDecision else { return "unknown" }
-    switch decision.reason {
-    case .noBTAutoInput, .noBTUserSelectedDevice:
-      return "built_in_mic"
-    case .btOutputAutoInput, .btOutputUserSelectedBuiltIn,
-      .btOutputUserSelectedBTMic, .btOutputUserSelectedWired:
-      return "capture_session_bt"
-    case .forcedEngine, .fallbackToEngine:
-      return "audio_engine"
-    case .forcedCaptureSession:
-      return "capture_session"
-    case .failedNoFallback:
-      return "failed"
-    }
+    lastRouteDecision?.reason.coarseAudioRouteLabel ?? "unknown"
+  }
+
+  /// The resolved-route transports for the current session (#1376). FROZEN at
+  /// resolve time (mirrors the proxy) — NOT a computed property, so an in-flight
+  /// input-device setting change (which `PipelineSettingsSync` applies for the
+  /// NEXT recording while the current source keeps its old device) cannot make a
+  /// later failure-terminal telemetry read report the wrong transport. Nil
+  /// before the first resolution. Telemetry-only observation.
+  public private(set) var currentResolvedRoute: ResolvedRouteTransports?
+
+  /// Adopt a fresh route decision: freeze it plus its derived transports (using
+  /// the device selection that produced THIS decision), then fire
+  /// `onRouteResolved` changed-only. The single write path so `lastRouteDecision`
+  /// and `currentResolvedRoute` never disagree.
+  private func adoptRouteDecision(_ decision: CaptureRouteDecision, prior: CaptureRouteDecision?) {
+    lastRouteDecision = decision
+    currentResolvedRoute = ResolvedRouteTransports.derive(
+      decision: decision,
+      preferredInputDeviceIDOverride: preferredInputDeviceIDOverride,
+      selectedInputDeviceUID: selectedInputDeviceUID
+    )
+    guard CaptureRouteDecision.routeResolvedChanged(from: prior, to: decision) else { return }
+    onRouteResolved?(decision, prior.map { $0.sourceType != decision.sourceType } ?? false)
   }
 
   public init() {}
@@ -481,6 +491,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // Cancel any in-flight engine stop from a previous teardown.
     engineStopTask?.cancel()
     engineStopTask = nil
+    // Snapshot the prior decision for the changed-only `onRouteResolved` fire.
+    let priorRouteDecision = lastRouteDecision
 
     // If a source is already running (warm engine), check route compatibility
     if let existing = activeSource, existing.isRunning {
@@ -512,7 +524,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
       if configMatch {
         // Route and config unchanged, reuse warm source
-        lastRouteDecision = decision
+        adoptRouteDecision(decision, prior: priorRouteDecision)
         Self.btRouteLog("Reusing warm \(wantsEngine ? "engine" : "capture session") source")
         return existing
       }
@@ -527,7 +539,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       preferredInputDeviceUID: preferredInputDeviceIDOverride,
       noiseSuppression: noiseSuppressionEnabled
     )
-    lastRouteDecision = decision
+    adoptRouteDecision(decision, prior: priorRouteDecision)
 
     // Structured telemetry log
     Self.btRouteLog(

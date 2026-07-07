@@ -12,6 +12,12 @@ public protocol AudioCaptureInterface: AnyObject {
   var capturedSamples: [Float] { get }
   /// Low-cardinality audio route label for Sentry. Set after route resolution.
   var currentAudioRoute: String { get }
+  /// The resolved-route transports observed for the current session (selected
+  /// vs effective transport, route reason, input-selection mode, output
+  /// transport), derived from the resolver decision. `nil` before the first
+  /// route resolution. Telemetry-only observation — nothing branches capture on
+  /// it (#1376).
+  var currentResolvedRoute: ResolvedRouteTransports? { get }
 
   // Callback properties (read-write)
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)? { get set }

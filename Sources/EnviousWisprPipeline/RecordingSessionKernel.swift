@@ -355,6 +355,14 @@ final class RecordingSessionKernel {
   /// processing-time `e2eSeconds`. Never persisted to the transcript.
   private(set) var lastRecordingDurationSeconds: Double?
 
+  /// The resolved-route transports snapshotted at the `.recording` transition
+  /// (#1376): the selected vs effective microphone transport, route reason, and
+  /// input-selection mode this recording actually resolved. Read by the App
+  /// layer for `dictation.completed`. Snapshotted (not read live at emit) so a
+  /// mid-flight device change cannot tear the recorded value. Overwritten each
+  /// session; never persisted.
+  private(set) var lastResolvedRoute: ResolvedRouteTransports?
+
   /// `true` once the polish step returned a non-empty processed transcript —
   /// the kernel-era equivalent of the point at which the old pipeline called
   /// `asrManager.noteTranscriptionComplete(policy:)` (just after polish, before
@@ -912,6 +920,10 @@ final class RecordingSessionKernel {
     recordingStartedAtDate = Date()
     lastStopReason = nil  // #1060: clear prior session's stop reason.
     lastRecordingDurationSeconds = nil
+    // #1376: snapshot the resolved route AFTER all start retries (this
+    // transition is downstream of every startEnginePhase/beginCapturePhase
+    // path) so the recorded value reflects the FINAL resolved route.
+    lastResolvedRoute = audioCapture.currentResolvedRoute
     // Stamp visible-recording start for the #4 discard gate (PR-4.5 #4, §5b).
     // Set ONLY after the transition to .recording; pre-roll buffers fed
     // earlier do not count toward minimum-duration.
@@ -2357,6 +2369,7 @@ final class RecordingSessionKernel {
       rawSamples.count >= AudioConstants.minimumTranscriptionSamples
     else { return }
 
+    let resolvedRoute = audioCapture.currentResolvedRoute
     zombieZeroPeakTelemetry(
       ZeroPeakContext(
         sessionID: audioCapture.currentCaptureSessionID,
@@ -2367,7 +2380,14 @@ final class RecordingSessionKernel {
         captureSourceType: audioCapture.captureSourceType,
         inputDeviceUIDPreferred: audioCapture.preferredInputDeviceIDOverride.isEmpty
           ? nil : audioCapture.preferredInputDeviceIDOverride,
-        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID()
+        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+        selectedTransport: resolvedRoute?.selected,
+        effectiveTransport: resolvedRoute?.effective,
+        routeReason: resolvedRoute?.routeReason,
+        routeFallbackReason: resolvedRoute?.routeFallbackReason,
+        inputSelectionMode: resolvedRoute?.inputSelectionMode,
+        outputTransport: resolvedRoute?.outputTransport,
+        routeResolutionSource: resolvedRoute?.routeResolutionSource
       )
     )
   }

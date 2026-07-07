@@ -9,6 +9,7 @@ enum AudioCaptureFailureExtras {
     failureMode: String,
     backend: String? = nil
   ) -> [String: Any] {
+    let resolvedRoute = audioCapture.currentResolvedRoute
     var extras = SentryAudioExtras.buildCaptureExtras(
       route: audioCapture.currentAudioRoute,
       sourceType: audioCapture.captureSourceType,
@@ -17,7 +18,14 @@ enum AudioCaptureFailureExtras {
       inputDeviceUIDPreferred: audioCapture.preferredInputDeviceIDOverride.isEmpty
         ? nil : audioCapture.preferredInputDeviceIDOverride,
       inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
-      failureMode: failureMode
+      failureMode: failureMode,
+      selectedTransport: resolvedRoute?.selected,
+      effectiveTransport: resolvedRoute?.effective,
+      routeReason: resolvedRoute?.routeReason,
+      routeFallbackReason: resolvedRoute?.routeFallbackReason,
+      inputSelectionMode: resolvedRoute?.inputSelectionMode,
+      outputTransport: resolvedRoute?.outputTransport,
+      routeResolutionSource: resolvedRoute?.routeResolutionSource
     )
 
     if let source = (error as? AudioError)?.diagnosticSource {

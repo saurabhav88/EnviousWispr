@@ -601,6 +601,7 @@ final class KernelLifecycleTelemetrySink {
       let snapshotDurationMs = telemetryState.recordingSnapshot?.durationMs ?? 0
       let computedDurationMs = sampleCount * 1000 / Int(AudioConstants.sampleRate)
       let preferredID = audioCapture.preferredInputDeviceIDOverride
+      let resolvedRoute = audioCapture.currentResolvedRoute
       let ctx = NoAudioContext(
         sessionID: audioCapture.currentCaptureSessionID,
         durationMs: max(snapshotDurationMs, computedDurationMs),
@@ -609,7 +610,14 @@ final class KernelLifecycleTelemetrySink {
         isActivelyCapturing: audioCapture.isActivelyCapturing,
         captureSourceType: audioCapture.captureSourceType,
         inputDeviceUIDPreferred: preferredID.isEmpty ? nil : preferredID,
-        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID()
+        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+        selectedTransport: resolvedRoute?.selected,
+        effectiveTransport: resolvedRoute?.effective,
+        routeReason: resolvedRoute?.routeReason,
+        routeFallbackReason: resolvedRoute?.routeFallbackReason,
+        inputSelectionMode: resolvedRoute?.inputSelectionMode,
+        outputTransport: resolvedRoute?.outputTransport,
+        routeResolutionSource: resolvedRoute?.routeResolutionSource
       )
       if let noAudioCapturedRich {
         noAudioCapturedRich(ctx)

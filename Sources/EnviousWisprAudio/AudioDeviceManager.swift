@@ -157,9 +157,62 @@ public enum AudioDeviceEnumerator {
     return builtInMicrophoneDeviceID()
   }
 
+  // MARK: - Transport labels (#1376 single authority)
+
+  /// Maps a CoreAudio transport-type constant to the app's low-cardinality
+  /// transport string. Pure — the single authority for these labels, extracted
+  /// from `AudioEnvironmentSnapshotter.deviceTransport` so no second vocabulary
+  /// exists (#1376). Nil-preserving: a nil raw transport (property read failed)
+  /// yields nil so callers that emit only `if let` keep omitting their key.
+  public static func transportLabel(forTransportType raw: UInt32?) -> String? {
+    guard let raw else { return nil }
+    switch raw {
+    case kAudioDeviceTransportTypeBuiltIn:
+      return "built_in"
+    case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE:
+      return "bluetooth"
+    case kAudioDeviceTransportTypeUSB:
+      return "usb"
+    case kAudioDeviceTransportTypeAggregate:
+      return "aggregate"
+    case kAudioDeviceTransportTypeVirtual:
+      return "virtual"
+    case kAudioDeviceTransportTypeDisplayPort:
+      return "display_port"
+    case kAudioDeviceTransportTypeHDMI:
+      return "hdmi"
+    case kAudioDeviceTransportTypeAirPlay:
+      return "air_play"
+    case kAudioDeviceTransportTypePCI:
+      return "pci"
+    case kAudioDeviceTransportTypeFireWire:
+      return "fire_wire"
+    case kAudioDeviceTransportTypeThunderbolt:
+      return "thunderbolt"
+    default:
+      return "unknown"
+    }
+  }
+
+  /// Transport label for a device ID, or nil if the device transport is
+  /// unreadable (nil-preserving — see `transportLabel(forTransportType:)`).
+  public static func transportLabel(for deviceID: AudioDeviceID) -> String? {
+    transportLabel(forTransportType: transportTypeRaw(for: deviceID))
+  }
+
+  /// Transport label for an input-device UID, or nil if the UID resolves to no
+  /// currently-connected input device.
+  public static func transportLabel(forUID uid: String) -> String? {
+    guard let id = deviceID(forUID: uid) else { return nil }
+    return transportLabel(for: id)
+  }
+
   // MARK: - Private Helpers
 
-  static func transportType(for deviceID: AudioDeviceID) -> UInt32 {
+  /// Raw CoreAudio transport-type constant, or nil if the property read fails.
+  /// The single low-level read behind both `transportType(for:)` and
+  /// `transportLabel(for:)` (#1376).
+  static func transportTypeRaw(for deviceID: AudioDeviceID) -> UInt32? {
     var transport: UInt32 = 0
     var size = UInt32(MemoryLayout<UInt32>.size)
     var addr = AudioObjectPropertyAddress(
@@ -167,8 +220,13 @@ public enum AudioDeviceEnumerator {
       mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain
     )
-    AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &transport)
+    let status = AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &transport)
+    guard status == noErr else { return nil }
     return transport
+  }
+
+  static func transportType(for deviceID: AudioDeviceID) -> UInt32 {
+    transportTypeRaw(for: deviceID) ?? 0
   }
 
   private static func inputChannelCount(for deviceID: AudioDeviceID) -> Int {

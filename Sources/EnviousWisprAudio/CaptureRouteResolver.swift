@@ -29,6 +29,43 @@ public enum CaptureRouteReason: String, Sendable {
   case failedNoFallback
 }
 
+extension CaptureRouteReason {
+  /// The single authority mapping a route reason to the low-cardinality
+  /// `currentAudioRoute` label used by Sentry audio extras (#1376). Both the
+  /// in-process `AudioCaptureManager` and the app-side `AudioCaptureProxy`
+  /// derive their `currentAudioRoute` from this, so the coarse label is not
+  /// re-implemented per conformer.
+  public var coarseAudioRouteLabel: String {
+    switch self {
+    case .noBTAutoInput, .noBTUserSelectedDevice:
+      return "built_in_mic"
+    case .btOutputAutoInput, .btOutputUserSelectedBuiltIn,
+      .btOutputUserSelectedBTMic, .btOutputUserSelectedWired:
+      return "capture_session_bt"
+    case .forcedEngine, .fallbackToEngine:
+      return "audio_engine"
+    case .forcedCaptureSession:
+      return "capture_session"
+    case .failedNoFallback:
+      return "failed"
+    }
+  }
+}
+
+extension CaptureRouteDecision {
+  /// The changed-only predicate for the `onRouteResolved` producer (#1376):
+  /// fires on the first resolution (`prior == nil`) and thereafter only when
+  /// `reason` or `sourceType` differs from the prior decision. The single
+  /// authority both `AudioCaptureManager` and `AudioCaptureProxy` use so the
+  /// changed-only semantics are defined once.
+  public static func routeResolvedChanged(
+    from prior: CaptureRouteDecision?, to next: CaptureRouteDecision
+  ) -> Bool {
+    guard let prior else { return true }
+    return prior.reason != next.reason || prior.sourceType != next.sourceType
+  }
+}
+
 /// The result of route resolution — tells AudioCaptureManager which source to create and why.
 public struct CaptureRouteDecision: Sendable {
   public let sourceType: CaptureSourceType

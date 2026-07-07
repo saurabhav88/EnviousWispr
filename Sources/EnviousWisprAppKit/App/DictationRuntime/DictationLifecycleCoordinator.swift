@@ -414,12 +414,21 @@ final class DictationLifecycleCoordinator {
       },
       reportDictationCompleted: { [weak self] t in
         guard let self else { return }
+        let route = driver.lastResolvedRoute
         TelemetryService.shared.reportDictationCompleted(
           transcript: t, inputMode: self.settings.recordingMode.rawValue,
           recordingSeconds: driver.lastRecordingDurationSeconds,
           stopReason: driver.lastStopReason,
           historySaveStatus: driver.lastHistorySaved ? "succeeded" : "failed",  // #1167
-          historySaveErrorClass: driver.lastHistorySaveErrorClass)
+          historySaveErrorClass: driver.lastHistorySaveErrorClass,
+          // #1376: effective-device telemetry — which mic was selected vs used.
+          selectedTransport: route?.selected,
+          effectiveTransport: route?.effective,
+          routeReason: route?.routeReason,
+          routeFallbackReason: route?.routeFallbackReason,
+          inputSelectionMode: route?.inputSelectionMode,
+          outputTransport: route?.outputTransport,
+          routeResolutionSource: route?.routeResolutionSource)
       },
       reportPipelineFailed: { msg in
         TelemetryService.shared.pipelineFailed(

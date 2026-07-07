@@ -103,7 +103,14 @@ final class HeartPathTelemetryEmitter {
       inputDeviceUIDPreferred: ctx.inputDeviceUIDPreferred,
       inputDeviceUIDSystemDefault: ctx.inputDeviceUIDSystemDefault,
       failureMode: "stall_window_elapsed",
-      stallContext: ctx
+      stallContext: ctx,
+      selectedTransport: ctx.selectedTransport,
+      effectiveTransport: ctx.effectiveTransport,
+      routeReason: ctx.routeReason,
+      routeFallbackReason: ctx.routeFallbackReason,
+      inputSelectionMode: ctx.inputSelectionMode,
+      outputTransport: ctx.outputTransport,
+      routeResolutionSource: ctx.routeResolutionSource
     )
     captureError(
       HeartPathError.audioCaptureStalled(sessionID: ctx.sessionID, ctx: ctx),
@@ -197,7 +204,14 @@ final class HeartPathTelemetryEmitter {
         isActivelyCapturing: ctx.isActivelyCapturing,
         inputDeviceUIDPreferred: ctx.inputDeviceUIDPreferred,
         inputDeviceUIDSystemDefault: ctx.inputDeviceUIDSystemDefault,
-        failureMode: "no_audio_captured"
+        failureMode: "no_audio_captured",
+        selectedTransport: ctx.selectedTransport,
+        effectiveTransport: ctx.effectiveTransport,
+        routeReason: ctx.routeReason,
+        routeFallbackReason: ctx.routeFallbackReason,
+        inputSelectionMode: ctx.inputSelectionMode,
+        outputTransport: ctx.outputTransport,
+        routeResolutionSource: ctx.routeResolutionSource
       )
     )
   }
@@ -240,7 +254,14 @@ final class HeartPathTelemetryEmitter {
         failureMode: "zombie_engine_zero_peak",
         timeSinceLastSuccessfulRecordingMs:
           captureTelemetry.timeSinceLastSuccessfulRecordingMs(),
-        configChangeCountSinceLaunch: captureTelemetry.configurationChangeCount
+        configChangeCountSinceLaunch: captureTelemetry.configurationChangeCount,
+        selectedTransport: ctx.selectedTransport,
+        effectiveTransport: ctx.effectiveTransport,
+        routeReason: ctx.routeReason,
+        routeFallbackReason: ctx.routeFallbackReason,
+        inputSelectionMode: ctx.inputSelectionMode,
+        outputTransport: ctx.outputTransport,
+        routeResolutionSource: ctx.routeResolutionSource
       )
     )
     return true
