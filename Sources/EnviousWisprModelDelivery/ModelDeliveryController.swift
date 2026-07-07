@@ -101,6 +101,12 @@ public actor ModelDeliveryController {
   private struct Entry {
     var state: DeliveryState = .notReady
     var activeTask: Task<DeliveryOutcome, Never>?
+    /// Whether the in-flight `activeTask` will FETCH a missing/incomplete cache
+    /// (an explicit download door) vs. being a NO-FETCH probe (`admitIfComplete`,
+    /// the activation path). A fetch-wanting caller must never join a no-fetch
+    /// probe — the probe bails `not_present_no_fetch`, which would silently
+    /// no-op a user's Download click (cloud-review P2, PR #1363).
+    var activeTaskFetches = true
     var generation = 0
     /// Cancelled/superseded task possibly still draining its URLSession
     /// delegate queue; task completion IS the drain signal (EG-1 #1287).
@@ -200,11 +206,39 @@ public actor ModelDeliveryController {
   /// Single-flight JOIN: a second caller while one runs awaits the SAME
   /// task's outcome (D4 §2 — two windows, onboarding + cold-press).
   public func ensureModelAvailable(_ registration: DeliveryRegistration) async -> DeliveryOutcome {
+    await joinOrStartFetch(registration, trigger: nil)
+  }
+
+  /// Shared join logic for the two EXPLICIT-fetch doors (`ensureModelAvailable`,
+  /// `repair`). A fetch-wanting caller joins an in-flight FETCH attempt (true
+  /// single-flight), but must NEVER coalesce into an in-flight NO-FETCH probe
+  /// (`admitIfComplete`): for a missing/incomplete cache the probe bails with
+  /// `.notReady` / `.failed(not_present_no_fetch)`, so joining it would make a
+  /// user's explicit Download click silently no-op (cloud-review P2, PR #1363).
+  /// When only a probe is in flight, supersede it via the PROVEN cancel/drain
+  /// path — hand it to the drain slot and cancel it; `startAttempt` then bumps
+  /// the generation (so the probe self-cancels at its next generation check)
+  /// and the new fetch task awaits the probe's teardown before touching disk.
+  /// A second fetch caller in the same wave sees the fetch task installed
+  /// synchronously by `startAttempt` and joins it (no double-start, no spin).
+  private func joinOrStartFetch(
+    _ registration: DeliveryRegistration, trigger: DeliveryEvent.ValidationTrigger?
+  ) async -> DeliveryOutcome {
     let identity = registration.manifest.identity
-    if let active = entries[identity, default: Entry()].activeTask {
+    if let active = entries[identity, default: Entry()].activeTask,
+      entries[identity]?.activeTaskFetches == true
+    {
       return await active.value
     }
-    return await startAttempt(registration, trigger: nil)
+    if let probe = entries[identity]?.activeTask {
+      // No-fetch probe in flight (activeTaskFetches == false): supersede it.
+      // activeTask non-nil implies drainingTask nil (startAttempt nulls it when
+      // it installs the task), so this never clobbers a live drain.
+      entries[identity]?.drainingTask = probe
+      entries[identity]?.activeTask = nil
+      probe.cancel()
+    }
+    return await startAttempt(registration, trigger: trigger)
   }
 
   /// Adopt an already-complete cache WITHOUT fetching (the activation path,
@@ -233,11 +267,7 @@ public actor ModelDeliveryController {
   /// with forced revalidation semantics; emits `validation_repair` with
   /// trigger `load_miss` when components were repaired.
   public func repair(_ registration: DeliveryRegistration) async -> DeliveryOutcome {
-    let identity = registration.manifest.identity
-    if let active = entries[identity, default: Entry()].activeTask {
-      return await active.value
-    }
-    return await startAttempt(registration, trigger: .loadMiss)
+    await joinOrStartFetch(registration, trigger: .loadMiss)
   }
 
   /// Cooperative cancel (D4 §3): resolves only after the live attempt fully
@@ -323,6 +353,7 @@ public actor ModelDeliveryController {
     var entry = entries[identity, default: Entry()]
     entry.generation += 1
     entry.cancelLatched = false
+    entry.activeTaskFetches = fetchIfMissing
     let generation = entry.generation
     let drain = entry.drainingTask
     entry.drainingTask = nil

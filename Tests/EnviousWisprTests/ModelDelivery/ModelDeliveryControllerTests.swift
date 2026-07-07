@@ -297,6 +297,50 @@ import Testing
     #expect(Set(log.names) == ["failed:insufficient_disk"])
   }
 
+  @Test func explicitFetchNeverCoalescesIntoNoFetchProbe() async throws {
+    // Cloud-review P2 (#1363): the no-fetch activation probe (`admitIfComplete`)
+    // shares the single-flight `activeTask` slot. If a user's explicit Download
+    // (`ensureModelAvailable`) arrives while the probe is mid-validation, it must
+    // NOT join the probe and inherit its `not_present_no_fetch` bail — that would
+    // make the Download click silently no-op. Here the cache has a full-size but
+    // CORRUPT vocab file: validation hashes the (valid) encoder files first, so
+    // the probe is genuinely in flight during the join check.
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    try seedValidCache(registration)
+    // Correct size (7 bytes), wrong content → vocab.json hash-fails → its
+    // component needs a fetch (encoder components stay valid → hash suspensions).
+    let vocab = registration.installDirectory.appendingPathComponent("vocab.json")
+    try Data("{\"a\":9}".utf8).write(to: vocab)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    let log = EventLog()
+    await controller.addEventObserver { _, event in log.append(event) }
+
+    // Probe first; a yield lets it install its activeTask and enter validation
+    // (actor turn ordering, not a clock — mirrors reservationLedger below).
+    async let probe = controller.admitIfComplete(registration)
+    await Task.yield()
+    let explicit = await controller.ensureModelAvailable(registration)
+    let probeAdmitted = await probe
+
+    // The probe never fetches, so it cannot admit a cache that needs bytes.
+    #expect(!probeAdmitted, "no-fetch probe must not admit an incomplete cache")
+    // The explicit door attempted a real fetch (unreachable stubs → typed
+    // network failure), never the probe's no-fetch bail.
+    guard case .failed(let failure) = explicit else {
+      Issue.record("expected a fetch failure, got \(explicit)")
+      return
+    }
+    #expect(failure.reason == .sourceUnreachable || failure.reason == .unknown)
+    #expect(
+      failure.detail != "not_present_no_fetch",
+      "explicit Download must not inherit the probe's no-fetch bail")
+    #expect(
+      log.names.contains("started"),
+      "explicit Download reached fetch acceptance (did not coalesce into the probe)")
+    #expect(!(await controller.isAdmitted(registration)))
+  }
+
   @Test func reservationLedgerBlocksSecondTenant() async throws {
     // D4 §2 / drill 22 in miniature: disk fits ONE manifest set; the second
     // identity's preflight must fail CLEANLY (insufficient_disk, no started)
