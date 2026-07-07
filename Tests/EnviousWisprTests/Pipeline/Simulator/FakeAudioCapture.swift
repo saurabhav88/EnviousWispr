@@ -65,6 +65,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
   var audioLevel: Float { 0 }
   var capturedSamples: [Float] { accumulatedSamples }
   var currentAudioRoute: String { "fake" }
+  var currentResolvedRoute: ResolvedRouteTransports? { nil }
   private(set) var currentCaptureSessionID: UInt64 = 0
   var isActivelyCapturing: Bool { isCapturing }
   var captureSourceType: String { "av_audio_engine" }

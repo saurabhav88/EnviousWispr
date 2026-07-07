@@ -1,5 +1,6 @@
 import AppKit
 import CoreAudio
+import EnviousWisprAudio
 import EnviousWisprServices
 import Foundation
 
@@ -137,8 +138,10 @@ struct CoreAudioEnvironmentCollector: AudioEnvironmentCollecting {
       inputBundleIDs: inputBundles,
       outputBundleIDs: outputBundles,
       frontmostAppBundleID: frontmostAppBundleID,
-      inputDeviceTransport: inputDeviceID.flatMap(Self.deviceTransport),
-      outputDeviceTransport: outputDeviceID.flatMap(Self.deviceTransport),
+      inputDeviceTransport: inputDeviceID.flatMap { AudioDeviceEnumerator.transportLabel(for: $0) },
+      outputDeviceTransport: outputDeviceID.flatMap {
+        AudioDeviceEnumerator.transportLabel(for: $0)
+      },
       route: route,
       bluetoothOutputActive: outputDeviceID.map(Self.isBluetoothDevice) ?? false,
       deviceEventAt: deviceEventAt
@@ -183,36 +186,6 @@ struct CoreAudioEnvironmentCollector: AudioEnvironmentCollecting {
     let transport = deviceTransportRaw(deviceID)
     return transport == kAudioDeviceTransportTypeBluetooth
       || transport == kAudioDeviceTransportTypeBluetoothLE
-  }
-
-  private static func deviceTransport(_ deviceID: AudioDeviceID) -> String? {
-    guard let transport = deviceTransportRaw(deviceID) else { return nil }
-    switch transport {
-    case kAudioDeviceTransportTypeBuiltIn:
-      return "built_in"
-    case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE:
-      return "bluetooth"
-    case kAudioDeviceTransportTypeUSB:
-      return "usb"
-    case kAudioDeviceTransportTypeAggregate:
-      return "aggregate"
-    case kAudioDeviceTransportTypeVirtual:
-      return "virtual"
-    case kAudioDeviceTransportTypeDisplayPort:
-      return "display_port"
-    case kAudioDeviceTransportTypeHDMI:
-      return "hdmi"
-    case kAudioDeviceTransportTypeAirPlay:
-      return "air_play"
-    case kAudioDeviceTransportTypePCI:
-      return "pci"
-    case kAudioDeviceTransportTypeFireWire:
-      return "fire_wire"
-    case kAudioDeviceTransportTypeThunderbolt:
-      return "thunderbolt"
-    default:
-      return "unknown"
-    }
   }
 
   private static func deviceTransportRaw(_ deviceID: AudioDeviceID) -> UInt32? {

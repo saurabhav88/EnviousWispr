@@ -17,6 +17,16 @@ public struct CaptureStallContext: Sendable {
   public let formatMismatchObserved: Bool
   public let inputDeviceUIDPreferred: String?
   public let inputDeviceUIDSystemDefault: String?
+  // #1376: resolved-route transports, populated where the resolver decision is
+  // available (the XPC proxy stall path). The direct-source stall paths leave
+  // these nil. Low-cardinality transport/reason strings; no PII.
+  public let selectedTransport: String?
+  public let effectiveTransport: String?
+  public let routeReason: String?
+  public let routeFallbackReason: String?
+  public let inputSelectionMode: String?
+  public let outputTransport: String?
+  public let routeResolutionSource: String?
 
   public init(
     sessionID: UInt64,
@@ -28,7 +38,14 @@ public struct CaptureStallContext: Sendable {
     tapInstalled: Bool,
     formatMismatchObserved: Bool,
     inputDeviceUIDPreferred: String?,
-    inputDeviceUIDSystemDefault: String?
+    inputDeviceUIDSystemDefault: String?,
+    selectedTransport: String? = nil,
+    effectiveTransport: String? = nil,
+    routeReason: String? = nil,
+    routeFallbackReason: String? = nil,
+    inputSelectionMode: String? = nil,
+    outputTransport: String? = nil,
+    routeResolutionSource: String? = nil
   ) {
     self.sessionID = sessionID
     self.armedAtUptimeNs = armedAtUptimeNs
@@ -40,6 +57,13 @@ public struct CaptureStallContext: Sendable {
     self.formatMismatchObserved = formatMismatchObserved
     self.inputDeviceUIDPreferred = inputDeviceUIDPreferred
     self.inputDeviceUIDSystemDefault = inputDeviceUIDSystemDefault
+    self.selectedTransport = selectedTransport
+    self.effectiveTransport = effectiveTransport
+    self.routeReason = routeReason
+    self.routeFallbackReason = routeFallbackReason
+    self.inputSelectionMode = inputSelectionMode
+    self.outputTransport = outputTransport
+    self.routeResolutionSource = routeResolutionSource
   }
 }
 

@@ -67,17 +67,28 @@ public final class TelemetryService {
   public func reportDictationCompleted(
     transcript t: Transcript, inputMode: String,
     recordingSeconds: Double? = nil, stopReason: String? = nil,
-    historySaveStatus: String? = nil, historySaveErrorClass: String? = nil
+    historySaveStatus: String? = nil, historySaveErrorClass: String? = nil,
+    selectedTransport: String? = nil, effectiveTransport: String? = nil,
+    routeReason: String? = nil, routeFallbackReason: String? = nil,
+    inputSelectionMode: String? = nil, outputTransport: String? = nil,
+    routeResolutionSource: String? = nil
   ) {
     #if DEBUG
+      var hookStringProps: [String: String] = [
+        "input_mode": inputMode,
+        "asr_backend": t.backendType.rawValue,
+      ]
+      // #1376: mirror the emitted route keys' presence-only semantics so the
+      // App → Telemetry threading is unit-testable.
+      if let st = selectedTransport { hookStringProps["selected_transport"] = st }
+      if let et = effectiveTransport { hookStringProps["effective_transport"] = et }
+      if let rr = routeReason { hookStringProps["route_reason"] = rr }
+      if let rfr = routeFallbackReason { hookStringProps["route_fallback_reason"] = rfr }
+      if let ism = inputSelectionMode { hookStringProps["input_selection_mode"] = ism }
+      if let ot = outputTransport { hookStringProps["output_transport"] = ot }
+      if let rrs = routeResolutionSource { hookStringProps["route_resolution_source"] = rrs }
       testEventHook?(
-        CapturedTelemetryEvent(
-          name: "dictation.completed",
-          stringProps: [
-            "input_mode": inputMode,
-            "asr_backend": t.backendType.rawValue,
-          ]
-        ))
+        CapturedTelemetryEvent(name: "dictation.completed", stringProps: hookStringProps))
     #endif
     let m = t.metrics
     dictationCompleted(
@@ -106,7 +117,14 @@ public final class TelemetryService {
       recordingSeconds: recordingSeconds,
       stopReason: stopReason,
       historySaveStatus: historySaveStatus,
-      historySaveErrorClass: historySaveErrorClass
+      historySaveErrorClass: historySaveErrorClass,
+      selectedTransport: selectedTransport,
+      effectiveTransport: effectiveTransport,
+      routeReason: routeReason,
+      routeFallbackReason: routeFallbackReason,
+      inputSelectionMode: inputSelectionMode,
+      outputTransport: outputTransport,
+      routeResolutionSource: routeResolutionSource
     )
     if let e2e = m?.e2eSeconds {
       metricPipelineE2E(
@@ -418,7 +436,11 @@ public final class TelemetryService {
     emojiInInput: Int? = nil, emojiDropped: Int? = nil, emojiRestored: Int? = nil,
     emojiRestoreIncomplete: Bool? = nil, emojiLatencyMs: Double? = nil,
     recordingSeconds: Double? = nil, stopReason: String? = nil,
-    historySaveStatus: String? = nil, historySaveErrorClass: String? = nil
+    historySaveStatus: String? = nil, historySaveErrorClass: String? = nil,
+    selectedTransport: String? = nil, effectiveTransport: String? = nil,
+    routeReason: String? = nil, routeFallbackReason: String? = nil,
+    inputSelectionMode: String? = nil, outputTransport: String? = nil,
+    routeResolutionSource: String? = nil
   ) {
     var props: [String: Any] = [
       "result": result,
@@ -457,6 +479,17 @@ public final class TelemetryService {
     // The top-line success metric is "completed AND history_save_status != failed".
     if let hss = historySaveStatus { props["history_save_status"] = hss }
     if let hec = historySaveErrorClass { props["history_save_error_class"] = hec }
+    // #1376: effective-device telemetry — which mic was selected vs actually
+    // used, plus route reason + selection mode + output transport. Metadata only
+    // (low-cardinality transport/reason strings, `telemetry-privacy-boundary`).
+    // Query by presence; older app builds simply omit these keys.
+    if let st = selectedTransport { props["selected_transport"] = st }
+    if let et = effectiveTransport { props["effective_transport"] = et }
+    if let rr = routeReason { props["route_reason"] = rr }
+    if let rfr = routeFallbackReason { props["route_fallback_reason"] = rfr }
+    if let ism = inputSelectionMode { props["input_selection_mode"] = ism }
+    if let ot = outputTransport { props["output_transport"] = ot }
+    if let rrs = routeResolutionSource { props["route_resolution_source"] = rrs }
     PostHogSDK.shared.capture("dictation.completed", properties: props)
   }
 

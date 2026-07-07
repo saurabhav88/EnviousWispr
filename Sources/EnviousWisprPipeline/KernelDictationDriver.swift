@@ -746,6 +746,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// kernel; never persisted. Reason strings only, never user content.
   public var lastStopReason: String? { kernel.lastStopReason }
   public var lastRecordingDurationSeconds: Double? { kernel.lastRecordingDurationSeconds }
+  /// #1376: the resolved-route transports for the most recent recording, for
+  /// the App layer's `dictation.completed` telemetry. LIVE pass-through from the
+  /// kernel; never persisted. Low-cardinality transport/reason strings only.
+  public var lastResolvedRoute: ResolvedRouteTransports? { kernel.lastResolvedRoute }
 
   // MARK: Caller-facing event + overlay surface
 

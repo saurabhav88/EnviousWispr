@@ -22,7 +22,14 @@ public enum SentryAudioExtras {
     stallContext: CaptureStallContext? = nil,
     polishModelSwapMs: Int? = nil,
     timeSinceLastSuccessfulRecordingMs: Int? = nil,
-    configChangeCountSinceLaunch: Int? = nil
+    configChangeCountSinceLaunch: Int? = nil,
+    selectedTransport: String? = nil,
+    effectiveTransport: String? = nil,
+    routeReason: String? = nil,
+    routeFallbackReason: String? = nil,
+    inputSelectionMode: String? = nil,
+    outputTransport: String? = nil,
+    routeResolutionSource: String? = nil
   ) -> [String: Any] {
     var extras: [String: Any] = [
       "capture.source_type": sourceType,
@@ -65,6 +72,19 @@ public enum SentryAudioExtras {
     if let count = configChangeCountSinceLaunch {
       extras["capture.config_change_count_since_launch"] = count
     }
+
+    // #1376: effective-device route context on capture-error events. Absent
+    // params → keys omitted (mirrors the optional-extras pattern above). Low-
+    // cardinality transport/reason strings only (`telemetry-privacy-boundary`);
+    // `capture.effective_transport` is the app-derived value, NOT a helper-bound
+    // "actual started" transport (that name is reserved for Phase 3).
+    if let st = selectedTransport { extras["capture.selected_transport"] = st }
+    if let et = effectiveTransport { extras["capture.effective_transport"] = et }
+    if let rr = routeReason { extras["capture.route_reason"] = rr }
+    if let rfr = routeFallbackReason { extras["capture.route_fallback_reason"] = rfr }
+    if let ism = inputSelectionMode { extras["capture.input_selection_mode"] = ism }
+    if let ot = outputTransport { extras["capture.output_transport"] = ot }
+    if let rrs = routeResolutionSource { extras["capture.route_resolution_source"] = rrs }
 
     return extras
   }

@@ -441,6 +441,7 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
   var audioLevel: Float = 0
   var capturedSamples: [Float] = []
   var currentAudioRoute: String = "synthetic-fixture"
+  var currentResolvedRoute: ResolvedRouteTransports? = nil
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
   var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?

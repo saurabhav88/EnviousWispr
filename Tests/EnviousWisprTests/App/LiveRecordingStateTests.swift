@@ -147,6 +147,7 @@ private final class SettableAudioCapture: AudioCaptureInterface {
   var audioLevel: Float = 0
   var capturedSamples: [Float] = []
   var currentAudioRoute: String = "built_in_mic"
+  var currentResolvedRoute: ResolvedRouteTransports? = nil
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
   var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?
@@ -198,6 +199,7 @@ private final class ObservableAudioCapture: AudioCaptureInterface {
   var audioLevel: Float = 0
   var capturedSamples: [Float] = []
   var currentAudioRoute: String = "built_in_mic"
+  var currentResolvedRoute: ResolvedRouteTransports? = nil
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
   var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?

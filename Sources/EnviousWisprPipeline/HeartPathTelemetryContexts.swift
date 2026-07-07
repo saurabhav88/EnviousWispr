@@ -14,6 +14,15 @@ struct NoAudioContext: Sendable {
   let captureSourceType: String
   let inputDeviceUIDPreferred: String?
   let inputDeviceUIDSystemDefault: String?
+  // #1376: resolved-route transports so the "app-derived effective=built_in +
+  // empty transcript" join (CO4) is queryable on the no-audio terminal.
+  var selectedTransport: String? = nil
+  var effectiveTransport: String? = nil
+  var routeReason: String? = nil
+  var routeFallbackReason: String? = nil
+  var inputSelectionMode: String? = nil
+  var outputTransport: String? = nil
+  var routeResolutionSource: String? = nil
 }
 
 /// Per-call context for `HeartPathTelemetryEmitter.zombieZeroPeakIfNeeded(...)`.
@@ -30,4 +39,13 @@ struct ZeroPeakContext: Sendable {
   let captureSourceType: String
   let inputDeviceUIDPreferred: String?
   let inputDeviceUIDSystemDefault: String?
+  // #1376: resolved-route transports so a zero-peak (silent) terminal carries
+  // the same route context as the success + no-audio events (CO4).
+  var selectedTransport: String? = nil
+  var effectiveTransport: String? = nil
+  var routeReason: String? = nil
+  var routeFallbackReason: String? = nil
+  var inputSelectionMode: String? = nil
+  var outputTransport: String? = nil
+  var routeResolutionSource: String? = nil
 }
