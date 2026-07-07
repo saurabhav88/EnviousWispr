@@ -244,9 +244,11 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   }
 
   public func startEnginePhase() async throws {
-    deriveResolvedRoute()
-
     try await withStartRetry(stage: "start_engine") { operationID in
+      // Derive INSIDE the operation so it re-runs on the retry (a fresh
+      // connection resends start_engine using current device/output state) —
+      // a device/output change between attempts is otherwise lost (#1387).
+      self.deriveResolvedRoute()
       try await self.awaitStartEnginePhaseReply(operationID: operationID)
     }
   }
@@ -478,16 +480,16 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   public func preWarm() async throws {
     let proxyStart = ContinuousClock.now
 
-    // Derive the route so telemetry is populated even when startEnginePhase()
-    // is skipped on the next recording (warm engine reuse).
-    deriveResolvedRoute()
-
     acquireConnection()
     let connMs = Self.ms(ContinuousClock.now - proxyStart)
     // Phase 1: start engine
     let enginePhaseStart = ContinuousClock.now
     do {
       try await withStartRetry(stage: "start_engine_prewarm") { operationID in
+        // Derive INSIDE the operation (re-runs on the retry) so telemetry is
+        // populated even when startEnginePhase() is skipped on the next
+        // recording (warm reuse), and reflects each attempt's state (#1387).
+        self.deriveResolvedRoute()
         try await self.awaitStartEnginePhaseReply(operationID: operationID)
       }
     } catch {
