@@ -12,7 +12,7 @@
 #   EnviousWisprPipeline   -> Core, ASR, Audio, LLM, PostProcessing, Services, Storage
 #   EnviousWisprASR        -> Core, Audio
 #   EnviousWisprServices   -> Core, ObservabilityCore
-#   EnviousWisprLLM        -> Core
+#   EnviousWisprLLM        -> Core, ModelDelivery
 #   EnviousWisprAudio      -> Core
 #   EnviousWisprPostProcessing -> Core
 #   EnviousWisprContacts   -> Core (Contacts-framework shim; #636, App-layer-scoped leaf)
@@ -35,7 +35,7 @@ permitted_imports_for() {
     EnviousWisprPostProcessing)    echo "EnviousWisprCore" ;;
     EnviousWisprContacts)          echo "EnviousWisprCore" ;;
     EnviousWisprStorage)           echo "EnviousWisprCore" ;;
-    EnviousWisprLLM)               echo "EnviousWisprCore" ;;
+    EnviousWisprLLM)               echo "EnviousWisprCore EnviousWisprModelDelivery" ;;
     EnviousWisprModelDelivery)     echo "EnviousWisprCore" ;;
     EnviousWisprServices)          echo "EnviousWisprCore EnviousWisprObservabilityCore" ;;
     EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;

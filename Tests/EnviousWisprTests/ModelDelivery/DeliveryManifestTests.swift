@@ -7,9 +7,10 @@ import Testing
 // MARK: - Fixture support
 
 /// Builds a structurally-valid schema-v1 manifest JSON with a CORRECT
-/// canonical digest, mirroring `scripts/validate-delivery-manifest.py`'s
-/// canonicalization (sorted keys, compact separators). Fixture files carry
-/// REAL SHA-256s of their content so admission tests can verify end to end.
+/// canonical digest using the same canonicalization the Swift loader recomputes
+/// (sorted keys, compact separators — there is no Python authoring tool).
+/// Fixture files carry REAL SHA-256s of their content so admission tests can
+/// verify end to end.
 enum ManifestFixture {
   static func sha256(_ data: Data) -> String {
     SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()

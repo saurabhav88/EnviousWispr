@@ -50,7 +50,7 @@ struct ProviderStatus: Equatable {
 enum ProviderStatusMapping {
   static func status(
     for provider: LLMProvider,
-    egOneInstall: EGOneModelStore.InstallState,
+    egOneInstall: EGOneInstallState,
     egOneHealth: EGOneHealth,
     appleStatus: AIAvailabilityStatus?,
     cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState,
@@ -75,7 +75,7 @@ enum ProviderStatusMapping {
   // inline `egOneStatusContent` switch (installState first, health inside the
   // `.installed` case). So the chip and the inline row read the same authority.
   private static func egOne(
-    install: EGOneModelStore.InstallState, health: EGOneHealth
+    install: EGOneInstallState, health: EGOneHealth
   ) -> ProviderStatus {
     switch install {
     case .notInstalled:

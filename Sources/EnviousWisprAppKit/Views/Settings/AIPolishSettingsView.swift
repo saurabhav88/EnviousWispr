@@ -1084,7 +1084,7 @@ struct AIPolishSettingsView: View {
     }
   }
 
-  private func egOneFailureCopy(_ failure: EGOneModelStore.EGOneDownloadFailure) -> String {
+  private func egOneFailureCopy(_ failure: EGOneDownloadFailure) -> String {
     switch failure {
     case .network:
       return "Could not download the model from models.enviouslabs.co. "

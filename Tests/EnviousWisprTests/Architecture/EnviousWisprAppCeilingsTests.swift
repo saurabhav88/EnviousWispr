@@ -295,14 +295,24 @@ import Testing
   /// model-delivery layer; all logic lives in the home/bridge, not here.
   /// Cap by the deterministic rule (post-change actual 943 + ~2, rounded up
   /// to nearest 5 = 945).
+  /// Ratcheted 945→980 in #1348 Phase 3 (2026-07-06, EG-1 delivery
+  /// convergence): the composition root now builds the EG-1 delivery adapter
+  /// over the shared controller — loads the bundled EG-1 delivery manifest,
+  /// constructs the `DeliveryRegistration` (install dir + metadata dir), wires
+  /// `EGOneDeliveryAdapter`, seeds the first-run telemetry baseline, and
+  /// injects the adapter into `EGOneRuntime` (construction-order fix so the
+  /// adapter exists before launch activation). Real wiring for the converged
+  /// limb; all logic lives in the adapter/runtime, not here. Cap by the
+  /// deterministic rule (post-change actual 976 + ~2, rounded up to nearest
+  /// 5 = 980).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 945,
+      lineCount <= 980,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 945. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 980. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }
@@ -325,9 +335,15 @@ import Testing
   @Test func envWisprAppImportsCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
+    // #1348 Phase 3 added EnviousWisprModelDelivery: the composition root now
+    // constructs the EG-1 delivery adapter over the shared controller (loads
+    // the bundled delivery manifest, builds the DeliveryRegistration). A
+    // composition root importing the leaf it composes is correct; the
+    // anti-coupling intent is held by the zero-behavior ceiling.
     let allowed: Set<String> = [
       "SwiftUI", "EnviousWisprCore", "EnviousWisprServices", "EnviousWisprStorage",
       "EnviousWisprASR", "EnviousWisprAudio", "EnviousWisprLLM", "EnviousWisprPipeline",
+      "EnviousWisprModelDelivery",
     ]
     let actual = parseImports(in: source)
     let unexpected = actual.subtracting(allowed)

@@ -1,42 +1,46 @@
 import EnviousWisprCore
+import EnviousWisprModelDelivery
 import Foundation
 import Observation
 import os
 
 /// Narrow seam the dictation pipeline reads at polish time. The pipeline
-/// never sees the store/manager internals — only "is there a ready
+/// never sees the delivery/manager internals — only "is there a ready
 /// endpoint right now" (fast, never boots or blocks).
 @MainActor
 public protocol EGOneEndpointProviding: AnyObject {
   func activeEndpoint() async -> EGOneEndpoint?
 }
 
-/// Observable lifecycle events the AppKit layer forwards to telemetry
-/// (#1271). Emission lives ABOVE this module because the LLM module cannot
-/// import Services (`TelemetryService`); the composition root wires the
-/// observer.
+/// Observable lifecycle events the AppKit layer forwards to telemetry.
+///
+/// #1348 Phase 3: EG-1's DOWNLOAD lifecycle telemetry now flows through the
+/// shared delivery engine (`model_delivery.*` with `family=eg1`), so the old
+/// `downloadStarted/Completed/Failed` cases are gone. Only server HEALTH
+/// remains here — it is a runtime probe result with no delivery equivalent.
+/// Transition-only (debounced by construction — fired from a state didSet,
+/// identical states never re-fire).
 public enum EGOneRuntimeEvent: Sendable, Equatable {
-  case downloadStarted(resumed: Bool)
-  case downloadCompleted(durationBucket: String)
-  case downloadFailed(reason: String)
-  /// Transition-only (debounced by construction — fired from a state
-  /// didSet, identical states never re-fire).
   case healthChanged(from: String, to: String, reason: String?)
 }
 
-/// Single owner of the EG-1 model store and inference server (#1271):
-/// exposes their state to the pipeline (endpoint) and the settings UI
-/// (install/health/progress). Constructed ONCE by `WisprBootstrapper` —
-/// a shared runtime consumed by both layers belongs at the composition
-/// root (`state-ownership.md` shared-infra-homes rule), never inside a
-/// settings-setup service.
+/// Single owner of the EG-1 inference server and its delivery adapter (#1271,
+/// #1348 Phase 3): exposes their state to the pipeline (endpoint) and the
+/// settings UI (install/health/progress). Constructed ONCE by
+/// `WisprBootstrapper` — a shared runtime consumed by both layers belongs at
+/// the composition root (`state-ownership.md` shared-infra-homes rule).
+///
+/// The model bytes move through the shared `EnviousWisprModelDelivery` engine
+/// via `EGOneDeliveryAdapter` (a limb: a delivery failure degrades polish to
+/// raw text, never blocks dictation). This runtime keeps orchestrating install
+/// state, health, and server activation; only the byte-moving relocated.
 @Observable
 @MainActor
 public final class EGOneRuntime: EGOneEndpointProviding {
 
   // MARK: - Published state (settings UI reads these)
 
-  public private(set) var installState: EGOneModelStore.InstallState = .notInstalled
+  public private(set) var installState: EGOneInstallState = .notInstalled
   public private(set) var health: EGOneHealth = .red(reason: "not_running") {
     didSet {
       guard
@@ -73,61 +77,43 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   private var removalPending = false
 
   public let manifest: EGOneManifest?
-  private let store: EGOneModelStore?
+  private let delivery: EGOneDeliveryAdapter?
   private let server: EGOneServerManager
   private let serverBinaryURL: URL?
-  private var downloadStartedAt: ContinuousClock.Instant?
 
   // MARK: - Init
 
-  /// Production init: loads the bundled manifest; a missing/corrupt bundled
-  /// manifest is a RED state, never a crash (limb).
-  public convenience init() {
-    let manifest = try? EGOneManifest.loadBundled()
-    self.init(
-      manifest: manifest,
-      serverBinaryURL: Bundle.main.url(forResource: "llama-server", withExtension: nil)
-    )
-  }
-
-  public init(manifest: EGOneManifest?, serverBinaryURL: URL?, storeDirectory: URL? = nil) {
+  /// Production init: the composition root builds the shared delivery adapter
+  /// (over the one `ModelDeliveryController`) and injects it FIRST, so the
+  /// adapter exists before launch activation calls it (#1348 §Decision A
+  /// construction-order fix). A nil adapter (bundled-manifest load failure)
+  /// is a RED limb state, never a crash.
+  public init(manifest: EGOneManifest?, serverBinaryURL: URL?, delivery: EGOneDeliveryAdapter?) {
     self.manifest = manifest
     self.serverBinaryURL = serverBinaryURL
+    self.delivery = delivery
     self.server = EGOneServerManager()
     if let manifest {
-      self.store = EGOneModelStore(manifest: manifest, directory: storeDirectory)
       self.activationBlockers = manifest.activationBlockers()
     } else {
-      self.store = nil
       self.activationBlockers = ["manifest_missing"]
     }
     wireObservers()
   }
 
-  /// Last applied observer sequence numbers (#1271 enumeration pass): the
-  /// MainActor hops below are unstructured Tasks with NO ordering guarantee,
-  /// so two rapid transitions could apply in reverse and leave the UI on a
-  /// stale state. Sequence numbers are assigned on the emitting actor
-  /// (serialized by construction); an out-of-order older hop is dropped.
-  private var installStateSeqApplied = 0
+  /// Last applied server-observer sequence number (#1271 enumeration pass):
+  /// the MainActor hops below are unstructured Tasks with NO ordering
+  /// guarantee. The install-state stream is ordered by the adapter itself; the
+  /// server stream is guarded here.
   private var serverStateSeqApplied = 0
 
   private func wireObservers() {
-    Task { [weak self] in
-      guard let self, let store = self.store else { return }
-      let seq = OSAllocatedUnfairLock(initialState: 0)
-      await store.setStateObserver { [weak self] state in
-        let mySeq = seq.withLock {
-          $0 += 1
-          return $0
-        }
-        Task { @MainActor [weak self] in
-          guard let self, mySeq > self.installStateSeqApplied else { return }
-          self.installStateSeqApplied = mySeq
-          self.applyInstallState(state)
-        }
-      }
-      await store.refreshInstalledState()
+    // Install-state stream from the shared delivery engine, mapped to the
+    // EG-1 UI vocabulary and ORDERED by the adapter (it mints the sequence on
+    // the controller actor and replays the current state on registration — so
+    // this also seeds the initial UI state; no separate refresh needed).
+    delivery?.observeInstallState { [weak self] state in
+      self?.applyInstallState(state)
     }
     Task { [weak self] in
       guard let self else { return }
@@ -146,40 +132,17 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     }
   }
 
-  private func applyInstallState(_ state: EGOneModelStore.InstallState) {
+  private func applyInstallState(_ state: EGOneInstallState) {
+    // Pure UI projection: the install-state stream drives the settings row and
+    // health only. Server activation is triggered by EXPLICIT actions — launch
+    // (`startIfActiveProvider`), provider switch, settings-open, and a
+    // completed user download (`startDownload`) — never reactively from this
+    // stream. Reactively re-activating here would loop: an in-flight
+    // activation's own `ensureAvailable()` republishes `.admitted` → `.installed`
+    // while the server is still `.stopped` (grounded r2 P1).
     installState = state
-    switch state {
-    case .installed:
-      // Only a genuine download completion may emit telemetry or
-      // auto-activate — `refreshInstalledState()` re-emits `.installed` on
-      // every refresh, and an unconditional activate loops forever (r4 P1).
-      // Completion is keyed off the REQUEST flag, not off the previous
-      // observed state: the MainActor observer hops drop out-of-order older
-      // updates (enumeration pass), so `.installed` can legitimately arrive
-      // with no `.downloading` ever applied (Codex r17).
-      if downloadCompletionPending {
-        downloadCompletionPending = false
-        let bucket = Self.durationBucket(since: downloadStartedAt)
-        onEvent?(.downloadCompleted(durationBucket: bucket))
-        // Download finished while EG-1 is the selected provider → bring the
-        // server up now, not at next relaunch (#1271 Codex r2).
-        if isActiveProvider?() == true {
-          activateAndProbe()
-        }
-      }
-    case .failed(let failure):
-      downloadCompletionPending = false
-      onEvent?(.downloadFailed(reason: failure.rawValue))
-    case .notInstalled, .downloading, .verifying:
-      break
-    }
     recomputeHealth()
   }
-
-  /// Set when the store ACCEPTS a download request; consumed by the first
-  /// `.installed` apply (completion telemetry + auto-activate) and cleared
-  /// by any terminal failure. Ordering-immune by construction.
-  private var downloadCompletionPending = false
 
   private var serverState: EGOneServerManager.ServerState = .stopped
   private func applyServerState(_ state: EGOneServerManager.ServerState) {
@@ -215,43 +178,31 @@ public final class EGOneRuntime: EGOneEndpointProviding {
 
   // MARK: - UI actions
 
-  /// True while a start request is between the tap and the store observing
-  /// `.downloading` — a double-tap in that window must not double-emit the
-  /// funnel event or re-stamp the duration clock (#1271 Codex r13).
-  private var downloadRequestInFlight = false
-
+  /// Start (or resume) the EG-1 download. Idempotent by construction: the
+  /// shared controller single-flights per identity, so a double-tap joins the
+  /// same attempt. Download telemetry (`attempt_started/completed`) flows
+  /// through the shared engine now, not from here.
   public func startDownload() {
-    guard let store else { return }
-    // Only states a download can genuinely BEGIN from. `.verifying` and
-    // `.installed` matter too: the store would no-op those, but falling
-    // through here would still re-stamp `downloadStartedAt` and emit a
-    // spurious downloadStarted event, corrupting the duration bucket a
-    // moments-later `.installed` reports (#1271 seam review).
+    guard let delivery else { return }
     switch installState {
     case .notInstalled, .failed: break
     case .downloading, .verifying, .installed: return
     }
-    guard !downloadRequestInFlight else { return }
-    downloadRequestInFlight = true
-    downloadStartedAt = ContinuousClock.now
     Task {
-      // Resume truth lives on disk behind the store actor — read it before
-      // emitting, or the telemetry hardcodes resumed=false (#1271 matrix
-      // gap 4). The funnel event fires only when the store ACCEPTS the
-      // start (enumeration pass: a rejected start — stub URL, racing task —
-      // must not count as a started download).
-      let resumed = await store.hasPartialDownload
-      if await store.startDownload() {
-        self.downloadCompletionPending = true
-        self.onEvent?(.downloadStarted(resumed: resumed))
+      let outcome = await delivery.ensureAvailable()
+      // A user-initiated download that completes while EG-1 is the selected
+      // provider boots the server now, not at next relaunch (#1271 Codex r2).
+      // Explicit here (not reactive from the state stream) so it fires exactly
+      // once per completed download.
+      if case .admitted = outcome, isActiveProvider?() == true {
+        activateAndProbe()
       }
-      self.downloadRequestInFlight = false
     }
   }
 
   public func cancelDownload() {
-    guard let store else { return }
-    Task { await store.cancelDownload() }
+    guard let delivery else { return }
+    Task { await delivery.cancel() }
   }
 
   /// Delete the model. Caller (settings) owns reverting the provider.
@@ -259,7 +210,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// terminal pipeline transition retries via `retryPendingRemoval()`
   /// (#1271 matrix gap 3; same defer shape as switch-away deactivation).
   public func removeModel() {
-    guard let store else { return }
+    guard let delivery else { return }
     if isPinnedInFlight?() == true {
       removalPending = true
       return
@@ -268,7 +219,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     activationGeneration += 1
     Task {
       await self.server.stop()
-      try? await store.removeModel()
+      _ = await delivery.remove()
     }
   }
 
@@ -288,8 +239,11 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// probe when settings opens mid-start (#1271 Codex r6).
   private var activationGeneration = 0
 
-  /// Full activation-probe pass: ensure server running, then run the real
-  /// inference probe. Called on provider activation and on settings-open.
+  /// Full activation-probe pass: ensure the model is delivered + server
+  /// running, then run the real inference probe. Called on provider
+  /// activation and on settings-open. Safe to call concurrently: server start
+  /// is idempotent (no-ops if starting/ready) and the last probe wins (#1271
+  /// Codex r6); the generation token handles switch-away.
   public func activateAndProbe() {
     // Choosing EG-1 cancels any deferred removal FIRST, even if activation
     // itself then bails on a blocker — otherwise remove-during-recording
@@ -308,18 +262,16 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       // First hop back onto the main actor: a switch-to-then-away that beat
       // this task bumped the generation — do not start the server.
       guard generation == self.activationGeneration else { return }
-      await self.startServerIfInstalled()
+      await self.startServerIfInstalled(generation: generation)
       // A deactivate DURING the start already stopped the server (the
       // manager's mid-start guards handle that); just don't probe or stamp
       // health for a stale generation.
       guard generation == self.activationGeneration else { return }
       guard let family = manifest.promptFamily else { return }
       let result = await self.server.probeHealth(promptFamily: family)
-      await MainActor.run {
-        // Probe verdict wins over the cheap projection while server is ready.
-        guard generation == self.activationGeneration else { return }
-        if case .ready = self.serverState { self.health = result }
-      }
+      // Probe verdict wins over the cheap projection while server is ready.
+      guard generation == self.activationGeneration else { return }
+      if case .ready = self.serverState { self.health = result }
     }
   }
 
@@ -358,18 +310,47 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     server.terminateImmediately()
   }
 
-  private func startServerIfInstalled() async {
-    guard let manifest, let store, let serverBinaryURL else { return }
-    await store.refreshInstalledState()
-    guard case .installed = await store.state else {
-      // No model = no spawn = no in-spawn sweep; reap orphans here
-      // (idle-gated on the server actor) (#1271 r11).
-      await server.reapOrphansIfIdle(binaryPath: serverBinaryURL.path)
+  /// Adopt-if-present THEN boot (#1348 §16.4, refined grounded r4 P2): a legacy
+  /// byte-correct `.gguf` has NO shared admission marker until it is validated
+  /// + admitted in place, so a pure marker check would never boot an existing
+  /// user's EG-1 on the first launch of this build — `adoptIfPresent()` does
+  /// that in-place admission. Crucially it NEVER fetches: activation (launch /
+  /// provider-switch / settings-open) must not start a multi-GB download behind
+  /// the user's back — only the explicit Download button (`startDownload`)
+  /// fetches. Delivery may continue after a provider switch-away, but the boot
+  /// is generation-gated.
+  private func startServerIfInstalled(generation: Int) async {
+    guard let manifest, let delivery, serverBinaryURL != nil else { return }
+    let admitted = await delivery.adoptIfPresent()
+    guard generation == self.activationGeneration else { return }
+    guard admitted else {
+      // Not installed (or incomplete): no server, no download. The install-
+      // state stream settles at "not installed" (Download button). Reap any
+      // crash orphan (idle-gated).
+      if let path = serverBinaryURL?.path {
+        await server.reapOrphansIfIdle(binaryPath: path)
+      }
       return
     }
+    await bootServer(manifest: manifest, delivery: delivery)
+    // #1348 §16.5: the controller reported `.admitted` but the server has no
+    // usable endpoint (file missing/unreadable/rejected after admission — a
+    // stale marker or post-admission mutation). Run ONE repair pass + ONE
+    // retry; a second failure is terminal (limb-red + raw fallback).
+    if await server.activeEndpoint() == nil {
+      guard generation == self.activationGeneration else { return }
+      guard case .admitted = await delivery.repair() else { return }
+      guard generation == self.activationGeneration else { return }
+      await bootServer(manifest: manifest, delivery: delivery)
+    }
+  }
+
+  private func bootServer(manifest: EGOneManifest, delivery: EGOneDeliveryAdapter) async {
+    guard let serverBinaryURL else { return }
     let configuration = EGOneServerManager.Configuration(
       serverBinaryURL: serverBinaryURL,
-      modelURL: await store.installedArtifactURL,
+      // The verified admitted location (install dir + resolved install path).
+      modelURL: delivery.installedArtifactURL,
       contextTokens: manifest.contextTokens,
       // Measured 2026-07-02 (M4 Pro, real EG-1 v1 GGUF): flash-attention +
       // q8 KV cache at 16384 context = 4.1 GB RSS vs 7.4 GB at the naive
@@ -404,17 +385,6 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     switch health {
     case .green: return nil
     case .yellow(let reason), .red(let reason): return reason
-    }
-  }
-
-  static func durationBucket(since start: ContinuousClock.Instant?) -> String {
-    guard let start else { return "unknown" }
-    let seconds = (ContinuousClock.now - start) / .seconds(1)
-    switch seconds {
-    case ..<60: return "under_1m"
-    case ..<300: return "1m_5m"
-    case ..<1200: return "5m_20m"
-    default: return "over_20m"
     }
   }
 }

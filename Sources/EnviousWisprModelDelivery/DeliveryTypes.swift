@@ -76,6 +76,25 @@ public enum DeliveryEvent: Sendable, Equatable {
   case validationRepair(componentsCount: Int, trigger: ValidationTrigger)
   case cancel(phaseAtCancel: String, resumable: Bool)
   case flagActive(flag: String, value: String)
+  /// A model became available WITHOUT a fetch (D6 rows 11/16 fast paths).
+  /// `attemptCompleted` only fires after a real fetch+verify+promote, so
+  /// without this the two no-fetch admission paths — a warm relaunch's marker
+  /// fast path and the first-launch in-place adoption of an existing file —
+  /// are invisible in the field, and "delivery success" would exclude exactly
+  /// the cache-hit/adoption successes (#1363 Decision E). Deduped once per
+  /// identity per process per reason so warm reopen/reselect/retry can't
+  /// inflate an availability signal into an attempt count (16.3).
+  case admittedWithoutFetch(reason: AdmissionReason)
+
+  /// Why a model was available without fetching.
+  public enum AdmissionReason: String, Sendable {
+    /// A valid admission marker already existed (warm relaunch).
+    case markerFastPath = "marker_fast_path"
+    /// An unmarked but byte-correct existing file was verified + adopted in
+    /// place (first launch of a build on an existing install — the #1363 EG-1
+    /// migration case).
+    case adoptedInPlace = "adopted_in_place"
+  }
 
   /// D3 `validation_repair.trigger` values (`load_miss` added by the Phase 2
   /// grounded review — the adapter's one-shot repair after a cache-only load

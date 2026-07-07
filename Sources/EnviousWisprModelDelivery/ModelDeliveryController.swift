@@ -92,9 +92,21 @@ public actor ModelDeliveryController {
     case cancelled(resumable: Bool)
   }
 
+  /// Terminal outcome of `remove` (#1363 §16.1).
+  public enum RemoveOutcome: Sendable, Equatable {
+    case removed
+    case failed(DeliveryFailure)
+  }
+
   private struct Entry {
     var state: DeliveryState = .notReady
     var activeTask: Task<DeliveryOutcome, Never>?
+    /// Whether the in-flight `activeTask` will FETCH a missing/incomplete cache
+    /// (an explicit download door) vs. being a NO-FETCH probe (`admitIfComplete`,
+    /// the activation path). A fetch-wanting caller must never join a no-fetch
+    /// probe — the probe bails `not_present_no_fetch`, which would silently
+    /// no-op a user's Download click (cloud-review P2, PR #1363).
+    var activeTaskFetches = true
     var generation = 0
     /// Cancelled/superseded task possibly still draining its URLSession
     /// delegate queue; task completion IS the drain signal (EG-1 #1287).
@@ -118,6 +130,11 @@ public actor ModelDeliveryController {
   /// Events emitted before the first event observer attaches (see
   /// `addEventObserver` — the launch-window race). Bounded in `emit`.
   private var pendingEvents: [(ModelIdentity, DeliveryEvent)] = []
+  /// `admittedWithoutFetch` dedupe (#1363 §16.3): once per identity per reason
+  /// per process, keyed `cacheKey|reason`. Warm reopen / provider-reselect /
+  /// retry all re-hit the fast path — without this they would inflate an
+  /// availability signal into an attempt count. Process-scoped by design.
+  private var admittedWithoutFetchSeen: Set<String> = []
   private let defaults: UserDefaults
   /// Test seam for disk capacity (production reads the volume).
   private let availableDiskBytes: @Sendable (URL) -> Int64?
@@ -189,22 +206,68 @@ public actor ModelDeliveryController {
   /// Single-flight JOIN: a second caller while one runs awaits the SAME
   /// task's outcome (D4 §2 — two windows, onboarding + cold-press).
   public func ensureModelAvailable(_ registration: DeliveryRegistration) async -> DeliveryOutcome {
+    await joinOrStartFetch(registration, trigger: nil)
+  }
+
+  /// Shared join logic for the two EXPLICIT-fetch doors (`ensureModelAvailable`,
+  /// `repair`). A fetch-wanting caller joins an in-flight FETCH attempt (true
+  /// single-flight), but must NEVER coalesce into an in-flight NO-FETCH probe
+  /// (`admitIfComplete`): for a missing/incomplete cache the probe bails with
+  /// `.notReady` / `.failed(not_present_no_fetch)`, so joining it would make a
+  /// user's explicit Download click silently no-op (cloud-review P2, PR #1363).
+  /// When only a probe is in flight, supersede it via the PROVEN cancel/drain
+  /// path — hand it to the drain slot and cancel it; `startAttempt` then bumps
+  /// the generation (so the probe self-cancels at its next generation check)
+  /// and the new fetch task awaits the probe's teardown before touching disk.
+  /// A second fetch caller in the same wave sees the fetch task installed
+  /// synchronously by `startAttempt` and joins it (no double-start, no spin).
+  private func joinOrStartFetch(
+    _ registration: DeliveryRegistration, trigger: DeliveryEvent.ValidationTrigger?
+  ) async -> DeliveryOutcome {
     let identity = registration.manifest.identity
-    if let active = entries[identity, default: Entry()].activeTask {
+    if let active = entries[identity, default: Entry()].activeTask,
+      entries[identity]?.activeTaskFetches == true
+    {
       return await active.value
     }
-    return await startAttempt(registration, trigger: nil)
+    if let probe = entries[identity]?.activeTask {
+      // No-fetch probe in flight (activeTaskFetches == false): supersede it.
+      // activeTask non-nil implies drainingTask nil (startAttempt nulls it when
+      // it installs the task), so this never clobbers a live drain.
+      entries[identity]?.drainingTask = probe
+      entries[identity]?.activeTask = nil
+      probe.cancel()
+    }
+    return await startAttempt(registration, trigger: trigger)
+  }
+
+  /// Adopt an already-complete cache WITHOUT fetching (the activation path,
+  /// grounded r4 P2): marker fast path, or validate + admit-in-place if every
+  /// component is already present and valid. Returns `true` when the cache is
+  /// now admitted; `false` when a fetch would be required — in which case
+  /// NOTHING is fetched and NO failure event fires (the state settles at
+  /// `.notReady`, i.e. "not installed"). This is what a backend adapter calls
+  /// on launch / provider-switch / settings-open so those paths never start a
+  /// multi-GB download behind the user's back; the EXPLICIT download door is
+  /// `ensureModelAvailable`. Joins an in-flight fetch if one is already running
+  /// (a user-initiated download in progress legitimately admits it).
+  public func admitIfComplete(_ registration: DeliveryRegistration) async -> Bool {
+    let identity = registration.manifest.identity
+    if let active = entries[identity, default: Entry()].activeTask {
+      if case .admitted = await active.value { return true }
+      return false
+    }
+    if case .admitted = await startAttempt(registration, trigger: nil, fetchIfMissing: false) {
+      return true
+    }
+    return false
   }
 
   /// The load-miss repair path (grounded r1 revision 7): identical pipeline
   /// with forced revalidation semantics; emits `validation_repair` with
   /// trigger `load_miss` when components were repaired.
   public func repair(_ registration: DeliveryRegistration) async -> DeliveryOutcome {
-    let identity = registration.manifest.identity
-    if let active = entries[identity, default: Entry()].activeTask {
-      return await active.value
-    }
-    return await startAttempt(registration, trigger: .loadMiss)
+    await joinOrStartFetch(registration, trigger: .loadMiss)
   }
 
   /// Cooperative cancel (D4 §3): resolves only after the live attempt fully
@@ -242,15 +305,55 @@ public actor ModelDeliveryController {
     return .cancelled(resumable: resumable)
   }
 
+  /// Evict a model (#1363 §16.1): cancel + drain any live attempt, delete the
+  /// admission marker FIRST (after which nothing reports admitted), remove the
+  /// manifest's component roots from the install dir, clear staging, then set
+  /// `.notReady`. File-deletion authority stays in the layer that owns the
+  /// marker + orphan rules (this actor + `CacheAdmission`), never a backend
+  /// adapter. Generic — Parakeet has no first-class evict either; EG-1's
+  /// adapter calls it after stopping its server.
+  public func remove(_ registration: DeliveryRegistration) async -> RemoveOutcome {
+    let identity = registration.manifest.identity
+    // Drain any live attempt first (reuses the cancel drain barrier); a
+    // nothing-in-flight cancel is a no-op.
+    _ = await cancel(identity)
+    let admission = admission(for: registration)
+    let fm = FileManager.default
+    do {
+      // (1) Marker first: the admission truth. After this isAdmitted() is false.
+      if fm.fileExists(atPath: admission.markerURL.path) {
+        try fm.removeItem(at: admission.markerURL)
+      }
+      // (2) The model files: every top-level install root the manifest claims.
+      for root in CacheAdmission.componentRoots(of: registration.manifest) {
+        let url = registration.installDirectory.appendingPathComponent(root)
+        if fm.fileExists(atPath: url.path) { try fm.removeItem(at: url) }
+      }
+      // (3) Staging for this identity (any resumable partials).
+      let staging = stagingDirectory(for: registration)
+      if fm.fileExists(atPath: staging.path) { try fm.removeItem(at: staging) }
+    } catch {
+      let failure = DeliveryFailure(reason: .cacheRepairFailed, detail: "remove")
+      setState(identity, .failed(failure))
+      return .failed(failure)
+    }
+    setState(identity, .notReady)
+    await AppLogger.shared.log(
+      "Model delivery removed \(identity.cacheKey)", level: .info, category: "Delivery")
+    return .removed
+  }
+
   // MARK: - Attempt lifecycle
 
   private func startAttempt(
-    _ registration: DeliveryRegistration, trigger: DeliveryEvent.ValidationTrigger?
+    _ registration: DeliveryRegistration, trigger: DeliveryEvent.ValidationTrigger?,
+    fetchIfMissing: Bool = true
   ) async -> DeliveryOutcome {
     let identity = registration.manifest.identity
     var entry = entries[identity, default: Entry()]
     entry.generation += 1
     entry.cancelLatched = false
+    entry.activeTaskFetches = fetchIfMissing
     let generation = entry.generation
     let drain = entry.drainingTask
     entry.drainingTask = nil
@@ -259,7 +362,8 @@ public actor ModelDeliveryController {
     let task = Task<DeliveryOutcome, Never> { [weak self] in
       if let drain { _ = await drain.value }
       guard let self else { return .failed(DeliveryFailure(reason: .unknown, detail: "gone")) }
-      return await self.runAttempt(registration, generation: generation, trigger: trigger)
+      return await self.runAttempt(
+        registration, generation: generation, trigger: trigger, fetchIfMissing: fetchIfMissing)
     }
     entries[identity]?.activeTask = task
     let outcome = await task.value
@@ -276,7 +380,7 @@ public actor ModelDeliveryController {
 
   private func runAttempt(
     _ registration: DeliveryRegistration, generation: Int,
-    trigger: DeliveryEvent.ValidationTrigger?
+    trigger: DeliveryEvent.ValidationTrigger?, fetchIfMissing: Bool = true
   ) async -> DeliveryOutcome {
     let identity = registration.manifest.identity
     let manifest = registration.manifest
@@ -297,8 +401,16 @@ public actor ModelDeliveryController {
 
     let admission = admission(for: registration)
 
-    // Marker fast path: admitted and not forced → done, silently (D7 row 11).
+    // Marker fast path: admitted and not forced → done, no fetch (D7 row 11).
+    // Emit the deduped availability signal (#1363 Decision E) so a warm
+    // relaunch's cache hit is not invisible in the field.
     if !forceRevalidate, admission.isAdmitted() {
+      // Emit BEFORE publishing `.admitted` (grounded r3 P2): an app-layer
+      // observer flips its per-identity first_run baseline to false on
+      // `.admitted`, so the availability event must be captured with the
+      // pre-admission baseline. Enqueuing the event observer's work before the
+      // state observer's preserves first_run=true for a genuine first run.
+      emitAdmittedWithoutFetch(identity, reason: .markerFastPath)
       setState(identity, .admitted, ifGeneration: generation)
       return .admitted
     }
@@ -337,8 +449,25 @@ public actor ModelDeliveryController {
         let failure = DeliveryFailure(reason: .cacheRepairFailed, detail: "admit_in_place")
         return await finishFailed(identity, failure, generation: generation)
       }
+      // No fetch happened (existing file adopted in place — the #1363 EG-1
+      // migration path). Emit the deduped availability signal so this success
+      // is not invisible; it is distinct from `attemptCompleted` (Decision E).
+      // Emit BEFORE `.admitted` (grounded r3 P2) so a migration adoption is
+      // captured with first_run=true — the app-layer observer flips the
+      // baseline false on `.admitted`.
+      emitAdmittedWithoutFetch(identity, reason: .adoptedInPlace)
       setState(identity, .admitted, ifGeneration: generation)
       return .admitted
+    }
+
+    // No-fetch adopt path (grounded r4 P2): components are missing/incomplete
+    // and the caller (activation / settings-open) forbids an implicit fetch.
+    // Settle at `.notReady` (→ "not installed", the Download button) with NO
+    // fetch and NO failure event — a fresh download is the user's explicit
+    // choice via `ensureModelAvailable`, never a side effect of selecting EG-1.
+    if !fetchIfMissing {
+      setState(identity, .notReady, ifGeneration: generation)
+      return .failed(DeliveryFailure(reason: .unknown, detail: "not_present_no_fetch"))
     }
 
     // Repair prep: failed components leave the install dir before re-fetch.
@@ -544,6 +673,17 @@ public actor ModelDeliveryController {
     for observer in stateObservers { observer(identity, state) }
   }
 
+  /// Emit `admittedWithoutFetch` at most once per identity per reason per
+  /// process (#1363 §16.3). Called only from no-await slices (both no-fetch
+  /// admission points), so no generation gate is needed here.
+  private func emitAdmittedWithoutFetch(
+    _ identity: ModelIdentity, reason: DeliveryEvent.AdmissionReason
+  ) {
+    let key = "\(identity.cacheKey)|\(reason.rawValue)"
+    guard admittedWithoutFetchSeen.insert(key).inserted else { return }
+    emit(identity, .admittedWithoutFetch(reason: reason))
+  }
+
   private func emit(_ identity: ModelIdentity, _ event: DeliveryEvent) {
     guard !eventObservers.isEmpty else {
       // Pre-attach buffer (drained by the first `addEventObserver`). Bounded:
@@ -592,7 +732,8 @@ public actor ModelDeliveryController {
   private func stagedByteCount(of files: [DeliveryManifest.File], in staging: URL) -> Int64 {
     let fm = FileManager.default
     return files.reduce(Int64(0)) { sum, file in
-      let path = staging.appendingPathComponent(file.path).path
+      // Staged files live under the resolved install path (contract §4b).
+      let path = staging.appendingPathComponent(file.resolvedInstallPath).path
       let size = ((try? fm.attributesOfItem(atPath: path)[.size] as? Int64) ?? nil) ?? 0
       return sum + min(size, file.sizeBytes)
     }

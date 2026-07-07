@@ -2,6 +2,7 @@ import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprModelDelivery
 import EnviousWisprPipeline
 import EnviousWisprServices
 import EnviousWisprStorage
@@ -143,10 +144,47 @@ public final class WisprBootstrapper {
     // `state-ownership.md` shared-infra-homes-not-feature-services.)
     let pasteCompletionRegistry = PasteCompletionRegistry()
 
-    // #1271 — EG-1 native runtime: shared-infra home, threaded into both
-    // kernel drivers + crash recovery. Launch-start below so dictation never
-    // depends on settings opening; `isActiveProvider` is a LIVE read (r2).
-    let egOneRuntime = EGOneRuntime()
+    // #1348 Phase 2/3 — owned model delivery. Constructed BEFORE EG-1 so the
+    // EG-1 adapter receives the ONE shared `ModelDeliveryController` (#1348
+    // §Decision A construction-order fix: the adapter must exist before launch
+    // activation calls it). A failed bundled-manifest load leaves the Parakeet
+    // handle nil (legacy path), unit-tested can't-happen.
+    let modelDelivery = ModelDeliveryHome()
+
+    // #1271/#1348 Phase 3 — EG-1 native runtime: the model bytes now move
+    // through the shared delivery engine via `EGOneDeliveryAdapter` (a limb —
+    // a delivery failure degrades polish to raw text, never blocks dictation).
+    // Shared-infra home, threaded into both kernel drivers + crash recovery.
+    // Launch-start below so dictation never depends on settings opening;
+    // `isActiveProvider` is a LIVE read (r2). The runtime keeps the EGOne
+    // manifest (contextTokens / promptFamily / activation blockers); the
+    // adapter owns the delivery manifest (fetch/install/content identity).
+    let egOneManifest = try? EGOneManifest.loadBundled()
+    let egOneServerBinaryURL = Bundle.main.url(forResource: "llama-server", withExtension: nil)
+    var egOneAdapter: EGOneDeliveryAdapter?
+    if let deliveryManifest = try? DeliveryManifest.loadBundled(resource: "eg1-delivery-manifest") {
+      let appSupport = FileManager.default.urls(
+        for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      let registration = DeliveryRegistration(
+        manifest: deliveryManifest,
+        // The existing user's install dir — unchanged, so a byte-correct file
+        // is adopted in place with zero re-download (#1348 Decision C/F).
+        installDirectory: appSupport.appendingPathComponent(
+          "EnviousWispr/PolishModels", isDirectory: true),
+        metadataDirectory: appSupport.appendingPathComponent(
+          "EnviousWispr/ModelDelivery", isDirectory: true))
+      egOneAdapter = EGOneDeliveryAdapter(
+        controller: modelDelivery.controller,
+        registration: registration,
+        version: egOneManifest?.version ?? deliveryManifest.identity.revision)
+      // Seed EG-1's first-run telemetry baseline before its first attempt
+      // (#1348 §16.2). Session-granularity approximation (same async-Task shape
+      // as Parakeet's own baseline); a rare early event stamps first_run=false.
+      let delivery = modelDelivery
+      Task { await delivery.recordFirstRunBaseline(for: registration) }
+    }
+    let egOneRuntime = EGOneRuntime(
+      manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter)
     egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
     egOneRuntime.onEvent = EGOneTelemetryBridge.handler
     // Exactly one path sweeps orphans — a detached sweep alongside a spawn
@@ -162,11 +200,6 @@ public final class WisprBootstrapper {
     // exactly once here; the factory's `assembleDriver` no longer binds
     // (Codex r2 new defect 1). Without this, the second driver's
     // construction would silently overwrite the first driver's VAD callback.
-    // #1348 Phase 2 — owned model delivery. Constructed before the Parakeet
-    // driver so the adapter receives the handle; a failed bundled-manifest
-    // load leaves the handle nil (legacy path), unit-tested can't-happen.
-    let modelDelivery = ModelDeliveryHome()
-
     let vadSource = KernelDictationDriverFactory.makeSharedVADSignalSource(
       audioCapture: audioCapture)
 

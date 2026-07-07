@@ -18,7 +18,7 @@ struct ProviderStatusMappingTests {
   // per-engine assertion isolates the one coordinator that should matter.
   private func status(
     for provider: LLMProvider,
-    egOneInstall: EGOneModelStore.InstallState = .installed(version: "1"),
+    egOneInstall: EGOneInstallState = .installed(version: "1"),
     egOneHealth: EGOneHealth = .green,
     appleStatus: AIAvailabilityStatus? = .available,
     cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState = .valid,

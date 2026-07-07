@@ -35,6 +35,7 @@ import Testing
         case .validationRepair(_, let trigger): return "repair:\(trigger.rawValue)"
         case .cancel: return "cancel"
         case .flagActive(let flag, _): return "flag:\(flag)"
+        case .admittedWithoutFetch(let reason): return "admitted_no_fetch:\(reason.rawValue)"
         }
       }
     }
@@ -153,7 +154,10 @@ import Testing
   @Test func validCacheAdmitsInPlaceWithNoAttemptEvents() async throws {
     // Legacy migration: complete valid cache → one validation pass → marker
     // → admitted. No fetch happened, so NO attempt events exist (D3: attempt
-    // = fetch sequence), and no repair fired (nothing was deleted).
+    // = fetch sequence), and no repair fired (nothing was deleted). #1363
+    // Decision E: this no-fetch admission now emits exactly ONE availability
+    // signal, `admitted_without_fetch(adopted_in_place)`, so the migration win
+    // is visible in the field — it is NOT an attempt event.
     let registration = try makeRegistration(files: ManifestFixture.smallFiles)
     try seedValidCache(registration)
     let controller = ModelDeliveryController(
@@ -162,8 +166,41 @@ import Testing
     await controller.addEventObserver { _, event in log.append(event) }
     let outcome = await controller.ensureModelAvailable(registration)
     #expect(outcome == .admitted)
-    #expect(log.names.isEmpty)
+    #expect(log.names == ["admitted_no_fetch:adopted_in_place"])
     #expect(await controller.isAdmitted(registration))
+  }
+
+  @Test func admitIfCompleteAdoptsValidCacheWithoutFetch() async throws {
+    // Activation path (grounded r4 P2): a complete valid cache is adopted in
+    // place and reported admitted — same as ensureModelAvailable's no-fetch
+    // prefix, but reached via the non-fetching door.
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    try seedValidCache(registration)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    let log = EventLog()
+    await controller.addEventObserver { _, event in log.append(event) }
+    let admitted = await controller.admitIfComplete(registration)
+    #expect(admitted)
+    #expect(await controller.isAdmitted(registration))
+    // No fetch happened; only the no-fetch availability signal fired.
+    #expect(log.names == ["admitted_no_fetch:adopted_in_place"])
+  }
+
+  @Test func admitIfCompleteReturnsFalseWithoutFetchingWhenMissing() async throws {
+    // The behavioral guarantee grounded r4 P2 demanded: activation must NEVER
+    // start a download. With nothing on disk, admitIfComplete reports false,
+    // does not admit, and emits NO attempt event (no fetch was attempted).
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    let log = EventLog()
+    await controller.addEventObserver { _, event in log.append(event) }
+    let admitted = await controller.admitIfComplete(registration)
+    #expect(!admitted)
+    #expect(!(await controller.isAdmitted(registration)))
+    #expect(!log.names.contains("started"), "activation must not start a fetch")
+    #expect(!log.names.contains(where: { $0.hasPrefix("failed") }), "no failure event either")
   }
 
   @Test func markerFastPathSkipsRevalidation() async throws {
@@ -226,7 +263,11 @@ import Testing
       return
     }
     #expect(failure.reason == .sourceUnreachable || failure.reason == .unknown)
-    #expect(log.names.first == "started", "repair fetch was accepted → started emitted")
+    // The repair fetch was accepted → `attempt_started` emitted. (`.contains`
+    // not `.first`: the FIRST admit above happened before this observer
+    // attached, so its #1363 Decision-E `admitted_without_fetch` availability
+    // signal was buffered pre-attach and drains to this observer first.)
+    #expect(log.names.contains("started"), "repair fetch was accepted → started emitted")
     #expect(!(await controller.isAdmitted(registration)), "never admitted on a failed repair")
   }
 
@@ -254,6 +295,50 @@ import Testing
     // scheduler actually overlapped them; the strict assertion is the state.
     #expect(log.names.count <= 2)
     #expect(Set(log.names) == ["failed:insufficient_disk"])
+  }
+
+  @Test func explicitFetchNeverCoalescesIntoNoFetchProbe() async throws {
+    // Cloud-review P2 (#1363): the no-fetch activation probe (`admitIfComplete`)
+    // shares the single-flight `activeTask` slot. If a user's explicit Download
+    // (`ensureModelAvailable`) arrives while the probe is mid-validation, it must
+    // NOT join the probe and inherit its `not_present_no_fetch` bail — that would
+    // make the Download click silently no-op. Here the cache has a full-size but
+    // CORRUPT vocab file: validation hashes the (valid) encoder files first, so
+    // the probe is genuinely in flight during the join check.
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    try seedValidCache(registration)
+    // Correct size (7 bytes), wrong content → vocab.json hash-fails → its
+    // component needs a fetch (encoder components stay valid → hash suspensions).
+    let vocab = registration.installDirectory.appendingPathComponent("vocab.json")
+    try Data("{\"a\":9}".utf8).write(to: vocab)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    let log = EventLog()
+    await controller.addEventObserver { _, event in log.append(event) }
+
+    // Probe first; a yield lets it install its activeTask and enter validation
+    // (actor turn ordering, not a clock — mirrors reservationLedger below).
+    async let probe = controller.admitIfComplete(registration)
+    await Task.yield()
+    let explicit = await controller.ensureModelAvailable(registration)
+    let probeAdmitted = await probe
+
+    // The probe never fetches, so it cannot admit a cache that needs bytes.
+    #expect(!probeAdmitted, "no-fetch probe must not admit an incomplete cache")
+    // The explicit door attempted a real fetch (unreachable stubs → typed
+    // network failure), never the probe's no-fetch bail.
+    guard case .failed(let failure) = explicit else {
+      Issue.record("expected a fetch failure, got \(explicit)")
+      return
+    }
+    #expect(failure.reason == .sourceUnreachable || failure.reason == .unknown)
+    #expect(
+      failure.detail != "not_present_no_fetch",
+      "explicit Download must not inherit the probe's no-fetch bail")
+    #expect(
+      log.names.contains("started"),
+      "explicit Download reached fetch acceptance (did not coalesce into the probe)")
+    #expect(!(await controller.isAdmitted(registration)))
   }
 
   @Test func reservationLedgerBlocksSecondTenant() async throws {
