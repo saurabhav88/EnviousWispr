@@ -68,10 +68,18 @@ import Testing
     defer { dirs.cleanup() }
     let registration = try eg1Registration(install: dirs.install, metadata: dirs.metadata)
     let expectedSize = try #require(registration.manifest.files.first?.sizeBytes)
-    // A completed-but-not-installed download: full-size .partial, no install file.
+    // A completed-but-not-installed download: full-size .partial, no install
+    // file. The .partial must REPORT the manifest's expected size (~2.9 GB) so
+    // the migration's size-match promote branch fires — but as a SPARSE file
+    // (truncate, no allocation) so the test never materializes gigabytes of RAM
+    // or disk on CI (cloud-review P1). The migration promotes via rename (O(1)),
+    // never a byte copy, so a sparse source is faithful.
     let partial = dirs.install.appendingPathComponent("eg-1-v1.gguf.partial")
     let resume = dirs.install.appendingPathComponent("eg-1-v1.gguf.resume.json")
-    try Data(count: Int(expectedSize)).write(to: partial)
+    #expect(FileManager.default.createFile(atPath: partial.path, contents: nil))
+    let handle = try FileHandle(forWritingTo: partial)
+    try handle.truncate(atOffset: UInt64(expectedSize))
+    try handle.close()
     try Data("{}".utf8).write(to: resume)
 
     _ = EGOneDeliveryAdapter(
