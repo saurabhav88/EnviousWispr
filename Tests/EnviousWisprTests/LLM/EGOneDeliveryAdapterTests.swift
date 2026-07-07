@@ -38,6 +38,70 @@ import Testing
     }
   }
 
+  // MARK: - Legacy store partial migration (cloud-review P2, PR #1384)
+
+  private func makeTempDirs() throws -> (install: URL, metadata: URL, cleanup: () -> Void) {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("eg1-migrate-\(UUID().uuidString)", isDirectory: true)
+    let install = root.appendingPathComponent("PolishModels", isDirectory: true)
+    let metadata = root.appendingPathComponent("ModelDelivery", isDirectory: true)
+    try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+    return (install, metadata, { try? FileManager.default.removeItem(at: root) })
+  }
+
+  /// Build the shipped EG-1 delivery manifest so the adapter's install name +
+  /// expected size are real (`eg-1-v1.gguf`, 2_889_511_680).
+  private func eg1Registration(install: URL, metadata: URL) throws -> DeliveryRegistration {
+    let url = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent("Sources/EnviousWispr/Resources/eg1-delivery-manifest.json")
+    let manifest = try DeliveryManifest.load(from: Data(contentsOf: url))
+    return DeliveryRegistration(
+      manifest: manifest, installDirectory: install, metadataDirectory: metadata)
+  }
+
+  @MainActor
+  @Test func completeLegacyPartialIsPromotedNotDeleted() throws {
+    let dirs = try makeTempDirs()
+    defer { dirs.cleanup() }
+    let registration = try eg1Registration(install: dirs.install, metadata: dirs.metadata)
+    let expectedSize = try #require(registration.manifest.files.first?.sizeBytes)
+    // A completed-but-not-installed download: full-size .partial, no install file.
+    let partial = dirs.install.appendingPathComponent("eg-1-v1.gguf.partial")
+    let resume = dirs.install.appendingPathComponent("eg-1-v1.gguf.resume.json")
+    try Data(count: Int(expectedSize)).write(to: partial)
+    try Data("{}".utf8).write(to: resume)
+
+    _ = EGOneDeliveryAdapter(
+      controller: ModelDeliveryController(), registration: registration, version: "v1")
+
+    let fm = FileManager.default
+    // Promoted to the install name (so adoption can verify + admit offline).
+    #expect(fm.fileExists(atPath: dirs.install.appendingPathComponent("eg-1-v1.gguf").path))
+    #expect(!fm.fileExists(atPath: partial.path))
+    #expect(!fm.fileExists(atPath: resume.path), "stale resume sidecar removed")
+  }
+
+  @MainActor
+  @Test func incompleteLegacyPartialIsReclaimed() throws {
+    let dirs = try makeTempDirs()
+    defer { dirs.cleanup() }
+    let registration = try eg1Registration(install: dirs.install, metadata: dirs.metadata)
+    // An interrupted download: short .partial, no install file.
+    let partial = dirs.install.appendingPathComponent("eg-1-v1.gguf.partial")
+    try Data(count: 4096).write(to: partial)
+
+    _ = EGOneDeliveryAdapter(
+      controller: ModelDeliveryController(), registration: registration, version: "v1")
+
+    let fm = FileManager.default
+    // Reclaimed (no partial install file left behind); no bogus install created.
+    #expect(!fm.fileExists(atPath: partial.path))
+    #expect(!fm.fileExists(atPath: dirs.install.appendingPathComponent("eg-1-v1.gguf").path))
+  }
+
   @Test func failureClassBucketsMatchExistingCopy() {
     #expect(EGOneDeliveryAdapter.mapFailure(.sourceUnreachable) == .network)
     #expect(EGOneDeliveryAdapter.mapFailure(.sourceTimeout) == .network)

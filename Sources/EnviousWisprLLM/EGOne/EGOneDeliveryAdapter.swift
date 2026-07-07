@@ -33,6 +33,38 @@ public final class EGOneDeliveryAdapter {
     self.registration = registration
     self.version = version
     self.defaults = defaults ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
+    migrateLegacyStoreArtifacts()
+  }
+
+  /// One-time migration of the retired `EGOneModelStore`'s in-progress-download
+  /// leftovers (cloud-review P2, PR #1384). The old store left a `.partial` +
+  /// resume sidecar beside the install file; the shared engine stages elsewhere
+  /// and would ignore them — wasting gigabytes and risking a disk-preflight
+  /// failure on the next download. Fast (stat + rename/remove, no hashing):
+  /// - a COMPLETED-but-not-installed download (full-size `.partial`, no install
+  ///   file) is PROMOTED to the install name so `adoptIfPresent` verifies +
+  ///   admits it offline with NO re-download (a corrupt one is rejected by the
+  ///   admission hash gate and overwritten by the next download);
+  /// - a stale (install already present) or incomplete `.partial` is removed to
+  ///   reclaim disk — the old resume format is incompatible with the shared
+  ///   engine, so an incomplete download restarts from zero (accepted for this
+  ///   narrow upgrade-mid-download window; the founder-critical case is the
+  ///   COMPLETE install, handled by in-place adoption).
+  private func migrateLegacyStoreArtifacts() {
+    let fm = FileManager.default
+    let installPath = installedArtifactURL.path
+    let partialPath = installPath + ".partial"
+    let resumePath = installPath + ".resume.json"
+    let expectedSize = registration.manifest.files.first?.sizeBytes
+    if fm.fileExists(atPath: partialPath) {
+      let partialSize = (try? fm.attributesOfItem(atPath: partialPath)[.size]) as? Int64
+      if !fm.fileExists(atPath: installPath), let expectedSize, partialSize == expectedSize {
+        try? fm.moveItem(atPath: partialPath, toPath: installPath)
+      } else {
+        try? fm.removeItem(atPath: partialPath)
+      }
+    }
+    try? fm.removeItem(atPath: resumePath)
   }
 
   /// The verified on-disk model location the runtime boots llama-server from:
