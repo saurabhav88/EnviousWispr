@@ -58,17 +58,20 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
     preferredInputDeviceIDOverride: String,
     selectedInputDeviceUID: String
   ) -> ResolvedRouteTransports {
-    // The user's effective device pick: an explicit override wins, else the
-    // stored selection, else empty (Auto / system default).
-    let selectedUID =
-      preferredInputDeviceIDOverride.isEmpty
-      ? selectedInputDeviceUID : preferredInputDeviceIDOverride
-    let selectionMode = selectedUID.isEmpty ? "auto" : "explicit"
+    // The user's EXPLICIT pick is the settings mic picker, which binds to
+    // `preferredInputDeviceIDOverride` ("Auto" = empty) — AND the route resolver
+    // builds its decision from ONLY that value. So `selected` + selection mode
+    // derive from `preferredInputDeviceIDOverride` alone, keeping them
+    // consistent with `route_reason` (a bare `selectedInputDeviceUID` under an
+    // empty picker is Auto to the resolver, not an explicit pick — #1387 cloud
+    // review P2). `selectedInputDeviceUID` still feeds `effective` below because
+    // the engine opens it as a fallback.
+    let selectionMode = preferredInputDeviceIDOverride.isEmpty ? "auto" : "explicit"
 
     let selected =
-      selectedUID.isEmpty
+      preferredInputDeviceIDOverride.isEmpty
       ? "unknown"
-      : (AudioDeviceEnumerator.transportLabel(forUID: selectedUID) ?? "unknown")
+      : (AudioDeviceEnumerator.transportLabel(forUID: preferredInputDeviceIDOverride) ?? "unknown")
 
     let effective: String
     switch decision.sourceType {
@@ -76,14 +79,15 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
       // The capture-session path opens the built-in mic only today (bible R4).
       effective = "built_in"
     case .audioEngine:
-      // Mirror AVAudioEngineSource's device resolution exactly: the pinned
-      // device if it resolves to a connected device, ELSE the system-default
-      // input (`AVAudioEngineSource.swift:243` — `resolvedDeviceID ??
-      // defaultInputDeviceID()`). A saved-but-disconnected pinned UID therefore
-      // reports the default input transport the engine actually opens, not
-      // "unknown"; `selected` still stays "unknown" (the pick is unavailable).
-      if !selectedUID.isEmpty, let label = AudioDeviceEnumerator.transportLabel(forUID: selectedUID)
-      {
+      // Mirror AVAudioEngineSource's device resolution exactly: the preferred
+      // override, else the stored selection, else the system-default input
+      // (`AVAudioEngineSource.swift:227-243` — `resolvedDeviceID ??
+      // defaultInputDeviceID()`). A pinned-but-disconnected UID therefore
+      // reports the default input transport the engine actually opens.
+      let engineUID =
+        preferredInputDeviceIDOverride.isEmpty
+        ? selectedInputDeviceUID : preferredInputDeviceIDOverride
+      if !engineUID.isEmpty, let label = AudioDeviceEnumerator.transportLabel(forUID: engineUID) {
         effective = label
       } else if let defaultID = AudioDeviceEnumerator.defaultInputDeviceID() {
         effective = AudioDeviceEnumerator.transportLabel(for: defaultID) ?? "unknown"

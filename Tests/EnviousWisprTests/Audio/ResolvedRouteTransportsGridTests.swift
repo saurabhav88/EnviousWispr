@@ -75,11 +75,39 @@ struct ResolvedRouteTransportsGridTests {
     #expect(r.inputSelectionMode == "explicit")
   }
 
-  @Test("selectedInputDeviceUID (no override) still counts as an explicit pick")
-  func selectedUIDCountsExplicit() {
+  @Test("selection mode follows the settings picker; a bare selectedInputDeviceUID stays Auto")
+  func selectionModeFollowsPicker() {
+    // The mic picker binds to preferredInputDeviceIDOverride and the resolver
+    // uses ONLY that, so a bare selectedInputDeviceUID is Auto to the resolver
+    // — mode/selected must agree with route_reason, not claim explicit (#1387).
     let r = ResolvedRouteTransports.derive(
-      decision: makeDecision(.audioEngine, .noBTUserSelectedDevice),
+      decision: makeDecision(.audioEngine, .noBTAutoInput),
       preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "fake-uid")
+    #expect(r.inputSelectionMode == "auto")
+    #expect(r.selected == "unknown")
+  }
+
+  @Test("bare selectedInputDeviceUID under BT output does NOT misreport explicit (cloud review P2)")
+  func bareSelectedUnderBTOutputStaysConsistentWithRouteReason() {
+    // The exact misclassification the cloud reviewer flagged: a stored device
+    // UID in selectedInputDeviceUID with an empty picker must not emit
+    // explicit/bluetooth while route_reason stays Auto. All three agree on Auto.
+    let r = ResolvedRouteTransports.derive(
+      decision: makeDecision(.captureSession, .btOutputAutoInput),
+      preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "fake-bt-uid")
+    #expect(r.inputSelectionMode == "auto")
+    #expect(r.selected == "unknown")
+    #expect(r.routeReason == "btOutputAutoInput")
+    #expect(r.effective == "built_in")
+  }
+
+  @Test("an explicit picker choice reports explicit + its transport (consistent with route_reason)")
+  func explicitPickerReportsExplicit() {
+    // preferredInputDeviceIDOverride set (the picker) → explicit, and the
+    // resolver saw the same value, so route_reason is a user-selected reason.
+    let r = ResolvedRouteTransports.derive(
+      decision: makeDecision(.captureSession, .btOutputUserSelectedBTMic),
+      preferredInputDeviceIDOverride: "fake-bt-uid", selectedInputDeviceUID: "")
     #expect(r.inputSelectionMode == "explicit")
   }
 
