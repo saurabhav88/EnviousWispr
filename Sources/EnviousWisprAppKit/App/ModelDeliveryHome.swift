@@ -28,12 +28,14 @@ public final class ModelDeliveryHome {
   /// receive time (controller actor, in publish order) and a MainActor hop
   /// that lands out of order is dropped.
   private var lastAppliedStateSeq: UInt64 = 0
-  /// D3 base prop: whether NO admitted Parakeet cache existed at launch —
-  /// computed once during observer wiring (before any warm-up can run) and
-  /// flipped false on the first admission this session. Approximates "at
-  /// attempt start" at session granularity, which is what the funnel slices
-  /// on (first-run install vs existing user).
-  private var parakeetFirstRun = false
+  /// D3 base prop, PER IDENTITY (#1363 §16.2): whether NO admitted cache
+  /// existed at launch for each model — computed once during that model's
+  /// observer wiring (before any warm-up can run) and flipped false on its
+  /// first admission this session. Keyed by identity because EG-1 and Parakeet
+  /// share ONE controller and ONE telemetry bridge; a single Bool would stamp
+  /// EG-1's events with Parakeet's first-run truth. Missing key ⇒ false (a
+  /// model whose baseline was never recorded is treated as not-first-run).
+  private var firstRunByIdentity: [ModelIdentity: Bool] = [:]
 
   public init() {
     do {
@@ -65,7 +67,7 @@ public final class ModelDeliveryHome {
     Task {
       if let registration {
         let admitted = await controller.isAdmitted(registration)
-        await MainActor.run { home.parakeetFirstRun = !admitted }
+        await MainActor.run { home.firstRunByIdentity[identity] = !admitted }
       }
       await controller.addStateObserver { observedIdentity, state in
         guard observedIdentity == identity else { return }
@@ -76,16 +78,39 @@ public final class ModelDeliveryHome {
           guard seq > home.lastAppliedStateSeq else { return }
           home.lastAppliedStateSeq = seq
           home.parakeetState = state
-          if case .admitted = state { home.parakeetFirstRun = false }
+          if case .admitted = state { home.firstRunByIdentity[observedIdentity] = false }
         }
+      }
+      // First-run flip for EVERY identity (grounded r1 P3): the observer above
+      // is Parakeet-filtered for its state mirror, so EG-1's `.admitted` would
+      // never flip EG-1's first-run flag and EG-1 events would report
+      // first_run=true for the whole process. This dedicated observer flips any
+      // identity's flag on admission — idempotent and order-independent (once
+      // false it stays false; `attempt_completed` is emitted before `.admitted`,
+      // so the fetch-path funnel events still read the true baseline).
+      await controller.addStateObserver { observedIdentity, state in
+        guard case .admitted = state else { return }
+        Task { @MainActor in home.firstRunByIdentity[observedIdentity] = false }
       }
       await controller.addEventObserver { observedIdentity, event in
         Task { @MainActor in
           ModelDeliveryTelemetryBridge.capture(
-            event, identity: observedIdentity, firstRun: home.parakeetFirstRun)
+            event, identity: observedIdentity,
+            firstRun: home.firstRunByIdentity[observedIdentity] ?? false)
         }
       }
     }
+  }
+
+  /// Record a model's first-run baseline BEFORE its first warm-up (#1363
+  /// §16.2). EG-1 shares this home's controller + telemetry bridge, so its
+  /// runtime calls this once at construction to seed its own first-run truth;
+  /// the shared event observer above then stamps EG-1's `model_delivery.*`
+  /// events with EG-1's baseline, never Parakeet's. Idempotent; a later
+  /// `.admitted` for the identity flips it false via the state observer.
+  public func recordFirstRunBaseline(for registration: DeliveryRegistration) async {
+    let admitted = await controller.isAdmitted(registration)
+    firstRunByIdentity[registration.manifest.identity] = !admitted
   }
 
   /// Settings-row Cancel (D6 state 11: acknowledgment is instant by design —
@@ -186,6 +211,13 @@ enum ModelDeliveryTelemetryBridge {
       name = "flag_active"
       props["flag"] = flag
       props["value"] = value
+    case .admittedWithoutFetch(let reason):
+      // #1363 Decision E: a model became available with no fetch (warm-relaunch
+      // marker fast path or existing-file adoption). Distinct from
+      // attempt_completed; "available in the field" = attempt_completed OR
+      // admitted_without_fetch.
+      name = "admitted_without_fetch"
+      props["reason"] = reason.rawValue
     }
     TelemetryService.shared.modelDeliveryEvent(name: name, properties: props)
   }

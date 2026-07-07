@@ -52,7 +52,9 @@ struct ManifestFetchTask {
 
     for file in fetchFiles {
       try Task.checkCancellation()
-      let stagedURL = stagingDirectory.appendingPathComponent(file.path)
+      // Stage under the RESOLVED INSTALL path (contract §4b), not the fetch
+      // path, so staging↔promotion stay symmetric when the two names differ.
+      let stagedURL = stagingDirectory.appendingPathComponent(file.resolvedInstallPath)
       try fm.createDirectory(
         at: stagedURL.deletingLastPathComponent(), withIntermediateDirectories: true)
 
@@ -257,7 +259,11 @@ struct ManifestFetchTask {
   // MARK: - Helpers
 
   private func resumeIdentityURL(for file: DeliveryManifest.File) -> URL {
-    stagingDirectory.appendingPathComponent(file.path + ".resume.json")
+    // Key the resume sidecar off the resolved install path so it sits beside
+    // the staged file (which stages under resolvedInstallPath, contract §4b).
+    // `discardResumeIdentity(at: stagedURL)` below is already stagedURL-relative
+    // and needs no change.
+    stagingDirectory.appendingPathComponent(file.resolvedInstallPath + ".resume.json")
   }
 
   private func discardPartial(at stagedURL: URL) {

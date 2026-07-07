@@ -28,7 +28,9 @@ public enum EGOneHealth: Sendable, Equatable {
 /// Spawns, monitors, and terminates the local polish inference server (#1271).
 ///
 /// Single authority for server RUNTIME (process lifecycle + health).
-/// Distribution (download/verify) is `EGOneModelStore`'s concern.
+/// Distribution (download/verify/admit) is the shared
+/// `EnviousWisprModelDelivery` engine's concern, reached via
+/// `EGOneDeliveryAdapter` (#1348 Phase 3, formerly `EGOneModelStore`).
 ///
 /// Heart & Limbs: this whole subsystem is a limb. The server is a separate
 /// process (a crash can never take the app down), it is terminated under

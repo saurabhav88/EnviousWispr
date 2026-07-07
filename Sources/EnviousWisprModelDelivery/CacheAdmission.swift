@@ -60,14 +60,20 @@ struct CacheAdmission {
     // only contributes the admission-time mtime stamp. A corrupt marker with
     // the right digest/count can never bless a different file set
     // (exhaustive r7 finding 4).
+    // Marker FileStamp.path stores the RESOLVED INSTALL path (contract §4b);
+    // both write (promoteAndAdmit) and read (here) key by it, so a manifest
+    // whose fetch name differs from its install name still round-trips. For a
+    // v1 manifest (no installPath) resolvedInstallPath == path, so existing
+    // markers stay valid with no migration.
     let stampsByPath = Dictionary(
       marker.files.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
     let fm = FileManager.default
     for file in manifest.files {
-      guard let stamp = stampsByPath[file.path], stamp.sizeBytes == file.sizeBytes else {
+      guard let stamp = stampsByPath[file.resolvedInstallPath], stamp.sizeBytes == file.sizeBytes
+      else {
         return false
       }
-      let url = installDirectory.appendingPathComponent(file.path)
+      let url = installDirectory.appendingPathComponent(file.resolvedInstallPath)
       guard let attrs = try? fm.attributesOfItem(atPath: url.path),
         (attrs[.size] as? Int64) == file.sizeBytes,
         let mtime = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970,
@@ -93,14 +99,14 @@ struct CacheAdmission {
     for (component, files) in manifest.filesByComponent {
       var componentOK = true
       for file in files {
-        let url = installDirectory.appendingPathComponent(file.path)
+        let url = installDirectory.appendingPathComponent(file.resolvedInstallPath)
         guard Self.sizeMatches(url: url, expected: file.sizeBytes),
           await Self.streamingSHA256(of: url) == file.sha256
         else {
           componentOK = false
           break
         }
-        onFileValidated?(file.path)
+        onFileValidated?(file.resolvedInstallPath)
       }
       if componentOK { verified.insert(component) } else { failed.insert(component) }
     }
@@ -159,7 +165,7 @@ struct CacheAdmission {
     // (4) The linearization point: stamp current on-disk reality.
     var stamps: [AdmissionMarker.FileStamp] = []
     for file in manifest.files {
-      let url = installDirectory.appendingPathComponent(file.path)
+      let url = installDirectory.appendingPathComponent(file.resolvedInstallPath)
       let attrs = try fm.attributesOfItem(atPath: url.path)
       guard let size = attrs[.size] as? Int64, size == file.sizeBytes,
         let mtime = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970
@@ -167,7 +173,8 @@ struct CacheAdmission {
         throw DeliveryFailure(
           reason: .cacheRepairFailed, detail: "post_promote_stamp:\(file.component)")
       }
-      stamps.append(.init(path: file.path, sizeBytes: size, mtime: mtime))
+      // Stamp by resolved install path — the read side (isAdmitted) keys by it.
+      stamps.append(.init(path: file.resolvedInstallPath, sizeBytes: size, mtime: mtime))
     }
     _ = untouchedComponents  // documented: validation already proved these in place
     try fm.createDirectory(at: metadataDirectory, withIntermediateDirectories: true)
@@ -182,7 +189,8 @@ struct CacheAdmission {
     let fm = FileManager.default
     return manifest.files.contains { file in
       file.component == component
-        && fm.fileExists(atPath: installDirectory.appendingPathComponent(file.path).path)
+        && fm.fileExists(
+          atPath: installDirectory.appendingPathComponent(file.resolvedInstallPath).path)
     }
   }
 
@@ -193,10 +201,13 @@ struct CacheAdmission {
   }
 
   /// Top-level entry names the manifest claims (component dirs + loose files).
+  /// Derived from the resolved INSTALL path (contract §4b) — these are on-disk
+  /// names, so a decoupled fetch name must not leak into orphan-prune roots.
   static func componentRoots(of manifest: DeliveryManifest) -> Set<String> {
     Set(
       manifest.files.map { file in
-        file.path.contains("/") ? String(file.path.split(separator: "/")[0]) : file.path
+        let p = file.resolvedInstallPath
+        return p.contains("/") ? String(p.split(separator: "/")[0]) : p
       })
   }
 

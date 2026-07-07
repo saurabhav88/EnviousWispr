@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "family": "eg_one",
+    "name": "eg-1",
+    "revision": "v1",
+    "variant": "q5km",
+    "runtimeABI": "llamacpp-eg1-v1"
+  },
+  "runtimeCompatibility": {
+    "minAppVersion": "2.3.0"
+  },
+  "files": [
+    {
+      "path": "eg-1-v1-q5km.gguf",
+      "installPath": "eg-1-v1.gguf",
+      "sizeBytes": 2889511680,
+      "sha256": "3343fc1a30a3e82df7499a4775ef73dd6e28dea1cc39bb58197ec0b66ec874f6",
+      "component": "eg-1-v1.gguf"
+    }
+  ],
+  "optionalFiles": [],
+  "totalBytes": 2889511680,
+  "sources": [
+    {
+      "id": "our_copy",
+      "baseURL": "https://models.enviouslabs.co/eg1/"
+    }
+  ],
+  "license": {
+    "name": "EG-1 Model License",
+    "url": "https://models.enviouslabs.co/eg1/EG-1-MODEL-LICENSE.txt"
+  },
+  "admission": {
+    "layout": "singleFile",
+    "installLocation": "polishModelsCache",
+    "diskHeadroomFactor": "2.2",
+    "evictPreviousRevisions": false
+  },
+  "manifestDigest": "e3776d8863b791b120c58a1831b6e90474277753e8e0e78a6b62eac4816133c6"
+}

@@ -26,7 +26,9 @@ let package = Package(
   ],
   dependencies: [
     .package(url: "https://github.com/argmaxinc/argmax-oss-swift", from: "1.0.0"),
-    .package(url: "https://github.com/saurabhav88/FluidAudio.git", revision: "e7948e1ac3e4eb0254201d19bb8496a4398c8476"),
+    .package(
+      url: "https://github.com/saurabhav88/FluidAudio.git",
+      revision: "e7948e1ac3e4eb0254201d19bb8496a4398c8476"),
     .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
     .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.0.0"),
     .package(url: "https://github.com/getsentry/sentry-cocoa.git", from: "9.8.0"),
@@ -106,6 +108,9 @@ let package = Package(
       name: "EnviousWisprLLM",
       dependencies: [
         "EnviousWisprCore",
+        // #1348 Phase 3: EG-1 polish delivery converges onto the shared engine
+        // (downward edge, both above Core). Mirrors Project.swift.
+        "EnviousWisprModelDelivery",
         // #832/#913 PR8: public Argmax tokenizer surface for the output-safety
         // classifier pair-encoder seam (AutoTokenizerWrapper / TokenizerWrapper).
         .product(name: "ArgmaxOSS", package: "argmax-oss-swift"),

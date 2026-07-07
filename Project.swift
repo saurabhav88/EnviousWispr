@@ -262,6 +262,9 @@ let project = Project(
       "EnviousWisprLLM",
       dependencies: [
         .target(name: "EnviousWisprCore"),
+        // #1348 Phase 3: EG-1 polish delivery converges onto the shared engine.
+        // Downward edge (both sit above Core; ModelDelivery is a leaf).
+        .target(name: "EnviousWisprModelDelivery"),
         // #832/#913 PR8: public Argmax tokenizer surface (AutoTokenizerWrapper /
         // TokenizerWrapper) for the output-safety classifier's pair-encoder seam.
         .package(product: "ArgmaxOSS"),
@@ -386,6 +389,10 @@ let project = Project(
         // #1348 Phase 2: Parakeet delivery manifest — the bundled trust root
         // (contract 4a). Same Bundle.main route as eg1-manifest.json.
         "Sources/EnviousWispr/Resources/parakeet-delivery-manifest.json",
+        // #1348 Phase 3: EG-1 delivery manifest — the DELIVERY trust root for
+        // EG-1's convergence onto the shared engine (the runtime trust root
+        // stays eg1-manifest.json). Same Bundle.main route.
+        "Sources/EnviousWispr/Resources/eg1-delivery-manifest.json",
         "Sources/EnviousWispr/Resources/llama-server",
       ],
       entitlements: .file(path: "Sources/EnviousWispr/Resources/EnviousWispr.entitlements"),
