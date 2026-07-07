@@ -110,6 +110,37 @@ import Testing
     #expect(!fm.fileExists(atPath: dirs.install.appendingPathComponent("eg-1-v1.gguf").path))
   }
 
+  @MainActor
+  @Test func staleOtherVersionSidecarsSweptButModelsKept() throws {
+    // Cloud-review P2 (#1363): a version bump (e.g. EG-2/EG-3 hot-swap) must not
+    // orphan an OLD version's download sidecars forever. The migration sweeps
+    // every .partial/.resume.json in the install dir regardless of version, but
+    // NEVER deletes a completed .gguf model (a superseded model is the user's
+    // working polish until the new one downloads; the founder's real install must
+    // survive).
+    let dirs = try makeTempDirs()
+    defer { dirs.cleanup() }
+    let registration = try eg1Registration(install: dirs.install, metadata: dirs.metadata)
+    let fm = FileManager.default
+    // An interrupted download from a DIFFERENT version + a completed model of
+    // that older version (neither matches the current manifest's v1 name).
+    let staleModel = dirs.install.appendingPathComponent("eg-1-v0.gguf")
+    let stalePartial = dirs.install.appendingPathComponent("eg-1-v0.gguf.partial")
+    let staleResume = dirs.install.appendingPathComponent("eg-1-v0.gguf.resume.json")
+    try Data("old-model-bytes".utf8).write(to: staleModel)
+    try Data(count: 4096).write(to: stalePartial)
+    try Data("{}".utf8).write(to: staleResume)
+
+    _ = EGOneDeliveryAdapter(
+      controller: ModelDeliveryController(), registration: registration, version: "v1")
+
+    #expect(!fm.fileExists(atPath: stalePartial.path), "stale partial swept (any version)")
+    #expect(!fm.fileExists(atPath: staleResume.path), "stale resume sidecar swept (any version)")
+    #expect(
+      fm.fileExists(atPath: staleModel.path),
+      "a completed .gguf model is never deleted by migration")
+  }
+
   @Test func failureClassBucketsMatchExistingCopy() {
     #expect(EGOneDeliveryAdapter.mapFailure(.sourceUnreachable) == .network)
     #expect(EGOneDeliveryAdapter.mapFailure(.sourceTimeout) == .network)

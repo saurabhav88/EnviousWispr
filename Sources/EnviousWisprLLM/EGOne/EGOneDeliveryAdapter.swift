@@ -37,34 +37,47 @@ public final class EGOneDeliveryAdapter {
   }
 
   /// One-time migration of the retired `EGOneModelStore`'s in-progress-download
-  /// leftovers (cloud-review P2, PR #1384). The old store left a `.partial` +
-  /// resume sidecar beside the install file; the shared engine stages elsewhere
-  /// and would ignore them — wasting gigabytes and risking a disk-preflight
-  /// failure on the next download. Fast (stat + rename/remove, no hashing):
-  /// - a COMPLETED-but-not-installed download (full-size `.partial`, no install
-  ///   file) is PROMOTED to the install name so `adoptIfPresent` verifies +
-  ///   admits it offline with NO re-download (a corrupt one is rejected by the
-  ///   admission hash gate and overwritten by the next download);
-  /// - a stale (install already present) or incomplete `.partial` is removed to
-  ///   reclaim disk — the old resume format is incompatible with the shared
-  ///   engine, so an incomplete download restarts from zero (accepted for this
-  ///   narrow upgrade-mid-download window; the founder-critical case is the
-  ///   COMPLETE install, handled by in-place adoption).
+  /// leftovers (cloud-review P2, PR #1384). The old store downloaded IN PLACE in
+  /// the install dir, leaving a `.partial` + resume sidecar beside the install
+  /// file; the shared engine stages under `ModelDelivery/staging` instead and
+  /// would ignore them — wasting gigabytes and risking a disk-preflight failure
+  /// on the next download. Fast (stat + rename/remove, no hashing):
+  /// - (1) a COMPLETED-but-not-installed CURRENT-version download (full-size
+  ///   `.partial`, no install file) is PROMOTED to the install name so
+  ///   `adoptIfPresent` verifies + admits it offline with NO re-download (a
+  ///   corrupt one is rejected by the admission hash gate and overwritten by the
+  ///   next download; the founder-critical case);
+  /// - (2) EVERY remaining download sidecar (`.partial` / `.resume.json`) in the
+  ///   install dir is swept — including an interrupted legacy download whose
+  ///   version differs from the current manifest (so an EG-2/EG-3 manifest bump
+  ///   does not orphan an old `eg-1-vN.gguf.partial` forever). Safe by
+  ///   construction: the shared engine never stages in the install dir, so a
+  ///   sidecar here is always a retired-store leftover, never an in-flight
+  ///   download. Completed `*.gguf` MODELS are deliberately NOT touched — a
+  ///   superseded model is the user's working polish until the new version
+  ///   downloads, and the engine's promote-time orphan cleanup removes it when
+  ///   the new version is admitted (deleting it here would break polish in the
+  ///   gap and risk the founder's real 2.9 GB install).
   private func migrateLegacyStoreArtifacts() {
     let fm = FileManager.default
+    let installDir = registration.installDirectory
     let installPath = installedArtifactURL.path
     let partialPath = installPath + ".partial"
-    let resumePath = installPath + ".resume.json"
     let expectedSize = registration.manifest.files.first?.sizeBytes
-    if fm.fileExists(atPath: partialPath) {
-      let partialSize = (try? fm.attributesOfItem(atPath: partialPath)[.size]) as? Int64
-      if !fm.fileExists(atPath: installPath), let expectedSize, partialSize == expectedSize {
-        try? fm.moveItem(atPath: partialPath, toPath: installPath)
-      } else {
-        try? fm.removeItem(atPath: partialPath)
+    // (1) Promote a complete current-version partial; a size-mismatched or
+    //     already-installed one falls through to the sweep below.
+    if fm.fileExists(atPath: partialPath), !fm.fileExists(atPath: installPath),
+      let expectedSize,
+      (try? fm.attributesOfItem(atPath: partialPath)[.size]) as? Int64 == expectedSize
+    {
+      try? fm.moveItem(atPath: partialPath, toPath: installPath)
+    }
+    // (2) Sweep all stale download sidecars, any version. Never a `.gguf` model.
+    if let entries = try? fm.contentsOfDirectory(atPath: installDir.path) {
+      for entry in entries where entry.hasSuffix(".partial") || entry.hasSuffix(".resume.json") {
+        try? fm.removeItem(at: installDir.appendingPathComponent(entry))
       }
     }
-    try? fm.removeItem(atPath: resumePath)
   }
 
   /// The verified on-disk model location the runtime boots llama-server from:
