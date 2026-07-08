@@ -497,19 +497,50 @@ struct LoadProgressWatcherTests {
       observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.downloadingPhase)
     #expect(!watcher.hasFired, "a silent fresh download must never fire the load-watchdog")
 
-    // Delivery completes -> the phase leaves the download phase (the #1405
-    // boundary marker writes "Loading speech model..."). The transition resets
+    // Delivery completes -> #1405 CLEARS the progress file (boundary), so the
+    // next tick sees no file (mtime nil, empty phase). The transition resets
     // the attempt so the long download does not bleed into the load gates.
     clock.tick(seconds: 0.5)
-    watcher.observeTick(observedMtime: mtime(1), observedPhase: "Loading speech model...")
+    watcher.observeTick(observedMtime: nil, observedPhase: "")
     // The LOAD then produces two of its own signals and genuinely wedges.
     clock.tick(seconds: 0.5)
-    watcher.observeTick(observedMtime: mtime(2), observedPhase: "Loading speech model...")
+    watcher.observeTick(observedMtime: mtime(1), observedPhase: "Loading speech model...")
     clock.tick(seconds: 0.5)
-    watcher.observeTick(observedMtime: mtime(3), observedPhase: "Loading speech model...")
+    watcher.observeTick(observedMtime: mtime(2), observedPhase: "Loading speech model...")
     clock.tick(seconds: 30)
-    watcher.observeTick(observedMtime: mtime(3), observedPhase: "Loading speech model...")
+    watcher.observeTick(observedMtime: mtime(2), observedPhase: "Loading speech model...")
     #expect(watcher.hasFired, "a real load wedge AFTER the download must still fire")
+    watcher.stop()
+  }
+
+  @Test("#1405 (cloud-review P1): a cleared boundary preserves the pre-first-signal deadline")
+  func clearedBoundaryPreservesPreFirstSignalDeadline() async {
+    // The download completes and the boundary CLEARS the progress file. If the
+    // model LOAD then wedges before emitting ANY progress of its own (e.g. a
+    // cache-hit marker fast path where `.admitted` is the only delivery event),
+    // the file stays empty. Clearing leaves NO signal — so the pre-first-signal
+    // deadline must still fire (a phantom "Loading..." signal would have
+    // defeated it, the P1 regression).
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(
+      currentTime: { clock.now },
+      listingPhase: ModelLoadStallPolicy.listingPhase,
+      listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds,
+      silenceFloorSeconds: ModelLoadStallPolicy.transferSilenceFloorSeconds,
+      downloadOwnedPhases: [ModelLoadStallPolicy.downloadingPhase])
+    watcher.start()
+    // A brief real download, then the cleared boundary.
+    watcher.observeTick(
+      observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.downloadingPhase)
+    clock.tick(seconds: 5)
+    watcher.observeTick(observedMtime: nil, observedPhase: "")  // #1405 boundary clear
+    // The load never writes; the file stays empty. Deadline must still fire.
+    clock.tick(seconds: 119)
+    watcher.observeTick(observedMtime: nil, observedPhase: "")
+    #expect(!watcher.hasFired, "just under the deadline from the boundary: no fire yet")
+    clock.tick(seconds: 2)
+    watcher.observeTick(observedMtime: nil, observedPhase: "")
+    #expect(watcher.hasFired, "a load that never writes after the boundary must still fire")
     watcher.stop()
   }
 

@@ -92,12 +92,17 @@ public final class ParakeetDeliveryHandle {
     case .verifying:
       file.write(fraction: 0.5, phase: "Verifying download...", detail: "")
     case .admitted:
-      // #1405 download->load boundary: move the phase OFF the download phase
-      // the instant delivery completes, so the load-wedge guard un-parks and
-      // resumes judging the model LOAD (a load that hangs before writing its
-      // own progress must still be recoverable). Fraction stays at the 0.5
-      // download/load handoff; the load's own progress overwrites this.
-      file.write(fraction: 0.5, phase: "Loading speech model...", detail: "")
+      // #1405 download->load boundary: CLEAR the progress file the instant
+      // delivery completes. This moves the phase off the download phase so the
+      // load-wedge guard un-parks and resumes judging the model LOAD — but
+      // unlike WRITING a "loading" phase, clearing leaves NO signal, so the
+      // guard's pre-first-signal deadline still covers a load that wedges
+      // before emitting its own progress. Critical on the marker fast path
+      // (cache hit), where `.admitted` is reached with no prior write, so a
+      // phantom signal here would be the ONLY signal and would defeat that
+      // deadline (cloud-review P1). The load's own progress repopulates the
+      // file; onboarding's checklist advances off warm-up readiness, not this.
+      ProgressFile.shared.clear()
     case .notReady, .cancelled, .failed:
       break
     }
