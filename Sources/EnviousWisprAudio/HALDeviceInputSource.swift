@@ -186,26 +186,32 @@ private final class HALRenderContext: @unchecked Sendable {
           channelData[0].update(from: src.baseAddress!, count: count)
         }
       }
-      guard !bufferSeenThisSession else {
-        forward(nativeBuffer: nativeBuffer)
-        continue
+      // Liveness marks only once `forward` has actually converted AND routed
+      // a buffer downstream — never on mere receipt of a native-rate chunk
+      // (cloud review P2). Marking on receipt would let a converter that
+      // silently fails on every call (e.g. an unexpected format edge case)
+      // permanently defeat the "no audio detected" stall watchdog, since
+      // `bufferSeenThisSession` only ever flips once per recording.
+      let routed = forward(nativeBuffer: nativeBuffer)
+      if routed, !bufferSeenThisSession {
+        liveness.markReceived()
+        bufferSeenThisSession = true
       }
-      liveness.markReceived()
-      bufferSeenThisSession = true
-      forward(nativeBuffer: nativeBuffer)
     }
   }
 
   /// Resample `nativeBuffer` (the device's real rate) to `targetFormat`
   /// (16kHz mono, what the pipeline expects) and forward the converted
-  /// samples — never the raw native-rate ones (cloud review P2).
-  private func forward(nativeBuffer: AVAudioPCMBuffer) {
+  /// samples — never the raw native-rate ones (cloud review P2). Returns
+  /// whether a converted buffer actually reached `forwarder.route`.
+  @discardableResult
+  private func forward(nativeBuffer: AVAudioPCMBuffer) -> Bool {
     let ratio = targetFormat.sampleRate / nativeFormat.sampleRate
     let outputFrameCount = AVAudioFrameCount(Double(nativeBuffer.frameLength) * ratio) + 1
     guard outputFrameCount > 0,
       let convertedBuffer = AVAudioPCMBuffer(
         pcmFormat: targetFormat, frameCapacity: outputFrameCount)
-    else { return }
+    else { return false }
 
     var error: NSError?
     nonisolated(unsafe) var inputConsumed = false
@@ -218,13 +224,14 @@ private final class HALRenderContext: @unchecked Sendable {
       outStatus.pointee = .haveData
       return nativeBuffer
     }
-    guard error == nil, convertedBuffer.frameLength > 0 else { return }
+    guard error == nil, convertedBuffer.frameLength > 0 else { return false }
 
     let level = AudioBufferProcessor.calculateRMS(convertedBuffer)
-    guard let channelData = convertedBuffer.floatChannelData else { return }
+    guard let channelData = convertedBuffer.floatChannelData else { return false }
     let frameCount = Int(convertedBuffer.frameLength)
     let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
     forwarder.route(samples: samples, level: level, buffer: convertedBuffer)
+    return true
   }
 
   func resetSession() {
@@ -849,8 +856,13 @@ private func halRenderProc(
   for i in 0..<frameCount { sum += floatPtr[i] * floatPtr[i] }
   let level = (sum / Float(frameCount)).squareRoot()
 
-  context.ring.push(floatPtr, count: frameCount, level: level)
-  context.semaphore.signal()
+  // Only wake the consumer when a chunk was actually enqueued — a dropped
+  // push (ring full, consumer lagging) has nothing for `drainAndForward` to
+  // do, so signaling anyway just spins the consumer thread on empty work
+  // (cloud review P2).
+  if context.ring.push(floatPtr, count: frameCount, level: level) {
+    context.semaphore.signal()
+  }
 
   return noErr
 }
