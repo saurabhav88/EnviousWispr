@@ -5,6 +5,7 @@ import Observation
 @MainActor @Observable
 final class AudioDeviceList {
   var availableInputDevices: [AudioInputDevice] = []
+  var onDevicesChanged: (([AudioInputDevice]) -> Void)?
   private var deviceMonitor: AudioDeviceMonitor?
 
   init() {
@@ -16,5 +17,6 @@ final class AudioDeviceList {
 
   func refresh() {
     availableInputDevices = AudioDeviceEnumerator.allInputDevices()
+    onDevicesChanged?(availableInputDevices)
   }
 }

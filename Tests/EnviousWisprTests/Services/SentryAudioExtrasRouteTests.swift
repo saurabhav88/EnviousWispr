@@ -20,13 +20,13 @@ struct SentryAudioExtrasRouteTests {
       isActivelyCapturing: true, inputDeviceUIDPreferred: nil,
       inputDeviceUIDSystemDefault: nil, failureMode: "no_audio_captured",
       selectedTransport: "bluetooth", effectiveTransport: "built_in",
-      routeReason: "btOutputUserSelectedBTMic", routeFallbackReason: nil,
+      routeReason: "btOutputUserSelectedDevice", routeFallbackReason: nil,
       inputSelectionMode: "explicit", outputTransport: "bluetooth",
       routeResolutionSource: "app_derived")
 
     #expect(extras["capture.selected_transport"] as? String == "bluetooth")
     #expect(extras["capture.effective_transport"] as? String == "built_in")
-    #expect(extras["capture.route_reason"] as? String == "btOutputUserSelectedBTMic")
+    #expect(extras["capture.route_reason"] as? String == "btOutputUserSelectedDevice")
     #expect(extras["capture.input_selection_mode"] as? String == "explicit")
     #expect(extras["capture.output_transport"] as? String == "bluetooth")
     #expect(extras["capture.route_resolution_source"] as? String == "app_derived")

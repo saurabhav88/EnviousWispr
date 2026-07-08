@@ -31,14 +31,14 @@ struct DictationCompletedRouteFieldsTests {
       TelemetryService.shared.reportDictationCompleted(
         transcript: Transcript(text: "hello"), inputMode: "ptt",
         selectedTransport: "bluetooth", effectiveTransport: "built_in",
-        routeReason: "btOutputUserSelectedBTMic",
+        routeReason: "btOutputUserSelectedDevice",
         inputSelectionMode: "explicit", outputTransport: "bluetooth",
         routeResolutionSource: "app_derived")
 
       let props = box.event?.stringProps
       #expect(props?["selected_transport"] == "bluetooth")
       #expect(props?["effective_transport"] == "built_in")
-      #expect(props?["route_reason"] == "btOutputUserSelectedBTMic")
+      #expect(props?["route_reason"] == "btOutputUserSelectedDevice")
       #expect(props?["input_selection_mode"] == "explicit")
       #expect(props?["output_transport"] == "bluetooth")
       #expect(props?["route_resolution_source"] == "app_derived")
