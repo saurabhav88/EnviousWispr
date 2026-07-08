@@ -98,11 +98,20 @@ private final class HALSampleRing: @unchecked Sendable {
 private final class HALRenderContext: @unchecked Sendable {
   let audioUnit: AudioUnit
   let scratch: UnsafeMutableAudioBufferListPointer
+  /// Frame capacity `scratch` was allocated for. The render callback clamps
+  /// every read to this (never to the hardware-reported `inNumberFrames`
+  /// alone) — see the RT-safety comment on `halRenderProc` (Codex review r1
+  /// P1: a larger-than-configured slice must never read past the allocation).
+  let capacityFrames: Int
   let ring: HALSampleRing
   let stopped: HALStoppedFlag
   let liveness: HALCaptureLivenessFlag
   let forwarder: PreRollForwarder
-  let consumerQueue: DispatchQueue
+  /// Signaled once per rendered chunk; the dedicated consumer thread blocks
+  /// on this instead of the render callback dispatching work (Codex review r1
+  /// P2: `DispatchQueue.async` from the HAL IO thread can allocate/lock —
+  /// signaling a semaphore is the RT-safe wake primitive).
+  let semaphore = DispatchSemaphore(value: 0)
   /// Set once per session by the callback consumer; read by the MainActor
   /// watchdog closure via `wasReceived()` on `liveness` instead — kept here
   /// only so the consumer can skip the cross-thread mark after the first hit.
@@ -111,19 +120,19 @@ private final class HALRenderContext: @unchecked Sendable {
   init(
     audioUnit: AudioUnit,
     scratch: UnsafeMutableAudioBufferListPointer,
+    capacityFrames: Int,
     ring: HALSampleRing,
     stopped: HALStoppedFlag,
     liveness: HALCaptureLivenessFlag,
-    forwarder: PreRollForwarder,
-    consumerQueue: DispatchQueue
+    forwarder: PreRollForwarder
   ) {
     self.audioUnit = audioUnit
     self.scratch = scratch
+    self.capacityFrames = capacityFrames
     self.ring = ring
     self.stopped = stopped
     self.liveness = liveness
     self.forwarder = forwarder
-    self.consumerQueue = consumerQueue
   }
 
   /// Drain everything currently in the ring and forward through
@@ -179,11 +188,14 @@ private final class HALRenderContext: @unchecked Sendable {
 /// from the hardware's native format for us — no `AVAudioConverter` needed.
 ///
 /// RT-safety: the render callback (`halRenderProc`, true HAL IO thread) does
-/// `AudioUnitRender` into a preallocated scratch buffer, then a fixed-size
-/// memcpy into `HALSampleRing` (locked, bounded, no allocation) — see
-/// `keep-preroll-lock-minimal`. The heavier work (building an
-/// `AVAudioPCMBuffer`, calling `PreRollForwarder.route()`) happens on
-/// `consumerQueue`, one hop off the IO thread, mirroring where the other two
+/// `AudioUnitRender` into a preallocated scratch buffer (every read clamped to
+/// its actual capacity, never trusting `inNumberFrames` alone), then a
+/// fixed-size memcpy into `HALSampleRing` (locked, bounded, no allocation) —
+/// see `keep-preroll-lock-minimal`. It wakes a dedicated consumer thread via
+/// `DispatchSemaphore.signal()` (RT-safe; `DispatchQueue.async` is NOT — it
+/// can allocate/lock on the calling thread). The heavier work (building an
+/// `AVAudioPCMBuffer`, calling `PreRollForwarder.route()`) happens on that
+/// consumer thread, one hop off the IO thread, mirroring where the other two
 /// conformers already do that same per-chunk allocation (their tap/delegate
 /// callbacks, which are themselves not the literal IO thread).
 @MainActor
@@ -233,6 +245,10 @@ final class HALDeviceInputSource: AudioInputSource {
   private var deviceIsAliveListenerDeviceID: AudioDeviceID?
   private var deviceIsAliveListenerBlock: AudioObjectPropertyListenerBlock?
   private var forwarder: PreRollForwarder?
+  /// Dedicated thread draining `HALRenderContext.ring` off the HAL IO thread.
+  /// Retained only to keep it alive; its loop exits on its own once
+  /// `teardownUnit()` signals the semaphore after the stop flag is set.
+  private var consumerThread: Thread?
   private let captureLiveness = HALCaptureLivenessFlag()
   private var stoppedFlag: HALStoppedFlag?
   private var isRecovering = false
@@ -331,9 +347,19 @@ final class HALDeviceInputSource: AudioInputSource {
     }
 
     var maxFrames = Self.maxFramesPerSlice
-    AudioUnitSetProperty(
+    let maxFramesStatus = AudioUnitSetProperty(
       unit, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0,
       &maxFrames, UInt32(MemoryLayout<UInt32>.size))
+    if maxFramesStatus != noErr {
+      // Non-fatal: the render callback clamps every read to the scratch
+      // buffer's actual capacity regardless, so a device that ignores this
+      // property still can't overrun — it just silently drops any frames
+      // beyond capacity per callback. Logged (not RT-path) so the bake-off
+      // evidence shows it happened.
+      AudioCaptureManager.btRouteLog(
+        "HALDeviceInputSource: kAudioUnitProperty_MaximumFramesPerSlice set failed (status=\(maxFramesStatus)) — render callback still clamps to scratch capacity"
+      )
+    }
 
     let scratch = AudioBufferList.allocate(maximumBuffers: 1)
     let scratchStorage = UnsafeMutableRawPointer.allocate(
@@ -350,11 +376,9 @@ final class HALDeviceInputSource: AudioInputSource {
       slotCount: Self.ringSlotCount, capacityPerSlot: Int(Self.maxFramesPerSlice))
     let stopped = HALStoppedFlag()
     let fwd = PreRollForwarder()
-    let consumerQueue = DispatchQueue(
-      label: "com.enviouswispr.audio.hal-consumer", qos: .userInteractive)
     let context = HALRenderContext(
-      audioUnit: unit, scratch: scratch, ring: ring, stopped: stopped,
-      liveness: captureLiveness, forwarder: fwd, consumerQueue: consumerQueue)
+      audioUnit: unit, scratch: scratch, capacityFrames: Int(Self.maxFramesPerSlice),
+      ring: ring, stopped: stopped, liveness: captureLiveness, forwarder: fwd)
     let unmanaged = Unmanaged.passRetained(context)
 
     // No `self.*` assignment above this line: every failure branch below must
@@ -402,6 +426,7 @@ final class HALDeviceInputSource: AudioInputSource {
     self.stoppedFlag = stopped
     self.unmanagedContext = unmanaged
     self.audioUnit = unit
+    self.consumerThread = Self.makeConsumerThread(context: context)
     registerDeviceIsAliveListener(deviceID: deviceID)
 
     #if DEBUG
@@ -541,10 +566,18 @@ final class HALDeviceInputSource: AudioInputSource {
     stoppedFlag?.set()
     removeDeviceIsAliveListener()
     if let unit = audioUnit {
+      // Synchronous per Apple docs — blocks until the IO thread has genuinely
+      // stopped calling the render callback, so nothing below can race a live
+      // `halRenderProc` invocation.
       AudioOutputUnitStop(unit)
       AudioUnitUninitialize(unit)
       AudioComponentInstanceDispose(unit)
     }
+    // Wake the consumer thread (blocked on the semaphore) so it observes
+    // `stoppedFlag` and exits its loop. No RT callback can signal again after
+    // `AudioOutputUnitStop` returned above, so this is the FINAL signal —
+    // the thread drains anything left, sees `stopped.isSet()`, and returns.
+    renderContext?.semaphore.signal()
     if let unmanagedContext {
       unmanagedContext.release()
     }
@@ -556,6 +589,7 @@ final class HALDeviceInputSource: AudioInputSource {
     renderContext = nil
     unmanagedContext = nil
     stoppedFlag = nil
+    consumerThread = nil
     #if DEBUG
       boundDeviceID = nil
       boundUID = nil
@@ -630,6 +664,26 @@ final class HALDeviceInputSource: AudioInputSource {
       "HALDeviceInputSource: device \(deviceID) went away — interrupting")
     onInterrupted?()
   }
+
+  /// A dedicated thread that blocks on `context.semaphore` and drains the
+  /// ring off the HAL IO thread. Signaling a semaphore (not
+  /// `DispatchQueue.async`) from the render callback is the RT-safe wake
+  /// primitive (Codex review r1 P2) — `async` enqueue can allocate/lock on
+  /// the calling (IO) thread. Exits on its own once `teardownUnit()` signals
+  /// after `stoppedFlag` is set — never joined, never needs to be.
+  nonisolated private static func makeConsumerThread(context: HALRenderContext) -> Thread {
+    let thread = Thread {
+      while true {
+        context.semaphore.wait()
+        context.drainAndForward()
+        if context.stopped.isSet() { break }
+      }
+    }
+    thread.name = "com.enviouswispr.audio.hal-consumer"
+    thread.qualityOfService = .userInteractive
+    thread.start()
+    return thread
+  }
 }
 
 /// The AUHAL render callback — runs on the real HAL IO thread. Must not
@@ -646,6 +700,13 @@ private func halRenderProc(
   let context = Unmanaged<HALRenderContext>.fromOpaque(inRefCon).takeUnretainedValue()
   guard !context.stopped.isSet() else { return noErr }
 
+  // Reset to full capacity before every render — `AudioUnitRender` can shrink
+  // `mDataByteSize` to the actual bytes written, so a stale smaller value
+  // from a prior callback would otherwise silently persist (Codex review r1
+  // P1 context: never trust the buffer's byte size to still read "full").
+  let byteCapacity = context.capacityFrames * MemoryLayout<Float>.size
+  context.scratch[0].mDataByteSize = UInt32(byteCapacity)
+
   let status = AudioUnitRender(
     context.audioUnit, ioActionFlags, inTimeStamp, 1, inNumberFrames,
     context.scratch.unsafeMutablePointer)
@@ -653,15 +714,22 @@ private func halRenderProc(
   guard !context.stopped.isSet() else { return noErr }
 
   guard let data = context.scratch[0].mData else { return noErr }
+  // Clamp to what the buffer can actually hold AND what AudioUnitRender
+  // reports it actually wrote — never trust `inNumberFrames` alone. A device
+  // slice larger than `kAudioUnitProperty_MaximumFramesPerSlice` (property
+  // set failed, or hardware ignored it) would otherwise read past the
+  // preallocated scratch buffer (Codex review r1 P1).
+  let renderedFrames = Int(context.scratch[0].mDataByteSize) / MemoryLayout<Float>.size
+  let frameCount = min(Int(inNumberFrames), context.capacityFrames, renderedFrames)
+  guard frameCount > 0 else { return noErr }
   let floatPtr = data.assumingMemoryBound(to: Float.self)
-  let frameCount = Int(inNumberFrames)
 
   var sum: Float = 0
   for i in 0..<frameCount { sum += floatPtr[i] * floatPtr[i] }
-  let level = frameCount > 0 ? (sum / Float(frameCount)).squareRoot() : 0
+  let level = (sum / Float(frameCount)).squareRoot()
 
   context.ring.push(floatPtr, count: frameCount, level: level)
-  context.consumerQueue.async { context.drainAndForward() }
+  context.semaphore.signal()
 
   return noErr
 }
