@@ -448,10 +448,12 @@ final class HALDeviceInputSource: AudioInputSource {
     #if DEBUG
       boundDeviceID = deviceID
       boundUID = AudioDeviceEnumerator.inputDeviceUID(for: deviceID)
+      AudioCaptureManager.btRouteLog(
+        "HALDeviceInputSource: prepared with device \(deviceID) (uid=\(boundUID ?? "unknown"))"
+      )
+    #else
+      AudioCaptureManager.btRouteLog("HALDeviceInputSource: prepared with device \(deviceID)")
     #endif
-    AudioCaptureManager.btRouteLog(
-      "HALDeviceInputSource: prepared with device \(deviceID) (uid=\(AudioDeviceEnumerator.inputDeviceUID(for: deviceID) ?? "unknown"))"
-    )
   }
 
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
@@ -678,6 +680,13 @@ final class HALDeviceInputSource: AudioInputSource {
     guard isAlive == 0 else { return }
     AudioCaptureManager.btRouteLog(
       "HALDeviceInputSource: device \(deviceID) went away — interrupting")
+    // Tear down BEFORE firing onInterrupted (mirrors AVAudioEngineSource's
+    // emergencyTeardown-then-onInterrupted order). Without this, `isRunning`
+    // still reports true (we never called AudioOutputUnitStop), so the
+    // manager's warm-reuse check would try to resume capture on a HAL unit
+    // bound to a device that no longer exists on the NEXT recording instead
+    // of rebuilding fresh (cloud review P2).
+    teardownUnit()
     onInterrupted?()
   }
 

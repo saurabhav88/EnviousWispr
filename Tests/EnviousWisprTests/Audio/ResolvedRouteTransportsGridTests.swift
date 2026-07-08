@@ -41,7 +41,12 @@ struct ResolvedRouteTransportsGridTests {
     if isFallbackRung { #expect(r.routeFallbackReason == reason.rawValue) }
 
     // The capture-session path opens the built-in mic only today (bible R4).
-    if source == .captureSession { #expect(r.effective == "built_in") }
+    // HALDeviceInputSource's no-pin fallback is the SAME literal built-in mic
+    // (cloud review P2 on PR #1418 — the prior system-default-style fallback
+    // here didn't match what the source actually opens).
+    if source == .captureSession || source == .halDeviceInput {
+      #expect(r.effective == "built_in")
+    }
 
     // Empty UIDs → Auto; no user-selected transport.
     #expect(r.inputSelectionMode == "auto")
