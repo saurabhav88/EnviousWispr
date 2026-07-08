@@ -29,12 +29,15 @@ struct AudioInputSourceConformanceFreezeTests {
   enum ConformerKind: String, CaseIterable, Sendable {
     case audioEngine
     case captureSession
+    /// Candidate D (#1377 slice 2b, reinstated 2026-07-08).
+    case halDeviceInput
   }
 
   private func make(_ kind: ConformerKind) -> any AudioInputSource {
     switch kind {
     case .audioEngine: return AVAudioEngineSource()
     case .captureSession: return AVCaptureSessionSource()
+    case .halDeviceInput: return HALDeviceInputSource()
     }
   }
 
@@ -44,6 +47,7 @@ struct AudioInputSourceConformanceFreezeTests {
     switch kind {
     case .audioEngine: return "av_audio_engine"
     case .captureSession: return "av_capture_session"
+    case .halDeviceInput: return "hal_device_input"
     }
   }
 
@@ -96,6 +100,28 @@ struct AVCaptureSessionSourceDeviceTargetTests {
   @Test("a pinned target UID is reflected")
   func pinnedTargetReflected() {
     let source = AVCaptureSessionSource()
+    source.targetDeviceUID = "BC-87-FA-9C-7E-71:input"
+    #expect(source.targetDeviceUID == "BC-87-FA-9C-7E-71:input")
+  }
+}
+
+// #1377 slice 2b (reinstated 2026-07-08) — locks candidate D's identical
+// additive device-target contract to candidate A's: default nil (built-in),
+// pinned UID reflected. WHICH device actually binds is hardware-dependent and
+// proven by the bake-off Live UAT (the founder's Bose headset spike), not here.
+@MainActor
+@Suite("HALDeviceInputSource device target — #1377")
+struct HALDeviceInputSourceDeviceTargetTests {
+
+  @Test("default target is nil (automatic path leaves it built-in)")
+  func defaultTargetIsNil() {
+    let source = HALDeviceInputSource()
+    #expect(source.targetDeviceUID == nil)
+  }
+
+  @Test("a pinned target UID is reflected")
+  func pinnedTargetReflected() {
+    let source = HALDeviceInputSource()
     source.targetDeviceUID = "BC-87-FA-9C-7E-71:input"
     #expect(source.targetDeviceUID == "BC-87-FA-9C-7E-71:input")
   }

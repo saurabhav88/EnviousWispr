@@ -66,7 +66,7 @@ _CHECKOUT_ROOT = os.path.dirname(
 )
 DEFAULT_SCORECARD = os.path.join(_CHECKOUT_ROOT, ".validation", "capture-bakeoff-scorecard.json")
 
-# candidate -> force policy + expected backend tag. Extend for D/E in 2b/2c.
+# candidate -> force policy + expected backend tag. Extend for E in 2c.
 CANDIDATES = {
     "A": {
         "policy": "forceCaptureSession",
@@ -77,6 +77,13 @@ CANDIDATES = {
         "policy": "forceEngine",
         "backend": "av_audio_engine",
         "desc": "AVAudioEngine, device-override",
+    },
+    # Reinstated 2026-07-08 (slice 2b) — spiked against A per the competitive
+    # research in docs/audits/2026-07-08-capture-engine-competitive-research.md.
+    "D": {
+        "policy": "forceHALDeviceInput",
+        "backend": "hal_device_input",
+        "desc": "AUHAL (kAudioUnitSubType_HALOutput), device-targeted",
     },
 }
 

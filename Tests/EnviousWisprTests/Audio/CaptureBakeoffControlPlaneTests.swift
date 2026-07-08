@@ -48,6 +48,14 @@ import Testing
         CaptureRouteResolver.debugPolicyOverride(defaults: defaults) == .forceCaptureSession)
     }
 
+    @Test("forceHALDeviceInput string → .forceHALDeviceInput")
+    func forceHALDeviceInputMaps() {
+      let defaults = makeDefaults()
+      defaults.set("forceHALDeviceInput", forKey: CaptureRouteResolver.debugPolicyOverrideKey)
+      #expect(
+        CaptureRouteResolver.debugPolicyOverride(defaults: defaults) == .forceHALDeviceInput)
+    }
+
     @Test("unknown string → nil (never silently forces a candidate)")
     func garbageIsNil() {
       let defaults = makeDefaults()
@@ -79,18 +87,28 @@ struct CaptureRouteResolverForceMappingTests {
     #expect(d.reason == .forcedCaptureSession)
   }
 
+  @Test("forceHALDeviceInput policy → .halDeviceInput / .forcedHALDeviceInput (no hardware)")
+  func forceHALDeviceInputDecision() {
+    var resolver = CaptureRouteResolver()
+    resolver.policy = .forceHALDeviceInput
+    let d = resolver.resolve(preferredInputDeviceUID: "", noiseSuppression: false)
+    #expect(d.sourceType == .halDeviceInput)
+    #expect(d.reason == .forcedHALDeviceInput)
+  }
+
   // Dormancy lock: whatever the test machine's audio hardware, the `.automatic`
-  // route only ever yields a SHIPPING capture backend. When slices 2b/2c add
-  // `.halDeviceInput` / `.voiceProcessingIO`, this assertion stays the two
-  // shipping cases, so it guards that the automatic route never emits a dormant
-  // candidate (the §4 invariant) — hardware-independent because it asserts
-  // membership, not a specific device-derived result.
+  // route only ever yields a SHIPPING capture backend. `.halDeviceInput`
+  // (slice 2b, reinstated 2026-07-08) is dormant — this assertion stays the
+  // two shipping cases, so it guards that the automatic route never emits a
+  // dormant candidate (the §4 invariant) — hardware-independent because it
+  // asserts membership, not a specific device-derived result.
   @Test("automatic route only ever emits a shipping backend (dormancy)")
   func automaticNeverEmitsDormantCase() {
     var resolver = CaptureRouteResolver()  // .automatic by default
     for pref in ["", "some-device-uid"] {
       let d = resolver.resolve(preferredInputDeviceUID: pref, noiseSuppression: false)
       #expect(d.sourceType == .audioEngine || d.sourceType == .captureSession)
+      #expect(d.sourceType != .halDeviceInput)
     }
   }
 }

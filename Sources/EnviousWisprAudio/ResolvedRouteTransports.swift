@@ -94,6 +94,24 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
       } else {
         effective = "unknown"
       }
+    case .halDeviceInput:
+      // Dormant candidate D (#1377 slice 2b) — only reachable via
+      // `.forceHALDeviceInput`. A resolvable pin reports its own transport
+      // (mirrors the pinned device HALDeviceInputSource actually opens). With
+      // NO pin (or a stale one), `HALDeviceInputSource.resolveDeviceID()`
+      // falls back to the literal built-in mic — same as
+      // `AVCaptureSessionSource`'s fallback, NOT "whatever the system default
+      // happens to be" the way `AVAudioEngineSource` falls back. Reporting
+      // the system-default transport here would be wrong whenever the
+      // default input isn't built-in (cloud review P2).
+      let halUID =
+        preferredInputDeviceIDOverride.isEmpty
+        ? selectedInputDeviceUID : preferredInputDeviceIDOverride
+      if !halUID.isEmpty, let label = AudioDeviceEnumerator.transportLabel(forUID: halUID) {
+        effective = label
+      } else {
+        effective = "built_in"
+      }
     }
 
     let fallbackReason: String? =

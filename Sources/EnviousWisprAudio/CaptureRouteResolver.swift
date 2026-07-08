@@ -8,12 +8,19 @@ enum CaptureSourcePolicy: Sendable {
   case automatic
   case forceEngine
   case forceCaptureSession
+  /// #1377 slice 2b (reinstated 2026-07-08) — force-select candidate D
+  /// (`HALDeviceInputSource`) for the bake-off spike. `.automatic` never
+  /// emits this; unreachable outside the bench.
+  case forceHALDeviceInput
 }
 
 /// Which capture backend to use.
 public enum CaptureSourceType: Sendable {
   case audioEngine
   case captureSession
+  /// Dormant candidate D (#1377 slice 2b) — only reachable via
+  /// `.forceHALDeviceInput`.
+  case halDeviceInput
 }
 
 /// Machine-readable reason for the route decision. Used for telemetry.
@@ -26,6 +33,7 @@ public enum CaptureRouteReason: String, Sendable {
   case noBTUserSelectedDevice
   case forcedEngine
   case forcedCaptureSession
+  case forcedHALDeviceInput
   case fallbackToEngine
   case failedNoFallback
 }
@@ -47,6 +55,8 @@ extension CaptureRouteReason {
       return "audio_engine"
     case .forcedCaptureSession:
       return "capture_session"
+    case .forcedHALDeviceInput:
+      return "hal_device_input"
     case .failedNoFallback:
       return "failed"
     }
@@ -119,6 +129,14 @@ struct CaptureRouteResolver {
         sourceType: .captureSession,
         reason: .forcedCaptureSession,
         rationale: "Policy override: forced capture session",
+        vpAvailable: false,
+        fallbackAllowed: false
+      )
+    case .forceHALDeviceInput:
+      return CaptureRouteDecision(
+        sourceType: .halDeviceInput,
+        reason: .forcedHALDeviceInput,
+        rationale: "Policy override: forced HAL device input (#1377 candidate D spike)",
         vpAvailable: false,
         fallbackAllowed: false
       )
@@ -221,6 +239,7 @@ struct CaptureRouteResolver {
       switch raw {
       case "forceEngine": return .forceEngine
       case "forceCaptureSession": return .forceCaptureSession
+      case "forceHALDeviceInput": return .forceHALDeviceInput
       default: return nil
       }
     }
