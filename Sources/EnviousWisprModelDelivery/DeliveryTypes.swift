@@ -30,11 +30,25 @@ public struct DeliveryFailure: Error, Sendable, Equatable {
   /// The source whose failure terminated the attempt (nil when no source was
   /// involved, e.g. preflight rejection).
   public let failingSourceID: String?
+  /// Phase 2 (#1405): true when this is a transient network/HTTP condition
+  /// worth a bounded same-source retry (with Range-resume) before failover.
+  /// Stamped at failure construction (transport classifier / HTTP-status sites)
+  /// so the failover loop reads one structured flag, never re-parses `detail`.
+  /// Not part of the D3/§7 telemetry taxonomy — a retry-policy hint only.
+  public let retryableTransient: Bool
+  /// Phase 2 (#1405): server-directed wait in seconds parsed from a 429/503
+  /// `Retry-After` header, when present; nil otherwise.
+  public let retryAfter: TimeInterval?
 
-  public init(reason: DeliveryFailureClass, detail: String? = nil, failingSourceID: String? = nil) {
+  public init(
+    reason: DeliveryFailureClass, detail: String? = nil, failingSourceID: String? = nil,
+    retryableTransient: Bool = false, retryAfter: TimeInterval? = nil
+  ) {
     self.reason = reason
     self.detail = detail
     self.failingSourceID = failingSourceID
+    self.retryableTransient = retryableTransient
+    self.retryAfter = retryAfter
   }
 }
 

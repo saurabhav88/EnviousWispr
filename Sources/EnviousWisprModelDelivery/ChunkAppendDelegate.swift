@@ -40,7 +40,15 @@ final class ChunkAppendDelegate: NSObject, URLSessionDataDelegate, @unchecked Se
   private var response: HTTPURLResponse?
   private var writeError: Error?
   private var selfCancelReason: SelfCancelReason?
+  /// The continuation + completion handoff is guarded by `handoffLock` (not the
+  /// delegate queue): in the pre-start cancellation window `invalidateAndCancel()`
+  /// can deliver `didCompleteWithError` BEFORE `run()` installs the continuation,
+  /// so a completion that arrives first is stashed in `pendingCompletion` and the
+  /// continuation picks it up — otherwise the awaiter (and any cancel drain)
+  /// would hang forever (#1405 Codex r2).
+  private let handoffLock = NSLock()
   private var continuation: CheckedContinuation<Outcome, Error>?
+  private var pendingCompletion: Result<Outcome, Error>?
 
   struct Outcome {
     let response: HTTPURLResponse
@@ -71,10 +79,29 @@ final class ChunkAppendDelegate: NSObject, URLSessionDataDelegate, @unchecked Se
     // serial delivery (EG-1 Codex r5 P1).
     let session = URLSession(configuration: Self.configuration, delegate: self, delegateQueue: nil)
     defer { session.finishTasksAndInvalidate() }
+    // Create the data task BEFORE installing the cancellation handler. If the
+    // enclosing Task is already cancelled on arrival, `withTaskCancellationHandler`
+    // may run `onCancel` (→ `invalidateAndCancel()`) before the operation body;
+    // creating the task there would throw "Task created in a session that has
+    // been invalidated" and crash. #1371's new cancel-on-wedge makes that window
+    // reachable. Creating it up front means the task always exists before any
+    // invalidation; a post-invalidation `resume()` is a safe no-op that completes
+    // as cancelled.
+    let dataTask = session.dataTask(with: request)
     return try await withTaskCancellationHandler {
-      try await withCheckedThrowingContinuation { cont in
+      try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Outcome, Error>) in
+        handoffLock.lock()
+        // Completion already delivered (cancel won the pre-start window)? Take it
+        // now instead of installing a continuation nothing will resume.
+        if let pending = pendingCompletion {
+          pendingCompletion = nil
+          handoffLock.unlock()
+          cont.resume(with: pending)
+          return
+        }
         continuation = cont
-        session.dataTask(with: request).resume()
+        handoffLock.unlock()
+        dataTask.resume()
       }
     } onCancel: {
       session.invalidateAndCancel()
@@ -167,27 +194,34 @@ final class ChunkAppendDelegate: NSObject, URLSessionDataDelegate, @unchecked Se
   func urlSession(
     _ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?
   ) {
-    guard let cont = continuation else { return }
-    continuation = nil
+    let result: Result<Outcome, Error>
     if let writeError {
-      cont.resume(throwing: writeError)
-      return
-    }
-    // A REAL transport error mid-body must throw — the partial is a valid
-    // resume point, and returning "success" here would route it into checksum
-    // verification, which deletes it (EG-1 Codex r3). Only OUR deliberate
-    // self-cancel returns the response for status/length mapping.
-    if let error, selfCancelReason == nil {
-      cont.resume(throwing: error)
-      return
-    }
-    if let response {
+      result = .failure(writeError)
+    } else if let error, selfCancelReason == nil {
+      // A REAL transport error mid-body must throw — the partial is a valid
+      // resume point, and returning "success" here would route it into checksum
+      // verification, which deletes it (EG-1 Codex r3). Only OUR deliberate
+      // self-cancel returns the response for status/length mapping.
+      result = .failure(error)
+    } else if let response {
       onBytesWritten(written)
-      cont.resume(
-        returning: Outcome(
+      result = .success(
+        Outcome(
           response: response, selfCancelReason: selfCancelReason, bytesReceived: bytesReceived))
-      return
+    } else {
+      result = .failure(error ?? URLError(.unknown))
     }
-    cont.resume(throwing: error ?? URLError(.unknown))
+    // Hand off under the lock: if `run()` has not installed the continuation yet
+    // (pre-start cancellation window), stash the result for it to pick up so the
+    // completion is never dropped (#1405 Codex r2).
+    handoffLock.lock()
+    if let cont = continuation {
+      continuation = nil
+      handoffLock.unlock()
+      cont.resume(with: result)
+    } else {
+      pendingCompletion = result
+      handoffLock.unlock()
+    }
   }
 }

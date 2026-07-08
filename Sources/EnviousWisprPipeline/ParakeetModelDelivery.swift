@@ -79,18 +79,31 @@ public final class ParakeetDeliveryHandle {
     case .preparing(let validating):
       file.write(
         fraction: 0,
-        phase: validating ? "Checking speech model files..." : "Preparing download...",
+        phase: validating ? "Checking speech model files..." : ModelLoadStallPolicy.listingPhase,
         detail: "")
     case .downloading(let fraction, let bytesWritten, let totalBytes):
       let mb = Int(Double(bytesWritten) / 1_048_576)
       let totalMB = Int(Double(totalBytes) / 1_048_576)
       file.write(
         fraction: fraction * 0.5,
-        phase: "Downloading speech model...",
+        // Single authority for this literal (the wedge guard parks on it, #1405).
+        phase: ModelLoadStallPolicy.downloadingPhase,
         detail: "\(mb) MB of \(totalMB) MB (\(Int(fraction * 100))%)")
     case .verifying:
       file.write(fraction: 0.5, phase: "Verifying download...", detail: "")
-    case .notReady, .admitted, .cancelled, .failed:
+    case .admitted:
+      // #1405 download->load boundary: CLEAR the progress file the instant
+      // delivery completes. This moves the phase off the download phase so the
+      // load-wedge guard un-parks and resumes judging the model LOAD — but
+      // unlike WRITING a "loading" phase, clearing leaves NO signal, so the
+      // guard's pre-first-signal deadline still covers a load that wedges
+      // before emitting its own progress. Critical on the marker fast path
+      // (cache hit), where `.admitted` is reached with no prior write, so a
+      // phantom signal here would be the ONLY signal and would defeat that
+      // deadline (cloud-review P1). The load's own progress repopulates the
+      // file; onboarding's checklist advances off warm-up readiness, not this.
+      ProgressFile.shared.clear()
+    case .notReady, .cancelled, .failed:
       break
     }
   }

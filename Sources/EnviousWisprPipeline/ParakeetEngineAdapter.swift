@@ -408,6 +408,11 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   func recoverFromWedge() async {
     await discardSession()
     asrManager.cancelInFlightLoad()
+    // #1405: this recovery is now for MODEL-LOAD wedges only. The download owns
+    // its own stall detection (the fetcher's request idle timeout), and the
+    // wedge guard stays parked during the download phase — so a download is
+    // never in flight here. The #1371 `delivery.cancel()` that used to live
+    // here was the external canceller that fought the fetcher's retry; removed.
   }
 
   // MARK: ASREngineAdapter — cleanup

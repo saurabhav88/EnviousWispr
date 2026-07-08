@@ -70,6 +70,10 @@ public final class LoadProgressWatcher {
   private var maxGapSeconds: TimeInterval = 0
   private var signalCount: Int = 0
   private var fired = false
+  /// #1405: true while the last observed tick was an ACTIVE download phase, so
+  /// the next non-download tick can reset the attempt once at the
+  /// download->load boundary (clean load slate, deadline counts from there).
+  private var wasInDownloadPhase = false
   private var continuation: CheckedContinuation<Void, Never>?
   /// Require two observed progress signals before ratio-based silence can fire.
   /// This keeps the 800ms floor from becoming a standalone timeout after only
@@ -106,6 +110,14 @@ public final class LoadProgressWatcher {
   private let listingPhase: String?
   private let listingStallDeadlineSeconds: TimeInterval?
 
+  /// #1405: phases whose stall detection the DOWNLOADER owns (via its request
+  /// idle timeout), NOT this load-watchdog. While the observed phase is in this
+  /// set the watcher stays parked — it never fires and keeps its attempt
+  /// baseline fresh, so load-stall detection starts clean at the
+  /// download->load transition. Empty (default) preserves the pure-load
+  /// behavior for callers that never watch a download.
+  private let downloadOwnedPhases: Set<String>
+
   public init(
     currentTime: @escaping @MainActor () -> TimeInterval = {
       ProcessInfo.processInfo.systemUptime
@@ -113,13 +125,15 @@ public final class LoadProgressWatcher {
     requiresObservedGap: Bool = true,
     listingPhase: String? = nil,
     listingStallDeadlineSeconds: TimeInterval? = nil,
-    silenceFloorSeconds: TimeInterval = 0.8
+    silenceFloorSeconds: TimeInterval = 0.8,
+    downloadOwnedPhases: Set<String> = []
   ) {
     self.currentTime = currentTime
     self.requiresObservedGap = requiresObservedGap
     self.listingPhase = listingPhase
     self.listingStallDeadlineSeconds = listingStallDeadlineSeconds
     self.floorSeconds = silenceFloorSeconds
+    self.downloadOwnedPhases = downloadOwnedPhases
   }
 
   /// Begin a new attempt. Resets all per-attempt state.
@@ -133,6 +147,7 @@ public final class LoadProgressWatcher {
     maxGapSeconds = 0
     signalCount = 0
     fired = false
+    wasInDownloadPhase = false
     // continuation intentionally left untouched: a prior consumer may still be
     // awaiting wedged() and must be resumed by the caller before start().
   }
@@ -158,6 +173,37 @@ public final class LoadProgressWatcher {
   public func observeTick(observedMtime: Date?, observedPhase: String) {
     guard !fired else { return }
     let now = currentTime()
+
+    // #1405: while an ACTIVE download is in flight, the fetcher owns
+    // transfer-stall (its own request idle timeout), so the load-watchdog must
+    // not judge it. "Active" requires a FRESH signal (observedMtime != nil):
+    // a STALE progress file left on the download phase by a prior interrupted
+    // attempt passes observedMtime == nil and must NOT park — otherwise a new
+    // warm-up that hangs before writing would be suppressed forever
+    // (code-diff review). Park = never fire; do not touch the attempt baseline
+    // here, so a slow multi-minute download cannot false-fire the deadline.
+    if observedMtime != nil, downloadOwnedPhases.contains(observedPhase) {
+      wasInDownloadPhase = true
+      lastObservedMtime = observedMtime
+      return
+    }
+
+    // download -> load transition: the first non-download tick after a parked
+    // download starts the LOAD attempt fresh. This gives load-stall detection a
+    // clean slate (the long download does not bleed into its gates) and makes
+    // the pre-first-signal deadline count from HERE — so a load that wedges
+    // without ever writing progress after the download is still recovered.
+    if wasInDownloadPhase {
+      wasInDownloadPhase = false
+      attemptStartedAt = now
+      firstSignalAt = nil
+      lastSignalAt = nil
+      maxGapSeconds = 0
+      signalCount = 0
+      lastObservedMtime = observedMtime
+      lastObservedPhase = observedPhase
+      return
+    }
 
     // Detect a "real" signal by mtime advance.
     if let mtime = observedMtime, mtime != lastObservedMtime {
@@ -305,6 +351,17 @@ public enum ModelLoadStallPolicy {
   /// file while the remote host's repo-file-listing call is in flight. The
   /// wedge guard keys its single-signal stall gate on this token.
   public static let listingPhase = "Preparing download..."
+
+  /// The exact phase string the delivery layer writes while the model files
+  /// are actively downloading (the whole HEAD+GET+retry+failover fetch runs
+  /// under this one state). #1405: the fetcher owns its own stall detection
+  /// via its request idle timeout (`ManifestFetchTask.requestTimeout`), so the
+  /// sessionless wedge guard must NOT judge this phase — it would fight the
+  /// fetcher's legitimate retry/backoff/Retry-After waits (the P2 cascade).
+  /// The guard passes this to `downloadOwnedPhases`; single authority so the
+  /// phase writer (`ParakeetModelDelivery.bridgeToProgressFile`) and the guard
+  /// can never drift on the literal.
+  public static let downloadingPhase = "Downloading speech model..."
 
   /// PROVISIONAL listing-stall deadline (plan §3a, issue #1339): fires only
   /// on ABSENCE of progress in the listing window (one signal then silence,

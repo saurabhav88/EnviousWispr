@@ -151,7 +151,9 @@ enum ManifestFixture {
   /// Swift loader MUST both reproduce it (one canonicalization, two
   /// implementations — a drift here would reject a valid manifest at
   /// runtime).
-  static let goldenDigest = "9b2ac8f4a96845506f75e653605be369fd2762ba9f7ae60a27ab8991000e4581"
+  // Updated 2026-07-07 (#1405 Phase 2): `our_copy` baseURL repointed to the
+  // edge-cached `/parakeet/` path; digest recomputed via the same canonicalization.
+  static let goldenDigest = "edbd8592cc8316b5aa3a82de81c0855af9d0463a7e2bf8a5a1fe8569af497676"
 
   @Test func shippedManifestLoadsAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.shippedManifestURL)
