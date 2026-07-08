@@ -225,7 +225,12 @@ private enum InstallPathFixture {
     repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources/eg1-manifest.json")
   }
 
-  static let goldenDigest = "e3776d8863b791b120c58a1831b6e90474277753e8e0e78a6b62eac4816133c6"
+  // #1417: EG-1 shipped its sharded revision (v2-sharded, 8 componentSet
+  // files) — golden digest updated to match. Recomputed via the real
+  // DeliveryManifest.canonicalDigest algorithm against the authored manifest,
+  // first cross-checked against the OLD single-file manifest's known-good
+  // digest to prove the recompute technique was faithful before trusting it.
+  static let goldenDigest = "07550d07e242aa660393f5e62d36106ed7916ffa8852d9fb66f5420854a6b70d"
 
   @Test func shippedDeliveryManifestLoadsAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.deliveryManifestURL)
@@ -233,11 +238,20 @@ private enum InstallPathFixture {
     #expect(manifest.manifestDigest == Self.goldenDigest)
     #expect(try DeliveryManifest.canonicalDigest(of: data) == Self.goldenDigest)
     #expect(manifest.identity.family == .egOne)
-    #expect(manifest.files.count == 1)
-    let file = try #require(manifest.files.first)
-    #expect(file.path == "eg-1-v1-q5km.gguf")  // server object key
-    #expect(file.resolvedInstallPath == "eg-1-v1.gguf")  // local runtime name
-    #expect(file.component == "eg-1-v1.gguf")
+    #expect(manifest.identity.revision == "v2-sharded")
+    #expect(manifest.admission.layout == "componentSet")
+    #expect(manifest.files.count == 8)
+    #expect(manifest.totalBytes == manifest.files.reduce(0) { $0 + $1.sizeBytes })
+    for file in manifest.files {
+      #expect(
+        file.sizeBytes <= 450_000_000, "\(file.path) exceeds the cache-eligible shard ceiling")
+    }
+    let entrypointPath = try #require(manifest.resolvedEntrypointPath)
+    #expect(entrypointPath == "eg-1-v1-00001-of-00008.gguf")
+    let entrypointFile = try #require(
+      manifest.files.first { $0.resolvedInstallPath == entrypointPath })
+    #expect(entrypointFile.path == "v2-sharded/eg-1-v1-00001-of-00008.gguf")  // server object key
+    #expect(entrypointFile.component == "eg-1-v1-00001-of-00008.gguf")
     #expect(manifest.sources.map(\.id) == ["our_copy"])
   }
 
