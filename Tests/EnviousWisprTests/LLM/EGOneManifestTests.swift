@@ -14,8 +14,8 @@ struct EGOneManifestTests {
     downloadURL: String = "https://models.enviouslabs.co/eg1/eg-1-v1-q5km.gguf"
   ) -> EGOneManifest {
     EGOneManifest(
-      modelName: modelName, version: "v1", sha256: String(repeating: "a", count: 64),
-      sizeBytes: 1000, contextTokens: 32768, promptTemplateID: promptTemplateID,
+      modelName: modelName, version: "v1",
+      contextTokens: 32768, promptTemplateID: promptTemplateID,
       minAppVersion: "2.3.0", downloadURL: URL(string: downloadURL)!)
   }
 
@@ -84,11 +84,9 @@ struct EGOneManifestTests {
     for token in forbidden {
       #expect(!manifest.downloadURL.absoluteString.lowercased().contains(token))
     }
-    #expect(manifest.sha256.count == 64)
-    #expect(manifest.sha256.allSatisfy { $0.isHexDigit })
-    // Not a degenerate hash (all one character = placeholder smell).
-    #expect(Set(manifest.sha256).count > 4)
-    #expect(manifest.sizeBytes > 1_000_000_000)  // a real 4B-model GGUF
+    // sha256/sizeBytes removed (#1417 §3.6): dead fields with no runtime
+    // reader, superseded by the delivery manifest's own per-shard
+    // verification (ManifestFetchTask/CacheAdmission, contract invariant 1).
     #expect(manifest.modelName == LLMProvider.egOneModelName)
     #expect(manifest.promptFamily != nil)
     #expect(manifest.activationBlockers().isEmpty)

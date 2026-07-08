@@ -25,12 +25,6 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
   /// Artifact version, e.g. "v1". Part of the on-disk filename so model
   /// updates are atomic swaps, never in-place rewrites.
   public let version: String
-  /// SHA-256 of the GGUF artifact (lowercase hex). BLOCKING: a file that
-  /// does not hash to this value is never served (deleted, re-downloaded).
-  public let sha256: String
-  /// Exact artifact size in bytes. Used for the disk-space preflight and
-  /// as a cheap first-pass integrity check before hashing.
-  public let sizeBytes: Int64
   /// Context window (tokens) to launch the server with (`-c`). Sized from
   /// the 2026-07-02 length-ladder data; never below the product's
   /// max-dictation needs so nothing is silently truncated.
@@ -42,20 +36,22 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
   /// Minimum app version that can run this artifact (informational in
   /// Phase 1; enforced when remote manifests arrive).
   public let minAppVersion: String
-  /// HTTPS download URL for the GGUF artifact.
+  /// HTTPS URL for the GGUF artifact (#1417: repointed to shard 1's URL for a
+  /// sharded EG-1 revision — an https-scheme sanity check only via
+  /// `activationBlockers()`, never used to fetch or verify bytes; the
+  /// delivery manifest's per-shard hash is the sole verification authority,
+  /// see contract invariant 1).
   public let downloadURL: URL
   /// HTTPS URL of the EG-1 model license that governs the artifact.
   public let licenseURL: URL?
 
   public init(
-    modelName: String, version: String, sha256: String, sizeBytes: Int64,
+    modelName: String, version: String,
     contextTokens: Int, promptTemplateID: String, minAppVersion: String,
     downloadURL: URL, licenseURL: URL? = nil
   ) {
     self.modelName = modelName
     self.version = version
-    self.sha256 = sha256
-    self.sizeBytes = sizeBytes
     self.contextTokens = contextTokens
     self.promptTemplateID = promptTemplateID
     self.minAppVersion = minAppVersion

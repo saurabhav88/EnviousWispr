@@ -17,7 +17,8 @@ private enum InstallPathFixture {
   /// One-file manifest with an explicit `installPath` (nil ⇒ field omitted).
   static func json(
     path: String, installPath: String?, component: String, content: Data,
-    extraFiles: [(path: String, installPath: String?, component: String, content: Data)] = []
+    extraFiles: [(path: String, installPath: String?, component: String, content: Data)] = [],
+    entrypointFile: String? = nil, layout: String = "singleFile"
   ) throws -> Data {
     func fileObject(_ p: String, _ ip: String?, _ c: String, _ data: Data) -> [String: Any] {
       var obj: [String: Any] = [
@@ -27,6 +28,11 @@ private enum InstallPathFixture {
       return obj
     }
     let all = [(path, installPath, component, content)] + extraFiles
+    var admission: [String: Any] = [
+      "layout": layout, "installLocation": "test",
+      "diskHeadroomFactor": "2.2", "evictPreviousRevisions": false,
+    ]
+    if let entrypointFile { admission["entrypointFile"] = entrypointFile }
     let object: [String: Any] = [
       "schemaVersion": 1,
       "identity": [
@@ -37,10 +43,7 @@ private enum InstallPathFixture {
       "optionalFiles": [] as [Any],
       "totalBytes": all.reduce(0) { $0 + $1.3.count },
       "sources": [["id": "our_copy", "baseURL": "https://mirror.invalid.example/eg1/"]],
-      "admission": [
-        "layout": "singleFile", "installLocation": "test",
-        "diskHeadroomFactor": "2.2", "evictPreviousRevisions": false,
-      ] as [String: Any],
+      "admission": admission,
     ]
     let canonical = try JSONSerialization.data(
       withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes])
@@ -63,6 +66,42 @@ private enum InstallPathFixture {
     // Orphan roots (a local concern) derive from the install name, never the
     // fetch key — else cleanup could delete the preserved file.
     #expect(CacheAdmission.componentRoots(of: manifest) == ["eg-1-v1.gguf"])
+  }
+
+  // MARK: - resolvedEntrypointPath (#1417, schema v1.2)
+
+  // entrypointFile present ⇒ resolvedEntrypointPath resolves to that specific
+  // file among N, not just `.first`.
+  @Test func resolvedEntrypointPathHonorsExplicitEntrypoint() throws {
+    let data = try InstallPathFixture.json(
+      path: "eg-1-00001-of-00002.gguf", installPath: nil, component: "eg-1-00001-of-00002.gguf",
+      content: Data("shard1".utf8),
+      extraFiles: [
+        ("eg-1-00002-of-00002.gguf", nil, "eg-1-00002-of-00002.gguf", Data("shard2".utf8))
+      ],
+      entrypointFile: "eg-1-00001-of-00002.gguf", layout: "componentSet")
+    let manifest = try DeliveryManifest.load(from: data)
+    #expect(manifest.resolvedEntrypointPath == "eg-1-00001-of-00002.gguf")
+  }
+
+  // entrypointFile ABSENT on a multi-file manifest ⇒ falls back to `.first`
+  // (regression: the pre-#1417 behavior, now generalized to N files).
+  @Test func resolvedEntrypointPathFallsBackToFirstWhenAbsent() throws {
+    let data = try InstallPathFixture.json(
+      path: "a.gguf", installPath: nil, component: "a.gguf", content: Data("a".utf8),
+      extraFiles: [("b.gguf", nil, "b.gguf", Data("b".utf8))],
+      layout: "componentSet")
+    let manifest = try DeliveryManifest.load(from: data)
+    #expect(manifest.resolvedEntrypointPath == "a.gguf")
+  }
+
+  // entrypointFile naming a non-existent files[] entry fails at manifest
+  // validation (authoring/build time), never at runtime boot.
+  @Test func entrypointFileNotMatchingAnyFileFailsValidation() throws {
+    let data = try InstallPathFixture.json(
+      path: "a.gguf", installPath: nil, component: "a.gguf", content: Data("a".utf8),
+      entrypointFile: "does-not-exist.gguf", layout: "componentSet")
+    #expect(throws: (any Error).self) { try DeliveryManifest.load(from: data) }
   }
 
   // (c) absent installPath ⇒ resolvedInstallPath == path (v1 back-compat).
@@ -210,26 +249,34 @@ private enum InstallPathFixture {
       "eg1-delivery-manifest.json must be listed in the app target's resources")
   }
 
-  /// 3-axis agreement (#1363 §16.7): the delivery manifest and the runtime
-  /// `EGOneManifest` must never drift on fetch, install, or content identity.
+  /// Identity + fetch agreement (#1417 §3.6, revised from the #1363 3-axis
+  /// version): the runtime `EGOneManifest`'s `sha256`/`sizeBytes` were
+  /// removed as dead fields (no runtime reader, superseded by the delivery
+  /// manifest's own per-file hash/size verification — contract invariant 1),
+  /// so a 1:1 content-identity check against them no longer has a single
+  /// counterpart once the delivery manifest lists N shards. What must still
+  /// agree: model identity (name/version), and the runtime `downloadURL`
+  /// matches the manifest's ENTRYPOINT file's fetch URL — today's single
+  /// file; shard 1's URL once EG-1 ships sharded (same assertion, no rewrite
+  /// needed at that point since it reads `resolvedEntrypointPath` generically).
   @Test func deliveryManifestAgreesWithRuntimeManifest() throws {
     let delivery = try DeliveryManifest.load(from: Data(contentsOf: Self.deliveryManifestURL))
     let runtime =
       try JSONSerialization.jsonObject(
         with: Data(contentsOf: Self.runtimeManifestURL)) as! [String: Any]
-    let file = try #require(delivery.files.first)
-    let ourCopy = try #require(delivery.sources.first { $0.id == "our_copy" })
 
-    // Fetch axis: baseURL + path reconstructs the runtime downloadURL.
-    let reconstructed = ourCopy.baseURL.appendingPathComponent(file.path).absoluteString
-    #expect(reconstructed == (runtime["downloadURL"] as? String))
-    // Install axis: resolvedInstallPath == runtime artifactFileName
-    // (modelName-version.gguf).
+    // Identity axis: modelName/version must agree between the two manifests.
     let modelName = runtime["modelName"] as! String
     let version = runtime["version"] as! String
-    #expect(file.resolvedInstallPath == "\(modelName)-\(version).gguf")
-    // Content axis: sha256 + sizeBytes are identical.
-    #expect(file.sha256 == (runtime["sha256"] as? String))
-    #expect(file.sizeBytes == Int64(runtime["sizeBytes"] as! Int))
+    #expect(delivery.identity.name == modelName)
+    #expect(delivery.identity.revision == version)
+
+    // Fetch axis: the runtime downloadURL matches the ENTRYPOINT file's URL.
+    let entrypointPath = try #require(delivery.resolvedEntrypointPath)
+    let entrypointFile = try #require(
+      delivery.files.first { $0.resolvedInstallPath == entrypointPath })
+    let ourCopy = try #require(delivery.sources.first { $0.id == "our_copy" })
+    let reconstructed = ourCopy.baseURL.appendingPathComponent(entrypointFile.path).absoluteString
+    #expect(reconstructed == (runtime["downloadURL"] as? String))
   }
 }

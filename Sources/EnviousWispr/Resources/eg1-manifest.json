@@ -1,8 +1,6 @@
 {
   "modelName": "eg-1",
   "version": "v1",
-  "sha256": "3343fc1a30a3e82df7499a4775ef73dd6e28dea1cc39bb58197ec0b66ec874f6",
-  "sizeBytes": 2889511680,
   "contextTokens": 16384,
   "promptTemplateID": "eg1-v1",
   "minAppVersion": "2.3.0",

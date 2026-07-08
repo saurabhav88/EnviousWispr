@@ -50,6 +50,13 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
     /// exactly this. Integers and strings are canonicalization-safe.
     public let diskHeadroomFactor: String
     public let evictPreviousRevisions: Bool
+    /// Schema v1.2, additive (#1417): names the ONE `File.resolvedInstallPath`
+    /// the runtime boots/loads from when a manifest lists multiple files (a
+    /// `componentSet` layout with several shards, e.g. EG-1's split GGUF).
+    /// ABSENT ⇒ every existing manifest (single-file, or Parakeet's
+    /// componentSet with no single "the" entrypoint) is byte-identical and
+    /// its digest unchanged.
+    public let entrypointFile: String?
 
     public var headroomFactor: Double { Double(diskHeadroomFactor) ?? 2.2 }
   }
@@ -151,6 +158,17 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
     guard let factor = Double(admission.diskHeadroomFactor), factor >= 1.0 else {
       throw ManifestError.structurallyInvalid("diskHeadroomFactor must parse as a number >= 1.0")
     }
+    // #1417: a declared entrypointFile must resolve to a real files[] entry —
+    // fail closed at manifest-validation time (authoring/build), never at
+    // runtime boot. Duplicate resolvedInstallPath values are already rejected
+    // above, so "more than one match" cannot happen here.
+    if let entrypointFile = admission.entrypointFile {
+      guard files.contains(where: { $0.resolvedInstallPath == entrypointFile }) else {
+        throw ManifestError.structurallyInvalid(
+          "admission.entrypointFile \(entrypointFile) does not match any files[].resolvedInstallPath"
+        )
+      }
+    }
   }
 
   /// Canonical digest per D2 §2: SHA-256 over the canonical JSON (sorted keys,
@@ -170,6 +188,22 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
     let canonical = try JSONSerialization.data(
       withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes])
     return SHA256.hash(data: canonical).map { String(format: "%02x", $0) }.joined()
+  }
+
+  /// The single owner of "which file does the runtime boot/load from" (#1417):
+  /// `admission.entrypointFile` matched to its `resolvedInstallPath` when
+  /// present, else `files.first?.resolvedInstallPath` (the pre-existing
+  /// single-file behavior, unchanged). `nil` only if `files` is empty, which
+  /// cannot happen for a structurally-valid (already-admitted) manifest.
+  /// Consumers (e.g. `EGOneDeliveryAdapter.installedArtifactURL`) read this
+  /// property rather than re-deriving the fallback rule themselves.
+  public var resolvedEntrypointPath: String? {
+    if let entrypointFile = admission.entrypointFile,
+      let match = files.first(where: { $0.resolvedInstallPath == entrypointFile })
+    {
+      return match.resolvedInstallPath
+    }
+    return files.first?.resolvedInstallPath
   }
 
   /// Files grouped by their repair/atomicity component, in stable path order.
