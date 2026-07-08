@@ -116,6 +116,17 @@ private final class HALRenderContext: @unchecked Sendable {
   let stopped: HALStoppedFlag
   let liveness: HALCaptureLivenessFlag
   let forwarder: PreRollForwarder
+  /// The device's OWN native rate (mono Float32 non-interleaved) — what the
+  /// client format was set to, and what `ring` samples actually are. AUHAL
+  /// input does NOT resample (Apple QA1777: "does not provide sample rate
+  /// conversion" for input on macOS) — cloud review P2 caught the prior
+  /// version assuming a silent 16kHz resample that only happened to work
+  /// because the Bose's Bluetooth profile is already 16kHz natively.
+  let nativeFormat: AVAudioFormat
+  let targetFormat: AVAudioFormat
+  /// Resamples `nativeFormat` → `targetFormat` on the consumer thread —
+  /// mirrors `AVAudioEngineSource`'s own `AVAudioConverter` usage exactly.
+  let converter: AVAudioConverter
   /// Signaled once per rendered chunk; the dedicated consumer thread blocks
   /// on this instead of the render callback dispatching work (Codex review r1
   /// P2: `DispatchQueue.async` from the HAL IO thread can allocate/lock —
@@ -138,7 +149,10 @@ private final class HALRenderContext: @unchecked Sendable {
     ring: HALSampleRing,
     stopped: HALStoppedFlag,
     liveness: HALCaptureLivenessFlag,
-    forwarder: PreRollForwarder
+    forwarder: PreRollForwarder,
+    nativeFormat: AVAudioFormat,
+    targetFormat: AVAudioFormat,
+    converter: AVAudioConverter
   ) {
     self.audioUnit = audioUnit
     self.scratch = scratch
@@ -147,6 +161,9 @@ private final class HALRenderContext: @unchecked Sendable {
     self.stopped = stopped
     self.liveness = liveness
     self.forwarder = forwarder
+    self.nativeFormat = nativeFormat
+    self.targetFormat = targetFormat
+    self.converter = converter
     self.popScratch = [Float](repeating: 0, count: capacityFrames)
   }
 
@@ -158,32 +175,56 @@ private final class HALRenderContext: @unchecked Sendable {
   /// it, since this function is called from the dedicated consumer thread,
   /// never directly from the render callback).
   func drainAndForward() {
-    while let (count, level) = ring.pop(into: &popScratch) {
-      let samples = Array(popScratch.prefix(count))
+    while let (count, _) = ring.pop(into: &popScratch) {
+      guard
+        let nativeBuffer = AVAudioPCMBuffer(
+          pcmFormat: nativeFormat, frameCapacity: AVAudioFrameCount(count))
+      else { continue }
+      nativeBuffer.frameLength = AVAudioFrameCount(count)
+      if let channelData = nativeBuffer.floatChannelData {
+        popScratch.withUnsafeBufferPointer { src in
+          channelData[0].update(from: src.baseAddress!, count: count)
+        }
+      }
       guard !bufferSeenThisSession else {
-        forward(samples: samples, level: level)
+        forward(nativeBuffer: nativeBuffer)
         continue
       }
       liveness.markReceived()
       bufferSeenThisSession = true
-      forward(samples: samples, level: level)
+      forward(nativeBuffer: nativeBuffer)
     }
   }
 
-  private func forward(samples: [Float], level: Float) {
-    guard
-      let format = AVAudioFormat(
-        commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
-      let buffer = AVAudioPCMBuffer(
-        pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))
+  /// Resample `nativeBuffer` (the device's real rate) to `targetFormat`
+  /// (16kHz mono, what the pipeline expects) and forward the converted
+  /// samples — never the raw native-rate ones (cloud review P2).
+  private func forward(nativeBuffer: AVAudioPCMBuffer) {
+    let ratio = targetFormat.sampleRate / nativeFormat.sampleRate
+    let outputFrameCount = AVAudioFrameCount(Double(nativeBuffer.frameLength) * ratio) + 1
+    guard outputFrameCount > 0,
+      let convertedBuffer = AVAudioPCMBuffer(
+        pcmFormat: targetFormat, frameCapacity: outputFrameCount)
     else { return }
-    buffer.frameLength = AVAudioFrameCount(samples.count)
-    if let channelData = buffer.floatChannelData {
-      samples.withUnsafeBufferPointer { src in
-        channelData[0].update(from: src.baseAddress!, count: samples.count)
+
+    var error: NSError?
+    nonisolated(unsafe) var inputConsumed = false
+    converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
+      if inputConsumed {
+        outStatus.pointee = .noDataNow
+        return nil
       }
+      inputConsumed = true
+      outStatus.pointee = .haveData
+      return nativeBuffer
     }
-    forwarder.route(samples: samples, level: level, buffer: buffer)
+    guard error == nil, convertedBuffer.frameLength > 0 else { return }
+
+    let level = AudioBufferProcessor.calculateRMS(convertedBuffer)
+    guard let channelData = convertedBuffer.floatChannelData else { return }
+    let frameCount = Int(convertedBuffer.frameLength)
+    let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
+    forwarder.route(samples: samples, level: level, buffer: convertedBuffer)
   }
 
   func resetSession() {
@@ -199,9 +240,12 @@ private final class HALRenderContext: @unchecked Sendable {
 /// `AVAudioEngine` aggregate-device layer, so there is no
 /// `CADefaultDeviceAggregate` for the force-built-in crash-dodge to avoid.
 ///
-/// Format conversion is done BY AUHAL: setting the client (output-scope,
-/// element 1) stream format to 16kHz mono Float32 makes CoreAudio resample
-/// from the hardware's native format for us — no `AVAudioConverter` needed.
+/// Format conversion is done EXPLICITLY, not by AUHAL: AUHAL input does NOT
+/// resample (Apple QA1777 — "does not provide sample rate conversion" for
+/// input on macOS), so the client format is set to the hardware's own native
+/// rate (mono Float32), and an `AVAudioConverter` resamples to the pipeline's
+/// 16kHz on the consumer thread, mirroring `AVAudioEngineSource`'s own
+/// converter usage.
 ///
 /// RT-safety: the render callback (`halRenderProc`, true HAL IO thread) does
 /// `AudioUnitRender` into a preallocated scratch buffer (every read clamped to
@@ -350,10 +394,35 @@ final class HALDeviceInputSource: AudioInputSource {
       throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.set_device")
     }
 
+    // AUHAL input does NOT resample (Apple QA1777: "does not provide sample
+    // rate conversion" for input on macOS) — query the HARDWARE's actual
+    // native rate and set the client format to MATCH it (mono/Float32 is
+    // still safely convertible; sample RATE is not). Resampling to the
+    // pipeline's 16kHz happens explicitly via AVAudioConverter on the
+    // consumer thread (cloud review P2 on PR #1418 — the prior version
+    // assumed a silent resample that only worked by coincidence on the
+    // Bose, whose Bluetooth profile happens to already be 16kHz).
+    guard let nativeASBD = Self.queryNativeStreamFormat(deviceID: deviceID) else {
+      AudioComponentInstanceDispose(unit)
+      throw AudioError.formatCreationFailed(
+        source: "HALDeviceInputSource.prepare.query_native_format")
+    }
+    guard
+      let nativeFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32, sampleRate: nativeASBD.mSampleRate, channels: 1,
+        interleaved: false)
+    else {
+      AudioComponentInstanceDispose(unit)
+      throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.native_format")
+    }
+    guard let converter = AVAudioConverter(from: nativeFormat, to: Self.targetFormat) else {
+      AudioComponentInstanceDispose(unit)
+      throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.converter")
+    }
+
     // Client format on the input element's OUTPUT scope — what our render
-    // callback receives. AUHAL resamples the hardware's native format to
-    // this for us.
-    var clientFormat = Self.targetFormat.streamDescription.pointee
+    // callback receives, at the hardware's own rate.
+    var clientFormat = nativeFormat.streamDescription.pointee
     status = AudioUnitSetProperty(
       unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1,
       &clientFormat, UInt32(MemoryLayout<AudioStreamBasicDescription>.size))
@@ -362,7 +431,11 @@ final class HALDeviceInputSource: AudioInputSource {
       throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.stream_format")
     }
 
-    var maxFrames = Self.maxFramesPerSlice
+    // Scratch/ring capacity scales with the native rate — a fixed 4096-frame
+    // buffer sized for 16kHz would be too small at 44.1/48kHz. 300ms of
+    // headroom at whatever rate the hardware actually runs.
+    let capacityFrames = max(Int(Self.maxFramesPerSlice), Int(nativeFormat.sampleRate * 0.3))
+    var maxFrames = UInt32(capacityFrames)
     let maxFramesStatus = AudioUnitSetProperty(
       unit, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0,
       &maxFrames, UInt32(MemoryLayout<UInt32>.size))
@@ -379,22 +452,22 @@ final class HALDeviceInputSource: AudioInputSource {
 
     let scratch = AudioBufferList.allocate(maximumBuffers: 1)
     let scratchStorage = UnsafeMutableRawPointer.allocate(
-      byteCount: Int(Self.maxFramesPerSlice) * MemoryLayout<Float>.size,
+      byteCount: capacityFrames * MemoryLayout<Float>.size,
       alignment: MemoryLayout<Float>.alignment
     )
     scratch[0] = AudioBuffer(
       mNumberChannels: 1,
-      mDataByteSize: Self.maxFramesPerSlice * UInt32(MemoryLayout<Float>.size),
+      mDataByteSize: UInt32(capacityFrames * MemoryLayout<Float>.size),
       mData: scratchStorage
     )
 
-    let ring = HALSampleRing(
-      slotCount: Self.ringSlotCount, capacityPerSlot: Int(Self.maxFramesPerSlice))
+    let ring = HALSampleRing(slotCount: Self.ringSlotCount, capacityPerSlot: capacityFrames)
     let stopped = HALStoppedFlag()
     let fwd = PreRollForwarder()
     let context = HALRenderContext(
-      audioUnit: unit, scratch: scratch, capacityFrames: Int(Self.maxFramesPerSlice),
-      ring: ring, stopped: stopped, liveness: captureLiveness, forwarder: fwd)
+      audioUnit: unit, scratch: scratch, capacityFrames: capacityFrames,
+      ring: ring, stopped: stopped, liveness: captureLiveness, forwarder: fwd,
+      nativeFormat: nativeFormat, targetFormat: Self.targetFormat, converter: converter)
     let unmanaged = Unmanaged.passRetained(context)
 
     // No `self.*` assignment above this line: every failure branch below must
@@ -627,6 +700,24 @@ final class HALDeviceInputSource: AudioInputSource {
         "HALDeviceInputSource: target device uid=\(uid) not found — falling back to built-in")
     }
     return AudioDeviceEnumerator.builtInMicrophoneDeviceID()
+  }
+
+  /// Read the device's OWN native stream format directly from the HAL device
+  /// object (`kAudioDevicePropertyStreamFormat`, input scope) — the ground
+  /// truth for what rate the hardware actually runs at, queried BEFORE we
+  /// overwrite the AudioUnit's client-side format with our own request.
+  private static func queryNativeStreamFormat(deviceID: AudioDeviceID)
+    -> AudioStreamBasicDescription?
+  {
+    var format = AudioStreamBasicDescription()
+    var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+    var addr = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyStreamFormat,
+      mScope: kAudioDevicePropertyScopeInput,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    let status = AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &format)
+    return status == noErr ? format : nil
   }
 
   // MARK: - Private: disconnect handling
