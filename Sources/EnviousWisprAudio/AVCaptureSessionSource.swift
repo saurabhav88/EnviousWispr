@@ -131,6 +131,15 @@ final class AVCaptureSessionSource: AudioInputSource {
   private var interruptionObservers: [NSObjectProtocol] = []
   private var forwarder: PreRollForwarder?
 
+  #if DEBUG
+    /// The device actually bound at cold `prepare()`, retained so the per-capture
+    /// bench evidence (#1377 §3.5) can re-emit it on a warm-reuse trial where
+    /// `prepare()` early-returns. The session keeps this exact input across warm
+    /// reuse, so the retained identity stays truthful.
+    private var boundMicUID: String?
+    private var boundMicName: String?
+  #endif
+
   /// Dedicated serial queue for AVCaptureSession start/stop operations.
   /// Apple recommends session lifecycle on a serial queue to avoid race conditions.
   /// IMPORTANT: This is separate from callbackQueue to avoid ordering bugs — lifecycle
@@ -232,16 +241,11 @@ final class AVCaptureSessionSource: AudioInputSource {
     AudioCaptureManager.btRouteLog(
       "AVCaptureSessionSource: prepared with \(mic.localizedName) (uid=\(mic.uniqueID))")
     #if DEBUG
-      // Capture-side actual-bound-device evidence (#1377 §3.5). The bench reads
-      // THIS (not app-derived `effective_transport`, not the `"xpc_proxy"` masked
-      // `captureSourceType`) to prove which device really bound. `boundUID` is
-      // the unforgeable truth; `requestedUID` shows what was asked for.
-      // `boundDevice` is LAST because a localized device name may contain spaces —
-      // the parser takes it as the line tail so no following token is corrupted.
-      // DEBUG-only, consistent with the engine source's evidence line.
-      AudioCaptureManager.btRouteLog(
-        "CAPTURE_EVIDENCE backend=av_capture_session boundUID=\(mic.uniqueID) requestedUID=\(targetDeviceUID ?? "built_in") boundDevice=\(mic.localizedName)"
-      )
+      // Retain the bound device so the per-capture evidence can re-emit it on a
+      // warm-reuse trial (#1377 §3.5). Emission itself happens in startCapture(),
+      // which runs on every capture; prepare() early-returns on warm reuse.
+      boundMicUID = mic.uniqueID
+      boundMicName = mic.localizedName
     #endif
   }
 
@@ -302,8 +306,26 @@ final class AVCaptureSessionSource: AudioInputSource {
     armCaptureStallWatchdog()
 
     isCapturing = true
+    #if DEBUG
+      logBenchCaptureEvidence()
+    #endif
     return stream
   }
+
+  #if DEBUG
+    /// Capture-side actual-bound-device evidence (#1377 §3.5). Emitted at every
+    /// capture START (not just cold `prepare()`), so a warm-reuse bench trial —
+    /// where `prepare()` early-returns on the already-running session — still logs
+    /// a fresh source row the harness can read. `boundUID` is the unforgeable
+    /// bound-device truth; `requestedUID` shows what was asked for. `boundDevice`
+    /// is LAST because a localized device name may contain spaces — the parser
+    /// takes it as the line tail so no following token is corrupted.
+    private func logBenchCaptureEvidence() {
+      AudioCaptureManager.btRouteLog(
+        "CAPTURE_EVIDENCE backend=av_capture_session boundUID=\(boundMicUID ?? "unknown") requestedUID=\(targetDeviceUID ?? "built_in") boundDevice=\(boundMicName ?? "unknown")"
+      )
+    }
+  #endif
 
   /// Issue #285 — arm one-shot stall watchdog for the current capture session.
   private func armCaptureStallWatchdog() {

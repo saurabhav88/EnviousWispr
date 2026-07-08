@@ -191,9 +191,13 @@ def _device_bound_as_requested(source_ev, requested_uid, fell_back):
     A transcript alone is not enough — a run that fell back to the built-in mic
     still transcribes fine, so the bench must reject it (cloud review P2). Uses
     the unforgeable CAPTURE_EVIDENCE:
-      - candidate A logs an explicit `boundUID` → must equal `requested_uid`.
-      - candidate C logs `boundTransport` (device-id path, no UID) → for a
-        specific requested device the transport must not be `built_in`.
+      - both candidates log an explicit `boundUID` (the exact bound device) →
+        must equal `requested_uid`. This proves the REQUESTED device bound, not
+        merely a non-built-in one (a USB/virtual mic would pass a transport-only
+        check).
+      - `boundTransport` is a fallback only when a UID could not be resolved
+        (`boundUID` absent) → for a specific requested device the transport must
+        not be `built_in`.
     When no specific device was requested (`auto`/`built_in`), built-in is the
     correct outcome and the check passes.
     """

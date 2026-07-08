@@ -261,20 +261,6 @@ final class AVAudioEngineSource: AudioInputSource {
     }
     try setInputDevice(resolvedDeviceID)
     currentInputDeviceID = resolvedDeviceID ?? AudioDeviceEnumerator.defaultInputDeviceID()
-    #if DEBUG
-      // Capture-side actual-bound-device evidence (#1377 §3.5): the bench reads
-      // THIS to prove which device the engine really bound (not app-derived
-      // telemetry). `boundTransport` characterizes the device (bluetooth vs
-      // built_in); `benchBypass` records whether the BT-output dodge was skipped.
-      let boundTransport =
-        currentInputDeviceID.flatMap { AudioDeviceEnumerator.transportLabel(for: $0) } ?? "unknown"
-      let requestedUID =
-        preferredInputDeviceIDOverride.isEmpty
-        ? selectedInputDeviceUID : preferredInputDeviceIDOverride
-      AudioCaptureManager.btRouteLog(
-        "CAPTURE_EVIDENCE backend=av_audio_engine boundDeviceID=\(currentInputDeviceID.map(String.init) ?? "nil") boundTransport=\(boundTransport) requestedUID=\(requestedUID.isEmpty ? "auto" : requestedUID) benchBypass=\(benchBypassBTOutputForceNil)"
-      )
-    #endif
     onLifecycleSignal?("engine_input_device_completed")
     let deviceMs = ms(ContinuousClock.now - deviceStart)
 
@@ -383,8 +369,33 @@ final class AVAudioEngineSource: AudioInputSource {
     armCaptureStallWatchdog()
 
     isCapturing = true
+    #if DEBUG
+      logBenchCaptureEvidence()
+    #endif
     return stream
   }
+
+  #if DEBUG
+    /// Capture-side actual-bound-device evidence (#1377 §3.5). Emitted at every
+    /// capture START (not just cold `prepare()`), so a warm-reuse bench trial —
+    /// where `prepare()` early-returns on the already-running engine — still logs
+    /// a fresh source row the harness can read. `boundUID` is the EXACT bound
+    /// device (so candidate C proves the requested device bound, not merely a
+    /// non-built-in transport); `boundTransport` characterizes it (bluetooth vs
+    /// built_in); `benchBypass` records whether the BT-output dodge was skipped.
+    private func logBenchCaptureEvidence() {
+      let boundTransport =
+        currentInputDeviceID.flatMap { AudioDeviceEnumerator.transportLabel(for: $0) } ?? "unknown"
+      let boundUID =
+        currentInputDeviceID.flatMap { AudioDeviceEnumerator.inputDeviceUID(for: $0) } ?? "unknown"
+      let requestedUID =
+        preferredInputDeviceIDOverride.isEmpty
+        ? selectedInputDeviceUID : preferredInputDeviceIDOverride
+      AudioCaptureManager.btRouteLog(
+        "CAPTURE_EVIDENCE backend=av_audio_engine boundUID=\(boundUID) boundDeviceID=\(currentInputDeviceID.map(String.init) ?? "nil") boundTransport=\(boundTransport) requestedUID=\(requestedUID.isEmpty ? "auto" : requestedUID) benchBypass=\(benchBypassBTOutputForceNil)"
+      )
+    }
+  #endif
 
   /// Schedule a one-shot stall watchdog for the current `captureGeneration`.
   /// Cancels any prior pending item so stale sessions cannot fire.

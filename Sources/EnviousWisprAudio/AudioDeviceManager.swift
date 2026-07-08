@@ -95,6 +95,18 @@ public enum AudioDeviceEnumerator {
     return stringProperty(for: id, selector: kAudioDevicePropertyDeviceUID)
   }
 
+  #if DEBUG
+    /// The persistent UID of a specific device ID. Used ONLY by the #1377
+    /// bake-off capture-evidence line (candidate C / engine path), which knows
+    /// the bound device by its numeric CoreAudio ID and needs the UID to prove
+    /// EXACT device binding — not just a non-built-in transport. Mirrors
+    /// `defaultInputDeviceUID()` but for an arbitrary device ID. DEBUG-only:
+    /// the only caller is the engine source's bench evidence.
+    static func inputDeviceUID(for deviceID: AudioDeviceID) -> String? {
+      stringProperty(for: deviceID, selector: kAudioDevicePropertyDeviceUID)
+    }
+  #endif
+
   // MARK: - Bluetooth & Smart Device Selection
 
   /// Returns true if the given device uses Bluetooth transport (Classic or LE).
