@@ -205,6 +205,24 @@ struct ManifestFetchTask {
               failure.retryAfter
               ?? Self.backoffDelay(attempt: networkRetriesUsed, jitter: jitterFraction())
             networkRetriesUsed += 1
+            // A retry is liveness, not a stall: re-emit current progress before
+            // the wait so the transfer-silence wedge guard
+            // (`LoadProgressWatcher.transferSilenceFloorSeconds`, 15 s) sees the
+            // download is alive. Without this tick, repeated `Retry-After` waits
+            // (each under the 10 s per-sleep cap) accumulate uninterrupted
+            // silence past the floor, tripping `recoverFromWedge()` — which now
+            // cancels delivery (#1371) — before the bounded retries / failover
+            // can finish (cloud-review PR #1410 P2). Each sleep is ≤ cap, so one
+            // tick per sleep keeps every silent gap under the floor; a genuinely
+            // hung request (no response, no tick) still wedges as intended.
+            // Report verified files PLUS the bytes already staged for this
+            // file's Range resume — never drop back to verified-only, which
+            // would blip the UI backward and regrow the disk reservation until
+            // resume corrected it (code-diff r1 P2).
+            let stagedInFlight =
+              ((try? FileManager.default.attributesOfItem(atPath: stagedURL.path)[.size]
+                as? Int64) ?? nil) ?? 0
+            onProgress(completedBytes + min(stagedInFlight, file.sizeBytes), manifest.totalBytes)
             do {
               try await backoffSleep(delay)
             } catch is CancellationError {

@@ -127,12 +127,13 @@ final class DeliveryStubProtocol: URLProtocol {
     manifest: DeliveryManifest, staging: URL, components: Set<String>? = nil,
     backoffSleep: @escaping @Sendable (TimeInterval) async throws -> Void = { _ in },
     jitter: @escaping @Sendable () -> Double = { 1.0 },
+    onProgress: @escaping @Sendable (Int64, Int64) -> Void = { _, _ in },
     onFailover: @escaping @Sendable (DeliveryFailureClass) -> Void = { _ in }
   ) -> ManifestFetchTask {
     ManifestFetchTask(
       manifest: manifest, stagingDirectory: staging, sources: manifest.sources,
       componentsToFetch: components ?? Set(manifest.files.map(\.component)),
-      verifiedInPlaceBytes: 0, onProgress: { _, _ in }, onSourceFailover: onFailover,
+      verifiedInPlaceBytes: 0, onProgress: onProgress, onSourceFailover: onFailover,
       backoffSleep: backoffSleep, jitterFraction: jitter)
   }
 
@@ -677,6 +678,42 @@ final class DeliveryStubProtocol: URLProtocol {
     }
   }
 
+  /// (j) PR #1410 P2: repeated `Retry-After` waits (each under the per-sleep
+  /// cap) must NOT accumulate uninterrupted progress-file silence past the 15 s
+  /// wedge floor. Each backoff wait is immediately preceded by a liveness tick
+  /// (`onProgress` re-emit) so the transfer-silence guard sees the download is
+  /// alive and never trips `recoverFromWedge()` mid-retry. Without the tick, two
+  /// `Retry-After: 5` waits would be one silent 10 s+ gap the guard reads as a
+  /// stall.
+  @Test func retryWaitsEmitLivenessTicksSoTheWedgeGuardSeesProgress() async throws {
+    let (manifest, file, staging) = try single()
+    try await withStubs {
+      // 503 (Retry-After 5) → 503 (Retry-After 5) → success, all same source.
+      DeliveryStubProtocol.enqueue(
+        url: mirrorURL(file),
+        .init(status: 503, headers: ["Retry-After": "5"], body: Data()))
+      DeliveryStubProtocol.enqueue(
+        url: mirrorURL(file),
+        .init(status: 503, headers: ["Retry-After": "5"], body: Data()))
+      DeliveryStubProtocol.enqueue(url: mirrorURL(file), okStub(file))
+      let log = EventLog()
+      let outcome = try await task(
+        manifest: manifest, staging: staging,
+        backoffSleep: { _ in log.append("sleep") },
+        onProgress: { _, _ in log.append("tick") }
+      ).run()
+      #expect(outcome.sourcesUsed == 1, "the retries resolve on the same source")
+      let events = log.all
+      let sleepIndices = events.indices.filter { events[$0] == "sleep" }
+      #expect(sleepIndices.count == 2, "two transient failures → two backoff waits")
+      for i in sleepIndices {
+        #expect(
+          i > 0 && events[i - 1] == "tick",
+          "every backoff wait is immediately preceded by a liveness tick")
+      }
+    }
+  }
+
   /// #1371: a warm-up wedge must cancel the IN-FLIGHT delivery download (not
   /// just the ASR load), or a stalled/retrying fetch stays parked and the Retry
   /// path never surfaces. Lives in THIS serialized suite (not the adapter's) so
@@ -709,11 +746,15 @@ final class DeliveryStubProtocol: URLProtocol {
     DeliveryStubProtocol.reset()
     ChunkAppendDelegate.protocolClassesForTesting = [DeliveryStubProtocol.self]
     let firstURL = URL(string: host)!.appendingPathComponent(files[0].path).absoluteString
+    // Real Content-Length + a PARTIAL body so the length gate ALLOWS the
+    // response and the transfer stays genuinely in-flight (a mismatched length
+    // would fast-fail before any hang, leaving the cancel to race retry churn
+    // instead of a real hung download — code-diff r1 P2).
     DeliveryStubProtocol.enqueue(
       url: firstURL,
       .init(
-        status: 200, headers: ["Content-Length": "9999999"], body: Data([1, 2, 3]),
-        hangAfterBody: true))
+        status: 200, headers: ["Content-Length": String(files[0].content.count)],
+        body: Data([1, 2, 3]), hangAfterBody: true))
 
     let inflight = WedgeSignal()
     await controller.addStateObserver { _, state in
@@ -776,4 +817,14 @@ private final class DelayBox: @unchecked Sendable {
   private var delays: [TimeInterval] = []
   func record(_ delay: TimeInterval) { lock.withLock { delays.append(delay) } }
   var all: [TimeInterval] { lock.withLock { delays } }
+}
+
+/// Ordered log of liveness-tick vs backoff-sleep events, used to prove a
+/// progress tick precedes every retry wait (PR #1410 P2: the wedge guard must
+/// see the download is alive across repeated Retry-After waits).
+private final class EventLog: @unchecked Sendable {
+  private let lock = NSLock()
+  private var events: [String] = []
+  func append(_ event: String) { lock.withLock { events.append(event) } }
+  var all: [String] { lock.withLock { events } }
 }
