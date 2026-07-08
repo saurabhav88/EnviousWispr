@@ -116,6 +116,13 @@ final class AVCaptureSessionSource: AudioInputSource {
   private(set) var isCapturing = false
   var isRunning: Bool { session?.isRunning ?? false }
 
+  /// Target capture device UID. Nil = built-in microphone — today's behavior,
+  /// byte-identical. Non-nil pins capture to that device (#1377 candidate A),
+  /// including a Bluetooth mic. Only ever set to a real UID under a
+  /// `CaptureSourcePolicy` force-case; the `.automatic` route leaves it nil,
+  /// so the shipped path is unchanged.
+  var targetDeviceUID: String?
+
   // MARK: - Private state
 
   private var session: AVCaptureSession?
@@ -123,6 +130,15 @@ final class AVCaptureSessionSource: AudioInputSource {
   private var delegate: CaptureDelegate?
   private var interruptionObservers: [NSObjectProtocol] = []
   private var forwarder: PreRollForwarder?
+
+  #if DEBUG
+    /// The device actually bound at cold `prepare()`, retained so the per-capture
+    /// bench evidence (#1377 §3.5) can re-emit it on a warm-reuse trial where
+    /// `prepare()` early-returns. The session keeps this exact input across warm
+    /// reuse, so the retained identity stays truthful.
+    private var boundMicUID: String?
+    private var boundMicName: String?
+  #endif
 
   /// Dedicated serial queue for AVCaptureSession start/stop operations.
   /// Apple recommends session lifecycle on a serial queue to avoid race conditions.
@@ -151,11 +167,13 @@ final class AVCaptureSessionSource: AudioInputSource {
       return
     }
 
-    // Find the built-in microphone by transport type — NOT AVCaptureDevice.default(for: .audio)
-    // which follows the system default and may return a BT device.
+    // Resolve the capture device: the pinned `targetDeviceUID` when set
+    // (#1377 candidate A), otherwise the built-in mic by transport type — NOT
+    // AVCaptureDevice.default(for: .audio), which follows the system default
+    // and may return a BT device.
     onLifecycleSignal?("capture_session_find_mic_entered")
-    let builtInMic = findBuiltInMicrophone()
-    guard let mic = builtInMic else {
+    let resolvedMic = resolveCaptureDevice()
+    guard let mic = resolvedMic else {
       throw AudioError.noBuiltInMicrophoneFound
     }
     onLifecycleSignal?("capture_session_find_mic_completed")
@@ -222,6 +240,13 @@ final class AVCaptureSessionSource: AudioInputSource {
 
     AudioCaptureManager.btRouteLog(
       "AVCaptureSessionSource: prepared with \(mic.localizedName) (uid=\(mic.uniqueID))")
+    #if DEBUG
+      // Retain the bound device so the per-capture evidence can re-emit it on a
+      // warm-reuse trial (#1377 §3.5). Emission itself happens in startCapture(),
+      // which runs on every capture; prepare() early-returns on warm reuse.
+      boundMicUID = mic.uniqueID
+      boundMicName = mic.localizedName
+    #endif
   }
 
   private func awaitStartRunning(
@@ -281,8 +306,26 @@ final class AVCaptureSessionSource: AudioInputSource {
     armCaptureStallWatchdog()
 
     isCapturing = true
+    #if DEBUG
+      logBenchCaptureEvidence()
+    #endif
     return stream
   }
+
+  #if DEBUG
+    /// Capture-side actual-bound-device evidence (#1377 §3.5). Emitted at every
+    /// capture START (not just cold `prepare()`), so a warm-reuse bench trial —
+    /// where `prepare()` early-returns on the already-running session — still logs
+    /// a fresh source row the harness can read. `boundUID` is the unforgeable
+    /// bound-device truth; `requestedUID` shows what was asked for. `boundDevice`
+    /// is LAST because a localized device name may contain spaces — the parser
+    /// takes it as the line tail so no following token is corrupted.
+    private func logBenchCaptureEvidence() {
+      AudioCaptureManager.btRouteLog(
+        "CAPTURE_EVIDENCE backend=av_capture_session boundUID=\(boundMicUID ?? "unknown") requestedUID=\(targetDeviceUID ?? "built_in") boundDevice=\(boundMicName ?? "unknown")"
+      )
+    }
+  #endif
 
   /// Issue #285 — arm one-shot stall watchdog for the current capture session.
   private func armCaptureStallWatchdog() {
@@ -445,6 +488,33 @@ final class AVCaptureSessionSource: AudioInputSource {
   }
 
   // MARK: - Private: Device Discovery
+
+  /// Resolve the capture device: the pinned `targetDeviceUID` when set
+  /// (#1377 candidate A), otherwise the built-in mic (today's default).
+  /// Falls back to built-in (with a log line) if a pinned UID is not found,
+  /// so the harness sees the real bound device in `CAPTURE_EVIDENCE` rather
+  /// than a hard capture failure that hides which device was requested.
+  private func resolveCaptureDevice() -> AVCaptureDevice? {
+    if let uid = targetDeviceUID, !uid.isEmpty {
+      if let device = findDevice(uid: uid) { return device }
+      AudioCaptureManager.btRouteLog(
+        "AVCaptureSessionSource: target device uid=\(uid) not found — falling back to built-in")
+    }
+    return findBuiltInMicrophone()
+  }
+
+  /// Find an AVCaptureDevice by its CoreAudio unique ID. `AVCaptureDevice.uniqueID`
+  /// shares the CoreAudio UID namespace (see `findBuiltInMicrophone`, which cross-
+  /// references it via `AudioDeviceEnumerator.deviceID(forUID:)`), so a settings-
+  /// stored input-device UID matches directly.
+  private func findDevice(uid: String) -> AVCaptureDevice? {
+    let discovery = AVCaptureDevice.DiscoverySession(
+      deviceTypes: [.microphone],
+      mediaType: .audio,
+      position: .unspecified
+    )
+    return discovery.devices.first { $0.uniqueID == uid }
+  }
 
   /// Find the built-in microphone via CoreAudio transport type.
   /// Does NOT use AVCaptureDevice.default(for: .audio) which follows system default

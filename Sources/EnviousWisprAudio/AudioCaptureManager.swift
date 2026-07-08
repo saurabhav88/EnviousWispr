@@ -267,6 +267,16 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     let stream = try await source.startCapture()
     onLifecycleSignal?("manager_start_capture_completed")
     isCapturing = true
+    #if DEBUG
+      // Bake-off manager-side evidence companion (#1377 §3.5): pairs the app's
+      // REQUEST (backend + requested device + active policy) with each source's
+      // own `CAPTURE_EVIDENCE` (actual bound device). In-process only, so
+      // `captureSourceType` is the real backend, never the `"xpc_proxy"` mask.
+      let requestedUID = effectiveInputDeviceUID()
+      Self.btRouteLog(
+        "CAPTURE_EVIDENCE [manager] backend=\(source.captureSourceType) requestedUID=\(requestedUID.isEmpty ? "auto" : requestedUID) policy=\(routeResolver.policy) generation=\(source.captureGeneration)"
+      )
+    #endif
     // Mirror source identity so pipeline-layer Sentry extras still resolve
     // after stopCapture tears `activeSource` down synchronously.
     cachedCaptureGeneration = source.captureGeneration
@@ -491,6 +501,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // Cancel any in-flight engine stop from a previous teardown.
     engineStopTask?.cancel()
     engineStopTask = nil
+    #if DEBUG
+      // Bake-off control plane (#1377 slice 2a): a runtime override pins a
+      // candidate engine for the bench, refreshed every resolve so the harness
+      // can switch candidates between recordings. Nil → `.automatic` — the only
+      // path release ever takes, since there is no release setter for `policy`.
+      routeResolver.policy = CaptureRouteResolver.debugPolicyOverride() ?? .automatic
+    #endif
     // Snapshot the prior decision for the changed-only `onRouteResolved` fire.
     let priorRouteDecision = lastRouteDecision
 
@@ -521,9 +538,31 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         let vpMatch = engineSource.noiseSuppressionEnabled == noiseSuppressionEnabled
         configMatch = deviceMatch && vpMatch
       }
+      #if DEBUG
+        // A warm AVCaptureSessionSource from a forced-capture-session trial keeps
+        // its pinned `targetDeviceUID`. When the override is cleared and we
+        // return to `.automatic`, reuse must NOT keep that stale target, or
+        // `.automatic` would capture the forced device instead of built-in.
+        // Compare the target the same way the engine path compares its device.
+        // Release never sets a target (the switch-arm that assigns it is
+        // DEBUG-only), so this is a no-op there. (Cloud review P2.)
+        if configMatch, let captureSource = existing as? AVCaptureSessionSource {
+          let wantsTarget =
+            decision.reason == .forcedCaptureSession ? effectiveInputDeviceUID() : ""
+          let normalize: (String?) -> String = { ($0?.isEmpty ?? true) ? "" : $0! }
+          configMatch = normalize(captureSource.targetDeviceUID) == normalize(wantsTarget)
+        }
+      #endif
 
       if configMatch {
-        // Route and config unchanged, reuse warm source
+        // Route and config unchanged, reuse warm source. This applies to the
+        // bench too (#1377): a candidate must be measured with the SAME warm-
+        // engine behavior a real user gets — keeping the source warm across
+        // recordings holds the Bluetooth SCO link open, so the codec switch
+        // fires once at idle teardown (correct, like WisprFlow), NOT on every
+        // record. Config changes that DO warrant a rebuild (candidate switch →
+        // different sourceType; device change; a stale forced capture-session
+        // target) are already caught by the `configMatch` checks above.
         adoptRouteDecision(decision, prior: priorRouteDecision)
         Self.btRouteLog("Reusing warm \(wantsEngine ? "engine" : "capture session") source")
         return existing
@@ -560,18 +599,47 @@ public final class AudioCaptureManager: AudioCaptureInterface {
           "Noise suppression unavailable on AVCaptureSession path — VP requires AVAudioEngine to own input"
         )
       }
-      source = AVCaptureSessionSource()
+      let captureSource = AVCaptureSessionSource()
+      #if DEBUG
+        // Candidate A (#1377): under a force-case, pin the capture session to the
+        // user-selected device (e.g. Bluetooth). `.automatic` never emits
+        // `.forcedCaptureSession`, so the shipped path leaves the target nil
+        // (built-in) — byte-identical to today.
+        if decision.reason == .forcedCaptureSession {
+          captureSource.targetDeviceUID = effectiveInputDeviceUID()
+        }
+      #endif
+      source = captureSource
     case .audioEngine:
       let engineSource = AVAudioEngineSource()
       engineSource.noiseSuppressionEnabled = noiseSuppressionEnabled
       engineSource.selectedInputDeviceUID = selectedInputDeviceUID
       engineSource.preferredInputDeviceIDOverride = preferredInputDeviceIDOverride
+      #if DEBUG
+        // Candidate C (#1377): under a force-case, bypass the BT-output force-nil
+        // so the engine targets the selected BT device. `.automatic` never emits
+        // `.forcedEngine`, so the shipped crash-dodge is unchanged.
+        if decision.reason == .forcedEngine {
+          engineSource.benchBypassBTOutputForceNil = true
+        }
+      #endif
       source = engineSource
     }
 
     activeSource = source
     return source
   }
+
+  #if DEBUG
+    /// Effective input-device UID: the explicit override takes priority, else the
+    /// selected device — the same order the warm-reuse device comparison and the
+    /// engine source's own resolution use. Used to pin a bench candidate's target
+    /// device (#1377). DEBUG-only: only the bake-off force-cases read it.
+    private func effectiveInputDeviceUID() -> String {
+      preferredInputDeviceIDOverride.isEmpty
+        ? selectedInputDeviceUID : preferredInputDeviceIDOverride
+    }
+  #endif
 
   // MARK: - BT Route Logging (Step 6 instrumentation)
 
