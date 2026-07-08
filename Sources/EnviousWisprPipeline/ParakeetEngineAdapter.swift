@@ -408,6 +408,11 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   func recoverFromWedge() async {
     await discardSession()
     asrManager.cancelInFlightLoad()
+    // #1371/#1405: the wedge can fire while the delivery download is still in
+    // flight (warm-up awaits delivery BEFORE any ASR load), so cancel it too —
+    // otherwise a stalled/retrying download stays parked and the Retry path
+    // never surfaces. No-op when nothing is downloading.
+    await delivery?.cancel()
   }
 
   // MARK: ASREngineAdapter — cleanup

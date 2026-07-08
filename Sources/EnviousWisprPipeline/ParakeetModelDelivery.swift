@@ -59,6 +59,14 @@ public final class ParakeetDeliveryHandle {
     await controller.repair(registration)
   }
 
+  /// #1371/#1405 Phase 2: cancel the in-flight delivery download. `warmUp()`
+  /// awaits delivery BEFORE any ASR load, so a warm-up wedge must cancel the
+  /// download (cooperative, typed) or a stalled/retrying fetch stays parked
+  /// instead of surfacing the Retry path. No-op if nothing is in flight.
+  public func cancel() async {
+    _ = await controller.cancel(registration.manifest.identity)
+  }
+
   /// D5 §1: the `enabled=false` bypass is proven by telemetry from the ONE
   /// site that takes it (the adapter's legacy branch).
   public func noteLegacyPathActive() {

@@ -34,10 +34,83 @@ struct ManifestFetchTask {
   let onProgress: @Sendable (_ bytesWritten: Int64, _ totalBytes: Int64) -> Void
   let onSourceFailover: @Sendable (DeliveryFailureClass) -> Void
 
+  /// Phase 2 (#1405): the inter-attempt backoff sleep, injectable so tests
+  /// advance it without wall-clock waits (`swift-patterns` timing-seam-shapes;
+  /// `swift-testing-patterns` signal-based-test-waits). Throwing + cancellable —
+  /// a cancel landing here unwinds as `.cancelled`, never a retry/failover.
+  /// `var` (not `let`) so the synthesized memberwise init exposes it as a
+  /// defaulted parameter for injection; never mutated after construction.
+  var backoffSleep: @Sendable (_ seconds: TimeInterval) async throws -> Void = { seconds in
+    try await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+  }
+  /// Phase 2 (#1405): full-jitter fraction in [0, 1]; injectable for
+  /// deterministic backoff-bound tests. `var` for the same memberwise-init
+  /// reason as `backoffSleep`.
+  var jitterFraction: @Sendable () -> Double = { Double.random(in: 0...1) }
+
   /// EG-1's shipped transport dials (`EGOneModelStore.swift:398,465`) — idle
   /// transport timeouts with shipped precedent, not new wall-clock deadlines.
   private static let requestTimeout: TimeInterval = 60
   private static let headTimeout: TimeInterval = 30
+
+  // MARK: - Phase 2 (#1405) same-source retry dials
+
+  /// Industry consensus (`download-resilience-standards.md` §1, HF-Hub-analog):
+  /// N=4 attempts per source = 1 initial + `maxNetworkRetries`.
+  private static let maxNetworkRetries = 3
+  private static let backoffBaseSeconds: TimeInterval = 1
+  private static let backoffCapSeconds: TimeInterval = 8
+  /// Honor `Retry-After` only up to a cap safely below the 15 s transfer-silence
+  /// wedge floor (`LoadProgressWatcher.transferSilenceFloorSeconds`); a longer
+  /// server-directed delay fails over to backup rather than a silent wait that
+  /// would trip the stall guard (#1405 Codex r2).
+  private static let retryAfterCapSeconds: TimeInterval = 10
+
+  /// Full-jitter exponential backoff: `random(0, min(cap, base·2^attempt))`.
+  static func backoffDelay(attempt: Int, jitter: Double) -> TimeInterval {
+    let window = min(backoffCapSeconds, backoffBaseSeconds * pow(2, Double(attempt)))
+    return jitter * window
+  }
+
+  /// URLError codes that are transient-unreachable and worth a same-source
+  /// retry — connection lost / cannot-connect / cannot-find-host / DNS. NOT
+  /// `.notConnectedToInternet` (-1009, genuinely offline: retry is futile).
+  private static let transientUnreachableCodes: Set<Int> = [
+    URLError.Code.networkConnectionLost.rawValue,
+    URLError.Code.cannotConnectToHost.rawValue,
+    URLError.Code.cannotFindHost.rawValue,
+    URLError.Code.dnsLookupFailed.rawValue,
+  ]
+
+  /// Parse a `Retry-After` header (RFC 9110 §10.2.3): delay-seconds integer or
+  /// an HTTP-date. Returns seconds-to-wait (≥ 0), or nil if absent/unparseable.
+  static func retryAfterSeconds(from response: HTTPURLResponse) -> TimeInterval? {
+    guard
+      let raw = response.value(forHTTPHeaderField: "Retry-After")?
+        .trimmingCharacters(in: .whitespaces), !raw.isEmpty
+    else { return nil }
+    if let seconds = TimeInterval(raw) { return max(0, seconds) }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(identifier: "GMT")
+    formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+    if let date = formatter.date(from: raw) { return max(0, date.timeIntervalSinceNow) }
+    return nil
+  }
+
+  /// Build a non-success-HTTP `DeliveryFailure`, stamping retryability +
+  /// `Retry-After` in one place for BOTH the GET and HEAD non-success sites
+  /// (#1405 Codex r1/r2). 429/5xx are transient-retryable; 4xx are not.
+  static func httpStatusFailure(
+    status: Int, detail: String, response: HTTPURLResponse, sourceID: String?
+  ) -> DeliveryFailure {
+    let cls = classifyHTTPStatus(status)
+    let retryable = cls == .source5xx
+    return DeliveryFailure(
+      reason: cls, detail: detail, failingSourceID: sourceID,
+      retryableTransient: retryable,
+      retryAfter: retryable ? retryAfterSeconds(from: response) : nil)
+  }
 
   func run() async throws -> Outcome {
     let fm = FileManager.default
@@ -78,6 +151,9 @@ struct ManifestFetchTask {
       // r7 findings 1/2).
       var fetched = false
       var localRetryUsed = false
+      // Phase 2 (#1405): per-file network-retry budget, independent of the
+      // local-byte retry above (a 416-local retry never consumes it).
+      var networkRetriesUsed = 0
       while !fetched {
         let source = sources[sourceIndex]
         do {
@@ -115,6 +191,29 @@ struct ManifestFetchTask {
           if failure.detail?.hasPrefix("length_mismatch_html") == true {
             sawHTMLInterception = true
           }
+          // Phase 2 (#1405): bounded same-source retry for transient network/
+          // HTTP failures BEFORE advancing the source — keep the staged partial
+          // so `fetchOneFile` resumes via Range (same source ⇒ same ETag ⇒
+          // valid). Honor `Retry-After` up to a cap below the wedge floor; a
+          // longer server-directed delay is NOT sat on (it would trip the stall
+          // guard) — fall through to failover instead (Codex r2).
+          let retryAfterTooLong = (failure.retryAfter ?? 0) > Self.retryAfterCapSeconds
+          if failure.retryableTransient, networkRetriesUsed < Self.maxNetworkRetries,
+            !retryAfterTooLong
+          {
+            let delay =
+              failure.retryAfter
+              ?? Self.backoffDelay(attempt: networkRetriesUsed, jitter: jitterFraction())
+            networkRetriesUsed += 1
+            do {
+              try await backoffSleep(delay)
+            } catch is CancellationError {
+              // A cancel during backoff unwinds as .cancelled — never a retry
+              // or failover (cooperative cancel, invariant 5).
+              throw DeliveryFailure(reason: .cancelled, failingSourceID: source.id)
+            }
+            continue
+          }
           guard sourceIndex + 1 < sources.count else {
             // All sources exhausted: terminal. The captive-portal signature
             // (both sources length/hash-failed with HTML observed) gets the
@@ -128,6 +227,9 @@ struct ManifestFetchTask {
           }
           sourceIndex += 1
           sourcesUsed = 2
+          // Retry budget is PER SOURCE (#1405 §6): the backup gets its own N
+          // transient retries, so reset the counter on failover (Codex r1 P2).
+          networkRetriesUsed = 0
           onSourceFailover(failure.reason)
         }
       }
@@ -248,9 +350,9 @@ struct ManifestFetchTask {
         throw DeliveryFailure(
           reason: .source4xx, detail: "http_416_local", failingSourceID: source.id)
       }
-      throw DeliveryFailure(
-        reason: Self.classifyHTTPStatus(status), detail: "http_\(status)",
-        failingSourceID: source.id)
+      throw Self.httpStatusFailure(
+        status: status, detail: "http_\(status)", response: outcome.response,
+        sourceID: source.id)
     }
 
     return FileFetchResult(bytesReceived: outcome.bytesReceived, usedLocalBytes: existingBytes > 0)
@@ -313,9 +415,9 @@ struct ManifestFetchTask {
     // identity — treating it as identity deletes a resumable partial (EG-1
     // Codex r15). Throw instead: the partial survives, retry re-validates.
     guard (200...299).contains(http.statusCode) else {
-      throw DeliveryFailure(
-        reason: Self.classifyHTTPStatus(http.statusCode), detail: "head_\(http.statusCode)",
-        failingSourceID: sourceID)
+      throw Self.httpStatusFailure(
+        status: http.statusCode, detail: "head_\(http.statusCode)", response: http,
+        sourceID: sourceID)
     }
     let length = http.value(forHTTPHeaderField: "Content-Length").flatMap { Int64($0) }
     return (http.value(forHTTPHeaderField: "ETag"), length)
@@ -329,12 +431,16 @@ struct ManifestFetchTask {
       switch URLError.Code(rawValue: ns.code) {
       case .timedOut:
         return DeliveryFailure(
-          reason: .sourceTimeout, detail: "urlerror_\(ns.code)", failingSourceID: sourceID)
+          reason: .sourceTimeout, detail: "urlerror_\(ns.code)", failingSourceID: sourceID,
+          retryableTransient: true)
       case .cancelled:
         return DeliveryFailure(reason: .cancelled, failingSourceID: sourceID)
       default:
+        // Transient-unreachable codes (conn lost / cannot-connect / no-host /
+        // DNS) retry; genuine-offline (-1009) and other codes fail over (#1405).
         return DeliveryFailure(
-          reason: .sourceUnreachable, detail: "urlerror_\(ns.code)", failingSourceID: sourceID)
+          reason: .sourceUnreachable, detail: "urlerror_\(ns.code)", failingSourceID: sourceID,
+          retryableTransient: Self.transientUnreachableCodes.contains(ns.code))
       }
     }
     if Self.isDiskWriteError(ns) {
