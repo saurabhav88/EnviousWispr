@@ -350,17 +350,25 @@ final class HALDeviceInputSource: AudioInputSource {
       slotCount: Self.ringSlotCount, capacityPerSlot: Int(Self.maxFramesPerSlice))
     let stopped = HALStoppedFlag()
     let fwd = PreRollForwarder()
-    self.forwarder = fwd
     let consumerQueue = DispatchQueue(
       label: "com.enviouswispr.audio.hal-consumer", qos: .userInteractive)
     let context = HALRenderContext(
       audioUnit: unit, scratch: scratch, ring: ring, stopped: stopped,
       liveness: captureLiveness, forwarder: fwd, consumerQueue: consumerQueue)
-    self.renderContext = context
-    self.stoppedFlag = stopped
-
     let unmanaged = Unmanaged.passRetained(context)
-    self.unmanagedContext = unmanaged
+
+    // No `self.*` assignment above this line: every failure branch below must
+    // release `unmanaged` + deallocate `scratch` + dispose `unit` and leave
+    // `self` untouched (still a fresh, never-prepared instance) so a caller
+    // that retries `prepare()` or calls `teardownUnit()` never double-releases
+    // state this attempt never actually committed.
+    func failPrepare(_ source: String) -> Error {
+      unmanaged.release()
+      scratch[0].mData?.deallocate()
+      scratch.unsafeMutablePointer.deallocate()
+      AudioComponentInstanceDispose(unit)
+      return AudioError.formatCreationFailed(source: source)
+    }
 
     var callbackStruct = AURenderCallbackStruct(
       inputProc: halRenderProc,
@@ -370,16 +378,12 @@ final class HALDeviceInputSource: AudioInputSource {
       unit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0,
       &callbackStruct, UInt32(MemoryLayout<AURenderCallbackStruct>.size))
     guard status == noErr else {
-      unmanaged.release()
-      AudioComponentInstanceDispose(unit)
-      throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.set_callback")
+      throw failPrepare("HALDeviceInputSource.prepare.set_callback")
     }
 
     status = AudioUnitInitialize(unit)
     guard status == noErr else {
-      unmanaged.release()
-      AudioComponentInstanceDispose(unit)
-      throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.initialize")
+      throw failPrepare("HALDeviceInputSource.prepare.initialize")
     }
     onLifecycleSignal?("hal_configure_completed")
 
@@ -387,12 +391,16 @@ final class HALDeviceInputSource: AudioInputSource {
     status = AudioOutputUnitStart(unit)
     guard status == noErr else {
       AudioUnitUninitialize(unit)
-      unmanaged.release()
-      AudioComponentInstanceDispose(unit)
-      throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.start")
+      throw failPrepare("HALDeviceInputSource.prepare.start")
     }
     onLifecycleSignal?("hal_start_completed")
 
+    // Committed — every fallible step succeeded, so this is the one place
+    // `self` state is assigned for this attempt.
+    self.forwarder = fwd
+    self.renderContext = context
+    self.stoppedFlag = stopped
+    self.unmanagedContext = unmanaged
     self.audioUnit = unit
     registerDeviceIsAliveListener(deviceID: deviceID)
 
