@@ -22,7 +22,7 @@ struct ResolvedRouteTransportsGridTests {
 
   @Test(
     "derive is total over the sourceType × reason grid",
-    arguments: [CaptureSourceType.audioEngine, .captureSession],
+    arguments: [CaptureSourceType.audioEngine, .captureSession, .halDeviceInput],
     [
       CaptureRouteReason.btOutputAutoInput, .btOutputUserSelectedBTMic,
       .btOutputUserSelectedBuiltIn, .btOutputUserSelectedWired, .noBTAutoInput,

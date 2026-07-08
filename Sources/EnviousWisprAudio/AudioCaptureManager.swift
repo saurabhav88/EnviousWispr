@@ -517,12 +517,18 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         preferredInputDeviceUID: preferredInputDeviceIDOverride,
         noiseSuppression: noiseSuppressionEnabled
       )
-      let existingIsEngine = existing is AVAudioEngineSource
-      let wantsEngine = decision.sourceType == .audioEngine
+      // Non-switch consumer of `CaptureSourceType` (#1377 §6 audit point) — a
+      // new candidate must be added here explicitly; the compiler cannot
+      // force this equality-style mapping the way it forces the `switch`
+      // below. `existingSourceType == decision.sourceType` (three-way, not a
+      // boolean) so a captureSession↔halDeviceInput mismatch is never
+      // silently read as a match, which a plain "is engine" boolean would do
+      // once a third candidate exists.
+      let existingSourceType = Self.sourceType(of: existing)
 
       // Check full config signature, not just source type.
       // Device/VP changes between recordings must trigger rebuild.
-      var configMatch = existingIsEngine == wantsEngine
+      var configMatch = existingSourceType == decision.sourceType
       if configMatch, let engineSource = existing as? AVAudioEngineSource {
         // Compare effective device selection: preferredInputDeviceIDOverride
         // takes priority, fall back to selectedInputDeviceUID when empty.
@@ -552,6 +558,15 @@ public final class AudioCaptureManager: AudioCaptureInterface {
           let normalize: (String?) -> String = { ($0?.isEmpty ?? true) ? "" : $0! }
           configMatch = normalize(captureSource.targetDeviceUID) == normalize(wantsTarget)
         }
+        // Candidate D (#1377 slice 2b): same stale-target trap as candidate A
+        // above — a warm HAL source from a forced trial must not be reused
+        // once the override clears (or changes device).
+        if configMatch, let halSource = existing as? HALDeviceInputSource {
+          let wantsTarget =
+            decision.reason == .forcedHALDeviceInput ? effectiveInputDeviceUID() : ""
+          let normalize: (String?) -> String = { ($0?.isEmpty ?? true) ? "" : $0! }
+          configMatch = normalize(halSource.targetDeviceUID) == normalize(wantsTarget)
+        }
       #endif
 
       if configMatch {
@@ -564,7 +579,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         // different sourceType; device change; a stale forced capture-session
         // target) are already caught by the `configMatch` checks above.
         adoptRouteDecision(decision, prior: priorRouteDecision)
-        Self.btRouteLog("Reusing warm \(wantsEngine ? "engine" : "capture session") source")
+        Self.btRouteLog("Reusing warm \(Self.backendLabel(for: decision.sourceType)) source")
         return existing
       }
       // Route changed (e.g., BT connected/disconnected) — synchronous teardown.
@@ -586,7 +601,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     )
     Task {
       await AppLogger.shared.log(
-        "Capture route: \(decision.reason.rawValue) → \(decision.sourceType == .captureSession ? "AVCaptureSession" : "AVAudioEngine"), VP=\(decision.vpAvailable)",
+        "Capture route: \(decision.reason.rawValue) → \(Self.backendLabel(for: decision.sourceType)), VP=\(decision.vpAvailable)",
         level: .info, category: "Audio"
       )
     }
@@ -624,10 +639,46 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         }
       #endif
       source = engineSource
+    case .halDeviceInput:
+      let halSource = HALDeviceInputSource()
+      #if DEBUG
+        // Candidate D (#1377 slice 2b, reinstated 2026-07-08): under a
+        // force-case, pin the AUHAL source to the user-selected device. Only
+        // ever reachable via `.forceHALDeviceInput` — `.automatic` never
+        // emits `.halDeviceInput`.
+        if decision.reason == .forcedHALDeviceInput {
+          halSource.targetDeviceUID = effectiveInputDeviceUID()
+        }
+      #endif
+      source = halSource
     }
 
     activeSource = source
     return source
+  }
+
+  /// Maps a concrete `any AudioInputSource` instance to its `CaptureSourceType`
+  /// tag. The non-switch consumer `resolveSource()` uses for warm-reuse
+  /// compatibility (#1377 §6 audit point) — a plain `is AVAudioEngineSource`
+  /// boolean silently treats every non-engine source as equivalent once a
+  /// third candidate exists, so this maps each concrete type explicitly.
+  private static func sourceType(of source: any AudioInputSource) -> CaptureSourceType? {
+    if source is AVAudioEngineSource { return .audioEngine }
+    if source is AVCaptureSessionSource { return .captureSession }
+    if source is HALDeviceInputSource { return .halDeviceInput }
+    return nil
+  }
+
+  /// Human-readable backend label for logging. Single authority so a new
+  /// candidate cannot be silently mislabeled by a stale two-way ternary
+  /// (#1377 §6 audit point — non-switch consumers compile silently on a new
+  /// enum case and must be audited, not trusted to the compiler).
+  private static func backendLabel(for sourceType: CaptureSourceType) -> String {
+    switch sourceType {
+    case .captureSession: return "AVCaptureSession"
+    case .audioEngine: return "AVAudioEngine"
+    case .halDeviceInput: return "HALDeviceInput"
+    }
   }
 
   #if DEBUG

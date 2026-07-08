@@ -94,6 +94,22 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
       } else {
         effective = "unknown"
       }
+    case .halDeviceInput:
+      // Dormant candidate D (#1377 slice 2b) — only reachable via
+      // `.forceHALDeviceInput`, which pins the same effective device the
+      // engine path would (preferred override, else stored selection); mirror
+      // that resolution rather than hardcoding built-in, since D — unlike
+      // today's capture-session automatic path — targets the real pick.
+      let halUID =
+        preferredInputDeviceIDOverride.isEmpty
+        ? selectedInputDeviceUID : preferredInputDeviceIDOverride
+      if !halUID.isEmpty, let label = AudioDeviceEnumerator.transportLabel(forUID: halUID) {
+        effective = label
+      } else if let defaultID = AudioDeviceEnumerator.defaultInputDeviceID() {
+        effective = AudioDeviceEnumerator.transportLabel(for: defaultID) ?? "unknown"
+      } else {
+        effective = "unknown"
+      }
     }
 
     let fallbackReason: String? =
