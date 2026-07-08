@@ -3,7 +3,7 @@
   "identity": {
     "family": "eg_one",
     "name": "eg-1",
-    "revision": "v1",
+    "revision": "v2-sharded",
     "variant": "q5km",
     "runtimeABI": "llamacpp-eg1-v1"
   },
@@ -12,15 +12,64 @@
   },
   "files": [
     {
-      "path": "eg-1-v1-q5km.gguf",
-      "installPath": "eg-1-v1.gguf",
-      "sizeBytes": 2889511680,
-      "sha256": "3343fc1a30a3e82df7499a4775ef73dd6e28dea1cc39bb58197ec0b66ec874f6",
-      "component": "eg-1-v1.gguf"
+      "path": "v2-sharded/eg-1-v1-00001-of-00008.gguf",
+      "installPath": "eg-1-v1-00001-of-00008.gguf",
+      "sizeBytes": 399884576,
+      "sha256": "77fecf22dabbcb441bb44b8e1f5c6cba7a3f728bc5c22ff76dfb97fd5fbe55af",
+      "component": "eg-1-v1-00001-of-00008.gguf"
+    },
+    {
+      "path": "v2-sharded/eg-1-v1-00002-of-00008.gguf",
+      "installPath": "eg-1-v1-00002-of-00008.gguf",
+      "sizeBytes": 395007008,
+      "sha256": "0808f51149fc30587741c90fa8d026dabdba336a8d9dcc456b8069dd09052c9f",
+      "component": "eg-1-v1-00002-of-00008.gguf"
+    },
+    {
+      "path": "v2-sharded/eg-1-v1-00003-of-00008.gguf",
+      "installPath": "eg-1-v1-00003-of-00008.gguf",
+      "sizeBytes": 393972896,
+      "sha256": "feb7d533d28cb7ca28aaa3d5b0152ff55cb5c5930ae701ec9c726b2d2ee3a1ab",
+      "component": "eg-1-v1-00003-of-00008.gguf"
+    },
+    {
+      "path": "v2-sharded/eg-1-v1-00004-of-00008.gguf",
+      "installPath": "eg-1-v1-00004-of-00008.gguf",
+      "sizeBytes": 397618336,
+      "sha256": "d0a2171e05f94623bef61ae823d38b85bae0a5c3a68d4299142c4d1fa7529bd4",
+      "component": "eg-1-v1-00004-of-00008.gguf"
+    },
+    {
+      "path": "v2-sharded/eg-1-v1-00005-of-00008.gguf",
+      "installPath": "eg-1-v1-00005-of-00008.gguf",
+      "sizeBytes": 389508864,
+      "sha256": "f9753de7d96d209e6172ddaaf702eaffd72145cf2f3950965503724fba39ef57",
+      "component": "eg-1-v1-00005-of-00008.gguf"
+    },
+    {
+      "path": "v2-sharded/eg-1-v1-00006-of-00008.gguf",
+      "installPath": "eg-1-v1-00006-of-00008.gguf",
+      "sizeBytes": 388606432,
+      "sha256": "d0107bf94efdd18735d7325fe3037b9e00b738471b53f5e1b0d17861ff07eb8d",
+      "component": "eg-1-v1-00006-of-00008.gguf"
+    },
+    {
+      "path": "v2-sharded/eg-1-v1-00007-of-00008.gguf",
+      "installPath": "eg-1-v1-00007-of-00008.gguf",
+      "sizeBytes": 397168384,
+      "sha256": "917ad0a83d94a10a8d46113936de56b9fb868241024519b31cb0d612e3e247f3",
+      "component": "eg-1-v1-00007-of-00008.gguf"
+    },
+    {
+      "path": "v2-sharded/eg-1-v1-00008-of-00008.gguf",
+      "installPath": "eg-1-v1-00008-of-00008.gguf",
+      "sizeBytes": 127746048,
+      "sha256": "83c5c80b3c97c94fe9d5c2d903f0a1511e2a4d600091a18a5a2143f99d9ab286",
+      "component": "eg-1-v1-00008-of-00008.gguf"
     }
   ],
   "optionalFiles": [],
-  "totalBytes": 2889511680,
+  "totalBytes": 2889512544,
   "sources": [
     {
       "id": "our_copy",
@@ -32,10 +81,11 @@
     "url": "https://models.enviouslabs.co/eg1/EG-1-MODEL-LICENSE.txt"
   },
   "admission": {
-    "layout": "singleFile",
+    "layout": "componentSet",
     "installLocation": "polishModelsCache",
     "diskHeadroomFactor": "2.2",
-    "evictPreviousRevisions": false
+    "evictPreviousRevisions": true,
+    "entrypointFile": "eg-1-v1-00001-of-00008.gguf"
   },
-  "manifestDigest": "e3776d8863b791b120c58a1831b6e90474277753e8e0e78a6b62eac4816133c6"
+  "manifestDigest": "07550d07e242aa660393f5e62d36106ed7916ffa8852d9fb66f5420854a6b70d"
 }
