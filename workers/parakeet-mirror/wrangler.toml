@@ -1,12 +1,15 @@
-# Parakeet model mirror (#1339): serves EnviousWispr's own copy of the pinned
-# Parakeet v3 model set from R2 behind the two exact URL shapes FluidAudio's
+# Parakeet model mirror (#1339, #1405): serves EnviousWispr's own copy of the
+# pinned Parakeet v3 set behind the two exact URL shapes FluidAudio's
 # ModelRegistry builds — listing (/api/models/{repo}/tree/main[/{sub}]) and
 # file download (/{repo}/resolve/main/{file}) — so the app's first-run download
 # never depends on the public host's listing API or anonymous throttle.
 #
-# Routes are scoped NARROWLY to those two path shapes. /eg1/* (the EG-1 polish
-# model, live traffic) stays on the R2 custom-domain binding and never touches
-# this worker. Verify EG-1 pre/post deploy: scripts/verify-deploy.sh.
+# Listing is answered from a precomputed static tree; downloads are 302-
+# redirected to the object's native R2 custom-domain path (/parakeet/...),
+# which is edge-cached (#1405) and serves bytes + Range natively — so this
+# worker holds NO R2 binding (the byte path left the worker entirely). /eg1/*
+# (the EG-1 polish model, live traffic) also serves from the R2 custom domain
+# and never touches this worker. Verify EG-1 pre/post deploy: scripts/verify-deploy.py.
 #
 # No [triggers] cron here: the account is at its 5-cron free-plan limit (#1092),
 # and this worker needs none — it is a pure request/response mirror.
@@ -27,6 +30,7 @@ routes = [
   { pattern = "models.enviouslabs.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/*", zone_name = "enviouslabs.co" },
 ]
 
-[[r2_buckets]]
-binding = "MODELS"
-bucket_name = "enviouslabs-models"
+# No [[r2_buckets]] binding: downloads 302-redirect to the R2 custom-domain
+# path (/parakeet/...) which serves bytes natively + edge-cached (#1405); the
+# worker no longer streams from R2, so it needs no bucket binding. A revert of
+# this change restores both the byte-serving code and this binding together.
