@@ -63,7 +63,13 @@ public final class EGOneDeliveryAdapter {
     let installDir = registration.installDirectory
     let installPath = installedArtifactURL.path
     let partialPath = installPath + ".partial"
-    let expectedSize = registration.manifest.files.first?.sizeBytes
+    // #1417: `partialPath` is always named after the ENTRYPOINT file
+    // (`resolvedEntrypointPath`, one file), so the size it's compared against
+    // must be that same file's own size — never a sum across every shard (a
+    // `.partial` named after shard 1 can only ever contain shard 1's bytes).
+    let expectedSize = registration.manifest.files.first(where: {
+      $0.resolvedInstallPath == registration.manifest.resolvedEntrypointPath
+    })?.sizeBytes
     // (1) Promote a complete current-version partial; a size-mismatched or
     //     already-installed one falls through to the sweep below.
     if fm.fileExists(atPath: partialPath), !fm.fileExists(atPath: installPath),
@@ -81,13 +87,13 @@ public final class EGOneDeliveryAdapter {
   }
 
   /// The verified on-disk model location the runtime boots llama-server from:
-  /// the install dir joined with the resolved install path (contract §4b —
-  /// the LOCAL name `eg-1-v1.gguf`, never the fetch key). Valid only after an
-  /// `.admitted` outcome.
+  /// the install dir joined with the manifest's resolved entrypoint (contract
+  /// §4b — the LOCAL name, never the fetch key; #1417: for a sharded manifest
+  /// this is shard 1's install name, `llama-server` auto-loads the rest). Valid
+  /// only after an `.admitted` outcome. Thin consumer of
+  /// `DeliveryManifest.resolvedEntrypointPath` — no fallback logic of its own.
   public var installedArtifactURL: URL {
-    let installName =
-      registration.manifest.files.first?.resolvedInstallPath
-      ?? registration.manifest.files.first?.path ?? ""
+    let installName = registration.manifest.resolvedEntrypointPath ?? ""
     return registration.installDirectory.appendingPathComponent(installName)
   }
 

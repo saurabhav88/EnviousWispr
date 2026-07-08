@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 
@@ -62,20 +63,109 @@ import Testing
       manifest: manifest, installDirectory: install, metadataDirectory: metadata)
   }
 
+  /// A synthetic componentSet manifest (2 shards + `entrypointFile`),
+  /// independent of the real shipped manifest (still single-file until the
+  /// shard-authoring step, #1417 §3.5) — proves `installedArtifactURL` and
+  /// `migrateLegacyStoreArtifacts`'s size check against an ACTUALLY sharded
+  /// manifest, not just the current single-file one.
+  private func shardedFixtureRegistration(install: URL, metadata: URL) throws
+    -> DeliveryRegistration
+  {
+    func sha256(_ data: Data) -> String {
+      SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+    func fileObject(_ path: String, _ data: Data) -> [String: Any] {
+      ["path": path, "sizeBytes": data.count, "sha256": sha256(data), "component": path]
+    }
+    let shard1 = Data(count: 1000)
+    let shard2 = Data(count: 2000)
+    var object: [String: Any] = [
+      "schemaVersion": 1,
+      "identity": [
+        "family": "eg_one", "name": "eg-1", "revision": "v2-sharded", "variant": "q5km",
+        "runtimeABI": "llamacpp-test",
+      ],
+      "files": [
+        fileObject("eg-1-00001-of-00002.gguf", shard1),
+        fileObject("eg-1-00002-of-00002.gguf", shard2),
+      ],
+      "optionalFiles": [] as [Any],
+      "totalBytes": shard1.count + shard2.count,
+      "sources": [["id": "our_copy", "baseURL": "https://mirror.invalid.example/eg1/"]],
+      "admission": [
+        "layout": "componentSet", "installLocation": "test",
+        "diskHeadroomFactor": "2.2", "evictPreviousRevisions": false,
+        "entrypointFile": "eg-1-00001-of-00002.gguf",
+      ] as [String: Any],
+    ]
+    let canonical = try JSONSerialization.data(
+      withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes])
+    object["manifestDigest"] = sha256(canonical)
+    let manifest = try DeliveryManifest.load(
+      from: try JSONSerialization.data(withJSONObject: object))
+    return DeliveryRegistration(
+      manifest: manifest, installDirectory: install, metadataDirectory: metadata)
+  }
+
+  @MainActor
+  @Test func installedArtifactURLResolvesToEntrypointShardForComponentSetManifest() throws {
+    let dirs = try makeTempDirs()
+    defer { dirs.cleanup() }
+    let registration = try shardedFixtureRegistration(
+      install: dirs.install, metadata: dirs.metadata)
+    let adapter = EGOneDeliveryAdapter(
+      controller: ModelDeliveryController(), registration: registration, version: "v2-sharded")
+    #expect(adapter.installedArtifactURL.lastPathComponent == "eg-1-00001-of-00002.gguf")
+  }
+
+  @MainActor
+  @Test func migrateLegacyStoreArtifactsSizeCheckUsesEntrypointSizeNotSum() throws {
+    let dirs = try makeTempDirs()
+    defer { dirs.cleanup() }
+    let registration = try shardedFixtureRegistration(
+      install: dirs.install, metadata: dirs.metadata)
+    let entrypointPath = try #require(registration.manifest.resolvedEntrypointPath)
+    // Entrypoint shard (shard 1) is 1000 bytes; shard 2 is 2000; sum is 3000.
+    // A `.partial` sized to the SUM would be wrong — it can only ever contain
+    // shard 1's own bytes. Size it to 1000 (shard 1's own size) and confirm
+    // the migration recognizes it as complete and promotes.
+    let partial = dirs.install.appendingPathComponent("\(entrypointPath).partial")
+    #expect(FileManager.default.createFile(atPath: partial.path, contents: nil))
+    let handle = try FileHandle(forWritingTo: partial)
+    try handle.truncate(atOffset: 1000)
+    try handle.close()
+
+    _ = EGOneDeliveryAdapter(
+      controller: ModelDeliveryController(), registration: registration, version: "v2-sharded")
+
+    #expect(
+      FileManager.default.fileExists(
+        atPath: dirs.install.appendingPathComponent(entrypointPath).path),
+      "the entrypoint-sized (not sum-sized) partial was promoted")
+    #expect(!FileManager.default.fileExists(atPath: partial.path))
+  }
+
   @MainActor
   @Test func completeLegacyPartialIsPromotedNotDeleted() throws {
     let dirs = try makeTempDirs()
     defer { dirs.cleanup() }
     let registration = try eg1Registration(install: dirs.install, metadata: dirs.metadata)
-    let expectedSize = try #require(registration.manifest.files.first?.sizeBytes)
+    // #1417: derive the expected install name and size from
+    // `resolvedEntrypointPath` — never a hardcoded legacy literal — so this
+    // test stays correct once the shipped manifest becomes N shards (the
+    // entrypoint's own name/size then, same as today's single file now).
+    let entrypointPath = try #require(registration.manifest.resolvedEntrypointPath)
+    let expectedSize = try #require(
+      registration.manifest.files.first(where: { $0.resolvedInstallPath == entrypointPath })?
+        .sizeBytes)
     // A completed-but-not-installed download: full-size .partial, no install
     // file. The .partial must REPORT the manifest's expected size (~2.9 GB) so
     // the migration's size-match promote branch fires — but as a SPARSE file
     // (truncate, no allocation) so the test never materializes gigabytes of RAM
     // or disk on CI (cloud-review P1). The migration promotes via rename (O(1)),
     // never a byte copy, so a sparse source is faithful.
-    let partial = dirs.install.appendingPathComponent("eg-1-v1.gguf.partial")
-    let resume = dirs.install.appendingPathComponent("eg-1-v1.gguf.resume.json")
+    let partial = dirs.install.appendingPathComponent("\(entrypointPath).partial")
+    let resume = dirs.install.appendingPathComponent("\(entrypointPath).resume.json")
     #expect(FileManager.default.createFile(atPath: partial.path, contents: nil))
     let handle = try FileHandle(forWritingTo: partial)
     try handle.truncate(atOffset: UInt64(expectedSize))
@@ -87,7 +177,7 @@ import Testing
 
     let fm = FileManager.default
     // Promoted to the install name (so adoption can verify + admit offline).
-    #expect(fm.fileExists(atPath: dirs.install.appendingPathComponent("eg-1-v1.gguf").path))
+    #expect(fm.fileExists(atPath: dirs.install.appendingPathComponent(entrypointPath).path))
     #expect(!fm.fileExists(atPath: partial.path))
     #expect(!fm.fileExists(atPath: resume.path), "stale resume sidecar removed")
   }
@@ -97,8 +187,9 @@ import Testing
     let dirs = try makeTempDirs()
     defer { dirs.cleanup() }
     let registration = try eg1Registration(install: dirs.install, metadata: dirs.metadata)
+    let entrypointPath = try #require(registration.manifest.resolvedEntrypointPath)
     // An interrupted download: short .partial, no install file.
-    let partial = dirs.install.appendingPathComponent("eg-1-v1.gguf.partial")
+    let partial = dirs.install.appendingPathComponent("\(entrypointPath).partial")
     try Data(count: 4096).write(to: partial)
 
     _ = EGOneDeliveryAdapter(
@@ -107,7 +198,7 @@ import Testing
     let fm = FileManager.default
     // Reclaimed (no partial install file left behind); no bogus install created.
     #expect(!fm.fileExists(atPath: partial.path))
-    #expect(!fm.fileExists(atPath: dirs.install.appendingPathComponent("eg-1-v1.gguf").path))
+    #expect(!fm.fileExists(atPath: dirs.install.appendingPathComponent(entrypointPath).path))
   }
 
   @MainActor
