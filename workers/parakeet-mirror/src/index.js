@@ -1,4 +1,4 @@
-// Parakeet model mirror (#1339).
+// Parakeet model mirror (#1339, #1405).
 //
 // Serves the pinned Parakeet v3 set from R2 behind the two URL shapes
 // FluidAudio's ModelRegistry builds from its baseURL:
@@ -9,8 +9,17 @@
 // committed expected-manifest.json (generated from the pinned upstream
 // revision, never from bucket contents) — this kills the listing-API hang at
 // its root: no origin round-trip, no rate limit, byte-exact contract.
-// Downloads stream R2 objects with Range/206 support; the 445MB encoder is
-// never buffered in worker memory.
+//
+// Downloads are 302-redirected to the object's native R2 custom-domain path
+// (/parakeet/{REPO}/{filePath}), which is edge-cached (#1405 Cache Rule) and
+// serves 200/206/416/HEAD/ETag natively — so a far-from-origin user is served
+// from a regional edge, not transatlantic R2, and the 445MB encoder never
+// streams through this worker's memory or its 100k/day request budget. The
+// worker stays the allowlist authority: an unknown path returns THIS worker's
+// JSON 404, never R2's default HTML 404 (which the app's captive-portal guard
+// would treat as an intercepted network). §14.1 verified the app's URLSession
+// follows the 302 preserving Range + resume identity + the SHA-256 admission
+// gate (2026-07-07), and v2.3.1 clients follow it with no app update.
 
 import manifest from "../expected-manifest.json" with { type: "json" };
 
@@ -18,6 +27,11 @@ const REPO = "FluidInference/parakeet-tdt-0.6b-v3-coreml";
 const R2_PREFIX = `parakeet/${REPO}/`;
 const LISTING_BASE = `/api/models/${REPO}/tree/main`;
 const RESOLVE_BASE = `/${REPO}/resolve/main/`;
+// Downloads redirect to the object's native path on the same custom domain.
+// This path is NOT covered by this worker's routes (which are scoped to
+// LISTING_BASE and RESOLVE_BASE), so it falls through to the R2 custom-domain
+// binding — no loop back through the worker.
+const REDIRECT_ORIGIN = "https://models.enviouslabs.co";
 
 // path -> {size, sha256} for every expected file (the only downloadable set).
 const FILES = new Map(manifest.files.map((f) => [f.path, f]));
@@ -61,35 +75,6 @@ const json = (body, status = 200) =>
 
 const notFound = () => json({ error: "Not found" }, 404);
 
-// Parse a single-range "bytes=..." header against a known total size.
-// Returns {offset, length} | "unsatisfiable" | null (absent/ignored → full 200).
-function parseRange(header, size) {
-  if (!header) return null;
-  const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
-  if (!m) return null; // multi-range or malformed: ignore per RFC, serve 200
-  const [, startStr, endStr] = m;
-  if (startStr === "" && endStr === "") return null;
-  if (startStr === "") {
-    // suffix: last N bytes
-    const n = Number(endStr);
-    if (n === 0) return "unsatisfiable";
-    const length = Math.min(n, size);
-    return { offset: size - length, length };
-  }
-  const start = Number(startStr);
-  if (start >= size) return "unsatisfiable";
-  const end = endStr === "" ? size - 1 : Math.min(Number(endStr), size - 1);
-  if (end < start) return "unsatisfiable";
-  return { offset: start, length: end - start + 1 };
-}
-
-function contentTypeFor(path) {
-  if (path.endsWith(".json")) return "application/json";
-  if (path.endsWith(".txt")) return "text/plain";
-  return "application/octet-stream";
-}
-
-
 // Malformed percent-encoding must map to the JSON 404 contract, not a thrown
 // URIError -> 500 (public route; Codex r2). Returns null on bad escapes.
 function safeDecode(component) {
@@ -112,56 +97,26 @@ async function handleListing(pathname) {
   return json(children);
 }
 
-async function handleResolve(request, env, pathname, isHead) {
-  const filePath = safeDecode(pathname.slice(RESOLVE_BASE.length));
-  const meta = filePath === null ? undefined : FILES.get(filePath);
-  if (!meta) return notFound();
+function handleResolve(pathname) {
+  // Allowlist authority: the committed manifest is the ONLY downloadable set.
+  // Validate against the DECODED path; an unknown or malformed path gets this
+  // worker's JSON 404 and never reaches R2 (whose miss is an HTML 404).
+  const rawSuffix = pathname.slice(RESOLVE_BASE.length);
+  const filePath = safeDecode(rawSuffix);
+  if (filePath === null || !FILES.get(filePath)) return notFound();
 
-  const range = parseRange(request.headers.get("range"), meta.size);
-  if (range === "unsatisfiable") {
-    return new Response(null, {
-      status: 416,
-      headers: {
-        "content-range": `bytes */${meta.size}`,
-        "accept-ranges": "bytes",
-      },
-    });
-  }
-
-  const key = R2_PREFIX + filePath;
-  const headers = new Headers({
-    "accept-ranges": "bytes",
-    "content-type": contentTypeFor(filePath),
-  });
-
-  if (isHead) {
-    const head = await env.MODELS.head(key);
-    if (!head) return notFound();
-    headers.set("etag", head.httpEtag);
-    headers.set("content-length", String(head.size));
-    return new Response(null, { status: 200, headers });
-  }
-
-  const object = await env.MODELS.get(key, range ? { range } : undefined);
-  if (!object) return notFound();
-  headers.set("etag", object.httpEtag);
-
-  if (range) {
-    headers.set("content-length", String(range.length));
-    headers.set(
-      "content-range",
-      `bytes ${range.offset}-${range.offset + range.length - 1}/${meta.size}`
-    );
-    return new Response(object.body, { status: 206, headers });
-  }
-  headers.set("content-length", String(meta.size));
-  return new Response(object.body, { status: 200, headers });
+  // Known file: 302 to the cache-enabled native R2 path. Forward the request's
+  // raw (still percent-encoded) suffix unchanged so Cloudflare's own decode
+  // resolves the exact R2 key — no re-encode asymmetry. GET and HEAD both
+  // redirect; a 302 preserves the method and the Range header (§14.1), and R2
+  // returns the object's stable ETag on both so resume identity is unbroken.
+  const location = `${REDIRECT_ORIGIN}/${R2_PREFIX}${rawSuffix}`;
+  return new Response(null, { status: 302, headers: { location } });
 }
 
 export default {
-  async fetch(request, env) {
-    const isHead = request.method === "HEAD";
-    if (request.method !== "GET" && !isHead) {
+  async fetch(request) {
+    if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("Method not allowed", {
         status: 405,
         headers: { allow: "GET, HEAD" },
@@ -172,7 +127,7 @@ export default {
       return handleListing(pathname);
     }
     if (pathname.startsWith(RESOLVE_BASE)) {
-      return handleResolve(request, env, pathname, isHead);
+      return handleResolve(pathname);
     }
     // Anything else under our narrowly-scoped routes is unknown.
     return notFound();

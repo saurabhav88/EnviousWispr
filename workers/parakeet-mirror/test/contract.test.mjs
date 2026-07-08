@@ -1,7 +1,11 @@
-// Contract grid for the parakeet-mirror worker (#1339).
-// Axes: route shape x method x Range semantics (open / bounded / suffix /
-// zero-suffix / inverted / past-EOF / malformed / multi-range) x known/unknown
-// paths x URL encoding. Run: node --test workers/parakeet-mirror/test/
+// Contract grid for the parakeet-mirror worker (#1339, #1405).
+// The worker owns listing + the download ALLOWLIST; it 302-redirects known
+// files to the cache-enabled native R2 path and no longer serves bytes itself.
+// So this suite locks: listing shape, the 302 target for known files, the
+// JSON-404 allowlist (never R2's HTML 404), method/encoding hygiene, and
+// manifest integrity. The BYTE + Range grid now lives against live R2 in
+// scripts/verify-deploy.py (R2 owns 200/206/416/HEAD/ETag natively).
+// Run: node --test workers/parakeet-mirror/test/
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -17,45 +21,18 @@ const worker = (await import("../src/index.js")).default;
 
 const REPO = "FluidInference/parakeet-tdt-0.6b-v3-coreml";
 const SMALL = "config.json"; // 2 bytes
-const BIG = "Encoder.mlmodelc/weights/weight.bin";
-const bigSize = manifest.files.find((f) => f.path === BIG).size;
+const SUB = "Encoder.mlmodelc/model.mil"; // a nested known file
 
-// Map-backed R2 stub: bodies are deterministic patterns, range-aware.
-function makeEnv() {
-  const bytesFor = (key, offset, length) => {
-    const buf = new Uint8Array(length);
-    for (let i = 0; i < length; i++) buf[i] = (offset + i) % 251;
-    return buf;
-  };
-  const sizeOf = (key) => {
-    const rel = key.replace(`parakeet/${REPO}/`, "");
-    const f = manifest.files.find((x) => x.path === rel);
-    return f ? f.size : null;
-  };
-  return {
-    MODELS: {
-      async head(key) {
-        const size = sizeOf(key);
-        return size === null ? null : { size, httpEtag: '"stub"' };
-      },
-      async get(key, opts) {
-        const size = sizeOf(key);
-        if (size === null) return null;
-        const offset = opts?.range?.offset ?? 0;
-        const length = opts?.range?.length ?? size - offset;
-        return { httpEtag: '"stub"', body: bytesFor(key, offset, length) };
-      },
-    },
-  };
-}
+// Expected 302 target for a given raw (as-sent) resolve suffix: the object's
+// native R2 custom-domain path on the same host, raw suffix forwarded verbatim.
+const loc = (rawSuffix) =>
+  `https://models.enviouslabs.co/parakeet/${REPO}/${rawSuffix}`;
 
+// The worker no longer reads env (bytes left the worker); pass none.
 const req = (path, init = {}) =>
-  worker.fetch(
-    new Request(`https://models.enviouslabs.co${path}`, init),
-    makeEnv()
-  );
+  worker.fetch(new Request(`https://models.enviouslabs.co${path}`, init));
 
-// --- Listing ---
+// --- Listing (unchanged: precomputed static tree) ---
 test("listing root returns HF-shaped immediate children", async () => {
   const r = await req(`/api/models/${REPO}/tree/main`);
   assert.equal(r.status, 200);
@@ -89,7 +66,6 @@ test("listing nested subdirectory", async () => {
   const items = await r.json();
   assert.equal(items.length, 1);
   assert.equal(items[0].path, "Encoder.mlmodelc/weights/weight.bin");
-  assert.equal(items[0].size, bigSize);
 });
 
 test("listing unknown path is 404 JSON, never HTML", async () => {
@@ -103,19 +79,47 @@ test("listing for a different repo is 404 (route scope)", async () => {
   assert.equal(r.status, 404);
 });
 
-// --- Resolve: full downloads ---
-test("resolve known file: 200, exact length, accept-ranges, etag", async () => {
+// --- Resolve: known files 302 to the cached native R2 path ---
+test("resolve known file: 302 to the native R2 path, no body", async () => {
   const r = await req(`/${REPO}/resolve/main/${SMALL}`);
-  assert.equal(r.status, 200);
-  assert.equal(r.headers.get("content-length"), "2");
-  assert.equal(r.headers.get("accept-ranges"), "bytes");
-  assert.ok(r.headers.get("etag"));
-  assert.equal((await r.arrayBuffer()).byteLength, 2);
+  assert.equal(r.status, 302);
+  assert.equal(r.headers.get("location"), loc(SMALL));
+  assert.equal((await r.arrayBuffer()).byteLength, 0);
 });
 
-test("resolve unknown file: 404", async () => {
+test("resolve nested known file: 302 preserves the full sub-path", async () => {
+  const r = await req(`/${REPO}/resolve/main/${SUB}`);
+  assert.equal(r.status, 302);
+  assert.equal(r.headers.get("location"), loc(SUB));
+});
+
+test("HEAD known file: also 302 (client follows HEAD->HEAD, resume identity intact)", async () => {
+  const r = await req(`/${REPO}/resolve/main/${SMALL}`, { method: "HEAD" });
+  assert.equal(r.status, 302);
+  assert.equal(r.headers.get("location"), loc(SMALL));
+});
+
+test("Range on a known file: still a plain 302 (R2 owns Range, worker never parses it)", async () => {
+  const r = await req(`/${REPO}/resolve/main/${SMALL}`, {
+    headers: { range: "bytes=0-0" },
+  });
+  assert.equal(r.status, 302);
+  assert.equal(r.headers.get("location"), loc(SMALL));
+});
+
+test("302 forwards the raw (percent-encoded) suffix verbatim so CF's own decode resolves the key", async () => {
+  // config%2Ejson decodes to config.json (a known file); the worker validates
+  // the DECODED path but forwards the RAW suffix, and CF applies the same decode.
+  const r = await req(`/${REPO}/resolve/main/config%2Ejson`);
+  assert.equal(r.status, 302);
+  assert.equal(r.headers.get("location"), loc("config%2Ejson"));
+});
+
+// --- Resolve allowlist: unknown/malformed never redirect, never reach R2 ---
+test("resolve unknown file: 404 JSON (never a 302 to R2's HTML 404)", async () => {
   const r = await req(`/${REPO}/resolve/main/NoSuch.bin`);
   assert.equal(r.status, 404);
+  assert.match(r.headers.get("content-type") ?? "", /application\/json/);
 });
 
 test("resolve file NOT in manifest but maybe in bucket (_meta) is 404 — manifest is the allowlist", async () => {
@@ -123,116 +127,8 @@ test("resolve file NOT in manifest but maybe in bucket (_meta) is 404 — manife
   assert.equal(r.status, 404);
 });
 
-test("URL-encoded path resolves", async () => {
-  const r = await req(
-    `/${REPO}/resolve/main/Encoder.mlmodelc%2Fmodel.mil`.replace(
-      "%2F",
-      "/"
-    ) // sanity: plain form
-  );
-  assert.equal(r.status, 200);
-});
-
-test("HEAD returns headers without body", async () => {
-  const r = await req(`/${REPO}/resolve/main/${SMALL}`, { method: "HEAD" });
-  assert.equal(r.status, 200);
-  assert.equal(r.headers.get("content-length"), "2");
-  assert.equal((await r.arrayBuffer()).byteLength, 0);
-});
-
-// --- Range grid ---
-const range = (h) => req(`/${REPO}/resolve/main/${BIG}`, { headers: { range: h } });
-// Cloud review #1355: ignored/malformed range headers fall back to a full 200
-// body — assert those on the SMALL file so the stub never materializes the
-// 445MB encoder just to check a status code. Range MATH stays on BIG.
-const rangeSmall = (h) =>
-  req(`/${REPO}/resolve/main/${SMALL}`, { headers: { range: h } });
-
-test("bounded range: 206 with correct content-range and length", async () => {
-  const r = await range("bytes=0-1023");
-  assert.equal(r.status, 206);
-  assert.equal(r.headers.get("content-length"), "1024");
-  assert.equal(r.headers.get("content-range"), `bytes 0-1023/${bigSize}`);
-  assert.equal((await r.arrayBuffer()).byteLength, 1024);
-});
-
-test("open-ended range: 206 to EOF", async () => {
-  const start = bigSize - 100;
-  const r = await range(`bytes=${start}-`);
-  assert.equal(r.status, 206);
-  assert.equal(r.headers.get("content-length"), "100");
-  assert.equal(
-    r.headers.get("content-range"),
-    `bytes ${start}-${bigSize - 1}/${bigSize}`
-  );
-});
-
-test("suffix range: last N bytes", async () => {
-  const r = await range("bytes=-500");
-  assert.equal(r.status, 206);
-  assert.equal(r.headers.get("content-length"), "500");
-  assert.equal(
-    r.headers.get("content-range"),
-    `bytes ${bigSize - 500}-${bigSize - 1}/${bigSize}`
-  );
-});
-
-test("suffix longer than file clamps to whole file", async () => {
-  const r = await req(`/${REPO}/resolve/main/${SMALL}`, {
-    headers: { range: "bytes=-999" },
-  });
-  assert.equal(r.status, 206);
-  assert.equal(r.headers.get("content-length"), "2");
-});
-
-test("end beyond EOF clamps to EOF", async () => {
-  const r = await req(`/${REPO}/resolve/main/${SMALL}`, {
-    headers: { range: "bytes=1-99999" },
-  });
-  assert.equal(r.status, 206);
-  assert.equal(r.headers.get("content-range"), `bytes 1-1/2`);
-});
-
-test("start past EOF: 416 with bytes */size", async () => {
-  const r = await range(`bytes=${bigSize}-`);
-  assert.equal(r.status, 416);
-  assert.equal(r.headers.get("content-range"), `bytes */${bigSize}`);
-});
-
-test("inverted range: 416", async () => {
-  const r = await range("bytes=500-100");
-  assert.equal(r.status, 416);
-});
-
-test("zero-suffix (bytes=-0): 416", async () => {
-  const r = await range("bytes=-0");
-  assert.equal(r.status, 416);
-});
-
-test("malformed range is ignored: full 200", async () => {
-  const r = await rangeSmall("bytes=abc");
-  assert.equal(r.status, 200);
-});
-
-test("multi-range is ignored: full 200 (RFC-permitted)", async () => {
-  const r = await rangeSmall("bytes=0-1,5-9");
-  assert.equal(r.status, 200);
-});
-
-test("empty range value (bytes=-): ignored, full 200", async () => {
-  const r = await rangeSmall("bytes=-");
-  assert.equal(r.status, 200);
-});
-
-// --- Methods and route hygiene ---
-test("POST: 405 with Allow", async () => {
-  const r = await req(`/${REPO}/resolve/main/${SMALL}`, { method: "POST" });
-  assert.equal(r.status, 405);
-  assert.equal(r.headers.get("allow"), "GET, HEAD");
-});
-
-test("unrelated path under scope: 404 JSON", async () => {
-  const r = await req(`/${REPO}/resolve/other/${SMALL}`);
+test("path-traversal attempt is 404 (not in allowlist, never redirected)", async () => {
+  const r = await req(`/${REPO}/resolve/main/../../etc/passwd`);
   assert.equal(r.status, 404);
 });
 
@@ -246,6 +142,18 @@ test("malformed percent-encoding on listing: 404 JSON, never a thrown 500", asyn
   const r = await req(`/api/models/${REPO}/tree/main/%ZZ`);
   assert.equal(r.status, 404);
   assert.match(r.headers.get("content-type") ?? "", /application\/json/);
+});
+
+// --- Methods and route hygiene ---
+test("POST: 405 with Allow", async () => {
+  const r = await req(`/${REPO}/resolve/main/${SMALL}`, { method: "POST" });
+  assert.equal(r.status, 405);
+  assert.equal(r.headers.get("allow"), "GET, HEAD");
+});
+
+test("unrelated path under scope: 404 JSON", async () => {
+  const r = await req(`/${REPO}/resolve/other/${SMALL}`);
+  assert.equal(r.status, 404);
 });
 
 // --- Manifest integrity (the committed manifest itself) ---
