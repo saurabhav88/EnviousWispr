@@ -632,12 +632,10 @@ final class HALDeviceInputSource: AudioInputSource {
   }
 
   func stop() async -> [Float] {
-    stallWorkItem?.cancel()
-    stallWorkItem = nil
     forwarder?.stop()
     forwarder = nil
-    isCapturing = false
     streamContinuation = nil
+    // teardownUnit() cancels stallWorkItem and drops isCapturing.
     teardownUnit()
     // Source does not own samples — manager accumulates via onSamples callback.
     return []
@@ -661,6 +659,18 @@ final class HALDeviceInputSource: AudioInputSource {
   // MARK: - Private: teardown
 
   private func teardownUnit() {
+    // Single authority for "this unit is going away" — every caller (normal
+    // stop, abort, rebuild, AND device-vanish) must disarm the stall
+    // watchdog and drop `isCapturing`, mirroring
+    // `AVAudioEngineSource.emergencyTeardown()`'s same reset (its comment:
+    // "isCapturing flips false ... which guards a late-fired watchdog").
+    // Without this, a device-vanish mid-recording left the watchdog armed
+    // and `isCapturing` stuck true — a late-firing watchdog could fire
+    // `onCaptureStalled` after `onInterrupted` already handled the session,
+    // and a same-second retry would see `alreadyCapturing` (cloud review P2).
+    stallWorkItem?.cancel()
+    stallWorkItem = nil
+    isCapturing = false
     stoppedFlag?.set()
     removeDeviceIsAliveListener()
     if let unit = audioUnit {
