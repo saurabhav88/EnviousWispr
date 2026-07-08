@@ -538,15 +538,31 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         let vpMatch = engineSource.noiseSuppressionEnabled == noiseSuppressionEnabled
         configMatch = deviceMatch && vpMatch
       }
+      #if DEBUG
+        // A warm AVCaptureSessionSource from a forced-capture-session trial keeps
+        // its pinned `targetDeviceUID`. When the override is cleared and we
+        // return to `.automatic`, reuse must NOT keep that stale target, or
+        // `.automatic` would capture the forced device instead of built-in.
+        // Compare the target the same way the engine path compares its device.
+        // Release never sets a target (the switch-arm that assigns it is
+        // DEBUG-only), so this is a no-op there. (Cloud review P2.)
+        if configMatch, let captureSource = existing as? AVCaptureSessionSource {
+          let wantsTarget =
+            decision.reason == .forcedCaptureSession ? effectiveInputDeviceUID() : ""
+          let normalize: (String?) -> String = { ($0?.isEmpty ?? true) ? "" : $0! }
+          configMatch = normalize(captureSource.targetDeviceUID) == normalize(wantsTarget)
+        }
+      #endif
 
-      // Under a bench force-policy (#1377), never reuse a warm source: each
-      // trial reconfigures target device / BT-output bypass, so always rebuild
-      // to a freshly-configured candidate. `routeResolver.policy` is only ever
-      // non-`.automatic` in DEBUG (no release setter exists), so release/the
-      // shipped `.automatic` path keeps warm reuse exactly as today.
-      let benchForced = routeResolver.policy != .automatic
-      if configMatch && !benchForced {
-        // Route and config unchanged, reuse warm source
+      if configMatch {
+        // Route and config unchanged, reuse warm source. This applies to the
+        // bench too (#1377): a candidate must be measured with the SAME warm-
+        // engine behavior a real user gets — keeping the source warm across
+        // recordings holds the Bluetooth SCO link open, so the codec switch
+        // fires once at idle teardown (correct, like WisprFlow), NOT on every
+        // record. Config changes that DO warrant a rebuild (candidate switch →
+        // different sourceType; device change; a stale forced capture-session
+        // target) are already caught by the `configMatch` checks above.
         adoptRouteDecision(decision, prior: priorRouteDecision)
         Self.btRouteLog("Reusing warm \(wantsEngine ? "engine" : "capture session") source")
         return existing

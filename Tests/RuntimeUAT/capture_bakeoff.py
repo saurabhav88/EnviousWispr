@@ -53,6 +53,10 @@ XPC_KEY = "useXPCAudioService"
 
 BT_ROUTE_LOG = os.path.expanduser("~/Library/Logs/EnviousWispr/bt-route.log")
 EVIDENCE_MARKER = "CAPTURE_EVIDENCE"
+# AVCaptureSessionSource logs this when a pinned target UID is not a live device
+# and it silently records the built-in instead. A trial that fell back did NOT
+# capture the requested device, so it must FAIL even if a transcript landed.
+FALLBACK_MARKER = "not found — falling back"
 
 # Checkout root derived from THIS script's location (…/<checkout>/Tests/RuntimeUAT/
 # capture_bakeoff.py → <checkout>), so the scorecard lands in the checkout being
@@ -176,6 +180,38 @@ def read_new_evidence(since_line):
     return records
 
 
+def _fell_back_since(since_line):
+    """True if a pinned-target fallback-to-built-in was logged in the window."""
+    return any(FALLBACK_MARKER in ln for ln in _read_bt_route_lines(since_line))
+
+
+def _device_bound_as_requested(source_ev, requested_uid, fell_back):
+    """Did the trial bind the DEVICE it was asked to (not a fallback / wrong mic)?
+
+    A transcript alone is not enough — a run that fell back to the built-in mic
+    still transcribes fine, so the bench must reject it (cloud review P2). Uses
+    the unforgeable CAPTURE_EVIDENCE:
+      - candidate A logs an explicit `boundUID` → must equal `requested_uid`.
+      - candidate C logs `boundTransport` (device-id path, no UID) → for a
+        specific requested device the transport must not be `built_in`.
+    When no specific device was requested (`auto`/`built_in`), built-in is the
+    correct outcome and the check passes.
+    """
+    if fell_back:
+        return False
+    if requested_uid in ("", "auto", "built_in"):
+        return True  # no specific device asked; built-in is the right result
+    if source_ev is None:
+        return False  # cannot confirm what bound
+    bound_uid = source_ev.get("boundUID")
+    if bound_uid is not None:
+        return bound_uid == requested_uid
+    transport = source_ev.get("boundTransport")
+    if transport is not None:
+        return transport != "built_in"
+    return False  # no device evidence → cannot confirm → fail closed
+
+
 # --- Trial + scorecard -------------------------------------------------------
 
 
@@ -204,11 +240,15 @@ def run_trial(candidate, device_label, sentence=DEFAULT_SENTENCE, expect=None):
 
     backend_ok = bound_backend == expected_backend
     evidence_found = source_ev is not None
-    # Gate: correct non-silent transcript AND the expected backend actually bound.
-    # (Device-match is scored by a human against `bound_device`/`bound_transport`
-    # vs the intended device — auto-matching UIDs across the shared/dev stores is
-    # deliberately out of scope; the log is the truth for review.)
-    gate_pass = bool(transcript_pass) and backend_ok and evidence_found
+    fell_back = _fell_back_since(since)
+    device_ok = _device_bound_as_requested(source_ev, requested_uid, fell_back)
+    # Gate: correct non-silent transcript AND the expected backend actually bound
+    # AND the requested DEVICE actually bound (no built-in fallback / wrong mic).
+    # A transcript captured by the built-in after a fallback is a FAIL, not a pass
+    # (cloud review P2) — the whole point is proving a candidate grabs the target.
+    gate_pass = (
+        bool(transcript_pass) and backend_ok and evidence_found and device_ok and not fell_back
+    )
 
     row = {
         "candidate": candidate,
@@ -223,6 +263,8 @@ def run_trial(candidate, device_label, sentence=DEFAULT_SENTENCE, expect=None):
         "bound_transport": bound_transport,
         "requested_uid": requested_uid,
         "evidence_found": evidence_found,
+        "device_ok": device_ok,
+        "fell_back": fell_back,
         "gate_pass": gate_pass,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
@@ -240,6 +282,9 @@ def _print_row(row):
           f"ok={row['backend_ok']})")
     print(f"  bound device    = {row['bound_device']}  transport={row['bound_transport']}")
     print(f"  requested uid   = {row['requested_uid']}")
+    print(f"  device bound OK  = {row['device_ok']}   fell_back_to_builtin = {row['fell_back']}")
+    if row["fell_back"] or not row["device_ok"]:
+        print("  WARN: requested device did NOT bind (fallback / wrong mic) — NOT a valid capture")
     print(f"  evidence found  = {row['evidence_found']}")
     if not row["evidence_found"]:
         print("  WARN: no CAPTURE_EVIDENCE — is this a DEBUG dev build with in-process capture?")
