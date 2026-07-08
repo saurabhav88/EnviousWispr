@@ -78,15 +78,24 @@ private final class HALSampleRing: @unchecked Sendable {
     }
   }
 
-  /// Non-RT drain of one chunk. Called from the consumer queue only.
-  func pop() -> (samples: [Float], level: Float)? {
-    lock.withLockUnchecked { _ -> (samples: [Float], level: Float)? in
+  /// Non-RT drain of one chunk into a caller-owned, reused scratch buffer
+  /// (must be at least `capacityPerSlot` long). The lock's critical section
+  /// is a bounded memcpy only — same shape as `push()`'s. Building the final
+  /// `[Float]`/`AVAudioPCMBuffer` the caller actually needs happens AFTER
+  /// unlocking, in the caller. This lock is shared with the RT `push()`
+  /// side, so any allocation done while holding it could block the render
+  /// callback behind the consumer (Codex review r2 P2) — moving the
+  /// allocation out is what closes that.
+  func pop(into destination: inout [Float]) -> (count: Int, level: Float)? {
+    lock.withLockUnchecked { _ -> (count: Int, level: Float)? in
       guard occupied > 0 else { return nil }
       let slot = slots[readIdx]
-      let samples = Array(UnsafeBufferPointer(start: slot.storage, count: slot.count))
+      destination.withUnsafeMutableBufferPointer { dst in
+        dst.baseAddress!.update(from: slot.storage, count: slot.count)
+      }
       readIdx = (readIdx + 1) % slots.count
       occupied -= 1
-      return (samples, slot.level)
+      return (slot.count, slot.level)
     }
   }
 }
@@ -116,6 +125,11 @@ private final class HALRenderContext: @unchecked Sendable {
   /// watchdog closure via `wasReceived()` on `liveness` instead — kept here
   /// only so the consumer can skip the cross-thread mark after the first hit.
   var bufferSeenThisSession = false
+  /// Reused destination for `ring.pop(into:)` — sized once to `capacityFrames`
+  /// so the drain's bounded memcpy (shared lock with the RT `push()` side)
+  /// never allocates; the per-chunk `[Float]`/`AVAudioPCMBuffer` `forward()`
+  /// needs is built AFTER that copy returns, outside the lock.
+  private var popScratch: [Float]
 
   init(
     audioUnit: AudioUnit,
@@ -133,6 +147,7 @@ private final class HALRenderContext: @unchecked Sendable {
     self.stopped = stopped
     self.liveness = liveness
     self.forwarder = forwarder
+    self.popScratch = [Float](repeating: 0, count: capacityFrames)
   }
 
   /// Drain everything currently in the ring and forward through
@@ -140,10 +155,11 @@ private final class HALRenderContext: @unchecked Sendable {
   /// same per-chunk allocation shape `AVAudioEngineSource`'s tap handler and
   /// `AVCaptureSessionSource`'s delegate already use on their own callback
   /// queues — here it runs one hop off the true HAL IO thread instead of on
-  /// it, since this function is called from `consumerQueue`, never directly
-  /// from the render callback).
+  /// it, since this function is called from the dedicated consumer thread,
+  /// never directly from the render callback).
   func drainAndForward() {
-    while let (samples, level) = ring.pop() {
+    while let (count, level) = ring.pop(into: &popScratch) {
+      let samples = Array(popScratch.prefix(count))
       guard !bufferSeenThisSession else {
         forward(samples: samples, level: level)
         continue
@@ -700,27 +716,32 @@ private func halRenderProc(
   let context = Unmanaged<HALRenderContext>.fromOpaque(inRefCon).takeUnretainedValue()
   guard !context.stopped.isSet() else { return noErr }
 
-  // Reset to full capacity before every render — `AudioUnitRender` can shrink
-  // `mDataByteSize` to the actual bytes written, so a stale smaller value
-  // from a prior callback would otherwise silently persist (Codex review r1
-  // P1 context: never trust the buffer's byte size to still read "full").
-  let byteCapacity = context.capacityFrames * MemoryLayout<Float>.size
+  // Clamp BEFORE calling AudioUnitRender, not just after: if
+  // `kAudioUnitProperty_MaximumFramesPerSlice` was ignored or the hardware
+  // supplies more than `capacityFrames`, asking AudioUnitRender to write
+  // `inNumberFrames` into a buffer only `capacityFrames` long is a write-side
+  // overflow the post-render `min(...)` cannot undo (Codex review r2 P2 — the
+  // read-side clamp alone was insufficient). Never render more than the
+  // scratch buffer actually holds; a device that oversizes its slice loses
+  // the excess of that one callback rather than overflowing.
+  let clampedFrames = min(inNumberFrames, UInt32(context.capacityFrames))
+  let byteCapacity = Int(clampedFrames) * MemoryLayout<Float>.size
+  // Reset every render — `AudioUnitRender` can shrink `mDataByteSize` to the
+  // actual bytes written, so a stale smaller value from a prior callback
+  // would otherwise silently persist (Codex review r1 P1 context).
   context.scratch[0].mDataByteSize = UInt32(byteCapacity)
 
   let status = AudioUnitRender(
-    context.audioUnit, ioActionFlags, inTimeStamp, 1, inNumberFrames,
+    context.audioUnit, ioActionFlags, inTimeStamp, 1, clampedFrames,
     context.scratch.unsafeMutablePointer)
   guard status == noErr else { return status }
   guard !context.stopped.isSet() else { return noErr }
 
   guard let data = context.scratch[0].mData else { return noErr }
-  // Clamp to what the buffer can actually hold AND what AudioUnitRender
-  // reports it actually wrote — never trust `inNumberFrames` alone. A device
-  // slice larger than `kAudioUnitProperty_MaximumFramesPerSlice` (property
-  // set failed, or hardware ignored it) would otherwise read past the
-  // preallocated scratch buffer (Codex review r1 P1).
+  // Clamp again to what AudioUnitRender reports it actually wrote — never
+  // trust the requested frame count alone.
   let renderedFrames = Int(context.scratch[0].mDataByteSize) / MemoryLayout<Float>.size
-  let frameCount = min(Int(inNumberFrames), context.capacityFrames, renderedFrames)
+  let frameCount = min(Int(clampedFrames), renderedFrames)
   guard frameCount > 0 else { return noErr }
   let floatPtr = data.assumingMemoryBound(to: Float.self)
 
