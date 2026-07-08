@@ -130,6 +130,17 @@ final class AVAudioEngineSource: AudioInputSource {
   /// User override for input device. Empty string means "Auto" (smart selection enabled).
   var preferredInputDeviceIDOverride: String = ""
 
+  #if DEBUG
+    /// Bench-only bypass of the BT-output force-nil (#1377 candidate C). When
+    /// true, `startCapture`'s device resolution does NOT skip `setInputDevice`
+    /// under BT output, so the engine targets the user-selected (Bluetooth)
+    /// device instead of the crash-dodge nil. Set ONLY under a
+    /// `CaptureSourcePolicy` force-case by the bake-off; the `.automatic` route
+    /// leaves it false, so the shipped crash-dodge is unchanged. Compiled out
+    /// of release entirely.
+    var benchBypassBTOutputForceNil = false
+  #endif
+
   /// The CoreAudio device ID currently in use.
   private(set) var currentInputDeviceID: AudioDeviceID?
 
@@ -215,8 +226,17 @@ final class AVAudioEngineSource: AudioInputSource {
       btOutputActive = false
     }
 
+    // #1377 candidate C: the bake-off can bypass the BT-output force-nil to
+    // target a Bluetooth mic under BT output. In release (or on `.automatic`)
+    // the crash-dodge always stands — `benchBypassBTOutputForceNil` is
+    // DEBUG-only and never set by the automatic route.
+    var forceNilUnderBTOutput = btOutputActive
+    #if DEBUG
+      if benchBypassBTOutputForceNil { forceNilUnderBTOutput = false }
+    #endif
+
     let resolvedDeviceID: AudioDeviceID?
-    if btOutputActive {
+    if forceNilUnderBTOutput {
       // BT output active — skip device switch.
       // Forcing built-in mic via setInputDevice crashes the XPC service.
       // Root cause: CoreAudio creates corrupted CADefaultDeviceAggregate.
@@ -241,6 +261,20 @@ final class AVAudioEngineSource: AudioInputSource {
     }
     try setInputDevice(resolvedDeviceID)
     currentInputDeviceID = resolvedDeviceID ?? AudioDeviceEnumerator.defaultInputDeviceID()
+    #if DEBUG
+      // Capture-side actual-bound-device evidence (#1377 §3.5): the bench reads
+      // THIS to prove which device the engine really bound (not app-derived
+      // telemetry). `boundTransport` characterizes the device (bluetooth vs
+      // built_in); `benchBypass` records whether the BT-output dodge was skipped.
+      let boundTransport =
+        currentInputDeviceID.flatMap { AudioDeviceEnumerator.transportLabel(for: $0) } ?? "unknown"
+      let requestedUID =
+        preferredInputDeviceIDOverride.isEmpty
+        ? selectedInputDeviceUID : preferredInputDeviceIDOverride
+      AudioCaptureManager.btRouteLog(
+        "CAPTURE_EVIDENCE backend=av_audio_engine boundDeviceID=\(currentInputDeviceID.map(String.init) ?? "nil") boundTransport=\(boundTransport) requestedUID=\(requestedUID.isEmpty ? "auto" : requestedUID) benchBypass=\(benchBypassBTOutputForceNil)"
+      )
+    #endif
     onLifecycleSignal?("engine_input_device_completed")
     let deviceMs = ms(ContinuousClock.now - deviceStart)
 

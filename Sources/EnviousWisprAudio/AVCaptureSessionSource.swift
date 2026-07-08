@@ -116,6 +116,13 @@ final class AVCaptureSessionSource: AudioInputSource {
   private(set) var isCapturing = false
   var isRunning: Bool { session?.isRunning ?? false }
 
+  /// Target capture device UID. Nil = built-in microphone — today's behavior,
+  /// byte-identical. Non-nil pins capture to that device (#1377 candidate A),
+  /// including a Bluetooth mic. Only ever set to a real UID under a
+  /// `CaptureSourcePolicy` force-case; the `.automatic` route leaves it nil,
+  /// so the shipped path is unchanged.
+  var targetDeviceUID: String?
+
   // MARK: - Private state
 
   private var session: AVCaptureSession?
@@ -151,11 +158,13 @@ final class AVCaptureSessionSource: AudioInputSource {
       return
     }
 
-    // Find the built-in microphone by transport type — NOT AVCaptureDevice.default(for: .audio)
-    // which follows the system default and may return a BT device.
+    // Resolve the capture device: the pinned `targetDeviceUID` when set
+    // (#1377 candidate A), otherwise the built-in mic by transport type — NOT
+    // AVCaptureDevice.default(for: .audio), which follows the system default
+    // and may return a BT device.
     onLifecycleSignal?("capture_session_find_mic_entered")
-    let builtInMic = findBuiltInMicrophone()
-    guard let mic = builtInMic else {
+    let resolvedMic = resolveCaptureDevice()
+    guard let mic = resolvedMic else {
       throw AudioError.noBuiltInMicrophoneFound
     }
     onLifecycleSignal?("capture_session_find_mic_completed")
@@ -222,6 +231,18 @@ final class AVCaptureSessionSource: AudioInputSource {
 
     AudioCaptureManager.btRouteLog(
       "AVCaptureSessionSource: prepared with \(mic.localizedName) (uid=\(mic.uniqueID))")
+    #if DEBUG
+      // Capture-side actual-bound-device evidence (#1377 §3.5). The bench reads
+      // THIS (not app-derived `effective_transport`, not the `"xpc_proxy"` masked
+      // `captureSourceType`) to prove which device really bound. `boundUID` is
+      // the unforgeable truth; `requestedUID` shows what was asked for.
+      // `boundDevice` is LAST because a localized device name may contain spaces —
+      // the parser takes it as the line tail so no following token is corrupted.
+      // DEBUG-only, consistent with the engine source's evidence line.
+      AudioCaptureManager.btRouteLog(
+        "CAPTURE_EVIDENCE backend=av_capture_session boundUID=\(mic.uniqueID) requestedUID=\(targetDeviceUID ?? "built_in") boundDevice=\(mic.localizedName)"
+      )
+    #endif
   }
 
   private func awaitStartRunning(
@@ -445,6 +466,33 @@ final class AVCaptureSessionSource: AudioInputSource {
   }
 
   // MARK: - Private: Device Discovery
+
+  /// Resolve the capture device: the pinned `targetDeviceUID` when set
+  /// (#1377 candidate A), otherwise the built-in mic (today's default).
+  /// Falls back to built-in (with a log line) if a pinned UID is not found,
+  /// so the harness sees the real bound device in `CAPTURE_EVIDENCE` rather
+  /// than a hard capture failure that hides which device was requested.
+  private func resolveCaptureDevice() -> AVCaptureDevice? {
+    if let uid = targetDeviceUID, !uid.isEmpty {
+      if let device = findDevice(uid: uid) { return device }
+      AudioCaptureManager.btRouteLog(
+        "AVCaptureSessionSource: target device uid=\(uid) not found — falling back to built-in")
+    }
+    return findBuiltInMicrophone()
+  }
+
+  /// Find an AVCaptureDevice by its CoreAudio unique ID. `AVCaptureDevice.uniqueID`
+  /// shares the CoreAudio UID namespace (see `findBuiltInMicrophone`, which cross-
+  /// references it via `AudioDeviceEnumerator.deviceID(forUID:)`), so a settings-
+  /// stored input-device UID matches directly.
+  private func findDevice(uid: String) -> AVCaptureDevice? {
+    let discovery = AVCaptureDevice.DiscoverySession(
+      deviceTypes: [.microphone],
+      mediaType: .audio,
+      position: .unspecified
+    )
+    return discovery.devices.first { $0.uniqueID == uid }
+  }
 
   /// Find the built-in microphone via CoreAudio transport type.
   /// Does NOT use AVCaptureDevice.default(for: .audio) which follows system default

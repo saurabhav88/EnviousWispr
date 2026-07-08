@@ -1,4 +1,5 @@
 import CoreAudio
+import Foundation  // UserDefaults (DEBUG bench override); explicit, not transitive via CoreAudio
 
 /// Policy for selecting the audio capture source.
 /// `.automatic` decides based on output route + input intent.
@@ -197,3 +198,31 @@ struct CaptureRouteResolver {
     )
   }
 }
+
+#if DEBUG
+  extension CaptureRouteResolver {
+    /// DEBUG-only bench control plane (#1377 slice 2a — capture-backend bake-off).
+    ///
+    /// The single runtime injection path that lets the bake-off harness pin a
+    /// candidate capture engine WITHOUT touching the `.automatic` route. Reads a
+    /// `defaults` string the harness writes and maps it to an existing force
+    /// policy; returns nil when unset (the normal case), so a build with no
+    /// override behaves exactly as today.
+    ///
+    /// Suite: `UserDefaults.standard`, which on the DEBUG dev build resolves to
+    /// `com.enviouswispr.app.dev` — the SAME per-build store as
+    /// `useXPCAudioService` (`SettingsManager.swift:455`). The harness sets it via
+    /// `defaults write com.enviouswispr.app.dev captureSourcePolicyOverride forceCaptureSession`.
+    /// Compiled out of release entirely; `.automatic` is the only path users reach.
+    static let debugPolicyOverrideKey = "captureSourcePolicyOverride"
+
+    static func debugPolicyOverride(defaults: UserDefaults = .standard) -> CaptureSourcePolicy? {
+      guard let raw = defaults.string(forKey: debugPolicyOverrideKey) else { return nil }
+      switch raw {
+      case "forceEngine": return .forceEngine
+      case "forceCaptureSession": return .forceCaptureSession
+      default: return nil
+      }
+    }
+  }
+#endif
