@@ -144,6 +144,15 @@ final class AVAudioEngineSource: AudioInputSource {
   /// The CoreAudio device ID currently in use.
   private(set) var currentInputDeviceID: AudioDeviceID?
 
+  #if DEBUG
+    /// Whether the most recent `setInputDevice` actually bound the requested
+    /// device — `AudioUnitSetProperty` returned noErr. A failed set does NOT
+    /// throw, so this is the #1377 bench's proof the REQUESTED device bound
+    /// rather than being silently ignored. True on the default/no-op path (no
+    /// explicit device to bind). Read only by `logBenchCaptureEvidence()`.
+    private var lastInputDeviceBindOK = true
+  #endif
+
   // MARK: - Private state
 
   private var engine = AVAudioEngine()
@@ -384,6 +393,16 @@ final class AVAudioEngineSource: AudioInputSource {
     /// non-built-in transport); `boundTransport` characterizes it (bluetooth vs
     /// built_in); `benchBypass` records whether the BT-output dodge was skipped.
     private func logBenchCaptureEvidence() {
+      // `bindOK` is the proof the REQUESTED device actually bound: setInputDevice
+      // does NOT throw when `AudioUnitSetProperty` fails (it logs + fires
+      // `onDeviceError` and returns), and line 263 sets `currentInputDeviceID` to
+      // the requested device regardless — so `boundUID` alone would falsely
+      // report a HAL-rejected Bluetooth device as bound. `bindOK=false` lets the
+      // harness FAIL that trial. Reading back `kAudioOutputUnitProperty_CurrentDevice`
+      // was rejected: on the default path AVAudioEngine wraps input in a private
+      // `CADefaultDeviceAggregate`, so a read-back reports an aggregate UID that
+      // no requested-device check could match. `bindOK` sidesteps that. (Cloud
+      // review P2.)
       let boundTransport =
         currentInputDeviceID.flatMap { AudioDeviceEnumerator.transportLabel(for: $0) } ?? "unknown"
       let boundUID =
@@ -392,7 +411,7 @@ final class AVAudioEngineSource: AudioInputSource {
         preferredInputDeviceIDOverride.isEmpty
         ? selectedInputDeviceUID : preferredInputDeviceIDOverride
       AudioCaptureManager.btRouteLog(
-        "CAPTURE_EVIDENCE backend=av_audio_engine boundUID=\(boundUID) boundDeviceID=\(currentInputDeviceID.map(String.init) ?? "nil") boundTransport=\(boundTransport) requestedUID=\(requestedUID.isEmpty ? "auto" : requestedUID) benchBypass=\(benchBypassBTOutputForceNil)"
+        "CAPTURE_EVIDENCE backend=av_audio_engine boundUID=\(boundUID) boundDeviceID=\(currentInputDeviceID.map(String.init) ?? "nil") boundTransport=\(boundTransport) bindOK=\(lastInputDeviceBindOK) requestedUID=\(requestedUID.isEmpty ? "auto" : requestedUID) benchBypass=\(benchBypassBTOutputForceNil)"
       )
     }
   #endif
@@ -586,10 +605,23 @@ final class AVAudioEngineSource: AudioInputSource {
   // MARK: - Private: Input Device
 
   private func setInputDevice(_ deviceID: AudioDeviceID?) throws {
+    #if DEBUG
+      // Reset per attempt: the default/no-op path (no explicit device) counts as
+      // OK; only a failed AudioUnitSetProperty flips this to false. (#1377 §3.5)
+      lastInputDeviceBindOK = true
+    #endif
     guard let deviceID, deviceID != 0 else { return }
 
+    // Past this point a SPECIFIC device was requested. If the input audio unit is
+    // unavailable we never reach AudioUnitSetProperty, so the requested device is
+    // NOT bound — the bench must not read that as success.
     let audioUnit = engine.inputNode.audioUnit
-    guard let au = audioUnit else { return }
+    guard let au = audioUnit else {
+      #if DEBUG
+        lastInputDeviceBindOK = false
+      #endif
+      return
+    }
 
     var devID = deviceID
     let status = AudioUnitSetProperty(
@@ -601,6 +633,9 @@ final class AVAudioEngineSource: AudioInputSource {
       UInt32(MemoryLayout<AudioDeviceID>.size)
     )
     if status != noErr {
+      #if DEBUG
+        lastInputDeviceBindOK = false
+      #endif
       Task {
         await AppLogger.shared.log(
           "Failed to set input device \(deviceID): OSStatus \(status)",

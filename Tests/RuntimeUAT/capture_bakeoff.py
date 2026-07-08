@@ -142,8 +142,9 @@ def _parse_evidence(line):
     """Parse a CAPTURE_EVIDENCE line's `key=value` tokens into a dict.
 
     Source lines (per backend) carry backend/boundUID/boundDeviceID/
-    boundTransport/requestedUID/benchBypass; the manager companion carries
-    backend/requestedUID/policy/generation. Tokens are whitespace-delimited
+    boundTransport/requestedUID/benchBypass (the engine also carries bindOK);
+    the manager companion carries backend/requestedUID/policy/generation.
+    Tokens are whitespace-delimited
     EXCEPT `boundDevice`, whose value is a localized device name that may contain
     spaces — the Swift side emits it LAST, so we take everything from
     `boundDevice=` to end-of-line as its value and tokenize only the prefix."""
@@ -195,6 +196,12 @@ def _device_bound_as_requested(source_ev, requested_uid, fell_back):
         must equal `requested_uid`. This proves the REQUESTED device bound, not
         merely a non-built-in one (a USB/virtual mic would pass a transport-only
         check).
+      - the engine additionally logs `bindOK` (did AudioUnitSetProperty accept
+        the device). A failed set does NOT throw and leaves boundUID == requested
+        anyway, so a specific-device engine trial must ALSO have `bindOK=true`;
+        `bindOK=false` means the HAL rejected the device even though we asked for
+        it (cloud review P2). Candidate A (capture-session) has no `bindOK` —
+        AVCaptureSession's added input IS the bound device, so boundUID suffices.
       - `boundTransport` is a fallback only when a UID could not be resolved
         (`boundUID` absent) → for a specific requested device the transport must
         not be `built_in`.
@@ -209,6 +216,12 @@ def _device_bound_as_requested(source_ev, requested_uid, fell_back):
         return False  # cannot confirm what bound
     bound_uid = source_ev.get("boundUID")
     if bound_uid is not None:
+        # Engine reports whether the HAL actually accepted the device; a failed
+        # set leaves boundUID == requested, so bindOK must gate it. Capture-
+        # session has no bindOK key (None) → boundUID equality alone suffices.
+        bind_ok = source_ev.get("bindOK")
+        if bind_ok is not None and bind_ok != "true":
+            return False
         return bound_uid == requested_uid
     transport = source_ev.get("boundTransport")
     if transport is not None:
