@@ -477,6 +477,71 @@ struct LoadProgressWatcherTests {
     watcher.stop()
   }
 
+  @Test("#1405: the guard stays parked during the download phase, but load-stall still fires after")
+  func downloadPhaseIsParkedThenLoadStallStillFires() async {
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(
+      currentTime: { clock.now },
+      listingPhase: ModelLoadStallPolicy.listingPhase,
+      listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds,
+      silenceFloorSeconds: ModelLoadStallPolicy.transferSilenceFloorSeconds,
+      downloadOwnedPhases: [ModelLoadStallPolicy.downloadingPhase])
+    watcher.start()
+    // A long, totally silent (frozen) FRESH download — far past the 15s transfer
+    // floor AND the 120s listing deadline. The fetcher's own idle timeout owns
+    // transfer-stall, so the load-watchdog must never fire during the download.
+    watcher.observeTick(
+      observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.downloadingPhase)
+    clock.tick(seconds: 600)
+    watcher.observeTick(
+      observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.downloadingPhase)
+    #expect(!watcher.hasFired, "a silent fresh download must never fire the load-watchdog")
+
+    // Delivery completes -> the phase leaves the download phase (the #1405
+    // boundary marker writes "Loading speech model..."). The transition resets
+    // the attempt so the long download does not bleed into the load gates.
+    clock.tick(seconds: 0.5)
+    watcher.observeTick(observedMtime: mtime(1), observedPhase: "Loading speech model...")
+    // The LOAD then produces two of its own signals and genuinely wedges.
+    clock.tick(seconds: 0.5)
+    watcher.observeTick(observedMtime: mtime(2), observedPhase: "Loading speech model...")
+    clock.tick(seconds: 0.5)
+    watcher.observeTick(observedMtime: mtime(3), observedPhase: "Loading speech model...")
+    clock.tick(seconds: 30)
+    watcher.observeTick(observedMtime: mtime(3), observedPhase: "Loading speech model...")
+    #expect(watcher.hasFired, "a real load wedge AFTER the download must still fire")
+    watcher.stop()
+  }
+
+  @Test("#1405 (code-diff): a STALE download-phase file must NOT park — the deadline still fires")
+  func staleDownloadPhaseDoesNotSuppressTheGuard() async {
+    // Regression: a prior interrupted attempt leaves the progress file on the
+    // download phase. The guard arms; the poll passes observedMtime == nil
+    // (mtime == the stale baseline, i.e. no fresh write) but the stale phase
+    // string. Parking on the phase alone would reset the deadline every tick
+    // and suppress the guard forever. A new warm-up that hangs before writing
+    // any fresh progress must still fire the pre-first-signal deadline.
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(
+      currentTime: { clock.now },
+      listingPhase: ModelLoadStallPolicy.listingPhase,
+      listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds,
+      silenceFloorSeconds: ModelLoadStallPolicy.transferSilenceFloorSeconds,
+      downloadOwnedPhases: [ModelLoadStallPolicy.downloadingPhase])
+    watcher.start()
+    // Stale file: phase says downloading, but there is NO fresh signal (nil).
+    watcher.observeTick(observedMtime: nil, observedPhase: ModelLoadStallPolicy.downloadingPhase)
+    clock.tick(seconds: 119)
+    watcher.observeTick(observedMtime: nil, observedPhase: ModelLoadStallPolicy.downloadingPhase)
+    #expect(!watcher.hasFired, "just under the pre-first-signal deadline: no fire yet")
+    clock.tick(seconds: 2)
+    watcher.observeTick(observedMtime: nil, observedPhase: ModelLoadStallPolicy.downloadingPhase)
+    #expect(
+      watcher.hasFired,
+      "a stale download phase must not suppress the pre-first-signal deadline")
+    watcher.stop()
+  }
+
   @Test("#1339 drill regression: the DEFAULT 0.8s floor still fires on the same gap (opt-in fix)")
   func defaultFloorStillFiresOnColdGap() async {
     // Negative pair for the test above: without the injected transfer floor,

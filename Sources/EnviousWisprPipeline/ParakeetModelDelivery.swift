@@ -59,14 +59,6 @@ public final class ParakeetDeliveryHandle {
     await controller.repair(registration)
   }
 
-  /// #1371/#1405 Phase 2: cancel the in-flight delivery download. `warmUp()`
-  /// awaits delivery BEFORE any ASR load, so a warm-up wedge must cancel the
-  /// download (cooperative, typed) or a stalled/retrying fetch stays parked
-  /// instead of surfacing the Retry path. No-op if nothing is in flight.
-  public func cancel() async {
-    _ = await controller.cancel(registration.manifest.identity)
-  }
-
   /// D5 §1: the `enabled=false` bypass is proven by telemetry from the ONE
   /// site that takes it (the adapter's legacy branch).
   public func noteLegacyPathActive() {
@@ -87,18 +79,26 @@ public final class ParakeetDeliveryHandle {
     case .preparing(let validating):
       file.write(
         fraction: 0,
-        phase: validating ? "Checking speech model files..." : "Preparing download...",
+        phase: validating ? "Checking speech model files..." : ModelLoadStallPolicy.listingPhase,
         detail: "")
     case .downloading(let fraction, let bytesWritten, let totalBytes):
       let mb = Int(Double(bytesWritten) / 1_048_576)
       let totalMB = Int(Double(totalBytes) / 1_048_576)
       file.write(
         fraction: fraction * 0.5,
-        phase: "Downloading speech model...",
+        // Single authority for this literal (the wedge guard parks on it, #1405).
+        phase: ModelLoadStallPolicy.downloadingPhase,
         detail: "\(mb) MB of \(totalMB) MB (\(Int(fraction * 100))%)")
     case .verifying:
       file.write(fraction: 0.5, phase: "Verifying download...", detail: "")
-    case .notReady, .admitted, .cancelled, .failed:
+    case .admitted:
+      // #1405 download->load boundary: move the phase OFF the download phase
+      // the instant delivery completes, so the load-wedge guard un-parks and
+      // resumes judging the model LOAD (a load that hangs before writing its
+      // own progress must still be recoverable). Fraction stays at the 0.5
+      // download/load handoff; the load's own progress overwrites this.
+      file.write(fraction: 0.5, phase: "Loading speech model...", detail: "")
+    case .notReady, .cancelled, .failed:
       break
     }
   }

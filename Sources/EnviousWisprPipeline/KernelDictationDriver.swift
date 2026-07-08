@@ -124,14 +124,14 @@ package final class SessionlessLoadWedgeGuard {
     self.watcher = LoadProgressWatcher(
       listingPhase: ModelLoadStallPolicy.listingPhase,
       listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds,
-      // #1339 drill regression (2026-07-05): this guard watches an INTERNET
-      // TRANSFER, and the default 0.8s XPC-beat silence floor let the ratio
-      // gate fire during the 445MB encoder object's legitimate cold
-      // first-byte gap (~3-5s), killing a healthy fresh-install download —
-      // and its recovery (generation bump) cancels the whole load. The
-      // transfer floor rides out cold-TTFB while still surfacing a genuinely
-      // dead mid-stream transfer within seconds.
-      silenceFloorSeconds: ModelLoadStallPolicy.transferSilenceFloorSeconds
+      // #1339 raised this floor for cold-TTFB tolerance while the guard still
+      // judged the transfer. #1405 hands transfer-stall ownership back to the
+      // fetcher's own request idle timeout: the guard now stays PARKED during
+      // the download phase (`downloadOwnedPhases`), so this floor governs only
+      // the listing + model-load phases. Left at 15s (harmless for those; a
+      // genuine load wedge is silence orders of magnitude larger).
+      silenceFloorSeconds: ModelLoadStallPolicy.transferSilenceFloorSeconds,
+      downloadOwnedPhases: [ModelLoadStallPolicy.downloadingPhase]
     )
   }
 

@@ -60,10 +60,10 @@ struct ManifestFetchTask {
   private static let maxNetworkRetries = 3
   private static let backoffBaseSeconds: TimeInterval = 1
   private static let backoffCapSeconds: TimeInterval = 8
-  /// Honor `Retry-After` only up to a cap safely below the 15 s transfer-silence
-  /// wedge floor (`LoadProgressWatcher.transferSilenceFloorSeconds`); a longer
-  /// server-directed delay fails over to backup rather than a silent wait that
-  /// would trip the stall guard (#1405 Codex r2).
+  /// Honor `Retry-After` only up to a bounded cap; a longer server-directed
+  /// delay fails over to backup rather than parking the download on a broken or
+  /// hostile server. (Transfer-stall itself is owned by the request idle
+  /// timeout `requestTimeout`, not this cap — #1405.)
   private static let retryAfterCapSeconds: TimeInterval = 10
 
   /// Full-jitter exponential backoff: `random(0, min(cap, base·2^attempt))`.
@@ -160,6 +160,14 @@ struct ManifestFetchTask {
           let result = try await fetchOneFile(
             file, from: source, to: stagedURL,
             progressBase: completedBytes)
+          // Accepted P3 (code-diff review): on the transient-retry-then-resume
+          // path a FAILED attempt's partial bytes are staged but not added here
+          // (only the successful tail's `bytesReceived` counts), so
+          // `attemptCompleted(bytesDownloadedBucket:)` can under-count on a
+          // mid-file recovery. This is coarse telemetry only (4 buckets spanning
+          // 50MB–600MB+); a lost mid-file partial almost never crosses a bucket
+          // boundary on the ~470MB model, and it never affects the download
+          // itself. Not worth per-attempt byte plumbing on the hot fetch path.
           bytesDownloaded += result.bytesReceived
 
           // Hash gate BEFORE this file counts (invariant 1).
@@ -194,9 +202,9 @@ struct ManifestFetchTask {
           // Phase 2 (#1405): bounded same-source retry for transient network/
           // HTTP failures BEFORE advancing the source — keep the staged partial
           // so `fetchOneFile` resumes via Range (same source ⇒ same ETag ⇒
-          // valid). Honor `Retry-After` up to a cap below the wedge floor; a
-          // longer server-directed delay is NOT sat on (it would trip the stall
-          // guard) — fall through to failover instead (Codex r2).
+          // valid). Honor `Retry-After` up to a bounded cap so a broken/hostile
+          // server-directed delay cannot park the download indefinitely; a
+          // longer delay falls through to failover instead.
           let retryAfterTooLong = (failure.retryAfter ?? 0) > Self.retryAfterCapSeconds
           if failure.retryableTransient, networkRetriesUsed < Self.maxNetworkRetries,
             !retryAfterTooLong
@@ -205,24 +213,6 @@ struct ManifestFetchTask {
               failure.retryAfter
               ?? Self.backoffDelay(attempt: networkRetriesUsed, jitter: jitterFraction())
             networkRetriesUsed += 1
-            // A retry is liveness, not a stall: re-emit current progress before
-            // the wait so the transfer-silence wedge guard
-            // (`LoadProgressWatcher.transferSilenceFloorSeconds`, 15 s) sees the
-            // download is alive. Without this tick, repeated `Retry-After` waits
-            // (each under the 10 s per-sleep cap) accumulate uninterrupted
-            // silence past the floor, tripping `recoverFromWedge()` — which now
-            // cancels delivery (#1371) — before the bounded retries / failover
-            // can finish (cloud-review PR #1410 P2). Each sleep is ≤ cap, so one
-            // tick per sleep keeps every silent gap under the floor; a genuinely
-            // hung request (no response, no tick) still wedges as intended.
-            // Report verified files PLUS the bytes already staged for this
-            // file's Range resume — never drop back to verified-only, which
-            // would blip the UI backward and regrow the disk reservation until
-            // resume corrected it (code-diff r1 P2).
-            let stagedInFlight =
-              ((try? FileManager.default.attributesOfItem(atPath: stagedURL.path)[.size]
-                as? Int64) ?? nil) ?? 0
-            onProgress(completedBytes + min(stagedInFlight, file.sizeBytes), manifest.totalBytes)
             do {
               try await backoffSleep(delay)
             } catch is CancellationError {
