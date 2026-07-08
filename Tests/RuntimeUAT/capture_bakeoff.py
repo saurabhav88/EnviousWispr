@@ -242,6 +242,7 @@ def run_trial(candidate, device_label, sentence=DEFAULT_SENTENCE, expect=None):
     recording and reads the verdict from the logs.
     """
     expected_backend = CANDIDATES[candidate]["backend"]
+    expected_policy = CANDIDATES[candidate]["policy"]
     since = _bt_route_line_count()
 
     transcript_pass = wispr_eyes.test_recording(sentence=sentence, expect=expect)
@@ -254,17 +255,31 @@ def run_trial(candidate, device_label, sentence=DEFAULT_SENTENCE, expect=None):
     bound_device = (source_ev or {}).get("boundDevice") or (source_ev or {}).get("boundUID")
     bound_transport = (source_ev or {}).get("boundTransport", "")
     requested_uid = (source_ev or manager_ev or {}).get("requestedUID", "")
+    bound_policy = (manager_ev or {}).get("policy", "")
 
     backend_ok = bound_backend == expected_backend
+    # The FORCED policy must actually be active. Without this, a trial run while
+    # the app is on `.automatic` (dev defaults not applied / not relaunched) can
+    # still pass: under Bluetooth output the automatic route ALSO yields
+    # `av_capture_session`, so candidate A's backend check would match and credit
+    # A for behavior the automatic route produced, not the forced candidate
+    # (cloud review P2). Requires the manager companion row (in-process only).
+    policy_ok = bound_policy == expected_policy
     evidence_found = source_ev is not None
     fell_back = _fell_back_since(since)
     device_ok = _device_bound_as_requested(source_ev, requested_uid, fell_back)
     # Gate: correct non-silent transcript AND the expected backend actually bound
-    # AND the requested DEVICE actually bound (no built-in fallback / wrong mic).
-    # A transcript captured by the built-in after a fallback is a FAIL, not a pass
-    # (cloud review P2) — the whole point is proving a candidate grabs the target.
+    # AND the FORCED policy was active AND the requested DEVICE actually bound (no
+    # built-in fallback / wrong mic). A transcript captured by the built-in after
+    # a fallback, or under the automatic route, is a FAIL, not a pass (cloud
+    # review P2) — the whole point is proving a candidate grabs the target.
     gate_pass = (
-        bool(transcript_pass) and backend_ok and evidence_found and device_ok and not fell_back
+        bool(transcript_pass)
+        and backend_ok
+        and policy_ok
+        and evidence_found
+        and device_ok
+        and not fell_back
     )
 
     row = {
@@ -276,6 +291,9 @@ def run_trial(candidate, device_label, sentence=DEFAULT_SENTENCE, expect=None):
         "expected_backend": expected_backend,
         "bound_backend": bound_backend,
         "backend_ok": backend_ok,
+        "expected_policy": expected_policy,
+        "bound_policy": bound_policy,
+        "policy_ok": policy_ok,
         "bound_device": bound_device,
         "bound_transport": bound_transport,
         "requested_uid": requested_uid,
@@ -297,6 +315,11 @@ def _print_row(row):
     print(f"  transcript_pass = {row['transcript_pass']}")
     print(f"  backend         = {row['bound_backend']} (expected {row['expected_backend']}, "
           f"ok={row['backend_ok']})")
+    print(f"  policy          = {row['bound_policy']} (expected {row['expected_policy']}, "
+          f"ok={row['policy_ok']})")
+    if not row["policy_ok"]:
+        print("  WARN: forced policy NOT active — measuring the automatic route, not the "
+              "candidate (set dev defaults + relaunch)")
     print(f"  bound device    = {row['bound_device']}  transport={row['bound_transport']}")
     print(f"  requested uid   = {row['requested_uid']}")
     print(f"  device bound OK  = {row['device_ok']}   fell_back_to_builtin = {row['fell_back']}")
