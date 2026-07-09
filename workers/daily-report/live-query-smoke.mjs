@@ -30,11 +30,29 @@ const win = `timestamp >= '${startUTC.toISOString().slice(0, 19).replace("T", " 
 console.log(`Target Eastern day: ${dateStr} (${startUTC.toISOString()} to ${endUTC.toISOString()})`);
 
 const data = await fetchReportData(env, win, endUTC);
-console.log("\n=== raw data ===");
-console.log(JSON.stringify(data, null, 2));
+
+// Aggregate-only summary. Deliberately does NOT dump `data.engineAndTierB` /
+// `data.tierA` (per-user rows keyed by raw distinct_id) - a Codex cloud
+// review catch (PR #1437): even though distinct_ids are opaque, printing the
+// full per-user array to a local terminal/log is broader exposure than a
+// smoke test needs. Counts/labels only, matching the same posture the
+// deployed worker itself holds to (src/index.js top-of-file privacy note).
+console.log("\n=== aggregate summary (counts/labels only, no per-user rows) ===");
+console.log({
+  freshInstalls: data.freshInstalls,
+  onboarded: data.onboarded,
+  activated: data.activated,
+  netDictations: data.netDictations,
+  totalUsers: data.totalUsers,
+  engineAndTierBRowCount: data.engineAndTierB.length,
+  tierARowCount: data.tierA.length,
+  geo: data.geo,
+  top5Counts: data.top5.map((u) => u.n), // values only, no distinct_id
+});
 
 const buckets = resolveBuckets(data); // throws loudly on a completeness mismatch
-console.log("\n=== resolution tiers (would be logged, never posted to Discord) ===");
+console.log("\n=== resolved buckets + resolution tiers (would be logged, never posted to Discord) ===");
+console.log({ engineBuckets: buckets.engineBuckets, polishBuckets: buckets.polishBuckets });
 console.log(buckets.resolutionSource);
 
 const message = buildMessage(dateStr, data, buckets);
