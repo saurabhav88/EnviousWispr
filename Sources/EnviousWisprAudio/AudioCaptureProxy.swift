@@ -455,9 +455,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
             // #1434: decode the helper's capture-health metadata back into the
             // SAME struct the in-process path attaches — decode failure
             // degrades to nil (diagnostic limb; never fails the stop).
-            let metadata = metadataData.flatMap {
-              try? JSONDecoder().decode(CaptureStopMetadata.self, from: $0)
-            }
+            let metadata = Self.decodeCaptureStopMetadata(metadataData)
             guard_.resume(
               returning: CaptureResult(
                 samples: samples, vadSegments: segments, metadata: metadata))
@@ -1099,6 +1097,19 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   nonisolated private static func dataToFloats(_ data: Data) -> [Float] {
     guard !data.isEmpty, data.count.isMultiple(of: MemoryLayout<Float>.size) else { return [] }
     return data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+  }
+
+  /// Decode the helper's JSON-encoded capture-health metadata (#1434).
+  /// nonisolated: called from XPC reply callbacks which run on XPC dispatch
+  /// queues, not MainActor — decoding inline in a closure literal written
+  /// inside the (MainActor-inherited) reply block traps at runtime because
+  /// the closure inherits MainActor isolation from its lexical context but
+  /// actually runs on the XPC queue; hoisting to a nonisolated static
+  /// function (matching dataToFloats/decodeVADSegments above) breaks that
+  /// inheritance the same way #1434's live UAT crash proved was required.
+  nonisolated private static func decodeCaptureStopMetadata(_ data: Data?) -> CaptureStopMetadata? {
+    guard let data else { return nil }
+    return try? JSONDecoder().decode(CaptureStopMetadata.self, from: data)
   }
 
   /// Decode packed [Int32 start, Int32 end] pairs into SpeechSegment array.
