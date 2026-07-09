@@ -34,7 +34,17 @@ jobs:
           if [ -n "$DATE_OVERRIDE" ]; then
             URL="${URL}?date=${DATE_OVERRIDE}"
           fi
-          curl -fsS --retry 3 --retry-delay 10 \
+          # No --retry here (unlike product-health-ping.yml's --retry 3): this
+          # worker posts a Discord failure notice as a SIDE EFFECT before
+          # returning a non-2xx (src/index.js runReport's catch block), so a
+          # blind curl retry on a transient 500/504 could post a duplicate or
+          # confusing "failed" notice, or a false failure notice immediately
+          # followed by a real report if the retry recovers (Codex code-diff
+          # review catch, docs/audits/2026-07-09-1433-daily-report-codex-code-diff.txt).
+          # A single failed attempt already turns this job red (GitHub's own
+          # failure-email signal); manual recovery is the documented ?date=
+          # override (README § Failure visibility), not an automatic retry.
+          curl -fsS \
             -H "x-trigger-secret: ${TRIGGER_SECRET}" \
             "$URL" \
             -o /dev/null -w "worker responded HTTP %{http_code}\n"
