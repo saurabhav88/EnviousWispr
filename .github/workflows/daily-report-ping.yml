@@ -1,0 +1,40 @@
+name: Daily Report
+
+# Triggers the daily-report Cloudflare Worker once a day. The worker
+# (workers/daily-report/) posts a plain-English usage summary to Discord.
+# Scheduling lives here (GitHub Actions) rather than a Cloudflare cron
+# because the CF account is at its 5-cron free-plan limit (#1092). The
+# worker computes the Eastern calendar day from its own clock at run time,
+# not from when this cron fires, so a late-running scheduled job still
+# reports the correct day.
+
+on:
+  schedule:
+    - cron: "12 13 * * *"  # ~9:12am EDT / ~8:12am EST daily. Offset minute (not :00): GitHub flags top-of-hour as a high-load window where scheduled runs are delayed/dropped (#1131, product-health precedent).
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Optional YYYY-MM-DD Eastern-date override (manual recovery after a missed run)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger daily-report worker
+        env:
+          TRIGGER_SECRET: ${{ secrets.DAILY_REPORT_TRIGGER_SECRET }}
+          DATE_OVERRIDE: ${{ github.event.inputs.date }}
+        run: |
+          URL="https://enviouswispr-daily-report.saurabhav.workers.dev/"
+          if [ -n "$DATE_OVERRIDE" ]; then
+            URL="${URL}?date=${DATE_OVERRIDE}"
+          fi
+          curl -fsS --retry 3 --retry-delay 10 \
+            -H "x-trigger-secret: ${TRIGGER_SECRET}" \
+            "$URL" \
+            -o /dev/null -w "worker responded HTTP %{http_code}\n"
