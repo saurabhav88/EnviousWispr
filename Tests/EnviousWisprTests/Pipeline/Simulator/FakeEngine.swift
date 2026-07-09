@@ -64,6 +64,13 @@ enum FakeEngineBehavior: Sendable {
   case crashOnFinalize
   /// `finalize()` always returns `.cancelled`.
   case cancelled
+  /// #1434 salvage-ladder scripting: `finalize()` returns
+  /// `.empty(hadSpeechEvidence: true)` for the first `emptyCalls` calls, then
+  /// `.transcript(text)` — models a primary decode that collapses on a
+  /// degraded lead while a trimmed retry succeeds. `thenFailure` swaps the
+  /// success for `.failed(.engineCrashed)` to exercise the ladder's
+  /// abort-on-retry-failure path.
+  case emptyThenScripted(text: String, emptyCalls: Int, thenFailure: Bool = false)
 }
 
 @MainActor
@@ -366,6 +373,16 @@ final class FakeEngine: ASREngineAdapter {
       // The load wedged; A4 cancels before finalize (handled by the
       // post-cancel branch above). A defensive finalize surfaces a load failure.
       outcome = .failed(.loadFailed)
+    case .emptyThenScripted(let text, let emptyCalls, let thenFailure):
+      // #1434: `finalizeCallCount` was already incremented above, so call N
+      // (1-based) sees finalizeCallCount == N.
+      if finalizeCallCount <= emptyCalls {
+        outcome = .empty(hadSpeechEvidence: true)
+      } else if thenFailure {
+        outcome = .failed(.engineCrashed)
+      } else {
+        outcome = .transcript(makeResult(text: text))
+      }
     }
     isTerminal = true
     // PR-5 Rung 2A: honor the §4 contract, assigning only on .transcript(...).

@@ -602,6 +602,9 @@ final class KernelLifecycleTelemetrySink {
       let computedDurationMs = sampleCount * 1000 / Int(AudioConstants.sampleRate)
       let preferredID = audioCapture.preferredInputDeviceIDOverride
       let resolvedRoute = audioCapture.currentResolvedRoute
+      // #1434: the capture-health record was stamped before this terminal
+      // (immediately post-stop), so the no-audio event carries it.
+      let health = telemetryState.captureHealth
       let ctx = NoAudioContext(
         sessionID: audioCapture.currentCaptureSessionID,
         durationMs: max(snapshotDurationMs, computedDurationMs),
@@ -617,7 +620,14 @@ final class KernelLifecycleTelemetrySink {
         routeFallbackReason: resolvedRoute?.routeFallbackReason,
         inputSelectionMode: resolvedRoute?.inputSelectionMode,
         outputTransport: resolvedRoute?.outputTransport,
-        routeResolutionSource: resolvedRoute?.routeResolutionSource
+        routeResolutionSource: resolvedRoute?.routeResolutionSource,
+        captureNativeRateHz: health?.stopMetadata?.nativeRateHz,
+        captureRingDropCount: health?.stopMetadata?.ringDropCount,
+        captureConverterErrorCount: health?.stopMetadata?.converterErrorCount,
+        captureZeroOutputCount: health?.stopMetadata?.zeroOutputCount,
+        captureRateDivergenceDetected: health?.stopMetadata?.rateDivergenceDetected,
+        captureFormatStabilized: health?.formatStabilized,
+        captureRebuiltForFormat: health?.captureRebuiltForFormat
       )
       if let noAudioCapturedRich {
         noAudioCapturedRich(ctx)

@@ -327,6 +327,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // synchronously (#285).
     cachedCaptureGeneration = source.captureGeneration
     cachedSourceType = source.captureSourceType
+    // #1434: capture-health snapshot must ALSO precede teardown — with
+    // warmEnginePolicy == .off, scheduleWarmEngineTeardown() below destroys
+    // the render context this reads from.
+    let stopMetadata = source.captureStopMetadata
 
     isCapturing = false
     audioLevel = 0.0
@@ -351,7 +355,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // In-process path returns empty vadSegments; pipeline owns its own SilenceDetector.
     let samples = capturedSamples
     capturedSamples = []
-    return CaptureResult(samples: samples)
+    return CaptureResult(samples: samples, metadata: stopMetadata)
   }
 
   public func rebuildEngine() {
@@ -580,9 +584,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
           let normalize: (String?) -> String = { ($0?.isEmpty ?? true) ? "" : $0! }
           configMatch = normalize(captureSource.targetDeviceUID) == normalize(wantsTarget)
         }
-        // Candidate D (#1377 slice 2b): same stale-target trap as candidate A
-        // above — a warm HAL source from a forced trial must not be reused
-        // once the override clears (or changes device).
+      // Candidate D (#1377 slice 2b): same stale-target trap as candidate A
+      // above — a warm HAL source from a forced trial must not be reused
+      // once the override clears (or changes device).
       #endif
       if configMatch, let halSource = existing as? HALDeviceInputSource {
         var wantsTarget = decision.effectiveDeviceUID

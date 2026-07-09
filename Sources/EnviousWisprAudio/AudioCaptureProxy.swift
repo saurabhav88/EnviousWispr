@@ -449,10 +449,18 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
       // retire-only and onXPCReplyFailed is the sole caller-visible signal.
       serviceProxy(
         { proxy in
-          proxy.stopCapture(operationID: operationID) { sampleData, vadData in
+          proxy.stopCapture(operationID: operationID) { sampleData, vadData, metadataData in
             let samples = Self.dataToFloats(sampleData)
             let segments = Self.decodeVADSegments(vadData)
-            guard_.resume(returning: CaptureResult(samples: samples, vadSegments: segments))
+            // #1434: decode the helper's capture-health metadata back into the
+            // SAME struct the in-process path attaches — decode failure
+            // degrades to nil (diagnostic limb; never fails the stop).
+            let metadata = metadataData.flatMap {
+              try? JSONDecoder().decode(CaptureStopMetadata.self, from: $0)
+            }
+            guard_.resume(
+              returning: CaptureResult(
+                samples: samples, vadSegments: segments, metadata: metadata))
           }
         },
         onProxyError: { [weak self] in
