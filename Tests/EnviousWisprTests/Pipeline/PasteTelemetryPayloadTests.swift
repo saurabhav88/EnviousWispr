@@ -127,6 +127,97 @@ struct PasteTelemetryPayloadTests {
     assertNoContentLikeKeys(noTarget)
   }
 
+  @Test("absent menu probe keeps full alerting, does not default to downgrade (Codex code-diff r2)")
+  func absentMenuProbeKeepsAlerting() {
+    // focusClass is nil whenever Tier 2c's probe never ran or never resolved:
+    // activation timeout, a terminated target app, or no target app captured
+    // at all. None of these confirm "no real target" -- only an explicit
+    // "no_paste_target" result does, so nil must NOT default to a downgrade.
+    #expect(
+      PasteCascadeExecutor.isExpectedNonTextRefusal(
+        focus: .nonText, roleSource: "captured_target", focusClass: nil
+      ) == false
+    )
+  }
+
+  @Test("confident non-text refusal with a confirmed-no-target probe downgrades")
+  func confirmedNoTargetProbeDowngrades() {
+    #expect(
+      PasteCascadeExecutor.isExpectedNonTextRefusal(
+        focus: .nonText, roleSource: "captured_target", focusClass: "no_paste_target"
+      ) == true
+    )
+  }
+
+  @Test("menu probe finding a real paste target keeps full alerting (Codex code-diff r1)")
+  func menuProbeFoundRealTargetKeepsAlerting() {
+    // Tier 2c found an enabled Edit > Paste item and pressing it failed
+    // (tierFailures["menu_paste"] == "press_failed") -- a real paste failure,
+    // not a no-target refusal, even though the earlier AX role read said
+    // non-text with high confidence.
+    #expect(
+      PasteCascadeExecutor.isExpectedNonTextRefusal(
+        focus: .nonText, roleSource: "captured_target",
+        focusClass: "non_text_with_paste_target"
+      ) == false
+    )
+  }
+
+  @Test("failed role identification keeps full alerting")
+  func failedRoleIdentificationKeepsAlerting() {
+    #expect(
+      PasteCascadeExecutor.isExpectedNonTextRefusal(
+        focus: .nonText, roleSource: "unavailable", focusClass: nil
+      ) == false
+    )
+  }
+
+  @Test("missing target keeps full alerting regardless of roleSource")
+  func missingTargetKeepsAlerting() {
+    #expect(
+      PasteCascadeExecutor.isExpectedNonTextRefusal(
+        focus: .missing, roleSource: "captured_target", focusClass: nil
+      ) == false
+    )
+  }
+
+  @Test("text field focus keeps full alerting regardless of roleSource")
+  func textFieldFocusKeepsAlerting() {
+    #expect(
+      PasteCascadeExecutor.isExpectedNonTextRefusal(
+        focus: .textField, roleSource: "captured_target", focusClass: nil
+      ) == false
+    )
+  }
+
+  @Test("unrecognized roleSource string fails closed to full alerting")
+  func unrecognizedRoleSourceFailsClosed() {
+    // Guards against an unrelated future rename of the "captured_target"
+    // literal elsewhere silently reopening the false-positive noise (#1430).
+    #expect(
+      PasteCascadeExecutor.isExpectedNonTextRefusal(
+        focus: .nonText, roleSource: "ax_success", focusClass: nil
+      ) == false
+    )
+    #expect(
+      PasteCascadeExecutor.isExpectedNonTextRefusal(
+        focus: .nonText, roleSource: "", focusClass: nil
+      ) == false
+    )
+  }
+
+  @Test("unrecognized focusClass string fails closed to full alerting")
+  func unrecognizedFocusClassFailsClosed() {
+    // Guards the same fail-closed invariant for the focusClass corroboration:
+    // an unrelated future label added to MenuPasteProbe must not silently
+    // reopen the false-positive noise by being mistaken for "no target".
+    #expect(
+      PasteCascadeExecutor.isExpectedNonTextRefusal(
+        focus: .nonText, roleSource: "captured_target", focusClass: "some_future_label"
+      ) == false
+    )
+  }
+
   private func assertNoContentLikeKeys(_ extra: [String: Any]) {
     for key in extra.keys {
       let lower = key.lowercased()
