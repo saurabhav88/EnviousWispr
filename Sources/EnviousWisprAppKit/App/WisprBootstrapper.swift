@@ -61,6 +61,7 @@ public final class WisprBootstrapper {
   /// EnviousWisprAppCeilingsTests).
   let modelDelivery: ModelDeliveryHome
   let audioDeviceList: AudioDeviceList
+  let inputDevicePreferenceReconciler: InputDevicePreferenceReconciler
   let aiAvailability: AIAvailabilityCoordinator
   let keychainManager: KeychainManager
   let llmDiscovery: LLMModelDiscoveryCoordinator
@@ -97,6 +98,12 @@ public final class WisprBootstrapper {
     let keychainManager = KeychainManager(telemetrySink: .live)
     let recordingOverlay = RecordingOverlayPanel()
     let audioDeviceList = AudioDeviceList()
+    let inputDevicePreferenceReconciler = InputDevicePreferenceReconciler(settings: settings)
+    audioDeviceList.onDevicesChanged = { [weak inputDevicePreferenceReconciler] devices in
+      inputDevicePreferenceReconciler?.reconcile(availableDevices: devices)
+    }
+    inputDevicePreferenceReconciler.reconcile(
+      availableDevices: audioDeviceList.availableInputDevices)
     let captureTelemetry = CaptureTelemetryState()
     let customWordsCoordinator = CustomWordsCoordinator()
     // #636: contacts-import orchestrator (opt-in import + bulk-remove + background
@@ -683,6 +690,7 @@ public final class WisprBootstrapper {
     self.egOneRuntime = egOneRuntime
     self.modelDelivery = modelDelivery
     self.audioDeviceList = audioDeviceList
+    self.inputDevicePreferenceReconciler = inputDevicePreferenceReconciler
     self.aiAvailability = aiAvailability
     self.keychainManager = keychainManager
     self.llmDiscovery = llmDiscovery

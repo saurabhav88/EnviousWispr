@@ -95,17 +95,11 @@ public enum AudioDeviceEnumerator {
     return stringProperty(for: id, selector: kAudioDevicePropertyDeviceUID)
   }
 
-  #if DEBUG
-    /// The persistent UID of a specific device ID. Used ONLY by the #1377
-    /// bake-off capture-evidence line (candidate C / engine path), which knows
-    /// the bound device by its numeric CoreAudio ID and needs the UID to prove
-    /// EXACT device binding — not just a non-built-in transport. Mirrors
-    /// `defaultInputDeviceUID()` but for an arbitrary device ID. DEBUG-only:
-    /// the only caller is the engine source's bench evidence.
-    static func inputDeviceUID(for deviceID: AudioDeviceID) -> String? {
-      stringProperty(for: deviceID, selector: kAudioDevicePropertyDeviceUID)
-    }
-  #endif
+  /// The persistent UID of a specific device ID. Used when a source knows the
+  /// bound numeric CoreAudio ID and needs the stable UID for telemetry evidence.
+  static func inputDeviceUID(for deviceID: AudioDeviceID) -> String? {
+    stringProperty(for: deviceID, selector: kAudioDevicePropertyDeviceUID)
+  }
 
   // MARK: - Bluetooth & Smart Device Selection
 
@@ -309,8 +303,13 @@ public final class AudioDeviceMonitor: Sendable {
   }
 
   private func startListening() {
-    var propertyAddress = AudioObjectPropertyAddress(
+    var devicesAddress = AudioObjectPropertyAddress(
       mSelector: kAudioHardwarePropertyDevices,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    var defaultInputAddress = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDefaultInputDevice,
       mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain
     )
@@ -323,7 +322,13 @@ public final class AudioDeviceMonitor: Sendable {
 
     AudioObjectAddPropertyListenerBlock(
       AudioObjectID(kAudioObjectSystemObject),
-      &propertyAddress,
+      &devicesAddress,
+      nil,
+      block
+    )
+    AudioObjectAddPropertyListenerBlock(
+      AudioObjectID(kAudioObjectSystemObject),
+      &defaultInputAddress,
       nil,
       block
     )
@@ -332,15 +337,26 @@ public final class AudioDeviceMonitor: Sendable {
   private func stopListening() {
     guard let block = listenerBlock else { return }
 
-    var propertyAddress = AudioObjectPropertyAddress(
+    var devicesAddress = AudioObjectPropertyAddress(
       mSelector: kAudioHardwarePropertyDevices,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    var defaultInputAddress = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDefaultInputDevice,
       mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain
     )
 
     AudioObjectRemovePropertyListenerBlock(
       AudioObjectID(kAudioObjectSystemObject),
-      &propertyAddress,
+      &devicesAddress,
+      nil,
+      block
+    )
+    AudioObjectRemovePropertyListenerBlock(
+      AudioObjectID(kAudioObjectSystemObject),
+      &defaultInputAddress,
       nil,
       block
     )

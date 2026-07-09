@@ -18,17 +18,15 @@ enum CaptureSourcePolicy: Sendable {
 public enum CaptureSourceType: Sendable {
   case audioEngine
   case captureSession
-  /// Dormant candidate D (#1377 slice 2b) — only reachable via
-  /// `.forceHALDeviceInput`.
+  /// HAL-backed input source; follows the live system-default input when no
+  /// target UID is supplied.
   case halDeviceInput
 }
 
 /// Machine-readable reason for the route decision. Used for telemetry.
 public enum CaptureRouteReason: String, Sendable {
   case btOutputAutoInput
-  case btOutputUserSelectedBTMic
-  case btOutputUserSelectedBuiltIn
-  case btOutputUserSelectedWired
+  case btOutputUserSelectedDevice
   case noBTAutoInput
   case noBTUserSelectedDevice
   case forcedEngine
@@ -48,9 +46,8 @@ extension CaptureRouteReason {
     switch self {
     case .noBTAutoInput, .noBTUserSelectedDevice:
       return "built_in_mic"
-    case .btOutputAutoInput, .btOutputUserSelectedBuiltIn,
-      .btOutputUserSelectedBTMic, .btOutputUserSelectedWired:
-      return "capture_session_bt"
+    case .btOutputAutoInput, .btOutputUserSelectedDevice:
+      return "hal_device_input"
     case .forcedEngine, .fallbackToEngine:
       return "audio_engine"
     case .forcedCaptureSession:
@@ -83,20 +80,28 @@ public struct CaptureRouteDecision: Sendable {
   public let reason: CaptureRouteReason
   public let rationale: String
   public let vpAvailable: Bool
+  /// Backend-level fallback only: whether this decision may switch to a
+  /// different `CaptureSourceType`. Device-level fallback inside a backend is
+  /// owned by that source.
   public let fallbackAllowed: Bool
+  /// Concrete device UID for HALDeviceInputSource. Nil means follow the live
+  /// system-default input device at prepare time.
+  public let effectiveDeviceUID: String?
 
   public init(
     sourceType: CaptureSourceType,
     reason: CaptureRouteReason,
     rationale: String,
     vpAvailable: Bool,
-    fallbackAllowed: Bool
+    fallbackAllowed: Bool,
+    effectiveDeviceUID: String? = nil
   ) {
     self.sourceType = sourceType
     self.reason = reason
     self.rationale = rationale
     self.vpAvailable = vpAvailable
     self.fallbackAllowed = fallbackAllowed
+    self.effectiveDeviceUID = effectiveDeviceUID
   }
 }
 
@@ -108,6 +113,8 @@ public struct CaptureRouteDecision: Sendable {
 struct CaptureRouteResolver {
 
   var policy: CaptureSourcePolicy = .automatic
+  var defaultOutputDeviceID: () -> AudioDeviceID? = AudioDeviceEnumerator.defaultOutputDeviceID
+  var isBluetoothOutputDevice: (AudioDeviceID) -> Bool = AudioDeviceEnumerator.isBluetoothDevice
 
   /// Resolve which capture source to use.
   ///
@@ -151,8 +158,8 @@ struct CaptureRouteResolver {
     -> CaptureRouteDecision
   {
     let btOutputActive: Bool
-    if let outID = AudioDeviceEnumerator.defaultOutputDeviceID() {
-      btOutputActive = AudioDeviceEnumerator.isBluetoothDevice(outID)
+    if let outID = defaultOutputDeviceID() {
+      btOutputActive = isBluetoothOutputDevice(outID)
     } else {
       btOutputActive = false
     }
@@ -178,41 +185,23 @@ struct CaptureRouteResolver {
       }
     }
 
-    // BT output active — use AVCaptureSession to avoid A2DP→SCO switch.
-    // Do NOT re-enter AVAudioEngine path under BT output regardless of user preference.
-    let reason: CaptureRouteReason
-    let rationale: String
-
-    if preferredInputDeviceUID.isEmpty {
-      reason = .btOutputAutoInput
-      rationale = "BT output active, auto input — capture session with built-in mic"
-    } else {
-      // Check if user's preferred device is BT
-      let prefDeviceID = AudioDeviceEnumerator.deviceID(forUID: preferredInputDeviceUID)
-      let prefIsBT = prefDeviceID.map { AudioDeviceEnumerator.isBluetoothDevice($0) } ?? false
-
-      if prefIsBT {
-        reason = .btOutputUserSelectedBTMic
-        rationale =
-          "BT output active, user selected BT mic — override to capture session with built-in mic (crash prevention)"
-      } else {
-        // User selected built-in or wired — still use capture session under BT output
-        let isBuiltIn =
-          prefDeviceID.map {
-            AudioDeviceEnumerator.transportType(for: $0) == kAudioDeviceTransportTypeBuiltIn
-          } ?? false
-        reason = isBuiltIn ? .btOutputUserSelectedBuiltIn : .btOutputUserSelectedWired
-        rationale =
-          "BT output active, user selected \(isBuiltIn ? "built-in" : "wired") device — capture session"
-      }
-    }
+    // BT output active: use the low-level device source. It opens the chosen
+    // input directly, so there is no aggregate-device workaround left here.
+    let effectiveDeviceUID = preferredInputDeviceUID.isEmpty ? nil : preferredInputDeviceUID
+    let reason: CaptureRouteReason =
+      preferredInputDeviceUID.isEmpty ? .btOutputAutoInput : .btOutputUserSelectedDevice
+    let rationale =
+      preferredInputDeviceUID.isEmpty
+      ? "BT output active, auto input: HAL device source follows system default"
+      : "BT output active, explicit device pick: HAL device source targets \(preferredInputDeviceUID)"
 
     return CaptureRouteDecision(
-      sourceType: .captureSession,
+      sourceType: .halDeviceInput,
       reason: reason,
       rationale: rationale,
       vpAvailable: false,
-      fallbackAllowed: !btOutputActive  // Only fall back if BT is not active
+      fallbackAllowed: false,
+      effectiveDeviceUID: effectiveDeviceUID
     )
   }
 }

@@ -142,13 +142,18 @@ import Testing
   ///   Pipeline handle) and the settings UI (Cancel/Resume) — same shape as
   ///   `egOneRuntime` above. The Phase 2 plan §3b/§14 named this +1 as the
   ///   accepted cost; pre-#1348 count was at the cap (34).
+  /// - 35 → 36 in #1378 (2026-07-08): App-owned
+  ///   `inputDevicePreferenceReconciler` keeps the microphone picker honest
+  ///   when connected devices or the system default input change. The decision
+  ///   rule lives in a pure policy function; the bootstrapper stores only the
+  ///   app-lifetime wiring object.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 35,
+      count <= 36,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 35. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 36. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -305,14 +310,19 @@ import Testing
   /// limb; all logic lives in the adapter/runtime, not here. Cap by the
   /// deterministic rule (post-change actual 976 + ~2, rounded up to nearest
   /// 5 = 980).
+  /// Ratcheted 980→995 in #1378 (2026-07-08): the composition root constructs
+  /// `InputDevicePreferenceReconciler`, wires `AudioDeviceList.onDevicesChanged`,
+  /// and performs the required launch-time reconcile after callback wiring.
+  /// Policy remains outside the root. Cap by deterministic rule (actual 984
+  /// + 10, rounded up to nearest 5 = 995).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 980,
+      lineCount <= 995,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 980. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 995. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

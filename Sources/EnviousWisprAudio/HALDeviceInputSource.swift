@@ -243,9 +243,8 @@ private final class HALRenderContext: @unchecked Sendable {
 /// #1377 candidate D, reinstated 2026-07-08 to spike against candidate A
 /// (`AVCaptureSessionSource`) on real Bluetooth hardware. Opens ANY device
 /// directly by `AudioDeviceID` (built-in, wired, or Bluetooth) via
-/// `kAudioOutputUnitProperty_CurrentDevice` — no `AVCaptureSession` /
-/// `AVAudioEngine` aggregate-device layer, so there is no
-/// `CADefaultDeviceAggregate` for the force-built-in crash-dodge to avoid.
+/// `kAudioOutputUnitProperty_CurrentDevice`, without an `AVCaptureSession` or
+/// `AVAudioEngine` aggregate-device layer.
 ///
 /// Format conversion is done EXPLICITLY, not by AUHAL: AUHAL input does NOT
 /// resample (Apple QA1777 — "does not provide sample rate conversion" for
@@ -298,11 +297,12 @@ final class HALDeviceInputSource: AudioInputSource {
     return status == noErr && running != 0
   }
 
-  /// Target capture device UID. Nil = built-in mic, same default-nil contract
-  /// as `AVCaptureSessionSource.targetDeviceUID` (#1377 candidate A). Only
-  /// ever set under `CaptureSourcePolicy.forceHALDeviceInput`; `.automatic`
-  /// never emits this candidate, so it is unreachable outside the bake-off.
+  /// Target capture device UID. Nil means follow the live system default input.
   var targetDeviceUID: String?
+
+  var resolveDeviceIDForUID: (String) -> AudioDeviceID? = AudioDeviceEnumerator.deviceID(forUID:)
+  var defaultInputDeviceIDProvider: () -> AudioDeviceID? =
+    AudioDeviceEnumerator.defaultInputDeviceID
 
   // MARK: - Private state
 
@@ -320,11 +320,25 @@ final class HALDeviceInputSource: AudioInputSource {
   private var stoppedFlag: HALStoppedFlag?
   private var isRecovering = false
 
-  #if DEBUG
-    private var boundDeviceID: AudioDeviceID?
-    private var boundUID: String?
-    private var lastBindOK = true
-  #endif
+  private var boundDeviceID: AudioDeviceID?
+  private var boundUID: String?
+  private var boundTransport: String?
+  private var lastBindOK = true
+
+  var actualBoundTransport: String? { boundTransport }
+
+  func resolvedDeviceIDForTesting() -> AudioDeviceID? {
+    resolveDeviceID()
+  }
+
+  func setBoundDeviceIDForTesting(_ deviceID: AudioDeviceID?) {
+    boundDeviceID = deviceID
+  }
+
+  func boundDeviceMatchesResolvedTargetForReuse() -> Bool {
+    guard let boundDeviceID else { return false }
+    return boundDeviceID == resolveDeviceID()
+  }
 
   private static let listenerQueue = DispatchQueue(
     label: "com.enviouswispr.audio.hal-device-listener"
@@ -393,9 +407,7 @@ final class HALDeviceInputSource: AudioInputSource {
       unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
       &pinnedDevice, UInt32(MemoryLayout<AudioDeviceID>.size))
     let bindOK = status == noErr
-    #if DEBUG
-      lastBindOK = bindOK
-    #endif
+    lastBindOK = bindOK
     guard bindOK else {
       AudioComponentInstanceDispose(unit)
       throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.set_device")
@@ -525,15 +537,12 @@ final class HALDeviceInputSource: AudioInputSource {
     self.consumerThread = Self.makeConsumerThread(context: context)
     registerDeviceIsAliveListener(deviceID: deviceID)
 
-    #if DEBUG
-      boundDeviceID = deviceID
-      boundUID = AudioDeviceEnumerator.inputDeviceUID(for: deviceID)
-      AudioCaptureManager.btRouteLog(
-        "HALDeviceInputSource: prepared with device \(deviceID) (uid=\(boundUID ?? "unknown"))"
-      )
-    #else
-      AudioCaptureManager.btRouteLog("HALDeviceInputSource: prepared with device \(deviceID)")
-    #endif
+    boundDeviceID = deviceID
+    boundUID = AudioDeviceEnumerator.inputDeviceUID(for: deviceID)
+    boundTransport = AudioDeviceEnumerator.transportLabel(for: deviceID)
+    AudioCaptureManager.btRouteLog(
+      "HALDeviceInputSource: prepared with device \(deviceID) (uid=\(boundUID ?? "unknown"))"
+    )
   }
 
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
@@ -572,10 +581,9 @@ final class HALDeviceInputSource: AudioInputSource {
     /// Capture-side actual-bound-device evidence (#1377 §3.5), same shape as
     /// the other two conformers so `capture_bakeoff.py` parses it unchanged.
     private func logBenchCaptureEvidence() {
-      let boundTransport =
-        boundDeviceID.flatMap { AudioDeviceEnumerator.transportLabel(for: $0) } ?? "unknown"
+      let evidenceBoundTransport = boundTransport ?? "unknown"
       AudioCaptureManager.btRouteLog(
-        "CAPTURE_EVIDENCE backend=hal_device_input boundUID=\(boundUID ?? "unknown") boundDeviceID=\(boundDeviceID.map(String.init) ?? "nil") boundTransport=\(boundTransport) bindOK=\(lastBindOK) requestedUID=\(targetDeviceUID ?? "built_in")"
+        "CAPTURE_EVIDENCE backend=hal_device_input boundUID=\(boundUID ?? "unknown") boundDeviceID=\(boundDeviceID.map(String.init) ?? "nil") boundTransport=\(evidenceBoundTransport) bindOK=\(lastBindOK) requestedUID=\(targetDeviceUID ?? "system_default")"
       )
     }
   #endif
@@ -698,25 +706,21 @@ final class HALDeviceInputSource: AudioInputSource {
     unmanagedContext = nil
     stoppedFlag = nil
     consumerThread = nil
-    #if DEBUG
-      boundDeviceID = nil
-      boundUID = nil
-    #endif
+    boundDeviceID = nil
+    boundUID = nil
+    boundTransport = nil
   }
 
   // MARK: - Private: device resolution
 
-  /// Resolve the pinned target device, falling back to built-in with the
-  /// SAME log-text fragment `AVCaptureSessionSource` uses ("not found —
-  /// falling back") so `capture_bakeoff.py`'s `FALLBACK_MARKER` catches it
-  /// unchanged for this candidate too.
+  /// Resolve the pinned target device, falling back to the live system default.
   private func resolveDeviceID() -> AudioDeviceID? {
     if let uid = targetDeviceUID, !uid.isEmpty {
-      if let id = AudioDeviceEnumerator.deviceID(forUID: uid) { return id }
+      if let id = resolveDeviceIDForUID(uid) { return id }
       AudioCaptureManager.btRouteLog(
-        "HALDeviceInputSource: target device uid=\(uid) not found — falling back to built-in")
+        "HALDeviceInputSource: target device uid=\(uid) not found — falling back to system default")
     }
-    return AudioDeviceEnumerator.builtInMicrophoneDeviceID()
+    return defaultInputDeviceIDProvider()
   }
 
   /// Read the device's OWN native stream format directly from the HAL device

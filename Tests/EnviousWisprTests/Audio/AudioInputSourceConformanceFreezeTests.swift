@@ -1,3 +1,4 @@
+import CoreAudio
 import Foundation
 import Testing
 
@@ -105,15 +106,15 @@ struct AVCaptureSessionSourceDeviceTargetTests {
   }
 }
 
-// #1377 slice 2b (reinstated 2026-07-08) — locks candidate D's identical
-// additive device-target contract to candidate A's: default nil (built-in),
-// pinned UID reflected. WHICH device actually binds is hardware-dependent and
-// proven by the bake-off Live UAT (the founder's Bose headset spike), not here.
+// #1377 slice 2b / #1378 — locks candidate D's additive device-target contract:
+// default nil follows the live system-default input, and a pinned UID is
+// reflected. WHICH device actually binds is hardware-dependent and proven by
+// Live UAT, not here.
 @MainActor
 @Suite("HALDeviceInputSource device target — #1377")
 struct HALDeviceInputSourceDeviceTargetTests {
 
-  @Test("default target is nil (automatic path leaves it built-in)")
+  @Test("default target is nil (automatic path follows system default)")
   func defaultTargetIsNil() {
     let source = HALDeviceInputSource()
     #expect(source.targetDeviceUID == nil)
@@ -124,5 +125,67 @@ struct HALDeviceInputSourceDeviceTargetTests {
     let source = HALDeviceInputSource()
     source.targetDeviceUID = "BC-87-FA-9C-7E-71:input"
     #expect(source.targetDeviceUID == "BC-87-FA-9C-7E-71:input")
+  }
+
+  @Test("nil target resolves to current system default input")
+  func nilTargetResolvesToDefaultInput() {
+    let source = HALDeviceInputSource()
+    source.defaultInputDeviceIDProvider = { 42 }
+    #expect(source.resolvedDeviceIDForTesting() == 42)
+  }
+
+  @Test("unresolvable target falls back to current system default input")
+  func missingTargetFallsBackToDefaultInput() {
+    let source = HALDeviceInputSource()
+    source.targetDeviceUID = "gone"
+    source.resolveDeviceIDForUID = { _ in nil }
+    source.defaultInputDeviceIDProvider = { 42 }
+    #expect(source.resolvedDeviceIDForTesting() == 42)
+  }
+
+  @Test("resolvable target wins over system default input")
+  func resolvedTargetWins() {
+    let source = HALDeviceInputSource()
+    source.targetDeviceUID = "present"
+    source.resolveDeviceIDForUID = { uid in uid == "present" ? 99 : nil }
+    source.defaultInputDeviceIDProvider = { 42 }
+    #expect(source.resolvedDeviceIDForTesting() == 99)
+  }
+
+  @Test("warm automatic source is reusable while bound to current system default")
+  func automaticReuseMatchesCurrentDefault() {
+    let source = HALDeviceInputSource()
+    source.defaultInputDeviceIDProvider = { 42 }
+    source.setBoundDeviceIDForTesting(42)
+
+    #expect(source.boundDeviceMatchesResolvedTargetForReuse())
+  }
+
+  @Test("warm automatic source rejects stale system default")
+  func automaticReuseRejectsStaleDefault() {
+    let source = HALDeviceInputSource()
+    var currentDefault: AudioDeviceID = 42
+    source.defaultInputDeviceIDProvider = { currentDefault }
+    source.setBoundDeviceIDForTesting(42)
+
+    currentDefault = 43
+
+    #expect(!source.boundDeviceMatchesResolvedTargetForReuse())
+  }
+
+  @Test("warm explicit source follows fallback default when target is missing")
+  func explicitMissingTargetReuseTracksFallbackDefault() {
+    let source = HALDeviceInputSource()
+    source.targetDeviceUID = "missing"
+    source.resolveDeviceIDForUID = { _ in nil }
+    var currentDefault: AudioDeviceID = 42
+    source.defaultInputDeviceIDProvider = { currentDefault }
+    source.setBoundDeviceIDForTesting(42)
+
+    #expect(source.boundDeviceMatchesResolvedTargetForReuse())
+
+    currentDefault = 43
+
+    #expect(!source.boundDeviceMatchesResolvedTargetForReuse())
   }
 }

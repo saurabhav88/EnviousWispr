@@ -242,7 +242,11 @@ final class RecordingStarter {
         stage: "recording", message: "preWarm failed — start aborted",
         level: .warning, data: ["error": String(describing: error)]
       )
-      active.setExternalError("Microphone unavailable — try again.")
+      let nsError = error as NSError
+      let noMic =
+        nsError.domain == AudioError.errorDomain && nsError.code == AudioError.noBuiltInMicrophoneFound.errorCode
+      active.setExternalError(
+        noMic ? "No microphone found. Please connect a microphone." : "Microphone unavailable — try again.")
       return
     }
     guard !Task.isCancelled else {

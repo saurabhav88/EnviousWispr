@@ -158,15 +158,34 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// the device selection that produced THIS decision), then fire
   /// `onRouteResolved` changed-only. The single write path so `lastRouteDecision`
   /// and `currentResolvedRoute` never disagree.
-  private func adoptRouteDecision(_ decision: CaptureRouteDecision, prior: CaptureRouteDecision?) {
-    lastRouteDecision = decision
-    currentResolvedRoute = ResolvedRouteTransports.derive(
+  private func resolvedRouteTransports(
+    for decision: CaptureRouteDecision,
+    actualBoundTransport: String? = nil
+  ) -> ResolvedRouteTransports {
+    ResolvedRouteTransports.derive(
       decision: decision,
       preferredInputDeviceIDOverride: preferredInputDeviceIDOverride,
-      selectedInputDeviceUID: selectedInputDeviceUID
+      selectedInputDeviceUID: selectedInputDeviceUID,
+      actualBoundTransport: actualBoundTransport
     )
+  }
+
+  private func adoptRouteDecision(
+    _ decision: CaptureRouteDecision,
+    prior: CaptureRouteDecision?,
+    actualBoundTransport: String? = nil
+  ) {
+    lastRouteDecision = decision
+    currentResolvedRoute = resolvedRouteTransports(
+      for: decision, actualBoundTransport: actualBoundTransport)
     guard CaptureRouteDecision.routeResolvedChanged(from: prior, to: decision) else { return }
     onRouteResolved?(decision, prior.map { $0.sourceType != decision.sourceType } ?? false)
+  }
+
+  private func refreshResolvedRoute(actualBoundTransport: String?) {
+    guard let decision = lastRouteDecision else { return }
+    currentResolvedRoute = resolvedRouteTransports(
+      for: decision, actualBoundTransport: actualBoundTransport)
   }
 
   public init() {}
@@ -180,6 +199,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     source.onLifecycleSignal = onLifecycleSignal
     onLifecycleSignal?("manager_prepare_entered")
     try await source.prepare()
+    if let halSource = source as? HALDeviceInputSource {
+      refreshResolvedRoute(actualBoundTransport: halSource.actualBoundTransport)
+    }
     onLifecycleSignal?("manager_prepare_completed")
   }
 
@@ -561,13 +583,19 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         // Candidate D (#1377 slice 2b): same stale-target trap as candidate A
         // above — a warm HAL source from a forced trial must not be reused
         // once the override clears (or changes device).
-        if configMatch, let halSource = existing as? HALDeviceInputSource {
-          let wantsTarget =
-            decision.reason == .forcedHALDeviceInput ? effectiveInputDeviceUID() : ""
-          let normalize: (String?) -> String = { ($0?.isEmpty ?? true) ? "" : $0! }
-          configMatch = normalize(halSource.targetDeviceUID) == normalize(wantsTarget)
-        }
       #endif
+      if configMatch, let halSource = existing as? HALDeviceInputSource {
+        var wantsTarget = decision.effectiveDeviceUID
+        #if DEBUG
+          if decision.reason == .forcedHALDeviceInput {
+            wantsTarget = effectiveInputDeviceUID()
+          }
+        #endif
+        let normalize: (String?) -> String = { ($0?.isEmpty ?? true) ? "" : $0! }
+        configMatch =
+          normalize(halSource.targetDeviceUID) == normalize(wantsTarget)
+          && halSource.boundDeviceMatchesResolvedTargetForReuse()
+      }
 
       if configMatch {
         // Route and config unchanged, reuse warm source. This applies to the
@@ -578,7 +606,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         // record. Config changes that DO warrant a rebuild (candidate switch →
         // different sourceType; device change; a stale forced capture-session
         // target) are already caught by the `configMatch` checks above.
-        adoptRouteDecision(decision, prior: priorRouteDecision)
+        let actualBoundTransport = (existing as? HALDeviceInputSource)?.actualBoundTransport
+        adoptRouteDecision(
+          decision, prior: priorRouteDecision, actualBoundTransport: actualBoundTransport)
         Self.btRouteLog("Reusing warm \(Self.backendLabel(for: decision.sourceType)) source")
         return existing
       }
@@ -641,11 +671,11 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       source = engineSource
     case .halDeviceInput:
       let halSource = HALDeviceInputSource()
+      halSource.targetDeviceUID = decision.effectiveDeviceUID
       #if DEBUG
         // Candidate D (#1377 slice 2b, reinstated 2026-07-08): under a
         // force-case, pin the AUHAL source to the user-selected device. Only
-        // ever reachable via `.forceHALDeviceInput` — `.automatic` never
-        // emits `.halDeviceInput`.
+        // ever reachable via `.forceHALDeviceInput`.
         if decision.reason == .forcedHALDeviceInput {
           halSource.targetDeviceUID = effectiveInputDeviceUID()
         }

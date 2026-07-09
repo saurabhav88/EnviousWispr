@@ -24,8 +24,7 @@ struct ResolvedRouteTransportsGridTests {
     "derive is total over the sourceType × reason grid",
     arguments: [CaptureSourceType.audioEngine, .captureSession, .halDeviceInput],
     [
-      CaptureRouteReason.btOutputAutoInput, .btOutputUserSelectedBTMic,
-      .btOutputUserSelectedBuiltIn, .btOutputUserSelectedWired, .noBTAutoInput,
+      CaptureRouteReason.btOutputAutoInput, .btOutputUserSelectedDevice, .noBTAutoInput,
       .noBTUserSelectedDevice, .forcedEngine, .forcedCaptureSession,
       .fallbackToEngine, .failedNoFallback,
     ])
@@ -40,11 +39,8 @@ struct ResolvedRouteTransportsGridTests {
     #expect((r.routeFallbackReason != nil) == isFallbackRung)
     if isFallbackRung { #expect(r.routeFallbackReason == reason.rawValue) }
 
-    // The capture-session path opens the built-in mic only today (bible R4).
-    // HALDeviceInputSource's no-pin fallback is the SAME literal built-in mic
-    // (cloud review P2 on PR #1418 — the prior system-default-style fallback
-    // here didn't match what the source actually opens).
-    if source == .captureSession || source == .halDeviceInput {
+    // The capture-session path still opens the built-in mic.
+    if source == .captureSession {
       #expect(r.effective == "built_in")
     }
 
@@ -57,27 +53,32 @@ struct ResolvedRouteTransportsGridTests {
     #expect(!r.effective.isEmpty)
   }
 
-  @Test("explicit Bluetooth pick under BT output: mode=explicit, effective forced to built_in")
-  func explicitBTMicForcedToBuiltIn() {
-    // The core invisible divergence: the user explicitly picked a Bluetooth mic,
-    // but the capture-session route forces the built-in mic. The fake UID does
-    // not resolve to a live device, so `selected` is "unknown", yet the SELECTION
-    // MODE is explicit because the user pinned a device.
+  @Test("explicit Bluetooth pick under BT output: mode=explicit, route reason is unified")
+  func explicitBTMicUsesUnifiedReason() {
     let r = ResolvedRouteTransports.derive(
-      decision: makeDecision(.captureSession, .btOutputUserSelectedBTMic),
+      decision: makeDecision(.halDeviceInput, .btOutputUserSelectedDevice),
       preferredInputDeviceIDOverride: "fake-bt-uid", selectedInputDeviceUID: "")
     #expect(r.inputSelectionMode == "explicit")
-    #expect(r.effective == "built_in")
-    #expect(r.routeReason == "btOutputUserSelectedBTMic")
+    #expect(r.routeReason == "btOutputUserSelectedDevice")
   }
 
-  @Test("wired pick under BT output also yields effective=built_in (non-intended class)")
+  @Test("bound HAL transport wins over live re-derivation")
+  func boundHALTransportWins() {
+    let r = ResolvedRouteTransports.derive(
+      decision: makeDecision(.halDeviceInput, .btOutputAutoInput),
+      preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "",
+      actualBoundTransport: "bluetooth")
+    #expect(r.effective == "bluetooth")
+    #expect(r.routeResolutionSource == "helper_reported")
+  }
+
+  @Test("wired pick under BT output uses unified explicit reason")
   func wiredUnderBTOutput() {
     let r = ResolvedRouteTransports.derive(
-      decision: makeDecision(.captureSession, .btOutputUserSelectedWired),
+      decision: makeDecision(.halDeviceInput, .btOutputUserSelectedDevice),
       preferredInputDeviceIDOverride: "fake-wired-uid", selectedInputDeviceUID: "")
-    #expect(r.effective == "built_in")
     #expect(r.inputSelectionMode == "explicit")
+    #expect(r.routeReason == "btOutputUserSelectedDevice")
   }
 
   @Test("selection mode follows the settings picker; a bare selectedInputDeviceUID stays Auto")
@@ -111,7 +112,7 @@ struct ResolvedRouteTransportsGridTests {
     // preferredInputDeviceIDOverride set (the picker) → explicit, and the
     // resolver saw the same value, so route_reason is a user-selected reason.
     let r = ResolvedRouteTransports.derive(
-      decision: makeDecision(.captureSession, .btOutputUserSelectedBTMic),
+      decision: makeDecision(.halDeviceInput, .btOutputUserSelectedDevice),
       preferredInputDeviceIDOverride: "fake-bt-uid", selectedInputDeviceUID: "")
     #expect(r.inputSelectionMode == "explicit")
   }

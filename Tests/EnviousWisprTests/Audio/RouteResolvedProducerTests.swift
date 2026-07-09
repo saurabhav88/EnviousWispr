@@ -35,7 +35,7 @@ struct RouteResolvedProducerTests {
   @Test("re-fires when the reason differs (same sourceType)")
   func reasonChanged() {
     let prior = decision(.captureSession, .btOutputAutoInput)
-    let next = decision(.captureSession, .btOutputUserSelectedBTMic)
+    let next = decision(.captureSession, .btOutputUserSelectedDevice)
     #expect(CaptureRouteDecision.routeResolvedChanged(from: prior, to: next))
   }
 

@@ -175,6 +175,31 @@ import Testing
     #expect(fx.lastRecordingResult.polishError == nil)
   }
 
+  @Test("raw no-microphone prewarm error surfaces distinct copy")
+  func rawNoMicrophonePrewarmErrorSurfacesDistinctCopy() async {
+    let fx = Self.makeFixture()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    fx.audio.preWarmError = AudioError.noBuiltInMicrophoneFound
+
+    await fx.starter.start()
+
+    #expect(fx.kernelDriver.state == .error("No microphone found. Please connect a microphone."))
+  }
+
+  @Test("XPC-sanitized no-microphone prewarm error surfaces distinct copy")
+  func sanitizedNoMicrophonePrewarmErrorSurfacesDistinctCopy() async {
+    let fx = Self.makeFixture()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    fx.audio.preWarmError = XPCErrorSanitizer.sanitizeForXPC(
+      AudioError.noBuiltInMicrophoneFound)
+
+    await fx.starter.start()
+
+    #expect(fx.kernelDriver.state == .error("No microphone found. Please connect a microphone."))
+  }
+
   /// The old `toggleAndStartBothRefreshAccessibilityStatus` had ZERO `#expect` —
   /// it only checked crash-freedom, so deleting the AX re-arm block from
   /// `start()`/`toggle()` left it green. This injects a counting spy and asserts

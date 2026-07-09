@@ -25,16 +25,26 @@ enum AudioBufferProcessor {
 }
 
 /// Errors that can occur during audio operations.
-public enum AudioError: LocalizedError, Sendable {
+public enum AudioError: LocalizedError, CustomNSError, Sendable {
   case formatCreationFailed(source: String = "unknown")
   case alreadyCapturing
   case noBuiltInMicrophoneFound
+
+  public static let errorDomain = "EnviousWisprAudio.AudioError"
+
+  public var errorCode: Int {
+    switch self {
+    case .formatCreationFailed: return 1
+    case .alreadyCapturing: return 2
+    case .noBuiltInMicrophoneFound: return 3
+    }
+  }
 
   public var errorDescription: String? {
     switch self {
     case .formatCreationFailed: return "Failed to create audio format."
     case .alreadyCapturing: return "Audio capture is already active."
-    case .noBuiltInMicrophoneFound: return "No built-in microphone found."
+    case .noBuiltInMicrophoneFound: return "No microphone found. Please connect a microphone."
     }
   }
 

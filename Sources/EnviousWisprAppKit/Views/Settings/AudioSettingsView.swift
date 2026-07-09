@@ -12,18 +12,23 @@ struct AudioSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(AudioDeviceList.self) private var audioDeviceList
 
-  /// True when "Auto" is selected and the current audio output is Bluetooth, so
-  /// the pipeline prefers the built-in mic (a BT headset can't record and play
-  /// at once). Surfaces as the green "Built-in Mic preferred" pill.
-  private var builtInMicPreferred: Bool {
+  private var autoInputDeviceName: String? {
     guard settings.preferredInputDeviceIDOverride.isEmpty,
-      let outputID = AudioDeviceEnumerator.defaultOutputDeviceID()
-    else { return false }
-    return AudioDeviceEnumerator.isBluetoothDevice(outputID)
+      let defaultID = AudioDeviceEnumerator.defaultInputDeviceID()
+    else { return nil }
+    return audioDeviceList.availableInputDevices.first { $0.id == defaultID }?.name
   }
 
   var body: some View {
+    let settingsManager = settings
     @Bindable var settings = settings
+    let inputDeviceSelection = Binding<String>(
+      get: { settingsManager.preferredInputDeviceIDOverride },
+      set: { newValue in
+        settingsManager.preferredInputDeviceIDOverride = newValue
+        settingsManager.selectedInputDeviceUID = newValue
+      }
+    )
 
     SettingsContentView {
       // The frozen-per-recording rule covers every control on this page, so it
@@ -34,10 +39,10 @@ struct AudioSettingsView: View {
         icon: "mic",
         header: "Input Device",
         description:
-          "Select which microphone to use for recording. \"Auto\" prefers the built-in mic when Bluetooth audio output is active."
+          "Select which microphone to use for recording. \"Auto\" follows the input device currently selected in macOS."
       ) {
         HStack(spacing: 10) {
-          Picker("", selection: $settings.preferredInputDeviceIDOverride) {
+          Picker("", selection: inputDeviceSelection) {
             Text("Auto").tag("")
             ForEach(audioDeviceList.availableInputDevices) { device in
               Text(device.name).tag(device.uid)
@@ -46,8 +51,8 @@ struct AudioSettingsView: View {
           .labelsHidden()
           .frame(maxWidth: 340, alignment: .leading)
 
-          if builtInMicPreferred {
-            StatusPill(text: "Built-in Mic preferred")
+          if let autoInputDeviceName {
+            StatusPill(text: "Using \(autoInputDeviceName)")
           }
 
           Spacer(minLength: 0)
@@ -86,7 +91,7 @@ struct AudioSettingsView: View {
 }
 
 /// Small status chip: a coloured dot plus a short label, used to annotate a
-/// control's live state (e.g. "Built-in Mic preferred").
+/// control's live state (e.g. the current system-default microphone).
 private struct StatusPill: View {
   let text: String
   var tint: Color = .stSuccess
@@ -94,11 +99,11 @@ private struct StatusPill: View {
   var body: some View {
     HStack(spacing: 6) {
       Circle().fill(tint).frame(width: 7, height: 7).accessibilityHidden(true)
-      Text(text).font(.stHelper).foregroundStyle(tint)
+      Text(text).font(.stHelper).foregroundStyle(tint).lineLimit(1).truncationMode(.tail)
     }
+    .frame(maxWidth: 220)
     .padding(.horizontal, 10)
     .padding(.vertical, 6)
     .background(tint.opacity(0.12), in: Capsule())
-    .fixedSize()
   }
 }
