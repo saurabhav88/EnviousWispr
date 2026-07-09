@@ -59,6 +59,16 @@ public final class ParakeetDeliveryHandle {
     await controller.repair(registration)
   }
 
+  /// #1388 step 3: user Cancel during the DOWNLOAD portion of the onboarding
+  /// install. Cooperative — resolves after the live attempt fully drains
+  /// (controller D4 §3), and the adapter's awaiting `ensureAvailable()` then
+  /// returns `.cancelled`, surfacing as `EngineWarmupOutcome.cancelled`.
+  /// No-op when nothing is in flight. This is USER intent, unlike the
+  /// removed #1371 watchdog canceller that fought the fetcher's retry policy.
+  public func cancelActiveFetch() async {
+    _ = await controller.cancel(registration.manifest.identity)
+  }
+
   /// D5 §1: the `enabled=false` bypass is proven by telemetry from the ONE
   /// site that takes it (the adapter's legacy branch).
   public func noteLegacyPathActive() {
@@ -79,7 +89,10 @@ public final class ParakeetDeliveryHandle {
     case .preparing(let validating):
       file.write(
         fraction: 0,
-        phase: validating ? "Checking speech model files..." : ModelLoadStallPolicy.listingPhase,
+        // Single authority for both literals: the wedge guard PARKS on the
+        // validating phase and JUDGES the listing phase (#1388 Codex r4).
+        phase: validating
+          ? ModelLoadStallPolicy.validatingCachePhase : ModelLoadStallPolicy.listingPhase,
         detail: "")
     case .downloading(let fraction, let bytesWritten, let totalBytes):
       let mb = Int(Double(bytesWritten) / 1_048_576)
@@ -90,7 +103,8 @@ public final class ParakeetDeliveryHandle {
         phase: ModelLoadStallPolicy.downloadingPhase,
         detail: "\(mb) MB of \(totalMB) MB (\(Int(fraction * 100))%)")
     case .verifying:
-      file.write(fraction: 0.5, phase: "Verifying download...", detail: "")
+      // Single authority for the literal (the wedge guard parks on it, #1388).
+      file.write(fraction: 0.5, phase: ModelLoadStallPolicy.verifyingDownloadPhase, detail: "")
     case .admitted:
       // #1405 download->load boundary: CLEAR the progress file the instant
       // delivery completes. This moves the phase off the download phase so the

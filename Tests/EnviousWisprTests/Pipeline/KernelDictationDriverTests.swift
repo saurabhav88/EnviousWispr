@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprServices
@@ -467,6 +468,67 @@ import Testing
       return
     }
     #expect(h.adapter.readiness != .ready)
+  }
+
+  // MARK: #1388 — terminal classification (user Cancel vs guard verdict vs failure)
+
+  @Test("#1388: the cancellation error maps to .cancelled — never .failed")
+  func warmupCancellationErrorMapsToCancelled() async {
+    let h = makeDriver(behavior: .failLoad(ASRLoadCancelledError()))
+    let outcome = await h.driver.ensureEngineWarm(reason: .onboarding)
+    guard case .cancelled = outcome else {
+      Issue.record("a user Cancel must surface as .cancelled, got \(outcome)")
+      return
+    }
+    #expect(h.adapter.readiness != .ready)
+  }
+
+  @Test("#1388: a cancelled surrounding task (CancellationError) also maps to .cancelled")
+  func warmupTaskCancellationMapsToCancelled() async {
+    let h = makeDriver(behavior: .failLoad(CancellationError()))
+    let outcome = await h.driver.ensureEngineWarm(reason: .onboarding)
+    guard case .cancelled = outcome else {
+      Issue.record("a cancelled task / delivery cancel must surface as .cancelled, got \(outcome)")
+      return
+    }
+  }
+
+  @Test("#1388: a genuine failure keeps the true underlying error")
+  func warmupGenuineFailureKeepsUnderlyingError() async {
+    struct BoomError: Error {}
+    let h = makeDriver(behavior: .failLoad(BoomError()))
+    let outcome = await h.driver.ensureEngineWarm(reason: .onboarding)
+    guard case .failed(let error) = outcome else {
+      Issue.record("expected .failed, got \(outcome)")
+      return
+    }
+    #expect(error is BoomError, "the failure path must propagate the true cause, unwrapped")
+  }
+
+  @Test("#1388 boundary: classification order — a guard fire beats the cancellation error")
+  func classificationOrderGuardFireBeatsCancellation() {
+    // The contractual matrix (plan §4/§9): the guard's verdict wins FIRST even
+    // though its teardown resumes the load with the SAME cancellation error a
+    // user Cancel uses; only a user cancel (no fire) maps to .cancelled. Pure
+    // function — the live guard's fire path needs real time + the shared
+    // progress file, which the mid-load service-kill fault drill covers.
+    typealias Classify = KernelDictationDriver
+    #expect(
+      Classify.classifyWarmupThrow(ASRLoadCancelledError(), guardFired: true) == .wedge,
+      "guard-triggered teardown must stay a failure (WedgeError), never .cancelled")
+    #expect(
+      Classify.classifyWarmupThrow(ASRLoadCancelledError(), guardFired: false) == .cancelled)
+    #expect(
+      Classify.classifyWarmupThrow(CancellationError(), guardFired: false) == .cancelled)
+    #expect(
+      Classify.classifyWarmupThrow(XPCASRTransportError.serviceUnreachable, guardFired: true)
+        == .wedge)
+    #expect(
+      Classify.classifyWarmupThrow(XPCASRTransportError.serviceUnreachable, guardFired: false)
+        == .failure,
+      "genuine service death (no guard fire) is a failure with the transport error")
+    #expect(
+      Classify.classifyWarmupThrow(ASRLoadSupersededError(), guardFired: false) == .failure)
   }
 
   // MARK: #1339 — sessionless wedge-guard topology

@@ -177,7 +177,17 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 
     do {
       try await loadModelWithTransportRecovery()
-    } catch let error where deliveryActive && !(error is ASRLoadSupersededError) {
+    } catch let error
+      where deliveryActive
+      && !(error is ASRLoadSupersededError)
+      // #1388 (Codex r3 P1): a user Cancel must NOT fall into the repair
+      // retry — repairing an intact cache succeeds and silently restarts the
+      // install the user just cancelled (the founder watched exactly this
+      // ~2s resurrection live). Same policy as the transport-recovery catch:
+      // cancellation propagates untouched.
+      && !(error is ASRLoadCancelledError)
+      && !(error is CancellationError)
+    {
       // One-shot load-miss repair (#1348 grounded r1 revision 7): a
       // cache-only load failure (raced deletion, missed corruption) gets ONE
       // revalidate/repair pass and ONE retry; a second failure is terminal.
@@ -201,6 +211,13 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// after an app update) already recycled the connection in the proxy's
   /// errorHandler; the retry connects to the freshly spawned helper. A
   /// second transport failure propagates.
+  ///
+  /// #1388 retry-vs-cancel policy (this adapter's side of the contract): the
+  /// catch matches ONLY transport errors, so `ASRLoadCancelledError` — a user
+  /// Cancel or the wedge guard's teardown — propagates without a retry. That
+  /// is load-bearing, not incidental: the cancel resume was deliberately
+  /// typed as a non-transport error so this one-shot recovery can never
+  /// silently restart a load the user just cancelled. Do not widen the catch.
   private func loadModelWithTransportRecovery() async throws {
     do {
       try await asrManager.loadModel()
@@ -413,6 +430,17 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     // wedge guard stays parked during the download phase — so a download is
     // never in flight here. The #1371 `delivery.cancel()` that used to live
     // here was the external canceller that fought the fetcher's retry; removed.
+  }
+
+  /// #1388 step 3 — the onboarding install Cancel. Cancels BOTH stages the
+  /// sessionless warm-up can be awaiting: the delivery fetch (download half)
+  /// and the in-flight model load (install half). Distinct from `cancel()`
+  /// above, the kernel's session discard, which deliberately does NOT touch
+  /// the delivery — a cancelled recording must not kill a first-run download
+  /// running in the background.
+  func cancelSessionlessWarmup() async {
+    await delivery?.cancelActiveFetch()
+    await cancel()
   }
 
   // MARK: ASREngineAdapter — cleanup
@@ -643,3 +671,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 }
 
 extension ParakeetEngineAdapter: ASREngineTelemetryProviding {}
+
+// #1388 step 3: opt in to the warm-up cancel capability (the method itself
+// lives with the other lifecycle methods above).
+extension ParakeetEngineAdapter: ASREngineWarmupCancelling {}

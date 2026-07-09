@@ -27,6 +27,11 @@ import Testing
 ///   `isEngineSwitching`, `beginMinting`, `endMinting`) plus their doc
 ///   comments. No new stored property, collaborator, or method — pure init
 ///   wiring; collaborator/closure-injected/method caps unchanged.
+/// - #1388: non-private method cap 7 → 8, line cap 215 → 216 for
+///   `cancelActiveEngineWarmupForOnboarding()` — the onboarding install
+///   Cancel's seam, the exact cancel twin of #879's
+///   `ensureActiveEngineWarmForOnboarding` (same thin forward to
+///   `starter.activeDriver`, no new state, no new collaborator).
 @Suite struct DictationRuntimeCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/DictationRuntime/DictationRuntime.swift"
@@ -68,14 +73,18 @@ import Testing
     // uses the same shared `ensureEngineWarm` as every other warm-up site. It is
     // a thin forward to `starter.activeDriver.ensureEngineWarm(.onboarding)`, no
     // new state.
+    // #1388: raised 7 → 8 for `cancelActiveEngineWarmupForOnboarding()` — the
+    // install Cancel's seam, #879's cancel twin (thin forward to
+    // `starter.activeDriver.cancelSessionlessWarmup()`, no new state).
     #expect(
-      count <= 7,
+      count <= 8,
       """
-      DictationRuntime non-private method ceiling exceeded: \(count) > 7 \
+      DictationRuntime non-private method ceiling exceeded: \(count) > 8 \
       non-private `func` declarations. PR10 baseline: \
       startHotkeyServiceIfEnabled, suspendHotkeys, resumeHotkeys, \
       toggleRecording, cancelRecording, resetActivePipeline; #879 added \
-      ensureActiveEngineWarmForOnboarding. Raising the ceiling requires a \
+      ensureActiveEngineWarmForOnboarding; #1388 added \
+      cancelActiveEngineWarmupForOnboarding. Raising the ceiling requires a \
       Bible §30 entry.
       """)
   }
@@ -85,16 +94,18 @@ import Testing
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      count <= 215,
+      count <= 216,
       """
-      DictationRuntime line count exceeded: \(count) > 215. \
+      DictationRuntime line count exceeded: \(count) > 216. \
       Raise via Bible §30 only. PR10 ratcheted 100 → 200 to absorb the \
       7-collab field block + 6 façade methods + DR.init body building the \
       recording subsystem (HeartControlRecovery + Finalizer + Starter + \
       HotkeyController) and calling `hotkeyController.install()` internally. \
       #1171 ratcheted 200 → 215 for the four EngineCoordinator pass-through \
       init parameters (ensureSelectedReadyForPress, isEngineSwitching, \
-      beginMinting, endMinting) + their doc comments — no new state.
+      beginMinting, endMinting) + their doc comments — no new state. \
+      #1388 ratcheted 215 → 216 for cancelActiveEngineWarmupForOnboarding \
+      (#879's cancel twin — thin forward, no new state).
       """)
   }
 

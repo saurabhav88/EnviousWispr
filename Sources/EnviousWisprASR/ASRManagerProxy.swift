@@ -44,6 +44,18 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// Single-flight guard: if a load is already in progress, callers await it instead of starting a new one.
   private var inFlightLoadTask: Task<Void, any Error>?
 
+  /// #1388 step 1: the pending `loadModel()` continuation's resume-once guard,
+  /// reachable by EVERY completion source — the XPC reply, the per-call proxy
+  /// error, the invalidation/interruption handlers, and an explicit
+  /// `cancelInFlightLoad()`. Production proved the per-call error handler does
+  /// NOT reliably fire for a pending reply on invalidate/death (119 of 126
+  /// wedge fires reached no terminal outcome — the await hung and the caller's
+  /// guard slot leaked), so the connection handlers resume this directly.
+  /// `OneShotContinuationASR` guarantees exactly one resume; the
+  /// identity-guarded clear in `loadModel()` prevents a superseded load's exit
+  /// from clobbering a retry's freshly registered guard.
+  private var pendingLoadCompletion: OneShotContinuationASR<Void>?
+
   /// #959 readiness-integrity token. Monotonic; `loadModel()` captures it at the
   /// start of its load and refuses to write `isModelLoaded = true` if it changed
   /// before the load completes (throws `ASRLoadSupersededError`). Bumped by
@@ -112,6 +124,11 @@ public final class ASRManagerProxy: ASRManagerInterface {
   var needsReinitForTesting: Bool { needsReinit }
   var hasConnectionForTesting: Bool { connection != nil }
 
+  /// #1388 test accessor: whether a pending load completion is registered.
+  /// The contract test asserts it is cleared on every `loadModel` exit.
+  // periphery:ignore - test seam
+  var hasPendingLoadCompletionForTesting: Bool { pendingLoadCompletion != nil }
+
   /// Invalidate whatever load is current: bump the generation so an in-flight
   /// `loadModel()` completion (even one whose `isModelLoaded` is still `false`)
   /// is superseded, and log the `ready → notReady` transition tagged with cause.
@@ -168,8 +185,20 @@ public final class ASRManagerProxy: ASRManagerInterface {
       // only on the success path; an XPC error left the timer alive forever.
       defer { self.stopProgressPolling() }
 
+      // #1388 step 1: register the continuation guard so the connection
+      // handlers and `cancelInFlightLoad()` can complete the load. The clear
+      // is identity-guarded: a superseded load's exit must not clobber the
+      // guard a retry registered after it (same trap as `activeLoadTaskID`).
+      var registeredCompletion: OneShotContinuationASR<Void>?
+      defer {
+        if let registered = registeredCompletion, self.pendingLoadCompletion === registered {
+          self.pendingLoadCompletion = nil
+        }
+      }
       try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
         let guard_ = OneShotContinuationASR(cont)
+        registeredCompletion = guard_
+        self.pendingLoadCompletion = guard_
         self.serviceProxy { proxy in
           let cacheOnly = self.parakeetCacheOnly && self.activeBackendType == .parakeet
           proxy.loadModel(backendType: self.activeBackendType.rawValue, cacheOnly: cacheOnly) {
@@ -492,6 +521,16 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// This is the programmatic equivalent of the user manually quitting and
   /// relaunching the app — same recovery mechanism, no user effort required.
   public func cancelInFlightLoad() {
+    // #1388 step 1: resume the pending load continuation FIRST, with the
+    // dedicated cancellation error, so (a) `loadModel`'s await always reaches
+    // a terminal outcome — before this contract the invalidation handler
+    // never resumed it and `ensureEngineWarm` hung forever — and (b) the
+    // cancel CAUSE wins over the death cause the invalidation handler would
+    // stamp (the one-shot guard drops the handler's later duplicate resume).
+    // Deliberately NOT a transport error: the adapter's one-shot transport
+    // retry would silently restart a load the user just cancelled.
+    pendingLoadCompletion?.resume(throwing: ASRLoadCancelledError())
+    pendingLoadCompletion = nil
     // #959: supersede the current load FIRST so its completion can't resurrect
     // readiness after this teardown (always destructive — no no-op guard here).
     invalidateCurrentLoadGeneration(cause: "recoverFromWedge")
@@ -542,8 +581,12 @@ public final class ASRManagerProxy: ASRManagerInterface {
     conn.remoteObjectInterface = NSXPCInterface(with: ASRServiceProtocol.self)
     conn.exportedInterface = NSXPCInterface(with: ASRServiceClientProtocol.self)
 
-    conn.interruptionHandler = Self.makeInterruptionHandler(proxy: self)
-    conn.invalidationHandler = Self.makeInvalidationHandler(proxy: self)
+    // #1388: handlers carry their own connection for the era guard — a late
+    // handler from a RETIRED connection must not resume a successor load's
+    // pending completion (same trap class as `recycleConnectionAfterProxyError`'s
+    // detach, code-diff r5 P2).
+    conn.interruptionHandler = Self.makeInterruptionHandler(proxy: self, connection: conn)
+    conn.invalidationHandler = Self.makeInvalidationHandler(proxy: self, connection: conn)
 
     conn.resume()
     connection = conn
@@ -650,15 +693,40 @@ public final class ASRManagerProxy: ASRManagerInterface {
     }
   }
 
-  nonisolated private static func makeInterruptionHandler(proxy: ASRManagerProxy) -> @Sendable () ->
+  nonisolated private static func makeInterruptionHandler(
+    proxy: ASRManagerProxy, connection: NSXPCConnection
+  ) -> @Sendable () ->
     Void
   {
+    // NSXPCConnection is not Sendable; the era guard only needs IDENTITY, so
+    // carry the Sendable ObjectIdentifier instead of the object.
+    let eraID = ObjectIdentifier(connection)
     return { [weak proxy] in
       Task { @MainActor [weak proxy] in
         guard let proxy else { return }
         let wasStreaming = proxy.isStreaming
         let wasLoaded = proxy.isModelLoaded
         let wasInFlight = proxy.inFlightLoadTask != nil
+        // #1388 step 1: a service death mid-load must FAIL the pending load —
+        // the per-call error handler is not guaranteed to fire for a pending
+        // reply, and before this contract the await simply hung. Typed as the
+        // transport error so the adapter's one-shot retry reconnects to the
+        // respawned helper (the designed stale-helper recovery). A deliberate
+        // cancel already resumed this with the cancellation error first; the
+        // one-shot guard drops this duplicate.
+        //
+        // Era guard: only the CURRENT connection's death may touch proxy
+        // state — a retired connection's late handler racing a fast retry
+        // must not kill the successor's freshly registered guard, supersede
+        // the successor's generation, or clear the successor's flags (Codex
+        // r3 P2 on #1388: the guard originally covered only the resume; the
+        // trailing mutations read LIVE state and clobbered the successor).
+        // Current era = the proxy's live connection is still this handler's
+        // connection, or was cleared with no successor established yet.
+        let currentEraID = proxy.connection.map(ObjectIdentifier.init)
+        guard currentEraID == nil || currentEraID == eraID else { return }
+        proxy.pendingLoadCompletion?.resume(throwing: XPCASRTransportError.serviceUnreachable)
+        proxy.pendingLoadCompletion = nil
         // #959: supersede the current/in-flight load (and log the ready→notReady
         // cause) BEFORE clearing `isModelLoaded`, so the cause log fires and a
         // load completing after this teardown cannot resurrect a false `.ready`.
@@ -686,14 +754,28 @@ public final class ASRManagerProxy: ASRManagerInterface {
     }
   }
 
-  nonisolated private static func makeInvalidationHandler(proxy: ASRManagerProxy) -> @Sendable () ->
+  nonisolated private static func makeInvalidationHandler(
+    proxy: ASRManagerProxy, connection: NSXPCConnection
+  ) -> @Sendable () ->
     Void
   {
+    let eraID = ObjectIdentifier(connection)
     return { [weak proxy] in
       Task { @MainActor [weak proxy] in
         guard let proxy else { return }
         let wasActive = proxy.isStreaming || proxy.isModelLoaded
         let wasInFlight = proxy.inFlightLoadTask != nil
+        // #1388 step 1: same as the interruption handler — an invalidated
+        // connection must fail the pending load with the typed transport
+        // error (duplicate resumes are dropped by the one-shot guard), under
+        // the same era guard. The guard covers the WHOLE body (Codex r3 P2):
+        // a retired connection's late handler must not kill a successor load,
+        // supersede the successor's generation, nil the successor connection,
+        // or flag reinit against it.
+        let currentEraID = proxy.connection.map(ObjectIdentifier.init)
+        guard currentEraID == nil || currentEraID == eraID else { return }
+        proxy.pendingLoadCompletion?.resume(throwing: XPCASRTransportError.serviceUnreachable)
+        proxy.pendingLoadCompletion = nil
         // #959: same as the interruption handler — supersede current/in-flight
         // load + log cause BEFORE clearing `isModelLoaded`.
         if wasActive || wasInFlight {
@@ -717,7 +799,10 @@ public final class ASRManagerProxy: ASRManagerInterface {
 
 /// Thread-safe one-shot continuation guard — duplicate of AudioCaptureProxy's version.
 /// Duplicated per architecture rule: "duplication is allowed when it protects independence."
-private final class OneShotContinuationASR<T: Sendable>: @unchecked Sendable {
+/// `internal` (was private) since #1388: the resume-once contract test pins
+/// first-resume-wins directly (the cancel cause must beat the invalidation
+/// handler's later death cause).
+final class OneShotContinuationASR<T: Sendable>: @unchecked Sendable {
   private var continuation: CheckedContinuation<T, any Error>?
   private let lock = NSLock()
 

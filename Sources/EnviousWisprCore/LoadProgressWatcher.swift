@@ -12,7 +12,8 @@ import Foundation
 /// =========
 /// The watcher consumes the existing 8Hz progress polling stream from
 /// `ASRManagerProxy.startProgressPolling`. On every tick it tracks per-attempt
-/// inter-signal cadence using a monotonic clock. The trigger fires when both:
+/// inter-signal cadence using a monotonic clock. The post-signal silence gate
+/// ("gate B") fires when both:
 ///
 ///   - silence > 800ms floor (matches `AVCaptureSessionSource` first-buffer
 ///     liveness latch, the only foreground-user-watching silence threshold
@@ -20,17 +21,20 @@ import Foundation
 ///   - silence > 5x the worst inter-signal gap observed so far in this
 ///     attempt (statistical "definitely abnormal" ratio).
 ///
-/// Threshold self-calibrates per-attempt to whatever cadence Parakeet's loader
-/// naturally has on this machine, in this phase. Healthy fast loads stay well
-/// below their own observed cadence ratio. A real wedge produces silence
-/// orders of magnitude larger than anything observed during the same attempt.
-///
-/// Pre-first-signal coverage
-/// =========================
-/// If no progress signal is ever observed (XPC service crashes pre-listing),
-/// the watcher does NOT fire. Today's indefinite-hang behavior persists.
-/// Adding pre-first-signal coverage requires a defended first-signal-latency
-/// duration, which we don't have data for. Deferred per plan §2.2.
+/// Where the self-calibration premise holds — and where it does not (#1388)
+/// ========================================================================
+/// The per-attempt ratio assumes the phase's work units are roughly
+/// homogeneous, so observed cadence predicts future cadence. That holds for
+/// the XPC-operation MILESTONE stream (`XPCOperationSignalWatcher`) — our own
+/// service emits signals at points we choose, on a ~ms beat. It does NOT hold
+/// for work-progress streams with heterogeneous units: the CoreML install
+/// phase emits ~52 ticks ~1.5s apart for the small models, then goes silent
+/// for one ~445MB encoder taking ~20x longer — the ratio is trained on the
+/// wrong distribution, the floor becomes the sole trigger, and every fire is
+/// a false positive (126/126 in production, #1388). Callers watching such a
+/// stream pass `postSignalSilenceGateEnabled: false` and keep only gate (A):
+/// the pre-first-signal / single-signal listing deadline, which detects "the
+/// service reported nothing whatsoever" — a real, unambiguous condition.
 ///
 /// Concurrency
 /// ===========
@@ -70,11 +74,16 @@ public final class LoadProgressWatcher {
   private var maxGapSeconds: TimeInterval = 0
   private var signalCount: Int = 0
   private var fired = false
-  /// #1405: true while the last observed tick was an ACTIVE download phase, so
-  /// the next non-download tick can reset the attempt once at the
-  /// download->load boundary (clean load slate, deadline counts from there).
-  private var wasInDownloadPhase = false
   private var continuation: CheckedContinuation<Void, Never>?
+
+  /// #1388: install-phase observation (telemetry ONLY — no gate reads these).
+  /// Tracks when the injected `installPhase` first/last produced a signal and
+  /// the longest gap between its signals, so the warm-up success event can
+  /// record the true install duration and its longest internal silence —
+  /// the distribution gate (B) used to truncate at 15s.
+  private var installFirstSignalAt: TimeInterval?
+  private var installLastSignalAt: TimeInterval?
+  private var installMaxGapSeconds: TimeInterval = 0
   /// Require two observed progress signals before ratio-based silence can fire.
   /// This keeps the 800ms floor from becoming a standalone timeout after only
   /// one lifecycle tick. XPC lifecycle operations keep this safer default:
@@ -110,13 +119,34 @@ public final class LoadProgressWatcher {
   private let listingPhase: String?
   private let listingStallDeadlineSeconds: TimeInterval?
 
-  /// #1405: phases whose stall detection the DOWNLOADER owns (via its request
-  /// idle timeout), NOT this load-watchdog. While the observed phase is in this
-  /// set the watcher stays parked — it never fires and keeps its attempt
-  /// baseline fresh, so load-stall detection starts clean at the
-  /// download->load transition. Empty (default) preserves the pure-load
-  /// behavior for callers that never watch a download.
+  /// #1388: whether the post-signal silence gates (gate B — the floor + ratio
+  /// evaluation) run at all. Default `true` preserves the XPC-operation
+  /// watcher's behavior byte-for-byte. The model-load guard passes `false`:
+  /// its signal is a heterogeneous work-progress stream where the
+  /// self-calibration premise fails (see the header), so it keeps only
+  /// gate (A) — the pre-first-signal / single-signal listing deadline.
+  private let postSignalSilenceGateEnabled: Bool
+
+  /// #1388: the exact phase string of the CoreML install ("compiling") phase,
+  /// for the install observation above. Observation only — never a gate input.
+  private let installPhase: String?
+
+  /// #1405 (retained through #1388 — Codex r2 P1): phases OWNED by the
+  /// download fetcher, whose own request idle timeout is the stall authority.
+  /// While the observed phase is in this set (with a FRESH signal), the
+  /// watcher is parked — it never fires and does not accumulate load-attempt
+  /// state; the first non-download tick after a parked download RESETS the
+  /// attempt so gate (A)'s pre-first-signal deadline counts from the
+  /// download→load boundary. #1388's first cut deleted this with gate (B),
+  /// which silently blinded gate (A) on fresh installs: download ticks
+  /// counted as load signals, so a service that hung before its first LOAD
+  /// signal was undetectable. Parking protects gate (A), not just gate (B).
   private let downloadOwnedPhases: Set<String>
+
+  /// #1405: true while the last observed tick was an ACTIVE download phase, so
+  /// the next non-download tick can reset the attempt once at the
+  /// download→load boundary (clean load slate, deadline counts from there).
+  private var wasInDownloadPhase = false
 
   public init(
     currentTime: @escaping @MainActor () -> TimeInterval = {
@@ -126,6 +156,8 @@ public final class LoadProgressWatcher {
     listingPhase: String? = nil,
     listingStallDeadlineSeconds: TimeInterval? = nil,
     silenceFloorSeconds: TimeInterval = 0.8,
+    postSignalSilenceGateEnabled: Bool = true,
+    installPhase: String? = nil,
     downloadOwnedPhases: Set<String> = []
   ) {
     self.currentTime = currentTime
@@ -133,6 +165,8 @@ public final class LoadProgressWatcher {
     self.listingPhase = listingPhase
     self.listingStallDeadlineSeconds = listingStallDeadlineSeconds
     self.floorSeconds = silenceFloorSeconds
+    self.postSignalSilenceGateEnabled = postSignalSilenceGateEnabled
+    self.installPhase = installPhase
     self.downloadOwnedPhases = downloadOwnedPhases
   }
 
@@ -147,6 +181,9 @@ public final class LoadProgressWatcher {
     maxGapSeconds = 0
     signalCount = 0
     fired = false
+    installFirstSignalAt = nil
+    installLastSignalAt = nil
+    installMaxGapSeconds = 0
     wasInDownloadPhase = false
     // continuation intentionally left untouched: a prior consumer may still be
     // awaiting wedged() and must be resumed by the caller before start().
@@ -188,11 +225,12 @@ public final class LoadProgressWatcher {
       return
     }
 
-    // download -> load transition: the first non-download tick after a parked
+    // download → load transition: the first non-download tick after a parked
     // download starts the LOAD attempt fresh. This gives load-stall detection a
     // clean slate (the long download does not bleed into its gates) and makes
     // the pre-first-signal deadline count from HERE — so a load that wedges
-    // without ever writing progress after the download is still recovered.
+    // without ever writing progress after the download is still recovered
+    // (gate A; Codex r2 P1 on #1388).
     if wasInDownloadPhase {
       wasInDownloadPhase = false
       attemptStartedAt = now
@@ -200,6 +238,9 @@ public final class LoadProgressWatcher {
       lastSignalAt = nil
       maxGapSeconds = 0
       signalCount = 0
+      installFirstSignalAt = nil
+      installLastSignalAt = nil
+      installMaxGapSeconds = 0
       lastObservedMtime = observedMtime
       lastObservedPhase = observedPhase
       return
@@ -218,6 +259,15 @@ public final class LoadProgressWatcher {
       lastObservedMtime = mtime
       lastObservedPhase = observedPhase
       signalCount += 1
+      // #1388: install-phase observation (telemetry only, never a gate input).
+      if let install = installPhase, observedPhase == install {
+        if let last = installLastSignalAt {
+          let gap = now - last
+          if gap > installMaxGapSeconds { installMaxGapSeconds = gap }
+        }
+        if installFirstSignalAt == nil { installFirstSignalAt = now }
+        installLastSignalAt = now
+      }
       return
     }
 
@@ -248,6 +298,15 @@ public final class LoadProgressWatcher {
       fire()
       return
     }
+    // #1388: everything below is gate (B) — the post-signal silence
+    // evaluation. Disabled for the model-load guard (heterogeneous work
+    // units break the self-calibration premise; see the header). Gate (A)
+    // above remains that caller's only detector, so a load that goes quiet
+    // AFTER its first signal, with the service alive, is deliberately no
+    // longer auto-detected — the user-facing control for a long wait is
+    // Cancel, and the install telemetry now records the real distribution.
+    guard postSignalSilenceGateEnabled else { return }
+
     // Codex finding (2026-05-07): require at least one observed inter-signal
     // gap before the ratio gate is meaningful. With only one signal observed,
     // `maxGapSeconds == 0` and the threshold collapses to the floor alone —
@@ -316,6 +375,22 @@ public final class LoadProgressWatcher {
   // periphery:ignore - test seam
   public var hasFired: Bool { fired }
 
+  /// #1388: the install-phase observation for the warm-up success telemetry.
+  /// `nil` until the injected `installPhase` produced at least one signal.
+  /// `silenceMaxMs` is tail-inclusive — the longest silence is often BETWEEN
+  /// the last install tick and completion (the large encoder is the final
+  /// work unit and emits nothing after), so the gap from the last install
+  /// signal to the read time competes with the observed inter-signal max.
+  /// Read at warm-up completion; reading later would overstate the tail.
+  public var installObservation: InstallPhaseObservation? {
+    guard let first = installFirstSignalAt, let last = installLastSignalAt else { return nil }
+    let now = currentTime()
+    return InstallPhaseObservation(
+      durationMs: Int((now - first) * 1000),
+      silenceMaxMs: Int(max(installMaxGapSeconds, now - last) * 1000)
+    )
+  }
+
   /// Snapshot of the watcher's per-attempt state. Used by the pipeline to
   /// stamp the `wedge_detected` telemetry payload with diagnostic context.
   public var snapshot: WatcherSnapshot {
@@ -363,6 +438,35 @@ public enum ModelLoadStallPolicy {
   /// can never drift on the literal.
   public static let downloadingPhase = "Downloading speech model..."
 
+  /// The exact phase string the delivery layer writes while validating an
+  /// existing cache (`.preparing(validating: true)`), and while SHA-verifying
+  /// a completed download (`.verifying`). #1388 (Codex r4): these are
+  /// delivery-owned work like the download — their ticks must PARK the
+  /// sessionless wedge guard, not count as load signals, or a service that
+  /// hangs after `.admitted` clears the file is undetectable on the
+  /// cache/validation path (no download phase ever ran to trigger the
+  /// boundary reset). Local hashing has no watchdog of its own — a hang
+  /// inside these phases is accepted-undetected (disk-level pathology; the
+  /// removed gate (B) only ever covered it by accident), and gate (A)
+  /// re-arms at the boundary reset the moment the phase moves on.
+  public static let validatingCachePhase = "Checking speech model files..."
+  public static let verifyingDownloadPhase = "Verifying download..."
+
+  /// Every delivery-owned phase the sessionless wedge guard parks on. The
+  /// listing phase is deliberately NOT here: gate (A)'s single-signal listing
+  /// deadline exists precisely to judge a hanging listing (#1339).
+  public static var deliveryParkedPhases: Set<String> {
+    [downloadingPhase, validatingCachePhase, verifyingDownloadPhase]
+  }
+
+  /// The exact phase string the XPC service writes while CoreML compiles the
+  /// downloaded model (the "install" the onboarding checklist shows).
+  /// #1388: the watcher's install OBSERVATION keys on this token to record
+  /// install duration + longest internal silence on the warm-up success
+  /// event. Observation only — no gate reads it. Single authority with the
+  /// phase writer (`ParakeetBackend`).
+  public static let installPhase = "Installing model..."
+
   /// PROVISIONAL listing-stall deadline (plan §3a, issue #1339): fires only
   /// on ABSENCE of progress in the listing window (one signal then silence,
   /// or no signal at all) — never on a progressing transfer. Defended by
@@ -370,16 +474,25 @@ public enum ModelLoadStallPolicy {
   /// abandonment floor observed in production is 7 minutes (420s). Tuned
   /// post-ship via the `model_download.listing_ms` probe; source-aware
   /// deadlines (our-copy ~8-10s) arrive with the mirror-first source work.
+  ///
+  /// #1388 removed `transferSilenceFloorSeconds` (the 15s gate-B floor): the
+  /// post-signal silence gate no longer runs on the model-load path at all,
+  /// so the constant lost its only consumer. This deadline is the surviving
+  /// duration dial.
   public static let listingStallDeadlineSeconds: TimeInterval = 120
+}
 
-  /// Minimum mid-stream silence before a download-watching ratio gate may
-  /// fire. Defended by the 2026-07-05 Live UAT drill (#1339): a COLD edge
-  /// read of the 445MB encoder object produced a legitimate multi-second
-  /// first-byte gap, and the 0.8s XPC-beat floor let a ~2.5s ratio threshold
-  /// kill a healthy fresh-install download. 15s comfortably clears observed
-  /// cold-TTFB (~3-5s) while still surfacing a genuinely dead mid-stream
-  /// transfer fast. PROVISIONAL — tuned post-ship from download telemetry.
-  public static let transferSilenceFloorSeconds: TimeInterval = 15
+/// #1388: install-phase observation captured by `LoadProgressWatcher` for the
+/// warm-up success telemetry (`install_duration_ms` / `install_silence_max_ms`
+/// on `coldstart.warmup_completed`). Pure observation — nothing gates on it.
+public struct InstallPhaseObservation: Sendable {
+  public let durationMs: Int
+  public let silenceMaxMs: Int
+
+  public init(durationMs: Int, silenceMaxMs: Int) {
+    self.durationMs = durationMs
+    self.silenceMaxMs = silenceMaxMs
+  }
 }
 
 /// Diagnostic snapshot of a `LoadProgressWatcher`'s per-attempt state.

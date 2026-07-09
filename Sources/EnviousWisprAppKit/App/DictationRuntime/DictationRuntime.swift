@@ -203,4 +203,13 @@ final class DictationRuntime {
   func ensureActiveEngineWarmForOnboarding() async -> EngineWarmupOutcome {
     await starter.activeDriver.ensureEngineWarm(reason: .onboarding)
   }
+
+  /// #1388 step 3 — the onboarding install Cancel button's seam. Cancels the
+  /// in-flight warm-up load; the awaiting `ensureEngineWarm` resolves as
+  /// `.cancelled` (never a failure), and onboarding renders the calm
+  /// "Try setup again" state. Safe against a just-completed load — the
+  /// adapter's in-flight gate makes it a no-op then.
+  func cancelActiveEngineWarmupForOnboarding() async {
+    await starter.activeDriver.cancelSessionlessWarmup()
+  }
 }

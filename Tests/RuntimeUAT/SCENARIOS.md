@@ -130,6 +130,13 @@ Arm `force_audio_wedge_start(1)` while idle, then press record. The next START o
 
 **Negative control:** arm `force_audio_wedge_start(2)` — the retry wedges too, exhausting the single-retry budget; the press fails with today's error UX and app.log shows `outcome=exhausted`. (Equivalently: remove the `withStartRetry` catch in `AudioCaptureProxy`.)
 
+### A11_asr_kill_mid_model_load (Lane A — model-load, #1388)
+Backends: parakeet. Budget: 30s. Mechanism: model-load.
+
+Kill the ASR XPC connection while the model is LOADING — not mid-stream (A3's shape) and not a user cancel (A8a's shape). Sequence: `force_xpc_kill` drops the resident model; a record press then drives the cold sessionless warm-up (`ensureEngineWarm(.coldPress)`) with a real in-flight `loadModel`; a second `force_xpc_kill` lands ~0.4s into it. The #1388 step-1 contract requires the invalidation handler to resume the pending load continuation with the typed transport error, so the warm-up reaches a terminal outcome and the adapter's one-shot transport retry reconnects to the respawned helper. Verdict: pipeline reaches a terminal token, no helper leak, the recovery dictation PASSES, and the wedge guard did NOT fire (`wedge_guard_fired == False` — the kill produces a typed error, not a detector-owned silence).
+
+**Negative control:** remove the `pendingLoadCompletion` resume from `ASRManagerProxy`'s invalidation handler — the warm-up await hangs, `isLoadInFlight` never clears, readiness pins at `warming`, and every subsequent press is blocked (the recovery dictation fails). This is precisely the pre-#1388 production defect (119 of 126 wedge fires with no terminal outcome).
+
 ### B1_bluetooth_route_flip (Lane B — bt-route, founder-required)
 Backends: both. Budget: 15s. Mechanism: bt-route.
 
