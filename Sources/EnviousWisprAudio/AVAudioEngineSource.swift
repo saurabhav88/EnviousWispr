@@ -274,13 +274,18 @@ final class AVAudioEngineSource: AudioInputSource {
     btCrashLogger.info("Engine started successfully")
 
     // Install pre-roll tap immediately after engine start.
-    // Format is stable for built-in mic (BT uses AVCaptureSessionSource).
     // The tap routes through a PreRollForwarder that buffers audio until
     // startCapture() activates live forwarding.
+    //
+    // Read the hardware format, not `outputFormat`. `setInputDevice` above binds
+    // a device onto the input node's audio unit; after that bind `outputFormat`
+    // keeps reporting the pre-bind rate while `inputFormat` tracks the device.
+    // `installTap` asserts `format.sampleRate == inputHWFormat.sampleRate` and
+    // raises an uncatchable ObjC exception on mismatch, aborting this helper.
     let tapStart = ContinuousClock.now
     onLifecycleSignal?("engine_preroll_tap_entered")
     let inputNode = engine.inputNode
-    let inputFormat = inputNode.outputFormat(forBus: 0)
+    let inputFormat = inputNode.inputFormat(forBus: 0)
 
     guard
       let targetFormat = AVAudioFormat(
@@ -641,7 +646,10 @@ final class AVAudioEngineSource: AudioInputSource {
 
     do {
       let inputNode = engine.inputNode
-      let inputFormat = inputNode.outputFormat(forBus: 0)
+      // Hardware format, not `outputFormat` — recovery never re-binds the device,
+      // so the bind from `prepare()` still holds and `outputFormat` is still stale.
+      // Same `installTap` assertion applies here. See the tap site in `prepare()`.
+      let inputFormat = inputNode.inputFormat(forBus: 0)
 
       guard
         let targetFormat = AVAudioFormat(

@@ -26,6 +26,18 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.3.2
+
+    Entry(
+      id: "chosen-microphone-recording-failure",
+      icon: "mic.circle",
+      title: "Fixed: recording could fail every time on a specific microphone",
+      description:
+        "If you picked a microphone by name instead of leaving it on Automatic, and that microphone was running at a sample rate other than the usual one, EnviousWispr could fail to record with the message \"XPC audio service is unreachable.\" It did not clear up on its own, and reinstalling or updating the app did not help, because the setting that caused it lives in macOS rather than in EnviousWispr. The app now reads the microphone's real settings before it starts listening, so recording works whatever rate your microphone is set to. If you have been stuck on this, updating is enough to fix it.",
+      category: .fasterAndMoreReliable,
+      version: "2.3.2"
+    ),
+
     // MARK: - v2.3.1
 
     Entry(
