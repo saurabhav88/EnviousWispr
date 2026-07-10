@@ -328,14 +328,15 @@ public enum TailBenchmarkHarness {
   /// prompt, run once more over the now-complete audio. Text before the buffer
   /// (`scrolledOutText`) is kept verbatim; the decode's output replaces the
   /// in-buffer committed + retained hypothesis (single decode, no stitching).
-  private static func armS5(model: TailBenchmarkModel, id: String, snap: BenchmarkSnapshot)
+  static func armS5(model: TailBenchmarkModel, id: String, snap: BenchmarkSnapshot)
     async -> TailArmOutput
   {
     let start = CFAbsoluteTimeGetCurrent()
     var opts = model.baseOptions
     opts.clipTimestamps = [snap.bufferStartSec]
     opts.windowClipTime = 0
-    if !snap.scrolledOutText.isEmpty {
+    opts.promptTokens = nil
+    if model.conditionOnPriorText, !snap.scrolledOutText.isEmpty {
       opts.promptTokens = model.kit.encodeText(
         WhisperKitStreamingSession.promptSuffix(of: snap.scrolledOutText))
     }

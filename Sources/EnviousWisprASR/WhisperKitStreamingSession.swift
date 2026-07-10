@@ -199,9 +199,9 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   /// `DecodingOptions.promptTokens` (`condition_on_previous_text`). In UFAL
   /// buffer mode only text scrolled OUT of the window is eligible. #1276
   /// investigation: decoding a tail BLIND (no prior-text context) is the cause
-  /// of the trailing "thank you" hallucination. ON in the shipped construction
-  /// (`WhisperKitBackend.makeStreamingSession`); the parameter default stays
-  /// OFF so tests and callers opt in explicitly.
+  /// of the trailing "thank you" hallucination. OFF in the shipped construction
+  /// (`WhisperKitBackend.makeStreamingSession`) after the model benchmark found
+  /// it wedge-prone; the parameter default also stays OFF.
   private let conditionOnPriorText: Bool
 
   /// When true, confirmation runs the UFAL whisper_streaming architecture
