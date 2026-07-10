@@ -100,8 +100,8 @@ Read this once before the detail sections below. The detail sections are the law
 0. Fetch git tags.
 0.5. Load `CLOSED_RECENT`: 20 most-recently-closed `sentry-triage` issues from last 90d.
 1. Sentry queries — TWO calls:
-    1a. `is:unresolved sort=date limit=50` (recent activity sweep).
-    1b. For EACH shortId in `CLOSED_RECENT` not already in 1a's results, a per-shortId Sentry query (regression watch — covers cold issues that won't appear in the top 50).
+    1a. `is:unresolved issue.category:error sort=date limit=50` (recent activity sweep; the category predicate excludes our own metric alarms so they are never ticketed — #1470).
+    1b. For EACH shortId in `CLOSED_RECENT` not already in 1a's results, a per-shortId Sentry query with the same `issue.category:error` predicate (regression watch — covers cold issues that won't appear in the top 50).
     Filter 1a by `lastSeen` within 25h. 1b is unconditional (no time filter).
 2. For each Sentry issue, search GitHub by `sentry-issue-id {shortId}`. Route:
     - No GitHub issue and no cross-reference hit (Step 2.6) → **Path A**, which now runs the **Step 6.5 create-path eligibility gate** before creating (dev-only self-healed → digest, deliberate fault-injection → suppress, real signal / untagged dev fatal / unclassifiable → create).
@@ -231,7 +231,7 @@ GitHub is the source of truth for open/closed status. We query `is:unresolved` i
 
 ```bash
 RESPONSE=$(curl -s -w '\n%{http_code}' -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
-  "https://us.sentry.io/api/0/projects/envious-labs-llc/enviouswispr/issues/?query=is:unresolved&sort=date&limit=50")
+  "https://us.sentry.io/api/0/projects/envious-labs-llc/enviouswispr/issues/?query=is%3Aunresolved%20issue.category%3Aerror&sort=date&limit=50")
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 BODY=$(echo "$RESPONSE" | sed '$d')
 if [ "$HTTP_CODE" != "200" ]; then
@@ -263,12 +263,12 @@ For EACH shortId in `CLOSED_RECENT` (Step 0.5) that is NOT in `RECENT_SHORT_IDS`
 
 ```bash
 RESPONSE=$(curl -s -w '\n%{http_code}' -G -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
-  --data-urlencode "query=is:unresolved ${shortId}" \
+  --data-urlencode "query=is:unresolved issue.category:error ${shortId}" \
   --data-urlencode "limit=1" \
   "https://us.sentry.io/api/0/projects/envious-labs-llc/enviouswispr/issues/")
 ```
 
-(Sentry's `query=` accepts a bare shortId token; the response is the matching issue if it's currently unresolved, empty array otherwise.)
+(Sentry's `query=` accepts a bare shortId token; the response is the matching issue if it's currently unresolved AND in the error category, empty array otherwise. The `issue.category:error` predicate must match Step 1.a so an alarm ticket can never enter via the regression-watch path — #1470.)
 
 **Exact-match guard.** Sentry's bare-token query is fuzzy and may surface unrelated issues. After the response, iterate the array and KEEP only entries whose `shortId` field exactly equals the watched shortId (case-sensitive). If no entry exact-matches: log `Step 1.b: shortId X — no exact match in response (got [list of returned shortIds]). Skipping.` and move on. Do NOT append a near-match to `REGRESSION_HITS`.
 
@@ -702,5 +702,5 @@ If the throttle blocks (a `held` comment with identical metrics was posted in th
 - If GitHub MCP search is ambiguous (multiple matches for one Sentry shortId), do NOT create a duplicate. Log + skip THAT Sentry issue, continue to the next.
 - Process Sentry issues in ORDER RECEIVED from Step 1 (FIFO). Do not reorder by severity — that risks dropping lower-severity items if turn budget runs out, and the per-issue idempotency key prevents duplicate work on next tick.
 - Use exact label names listed above.
-- GitHub issue email notifications are the user's signal channel for P1/P2/P3. P0 paging is handled OUTSIDE this Routine via the Sentry Issue Alert → Discord rule. Do not attempt Discord or other webhooks from inside this Routine.
+- TIK never posts Discord. The event-driven Sentry-triage worker owns Discord notification for every severity; TIK owns Sentry-triage GitHub tickets (#1470). Do not attempt Discord or other webhooks from inside this Routine.
 - Per-run idempotency: branch-entry check only. The `WRITTEN_THIS_RUN` add happens at end of each path (Path A step 8, Path B end-of-comment, Path C step 6), NOT before each individual write within the path.

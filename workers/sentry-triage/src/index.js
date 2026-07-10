@@ -1,29 +1,53 @@
 /**
  * EnviousWispr Sentry Triage Worker
  *
- * Receives Sentry Internal Integration webhooks, verifies HMAC, classifies
- * severity, deduplicates via KV, and fires a Claude Code Routine for P0-P2 issues.
+ * Receives Sentry Internal Integration webhooks, verifies HMAC, and decides
+ * whether to buzz the founder on Discord for this issue. It NO LONGER wakes the
+ * daily TIK routine — TIK's single daily run is the sole normal writer of
+ * `sentry-triage` GitHub tickets (issue #1470). This worker is a binary
+ * post-or-suppress notifier: every Discord post buzzes the founder's phone
+ * equally; there are no loudness tiers and no role mention.
  *
- * Read-only pipeline: the downstream Routine creates/updates GitHub issues.
- * This Worker never touches GitHub directly (except the Discord alerts it posts
- * directly: P3 new-issue pings, the daily Routine cap alert, and Routine-fire
- * failures). Every Discord alert is enriched with a source label (#1229): a
- * best-effort fetch of the issue's latest Sentry event reads safe, already-scrubbed
- * metadata (category, stage, environment, build type, OS, device) and renders
- * whether the failure came from the founder's own test build or a real user.
- * Fails open to the basic embed on any fetch error — an alert is never lost.
+ * Policy is owned by one pure function, `decideNotification` (§3.1 rules 1-7 of
+ * the #1470 plan). `handleTriage` is orchestration only: parse, validate, gather
+ * typed lookups (Sentry events, open GitHub tickets, KV throttle), call the pure
+ * decision, post when told, and persist a successful-post timestamp. It contains
+ * no severity, known-ticket, or throttle branches of its own.
+ *
+ * The Discord embed is source-labeled (#1229): it reads already-scrubbed metadata
+ * (category, stage, environment, build type, OS, device) from the Sentry events we
+ * already fetched for scoring, so no extra subrequest is spent. It fails open to a
+ * basic embed when event data is unavailable — an alert is never lost.
  */
 
 const DISCORD_COLOR = { P0: 0xe74c3c, P1: 0xe67e22, P2: 0xf1c40f, P3: 0x95a5a6 };
 const SENTRY_ORG = "envious-labs-llc";
 const SENTRY_FETCH_TIMEOUT_MS = 5000;
+const GITHUB_FETCH_TIMEOUT_MS = 5000;
+const DISCORD_ATTEMPT_TIMEOUT_MS = 4000;
 const FIELD_MAX_CHARS = 200;
+
+// Background-operation deadlines (§3.3). Cloudflare cancels waitUntil ~30s after
+// the 202 response; we leave ~2s headroom for logging + KV cleanup.
+const LOOKUP_DEADLINE_MS = 20_000;
+const OPERATION_DEADLINE_MS = 28_000;
+
+// Per-invocation hard caps (§3.3): 10 Sentry pages + 5 GitHub pages + 2 Discord
+// attempts = 17 external subrequests, below the Workers Free limit of 50.
+const SENTRY_MAX_PAGES = 10;
+const SENTRY_PER_PAGE = 100;
+const GITHUB_MAX_PAGES = 5;
+const GITHUB_PER_PAGE = 100;
+
+const THROTTLE_HOURS = { P0: 0, P1: 6, P2: 24, P3: 24 };
+// Urgency rank: lower is more urgent. Used by rule 7's escalation comparison.
+const PRIORITY_RANK = { P0: 0, P1: 1, P2: 2, P3: 3 };
+const KV_TTL_SECONDS = 7776000; // 90 days
 
 // ── Entry point ──────────────────────────────────────────────────────────────
 
 export default {
   async fetch(request, env, ctx) {
-    // Only accept POST
     if (request.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
     }
@@ -38,7 +62,8 @@ export default {
       return new Response("Unauthorized", { status: 401 });
     }
 
-    // Return 202 immediately — Sentry retries if we take >10s
+    // Return 202 immediately — Sentry retries if we take >10s. All Sentry/GitHub/
+    // Discord I/O happens in the background, so it never touches Sentry's budget.
     ctx.waitUntil(handleTriage(body, env));
     return new Response("Accepted", { status: 202 });
   },
@@ -59,19 +84,13 @@ async function verifyHmac(body, sigHeader, secret) {
       ["sign"]
     );
 
-    const signatureBuffer = await crypto.subtle.sign(
-      "HMAC",
-      key,
-      encoder.encode(body)
-    );
+    const signatureBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
 
-    // Convert computed signature to hex
     const computedHex = Array.from(new Uint8Array(signatureBuffer))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
 
-    // Constant-time comparison — avoids timing side-channels without relying
-    // on any runtime-specific API. XOR each byte and OR-accumulate: diff===0 iff equal.
+    // Constant-time comparison — XOR each byte and OR-accumulate: diff===0 iff equal.
     const computedBytes = encoder.encode(computedHex);
     const receivedBytes = encoder.encode(sigHeader);
 
@@ -88,7 +107,7 @@ async function verifyHmac(body, sigHeader, secret) {
   }
 }
 
-// ── Main triage handler ───────────────────────────────────────────────────────
+// ── Main triage handler (orchestration only) ───────────────────────────────────
 
 async function handleTriage(body, env) {
   let payload;
@@ -99,7 +118,14 @@ async function handleTriage(body, env) {
     return;
   }
 
-  // Replay protection: reject signatures seen in last 90 min
+  const startedAt = Date.now();
+  const lookupDeadlineAt = startedAt + LOOKUP_DEADLINE_MS;
+  const operationDeadlineAt = startedAt + OPERATION_DEADLINE_MS;
+
+  // Replay protection: reject bodies seen in the last 90 min. Written before the
+  // background I/O, so a cancelled/failed delivery may leave replay:{hash} set for
+  // its TTL with no notification — an exact re-delivery is suppressed up to 90 min,
+  // but a later lifecycle webhook has a different body/hash and stays eligible (§8).
   const sigHash = await hashString(body);
   const replayKey = `replay:${sigHash}`;
   const seen = await env.SENTRY_DEDUP.get(replayKey);
@@ -109,7 +135,7 @@ async function handleTriage(body, env) {
   }
   await env.SENTRY_DEDUP.put(replayKey, "1", { expirationTtl: 5400 }); // 90 min
 
-  // Validate payload shape — skip metric alerts (data.metric_alert) and malformed payloads
+  // Validate payload shape — skip metric alerts (no data.issue) and malformed payloads
   const issue = payload?.data?.issue;
   if (!issue) {
     console.log("[sentry-triage] No data.issue — skipping (metric alert or unknown type)");
@@ -118,15 +144,6 @@ async function handleTriage(body, env) {
 
   const action = payload.action ?? "";
   const issueId = issue.id ?? "";
-  const title = issue.title ?? "";
-  const culprit = issue.culprit ?? "";
-  const level = (issue.level ?? "").toLowerCase();
-  const userCount = parseInt(issue.userCount, 10) || 0;
-  const timesSeen = parseInt(issue.count, 10) || 0; // count is a string in Sentry payloads
-  const substatus = issue.substatus ?? "";
-  const permalink = issue.permalink ?? issue.web_url ?? "";
-  const release = issue.release ?? null;
-
   if (!issueId) {
     console.error("[sentry-triage] Missing issue ID, skipping");
     return;
@@ -134,15 +151,15 @@ async function handleTriage(body, env) {
 
   const kvKey = `sentry:${issueId}`;
 
-  // Handle terminal actions — update KV state and exit without firing Routine
+  // Terminal actions are handled before any network lookup. Deleting the throttle
+  // key ensures a later regression does not inherit a stale notification throttle.
   if (action === "resolved" || action === "archived") {
-    // 90-day TTL — same as fired state, prevents unbounded KV growth.
-    await env.SENTRY_DEDUP.put(
-      kvKey,
-      JSON.stringify({ state: "resolved", updatedAt: Date.now() }),
-      { expirationTtl: 7776000 } // 90 days
-    );
-    console.log(`[sentry-triage] Issue ${issueId} ${action} — KV updated, no Routine`);
+    try {
+      await env.SENTRY_DEDUP.delete(kvKey);
+    } catch (err) {
+      console.error(`[sentry-triage] KV delete failed for ${issueId}:`, err.message);
+    }
+    console.log(`[sentry-triage] Issue ${issueId} ${action} — throttle cleared, no post`);
     return;
   }
 
@@ -151,260 +168,564 @@ async function handleTriage(body, env) {
     return;
   }
 
-  // Filter: only error/fatal level
-  if (level !== "error" && level !== "fatal") {
-    console.log(`[sentry-triage] Issue ${issueId} level=${level} — skipping`);
-    return;
-  }
+  // Gather typed lookups. The Sentry-event and GitHub-ticket reads are independent,
+  // so run them CONCURRENTLY on the shared lookup deadline — otherwise slow Sentry
+  // pagination could consume the whole budget and starve the ticket check, forcing a
+  // fail-open buzz for an issue that already has an open ticket. Each fails open to a
+  // degraded status rather than throwing.
+  const shortId = typeof issue.shortId === "string" ? issue.shortId : null;
+  const [eventLookup, ticketLookup] = await Promise.all([
+    fetchEventPartition(issueId, env, lookupDeadlineAt),
+    fetchTicketLookup(shortId, env, lookupDeadlineAt),
+  ]);
+  const throttleLookup = await readThrottle(env, kvKey);
 
-  // Determine intent from action + substatus
-  let intent;
-  if (action === "created") {
-    intent = "new";
-  } else if (action === "unresolved" && substatus === "regressed") {
-    intent = "regression";
-  } else if (action === "unresolved") {
-    intent = "update";
-  } else {
-    console.log(`[sentry-triage] Unknown action=${action}, substatus=${substatus} — skipping`);
-    return;
-  }
+  const now = Date.now();
+  const decision = decideNotification({
+    action,
+    issue,
+    eventLookup,
+    ticketLookup,
+    throttleLookup,
+    now,
+  });
 
-  // Classify severity
-  const { priority, label } = classifySeverity(userCount, timesSeen, level);
-
-  // KV dedup check
-  const existing = await env.SENTRY_DEDUP.get(kvKey);
-  const kvData = existing ? JSON.parse(existing) : null;
-
-  if (kvData) {
-    const state = kvData.state ?? "unknown";
-    const lastCommentAt = kvData.lastCommentAt ?? 0;
-    const hoursSinceComment = (Date.now() - lastCommentAt) / 3600000;
-
-    if (state === "pending" && Date.now() - (kvData.firedAt ?? 0) < 600000) {
-      // Routine already in-flight (within 10 min window) — skip to avoid double-fire
-      console.log(`[sentry-triage] Issue ${issueId} Routine in-flight, skipping`);
-      return;
-    }
-
-    if (state !== "resolved") {
-      if (intent === "regression") {
-        // Always fire on regression regardless of rate limit
-        console.log(`[sentry-triage] Regression detected for ${issueId}`);
-      } else if (priority === "P0" || priority === "P1") {
-        // P0/P1 override 24h rate limit
-        console.log(`[sentry-triage] ${priority} override for ${issueId}`);
-      } else if (priority === "P2" && hoursSinceComment < 24) {
-        console.log(`[sentry-triage] P2 rate-limited for ${issueId} (${hoursSinceComment.toFixed(1)}h since last comment)`);
-        return;
-      }
-    }
-  }
-
-  // P3: Discord ping only, no Routine
-  if (priority === "P3") {
-    const embed = await buildSourceLabeledEmbed({
-      issueId, title, permalink, timesSeen, userCount, priority, env,
-    });
-    await postDiscord(env.DISCORD_WEBHOOK_URL, embed);
-    console.log(`[sentry-triage] P3 issue ${issueId} - Discord ping only`);
-    return;
-  }
-
-  // Check daily Routine cap
-  const today = new Date().toISOString().slice(0, 10);
-  const capKey = `routines:fired:${today}`;
-  // Non-atomic read/modify/write: two concurrent Workers can both read capCount=12,
-  // both pass the gate, and overwrite each other's increment. CF KV has no CAS.
-  // Accepted: solo app, low volume, max over-fire bounded by per-colo concurrency.
-  // P0 always bypasses the cap anyway, so worst case is a few extra P1/P2 Routines.
-  const capRaw = await env.SENTRY_DEDUP.get(capKey);
-  const capCount = parseInt(capRaw ?? "0", 10);
-
-  if (capCount >= 13 && priority !== "P0") {
-    // Cap at 13 to leave 2 headroom. P0 always bypasses — a critical crash at 11pm
-    // should never be silently dropped because the day was busy.
-    console.warn(`[sentry-triage] Daily Routine count at ${capCount}/15 - blocking ${priority}, posting Discord alert`);
-    const sourceLabel = await fetchSourceLabel(issueId, env);
-    await postDiscord(
-      env.DISCORD_WEBHOOK_URL,
-      buildCapAlertEmbed(capCount, issueId, title, permalink, sourceLabel)
+  if (!decision.post) {
+    console.log(
+      `[sentry-triage] Issue ${issueId} suppressed (${decision.reason}, ${decision.priority ?? "n/a"})`
     );
     return;
   }
 
-  // Write pending state before firing (self-healing TTL of 10 min in case Routine never responds)
-  await env.SENTRY_DEDUP.put(
-    kvKey,
-    JSON.stringify({ state: "pending", intent, firedAt: Date.now(), priority }),
-    { expirationTtl: 600 } // 10 min TTL — overwritten with permanent entry on success
+  const title = issue.title ?? "";
+  const permalink = issue.permalink ?? issue.web_url ?? "";
+  const userCount = parseInt(issue.userCount, 10) || 0;
+  const timesSeen = parseInt(issue.count, 10) || 0;
+
+  const embed = buildEmbedFromLookup(eventLookup, {
+    issueId,
+    title,
+    permalink,
+    timesSeen,
+    userCount,
+    priority: decision.priority,
+  });
+
+  const result = await postDiscord(env.DISCORD_WEBHOOK_URL, embed, {
+    issueId,
+    deadlineAt: operationDeadlineAt,
+  });
+
+  if (!result.ok) {
+    // postDiscord already emitted the structured discord_delivery_failed record.
+    // Do NOT claim a post here, and do NOT write a throttle — a failed delivery
+    // leaves the fingerprint eligible for the next webhook.
+    console.warn(
+      `[sentry-triage] Issue ${issueId} NOT delivered after ${result.attempts} attempt(s), no throttle written (${decision.priority}, ${decision.reason})`
+    );
+    return;
+  }
+
+  // Transport-commit invariant: write the throttle ONLY after confirmed delivery
+  // AND only when the priority carries a throttle window. P0 (throttleHours:0) never
+  // writes, so a second P0 stays eligible.
+  if (decision.throttleHours > 0) {
+    try {
+      await env.SENTRY_DEDUP.put(
+        kvKey,
+        JSON.stringify({ lastNotifiedAt: now, priority: decision.priority }),
+        { expirationTtl: KV_TTL_SECONDS }
+      );
+    } catch (err) {
+      console.error(`[sentry-triage] Throttle write failed for ${issueId}:`, err.message);
+    }
+  }
+
+  console.log(
+    `[sentry-triage] Issue ${issueId} posted (${decision.priority}, ${decision.countSource}, ${decision.reason})`
+  );
+}
+
+// ── Notification policy: the single pure owner (§3.1 rules 1-7) ─────────────────
+
+/**
+ * Binary post/suppress decision. No loudness — every post buzzes equally.
+ * `priority` sets the throttle window and message text but never gates the post.
+ *
+ * Returns { post, priority, throttleHours, reason, countSource }.
+ * Suppression (post:false) occurs on exactly: rule 1 (not an eligible error),
+ * rule 5 (already ticketed), or rule 7 (active throttle). Everything else posts.
+ */
+export function decideNotification({ action, issue, eventLookup, ticketLookup, throttleLookup, now }) {
+  const level = (issue?.level ?? "").toLowerCase();
+
+  // Rule 1 — eligibility. Unsupported action or a non-error level suppresses.
+  const supportedAction = action === "created" || action === "unresolved";
+  if (!supportedAction || (level !== "error" && level !== "fatal")) {
+    return { post: false, priority: null, throttleHours: 0, reason: "ineligible", countSource: "none" };
+  }
+
+  // Rules 2-4 — severity. Score from a trustworthy production event partition; on
+  // any degraded event data, fall open to the webhook-derived display priority.
+  let priority;
+  let countSource;
+  const scored = scoreFromEvents(eventLookup);
+  if (scored) {
+    priority = classifySeverity(scored.users, scored.occurrences, level);
+    countSource = "events";
+  } else {
+    const webhookUsers = parseInt(issue?.userCount, 10) || 0;
+    const webhookOccurrences = parseInt(issue?.count, 10) || 0;
+    priority = classifySeverity(webhookUsers, webhookOccurrences, level);
+    countSource = "webhook-fallback";
+  }
+
+  const throttleHours = THROTTLE_HOURS[priority];
+
+  // Rule 5 — already-ticketed suppression. Only a COMPLETE lookup with an exact
+  // open marker suppresses; incomplete/unavailable is unconfirmed-known → post.
+  if (ticketLookup?.status === "complete" && ticketLookup.openExactMarker === true) {
+    return { post: false, priority, throttleHours, reason: "already-ticketed", countSource };
+  }
+
+  // Rule 6 — throttle read failure fails open: never let it suppress.
+  if (throttleLookup?.status !== "complete") {
+    return { post: true, priority, throttleHours, reason: "throttle-unavailable-failopen", countSource };
+  }
+
+  // Rule 7 — throttle bypass vs active window.
+  const stored = throttleLookup.value; // null or { lastNotifiedAt, priority }
+  const isP0 = priority === "P0";
+  // Only a genuine REGRESSION (Sentry auto-reopened the issue because it recurred)
+  // bypasses an active throttle. A bare "unresolved" (a manual reopen/unmute) is
+  // eligible but still respects the throttle, so a flapping state cannot re-buzz.
+  const isRegression = action === "unresolved" && issue?.substatus === "regressed";
+  const escalates = stored != null && PRIORITY_RANK[priority] < PRIORITY_RANK[stored.priority];
+
+  if (isP0 || isRegression || escalates || stored == null) {
+    const reason = isP0
+      ? "p0-no-throttle"
+      : isRegression
+        ? "regression-bypass"
+        : escalates
+          ? "priority-escalation-bypass"
+          : "no-throttle";
+    return { post: true, priority, throttleHours, reason, countSource };
+  }
+
+  const elapsedMs = now - stored.lastNotifiedAt;
+  const windowMs = throttleHours * 3600_000;
+  if (elapsedMs < windowMs) {
+    return { post: false, priority, throttleHours, reason: "throttled", countSource };
+  }
+  return { post: true, priority, throttleHours, reason: "throttle-expired", countSource };
+}
+
+/**
+ * Score occurrence + distinct-user counts on the newest observed production
+ * release (§3.1 rule 2). Returns null when there is no trustworthy production
+ * partition — an incomplete/unavailable/malformed lookup, no production events,
+ * or no release that normalizes to a clean version — which routes to rule 4.
+ */
+export function scoreFromEvents(eventLookup) {
+  if (!eventLookup || eventLookup.status !== "complete") return null;
+  const events = Array.isArray(eventLookup.events) ? eventLookup.events : null;
+  if (!events || events.length === 0) return null;
+
+  // Keep production release builds only. Require buildType === "release" (not merely
+  // "not debug") so an event whose app.build_type tag is absent — older versions, an
+  // untagged process — is NOT silently trusted as a release; that matches how
+  // classifySource treats the same missing metadata as unknown. When no event clears
+  // this bar, scoreFromEvents returns null and severity falls open to webhook counts.
+  const production = events.filter(
+    (e) => e && e.environment === "production" && e.buildType === "release"
+  );
+  if (production.length === 0) return null;
+
+  const withRelease = production
+    .map((e) => ({ event: e, release: normalizeRelease(e.release) }))
+    .filter((r) => r.release !== null);
+  if (withRelease.length === 0) return null;
+
+  let newest = withRelease[0].release;
+  for (const r of withRelease) {
+    if (compareRelease(r.release, newest) > 0) newest = r.release;
+  }
+
+  const partition = withRelease.filter((r) => r.release.key === newest.key);
+  const occurrences = partition.length;
+  // Count each anonymous (null/empty user_id) event as its OWN user. EnviousWispr
+  // sets no Sentry user and sendDefaultPii=false, so many events carry no id; 10
+  // such events could be 10 distinct people, and under-scoring would hide a P0.
+  // Over-counting is the safe direction for severity — ports tik_eligibility.py
+  // `_distinct_users` (the reviewed precedent for the same data).
+  const knownUsers = new Set();
+  let anonymous = 0;
+  for (const r of partition) {
+    const id = r.event.userId;
+    if (id != null && id !== "") knownUsers.add(id);
+    else anonymous += 1;
+  }
+  const users = knownUsers.size + anonymous;
+  return { occurrences, users };
+}
+
+/** Strictly parse a Sentry release into a comparable semver key. Null if it does not parse. */
+export function normalizeRelease(release) {
+  if (typeof release !== "string") return null;
+  // Forms: "com.enviouswispr.app@2.3.1", "2.3.1", "2.3.1+build", "2.3.1-beta".
+  const at = release.lastIndexOf("@");
+  const versionPart = at >= 0 ? release.slice(at + 1) : release;
+  const m = versionPart.match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return null;
+  const tuple = [Number(m[1]), Number(m[2]), Number(m[3])];
+  return { key: `${tuple[0]}.${tuple[1]}.${tuple[2]}`, tuple };
+}
+
+function compareRelease(a, b) {
+  for (let i = 0; i < 3; i++) {
+    if (a.tuple[i] !== b.tuple[i]) return a.tuple[i] - b.tuple[i];
+  }
+  return 0;
+}
+
+/** Severity thresholds (§3.1 rule 3). Counts are release-scoped (scored) or webhook (fallback). */
+export function classifySeverity(userCount, timesSeen, level) {
+  if (level === "fatal" || userCount >= 10) return "P0";
+  if (userCount >= 3 || timesSeen >= 20) return "P1";
+  if (userCount >= 2 || timesSeen >= 5) return "P2";
+  return "P3";
+}
+
+// ── Data acquisition (§3.2) ─────────────────────────────────────────────────────
+
+/**
+ * Paginated compact event read. Never returns a partial list as complete: any
+ * failed page, malformed body, deadline expiry, or page-cap-with-more-pending
+ * returns an incomplete/malformed status so severity fails open (rule 4).
+ */
+async function fetchEventPartition(issueId, env, deadlineAt) {
+  const base =
+    `https://us.sentry.io/api/0/organizations/${SENTRY_ORG}/issues/${issueId}/events/` +
+    `?statsPeriod=90d&per_page=${SENTRY_PER_PAGE}`;
+  let url = base;
+  const events = [];
+
+  for (let page = 0; page < SENTRY_MAX_PAGES; page++) {
+    if (Date.now() >= deadlineAt) return { status: "incomplete" };
+
+    let res;
+    try {
+      res = await fetchBefore(
+        url,
+        { headers: { Authorization: `Bearer ${env.SENTRY_AUTH_TOKEN}` } },
+        deadlineAt,
+        SENTRY_FETCH_TIMEOUT_MS,
+        "sentry-events"
+      );
+    } catch {
+      return { status: "incomplete" };
+    }
+    if (!res.ok) return { status: "incomplete" };
+
+    let arr;
+    try {
+      arr = await res.json();
+    } catch {
+      return { status: "malformed" };
+    }
+    if (!Array.isArray(arr)) return { status: "malformed" };
+
+    for (const e of arr) events.push(extractEventRecord(e));
+
+    const next = parseNextCursor(res.headers.get("link"));
+    if (!next) return { status: "complete", events };
+    url = next;
+  }
+
+  // Reached the page cap with a next cursor still pending — not a complete partition.
+  return { status: "incomplete" };
+}
+
+/** Extract the fields §3.2 needs plus the safe metadata the embed renders. */
+export function extractEventRecord(event) {
+  const tags = Array.isArray(event?.tags) ? event.tags : [];
+  const tagValue = (key) => tags.find((t) => t?.key === key)?.value ?? null;
+
+  const releaseTag = tagValue("release");
+  const release =
+    releaseTag ??
+    (typeof event?.release === "string"
+      ? event.release
+      : typeof event?.release?.version === "string"
+        ? event.release.version
+        : null);
+
+  return {
+    release,
+    environment: tagValue("environment") ?? event?.environment ?? null,
+    buildType: tagValue("app.build_type"),
+    level: (tagValue("level") ?? event?.level ?? "").toLowerCase() || null,
+    userId: event?.user?.id ?? null,
+    category: tagValue("error.category"),
+    stage: tagValue("pipeline.stage"),
+    osVersion: event?.contexts?.os?.version ?? null,
+    deviceModel: event?.contexts?.device?.model ?? null,
+  };
+}
+
+/** Parse Sentry's RFC-5988 Link header, returning the next-page URL when more results exist. */
+export function parseNextCursor(linkHeader) {
+  if (!linkHeader) return null;
+  const parts = linkHeader.split(",");
+  for (const part of parts) {
+    if (/rel="next"/.test(part) && /results="true"/.test(part)) {
+      const m = part.match(/<([^>]+)>/);
+      if (m) return m[1];
+    }
+  }
+  return null;
+}
+
+/**
+ * Search open GitHub issues for an exact `<!-- sentry-issue-id: {shortId} -->`
+ * marker. A missing/invalid shortId, a failed page, or the page cap with results
+ * still pending returns unavailable/incomplete → rule 5 treats it as
+ * unconfirmed-known and posts (fail-open). Only a fully paged search with no
+ * match returns complete/openExactMarker:false.
+ */
+async function fetchTicketLookup(shortId, env, deadlineAt) {
+  if (!shortId) return { status: "unavailable" };
+
+  const repo = env.GITHUB_REPO;
+
+  for (let page = 1; page <= GITHUB_MAX_PAGES; page++) {
+    if (Date.now() >= deadlineAt) return { status: "incomplete" };
+
+    const url =
+      `https://api.github.com/repos/${repo}/issues` +
+      `?state=open&per_page=${GITHUB_PER_PAGE}&page=${page}`;
+
+    let res;
+    try {
+      res = await fetchBefore(
+        url,
+        {
+          headers: {
+            Authorization: `Bearer ${env.GITHUB_ISSUES_READ_TOKEN}`,
+            Accept: "application/vnd.github+json",
+            "User-Agent": "enviouswispr-sentry-triage",
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+        },
+        deadlineAt,
+        GITHUB_FETCH_TIMEOUT_MS,
+        "github-issues"
+      );
+    } catch {
+      return { status: "incomplete" };
+    }
+    if (!res.ok) return { status: "incomplete" };
+
+    let arr;
+    try {
+      arr = await res.json();
+    } catch {
+      return { status: "incomplete" };
+    }
+    if (!Array.isArray(arr)) return { status: "incomplete" };
+
+    if (pageHasExactTicket(arr, shortId)) return { status: "complete", openExactMarker: true };
+
+    // A short page is the last page: the search completed with no exact match.
+    if (arr.length < GITHUB_PER_PAGE) return { status: "complete", openExactMarker: false };
+  }
+
+  // Exhausted the page cap with a full final page — more may remain, so unconfirmed.
+  return { status: "incomplete" };
+}
+
+/**
+ * True if any real ISSUE on this page carries the exact
+ * `<!-- sentry-issue-id: {shortId} -->` marker. GitHub's Issues endpoint also
+ * returns pull requests (they have a `pull_request` field); a PR that copied the
+ * ticket template must NEVER count as an open ticket — that would falsely suppress
+ * a Discord post. A fuzzy body mention without the exact marker also does not count.
+ */
+export function pageHasExactTicket(issues, shortId) {
+  if (!Array.isArray(issues)) return false;
+  const marker = `<!-- sentry-issue-id: ${shortId} -->`;
+  for (const gh of issues) {
+    if (gh?.pull_request) continue; // a PR is never a triage ticket
+    const bodyText = typeof gh?.body === "string" ? gh.body : "";
+    if (bodyText.includes(marker)) return true;
+  }
+  return false;
+}
+
+/**
+ * Read the per-issue notification throttle. Returns typed status so rule 6 can
+ * fail open. A legacy record with no `lastNotifiedAt` normalizes to no throttle;
+ * any other malformed shape is reported as malformed (also fail-open).
+ */
+async function readThrottle(env, kvKey) {
+  let raw;
+  try {
+    raw = await env.SENTRY_DEDUP.get(kvKey);
+  } catch {
+    return { status: "unavailable" };
+  }
+  if (!raw) return { status: "complete", value: null };
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { status: "malformed" };
+  }
+  if (!parsed || typeof parsed !== "object") return { status: "malformed" };
+
+  // Legacy {state:pending|fired|resolved,...} records have no lastNotifiedAt →
+  // treat as no active throttle; never branch on the old `state` field.
+  if (!("lastNotifiedAt" in parsed)) return { status: "complete", value: null };
+
+  const { lastNotifiedAt, priority } = parsed;
+  if (
+    typeof lastNotifiedAt !== "number" ||
+    !Number.isFinite(lastNotifiedAt) ||
+    !["P0", "P1", "P2", "P3"].includes(priority)
+  ) {
+    return { status: "malformed" };
+  }
+  return { status: "complete", value: { lastNotifiedAt, priority } };
+}
+
+// ── Discord transport (§7 / r3 Edit 4) ──────────────────────────────────────────
+
+class DeadlineExceededError extends Error {
+  constructor(stage) {
+    super(`${stage} deadline exceeded`);
+    this.name = "DeadlineExceededError";
+  }
+}
+
+/** fetch() bounded by both an absolute deadline and a per-request limit. */
+async function fetchBefore(url, options, deadlineAt, perRequestLimitMs, stage) {
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) throw new DeadlineExceededError(stage);
+
+  const controller = new AbortController();
+  const timeoutMs = Math.max(1, Math.min(perRequestLimitMs, remainingMs));
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new DeadlineExceededError(stage);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Post an embed to Discord with a status check and one retry. Returns
+ * { ok, attempts }. On two failures, emits one structured `discord_delivery_failed`
+ * log (issue ID, attempt count, HTTP status/error class, timestamp) and returns
+ * ok:false so the caller writes no throttle.
+ */
+async function postDiscord(webhookUrl, embed, { issueId = "unknown", deadlineAt = Date.now() + 8000 } = {}) {
+  if (!webhookUrl) {
+    console.error(
+      JSON.stringify({
+        event: "discord_delivery_failed",
+        issueId,
+        attempts: 0,
+        errorClass: "missing_webhook_url",
+        timestamp: new Date().toISOString(),
+      })
+    );
+    return { ok: false, attempts: 0 };
+  }
+
+  let lastStatus = null;
+  let lastErrorClass = null;
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const response = await fetchBefore(
+        webhookUrl,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ embeds: [embed] }),
+        },
+        deadlineAt,
+        DISCORD_ATTEMPT_TIMEOUT_MS,
+        "discord"
+      );
+
+      if (response.ok) return { ok: true, attempts: attempt };
+
+      lastStatus = response.status;
+      lastErrorClass = "http_non_2xx";
+    } catch (error) {
+      lastErrorClass = error?.name ?? "network_error";
+    }
+  }
+
+  console.error(
+    JSON.stringify({
+      event: "discord_delivery_failed",
+      issueId,
+      attempts: 2,
+      httpStatus: lastStatus,
+      errorClass: lastErrorClass,
+      timestamp: new Date().toISOString(),
+    })
   );
 
-  // Fire the Routine
-  const textPayload = [
-    `intent: ${intent}`,
-    `sentry_issue_id: ${issueId}`,
-    `sentry_url: ${permalink}`,
-    `title: ${title}`,
-    `culprit: ${culprit}`,
-    `level: ${level}`,
-    `user_count: ${userCount}`,
-    `times_seen: ${timesSeen}`,
-    `release: ${release ?? "null"}`,
-    `environment: production`,
-    `priority: ${priority}`,
-  ].join("\n");
+  return { ok: false, attempts: 2 };
+}
 
-  let sessionUrl = null;
-  try {
-    const fireRes = await fetch(
-      `https://api.anthropic.com/v1/claude_code/routines/${env.ROUTINE_TRIGGER_ID}/fire`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${env.ROUTINE_TOKEN}`,
-          "anthropic-beta": "experimental-cc-routine-2026-04-01",
-          "anthropic-version": "2023-06-01",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ text: textPayload }),
-      }
-    );
+// ── Discord embeds ───────────────────────────────────────────────────────────
 
-    if (!fireRes.ok) {
-      const errBody = await fireRes.text();
-      throw new Error(`HTTP ${fireRes.status}: ${errBody}`);
-    }
+/**
+ * Build the embed from the already-fetched event partition (no extra subrequest).
+ * The newest event supplies safe source/category/version metadata; if the event
+ * lookup is degraded, fall open to a basic embed built from webhook fields.
+ */
+export function buildEmbedFromLookup(eventLookup, { issueId, title, permalink, timesSeen, userCount, priority }) {
+  const events =
+    eventLookup && eventLookup.status === "complete" && Array.isArray(eventLookup.events)
+      ? eventLookup.events
+      : null;
 
-    const fireData = await fireRes.json();
-    sessionUrl = fireData.claude_code_session_url ?? null;
-
-    // Update KV with permanent fired state (no TTL)
-    // 90-day TTL — prevents unbounded KV growth while preserving dedup for active issues.
-    // Resolved/archived events overwrite with state:"resolved" before this TTL matters.
-    await env.SENTRY_DEDUP.put(
-      kvKey,
-      JSON.stringify({
-        state: "fired",
-        intent,
-        priority,
-        firedAt: Date.now(),
-        sessionUrl,
-        lastCommentAt: Date.now(),
-      }),
-      { expirationTtl: 7776000 } // 90 days
-    );
-
-    // Increment daily counter
-    // Key name is the date string (routines:fired:YYYY-MM-DD) so it naturally
-    // resets at midnight UTC when the date rolls over. No TTL needed.
-    await env.SENTRY_DEDUP.put(capKey, String(capCount + 1));
-
-    console.log(`[sentry-triage] Routine fired for ${issueId} (${priority}) - session: ${sessionUrl}`);
-  } catch (err) {
-    console.error(`[sentry-triage] Routine fire failed for ${issueId}:`, err.message);
-
-    // Fallback: post Discord alert so nothing is silently dropped
-    const sourceLabel = await fetchSourceLabel(issueId, env);
-    await postDiscord(
-      env.DISCORD_WEBHOOK_URL,
-      buildFailureEmbed(issueId, title, permalink, priority, err.message, sourceLabel)
-    );
-
-    // Clear pending state so next event retries
-    await env.SENTRY_DEDUP.delete(kvKey);
+  if (!events || events.length === 0) {
+    return buildFailOpenEmbed({ issueId, title, permalink, timesSeen, userCount, priority });
   }
+
+  const rep = events[0];
+  const metadata = {
+    category: rep.category,
+    stage: rep.stage,
+    environment: rep.environment,
+    buildType: rep.buildType,
+    release: rep.release,
+    osVersion: rep.osVersion,
+    deviceModel: rep.deviceModel,
+  };
+  return buildEnrichedEmbed({ issueId, title, permalink, timesSeen, userCount, priority, metadata });
 }
-
-// ── Severity classification ───────────────────────────────────────────────────
-
-function classifySeverity(userCount, timesSeen, level) {
-  if (level === "fatal" || userCount >= 10) return { priority: "P0", label: "P0-critical" };
-  if (userCount >= 3 || timesSeen >= 20) return { priority: "P1", label: "P1-high" };
-  if (userCount >= 2 || timesSeen >= 5) return { priority: "P2", label: "P2-medium" };
-  return { priority: "P3", label: "P3-low" };
-}
-
-// ── Discord embeds ────────────────────────────────────────────────────────────
-
-async function postDiscord(webhookUrl, embed) {
-  if (!webhookUrl) {
-    console.error("[sentry-triage] DISCORD_WEBHOOK_URL not set");
-    return;
-  }
-  await fetch(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ embeds: [embed] }),
-  });
-}
-
-// ── Source enrichment (#1229) ─────────────────────────────────────────────────
-//
-// Best-effort: fetch the issue's latest Sentry event and read already-scrubbed
-// metadata (the on-device redactor ran before any of this left the user's Mac)
-// to label whether the failure is the founder's own test build or a real user,
-// plus surface category/stage/version/OS/device safely. Every call site fails
-// open to the basic embed shape on any fetch error — an alert is never lost.
-
-/** Safe-metadata allowlist (#1229 §3 PR-A step 6) — every value Discord ever shows. */
-const SAFE_METADATA_FIELDS = [
-  "category",
-  "stage",
-  "environment",
-  "buildType",
-  "release",
-  "osVersion",
-  "deviceModel",
-];
 
 export function truncate(value, max = FIELD_MAX_CHARS) {
   if (typeof value !== "string") return value;
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
-/** Fetch the latest event for a Sentry issue. Throws on any non-200/timeout/parse failure. */
-async function fetchLatestEvent(issueId, env) {
-  const url = `https://us.sentry.io/api/0/organizations/${SENTRY_ORG}/issues/${issueId}/events/latest/`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${env.SENTRY_AUTH_TOKEN}` },
-    signal: AbortSignal.timeout(SENTRY_FETCH_TIMEOUT_MS),
-  });
-  if (!res.ok) {
-    throw new Error(`Sentry events/latest fetch failed: HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
-/**
- * Pull the safe-metadata allowlist out of a Sentry event. `category` / `stage` /
- * `environment` / `buildType` / `release` live in `tags[]` ({key,value} pairs,
- * NOT top-level — SentryBreadcrumb sets error.category/pipeline.stage as event
- * tags and ObservabilityBootstrap sets environment/app.build_type as scope tags,
- * all merged into the same tags[] array server-side). `osVersion` / `deviceModel`
- * live under `contexts.os`/`contexts.device` (CONTEXTS, not tags) — confirmed
- * empirically against a real captured event during PR-B's round-trip (#1229).
- */
-export function extractMetadata(event) {
-  const tags = Array.isArray(event?.tags) ? event.tags : [];
-  const tagValue = (key) => tags.find((t) => t?.key === key)?.value ?? null;
-
-  return {
-    category: tagValue("error.category"),
-    stage: tagValue("pipeline.stage"),
-    environment: tagValue("environment"),
-    buildType: tagValue("app.build_type"),
-    release: tagValue("release"),
-    osVersion: event?.contexts?.os?.version ?? null,
-    deviceModel: event?.contexts?.device?.model ?? null,
-  };
-}
-
 /**
  * Three-state source classifier (#1229). Never defaults missing metadata to
- * "real user" — an older app version or a fetch that returned partial tags
- * must read as unknown, not silently assumed safe-to-ignore.
+ * "real user" — an older app version or partial tags read as unknown.
  */
 export function classifySource(metadata) {
   const { environment, buildType } = metadata ?? {};
@@ -415,17 +736,6 @@ export function classifySource(metadata) {
     return "👤 Real user (release)";
   }
   return "❓ Unknown source (metadata missing)";
-}
-
-/** Best-effort source label for the cap-alert / failure embeds. Null on fetch failure. */
-async function fetchSourceLabel(issueId, env) {
-  try {
-    const event = await fetchLatestEvent(issueId, env);
-    return classifySource(extractMetadata(event));
-  } catch (err) {
-    console.error(`[sentry-triage] Latest-event fetch failed for ${issueId}:`, err.message);
-    return null;
-  }
 }
 
 /** Readable headline: prefer the safe error.category tag over a possibly-stale title. */
@@ -479,47 +789,6 @@ export function buildFailOpenEmbed({ issueId, title, permalink, timesSeen, userC
       { name: "Details", value: "Details unavailable. Sentry fetch failed.", inline: false },
     ],
     footer: { text: `EnviousWispr Sentry Triage. ${priority}` },
-    timestamp: new Date().toISOString(),
-  };
-}
-
-/** Orchestrator for the P3 new-issue embed: enrich, fail open on any error. */
-async function buildSourceLabeledEmbed({ issueId, title, permalink, timesSeen, userCount, priority, env }) {
-  try {
-    const event = await fetchLatestEvent(issueId, env);
-    const metadata = extractMetadata(event);
-    return buildEnrichedEmbed({ issueId, title, permalink, timesSeen, userCount, priority, metadata });
-  } catch (err) {
-    console.error(`[sentry-triage] Latest-event fetch failed for ${issueId}:`, err.message);
-    return buildFailOpenEmbed({ issueId, title, permalink, timesSeen, userCount, priority });
-  }
-}
-
-export function buildCapAlertEmbed(capCount, issueId, title, permalink, sourceLabel) {
-  return {
-    title: "⚠️ Sentry Triage Daily Cap Reached",
-    color: 0xff0000,
-    description: `Daily Routine cap hit (${capCount}/15). Issue not triaged automatically.`,
-    fields: [
-      { name: "Missed Issue", value: truncate(`[${issueId}](${permalink}). ${title}`) },
-      { name: "Source", value: sourceLabel ?? "❓ Unknown source (Sentry fetch failed)" },
-    ],
-    footer: { text: "EnviousWispr Sentry Triage. Check claude.ai/settings/usage" },
-    timestamp: new Date().toISOString(),
-  };
-}
-
-export function buildFailureEmbed(issueId, title, permalink, priority, errMsg, sourceLabel) {
-  return {
-    title: `[Sentry ${priority}] Routine fire failed`,
-    color: 0xff0000,
-    description: `Failed to fire Routine for [${issueId}](${permalink}). Manual triage required.`,
-    fields: [
-      { name: "Issue", value: title },
-      { name: "Source", value: sourceLabel ?? "❓ Unknown source (Sentry fetch failed)" },
-      { name: "Error", value: errMsg.slice(0, 200) },
-    ],
-    footer: { text: "EnviousWispr Sentry Triage • Routine failure" },
     timestamp: new Date().toISOString(),
   };
 }
