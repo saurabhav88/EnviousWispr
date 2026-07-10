@@ -8,10 +8,10 @@ import Testing
 @Suite("ScenarioInventory")
 struct ScenarioInventoryTests {
 
-  @Test("the inventory holds exactly the 36 canonical scenarios")
-  func inventoryHoldsThirtySix() {
-    #expect(ScenarioInventory.all.count == 36)
-    #expect(ScenarioInventory.canonicalIDs.count == 36)
+  @Test("the inventory holds exactly the 38 canonical scenarios")
+  func inventoryHoldsThirtyEight() {
+    #expect(ScenarioInventory.all.count == 38)
+    #expect(ScenarioInventory.canonicalIDs.count == 38)
   }
 
   @Test("the inventory's ID set matches the canonical ID set exactly")

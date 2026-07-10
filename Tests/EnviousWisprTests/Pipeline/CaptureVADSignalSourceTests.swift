@@ -69,6 +69,23 @@ import Testing
     #expect(signal == VADStopSignal(kind: .autoStopTriggered, sessionID: sid))
   }
 
+  /// #1408 A3: `bind` claims BOTH callback slots. The manager's hard-cap
+  /// backstop funnels into the SAME typed, session-stamped stop route the
+  /// graceful wall-clock cap uses — a normal `.maxDuration` stop, never an
+  /// engine interruption.
+  @Test("bind claims onMaxDurationReached — the backstop drives a typed stop signal")
+  func bindOwnsMaxDurationCallback() async {
+    let source = CaptureVADSignalSource()
+    let capture = FakeAudioCapture()
+    let sid = SessionID()
+    source.setCurrentSessionID(sid)
+    source.bind(audioCapture: capture)
+    var iterator = source.subscribeStopSignals().makeAsyncIterator()
+    capture.fireMaxDurationReached()  // the manager backstop fires
+    let signal = await iterator.next()
+    #expect(signal == VADStopSignal(kind: .maxDurationReached, sessionID: sid))
+  }
+
   @Test("each signal carries the session current at emit time")
   func sessionStamping() async {
     let source = CaptureVADSignalSource()

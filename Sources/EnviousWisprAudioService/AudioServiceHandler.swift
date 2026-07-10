@@ -52,6 +52,15 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
   /// (the writer is also idempotent; this avoids even queuing the second call).
   private var recoveryFinalized: Bool = false
 
+  /// #1408 A3 (Codex code-diff r6): the `operationID` of the begin op that owns
+  /// the LIVE capture. Echoed in `maxDurationReachedTriggered` so the host can
+  /// reject a maximally delayed relay that would otherwise stop a LATER
+  /// recording. Overwritten by every `beginCapture`; never cleared — a stale
+  /// value is inert because the proxy compares against ITS active begin op,
+  /// which is nil outside a session. MainActor-confined (written in
+  /// `beginCapture`'s MainActor task, read in the manager callback).
+  private var activeBeginOperationID: String?
+
   /// Get or create the capture manager on MainActor, wiring callbacks on first creation.
   @MainActor
   private var captureManager: AudioCaptureManager {
@@ -92,16 +101,31 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
     }
 
     // Engine interruption callback: fires on @MainActor. Relay the cause's raw
-    // value across XPC so the host can suppress the non-loss max-duration cap
-    // while still capturing genuine losses. The host collapses every loss cause
-    // to `.engineLost` (AVCaptureSession interruptions have no separate relay
-    // across the boundary, so they have no other owner there) and suppresses
-    // only `.maxDurationReached`. See `AudioCaptureProxy.engineInterrupted(cause:)`
-    // (issue #1174 A3).
+    // value across XPC. The host preserves `.deviceRemoved` (the helper ran the
+    // liveness check; the host cannot re-run it) and collapses every other loss
+    // cause to `.engineLost` (AVCaptureSession interruptions have no separate
+    // relay across the boundary, so they have no other owner there). See
+    // `AudioCaptureProxy.engineInterrupted(cause:)` (issue #1174 A3; the
+    // max-duration cap left this channel in #1408 A3 — it relays via
+    // `maxDurationReachedTriggered` below).
     manager.onEngineInterrupted = { [weak self] cause in
       let raw = cause.rawValue
       self?.xpcSendQueue.async { [weak self] in
         self?.clientProxy?.engineInterrupted(cause: raw)
+      }
+    }
+
+    // #1408 A3: the hard sample-count backstop is a NORMAL auto-stop, relayed
+    // on its own event channel (beside `vadAutoStopTriggered`) — never through
+    // the interruption relay above. The manager has already stopped appending
+    // locally, so helper memory stays bounded even if this event never lands.
+    manager.onMaxDurationReached = { [weak self] in
+      // Snapshot the owning begin op on the MainActor (where it is written)
+      // BEFORE hopping to the send queue.
+      guard let self else { return }
+      let owningOperationID = self.activeBeginOperationID ?? ""
+      self.xpcSendQueue.async { [weak self] in
+        self?.clientProxy?.maxDurationReachedTriggered(operationID: owningOperationID)
       }
     }
   }
@@ -214,6 +238,11 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
     nonisolated(unsafe) let safeReply = reply
     Task { @MainActor in
       signal.emit(stage: "audio.begin_capture.main_actor")
+      // #1408 A3 (Codex code-diff r6): remember which begin op owns the live
+      // capture so the max-duration relay can carry session identity — the
+      // host rejects an echo that does not match its ACTIVE begin op, so a
+      // maximally delayed callback can never stop a LATER recording.
+      self.activeBeginOperationID = operationID
       let previousLifecycleSignal = self.captureManager.onLifecycleSignal
       self.captureManager.onLifecycleSignal = { phase in
         signal.emit(stage: "audio.begin_capture.\(phase)")

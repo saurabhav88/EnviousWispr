@@ -245,13 +245,21 @@ final class RecordingSessionKernel {
   /// time to choose `.vadGate` or `.asrEmptyNoSpeech`. Reset on session start.
   private(set) var lastNoSpeechSource: NoSpeechSource?
 
-  /// Why the audio engine was interrupted for this session, or `nil` if the
-  /// session did not reach `.audioInterrupted`. Stamped immediately BEFORE the
-  /// `→ .audioInterrupted` transition in `externalEngineInterrupted(_:)` (the
-  /// terminal's only path). The observer reads it at lifecycle-event mapping
-  /// time so the sink captures the lost dictation for `.engineLost` only
-  /// (issue #1174 A3). Reset on session start.
-  private(set) var lastAudioInterruptionCause: EngineInterruptionCause?
+  /// Why the audio engine was interrupted for this session, or `nil` if no
+  /// interruption reached the recording exit. Stamped by
+  /// `externalEngineInterrupted(_:)` under its first-wins accept condition.
+  /// The observer reads it at lifecycle-event mapping time so the sink captures
+  /// the lost dictation for `.engineLost` only (issue #1174 A3).
+  ///
+  /// #1408: a non-nil cause NO LONGER implies the session reached
+  /// `.audioInterrupted` — a salvageable interruption now falls through to the
+  /// normal stop tail and can terminate `.completed`. Read-through to
+  /// `KernelTelemetryState.interruptionCause`, the single home shared with the
+  /// finalization wiring and the lifecycle sink; it is cleared there, in
+  /// `resetForNewSession()`, which `start(config:)` calls before `.preparing`.
+  var lastAudioInterruptionCause: EngineInterruptionCause? {
+    telemetryState.interruptionCause
+  }
 
   /// #1434: per-session stabilization outcome (set at the pre-capture
   /// stabilization site; nil until it runs). Read by
@@ -979,8 +987,22 @@ final class RecordingSessionKernel {
       finishTerminal(.cancelled, sid: sid)
       return
     case .audioInterruption:
-      finishTerminal(.audioInterrupted, sid: sid)
-      return
+      // #1408: the device died mid-recording. If the capture manager is still
+      // alive and holding `capturedSamples`, fall through into the normal stop
+      // tail and transcribe what we have — salvage inherits the min-duration
+      // gate, VAD finalize, soft-onset preservation, energetic-tail recovery,
+      // degraded-lead retry and conditioning for free (plan §3.2). Only
+      // `.xpcConnectionLost` (the helper that OWNED the samples is gone) still
+      // fails honestly; the crash-recovery spool owns that case. `nil` cause →
+      // `false` by optional chaining, so an unstamped interruption fails closed.
+      guard lastAudioInterruptionCause?.hasRecoverableAudio == true else {
+        if lastAudioInterruptionCause == nil {
+          log("audio interruption exit with no stamped cause — refusing salvage")
+        }
+        finishTerminal(.audioInterrupted, sid: sid)
+        return
+      }
+      break
     case .asrInterruption:
       finishTerminal(.asrInterrupted, sid: sid)
       return
@@ -1007,6 +1029,13 @@ final class RecordingSessionKernel {
     // (a cancel landing mid-stop) not to fire a second, racing stop — it
     // waits for this one. `resourcesReleased` flips true once the stop
     // genuinely completes, even if the session went terminal meanwhile.
+    // #1408: on a SALVAGED interruption this is the SECOND freeze — the first ran
+    // in `externalEngineInterrupted` before the exit was delivered. Re-freezing is
+    // safe: `currentAudioRoute` derives from `lastRouteDecision`, frozen at
+    // capture-resolve time and never re-resolved by a mid-recording device death,
+    // so both freezes record the SAME pre-disconnect route. Only `durationMs`
+    // advances, by the microseconds between the interrupt and here, which is the
+    // truer figure anyway (audio kept arriving until `stopCapture()` below).
     freezeRecordingSnapshot()
     markPipelineTimingStart()
     transition(to: .stopping)
@@ -2007,12 +2036,12 @@ final class RecordingSessionKernel {
     // pre-transition window — `state` still `.recording` but `recordingExitLatched`
     // already true — has its exit ignored by `deliverRecordingExit`, so it must
     // NOT overwrite the cause/snapshot the terminal will use (cloud review #1207:
-    // an already-owned `.xpcConnectionLost` / `.maxDurationReached` could otherwise
-    // be replaced by a stale `.engineLost` and get falsely captured). The guard
+    // an already-owned `.xpcConnectionLost` could otherwise be replaced by a
+    // stale `.engineLost` and get falsely captured). The guard
     // mirrors `deliverRecordingExitIfCurrent`'s accept condition. The freeze
     // reports real duration / route / backend (mirrors `routeASRInterruption`).
     if state == .recording, !recordingExitLatched {
-      lastAudioInterruptionCause = cause
+      telemetryState.interruptionCause = cause
       freezeRecordingSnapshot()
     }
     deliverRecordingExitIfCurrent(.audioInterruption, sid: currentSessionID)
@@ -2295,12 +2324,63 @@ final class RecordingSessionKernel {
     }
   }
 
+  /// #1408. On a session whose capture was interrupted, any terminal that would
+  /// DELETE the crash-recovery spool must instead land on `.audioInterrupted` — a
+  /// `.failure` terminal that RETAINS it, and precisely the terminal this session
+  /// reached before salvage existed. Salvage may only ever ADD a transcript; it
+  /// must never convert "recoverable on the next launch" into "gone."
+  ///
+  /// Applied ONCE, inside `finishTerminal`, never at the call sites: one of the
+  /// terminals is computed from a ternary (`effectiveSpeechEvidence ?
+  /// .failed(.asrEmpty) : .noSpeech`), so a call-site floor would silently miss
+  /// the post-ASR no-speech path — the exact "salvaged audio transcribed to
+  /// nothing" row this guards. Inert outside an interruption: the cause is
+  /// cleared at session start, before `.preparing`.
+  ///
+  /// **One rule: an interrupted recording that ends with no transcript lands on
+  /// `.audioInterrupted`, whatever interrupted it.**
+  ///
+  /// `.discarded` / `.noSpeech` DELETE the spool (`RecordingTerminalKind
+  /// .discard`). Letting an interrupted session reach either would destroy the
+  /// crash-recovery copy of audio the user can still get back on next launch —
+  /// converting "recoverable" into "gone." Safety does not get to depend on which
+  /// interruption fired, so this holds for every cause including the duration cap.
+  /// `.failed(.noAudioCaptured)` already retains the spool; it is folded in so all
+  /// three no-transcript endings agree, rather than one of them keeping a
+  /// different overlay for no reason a user could name.
+  ///
+  /// This used to be TWO rules, the second gated on `cause.isDeviceLoss`, because
+  /// `.audioInterrupted` rendered "Microphone disconnected" unconditionally and
+  /// that would have been a lie for a duration cap. The cause-aware sentence now
+  /// lives at its own single authority (`InterruptionMessages.message(for:)`), so
+  /// the floor no longer has to encode a copy decision. What the terminal MEANS
+  /// (the spool survives) and what the user READS are separate questions with
+  /// separate owners — which is the same split `hasRecoverableAudio` and
+  /// `isDeviceLoss` draw one layer up.
+  ///
+  /// `.cancelled` is NEVER floored: an explicit user cancel is honored, and its
+  /// retain/delete disposition belongs to `pendingCancelDisposition`. Every other
+  /// `.failed(reason)` (`.asrEmpty`, `.asrFailed`, `.captureStartFailed`,
+  /// `.modelLoadFailed`) keeps its own honest reason and is already spool-retaining.
+  private func interruptedTerminalFloor(
+    _ terminal: RecordingSessionState
+  ) -> RecordingSessionState {
+    guard lastAudioInterruptionCause != nil else { return terminal }
+    switch terminal {
+    case .discarded, .noSpeech, .failed(.noAudioCaptured):
+      return .audioInterrupted
+    default:
+      return terminal
+    }
+  }
+
   /// Reach a terminal state: transition, run nonblocking cleanup, drain the
   /// task bag (PR-1 §B.1.6, PR-3 plan §3.1a — cancel + clear, never `await`).
   /// Discards the adapter's open session and stops the capture engine if
   /// either is still in flight (PR-1 §B.1.3 cleanup column; Codex P1b / P2-r3).
-  private func finishTerminal(_ terminal: RecordingSessionState, sid: SessionID) {
+  private func finishTerminal(_ rawTerminal: RecordingSessionState, sid: SessionID) {
     guard isCurrent(sid) else { return }
+    let terminal = interruptedTerminalFloor(rawTerminal)
     guard transition(to: terminal) else { return }
     audioCapture.onBufferCaptured = nil
     // PR-4b.1: `onEngineInterrupted`, `onCaptureStalled`, and `onXPCServiceError`
@@ -2438,7 +2518,12 @@ final class RecordingSessionKernel {
     discardReason = nil
     didLoadModelThisSession = false
     lastNoSpeechSource = nil
-    lastAudioInterruptionCause = nil
+    // #1408: `lastAudioInterruptionCause` is NOT cleared here. Its storage moved
+    // to `KernelTelemetryState.interruptionCause`, whose `resetForNewSession()`
+    // is the sole clearer — `start(config:)` calls it immediately after this,
+    // before `.preparing`. Two clearers for one field is how a stale cause would
+    // leak into the next session and make the terminal floor mis-fire on a
+    // normal too-short tap.
     isStreamingSession = false
     pasteCount = 0
     forbiddenTransitionRejected = false
@@ -2828,6 +2913,17 @@ final class RecordingSessionKernel {
     /// vs `"Polishing..."`).
     func testSetFinalizingSubStatus(_ status: FinalizingSubStatus) {
       finalizingSubStatus = status
+    }
+
+    /// #1408: surface the terminal floor as a pure function so a test can prove
+    /// it covers EVERY terminal whose `RecordingTerminalKind` is `.discard`.
+    /// The floor's mapped set and `KernelDictationDriver.endedWithoutSaveKind`'s
+    /// discard set are two lists of the same fact; without this seam they can
+    /// drift, and a new spool-deleting terminal would silently escape the floor.
+    func testInterruptedTerminalFloor(_ terminal: RecordingSessionState)
+      -> RecordingSessionState
+    {
+      interruptedTerminalFloor(terminal)
     }
   #endif
 }

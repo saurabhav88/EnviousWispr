@@ -498,7 +498,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   public var state: PipelineState {
     Self.pipelineState(
       for: kernel.state, externalError: lastExternalError,
-      failureDetail: kernel.lastFailureDetail)
+      failureDetail: kernel.lastFailureDetail,
+      interruptionCause: kernel.lastAudioInterruptionCause)
   }
 
   /// The transcript the `store` closure built for the last completed session.
@@ -676,7 +677,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       // `.audioInterrupted` from here, so the lifecycle sink's
       // `.audioInterrupted` handler never fires.
       SentryBreadcrumb.updateRecordingState(active: false)
-      setExternalError(InterruptionMessages.micDisconnected)
+      setExternalError(InterruptionMessages.message(for: cause))
     case .idle, .completed, .failed, .cancelled, .discarded, .noSpeech,
       .audioInterrupted, .asrInterrupted:
       // Already idle / terminal — no useful action. Router-stale calls
@@ -746,6 +747,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// kernel; never persisted. Reason strings only, never user content.
   public var lastStopReason: String? { kernel.lastStopReason }
   public var lastRecordingDurationSeconds: Double? { kernel.lastRecordingDurationSeconds }
+  /// #1408: non-nil when the most recent recording's capture was interrupted
+  /// mid-flight (device died, cap reached). Drives the disconnect disclosure pill
+  /// and `dictation.completed.interrupted_by`. LIVE pass-through from the kernel;
+  /// never persisted; a low-cardinality reason string, no user content.
+  public var lastAudioInterruptionCause: EngineInterruptionCause? {
+    kernel.lastAudioInterruptionCause
+  }
   /// #1376: the resolved-route transports for the most recent recording, for
   /// the App layer's `dictation.completed` telemetry. LIVE pass-through from the
   /// kernel; never persisted. Low-cardinality transport/reason strings only.
@@ -838,7 +846,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       return .error(
         message: Self.failureMessage(reason, detail: kernel.lastFailureDetail))
     case .audioInterrupted:
-      return .interruption(message: InterruptionMessages.micDisconnected)
+      return .interruption(
+        message: InterruptionMessages.message(for: kernel.lastAudioInterruptionCause))
     case .asrInterrupted:
       return .error(message: Self.asrInterruptedMessage)
     }
@@ -1278,9 +1287,14 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// when present and falls back to the parity-bare string when nil. The
   /// driver's instance `state` getter threads `kernel.lastFailureDetail`
   /// through; existing test callers pass nil for byte-parity coverage.
+  /// `interruptionCause` selects the audio-interruption sentence (#1408). It
+  /// defaults to nil, which yields the neutral "Recording interrupted" line —
+  /// never a disconnect claim. Only the instance `state` getter has a kernel to
+  /// read the real cause from; test callers keep the byte-parity default.
   public static func pipelineState(
     for state: RecordingSessionState, externalError: String?,
-    failureDetail: String? = nil
+    failureDetail: String? = nil,
+    interruptionCause: EngineInterruptionCause? = nil
   ) -> PipelineState {
     if let externalError {
       return .error(externalError)
@@ -1318,7 +1332,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     case .failed(let reason):
       return .error(failureMessage(reason, detail: failureDetail))
     case .audioInterrupted:
-      return .error(InterruptionMessages.micDisconnected)
+      return .error(InterruptionMessages.message(for: interruptionCause))
     case .asrInterrupted:
       return .error(asrInterruptedMessage)
     }

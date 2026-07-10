@@ -49,9 +49,25 @@ enum PipelineStateSideEffect: Equatable, Sendable {
   /// the transcript by trimming a poisoned prefix, so the pasted text is
   /// missing its lead, and a trimmed lead can invert meaning invisibly. The
   /// disclosure never touches the pasted text. Shares the single
-  /// post-completion warning slot: history-save-failed > salvaged-lead >
-  /// polish-failed.
+  /// post-completion warning slot: history-save-failed > disconnect >
+  /// salvaged-lead > polish-failed (rank 2 inserted by #1408).
   case scheduleSalvagedLeadWarning
+
+  /// #1408: schedule the transient interruption pill on a completion whose
+  /// capture was interrupted mid-recording. The pasted text is what survived,
+  /// so the user must be told it may be cut short BEFORE they send it. The
+  /// disclosure picks the sentence family: `.deviceRemoved` may say
+  /// "Microphone disconnected"; `.otherInterruption` gets the neutral
+  /// "Recording interrupted" wording (grounded review A1 — a non-disconnect
+  /// salvage must not paste truncated text silently).
+  ///
+  /// `alsoTrimmedLead` is true when this take ALSO lost its opening to the
+  /// degraded-lead retry (#1434). One take can lose both ends, and a plain
+  /// ranking would tell the user only about the tail — so the combined case gets
+  /// its own copy rather than suppressing the lead notice. One effect carrying
+  /// flags, not two effects: the difference is a message, not a mechanism.
+  case scheduleInterruptionWarning(
+    disclosure: CompletionInterruptionDisclosure, alsoTrimmedLead: Bool)
 }
 
 struct PipelineStateChangePlan: Equatable, Sendable {
@@ -88,9 +104,11 @@ enum PipelineStateChangePlanner {
     hasCurrentTranscript: Bool,
     historySaved: Bool,
     historySaveReason: String?,
-    salvagedLead: Bool = false
+    salvagedLead: Bool = false,
+    interruptionDisclosure: CompletionInterruptionDisclosure? = nil
   ) -> PipelineStateChangePlan {
     var effects: [PipelineStateSideEffect] = []
+    let interrupted = interruptionDisclosure != nil
 
     // #1167: a degraded-save completion (delivery ran, history write threw).
     // Only meaningful on `.complete` with a transcript in hand.
@@ -119,16 +137,30 @@ enum PipelineStateChangePlanner {
         // #1434: a salvaged-lead completion also takes the single warning
         // slot ahead of the polish pill (data-loss disclosure beats a
         // formatting notice) — scheduled below, outside this branch.
-        if !historySaveFailed, !salvagedLead, !PolishFailureReason.isSkipNotice(polishError) {
+        // #1408: so does a mid-recording disconnect, for the same reason.
+        if !historySaveFailed, !interrupted, !salvagedLead,
+          !PolishFailureReason.isSkipNotice(polishError)
+        {
           effects.append(.schedulePolishFailedWarning)
         }
       } else {
         resolvedOverlayIntent = pipelineOverlayIntent
       }
-      // #1434: salvaged-lead disclosure. Priority within the single warning
-      // slot: history-save-failed (scheduled in Step 2) > salvaged-lead >
-      // polish-failed (suppressed above when salvaged).
-      if salvagedLead, !historySaveFailed {
+      // Disclosure priority within the single post-completion warning slot:
+      // history-save-failed (scheduled in Step 2) > disconnect > salvaged-lead >
+      // polish-failed (suppressed above). Encoded as explicit suppression
+      // conditions, NOT as array order — `schedulePostCompletionWarning` is
+      // last-writer-wins, so position in this list decides nothing.
+      //
+      // #1408: a take can lose its opening (lead trimmed) AND its ending (mic
+      // died). Suppressing the lead notice under a plain ranking would tell the
+      // user only that the text is cut short, hiding the dropped opening — so
+      // the both-fired case carries its own copy instead.
+      if let disclosure = interruptionDisclosure, !historySaveFailed {
+        effects.append(
+          .scheduleInterruptionWarning(disclosure: disclosure, alsoTrimmedLead: salvagedLead))
+      }
+      if salvagedLead, !historySaveFailed, !interrupted {
         effects.append(.scheduleSalvagedLeadWarning)
       }
     default:

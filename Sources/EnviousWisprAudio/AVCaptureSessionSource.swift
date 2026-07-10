@@ -93,7 +93,7 @@ final class AVCaptureSessionSource: AudioInputSource {
 
   var onSamples: (@Sendable (_ samples: [Float], _ audioLevel: Float) -> Void)?
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
-  var onInterrupted: (() -> Void)?
+  var onInterrupted: ((EngineInterruptionCause) -> Void)?
   var onLifecycleSignal: (@Sendable (String) -> Void)?
 
   // MARK: - Round-4 telemetry (issue #285) — stall watchdog + interruption ctx.
@@ -561,7 +561,7 @@ final class AVCaptureSessionSource: AudioInputSource {
       MainActor.assumeIsolated {
         guard let self else { return }
         self.emitCaptureSessionInterruption(kind: .wasInterrupted, notification: notification)
-        self.onInterrupted?()
+        self.onInterrupted?(.captureSessionLost)
       }
     }
 
@@ -573,7 +573,7 @@ final class AVCaptureSessionSource: AudioInputSource {
       MainActor.assumeIsolated {
         guard let self else { return }
         self.emitCaptureSessionInterruption(kind: .runtimeError, notification: notification)
-        self.onInterrupted?()
+        self.onInterrupted?(.captureSessionLost)
       }
     }
 

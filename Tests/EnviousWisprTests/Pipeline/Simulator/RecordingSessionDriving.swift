@@ -132,15 +132,26 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// inspect kernel internals (`RecordingSessionKernelTests`).
   var testKernel: RecordingSessionKernel { kernel }
 
+  /// The kernel's per-session telemetry side-channel, held so a test can read
+  /// what the kernel stamped (#1408: `interruptionCause`). Production shares ONE
+  /// instance across the kernel, the finalization wiring, and the lifecycle sink;
+  /// this wrapper mirrors that by constructing it once and passing it in.
+  let telemetryState = KernelTelemetryState()
+
   init(
     engine: FakeEngine,
     capture: FakeAudioCapture,
     vad: FakeVADSignalSource,
     clock: FakeClock,
-    paste: FakePasteTarget
+    paste: FakePasteTarget,
+    // #1408: the floor's regression guard needs the minimum-recording gate ARMED
+    // (the inventory zeroes it, see the note at the `minimumRecordingTicks`
+    // argument below). Defaulted so every existing scenario is unchanged.
+    minimumRecordingTicks: Int = 0
   ) {
     self.vad = vad
     let limb = self.limb
+    let telemetryState = self.telemetryState
     self.kernel = RecordingSessionKernel(
       adapter: engine,
       audioCapture: capture,
@@ -170,11 +181,12 @@ final class KernelRecordingSession: RecordingSessionDriving {
         case .clipboardOnly, .none: return .clipboardOnly
         }
       },
-      // PR-4.5 #4 (Codex r3): the simulator's 33-scenario inventory does not
+      // PR-4.5 #4 (Codex r3): the simulator's 38-scenario inventory does not
       // advance the FakeClock between start and stop, so a positive
       // minimum-recording threshold would discard most scenarios. The
       // dedicated #4 coverage lives in `ConductorParitySeamTests`.
-      minimumRecordingTicks: 0)
+      minimumRecordingTicks: minimumRecordingTicks,
+      telemetryState: telemetryState)
   }
 
   // MARK: RecordingSessionDriving — observation

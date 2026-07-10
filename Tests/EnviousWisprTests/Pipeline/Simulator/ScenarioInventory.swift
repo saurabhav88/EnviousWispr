@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Scenario inventory (epic #827, PR-2 plan §3.8; PR-1 §11.1)
 //
-// The 33 canonical-ID heart-path scenarios, each encoded as data with a full
+// The 38 canonical-ID heart-path scenarios, each encoded as data with a full
 // `ExpectedOutcome`. `ScenarioInventoryTests` asserts the EXACT ID set is
 // present (by ID, not a count — a count passes while a scenario is silently
 // swapped). In PR-2 these are data; from PR-3 the `ScenarioRunner` executes
@@ -24,7 +24,7 @@ import Foundation
 
 enum ScenarioInventory {
 
-  /// All 33 canonical scenarios.
+  /// All 38 canonical scenarios.
   static let all: [Scenario] =
     asrSide + regressionLocks + captureSide + limbSide
 
@@ -352,18 +352,42 @@ enum ScenarioInventory {
       expected: ExpectedOutcome(
         terminalState: .failed(.captureStalled), pasteCount: 0, pasteOutcome: .none,
         transcript: .none, userVisibleError: .recoverableError)),
+    // #1408: the device dies mid-sentence but the capture manager is still
+    // holding what was said. We now transcribe and paste it instead of throwing
+    // it away. This scenario asserted `.audioInterrupted` / pasteCount 0 until
+    // salvage landed — the flip IS the feature.
     Scenario(
-      id: "C5", name: "audio route / device change mid-session",
+      id: "C5", name: "audio route / device change mid-session (salvaged)",
       steps: [.trigger(.start), .capture(.deliverBuffer), .capture(.routeChange)],
       expected: ExpectedOutcome(
-        terminalState: .audioInterrupted, pasteCount: 0, pasteOutcome: .none,
-        transcript: .none, userVisibleError: .interruption)),
+        terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,
+        transcript: .nonEmpty, userVisibleError: nil)),
     Scenario(
       id: "C6", name: "XPC capture crash / reconnect",
       steps: [.trigger(.start), .capture(.deliverBuffer), .capture(.xpcCrash)],
       expected: ExpectedOutcome(
         terminalState: .asrInterrupted, pasteCount: 0, pasteOutcome: .none,
         transcript: .none, userVisibleError: .recoverableError)),
+    // #1408: the audio helper that OWNED the samples died. Nothing survives in
+    // memory, so salvage must refuse and the recording fails honestly — even
+    // though a buffer was delivered before the crash.
+    Scenario(
+      id: "C7", name: "audio XPC helper dies mid-session (salvage refused)",
+      steps: [.trigger(.start), .capture(.deliverBuffer), .capture(.interruptUnrecoverable)],
+      expected: ExpectedOutcome(
+        terminalState: .audioInterrupted, pasteCount: 0, pasteOutcome: .none,
+        transcript: .none, userVisibleError: .interruption)),
+    // #1408 THE FLOOR: a device that dies before any audio arrives would fall
+    // through to the minimum-recording gate and reach `.discarded`, whose
+    // terminal kind DELETES the crash-recovery spool. The floor maps it back to
+    // `.audioInterrupted`, which retains it. C5 cannot cover this — it delivers a
+    // buffer, and the inventory zeroes the minimum-recording tick threshold.
+    Scenario(
+      id: "C8", name: "device dies before any audio arrives (floored, spool retained)",
+      steps: [.trigger(.start), .capture(.interrupt)],
+      expected: ExpectedOutcome(
+        terminalState: .audioInterrupted, pasteCount: 0, pasteOutcome: .none,
+        transcript: .none, userVisibleError: .interruption)),
   ]
 
   // MARK: Limb-side (L1–L6)
@@ -447,7 +471,7 @@ enum ScenarioInventory {
     "A11", "A12", "A13", "A14", "A15", "A16", "A17", "A18", "A19",
     "A20", "A21", "A22",
     "R1", "R2",
-    "C1", "C2", "C3", "C4", "C5", "C6",
+    "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8",
     "L1", "L2", "L3", "L4", "L5", "L6",
   ]
 }

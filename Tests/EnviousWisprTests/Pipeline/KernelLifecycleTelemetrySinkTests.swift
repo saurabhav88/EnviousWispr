@@ -48,12 +48,22 @@ import Testing
       let errorDescription: String
     }
 
+    /// #1408: the non-paging `audio.capture_interrupted` counter.
+    struct AudioCaptureInterruptedCall: Equatable {
+      let cause: String
+      let salvageAttempted: Bool
+      let salvageSucceeded: Bool
+      let terminalState: String
+      let backend: String
+    }
+
     var breadcrumbs: [BreadcrumbCall] = []
     var recordingStates: [RecordingStateCall] = []
     var audioRoutes: [String] = []
     var dictationsInvoked: [DictationInvokedCall] = []
     var modelLoadWedgedBackends: [String] = []
     var captureErrors: [CaptureErrorCall] = []
+    var audioCaptureInterruptions: [AudioCaptureInterruptedCall] = []
   }
 
   // MARK: - Sink construction with recorder seams
@@ -92,6 +102,14 @@ import Testing
         recorder.captureErrors.append(
           Recorder.CaptureErrorCall(
             category: category, stage: stage, errorDescription: error.localizedDescription))
+      },
+      // #1408: injected so no test ever reaches the real PostHog SDK
+      // (`tests-no-process-global-mutable-delegate`).
+      audioCaptureInterrupted: { cause, attempted, succeeded, terminal, backend, _ in
+        recorder.audioCaptureInterruptions.append(
+          Recorder.AudioCaptureInterruptedCall(
+            cause: cause, salvageAttempted: attempted, salvageSucceeded: succeeded,
+            terminalState: terminal, backend: backend))
       })
   }
 
@@ -360,11 +378,12 @@ import Testing
 
   // #1174 A3 — matcher-set-adversarial: the `.audioInterrupted` capture gate
   // flips on the cause. Only `.engineLost` (a lost dictation with no other owner)
-  // captures `.audioCaptureFailed`; the three already-owned causes
-  // (`.captureSessionLost`, `.xpcConnectionLost`, `.maxDurationReached`) must
-  // emit NO captureError, so A3 never double-counts a loss already owned by
-  // `captureSessionInterrupted` / `onXPCServiceError`, and never counts a normal
-  // max-duration auto-stop as a loss. Every case resets recording state.
+  // captures `.audioCaptureFailed`; the two already-owned causes
+  // (`.captureSessionLost`, `.xpcConnectionLost`) must emit NO captureError, so
+  // A3 never double-counts a loss already owned by `captureSessionInterrupted`
+  // / `onXPCServiceError`. (`.maxDurationReached` was deleted by #1408 A3 — the
+  // cap routes as a normal stop and can no longer reach this gate at all.)
+  // Every case resets recording state.
 
   @Test(".audioInterrupted(.engineLost) captures .audioCaptureFailed + resets state")
   func audioInterruptedEngineLostCaptures() {
@@ -382,10 +401,10 @@ import Testing
       ])
   }
 
-  @Test(".audioInterrupted suppresses the three already-owned causes (no double-count)")
+  @Test(".audioInterrupted suppresses the two already-owned causes (no double-count)")
   func audioInterruptedSuppressesOwnedCauses() {
     for cause: EngineInterruptionCause in [
-      .captureSessionLost, .xpcConnectionLost, .maxDurationReached,
+      .captureSessionLost, .xpcConnectionLost,
     ] {
       let recorder = Recorder()
       let sink = makeSink(recorder: recorder)
@@ -401,18 +420,145 @@ import Testing
     }
   }
 
-  @Test("exactly one EngineInterruptionCause captures at the .audioInterrupted terminal")
-  func audioInterruptedExactlyOneCauseCaptures() {
+  @Test("exactly the two unowned-loss causes capture at the .audioInterrupted terminal")
+  func audioInterruptedExactlyTheUnownedLossesCapture() {
     // CaseIterable guard — if a future cause is added, this forces an explicit
     // capture/suppress decision rather than silently inheriting either branch.
-    var capturingCauses: [EngineInterruptionCause] = []
+    var capturingCauses: Set<EngineInterruptionCause> = []
     for cause in EngineInterruptionCause.allCases {
       let recorder = Recorder()
       let sink = makeSink(recorder: recorder)
       sink.emit(.audioInterrupted(cause: cause))
-      if !recorder.captureErrors.isEmpty { capturingCauses.append(cause) }
+      if !recorder.captureErrors.isEmpty { capturingCauses.insert(cause) }
     }
-    #expect(capturingCauses == [.engineLost])
+    // #1408 split `.deviceRemoved` out of `.engineLost`. Both are recording-losing
+    // interruptions with no other owner, so BOTH must still capture — otherwise
+    // the split would silently halve the "audio capture failed" alert.
+    #expect(capturingCauses == [.engineLost, .deviceRemoved])
+  }
+
+  // MARK: - #1408 the interruption counter (the salvage denominator)
+  //
+  // Suppressing `audio_capture_failed` on a salvaged dictation without a
+  // replacement would mean we could count what device death COSTS but not how
+  // often it HAPPENS. `audio.capture_interrupted` is that denominator: one emit
+  // per interrupted session, at whatever terminal it reaches, salvaged or not.
+  // It is deliberately not an error — a Bluetooth user walking away is not our
+  // defect, and this must never page, email, or file a ticket.
+
+  @Test("a salvaged completion emits the counter with salvage_succeeded, and NO capture error")
+  func salvagedCompletionEmitsCounterNotError() {
+    let recorder = Recorder()
+    let telemetryState = KernelTelemetryState()
+    telemetryState.interruptionCause = .engineLost
+    let sink = makeSink(recorder: recorder, telemetryState: telemetryState)
+
+    sink.emit(.pipelineCompleted)
+
+    #expect(
+      recorder.audioCaptureInterruptions == [
+        .init(
+          cause: "engine_lost", salvageAttempted: true, salvageSucceeded: true,
+          terminalState: "completed", backend: "parakeet")
+      ])
+    #expect(
+      recorder.captureErrors.isEmpty,
+      "a dictation the user successfully received must not raise a Sentry error")
+  }
+
+  @Test("an unsalvaged interruption emits BOTH the counter and the capture error")
+  func unsalvagedInterruptionEmitsCounterAndError() {
+    let recorder = Recorder()
+    let telemetryState = KernelTelemetryState()
+    telemetryState.interruptionCause = .engineLost
+    let sink = makeSink(recorder: recorder, telemetryState: telemetryState)
+
+    sink.emit(.audioInterrupted(cause: .engineLost))
+
+    #expect(
+      recorder.audioCaptureInterruptions == [
+        .init(
+          cause: "engine_lost", salvageAttempted: true, salvageSucceeded: false,
+          terminalState: "audio_interrupted", backend: "parakeet")
+      ])
+    #expect(recorder.captureErrors.count == 1, "the lost dictation is still a real loss")
+  }
+
+  /// The one cause whose samples are gone never attempts salvage — and
+  /// `salvage_attempted` reads the SAME `hasRecoverableAudio` authority the
+  /// kernel's guard reads, never a second copy of that switch.
+  @Test("the unsalvageable cause reports salvage_attempted false")
+  func unsalvageableCauseReportsNoAttempt() {
+    let recorder = Recorder()
+    let telemetryState = KernelTelemetryState()
+    telemetryState.interruptionCause = .xpcConnectionLost
+    let sink = makeSink(recorder: recorder, telemetryState: telemetryState)
+
+    sink.emit(.audioInterrupted(cause: .xpcConnectionLost))
+
+    #expect(recorder.audioCaptureInterruptions.count == 1)
+    #expect(recorder.audioCaptureInterruptions[0].salvageAttempted == false)
+    #expect(recorder.audioCaptureInterruptions[0].salvageSucceeded == false)
+  }
+
+  /// A session that was never interrupted must emit nothing. Otherwise the
+  /// denominator counts every dictation and the salvage rate reads as ~100%.
+  @Test("an ordinary completion emits no interruption counter")
+  func ordinaryCompletionEmitsNoCounter() {
+    let recorder = Recorder()
+    let sink = makeSink(recorder: recorder)
+
+    sink.emit(.pipelineCompleted)
+
+    #expect(recorder.audioCaptureInterruptions.isEmpty)
+  }
+
+  /// One emit per interrupted session, whatever terminal it lands on. A per-arm
+  /// emit would quietly miss the arm nobody thought of — a user cancelling
+  /// mid-salvage, or salvaged audio that decodes to nothing.
+  @Test("every terminal an interrupted session can reach emits exactly one counter")
+  func everyInterruptedTerminalEmitsExactlyOnce() {
+    let terminals: [(KernelLifecycleEvent, String)] = [
+      (.pipelineCompleted, "completed"),
+      (.audioInterrupted(cause: .engineLost), "audio_interrupted"),
+      (.cancelled, "cancelled"),
+      (.failed(.asrEmpty), "failed"),
+      (.noSpeech(.vadGate), "no_speech"),
+      (.discarded(.tooShort), "discarded"),
+    ]
+    for (event, expectedTerminal) in terminals {
+      let recorder = Recorder()
+      let telemetryState = KernelTelemetryState()
+      telemetryState.interruptionCause = .engineLost
+      let sink = makeSink(recorder: recorder, telemetryState: telemetryState)
+
+      sink.emit(event)
+
+      #expect(
+        recorder.audioCaptureInterruptions.count == 1,
+        "terminal \(expectedTerminal) must emit exactly one counter")
+      #expect(recorder.audioCaptureInterruptions.first?.terminalState == expectedTerminal)
+    }
+  }
+
+  /// Non-terminal events must not emit, even mid-interruption. Otherwise a single
+  /// session inflates the counter once per lifecycle event it happens to fire.
+  @Test("non-terminal events never emit the interruption counter")
+  func nonTerminalEventsNeverEmitCounter() {
+    let nonTerminals: [KernelLifecycleEvent] = [
+      .pipelineStartingUp, .modelLoading, .recordingCommitted(isStreaming: false),
+      .recordingStopped, .transcriptionStarted, .asrCompleted,
+    ]
+    for event in nonTerminals {
+      let recorder = Recorder()
+      let telemetryState = KernelTelemetryState()
+      telemetryState.interruptionCause = .engineLost
+      let sink = makeSink(recorder: recorder, telemetryState: telemetryState)
+
+      sink.emit(event)
+
+      #expect(recorder.audioCaptureInterruptions.isEmpty, "\(event) is not a terminal")
+    }
   }
 
   @Test(".asrInterrupted(wasRecording: true) emits captureError + state(false)")

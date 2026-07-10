@@ -35,7 +35,7 @@ struct RecordingSessionKernelScenarioTests {
     #expect(result.passed, "scenario \(scenario.id) (\(scenario.name)): \(result.failures)")
   }
 
-  @Test("the canonical 33-scenario inventory is intact")
+  @Test("the canonical 38-scenario inventory is intact")
   func inventoryComplete() {
     let ids = Set(ScenarioInventory.all.map(\.id))
     #expect(ids == ScenarioInventory.canonicalIDs)

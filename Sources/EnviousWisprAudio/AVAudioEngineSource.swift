@@ -92,7 +92,7 @@ final class AVAudioEngineSource: AudioInputSource {
 
   var onSamples: (@Sendable (_ samples: [Float], _ audioLevel: Float) -> Void)?
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
-  var onInterrupted: (() -> Void)?
+  var onInterrupted: ((EngineInterruptionCause) -> Void)?
   var onLifecycleSignal: (@Sendable (String) -> Void)?
 
   // MARK: - Round-4 telemetry (issue #285) — capture liveness watchdog.
@@ -178,7 +178,10 @@ final class AVAudioEngineSource: AudioInputSource {
     return CaptureStopMetadata(nativeRateHz: rate)
   }
 
-  // NOTE: onPartialSamples removed — manager owns capturedSamples and handles partial recovery.
+  // NOTE: onPartialSamples removed — the manager owns `capturedSamples` and keeps
+  // holding them across a device disconnect. It does not itself recover anything:
+  // #1408 made `RecordingSessionKernel` decide, at the recording exit, whether the
+  // interruption left recoverable audio and to transcribe it if so.
 
   // MARK: - Constants
 
@@ -671,34 +674,41 @@ final class AVAudioEngineSource: AudioInputSource {
         level: .info, category: "Audio"
       )
       emergencyTeardown()
-      onInterrupted?()
+      // #1408: we could not resolve a device id, so we never ran the
+      // `DeviceIsAlive` check and cannot claim the microphone went away.
+      onInterrupted?(.engineLost)
       return
     }
 
-    var isAlive: UInt32 = 0
-    var size = UInt32(MemoryLayout<UInt32>.size)
-    var addr = AudioObjectPropertyAddress(
-      mSelector: kAudioDevicePropertyDeviceIsAlive,
-      mScope: kAudioObjectPropertyScopeGlobal,
-      mElement: kAudioObjectPropertyElementMain
-    )
-    AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &isAlive)
-
-    if isAlive == 0 {
+    switch CoreAudioDeviceLiveness.classify(deviceID: deviceID) {
+    case .removed:
       await AppLogger.shared.log(
         "Audio device \(deviceID) is dead — performing emergency teardown",
         level: .info, category: "Audio"
       )
       emergencyTeardown()
-      onInterrupted?()
-      return
-    }
+      // #1408: Core Audio confirms the device is gone. This is the ONE site in
+      // this source entitled to claim the user's microphone disconnected.
+      onInterrupted?(.deviceRemoved)
 
-    await AppLogger.shared.log(
-      "Audio engine config changed — device \(deviceID) still alive (Bluetooth codec switch), attempting graceful recovery",
-      level: .info, category: "Audio"
-    )
-    await recoverFromCodecSwitch()
+    case .unverified:
+      await AppLogger.shared.log(
+        "Audio device \(deviceID) liveness unverified — performing emergency teardown",
+        level: .info, category: "Audio"
+      )
+      emergencyTeardown()
+      // #1408: the capture is broken either way, so tear down and salvage as
+      // before — but Core Audio never confirmed the device left, so we do not
+      // say it did.
+      onInterrupted?(.engineLost)
+
+    case .alive:
+      await AppLogger.shared.log(
+        "Audio engine config changed — device \(deviceID) still alive (Bluetooth codec switch), attempting graceful recovery",
+        level: .info, category: "Audio"
+      )
+      await recoverFromCodecSwitch()
+    }
   }
 
   private func recoverFromCodecSwitch() async {
@@ -726,7 +736,9 @@ final class AVAudioEngineSource: AudioInputSource {
     guard stabilized else {
       btCrashLogger.error("Recovery: format stabilization timed out — emergency teardown")
       emergencyTeardown()
-      onInterrupted?()
+      // #1408: the device is alive (we checked above); our engine could not
+      // re-stabilize. Not a disconnect.
+      onInterrupted?(.engineLost)
       return
     }
 
@@ -804,7 +816,8 @@ final class AVAudioEngineSource: AudioInputSource {
     } catch {
       btCrashLogger.error("Recovery failed: \(error.localizedDescription) — emergency teardown")
       emergencyTeardown()
-      onInterrupted?()
+      // #1408: the device is alive; our engine failed to restart. Not a disconnect.
+      onInterrupted?(.engineLost)
     }
   }
 

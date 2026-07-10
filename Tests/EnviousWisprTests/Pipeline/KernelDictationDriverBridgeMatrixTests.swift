@@ -209,17 +209,28 @@ import Testing
     // The forced-state fixture has no recording-exit continuation, so the
     // matrix freeze covers only the bridge cases and the no-op cases.
 
-    @Test("handleEngineInterruption: L/S/T/F bridges to driver error (matrix #4)")
-    func engineInterruptionBridgesActiveNonRecording() async {
+    /// #1408: the bridged sentence is CAUSE-AWARE. This test used to inject
+    /// `.engineLost` and demand "Microphone disconnected" — it froze the very
+    /// claim that was false, since an engine that fails to recover leaves the
+    /// microphone plugged in. Both causes are exercised now, so the freeze locks
+    /// the distinction rather than the bug.
+    @Test(
+      "handleEngineInterruption: L/S/T/F bridges to a cause-accurate driver error (matrix #4)",
+      arguments: [
+        (EngineInterruptionCause.deviceRemoved, "Microphone disconnected"),
+        (EngineInterruptionCause.engineLost, "Recording interrupted"),
+      ])
+    func engineInterruptionBridgesActiveNonRecording(
+      cause: EngineInterruptionCause, expected: String
+    ) async {
       for state: RecordingSessionState in [
         .preparing, .warmingUp, .stopping, .transcribing, .finalizing,
       ] {
         let fx = makeFixture()
         await forceState(fx.kernel, to: state)
-        fx.driver.handleEngineInterruption(.engineLost)
+        fx.driver.handleEngineInterruption(cause)
         await drain()
-        // Driver public state must surface the mic-disconnect error.
-        assertDriverIsError(fx.driver, contains: "Microphone disconnected")
+        assertDriverIsError(fx.driver, contains: expected)
       }
     }
 

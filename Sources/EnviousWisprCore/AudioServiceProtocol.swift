@@ -93,14 +93,24 @@ import Foundation
   /// No header or metadata — just the raw sample bytes.
   func audioBufferCaptured(_ data: Data, frameCount: Int, audioLevel: Float)
 
-  /// The audio engine was interrupted (device disconnect, emergency teardown, max-duration cap).
+  /// The audio engine was interrupted (device disconnect, emergency teardown).
   /// The proxy should transition pipelines to error state. `cause` is the
-  /// `EngineInterruptionCause` raw value so the host can suppress the telemetry
-  /// capture for the non-loss `max_duration_reached` cap while still capturing
-  /// genuine losses (issue #1174 A3). Unknown / legacy values map to
-  /// `engine_lost` at the host.
+  /// `EngineInterruptionCause` raw value: `device_removed` survives the
+  /// crossing (the helper ran the liveness check); unknown / legacy values map
+  /// to `engine_lost` at the host (issue #1174 A3). The max-duration cap does
+  /// NOT travel here (#1408 A3 — see `maxDurationReachedTriggered`).
   func engineInterrupted(cause: String)
 
   /// Service-side VAD detected sustained silence after speech — auto-stop should trigger.
   func vadAutoStopTriggered()
+
+  /// The service-side hard sample-count backstop (3660s) tripped — a NORMAL
+  /// auto-stop, not a loss (#1408 A3). Service→host EVENT delivery (like
+  /// `vadAutoStopTriggered`, unlike configuration — no replay on reconnect).
+  /// The host routes it into the same typed `.maxDuration` stop the graceful
+  /// wall-clock cap uses. `operationID` is the begin op that owns the emitting
+  /// capture (Codex code-diff r6): the host rejects a mismatch against its
+  /// ACTIVE begin op, so a maximally delayed event cannot stop a later
+  /// recording.
+  func maxDurationReachedTriggered(operationID: String)
 }

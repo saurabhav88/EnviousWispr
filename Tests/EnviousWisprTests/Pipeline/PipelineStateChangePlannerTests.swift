@@ -1,3 +1,4 @@
+import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
 import Foundation
@@ -538,6 +539,164 @@ struct PipelineStateChangePlannerTests {
       salvagedLead: true
     )
     #expect(!plan.effects.contains(.scheduleSalvagedLeadWarning))
+  }
+
+  // MARK: - #1408 interruption disclosure + the four-way notice ranking
+
+  /// The single post-completion warning slot is last-writer-wins, so the ranking
+  /// is not array order — it is a set of suppression conditions in this pure
+  /// projection. Parametric over disclosure (nil / .deviceRemoved /
+  /// .otherInterruption) × history-save × lead-trim × polish — the full A1
+  /// validation matrix from plan §21.3.
+  ///
+  /// At most one notice per completion: exactly one whenever any claimant
+  /// applies, none when no claimant applies. No combination may lose a signal.
+  /// The both-ends-lost case (interruption AND lead-trim) is the one that would:
+  /// under a plain ranking the user would hear only that the text was cut short,
+  /// never that the opening was dropped. It gets its own copy instead.
+  @Test(
+    "notice ranking: at most one pill per completion, across the full claimant matrix",
+    arguments: [false, true],
+    [nil, CompletionInterruptionDisclosure.deviceRemoved, .otherInterruption])
+  func noticeRankingIsAtMostOnePill(
+    historySaveFailed: Bool, disclosure: CompletionInterruptionDisclosure?
+  ) {
+    for salvagedLead in [false, true] {
+      for polishFailed in [false, true] {
+        let plan = PipelineStateChangePlanner.plan(
+          to: PipelineState.complete,
+          pipelineOverlayIntent: Self.hiddenIntent,
+          isClipboardFallback: false,
+          isAccessibilityToast: false,
+          lastPolishError: polishFailed ? "polish failed for some reason" : nil,
+          hasCurrentTranscript: true,
+          historySaved: !historySaveFailed,
+          historySaveReason: historySaveFailed ? "disk full" : nil,
+          salvagedLead: salvagedLead,
+          interruptionDisclosure: disclosure
+        )
+        let pills = plan.effects.filter { effect in
+          switch effect {
+          case .scheduleHistorySaveFailedWarning, .scheduleInterruptionWarning,
+            .scheduleSalvagedLeadWarning, .schedulePolishFailedWarning:
+            true
+          default:
+            false
+          }
+        }
+        let label =
+          "historySaveFailed=\(historySaveFailed) disclosure=\(String(describing: disclosure)) "
+          + "salvagedLead=\(salvagedLead) polishFailed=\(polishFailed)"
+
+        // Exactly one pill when any claimant applies, zero when none does.
+        let anyClaimant = historySaveFailed || disclosure != nil || salvagedLead || polishFailed
+        #expect(pills.count == (anyClaimant ? 1 : 0), "\(label) -> \(pills)")
+
+        // Rank 1: the history-save pill always wins the slot.
+        if historySaveFailed {
+          #expect(pills == [.scheduleHistorySaveFailedWarning(reason: "disk full")], "\(label)")
+        } else if let disclosure {
+          // Rank 2: the interruption pill, carrying BOTH the disclosure (which
+          // sentence family) and whether the opening was ALSO lost. This is the
+          // signal that must never be dropped — for `.otherInterruption` too
+          // (grounded review A1: a non-disconnect salvage must not paste
+          // truncated text silently).
+          #expect(
+            pills == [
+              .scheduleInterruptionWarning(disclosure: disclosure, alsoTrimmedLead: salvagedLead)
+            ], "\(label)")
+        } else if salvagedLead {
+          #expect(pills == [.scheduleSalvagedLeadWarning], "\(label)")
+        } else if polishFailed {
+          #expect(pills == [.schedulePolishFailedWarning], "\(label)")
+        }
+      }
+    }
+  }
+
+  @Test(
+    "the both-ends-lost completion gets its own copy, for BOTH sentence families",
+    arguments: [CompletionInterruptionDisclosure.deviceRemoved, .otherInterruption])
+  func bothEndsLostEmitsCombinedNotice(disclosure: CompletionInterruptionDisclosure) {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: nil,
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil,
+      salvagedLead: true,
+      interruptionDisclosure: disclosure
+    )
+    #expect(
+      plan.effects.contains(
+        .scheduleInterruptionWarning(disclosure: disclosure, alsoTrimmedLead: true)))
+    #expect(
+      !plan.effects.contains(
+        .scheduleInterruptionWarning(disclosure: disclosure, alsoTrimmedLead: false)))
+    #expect(!plan.effects.contains(.scheduleSalvagedLeadWarning))
+  }
+
+  @Test("a history-save failure still outranks the interruption pill")
+  func historySaveFailureOutranksInterruption() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: nil,
+      hasCurrentTranscript: true,
+      historySaved: false,
+      historySaveReason: "disk full",
+      salvagedLead: false,
+      interruptionDisclosure: .deviceRemoved
+    )
+    #expect(plan.effects.contains(.scheduleHistorySaveFailedWarning(reason: "disk full")))
+    #expect(
+      !plan.effects.contains(
+        .scheduleInterruptionWarning(disclosure: .deviceRemoved, alsoTrimmedLead: false)))
+  }
+
+  @Test("a non-complete transition with an interruption schedules no pill")
+  func interruptionPillOnlyOnComplete() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.recording,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: nil,
+      hasCurrentTranscript: false,
+      historySaved: true,
+      historySaveReason: nil,
+      salvagedLead: false,
+      interruptionDisclosure: .deviceRemoved
+    )
+    let hasInterruptionPill = plan.effects.contains { effect in
+      if case .scheduleInterruptionWarning = effect { return true }
+      return false
+    }
+    #expect(!hasInterruptionPill)
+  }
+
+  // MARK: - #1408 A1: the disclosure derivation from the stamped cause
+
+  /// The one mapping the coordinator call sites rely on: nil cause → nil
+  /// disclosure; the verified removal → `.deviceRemoved`; every other cause →
+  /// `.otherInterruption`. Exhaustive over the cause enum so a new case must
+  /// pick a side here at compile time.
+  @Test("CompletionInterruptionDisclosure derives from the cause by isDeviceLoss")
+  func disclosureDerivation() {
+    #expect(CompletionInterruptionDisclosure(cause: nil) == nil)
+    for cause in EngineInterruptionCause.allCases {
+      let disclosure = CompletionInterruptionDisclosure(cause: cause)
+      if cause.isDeviceLoss {
+        #expect(disclosure == .deviceRemoved, "\(cause)")
+      } else {
+        #expect(disclosure == .otherInterruption, "\(cause)")
+      }
+    }
   }
 
   // MARK: - Activity projection integrity

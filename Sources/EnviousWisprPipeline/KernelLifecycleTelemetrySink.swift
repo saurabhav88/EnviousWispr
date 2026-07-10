@@ -71,6 +71,13 @@ final class KernelLifecycleTelemetrySink {
   /// rich payload.
   typealias NoAudioCapturedSink = @MainActor (_ ctx: NoAudioContext) -> Void
 
+  /// #1408: the non-paging counter that gives salvage a denominator. Injected
+  /// like every other sink so tests observe the emission without PostHog.
+  typealias AudioCaptureInterruptedSink = @MainActor (
+    _ cause: String, _ salvageAttempted: Bool, _ salvageSucceeded: Bool,
+    _ terminalState: String, _ backend: String, _ recordingDurationMs: Int?
+  ) -> Void
+
   // MARK: Identity + read sources
 
   private let backend: ASRBackendType
@@ -95,6 +102,7 @@ final class KernelLifecycleTelemetrySink {
   /// recorder pattern observes the emission via its `captureError`
   /// injection.
   private let noAudioCapturedRich: NoAudioCapturedSink?
+  private let audioCaptureInterrupted: AudioCaptureInterruptedSink
 
   init(
     backend: ASRBackendType,
@@ -136,7 +144,13 @@ final class KernelLifecycleTelemetrySink {
       SentryBreadcrumb.captureError(
         error, category: category, stage: stage, extra: extra, snapshot: snapshot)
     },
-    noAudioCapturedRich: NoAudioCapturedSink? = nil
+    noAudioCapturedRich: NoAudioCapturedSink? = nil,
+    audioCaptureInterrupted: @escaping AudioCaptureInterruptedSink = {
+      cause, attempted, succeeded, terminal, backend, durationMs in
+      TelemetryService.shared.audioCaptureInterrupted(
+        cause: cause, salvageAttempted: attempted, salvageSucceeded: succeeded,
+        terminalState: terminal, backend: backend, recordingDurationMs: durationMs)
+    }
   ) {
     self.backend = backend
     self.audioCapture = audioCapture
@@ -153,6 +167,7 @@ final class KernelLifecycleTelemetrySink {
     self.captureError = captureError
     self.captureErrorWithSnapshot = captureErrorWithSnapshot
     self.noAudioCapturedRich = noAudioCapturedRich
+    self.audioCaptureInterrupted = audioCaptureInterrupted
   }
 
   /// Switch over the 12-case lifecycle vocabulary and emit each PR-1 §B.7.2
@@ -161,6 +176,7 @@ final class KernelLifecycleTelemetrySink {
   /// mapping table — preserved where the sink can read, deferred where rich
   /// kernel-side wiring would be required (§2.2 non-goals).
   func emit(_ event: KernelLifecycleEvent) {
+    emitAudioCaptureInterruptedIfNeeded(for: event)
     switch event {
     case .pipelineStartingUp:
       // PR-5 Rung 5 Pass 2 #1 — parity with OLD
@@ -239,16 +255,23 @@ final class KernelLifecycleTelemetrySink {
       emitFailed(reason)
 
     case .audioInterrupted(let cause):
-      // Capture the lost dictation ONLY for `.engineLost` — a recording-losing
-      // audio interruption with no other owner (issue #1174 A3). The three other
-      // causes are already accounted for: `.captureSessionLost` by
-      // `captureSessionInterrupted`, `.xpcConnectionLost` by `onXPCServiceError`,
-      // and `.maxDurationReached` is a normal auto-stop, not a loss. Category is
+      // Capture the lost dictation ONLY for the two causes with no other owner
+      // (issue #1174 A3): `.engineLost` and, since #1408, `.deviceRemoved` — the
+      // verified-disconnect half that used to hide inside `.engineLost`. Both are
+      // genuine unowned losses, so splitting the cause must not halve the alert.
+      // The other two are already accounted for: `.captureSessionLost` by
+      // `captureSessionInterrupted`, `.xpcConnectionLost` by `onXPCServiceError`.
+      // (`.maxDurationReached` was deleted by #1408 A3 — the cap is a normal
+      // auto-stop and no longer stamps a cause at all.) Category is
       // `.audioCaptureFailed` (matching the `captureSessionInterrupted` sibling),
       // never `.xpcServiceError` — a benign device disconnect must not page the
       // "XPC Service Crash >1/hr" alert.
+      //
+      // NOTE: reaching this terminal at all now means salvage did not produce a
+      // transcript. A salvaged dictation ends `.completed` and never lands here,
+      // so this emit no longer fires for a recording the user actually received.
       switch cause {
-      case .engineLost:
+      case .engineLost, .deviceRemoved:
         let snapshot = recordingSnapshot()
         emitCaptureError(
           HeartPathError.audioEngineInterrupted(
@@ -257,7 +280,7 @@ final class KernelLifecycleTelemetrySink {
           .audioCaptureFailed, "audio",
           ["was_recording": true, "backend": backend.rawValue],
           snapshot: snapshot)
-      case .captureSessionLost, .xpcConnectionLost, .maxDurationReached:
+      case .captureSessionLost, .xpcConnectionLost:
         break
       }
       updateRecordingState(false, nil, nil)
@@ -317,6 +340,46 @@ final class KernelLifecycleTelemetrySink {
       // The kernel state observer still tracks the `.cancelled` transition —
       // only the telemetry emission is omitted.
       break
+    }
+  }
+
+  /// #1408: emit the interruption counter exactly once per interrupted session,
+  /// at whatever terminal that session reaches. ONE site, not one per arm: a
+  /// salvage can end `.completed`, `.audioInterrupted` (the floor), `.cancelled`
+  /// (the user discarded it), or `.failed` (the audio came back but decoded to
+  /// nothing), and a per-arm emit would quietly miss whichever arm nobody thought
+  /// of. `terminalStateLabel` is exhaustive, so a new terminal must decide.
+  ///
+  /// Reads the same `telemetryState.interruptionCause` the kernel's salvage guard
+  /// reads, and derives `salvage_attempted` from `hasRecoverableAudio` — the one
+  /// authority — never a second copy of that switch.
+  private func emitAudioCaptureInterruptedIfNeeded(for event: KernelLifecycleEvent) {
+    guard let cause = telemetryState.interruptionCause,
+      let terminal = Self.terminalStateLabel(for: event)
+    else { return }
+    audioCaptureInterrupted(
+      cause.rawValue,
+      cause.hasRecoverableAudio,
+      terminal == "completed",
+      terminal,
+      backend.rawValue,
+      telemetryState.recordingSnapshot?.durationMs)
+  }
+
+  /// The terminal each lifecycle event represents, or `nil` for a non-terminal
+  /// event. Exhaustive on purpose.
+  private static func terminalStateLabel(for event: KernelLifecycleEvent) -> String? {
+    switch event {
+    case .pipelineCompleted: "completed"
+    case .failed: "failed"
+    case .audioInterrupted: "audio_interrupted"
+    case .asrInterrupted: "asr_interrupted"
+    case .discarded: "discarded"
+    case .noSpeech: "no_speech"
+    case .cancelled: "cancelled"
+    case .pipelineStartingUp, .modelLoading, .recordingCommitted, .recordingStopped,
+      .transcriptionStarted, .asrCompleted:
+      nil
     }
   }
 

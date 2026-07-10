@@ -1,3 +1,4 @@
+import EnviousWisprAudio
 import EnviousWisprCore
 import Foundation
 
@@ -25,6 +26,16 @@ final class KernelTelemetryState {
   /// guard passes — BEFORE the too-short / no-audio / dead-air early
   /// terminals — so no-audio, asrEmpty, and completed all share it.
   var captureHealth: KernelCaptureHealthTelemetry?
+  /// #1408: the ONE home for "this session's capture was interrupted, by cause X."
+  /// Stamped once per session by `RecordingSessionKernel.externalEngineInterrupted`
+  /// under its first-wins accept condition, and read by four consumers: the
+  /// kernel's salvage guard, the kernel's terminal floor, the History "Interrupted"
+  /// badge (via the `store` closure, which already captures this holder), and this
+  /// module's lifecycle telemetry sink. `RecordingSessionKernel
+  /// .lastAudioInterruptionCause` is a computed read-through to here, not a second
+  /// copy. Cleared ONLY by `resetForNewSession()` below — a second clearer would
+  /// let a stale cause leak into the next session and mis-fire the floor.
+  var interruptionCause: EngineInterruptionCause?
 
   func resetForNewSession(polishEnabled: Bool) {
     self.polishEnabled = polishEnabled
@@ -37,6 +48,7 @@ final class KernelTelemetryState {
     transcriptionFailureError = nil
     modelLoadError = nil
     captureHealth = nil
+    interruptionCause = nil
   }
 }
 

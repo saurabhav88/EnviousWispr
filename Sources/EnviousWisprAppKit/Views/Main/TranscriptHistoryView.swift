@@ -121,6 +121,26 @@ struct TranscriptRowView: View {
           .accessibilityLabel("Recovered recording")
         }
 
+        if transcript.inputDeviceWasRemoved == true {
+          // #1408 — the microphone died mid-recording and this is what survived,
+          // so the text may be cut short. `stWarning`, not `stSuccess`:
+          // "Recovered" is good news, "Interrupted" is not. Icon + text (never
+          // color-only). The crossed-out mic names the event the user watched
+          // happen; `scissors` would read as if they trimmed it themselves —
+          // and it renders ONLY for a verified removal, never for other
+          // interruption causes (the field takes the strictest predicate).
+          HStack(spacing: 2) {
+            Image(systemName: "mic.slash.circle")
+            Text("Interrupted")
+          }
+          .font(.caption2)
+          .padding(.horizontal, 5)
+          .padding(.vertical, 2)
+          .background(Color.stWarning.opacity(0.15), in: Capsule())
+          .foregroundStyle(.stWarning)
+          .accessibilityLabel("Interrupted recording")
+        }
+
         if transcript.polishedText != nil {
           HStack(spacing: 2) {
             Image(systemName: "sparkles")

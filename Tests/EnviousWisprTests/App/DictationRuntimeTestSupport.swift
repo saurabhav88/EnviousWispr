@@ -24,6 +24,7 @@ final class RouterTestAudioCapture: AudioCaptureInterface {
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
   var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?
+  var onMaxDurationReached: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
   var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
   var onXPCServiceError: ((XPCErrorContext) -> Void)?

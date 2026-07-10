@@ -10,7 +10,7 @@ import Foundation
 // `ExpectedOutcome`. Deterministic: one run per scenario is the pass
 // (epic §3a). In PR-2 the SUT is `StubRecordingSession` and only the harness
 // mechanics are exercised; from PR-3 the SUT is the real kernel and the
-// 33-scenario inventory becomes merge-blocking.
+// 38-scenario inventory becomes merge-blocking.
 
 /// The fakes + SUT bundle one scenario runs against.
 @MainActor
@@ -159,8 +159,14 @@ struct ScenarioRunner {
       // match the production path PR-4b.4 wires (App router → driver → kernel).
       kernel?.externalCaptureStalled(context.capture.makeStallContext())
     case .interrupt, .routeChange:
-      // The audio-interruption channel (C5). A genuine engine loss → captured.
-      kernel?.externalEngineInterrupted(.engineLost)
+      // The audio-interruption channel (C5). A verified device removal (the
+      // Bluetooth headset walked away) → captured, and (#1408) salvaged: the
+      // capture manager is still alive and still holding the samples.
+      kernel?.externalEngineInterrupted(.deviceRemoved)
+    case .interruptUnrecoverable:
+      // #1408 (C7): the audio XPC helper that OWNED `capturedSamples` is gone.
+      // Salvage must refuse — there is nothing left in memory to transcribe.
+      kernel?.externalEngineInterrupted(.xpcConnectionLost)
     case .permissionDenied:
       context.capture.permissionDenied = true
     case .startFailure:

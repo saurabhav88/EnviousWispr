@@ -257,7 +257,13 @@ final class DictationLifecycleCoordinator {
       currentTranscript: kernelDriver.currentTranscript,
       historySaved: kernelDriver.lastHistorySaved,
       historySaveReason: kernelDriver.lastHistorySaveReason,
-      salvagedLead: kernelDriver.lastSalvagedLeadTrimMs != nil
+      salvagedLead: kernelDriver.lastSalvagedLeadTrimMs != nil,
+      // #1408 (A1): the full typed disclosure, not a Bool. nil = normal
+      // completion; `.deviceRemoved` = verified removal (may say "Microphone
+      // disconnected"); `.otherInterruption` = salvaged with the mic, as far as
+      // we know, still attached (neutral copy). The factory owns the sentences.
+      interruptionDisclosure: CompletionInterruptionDisclosure(
+        cause: kernelDriver.lastAudioInterruptionCause)
     )
     // PR7 of #763 — push polish error to the post-recording result home so
     // views can read `lastRecordingResult.polishError` without reaching
@@ -309,7 +315,9 @@ final class DictationLifecycleCoordinator {
       currentTranscript: whisperKitKernelDriver.currentTranscript,
       historySaved: whisperKitKernelDriver.lastHistorySaved,
       historySaveReason: whisperKitKernelDriver.lastHistorySaveReason,
-      salvagedLead: whisperKitKernelDriver.lastSalvagedLeadTrimMs != nil
+      salvagedLead: whisperKitKernelDriver.lastSalvagedLeadTrimMs != nil,
+      interruptionDisclosure: CompletionInterruptionDisclosure(
+        cause: whisperKitKernelDriver.lastAudioInterruptionCause)
     )
     lastRecordingResult.polishError = whisperKitKernelDriver.lastPolishError
     dispatchChipLifecycle(
@@ -399,46 +407,24 @@ final class DictationLifecycleCoordinator {
 
   // MARK: - State-handler factory
 
+  /// #1408: the closure bodies and every notice literal live in
+  /// `PipelineStateChangeHandlerFactory`; this hands it the coordinator-owned
+  /// seams they reach back into. Extracted rather than grown in place — the
+  /// coordinator sat at its line ceiling, which is exactly the signal that
+  /// ceiling exists to send.
   private func makeStateChangeHandler(backendLabel: String) -> PipelineStateChangeHandler {
-    // #1060: this handler's driver — completion telemetry reads its length + stop reason.
     let driver = backendLabel == "whisperKit" ? whisperKitKernelDriver : kernelDriver
-    return PipelineStateChangeHandler(
-      showOverlay: { [weak self] intent in self?.showOverlayIntent(intent) },
-      cancelPendingWarning: { [weak self] in self?.postCompletionWarningTask?.cancel() },
-      schedulePolishFailedWarning: { [weak self] in
-        self?.schedulePostCompletionWarning(message: "Polish failed -- using raw text")
-      },
-      appendCompletedTranscript: { [weak self] t in
-        self?.transcriptCoordinator.append(t)
-        // #1063 PR1: the save is durable by `.complete`; delete this session's
-        // spool + key. nil unless recovery was armed for this take.
-        if let sid = t.recoverySessionID { self?.onDurableSave(sid) }
-      },
-      reportDictationCompleted: { [weak self] t in
-        guard let self else { return }
-        // #1376/#1434: route + capture-health + salvage argument assembly
-        // lives in `DictationCompletedReporting` (thin-factory discipline).
-        DictationCompletedReporting.report(
-          transcript: t, inputMode: self.settings.recordingMode.rawValue, driver: driver)
-      },
-      reportPipelineFailed: { msg in
-        TelemetryService.shared.pipelineFailed(
-          stage: "transcription", errorCategory: "pipeline_error", errorCode: msg,
-          recoverable: false, backend: backendLabel)
-      },
-      // #1167: history-save-failed pill (post-completion warning slot, ~400 ms).
-      scheduleHistorySaveFailedWarning: { [weak self] reason in
-        self?.schedulePostCompletionWarning(message: "Couldn't save to history: \(reason)")
-      },
-      // #1434: salvaged-lead disclosure pill — the degraded-lead retry
-      // recovered this dictation by trimming a poisoned opening, so the
-      // pasted text is missing its lead. Same generic post-completion
-      // mechanism as the two pills above; the message is wired HERE, never
-      // hardcoded into a shared closure (Codex r2 rev 5).
-      scheduleSalvagedLeadWarning: { [weak self] in
-        self?.schedulePostCompletionWarning(
-          message: "Beginning of dictation was unclear and was skipped")
-      }
-    )
+    return PipelineStateChangeHandlerFactory.make(
+      backendLabel: backendLabel,
+      deps: .init(
+        showOverlay: { [weak self] intent in self?.showOverlayIntent(intent) },
+        cancelPendingWarning: { [weak self] in self?.postCompletionWarningTask?.cancel() },
+        schedulePostCompletionWarning: { [weak self] message in
+          self?.schedulePostCompletionWarning(message: message)
+        },
+        appendTranscript: { [weak self] t in self?.transcriptCoordinator.append(t) },
+        onDurableSave: { [weak self] sid in self?.onDurableSave(sid) },
+        inputMode: { [weak self] in self?.settings.recordingMode.rawValue },
+        driver: driver))
   }
 }

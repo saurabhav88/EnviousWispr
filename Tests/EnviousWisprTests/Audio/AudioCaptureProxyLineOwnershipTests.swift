@@ -527,3 +527,29 @@ struct AudioCaptureProxyLineOwnershipTests {
     #expect(proxy.isCapturing == false)
   }
 }
+
+// MARK: - #1408 A3 — max-duration relay stale-fire guard
+
+/// `maxDurationReachedTriggered` carries SESSION IDENTITY (Codex code-diff
+/// r6): the helper echoes the begin `operationID` that owns the emitting
+/// capture, and the proxy fires the callback only while capturing AND the
+/// echo matches the ACTIVE session's begin op. An idle proxy, or an echo from
+/// an earlier session, must swallow the event — a maximally delayed backstop
+/// relay cannot stop a later recording.
+@MainActor
+@Suite("AudioCaptureProxy max-duration relay guard (#1408 A3)")
+struct AudioCaptureProxyMaxDurationRelayTests {
+
+  @Test("an idle proxy swallows a relayed max-duration event")
+  func idleProxySwallowsTheEvent() async {
+    let proxy = AudioCaptureProxy()
+    var fires = 0
+    proxy.onMaxDurationReached = { fires += 1 }
+
+    proxy.maxDurationReachedTriggered(operationID: "op-from-some-session")
+    // The relay hops through one MainActor task; drain it before asserting.
+    for _ in 0..<20 { await Task.yield() }
+
+    #expect(fires == 0, "isCapturing is false — the stale guard must swallow the event")
+  }
+}

@@ -224,6 +224,18 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// after an abnormal exit — drives the History "Recovered" badge. Optional so
   /// legacy JSON decodes to nil (treated as not-recovered). #1063.
   public let isRecovered: Bool?
+  /// True when this recording's input device was VERIFIED REMOVED mid-recording
+  /// (`EngineInterruptionCause.isDeviceLoss`) and this transcript is what
+  /// survived — drives the History "Interrupted" badge (a crossed-out mic, so it
+  /// takes the strictest predicate: the icon must never claim a removal that was
+  /// not verified). `false` covers both normal takes and takes interrupted by a
+  /// non-removal cause; `nil` means unknown, which is what a spool-recovered
+  /// transcript gets (the spool records why the WRITER exited, not why the
+  /// recording ended). Optional so pre-#1408 JSON decodes to nil (synthesized
+  /// `Codable`, no custom decode). #1408; renamed from `isInterrupted` pre-ship
+  /// (grounded review: the old name promised every interruption while the value
+  /// carried one).
+  public let inputDeviceWasRemoved: Bool?
 
   public init(
     id: UUID = UUID(),
@@ -238,7 +250,8 @@ public struct Transcript: Codable, Identifiable, Sendable {
     llmModel: String? = nil,
     metrics: ExecutionMetrics? = nil,
     recoverySessionID: String? = nil,
-    isRecovered: Bool? = nil
+    isRecovered: Bool? = nil,
+    inputDeviceWasRemoved: Bool? = nil
   ) {
     self.id = id
     self.text = text
@@ -253,6 +266,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
     self.metrics = metrics
     self.recoverySessionID = recoverySessionID
     self.isRecovered = isRecovered
+    self.inputDeviceWasRemoved = inputDeviceWasRemoved
   }
 
   /// The text to display — polished if available, otherwise raw.

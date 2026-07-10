@@ -132,13 +132,20 @@ package final class CaptureVADSignalSource: VADSignalSource {
     segmentsProvider = provider
   }
 
-  /// Claim sole ownership of `AudioCaptureInterface.onVADAutoStop` (PR-4 §3.5).
-  /// The XPC service-side detector fires this callback; the kernel no longer
-  /// binds it directly (`bindCaptureCallbacks` dropped that wiring).
+  /// Claim sole ownership of `AudioCaptureInterface.onVADAutoStop` AND
+  /// `onMaxDurationReached` (PR-4 §3.5; #1408 A3). The XPC service-side
+  /// detector fires the first; the manager's hard sample-count backstop fires
+  /// the second — both funnel into the ONE typed `VADStopSignal` route, so the
+  /// kernel receives the same session-stamped, stale-drop-protected stop
+  /// signal whichever mechanism noticed first. The kernel no longer binds
+  /// either directly (`bindCaptureCallbacks` dropped that wiring).
   func bind(audioCapture: any AudioCaptureInterface) {
     self.audioCapture = audioCapture
     audioCapture.onVADAutoStop = { [weak self] in
       self?.noteAutoStopTriggered()
+    }
+    audioCapture.onMaxDurationReached = { [weak self] in
+      self?.noteMaxDurationReached()
     }
   }
 
