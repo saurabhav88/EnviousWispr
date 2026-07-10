@@ -69,8 +69,10 @@ public final class RecoveryTextProcessor {
       emojiRestore: EmojiRestoreStep())
     // #945: crash-recovery polish failures stay silent in telemetry (this is a
     // live-only metric). A recovered take that fails to polish still returns its
-    // `polishError` in the outcome, but no `polish_provider_failed` event fires.
-    self.runner = TextProcessingRunner(captureError: { _, _, _, _, _, _ in })
+    // `polishError` in the outcome, but nothing is reported.
+    // #1446: `.silent` names every seam at once, so a future seam cannot be added
+    // and left live here by accident. See `TextProcessingRunner.TelemetrySeams`.
+    self.runner = TextProcessingRunner(telemetry: .silent)
   }
 
   /// Apply the recording's record-time settings snapshot so recovery replays

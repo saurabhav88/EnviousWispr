@@ -16,6 +16,7 @@ struct PolishFailureReasonTests {
     "each reason has its stable low-cardinality telemetry tag",
     arguments: [
       (PolishFailureReason.apiKeyMissing, "api_key_missing"),
+      (.apiKeyUnreadable, "api_key_unreadable"),
       (.apiKeyRejected, "api_key_rejected"),
       (.accessDenied, "access_denied"),
       (.outOfCredits, "out_of_credits"),
@@ -47,6 +48,7 @@ struct PolishFailureReasonTests {
     "not-really-broken reasons lead with 'AI cleanup skipped:'",
     arguments: [
       PolishFailureReason.apiKeyMissing,
+      PolishFailureReason.apiKeyUnreadable,
       PolishFailureReason.inputTooLong,
       PolishFailureReason.timedOut,
     ])
@@ -228,5 +230,212 @@ struct PolishFailureReasonTests {
   func rejectedVsMissingDistinct() {
     #expect(PolishFailureReason.apiKeyRejected.leadIn == .failed)
     #expect(PolishFailureReason.apiKeyMissing.leadIn == .skipped)
+  }
+
+  // MARK: - Telemetry channel (#1446)
+
+  /// OUR bugs, on any provider: a request we built wrong, a response we mis-parsed,
+  /// an error we failed to classify, a key we stored and then could not read, and
+  /// the polish budget WE set expiring. Spelled out longhand rather than derived
+  /// from the production switch, so changing the policy forces a deliberate edit
+  /// here too.
+  private static let alwaysAlerting: Set<PolishFailureReason> = [
+    .badRequest, .emptyResponse, .unknown, .apiKeyUnreadable, .timedOut,
+  ]
+  /// The one reason whose MEANING depends on where the provider runs: a model the
+  /// user never pulled into Ollama is their setup; a cloud model our Picker offered
+  /// and the provider then 404s is a dead id in our catalog.
+  private static let alertingUnlessOllama: Set<PolishFailureReason> = [
+    .modelUnavailable
+  ]
+  /// Everything the user or the provider owns: their network, machine, key, account,
+  /// billing, quota, dictation length, and the provider's own outage and content
+  /// rules. Counted, never paged — no code change of ours alters the outcome, so a
+  /// GitHub issue would have nothing to fix. The COUNT is the point: it tells us
+  /// which walls users hit, which we answer with guides, not commits.
+  private static let neverAlerting: Set<PolishFailureReason> = [
+    .providerUnreachable, .apiKeyMissing, .apiKeyRejected, .accessDenied,
+    .outOfCredits, .rateLimited, .rateLimitedOrQuota, .providerServerError,
+    .contentBlocked, .inputTooLong,
+  ]
+
+  @Test(
+    "the three expectation sets above partition every reason (no case silently untested)",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "user-environment polish failures fired alerting Sentry errors")
+  )
+  func channelExpectationSetsPartitionAllCases() {
+    let union = Self.alwaysAlerting.union(Self.alertingUnlessOllama).union(Self.neverAlerting)
+    #expect(union == Set(PolishFailureReason.allCases))
+    let overlap =
+      Self.alwaysAlerting.intersection(Self.alertingUnlessOllama)
+      .union(Self.alwaysAlerting.intersection(Self.neverAlerting))
+      .union(Self.alertingUnlessOllama.intersection(Self.neverAlerting))
+    #expect(overlap.isEmpty)
+  }
+
+  @Test(
+    "every (reason x provider) pair lands in its pinned channel",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "user-environment polish failures fired alerting Sentry errors"),
+    arguments: PolishFailureReason.allCases, [LLMProvider.openAI, .gemini, .ollama]
+  )
+  func telemetryChannelMatrix(reason: PolishFailureReason, provider: LLMProvider) {
+    let expected: PolishFailureTelemetryChannel
+    if Self.alwaysAlerting.contains(reason) {
+      expected = .alertingSentryError
+    } else if Self.alertingUnlessOllama.contains(reason) {
+      expected = provider == .ollama ? .nonAlertingAnalytics : .alertingSentryError
+    } else {
+      expected = .nonAlertingAnalytics
+    }
+    #expect(
+      reason.telemetryChannel(provider: provider) == expected,
+      "\(reason) on \(provider) should be \(expected)")
+  }
+
+  @Test("the provider-keyed reason is the whole point: same reason, opposite channels")
+  func providerKeyedChannelsDiverge() {
+    for reason in Self.alertingUnlessOllama {
+      #expect(reason.telemetryChannel(provider: .ollama) == .nonAlertingAnalytics)
+      #expect(reason.telemetryChannel(provider: .openAI) == .alertingSentryError)
+      #expect(reason.telemetryChannel(provider: .gemini) == .alertingSentryError)
+    }
+  }
+
+  /// A user on a plane, on a train, behind a corporate firewall, or with a VPN up
+  /// must never page us — on ANY provider. `from(_:)` maps every one of these
+  /// `URLError`s onto `.providerUnreachable`, so the channel must hold for all of
+  /// them. This is the founder principle in `sentry-operations.md`
+  /// RULE: sentry-for-bugs-posthog-for-behaviour, which names "network" outright.
+  @Test(
+    "a user network outage is counted, never paged, on every provider",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "cloud providerUnreachable alerted on the user's own network"),
+    arguments: [
+      URLError.Code.notConnectedToInternet,
+      URLError.Code.networkConnectionLost,
+      URLError.Code.dataNotAllowed,
+      URLError.Code.internationalRoamingOff,
+      URLError.Code.cannotFindHost,
+      URLError.Code.cannotConnectToHost,
+      URLError.Code.dnsLookupFailed,
+      URLError.Code.timedOut,
+    ]
+  )
+  func userNetworkOutagesNeverAlert(code: URLError.Code) {
+    let reason = PolishFailureReason.from(URLError(code))
+    #expect(reason == .providerUnreachable)
+    for provider in [LLMProvider.openAI, .gemini, .ollama] {
+      #expect(reason.telemetryChannel(provider: provider) == .nonAlertingAnalytics)
+    }
+  }
+
+  /// The counterpart: OUR polish budget expiring is `TimeoutError`, not a `URLError`,
+  /// and it stays alerting. A budget that shrank or a prompt that ballooned is our
+  /// regression, and the two timeouts must not collapse into one channel.
+  @Test("our own polish-budget timeout still pages us, unlike a network timeout")
+  func ourBudgetTimeoutStillAlerts() {
+    #expect(PolishFailureReason.from(TimeoutError(seconds: 5)) == .timedOut)
+    #expect(
+      PolishFailureReason.timedOut.telemetryChannel(provider: .openAI) == .alertingSentryError)
+    #expect(
+      PolishFailureReason.from(URLError(.timedOut)).telemetryChannel(provider: .openAI)
+        == .nonAlertingAnalytics)
+  }
+
+  @Test("the user- and provider-owned reasons never page us, on any provider")
+  func userEnvironmentReasonsNeverAlert() {
+    for reason in Self.neverAlerting {
+      for provider in [LLMProvider.openAI, .gemini, .ollama] {
+        #expect(reason.telemetryChannel(provider: provider) == .nonAlertingAnalytics)
+      }
+    }
+  }
+
+  /// Four reasons tell the user "AI cleanup skipped" — nothing is broken. Exactly two
+  /// of them still page us, and both are OURS despite the reassuring copy:
+  ///   - `timedOut` — the deadline it blew is a budget WE chose, so a spike means our
+  ///     budget shrank or our prompt ballooned.
+  ///   - `apiKeyUnreadable` — we stored a key and then could not read it back. Its
+  ///     copy is deliberately identical to `apiKeyMissing` (re-entering the key fixes
+  ///     both), but only this one is a defect.
+  /// The other two are the user's own situation and are counted only. Pinned so a
+  /// future tidy-up cannot collapse the notice and the channel into each other: they
+  /// answer different questions — "is the user alarmed?" vs "is this our bug?"
+  @Test("the only reassuring-looking reasons that still page us are the two that are ours")
+  func onlyOurOwnFailuresAlertAmongSkipNotices() {
+    let skipNoticeReasons = PolishFailureReason.allCases.filter { $0.leadIn == .skipped }
+    #expect(
+      Set(skipNoticeReasons) == [.apiKeyMissing, .apiKeyUnreadable, .inputTooLong, .timedOut])
+
+    let alertingSkipNotices = skipNoticeReasons.filter {
+      $0.telemetryChannel(provider: .openAI) == .alertingSentryError
+    }
+    #expect(Set(alertingSkipNotices) == [.timedOut, .apiKeyUnreadable])
+  }
+
+  /// The whole point, stated once: alerting is reserved for OUR bugs.
+  @Test("nothing outside EnviousWispr's own defects can reach the alerting channel")
+  func alertingSetIsExactlyOurBugs() {
+    var alerting: Set<PolishFailureReason> = []
+    for reason in PolishFailureReason.allCases {
+      for provider in [LLMProvider.openAI, .gemini, .ollama] {
+        if reason.telemetryChannel(provider: provider) == .alertingSentryError {
+          alerting.insert(reason)
+        }
+      }
+    }
+    #expect(
+      alerting == [
+        .badRequest, .emptyResponse, .unknown, .apiKeyUnreadable, .timedOut,
+        .modelUnavailable,  // cloud only; Ollama's is the user's un-pulled model
+      ])
+  }
+
+  // MARK: - The apiKeyMissing / apiKeyUnreadable split (#1446)
+
+  @Test(
+    "apiKeyUnreadable is byte-identical to apiKeyMissing everywhere the USER can see",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "a Keychain-read defect hid behind a user-configuration state")
+  )
+  func unreadableKeyCopyParity() {
+    let unreadable = PolishFailureReason.apiKeyUnreadable
+    let missing = PolishFailureReason.apiKeyMissing
+    for provider in [LLMProvider.openAI, .gemini, .ollama] {
+      #expect(unreadable.message(provider: provider) == missing.message(provider: provider))
+      #expect(
+        unreadable.composedMessage(provider: provider)
+          == missing.composedMessage(provider: provider))
+      // The completion planner keys the skip-vs-hard-failure toast off this.
+      #expect(PolishFailureReason.isSkipNotice(unreadable.composedMessage(provider: provider)))
+    }
+    #expect(unreadable.leadIn == missing.leadIn)
+    #expect(unreadable.leadIn == .skipped)
+    #expect(unreadable.isRetryable == missing.isRetryable)
+    #expect(unreadable.isRetryable == false)
+  }
+
+  @Test("...and differs from apiKeyMissing in exactly the two ways that motivated the split")
+  func unreadableKeyTelemetryDiverges() {
+    // A distinct Sentry fingerprint...
+    #expect(PolishFailureReason.apiKeyUnreadable.telemetryTag == "api_key_unreadable")
+    #expect(
+      PolishFailureReason.apiKeyUnreadable.telemetryTag
+        != PolishFailureReason.apiKeyMissing.telemetryTag)
+    // ...and the opposite channel: our defect pages, the user's config does not.
+    for provider in [LLMProvider.openAI, .gemini, .ollama] {
+      #expect(
+        PolishFailureReason.apiKeyUnreadable.telemetryChannel(provider: provider)
+          == .alertingSentryError)
+      #expect(
+        PolishFailureReason.apiKeyMissing.telemetryChannel(provider: provider)
+          == .nonAlertingAnalytics)
+    }
   }
 }

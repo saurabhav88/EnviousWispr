@@ -164,7 +164,11 @@ struct OllamaReadinessGateTests {
   ) async throws -> TextProcessingRunResult {
     let (step, _) = makeStep(probe: probe)
     let executor = FakeTimeoutExecutor(throwBelowSeconds: 0.0)
-    let runner = TextProcessingRunner(captureError: spy.sink, timeoutExecutor: executor.run)
+    // The preflight path fires neither seam; the record seam is no-op'd so a
+    // future mid-flight test here can never reach the real PostHog client (#1446).
+    let runner = TextProcessingRunner(
+      telemetry: .init(captureError: spy.sink, recordPolishFailed: { _, _, _, _ in }),
+      timeoutExecutor: executor.run)
     return try await runner.run(
       rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
   }
