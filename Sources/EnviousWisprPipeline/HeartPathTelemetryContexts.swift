@@ -23,6 +23,16 @@ struct NoAudioContext: Sendable {
   var inputSelectionMode: String? = nil
   var outputTransport: String? = nil
   var routeResolutionSource: String? = nil
+  // #1434: capture-health facts at the no-audio terminal — populated from the
+  // kernel's post-stop capture-health record (no-audio fires AFTER
+  // `stopCapture()` returned empty, so the record exists).
+  var captureNativeRateHz: Double? = nil
+  var captureRingDropCount: Int? = nil
+  var captureConverterErrorCount: Int? = nil
+  var captureZeroOutputCount: Int? = nil
+  var captureRateDivergenceDetected: Bool? = nil
+  var captureFormatStabilized: Bool? = nil
+  var captureRebuiltForFormat: Bool? = nil
 }
 
 /// Per-call context for `HeartPathTelemetryEmitter.zombieZeroPeakIfNeeded(...)`.

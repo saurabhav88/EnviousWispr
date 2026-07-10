@@ -46,15 +46,60 @@ public struct SpeechSegment: Sendable, Codable {
 
 // MARK: - Capture Result
 
+/// Capture-health facts for one recording, assembled by the ACTIVE SOURCE at
+/// stop time (#1434). One object for both the in-process and XPC stop paths —
+/// the XPC stop reply encodes/decodes exactly this struct; telemetry
+/// properties (`capture_native_rate_hz`, the counters) are DERIVED from it,
+/// never plumbed as separate side channels.
+public struct CaptureStopMetadata: Sendable, Codable, Equatable {
+  /// The native rate the capture's converter ran at — the prepare-time read of
+  /// whichever prepare produced this capture (post-rebuild when the format
+  /// stabilization check forced a rebuild). Nil when the source doesn't track
+  /// a native rate.
+  public let nativeRateHz: Double?
+  /// Chunks the RT ring refused because the consumer lagged (drop = lost audio).
+  public let ringDropCount: Int
+  /// AVAudioConverter calls that returned an error (converted chunk lost).
+  public let converterErrorCount: Int
+  /// Converter calls that produced zero output frames (expected once at
+  /// priming; more than ~1 per session is a signal).
+  public let zeroOutputCount: Int
+  /// A stream-format / nominal-rate change notification fired for the bound
+  /// device while capturing (#1434 — log-and-telemetry only in v1; never
+  /// interrupts the recording).
+  public let rateDivergenceDetected: Bool
+
+  public init(
+    nativeRateHz: Double?,
+    ringDropCount: Int = 0,
+    converterErrorCount: Int = 0,
+    zeroOutputCount: Int = 0,
+    rateDivergenceDetected: Bool = false
+  ) {
+    self.nativeRateHz = nativeRateHz
+    self.ringDropCount = ringDropCount
+    self.converterErrorCount = converterErrorCount
+    self.zeroOutputCount = zeroOutputCount
+    self.rateDivergenceDetected = rateDivergenceDetected
+  }
+}
+
 /// Atomic result from stopCapture(): audio samples + VAD speech segments.
 /// Bundling these together eliminates the ordering dependency between
 /// stopCapture() and getVADSegments() across the XPC boundary.
 public struct CaptureResult: Sendable {
   public let samples: [Float]
   public let vadSegments: [SpeechSegment]
-  public init(samples: [Float], vadSegments: [SpeechSegment] = []) {
+  /// Capture-health metadata from the active source (#1434); nil on legacy /
+  /// unpopulated paths.
+  public let metadata: CaptureStopMetadata?
+  public init(
+    samples: [Float], vadSegments: [SpeechSegment] = [],
+    metadata: CaptureStopMetadata? = nil
+  ) {
     self.samples = samples
     self.vadSegments = vadSegments
+    self.metadata = metadata
   }
 }
 

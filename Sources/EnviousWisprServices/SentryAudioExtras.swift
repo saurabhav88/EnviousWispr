@@ -59,6 +59,18 @@ public enum SentryAudioExtras {
       extras["capture.engine_started_successfully"] = ctx.engineStartedSuccessfully
       extras["capture.tap_installed"] = ctx.tapInstalled
       extras["capture.format_mismatch"] = ctx.formatMismatchObserved
+      // #1434 capture-health at stall time. Source-stamped rate/divergence
+      // (nil on proxy-origin stalls — the host watchdog can't read helper
+      // state pre-stop); kernel-merged stabilization flags. Never counters
+      // (those exist only post-stop).
+      if let rate = ctx.nativeRateHz { extras["capture.native_rate_hz"] = rate }
+      if let div = ctx.rateDivergenceDetected {
+        extras["capture.rate_divergence_detected"] = div
+      }
+      if let stab = ctx.formatStabilized { extras["capture.format_stabilized"] = stab }
+      if let rebuilt = ctx.captureRebuiltForFormat {
+        extras["capture.rebuilt_for_format"] = rebuilt
+      }
     }
 
     if let swap = polishModelSwapMs {

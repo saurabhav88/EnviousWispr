@@ -167,6 +167,17 @@ final class AVAudioEngineSource: AudioInputSource {
   /// Called when an audio device operation fails.
   var onDeviceError: ((String) -> Void)?
 
+  /// #1434: stop-time capture health. The engine path exposes the input
+  /// node's live rate only (its converter/ring internals predate the counter
+  /// instrumentation and have their own, battle-tested diagnostics); nil when
+  /// the engine isn't running.
+  var captureStopMetadata: CaptureStopMetadata? {
+    guard engine.isRunning else { return nil }
+    let rate = engine.inputNode.outputFormat(forBus: 0).sampleRate
+    guard rate > 0 else { return nil }
+    return CaptureStopMetadata(nativeRateHz: rate)
+  }
+
   // NOTE: onPartialSamples removed — manager owns capturedSamples and handles partial recovery.
 
   // MARK: - Constants

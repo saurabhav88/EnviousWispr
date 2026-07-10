@@ -43,6 +43,15 @@ enum PipelineStateSideEffect: Equatable, Sendable {
   /// delivery still ran (best-effort save). Reuses the single post-completion
   /// warning slot, so it is mutually exclusive with `schedulePolishFailedWarning`.
   case scheduleHistorySaveFailedWarning(reason: String)
+
+  /// #1434: schedule the transient "Beginning of dictation was unclear and was
+  /// skipped" pill on a SALVAGED completion — the degraded-lead retry recovered
+  /// the transcript by trimming a poisoned prefix, so the pasted text is
+  /// missing its lead, and a trimmed lead can invert meaning invisibly. The
+  /// disclosure never touches the pasted text. Shares the single
+  /// post-completion warning slot: history-save-failed > salvaged-lead >
+  /// polish-failed.
+  case scheduleSalvagedLeadWarning
 }
 
 struct PipelineStateChangePlan: Equatable, Sendable {
@@ -78,7 +87,8 @@ enum PipelineStateChangePlanner {
     lastPolishError: String?,
     hasCurrentTranscript: Bool,
     historySaved: Bool,
-    historySaveReason: String?
+    historySaveReason: String?,
+    salvagedLead: Bool = false
   ) -> PipelineStateChangePlan {
     var effects: [PipelineStateSideEffect] = []
 
@@ -106,11 +116,20 @@ enum PipelineStateChangePlanner {
         // #1167: a history-save failure takes the single post-completion
         // warning slot (its pill is scheduled in Step 2), so suppress the
         // polish-failed pill when both fired this session.
-        if !historySaveFailed, !PolishFailureReason.isSkipNotice(polishError) {
+        // #1434: a salvaged-lead completion also takes the single warning
+        // slot ahead of the polish pill (data-loss disclosure beats a
+        // formatting notice) — scheduled below, outside this branch.
+        if !historySaveFailed, !salvagedLead, !PolishFailureReason.isSkipNotice(polishError) {
           effects.append(.schedulePolishFailedWarning)
         }
       } else {
         resolvedOverlayIntent = pipelineOverlayIntent
+      }
+      // #1434: salvaged-lead disclosure. Priority within the single warning
+      // slot: history-save-failed (scheduled in Step 2) > salvaged-lead >
+      // polish-failed (suppressed above when salvaged).
+      if salvagedLead, !historySaveFailed {
+        effects.append(.scheduleSalvagedLeadWarning)
       }
     default:
       effects.append(.cancelPendingWarning)

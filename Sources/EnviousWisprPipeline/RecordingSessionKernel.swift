@@ -253,6 +253,22 @@ final class RecordingSessionKernel {
   /// (issue #1174 A3). Reset on session start.
   private(set) var lastAudioInterruptionCause: EngineInterruptionCause?
 
+  /// #1434: per-session stabilization outcome (set at the pre-capture
+  /// stabilization site; nil until it runs). Read by
+  /// `KernelHeartPathTelemetryObserver` at stall-emit time via
+  /// `captureStabilizationTelemetry` and merged into the post-stop
+  /// capture-health record.
+  private var formatStabilizedThisSession: Bool?
+  private var captureRebuiltForFormatThisSession: Bool?
+
+  /// #1434: kernel-owned stabilization facts for telemetry enrichment. The
+  /// stall event fires BEFORE `stopCapture()` (no stop metadata exists yet),
+  /// so the observer reads these through the kernel instead of the private
+  /// `telemetryState`.
+  var captureStabilizationTelemetry: (formatStabilized: Bool?, rebuiltForFormat: Bool?) {
+    (formatStabilizedThisSession, captureRebuiltForFormatThisSession)
+  }
+
   /// `true` if the kernel started this session in streaming mode. Set
   /// immediately BEFORE `adapter.beginSession(..., streaming:)`. The observer
   /// reads this at `.recording` lifecycle mapping time so the
@@ -362,6 +378,13 @@ final class RecordingSessionKernel {
   /// mid-flight device change cannot tear the recorded value. Overwritten each
   /// session; never persisted.
   private(set) var lastResolvedRoute: ResolvedRouteTransports?
+  /// #1434: non-nil when the most recent completion was a degraded-lead
+  /// salvage — the winning trim in ms. Cleared with `lastStopReason` at the
+  /// next `→ recording` transition (the App layer reads it at `.complete`).
+  private(set) var lastSalvagedLeadTrimMs: Int?
+  /// #1434: capture-health facts of the most recent recording, for the App
+  /// layer's `dictation.completed` telemetry (mirrors `lastResolvedRoute`).
+  private(set) var lastCaptureHealth: CaptureHealthTransports?
 
   /// `true` once the polish step returned a non-empty processed transcript —
   /// the kernel-era equivalent of the point at which the old pipeline called
@@ -806,6 +829,13 @@ final class RecordingSessionKernel {
     let stabilized = await audioCapture.waitForFormatStabilization(
       maxWait: 1.5, pollInterval: 0.2)
     guard isCurrent(sid) else { return }
+    // #1434: record the stabilization outcome for the session's capture-health
+    // telemetry (read at stall-emit by the observer and merged into the
+    // post-stop record at `stopCapture()`). Exactly ONE rebuild attempt below,
+    // and no second stabilization check after it — a still-broken device is
+    // owned by the stall watchdog / ASR-empty paths downstream.
+    formatStabilizedThisSession = stabilized
+    captureRebuiltForFormatThisSession = !stabilized
     if !stabilized {
       audioCapture.rebuildEngine()
       do {
@@ -919,6 +949,8 @@ final class RecordingSessionKernel {
     transition(to: .recording)
     recordingStartedAtDate = Date()
     lastStopReason = nil  // #1060: clear prior session's stop reason.
+    lastSalvagedLeadTrimMs = nil  // #1434: clear prior session's salvage marker.
+    lastCaptureHealth = nil  // #1434: clear prior session's capture health.
     lastRecordingDurationSeconds = nil
     // #1376: snapshot the resolved route AFTER all start retries (this
     // transition is downstream of every startEnginePhase/beginCapturePhase
@@ -990,6 +1022,23 @@ final class RecordingSessionKernel {
     captureLifecycle = .stopped
     resourcesReleased = true
     guard !state.isTerminal else { return }
+    // #1434: stamp the ONE capture-health record NOW — before the too-short /
+    // no-audio / dead-air early terminals below — so no-audio, asrEmpty, and
+    // completed all read the same record (Codex r2 ordering contract).
+    telemetryState.captureHealth = KernelCaptureHealthTelemetry(
+      stopMetadata: captureResult.metadata,
+      formatStabilized: formatStabilizedThisSession,
+      captureRebuiltForFormat: captureRebuiltForFormatThisSession
+    )
+    lastCaptureHealth = CaptureHealthTransports(
+      nativeRateHz: captureResult.metadata?.nativeRateHz,
+      ringDropCount: captureResult.metadata?.ringDropCount,
+      converterErrorCount: captureResult.metadata?.converterErrorCount,
+      zeroOutputCount: captureResult.metadata?.zeroOutputCount,
+      rateDivergenceDetected: captureResult.metadata?.rateDivergenceDetected,
+      formatStabilized: formatStabilizedThisSession,
+      captureRebuiltForFormat: captureRebuiltForFormatThisSession
+    )
     recordingStoppedTelemetry(captureResult.samples.count)
     await (vad as? CaptureVADSignalSource)?.finalizeAtStop(
       rawSampleCount: captureResult.samples.count,
@@ -1339,6 +1388,11 @@ final class RecordingSessionKernel {
     #if DEBUG
       var archiveClassification = "notEvaluated"
       var archiveSpeechEvidence = false
+      // #1434: effective archive inputs. Default to the primary decode's
+      // values; the salvage-success path rebinds them so the archive labels
+      // and replays the SALVAGED delivery (Codex r2 rev 3).
+      var archiveEffectiveOutcome = outcome
+      var salvageArchiveFed: [Float]? = nil
     #endif
 
     switch outcome {
@@ -1442,6 +1496,7 @@ final class RecordingSessionKernel {
       await runFinalizing(sid, asrText: result.text, transcriptID: transcriptID)
     case .empty(let hadSpeechEvidence):
       mergeAdapterDiagnosticsIntoASREmpty()
+      stampCaptureHealthIntoASREmptyDiagnostics()
       // #964 R2: if we reached ASR only because raw energy beat the dead-air
       // floor despite zero VAD segments, an empty decode means fan/room noise —
       // not a failed transcription. Route it to the quiet `.noSpeech` terminal,
@@ -1455,37 +1510,92 @@ final class RecordingSessionKernel {
       #if DEBUG
         archiveSpeechEvidence = effectiveSpeechEvidence
       #endif
-      if !effectiveSpeechEvidence {
-        // Stamp BEFORE the transition so the observer reads the source
-        // at `.noSpeech` mapping time (PR-4b.2 §3.6 r7).
-        lastNoSpeechSource = .asrEmptyNoSpeech
-        telemetryState.noSpeechTelemetry = KernelNoSpeechTelemetry(
-          mode: isStreamingSession ? "streaming" : "batch",
-          rawSampleCount: captureResult.samples.count,
-          peakAudioLevel: rawPeakAudioLevel
-        )
-        // GAP 3 app.log parity: no-speech-no-evidence log (TP:911-915).
-        Task {
-          await AppLogger.shared.log(
-            "No speech detected, returning to idle",
-            level: .info, category: "Pipeline"
-          )
-        }
-      } else {
-        // GAP 3 app.log parity: ASR-empty-despite-evidence log (TP:894-898).
-        let segs = vadSegments.count
-        let speechMs = vadSpeechDurationMs
-        let peak = rawPeakAudioLevel
-        Task {
-          await AppLogger.shared.log(
-            "ASR empty despite speech evidence "
-              + "(segments=\(segs), speechMs=\(speechMs), peak=\(peak))",
-            level: .info, category: "Pipeline"
-          )
+      // #1434 degraded-lead salvage ladder. Runs ONLY where today's outcome is
+      // the user-visible asrEmpty failure: real speech evidence (the #964
+      // energy-only path keeps its quiet noSpeech routing), batch mode, and a
+      // conditioned-batch engine (capability gate — WhisperKit's finalize
+      // decodes its own retained buffer, so the trimmed-batchSamples retry
+      // seam doesn't exist there). A Bluetooth link that is settling can
+      // poison the first 1-2 s and collapse the whole TDT decode; retrying
+      // at ascending trim candidates recovers the rest (offline-proven on
+      // the archived failures).
+      var salvageDelivered = false
+      if effectiveSpeechEvidence, !isStreamingSession,
+        adapter.capabilities.decodesConditionedBatchSamples, !asrSamples.isEmpty
+      {
+        let salvageAttemptResult = await attemptDegradedLeadSalvage(sid, samples: asrSamples)
+        // #1434 cloud review: the ladder's retry decode(s) run AFTER the
+        // line-1376 markASRTimingEnd() call for the (empty) primary decode,
+        // so a salvaged completion needs its own, later stamp — otherwise
+        // pipeline.completed's asr_s and the timing logs record only the
+        // primary decode's time, making the retry work invisible in
+        // latency telemetry for exactly the recoveries this path exists
+        // for. Idempotent: outcome.asrEndedAtSeconds is a plain overwrite.
+        markASRTimingEnd()
+        if let salvaged = salvageAttemptResult {
+          guard isCurrent(sid), !state.isTerminal else { return }
+          let trimMs = salvaged.trimSamples * 1000 / Int(AudioConstants.sampleRate)
+          lastSalvagedLeadTrimMs = trimMs
+          var completed = KernelASRCompletedTelemetry(
+            durationSeconds: salvaged.result.processingTime,
+            charCount: salvaged.result.text
+              .trimmingCharacters(in: .whitespacesAndNewlines).count,
+            mode: "batch",
+            language: salvaged.result.language)
+          completed.salvageAttempted = true
+          completed.salvageCandidateCount = salvaged.candidateCount
+          completed.salvageSucceededAtTrimMs = trimMs
+          completed.salvageRemainingAudioMs =
+            (asrSamples.count - salvaged.trimSamples) * 1000 / Int(AudioConstants.sampleRate)
+          telemetryState.asrCompletedTelemetry = completed
+          #if DEBUG
+            // Effective archive inputs (Codex r2 rev 3 / grounded r1 rev 3):
+            // the post-switch archive must label + replay the SALVAGED
+            // delivery, not the primary empty outcome.
+            archiveClassification = "salvagedLeadTrim(trimMs=\(trimMs))"
+            archiveEffectiveOutcome = .transcript(salvaged.result)
+            salvageArchiveFed = Array(asrSamples[salvaged.trimSamples...])
+          #endif
+          await runFinalizing(sid, asrText: salvaged.result.text, transcriptID: transcriptID)
+          salvageDelivered = true
+        } else {
+          // The ladder awaited — a supersede/cancel during it owns the session.
+          guard isCurrent(sid), !state.isTerminal else { return }
         }
       }
-      finishTerminal(
-        effectiveSpeechEvidence ? .failed(.asrEmpty) : .noSpeech, sid: sid)
+      if !salvageDelivered {
+        if !effectiveSpeechEvidence {
+          // Stamp BEFORE the transition so the observer reads the source
+          // at `.noSpeech` mapping time (PR-4b.2 §3.6 r7).
+          lastNoSpeechSource = .asrEmptyNoSpeech
+          telemetryState.noSpeechTelemetry = KernelNoSpeechTelemetry(
+            mode: isStreamingSession ? "streaming" : "batch",
+            rawSampleCount: captureResult.samples.count,
+            peakAudioLevel: rawPeakAudioLevel
+          )
+          // GAP 3 app.log parity: no-speech-no-evidence log (TP:911-915).
+          Task {
+            await AppLogger.shared.log(
+              "No speech detected, returning to idle",
+              level: .info, category: "Pipeline"
+            )
+          }
+        } else {
+          // GAP 3 app.log parity: ASR-empty-despite-evidence log (TP:894-898).
+          let segs = vadSegments.count
+          let speechMs = vadSpeechDurationMs
+          let peak = rawPeakAudioLevel
+          Task {
+            await AppLogger.shared.log(
+              "ASR empty despite speech evidence "
+                + "(segments=\(segs), speechMs=\(speechMs), peak=\(peak))",
+              level: .info, category: "Pipeline"
+            )
+          }
+        }
+        finishTerminal(
+          effectiveSpeechEvidence ? .failed(.asrEmpty) : .noSpeech, sid: sid)
+      }
     case .cancelled:
       finishTerminal(.cancelled, sid: sid)
     case .failed(.wedged):
@@ -1524,7 +1634,12 @@ final class RecordingSessionKernel {
           && (adapter as? ASREngineTelemetryProviding)?
             .lastASRDiagnostics?.batchRescueAttempted == true
         let archiveFed: [Float]
-        if Self.dictationFedUsesBatchBuffer(
+        if let salvageArchiveFed {
+          // #1434: a salvaged delivery decoded the TRIMMED buffer — archive
+          // that, so the #1237 chunk replay is faithful to what the engine
+          // actually transcribed.
+          archiveFed = salvageArchiveFed
+        } else if Self.dictationFedUsesBatchBuffer(
           decodesConditionedBatch: decodesConditionedBatch,
           isStreaming: isStreamingSession,
           cameFromBatchRescue: cameFromBatchRescue)
@@ -1537,14 +1652,17 @@ final class RecordingSessionKernel {
             rawSamples: captureResult.samples,
             minimumSamples: AudioConstants.minimumTranscriptionSamples)
         }
+        // #1434: label from the EFFECTIVE outcome (the salvage path rebinds it
+        // to the retry's `.transcript`), never the primary `.empty`.
         var archiveOutcome = Self.dictationArchiveOutcome(
-          for: outcome, effectiveSpeechEvidence: archiveSpeechEvidence)
+          for: archiveEffectiveOutcome, effectiveSpeechEvidence: archiveSpeechEvidence)
         // A `.transcript` decode whose finalization did NOT reach `.completed`
         // (empty after polish → `.failed(.emptyAfterProcessing)`, or superseded
         // mid-finalize) is not a real completion — relabel so it stays distinct
         // from normal completions in the metadata (Codex r6 P3). `runFinalizing`
         // has already run by here, so `state` holds the terminal verdict.
-        if case .transcript = outcome, !(isCurrent(sid) && state == .completed) {
+        // #1434: applies to salvaged deliveries too via the effective outcome.
+        if case .transcript = archiveEffectiveOutcome, !(isCurrent(sid) && state == .completed) {
           archiveOutcome = .finalizationFailed
         }
         let archiveClass = archiveClassification
@@ -2324,6 +2442,8 @@ final class RecordingSessionKernel {
     isStreamingSession = false
     pasteCount = 0
     forbiddenTransitionRejected = false
+    formatStabilizedThisSession = nil
+    captureRebuiltForFormatThisSession = nil
   }
 
   /// Derive decode options from the frozen session config's language mode
@@ -2402,6 +2522,87 @@ final class RecordingSessionKernel {
     // method so a future field addition can't silently skip the copy again.
     diagnostics.absorbAdapterDiagnostics(adapterDiagnostics)
     telemetryState.asrEmptyDiagnostics = diagnostics
+  }
+
+  /// #1434: copy the session's capture-health record into the ASR-empty
+  /// diagnostics so the Sentry extra carries rate/counters/stabilization on
+  /// exactly the failure class this bug manifests as.
+  private func stampCaptureHealthIntoASREmptyDiagnostics() {
+    guard var diagnostics = telemetryState.asrEmptyDiagnostics,
+      let health = telemetryState.captureHealth
+    else { return }
+    diagnostics.captureNativeRateHz = health.stopMetadata?.nativeRateHz
+    diagnostics.captureRingDropCount = health.stopMetadata?.ringDropCount
+    diagnostics.captureConverterErrorCount = health.stopMetadata?.converterErrorCount
+    diagnostics.captureZeroOutputCount = health.stopMetadata?.zeroOutputCount
+    diagnostics.captureRateDivergenceDetected = health.stopMetadata?.rateDivergenceDetected
+    diagnostics.captureFormatStabilized = health.formatStabilized
+    diagnostics.captureRebuiltForFormat = health.captureRebuiltForFormat
+    telemetryState.asrEmptyDiagnostics = diagnostics
+  }
+
+  /// #1434: the degraded-lead salvage ladder. Retries the batch decode at up
+  /// to `DegradedLeadDiagnostics.maxCandidates` ascending trim points through
+  /// the kernel's own `finalize` wrapper (wedge detection + stale-session
+  /// guard re-arm per call; `ParakeetEngineAdapter.finalizeBatch` is stateless
+  /// per call with explicit samples). Returns the first non-empty transcript,
+  /// or nil (all candidates empty, no candidates, aborted). Failure-side
+  /// telemetry is stamped here so the fleet sees misses, not only wins.
+  private struct DegradedLeadSalvageSuccess {
+    let result: ASRResult
+    let trimSamples: Int
+    let candidateCount: Int
+  }
+
+  private func attemptDegradedLeadSalvage(
+    _ sid: SessionID, samples: [Float]
+  ) async -> DegradedLeadSalvageSuccess? {
+    let candidates = DegradedLeadDiagnostics.trimCandidates(
+      samples: samples, sampleRate: AudioConstants.sampleRate)
+    let candidatesMs = candidates.map { $0 * 1000 / Int(AudioConstants.sampleRate) }
+    telemetryState.asrEmptyDiagnostics?.salvageAttempted = true
+    telemetryState.asrEmptyDiagnostics?.salvageCandidateCount = candidates.count
+    telemetryState.asrEmptyDiagnostics?.salvageCandidateTrimsMs = candidatesMs
+    guard !candidates.isEmpty else {
+      log("ASR empty salvage: no candidates (lead not degraded or too little audio)")
+      return nil
+    }
+    log("ASR empty salvage: candidates(ms)=\(candidatesMs)")
+    for (index, trim) in candidates.enumerated() {
+      // Re-guard before EACH dispatch — a PTT-cancel/new session mid-ladder
+      // abandons it (the in-flight decode, if any, is dropped by the finalize
+      // wrapper's own stale guard).
+      guard isCurrent(sid), !state.isTerminal else {
+        telemetryState.asrEmptyDiagnostics?.salvageAbortedReason = "superseded"
+        return nil
+      }
+      let retry = await finalize(sid, batchSamples: Array(samples[trim...]))
+      guard isCurrent(sid), !state.isTerminal else {
+        telemetryState.asrEmptyDiagnostics?.salvageAbortedReason = "superseded"
+        return nil
+      }
+      switch retry {
+      case .transcript(let result):
+        log(
+          "ASR empty salvage succeeded: trimMs=\(trim * 1000 / Int(AudioConstants.sampleRate)) "
+            + "candidate=\(index + 1)/\(candidates.count) chars=\(result.text.count)")
+        return DegradedLeadSalvageSuccess(
+          result: result, trimSamples: trim, candidateCount: candidates.count)
+      case .empty:
+        continue
+      case .cancelled:
+        telemetryState.asrEmptyDiagnostics?.salvageAbortedReason = "superseded"
+        return nil
+      case .failed:
+        // The retry path must not upgrade the terminal (the primary decode
+        // already classified this session as empty), but a retry-path
+        // regression must not hide either — record the abort reason.
+        telemetryState.asrEmptyDiagnostics?.salvageAbortedReason = "retry_failed"
+        return nil
+      }
+    }
+    log("ASR empty salvage: all \(candidates.count) candidates decoded empty")
+    return nil
   }
 
   private func peakAudioLevel(in samples: [Float]) -> Float {

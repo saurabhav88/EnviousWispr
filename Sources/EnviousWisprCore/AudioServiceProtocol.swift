@@ -56,9 +56,12 @@ import Foundation
 
   /// Stop capture and return accumulated samples + finalized VAD segments atomically.
   /// First Data = raw Float32 sample bytes. Second Data = packed [Int32 start, Int32 end] VAD segment pairs.
+  /// Third Data = JSON-encoded `CaptureStopMetadata` (#1434 capture-health facts), nil when the
+  /// active source doesn't produce one — the proxy decodes it back into the same struct, so both
+  /// the XPC and in-process paths yield an identical `CaptureResult.metadata`.
   /// VAD segments are finalized BEFORE the sample buffer is cleared, preventing the call-order bug
   /// where separate stopCapture/getVADSegments calls produced endSample=0 on open segments.
-  func stopCapture(operationID: String, reply: @escaping (Data, Data) -> Void)
+  func stopCapture(operationID: String, reply: @escaping (Data, Data, Data?) -> Void)
 
   /// Cancel a pre-warmed engine that never began capture.
   func abortPreWarm()

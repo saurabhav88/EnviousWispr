@@ -256,7 +256,8 @@ final class DictationLifecycleCoordinator {
       lastPolishError: kernelDriver.lastPolishError,
       currentTranscript: kernelDriver.currentTranscript,
       historySaved: kernelDriver.lastHistorySaved,
-      historySaveReason: kernelDriver.lastHistorySaveReason
+      historySaveReason: kernelDriver.lastHistorySaveReason,
+      salvagedLead: kernelDriver.lastSalvagedLeadTrimMs != nil
     )
     // PR7 of #763 — push polish error to the post-recording result home so
     // views can read `lastRecordingResult.polishError` without reaching
@@ -307,7 +308,8 @@ final class DictationLifecycleCoordinator {
       lastPolishError: whisperKitKernelDriver.lastPolishError,
       currentTranscript: whisperKitKernelDriver.currentTranscript,
       historySaved: whisperKitKernelDriver.lastHistorySaved,
-      historySaveReason: whisperKitKernelDriver.lastHistorySaveReason
+      historySaveReason: whisperKitKernelDriver.lastHistorySaveReason,
+      salvagedLead: whisperKitKernelDriver.lastSalvagedLeadTrimMs != nil
     )
     lastRecordingResult.polishError = whisperKitKernelDriver.lastPolishError
     dispatchChipLifecycle(
@@ -414,21 +416,10 @@ final class DictationLifecycleCoordinator {
       },
       reportDictationCompleted: { [weak self] t in
         guard let self else { return }
-        let route = driver.lastResolvedRoute
-        TelemetryService.shared.reportDictationCompleted(
-          transcript: t, inputMode: self.settings.recordingMode.rawValue,
-          recordingSeconds: driver.lastRecordingDurationSeconds,
-          stopReason: driver.lastStopReason,
-          historySaveStatus: driver.lastHistorySaved ? "succeeded" : "failed",  // #1167
-          historySaveErrorClass: driver.lastHistorySaveErrorClass,
-          // #1376: effective-device telemetry — which mic was selected vs used.
-          selectedTransport: route?.selected,
-          effectiveTransport: route?.effective,
-          routeReason: route?.routeReason,
-          routeFallbackReason: route?.routeFallbackReason,
-          inputSelectionMode: route?.inputSelectionMode,
-          outputTransport: route?.outputTransport,
-          routeResolutionSource: route?.routeResolutionSource)
+        // #1376/#1434: route + capture-health + salvage argument assembly
+        // lives in `DictationCompletedReporting` (thin-factory discipline).
+        DictationCompletedReporting.report(
+          transcript: t, inputMode: self.settings.recordingMode.rawValue, driver: driver)
       },
       reportPipelineFailed: { msg in
         TelemetryService.shared.pipelineFailed(
@@ -438,6 +429,15 @@ final class DictationLifecycleCoordinator {
       // #1167: history-save-failed pill (post-completion warning slot, ~400 ms).
       scheduleHistorySaveFailedWarning: { [weak self] reason in
         self?.schedulePostCompletionWarning(message: "Couldn't save to history: \(reason)")
+      },
+      // #1434: salvaged-lead disclosure pill — the degraded-lead retry
+      // recovered this dictation by trimming a poisoned opening, so the
+      // pasted text is missing its lead. Same generic post-completion
+      // mechanism as the two pills above; the message is wired HERE, never
+      // hardcoded into a shared closure (Codex r2 rev 5).
+      scheduleSalvagedLeadWarning: { [weak self] in
+        self?.schedulePostCompletionWarning(
+          message: "Beginning of dictation was unclear and was skipped")
       }
     )
   }

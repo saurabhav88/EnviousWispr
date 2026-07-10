@@ -471,6 +471,75 @@ struct PipelineStateChangePlannerTests {
     #expect(!plan.effects.contains(.scheduleHistorySaveFailedWarning(reason: "disk is full")))
   }
 
+  // MARK: - #1434 salvaged-lead disclosure
+
+  @Test("complete + salvaged lead -> salvage pill scheduled in the single warning slot")
+  func salvagedLeadSchedulesPill() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: nil,
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil,
+      salvagedLead: true
+    )
+    #expect(plan.effects.contains(.scheduleSalvagedLeadWarning))
+    #expect(plan.effects.contains(.appendCompletedTranscript))
+  }
+
+  @Test("complete + salvaged lead + polish failed -> salvage pill wins, polish pill suppressed")
+  func salvagedLeadBeatsPolishPill() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: "Polish failed",
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil,
+      salvagedLead: true
+    )
+    #expect(plan.effects.contains(.scheduleSalvagedLeadWarning))
+    #expect(!plan.effects.contains(.schedulePolishFailedWarning))
+  }
+
+  @Test("complete + salvaged lead + history save failed -> history pill wins the single slot")
+  func historyPillBeatsSalvagePill() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: nil,
+      hasCurrentTranscript: true,
+      historySaved: false,
+      historySaveReason: "disk is full",
+      salvagedLead: true
+    )
+    #expect(plan.effects.contains(.scheduleHistorySaveFailedWarning(reason: "disk is full")))
+    #expect(!plan.effects.contains(.scheduleSalvagedLeadWarning))
+  }
+
+  @Test("non-complete transition with salvaged lead does not schedule the pill")
+  func salvagePillOnlyOnComplete() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.recording,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: nil,
+      hasCurrentTranscript: false,
+      historySaved: true,
+      historySaveReason: nil,
+      salvagedLead: true
+    )
+    #expect(!plan.effects.contains(.scheduleSalvagedLeadWarning))
+  }
+
   // MARK: - Activity projection integrity
 
   @Test("Parakeet state activity mapping is stable")

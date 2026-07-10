@@ -415,6 +415,16 @@ final class KernelLifecycleTelemetrySink {
       if let v = t.asrLastTokenGapMs { payload["asr_last_token_gap_ms"] = v }
       if let v = t.asrChunked { payload["asr_chunked"] = v }
     }
+    // #1434 degraded-lead salvage (omit-on-nil; set only on a salvaged
+    // completion — Codex review r1 caught these being stamped onto
+    // asrCompletedTelemetry but never read here, so a salvaged completion
+    // was indistinguishable from a normal one in this breadcrumb).
+    if let t = telemetryState.asrCompletedTelemetry {
+      if let v = t.salvageAttempted { payload["salvage_attempted"] = v }
+      if let v = t.salvageCandidateCount { payload["salvage_candidate_count"] = v }
+      if let v = t.salvageSucceededAtTrimMs { payload["salvage_succeeded_at_trim_ms"] = v }
+      if let v = t.salvageRemainingAudioMs { payload["salvage_remaining_audio_ms"] = v }
+    }
     return payload
   }
 
@@ -602,6 +612,9 @@ final class KernelLifecycleTelemetrySink {
       let computedDurationMs = sampleCount * 1000 / Int(AudioConstants.sampleRate)
       let preferredID = audioCapture.preferredInputDeviceIDOverride
       let resolvedRoute = audioCapture.currentResolvedRoute
+      // #1434: the capture-health record was stamped before this terminal
+      // (immediately post-stop), so the no-audio event carries it.
+      let health = telemetryState.captureHealth
       let ctx = NoAudioContext(
         sessionID: audioCapture.currentCaptureSessionID,
         durationMs: max(snapshotDurationMs, computedDurationMs),
@@ -617,7 +630,14 @@ final class KernelLifecycleTelemetrySink {
         routeFallbackReason: resolvedRoute?.routeFallbackReason,
         inputSelectionMode: resolvedRoute?.inputSelectionMode,
         outputTransport: resolvedRoute?.outputTransport,
-        routeResolutionSource: resolvedRoute?.routeResolutionSource
+        routeResolutionSource: resolvedRoute?.routeResolutionSource,
+        captureNativeRateHz: health?.stopMetadata?.nativeRateHz,
+        captureRingDropCount: health?.stopMetadata?.ringDropCount,
+        captureConverterErrorCount: health?.stopMetadata?.converterErrorCount,
+        captureZeroOutputCount: health?.stopMetadata?.zeroOutputCount,
+        captureRateDivergenceDetected: health?.stopMetadata?.rateDivergenceDetected,
+        captureFormatStabilized: health?.formatStabilized,
+        captureRebuiltForFormat: health?.captureRebuiltForFormat
       )
       if let noAudioCapturedRich {
         noAudioCapturedRich(ctx)
