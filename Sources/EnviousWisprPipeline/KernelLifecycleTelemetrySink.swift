@@ -415,6 +415,16 @@ final class KernelLifecycleTelemetrySink {
       if let v = t.asrLastTokenGapMs { payload["asr_last_token_gap_ms"] = v }
       if let v = t.asrChunked { payload["asr_chunked"] = v }
     }
+    // #1434 degraded-lead salvage (omit-on-nil; set only on a salvaged
+    // completion — Codex review r1 caught these being stamped onto
+    // asrCompletedTelemetry but never read here, so a salvaged completion
+    // was indistinguishable from a normal one in this breadcrumb).
+    if let t = telemetryState.asrCompletedTelemetry {
+      if let v = t.salvageAttempted { payload["salvage_attempted"] = v }
+      if let v = t.salvageCandidateCount { payload["salvage_candidate_count"] = v }
+      if let v = t.salvageSucceededAtTrimMs { payload["salvage_succeeded_at_trim_ms"] = v }
+      if let v = t.salvageRemainingAudioMs { payload["salvage_remaining_audio_ms"] = v }
+    }
     return payload
   }
 
