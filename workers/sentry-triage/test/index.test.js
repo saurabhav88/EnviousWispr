@@ -11,8 +11,10 @@ import {
   parseNextCursor,
   pageHasExactTicket,
   buildEmbedFromLookup,
+  classifyBuildType,
+  buildTypeTag,
+  sourceLabelFor,
   truncate,
-  classifySource,
   readableHeadline,
   metadataFields,
   buildEnrichedEmbed,
@@ -84,6 +86,20 @@ test("decideNotification: incomplete events -> post with webhook-fallback displa
   });
   assert.equal(r.post, true);
   assert.equal(r.priority, "P2");
+  assert.equal(r.countSource, "webhook-fallback");
+});
+
+test("decideNotification: dev-only issue still posts (dev builds alert too)", () => {
+  // No production-release event -> scoreFromEvents null -> webhook fallback -> posts.
+  const r = decideNotification({
+    action: "created",
+    issue: { level: "error", userCount: "1", count: "3" },
+    eventLookup: { status: "complete", events: [rec({ environment: "development", buildType: "debug" })] },
+    ticketLookup: { status: "complete", openExactMarker: false },
+    throttleLookup: { status: "complete", value: null },
+    now: NOW,
+  });
+  assert.equal(r.post, true);
   assert.equal(r.countSource, "webhook-fallback");
 });
 
@@ -434,7 +450,7 @@ test("pageHasExactTicket: empty/missing bodies and non-array input are safe", ()
 
 // ─────────────────────────────── buildEmbedFromLookup ─────────────────────────
 
-test("buildEmbedFromLookup: complete lookup -> enriched embed with source label", () => {
+test("buildEmbedFromLookup: complete release lookup -> Release tag in title + source", () => {
   const events = [
     rec({ environment: "production", buildType: "release", category: "paste_failed", stage: "paste", release: "com.enviouswispr.app@2.3.1" }),
   ];
@@ -442,18 +458,66 @@ test("buildEmbedFromLookup: complete lookup -> enriched embed with source label"
     { status: "complete", events },
     { issueId: "123", title: "[REDACTED]", permalink: "https://x/123/", timesSeen: 5, userCount: 2, priority: "P2" }
   );
-  assert.equal(embed.title, "[Sentry P2] paste_failed");
+  assert.equal(embed.title, "[Sentry P2 · Release] paste_failed");
   const source = embed.fields.find((f) => f.name === "Source");
-  assert.equal(source.value, "👤 Real user (release)");
+  assert.equal(source.value, "👤 Release (real users)");
 });
 
-test("buildEmbedFromLookup: degraded lookup -> fail-open embed", () => {
+test("buildEmbedFromLookup: mixed issue labeled Release renders the release event's metadata, not the newest dev event", () => {
+  // Newest event is dev; a release event exists -> label Release, and Version/System
+  // must come from the release event so the alert is not misleading.
+  const events = [
+    rec({ environment: "development", buildType: "debug", release: "com.enviouswispr.app@9.9.9", category: "dev_noise", osVersion: "99.0.0", deviceModel: "DevMac" }),
+    rec({ environment: "production", buildType: "release", release: "com.enviouswispr.app@2.3.1", category: "paste_failed", osVersion: "26.6.0", deviceModel: "Mac16,8" }),
+  ];
+  const embed = buildEmbedFromLookup(
+    { status: "complete", events },
+    { issueId: "123", title: "t", permalink: "https://x/123/", timesSeen: 5, userCount: 2, priority: "P2" }
+  );
+  assert.equal(embed.title, "[Sentry P2 · Release] paste_failed");
+  const version = embed.fields.find((f) => f.name === "Version");
+  assert.equal(version.value, "com.enviouswispr.app@2.3.1");
+  const system = embed.fields.find((f) => f.name === "System");
+  assert.match(system.value, /Mac16,8/);
+  assert.ok(!version.value.includes("9.9.9"), "must not show the dev event's release");
+});
+
+test("buildEmbedFromLookup: dev-only lookup -> Dev tag in title + source", () => {
+  const events = [rec({ environment: "development", buildType: "debug", category: "paste_failed" })];
+  const embed = buildEmbedFromLookup(
+    { status: "complete", events },
+    { issueId: "123", title: "boom", permalink: "https://x/123/", timesSeen: 3, userCount: 1, priority: "P3" }
+  );
+  assert.equal(embed.title, "[Sentry P3 · Dev] paste_failed");
+  const source = embed.fields.find((f) => f.name === "Source");
+  assert.equal(source.value, "🧪 Dev build (your testing)");
+});
+
+test("buildEmbedFromLookup: Unknown-labeled mixed issue renders the unclassifiable event, not the newest dev event", () => {
+  // Newest event is dev; the reason it's Unknown is an unclassifiable (possibly real
+  // user) event. The alert must surface that event's metadata, not the dev noise.
+  const events = [
+    rec({ environment: "development", buildType: "debug", release: "com.enviouswispr.app@9.9.9", category: "dev_noise", osVersion: "99.0.0", deviceModel: "DevMac" }),
+    rec({ environment: "production", buildType: null, release: "com.enviouswispr.app@2.3.1", category: "paste_failed", osVersion: "26.6.0", deviceModel: "Mac16,8" }),
+  ];
+  const embed = buildEmbedFromLookup(
+    { status: "complete", events },
+    { issueId: "123", title: "t", permalink: "https://x/123/", timesSeen: 5, userCount: 2, priority: "P2" }
+  );
+  assert.equal(embed.title, "[Sentry P2 · Unknown build] paste_failed");
+  const version = embed.fields.find((f) => f.name === "Version");
+  assert.equal(version.value, "com.enviouswispr.app@2.3.1");
+  assert.ok(!version.value.includes("9.9.9"), "must not show the dev event's release");
+});
+
+test("buildEmbedFromLookup: degraded lookup -> Unknown build fail-open embed", () => {
   const embed = buildEmbedFromLookup(
     { status: "unavailable" },
     { issueId: "123", title: "boom", permalink: "https://x/123/", timesSeen: 1, userCount: 1, priority: "P3" }
   );
+  assert.equal(embed.title, "[Sentry P3 · Unknown build] boom");
   const source = embed.fields.find((f) => f.name === "Source");
-  assert.equal(source.value, "❓ Unknown source (Sentry fetch failed)");
+  assert.match(source.value, /Unknown build/);
 });
 
 // ─────────────────────────────── existing embed helpers ───────────────────────
@@ -467,13 +531,79 @@ test("truncate: short passes through, long capped with ellipsis, non-string unch
   assert.equal(truncate(null), null);
 });
 
-test("classifySource: dev/debug -> test build, prod+release -> real user, else unknown", () => {
-  assert.equal(classifySource({ environment: "development", buildType: "release" }), "🧪 Your test build (dev/debug)");
-  assert.equal(classifySource({ environment: null, buildType: "debug" }), "🧪 Your test build (dev/debug)");
-  assert.equal(classifySource({ environment: "production", buildType: "release" }), "👤 Real user (release)");
-  assert.equal(classifySource({ environment: "production", buildType: null }), "❓ Unknown source (metadata missing)");
-  assert.equal(classifySource({}), "❓ Unknown source (metadata missing)");
-  assert.equal(classifySource(undefined), "❓ Unknown source (metadata missing)");
+test("classifyBuildType: any real-user release event -> release (even if mixed with dev)", () => {
+  const events = [
+    rec({ environment: "development", buildType: "debug" }),
+    rec({ environment: "production", buildType: "release" }),
+  ];
+  assert.equal(classifyBuildType({ status: "complete", events }), "release");
+});
+
+test("classifyBuildType: only non-production dev/debug events -> dev", () => {
+  assert.equal(classifyBuildType({ status: "complete", events: [rec({ environment: "development", buildType: "debug" })] }), "dev");
+  assert.equal(classifyBuildType({ status: "complete", events: [rec({ environment: null, buildType: "debug" })] }), "dev");
+});
+
+test("classifyBuildType: production event with missing buildType is not release -> unknown", () => {
+  // Consistent with severity: a production event lacking app.build_type is not trusted as release.
+  assert.equal(classifyBuildType({ status: "complete", events: [rec({ environment: "production", buildType: null })] }), "unknown");
+});
+
+test("classifyBuildType: dev event + unclassifiable production event -> unknown, not dev", () => {
+  // A possibly-real-user production event must not be masked as Dev just because a
+  // dev event is also present.
+  const events = [
+    rec({ environment: "development", buildType: "debug" }),
+    rec({ environment: "production", buildType: null }),
+  ];
+  assert.equal(classifyBuildType({ status: "complete", events }), "unknown");
+});
+
+test("classifyBuildType: debug build wins over a production env tag -> dev", () => {
+  // buildType=debug is the authoritative dev signal even if environment says production.
+  assert.equal(classifyBuildType({ status: "complete", events: [rec({ environment: "production", buildType: "debug" })] }), "dev");
+});
+
+test("classifyBuildType: dev event + unclassifiable release event (null env) -> unknown, not dev", () => {
+  // A release build with a missing environment tag may be a real user; a dev event
+  // alongside it must not downgrade the whole issue to Dev. Dev requires EVERY event
+  // to be confidently dev.
+  const events = [
+    rec({ environment: "development", buildType: "debug" }),
+    rec({ environment: null, buildType: "release" }),
+  ];
+  assert.equal(classifyBuildType({ status: "complete", events }), "unknown");
+});
+
+test("classifyBuildType: full single-event environment x buildType matrix", () => {
+  const one = (environment, buildType) =>
+    classifyBuildType({ status: "complete", events: [rec({ environment, buildType })] });
+  // release build only counts as Release in production; anywhere else it is not a confirmed real user
+  assert.equal(one("production", "release"), "release");
+  assert.equal(one("production", "debug"), "dev"); // debug authoritative
+  assert.equal(one("production", null), "unknown"); // untagged production = possibly real user
+  assert.equal(one("development", "release"), "dev"); // dev env = testing
+  assert.equal(one("development", "debug"), "dev");
+  assert.equal(one("development", null), "dev");
+  assert.equal(one(null, "debug"), "dev"); // debug build, unknown env = testing
+  assert.equal(one(null, "release"), "unknown"); // release build, unknown env = can't confirm real user
+  assert.equal(one(null, null), "unknown");
+});
+
+test("classifyBuildType: degraded or empty lookup -> unknown", () => {
+  assert.equal(classifyBuildType({ status: "unavailable" }), "unknown");
+  assert.equal(classifyBuildType({ status: "incomplete" }), "unknown");
+  assert.equal(classifyBuildType({ status: "complete", events: [] }), "unknown");
+  assert.equal(classifyBuildType(null), "unknown");
+});
+
+test("buildTypeTag / sourceLabelFor: crisp Dev vs Release wording", () => {
+  assert.equal(buildTypeTag("release"), "Release");
+  assert.equal(buildTypeTag("dev"), "Dev");
+  assert.equal(buildTypeTag("unknown"), "Unknown build");
+  assert.match(sourceLabelFor("release"), /Release/);
+  assert.match(sourceLabelFor("dev"), /Dev build/);
+  assert.match(sourceLabelFor("unknown"), /Unknown/);
 });
 
 test("readableHeadline: prefers category, falls back to title", () => {
@@ -490,7 +620,7 @@ test("metadataFields: joins category/stage and os/device, falls back to unknown"
   assert.equal(b.system, "unknown");
 });
 
-test("buildEnrichedEmbed: readable headline, real-user source, no em/en dash", () => {
+test("buildEnrichedEmbed: readable headline, Release tag, no em/en dash", () => {
   const embed = buildEnrichedEmbed({
     issueId: "456",
     title: "[REDACTED]",
@@ -498,19 +628,21 @@ test("buildEnrichedEmbed: readable headline, real-user source, no em/en dash", (
     timesSeen: 1,
     userCount: 1,
     priority: "P2",
-    metadata: { category: "paste_failed", environment: "production", buildType: "release", release: "com.enviouswispr.app@2.3.1" },
+    metadata: { category: "paste_failed", release: "com.enviouswispr.app@2.3.1" },
+    buildType: "release",
   });
-  assert.equal(embed.title, "[Sentry P2] paste_failed");
+  assert.equal(embed.title, "[Sentry P2 · Release] paste_failed");
   assert.ok(!embed.title.includes("REDACTED"));
   const text = JSON.stringify(embed);
   assert.ok(!text.includes("—"), "no em-dash");
   assert.ok(!text.includes("–"), "no en-dash");
 });
 
-test("buildFailOpenEmbed: unknown source + details-unavailable note", () => {
+test("buildFailOpenEmbed: Unknown build source + details-unavailable note", () => {
   const embed = buildFailOpenEmbed({ issueId: "789", title: "t", permalink: "https://x/789/", timesSeen: 2, userCount: 1, priority: "P3" });
+  assert.equal(embed.title, "[Sentry P3 · Unknown build] t");
   const source = embed.fields.find((f) => f.name === "Source");
-  assert.equal(source.value, "❓ Unknown source (Sentry fetch failed)");
+  assert.match(source.value, /Unknown build/);
   const details = embed.fields.find((f) => f.name === "Details");
   assert.match(details.value, /unavailable/i);
 });

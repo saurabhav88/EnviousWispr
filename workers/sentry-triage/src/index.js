@@ -335,8 +335,8 @@ export function scoreFromEvents(eventLookup) {
   // Keep production release builds only. Require buildType === "release" (not merely
   // "not debug") so an event whose app.build_type tag is absent — older versions, an
   // untagged process — is NOT silently trusted as a release; that matches how
-  // classifySource treats the same missing metadata as unknown. When no event clears
-  // this bar, scoreFromEvents returns null and severity falls open to webhook counts.
+  // classifyBuildType treats the same missing metadata as not-release. When no event
+  // clears this bar, scoreFromEvents returns null and severity falls open to webhook counts.
   const production = events.filter(
     (e) => e && e.environment === "production" && e.buildType === "release"
   );
@@ -702,10 +702,23 @@ export function buildEmbedFromLookup(eventLookup, { issueId, title, permalink, t
       : null;
 
   if (!events || events.length === 0) {
-    return buildFailOpenEmbed({ issueId, title, permalink, timesSeen, userCount, priority });
+    // Degraded/empty event data → classifyBuildType returns "unknown".
+    return buildFailOpenEmbed({ issueId, title, permalink, timesSeen, userCount, priority, buildType: "unknown" });
   }
 
-  const rep = events[0];
+  const buildType = classifyBuildType(eventLookup);
+  // Show metadata from the event that best represents WHY the issue got its label,
+  // so the headline/version/system never contradict the tag. Events are newest-first,
+  // so find() picks the newest such event:
+  //   release → the confirmed real-user event
+  //   dev     → the dev event (all events are dev here)
+  //   unknown → the unclassifiable (not-confidently-dev) event that made it untrusted,
+  //             never the dev-noise event that would read as "just my testing"
+  const rep =
+    (buildType === "release" && events.find(isReleaseEvent)) ||
+    (buildType === "dev" && events.find(isDevEvent)) ||
+    (buildType === "unknown" && events.find((e) => !isDevEvent(e))) ||
+    events[0];
   const metadata = {
     category: rep.category,
     stage: rep.stage,
@@ -715,7 +728,7 @@ export function buildEmbedFromLookup(eventLookup, { issueId, title, permalink, t
     osVersion: rep.osVersion,
     deviceModel: rep.deviceModel,
   };
-  return buildEnrichedEmbed({ issueId, title, permalink, timesSeen, userCount, priority, metadata });
+  return buildEnrichedEmbed({ issueId, title, permalink, timesSeen, userCount, priority, metadata, buildType });
 }
 
 export function truncate(value, max = FIELD_MAX_CHARS) {
@@ -724,18 +737,47 @@ export function truncate(value, max = FIELD_MAX_CHARS) {
 }
 
 /**
- * Three-state source classifier (#1229). Never defaults missing metadata to
- * "real user" — an older app version or partial tags read as unknown.
+ * Build-type of the whole issue, from all fetched events (#1470 follow-up).
+ * "release" if ANY event is a real user on a production release build — a mixed
+ * issue that reached real users reads Release, matching how severity scores the
+ * production partition. "dev" if there is no such event but some event is
+ * development/debug (your own testing). "unknown" for degraded/empty event data.
+ * The single authority for the Dev-vs-Release label shown in the alert.
  */
-export function classifySource(metadata) {
-  const { environment, buildType } = metadata ?? {};
-  if (environment === "development" || buildType === "debug") {
-    return "🧪 Your test build (dev/debug)";
+// Per-event signals over the (environment × app.build_type) matrix:
+//   release: production + release build      → a confirmed real user
+//   dev:     debug build OR development env  → confidently your own testing (debug
+//            is authoritative even if the env tag says production)
+// Anything else (e.g. a release build with a missing environment tag, or a
+// production event with a missing build type) is UNCLASSIFIABLE and may be a real user.
+const isReleaseEvent = (e) => e && e.environment === "production" && e.buildType === "release";
+const isDevEvent = (e) => e && (e.buildType === "debug" || e.environment === "development");
+
+export function classifyBuildType(eventLookup) {
+  if (!eventLookup || eventLookup.status !== "complete" || !Array.isArray(eventLookup.events)) {
+    return "unknown";
   }
-  if (environment === "production" && buildType === "release") {
-    return "👤 Real user (release)";
-  }
-  return "❓ Unknown source (metadata missing)";
+  const events = eventLookup.events;
+  // A confirmed real user wins. Otherwise call it Dev ONLY when every event is
+  // confidently dev — a single unclassifiable (possibly-real-user) event keeps the
+  // whole issue Unknown rather than masking it as your testing.
+  if (events.some(isReleaseEvent)) return "release";
+  if (events.length > 0 && events.every(isDevEvent)) return "dev";
+  return "unknown";
+}
+
+/** Short tag for the alert title: Release / Dev / Unknown build. */
+export function buildTypeTag(buildType) {
+  if (buildType === "release") return "Release";
+  if (buildType === "dev") return "Dev";
+  return "Unknown build";
+}
+
+/** Longer source label for the embed body. */
+export function sourceLabelFor(buildType) {
+  if (buildType === "release") return "👤 Release (real users)";
+  if (buildType === "dev") return "🧪 Dev build (your testing)";
+  return "❓ Unknown build";
 }
 
 /** Readable headline: prefer the safe error.category tag over a possibly-stale title. */
@@ -752,13 +794,13 @@ export function metadataFields(metadata) {
   return { what, system };
 }
 
-export function buildEnrichedEmbed({ issueId, title, permalink, timesSeen, userCount, priority, metadata }) {
+export function buildEnrichedEmbed({ issueId, title, permalink, timesSeen, userCount, priority, metadata, buildType = "unknown" }) {
   const { what, system } = metadataFields(metadata);
   return {
-    title: `[Sentry ${priority}] ${truncate(readableHeadline(title, metadata))}`,
+    title: `[Sentry ${priority} · ${buildTypeTag(buildType)}] ${truncate(readableHeadline(title, metadata))}`,
     color: DISCORD_COLOR[priority] ?? DISCORD_COLOR.P3,
     fields: [
-      { name: "Source", value: classifySource(metadata), inline: true },
+      { name: "Source", value: sourceLabelFor(buildType), inline: true },
       { name: "What", value: truncate(what), inline: true },
       {
         name: "Impact",
@@ -774,12 +816,12 @@ export function buildEnrichedEmbed({ issueId, title, permalink, timesSeen, userC
   };
 }
 
-export function buildFailOpenEmbed({ issueId, title, permalink, timesSeen, userCount, priority }) {
+export function buildFailOpenEmbed({ issueId, title, permalink, timesSeen, userCount, priority, buildType = "unknown" }) {
   return {
-    title: `[Sentry ${priority}] ${truncate(title)}`,
+    title: `[Sentry ${priority} · ${buildTypeTag(buildType)}] ${truncate(title)}`,
     color: DISCORD_COLOR[priority] ?? DISCORD_COLOR.P3,
     fields: [
-      { name: "Source", value: "❓ Unknown source (Sentry fetch failed)", inline: true },
+      { name: "Source", value: `${sourceLabelFor(buildType)} (Sentry fetch failed)`, inline: true },
       {
         name: "Impact",
         value: `Sentry issue totals: ${userCount} user(s) · ${timesSeen} occurrences`,
