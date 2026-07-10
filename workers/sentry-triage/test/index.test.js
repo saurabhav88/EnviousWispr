@@ -6,6 +6,8 @@ import {
   decideNotification,
   scoreFromEvents,
   normalizeRelease,
+  displayVersion,
+  formatOs,
   classifySeverity,
   extractEventRecord,
   parseNextCursor,
@@ -338,6 +340,30 @@ test("normalizeRelease: junk / non-string -> null", () => {
   assert.equal(normalizeRelease(undefined), null);
 });
 
+// ─────────────────────────────── displayVersion ───────────────────────────────
+
+test("displayVersion: strips the bundle prefix to a clean semver", () => {
+  assert.equal(displayVersion("com.enviouswispr.app@2.3.1"), "2.3.1");
+  assert.equal(displayVersion("2.3.1"), "2.3.1");
+  assert.equal(displayVersion("2.3.1+build47"), "2.3.1");
+});
+
+test("displayVersion: non-semver keeps the part after @; empty/missing -> unknown", () => {
+  assert.equal(displayVersion("com.enviouswispr.app@nightly"), "nightly");
+  assert.equal(displayVersion("nightly"), "nightly");
+  assert.equal(displayVersion(null), "unknown");
+  assert.equal(displayVersion(""), "unknown");
+});
+
+// ─────────────────────────────── formatOs ─────────────────────────────────────
+
+test("formatOs: adds macOS prefix only when absent", () => {
+  assert.equal(formatOs("macOS 26.6.0"), "macOS 26.6.0");
+  assert.equal(formatOs("26.6.0"), "macOS 26.6.0");
+  assert.equal(formatOs(null), null);
+  assert.equal(formatOs(undefined), null);
+});
+
 // ─────────────────────────────── classifySeverity ─────────────────────────────
 
 test("classifySeverity: threshold ladder", () => {
@@ -359,7 +385,8 @@ function rawEvent(tags = {}, extra = {}) {
   };
 }
 
-test("extractEventRecord: reads release/env/buildType/level/category/stage from tags", () => {
+test("extractEventRecord: reads release/env/buildType/level/category/stage/os/device from tags (real compact-endpoint shape, contexts:null)", () => {
+  // Mirrors the actual events-list payload: OS/device arrive as tags, contexts is null.
   const r = extractEventRecord(
     rawEvent(
       {
@@ -369,8 +396,10 @@ test("extractEventRecord: reads release/env/buildType/level/category/stage from 
         level: "error",
         "error.category": "paste_failed",
         "pipeline.stage": "paste",
+        os: "macOS 26.6.0",
+        device: "Mac16,8",
       },
-      { user: { id: "user-42" }, contexts: { os: { version: "26.6.0" }, device: { model: "Mac16,8" } } }
+      { user: { id: "user-42" }, contexts: null }
     )
   );
   assert.equal(r.release, "com.enviouswispr.app@2.3.1");
@@ -380,6 +409,14 @@ test("extractEventRecord: reads release/env/buildType/level/category/stage from 
   assert.equal(r.userId, "user-42");
   assert.equal(r.category, "paste_failed");
   assert.equal(r.stage, "paste");
+  assert.equal(r.osVersion, "macOS 26.6.0");
+  assert.equal(r.deviceModel, "Mac16,8");
+});
+
+test("extractEventRecord: falls back to contexts for os/device when tags are absent", () => {
+  const r = extractEventRecord(
+    rawEvent({}, { contexts: { os: { version: "26.6.0" }, device: { model: "Mac16,8" } } })
+  );
   assert.equal(r.osVersion, "26.6.0");
   assert.equal(r.deviceModel, "Mac16,8");
 });
@@ -476,7 +513,7 @@ test("buildEmbedFromLookup: mixed issue labeled Release renders the release even
   );
   assert.equal(embed.title, "[Sentry P2 · Release] paste_failed");
   const version = embed.fields.find((f) => f.name === "Version");
-  assert.equal(version.value, "com.enviouswispr.app@2.3.1");
+  assert.equal(version.value, "2.3.1");
   const system = embed.fields.find((f) => f.name === "System");
   assert.match(system.value, /Mac16,8/);
   assert.ok(!version.value.includes("9.9.9"), "must not show the dev event's release");
@@ -506,7 +543,7 @@ test("buildEmbedFromLookup: Unknown-labeled mixed issue renders the unclassifiab
   );
   assert.equal(embed.title, "[Sentry P2 · Unknown build] paste_failed");
   const version = embed.fields.find((f) => f.name === "Version");
-  assert.equal(version.value, "com.enviouswispr.app@2.3.1");
+  assert.equal(version.value, "2.3.1");
   assert.ok(!version.value.includes("9.9.9"), "must not show the dev event's release");
 });
 
@@ -612,12 +649,16 @@ test("readableHeadline: prefers category, falls back to title", () => {
 });
 
 test("metadataFields: joins category/stage and os/device, falls back to unknown", () => {
-  const a = metadataFields({ category: "paste_failed", stage: "paste", osVersion: "26.6.0", deviceModel: "Mac16,8" });
+  // Real tag path: osVersion already carries the "macOS" prefix -> no double prefix.
+  const a = metadataFields({ category: "paste_failed", stage: "paste", osVersion: "macOS 26.6.0", deviceModel: "Mac16,8" });
   assert.equal(a.what, "paste_failed / paste");
   assert.equal(a.system, "macOS 26.6.0, Mac16,8");
-  const b = metadataFields({});
-  assert.equal(b.what, "unknown");
-  assert.equal(b.system, "unknown");
+  // Contexts fallback path: bare version gets the prefix added.
+  const b = metadataFields({ osVersion: "26.6.0", deviceModel: "Mac16,8" });
+  assert.equal(b.system, "macOS 26.6.0, Mac16,8");
+  const c = metadataFields({});
+  assert.equal(c.what, "unknown");
+  assert.equal(c.system, "unknown");
 });
 
 test("buildEnrichedEmbed: readable headline, Release tag, no em/en dash", () => {
@@ -633,6 +674,8 @@ test("buildEnrichedEmbed: readable headline, Release tag, no em/en dash", () => 
   });
   assert.equal(embed.title, "[Sentry P2 · Release] paste_failed");
   assert.ok(!embed.title.includes("REDACTED"));
+  const version = embed.fields.find((f) => f.name === "Version");
+  assert.equal(version.value, "2.3.1", "version is cleaned, not the raw bundle@semver tag");
   const text = JSON.stringify(embed);
   assert.ok(!text.includes("—"), "no em-dash");
   assert.ok(!text.includes("–"), "no en-dash");

@@ -382,6 +382,25 @@ export function normalizeRelease(release) {
   return { key: `${tuple[0]}.${tuple[1]}.${tuple[2]}`, tuple };
 }
 
+/**
+ * Human-readable version for the embed. Sentry stores the release as
+ * "com.enviouswispr.app@2.3.1"; show just "2.3.1". Falls back to the part after
+ * the last "@" for a non-semver release, and "unknown" when there is no release.
+ */
+export function displayVersion(release) {
+  if (typeof release !== "string" || release.length === 0) return "unknown";
+  const norm = normalizeRelease(release);
+  if (norm) return norm.key;
+  const at = release.lastIndexOf("@");
+  return at >= 0 ? release.slice(at + 1) : release;
+}
+
+/** Render an OS value as "macOS X", tolerating a source that already includes the prefix. */
+export function formatOs(osVersion) {
+  if (!osVersion) return null;
+  return /^macos/i.test(osVersion) ? osVersion : `macOS ${osVersion}`;
+}
+
 function compareRelease(a, b) {
   for (let i = 0; i < 3; i++) {
     if (a.tuple[i] !== b.tuple[i]) return a.tuple[i] - b.tuple[i];
@@ -469,8 +488,11 @@ export function extractEventRecord(event) {
     userId: event?.user?.id ?? null,
     category: tagValue("error.category"),
     stage: tagValue("pipeline.stage"),
-    osVersion: event?.contexts?.os?.version ?? null,
-    deviceModel: event?.contexts?.device?.model ?? null,
+    // The compact events-list endpoint returns contexts:null; OS/device live in
+    // tags there (os="macOS 26.6.0", device="Mac16,8"). Read tags first, keep the
+    // contexts path as a defensive fallback for any richer event serialization.
+    osVersion: tagValue("os") ?? event?.contexts?.os?.version ?? null,
+    deviceModel: tagValue("device") ?? event?.contexts?.device?.model ?? null,
   };
 }
 
@@ -788,9 +810,7 @@ export function readableHeadline(title, metadata) {
 export function metadataFields(metadata) {
   const what = [metadata.category, metadata.stage].filter(Boolean).join(" / ") || "unknown";
   const system =
-    [metadata.osVersion ? `macOS ${metadata.osVersion}` : null, metadata.deviceModel]
-      .filter(Boolean)
-      .join(", ") || "unknown";
+    [formatOs(metadata.osVersion), metadata.deviceModel].filter(Boolean).join(", ") || "unknown";
   return { what, system };
 }
 
@@ -807,7 +827,7 @@ export function buildEnrichedEmbed({ issueId, title, permalink, timesSeen, userC
         value: `Sentry issue totals: ${userCount} user(s) · ${timesSeen} occurrences`,
         inline: true,
       },
-      { name: "Version", value: truncate(metadata.release ?? "unknown"), inline: true },
+      { name: "Version", value: truncate(displayVersion(metadata.release)), inline: true },
       { name: "System", value: truncate(system), inline: true },
       { name: "Sentry", value: `[${issueId}](${permalink})`, inline: true },
     ],
