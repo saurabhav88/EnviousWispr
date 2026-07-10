@@ -46,6 +46,35 @@ struct TextProcessingRunnerCaptureTests {
     }
   }
 
+  /// Records every durable `llm.polish_failed` record the runner writes (#1446).
+  /// Separate from `CaptureSpy` on purpose: the record fires for EVERY attempted
+  /// failure while the alert fires only for the regression-capable subset, so a
+  /// test can assert "the failure was counted AND nobody was paged."
+  @MainActor
+  final class RecordSpy {
+    struct Call {
+      let provider: String
+      let model: String
+      let reason: String
+      let isTimeout: Bool
+    }
+    private(set) var calls: [Call] = []
+    func sink(_ provider: String, _ model: String, _ reason: String, _ isTimeout: Bool) {
+      calls.append(Call(provider: provider, model: model, reason: reason, isTimeout: isTimeout))
+    }
+  }
+
+  /// Records every `llm.polish_skipped` the runner writes — polish that was never
+  /// ATTEMPTED (#1055 / #1271 / #1305). The third seam; it must be silenced under
+  /// crash recovery alongside the other two (#1446, cloud review of PR #1460).
+  @MainActor
+  final class SkipSpy {
+    private(set) var calls: [(provider: String, reason: String)] = []
+    func sink(_ provider: String, _ reason: String) {
+      calls.append((provider: provider, reason: reason))
+    }
+  }
+
   /// Polisher that always throws the supplied error. Implements only the legacy
   /// `text:` method; the planner path reaches it via the protocol's default
   /// `envelope:` bridge (same pattern as the reentrancy suite).
@@ -77,19 +106,31 @@ struct TextProcessingRunnerCaptureTests {
     return step
   }
 
-  private func makeRunner(_ spy: CaptureSpy) -> TextProcessingRunner {
+  private func makeRunner(
+    _ spy: CaptureSpy, _ records: RecordSpy = RecordSpy(), _ skips: SkipSpy = SkipSpy()
+  ) -> TextProcessingRunner {
     // throwBelowSeconds 0.0 -> the executor runs every step (never injects a
     // timeout); the polisher's own throw drives the failure.
     let executor = FakeTimeoutExecutor(throwBelowSeconds: 0.0)
-    return TextProcessingRunner(captureError: spy.sink, timeoutExecutor: executor.run)
+    return TextProcessingRunner(
+      telemetry: .init(
+        captureError: spy.sink, recordPolishFailed: records.sink,
+        recordPolishSkipped: skips.sink),
+      timeoutExecutor: executor.run)
   }
 
   // MARK: - Cloud / local classified failures
 
-  @Test("cloud rejected key -> 'rejected' notice + api_key_rejected tag (one capture)")
+  @Test(
+    "cloud rejected key -> 'rejected' notice, counted, no alert (the user's own key)",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "a revoked or mistyped user key is not an EnviousWispr defect")
+  )
   func cloudKeyRejected() async throws {
     let spy = CaptureSpy()
-    let runner = makeRunner(spy)
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
     let step = makeStep(provider: .openAI, model: "gpt-4o-mini") { LLMError.invalidAPIKey }
 
     let result = try await runner.run(
@@ -98,23 +139,60 @@ struct TextProcessingRunnerCaptureTests {
     #expect(
       result.polishError
         == "AI polish failed: OpenAI rejected your API key. Check or replace it in Settings.")
-    #expect(spy.calls.count == 1)
-    let call = try #require(spy.calls.first)
-    #expect(call.category == .polishProviderFailed)
-    #expect(call.stage == "polish")
-    #expect(call.tags["polish.error_case"] == "api_key_rejected")
-    #expect(call.tags["polish.provider"] == "openAI")
-    #expect(call.tags["polish.is_timeout"] == "false")
-    #expect(call.extra?["provider"] as? String == "openAI")
-    #expect(call.extra?["model"] as? String == "gpt-4o-mini")
-    // #945: the reason also splits the Sentry issue (fingerprint discriminator).
-    #expect(call.fingerprintDetail == "api_key_rejected")
+    #expect(spy.calls.isEmpty)
+    #expect(records.calls.count == 1)
+    #expect(records.calls.first?.reason == "api_key_rejected")
+    #expect(records.calls.first?.provider == "openAI")
+    #expect(records.calls.first?.model == "gpt-4o-mini")
+    #expect(records.calls.first?.isTimeout == false)
   }
 
-  @Test("cloud missing key -> skipped lead-in + api_key_missing tag")
+  /// The five reasons downgraded by founder directive 2026-07-09: each is caused by
+  /// the user or the provider, so a GitHub issue would have nothing to fix. Their
+  /// COUNT is the product signal (which walls do users hit), never an alert.
+  nonisolated static let userAndProviderOwnedFailures: [(PolishFailureReason, String)] = [
+    (.providerServerError, "provider_server_error"),
+    (.accessDenied, "access_denied"),
+    (.contentBlocked, "content_blocked"),
+    (.inputTooLong, "input_too_long"),
+    (.apiKeyRejected, "api_key_rejected"),
+  ]
+
+  @Test(
+    "a user- or provider-caused failure is counted and never paged",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "these five filed GitHub issues about nothing"),
+    arguments: userAndProviderOwnedFailures
+  )
+  func userAndProviderFailuresAreCountedNotPaged(
+    reason: PolishFailureReason, tag: String
+  ) async throws {
+    let spy = CaptureSpy()
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
+    let step = makeStep(provider: .openAI, model: "gpt-4o-mini") {
+      LLMError.classified(reason)
+    }
+
+    _ = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+
+    #expect(spy.calls.isEmpty, "\(reason) must never page us")
+    #expect(records.calls.count == 1)
+    #expect(records.calls.first?.reason == tag)
+  }
+
+  @Test(
+    "cloud missing key -> skipped notice, counted, and NOBODY is paged",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "user-environment polish failures fired alerting Sentry errors")
+  )
   func cloudKeyMissing() async throws {
     let spy = CaptureSpy()
-    let runner = makeRunner(spy)
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
     let step = makeStep(provider: .gemini, model: "gemini-2.0-flash") {
       LLMError.classified(.apiKeyMissing)
     }
@@ -122,17 +200,26 @@ struct TextProcessingRunnerCaptureTests {
     let result = try await runner.run(
       rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
 
+    // The notice the user reads is untouched by the downgrade.
     #expect(
       result.polishError == "AI cleanup skipped: no Gemini API key set yet. Add one in Settings.")
-    #expect(spy.calls.count == 1)
-    #expect(spy.calls.first?.tags["polish.error_case"] == "api_key_missing")
-    #expect(spy.calls.first?.tags["polish.provider"] == "gemini")
+    #expect(spy.calls.isEmpty)
+    #expect(records.calls.count == 1)
+    #expect(records.calls.first?.reason == "api_key_missing")
+    #expect(records.calls.first?.provider == "gemini")
+    #expect(records.calls.first?.model == "gemini-2.0-flash")
   }
 
-  @Test("cloud out-of-credits -> billing notice + out_of_credits tag (the mislabel fix)")
+  @Test(
+    "cloud out-of-credits -> billing notice, counted, no alert (71 of 130 events)",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "user-environment polish failures fired alerting Sentry errors")
+  )
   func cloudOutOfCredits() async throws {
     let spy = CaptureSpy()
-    let runner = makeRunner(spy)
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
     let step = makeStep(provider: .openAI, model: "gpt-4o-mini") {
       LLMError.classified(.outOfCredits)
     }
@@ -143,13 +230,20 @@ struct TextProcessingRunnerCaptureTests {
     #expect(
       result.polishError
         == "AI polish failed: your OpenAI account is out of credits. Check your provider billing.")
-    #expect(spy.calls.first?.tags["polish.error_case"] == "out_of_credits")
+    #expect(spy.calls.isEmpty)
+    #expect(records.calls.first?.reason == "out_of_credits")
   }
 
-  @Test("Ollama unreachable -> Ollama-specific notice + provider_unreachable tag")
+  @Test(
+    "Ollama unreachable -> Ollama notice, counted, no alert (the user's own machine)",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "user-environment polish failures fired alerting Sentry errors")
+  )
   func ollamaUnreachable() async throws {
     let spy = CaptureSpy()
-    let runner = makeRunner(spy)
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
     let step = makeStep(provider: .ollama, model: "llama3.2") {
       LLMError.classified(.providerUnreachable)
     }
@@ -159,9 +253,109 @@ struct TextProcessingRunnerCaptureTests {
 
     #expect(
       result.polishError == "AI polish failed: Ollama isn't reachable. Start Ollama and try again.")
-    #expect(spy.calls.first?.tags["polish.error_case"] == "provider_unreachable")
-    #expect(spy.calls.first?.tags["polish.provider"] == "ollama")
-    #expect(spy.calls.first?.extra?["model"] as? String == "llama3.2")
+    #expect(spy.calls.isEmpty)
+    #expect(records.calls.count == 1)
+    #expect(records.calls.first?.reason == "provider_unreachable")
+    #expect(records.calls.first?.provider == "ollama")
+    #expect(records.calls.first?.model == "llama3.2")
+  }
+
+  // MARK: - Provider-awareness: the SAME reason, opposite channels
+
+  @Test(
+    "an offline user on a CLOUD provider is counted, never paged",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "cloud providerUnreachable alerted on the user's own network")
+  )
+  func cloudUnreachableIsCountedNotPaged() async throws {
+    let spy = CaptureSpy()
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
+    // What a real offline dictation throws, not a hand-made `.classified`.
+    let step = makeStep(provider: .openAI, model: "gpt-4o-mini") {
+      URLError(.notConnectedToInternet)
+    }
+
+    _ = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+
+    #expect(spy.calls.isEmpty)
+    #expect(records.calls.count == 1)
+    #expect(records.calls.first?.reason == "provider_unreachable")
+    #expect(records.calls.first?.provider == "openAI")
+  }
+
+  @Test(
+    "a CLOUD model our catalog offered but the provider 404s pages us; the same on Ollama does not",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "model_unavailable conflated our dead catalog id with a model the user never pulled")
+  )
+  func cloudModelUnavailableAlertsButOllamaDoesNot() async throws {
+    let cloudSpy = CaptureSpy()
+    let cloudRecords = RecordSpy()
+    let cloudStep = makeStep(provider: .gemini, model: "gemini-retired-model") {
+      LLMError.classified(.modelUnavailable)
+    }
+    _ = try await makeRunner(cloudSpy, cloudRecords).run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [cloudStep])
+
+    #expect(cloudSpy.calls.count == 1)
+    #expect(cloudSpy.calls.first?.fingerprintDetail == "model_unavailable")
+    #expect(cloudRecords.calls.count == 1)
+
+    let localSpy = CaptureSpy()
+    let localRecords = RecordSpy()
+    let localStep = makeStep(provider: .ollama, model: "never-pulled") {
+      LLMError.classified(.modelUnavailable)
+    }
+    _ = try await makeRunner(localSpy, localRecords).run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [localStep])
+
+    #expect(localSpy.calls.isEmpty)
+    #expect(localRecords.calls.count == 1)
+    #expect(localRecords.calls.first?.reason == "model_unavailable")
+  }
+
+  @Test("a stored-but-unreadable key pages us with its own fingerprint")
+  func apiKeyUnreadableAlerts() async throws {
+    let spy = CaptureSpy()
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
+    let step = makeStep(provider: .gemini, model: "gemini-2.0-flash") {
+      LLMError.classified(.apiKeyUnreadable)
+    }
+
+    let result = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+
+    // Same sentence the no-key user reads; a different fingerprint for us.
+    #expect(
+      result.polishError == "AI cleanup skipped: no Gemini API key set yet. Add one in Settings.")
+    #expect(spy.calls.count == 1)
+    #expect(spy.calls.first?.fingerprintDetail == "api_key_unreadable")
+    #expect(records.calls.first?.reason == "api_key_unreadable")
+  }
+
+  @Test("a malformed request pages us with an unchanged fingerprint")
+  func badRequestAlerts() async throws {
+    let spy = CaptureSpy()
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
+    let step = makeStep(provider: .openAI, model: "gpt-4o-mini") {
+      LLMError.classified(.badRequest)
+    }
+
+    _ = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+
+    #expect(spy.calls.count == 1)
+    let call = try #require(spy.calls.first)
+    #expect(call.category == .polishProviderFailed)
+    #expect(call.stage == "polish")
+    #expect(call.fingerprintDetail == "bad_request")
+    #expect(records.calls.first?.reason == "bad_request")
   }
 
   // MARK: - Timeout
@@ -169,10 +363,15 @@ struct TextProcessingRunnerCaptureTests {
   @Test("runner polish-budget timeout -> timed_out tag + is_timeout=true")
   func polishTimeout() async throws {
     let spy = CaptureSpy()
+    let records = RecordSpy()
     // Polish step's cloud budget is 5s; throwing below 6s injects a TimeoutError
     // for it (the executor short-circuits before calling the polisher).
     let executor = FakeTimeoutExecutor(throwBelowSeconds: 6.0)
-    let runner = TextProcessingRunner(captureError: spy.sink, timeoutExecutor: executor.run)
+    let runner = TextProcessingRunner(
+      telemetry: .init(
+        captureError: spy.sink, recordPolishFailed: records.sink,
+        recordPolishSkipped: { _, _ in }),
+      timeoutExecutor: executor.run)
     let step = makeStep(provider: .openAI, model: "gpt-4o-mini") {
       LLMError.requestFailed("unused")
     }
@@ -184,6 +383,10 @@ struct TextProcessingRunnerCaptureTests {
     #expect(spy.calls.first?.tags["polish.error_case"] == "timed_out")
     #expect(spy.calls.first?.tags["polish.is_timeout"] == "true")
     #expect(result.polishError?.hasPrefix("AI cleanup skipped:") == true)
+    // #1446: `is_timeout` reaches the durable record too, not only the alert.
+    #expect(records.calls.count == 1)
+    #expect(records.calls.first?.reason == "timed_out")
+    #expect(records.calls.first?.isTimeout == true)
   }
 
   // MARK: - Apple Intelligence is excluded
@@ -191,7 +394,8 @@ struct TextProcessingRunnerCaptureTests {
   @Test("Apple Intelligence keeps today's exact wording and fires NO runner capture")
   func appleIntelligenceExcluded() async throws {
     let spy = CaptureSpy()
-    let runner = makeRunner(spy)
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
     let step = makeStep(provider: .appleIntelligence, model: "apple-intelligence") {
       LLMError.requestFailed("boom")
     }
@@ -202,15 +406,107 @@ struct TextProcessingRunnerCaptureTests {
     #expect(
       result.polishError == "AI polish failed: "
         + LLMError.requestFailed("boom").localizedDescription)
+    // The alerting capture for on-device polish is owned by the polish step
+    // (`captureAFMPolishError`), never by the runner.
     #expect(spy.calls.isEmpty)
+    // #1446: ...but the durable COUNT is the runner's, or `llm.polish_failed`
+    // would not partition live polish outcomes (AFM successes emit
+    // `llm.polish_completed`).
+    #expect(records.calls.count == 1)
+    #expect(records.calls.first?.provider == "appleIntelligence")
+    #expect(records.calls.first?.model == "apple-intelligence")
+    #expect(records.calls.first?.reason == "bad_request")
+  }
+
+  @Test(
+    "an Apple Intelligence model-not-ready failure is counted as model_unavailable",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "surfaced Apple Intelligence failures were absent from llm.polish_failed")
+  )
+  func appleIntelligenceModelNotReadyIsCounted() async throws {
+    let spy = CaptureSpy()
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
+    let step = makeStep(provider: .appleIntelligence, model: "apple-intelligence") {
+      LLMError.modelNotReady("still downloading")
+    }
+
+    _ = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+
+    #expect(spy.calls.isEmpty)
+    #expect(records.calls.count == 1)
+    #expect(records.calls.first?.reason == "model_unavailable")
+  }
+
+  /// The on-device skips that degrade quietly to raw text (#1080, #1055): a Mac
+  /// that cannot run Apple Intelligence at all, and the per-request language gates.
+  nonisolated static let silentAFMSkips: [LLMError] = [
+    .frameworkUnavailable("pre-macOS-26"),
+    .unsupportedInputLanguage("de"),
+    .outputLanguageDrift(expected: "en", actual: "de"),
+  ]
+
+  @Test(
+    "a SILENT Apple Intelligence skip is counted by nothing — it is not a failure",
+    arguments: silentAFMSkips)
+  func appleIntelligenceSilentSkipsAreNotCounted(error: LLMError) async throws {
+    let spy = CaptureSpy()
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
+    let step = makeStep(provider: .appleIntelligence, model: "apple-intelligence") { error }
+
+    let result = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+
+    // Raw deterministic text, no pill, and nothing reported: these degrade quietly
+    // by design (#1080, #1055). Counting them would inflate the failure rate.
+    #expect(result.polishError == nil)
+    #expect(spy.calls.isEmpty)
+    #expect(records.calls.isEmpty)
+  }
+
+  @Test(
+    "an Apple Intelligence timeout routes its skip through the seam, not TelemetryService",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "llm.polish_skipped bypassed the seams and leaked from crash recovery")
+  )
+  func appleIntelligenceTimeoutSkipRoutesThroughTheSeam() async throws {
+    let spy = CaptureSpy()
+    let records = RecordSpy()
+    let skips = SkipSpy()
+    // AFM's polish budget is 10s; throwing below 11s injects a TimeoutError.
+    let executor = FakeTimeoutExecutor(throwBelowSeconds: 11.0)
+    let runner = TextProcessingRunner(
+      telemetry: .init(
+        captureError: spy.sink, recordPolishFailed: records.sink,
+        recordPolishSkipped: skips.sink),
+      timeoutExecutor: executor.run)
+    let step = makeStep(provider: .appleIntelligence, model: "apple-intelligence") {
+      LLMError.requestFailed("unused")
+    }
+
+    let result = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+
+    // An on-device timeout on a long dictation degrades quietly to raw text.
+    #expect(result.polishError == nil)
+    #expect(spy.calls.isEmpty)
+    #expect(records.calls.isEmpty)  // never attempted-and-failed; it was skipped
+    #expect(skips.calls.count == 1)
+    #expect(skips.calls.first?.provider == "appleIntelligence")
+    #expect(skips.calls.first?.reason == "context_window_timeout")
   }
 
   // MARK: - No-false-positive boundary
 
-  @Test("a cancelled cloud request fires no capture and surfaces no notice")
+  @Test("a cancelled cloud request fires no telemetry and surfaces no notice")
   func cancellationLikeIgnored() async throws {
     let spy = CaptureSpy()
-    let runner = makeRunner(spy)
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
     let step = makeStep(provider: .openAI, model: "gpt-4o-mini") { URLError(.cancelled) }
 
     let result = try await runner.run(
@@ -218,12 +514,15 @@ struct TextProcessingRunnerCaptureTests {
 
     #expect(result.polishError == nil)
     #expect(spy.calls.isEmpty)
+    // A torn-down request is not an attempted-and-failed polish.
+    #expect(records.calls.isEmpty)
   }
 
-  @Test("a successful polish fires no capture")
+  @Test("a successful polish fires no telemetry")
   func successNoCapture() async throws {
     let spy = CaptureSpy()
-    let runner = makeRunner(spy)
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
     let step = LLMPolishStep(keychainManager: KeychainManager())
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
@@ -234,6 +533,7 @@ struct TextProcessingRunnerCaptureTests {
 
     #expect(result.polishError == nil)
     #expect(spy.calls.isEmpty)
+    #expect(records.calls.isEmpty)
   }
 
   /// Polisher that returns clean text (no throw) for the success-path test.

@@ -59,7 +59,15 @@ struct EGOnePipelineRoutingTests {
     -> TextProcessingRunResult
   {
     let executor = FakeTimeoutExecutor(throwBelowSeconds: 0.0)
-    let runner = TextProcessingRunner(captureError: spy.sink, timeoutExecutor: executor.run)
+    // EG-1 bypasses fire no capture and no failure record; they DO emit a
+    // `llm.polish_skipped`, so that seam stays live. The failure seam is no-op'd
+    // so this suite can never reach the real PostHog failure client (#1446).
+    let runner = TextProcessingRunner(
+      telemetry: .init(
+        captureError: spy.sink, recordPolishFailed: { _, _, _, _ in },
+        // This suite asserts on the real `llm.polish_skipped` via testEventHook.
+        recordPolishSkipped: TextProcessingRunner.TelemetrySeams.live.recordPolishSkipped),
+      timeoutExecutor: executor.run)
     return try await runner.run(
       rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
   }

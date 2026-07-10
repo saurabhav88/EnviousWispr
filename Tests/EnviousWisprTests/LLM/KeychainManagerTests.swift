@@ -358,6 +358,45 @@ struct KeychainManagerTests {
         atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
   }
 
+  /// #1446: absence must be reported as `errSecItemNotFound`, distinctly from a
+  /// generic read failure. The cloud connectors classify on exactly this: absence
+  /// is the user's configuration state (counted, never alerted), while any other
+  /// read failure is a defect of ours (its own alerting Sentry fingerprint). If a
+  /// missing key ever reports a generic `-1` again, every no-key user pages us.
+  @Test(
+    "retrieve of a key that was never stored reports errSecItemNotFound, on both backends",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "a missing key must be distinguishable from an unreadable one")
+  )
+  func retrieveOfAbsentKeyReportsItemNotFound() throws {
+    func statusOfAbsentRetrieve(from manager: KeychainManager) -> OSStatus? {
+      do {
+        _ = try manager.retrieve(key: KeychainManager.openAIKeyID)
+        return nil
+      } catch KeyStoreError.retrieveFailed(let status) {
+        return status
+      } catch {
+        return nil
+      }
+    }
+
+    // Dev / DEBUG backend: no file on disk.
+    let devDir = try makeTempDirectory()
+    defer { try? FileManager.default.removeItem(at: devDir) }
+    let devManager = KeychainManager(
+      backend: .legacyFiles, legacyStore: FileLegacyKeyStore(storageDirectory: devDir))
+    #expect(statusOfAbsentRetrieve(from: devManager) == errSecItemNotFound)
+
+    // Release backend: no Keychain item AND no legacy file to migrate.
+    let releaseDir = try makeTempDirectory()
+    defer { try? FileManager.default.removeItem(at: releaseDir) }
+    let releaseManager = releaseStyleManager(
+      legacyStore: FileLegacyKeyStore(storageDirectory: releaseDir),
+      keychainStore: InMemoryKeychainStore())
+    #expect(statusOfAbsentRetrieve(from: releaseManager) == errSecItemNotFound)
+  }
+
   @Test("release retrieve surfaces non-missing Keychain failures")
   func releaseRetrieveDoesNotFallBackForNonMissingKeychainFailure() throws {
     let dir = try makeTempDirectory()

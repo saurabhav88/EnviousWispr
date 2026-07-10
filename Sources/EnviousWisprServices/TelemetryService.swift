@@ -938,6 +938,35 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("llm.polish_skipped", properties: props)
   }
 
+  /// #1446: AI polish was ATTEMPTED and threw. The third and last outcome, disjoint
+  /// from `llm.polish_completed` (attempted, succeeded) and `llm.polish_skipped`
+  /// (never attempted) — together the three partition every live polish outcome.
+  ///
+  /// Fires for EVERY live attempted-polish failure, whether or not the reason also
+  /// earns an alerting Sentry error. That makes this the durable, complete record
+  /// of the failure rate: no Sentry-union query is needed to compute it. Crash
+  /// recovery deliberately emits nothing (a live-only metric, #945).
+  ///
+  /// `reason` is a `PolishFailureReason.telemetryTag` — a closed, content-free set.
+  /// `model` is catalog metadata, matching what `llm.polish_completed` already
+  /// sends. No transcript, prompt, provider error body, key, or endpoint URL.
+  public func polishFailed(provider: String, model: String, reason: String, isTimeout: Bool) {
+    let props: [String: Any] = [
+      "provider": provider,
+      "model": model,
+      "reason": reason,
+      "is_timeout": isTimeout,
+    ]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "llm.polish_failed",
+          stringProps: ["provider": provider, "model": model, "reason": reason],
+          boolProps: ["is_timeout": isTimeout]))
+    #endif
+    PostHogSDK.shared.capture("llm.polish_failed", properties: props)
+  }
+
   /// #1271: EG-1 native model download funnel + health transitions. Content-
   /// free by construction: model identity comes from OUR manifest, reasons
   /// are a closed string set, and no transcript or prompt content exists on

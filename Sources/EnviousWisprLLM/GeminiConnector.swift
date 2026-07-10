@@ -418,11 +418,18 @@ public struct GeminiConnector: TranscriptPolisher {
     }
     do {
       return try keychainManager.retrieve(key: keychainId)
-    } catch {
-      // A keychain id is set but the key could not be read (corrupt/inaccessible
-      // entry). Functionally there is no usable key; re-entering it in Settings
-      // (the `apiKeyMissing` action) fixes both this and the no-key case.
+    } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
+      // No key is stored. NOTE this is the arm a real no-key user takes, not the
+      // `guard` above: `LLMPolishStep` always supplies the fixed key id for a cloud
+      // provider, so `apiKeyKeychainId` is never nil in production (#1446). Classify
+      // by what the STORE says, not by whether an id was passed.
       throw LLMError.classified(.apiKeyMissing)
+    } catch {
+      // A key IS stored but could not be read (corrupt entry, locked Keychain,
+      // missing entitlement, migration bug). The user sees the same notice as the
+      // no-key case — re-entering the key in Settings fixes both — but this one is
+      // OUR defect and keeps its own alerting fingerprint (#1446).
+      throw LLMError.classified(.apiKeyUnreadable)
     }
   }
 }

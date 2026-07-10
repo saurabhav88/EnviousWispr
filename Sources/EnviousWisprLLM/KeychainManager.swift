@@ -263,7 +263,13 @@ struct FileLegacyKeyStore: LegacyKeyFileStorage {
     let url = fileURL(for: key)
     let fm = FileManager.default
     guard fm.fileExists(atPath: url.path) else {
-      throw KeyStoreError.retrieveFailed(-1)
+      // #1446: NO key is stored — the user's configuration state, not a defect.
+      // `errSecItemNotFound` is `KeyStoreError`'s shared vocabulary for absence
+      // (`SecurityKeychainItemStore` already reports it), so callers can tell
+      // "never saved a key" apart from "saved a key we then failed to read".
+      // Every OTHER exit below stays `-1`: the file exists but its bytes would
+      // not read back, which IS a defect.
+      throw KeyStoreError.retrieveFailed(errSecItemNotFound)
     }
 
     try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)

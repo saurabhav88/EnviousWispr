@@ -50,18 +50,99 @@ internal final class TextProcessingRunner {
     any Error, SentryBreadcrumb.ErrorCategory, String, [String: Any]?, [String: String], String?
   ) -> Void
 
+  /// Durable, non-alerting record of a LIVE attempted-polish failure (#1446),
+  /// mirroring `captureError`. Production leaves a Sentry breadcrumb and emits the
+  /// counted `llm.polish_failed` event; `RecoveryTextProcessor` injects a no-op
+  /// (the same reason `captureError` is no-op'd there — this is a live-only
+  /// metric, #945); tests inject a spy. Fire-and-forget / non-throwing, so
+  /// telemetry can never break the limb-failure continuation (heart & limbs).
+  ///
+  /// Fires on EVERY live attempted-polish failure, both channels — unlike
+  /// `captureError`, which fires only for the regression-capable subset. That
+  /// asymmetry is what lets a test assert "the durable record exists AND no alert
+  /// fired." Parameters: provider, model, reason tag, isTimeout.
+  typealias RecordPolishFailed = @MainActor (String, String, String, Bool) -> Void
+
+  /// Durable record of a LIVE polish that was never ATTEMPTED — the AFM
+  /// context-window skips (#1055), EG-1 bypasses (#1271), and the Ollama readiness
+  /// preflight (#1305). Parameters: provider, skip reason.
+  typealias RecordPolishSkipped = @MainActor (String, String) -> Void
+
+  /// Every POLISH telemetry seam the runner owns, as ONE value (#1446).
+  ///
+  /// The point is `silent`. Crash recovery must emit no polish telemetry (#945: a
+  /// live-only metric), and when the runner had a single `captureError` seam the
+  /// caller expressed that by passing one no-op closure. Adding a second seam
+  /// quietly broke that: a caller could silence one and leave the other live, with
+  /// nothing to catch it. Bundling them means `silent` is the single place that
+  /// answers "what does silence mean," and the memberwise initializer forces any
+  /// FUTURE seam to be named there before this file compiles.
+  ///
+  /// So the bug class is not tested for; it is unwritable. (`recordPolishSkipped`
+  /// is the third seam, found by the cloud reviewer on PR #1460 while it was still
+  /// calling `TelemetryService.shared` directly — proof the trap is real.)
+  ///
+  /// NOT in here, deliberately: `customWordsTimeoutFired` (#657). That is a
+  /// custom-words performance metric, not polish telemetry, and #945's live-only
+  /// decision is scoped to polish. A recovered take whose word-correction step
+  /// blows its cap SHOULD still report it.
+  struct TelemetrySeams {
+    let captureError: CaptureError
+    let recordPolishFailed: RecordPolishFailed
+    let recordPolishSkipped: RecordPolishSkipped
+
+    /// Production: alerting Sentry events plus the counted `llm.polish_*` events.
+    static let live = TelemetrySeams(
+      captureError: { error, category, stage, extra, tags, fingerprintDetail in
+        SentryBreadcrumb.captureError(
+          error, category: category, stage: stage, extra: extra, tags: tags,
+          fingerprintDetail: fingerprintDetail)
+      },
+      recordPolishFailed: { provider, model, reason, isTimeout in
+        // Sibling of LLMPolishStep's "LLM polish started" / "LLM polish completed"
+        // crumbs; the distinct wording keeps this trail entry legible next to
+        // theirs (they also carry `model`).
+        SentryBreadcrumb.add(
+          stage: "polish",
+          message: "LLM polish attempt failed (\(reason)); continuing with deterministic text",
+          data: ["provider": provider, "model": model, "is_timeout": isTimeout]
+        )
+        TelemetryService.shared.polishFailed(
+          provider: provider, model: model, reason: reason, isTimeout: isTimeout)
+      },
+      recordPolishSkipped: { provider, reason in
+        TelemetryService.shared.polishSkipped(provider: provider, reason: reason)
+      })
+
+    /// Crash recovery (#945, #1446): a recovered take that fails to polish still
+    /// returns its `polishError`, but the RUNNER reports nothing — no
+    /// `polish_provider_failed` Sentry event, no attempt-failed breadcrumb, no
+    /// `llm.polish_failed`, no `llm.polish_skipped`. Polish telemetry is a
+    /// LIVE-dictation metric.
+    ///
+    /// SCOPE, precisely: this silences the three seams the RUNNER owns. It cannot
+    /// reach `LLMPolishStep`'s own five emitters (`limbFailureObserved`, the
+    /// "LLM polish started" / "completed" breadcrumbs, its `captureError`, and
+    /// `captureAFMPolishError`), which fire from inside the step on a recovered
+    /// take exactly as they do live. Whether recovery should silence those too is a
+    /// separate question with a different owner — tracked in #1461, not papered
+    /// over here. (Cloud review of PR #1460 caught the earlier version of this
+    /// comment claiming recovery emitted "no Sentry event, no breadcrumb"; it does.)
+    static let silent = TelemetrySeams(
+      captureError: { _, _, _, _, _, _ in },
+      recordPolishFailed: { _, _, _, _ in },
+      recordPolishSkipped: { _, _ in })
+  }
+
   private let logger: any PipelineLogging
   private let timeoutExecutor: TimeoutExecutor
   private let captureError: CaptureError
+  private let recordPolishFailed: RecordPolishFailed
+  private let recordPolishSkipped: RecordPolishSkipped
 
   init(
     logger: any PipelineLogging = AppLoggerAdapter(),
-    captureError: @escaping CaptureError = {
-      error, category, stage, extra, tags, fingerprintDetail in
-      SentryBreadcrumb.captureError(
-        error, category: category, stage: stage, extra: extra, tags: tags,
-        fingerprintDetail: fingerprintDetail)
-    },
+    telemetry: TelemetrySeams = .live,
     timeoutExecutor: @escaping TimeoutExecutor = { seconds, op in
       // nonisolated(unsafe) bridges @MainActor `op` to withThrowingTimeout's
       // @Sendable contract. Safety: op is @MainActor and its return value
@@ -78,7 +159,9 @@ internal final class TextProcessingRunner {
     }
   ) {
     self.logger = logger
-    self.captureError = captureError
+    self.captureError = telemetry.captureError
+    self.recordPolishFailed = telemetry.recordPolishFailed
+    self.recordPolishSkipped = telemetry.recordPolishSkipped
     self.timeoutExecutor = timeoutExecutor
   }
 
@@ -257,38 +340,61 @@ internal final class TextProcessingRunner {
           && !isEGOnePolishTimeout
           && !isCancellationLike
         {
+          let model = polishModelAtStart ?? "unknown"
           if let provider = polishProviderAtStart, provider != .appleIntelligence {
             // Cloud (OpenAI/Gemini) or local (Ollama): classify the specific
             // reason once, then feed it into BOTH the self-contained on-screen
-            // notice and the telemetry reason tag (#945). The capture is
+            // notice and the telemetry reason tag (#945). Both emits are
             // fire-and-forget; the raw transcript/prompt/provider-body never
             // leave the device (the reason set is closed and content-free).
             let reason = PolishFailureReason.from(error)
             polishError = reason.composedMessage(provider: provider)
-            captureError(
-              error,
-              .polishProviderFailed,
-              "polish",
-              [
-                "provider": provider.rawValue,
-                "model": polishModelAtStart ?? "unknown",
-                "is_timeout": isTimeout,
-              ],
-              [
-                "polish.error_case": reason.telemetryTag,
-                "polish.provider": provider.rawValue,
-                "polish.is_timeout": isTimeout ? "true" : "false",
-              ],
-              // Split the Sentry issue per reason: `.classified` bridges every
-              // reason to one NSError code, so the tag alone would merge them.
-              reason.telemetryTag
-            )
+            // #1446: EVERY attempted-and-failed polish gets a durable counted
+            // record, whatever its channel. Sentry alerting is the interrupting
+            // SUBSET below, not the record itself.
+            recordPolishFailed(provider.rawValue, model, reason.telemetryTag, isTimeout)
+            // #1446: alert only where a spike could plausibly mean WE regressed.
+            // A user out of credits, over quota, with no key, or with Ollama shut
+            // down is not a defect: those reasons are counted, never paged. The
+            // reason owns this policy (`telemetryChannel`); the runner only reads
+            // it. Locked by the (reason x provider) matrix test.
+            if reason.telemetryChannel(provider: provider) == .alertingSentryError {
+              captureError(
+                error,
+                .polishProviderFailed,
+                "polish",
+                [
+                  "provider": provider.rawValue,
+                  "model": model,
+                  "is_timeout": isTimeout,
+                ],
+                [
+                  "polish.error_case": reason.telemetryTag,
+                  "polish.provider": provider.rawValue,
+                  "polish.is_timeout": isTimeout ? "true" : "false",
+                ],
+                // Split the Sentry issue per reason: `.classified` bridges every
+                // reason to one NSError code, so the tag alone would merge them.
+                reason.telemetryTag
+              )
+            }
           } else if polishProviderAtStart == .appleIntelligence {
             // Apple Intelligence: preserve today's exact wording byte-for-byte.
             // The view now renders `polishError` verbatim, so the runner owns the
             // "AI polish failed:" prefix here. AFM generation failures are
-            // captured at the polish step, so no capture fires here.
+            // captured at the polish step, so no Sentry capture fires here.
             polishError = "AI polish failed: " + error.localizedDescription
+            // #1446: the durable count MUST still cover this arm. An AFM success
+            // emits `llm.polish_completed`, so omitting its failures would leave
+            // `llm.polish_failed` unable to partition live polish outcomes and
+            // would undercount the on-device failure rate. Only the ALERTING
+            // channel is owned elsewhere (the step's `captureAFMPolishError`);
+            // the count is ours. Silent AFM skips never reach here — they are
+            // excluded by `isSilentPolishSkip` / `contextWindowSkip` /
+            // `isAppleIntelligencePolishTimeout` above.
+            recordPolishFailed(
+              LLMProvider.appleIntelligence.rawValue, model,
+              PolishFailureReason.from(error).telemetryTag, isTimeout)
           } else {
             // No polish-provider snapshot: a non-LLMPolishStep surfacing step
             // (only reachable in tests; production's sole `.surface` step is
@@ -304,25 +410,20 @@ internal final class TextProcessingRunner {
         if let cw = contextWindowSkip {
           let skipReason =
             cw.stage == .predicted ? "context_window_predicted" : "context_window_caught"
-          TelemetryService.shared.polishSkipped(
-            provider: LLMProvider.appleIntelligence.rawValue, reason: skipReason)
+          recordPolishSkipped(LLMProvider.appleIntelligence.rawValue, skipReason)
         } else if isAppleIntelligencePolishTimeout {
-          TelemetryService.shared.polishSkipped(
-            provider: LLMProvider.appleIntelligence.rawValue, reason: "context_window_timeout")
+          recordPolishSkipped(LLMProvider.appleIntelligence.rawValue, "context_window_timeout")
         } else if isEGOnePolishTimeout {
           // #1271: one `local_polish_` prefix family for every EG-1 skip mode.
-          TelemetryService.shared.polishSkipped(
-            provider: LLMProvider.egOne.rawValue, reason: "local_polish_timeout")
+          recordPolishSkipped(LLMProvider.egOne.rawValue, "local_polish_timeout")
         } else if let egOneSkipReason {
-          TelemetryService.shared.polishSkipped(
-            provider: LLMProvider.egOne.rawValue, reason: egOneSkipReason)
+          recordPolishSkipped(LLMProvider.egOne.rawValue, egOneSkipReason)
         } else if let skipReason = localPolishSkipReason?.ollamaPreflightSkipTelemetryReason {
           // #1305: preflight skips ride the same lightweight `local_polish_`
           // reason family as EG-1 — the observability split between "preflight
           // said not ready" (here) and "mid-flight failure on a running
           // server" (the capture path above) falls out of the reason strings.
-          TelemetryService.shared.polishSkipped(
-            provider: LLMProvider.ollama.rawValue, reason: skipReason)
+          recordPolishSkipped(LLMProvider.ollama.rawValue, skipReason)
         }
         // #657 (2026-05-05): emit cap-trip telemetry when WordCorrectionStep
         // exceeds its 3s `maxDuration`. The step's result was discarded; raw
