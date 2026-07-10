@@ -173,7 +173,10 @@ final class AVAudioEngineSource: AudioInputSource {
   /// the engine isn't running.
   var captureStopMetadata: CaptureStopMetadata? {
     guard engine.isRunning else { return nil }
-    let rate = engine.inputNode.outputFormat(forBus: 0).sampleRate
+    // Hardware format: after `setInputDevice` binds a device, `outputFormat` lags
+    // the real rate, so reporting it here would tell us 48000 for exactly the
+    // bound-device recordings this telemetry exists to diagnose.
+    let rate = engine.inputNode.inputFormat(forBus: 0).sampleRate
     guard rate > 0 else { return nil }
     return CaptureStopMetadata(nativeRateHz: rate)
   }
@@ -317,13 +320,37 @@ final class AVAudioEngineSource: AudioInputSource {
     btCrashLogger.info("Engine started successfully")
 
     // Install pre-roll tap immediately after engine start.
-    // Format is stable for built-in mic (BT uses AVCaptureSessionSource).
     // The tap routes through a PreRollForwarder that buffers audio until
     // startCapture() activates live forwarding.
+    //
+    // Read the hardware format, not `outputFormat`. `setInputDevice` above binds
+    // a device onto the input node's audio unit; after that bind `outputFormat`
+    // keeps reporting the pre-bind rate while `inputFormat` tracks the device.
+    // `installTap` asserts `format.sampleRate == inputHWFormat.sampleRate` and
+    // raises an uncatchable ObjC exception on mismatch, aborting this helper.
     let tapStart = ContinuousClock.now
     onLifecycleSignal?("engine_preroll_tap_entered")
     let inputNode = engine.inputNode
-    let inputFormat = inputNode.outputFormat(forBus: 0)
+    let inputFormat = inputNode.inputFormat(forBus: 0)
+
+    // A device still transitioning can report 0 Hz / 0 channels here. Feeding
+    // that to AVAudioConverter yields nil, and the guards below must not leave a
+    // running engine with no forwarder: `prepare()` would then short-circuit on
+    // `engine.isRunning` forever and every `startCapture()` would throw
+    // `missing_forwarder` — a permanent wedge.
+    //
+    // Tear down before throwing. `withStartRetry` does NOT retry this (it matches
+    // only a wedged line or `serviceUnreachable`), so THIS recording fails; the
+    // teardown is what lets the NEXT `prepare()` rebuild instead of short-circuiting.
+    // One failed press beats a dead session.
+    guard Self.isUsable(inputFormat) else {
+      btCrashLogger.error(
+        "Pre-roll: hardware format not yet usable (\(inputFormat.sampleRate)Hz/\(inputFormat.channelCount)ch) — tearing down for retry"
+      )
+      teardownEngine()
+      throw AudioError.formatCreationFailed(
+        source: "AVAudioEngineSource.prepare.unusable_hardware_format")
+    }
 
     guard
       let targetFormat = AVAudioFormat(
@@ -333,14 +360,16 @@ final class AVAudioEngineSource: AudioInputSource {
         interleaved: false
       )
     else {
-      btCrashLogger.error("Pre-roll: failed to create target format — tap not installed")
-      return
+      btCrashLogger.error("Pre-roll: failed to create target format — tearing down for retry")
+      teardownEngine()
+      throw AudioError.formatCreationFailed(source: "AVAudioEngineSource.prepare.target_format")
     }
 
     guard let audioConverter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
       btCrashLogger.error(
-        "Pre-roll: failed to create converter from \(inputFormat) — tap not installed")
-      return
+        "Pre-roll: failed to create converter from \(inputFormat) — tearing down for retry")
+      teardownEngine()
+      throw AudioError.formatCreationFailed(source: "AVAudioEngineSource.prepare.converter")
     }
     self.converter = audioConverter
 
@@ -527,16 +556,35 @@ final class AVAudioEngineSource: AudioInputSource {
     return []
   }
 
+  /// A hardware format only counts as settled once it is also usable. During a
+  /// device transition `inputFormat(forBus:)` can report 0 Hz or 0 channels; two
+  /// consecutive *invalid* reads compare equal, so an equality-only check would
+  /// call that "stable" and hand an unusable format to converter creation.
+  nonisolated static func isUsableFormat(sampleRate: Double, channelCount: AVAudioChannelCount)
+    -> Bool
+  {
+    sampleRate > 0 && channelCount > 0
+  }
+
+  private var currentHardwareFormat: AVAudioFormat { engine.inputNode.inputFormat(forBus: 0) }
+
+  nonisolated private static func isUsable(_ format: AVAudioFormat) -> Bool {
+    isUsableFormat(sampleRate: format.sampleRate, channelCount: format.channelCount)
+  }
+
   func waitForFormatStabilization(
     maxWait: TimeInterval = 1.5,
     pollInterval: TimeInterval = 0.2
   ) async -> Bool {
+    // Polls the hardware format — the same accessor the tap install consumes.
+    // Waiting on `outputFormat` while installing from `inputFormat` would gate on
+    // one signal and act on another.
     let stabStart = ContinuousClock.now
     let deadline = Date().addingTimeInterval(maxWait)
-    var lastFormat = engine.inputNode.outputFormat(forBus: 0)
+    var lastFormat = currentHardwareFormat
     try? await Task.sleep(for: .milliseconds(10))
-    let recheck = engine.inputNode.outputFormat(forBus: 0)
-    if recheck == lastFormat {
+    let recheck = currentHardwareFormat
+    if recheck == lastFormat, Self.isUsable(recheck) {
       AudioCaptureManager.btRouteLog(
         "COLD-START formatStab: stable on fast path (\(ms(ContinuousClock.now - stabStart))ms, 0 polls)"
       )
@@ -547,8 +595,8 @@ final class AVAudioEngineSource: AudioInputSource {
     while Date() < deadline {
       try? await Task.sleep(for: .seconds(pollInterval))
       polls += 1
-      let format = engine.inputNode.outputFormat(forBus: 0)
-      if format == lastFormat {
+      let format = currentHardwareFormat
+      if format == lastFormat, Self.isUsable(format) {
         AudioCaptureManager.btRouteLog(
           "COLD-START formatStab: stable after \(polls) polls (\(ms(ContinuousClock.now - stabStart))ms)"
         )
@@ -744,7 +792,10 @@ final class AVAudioEngineSource: AudioInputSource {
 
     do {
       let inputNode = engine.inputNode
-      let inputFormat = inputNode.outputFormat(forBus: 0)
+      // Hardware format, not `outputFormat` — recovery never re-binds the device,
+      // so the bind from `prepare()` still holds and `outputFormat` is still stale.
+      // Same `installTap` assertion applies here. See the tap site in `prepare()`.
+      let inputFormat = inputNode.inputFormat(forBus: 0)
 
       guard
         let targetFormat = AVAudioFormat(
