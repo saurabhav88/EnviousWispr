@@ -94,7 +94,10 @@ public actor ParakeetBackend: ASRBackend {
           detail =
             "\(downloadedMB) MB of \(Self.totalDownloadMB) MB (\(Int(downloadPct * 100))%)"
         case .compiling(let modelName):
-          phase = "Installing model..."
+          // Single authority for this token too (#1388): the host-side
+          // watcher's install OBSERVATION keys on it for the warm-up success
+          // telemetry (install duration + longest internal silence).
+          phase = ModelLoadStallPolicy.installPhase
           detail = modelName
         }
         callback(progress.fractionCompleted, phase, detail)

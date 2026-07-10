@@ -441,126 +441,107 @@ struct LoadProgressWatcherTests {
     watcher.stop()
   }
 
-  @Test(
-    "#1339 drill regression: a cold big-file first-byte gap does NOT fire with the transfer floor"
-  )
-  func coldFirstByteGapDoesNotFireWithTransferFloor() async {
-    // The 2026-07-05 Live UAT drill shape: dense ticks from listing + small
-    // files (~0.5s cadence), then the 445MB object's COLD first-byte gap of
-    // ~3s. With the 0.8s floor the ratio threshold (0.5s x 5 = 2.5s) killed
-    // the healthy download; the transfer floor (15s) must ride the gap out.
-    let clock = ManualClock()
-    let watcher = LoadProgressWatcher(
+  // MARK: - #1388 gate (B) removal — the model-load guard's configuration
+  //
+  // The #1339 transfer-floor drill tests were deleted here: they pinned
+  // gate (B) on the model-load path, which #1388 removed outright (the 15s
+  // floor false-fired on every healthy CoreML compile — 126/126 production
+  // events). The #1405 `downloadOwnedPhases` parking is RETAINED (Codex r2
+  // P1 on #1388: parking protects gate (A), not just gate (B) — without it,
+  // download ticks satisfy the pre-first-signal deadline and a service that
+  // hangs before its first LOAD signal is undetectable); its tests below are
+  // adapted to the gate-A-only guard configuration.
+
+  /// Watcher configured exactly like the #1388 sessionless warm-up guard:
+  /// gate (A) listing deadline only, gate (B) disabled, install observation,
+  /// delivery-phase parking retained (#1405; Codex r2 P1 + r4 P2 on #1388).
+  private func modelLoadGuardShapedWatcher(_ clock: ManualClock) -> LoadProgressWatcher {
+    LoadProgressWatcher(
       currentTime: { clock.now },
       listingPhase: ModelLoadStallPolicy.listingPhase,
       listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds,
-      silenceFloorSeconds: ModelLoadStallPolicy.transferSilenceFloorSeconds)
-    watcher.start()
-    watcher.observeTick(observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.listingPhase)
-    for i in 1..<10 {
-      clock.tick(seconds: 0.5)
-      watcher.observeTick(observedMtime: mtime(i), observedPhase: "Downloading model files...")
-    }
-    // Cold first-byte gap: 3s of silence — the ratio gate (2.5s) is met but
-    // the 15s transfer floor holds.
-    clock.tick(seconds: 3)
-    watcher.observeTick(observedMtime: mtime(9), observedPhase: "Downloading model files...")
-    #expect(!watcher.hasFired, "a cold first-byte gap must never kill a healthy download")
-    // Boundary: total silence just below the floor — still no fire.
-    clock.tick(seconds: 11.9)
-    watcher.observeTick(observedMtime: mtime(9), observedPhase: "Downloading model files...")
-    #expect(!watcher.hasFired, "total silence just below the transfer floor must not fire")
-    // A genuinely dead mid-stream transfer still fires once past the floor.
-    clock.tick(seconds: 0.2)
-    watcher.observeTick(observedMtime: mtime(9), observedPhase: "Downloading model files...")
-    #expect(watcher.hasFired, "true mid-stream death past the transfer floor must fire")
-    watcher.stop()
+      postSignalSilenceGateEnabled: false,
+      installPhase: ModelLoadStallPolicy.installPhase,
+      downloadOwnedPhases: ModelLoadStallPolicy.deliveryParkedPhases)
   }
 
-  @Test("#1405: the guard stays parked during the download phase, but load-stall still fires after")
-  func downloadPhaseIsParkedThenLoadStallStillFires() async {
+  @Test(
+    "#1388 (Codex r4 P2): cache-validation ticks park too — a post-admission hang on the cache path still fires gate (A)"
+  )
+  func cacheValidationTicksDoNotBlindGateA() async {
+    // The cache path never enters the download phase: delivery writes
+    // "Checking speech model files..." ticks, then `.admitted` clears the
+    // file. If those ticks counted as load signals, a service that hangs
+    // before its first LOAD signal would satisfy the pre-first-signal
+    // deadline and be undetectable.
     let clock = ManualClock()
-    let watcher = LoadProgressWatcher(
-      currentTime: { clock.now },
-      listingPhase: ModelLoadStallPolicy.listingPhase,
-      listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds,
-      silenceFloorSeconds: ModelLoadStallPolicy.transferSilenceFloorSeconds,
-      downloadOwnedPhases: [ModelLoadStallPolicy.downloadingPhase])
+    let watcher = modelLoadGuardShapedWatcher(clock)
     watcher.start()
-    // A long, totally silent (frozen) FRESH download — far past the 15s transfer
-    // floor AND the 120s listing deadline. The fetcher's own idle timeout owns
-    // transfer-stall, so the load-watchdog must never fire during the download.
-    watcher.observeTick(
-      observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.downloadingPhase)
-    clock.tick(seconds: 600)
-    watcher.observeTick(
-      observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.downloadingPhase)
-    #expect(!watcher.hasFired, "a silent fresh download must never fire the load-watchdog")
-
-    // Delivery completes -> #1405 CLEARS the progress file (boundary), so the
-    // next tick sees no file (mtime nil, empty phase). The transition resets
-    // the attempt so the long download does not bleed into the load gates.
+    // Cache validation: fresh ticks under the validating phase.
+    for i in 0..<4 {
+      clock.tick(seconds: 1)
+      watcher.observeTick(
+        observedMtime: mtime(i), observedPhase: ModelLoadStallPolicy.validatingCachePhase)
+    }
+    #expect(!watcher.hasFired, "cache validation must never fire the load guard")
+    // `.admitted` clears the file; the service then hangs with no load signal.
     clock.tick(seconds: 0.5)
     watcher.observeTick(observedMtime: nil, observedPhase: "")
-    // The LOAD then produces two of its own signals and genuinely wedges.
-    clock.tick(seconds: 0.5)
-    watcher.observeTick(observedMtime: mtime(1), observedPhase: "Loading speech model...")
-    clock.tick(seconds: 0.5)
-    watcher.observeTick(observedMtime: mtime(2), observedPhase: "Loading speech model...")
-    clock.tick(seconds: 30)
-    watcher.observeTick(observedMtime: mtime(2), observedPhase: "Loading speech model...")
-    #expect(watcher.hasFired, "a real load wedge AFTER the download must still fire")
-    watcher.stop()
-  }
-
-  @Test("#1405 (cloud-review P1): a cleared boundary preserves the pre-first-signal deadline")
-  func clearedBoundaryPreservesPreFirstSignalDeadline() async {
-    // The download completes and the boundary CLEARS the progress file. If the
-    // model LOAD then wedges before emitting ANY progress of its own (e.g. a
-    // cache-hit marker fast path where `.admitted` is the only delivery event),
-    // the file stays empty. Clearing leaves NO signal — so the pre-first-signal
-    // deadline must still fire (a phantom "Loading..." signal would have
-    // defeated it, the P1 regression).
-    let clock = ManualClock()
-    let watcher = LoadProgressWatcher(
-      currentTime: { clock.now },
-      listingPhase: ModelLoadStallPolicy.listingPhase,
-      listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds,
-      silenceFloorSeconds: ModelLoadStallPolicy.transferSilenceFloorSeconds,
-      downloadOwnedPhases: [ModelLoadStallPolicy.downloadingPhase])
-    watcher.start()
-    // A brief real download, then the cleared boundary.
-    watcher.observeTick(
-      observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.downloadingPhase)
-    clock.tick(seconds: 5)
-    watcher.observeTick(observedMtime: nil, observedPhase: "")  // #1405 boundary clear
-    // The load never writes; the file stays empty. Deadline must still fire.
     clock.tick(seconds: 119)
     watcher.observeTick(observedMtime: nil, observedPhase: "")
-    #expect(!watcher.hasFired, "just under the deadline from the boundary: no fire yet")
+    #expect(!watcher.hasFired, "just under the post-boundary deadline: no fire yet")
     clock.tick(seconds: 2)
     watcher.observeTick(observedMtime: nil, observedPhase: "")
-    #expect(watcher.hasFired, "a load that never writes after the boundary must still fire")
+    #expect(
+      watcher.hasFired,
+      "a service that never signals after cache admission must fire gate (A)")
     watcher.stop()
   }
 
-  @Test("#1405 (code-diff): a STALE download-phase file must NOT park — the deadline still fires")
-  func staleDownloadPhaseDoesNotSuppressTheGuard() async {
-    // Regression: a prior interrupted attempt leaves the progress file on the
-    // download phase. The guard arms; the poll passes observedMtime == nil
-    // (mtime == the stale baseline, i.e. no fresh write) but the stale phase
-    // string. Parking on the phase alone would reset the deadline every tick
-    // and suppress the guard forever. A new warm-up that hangs before writing
-    // any fresh progress must still fire the pre-first-signal deadline.
+  @Test(
+    "#1405/#1388 (Codex r2 P1): download ticks park the guard; a load that never signals after the boundary still fires gate (A)"
+  )
+  func downloadTicksDoNotBlindGateA() async {
+    // THE regression Codex r2 caught: with parking deleted, download ticks
+    // counted as load signals, so gate (A)'s pre-first-signal deadline was
+    // already satisfied when the service hung before its first LOAD signal —
+    // no detector left. Parking + the boundary reset restore gate (A)'s
+    // coverage without resurrecting gate (B).
     let clock = ManualClock()
-    let watcher = LoadProgressWatcher(
-      currentTime: { clock.now },
-      listingPhase: ModelLoadStallPolicy.listingPhase,
-      listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds,
-      silenceFloorSeconds: ModelLoadStallPolicy.transferSilenceFloorSeconds,
-      downloadOwnedPhases: [ModelLoadStallPolicy.downloadingPhase])
+    let watcher = modelLoadGuardShapedWatcher(clock)
     watcher.start()
-    // Stale file: phase says downloading, but there is NO fresh signal (nil).
+    // A real download: fresh ticks under the download-owned phase, running
+    // far past the 120s deadline — parked, must never fire.
+    for i in 0..<30 {
+      clock.tick(seconds: 10)
+      watcher.observeTick(
+        observedMtime: mtime(i), observedPhase: ModelLoadStallPolicy.downloadingPhase)
+    }
+    #expect(!watcher.hasFired, "an active download must never fire the load guard")
+    // Delivery completes and clears the progress file (the boundary). The
+    // service then hangs WITHOUT ever writing a load signal.
+    clock.tick(seconds: 0.5)
+    watcher.observeTick(observedMtime: nil, observedPhase: "")
+    clock.tick(seconds: 119)
+    watcher.observeTick(observedMtime: nil, observedPhase: "")
+    #expect(!watcher.hasFired, "just under the post-boundary deadline: no fire yet")
+    clock.tick(seconds: 2)
+    watcher.observeTick(observedMtime: nil, observedPhase: "")
+    #expect(
+      watcher.hasFired,
+      "a service that never signals after the download boundary must fire gate (A)")
+    watcher.stop()
+  }
+
+  @Test("#1405 (retained): a STALE download-phase file must NOT park — gate (A) still fires")
+  func staleDownloadPhaseDoesNotSuppressTheGuard() async {
+    // A prior interrupted attempt leaves the progress file on the download
+    // phase. The guard arms; the poll passes observedMtime == nil (no fresh
+    // write) with the stale phase string. Parking on the phase alone would
+    // suppress the deadline forever.
+    let clock = ManualClock()
+    let watcher = modelLoadGuardShapedWatcher(clock)
+    watcher.start()
     watcher.observeTick(observedMtime: nil, observedPhase: ModelLoadStallPolicy.downloadingPhase)
     clock.tick(seconds: 119)
     watcher.observeTick(observedMtime: nil, observedPhase: ModelLoadStallPolicy.downloadingPhase)
@@ -573,25 +554,137 @@ struct LoadProgressWatcherTests {
     watcher.stop()
   }
 
-  @Test("#1339 drill regression: the DEFAULT 0.8s floor still fires on the same gap (opt-in fix)")
-  func defaultFloorStillFiresOnColdGap() async {
-    // Negative pair for the test above: without the injected transfer floor,
-    // the identical signal shape fires at the ratio threshold. Locks the fix
-    // as opt-in — XPC lifecycle watchers keep the 0.8s beat unchanged.
+  @Test(
+    "#1405/#1388: after the boundary, healthy load signals keep the guard quiet (gate B stays gone)"
+  )
+  func boundaryThenHealthyLoadSignalsStayQuiet() async {
+    // The download→load transition resets the attempt; the load then signals
+    // and goes long-silent (the compile shape). With gate (B) removed this
+    // must NOT fire — the silence-after-signals verdict belongs to no one.
     let clock = ManualClock()
-    let watcher = LoadProgressWatcher(
-      currentTime: { clock.now },
-      listingPhase: ModelLoadStallPolicy.listingPhase,
-      listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds)
+    let watcher = modelLoadGuardShapedWatcher(clock)
+    watcher.start()
+    watcher.observeTick(
+      observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.downloadingPhase)
+    clock.tick(seconds: 30)
+    watcher.observeTick(
+      observedMtime: mtime(1), observedPhase: ModelLoadStallPolicy.downloadingPhase)
+    // Boundary clear, then two genuine load signals, then a huge silence.
+    clock.tick(seconds: 0.5)
+    watcher.observeTick(observedMtime: nil, observedPhase: "")
+    clock.tick(seconds: 1)
+    watcher.observeTick(observedMtime: mtime(2), observedPhase: ModelLoadStallPolicy.installPhase)
+    clock.tick(seconds: 1.5)
+    watcher.observeTick(observedMtime: mtime(3), observedPhase: ModelLoadStallPolicy.installPhase)
+    clock.tick(seconds: 600)
+    watcher.observeTick(observedMtime: mtime(3), observedPhase: ModelLoadStallPolicy.installPhase)
+    #expect(
+      !watcher.hasFired,
+      "post-signal silence must never fire the model-load guard (gate B removed)")
+    watcher.stop()
+  }
+
+  @Test("#1388: the compile-shaped sequence (dense ticks, then long silence) does NOT fire")
+  func compileShapedSequenceDoesNotFire() async {
+    // The production false-positive shape: ~52 install ticks ~1.5s apart
+    // (small models), then one silent ~60s stretch (the ~445MB encoder).
+    // Gate (B) false-fired on this at 15s in 126/126 production events; with
+    // the guard's config it must ride the silence out to completion.
+    let clock = ManualClock()
+    let watcher = modelLoadGuardShapedWatcher(clock)
     watcher.start()
     watcher.observeTick(observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.listingPhase)
-    for i in 1..<10 {
-      clock.tick(seconds: 0.5)
-      watcher.observeTick(observedMtime: mtime(i), observedPhase: "Downloading model files...")
+    for i in 1...52 {
+      clock.tick(seconds: 1.5)
+      watcher.observeTick(observedMtime: mtime(i), observedPhase: ModelLoadStallPolicy.installPhase)
     }
-    clock.tick(seconds: 3)
-    watcher.observeTick(observedMtime: mtime(9), observedPhase: "Downloading model files...")
-    #expect(watcher.hasFired, "the default floor lets the ratio gate fire on a 3s gap")
+    // The heterogeneous unit: 60s of silence inside the install phase.
+    for _ in 0..<60 {
+      clock.tick(seconds: 1)
+      watcher.observeTick(
+        observedMtime: mtime(52), observedPhase: ModelLoadStallPolicy.installPhase)
+    }
+    #expect(
+      !watcher.hasFired,
+      "a slow-but-progressing install must never be aborted (the #1388 defect)")
+    watcher.stop()
+  }
+
+  @Test("#1388: with gate (B) disabled, post-signal silence NEVER fires — however long")
+  func gateBDisabledNeverFiresOnPostSignalSilence() async {
+    let clock = ManualClock()
+    let watcher = modelLoadGuardShapedWatcher(clock)
+    watcher.start()
+    // Two signals establish an observed gap (the old gate-B arming shape).
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.installPhase)
+    clock.tick(seconds: 1)
+    watcher.observeTick(observedMtime: mtime(1), observedPhase: ModelLoadStallPolicy.installPhase)
+    // The ACCEPTED residual risk, pinned deliberately: an install that hangs
+    // after its first signal with the service alive is no longer auto-detected
+    // (Cancel is the user-facing control; telemetry records the distribution).
+    clock.tick(seconds: 10_000)
+    watcher.observeTick(observedMtime: mtime(1), observedPhase: ModelLoadStallPolicy.installPhase)
+    #expect(
+      !watcher.hasFired,
+      "gate (B) is removed for this caller — no silence duration may fire post-signal")
+    watcher.stop()
+  }
+
+  @Test("#1388: gate (A) still fires with the guard config — zero signals past the deadline")
+  func gateAStillFiresWithGuardConfig() async {
+    let clock = ManualClock()
+    let watcher = modelLoadGuardShapedWatcher(clock)
+    watcher.start()
+    for _ in 0..<10 {
+      clock.tick(seconds: 13)  // crosses the 120s deadline
+      watcher.observeTick(observedMtime: nil, observedPhase: "")
+    }
+    #expect(
+      watcher.hasFired,
+      "a service that never reports anything is the one condition gate (A) owns")
+    watcher.stop()
+  }
+
+  @Test("#1388: install observation records duration and tail-inclusive max silence")
+  func installObservationRecordsDurationAndSilence() async {
+    let clock = ManualClock()
+    let watcher = modelLoadGuardShapedWatcher(clock)
+    watcher.start()
+    // Non-install signals first — must not count toward the install stats.
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: ModelLoadStallPolicy.listingPhase)
+    clock.tick(seconds: 2)
+    #expect(watcher.installObservation == nil, "no install signal yet — observation must be nil")
+    // Install: signals at t=2, 4, 9 (gaps 2 and 5), then an 8s tail to read time.
+    watcher.observeTick(observedMtime: mtime(1), observedPhase: ModelLoadStallPolicy.installPhase)
+    clock.tick(seconds: 2)
+    watcher.observeTick(observedMtime: mtime(2), observedPhase: ModelLoadStallPolicy.installPhase)
+    clock.tick(seconds: 5)
+    watcher.observeTick(observedMtime: mtime(3), observedPhase: ModelLoadStallPolicy.installPhase)
+    clock.tick(seconds: 8)
+    let obs = watcher.installObservation
+    #expect(obs?.durationMs == 15_000, "install duration = first install signal to read time")
+    #expect(
+      obs?.silenceMaxMs == 8_000,
+      "tail silence (8s) exceeds the observed inter-signal max (5s) and must win")
+    watcher.stop()
+  }
+
+  @Test("#1388: default init keeps gate (B) — the XPC-operation watcher is unchanged")
+  func defaultInitKeepsGateB() async {
+    // The opt-out is scoped to the model-load guard. The default configuration
+    // (XPCOperationSignalWatcher's) must keep firing exactly as before —
+    // same shape as `bothGatesFire`, pinned here as the #1388 non-regression.
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(currentTime: { clock.now })
+    watcher.start()
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: "op")
+    clock.tick(seconds: 0.150)
+    watcher.observeTick(observedMtime: mtime(1), observedPhase: "op")
+    clock.tick(seconds: 0.150)
+    watcher.observeTick(observedMtime: mtime(2), observedPhase: "op")
+    clock.tick(seconds: 0.810)
+    watcher.observeTick(observedMtime: mtime(2), observedPhase: "op")
+    #expect(watcher.hasFired, "the default (XPC-operation) configuration keeps gate (B) intact")
     watcher.stop()
   }
 

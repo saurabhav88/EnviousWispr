@@ -316,6 +316,23 @@ _RIGHT_CMD_KEYCODE = 54
 _ESC_KEYCODE = 53
 
 
+def _ptt_keycode() -> int:
+    """The app's configured PTT key (shared-suite `toggleKeyCode`), falling
+    back to Right Command. The dev bundle reads the founder's REAL settings
+    (#923), so a hardcoded keycode silently misses when the configured key
+    differs — 2026-07-09: taps posted Right Cmd (54) while the configured key
+    was Right Option (61); zero presses reached the app and the A11 recovery
+    cycle failed without exercising anything."""
+    try:
+        out = subprocess.run(
+            ["defaults", "read", "com.enviouswispr.app", "toggleKeyCode"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return int(out.stdout.strip())
+    except Exception:
+        return _RIGHT_CMD_KEYCODE
+
+
 def _import_simulate_input():
     """Lazy import so this module loads even if Quartz isn't available."""
     here = Path(__file__).resolve().parent
@@ -334,16 +351,18 @@ def _active_state() -> str:
 
 
 def _tap_rcmd(hold_s: float = 0.05) -> None:
-    """Single Right-Cmd press+release. Hold time matches a quick PTT tap.
+    """Single PTT-key press+release (configured key via `_ptt_keycode`).
+    Hold time matches a quick PTT tap.
 
     HotkeyService treats a single tap-and-release with a 500 ms debounce —
     if no second press arrives, it fires onStopRecording. Use double-tap to
     enter hands-free locked mode for sustained recording.
     """
     sim = _import_simulate_input()
-    sim.modifier_down(_RIGHT_CMD_KEYCODE)
+    keycode = _ptt_keycode()
+    sim.modifier_down(keycode)
     time.sleep(hold_s)
-    sim.modifier_up(_RIGHT_CMD_KEYCODE)
+    sim.modifier_up(keycode)
 
 
 def _start_recording_locked(*, gap_s: float = 0.25, settle_s: float = 0.8,
@@ -1193,6 +1212,90 @@ def A10_audio_start_wedge_retry(**_) -> dict:
         "forced_wedge_logged": "forced wedge (DEBUG)" in tail,
         "line_death_logged": "line death" in tail and "cause=wedged" in tail,
         "retry_recovered": "start retry resolved" in tail and "outcome=recovered" in tail,
+    }
+
+
+@scenario(
+    ScenarioMeta(
+        name="A11_asr_kill_mid_model_load",
+        lane="A",
+        family="model-load",
+        backends=["parakeet"],
+        runtime_budget_seconds=30.0,
+        founder_required=False,
+        negative_control="Remove the pendingLoadCompletion resume from ASRManagerProxy's invalidation handler; the warm-up await hangs, isLoadInFlight never clears, and the recovery dictation stays blocked on a permanent 'warming' readiness (the #1388 119/126 defect)",
+        description="ASR XPC connection invalidated mid-MODEL-LOAD (not mid-stream, A3's shape) — the pending load continuation must resume with the typed transport error, the warm-up must reach a terminal outcome, and the next dictation must succeed",
+    )
+)
+def A11_asr_kill_mid_model_load(**_) -> dict:
+    """User behavior: the speech service dies while the model is LOADING
+    (cold press / launch warm-up), not while streaming. Before #1388 step 1
+    the pending load reply was never resumed on invalidation: the warm-up
+    await hung, the guard slot leaked, and no terminal telemetry ever fired
+    (119 of 126 production wedge fires reached no outcome). The contract now
+    requires the invalidation handler to resume the pending continuation
+    with `serviceUnreachable`; the adapter's one-shot transport retry then
+    reconnects to the respawned helper, so the user-visible outcome is a
+    clean recovery or an honest error — never a stuck 'warming' state.
+
+    #1388 notes:
+    - The first force_xpc_kill drops the resident model (the invalidation
+      handler clears isModelLoaded), so the next press takes the COLD path
+      and drives a real in-flight loadModel.
+    - The second force_xpc_kill lands ~0.4s into that load; Parakeet's load
+      floor is multi-second, so the mid-load window is comfortable. This is
+      a deliberate RACE PLACEMENT (the A8a precedent), not a wait-for-done —
+      there is no signal for "the load is now mid-flight" by design.
+    - Verdict is signal-based: pipeline state must reach a terminal token
+      and the recovery dictation must PASS (before the fix, the leaked
+      isLoadInFlight pinned readiness at 'warming' and blocked every
+      subsequent press — the discriminating oracle). The wedge guard must
+      NOT fire during the drill (the kill produces a typed error path, not
+      a silence the detector should claim).
+    """
+    log_offset = APP_LOG_PATH.stat().st_size if APP_LOG_PATH.exists() else 0
+    pre_helpers = list_xpc_service_pids()
+    # 1. Drop the resident model so the next press drives a real cold load.
+    reply_unload = force_xpc_kill()
+    time.sleep(1.0)  # settle: async invalidation handler must clear isModelLoaded before the press
+    # 2. A PTT press on the cold engine takes the BLOCKED cold-press path and
+    #    drives ensureEngineWarm(.coldPress) — the sessionless warm-up this
+    #    drill targets. First-run learning (2026-07-09): the MENU tap does NOT
+    #    take this path after an idle-reap kill — the #959 design lets a menu
+    #    press mint a session with an in-session re-warm, which is A3's shape,
+    #    not this drill's. Only the PTT press logs "press blocked" and arms
+    #    the sessionless guard.
+    _tap_rcmd()
+    time.sleep(0.2)  # settle: deliberate race placement inside the load window (A8a precedent)
+    # 3. Kill the service mid-load. On a warm file cache the cached load can
+    #    complete in <1s, so the kill may land AFTER completion — that run is
+    #    a benign miss, reported honestly via window_hit below, not a pass
+    #    that silently proved nothing.
+    reply_kill = force_xpc_kill()
+    terminated = assert_terminated(timeout_s=15.0)
+    leak = assert_no_xpc_leak(pre_helpers)
+    # 4. The contract's user-visible proof: dictation works after the fault.
+    #    The recovery window must ride out the post-kill respawn + reload
+    #    (multi-second); presses during 'warming' are refused by design.
+    time.sleep(8.0)  # settle: ride out the post-kill service respawn + model reload before the recovery cycle
+    recovery = _assert_dictation_recovers()
+
+    tail = ""
+    if APP_LOG_PATH.exists():
+        with open(APP_LOG_PATH, "r", errors="replace") as f:
+            f.seek(log_offset)
+            tail = f.read()
+    return {
+        "reply_unload": reply_unload,
+        "reply_kill": reply_kill,
+        **terminated,
+        **leak,
+        **recovery,
+        "wedge_guard_fired": "[WedgeGuard] sessionless wedge fired" in tail,
+        # The drill exercised its target seam only if the press was BLOCKED
+        # (sessionless path armed) — otherwise the kill landed on a different
+        # shape and this run proved recovery only.
+        "window_hit": "press blocked" in tail and "armed reason=cold_press" in tail,
     }
 
 

@@ -29,3 +29,19 @@ public enum ModelLoadWatchdog {
     public var description: String { "model load wedged at stage=\(stage)" }
   }
 }
+
+/// #1388 step 1: thrown from `loadModel()` when the in-flight load was
+/// deliberately cancelled — a user Cancel during onboarding install, or the
+/// wedge guard's teardown (both route through `cancelInFlightLoad()`).
+/// Deliberately NOT a transport error: the adapter's one-shot transport
+/// retry (`ParakeetEngineAdapter.loadModelWithTransportRecovery`) retries any
+/// transport error, which would silently restart a load the user just
+/// cancelled. The two causes share this resume vehicle but never an outcome:
+/// `KernelDictationDriver.ensureEngineWarm` classifies a guard fire
+/// (`didFire`) as `WedgeError`/`.failed` FIRST; only a user-initiated cancel
+/// maps to `EngineWarmupOutcome.cancelled`. Lives in Core beside `WedgeError`
+/// so the ASR layer (thrower) and the pipeline driver (classifier) share it
+/// without a new cross-module import.
+public struct ASRLoadCancelledError: Error, Equatable {
+  public init() {}
+}

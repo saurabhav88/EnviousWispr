@@ -21,3 +21,14 @@ import Foundation
 protocol ASREngineLanguageIdentifying: AnyObject {
   var lastLanguageDetection: LanguageDetectionResult? { get }
 }
+
+/// #1388 step 3: adapters whose sessionless warm-up includes a cancellable
+/// DELIVERY (download) stage in addition to the in-flight model load. The
+/// onboarding install Cancel discovers this via `as?` so it can cancel
+/// whichever stage the warm-up is currently awaiting. The plain session
+/// cancel (`cancel()`) deliberately does NOT touch the delivery — a
+/// cancelled recording must not kill a first-run download in progress.
+@MainActor
+protocol ASREngineWarmupCancelling: AnyObject {
+  func cancelSessionlessWarmup() async
+}

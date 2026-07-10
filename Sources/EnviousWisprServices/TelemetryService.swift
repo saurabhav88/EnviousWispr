@@ -630,8 +630,14 @@ public final class TelemetryService {
   /// silent warm-up inference's own duration (nested inside `durationMs`, not
   /// additive) — absent/nil for Parakeet and for pre-#1275 rows. Query by
   /// presence; no consumer branches on magnitude.
+  /// #1388: `installDurationMs` / `installSilenceMaxMs` record the CoreML
+  /// install phase un-truncated (the removed 15s gate used to abort before
+  /// the distribution was observable). Nil when no wedge guard covered the
+  /// warm-up (WhisperKit, in-process debug) and for pre-#1388 rows. Query by
+  /// presence, never `!= 0`.
   public func coldStartWarmupCompleted(
-    engine: String, reason: String, durationMs: Int, inferenceWarmupMs: Int? = nil
+    engine: String, reason: String, durationMs: Int, inferenceWarmupMs: Int? = nil,
+    installDurationMs: Int? = nil, installSilenceMaxMs: Int? = nil
   ) {
     var properties: [String: Any] = [
       "engine": engine,
@@ -642,7 +648,29 @@ public final class TelemetryService {
     if let inferenceWarmupMs {
       properties["inference_warmup_ms"] = inferenceWarmupMs
     }
+    if let installDurationMs {
+      properties["install_duration_ms"] = installDurationMs
+    }
+    if let installSilenceMaxMs {
+      properties["install_silence_max_ms"] = installSilenceMaxMs
+    }
     PostHogSDK.shared.capture("coldstart.warmup_completed", properties: properties)
+  }
+
+  /// #1388: a warm-up ended because the user (or a cancelled surrounding task)
+  /// chose to stop it — NOT a failure. Never pairs with
+  /// `coldstart.warmup_failed` or `onboarding.step_blocked`; the population
+  /// signal for how often users bail out of the install wait now that a
+  /// Cancel control exists. Privacy: timing/state only.
+  public func installCancelled(engine: String, reason: String, durationMs: Int) {
+    PostHogSDK.shared.capture(
+      "install_cancelled",
+      properties: [
+        "engine": engine,
+        "reason": reason,
+        "duration_ms": durationMs,
+        "$value": Double(durationMs) / 1000.0,
+      ])
   }
 
   /// Cold-boot warm-up failed — the engine stays not-ready and the next press

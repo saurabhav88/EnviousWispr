@@ -11,6 +11,11 @@ public struct ASRLoadSupersededError: Error, Equatable {
   public init() {}
 }
 
+// #1388: `ASRLoadCancelledError` (the deliberate-cancel resume for
+// `cancelInFlightLoad()`) lives in EnviousWisprCore beside
+// `ModelLoadWatchdog.WedgeError` — the pipeline driver classifies on it and
+// does not import this module.
+
 /// Abstraction over ASR management — enables swapping between in-process and XPC implementations.
 ///
 /// `ASRManager` (in-process) and `ASRManagerProxy` (XPC) both conform to this protocol.

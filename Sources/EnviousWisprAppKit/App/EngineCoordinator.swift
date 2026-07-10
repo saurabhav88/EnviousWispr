@@ -337,6 +337,13 @@ final class EngineCoordinator {
         TelemetryService.shared.engineWarm(
           engine: backend.rawValue, durationMs: ms, outcome: "failed")
         TelemetryService.shared.engineSwitchFailed(engine: backend.rawValue, reason: "warm_failed")
+      case .cancelled:
+        // #1388: a deliberate cancel (user Cancel during the onboarding
+        // install, which shares the single-flighted load this warm joined) is
+        // a choice, not a failure — no failed switch phase, no
+        // engine_switch_failed. The next genuine poke/press re-attempts.
+        TelemetryService.shared.engineWarm(
+          engine: backend.rawValue, durationMs: ms, outcome: "cancelled")
       }
       // Readiness changed with NO kernel state transition, so `onStateChange`
       // would miss it — self-poke so the published status reflects it AND any

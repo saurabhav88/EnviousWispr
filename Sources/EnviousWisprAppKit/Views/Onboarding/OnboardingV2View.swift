@@ -65,6 +65,53 @@ final class OnboardingV2ViewModel {
   var rawErrorDetails: String?
   var retryCount = 0
 
+  /// #1388: true after the user cancelled the install. Renders the calm
+  /// "Try setup again" state (NOT the error panel) and keeps the `.task`
+  /// auto-start from re-kicking the download until the user chooses to.
+  /// Cleared by `retryDownload()`.
+  var setupCancelled = false
+
+  /// #1388 (founder UAT): instant UI acknowledgment of a Cancel press —
+  /// renders "Cancelling…" while the cooperative cancel (~2s drain) resolves,
+  /// so the user never re-aims at a button that is about to change identity.
+  /// Set by the checklist's Cancel action; cleared when the warm-up outcome
+  /// lands in `startSetup` (whatever the outcome — a cancel that raced a
+  /// just-completed load resolves `.ready`, and the beats play honestly).
+  var cancelRequested = false
+
+  /// #1388 (UAT-found, latent on main): the setup workflow, owned HERE so a
+  /// window disappear/reappear cannot kill it. Before this, `startSetup` ran
+  /// inside the view's `.task`, and any window churn during the install
+  /// (auto-open re-present, activation-policy flip, restoration) cancelled
+  /// that task: the in-flight warm-up's outcome then arrived into a cancelled
+  /// context and was silently dropped, while the replacement task's `.pending`
+  /// guard refused to re-enter — checklist frozen on step 1 forever, Cancel a
+  /// no-op. On fast installs the outcome won the race, which is why short
+  /// warm-cache runs never showed it. The view's `.task` now only KICKS this
+  /// owned task; churn re-fires the kick, which finds the live workflow and
+  /// stands down.
+  @ObservationIgnored private(set) var setupTask: Task<Void, Never>?
+
+  /// Start the setup workflow if none is live and the checklist is genuinely
+  /// at the start line. Safe to call repeatedly (every view re-appear).
+  func kickSetupIfNeeded(
+    warmUp: @escaping @MainActor () async -> EngineWarmupOutcome, settings: SettingsManager
+  ) {
+    guard setupTask == nil else { return }
+    guard currentScreen == .settingUp,
+      setupPhase == .checklist,
+      downloadError == nil,
+      // #1388: after a user Cancel, setup restarts only on the user's
+      // explicit "Try setup again" (retryDownload clears the flag).
+      !setupCancelled,
+      case .pending = checklistStatuses[0]
+    else { return }
+    setupTask = Task { @MainActor in
+      await self.startSetup(warmUp: warmUp, settings: settings)
+      self.setupTask = nil
+    }
+  }
+
   /// ViewModel-owned progress state, polled from ASR manager.
   /// SwiftUI can't observe @Observable properties through protocol existentials
   /// (asrManager is typed as `any ASRManagerInterface`), so we poll and copy.
@@ -157,12 +204,31 @@ final class OnboardingV2ViewModel {
     let outcome = await warmUp()
     stopProgressPolling()
     allowSleep()
+    // #1388: the outcome has landed — the "Cancelling…" acknowledgment (if
+    // any) is over regardless of which way it resolved.
+    cancelRequested = false
 
-    // Window may have closed during the warm-up — leave onboardingState as
-    // .settingUp so the next launch re-runs the checklist from scratch (the
-    // model load itself is single-flighted, so it keeps loading in the
-    // background and the relaunch finds it ready / joins it).
+    // #1388: this now runs inside the viewModel-OWNED `setupTask` (see
+    // `kickSetupIfNeeded`), which no view-lifecycle event cancels — window
+    // churn mid-install can no longer drop the outcome on the floor. The
+    // check stays as a guard for any future explicit `setupTask?.cancel()`;
+    // a window that truly closes just lets the workflow run to completion in
+    // the background (the load is single-flighted either way), and the next
+    // open resumes from whatever state it reached.
     if Task.isCancelled { return }
+
+    // #1388: a user Cancel is a choice, not a failure — no error copy, no
+    // `step_blocked`, no failure telemetry (the driver already emitted
+    // `install_cancelled`). Reset to the calm pre-start state; the
+    // "Try setup again" button re-kicks via `retryDownload()`.
+    if case .cancelled = outcome {
+      installQuip = ""
+      stopQuipTimer()
+      checklistStatuses = [.pending, .pending, .pending]
+      listingPhaseSince = nil
+      setupCancelled = true
+      return
+    }
 
     if case .failed(let error) = outcome {
       let friendly = Self.friendlyError(error)
@@ -214,6 +280,9 @@ final class OnboardingV2ViewModel {
     // timestamp from the failed attempt must not flash "Still working" at
     // second zero of the retry.
     listingPhaseSince = nil
+    // #1388: a retry after a user Cancel re-arms the auto-start.
+    setupCancelled = false
+    cancelRequested = false
     retryCount += 1
   }
 
@@ -308,12 +377,13 @@ final class OnboardingV2ViewModel {
       return ModelDeliveryCopy.message(reason: delivery.reason, detail: delivery.detail)
     }
 
-    // #1339: the sessionless stall guard classifies a detected listing stall
-    // as a WedgeError — surface the stall-specific message, not a raw
-    // transport string. (The download did not fail outright; the source hung.)
+    // #1388: after gate (B)'s removal a WedgeError can only mean gate (A) —
+    // the service reported no progress whatsoever inside the deadline. That
+    // is a setup failure, not a network diagnosis; the old "check your
+    // internet connection or VPN" copy was factually wrong on the install
+    // phase (which runs with networking disabled) and is deleted.
     if error is ModelLoadWatchdog.WedgeError {
-      return
-        "Setup is taking longer than expected. Check your internet connection or VPN, then try again."
+      return "Setup didn't finish. Try again, and if it keeps happening, restart the app."
     }
 
     let desc = error.localizedDescription.lowercased()
@@ -462,16 +532,18 @@ struct OnboardingV2View: View {
     // hotkey_config) advance via `checklistStatuses` while `setupPhase` stays
     // `.checklist`, so re-sync on each beat so the abandon reports the real sub-step.
     .onChange(of: viewModel.checklistStatuses) { syncProgressBox() }
-    // setupPhase is intentionally excluded from the id: changing phase at the end of
-    // startSetup must NOT cancel the running task. currentScreen + retryCount are
-    // sufficient triggers — retryCount bumps on retry, currentScreen bumps on navigation.
+    // #1388 (UAT-found, latent on main): this `.task` used to RUN the setup
+    // workflow, so SwiftUI cancelling it (window churn: re-present,
+    // activation-policy flip, restoration) froze the checklist mid-install —
+    // the warm-up outcome landed in a cancelled task and the replacement's
+    // `.pending` guard refused re-entry. It now only KICKS the
+    // viewModel-owned workflow; the eligibility guard lives in
+    // `kickSetupIfNeeded`, where a live workflow makes re-kicks a no-op.
+    // setupPhase is intentionally excluded from the id: changing phase at the
+    // end of startSetup must NOT re-trigger. currentScreen + retryCount are
+    // sufficient — retryCount bumps on retry, currentScreen on navigation.
     .task(id: "\(viewModel.currentScreen)-\(viewModel.retryCount)") {
-      guard viewModel.currentScreen == .settingUp,
-        viewModel.setupPhase == .checklist,
-        viewModel.downloadError == nil,
-        case .pending = viewModel.checklistStatuses[0]
-      else { return }
-      await viewModel.startSetup(
+      viewModel.kickSetupIfNeeded(
         warmUp: { await dictationRuntime.ensureActiveEngineWarmForOnboarding() },
         settings: settings)
     }
@@ -629,6 +701,10 @@ private struct SettingUpScreenV2: View {
 
 private struct ChecklistPhaseView: View {
   var viewModel: OnboardingV2ViewModel
+  // #1388 step 3: the install Cancel routes through the runtime's warm-up
+  // seam (DictationRuntime is an app-wide @Environment home per
+  // state-ownership; feature-local DI would re-thread it through two inits).
+  @Environment(DictationRuntime.self) private var dictationRuntime
 
   private static let items: [(title: String, subtitle: String)] = [
     ("Setting up speech model", "One-time setup"),
@@ -701,10 +777,57 @@ private struct ChecklistPhaseView: View {
           }
         }
         .padding(.top, 4)
+      } else if viewModel.setupCancelled {
+        // #1388: post-Cancel state — calm, not an error. The downloaded model
+        // files are preserved; retrying resumes from wherever setup got to.
+        VStack(spacing: 8) {
+          Text("Setup paused. Start it again whenever you're ready.")
+            .font(.obCaption)
+            .foregroundStyle(Color.obTextSecondary)
+            .multilineTextAlignment(.center)
+
+          Button("Try setup again") { viewModel.retryDownload() }
+            .buttonStyle(OnboardingButtonStyle())
+        }
+        .padding(.top, 4)
+      } else if viewModel.checklistStatuses[0].isInProgress {
+        // #1388 step 3: the sanctioned long-wait control is Cancel — the app
+        // never decides "too slow" for a progressing install anymore, the
+        // user does. Quiet affordance: the wait is normal, not alarming.
+        //
+        // #1388 (founder UAT): acknowledge the press INSTANTLY. The cancel
+        // drains cooperatively (~2s), and a still-spinning installer after a
+        // Cancel click reads as "it ignored me" — the founder panic-clicked
+        // and hit "Try setup again" that had replaced the button under the
+        // cursor. Matches the delivery contract's D6 state 11 ("acknowledgment
+        // is instant by design").
+        if viewModel.cancelRequested {
+          Text("Cancelling…")
+            .font(.obCaption)
+            .foregroundStyle(Color.obTextTertiary)
+            .padding(.top, 4)
+        } else {
+          Button("Cancel") { cancelInstall() }
+            .font(.obCaption)
+            .foregroundStyle(Color.obTextTertiary)
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
       }
 
       Spacer()
     }
+  }
+
+  /// #1388: cancel the in-flight install. The running `startSetup` observes
+  /// the warm-up resolve as `.cancelled` and renders the paused state — this
+  /// action never mutates checklist state itself (single writer stays the
+  /// view model's outcome handling). `cancelRequested` is UI acknowledgment
+  /// only ("Cancelling…"), cleared by `startSetup` when the outcome lands.
+  private func cancelInstall() {
+    viewModel.cancelRequested = true
+    let runtime = dictationRuntime
+    Task { await runtime.cancelActiveEngineWarmupForOnboarding() }
   }
 
   /// Returns live status text for the model setup row.

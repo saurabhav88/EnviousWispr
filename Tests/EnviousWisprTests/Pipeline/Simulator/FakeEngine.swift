@@ -64,6 +64,10 @@ enum FakeEngineBehavior: Sendable {
   case crashOnFinalize
   /// `finalize()` always returns `.cancelled`.
   case cancelled
+  /// #1388: `warmUp()` throws the given error immediately — drives the
+  /// driver's terminal-classification tests (cancel vs failure) with an
+  /// exact error type instead of the wedge behaviors' `ASREngineError`.
+  case failLoad(any Error & Sendable)
   /// #1434 salvage-ladder scripting: `finalize()` returns
   /// `.empty(hadSpeechEvidence: true)` for the first `emptyCalls` calls, then
   /// `.transcript(text)` — models a primary decode that collapses on a
@@ -277,6 +281,9 @@ final class FakeEngine: ASREngineAdapter {
         loadWedgeContinuation = continuation
       }
       throw ASREngineError.wedged
+    case .failLoad(let error):
+      readiness = .notReady
+      throw error
     default:
       readiness = .ready
     }
@@ -372,6 +379,10 @@ final class FakeEngine: ASREngineAdapter {
     case .wedgeOnLoad:
       // The load wedged; A4 cancels before finalize (handled by the
       // post-cancel branch above). A defensive finalize surfaces a load failure.
+      outcome = .failed(.loadFailed)
+    case .failLoad:
+      // #1388: the load threw before any session could begin; a defensive
+      // finalize surfaces a load failure (same stance as .wedgeOnLoad).
       outcome = .failed(.loadFailed)
     case .emptyThenScripted(let text, let emptyCalls, let thenFailure):
       // #1434: `finalizeCallCount` was already incremented above, so call N

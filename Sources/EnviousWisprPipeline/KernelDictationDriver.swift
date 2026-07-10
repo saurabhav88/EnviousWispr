@@ -49,9 +49,19 @@ public enum EngineWarmupReason: Sendable {
 /// readiness); onboarding consumes `.failed` to drive its "download failed →
 /// Retry" UX, which needs the underlying error. Not `Sendable` — produced and
 /// consumed on the `@MainActor`.
+///
+/// #1388: `.cancelled` is a user-chosen terminal, NOT a failure. A user's
+/// Cancel during the onboarding install (or a task cancellation of the
+/// surrounding warm-up) must never surface the error UI, emit
+/// `coldstart.warmup_failed`, or block the onboarding step. Classification
+/// order is contractual: a wedge-guard fire (`didFire`) wins as
+/// `WedgeError`/`.failed` FIRST — a guard teardown resumes the load via the
+/// same cancellation error a user Cancel does, but a detector verdict is a
+/// failure, a user cancel is a choice.
 public enum EngineWarmupOutcome {
   case ready
   case failed(any Error)
+  case cancelled
 }
 
 /// Resume-once latch for `KernelDictationDriver.awaitKernelTerminal`. A
@@ -100,8 +110,21 @@ struct LimbSteps {
 /// On a wedge it emits the existing `.modelLoadWedged` captured event +
 /// PostHog `wedge_detected` (same payload fields as the session path), then
 /// drives the existing heavy recovery (`adapter.recoverFromWedge()` →
-/// `cancelInFlightLoad` → XPC invalidation), which unblocks the parked load
-/// with a throw that `ensureEngineWarm` classifies via `didFire`.
+/// `cancelInFlightLoad` → XPC invalidation). #1388 step 1 made that teardown
+/// actually complete the parked load: `cancelInFlightLoad` resumes the
+/// pending continuation with `ASRLoadCancelledError` (before #1388 nothing
+/// resumed it — the await hung, the guard slot leaked, and 119 of 126
+/// production fires reached no terminal outcome). `ensureEngineWarm`'s
+/// classification then maps `didFire` to `WedgeError` — a detector verdict
+/// stays a failure; only a user-initiated cancel maps to `.cancelled`.
+///
+/// #1388 also removed gate (B) — the post-signal silence gate — from this
+/// guard's watcher: the CoreML install phase has ~20x-heterogeneous work
+/// units, so the self-calibrated ratio was trained on the wrong distribution
+/// and the 15s floor was the sole trigger on all 126 production fires, every
+/// one a false positive on a healthy compile. Gate (A) survives: no signal
+/// whatsoever inside `listingStallDeadlineSeconds` is a real, unambiguous
+/// dead-service condition.
 ///
 /// Stale-file trap (mirrors the host proxy's 2026-05-07 Codex finding): the
 /// guard arms BEFORE `loadModel()` clears the progress file, so early reads
@@ -124,16 +147,31 @@ package final class SessionlessLoadWedgeGuard {
     self.watcher = LoadProgressWatcher(
       listingPhase: ModelLoadStallPolicy.listingPhase,
       listingStallDeadlineSeconds: ModelLoadStallPolicy.listingStallDeadlineSeconds,
-      // #1339 raised this floor for cold-TTFB tolerance while the guard still
-      // judged the transfer. #1405 hands transfer-stall ownership back to the
-      // fetcher's own request idle timeout: the guard now stays PARKED during
-      // the download phase (`downloadOwnedPhases`), so this floor governs only
-      // the listing + model-load phases. Left at 15s (harmless for those; a
-      // genuine load wedge is silence orders of magnitude larger).
-      silenceFloorSeconds: ModelLoadStallPolicy.transferSilenceFloorSeconds,
-      downloadOwnedPhases: [ModelLoadStallPolicy.downloadingPhase]
+      // #1388: gate (B) OFF for the model-load application — its work-progress
+      // stream has ~20x-heterogeneous units (CoreML compile), so the
+      // post-signal silence gate false-fired on every healthy cold install.
+      // Gate (A) — the listing deadline above — is this guard's only detector.
+      postSignalSilenceGateEnabled: false,
+      // Observation only: install duration + longest internal silence for the
+      // warm-up success telemetry (the distribution gate (B) used to truncate).
+      installPhase: ModelLoadStallPolicy.installPhase,
+      // #1405 parking, RETAINED through #1388 (Codex r2 P1) and widened to
+      // ALL delivery-owned phases (Codex r4 P2): delivery ticks — download,
+      // cache validation, SHA verify — must not count as load signals, or
+      // gate (A)'s pre-first-signal deadline is satisfied by delivery work
+      // and a service that hangs before its first LOAD signal becomes
+      // undetectable. The transition reset restarts the deadline at the
+      // delivery→load boundary. The listing phase stays JUDGED (its
+      // single-signal deadline is gate (A)'s listing variant). (First cut
+      // deleted parking as "gate-B-only plumbing" — wrong: it protects
+      // gate (A) too.)
+      downloadOwnedPhases: ModelLoadStallPolicy.deliveryParkedPhases
     )
   }
+
+  /// #1388: install-phase observation for the warm-up success telemetry.
+  /// Read by `ensureEngineWarm` at completion (before disarm).
+  var installObservation: InstallPhaseObservation? { watcher.installObservation }
 
   func arm() {
     watcher.start()
@@ -443,9 +481,16 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       try await adapter.warmUp()
       residentModelLostWhileIdle = false  // #959: load succeeded — drop stale marker.
       let ms = Self.elapsedMs(since: start)
+      // #1388: un-truncated install-phase observation. With gate (B) removed
+      // there is no auto-abort at 15s, so the success event finally records
+      // what real installs look like (duration + longest internal silence).
+      // Nil when no guard covered this warm-up (WhisperKit, in-process debug).
+      let install = observedGuard?.installObservation
       TelemetryService.shared.coldStartWarmupCompleted(
         engine: engine, reason: reason.telemetryToken, durationMs: ms,
-        inferenceWarmupMs: adapter.lastWarmupInferenceMs)
+        inferenceWarmupMs: adapter.lastWarmupInferenceMs,
+        installDurationMs: install?.durationMs,
+        installSilenceMaxMs: install?.silenceMaxMs)
       if reason == .launch {
         TelemetryService.shared.launchModelPreloadCompleted(
           backend: engine, result: warmupInFlight ? "joined_in_flight" : "success",
@@ -453,20 +498,89 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       }
       return .ready
     } catch {
-      // #1339: a guard fire tears down the parked load via XPC invalidation,
-      // so the throw seen here is a transport/supersession error — classify it
-      // as the wedge it actually is so onboarding shows the stall-specific
-      // copy + Retry instead of a raw transport string.
-      let classified: any Error =
-        (observedGuard?.didFire == true) ? ModelLoadWatchdog.WedgeError() : error
-      TelemetryService.shared.coldStartWarmupFailed(
-        engine: engine, reason: reason.telemetryToken,
-        error: String(describing: classified))
-      if reason == .launch {
-        TelemetryService.shared.launchModelPreloadCompleted(
-          backend: engine, result: "failed", durationMs: Self.elapsedMs(since: start))
+      let ms = Self.elapsedMs(since: start)
+      switch Self.classifyWarmupThrow(error, guardFired: observedGuard?.didFire == true) {
+      case .wedge:
+        // A guard fire is a detector VERDICT — with gate (B) removed this can
+        // only be gate (A): the service reported nothing whatsoever inside
+        // the deadline. Classified as the wedge it actually is so onboarding
+        // shows the setup-failure copy + Retry, not a raw transport string.
+        let classified: any Error = ModelLoadWatchdog.WedgeError()
+        TelemetryService.shared.coldStartWarmupFailed(
+          engine: engine, reason: reason.telemetryToken,
+          error: String(describing: classified))
+        if reason == .launch {
+          TelemetryService.shared.launchModelPreloadCompleted(
+            backend: engine, result: "failed", durationMs: ms)
+        }
+        return .failed(classified)
+      case .cancelled:
+        // A deliberate cancel (user Cancel via `cancelInFlightLoad`, or a
+        // cancelled surrounding task / delivery download cancel) is a CHOICE:
+        // never `warmup_failed`, never the error UI. `install_cancelled` is
+        // the population signal for how often users bail out of the wait.
+        TelemetryService.shared.installCancelled(
+          engine: engine, reason: reason.telemetryToken, durationMs: ms)
+        if reason == .launch {
+          TelemetryService.shared.launchModelPreloadCompleted(
+            backend: engine, result: "cancelled", durationMs: ms)
+        }
+        return .cancelled
+      case .failure:
+        // Everything else is a genuine failure with the true underlying
+        // error (typed transport error on service death — step 1 made that
+        // path actually resume; before #1388 it hung with no outcome).
+        TelemetryService.shared.coldStartWarmupFailed(
+          engine: engine, reason: reason.telemetryToken,
+          error: String(describing: error))
+        if reason == .launch {
+          TelemetryService.shared.launchModelPreloadCompleted(
+            backend: engine, result: "failed", durationMs: ms)
+        }
+        return .failed(error)
       }
-      return .failed(classified)
+    }
+  }
+
+  /// #1388: how a warm-up throw maps to a terminal outcome.
+  package enum WarmupThrowClassification: Equatable {
+    case wedge
+    case cancelled
+    case failure
+  }
+
+  /// #1388: pure classification for a warm-up throw. The ORDER is contractual
+  /// (plan §4/§9): (1) a wedge-guard fire wins — a guard teardown resumes the
+  /// load via the same cancellation error a user Cancel uses (shared resume
+  /// vehicle, so the auto transport-retry can never resurrect either), but a
+  /// detector verdict is a failure while a user cancel is a choice; (2) only
+  /// then does the cancellation error (or a cancelled surrounding task) map
+  /// to `.cancelled`; (3) everything else is a genuine failure. Static + pure
+  /// so the boundary matrix is unit-testable without a live guard (the
+  /// guard's fire path needs real time + the shared progress file; the
+  /// mid-load service-kill fault drill covers that integration).
+  package static func classifyWarmupThrow(
+    _ error: any Error, guardFired: Bool
+  ) -> WarmupThrowClassification {
+    if guardFired { return .wedge }
+    if error is ASRLoadCancelledError || error is CancellationError { return .cancelled }
+    return .failure
+  }
+
+  /// #1388 step 3: cancel the in-flight sessionless warm-up (the onboarding
+  /// install Cancel button's seam). Engines with a cancellable delivery stage
+  /// (Parakeet) cancel BOTH halves — the download fetch and the in-flight
+  /// load; others fall back to the plain model-preserving discard.
+  /// `cancelInFlightLoad()` resumes the pending load with the dedicated
+  /// cancellation error, which the classification above maps to `.cancelled`
+  /// (the guard did not fire). Safe against a just-completed load — the
+  /// adapter's in-flight gate and the delivery controller's
+  /// completion-wins-the-race handling both make it a no-op then.
+  public func cancelSessionlessWarmup() async {
+    if let cancelling = adapter as? ASREngineWarmupCancelling {
+      await cancelling.cancelSessionlessWarmup()
+    } else {
+      await adapter.cancel()
     }
   }
 
