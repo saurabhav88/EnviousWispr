@@ -115,9 +115,19 @@ internal final class TextProcessingRunner {
       })
 
     /// Crash recovery (#945, #1446): a recovered take that fails to polish still
-    /// returns its `polishError`, but emits no Sentry event, no breadcrumb, and no
-    /// `llm.polish_failed` / `llm.polish_skipped`. Polish telemetry is a
+    /// returns its `polishError`, but the RUNNER reports nothing — no
+    /// `polish_provider_failed` Sentry event, no attempt-failed breadcrumb, no
+    /// `llm.polish_failed`, no `llm.polish_skipped`. Polish telemetry is a
     /// LIVE-dictation metric.
+    ///
+    /// SCOPE, precisely: this silences the three seams the RUNNER owns. It cannot
+    /// reach `LLMPolishStep`'s own five emitters (`limbFailureObserved`, the
+    /// "LLM polish started" / "completed" breadcrumbs, its `captureError`, and
+    /// `captureAFMPolishError`), which fire from inside the step on a recovered
+    /// take exactly as they do live. Whether recovery should silence those too is a
+    /// separate question with a different owner — tracked in #1461, not papered
+    /// over here. (Cloud review of PR #1460 caught the earlier version of this
+    /// comment claiming recovery emitted "no Sentry event, no breadcrumb"; it does.)
     static let silent = TelemetrySeams(
       captureError: { _, _, _, _, _, _ in },
       recordPolishFailed: { _, _, _, _ in },
