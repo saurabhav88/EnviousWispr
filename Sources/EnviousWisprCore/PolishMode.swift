@@ -1,12 +1,14 @@
 /// Output formatting mode for LLM polish.
 ///
 /// IMPORTANT — this is INTERNAL ROUTING, not a user-facing feature. There is no
-/// Settings toggle, no picker, no "choose your mode" UX. Every dictation is
-/// auto-classified by `TranscriptAnalyzer` based on length and structure cues,
-/// and the resulting case drives which formatting clause is appended to the
-/// polish prompt. Treat the enum as an implementation detail of the polish
-/// pipeline — tests validate the OUTPUT behavior (list → bullets, short text →
-/// one paragraph), not the enum value selected.
+/// Settings toggle, no picker, no "choose your mode" UX. Since #1255 only the
+/// generic-Ollama path (`.openAIProse` / `.gemmaFewShot`) is auto-classified by
+/// `TranscriptAnalyzer`; OpenAI, Gemini, and EG-1 are forced to `.message` by
+/// `DefaultPromptPlanner` and their builders ignore the mode entirely (the cloud
+/// fixed v6 prompt decides formatting in-prompt, with no appended clause). Treat
+/// the enum as an implementation detail of the polish pipeline — tests validate
+/// the OUTPUT behavior (list → bullets, short text → one paragraph), not the enum
+/// value selected.
 public enum PolishMode: String, Sendable {
   /// Short text (<35 words, no structure cues). One paragraph, no formatting.
   case inline
