@@ -64,6 +64,17 @@ struct TextProcessingRunnerCaptureTests {
     }
   }
 
+  /// Records every `llm.polish_skipped` the runner writes — polish that was never
+  /// ATTEMPTED (#1055 / #1271 / #1305). The third seam; it must be silenced under
+  /// crash recovery alongside the other two (#1446, cloud review of PR #1460).
+  @MainActor
+  final class SkipSpy {
+    private(set) var calls: [(provider: String, reason: String)] = []
+    func sink(_ provider: String, _ reason: String) {
+      calls.append((provider: provider, reason: reason))
+    }
+  }
+
   /// Polisher that always throws the supplied error. Implements only the legacy
   /// `text:` method; the planner path reaches it via the protocol's default
   /// `envelope:` bridge (same pattern as the reentrancy suite).
@@ -95,14 +106,16 @@ struct TextProcessingRunnerCaptureTests {
     return step
   }
 
-  private func makeRunner(_ spy: CaptureSpy, _ records: RecordSpy = RecordSpy())
-    -> TextProcessingRunner
-  {
+  private func makeRunner(
+    _ spy: CaptureSpy, _ records: RecordSpy = RecordSpy(), _ skips: SkipSpy = SkipSpy()
+  ) -> TextProcessingRunner {
     // throwBelowSeconds 0.0 -> the executor runs every step (never injects a
     // timeout); the polisher's own throw drives the failure.
     let executor = FakeTimeoutExecutor(throwBelowSeconds: 0.0)
     return TextProcessingRunner(
-      telemetry: .init(captureError: spy.sink, recordPolishFailed: records.sink),
+      telemetry: .init(
+        captureError: spy.sink, recordPolishFailed: records.sink,
+        recordPolishSkipped: skips.sink),
       timeoutExecutor: executor.run)
   }
 
@@ -355,7 +368,9 @@ struct TextProcessingRunnerCaptureTests {
     // for it (the executor short-circuits before calling the polisher).
     let executor = FakeTimeoutExecutor(throwBelowSeconds: 6.0)
     let runner = TextProcessingRunner(
-      telemetry: .init(captureError: spy.sink, recordPolishFailed: records.sink),
+      telemetry: .init(
+        captureError: spy.sink, recordPolishFailed: records.sink,
+        recordPolishSkipped: { _, _ in }),
       timeoutExecutor: executor.run)
     let step = makeStep(provider: .openAI, model: "gpt-4o-mini") {
       LLMError.requestFailed("unused")
@@ -450,6 +465,39 @@ struct TextProcessingRunnerCaptureTests {
     #expect(result.polishError == nil)
     #expect(spy.calls.isEmpty)
     #expect(records.calls.isEmpty)
+  }
+
+  @Test(
+    "an Apple Intelligence timeout routes its skip through the seam, not TelemetryService",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1446",
+      "llm.polish_skipped bypassed the seams and leaked from crash recovery")
+  )
+  func appleIntelligenceTimeoutSkipRoutesThroughTheSeam() async throws {
+    let spy = CaptureSpy()
+    let records = RecordSpy()
+    let skips = SkipSpy()
+    // AFM's polish budget is 10s; throwing below 11s injects a TimeoutError.
+    let executor = FakeTimeoutExecutor(throwBelowSeconds: 11.0)
+    let runner = TextProcessingRunner(
+      telemetry: .init(
+        captureError: spy.sink, recordPolishFailed: records.sink,
+        recordPolishSkipped: skips.sink),
+      timeoutExecutor: executor.run)
+    let step = makeStep(provider: .appleIntelligence, model: "apple-intelligence") {
+      LLMError.requestFailed("unused")
+    }
+
+    let result = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+
+    // An on-device timeout on a long dictation degrades quietly to raw text.
+    #expect(result.polishError == nil)
+    #expect(spy.calls.isEmpty)
+    #expect(records.calls.isEmpty)  // never attempted-and-failed; it was skipped
+    #expect(skips.calls.count == 1)
+    #expect(skips.calls.first?.provider == "appleIntelligence")
+    #expect(skips.calls.first?.reason == "context_window_timeout")
   }
 
   // MARK: - No-false-positive boundary

@@ -154,13 +154,14 @@ struct RecoveryTextProcessorTests {
     // Bound to locals so a failure prints the verdict, not the whole source file.
     let buildsRunnerFromSilent = code.contains("TextProcessingRunner(telemetry: .silent)")
     // Hand-rolled seams here are the regression: they silence what exists today and
-    // silently miss whatever seam is added tomorrow.
-    let handRollsCaptureError = code.contains("captureError:")
-    let handRollsRecordPolishFailed = code.contains("recordPolishFailed:")
+    // silently miss whatever seam is added tomorrow. (`recordPolishSkipped` is the
+    // one that WAS missed — it called TelemetryService directly until the cloud
+    // review of PR #1460 found it.)
+    let handRolledSeams = ["captureError:", "recordPolishFailed:", "recordPolishSkipped:"]
+      .filter { code.contains($0) }
 
     #expect(buildsRunnerFromSilent)
-    #expect(!handRollsCaptureError)
-    #expect(!handRollsRecordPolishFailed)
+    #expect(handRolledSeams.isEmpty, "recovery must name .silent, not per-seam closures")
   }
 
   /// Repo root, anchored off `#filePath` — this file lives at
