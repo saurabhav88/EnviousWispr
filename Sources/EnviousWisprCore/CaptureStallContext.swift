@@ -27,6 +27,17 @@ public struct CaptureStallContext: Sendable {
   public let inputSelectionMode: String?
   public let outputTransport: String?
   public let routeResolutionSource: String?
+  // #1434: capture-health fields. The stall event fires BEFORE stopCapture()
+  // returns, so it can never read the stop-time `CaptureStopMetadata` — the
+  // SOURCE stamps rate/divergence from its own live state at watchdog-fire
+  // time (direct HAL stalls populate them; the XPC proxy's host-side watchdog
+  // cannot read helper state pre-stop and leaves them nil). Stabilization
+  // flags are kernel-side observations merged in the kernel's stall handler
+  // via `enrichedWithStabilizationFlags` before emission.
+  public let nativeRateHz: Double?
+  public let rateDivergenceDetected: Bool?
+  public let formatStabilized: Bool?
+  public let captureRebuiltForFormat: Bool?
 
   public init(
     sessionID: UInt64,
@@ -45,7 +56,11 @@ public struct CaptureStallContext: Sendable {
     routeFallbackReason: String? = nil,
     inputSelectionMode: String? = nil,
     outputTransport: String? = nil,
-    routeResolutionSource: String? = nil
+    routeResolutionSource: String? = nil,
+    nativeRateHz: Double? = nil,
+    rateDivergenceDetected: Bool? = nil,
+    formatStabilized: Bool? = nil,
+    captureRebuiltForFormat: Bool? = nil
   ) {
     self.sessionID = sessionID
     self.armedAtUptimeNs = armedAtUptimeNs
@@ -64,6 +79,42 @@ public struct CaptureStallContext: Sendable {
     self.inputSelectionMode = inputSelectionMode
     self.outputTransport = outputTransport
     self.routeResolutionSource = routeResolutionSource
+    self.nativeRateHz = nativeRateHz
+    self.rateDivergenceDetected = rateDivergenceDetected
+    self.formatStabilized = formatStabilized
+    self.captureRebuiltForFormat = captureRebuiltForFormat
+  }
+
+  /// Kernel-side enrichment (#1434): the kernel owns the stabilization record
+  /// (private telemetry state) and merges it into the context inside its own
+  /// stall handler; the observer stays a plain forwarder. Source-stamped
+  /// fields are preserved as-is.
+  public func enrichedWithStabilizationFlags(
+    formatStabilized: Bool?, captureRebuiltForFormat: Bool?
+  ) -> CaptureStallContext {
+    CaptureStallContext(
+      sessionID: sessionID,
+      armedAtUptimeNs: armedAtUptimeNs,
+      firedAtUptimeNs: firedAtUptimeNs,
+      route: route,
+      sourceType: sourceType,
+      engineStartedSuccessfully: engineStartedSuccessfully,
+      tapInstalled: tapInstalled,
+      formatMismatchObserved: formatMismatchObserved,
+      inputDeviceUIDPreferred: inputDeviceUIDPreferred,
+      inputDeviceUIDSystemDefault: inputDeviceUIDSystemDefault,
+      selectedTransport: selectedTransport,
+      effectiveTransport: effectiveTransport,
+      routeReason: routeReason,
+      routeFallbackReason: routeFallbackReason,
+      inputSelectionMode: inputSelectionMode,
+      outputTransport: outputTransport,
+      routeResolutionSource: routeResolutionSource,
+      nativeRateHz: nativeRateHz,
+      rateDivergenceDetected: rateDivergenceDetected,
+      formatStabilized: formatStabilized,
+      captureRebuiltForFormat: captureRebuiltForFormat
+    )
   }
 }
 

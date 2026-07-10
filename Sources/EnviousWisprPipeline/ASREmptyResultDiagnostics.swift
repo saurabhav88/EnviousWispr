@@ -25,6 +25,22 @@ internal struct ASREmptyResultDiagnostics {
   var batchRescueAttempted: Bool?
   var batchRescueResultChars: Int?
 
+  // #1434 degraded-lead salvage ladder (failure-side record — set on every
+  // ladder run so the fleet sees misses, not just wins). `salvageAbortedReason`
+  // is `retry_failed` / `superseded` when the ladder aborted early.
+  var salvageAttempted: Bool?
+  var salvageCandidateCount: Int?
+  var salvageCandidateTrimsMs: [Int]?
+  var salvageAbortedReason: String?
+  // #1434 capture health at the empty terminal.
+  var captureNativeRateHz: Double?
+  var captureRingDropCount: Int?
+  var captureConverterErrorCount: Int?
+  var captureZeroOutputCount: Int?
+  var captureRateDivergenceDetected: Bool?
+  var captureFormatStabilized: Bool?
+  var captureRebuiltForFormat: Bool?
+
   var incrementalAccepted: Bool?
   var incrementalResultChars: Int?
   var incrementalDecodeCount: Int?
@@ -87,6 +103,20 @@ internal struct ASREmptyResultDiagnostics {
 
     put(batchRescueAttempted, key: "asr.batch_rescue_attempted", into: &extra)
     put(batchRescueResultChars, key: "asr.batch_rescue_result_chars", into: &extra)
+
+    put(salvageAttempted, key: "asr.salvage_attempted", into: &extra)
+    put(salvageCandidateCount, key: "asr.salvage_candidate_count", into: &extra)
+    put(
+      salvageCandidateTrimsMs.map { $0.map(String.init).joined(separator: ",") },
+      key: "asr.salvage_candidate_trims_ms", into: &extra)
+    put(salvageAbortedReason, key: "asr.salvage_aborted_reason", into: &extra)
+    put(captureNativeRateHz, key: "capture.native_rate_hz", into: &extra)
+    put(captureRingDropCount, key: "capture.ring_drop_count", into: &extra)
+    put(captureConverterErrorCount, key: "capture.converter_error_count", into: &extra)
+    put(captureZeroOutputCount, key: "capture.zero_output_count", into: &extra)
+    put(captureRateDivergenceDetected, key: "capture.rate_divergence_detected", into: &extra)
+    put(captureFormatStabilized, key: "capture.format_stabilized", into: &extra)
+    put(captureRebuiltForFormat, key: "capture.rebuilt_for_format", into: &extra)
 
     put(incrementalAccepted, key: "asr.incremental_accepted", into: &extra)
     put(incrementalResultChars, key: "asr.incremental_result_chars", into: &extra)

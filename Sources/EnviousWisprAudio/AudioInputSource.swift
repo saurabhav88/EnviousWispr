@@ -58,4 +58,17 @@ protocol AudioInputSource: AnyObject {
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool
   func abortPrepare()
   func rebuild()
+
+  /// #1434: stop-time capture-health facts (native rate, drop/error counters,
+  /// divergence flag) the manager attaches to `CaptureResult.metadata`.
+  /// Declared as a REQUIREMENT (not extension-only) so existential calls
+  /// dispatch to the conformer, with a nil default below for sources that
+  /// don't track capture health. Synchronous computed property with identical
+  /// sync witnesses — not the async-default trap (`swift-patterns.md` RULE:
+  /// no-sync-witness-with-defaulted-async-protocol-method).
+  var captureStopMetadata: CaptureStopMetadata? { get }
+}
+
+extension AudioInputSource {
+  var captureStopMetadata: CaptureStopMetadata? { nil }
 }

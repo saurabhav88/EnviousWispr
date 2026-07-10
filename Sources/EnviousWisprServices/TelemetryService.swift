@@ -71,7 +71,13 @@ public final class TelemetryService {
     selectedTransport: String? = nil, effectiveTransport: String? = nil,
     routeReason: String? = nil, routeFallbackReason: String? = nil,
     inputSelectionMode: String? = nil, outputTransport: String? = nil,
-    routeResolutionSource: String? = nil
+    routeResolutionSource: String? = nil,
+    // #1434: capture-health facts + degraded-lead salvage marker. Hardware-
+    // class numbers and flags only (telemetry-privacy-boundary).
+    captureNativeRateHz: Double? = nil, captureRingDropCount: Int? = nil,
+    captureConverterErrorCount: Int? = nil, captureZeroOutputCount: Int? = nil,
+    captureRateDivergenceDetected: Bool? = nil, captureFormatStabilized: Bool? = nil,
+    captureRebuiltForFormat: Bool? = nil, salvagedLeadTrimMs: Int? = nil
   ) {
     #if DEBUG
       var hookStringProps: [String: String] = [
@@ -124,7 +130,15 @@ public final class TelemetryService {
       routeFallbackReason: routeFallbackReason,
       inputSelectionMode: inputSelectionMode,
       outputTransport: outputTransport,
-      routeResolutionSource: routeResolutionSource
+      routeResolutionSource: routeResolutionSource,
+      captureNativeRateHz: captureNativeRateHz,
+      captureRingDropCount: captureRingDropCount,
+      captureConverterErrorCount: captureConverterErrorCount,
+      captureZeroOutputCount: captureZeroOutputCount,
+      captureRateDivergenceDetected: captureRateDivergenceDetected,
+      captureFormatStabilized: captureFormatStabilized,
+      captureRebuiltForFormat: captureRebuiltForFormat,
+      salvagedLeadTrimMs: salvagedLeadTrimMs
     )
     if let e2e = m?.e2eSeconds {
       metricPipelineE2E(
@@ -440,7 +454,12 @@ public final class TelemetryService {
     selectedTransport: String? = nil, effectiveTransport: String? = nil,
     routeReason: String? = nil, routeFallbackReason: String? = nil,
     inputSelectionMode: String? = nil, outputTransport: String? = nil,
-    routeResolutionSource: String? = nil
+    routeResolutionSource: String? = nil,
+    // #1434: capture-health + salvage (absent -> keys omitted).
+    captureNativeRateHz: Double? = nil, captureRingDropCount: Int? = nil,
+    captureConverterErrorCount: Int? = nil, captureZeroOutputCount: Int? = nil,
+    captureRateDivergenceDetected: Bool? = nil, captureFormatStabilized: Bool? = nil,
+    captureRebuiltForFormat: Bool? = nil, salvagedLeadTrimMs: Int? = nil
   ) {
     var props: [String: Any] = [
       "result": result,
@@ -454,6 +473,16 @@ public final class TelemetryService {
     // + why the recording stopped. Metadata only (telemetry-privacy-boundary).
     if let rec = recordingSeconds { props["recording_seconds"] = String(format: "%.3f", rec) }
     if let sr = stopReason { props["stop_reason"] = sr }
+    // #1434: capture-health facts + salvage marker (fleet visibility across
+    // Bluetooth device models; counters omitted when zero at the call site).
+    if let rate = captureNativeRateHz { props["capture_native_rate_hz"] = Int(rate) }
+    if let drops = captureRingDropCount { props["capture_ring_drop_count"] = drops }
+    if let errs = captureConverterErrorCount { props["capture_converter_error_count"] = errs }
+    if let zeros = captureZeroOutputCount { props["capture_zero_output_count"] = zeros }
+    if let div = captureRateDivergenceDetected { props["capture_rate_divergence_detected"] = div }
+    if let stab = captureFormatStabilized { props["capture_format_stabilized"] = stab }
+    if let rebuilt = captureRebuiltForFormat { props["capture_rebuilt_for_format"] = rebuilt }
+    if let trim = salvagedLeadTrimMs { props["salvaged_lead_trim_ms"] = trim }
     if let p = llmProvider { props["llm_provider"] = p }
     if let a = targetApp { props["target_app"] = a }
     if let pr = pasteResult { props["paste_result"] = pr }

@@ -1,0 +1,8 @@
+{
+  "name": "enviouswispr-daily-report",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

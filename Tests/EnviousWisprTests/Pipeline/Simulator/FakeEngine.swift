@@ -68,6 +68,13 @@ enum FakeEngineBehavior: Sendable {
   /// driver's terminal-classification tests (cancel vs failure) with an
   /// exact error type instead of the wedge behaviors' `ASREngineError`.
   case failLoad(any Error & Sendable)
+  /// #1434 salvage-ladder scripting: `finalize()` returns
+  /// `.empty(hadSpeechEvidence: true)` for the first `emptyCalls` calls, then
+  /// `.transcript(text)` — models a primary decode that collapses on a
+  /// degraded lead while a trimmed retry succeeds. `thenFailure` swaps the
+  /// success for `.failed(.engineCrashed)` to exercise the ladder's
+  /// abort-on-retry-failure path.
+  case emptyThenScripted(text: String, emptyCalls: Int, thenFailure: Bool = false)
 }
 
 @MainActor
@@ -377,6 +384,16 @@ final class FakeEngine: ASREngineAdapter {
       // #1388: the load threw before any session could begin; a defensive
       // finalize surfaces a load failure (same stance as .wedgeOnLoad).
       outcome = .failed(.loadFailed)
+    case .emptyThenScripted(let text, let emptyCalls, let thenFailure):
+      // #1434: `finalizeCallCount` was already incremented above, so call N
+      // (1-based) sees finalizeCallCount == N.
+      if finalizeCallCount <= emptyCalls {
+        outcome = .empty(hadSpeechEvidence: true)
+      } else if thenFailure {
+        outcome = .failed(.engineCrashed)
+      } else {
+        outcome = .transcript(makeResult(text: text))
+      }
     }
     isTerminal = true
     // PR-5 Rung 2A: honor the §4 contract, assigning only on .transcript(...).

@@ -36,6 +36,8 @@ public final class PipelineStateChangeHandler {
   private let reportPipelineFailed: @MainActor (String) -> Void
   /// #1167: schedule the transient "Couldn't save to history: <reason>" pill.
   private let scheduleHistorySaveFailedWarning: @MainActor (String) -> Void
+  /// #1434: schedule the transient salvaged-lead disclosure pill.
+  private let scheduleSalvagedLeadWarning: @MainActor () -> Void
 
   public init(
     showOverlay: @escaping ShowOverlay,
@@ -44,7 +46,8 @@ public final class PipelineStateChangeHandler {
     appendCompletedTranscript: @escaping @MainActor (Transcript) -> Void,
     reportDictationCompleted: @escaping @MainActor (Transcript) -> Void,
     reportPipelineFailed: @escaping @MainActor (String) -> Void,
-    scheduleHistorySaveFailedWarning: @escaping @MainActor (String) -> Void
+    scheduleHistorySaveFailedWarning: @escaping @MainActor (String) -> Void,
+    scheduleSalvagedLeadWarning: @escaping @MainActor () -> Void = {}
   ) {
     self.showOverlay = showOverlay
     self.cancelPendingWarning = cancelPendingWarning
@@ -53,6 +56,7 @@ public final class PipelineStateChangeHandler {
     self.reportDictationCompleted = reportDictationCompleted
     self.reportPipelineFailed = reportPipelineFailed
     self.scheduleHistorySaveFailedWarning = scheduleHistorySaveFailedWarning
+    self.scheduleSalvagedLeadWarning = scheduleSalvagedLeadWarning
   }
 
   /// Drive the full state-change behavior contract for one pipeline.
@@ -67,7 +71,8 @@ public final class PipelineStateChangeHandler {
     lastPolishError: String?,
     currentTranscript: Transcript?,
     historySaved: Bool,
-    historySaveReason: String?
+    historySaveReason: String?,
+    salvagedLead: Bool = false
   ) {
     let plan = PipelineStateChangePlanner.plan(
       to: newState,
@@ -78,7 +83,8 @@ public final class PipelineStateChangeHandler {
       lastPolishError: lastPolishError,
       hasCurrentTranscript: currentTranscript != nil,
       historySaved: historySaved,
-      historySaveReason: historySaveReason
+      historySaveReason: historySaveReason,
+      salvagedLead: salvagedLead
     )
     for effect in plan.effects {
       switch effect {
@@ -100,6 +106,8 @@ public final class PipelineStateChangeHandler {
         reportPipelineFailed(msg)
       case .scheduleHistorySaveFailedWarning(let reason):
         scheduleHistorySaveFailedWarning(reason)
+      case .scheduleSalvagedLeadWarning:
+        scheduleSalvagedLeadWarning()
       }
     }
   }

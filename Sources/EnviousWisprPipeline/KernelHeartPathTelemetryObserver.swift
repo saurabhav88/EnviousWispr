@@ -135,8 +135,18 @@ final class KernelHeartPathTelemetryObserver {
   /// Capture-stall telemetry. Reached through the driver's
   /// `HeartPathTelemetryTarget` conformance (PR-4 §3.9).
   /// `HeartPathTelemetryEmitter` dedups per session, so a double-call is harmless.
+  ///
+  /// #1434: the stall fires BEFORE `stopCapture()`, so no stop metadata exists
+  /// yet — the SOURCE stamped rate/divergence into the context; the kernel's
+  /// stabilization observations (private telemetry state) are merged here via
+  /// the kernel's own accessor. The observer stays a forwarder otherwise.
   func handleCaptureStall(_ ctx: CaptureStallContext) {
-    emitter.stallFired(ctx: ctx, isActivelyCapturing: audioCapture.isActivelyCapturing)
+    let stabilization = kernel.captureStabilizationTelemetry
+    let enriched = ctx.enrichedWithStabilizationFlags(
+      formatStabilized: stabilization.formatStabilized,
+      captureRebuiltForFormat: stabilization.rebuiltForFormat
+    )
+    emitter.stallFired(ctx: enriched, isActivelyCapturing: audioCapture.isActivelyCapturing)
   }
 
   func handleXPCReplyFailed(_ ctx: XPCReplyFailureContext) {

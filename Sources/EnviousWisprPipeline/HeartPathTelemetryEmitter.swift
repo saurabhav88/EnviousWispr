@@ -193,27 +193,38 @@ final class HeartPathTelemetryEmitter {
       wasStreaming: ctx.wasStreaming,
       route: ctx.route
     )
-    captureError(
-      err,
-      .audioCaptureFailed,
-      "recording",
-      SentryAudioExtras.buildCaptureExtras(
-        route: ctx.route,
-        sourceType: ctx.captureSourceType,
-        sessionID: ctx.sessionID,
-        isActivelyCapturing: ctx.isActivelyCapturing,
-        inputDeviceUIDPreferred: ctx.inputDeviceUIDPreferred,
-        inputDeviceUIDSystemDefault: ctx.inputDeviceUIDSystemDefault,
-        failureMode: "no_audio_captured",
-        selectedTransport: ctx.selectedTransport,
-        effectiveTransport: ctx.effectiveTransport,
-        routeReason: ctx.routeReason,
-        routeFallbackReason: ctx.routeFallbackReason,
-        inputSelectionMode: ctx.inputSelectionMode,
-        outputTransport: ctx.outputTransport,
-        routeResolutionSource: ctx.routeResolutionSource
-      )
+    var extras = SentryAudioExtras.buildCaptureExtras(
+      route: ctx.route,
+      sourceType: ctx.captureSourceType,
+      sessionID: ctx.sessionID,
+      isActivelyCapturing: ctx.isActivelyCapturing,
+      inputDeviceUIDPreferred: ctx.inputDeviceUIDPreferred,
+      inputDeviceUIDSystemDefault: ctx.inputDeviceUIDSystemDefault,
+      failureMode: "no_audio_captured",
+      selectedTransport: ctx.selectedTransport,
+      effectiveTransport: ctx.effectiveTransport,
+      routeReason: ctx.routeReason,
+      routeFallbackReason: ctx.routeFallbackReason,
+      inputSelectionMode: ctx.inputSelectionMode,
+      outputTransport: ctx.outputTransport,
+      routeResolutionSource: ctx.routeResolutionSource
     )
+    // #1434: post-stop capture-health on the no-audio terminal (absent → keys
+    // omitted, matching the optional-extras pattern).
+    if let rate = ctx.captureNativeRateHz { extras["capture.native_rate_hz"] = rate }
+    if let drops = ctx.captureRingDropCount { extras["capture.ring_drop_count"] = drops }
+    if let errs = ctx.captureConverterErrorCount {
+      extras["capture.converter_error_count"] = errs
+    }
+    if let zeros = ctx.captureZeroOutputCount { extras["capture.zero_output_count"] = zeros }
+    if let div = ctx.captureRateDivergenceDetected {
+      extras["capture.rate_divergence_detected"] = div
+    }
+    if let stab = ctx.captureFormatStabilized { extras["capture.format_stabilized"] = stab }
+    if let rebuilt = ctx.captureRebuiltForFormat {
+      extras["capture.rebuilt_for_format"] = rebuilt
+    }
+    captureError(err, .audioCaptureFailed, "recording", extras)
   }
 
   /// Emit `zombie_engine_zero_peak` when the VAD gate gets a full recording

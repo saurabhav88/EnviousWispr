@@ -4,8 +4,11 @@ import Testing
 @testable import EnviousWisprAudio
 
 // #1377 slice 2a — locks the capture-backend bake-off control plane: the DEBUG
-// runtime policy override, the force-policy → sourceType mapping, the dormancy
-// invariant (the `.automatic` route never emits a non-shipping backend), and the
+// runtime policy override, the force-policy → sourceType mapping, the
+// no-BT-output vs BT-output-active `.automatic` routing split (`.halDeviceInput`
+// was dormant under `.automatic` at slice 2a; #1427 made it the live BT-output
+// route — see the two `automaticNeverEmitsDormantCaseWithoutBTOutput` /
+// `automaticRoutesToHALWithBTOutput` tests below, #1434), and the
 // additive device-target default (nil = built-in, byte-identical to today).
 //
 // Behavioral capture correctness (which device actually binds, non-silent audio,
@@ -96,19 +99,40 @@ struct CaptureRouteResolverForceMappingTests {
     #expect(d.reason == .forcedHALDeviceInput)
   }
 
-  // Dormancy lock: whatever the test machine's audio hardware, the `.automatic`
-  // route only ever yields a SHIPPING capture backend. `.halDeviceInput`
-  // (slice 2b, reinstated 2026-07-08) is dormant — this assertion stays the
-  // two shipping cases, so it guards that the automatic route never emits a
-  // dormant candidate (the §4 invariant) — hardware-independent because it
-  // asserts membership, not a specific device-derived result.
-  @Test("automatic route only ever emits a shipping backend (dormancy)")
-  func automaticNeverEmitsDormantCase() {
+  // Non-Bluetooth invariant: with no Bluetooth OUTPUT device active, the
+  // `.automatic` route always yields a SHIPPING capture backend, never
+  // `.halDeviceInput`. Hardware-independent via injected closures — #1434
+  // found this test previously read the REAL system default output device
+  // with no override, so it silently depended on the test machine having no
+  // Bluetooth output connected at run time (false whenever a real BT
+  // headset, e.g. AirPods or Bose, is the current system default output).
+  @Test("automatic route with no BT output only ever emits a shipping backend")
+  func automaticNeverEmitsDormantCaseWithoutBTOutput() {
     var resolver = CaptureRouteResolver()  // .automatic by default
+    resolver.defaultOutputDeviceID = { nil }
+    resolver.isBluetoothOutputDevice = { _ in false }
     for pref in ["", "some-device-uid"] {
       let d = resolver.resolve(preferredInputDeviceUID: pref, noiseSuppression: false)
       #expect(d.sourceType == .audioEngine || d.sourceType == .captureSession)
       #expect(d.sourceType != .halDeviceInput)
+    }
+  }
+
+  // Companion case (#1434): with a Bluetooth OUTPUT device active, `.automatic`
+  // is INTENDED to route through `.halDeviceInput` — this is the live,
+  // already-shipped behavior (#1427 "Honor system default input for auto
+  // capture") that #1434's degraded-lead salvage work depends on actually
+  // firing. `resolveAutomatic` in CaptureRouteResolver.swift routes
+  // unconditionally to `.halDeviceInput` once `isBluetoothOutputDevice`
+  // reports true — `.halDeviceInput` is not dormant under real Bluetooth.
+  @Test("automatic route with BT output active routes through HAL device input")
+  func automaticRoutesToHALWithBTOutput() {
+    var resolver = CaptureRouteResolver()  // .automatic by default
+    resolver.defaultOutputDeviceID = { 99 }
+    resolver.isBluetoothOutputDevice = { _ in true }
+    for pref in ["", "some-device-uid"] {
+      let d = resolver.resolve(preferredInputDeviceUID: pref, noiseSuppression: false)
+      #expect(d.sourceType == .halDeviceInput)
     }
   }
 }

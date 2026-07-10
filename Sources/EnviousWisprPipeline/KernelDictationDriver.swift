@@ -864,6 +864,16 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// the App layer's `dictation.completed` telemetry. LIVE pass-through from the
   /// kernel; never persisted. Low-cardinality transport/reason strings only.
   public var lastResolvedRoute: ResolvedRouteTransports? { kernel.lastResolvedRoute }
+  /// #1434: non-nil when the most recent completion was a degraded-lead
+  /// SALVAGE (the transcript was recovered by trimming a poisoned opening) —
+  /// drives the post-completion disclosure pill and `dictation.completed`
+  /// salvage fields. LIVE pass-through; never persisted; a number, no content.
+  public var lastSalvagedLeadTrimMs: Int? { kernel.lastSalvagedLeadTrimMs }
+  /// #1434: the capture-health record for the most recent recording (native
+  /// rate, drop/error counters, stabilization flags). LIVE pass-through for
+  /// the App layer's `dictation.completed` telemetry; hardware-class facts
+  /// only, no identifiers.
+  public var lastCaptureHealth: CaptureHealthTransports? { kernel.lastCaptureHealth }
 
   // MARK: Caller-facing event + overlay surface
 

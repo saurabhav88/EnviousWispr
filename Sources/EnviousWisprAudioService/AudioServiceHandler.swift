@@ -237,7 +237,7 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
     }
   }
 
-  func stopCapture(operationID: String, reply: @escaping (Data, Data) -> Void) {
+  func stopCapture(operationID: String, reply: @escaping (Data, Data, Data?) -> Void) {
     let signal = XPCOperationSignalFile.audio.makeEmitter(operationID: operationID)
     signal.emit(stage: "audio.stop_capture.received")
     nonisolated(unsafe) let safeReply = reply
@@ -278,8 +278,13 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
       }
 
       let sampleData = captureResult.samples.withUnsafeBytes { Data($0) }
+      // #1434: capture-health metadata rides the same atomic reply — the host
+      // proxy decodes it back into the identical `CaptureStopMetadata`, so
+      // both stop paths yield the same `CaptureResult.metadata`. Encode
+      // failure degrades to nil (diagnostic limb; never blocks the reply).
+      let metadataData = captureResult.metadata.flatMap { try? JSONEncoder().encode($0) }
       signal.emit(stage: "audio.stop_capture.reply_ready")
-      safeReply(sampleData, vadData)
+      safeReply(sampleData, vadData, metadataData)
 
       // Crash-recovery limb (AFTER the heart-path reply so it never delays
       // delivery): write the final tail beyond what the poll loop fed, then

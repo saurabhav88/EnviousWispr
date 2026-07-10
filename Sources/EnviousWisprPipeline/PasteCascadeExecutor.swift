@@ -408,25 +408,32 @@ internal final class PasteCascadeExecutor {
       return
     case .clipboardOnly(let tiers, let focus, let bundle, let accessibilityTrusted, let diagnostics):
       let tierStrings = tiers.map(\.rawValue)
-      let err = HeartPathError.pasteCascadeClipboardFallback(
+      let extra = Self.clipboardOnlyTelemetryExtra(
         tiersAttempted: tierStrings,
-        focusClassification: focus.telemetryLabel,
-        targetBundleID: bundle
+        focus: focus,
+        targetBundleID: bundle,
+        accessibilityTrusted: accessibilityTrusted,
+        targetDiagnostics: diagnostics,
+        tierFailures: tierFailures,
+        focusClass: focusClass
       )
-      SentryBreadcrumb.captureError(
-        err,
-        category: .pasteFailed,
-        stage: "paste",
-        extra: Self.clipboardOnlyTelemetryExtra(
-          tiersAttempted: tierStrings,
-          focus: focus,
-          targetBundleID: bundle,
-          accessibilityTrusted: accessibilityTrusted,
-          targetDiagnostics: diagnostics,
-          tierFailures: tierFailures,
-          focusClass: focusClass
+      if Self.isExpectedNonTextRefusal(
+        focus: focus, roleSource: diagnostics.roleSource, focusClass: focusClass
+      ) {
+        SentryBreadcrumb.add(
+          stage: "paste",
+          message: "paste.outcome=clipboard_only_no_target",
+          level: .info,
+          data: extra
         )
-      )
+      } else {
+        let err = HeartPathError.pasteCascadeClipboardFallback(
+          tiersAttempted: tierStrings,
+          focusClassification: focus.telemetryLabel,
+          targetBundleID: bundle
+        )
+        SentryBreadcrumb.captureError(err, category: .pasteFailed, stage: "paste", extra: extra)
+      }
     case .cgEventCreationFailed(let accessibilityTrusted):
       let err = HeartPathError.pasteCGEventCreationFailed(
         accessibilityTrusted: accessibilityTrusted)
@@ -452,6 +459,30 @@ internal final class PasteCascadeExecutor {
         ]
       )
     }
+  }
+
+  /// True when the cascade confidently identified the focused target,
+  /// correctly determined it isn't a text field, AND the Tier 2c menu probe
+  /// positively confirmed no real paste target exists — a working-as-intended
+  /// decline, not a failure. False in every other case keeps the existing
+  /// alert-creating path, since anything short of that full confirmation is
+  /// a case that could indicate a real, scaling defect (#1430).
+  ///
+  /// Requires exact confirmation (`focusClass == "no_paste_target"`) rather
+  /// than defaulting an absent probe result to "no target": `canAttemptKeyPaste`
+  /// is always false for `.nonText`, so Tier 2c's menu probe is the ONLY paste
+  /// attempt for non-text targets, and `focusClass` is nil whenever that probe
+  /// never ran or never resolved — activation timeout, a terminated target
+  /// app, or no target app captured at all (Codex code-diff review r2) — none
+  /// of which is a confirmed refusal. `"non_text_with_paste_target"` means the
+  /// probe found a real, enabled paste target and pressing it failed — also a
+  /// real failure, not a refusal (Codex code-diff review r1). Any other/future
+  /// focusClass label fails closed the same way, matching the roleSource
+  /// invariant above.
+  internal static func isExpectedNonTextRefusal(
+    focus: PasteFocusClassification, roleSource: String, focusClass: String?
+  ) -> Bool {
+    focus == .nonText && roleSource == "captured_target" && focusClass == "no_paste_target"
   }
 
   internal static func clipboardOnlyTelemetryExtra(

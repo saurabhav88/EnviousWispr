@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// Per-session telemetry side-channel for details that do not belong in the
@@ -19,6 +20,11 @@ final class KernelTelemetryState {
   var historySaveFailed = false
   var transcriptionFailureError: (any Error)?
   var modelLoadError: (any Error)?
+  /// #1434: the ONE capture-health record every post-stop consumer reads.
+  /// Stamped immediately after `stopCapture()` returns + the stale-session
+  /// guard passes — BEFORE the too-short / no-audio / dead-air early
+  /// terminals — so no-audio, asrEmpty, and completed all share it.
+  var captureHealth: KernelCaptureHealthTelemetry?
 
   func resetForNewSession(polishEnabled: Bool) {
     self.polishEnabled = polishEnabled
@@ -30,7 +36,23 @@ final class KernelTelemetryState {
     historySaveFailed = false
     transcriptionFailureError = nil
     modelLoadError = nil
+    captureHealth = nil
   }
+}
+
+/// #1434: one capture-health record per session — helper-side facts from
+/// `CaptureResult.metadata` (stop-time) merged with the kernel's own
+/// stabilization observations (start-time). Every telemetry consumer
+/// (`dictation.completed`, asrEmpty Sentry extra, NoAudio context) reads
+/// this single record instead of N side channels.
+struct KernelCaptureHealthTelemetry {
+  /// From `CaptureResult.metadata` (nil when the source didn't produce one —
+  /// stabilization flags below are still valid then).
+  var stopMetadata: CaptureStopMetadata?
+  /// Kernel-side: did `waitForFormatStabilization` return true pre-capture.
+  var formatStabilized: Bool?
+  /// Kernel-side: did the false path trigger the one rebuild+restart.
+  var captureRebuiltForFormat: Bool?
 }
 
 struct KernelRecordingSnapshotTelemetry {
@@ -104,6 +126,12 @@ struct KernelASRCompletedTelemetry {
   var tailDecodeSec: Double? = nil
   var maxUnconfirmedWindowSec: Double? = nil
   var stopWhileDecodeInFlight: Bool? = nil
+  // #1434 degraded-lead salvage (set only on a salvaged completion; nil →
+  // sink omits). `salvageSucceededAtTrimMs` is the winning candidate's trim.
+  var salvageAttempted: Bool? = nil
+  var salvageCandidateCount: Int? = nil
+  var salvageSucceededAtTrimMs: Int? = nil
+  var salvageRemainingAudioMs: Int? = nil
 }
 
 struct KernelASRAdapterDiagnostics {
