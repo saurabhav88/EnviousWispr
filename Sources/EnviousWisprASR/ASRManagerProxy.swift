@@ -199,6 +199,14 @@ public final class ASRManagerProxy: ASRManagerInterface {
         let guard_ = OneShotContinuationASR(cont)
         registeredCompletion = guard_
         self.pendingLoadCompletion = guard_
+        // #1388 (cloud review P1): era of the connection this call goes out
+        // on. A LATE per-call error handler — queued behind the invalidation
+        // that already resumed this load — must not recycle the SUCCESSOR's
+        // fresh connection after the adapter's retry installed it. Same
+        // whole-body era rule as the interruption/invalidation handlers; the
+        // duplicate `guard_` resume below stays harmless either way (this
+        // era's one-shot, not the successor's).
+        let callEraID = self.connection.map(ObjectIdentifier.init)
         self.serviceProxy { proxy in
           let cacheOnly = self.parakeetCacheOnly && self.activeBackendType == .parakeet
           proxy.loadModel(backendType: self.activeBackendType.rawValue, cacheOnly: cacheOnly) {
@@ -207,8 +215,13 @@ public final class ASRManagerProxy: ASRManagerInterface {
           }
         } onProxyError: {
           // #1348: force a helper recycle so the next attempt reconnects to
-          // the current bundle binary (grounded r2 blocker 1).
-          self.recycleConnectionAfterProxyError()
+          // the current bundle binary (grounded r2 blocker 1) — era-gated
+          // (#1388): only while OUR connection is still current (or cleared
+          // with no successor yet).
+          let currentEraID = self.connection.map(ObjectIdentifier.init)
+          if currentEraID == nil || currentEraID == callEraID {
+            self.recycleConnectionAfterProxyError()
+          }
           guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
         }
       }
