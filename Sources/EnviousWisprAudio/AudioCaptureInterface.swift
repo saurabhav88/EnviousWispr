@@ -27,6 +27,14 @@ public protocol AudioCaptureInterface: AnyObject {
   /// (issue #1174 A3).
   var onEngineInterrupted: ((EngineInterruptionCause) -> Void)? { get set }
   var onVADAutoStop: (() -> Void)? { get set }
+  /// Fires when the manager's hard sample-count backstop (3660s) trips — a
+  /// NORMAL auto-stop, not a loss (#1408 A3; it used to masquerade as
+  /// `onEngineInterrupted(.maxDurationReached)`). The graceful 3600s wall-clock
+  /// cap lives host-side in `VADMonitorLoop` and never fires this; this
+  /// callback exists so the backstop reaches the same typed `.maxDuration`
+  /// stop route when the graceful cap wedges. Single-owner:
+  /// `CaptureVADSignalSource` claims it alongside `onVADAutoStop`.
+  var onMaxDurationReached: (() -> Void)? { get set }
 
   // Telemetry callbacks (round-4 additions for #285 heart-path Sentry coverage).
   // Producers: source backends (`AVAudioEngineSource`, `AVCaptureSessionSource`,

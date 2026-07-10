@@ -40,7 +40,10 @@ enum DictationCompletedReporting {
       captureRateDivergenceDetected: whenTrue(health?.rateDivergenceDetected),
       captureFormatStabilized: health?.formatStabilized,
       captureRebuiltForFormat: whenTrue(health?.captureRebuiltForFormat),
-      salvagedLeadTrimMs: driver.lastSalvagedLeadTrimMs)
+      salvagedLeadTrimMs: driver.lastSalvagedLeadTrimMs,
+      // #1408: which interruption cut this dictation short. `stop_reason` already
+      // says one did; this names it. Absent on an uninterrupted completion.
+      interruptedBy: driver.lastAudioInterruptionCause?.rawValue)
   }
 
   private static func positive(_ value: Int?) -> Int? {

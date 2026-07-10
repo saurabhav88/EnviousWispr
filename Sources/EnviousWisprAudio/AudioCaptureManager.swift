@@ -16,8 +16,10 @@ import os
 @MainActor
 @Observable
 public final class AudioCaptureManager: AudioCaptureInterface {
-  /// Current recording state.
-  public private(set) var isCapturing = false
+  /// Current recording state. `internal(set)` (not `private(set)`) solely so
+  /// the #1408 A3 backstop test can arm `ingestSamples` without real hardware;
+  /// production writes stay inside this file.
+  public internal(set) var isCapturing = false
 
   /// Current audio level (0.0 - 1.0) for waveform visualization.
   public private(set) var audioLevel: Float = 0.0
@@ -36,6 +38,19 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// Called when service-side VAD detects sustained silence after speech.
   /// No-op for in-process capture — VAD runs in the pipeline's monitorVAD() loop instead.
   public var onVADAutoStop: (() -> Void)?
+
+  /// #1408 A3: called on the main actor when the hard sample-count backstop
+  /// trips (a normal auto-stop, never a loss — it used to fire
+  /// `onEngineInterrupted(.maxDurationReached)`). The manager has already
+  /// stopped appending (`isCapturing = false`, its memory protection, which
+  /// holds even with a dead host); the consumer routes this into the same typed
+  /// `.maxDuration` stop the graceful wall-clock cap uses.
+  public var onMaxDurationReached: (() -> Void)?
+
+  /// #1408 A3: the backstop threshold, instance-scoped so tests can inject a
+  /// tiny limit (the production value is 58,560,000 samples — unreachable in a
+  /// unit test). Production never touches it.
+  var maxRecordingSamplesLimit: Int = AudioCaptureManager.maxRecordingSamples
 
   /// Optional fine-grained lifecycle signal used by the XPC service to publish
   /// phase ticks while a proxy is waiting on a lifecycle reply.
@@ -229,42 +244,32 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // Source identity check prevents stale callbacks from a replaced source
     // (e.g., pre-warm source replaced by startEnginePhase) from modifying state.
     let sourceID = ObjectIdentifier(source)
-    let maxSamples = Self.maxRecordingSamples
     source.onSamples = { [weak self] samples, level in
       Task { @MainActor in
         guard let self, self.isCapturing,
           self.activeSource.map({ ObjectIdentifier($0) }) == sourceID
         else { return }
-        self.audioLevel = level
-        self.capturedSamples.append(contentsOf: samples)
-        if self.capturedSamples.count >= maxSamples {
-          await AppLogger.shared.log(
-            "Max recording duration reached (\(Self.maxRecordingDurationSeconds)s) — auto-stopping",
-            level: .info, category: "Audio"
-          )
-          self.isCapturing = false
-          self.audioLevel = 0.0
-          // Direct-mode 60-min cap — a normal auto-stop, never captured as a loss.
-          self.onEngineInterrupted?(.maxDurationReached)
-        }
+        self.ingestSamples(samples, level: level)
       }
     }
     source.onBufferCaptured = onBufferCaptured
-    // Direct mode: an AVCaptureSession interruption is already captured by
-    // `onCaptureSessionInterruption` (→ `.audioCaptureFailed`), so tag it
-    // `.captureSessionLost` (suppress). An AVAudioEngine device disconnect has
-    // no other owner → `.engineLost` (capture). Resolve the discriminator to a
-    // value at bind time so the closure captures only the `Bool` (no strong
-    // `source` capture / retain cycle — matches the `sourceID`-only pattern).
-    let interruptionCause: EngineInterruptionCause =
-      source is AVCaptureSessionSource ? .captureSessionLost : .engineLost
-    source.onInterrupted = { [weak self] in
+    // (The `ingestSamples` body lives below `stopCapture()` — extracted so the
+    // #1408 A3 backstop is unit-testable with an injected `maxRecordingSamplesLimit`.)
+    // #1408: the SOURCE names the cause; the manager only forwards it. This used
+    // to be inferred from the source's class (`source is AVCaptureSessionSource
+    // ? .captureSessionLost : .engineLost`), which cannot distinguish a device
+    // that was verified gone (`.deviceRemoved`) from an engine that merely failed
+    // to recover (`.engineLost`) — both live inside `AVAudioEngineSource`. Only
+    // the source runs the `kAudioDevicePropertyDeviceIsAlive` check, so only the
+    // source can answer. Passing the cause as a parameter also means the closure
+    // captures no `source` reference at all.
+    source.onInterrupted = { [weak self] cause in
       guard let self,
         self.activeSource.map({ ObjectIdentifier($0) }) == sourceID
       else { return }
       self.isCapturing = false
       self.audioLevel = 0.0
-      self.onEngineInterrupted?(interruptionCause)
+      self.onEngineInterrupted?(cause)
     }
 
     // Forward heart-path telemetry callbacks (issue #285) — direct capture
@@ -356,6 +361,36 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     let samples = capturedSamples
     capturedSamples = []
     return CaptureResult(samples: samples, metadata: stopMetadata)
+  }
+
+  /// Append a batch of converted samples and enforce the hard sample-count
+  /// backstop (#1408 A3). Extracted from the `onSamples` wiring so the backstop
+  /// is unit-testable with an injected `maxRecordingSamplesLimit`; the wiring
+  /// closure owns the source-identity check, this owns the state change.
+  ///
+  /// The backstop is the LAST-DITCH memory protection behind the graceful
+  /// 3600s wall-clock cap (`VADMonitorLoop`, host-side): it stops appending
+  /// locally (`isCapturing = false` — the closure's guard goes quiet, so the
+  /// callback fires at most once) even when the host that would drive a normal
+  /// stop is gone, then signals a NORMAL `.maxDuration` stop through
+  /// `onMaxDurationReached` — never an engine interruption; no cause is
+  /// stamped, no loss is claimed. A later `stopCapture()` still returns the
+  /// accumulated samples (it has no `isCapturing` guard).
+  func ingestSamples(_ samples: [Float], level: Float) {
+    guard isCapturing else { return }
+    audioLevel = level
+    capturedSamples.append(contentsOf: samples)
+    if capturedSamples.count >= maxRecordingSamplesLimit {
+      isCapturing = false
+      audioLevel = 0.0
+      Task {
+        await AppLogger.shared.log(
+          "Max recording duration reached (\(Self.maxRecordingDurationSeconds)s) — auto-stopping",
+          level: .info, category: "Audio"
+        )
+      }
+      onMaxDurationReached?()
+    }
   }
 
   public func rebuildEngine() {

@@ -204,7 +204,14 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       llmProvider: textOutcome.polishedText != nil ? recovered.settings?.llmProvider : nil,
       llmModel: textOutcome.polishedText != nil ? recovered.settings?.llmModel : nil,
       recoverySessionID: id,
-      isRecovered: true)
+      isRecovered: true,
+      // #1408: unknown, never guessed. The spool's own `RecoverySpoolTermination
+      // Reason` is a WRITER-side reason (its `.interrupted` means the helper
+      // process exited); a mic disconnect leaves the helper alive, so it never
+      // appears there and cannot answer "was the input device removed." `true`
+      // would lie for app-crash recovery, `false` for a retained disconnect
+      // spool. `isRecovered: true` above is the honest abnormal-exit signal.
+      inputDeviceWasRemoved: nil)
 
     // FINAL abort check immediately before the SYNCHRONOUS save + append — there
     // is no `await` between here and `append`, so a Discard cannot interleave a

@@ -47,6 +47,9 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   public var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
   public var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   public var onVADAutoStop: (() -> Void)?
+  /// #1408 A3: the helper's hard sample-count backstop, relayed as a normal
+  /// auto-stop event (`maxDurationReachedTriggered`), never an interruption.
+  public var onMaxDurationReached: (() -> Void)?
 
   // MARK: - Round-4 telemetry callbacks (issue #285)
 
@@ -144,6 +147,14 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   /// The generation that was active when the current capture session began.
   /// Set in beginCapturePhase, compared in audioBufferCaptured.
   private var activeCaptureGeneration: UInt64 = 0
+
+  /// #1408 A3 (Codex code-diff r6): the begin `operationID` that owns the live
+  /// session, nil outside one. The helper echoes it in
+  /// `maxDurationReachedTriggered`; equality against this field is the
+  /// session-identity check the generation counters cannot provide (both are
+  /// CURRENT fields, equal during any active session). Set on successful
+  /// begin; cleared wherever `isCapturing` goes false.
+  private var activeCaptureOperationID: String?
 
   /// #455: uptime-ns at the moment `beginCapturePhase` flipped `isCapturing`
   /// to true. Read in the XPC interrupt/invalidate handlers to surface
@@ -301,6 +312,12 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     ) { operationID in
       try await self.awaitBeginCaptureReply(
         operationID: operationID, recoveryPayload: recoveryPayload)
+      // #1408 A3 (Codex code-diff r6): remember which begin op owns this
+      // session — the max-duration relay echoes it, and a mismatch is a stale
+      // event from an EARLIER session that must not stop this one. Set only on
+      // the SUCCESSFUL attempt (a #1194 retry mints a fresh id; the helper
+      // stored whichever begin actually ran).
+      self.activeCaptureOperationID = operationID
     }
 
     isCapturing = true
@@ -429,6 +446,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     }
 
     isCapturing = false
+    activeCaptureOperationID = nil  // #1408 A3: session over, relay echoes are stale now
     captureStartUptimeNs = 0  // #455
     audioLevel = 0
     bufferContinuation?.finish()
@@ -942,6 +960,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
       stallWorkItem?.cancel()
       stallWorkItem = nil
       isCapturing = false
+      activeCaptureOperationID = nil  // #1408 A3
       captureStartUptimeNs = 0  // #455
       audioLevel = 0
       captureGeneration &+= 1
@@ -1204,17 +1223,19 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
         self.stallWorkItem?.cancel()
         self.stallWorkItem = nil
         self.isCapturing = false
+        self.activeCaptureOperationID = nil  // #1408 A3
         self.captureStartUptimeNs = 0  // #455
         self.audioLevel = 0
         self.captureGeneration &+= 1
         self.bufferContinuation?.finish()
         self.bufferContinuation = nil
         // The service relays ALL its interruptions through this one channel.
-        // Every loss cause collapses to `.engineLost` (no other owner across the
-        // XPC boundary — there is no capture-session relay, so an XPC-mode
-        // AVCaptureSession interruption must be captured here too); only the hard
-        // max-duration cap is preserved so it stays suppressed exactly as in
-        // direct mode (issue #1174 A3).
+        // `.deviceRemoved` survives intact (the helper ran the liveness check);
+        // every other loss cause collapses to `.engineLost` (no other owner
+        // across the XPC boundary — there is no capture-session relay, so an
+        // XPC-mode AVCaptureSession interruption must be captured here too).
+        // The hard max-duration cap no longer travels here at all (#1408 A3:
+        // `maxDurationReachedTriggered` is its own event channel).
         self.onEngineInterrupted?(EngineInterruptionCause.hostCause(forRelayedRawValue: cause))
       }
       // #1194: the former `needsReinit = true` here is deleted with nothing
@@ -1232,6 +1253,25 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
         self.captureGeneration == self.activeCaptureGeneration
       else { return }
       self.onVADAutoStop?()
+    }
+  }
+
+  /// #1408 A3: the helper's hard sample-count backstop tripped — a normal
+  /// auto-stop, never a loss. Stale-fire protection goes one step past
+  /// `vadAutoStopTriggered` above (Codex code-diff r6): the event carries the
+  /// begin `operationID` that owns the emitting capture, and a mismatch against
+  /// the ACTIVE session's begin op is a delayed relay from an EARLIER session —
+  /// swallowed, so it can never stop a later recording. (The generation compare
+  /// alone cannot answer that: both fields are CURRENT state, equal during any
+  /// active session.)
+  nonisolated public func maxDurationReachedTriggered(operationID: String) {
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      guard self.isCapturing,
+        let active = self.activeCaptureOperationID,
+        operationID == active
+      else { return }
+      self.onMaxDurationReached?()
     }
   }
 }

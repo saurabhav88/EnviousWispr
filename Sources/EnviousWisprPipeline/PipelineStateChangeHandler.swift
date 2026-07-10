@@ -38,6 +38,12 @@ public final class PipelineStateChangeHandler {
   private let scheduleHistorySaveFailedWarning: @MainActor (String) -> Void
   /// #1434: schedule the transient salvaged-lead disclosure pill.
   private let scheduleSalvagedLeadWarning: @MainActor () -> Void
+  /// #1408: schedule the transient interruption disclosure pill. The disclosure
+  /// picks the sentence family (mic-disconnect vs neutral) and the flag picks
+  /// between the tail-only and both-ends-lost copies; the caller owns all four
+  /// literals (the message is wired at the factory site, never in here).
+  private let scheduleInterruptionWarning:
+    @MainActor (_ disclosure: CompletionInterruptionDisclosure, _ alsoTrimmedLead: Bool) -> Void
 
   public init(
     showOverlay: @escaping ShowOverlay,
@@ -47,7 +53,10 @@ public final class PipelineStateChangeHandler {
     reportDictationCompleted: @escaping @MainActor (Transcript) -> Void,
     reportPipelineFailed: @escaping @MainActor (String) -> Void,
     scheduleHistorySaveFailedWarning: @escaping @MainActor (String) -> Void,
-    scheduleSalvagedLeadWarning: @escaping @MainActor () -> Void = {}
+    scheduleSalvagedLeadWarning: @escaping @MainActor () -> Void = {},
+    scheduleInterruptionWarning: @escaping @MainActor (
+      _ disclosure: CompletionInterruptionDisclosure, _ alsoTrimmedLead: Bool
+    ) -> Void = { _, _ in }
   ) {
     self.showOverlay = showOverlay
     self.cancelPendingWarning = cancelPendingWarning
@@ -57,6 +66,7 @@ public final class PipelineStateChangeHandler {
     self.reportPipelineFailed = reportPipelineFailed
     self.scheduleHistorySaveFailedWarning = scheduleHistorySaveFailedWarning
     self.scheduleSalvagedLeadWarning = scheduleSalvagedLeadWarning
+    self.scheduleInterruptionWarning = scheduleInterruptionWarning
   }
 
   /// Drive the full state-change behavior contract for one pipeline.
@@ -72,7 +82,8 @@ public final class PipelineStateChangeHandler {
     currentTranscript: Transcript?,
     historySaved: Bool,
     historySaveReason: String?,
-    salvagedLead: Bool = false
+    salvagedLead: Bool = false,
+    interruptionDisclosure: CompletionInterruptionDisclosure? = nil
   ) {
     let plan = PipelineStateChangePlanner.plan(
       to: newState,
@@ -84,7 +95,8 @@ public final class PipelineStateChangeHandler {
       hasCurrentTranscript: currentTranscript != nil,
       historySaved: historySaved,
       historySaveReason: historySaveReason,
-      salvagedLead: salvagedLead
+      salvagedLead: salvagedLead,
+      interruptionDisclosure: interruptionDisclosure
     )
     for effect in plan.effects {
       switch effect {
@@ -108,6 +120,8 @@ public final class PipelineStateChangeHandler {
         scheduleHistorySaveFailedWarning(reason)
       case .scheduleSalvagedLeadWarning:
         scheduleSalvagedLeadWarning()
+      case .scheduleInterruptionWarning(let disclosure, let alsoTrimmedLead):
+        scheduleInterruptionWarning(disclosure, alsoTrimmedLead)
       }
     }
   }

@@ -75,6 +75,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
   var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?
+  var onMaxDurationReached: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
   // XPC-only telemetry callbacks — a direct (non-XPC) source leaves these nil.
   var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
@@ -200,6 +201,12 @@ final class FakeAudioCapture: AudioCaptureInterface {
   /// Fire the VAD auto-stop callback.
   func fireVADAutoStop() {
     onVADAutoStop?()
+  }
+
+  /// #1408 A3: fire the hard-cap backstop callback (a normal auto-stop event,
+  /// mirroring the manager/proxy relay).
+  func fireMaxDurationReached() {
+    onMaxDurationReached?()
   }
 
   /// Fire the capture-stall callback (C3 / C4 — the liveness watchdog observed

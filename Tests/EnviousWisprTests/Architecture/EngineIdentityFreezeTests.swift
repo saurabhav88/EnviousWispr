@@ -245,7 +245,9 @@ import Testing
       Expected exactly one CaptureVADSignalSource construction site — the
       shared App-owned VAD source that both kernel drivers share (PR-5 Rung 5
       / Codex r2 new defect 1). Multiple construction sites would re-bind
-      `audioCapture.onVADAutoStop` and break two-driver auto-stop dispatch.
+      `audioCapture.onVADAutoStop` AND `audioCapture.onMaxDurationReached`
+      (both slots are claimed by `bind`, #1408 A3) and break two-driver
+      auto-stop dispatch.
       \(constructs.joined(separator: "\n"))
       """)
     #expect(

@@ -306,7 +306,7 @@ final class HALDeviceInputSource: AudioInputSource {
 
   var onSamples: (@Sendable (_ samples: [Float], _ audioLevel: Float) -> Void)?
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
-  var onInterrupted: (() -> Void)?
+  var onInterrupted: ((EngineInterruptionCause) -> Void)?
   var onLifecycleSignal: (@Sendable (String) -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
   /// No `AVCaptureSession` layer — stays nil, matching `AVAudioEngineSource`.
@@ -929,11 +929,12 @@ final class HALDeviceInputSource: AudioInputSource {
 
   // MARK: - Private: disconnect handling
 
-  /// Mirrors `AVAudioEngineSource.handleEngineConfigurationChange`'s
-  /// `kAudioDevicePropertyDeviceIsAlive` check — device-vanished is engine-
-  /// independent per #1377 bake-off findings, so candidate D needs the same
-  /// detection. Fires `onInterrupted()`; the accumulated `capturedSamples`
-  /// salvage (manager-owned) is what actually saves the partial dictation.
+  /// Mirrors `AVAudioEngineSource.handleEngineConfigurationChange`'s liveness
+  /// check (both go through `CoreAudioDeviceLiveness`) — device-vanished is
+  /// engine-independent per #1377 bake-off findings, so candidate D needs the same
+  /// detection. Fires `onInterrupted()`; the manager keeps holding the accumulated
+  /// `capturedSamples`, and #1408 made `RecordingSessionKernel` transcribe them at
+  /// the recording exit. The kernel saves the partial dictation, not the manager.
   private func registerDeviceIsAliveListener(deviceID: AudioDeviceID) {
     var addr = AudioObjectPropertyAddress(
       mSelector: kAudioDevicePropertyDeviceIsAlive,
@@ -1051,17 +1052,18 @@ final class HALDeviceInputSource: AudioInputSource {
 
   private func handleDeviceMayHaveVanished(deviceID: AudioDeviceID) {
     guard isCapturing, !isRecovering else { return }
-    var isAlive: UInt32 = 0
-    var size = UInt32(MemoryLayout<UInt32>.size)
-    var addr = AudioObjectPropertyAddress(
-      mSelector: kAudioDevicePropertyDeviceIsAlive,
-      mScope: kAudioObjectPropertyScopeGlobal,
-      mElement: kAudioObjectPropertyElementMain
-    )
-    AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &isAlive)
-    guard isAlive == 0 else { return }
+    let liveness = CoreAudioDeviceLiveness.classify(deviceID: deviceID)
+    guard liveness != .alive else { return }
+
+    // #1408: `.removed` is Core Audio confirming the device is gone, and earns
+    // the "Microphone disconnected" notice. `.unverified` means the read itself
+    // failed for a reason that says nothing about the device — the capture is
+    // still broken, so tear down and salvage exactly the same way, but report
+    // the honest cause so we never badge a mic that never left.
+    let cause: EngineInterruptionCause = liveness == .removed ? .deviceRemoved : .engineLost
     AudioCaptureManager.btRouteLog(
-      "HALDeviceInputSource: device \(deviceID) went away — interrupting")
+      "HALDeviceInputSource: device \(deviceID) \(liveness == .removed ? "went away" : "liveness unverified") — interrupting (\(cause.rawValue))"
+    )
     // Tear down BEFORE firing onInterrupted (mirrors AVAudioEngineSource's
     // emergencyTeardown-then-onInterrupted order). Without this, `isRunning`
     // still reports true (we never called AudioOutputUnitStop), so the
@@ -1069,7 +1071,7 @@ final class HALDeviceInputSource: AudioInputSource {
     // bound to a device that no longer exists on the NEXT recording instead
     // of rebuilding fresh (cloud review P2).
     teardownUnit()
-    onInterrupted?()
+    onInterrupted?(cause)
   }
 
   /// A dedicated thread that blocks on `context.semaphore` and drains the

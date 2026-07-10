@@ -5,7 +5,7 @@ import Testing
 
 /// Harness self-test (epic #827, PR-2 plan §11.2 item H).
 /// Exercises `ScenarioRunner` against `StubRecordingSession` and proves the
-/// assertion library reports pass and fail correctly. The 33-scenario
+/// assertion library reports pass and fail correctly. The 38-scenario
 /// inventory does NOT execute in PR-2 (no kernel) — this proves the runner
 /// mechanics so PR-3 inherits a trusted harness.
 @MainActor

@@ -5,18 +5,30 @@ import Testing
 
 // #1174 A3 — locks the XPC-boundary host-cause remap (Codex PR-5b r1 finding 2).
 // In XPC mode the audio service relays interruptions through one no-cause-typed
-// channel; the host collapses every LOSS cause to `.engineLost` (none has another
-// owner across the boundary) and preserves ONLY the non-loss max-duration cap so
-// it stays suppressed exactly as direct mode does. Unknown / legacy raw values
-// fail toward visibility (`.engineLost`).
+// channel; the host preserves `.deviceRemoved` (#1408 — the helper ran the
+// liveness check, the host cannot re-run it) and collapses every other loss
+// cause to `.engineLost` (none has another owner across the boundary). Unknown /
+// legacy raw values fail toward visibility (`.engineLost`) — including the
+// retired `max_duration_reached` (#1408 A3: the cap is a normal auto-stop and
+// left the interruption channel entirely).
 @Suite("EngineInterruptionCause XPC host remap")
 struct EngineInterruptionCauseTests {
 
-  @Test("max-duration is the only relayed cause the host preserves (suppress)")
-  func maxDurationPreserved() {
+  @Test("device removal is the only relayed cause the host preserves")
+  func deviceRemovalPreserved() {
+    #expect(
+      EngineInterruptionCause.hostCause(forRelayedRawValue: "device_removed")
+        == .deviceRemoved)
+  }
+
+  /// #1408 A3 adversarial row: the RETIRED raw value must not resurrect the
+  /// cap as an interruption — a stale helper relaying it reads as an unknown
+  /// and fails toward visibility like any other legacy value.
+  @Test("the retired max_duration_reached raw value maps to .engineLost")
+  func retiredMaxDurationRawValueIsLegacy() {
     #expect(
       EngineInterruptionCause.hostCause(forRelayedRawValue: "max_duration_reached")
-        == .maxDurationReached)
+        == .engineLost)
   }
 
   @Test("every loss cause collapses to .engineLost across XPC (capture)")

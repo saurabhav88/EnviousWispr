@@ -266,7 +266,19 @@ struct KernelFinalizationWiring {
         // key once this save is durable. `isRecovered` is false — this is the
         // live take, not a rescued one.
         recoverySessionID: context.config?.recoverySessionID,
-        isRecovered: false)
+        isRecovered: false,
+        // #1408: the mic died mid-recording and this is the salvaged take. Read
+        // from the SAME shared `KernelTelemetryState` this closure already
+        // captures for `historySaveFailed` — the kernel stamped the cause before
+        // the exit, and nothing clears it until the next `start(config:)`. No
+        // widened `store` signature; the holder is the single home.
+        //
+        // `isDeviceLoss`, NOT `!= nil`. An engine that failed to recover and a
+        // broad capture-session failure are salvaged too, and badging those
+        // transcripts with a permanent crossed-out microphone would tell the user
+        // something that did not happen. This badge is durable and unfixable
+        // after the fact, so it takes the strictest predicate.
+        inputDeviceWasRemoved: telemetryState.interruptionCause?.isDeviceLoss == true)
       outcome.transcript = transcript
       do {
         try save(transcript)

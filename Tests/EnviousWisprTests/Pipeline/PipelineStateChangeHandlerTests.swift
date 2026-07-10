@@ -42,6 +42,9 @@ struct PipelineStateChangeHandlerTests {
     var failedCalls: [String] = []
     /// #1167: reasons passed to the history-save-failed pill.
     var historySaveWarnings: [String] = []
+    /// #1408 A1: (disclosure, alsoTrimmedLead) pairs forwarded to the
+    /// interruption pill callback.
+    var interruptionWarnings: [(CompletionInterruptionDisclosure, Bool)] = []
   }
 
   private static func makeHandler(
@@ -55,7 +58,10 @@ struct PipelineStateChangeHandlerTests {
       appendCompletedTranscript: { callbacks.appendedCalls.append($0) },
       reportDictationCompleted: { callbacks.completedCalls.append($0) },
       reportPipelineFailed: { callbacks.failedCalls.append($0) },
-      scheduleHistorySaveFailedWarning: { callbacks.historySaveWarnings.append($0) }
+      scheduleHistorySaveFailedWarning: { callbacks.historySaveWarnings.append($0) },
+      scheduleInterruptionWarning: { disclosure, alsoTrimmedLead in
+        callbacks.interruptionWarnings.append((disclosure, alsoTrimmedLead))
+      }
     )
   }
 
@@ -325,5 +331,41 @@ struct PipelineStateChangeHandlerTests {
     // Telemetry still fires so the degraded-save dimension is recorded.
     #expect(calls.completedCalls.count == 1)
     #expect(calls.scheduleWarningCount == 0)
+  }
+
+  // MARK: - #1408 A1: interruption-pill forwarding
+
+  /// The handler is a pure dispatcher: the typed effect's payload (which
+  /// sentence family, whether the lead was also lost) must reach the injected
+  /// callback intact — the factory picks the copy from exactly these two values.
+  @Test(
+    "complete + interruption disclosure forwards (disclosure, alsoTrimmedLead) to the callback",
+    arguments: [CompletionInterruptionDisclosure.deviceRemoved, .otherInterruption],
+    [false, true])
+  func interruptionWarningForwardsPayload(
+    disclosure: CompletionInterruptionDisclosure, alsoTrimmedLead: Bool
+  ) {
+    let spy = OverlaySpy()
+    let calls = CallbackRecorder()
+    let handler = Self.makeHandler(overlay: spy, callbacks: calls)
+    let transcript = Self.makeTranscript(pasteTier: "direct")
+
+    handler.handle(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: .hidden,
+      lastPolishError: nil,
+      currentTranscript: transcript,
+      historySaved: true,
+      historySaveReason: nil,
+      salvagedLead: alsoTrimmedLead,
+      interruptionDisclosure: disclosure
+    )
+
+    #expect(calls.interruptionWarnings.count == 1)
+    #expect(calls.interruptionWarnings.first?.0 == disclosure)
+    #expect(calls.interruptionWarnings.first?.1 == alsoTrimmedLead)
+    // The interruption pill owns the single slot: no other notice fires.
+    #expect(calls.scheduleWarningCount == 0)
+    #expect(calls.historySaveWarnings.isEmpty)
   }
 }

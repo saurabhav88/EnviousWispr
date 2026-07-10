@@ -15,7 +15,12 @@ protocol AudioInputSource: AnyObject {
   // Callbacks — set by AudioCaptureManager before start
   var onSamples: (@Sendable (_ samples: [Float], _ audioLevel: Float) -> Void)? { get set }
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)? { get set }
-  var onInterrupted: (() -> Void)? { get set }
+  /// #1408: the source names WHY capture stopped. It is the only layer that can:
+  /// only the source knows whether it ran the `kAudioDevicePropertyDeviceIsAlive`
+  /// check and saw the device gone, versus whether its engine simply failed to
+  /// recover with the device still attached. The manager used to infer this from
+  /// the source's CLASS, which cannot tell those two apart.
+  var onInterrupted: ((EngineInterruptionCause) -> Void)? { get set }
   var onLifecycleSignal: (@Sendable (String) -> Void)? { get set }
 
   /// Liveness-watchdog callback — fires once per capture session if zero

@@ -77,13 +77,18 @@ public final class TelemetryService {
     captureNativeRateHz: Double? = nil, captureRingDropCount: Int? = nil,
     captureConverterErrorCount: Int? = nil, captureZeroOutputCount: Int? = nil,
     captureRateDivergenceDetected: Bool? = nil, captureFormatStabilized: Bool? = nil,
-    captureRebuiltForFormat: Bool? = nil, salvagedLeadTrimMs: Int? = nil
+    captureRebuiltForFormat: Bool? = nil, salvagedLeadTrimMs: Int? = nil,
+    // #1408: present only on a salvaged completion — WHICH interruption cut the
+    // recording short. `stop_reason` already says an interruption ended it; this
+    // says which one. Low-cardinality reason string.
+    interruptedBy: String? = nil
   ) {
     #if DEBUG
       var hookStringProps: [String: String] = [
         "input_mode": inputMode,
         "asr_backend": t.backendType.rawValue,
       ]
+      if let ib = interruptedBy { hookStringProps["interrupted_by"] = ib }
       // #1376: mirror the emitted route keys' presence-only semantics so the
       // App → Telemetry threading is unit-testable.
       if let st = selectedTransport { hookStringProps["selected_transport"] = st }
@@ -138,7 +143,8 @@ public final class TelemetryService {
       captureRateDivergenceDetected: captureRateDivergenceDetected,
       captureFormatStabilized: captureFormatStabilized,
       captureRebuiltForFormat: captureRebuiltForFormat,
-      salvagedLeadTrimMs: salvagedLeadTrimMs
+      salvagedLeadTrimMs: salvagedLeadTrimMs,
+      interruptedBy: interruptedBy
     )
     if let e2e = m?.e2eSeconds {
       metricPipelineE2E(
@@ -439,6 +445,43 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("limb.failure_observed", properties: props)
   }
 
+  /// #1408: the microphone died (or the duration cap fired) while a recording was
+  /// in flight. Fires on EVERY such interruption that reaches a recording exit —
+  /// salvaged or not — so `dictation.completed`'s salvage count has a denominator.
+  ///
+  /// Deliberately NOT an error: a walked-away Bluetooth user is not our defect, so
+  /// this must never page, email, or file a ticket (`sentry-vs-posthog-routing`).
+  /// It ships as an observational counter with no threshold, because a threshold
+  /// needs a baseline and we have none yet. Metadata only, never audio-derived.
+  public func audioCaptureInterrupted(
+    cause: String, salvageAttempted: Bool, salvageSucceeded: Bool,
+    terminalState: String, backend: String,
+    recordingDurationMs: Int? = nil
+  ) {
+    var props: [String: Any] = [
+      "cause": cause,
+      "salvage_attempted": salvageAttempted,
+      "salvage_succeeded": salvageSucceeded,
+      "terminal_state": terminalState,
+      "backend": backend,
+    ]
+    if let ms = recordingDurationMs { props["recording_duration_ms"] = ms }
+    #if DEBUG
+      var intProps: [String: Int] = [:]
+      if let ms = recordingDurationMs { intProps["recording_duration_ms"] = ms }
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "audio.capture_interrupted",
+          stringProps: [
+            "cause": cause, "terminal_state": terminalState, "backend": backend,
+            "salvage_attempted": String(salvageAttempted),
+            "salvage_succeeded": String(salvageSucceeded),
+          ],
+          intProps: intProps))
+    #endif
+    PostHogSDK.shared.capture("audio.capture_interrupted", properties: props)
+  }
+
   public func dictationCompleted(
     result: String, inputMode: String, asrBackend: String,
     llmProvider: String?, fillerRemoval: Bool,
@@ -459,7 +502,8 @@ public final class TelemetryService {
     captureNativeRateHz: Double? = nil, captureRingDropCount: Int? = nil,
     captureConverterErrorCount: Int? = nil, captureZeroOutputCount: Int? = nil,
     captureRateDivergenceDetected: Bool? = nil, captureFormatStabilized: Bool? = nil,
-    captureRebuiltForFormat: Bool? = nil, salvagedLeadTrimMs: Int? = nil
+    captureRebuiltForFormat: Bool? = nil, salvagedLeadTrimMs: Int? = nil,
+    interruptedBy: String? = nil
   ) {
     var props: [String: Any] = [
       "result": result,
@@ -473,6 +517,9 @@ public final class TelemetryService {
     // + why the recording stopped. Metadata only (telemetry-privacy-boundary).
     if let rec = recordingSeconds { props["recording_seconds"] = String(format: "%.3f", rec) }
     if let sr = stopReason { props["stop_reason"] = sr }
+    // #1408: which interruption cut this dictation short. Present only when the
+    // recording was salvaged after the mic died or the duration cap fired.
+    if let ib = interruptedBy { props["interrupted_by"] = ib }
     // #1434: capture-health facts + salvage marker (fleet visibility across
     // Bluetooth device models; counters omitted when zero at the call site).
     if let rate = captureNativeRateHz { props["capture_native_rate_hz"] = Int(rate) }

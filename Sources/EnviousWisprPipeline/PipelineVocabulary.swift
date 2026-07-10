@@ -1,3 +1,4 @@
+import EnviousWisprAudio
 import EnviousWisprCore
 import Foundation
 
@@ -10,7 +11,55 @@ import Foundation
 
 /// Known interruption message strings used to route .error state to .interruption overlay intent.
 enum InterruptionMessages {
+  /// Shown ONLY when Core Audio confirmed the input device went away.
   static let micDisconnected = "Microphone disconnected"
+
+  /// #1408. Shown for every other interruption: an engine that failed to
+  /// recover with the microphone still attached, a capture-session
+  /// interruption, our own audio helper dying. Says exactly what we know and
+  /// nothing we cannot back.
+  static let recordingInterrupted = "Recording interrupted"
+
+  /// #1408: the SINGLE place that decides which interruption sentence a user
+  /// sees. Three sites in `KernelDictationDriver` render an audio interruption
+  /// (the external-error path, the overlay intent, and the public state mapper);
+  /// all three route here so the sentence cannot drift between them.
+  ///
+  /// A missing cause yields the neutral line. The kernel refuses salvage when it
+  /// reaches an audio-interruption exit with nothing stamped, and an unstamped
+  /// interruption is precisely the case where we have no evidence a microphone
+  /// left — so the default fails toward the claim we can always back.
+  static func message(for cause: EngineInterruptionCause?) -> String {
+    cause?.isDeviceLoss == true ? micDisconnected : recordingInterrupted
+  }
+}
+
+/// #1408 (grounded review A1): what a COMPLETED take discloses about the
+/// interruption that cut it short. Derived from the stamped
+/// `EngineInterruptionCause` at the planner call sites; carried as a typed
+/// value instead of a Bool so a non-disconnect salvage can no longer paste
+/// potentially truncated text with no notice at all.
+///
+/// nil (no value) = a normal completion, nothing to disclose. The two cases
+/// split on the ONLY evidence axis the pipeline has: was the input device
+/// verified removed (`isDeviceLoss`), or did capture die some other way with
+/// the microphone, as far as we know, still attached. Copy for each cell lives
+/// at the factory (`PipelineStateChangeHandlerFactory`), the single copy
+/// authority for post-completion notices.
+public enum CompletionInterruptionDisclosure: Equatable, Sendable {
+  /// Core Audio confirmed the input device went away mid-recording.
+  case deviceRemoved
+  /// Capture was interrupted by anything else: engine lost, capture session
+  /// lost. No claim about the microphone is allowed.
+  case otherInterruption
+
+  /// nil cause → nil disclosure (normal completion). Every stamped cause on a
+  /// COMPLETED take is a disclosure: the take survived an interruption, so the
+  /// pasted text may be missing its tail.
+  public init?(cause: EngineInterruptionCause?) {
+    guard let cause else { return nil }
+    self = cause.isDeviceLoss ? .deviceRemoved : .otherInterruption
+  }
 }
 
 /// Events the recording driver handles.
