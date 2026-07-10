@@ -23,7 +23,8 @@ import Testing
 ///   4b. The OR formula `pipelineFellBackToRaw = filter || validator`.
 ///   4c. The pipeline-side degradation `metadata == nil ? nil : pipelineFellBackToRaw`.
 ///   5. AFMPolishError wraps the underlying error, and `captureAFMPolishError`
-///      records a `generationFailed` / `polish` Sentry event.
+///      records a `generationFailed` / `polish` Sentry event — except for a
+///      cancellation, which is downgraded to a breadcrumb (#1438).
 ///   7. #1050 `polishFallbackReason` honest disaggregation.
 @MainActor
 @Suite("AFM polish telemetry — #1072")
@@ -471,6 +472,67 @@ struct DualModePolishTelemetryTests {
     // Router fields were removed in #1072 — the event no longer carries them.
     #expect(captured?.extra["polish_mode"] == nil)
     #expect(captured?.extra["polish_router_basis"] == nil)
+  }
+
+  @Test(
+    "captureAFMPolishError downgrades a cancellation to a breadcrumb",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1438",
+      "AFM cancellation fired a full Sentry alert")
+  )
+  func afmPolishCancellationDowngradedToBreadcrumb() {
+    final class SpyBox: @unchecked Sendable {
+      private let lock = NSLock()
+      private var _polishErrorCaptureCount = 0
+      private var _breadcrumbs: [(stage: String, message: String)] = []
+      var polishErrorCaptureCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return _polishErrorCaptureCount
+      }
+      var breadcrumbs: [(stage: String, message: String)] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _breadcrumbs
+      }
+      func recordPolishErrorCapture() {
+        lock.lock()
+        defer { lock.unlock() }
+        _polishErrorCaptureCount += 1
+      }
+      func recordBreadcrumb(stage: String, message: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        _breadcrumbs.append((stage: stage, message: message))
+      }
+    }
+
+    let spy = SpyBox()
+    let priorErrorDelegate = SentryBreadcrumb.captureErrorDelegate
+    let priorBreadcrumbDelegate = SentryBreadcrumb.breadcrumbDelegate
+    SentryBreadcrumb.captureErrorDelegate = { _, category, stage, _ in
+      guard category == .generationFailed, stage == "polish" else { return }
+      spy.recordPolishErrorCapture()
+    }
+    SentryBreadcrumb.breadcrumbDelegate = { stage, message, _, _ in
+      spy.recordBreadcrumb(stage: stage, message: message)
+    }
+    defer {
+      SentryBreadcrumb.captureErrorDelegate = priorErrorDelegate
+      SentryBreadcrumb.breadcrumbDelegate = priorBreadcrumbDelegate
+    }
+
+    SentryBreadcrumb.captureAFMPolishError(CancellationError())
+
+    // Half 1: a cancelled polish is a clean unwind, never an alerting event.
+    #expect(spy.polishErrorCaptureCount == 0)
+    // Half 2: it still leaves a trail entry, matching the #979 downgrade precedent.
+    // Both spies filter to this call's own signature: the delegates are process
+    // globals, so an unrelated sibling emit must not redden this test.
+    let cancellationCrumbs = spy.breadcrumbs.filter {
+      $0.stage == "polish" && $0.message.contains("AFM polish cancelled")
+    }
+    #expect(cancellationCrumbs.count == 1)
   }
 
   // MARK: - 6. PolishMetadata Codable roundtrip
