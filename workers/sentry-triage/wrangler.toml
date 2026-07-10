@@ -1,15 +1,24 @@
 # Secrets (set via `wrangler secret put <NAME>`, not committed here):
 #   SENTRY_WEBHOOK_SECRET — HMAC key for verifying inbound Sentry webhooks.
 #   DISCORD_WEBHOOK_URL   — Discord channel webhook for triage alerts.
-#   ROUTINE_TOKEN / ROUTINE_TRIGGER_ID — fires the TIK/TOK Claude Code Routine.
 #   SENTRY_AUTH_TOKEN     — a personal Sentry token scoped to event:read ONLY
-#     (keystore: sentry-triage-worker-token), used to fetch a captured issue's
-#     latest event (category/stage/environment/build_type/release tags +
-#     OS/device contexts) for the source-labeled, detail-rich Discord embed
-#     (#1229). NOT the keystore's `sentry-auth-token` — that one is scoped to
-#     CI release uploads only and 403s on event reads (org tokens on this
-#     Sentry plan only support the org:ci scope; event:read requires a
-#     personal token instead). The worker never writes back to Sentry.
+#     (keystore: sentry-triage-worker-token), used to page a captured issue's
+#     events (release/environment/build_type/level/user tags for release-scoped
+#     severity scoring, plus category/stage/OS/device for the source-labeled
+#     Discord embed, #1229/#1470). NOT the keystore's `sentry-auth-token` — that
+#     one is scoped to CI release uploads only and 403s on event reads (org
+#     tokens on this Sentry plan only support the org:ci scope; event:read
+#     requires a personal token instead). The worker never writes back to Sentry.
+#   GITHUB_ISSUES_READ_TOKEN — fine-grained GitHub token scoped to
+#     saurabhav88/EnviousWispr, repository permission Issues:read ONLY, no writes
+#     (#1470). Reads open issues to check whether a fingerprint already carries an
+#     open sentry-triage ticket (exact `<!-- sentry-issue-id: {shortId} -->`
+#     marker) before buzzing Discord. GCP secret: github-issues-read-token-sentry-triage.
+#     Record its expiry + rotation command in sentry-triage-pipeline.md.
+#   ROUTINE_TOKEN / ROUTINE_TRIGGER_ID — RETIRED (#1470). The worker no longer
+#     wakes the TIK routine; TIK's daily run is the sole sentry-triage ticket
+#     writer. Delete both from the deployed worker after a post-deploy grep
+#     confirms no executable consumer remains.
 
 name = "enviouswispr-sentry-triage"
 main = "src/index.js"
