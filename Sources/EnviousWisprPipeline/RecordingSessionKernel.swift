@@ -1523,7 +1523,16 @@ final class RecordingSessionKernel {
       if effectiveSpeechEvidence, !isStreamingSession,
         adapter.capabilities.decodesConditionedBatchSamples, !asrSamples.isEmpty
       {
-        if let salvaged = await attemptDegradedLeadSalvage(sid, samples: asrSamples) {
+        let salvageAttemptResult = await attemptDegradedLeadSalvage(sid, samples: asrSamples)
+        // #1434 cloud review: the ladder's retry decode(s) run AFTER the
+        // line-1376 markASRTimingEnd() call for the (empty) primary decode,
+        // so a salvaged completion needs its own, later stamp — otherwise
+        // pipeline.completed's asr_s and the timing logs record only the
+        // primary decode's time, making the retry work invisible in
+        // latency telemetry for exactly the recoveries this path exists
+        // for. Idempotent: outcome.asrEndedAtSeconds is a plain overwrite.
+        markASRTimingEnd()
+        if let salvaged = salvageAttemptResult {
           guard isCurrent(sid), !state.isTerminal else { return }
           let trimMs = salvaged.trimSamples * 1000 / Int(AudioConstants.sampleRate)
           lastSalvagedLeadTrimMs = trimMs
