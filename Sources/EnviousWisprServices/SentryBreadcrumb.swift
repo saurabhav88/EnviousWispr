@@ -115,6 +115,8 @@ public enum SentryBreadcrumb {
     level: SentryLevel = .info,
     data: [String: Any]? = nil
   ) {
+    // Test spy hook — invoked synchronously before SDK dispatch. Production sets nil.
+    Self.breadcrumbDelegate?(stage, message, level, data)
     let crumb = Breadcrumb(level: level, category: "pipeline.\(stage)")
     crumb.message = message
     crumb.type = "default"
@@ -263,7 +265,21 @@ public enum SentryBreadcrumb {
   /// Capture an Apple Intelligence polish generation failure on this event
   /// (#429; the router `polish_mode`/`polish_router_basis` fields were dropped in
   /// #1072 when the dual router was removed).
+  ///
+  /// A `CancellationError` is a clean unwind, not a failure: when the AFM polish
+  /// budget expires, the task group cancels the in-flight generation, and
+  /// `AppleIntelligenceConnector.polish()`'s catch-all wraps that cancellation as
+  /// an `AFMPolishError`. The user still gets clean text via the runner's silent
+  /// skip, so the cancellation earns a breadcrumb, never an alerting event (#1438).
   public static func captureAFMPolishError(_ error: any Error) {
+    if error is CancellationError {
+      add(
+        stage: "polish",
+        message: "AFM polish cancelled; treating as non-alerting unwind",
+        level: .info
+      )
+      return
+    }
     captureError(error, category: .generationFailed, stage: "polish")
   }
 
@@ -415,4 +431,10 @@ extension SentryBreadcrumb {
   /// to the captured Sentry event.
   public nonisolated(unsafe) static var captureErrorTagsDelegate:
     (@Sendable ([String: String]) -> Void)?
+
+  /// Optional test-only delegate invoked synchronously on every `add` call before
+  /// the real Sentry SDK is touched — including the trail entry `captureError`
+  /// leaves alongside a captured event. Production code never reads it.
+  public nonisolated(unsafe) static var breadcrumbDelegate:
+    (@Sendable (String, String, SentryLevel, [String: Any]?) -> Void)?
 }
