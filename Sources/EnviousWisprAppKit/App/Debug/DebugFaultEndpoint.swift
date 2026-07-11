@@ -296,10 +296,7 @@
       let parts = inner.split(separator: ",", maxSplits: 2, omittingEmptySubsequences: false)
       guard parts.count == 3 else { return nil }
       guard let mode = DebugZeroFillArm.Mode(rawValue: String(parts[0])) else { return nil }
-      // n must be non-negative: a negative threshold flows to the controller's
-      // `zeroAfter` boundary branch as a negative start index (`-1..<count`), which
-      // crashes the capture thread when PreRollForwarder indexes the array.
-      guard let n = Int(parts[1]), n >= 0 else { return nil }
+      guard let n = Int(parts[1]) else { return nil }
       let trialID = String(parts[2])
       guard !trialID.isEmpty else { return nil }
       return DebugZeroFillArm(mode: mode, n: n, trialID: trialID)

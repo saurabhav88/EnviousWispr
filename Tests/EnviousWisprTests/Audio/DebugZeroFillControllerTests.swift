@@ -77,6 +77,30 @@
       #expect(c.zeroRange(count: 0, context: .live) == nil)
     }
 
+    @Test("negative threshold/budget never produces a negative range (no RT crash)")
+    func negativeBudgetIsSafe() {
+      // Bypass the upstream parser/manager guards and hand the controller a
+      // negative threshold/budget directly — this is what would crash the capture
+      // thread if the range math were unsafe. Assert every returned range has a
+      // non-negative lower bound across several chunks.
+      let after = DebugZeroFillController()
+      after.arm(mode: .zeroAfter(threshold: -1), trialID: "neg1")
+      for _ in 0..<4 {
+        if let r = after.zeroRange(count: 640, context: .live) {
+          #expect(r.lowerBound >= 0)
+          #expect(r.upperBound <= 640)
+        }
+      }
+      let next = DebugZeroFillController()
+      next.arm(mode: .zeroNext(budget: -1), trialID: "neg2")
+      for _ in 0..<4 {
+        if let r = next.zeroRange(count: 640, context: .live) {
+          #expect(r.lowerBound >= 0)
+          #expect(r.upperBound <= 640)
+        }
+      }
+    }
+
     @Test("disarm clears all state")
     func disarm() {
       let c = DebugZeroFillController()

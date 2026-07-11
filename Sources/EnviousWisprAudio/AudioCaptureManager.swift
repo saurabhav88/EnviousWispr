@@ -142,13 +142,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// path. Translates the Core wire enum into the controller's associated-value
     /// `Mode` here so the injector type stays module-internal. `package` access:
     /// reachable from the handler in `EnviousWisprAudioService` (same SPM package).
-    /// Returns false (arms nothing) for a negative budget. This is the RT-safety
-    /// chokepoint for EVERY arm path — endpoint, proxy, and the XPC handler that
-    /// decodes a `DebugZeroFillArm` straight from JSON — so a negative `n` cannot
-    /// reach the controller (where it would emit a negative range and crash the
-    /// capture thread on index). The endpoint parser also rejects it at the edge.
-    package func debugArmZeroFill(mode: DebugZeroFillArm.Mode, n: Int, trialID: String) -> Bool {
-      guard n >= 0 else { return false }
+    /// `n` is intentionally NOT validated here: the controller's range math is
+    /// provably safe for any `Int`, including negatives (`zeroAfter` short-circuits
+    /// on `startSeen >= threshold`; `zeroNext` guards `startSeen < budget`), so a
+    /// negative budget zeroes-all or nothing but never emits a negative range.
+    /// Proven by `DebugZeroFillControllerTests.negativeBudgetIsSafe`. Do not re-add
+    /// an `n >= 0` guard — a Codex round claimed a crash here that does not exist.
+    package func debugArmZeroFill(mode: DebugZeroFillArm.Mode, n: Int, trialID: String) {
       let controllerMode: DebugZeroFillController.Mode
       switch mode {
       case .zeroFromStart: controllerMode = .zeroFromStart
@@ -156,10 +156,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       case .zeroNextSamples: controllerMode = .zeroNext(budget: n)
       case .disarmed:
         debugZeroFillController.disarm()
-        return true
+        return
       }
       debugZeroFillController.arm(mode: controllerMode, trialID: trialID)
-      return true
     }
 
     /// #1317 proof-bench (DEBUG only): snapshot the injector status plus the
