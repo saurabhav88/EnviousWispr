@@ -355,6 +355,60 @@ import Testing
     }
   }
 
+  /// A failed promotion must not silently un-admit an intact source.
+  ///
+  /// There is one admission marker per model, and promotion deletes it before doing
+  /// work that can throw. If that work fails, the source's bytes are still perfect —
+  /// but nothing that picks by ADMISSION (including the kill-switch fallback) can
+  /// find them any more, so EG-1 would report unavailable with a flawless copy
+  /// sitting right there. (Codex PR-1 review r17.)
+  @Test func failedPromotionRestoresTheSourceAdmission() async throws {
+    let dirs = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: dirs.old, path: f.path) }
+    let p = try plan(files: files, dirs: dirs)
+
+    // The source starts out admitted (a machine that downloaded before this change).
+    let sourceGate = CacheAdmission(
+      manifest: p.manifest, installDirectory: dirs.old, metadataDirectory: dirs.metadata)
+    let validation = await sourceGate.validateExistingCache()
+    try sourceGate.promoteAndAdmit(
+      stagedComponents: [], stagingDirectory: dirs.old,
+      untouchedComponents: validation.verifiedComponents)
+    #expect(sourceGate.isAdmitted())
+
+    // Make PROMOTION fail — not the copy. Promotion prunes orphans (anything in the
+    // destination the manifest does not name), so an orphan directory we cannot
+    // delete throws from inside promoteAndAdmit, AFTER it has already dropped the
+    // shared admission marker. That is precisely the window this test exists for.
+    try FileManager.default.createDirectory(at: dirs.new, withIntermediateDirectories: true)
+    let orphan = dirs.new.appendingPathComponent("not-in-the-manifest", isDirectory: true)
+    try FileManager.default.createDirectory(at: orphan, withIntermediateDirectories: true)
+    try write(Data("x".utf8), under: orphan, path: "stuck.bin")
+    // No write permission on the orphan dir: its contents cannot be removed.
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: orphan.path)
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: orphan.path)
+    }
+
+    let outcome = await ModelRelocationMigrator().migrate(p)
+
+    #expect(outcome != .relocated)
+    #expect(
+      sourceGate.isAdmitted(),
+      "an intact source must remain ADMITTED when promotion fails, or the fallback cannot find it")
+    // The invariant that actually matters: SOME usable copy is still findable by
+    // admission. (The destination may also validate here — the clone succeeded and
+    // only the orphan prune failed — and loading from it is perfectly fine. What must
+    // never happen is BOTH going un-admitted, which is what leaves EG-1 unavailable
+    // with a flawless model on disk.)
+    #expect(
+      ModelRelocationMigrator.admittedLocation(
+        manifest: p.manifest, candidates: [dirs.new, dirs.old],
+        metadataDirectory: dirs.metadata) != nil,
+      "the fallback must still find a usable copy after a failed promotion")
+  }
+
   /// An already-admitted destination is the common case on every launch after
   /// the first: cheap no-op, no rehash, nothing touched.
   @Test func admittedDestinationIsANoop() async throws {

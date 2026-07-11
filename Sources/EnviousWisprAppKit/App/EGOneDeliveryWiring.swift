@@ -162,8 +162,28 @@ enum EGOneDeliveryWiring {
     // outlives the decision that set it.
     runtime.onModelRemovalCancelled = { migrator.markLegacyForReplacement(relocation) }
     Task { @MainActor in
-      _ = await migrator.migrate(relocation)
-      switch migrator.pendingLegacyIntent(relocation) {
+      let outcome = await migrator.migrate(relocation)
+
+      // The OUTCOME drives this launch; the token drives RECOVERY across launches.
+      //
+      // Journaling can fail (unwritable metadata directory, a failed atomic write).
+      // If we keyed only off the token, that failure would silently skip the
+      // replacement and then try to activate a monolith this build cannot load —
+      // EG-1 unavailable, with nothing started to fix it (Codex PR-1 review r17).
+      // So a classification that found a trusted legacy artifact starts the
+      // replacement whether or not the note got written. Cleanup stays safe by
+      // construction: `cleanUpLegacy` deletes nothing without a token, so a failed
+      // write costs a leaked old file until a launch that can journal, never an
+      // unauthorized deletion.
+      let intent = migrator.pendingLegacyIntent(relocation)
+      let legacyNeedsReplacing: Bool
+      if case .trustedLegacyPending = outcome {
+        legacyNeedsReplacing = true
+      } else {
+        legacyNeedsReplacing = false
+      }
+
+      switch intent ?? (legacyNeedsReplacing ? .replace : nil) {
       case .replace:
         runtime.sweepStaleServersAtLaunch()
         runtime.startLegacyLayoutMigration {

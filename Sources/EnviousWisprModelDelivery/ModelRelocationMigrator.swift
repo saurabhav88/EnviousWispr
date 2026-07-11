@@ -250,18 +250,30 @@ public struct ModelRelocationMigrator: Sendable {
       return .unrecognized
     }
 
-    // Re-stamp admission against the NEW install directory. A same-volume
-    // rename preserves size+mtime, so this is the marker fast path; a
-    // cross-volume copy rehashes once, which `promoteAndAdmit` handles.
+    // Re-stamp admission against the NEW install directory.
+    //
+    // There is ONE admission marker per model, and `promoteAndAdmit` deletes it
+    // first (so no stale marker can ever bless a half-promoted set). That means a
+    // throw anywhere inside leaves the INTACT source no longer admitted — and the
+    // kill-switch fallback, which picks by admission, could then find no usable copy
+    // and report EG-1 unavailable even though a perfect one is sitting right there
+    // (Codex PR-1 review r17). So if promotion fails, put the source's admission
+    // back: its bytes were validated moments ago and are untouched.
     do {
       try admission.promoteAndAdmit(
         stagedComponents: [],
         stagingDirectory: plan.destination,
         untouchedComponents: validation.verifiedComponents)
     } catch {
+      restoreAdmission(
+        of: oldAdmission, components: validation.verifiedComponents, at: oldDirectory)
       return .unrecognized
     }
-    guard admission.isAdmitted() else { return .unrecognized }
+    guard admission.isAdmitted() else {
+      restoreAdmission(
+        of: oldAdmission, components: validation.verifiedComponents, at: oldDirectory)
+      return .unrecognized
+    }
 
     // Only now is the old copy provably redundant — and we just proved which
     // components are byte-exact, so pass them rather than re-hashing multiple GB.
@@ -433,6 +445,25 @@ public struct ModelRelocationMigrator: Sendable {
   }
 
   // MARK: - Internals
+
+  /// Re-admit an intact source after a failed promotion to the destination.
+  ///
+  /// There is one marker per model, and promotion deletes it before it does anything
+  /// that can throw. Without this, a failed promotion silently un-admits a perfectly
+  /// good copy: the bytes stay, but nothing that picks by admission — including the
+  /// kill-switch fallback — can find them again (Codex PR-1 review r17).
+  ///
+  /// Best-effort by nature: if re-admission ALSO fails we are on a filesystem that is
+  /// refusing writes, and the bytes are still there to be re-validated (and
+  /// re-admitted) on the next launch. We never delete anything on this path.
+  private func restoreAdmission(
+    of admission: CacheAdmission, components: Set<String>, at directory: URL
+  ) {
+    try? admission.promoteAndAdmit(
+      stagedComponents: [],
+      stagingDirectory: directory,
+      untouchedComponents: components)
+  }
 
   /// Delete a retired downloader's scratch files from an old location.
   ///
