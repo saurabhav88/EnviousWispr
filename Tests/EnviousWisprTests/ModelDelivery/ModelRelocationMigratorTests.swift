@@ -317,6 +317,44 @@ import Testing
       "unverified bytes must survive cleanup even when their filename matches ours")
   }
 
+  /// A proof about ONE directory says nothing about the bytes in another. When a
+  /// plan lists several old locations, the relocation source's validation must not
+  /// authorize deletions in the others — those earn their own. EG-1 ships one old
+  /// location today, so this is the API being made safe BEFORE the remaining engines
+  /// add a second. (Codex PR-1 review r12.)
+  @Test func proofForOneOldLocationNeverAuthorizesDeletionInAnother() async throws {
+    let dirs = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    // Old location A: the genuine copy (this becomes the relocation source).
+    for f in files { try write(f.content, under: dirs.old, path: f.path) }
+    // Old location B: same filenames, bytes we never shipped.
+    let otherOld = dirs.old.deletingLastPathComponent()
+      .appendingPathComponent("PolishModels-2", isDirectory: true)
+    try FileManager.default.createDirectory(at: otherOld, withIntermediateDirectories: true)
+    for f in files {
+      try write(Data("not the bytes we shipped".utf8), under: otherOld, path: f.path)
+    }
+
+    let p = ModelRelocationMigrator.RelocationPlan(
+      manifest: try ManifestFixture.manifest(files: files),
+      oldLocations: [dirs.old, otherOld],
+      destination: dirs.new,
+      metadataDirectory: dirs.metadata,
+      trustedLegacyArtifacts: [Self.legacyArtifact])
+
+    let outcome = await ModelRelocationMigrator().migrate(p)
+
+    #expect(outcome == .relocated)
+    // The proven source is cleaned up...
+    for f in files { #expect(!exists(dirs.old.appendingPathComponent(f.path))) }
+    // ...while the OTHER location's unverified bytes survive untouched.
+    for f in files {
+      #expect(
+        exists(otherOld.appendingPathComponent(f.path)),
+        "a proof about one directory must never authorize deleting another's bytes")
+    }
+  }
+
   /// An already-admitted destination is the common case on every launch after
   /// the first: cheap no-op, no rehash, nothing touched.
   @Test func admittedDestinationIsANoop() async throws {

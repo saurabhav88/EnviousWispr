@@ -254,7 +254,8 @@ public struct ModelRelocationMigrator: Sendable {
 
     // Only now is the old copy provably redundant — and we just proved which
     // components are byte-exact, so pass them rather than re-hashing multiple GB.
-    await reconcileOldLocations(plan, verifiedComponents: validation.verifiedComponents)
+    await reconcileOldLocations(
+      plan, provenSource: (url: oldDirectory, components: validation.verifiedComponents))
     return .relocated
   }
 
@@ -270,13 +271,15 @@ public struct ModelRelocationMigrator: Sendable {
   /// cannot account for. The directory itself goes only when nothing of the user's
   /// remains in it. A trusted-legacy artifact is deliberately NOT touched here: its
   /// deletion is governed by the durable token, never by this sweep.
-  /// - Parameter verifiedComponents: components already PROVEN (this call) to be a
-  ///   byte-exact copy of the manifest. Pass them from the relocation path, which
-  ///   just validated them, to avoid re-hashing multiple GB. Pass nil on the
-  ///   crash-recovery path, where nothing has been proven yet and the old bytes must
-  ///   earn their deletion by digest.
+  /// - Parameter provenSource: the ONE directory whose components were just proven
+  ///   byte-exact (the relocation source), so we do not re-hash multiple GB to
+  ///   delete what we literally just validated. Every OTHER old location earns its
+  ///   deletion independently — a proof about one directory says nothing about the
+  ///   bytes in another, and reusing it there would delete unverified files under a
+  ///   matching name (Codex PR-1 review r12). Nil on the crash-recovery path, where
+  ///   nothing has been proven at all.
   private func reconcileOldLocations(
-    _ plan: RelocationPlan, verifiedComponents: Set<String>? = nil
+    _ plan: RelocationPlan, provenSource: (url: URL, components: Set<String>)? = nil
   ) async {
     let fm = FileManager.default
     for oldDirectory in plan.oldLocations {
@@ -287,14 +290,16 @@ public struct ModelRelocationMigrator: Sendable {
       sweepStaleSidecars(in: oldDirectory, plan: plan)
 
       // Delete ONLY components we have proven are the copy we reproduced. A
-      // filename match is not proof: the old directory could hold corrupt,
+      // filename match is not proof: an old directory could hold corrupt,
       // truncated, or hand-replaced bytes under a shard's name, and deleting those
       // because the name lines up is the provenance rule broken by the very code
       // that enforces it (Codex PR-1 review r11). Whatever fails the hash is left
       // exactly where it is.
       let verified: Set<String>
-      if let verifiedComponents {
-        verified = verifiedComponents
+      if let provenSource,
+        provenSource.url.standardizedFileURL == oldDirectory.standardizedFileURL
+      {
+        verified = provenSource.components
       } else {
         let gate = CacheAdmission(
           manifest: plan.manifest,
