@@ -243,8 +243,10 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// running, then run the real inference probe. Called on provider
   /// activation and on settings-open. Safe to call concurrently: server start
   /// is idempotent (no-ops if starting/ready) and the last probe wins (#1271
-  /// Codex r6); the generation token handles switch-away.
-  public func activateAndProbe() {
+  /// Codex r6); the generation token handles switch-away. The returned task is
+  /// discardable in production and gives tests the exact completion signal.
+  @discardableResult
+  public func activateAndProbe() -> Task<Void, Never>? {
     // Choosing EG-1 cancels any deferred removal FIRST, even if activation
     // itself then bails on a blocker — otherwise remove-during-recording
     // followed by re-selecting EG-1 still deletes the model the user just
@@ -255,10 +257,10 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       // pre-spawn sweep never reaps a crash orphan; reap here (idle-gated
       // on the server actor, so it cannot touch a live child) (#1271 r11).
       sweepStaleServersAtLaunch()
-      return
+      return nil
     }
     let generation = activationGeneration
-    Task {
+    return Task {
       // First hop back onto the main actor: a switch-to-then-away that beat
       // this task bumped the generation — do not start the server.
       guard generation == self.activationGeneration else { return }
@@ -289,10 +291,11 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// reactively from the install-state stream (activation-loop precedent
   /// above). Non-admitted cancellation, failure, or decline boots nothing;
   /// admission-winning races retain the trusted model and may activate
-  /// normally.
-  public func activateAfterAutomaticReplacementIfNeeded() {
-    guard isActiveProvider?() == true else { return }
-    activateAndProbe()
+  /// normally. Returns the activation task when the live-provider guard passes.
+  @discardableResult
+  public func activateAfterAutomaticReplacementIfNeeded() -> Task<Void, Never>? {
+    guard isActiveProvider?() == true else { return nil }
+    return activateAndProbe()
   }
 
   /// Orphan reap for no-spawn paths (#1271 confirm round + r11): a crash

@@ -102,7 +102,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // One-attempt crash-loop guard: a marker already present means a prior attempt
     // crashed the app — abandon (delete + log), never retry.
     if spoolStore.hasAttemptMarker(for: id) {
-      cleanUp(id, spoolStore: spoolStore)
+      await cleanUp(id, spoolStore: spoolStore)
       SentryBreadcrumb.captureError(
         RecoveryReplayError.abandonedAfterAttempt,
         category: .recoveryAbandonedAfterAttempt, stage: "recovery")
@@ -127,7 +127,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     }.value
     if isAborted() { return .aborted }
     guard let keyData else {
-      return fail(id, spoolStore: spoolStore, reason: "decrypt", category: .recoveryDecryptFailed)
+      return await fail(
+        id, spoolStore: spoolStore, reason: "decrypt", category: .recoveryDecryptFailed)
     }
 
     // Decrypt + reconstruct the valid prefix off the MainActor (heavy for a long
@@ -138,7 +139,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     }.value
     if isAborted() { return .aborted }
     guard let recovered, !recovered.samples.isEmpty else {
-      return fail(id, spoolStore: spoolStore, reason: "decrypt", category: .recoveryDecryptFailed)
+      return await fail(
+        id, spoolStore: spoolStore, reason: "decrypt", category: .recoveryDecryptFailed)
     }
 
     // Transcribe on the shared engine (batch). The marker already covers warm-up.
@@ -159,7 +161,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // Discard hard-resets the engine, which can throw here — that's an abort,
       // not a recovery failure (don't delete/log; the coordinator owns cleanup).
       if isAborted() { return .aborted }
-      return fail(
+      return await fail(
         id, spoolStore: spoolStore, reason: "transcribe", category: .recoveryTranscribeFailed)
     }
     // Discard during the model load: bail BEFORE the expensive batch transcribe.
@@ -171,12 +173,13 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // A Discard-driven engine reset kills the in-flight transcribe and surfaces
       // here as a throw — treat it as an abort (the user discarded), not a failure.
       if isAborted() { return .aborted }
-      return fail(
+      return await fail(
         id, spoolStore: spoolStore, reason: "transcribe", category: .recoveryTranscribeFailed)
     }
     if isAborted() { return .aborted }
     guard !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      return fail(id, spoolStore: spoolStore, reason: "empty", category: .recoveryTranscribeFailed)
+      return await fail(
+        id, spoolStore: spoolStore, reason: "empty", category: .recoveryTranscribeFailed)
     }
 
     // Polish under the recording's record-time settings (raw-fallback floor
@@ -223,14 +226,14 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       SentryBreadcrumb.add(
         stage: "recovery", message: "recovered transcript save failed",
         level: .warning, data: ["error": String(describing: error)])
-      cleanUp(id, spoolStore: spoolStore)
+      await cleanUp(id, spoolStore: spoolStore)
       TelemetryService.shared.recoveryCompleted(outcome: "failed", reason: "save")
       return .failed
     }
     transcriptCoordinator.append(transcript)
 
     // Success: delete spool (+ marker) + key.
-    cleanUp(id, spoolStore: spoolStore)
+    await cleanUp(id, spoolStore: spoolStore)
     TelemetryService.shared.recoveryCompleted(
       outcome: "recovered",
       recoveredSeconds: Int(recoveredSeconds.rounded()),
@@ -242,8 +245,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   private func fail(
     _ id: String, spoolStore: RecoverySpoolStore, reason: String,
     category: SentryBreadcrumb.ErrorCategory
-  ) -> RecoveryReplayOutcome {
-    cleanUp(id, spoolStore: spoolStore)
+  ) async -> RecoveryReplayOutcome {
+    await cleanUp(id, spoolStore: spoolStore)
     SentryBreadcrumb.captureError(
       RecoveryReplayError.failed(reason), category: category, stage: "recovery")
     TelemetryService.shared.recoveryCompleted(outcome: "failed", reason: reason)
@@ -251,10 +254,13 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   }
 
   /// Delete a spool (which also clears its attempt marker) and destroy its key.
-  private func cleanUp(_ id: String, spoolStore: RecoverySpoolStore) {
+  private func cleanUp(_ id: String, spoolStore: RecoverySpoolStore) async {
     try? spoolStore.delete(recoverySessionID: id)
     let keyStore = self.keyStore
-    Task.detached(priority: .utility) { try? keyStore.delete(for: id) }
+    // A plain Task inherits MainActor and would run synchronous key-store I/O on
+    // the UI executor. A task group adds no ownership value for one operation,
+    // and @concurrent cannot annotate the dependency's synchronous API.
+    await Task.detached(priority: .utility) { try? keyStore.delete(for: id) }.value
   }
 
   private static func transcriptionOptions(for settings: RecordingSettingsSnapshot?)

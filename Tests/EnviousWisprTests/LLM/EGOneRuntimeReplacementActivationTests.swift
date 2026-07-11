@@ -133,16 +133,6 @@ import Testing
     try bytes.write(to: store.appendingPathComponent("eg-1-v1.gguf"))
   }
 
-  /// Deterministic settle for ABSENCE assertions: a round-trip through the
-  /// controller actor drains work enqueued before it (actor FIFO), then
-  /// main-actor yields drain the fire-and-forget activation task's
-  /// completion hops. No wall clock.
-  @MainActor
-  private func settle(_ adapter: EGOneDeliveryAdapter) async {
-    _ = await adapter.isAdmitted()
-    for _ in 0..<20 { await Task.yield() }
-  }
-
   @MainActor
   @Test func automaticReplacementAdmissionStartsEGOneWhenEffectivelyActive() async throws {
     let h = try makeHarness(egOneActive: true)
@@ -170,7 +160,6 @@ import Testing
     #expect(await h.adapter.adoptIfPresent())
 
     h.runtime.activateAfterAutomaticReplacementIfNeeded()
-    await settle(h.adapter)
 
     #expect(h.runtime.installState == .installed(version: "v2-sharded"))
     #expect(!h.signal.sawServerBinaryMissing)
@@ -189,7 +178,6 @@ import Testing
     #expect(await h.adapter.adoptIfPresent())
 
     h.runtime.activateAfterAutomaticReplacementIfNeeded()
-    await settle(h.adapter)
 
     #expect(h.runtime.installState == .installed(version: "v2-sharded"))
     #expect(!h.signal.sawServerBinaryMissing)
@@ -248,7 +236,6 @@ import Testing
 
     h.provider.isEGOneActive = false
     h.runtime.activateAfterAutomaticReplacementIfNeeded()
-    await settle(h.adapter)
 
     #expect(!h.signal.sawServerBinaryMissing)
   }
@@ -265,8 +252,8 @@ import Testing
     defer { h.cleanup() }
     // No shards staged: adoption cannot admit and must not fetch.
 
-    h.runtime.activateAfterAutomaticReplacementIfNeeded()
-    await settle(h.adapter)
+    let activation = try #require(h.runtime.activateAfterAutomaticReplacementIfNeeded())
+    await activation.value
 
     #expect(h.runtime.installState == .notInstalled)
     #expect(!h.signal.sawServerBinaryMissing)
