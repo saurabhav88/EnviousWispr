@@ -197,6 +197,15 @@ struct SparkleUpdateControllerTests {
         checkKind: "background",
         currentAppVersion: "v-host"
       )
+      TelemetryService.shared.updateCycleFailed(
+        version: "v1",
+        isCritical: false,
+        source: "menu",
+        errorCode: "SUSparkleErrorDomain.1005",
+        stage: "appcast",
+        checkKind: "background",
+        currentAppVersion: "v-host"
+      )
 
       // Drain the Task hops scheduled by each test hook firing.
       await Task.yield()
@@ -210,6 +219,7 @@ struct SparkleUpdateControllerTests {
         "update.install_completed",
         "update.install_cancelled",
         "update.install_failed",
+        "update.cycle_failed",
       ]
       let actualNames = Set(captured.map(\.name))
       #expect(
@@ -232,6 +242,13 @@ struct SparkleUpdateControllerTests {
         #expect(
           evt.stringProps.keys.sorted() == [
             "check_kind", "current_app_version", "error_code", "source", "version",
+          ])
+        #expect(evt.boolProps.keys.sorted() == ["is_critical"])
+      }
+      if let evt = captured.first(where: { $0.name == "update.cycle_failed" }) {
+        #expect(
+          evt.stringProps.keys.sorted() == [
+            "check_kind", "current_app_version", "error_code", "source", "stage", "version",
           ])
         #expect(evt.boolProps.keys.sorted() == ["is_critical"])
       }
@@ -274,6 +291,110 @@ struct SparkleUpdateControllerTests {
     func classifier_nonSparkleDomain1001_isTrue() {
       let error = NSError(domain: "NSURLErrorDomain", code: 1001)
       #expect(SparkleUpdateController.isReportableSparkleInstallFailure(error) == true)
+    }
+
+    // MARK: - #1447: failureStage + shouldEmitLegacyInstallFailure classifiers (Layer A)
+    //
+    // Pure-function tests, same rationale as the #846 block above: the
+    // delegate callback itself cannot be constructed/invoked in tests
+    // (SPUUpdater.init unavailable). These prove the classify → route
+    // DECISION; the callback's wiring of that decision is verified by
+    // code-diff inspection, not a runtime test (see the plan doc for #1447).
+
+    nonisolated static let failureStageCases:
+      [(code: Int, domain: String, expected: SparkleUpdateController.SparkleFailureStage)] = [
+        (1, "SUSparkleErrorDomain", .unknown),
+        (7, "SUSparkleErrorDomain", .unknown),
+        (1000, "SUSparkleErrorDomain", .appcast),
+        (1001, "SUSparkleErrorDomain", .appcast),
+        (1003, "SUSparkleErrorDomain", .appcast),
+        (1005, "SUSparkleErrorDomain", .appcast),
+        (1007, "SUSparkleErrorDomain", .appcast),
+        (2000, "SUSparkleErrorDomain", .download),
+        (2001, "SUSparkleErrorDomain", .download),
+        (3000, "SUSparkleErrorDomain", .validation),
+        (3001, "SUSparkleErrorDomain", .validation),
+        (3002, "SUSparkleErrorDomain", .validation),
+        (4000, "SUSparkleErrorDomain", .install),
+        (4005, "SUSparkleErrorDomain", .install),
+        (4007, "SUSparkleErrorDomain", .install),
+        (4008, "SUSparkleErrorDomain", .install),
+        (4012, "SUSparkleErrorDomain", .install),
+        (5000, "SUSparkleErrorDomain", .unknown),
+        (4005, "NSCocoaErrorDomain", .unknown),
+      ]
+
+    @Test(
+      "failureStage maps every SUErrors.h range to its documented bucket",
+      arguments: failureStageCases)
+    func failureStageMapsCorrectly(
+      _ c: (code: Int, domain: String, expected: SparkleUpdateController.SparkleFailureStage)
+    ) {
+      let error = NSError(domain: c.domain, code: c.code)
+      #expect(SparkleUpdateController.failureStage(error) == c.expected)
+    }
+
+    @Test("failureStage: nil error returns .unknown")
+    func failureStage_nilError_returnsUnknown() {
+      #expect(SparkleUpdateController.failureStage(nil) == .unknown)
+    }
+
+    nonisolated static let legacyRoutingCases: [(domain: String, code: Int, expected: Bool)] = [
+      ("NSCocoaErrorDomain", 512, true),  // foreign domain — legacy behavior preserved (#1447 fix)
+      ("NSPOSIXErrorDomain", 28, true),  // foreign domain — legacy behavior preserved
+      ("SUSparkleErrorDomain", 4005, true),  // genuinely install-stage
+      ("SUSparkleErrorDomain", 1005, false),  // Sparkle-domain, positively NOT install-stage
+      ("SUSparkleErrorDomain", 2001, false),  // Sparkle-domain, positively NOT install-stage
+      ("SUSparkleErrorDomain", 5000, false),  // Sparkle-domain, unknown-but-not-install
+    ]
+
+    @Test(
+      "shouldEmitLegacyInstallFailure preserves foreign domains, narrows known Sparkle non-install stages",
+      arguments: legacyRoutingCases)
+    func legacyInstallFailureRouting(_ c: (domain: String, code: Int, expected: Bool)) {
+      let error = NSError(domain: c.domain, code: c.code)
+      // Derive stage from the real classifier rather than hand-picking one,
+      // so the test can't assert an impossible error/stage combination.
+      let stage = SparkleUpdateController.failureStage(error)
+      #expect(
+        SparkleUpdateController.shouldEmitLegacyInstallFailure(error: error, stage: stage)
+          == c.expected)
+    }
+
+    // MARK: - #1447: updateCycleFailed telemetry-hook (Layer B — emission shape only)
+
+    @Test("updateCycleFailed propagates stage to hook")
+    func updateCycleFailed_propagatesToHook() async {
+      let box = EventBox()
+      let originalHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        Task { @MainActor in box.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = originalHook }
+
+      TelemetryService.shared.updateCycleFailed(
+        version: "v1",
+        isCritical: false,
+        source: "menu",
+        errorCode: "SUSparkleErrorDomain.1005",
+        stage: "appcast",
+        checkKind: "background",
+        currentAppVersion: "v-host"
+      )
+
+      await Task.yield()
+      await Task.yield()
+
+      let captured = box.events
+      let evt = captured.first(where: { $0.name == "update.cycle_failed" })
+      #expect(evt != nil, "update.cycle_failed event should be captured")
+      #expect(evt?.stringProps["stage"] == "appcast")
+      #expect(evt?.stringProps["error_code"] == "SUSparkleErrorDomain.1005")
+      #expect(
+        evt?.stringProps.keys.sorted() == [
+          "check_kind", "current_app_version", "error_code", "source", "stage", "version",
+        ])
+      #expect(evt?.boolProps.keys.sorted() == ["is_critical"])
     }
 
     // MARK: - #846: telemetry-hook smoke (Layer B)

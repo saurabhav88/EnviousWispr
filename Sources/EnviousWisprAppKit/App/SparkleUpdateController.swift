@@ -260,6 +260,47 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
     return ![1001, 4007, 4008].contains(error.code)
   }
 
+  /// Issue #1447: coarse cycle-failure stage, one case per Sparkle's own
+  /// phase grouping in `SUErrors.h`. `validation` covers Sparkle's
+  /// "Extraction phase errors" (unarchiving, signature, validation).
+  enum SparkleFailureStage: String, CaseIterable {
+    case appcast
+    case download
+    case validation
+    case install
+    case unknown
+  }
+
+  /// Issue #1447: maps Sparkle's numeric error-code ranges to a coarse
+  /// cycle-failure stage. Codes below 1000 (configuration/API-misuse setup
+  /// errors), 5000+ (API misuse), and any non-Sparkle domain map to
+  /// `.unknown` rather than guessing a bucket — matches the domain guard
+  /// already used by `isReportableSparkleInstallFailure`. A future Sparkle
+  /// code landing inside an already-classified range inherits that range's
+  /// stage (accepted scope limit, not a gap).
+  static func failureStage(_ error: NSError?) -> SparkleFailureStage {
+    guard let error, error.domain == "SUSparkleErrorDomain" else { return .unknown }
+    switch error.code {
+    case 1000...1999: return .appcast
+    case 2000...2999: return .download
+    case 3000...3999: return .validation
+    case 4000...4999: return .install
+    default: return .unknown
+    }
+  }
+
+  /// Issue #1447: preserve the legacy `update.install_failed` event for
+  /// foreign-domain errors, because their stage cannot be determined and
+  /// `isReportableSparkleInstallFailure` already treats them as reportable
+  /// today — suppressing them here would be a new, unproven-safe
+  /// regression. Suppress only when Sparkle-domain evidence positively
+  /// says the failure was NOT install-stage.
+  static func shouldEmitLegacyInstallFailure(
+    error: NSError, stage: SparkleFailureStage
+  ) -> Bool {
+    error.domain != "SUSparkleErrorDomain" || stage == .install
+  }
+
   /// Issue #847 Phase 1: extract Sparkle's no-update reason from the error
   /// userInfo. Guarded — returns nil unless the error is a Sparkle SUNoUpdateError
   /// (code 1001 with the `SUSparkleErrorDomain` domain). Sparkle attaches
@@ -405,16 +446,35 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
     // SUInstallationAuthorizeLaterError = 4008 (user chose install later).
     // All three reach this callback via SPUUpdater.m:810-812. Non-Sparkle
     // errors with the same numeric codes still emit (domain guard).
+    //
+    // Issue #1447: stage-classify every reportable abort into
+    // update.cycle_failed, then narrow update.install_failed to fire only
+    // when shouldEmitLegacyInstallFailure says the failure is genuinely
+    // install-stage (or foreign-domain, where stage can't be proven and
+    // legacy behavior is preserved rather than risking a false negative).
     if let nsError = error as NSError?, Self.isReportableSparkleInstallFailure(nsError) {
-      TelemetryService.shared.updateInstallFailed(
+      let stage = Self.failureStage(nsError)
+      let errorCodeString = "\(nsError.domain).\(nsError.code)"
+      TelemetryService.shared.updateCycleFailed(
         version: version,
         isCritical: isCritical,
         source: source,
-        errorCode: "\(nsError.domain).\(nsError.code)",
-        noUpdateReason: noUpdateReason,
+        errorCode: errorCodeString,
+        stage: stage.rawValue,
         checkKind: checkKind,
         currentAppVersion: currentAppVersion
       )
+      if Self.shouldEmitLegacyInstallFailure(error: nsError, stage: stage) {
+        TelemetryService.shared.updateInstallFailed(
+          version: version,
+          isCritical: isCritical,
+          source: source,
+          errorCode: errorCodeString,
+          noUpdateReason: noUpdateReason,
+          checkKind: checkKind,
+          currentAppVersion: currentAppVersion
+        )
+      }
     }
     // Issue #739: do NOT call noteResolved here. Sparkle's "cycle finished"
     // fires on cancel/skip/error/install-on-quit-scheduled alike. Widget state
