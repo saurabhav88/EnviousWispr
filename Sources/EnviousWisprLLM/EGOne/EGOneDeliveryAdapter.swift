@@ -33,57 +33,26 @@ public final class EGOneDeliveryAdapter {
     self.registration = registration
     self.version = version
     self.defaults = defaults ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
-    migrateLegacyStoreArtifacts()
   }
 
-  /// One-time migration of the retired `EGOneModelStore`'s in-progress-download
-  /// leftovers (cloud-review P2, PR #1384). The old store downloaded IN PLACE in
-  /// the install dir, leaving a `.partial` + resume sidecar beside the install
-  /// file; the shared engine stages under `ModelDelivery/staging` instead and
-  /// would ignore them — wasting gigabytes and risking a disk-preflight failure
-  /// on the next download. Fast (stat + rename/remove, no hashing):
-  /// - (1) a COMPLETED-but-not-installed CURRENT-version download (full-size
-  ///   `.partial`, no install file) is PROMOTED to the install name so
-  ///   `adoptIfPresent` verifies + admits it offline with NO re-download (a
-  ///   corrupt one is rejected by the admission hash gate and overwritten by the
-  ///   next download; the founder-critical case);
-  /// - (2) EVERY remaining download sidecar (`.partial` / `.resume.json`) in the
-  ///   install dir is swept — including an interrupted legacy download whose
-  ///   version differs from the current manifest (so an EG-2/EG-3 manifest bump
-  ///   does not orphan an old `eg-1-vN.gguf.partial` forever). Safe by
-  ///   construction: the shared engine never stages in the install dir, so a
-  ///   sidecar here is always a retired-store leftover, never an in-flight
-  ///   download. Completed `*.gguf` MODELS are deliberately NOT touched — a
-  ///   superseded model is the user's working polish until the new version
-  ///   downloads, and the engine's promote-time orphan cleanup removes it when
-  ///   the new version is admitted (deleting it here would break polish in the
-  ///   gap and risk the founder's real 2.9 GB install).
-  private func migrateLegacyStoreArtifacts() {
-    let fm = FileManager.default
-    let installDir = registration.installDirectory
-    let installPath = installedArtifactURL.path
-    let partialPath = installPath + ".partial"
-    // #1417: `partialPath` is always named after the ENTRYPOINT file
-    // (`resolvedEntrypointPath`, one file), so the size it's compared against
-    // must be that same file's own size — never a sum across every shard (a
-    // `.partial` named after shard 1 can only ever contain shard 1's bytes).
-    let expectedSize = registration.manifest.files.first(where: {
-      $0.resolvedInstallPath == registration.manifest.resolvedEntrypointPath
-    })?.sizeBytes
-    // (1) Promote a complete current-version partial; a size-mismatched or
-    //     already-installed one falls through to the sweep below.
-    if fm.fileExists(atPath: partialPath), !fm.fileExists(atPath: installPath),
-      let expectedSize,
-      (try? fm.attributesOfItem(atPath: partialPath)[.size]) as? Int64 == expectedSize
-    {
-      try? fm.moveItem(atPath: partialPath, toPath: installPath)
-    }
-    // (2) Sweep all stale download sidecars, any version. Never a `.gguf` model.
-    if let entries = try? fm.contentsOfDirectory(atPath: installDir.path) {
-      for entry in entries where entry.hasSuffix(".partial") || entry.hasSuffix(".resume.json") {
-        try? fm.removeItem(at: installDir.appendingPathComponent(entry))
-      }
-    }
+  // MARK: - Legacy-upgrade hooks (#1386 PR-1)
+
+  /// Installed by `EGOneLegacyUpgradeCoordinator` at the composition root. The
+  /// adapter stays the single delivery doorway; the coordinator's monolith
+  /// retirement runs before any fetch door, and admission/decline outcomes are
+  /// reported back so the owed marker never drifts from delivery reality.
+  private var legacyPrepareBeforeEnsure: (@MainActor @Sendable () async -> Bool)?
+  private var legacyRecordDecline: (@MainActor @Sendable () -> Bool)?
+  private var legacyDidAdmit: (@MainActor @Sendable () -> Void)?
+
+  func installLegacyUpgradeHooks(
+    beforeEnsure: @escaping @MainActor @Sendable () async -> Bool,
+    beforeDecline: @escaping @MainActor @Sendable () -> Bool,
+    onAdmitted: @escaping @MainActor @Sendable () -> Void
+  ) {
+    legacyPrepareBeforeEnsure = beforeEnsure
+    legacyRecordDecline = beforeDecline
+    legacyDidAdmit = onAdmitted
   }
 
   /// The verified on-disk model location the runtime boots llama-server from:
@@ -100,9 +69,15 @@ public final class EGOneDeliveryAdapter {
   /// The D5 kill-switch, read fresh per call (relaunch-free). Disabled ⇒ no
   /// delivery mutation (#1363 §16.6). Internal: EG-1's flag gates only the
   /// adapter's own ensure/repair/remove (unlike Parakeet, whose engine adapter
-  /// reads the flag to choose the cache-only load path).
-  private func isEnabled() -> Bool {
+  /// reads the flag to choose the cache-only load path). Static so the
+  /// legacy-upgrade coordinator reads the SAME key without duplicating it
+  /// (#1386 PR-1).
+  static func isDeliveryEnabled(defaults: UserDefaults) -> Bool {
     defaults.object(forKey: DeliveryFlags.key("enabled", family: .egOne)) as? Bool ?? true
+  }
+
+  private func isEnabled() -> Bool {
+    Self.isDeliveryEnabled(defaults: defaults)
   }
 
   /// Ensure EG-1's bytes are admitted, fetching/adopting as needed. When
@@ -116,7 +91,20 @@ public final class EGOneDeliveryAdapter {
       if await controller.isAdmitted(registration) { return .admitted }
       return .failed(DeliveryFailure(reason: .unknown, detail: "delivery_disabled"))
     }
-    return await controller.ensureModelAvailable(registration)
+
+    // A1 - Every fetch door prepares retirement first and reports admission.
+    if let legacyPrepareBeforeEnsure,
+      !(await legacyPrepareBeforeEnsure())
+    {
+      return .failed(
+        DeliveryFailure(reason: .cacheRepairFailed, detail: "legacy_retirement"))
+    }
+
+    let outcome = await controller.ensureModelAvailable(registration)
+    if case .admitted = outcome {
+      legacyDidAdmit?()
+    }
+    return outcome
   }
 
   /// Adopt an already-present model WITHOUT fetching — the activation path
@@ -131,7 +119,18 @@ public final class EGOneDeliveryAdapter {
       controllerNoteDisabled()
       return await controller.isAdmitted(registration)
     }
-    return await controller.admitIfComplete(registration)
+
+    let admitted = await controller.admitIfComplete(registration)
+    if admitted {
+      legacyDidAdmit?()
+    }
+    return admitted
+  }
+
+  /// Current-cache admission truth, for the legacy-upgrade coordinator's launch
+  /// table (#1386 PR-1). Module-scoped: nothing outside this module needs it.
+  func isAdmitted() async -> Bool {
+    await controller.isAdmitted(registration)
   }
 
   /// One-shot repair after a cache-only load failure (§16.5); no-op when
@@ -142,21 +141,51 @@ public final class EGOneDeliveryAdapter {
       if await controller.isAdmitted(registration) { return .admitted }
       return .failed(DeliveryFailure(reason: .unknown, detail: "delivery_disabled"))
     }
-    return await controller.repair(registration)
+
+    if let legacyPrepareBeforeEnsure,
+      !(await legacyPrepareBeforeEnsure())
+    {
+      return .failed(
+        DeliveryFailure(reason: .cacheRepairFailed, detail: "legacy_retirement"))
+    }
+
+    let outcome = await controller.repair(registration)
+    if case .admitted = outcome {
+      legacyDidAdmit?()
+    }
+    return outcome
   }
 
   /// Cancel any in-flight delivery (Resume-able; staged partials survive).
+  ///
+  /// A2 - Explicit decline is recorded before controller cancellation,
+  /// regardless of the delivery switch (contract §5c.10: the switch guards
+  /// model bytes, never the user's recorded decision). If admission already
+  /// won the race, the verified model simply stays installed.
   public func cancel() async {
+    if let legacyRecordDecline, !legacyRecordDecline() {
+      return
+    }
+
     _ = await controller.cancel(registration.manifest.identity)
   }
 
   /// Evict the model (delete marker + files + staging). Disabled ⇒ no
   /// remove-on-behalf (§16.6): the flag gates all delivery mutation.
+  ///
+  /// A3 - Explicit decline is recorded before the switch is consulted. The
+  /// switch still prevents current-model deletion.
   public func remove() async -> ModelDeliveryController.RemoveOutcome {
+    if let legacyRecordDecline, !legacyRecordDecline() {
+      return .failed(
+        DeliveryFailure(reason: .permissionDenied, detail: "replacement_marker_clear"))
+    }
+
     if !isEnabled() {
       controllerNoteDisabled()
       return .failed(DeliveryFailure(reason: .unknown, detail: "delivery_disabled"))
     }
+
     return await controller.remove(registration)
   }
 
@@ -186,6 +215,14 @@ public final class EGOneDeliveryAdapter {
         Task { @MainActor in
           guard let self, seq > self.lastAppliedInstallSeq else { return }
           self.lastAppliedInstallSeq = seq
+
+          // A4 - Same existing adapter state stream; no second controller
+          // observer. Admission through ANY door (manual Try Again included)
+          // completes the legacy replacement.
+          if case .admitted = state {
+            self.legacyDidAdmit?()
+          }
+
           onState(mapped)
         }
       }
@@ -196,6 +233,7 @@ public final class EGOneDeliveryAdapter {
         await MainActor.run { [weak self] in
           guard let self, seq > self.lastAppliedInstallSeq else { return }
           self.lastAppliedInstallSeq = seq
+          self.legacyDidAdmit?()
           onState(.installed(version: version))
         }
       }
