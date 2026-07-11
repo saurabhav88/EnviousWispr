@@ -98,11 +98,20 @@ public final class EGOneDeliveryAdapter {
   }
 
   /// The D5 kill-switch, read fresh per call (relaunch-free). Disabled ⇒ no
-  /// delivery mutation (#1363 §16.6). Internal: EG-1's flag gates only the
-  /// adapter's own ensure/repair/remove (unlike Parakeet, whose engine adapter
-  /// reads the flag to choose the cache-only load path).
+  /// delivery mutation (#1363 §16.6). EG-1's flag gates the adapter's own
+  /// ensure/repair/remove — and, since #1386, the relocation that runs BEFORE any
+  /// of them.
   private func isEnabled() -> Bool {
-    defaults.object(forKey: DeliveryFlags.key("enabled", family: .egOne)) as? Bool ?? true
+    Self.isDeliveryEnabled(defaults: defaults)
+  }
+
+  /// The same kill-switch, readable by the composition root BEFORE the relocation
+  /// runs. Without this the migrator would happily move and delete model files
+  /// while delivery mutation is explicitly disabled — defeating the operational
+  /// rollback control precisely when someone reached for it (Codex PR-1 review r8).
+  nonisolated public static func isDeliveryEnabled(defaults: UserDefaults? = nil) -> Bool {
+    let store = defaults ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
+    return store.object(forKey: DeliveryFlags.key("enabled", family: .egOne)) as? Bool ?? true
   }
 
   /// Ensure EG-1's bytes are admitted, fetching/adopting as needed. When

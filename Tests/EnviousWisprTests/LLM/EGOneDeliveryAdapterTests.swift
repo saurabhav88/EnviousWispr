@@ -244,4 +244,27 @@ import Testing
     #expect(EGOneDeliveryAdapter.mapFailure(.permissionDenied) == .http)
     #expect(EGOneDeliveryAdapter.mapFailure(.unknown) == .http)
   }
+
+  /// The kill switch is the operational rollback control: with it off, NOTHING may
+  /// mutate model bytes. #1386's relocation runs before every other delivery call,
+  /// so the composition root has to be able to read the flag BEFORE it starts —
+  /// otherwise the migrator would move and delete files precisely when someone had
+  /// reached for the lever to stop exactly that. (Codex PR-1 review r8.)
+  @Test func killSwitchIsReadableBeforeAnyRelocationRuns() throws {
+    let suite = "eg1-killswitch-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let key = DeliveryFlags.key("enabled", family: .egOne)
+
+    // Default (unset) is enabled — a fresh install migrates.
+    #expect(EGOneDeliveryAdapter.isDeliveryEnabled(defaults: defaults))
+
+    defaults.set(false, forKey: key)
+    #expect(
+      EGOneDeliveryAdapter.isDeliveryEnabled(defaults: defaults) == false,
+      "with delivery disabled the relocation must not run at all")
+
+    defaults.set(true, forKey: key)
+    #expect(EGOneDeliveryAdapter.isDeliveryEnabled(defaults: defaults))
+  }
 }

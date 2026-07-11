@@ -57,10 +57,22 @@ enum EGOneDeliveryWiring {
       "EnviousWispr/ModelDelivery", isDirectory: true)
     // One app-owned home for every model: EG-1 leaves its one-off
     // `PolishModels` subfolder and sits beside the speech engines.
-    let installDirectory = appSupport.appendingPathComponent(
+    let ownedDirectory = appSupport.appendingPathComponent(
       "EnviousWispr/Models/eg-1", isDirectory: true)
     let legacyDirectory = appSupport.appendingPathComponent(
       "EnviousWispr/PolishModels", isDirectory: true)
+
+    // With the kill switch off, nothing may MUTATE model bytes — but the model
+    // must still LOAD, so we read from wherever the bytes already are. Pointing a
+    // disabled build at the owned home would leave an unmigrated user staring at
+    // "not installed" while their model sat untouched in the old one: that is a
+    // second failure, not a rollback.
+    let installDirectory: URL = {
+      guard !EGOneDeliveryAdapter.isDeliveryEnabled() else { return ownedDirectory }
+      return FileManager.default.fileExists(atPath: ownedDirectory.path)
+        ? ownedDirectory : legacyDirectory
+    }()
+
     let registration = DeliveryRegistration(
       manifest: manifest,
       installDirectory: installDirectory,
@@ -74,7 +86,11 @@ enum EGOneDeliveryWiring {
       relocation: ModelRelocationMigrator.RelocationPlan(
         manifest: manifest,
         oldLocations: [legacyDirectory],
-        destination: installDirectory,
+        // Always the OWNED home: the relocation plan describes where the bytes
+        // SHOULD end up, and `startLaunchTransition` refuses to run it at all when
+        // the kill switch is off. (A disabled build's registration may read from
+        // the legacy dir above; that is a load path, not a destination.)
+        destination: ownedDirectory,
         metadataDirectory: metadataDirectory,
         trustedLegacyArtifacts: trustedLegacyArtifacts,
         // The retired EGOneModelStore downloaded IN PLACE, leaving a `.partial`
@@ -105,6 +121,21 @@ enum EGOneDeliveryWiring {
     relocation: ModelRelocationMigrator.RelocationPlan,
     providerIsEGOne: Bool
   ) {
+    // The delivery kill switch is the operational rollback control: with it off,
+    // NOTHING may mutate model bytes. Relocation runs before every other delivery
+    // call, so it has to honor the flag itself — otherwise it would move and delete
+    // files precisely when someone had reached for the lever to stop exactly that
+    // (Codex PR-1 review r8). Flag off ⇒ behave as we did before #1386: no
+    // relocation, no cleanup, load from wherever the bytes already are.
+    guard EGOneDeliveryAdapter.isDeliveryEnabled() else {
+      if providerIsEGOne {
+        runtime.startIfActiveProvider()
+      } else {
+        runtime.sweepStaleServersAtLaunch()
+      }
+      return
+    }
+
     let migrator = ModelRelocationMigrator()
     // A Remove retires any pending replacement: the stranded artifact becomes a
     // plain delete, so a failed cleanup can never resurrect a model the user threw
