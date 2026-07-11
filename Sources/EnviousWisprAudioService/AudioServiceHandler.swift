@@ -344,7 +344,17 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
       Task { @MainActor in
         do {
           let arm = try JSONDecoder().decode(DebugZeroFillArm.self, from: payload)
-          self.captureManager.debugArmZeroFill(mode: arm.mode, n: arm.n, trialID: arm.trialID)
+          guard
+            self.captureManager.debugArmZeroFill(
+              mode: arm.mode, n: arm.n, trialID: arm.trialID)
+          else {
+            // XPC error sanitization boundary.
+            safeReply(
+              NSError(
+                domain: "DebugZeroFill", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "negative sample count"]))
+            return
+          }
           safeReply(nil)
         } catch {
           // XPC error sanitization boundary.
