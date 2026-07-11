@@ -1836,11 +1836,18 @@ def _zero_fill_trial(*, mode: str, n: int, trial: str, do_control: bool,
                 arm=arm, identity=identity)
         control = _canary_take()
 
+    # A bumped source incarnation only proves RECOVERY if a source already
+    # existed when we sampled inc_pre. With warm-engine policy off (source torn
+    # down after the previous stop), the fault take's ordinary startEnginePhase()
+    # installs the first source and bumps the incarnation — a normal cold start,
+    # not recovery. Gate on a source being present at inc_pre (capture_source !=
+    # "none") so a cold-start install can never masquerade as fresh_pipe_proven.
+    # Baseline (no recovery) must read False; the follow-up fix's recovery is the
+    # only thing that can bump the incarnation of an already-installed source.
+    pre_source_present = arm["pre_status"].get("capture_source", "none") != "none"
     assertions = {
         "recovered_in_session": fault_take["recovers"]["canary_ok"],
-        # No rebuild is triggered here, so a changed incarnation would only come
-        # from a recovery mechanism (follow-up plan). Honest measurement.
-        "fresh_pipe_proven": inc_post != inc_pre,
+        "fresh_pipe_proven": pre_source_present and inc_post != inc_pre,
     }
     # Dead-take honesty is only meaningful for a FULLY dead take (zero_from_start).
     # A partial shape (zero_after / zero_next) legitimately contains real audio, so
@@ -1863,6 +1870,7 @@ def _zero_fill_trial(*, mode: str, n: int, trial: str, do_control: bool,
             "post_status": post,
             "source_incarnation_pre": inc_pre,
             "source_incarnation_post": inc_post,
+            "pre_source_present": pre_source_present,
             "fault_take": fault_take,
             "control_take": control,
             "disarm_reply": disarm_reply,
