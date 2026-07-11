@@ -31,6 +31,12 @@ CO="${PROJ_ROOT}/.build/checkouts"
 # this list does not cover, so the notices can't silently go stale (Codex #2).
 COMPONENTS=(
   "WhisperKit (argmax-oss-swift)|1.0.0|MIT|argmax-oss-swift/LICENSE|https://github.com/argmaxinc/argmax-oss-swift|argmax-oss-swift"
+  # Argmax OSS itself is MIT, but it incorporates Apache-2.0 swift-transformers
+  # code (Sources/ArgmaxCore/External) and ships the required attribution in its
+  # own NOTICES file. Apache §4(d) / good-faith attribution: carry that NOTICES
+  # text too, not just Argmax's MIT LICENSE (Codex audit 2026-07-10). Empty
+  # identity — it is vendored inside argmax-oss-swift, not its own SwiftPM pin.
+  "swift-transformers (incorporated into Argmax OSS)|n/a|Apache-2.0|argmax-oss-swift/NOTICES|https://github.com/huggingface/swift-transformers|"
   "FluidAudio|e7948e1a (fork saurabhav88/FluidAudio)|Apache-2.0|FluidAudio/LICENSE|https://github.com/saurabhav88/FluidAudio|fluidaudio"
   "PostHog iOS|3.62.4|MIT|posthog-ios/LICENSE|https://github.com/PostHog/posthog-ios|posthog-ios"
   "Sentry Cocoa|9.19.0|MIT|sentry-cocoa/LICENSE.md|https://github.com/getsentry/sentry-cocoa|sentry-cocoa"
@@ -38,7 +44,7 @@ COMPONENTS=(
   "swift-argument-parser|1.7.1|Apache-2.0|swift-argument-parser/LICENSE.txt|https://github.com/apple/swift-argument-parser|swift-argument-parser"
   "fastcluster (bundled in FluidAudio)|n/a|BSD-2-Clause|FluidAudio/ThirdPartyLicenses/fastcluster-LICENSE.md|https://github.com/dmuellner/fastcluster|"
   "VBx (bundled in FluidAudio)|n/a|Apache-2.0|FluidAudio/ThirdPartyLicenses/vbx-LICENSE.md|https://github.com/BUTSpeechFIT/VBx|"
-  "PLCrashReporter + protobuf-c (bundled in PostHog)|n/a|MIT / Apache-2.0|posthog-ios/vendor/PHPLCrashReporter/LICENSE|https://github.com/microsoft/plcrashreporter|"
+  "PLCrashReporter + protobuf-c (bundled in PostHog)|n/a|MIT / Apache-2.0 / BSD-2-Clause|posthog-ios/vendor/PHPLCrashReporter/LICENSE|https://github.com/microsoft/plcrashreporter|"
   "libwebp (bundled in PostHog)|n/a|BSD-3-Clause|posthog-ios/vendor/libwebp/COPYING|https://chromium.googlesource.com/webm/libwebp|"
   # llama.cpp is NOT a SwiftPM dep — the bundled llama-server binary is built
   # from a pinned commit (see Sources/EnviousWispr/Resources/
