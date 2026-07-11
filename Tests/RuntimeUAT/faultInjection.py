@@ -735,8 +735,14 @@ def compute_sha256(path) -> str:
 
 def discover_bundle_executables(bundle_path) -> dict:
     """Absolute paths of our three executables inside the .app:
-    {app, audio_helper, asr_helper}. Raises if any is missing."""
-    bundle = Path(bundle_path)
+    {app, audio_helper, asr_helper}. Raises if any is missing.
+
+    abspath (NOT resolve): verify_running_identity compares app_path against the
+    argv[0] that `ps` reports for an `open`-launched app, which is absolute but
+    symlink-UNresolved. resolve() could expand a symlink/firmlink and diverge
+    from that argv[0], turning the intended build into invalid evidence when the
+    caller passes the documented relative --bundle. Cloud review PR #1504."""
+    bundle = Path(os.path.abspath(bundle_path))
     paths = {
         "app": bundle / _APP_EXE_REL,
         "audio_helper": bundle / _AUDIO_HELPER_REL,

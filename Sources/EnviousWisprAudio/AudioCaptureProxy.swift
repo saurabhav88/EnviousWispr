@@ -1055,6 +1055,15 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     /// `DebugFaultEndpoint` (`force_zero_fill(...)`).
     package func debugArmZeroFill(_ arm: DebugZeroFillArm) async -> Bool {
       guard let payload = try? JSONEncoder().encode(arm) else { return false }
+      // A freshly launched debug app with noise-suppression default OFF never
+      // called `buildEngine`, so no audio XPC line exists yet; the harness arms
+      // BEFORE the first recording, so `serviceProxy` would hit `onProxyError`
+      // and fail closed with `ERR arm_failed` before any helper is spawned.
+      // Bring the line up first — `acquireConnection()` is idempotent (returns
+      // the live line if one already exists), and the subsequent start reuses
+      // this same slot, so the helper we arm is the helper that will record.
+      // Cloud review PR #1504.
+      _ = acquireConnection()
       // One-shot guard (like `stopCapture`): a reply followed by a per-call
       // transport error (or vice versa) would otherwise resume twice and trap.
       let ok: Bool? = try? await withCheckedThrowingContinuation {
