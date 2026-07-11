@@ -236,6 +236,7 @@ struct ApplicationRelocationCoordinatorTests {
     #expect(h.handshake.writes.first?.healthy == true)
     #expect(h.telemetry.offeredEvents.isEmpty)  // no prompt on the child path
     #expect(h.presenter.progressShown == 0)
+    #expect(h.terminate.count == 0)  // healthy child lives on as the new app
   }
 
   @Test("relaunch child: still-blocked destination writes UNhealthy ack (A2 no masking)")
@@ -245,6 +246,9 @@ struct ApplicationRelocationCoordinatorTests {
     await h.coordinator.pendingWork?.value
     #expect(h.handshake.writes.count == 1)
     #expect(h.handshake.writes.first?.healthy == false)
+    // Still-blocked child quits itself; the original stays the authoritative
+    // copy (cloud #1490). Never two blocked instances.
+    #expect(h.terminate.count == 1)
   }
 
   // MARK: Decline

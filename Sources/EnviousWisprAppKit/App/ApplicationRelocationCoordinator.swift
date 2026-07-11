@@ -315,10 +315,17 @@ public final class ApplicationRelocationCoordinator {
     // (detection STILL runs — the marker suppresses a second dialog, never
     // detection, so a failed move cannot masquerade as healthy) and return.
     if let attemptID = env.relaunchAttemptID {
+      let healthy = state == .healthy
       handshake.writeAck(
         attemptID: attemptID,
         resolvedPath: env.bundleURL.standardizedFileURL.path,
-        healthy: state == .healthy)
+        healthy: healthy)
+      // If the move did not clear the blocking location, the original process
+      // stays alive as the authoritative copy (its handshake fails). Quit this
+      // redundant child rather than leave two blocked instances running (cloud
+      // Codex review #1490). Healthy child lives on as the new app; the two
+      // branches are mutually exclusive, so there is never zero or two copies.
+      if !healthy { terminate() }
       return
     }
 
