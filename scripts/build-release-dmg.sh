@@ -54,6 +54,25 @@ AUDIO_ENTITLEMENTS="$PROJ_ROOT/Sources/EnviousWisprAudioService/Resources/Enviou
 ASR_ENTITLEMENTS="$PROJ_ROOT/Sources/EnviousWisprASRService/Resources/EnviousWisprASRService.entitlements"
 PROFILE="$PROJ_ROOT/signing/EnviousWispr_DeveloperID.provisionprofile"
 
+# --- DMG install-window layout (single source of truth; #1486) ---------------
+# Branded background + real Finder icons in two "landing box" zones. The @2x
+# asset is 1200x800 px; it is re-tagged to 144 dpi at build time so Finder maps
+# 1200 px -> 600 pt, filling a 600x400-pt window exactly (1:1 point mapping is
+# how Finder draws a DMG background — it does NOT scale the picture to the
+# window). Icon coordinates are POINTS in that 600x400 window and were pinned to
+# the artwork's landing-box centers by real mounted-DMG UAT — the visual layout
+# is authoritative, so do not "recenter" these from the raw box math.
+DMG_BACKGROUND="$PROJ_ROOT/assets/installer/EnviousWispr-DMG-Background@2x.png"
+DMG_BG_W=1200            # required background pixel width  (2x of window width)
+DMG_BG_H=800             # required background pixel height (2x of window height)
+DMG_WINDOW_W=600         # Finder window width  (points)
+DMG_WINDOW_H=400         # Finder window height (points)
+DMG_ICON_SIZE=100        # Finder icon size (points)
+DMG_APP_X=131            # app icon center X    (left landing box)
+DMG_APP_Y=258            # app icon center Y
+DMG_APPLICATIONS_X=469   # Applications alias center X (right landing box)
+DMG_APPLICATIONS_Y=258   # Applications alias center Y
+
 # Resolve mise. GitHub Action `run:` steps are non-interactive, so the `mise`
 # shell function from ~/.zshrc is absent — use an absolute binary path.
 MISE_BIN="$(command -v mise || true)"
@@ -165,6 +184,78 @@ for PLIST in "$APP_PLIST" "$BUNDLE/Contents/XPCServices"/*.xpc/Contents/Info.pli
     test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")" = "$VERSION"
 done
 echo "    secrets + feed + versions stamped correctly"
+
+echo "==> [4b/9] Bundle GPL + third-party notices + source pointer INSIDE the app"
+# GPLv3 §6 / MIT / BSD / Apache: the license text and third-party notices must
+# travel with the conveyed binary. We place them at Contents/Resources/Licenses/
+# so they ride inside every installed and re-distributed copy while the DMG
+# install window stays clean (app + Applications only, #1486). This runs BEFORE
+# any signing so the main-app signature seals these files — adding them after
+# signing would invalidate the signature (Gatekeeper "app is damaged").
+# GPLv3 §6(d) source *directions* live on the download page; SOURCE.txt is kept
+# here as a conservative in-bundle fallback until the web surface is versioned
+# (see #1487). Codex-grounded audit: docs/audits/2026-07-10-dmg-license-relocation-audit.txt.
+LICENSE_SRC="$PROJ_ROOT/LICENSE"
+NOTICES_SRC="$PROJ_ROOT/THIRD-PARTY-NOTICES.txt"
+LICENSES_DIR="$BUNDLE/Contents/Resources/Licenses"
+test -f "$LICENSE_SRC" || { echo "::error::LICENSE missing at $LICENSE_SRC"; exit 1; }
+test -f "$NOTICES_SRC" || { echo "::error::THIRD-PARTY-NOTICES.txt missing at $NOTICES_SRC (run scripts/ci/gen-third-party-notices.sh)"; exit 1; }
+# Enforce notices freshness on the release path (a new dep with no notices entry,
+# or stale committed notices, fails here). --check needs no SwiftPM checkouts.
+"$PROJ_ROOT/scripts/ci/gen-third-party-notices.sh" --check
+
+# SOURCE.txt: pin the exact corresponding source for this build (GPLv3 §6).
+COMMIT="$(git -C "$PROJ_ROOT" rev-parse HEAD)"
+# If the advertised tag already exists, the build commit MUST be that tag's
+# commit, else SOURCE.txt would point at the wrong corresponding source. On a
+# tag-triggered release HEAD == tag commit by construction; this guards the
+# workflow_dispatch path where the checkout ref can differ from the tag input.
+# Fetch the tag first so a shallow clone that didn't pull it can't bypass the
+# guard; a non-existent tag (pre-tag rehearsal) fetches nothing and skips.
+git -C "$PROJ_ROOT" fetch --quiet origin "refs/tags/v${VERSION}:refs/tags/v${VERSION}" >/dev/null 2>&1 || true
+if git -C "$PROJ_ROOT" rev-parse -q --verify "refs/tags/v${VERSION}^{commit}" >/dev/null 2>&1; then
+    TAG_COMMIT="$(git -C "$PROJ_ROOT" rev-parse "refs/tags/v${VERSION}^{commit}")"
+    if [[ "$TAG_COMMIT" != "$COMMIT" ]]; then
+        echo "::error::build commit ${COMMIT} != tag v${VERSION} commit ${TAG_COMMIT}; SOURCE.txt would advertise the wrong corresponding source."; exit 1
+    fi
+fi
+
+mkdir -p "$LICENSES_DIR"
+cp "$LICENSE_SRC" "$LICENSES_DIR/GPL-3.0.txt"
+cp "$NOTICES_SRC" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt"
+cat > "$LICENSES_DIR/SOURCE.txt" <<SOURCE_EOF
+EnviousWispr Corresponding Source
+
+This copy of EnviousWispr is object code for version ${VERSION},
+released as tag v${VERSION}, built from commit ${COMMIT}.
+
+The Corresponding Source for this binary is exactly commit ${COMMIT}, available
+at no charge. These commit-pinned URLs resolve for any pushed commit regardless
+of tag timing:
+  Source (tar):  https://github.com/saurabhav88/EnviousWispr/archive/${COMMIT}.tar.gz
+  Browse:        https://github.com/saurabhav88/EnviousWispr/tree/${COMMIT}
+  Git:           git clone https://github.com/saurabhav88/EnviousWispr.git && git checkout ${COMMIT}
+  Release page:  https://github.com/saurabhav88/EnviousWispr/releases/tag/v${VERSION}
+
+EnviousWispr is licensed under the GNU GPL version 3 (see GPL-3.0.txt beside this
+file). Build instructions: README.md and scripts/build-release-dmg.sh in the
+source. Third-party component licenses: see THIRD-PARTY-NOTICES.txt beside this file.
+SOURCE_EOF
+
+# Content checks so an empty/stale/substituted file fails before signing.
+if ! { grep -q "GNU GENERAL PUBLIC LICENSE" "$LICENSES_DIR/GPL-3.0.txt" && grep -q "Version 3" "$LICENSES_DIR/GPL-3.0.txt"; }; then
+    echo "::error::Bundled GPL-3.0.txt missing or wrong"; exit 1
+fi
+if ! { grep -q "THIRD-PARTY NOTICES" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt" \
+        && grep -q "swift-transformers" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt" \
+        && grep -q "FluidAudio" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt" \
+        && grep -q "llama.cpp" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt"; }; then
+    echo "::error::Bundled THIRD-PARTY-NOTICES.txt incomplete or stale"; exit 1
+fi
+if ! { grep -q "${VERSION}" "$LICENSES_DIR/SOURCE.txt" && grep -q "${COMMIT}" "$LICENSES_DIR/SOURCE.txt"; }; then
+    echo "::error::Bundled SOURCE.txt not pinned to v${VERSION}/${COMMIT}"; exit 1
+fi
+echo "    license material sealed in Contents/Resources/Licenses (GPL-3.0.txt, THIRD-PARTY-NOTICES.txt, SOURCE.txt @ ${COMMIT:0:8})"
 
 if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
     echo "==> CODESIGN_IDENTITY not set — skipping signing (unsigned assembly only)"
@@ -358,74 +449,40 @@ mkdir -p "$PROJ_ROOT/build/dSYMs"
 cp -R "$ARCHIVE_PATH/dSYMs/." "$PROJ_ROOT/build/dSYMs/"
 find "$PROJ_ROOT/build/dSYMs" -maxdepth 2 -name '*.dSYM' -print | sort
 
-echo "==> [9/9] Create DMG"
+echo "==> [9/9] Create branded DMG (app + Applications only; #1486)"
 DMG_PATH="build/EnviousWispr-${VERSION}.dmg"
 rm -f "$DMG_PATH"
 
-# GPLv3 §6: the conveyed object code must ship the license text + clear
-# directions to the corresponding source. We drop three files into the DMG:
-#   LICENSE                 — the GPLv3 text (already at repo root)
-#   SOURCE.txt              — directions to the exact tagged source (this build's commit)
-#   THIRD-PARTY-NOTICES.txt — attribution for bundled MIT/Apache/BSD components
-# The build commit IS the tag commit on a tag-triggered release, so HEAD's sha
-# is the corresponding source.
-LICENSE_SRC="$PROJ_ROOT/LICENSE"
-NOTICES_SRC="$PROJ_ROOT/THIRD-PARTY-NOTICES.txt"
-test -f "$LICENSE_SRC"  || { echo "::error::LICENSE missing at $LICENSE_SRC"; exit 1; }
-test -f "$NOTICES_SRC"  || { echo "::error::THIRD-PARTY-NOTICES.txt missing at $NOTICES_SRC (run scripts/ci/gen-third-party-notices.sh)"; exit 1; }
-# Enforce notices freshness ON the release path (Codex code-diff r2): fail the
-# release if Package.resolved gained a dep with no notices entry, or the
-# committed notices are stale. --check needs no SwiftPM checkouts (works under
-# the Xcode/DerivedData build).
-"$PROJ_ROOT/scripts/ci/gen-third-party-notices.sh" --check
-COMMIT="$(git -C "$PROJ_ROOT" rev-parse HEAD)"
-# If the advertised tag already exists, the build commit MUST be that tag's
-# commit, else SOURCE.txt would point at the wrong corresponding source. On a
-# tag-triggered release HEAD == tag commit by construction; this guards the
-# workflow_dispatch path where the checkout ref can differ from the tag input
-# (cloud review #1). Fetch the tag first so a shallow clone that didn't pull it
-# can't silently bypass the guard (cloud review r2 #1); a non-existent tag (e.g.
-# a pre-tag rehearsal) fetches nothing and the guard correctly skips — the build
-# commit is still the true corresponding source.
-git -C "$PROJ_ROOT" fetch --quiet origin "refs/tags/v${VERSION}:refs/tags/v${VERSION}" >/dev/null 2>&1 || true
-if git -C "$PROJ_ROOT" rev-parse -q --verify "refs/tags/v${VERSION}^{commit}" >/dev/null 2>&1; then
-    TAG_COMMIT="$(git -C "$PROJ_ROOT" rev-parse "refs/tags/v${VERSION}^{commit}")"
-    if [[ "$TAG_COMMIT" != "$COMMIT" ]]; then
-        echo "::error::build commit ${COMMIT} != tag v${VERSION} commit ${TAG_COMMIT}; SOURCE.txt would advertise the wrong corresponding source."; exit 1
-    fi
+# Branded install window: real app icon in the left landing box, Applications
+# alias in the right box, arrow between, on the committed @2x background. The
+# GPL / notices / source files ride INSIDE the app now ([4b/9]), so nothing
+# loose clutters the window. Legal payload presence is re-asserted post-mount.
+test -f "$DMG_BACKGROUND" || { echo "::error::DMG background missing at $DMG_BACKGROUND (assets/installer/EnviousWispr-DMG-Background@2x.png)"; exit 1; }
+BG_W="$(sips -g pixelWidth  "$DMG_BACKGROUND" | awk '/pixelWidth/  {print $2}')"
+BG_H="$(sips -g pixelHeight "$DMG_BACKGROUND" | awk '/pixelHeight/ {print $2}')"
+if [[ "$BG_W" != "$DMG_BG_W" || "$BG_H" != "$DMG_BG_H" ]]; then
+    echo "::error::DMG background must be exactly ${DMG_BG_W}x${DMG_BG_H} px; got ${BG_W}x${BG_H}"; exit 1
 fi
-DMG_EXTRAS="$PROJ_ROOT/build/dmg-extras"
-rm -rf "$DMG_EXTRAS"; mkdir -p "$DMG_EXTRAS"
-SOURCE_TXT="$DMG_EXTRAS/SOURCE.txt"
-cat > "$SOURCE_TXT" <<SOURCE_EOF
-EnviousWispr Corresponding Source
-
-This DMG contains object code for EnviousWispr version ${VERSION},
-released as tag v${VERSION}, built from commit ${COMMIT}.
-
-The Corresponding Source for this binary is exactly commit ${COMMIT}, available
-at no charge. These commit-pinned URLs resolve for any pushed commit regardless
-of tag timing:
-  Source (tar):  https://github.com/saurabhav88/EnviousWispr/archive/${COMMIT}.tar.gz
-  Browse:        https://github.com/saurabhav88/EnviousWispr/tree/${COMMIT}
-  Git:           git clone https://github.com/saurabhav88/EnviousWispr.git && git checkout ${COMMIT}
-  Release page:  https://github.com/saurabhav88/EnviousWispr/releases/tag/v${VERSION}
-
-EnviousWispr is licensed under the GNU GPL version 3 (see LICENSE in this DMG).
-Build instructions: README.md and scripts/build-release-dmg.sh in the source.
-Third-party component licenses: see THIRD-PARTY-NOTICES.txt in this DMG.
-SOURCE_EOF
+# Normalize the background to 144 dpi on a BUILD COPY so Finder maps 1200 px ->
+# 600 pt (retina). We tag a copy — never the committed asset — so an optimizer
+# that strips the committed file's dpi (ImageOptim/TinyPNG drop it to 72) can't
+# blow out the window; the build always re-establishes 144 dpi deterministically.
+DMG_BG_BUILD="$PROJ_ROOT/build/dmg-background-144.png"
+cp "$DMG_BACKGROUND" "$DMG_BG_BUILD"
+sips -s dpiWidth 144 -s dpiHeight 144 "$DMG_BG_BUILD" >/dev/null
+BG_DPI="$(sips -g dpiWidth "$DMG_BG_BUILD" | awk '/dpiWidth/ {print $2}')"
+[[ "$BG_DPI" == "144.000" ]] || { echo "::error::failed to tag DMG background as 144 dpi (got $BG_DPI)"; exit 1; }
 
 create-dmg \
     --volname "EnviousWispr ${VERSION}" \
+    --background "$DMG_BG_BUILD" \
     --window-pos 200 120 \
-    --window-size 600 400 \
-    --icon-size 100 \
-    --icon "${APP_NAME}" 175 190 \
-    --app-drop-link 425 190 \
-    --add-file LICENSE "$LICENSE_SRC" 175 300 \
-    --add-file SOURCE.txt "$SOURCE_TXT" 300 300 \
-    --add-file THIRD-PARTY-NOTICES.txt "$NOTICES_SRC" 425 300 \
+    --window-size "$DMG_WINDOW_W" "$DMG_WINDOW_H" \
+    --text-size 12 \
+    --icon-size "$DMG_ICON_SIZE" \
+    --icon "${APP_NAME}" "$DMG_APP_X" "$DMG_APP_Y" \
+    --hide-extension "${APP_NAME}" \
+    --app-drop-link "$DMG_APPLICATIONS_X" "$DMG_APPLICATIONS_Y" \
     --no-internet-enable \
     "$DMG_PATH" \
     "$BUNDLE"
@@ -458,24 +515,34 @@ for HELPER in \
 done
 echo "    all 4 Sparkle update helpers present (Updater, Installer, Downloader, Autoupdate)"
 
-# GPLv3 §6: assert the license + source pointer + third-party notices actually
-# shipped in the DMG, with CONTENT checks (not just presence) so a stale or
-# wrong file fails the build before publish.
-LICENSE_IN_DMG="$PRECHECK_MOUNT/LICENSE"
-SOURCE_IN_DMG="$PRECHECK_MOUNT/SOURCE.txt"
-NOTICES_IN_DMG="$PRECHECK_MOUNT/THIRD-PARTY-NOTICES.txt"
-if ! { [[ -f "$LICENSE_IN_DMG" ]] && grep -q "GNU GENERAL PUBLIC LICENSE" "$LICENSE_IN_DMG" && grep -q "Version 3" "$LICENSE_IN_DMG"; }; then
-    echo "::error::GPLv3 LICENSE missing or wrong in DMG ($LICENSE_IN_DMG)"; exit 1
+# GPLv3 §6 / MIT / BSD / Apache: assert the license material travels INSIDE the
+# signed app bundle (content checks, not just presence) — a stale/empty/wrong
+# file fails before publish. The files are sealed by the main-app signature, so
+# this also proves signing didn't drop them.
+APP_LICENSES="$PRECHECK_MOUNT/EnviousWispr.app/Contents/Resources/Licenses"
+GPL_IN_APP="$APP_LICENSES/GPL-3.0.txt"
+SOURCE_IN_APP="$APP_LICENSES/SOURCE.txt"
+NOTICES_IN_APP="$APP_LICENSES/THIRD-PARTY-NOTICES.txt"
+if ! { [[ -f "$GPL_IN_APP" ]] && grep -q "GNU GENERAL PUBLIC LICENSE" "$GPL_IN_APP" && grep -q "Version 3" "$GPL_IN_APP"; }; then
+    echo "::error::GPLv3 license missing or wrong in shipped app ($GPL_IN_APP)"; exit 1
 fi
-if ! { [[ -f "$SOURCE_IN_DMG" ]] && grep -q "${VERSION}" "$SOURCE_IN_DMG" && grep -q "${COMMIT}" "$SOURCE_IN_DMG"; }; then
-    echo "::error::SOURCE.txt missing or not pinned to ${VERSION}/${COMMIT} in DMG"; exit 1
+if ! { [[ -f "$SOURCE_IN_APP" ]] && grep -q "${VERSION}" "$SOURCE_IN_APP" && grep -q "${COMMIT}" "$SOURCE_IN_APP"; }; then
+    echo "::error::SOURCE.txt missing or not pinned to ${VERSION}/${COMMIT} in shipped app"; exit 1
 fi
-if ! { [[ -f "$NOTICES_IN_DMG" ]] && grep -q "THIRD-PARTY NOTICES" "$NOTICES_IN_DMG" \
-        && grep -q "None of these components is GPL/LGPL" "$NOTICES_IN_DMG" \
-        && grep -q "FluidAudio" "$NOTICES_IN_DMG"; }; then
-    echo "::error::THIRD-PARTY-NOTICES.txt missing or not a valid notices file in DMG"; exit 1
+if ! { [[ -f "$NOTICES_IN_APP" ]] && grep -q "THIRD-PARTY NOTICES" "$NOTICES_IN_APP" \
+        && grep -q "None of these components is GPL/LGPL" "$NOTICES_IN_APP" \
+        && grep -q "swift-transformers" "$NOTICES_IN_APP" \
+        && grep -q "FluidAudio" "$NOTICES_IN_APP"; }; then
+    echo "::error::THIRD-PARTY-NOTICES.txt missing or incomplete in shipped app ($NOTICES_IN_APP)"; exit 1
 fi
-echo "    GPL compliance files present (LICENSE [GPLv3], SOURCE.txt [v${VERSION} @ ${COMMIT:0:8}], THIRD-PARTY-NOTICES.txt)"
+# The DMG root must stay clean: only the app + the Applications alias, no loose
+# legal files (the whole point of #1486). Fail if any reappear.
+for LOOSE in LICENSE SOURCE.txt THIRD-PARTY-NOTICES.txt GPL-3.0.txt; do
+    if [[ -e "$PRECHECK_MOUNT/$LOOSE" ]]; then
+        echo "::error::Unexpected loose file in DMG install window: $LOOSE (license material belongs inside the app, #1486)"; exit 1
+    fi
+done
+echo "    license material sealed in app (GPL-3.0.txt, THIRD-PARTY-NOTICES.txt, SOURCE.txt [v${VERSION} @ ${COMMIT:0:8}]); DMG window clean"
 
 hdiutil detach "$PRECHECK_MOUNT"; rm -rf "$PRECHECK_MOUNT"
 trap - EXIT
