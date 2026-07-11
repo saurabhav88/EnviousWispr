@@ -286,6 +286,13 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// Run the pending legacy cleanup, if any, after an admission. Idempotent and safe
   /// to call on every successful download: with no token pending it does nothing.
   private func runLegacyCleanupIfNeeded() async {
+    // A deferred Remove outranks the cleanup. `cleanUpLegacy` clears the token, which
+    // is the only DURABLE record that a Remove is owed — `removalPending` is merely
+    // in-memory. Clearing it here (e.g. a Download completing while a recording still
+    // pins the model) would leave a crash before `retryPendingRemoval` with the model
+    // installed and no record of the user's action. Let the removal path, which orders
+    // removal-then-cleanup, own both.
+    guard !removalPending else { return }
     guard let legacyCleanup, let delivery, await delivery.isAdmitted() else { return }
     do {
       try await legacyCleanup()
@@ -388,6 +395,30 @@ public final class EGOneRuntime: EGOneEndpointProviding {
 
       // Nothing may hold the old artifact open when it is unlinked.
       await server.stop()
+
+      // A Remove pressed during the transition is honored BEFORE the cleanup, not
+      // after (GitHub cloud review, PR #1497).
+      //
+      // `cleanUpLegacy()` deletes the legacy artifact AND clears the token — and the
+      // token is the only durable record that a Remove is owed. Running it first
+      // would clear that record while the shards were still installed, so a crash,
+      // quit, or failed delivery removal in that window would leave the newly
+      // admitted model on disk with nothing left to honor the user's action.
+      //
+      // The launch-time `.remove` branch already gets this right: remove the shards,
+      // check the outcome, and only then clear the token (r14/r15). This is the same
+      // rule on the in-flight path — the SAME bug family, on the parallel path, which
+      // is exactly how everything else in this PR went wrong.
+      if removalPending {
+        isMigratingLegacyLayout = false
+        guard case .removed = await removeModelAwaitingCompletion() else {
+          // Removal failed: the token still says `.remove`, the legacy artifact is
+          // still here, and the next launch retries the whole thing.
+          return
+        }
+        try? await cleanUpLegacy()
+        return
+      }
 
       do {
         try await cleanUpLegacy()
