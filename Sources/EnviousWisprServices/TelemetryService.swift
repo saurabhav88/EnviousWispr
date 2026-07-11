@@ -1801,6 +1801,50 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("update.install_failed", properties: props)
   }
 
+  /// Issue #1447: fires for every reportable (non-benign) Sparkle cycle
+  /// abort, stage-tagged. Sibling to `updateInstallFailed` but not gated to
+  /// install-stage only — this is the correctly-labeled event that
+  /// `update.install_failed` was over-firing under before this fix.
+  public func updateCycleFailed(
+    version: String,
+    isCritical: Bool,
+    source: String,
+    errorCode: String,
+    stage: String,
+    installIntentSeen: Bool,
+    checkKind: String,
+    currentAppVersion: String
+  ) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "update.cycle_failed",
+          stringProps: [
+            "version": version,
+            "source": source,
+            "error_code": errorCode,
+            "stage": stage,
+            "check_kind": checkKind,
+            "current_app_version": currentAppVersion,
+          ],
+          boolProps: ["is_critical": isCritical, "install_intent_seen": installIntentSeen]
+        ))
+    #endif
+    PostHogSDK.shared.capture(
+      "update.cycle_failed",
+      properties: [
+        "version": version,
+        "is_critical": isCritical,
+        "source": source,
+        "error_code": errorCode,
+        "stage": stage,
+        "install_intent_seen": installIntentSeen,
+        "check_kind": checkKind,
+        "current_app_version": currentAppVersion,
+      ]
+    )
+  }
+
   public func updateInstallCancelled(version: String, isCritical: Bool, source: String) {
     #if DEBUG
       testEventHook?(
