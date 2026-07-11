@@ -7,15 +7,31 @@ bad scenario silently invalidates every subsequent "pass" because the app
 is already broken.
 
 Usage:
+    # Legacy Lane A gauntlet (health-check between scenarios):
     python3 Tests/RuntimeUAT/run_gauntlet.py --backend parakeet
     python3 Tests/RuntimeUAT/run_gauntlet.py --backend whisperKit
 
+    # #1317 dead-mic proof bench (one build; needs a stamped manifest):
+    python3 Tests/RuntimeUAT/run_gauntlet.py dead-mic \
+        --manifest /tmp/bench/candidate.manifest.json \
+        --backend parakeet --label candidate --scorecard /tmp/bench/candidate.json
+
+    # Stamp a build manifest AFTER building an A/B arm:
+    python3 Tests/RuntimeUAT/run_gauntlet.py write-manifest \
+        --bundle "build/EnviousWispr Local.app" --source-ref v2.3.2 \
+        --source-sha $(git rev-parse HEAD) --clean-tree \
+        --contract-version zerofill-v1 --out /tmp/bench/candidate.manifest.json
+
 The bundle must already be running with EW_FAULT_INJECTION=1 set
-(via the wispr-rebuild-debug skill).
+(via the wispr-rebuild-debug skill). The A/B comparison is two dead-mic runs
+(one per build, sequential — shared bundle id) plus a diff of the two
+scorecards; this runner owns per-build execution, manifest stamping, and
+aggregation (no third runner, per plan §3c).
 """
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -27,10 +43,19 @@ if str(HERE) not in sys.path:
 from faultInjection import (  # noqa: E402
     _assert_dictation_recovers,
     _parse_query_state,
+    evaluate_trial,
     list_xpc_service_pids,
     query_state,
     run_scenario,
+    write_build_manifest,
 )
+
+# #1317 deterministic dead-mic cells scored A/B in Phase 1.
+DEAD_MIC_SCENARIOS = [
+    "Z1_all_zero_from_start",
+    "Z2_valid_then_all_zero",
+    "Z3_bounded_zero_then_restore",
+]
 
 
 PARAKEET_GAUNTLET = [
@@ -105,7 +130,112 @@ def health_check(backend_key: str) -> dict:
     }
 
 
+def run_dead_mic_bench(manifest_path: str, backend: str, label: str) -> dict:
+    """#1317 dead-mic proof bench against the currently running build. Baseline
+    mode: a valid-evidence PRODUCT failure is recorded and does NOT abort the run
+    (so the full scorecard is produced); an INVALID-evidence trial flags the whole
+    bench invalid (nonzero exit). The running app must already be on `backend`;
+    this runner records the label, it does not switch backends."""
+    print(f"=== #1317 dead-mic bench — build={label} backend={backend} ===")
+    print(f"manifest: {manifest_path}")
+    print(f"pre-state: {query_state()}")
+
+    cells = []
+    any_invalid = False
+    for i, name in enumerate(DEAD_MIC_SCENARIOS, 1):
+        print(f"\n--- [{i}/{len(DEAD_MIC_SCENARIOS)}] {name} ---")
+        t0 = time.monotonic()
+        try:
+            wrapped = run_scenario(name, manifest_path=manifest_path)
+            inner = wrapped.get("result", {})
+        except Exception as e:  # noqa: BLE001 — a raising scenario is invalid evidence
+            print(f"  scenario raised: {type(e).__name__}: {e}")
+            cells.append({
+                "scenario": name, "evidence_valid": False, "passed": False,
+                "reason": f"scenario raised {type(e).__name__}: {e}",
+                "elapsed_seconds": time.monotonic() - t0,
+                "assertions": {}, "evidence": {},
+            })
+            any_invalid = True
+            continue
+
+        passed, reason = evaluate_trial(name, inner)
+        ev_valid = bool(inner.get("evidence_valid", True))
+        if not ev_valid:
+            any_invalid = True
+        cells.append({
+            "scenario": name,
+            "evidence_valid": ev_valid,
+            "passed": passed,
+            "reason": reason,
+            "elapsed_seconds": wrapped.get("elapsed_seconds"),
+            "assertions": inner.get("assertions", {}),
+            "evidence": inner.get("evidence", {}),
+        })
+        tag = "OK" if passed else ("INVALID" if not ev_valid else "PRODUCT-FAIL")
+        print(f"  {tag}  {reason}")
+        print(f"  assertions={inner.get('assertions', {})}")
+
+    print(f"\nfinal-state: {query_state()}")
+    return {
+        "label": label,
+        "backend": backend,
+        "manifest_path": manifest_path,
+        "any_invalid": any_invalid,
+        "cells": cells,
+    }
+
+
+def _write_scorecard(bench: dict, out_path: str) -> None:
+    Path(out_path).write_text(
+        json.dumps(bench, indent=2, default=str) + "\n", encoding="utf-8")
+    print(f"\nscorecard written: {out_path}")
+
+
+def _cmd_dead_mic(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="run_gauntlet.py dead-mic")
+    p.add_argument("--manifest", required=True, help="build manifest JSON path")
+    p.add_argument("--backend", choices=["parakeet", "whisperKit"], default="parakeet")
+    p.add_argument("--label", required=True, help="build label, e.g. candidate / v2.3.2")
+    p.add_argument("--scorecard", help="write the JSON scorecard here")
+    args = p.parse_args(argv)
+    bench = run_dead_mic_bench(args.manifest, args.backend, args.label)
+    if args.scorecard:
+        _write_scorecard(bench, args.scorecard)
+    n_invalid = sum(1 for c in bench["cells"] if not c["evidence_valid"])
+    n_fail = sum(1 for c in bench["cells"] if c["evidence_valid"] and not c["passed"])
+    print(f"\n=== bench summary: {len(bench['cells'])} cells, "
+          f"{n_invalid} invalid-evidence, {n_fail} product-fail ===")
+    # Baseline contract: nonzero only when any trial has INVALID evidence.
+    return 1 if bench["any_invalid"] else 0
+
+
+def _cmd_write_manifest(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="run_gauntlet.py write-manifest")
+    p.add_argument("--bundle", required=True, help="path to the built .app")
+    p.add_argument("--source-ref", required=True, help="git ref/tag the build came from")
+    p.add_argument("--source-sha", required=True, help="full commit SHA")
+    p.add_argument("--clean-tree", action="store_true", help="working tree was clean")
+    p.add_argument("--contract-version", required=True, help="injector contract version")
+    p.add_argument("--out", required=True, help="manifest JSON output path")
+    args = p.parse_args(argv)
+    manifest = write_build_manifest(
+        bundle_path=args.bundle, source_ref=args.source_ref, source_sha=args.source_sha,
+        clean_tree=args.clean_tree, contract_version=args.contract_version, out_path=args.out)
+    print(f"manifest written: {args.out}")
+    print(f"  app_sha256={manifest['app_sha256'][:16]}…  "
+          f"audio={manifest['audio_helper_sha256'][:16]}…  "
+          f"asr={manifest['asr_helper_sha256'][:16]}…")
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    # Subcommand routing; no subcommand ⇒ legacy Lane A gauntlet (back-compat).
+    if argv and argv[0] == "dead-mic":
+        return _cmd_dead_mic(argv[1:])
+    if argv and argv[0] == "write-manifest":
+        return _cmd_write_manifest(argv[1:])
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--backend", choices=["parakeet", "whisperKit"],
                         default="parakeet")
