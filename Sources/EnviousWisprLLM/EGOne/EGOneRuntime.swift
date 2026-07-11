@@ -273,21 +273,26 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     removeModel()
   }
 
-  /// `removeModel()` that the caller can AWAIT.
+  /// `removeModel()` that the caller can AWAIT, and whose OUTCOME it can read.
   ///
-  /// The launch-time removal-recovery path needs the delivery removal to have
-  /// actually completed before it clears the durable token — otherwise it clears the
-  /// only record of the user's Remove while a fire-and-forget task is still deleting
-  /// the model, and a crash in that window leaves the model installed with nothing
-  /// left to retry from (Codex PR-1 review r14). Same work, same order; the caller
-  /// just gets to know when it is done.
-  public func removeModelAwaitingCompletion() async {
-    guard let delivery else { return }
+  /// The launch-time removal-recovery path needs both. It must know the removal
+  /// actually completed before it clears the durable token — clearing it while a
+  /// fire-and-forget task was still deleting would lose the user's Remove to a crash
+  /// (Codex PR-1 review r14) — and it must know whether the removal SUCCEEDED, since
+  /// clearing the only retry record after a failed delete strands model remnants on
+  /// disk with nothing left to honor the removal (r15).
+  ///
+  /// Same work, same order as `removeModel()`; the caller just gets to know when it
+  /// finished and how it went.
+  public func removeModelAwaitingCompletion() async -> ModelDeliveryController.RemoveOutcome {
+    guard let delivery else {
+      return .failed(DeliveryFailure(reason: .unknown, detail: "no_delivery_adapter"))
+    }
     removalPending = false
     activationGeneration += 1
     onModelRemoved?()
     await server.stop()
-    _ = await delivery.remove()
+    return await delivery.remove()
   }
 
   /// Replace a previously-shipped layout we recognize but can no longer load

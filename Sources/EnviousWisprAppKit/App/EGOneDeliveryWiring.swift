@@ -173,15 +173,22 @@ enum EGOneDeliveryWiring {
         // The user removed EG-1 while a legacy artifact was still stranded. Finish
         // the removal they asked for, and fetch NOTHING.
         //
-        // Both halves, in this order, and the token clears LAST. The token is the
-        // only durable record that a Remove is owed; `cleanUpLegacy` clears it. So
-        // the delivery removal must be AWAITED first — clearing the token while a
-        // fire-and-forget removal was still running would, on a crash in that
-        // window, leave the newly-admitted 2.9 GB model installed with no record
-        // left to retry from, and the UI still reporting it present (Codex PR-1
-        // review r14). Both halves are idempotent, so a crash before the token
-        // clears simply repeats them on the next launch.
-        await runtime.removeModelAwaitingCompletion()
+        // Both halves, in this order, and the token clears LAST — but ONLY if the
+        // first half actually succeeded.
+        //
+        // The token is the sole durable record that a Remove is owed, and
+        // `cleanUpLegacy` is what clears it. So the delivery removal is AWAITED
+        // (clearing the token while a fire-and-forget removal was still running
+        // would lose the Remove to a crash in that window — r14), and its OUTCOME is
+        // checked (clearing the token after a FAILED removal would strand model
+        // remnants on disk with nothing left to honor the user's Remove — r15).
+        //
+        // A failed removal keeps the token and everything it records, so the next
+        // launch tries again. Both halves are idempotent, so repeating them is free.
+        guard case .removed = await runtime.removeModelAwaitingCompletion() else {
+          runtime.sweepStaleServersAtLaunch()
+          return
+        }
         try? await migrator.cleanUpLegacy(relocation)
         runtime.sweepStaleServersAtLaunch()
       case nil:
