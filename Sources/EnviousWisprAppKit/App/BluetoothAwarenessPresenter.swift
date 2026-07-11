@@ -205,7 +205,10 @@ final class BluetoothAwarenessPresenter {
   /// Resolve whether the CONFIGURED input is Bluetooth using the settings-sync
   /// precedence: `preferredInputDeviceIDOverride` first, `selectedInputDeviceUID`
   /// second, the CoreAudio default only when both are empty (Codex r2/r3). A
-  /// nonempty UID that no longer resolves fails CLOSED (returns false → no card).
+  /// nonempty UID that no longer resolves does NOT fail closed — it falls back to
+  /// the default input, mirroring the capture path's `resolvedDeviceID ??
+  /// defaultInputDeviceID()` so a disconnected pinned device still surfaces the
+  /// card when the real (default) input is Bluetooth (cloud review P2).
   /// Pure over two injected resolvers so the precedence is unit-tested without
   /// real CoreAudio devices; the bootstrapper supplies the live `AudioDeviceEnumerator`
   /// resolvers.
