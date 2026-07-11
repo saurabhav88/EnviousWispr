@@ -106,12 +106,12 @@ import Testing
     let migrator = ModelRelocationMigrator()
     _ = await migrator.migrate(p)
 
-    try migrator.cleanUpLegacy(p)
+    try await migrator.cleanUpLegacy(p)
     #expect(!exists(monolith))
     #expect(migrator.pendingLegacyArtifact(p) == nil)
 
     // Second run: already-absent artifact, already-cleared token. No throw.
-    try migrator.cleanUpLegacy(p)
+    try await migrator.cleanUpLegacy(p)
     #expect(migrator.pendingLegacyArtifact(p) == nil)
   }
 
@@ -129,7 +129,7 @@ import Testing
     let otherRevision = try plan(
       files: [(path: "vocab.json", content: Data("different".utf8), component: "vocab.json")],
       dirs: dirs)
-    try migrator.cleanUpLegacy(otherRevision)
+    try await migrator.cleanUpLegacy(otherRevision)
 
     #expect(exists(monolith), "a foreign-revision token must not delete our bytes")
   }
@@ -151,14 +151,19 @@ import Testing
     #expect(migrator.pendingLegacyArtifact(p) == nil, "and must never be marked for deletion")
     // Even if a caller ignored the outcome and ran cleanup anyway, the absent
     // token means nothing is deleted.
-    try migrator.cleanUpLegacy(p)
+    try await migrator.cleanUpLegacy(p)
     #expect(exists(impostor), "bytes we cannot prove are ours are never deleted")
   }
 
   /// If the legacy file CHANGES between classification and cleanup, it is no
   /// longer the artifact we proved was ours — so we leave it alone rather than
   /// delete something we can no longer identify.
-  @Test func legacyArtifactMutatedAfterClassificationIsNotDeleted() async throws {
+  ///
+  /// The replacement is deliberately the SAME BYTE COUNT as the original. A
+  /// size-only guard passes here and deletes the file; only re-hashing catches
+  /// it. That is the whole finding (Codex PR-1 review r2), and classification
+  /// happens a whole model-download before the delete, so the window is real.
+  @Test func sameSizeMutationBetweenClassificationAndCleanupIsNotDeleted() async throws {
     let dirs = try makeDirs()
     let monolith = dirs.old.appendingPathComponent("eg-1-v1.gguf")
     try write(Self.legacyBytes, under: dirs.old, path: "eg-1-v1.gguf")
@@ -167,12 +172,16 @@ import Testing
     _ = await migrator.migrate(p)
     #expect(migrator.pendingLegacyArtifact(p) != nil)
 
-    // Something replaced the file after we classified it.
-    try write(Data("swapped out from under us".utf8), under: dirs.old, path: "eg-1-v1.gguf")
-    try migrator.cleanUpLegacy(p)
+    // Same length, different bytes — invisible to a byte-count check.
+    let impostor = Data(repeating: 0x41, count: Self.legacyBytes.count)
+    #expect(impostor.count == Self.legacyBytes.count)
+    try write(impostor, under: dirs.old, path: "eg-1-v1.gguf")
 
-    #expect(exists(monolith), "a changed artifact is no longer identifiable as ours")
-    #expect(migrator.pendingLegacyArtifact(p) == nil, "and the stale token is dropped")
+    try await migrator.cleanUpLegacy(p)
+
+    #expect(exists(monolith), "a same-size swap is still not the artifact we proved was ours")
+    #expect(try Data(contentsOf: monolith) == impostor, "and its bytes are untouched")
+    #expect(migrator.pendingLegacyArtifact(p) == nil, "the stale token is dropped")
   }
 
   // MARK: - Relocatable (a dev machine whose shards already sit in the old home)

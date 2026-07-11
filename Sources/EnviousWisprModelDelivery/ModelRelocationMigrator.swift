@@ -14,11 +14,11 @@ import Foundation
 /// Two outcomes matter, and they are NOT the same thing:
 ///
 /// 1. **Relocatable** — the old directory holds bytes that satisfy the CURRENT
-///    manifest. Same-volume rename into the destination, then validate the
-///    admission marker against the new registration before the old directory is
-///    dropped. Zero re-download. (Marker stamps store RELATIVE install paths +
-///    size + mtime, and a rename preserves mtimes, so the marker survives the
-///    move — `CacheAdmission.isAdmitted`.)
+///    manifest. The set is REPRODUCED at the destination (APFS clone: instant,
+///    no extra space) with the source left completely intact, re-admitted there,
+///    and only then is the old directory dropped. Zero re-download, and the
+///    source stays a valid fallback at every instant — so a crash mid-relocation
+///    can never leave both sides partial.
 ///
 /// 2. **Trusted-legacy** — the old directory holds a PREVIOUSLY-SHIPPED layout
 ///    that cannot satisfy the current manifest (EG-1's monolithic
@@ -106,11 +106,14 @@ public struct ModelRelocationMigrator: Sendable {
   struct Token: Codable, Equatable {
     /// Absolute path of the legacy artifact awaiting cleanup.
     let legacyPath: String
-    /// Size of the artifact we VERIFIED at classification time. Re-checked
-    /// immediately before the delete: if the file changed underneath us between
-    /// classification and cleanup, it is no longer the artifact we proved was
-    /// ours, and we do not delete it.
+    /// Size and digest of the artifact we VERIFIED at classification time. BOTH
+    /// are re-checked immediately before the delete. Size alone is not enough: a
+    /// same-size corruption or a same-size manual replacement would slip through
+    /// a byte-count check and we would delete bytes we can no longer prove are
+    /// ours (Codex PR-1 review r2). The delete is minutes after classification —
+    /// a whole model download — so the file genuinely can change in between.
     let legacySizeBytes: Int64
+    let legacySHA256: String
     /// Manifest digest this token was minted against — a token from a different
     /// revision must never authorize a delete under the current one.
     let manifestDigest: String
@@ -120,9 +123,10 @@ public struct ModelRelocationMigrator: Sendable {
 
   // MARK: - Migration (runs inside the migration latch, before any engine loads)
 
-  /// Classify and, where possible, relocate. Filesystem only: fast (stat +
-  /// rename), never a network transfer — the caller must NOT hold the migration
-  /// latch across a download.
+  /// Classify and, where possible, relocate. Filesystem only — never a network
+  /// transfer, so the caller must NOT hold the migration latch across a
+  /// download. Hashes at most one candidate (size gates first), so the common
+  /// launch is a stat and nothing more.
   public func migrate(_ plan: RelocationPlan) async -> Outcome {
     let fm = FileManager.default
     let admission = CacheAdmission(
@@ -145,6 +149,7 @@ public struct ModelRelocationMigrator: Sendable {
         Token(
           legacyPath: legacy.url.path,
           legacySizeBytes: legacy.artifact.sizeBytes,
+          legacySHA256: legacy.artifact.sha256,
           manifestDigest: plan.manifest.manifestDigest),
         plan: plan)
       return .trustedLegacyPending(legacy.url)
@@ -195,7 +200,7 @@ public struct ModelRelocationMigrator: Sendable {
   /// Throws on a failed delete so the caller can retain the token and retry on a
   /// later launch — never clears the token on a failure. Idempotent: an
   /// already-absent legacy file clears the token and returns.
-  public func cleanUpLegacy(_ plan: RelocationPlan) throws {
+  public func cleanUpLegacy(_ plan: RelocationPlan) async throws {
     let fm = FileManager.default
     guard let token = readToken(plan: plan) else { return }
     // A token minted against a different revision must not authorize a delete.
@@ -203,18 +208,23 @@ public struct ModelRelocationMigrator: Sendable {
       clearToken(plan: plan)
       return
     }
+    let url = URL(fileURLWithPath: token.legacyPath)
     if fm.fileExists(atPath: token.legacyPath) {
-      // The file must still be the artifact we PROVED was ours at classification
-      // time. If it changed underneath us (user swapped it, a partial write
-      // truncated it), it is no longer identifiable as ours — leave it, and drop
-      // the token so we never revisit it. Cheap stat, not a re-hash: the
-      // expensive proof was done once, at classification.
-      let size = (try? fm.attributesOfItem(atPath: token.legacyPath)[.size]) as? Int64
-      guard size == token.legacySizeBytes else {
+      // The file must STILL be the artifact we proved was ours. Classification
+      // happened before a multi-GB download, so minutes have passed and the file
+      // genuinely can have changed underneath us. Re-prove identity by digest,
+      // not by byte count — a same-size corruption or replacement passes a size
+      // check and would otherwise cost the user bytes we cannot identify.
+      // Size is the cheap gate; the hash is the proof.
+      guard CacheAdmission.sizeMatches(url: url, expected: token.legacySizeBytes),
+        await CacheAdmission.streamingSHA256(of: url) == token.legacySHA256
+      else {
+        // No longer identifiable as ours: leave the bytes alone and drop the
+        // token so we never revisit them.
         clearToken(plan: plan)
         return
       }
-      try fm.removeItem(atPath: token.legacyPath)
+      try fm.removeItem(at: url)
     }
     clearToken(plan: plan)
   }

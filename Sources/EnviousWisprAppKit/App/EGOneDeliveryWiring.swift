@@ -103,7 +103,7 @@ enum EGOneDeliveryWiring {
       if migrator.pendingLegacyArtifact(relocation) != nil {
         runtime.sweepStaleServersAtLaunch()
         runtime.startLegacyLayoutMigration {
-          try migrator.cleanUpLegacy(relocation)
+          try await migrator.cleanUpLegacy(relocation)
         }
       } else if providerIsEGOne {
         runtime.startIfActiveProvider()
