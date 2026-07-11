@@ -208,11 +208,17 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     }
     Task {
       let outcome = await delivery.ensureAvailable()
+      guard case .admitted = outcome else { return }
+      // A retry after a failed automatic migration lands HERE, not in the migration
+      // path — so the superseded artifact's cleanup has to run here too, or the old
+      // 2.9 GB model sits on disk until the next launch (Codex PR-1 review r20).
+      // No-op when nothing is owed.
+      await runLegacyCleanupIfNeeded()
       // A user-initiated download that completes while EG-1 is the selected
       // provider boots the server now, not at next relaunch (#1271 Codex r2).
       // Explicit here (not reactive from the state stream) so it fires exactly
       // once per completed download.
-      if case .admitted = outcome, isActiveProvider?() == true {
+      if isActiveProvider?() == true {
         activateAndProbe()
       }
     }
@@ -266,6 +272,30 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// leaves them to disagree exactly when a crash makes it matter.
   public var onModelRemovalCancelled: (@MainActor () -> Void)?
 
+  /// Deletes a superseded legacy artifact once its replacement is admitted. Set by
+  /// the composition root; a no-op when nothing is owed (it is driven by the durable
+  /// token, so calling it when no cleanup is pending costs nothing).
+  ///
+  /// Held here rather than passed per-call because BOTH ways the replacement can be
+  /// admitted must run it: the automatic migration, and the user clicking Download
+  /// after that migration failed. Without the second, a retry in the same session
+  /// installs the new model and leaves the old 2.9 GB one on disk until relaunch
+  /// (Codex PR-1 review r20).
+  public var legacyCleanup: (@Sendable () async throws -> Void)?
+
+  /// Run the pending legacy cleanup, if any, after an admission. Idempotent and safe
+  /// to call on every successful download: with no token pending it does nothing.
+  private func runLegacyCleanupIfNeeded() async {
+    guard let legacyCleanup, let delivery, await delivery.isAdmitted() else { return }
+    do {
+      try await legacyCleanup()
+    } catch {
+      // The replacement is admitted and usable; the token survives for a next-launch
+      // retry. Never fatal.
+      onEvent?(.legacyMigrationCleanupFailed)
+    }
+  }
+
   /// Called on terminal pipeline states (alongside the deactivation retry).
   /// Idempotent: no-op unless a removal is actually pending.
   public func retryPendingRemoval() {
@@ -315,10 +345,10 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// The caller must NOT hold the migration latch across this — it is a
   /// multi-GB network transfer, and blocking the speech engines behind a polish
   /// download would be a self-inflicted heart outage.
-  public func startLegacyLayoutMigration(
-    cleanUpLegacy: @escaping @Sendable () async throws -> Void
-  ) {
-    guard let delivery, !isMigratingLegacyLayout else { return }
+  public func startLegacyLayoutMigration() {
+    guard let delivery, let cleanUpLegacy = legacyCleanup, !isMigratingLegacyLayout else {
+      return
+    }
     isMigratingLegacyLayout = true
     Task {
       // `defer` owns the release: it runs on EVERY exit — success, throw, or

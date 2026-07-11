@@ -161,6 +161,9 @@ enum EGOneDeliveryWiring {
     // ...and taking the removal back restores it, so the durable intent never
     // outlives the decision that set it.
     runtime.onModelRemovalCancelled = { migrator.markLegacyForReplacement(relocation) }
+    // ONE cleanup, reachable from both ways the replacement can be admitted: the
+    // automatic migration, and a user-initiated Download after that migration failed.
+    runtime.legacyCleanup = { try await migrator.cleanUpLegacy(relocation) }
     Task { @MainActor in
       let outcome = await migrator.migrate(relocation)
 
@@ -186,9 +189,7 @@ enum EGOneDeliveryWiring {
       switch intent ?? (legacyNeedsReplacing ? .replace : nil) {
       case .replace:
         runtime.sweepStaleServersAtLaunch()
-        runtime.startLegacyLayoutMigration {
-          try await migrator.cleanUpLegacy(relocation)
-        }
+        runtime.startLegacyLayoutMigration()
       case .remove:
         // The user removed EG-1 while a legacy artifact was still stranded. Finish
         // the removal they asked for, and fetch NOTHING.
