@@ -854,36 +854,55 @@ def verify_running_identity(manifest: dict) -> dict:
 
 
 class LogCursor:
-    """Rotation-safe cursor over app.log. Snapshots end-of-file at construction;
-    `new_text()` returns only bytes appended since. On rotation (inode change or
-    shrink) it re-reads the whole current file so a fresh entry is never missed.
-    Fail-closed: a read error yields ''."""
+    """Rotation-safe cursor over app.log. Holds the file OPEN at construction and
+    reads appended bytes from that fd, which FOLLOWS the inode through a rename —
+    so final evidence written to the renamed (rotated-away) file is not lost, which
+    a pathname-only cursor would miss. If the pathname later points at a NEW inode
+    (real rename rotation), the fresh file's bytes are appended too. `new_text()`
+    accumulates, so repeated calls are idempotent (two oracles read one take).
+    Fail-closed: a read error contributes nothing rather than raising."""
 
     def __init__(self, path=APP_LOG_PATH):
         self.path = Path(path)
-        self._offset, self._inode = self._stat()
-
-    def _stat(self):
+        self._file = None
+        self._inode = -1
+        self._buffer = b""
         try:
-            st = self.path.stat()
-            return st.st_size, st.st_ino
+            self._file = open(self.path, "rb")  # noqa: SIM115 — held across reads
+            self._inode = os.fstat(self._file.fileno()).st_ino
+            self._file.seek(0, os.SEEK_END)
         except OSError:
-            return 0, -1
+            if self._file is not None:
+                self._file.close()
+            self._file = None
 
     def new_text(self) -> str:
+        # Accumulate appended bytes from the held fd (follows a rename via inode).
+        if self._file is not None:
+            try:
+                self._buffer += self._file.read()
+            except OSError:
+                pass
+        # If the pathname now resolves to a NEW inode, a real rotation happened;
+        # read that fresh file WHOLE each call (not accumulated → no double count).
+        rotated_tail = b""
         try:
-            st = self.path.stat()
+            if self.path.stat().st_ino != self._inode:
+                with open(self.path, "rb") as nf:
+                    rotated_tail = nf.read()
         except OSError:
-            return ""
-        rotated = (st.st_ino != self._inode) or (st.st_size < self._offset)
-        start = 0 if rotated else self._offset
-        try:
-            with open(self.path, "rb") as f:
-                f.seek(start)
-                data = f.read()
-        except OSError:
-            return ""
-        return data.decode("utf-8", errors="replace")
+            pass
+        return (self._buffer + rotated_tail).decode("utf-8", errors="replace")
+
+    def close(self) -> None:
+        if self._file is not None:
+            try:
+                self._file.close()
+            finally:
+                self._file = None
+
+    def __del__(self):
+        self.close()
 
 
 def _normalize_tokens(text: str) -> set:
@@ -967,12 +986,14 @@ def _canary_take(*, record_seconds: float = 3.0, settle_timeout_s: float = 8.0) 
         if "complete" in final or final == "idle" or "error" in final:
             break
         time.sleep(0.1)  # settle: poll interval; loop breaks on terminal state signal
-    return {
+    result = {
         "reached_recording": True,
         "terminal_state": final,
         "recovers": assert_canary_recovers(cursor),
         "dead_honest": assert_dead_take_honest(cursor),
     }
+    cursor.close()
+    return result
 
 
 # ─────────────────── #1317 proof-bench: evidence / trial schema ──────────────
@@ -1752,8 +1773,16 @@ def _zero_fill_trial(*, mode: str, n: int, trial: str, do_control: bool,
     inc_post = post["source_incarnation"]
 
     control = None
+    disarm_reply = None
     if do_control:
-        disarm_zero_fill(trial)
+        # A failed disarm means the pipe is still poisoned, so a control take that
+        # cannot hear the canary is MISSING EVIDENCE, not a product failure — fail
+        # closed to INVALID rather than scoring next_press_works=False.
+        disarm_reply = disarm_zero_fill(trial)
+        if disarm_reply != "OK":
+            return _invalid_evidence(
+                "disarm ack failed", disarm_reply=disarm_reply, post_status=post,
+                arm=arm, identity=identity)
         control = _canary_take()
 
     assertions = {
@@ -1779,6 +1808,7 @@ def _zero_fill_trial(*, mode: str, n: int, trial: str, do_control: bool,
             "source_incarnation_post": inc_post,
             "fault_take": fault_take,
             "control_take": control,
+            "disarm_reply": disarm_reply,
             "trial_id": trial,
             "mode": mode,
             "n": n,

@@ -435,7 +435,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   }
 
   public func rebuildEngine() {
-    activeSource?.rebuild()
+    // Only a real rebuild advances the incarnation: with no active source nothing
+    // is destroyed, so a bump here would falsely satisfy `fresh_pipe_proven`.
+    guard let source = activeSource else { return }
+    source.rebuild()
     #if DEBUG
       debugSourceIncarnation += 1  // destructive rebuild of the active source's resources
     #endif

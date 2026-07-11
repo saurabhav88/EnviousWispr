@@ -105,14 +105,23 @@ final class PreRollForwarder: @unchecked Sendable {
         // transforming BOTH the sample array and the PCM buffer, and recomputing
         // level (0.0 only for a fully-zero chunk; recomputed RMS on a boundary
         // chunk). Same delivery cadence/frame-count; content only.
+        // Confirm a writable Float32 mono buffer whose frame count matches the
+        // sample array BEFORE asking the controller for a range — `zeroRange`
+        // advances state and records the hit, so an unsupported buffer shape must
+        // not consume the injector or claim a hit while the array and PCM diverge.
+        // `zeroRange` is last in the chain (short-circuit) so it runs only when the
+        // buffer can be zeroed identically to the array.
         if let ctl = debugZeroFillController,
+          let ch = buffer.floatChannelData,
+          Int(buffer.frameLength) == samples.count,
+          buffer.format.commonFormat == .pcmFormatFloat32,
+          buffer.format.channelCount == 1,
           let range = ctl.zeroRange(count: samples.count, context: .live)
         {
           var zeroed = samples
-          for i in range { zeroed[i] = 0 }
-          if let ch = buffer.floatChannelData {
-            let n = Int(buffer.frameLength)
-            for i in range where i < n { ch[0][i] = 0 }
+          for i in range {
+            zeroed[i] = 0
+            ch[0][i] = 0
           }
           let level: Float =
             zeroed.contains(where: { $0 != 0 })

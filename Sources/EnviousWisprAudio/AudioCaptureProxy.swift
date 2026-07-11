@@ -1054,17 +1054,20 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     /// `DebugFaultEndpoint` (`force_zero_fill(...)`).
     package func debugArmZeroFill(_ arm: DebugZeroFillArm) async -> Bool {
       guard let payload = try? JSONEncoder().encode(arm) else { return false }
-      // Mirror `waitForFormatStabilization`: exactly one of {reply, onProxyError}
-      // fires for a reply-bearing call, so a plain continuation is safe here.
-      return await withCheckedContinuation { cont in
+      // One-shot guard (like `stopCapture`): a reply followed by a per-call
+      // transport error (or vice versa) would otherwise resume twice and trap.
+      let ok: Bool? = try? await withCheckedThrowingContinuation {
+        (cont: CheckedContinuation<Bool, any Error>) in
+        let guard_ = OneShotContinuation(cont)
         serviceProxy { proxy in
           proxy.debugArmZeroFill(payload) { error in
-            cont.resume(returning: error == nil)
+            guard_.resume(returning: error == nil)
           }
         } onProxyError: {
-          cont.resume(returning: false)
+          guard_.resume(returning: false)
         }
       }
+      return ok ?? false
     }
 
     /// Read the injector's fault status from the helper and merge the proxy's own
@@ -1076,21 +1079,28 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
       // Snapshot the live generation FIRST; a nil line means no fresh-pipe
       // evidence exists, which is itself a fail-closed outcome.
       guard let xpcGeneration = slot.current?.generation else { return nil }
-      let serviceStatus: DebugFaultServiceStatus? = await withCheckedContinuation { cont in
-        serviceProxy { proxy in
-          proxy.debugFaultStatus { data, _ in
-            guard let data,
-              let decoded = try? JSONDecoder().decode(DebugFaultServiceStatus.self, from: data)
-            else {
-              cont.resume(returning: nil)
-              return
+      // One-shot guard against a reply/error double-resume (see `debugArmZeroFill`).
+      // `try?` yields a double optional (continuation payload is itself optional);
+      // `?? nil` flattens it back to `DebugFaultServiceStatus?`.
+      let serviceStatus: DebugFaultServiceStatus? =
+        (try? await withCheckedThrowingContinuation {
+          (cont: CheckedContinuation<DebugFaultServiceStatus?, any Error>) in
+          let guard_ = OneShotContinuation(cont)
+          serviceProxy { proxy in
+            proxy.debugFaultStatus { data, _ in
+              guard let data,
+                let decoded = try? JSONDecoder().decode(
+                  DebugFaultServiceStatus.self, from: data)
+              else {
+                guard_.resume(returning: nil)
+                return
+              }
+              guard_.resume(returning: decoded)
             }
-            cont.resume(returning: decoded)
+          } onProxyError: {
+            guard_.resume(returning: nil)
           }
-        } onProxyError: {
-          cont.resume(returning: nil)
-        }
-      }
+        }) ?? nil
       guard let s = serviceStatus else { return nil }
       return DebugFaultStatus(
         armed: s.armed, hit: s.hit, trialID: s.trialID, mode: s.mode,
