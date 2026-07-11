@@ -872,6 +872,16 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   public var lastAudioInterruptionCause: EngineInterruptionCause? {
     kernel.lastAudioInterruptionCause
   }
+  /// #1317: non-nil when the most recent recording was classified as the
+  /// mic-harness all-zero glitch (`allZeroFromStart` = the `.zeroSignal`
+  /// pill; `becameZeroMidCapture` = a normal completion whose disclosure
+  /// must say "may be missing its tail" instead of the interruption-cause
+  /// derived sentence, since no `EngineInterruptionCause` is ever stamped
+  /// for this path, §3.5). LIVE pass-through from the kernel; never
+  /// persisted.
+  public var lastZeroSignalFailureMode: CaptureStallFailureMode? {
+    kernel.zeroSignalFailureMode
+  }
   /// #1376: the resolved-route transports for the most recent recording, for
   /// the App layer's `dictation.completed` telemetry. LIVE pass-through from the
   /// kernel; never persisted. Low-cardinality transport/reason strings only.
@@ -1499,6 +1509,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       return "No speech detected. Your clipboard is unchanged. Try again."
     case .captureStalled:
       return "No audio detected — try again."
+    case .zeroSignal:
+      // #1317 PR2: the harness delivered all-zero audio from a running,
+      // unmuted mic. Honest, no auto-reset yet — PR3 adds the rebuild and
+      // upgrades this to "Mic problem. Resetting it."
+      return "Couldn't hear your mic. Try again."
     }
   }
 }

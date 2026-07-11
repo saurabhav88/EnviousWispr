@@ -194,6 +194,23 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   /// for the active session reaches us. Reset to false when arming.
   private var hasReceivedBufferThisSession: Bool = false
 
+  /// #1317: per-capture-generation all-zero harness-glitch detector state.
+  /// Reset alongside `hasReceivedBufferThisSession` at every fresh
+  /// `beginCapturePhase`.
+  private var deadAirDetector = DeadAirStreamingDetector()
+
+  /// #1317 (Codex code-diff review r3): `AudioCaptureInterface.onCaptureStalled`
+  /// is documented as at-most-once per session, but the no-buffer watchdog
+  /// (`captureStallWatchdogFired`) and the all-zero detector
+  /// (`evaluateDeadAirDetector`) are two INDEPENDENT firing paths, each
+  /// guarded only by its own state (`hasReceivedBufferThisSession` /
+  /// `deadAirDetector.fired`). A delayed-buffer race — the watchdog fires on
+  /// zero buffers, then late buffers arrive before the async stop completes
+  /// and happen to cross the all-zero threshold — could fire BOTH,
+  /// duplicating the callback and its telemetry. This flag is the ONE shared
+  /// latch both paths check-and-set before calling `onCaptureStalled`.
+  private var captureStallReported = false
+
   /// 16kHz mono Float32 format used for buffer reconstruction.
   /// Matches AudioCaptureManager.targetSampleRate / targetChannels.
   nonisolated(unsafe) private static let targetFormat = AVAudioFormat(
@@ -341,6 +358,8 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     isCapturing = true
     captureStartUptimeNs = DispatchTime.now().uptimeNanoseconds  // #455
     hasReceivedBufferThisSession = false
+    deadAirDetector = DeadAirStreamingDetector()
+    captureStallReported = false
     armCaptureStallWatchdog()
     return stream
   }
@@ -393,6 +412,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     guard activeCaptureGeneration == armedSession else { return }
     guard isCapturing else { return }
     guard !hasReceivedBufferThisSession else { return }
+    guard !captureStallReported else { return }
 
     let ctx = CaptureStallContext(
       sessionID: armedSession,
@@ -407,6 +427,63 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
         ? nil : preferredInputDeviceIDOverride,
       inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
       failureMode: .noBuffers,
+      selectedTransport: currentResolvedRoute?.selected,
+      effectiveTransport: currentResolvedRoute?.effective,
+      routeReason: currentResolvedRoute?.routeReason,
+      routeFallbackReason: currentResolvedRoute?.routeFallbackReason,
+      inputSelectionMode: currentResolvedRoute?.inputSelectionMode,
+      outputTransport: currentResolvedRoute?.outputTransport,
+      routeResolutionSource: currentResolvedRoute?.routeResolutionSource
+    )
+    captureStallReported = true
+    onCaptureStalled?(ctx)
+  }
+
+  /// #1317: feed this buffer's raw samples into the per-generation all-zero
+  /// harness-glitch detector; when it crosses a confidence threshold, run the
+  /// §3.0 device-alive + not-muted discriminator and — only if it passes —
+  /// fire `onCaptureStalled` with the matching failure mode. A muted or
+  /// mute-unknown device fails closed: no fire, today's honest no-speech
+  /// path is untouched, and the next buffer re-evaluates (mute state can
+  /// legitimately change mid-recording).
+  private func evaluateDeadAirDetector(buffer: AVAudioPCMBuffer, sessionID: UInt64) {
+    guard !deadAirDetector.fired, !captureStallReported,
+      let channelData = buffer.floatChannelData
+    else { return }
+    let frameCount = Int(buffer.frameLength)
+    guard frameCount > 0 else { return }
+    deadAirDetector.ingest(UnsafeBufferPointer(start: channelData[0], count: frameCount))
+
+    let mode: CaptureStallFailureMode
+    if deadAirDetector.isAllZeroFromStart {
+      mode = .allZeroFromStart
+    } else if deadAirDetector.isBecameZeroMidCapture {
+      mode = .becameZeroMidCapture
+    } else {
+      return
+    }
+
+    guard
+      let deviceID = AudioDeviceEnumerator.resolveEffectiveInputDevice(
+        preferredOverride: preferredInputDeviceIDOverride, selected: selectedInputDeviceUID),
+      ZeroSignalDeviceDiscriminator.isEligible(deviceID: deviceID)
+    else { return }
+
+    deadAirDetector.fired = true
+    captureStallReported = true
+    let ctx = CaptureStallContext(
+      sessionID: sessionID,
+      armedAtUptimeNs: captureStartUptimeNs,
+      firedAtUptimeNs: DispatchTime.now().uptimeNanoseconds,
+      route: currentAudioRoute,
+      sourceType: "xpc_proxy",
+      engineStartedSuccessfully: true,
+      tapInstalled: true,
+      formatMismatchObserved: false,
+      inputDeviceUIDPreferred: preferredInputDeviceIDOverride.isEmpty
+        ? nil : preferredInputDeviceIDOverride,
+      inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+      failureMode: mode,
       selectedTransport: currentResolvedRoute?.selected,
       effectiveTransport: currentResolvedRoute?.effective,
       routeReason: currentResolvedRoute?.routeReason,
@@ -1284,6 +1361,11 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
           return
         }
       #endif
+      // #1317: mid-recording all-zero harness-glitch detector. After the
+      // generation guard, on the already-reconstructed float buffer, before
+      // yielding — no new XPC callback, no RT-thread work (§3.1).
+      self.evaluateDeadAirDetector(
+        buffer: safeBuffer, sessionID: self.activeCaptureGeneration)
       self.hasReceivedBufferThisSession = true
       self.audioLevel = audioLevel
       self.bufferContinuation?.yield(safeBuffer)

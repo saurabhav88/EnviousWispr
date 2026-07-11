@@ -669,6 +669,13 @@ final class KernelLifecycleTelemetrySink {
       // fire → Sentry double-counts. Skip-not-share is preferred over an
       // explicit shared dedup contract (scope creep for PR-4b.2).
       break
+    case .zeroSignal:
+      // #1317: same posture as `.captureStalled` above — NO second Sentry
+      // emission. `HeartPathTelemetryEmitter.stallFired(ctx:)` already owns
+      // the classified event, submitted either through the reactive
+      // `WedgeRecoveryRouter` funnel or the kernel's STOP-time telemetry
+      // closure (§3.6 N4). The lifecycle event still fires here.
+      break
     case .noAudioCaptured:
       // Build the rich `NoAudioContext` (route, active-capture, source,
       // device IDs) and route through the injected sink. Default impl

@@ -23,6 +23,7 @@ enum FSMFailureReason: Equatable, Sendable {
   case asrWedged
   case emptyAfterProcessing
   case captureStalled
+  case zeroSignal
 }
 
 /// The recording-session FSM states (PR-1 §B.1.1). Seven are terminal:

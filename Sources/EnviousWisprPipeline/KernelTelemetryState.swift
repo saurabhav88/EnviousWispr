@@ -36,6 +36,12 @@ final class KernelTelemetryState {
   /// copy. Cleared ONLY by `resetForNewSession()` below — a second clearer would
   /// let a stale cause leak into the next session and mis-fire the floor.
   var interruptionCause: EngineInterruptionCause?
+  /// #1317: the classified zero-signal failure mode for this session (nil =
+  /// never classified). Stamped once, by whichever classification wins
+  /// (reactive `.zeroSignal` exit OR STOP-time, §3.6) — drives the
+  /// `.zeroSignal` pill for `allZeroFromStart` and the partial-capture
+  /// disclosure for `becameZeroMidCapture` (§3.5).
+  var zeroSignalFailureMode: CaptureStallFailureMode?
 
   func resetForNewSession(polishEnabled: Bool) {
     self.polishEnabled = polishEnabled
@@ -49,6 +55,7 @@ final class KernelTelemetryState {
     modelLoadError = nil
     captureHealth = nil
     interruptionCause = nil
+    zeroSignalFailureMode = nil
   }
 }
 

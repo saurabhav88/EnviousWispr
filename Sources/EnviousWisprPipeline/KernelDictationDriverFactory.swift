@@ -407,6 +407,13 @@ public enum KernelDictationDriverFactory {
       zombieZeroPeakTelemetry: { ctx in
         emitter.zombieZeroPeak(ctx: ctx)
       },
+      // #1317 §3.6 N4: the kernel's STOP-time classification does not
+      // traverse the reactive WedgeRecoveryRouter funnel, so it submits its
+      // own event through this closure — wired to the SAME emitter authority
+      // the reactive path uses (per-mode dedup makes a duplicate safe).
+      stopTimeZeroSignalTelemetry: { ctx in
+        emitter.stallFired(ctx: ctx, isActivelyCapturing: false)
+      },
       recordingStoppedTelemetry: { sampleCount in
         telemetryRelay.emitRecordingStopped(sampleCount: sampleCount)
       },

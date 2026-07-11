@@ -268,8 +268,13 @@ final class DictationLifecycleCoordinator {
       // completion; `.deviceRemoved` = verified removal (may say "Microphone
       // disconnected"); `.otherInterruption` = salvaged with the mic, as far as
       // we know, still attached (neutral copy). The factory owns the sentences.
-      interruptionDisclosure: CompletionInterruptionDisclosure(
-        cause: kernelDriver.lastAudioInterruptionCause)
+      // #1317: a `becameZeroMidCapture` completion never stamps an
+      // `EngineInterruptionCause` (§3.4 — no synthesized cause), so it is
+      // read directly off the zero-signal side-channel instead of going
+      // through `CompletionInterruptionDisclosure.init(cause:)` (§3.5).
+      interruptionDisclosure: kernelDriver.lastZeroSignalFailureMode == .becameZeroMidCapture
+        ? .otherInterruption
+        : CompletionInterruptionDisclosure(cause: kernelDriver.lastAudioInterruptionCause)
     )
     // PR7 of #763 — push polish error to the post-recording result home so
     // views can read `lastRecordingResult.polishError` without reaching
@@ -322,8 +327,12 @@ final class DictationLifecycleCoordinator {
       historySaved: whisperKitKernelDriver.lastHistorySaved,
       historySaveReason: whisperKitKernelDriver.lastHistorySaveReason,
       salvagedLead: whisperKitKernelDriver.lastSalvagedLeadTrimMs != nil,
-      interruptionDisclosure: CompletionInterruptionDisclosure(
-        cause: whisperKitKernelDriver.lastAudioInterruptionCause)
+      // #1317: see the Parakeet handler above for why this reads the
+      // zero-signal side-channel first.
+      interruptionDisclosure: whisperKitKernelDriver.lastZeroSignalFailureMode
+        == .becameZeroMidCapture
+        ? .otherInterruption
+        : CompletionInterruptionDisclosure(cause: whisperKitKernelDriver.lastAudioInterruptionCause)
     )
     lastRecordingResult.polishError = whisperKitKernelDriver.lastPolishError
     dispatchChipLifecycle(

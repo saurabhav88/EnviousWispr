@@ -114,10 +114,19 @@ import Testing
     // transition in both handlers (the coordinator now owns deferred-switch
     // application + status refresh). Still a `var` closure (collaboratorCount stays
     // ≤ 11). Deterministic rule: actual 434 + 10 → round up to nearest 5 = 445.
+    // #1317 (2026-07-11): raised 445 → 460. Both per-backend `interruptionDisclosure:`
+    // arguments gained a one-line ternary reading `kernelDriver`/
+    // `whisperKitKernelDriver.lastZeroSignalFailureMode` before falling back to the
+    // existing `CompletionInterruptionDisclosure(cause:)` construction — a
+    // `becameZeroMidCapture` completion never stamps an `EngineInterruptionCause`
+    // (§3.4), so the disclosure has to be read off the zero-signal side-channel
+    // instead. No new collaborator: both driver properties are already-owned
+    // collaborators (collaboratorCount stays ≤ 11); no new method (nonPrivateMethodCount
+    // unchanged). Deterministic rule: actual 446 + 10 → round up to nearest 5 = 460.
     #expect(
-      count <= 445,
+      count <= 460,
       """
-      DictationLifecycleCoordinator line count exceeded: \(count) > 445. \
+      DictationLifecycleCoordinator line count exceeded: \(count) > 460. \
       Raise via Bible §30 only.
       """)
   }
