@@ -125,6 +125,54 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// Either AVAudioEngineSource (no BT) or AVCaptureSessionSource (BT output active).
   private var activeSource: (any AudioInputSource)?
 
+  #if DEBUG
+    /// #1317 proof-bench: the single DEBUG-only all-zero injector, handed to every
+    /// source on install so it can substitute digital silence at the forwarder.
+    /// Compiled out of release.
+    let debugZeroFillController = DebugZeroFillController()
+
+    /// #1317 proof-bench: monotonic, manager-owned resource generation — the
+    /// freshness oracle for `fresh_pipe_proven`. NOT `ObjectIdentifier(activeSource)`
+    /// (rebuild destroys resources while retaining the object) and NOT the
+    /// capture-session id (which advances per capture even on warm reuse). Increments
+    /// only on new-source install, destructive `rebuildEngine()`, and `buildEngine()`.
+    private(set) var debugSourceIncarnation: UInt64 = 0
+
+    /// #1317 proof-bench (DEBUG only): arm the injector from the DEBUG XPC fault
+    /// path. Translates the Core wire enum into the controller's associated-value
+    /// `Mode` here so the injector type stays module-internal. `package` access:
+    /// reachable from the handler in `EnviousWisprAudioService` (same SPM package).
+    /// `n` is intentionally NOT validated here: the controller's range math is
+    /// provably safe for any `Int`, including negatives (`zeroAfter` short-circuits
+    /// on `startSeen >= threshold`; `zeroNext` guards `startSeen < budget`), so a
+    /// negative budget zeroes-all or nothing but never emits a negative range.
+    /// Proven by `DebugZeroFillControllerTests.negativeBudgetIsSafe`. Do not re-add
+    /// an `n >= 0` guard — a Codex round claimed a crash here that does not exist.
+    package func debugArmZeroFill(mode: DebugZeroFillArm.Mode, n: Int, trialID: String) {
+      let controllerMode: DebugZeroFillController.Mode
+      switch mode {
+      case .zeroFromStart: controllerMode = .zeroFromStart
+      case .zeroAfterSamples: controllerMode = .zeroAfter(threshold: n)
+      case .zeroNextSamples: controllerMode = .zeroNext(budget: n)
+      case .disarmed:
+        debugZeroFillController.disarm()
+        return
+      }
+      debugZeroFillController.arm(mode: controllerMode, trialID: trialID)
+    }
+
+    /// #1317 proof-bench (DEBUG only): snapshot the injector status plus the
+    /// manager's monotonic source-incarnation generation (the `fresh_pipe_proven`
+    /// oracle). Combines both manager-owned facts in one atomic read.
+    package func debugFaultStatusSnapshot() -> DebugFaultServiceStatus {
+      let s = debugZeroFillController.status()
+      return DebugFaultServiceStatus(
+        armed: s.armed, hit: s.hit, trialID: s.trialID, mode: s.mode,
+        zeroedSampleCount: s.zeroedSampleCount, sourceIncarnation: debugSourceIncarnation,
+        captureSourceType: activeSource?.captureSourceType ?? "none")
+    }
+  #endif
+
   /// Issue #285 — mirror of `activeSource.captureGeneration` / `captureSourceType`
   /// captured at session start, so pipeline Sentry extras still resolve a real
   /// session id + backend tag after `stopCapture()` synchronously tears down
@@ -394,7 +442,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   }
 
   public func rebuildEngine() {
-    activeSource?.rebuild()
+    // Only a real rebuild advances the incarnation: with no active source nothing
+    // is destroyed, so a bump here would falsely satisfy `fresh_pipe_proven`.
+    guard let source = activeSource else { return }
+    source.rebuild()
+    #if DEBUG
+      debugSourceIncarnation += 1  // destructive rebuild of the active source's resources
+    #endif
   }
 
   public func buildEngine(noiseSuppression: Bool) {
@@ -405,11 +459,18 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // buildEngine only creates an AVAudioEngine object, doesn't start it or install taps).
     if let engineSource = activeSource as? AVAudioEngineSource {
       engineSource.buildEngine(noiseSuppression: noiseSuppression)
+      #if DEBUG
+        debugSourceIncarnation += 1  // AVAudioEngine resources replaced on the active source
+      #endif
     } else {
       // Tear down any existing non-engine source before replacing
       activeSource?.rebuild()
       let engineSource = AVAudioEngineSource()
       engineSource.buildEngine(noiseSuppression: noiseSuppression)
+      #if DEBUG
+        engineSource.debugZeroFillController = debugZeroFillController
+        debugSourceIncarnation += 1  // new engine source installed
+      #endif
       activeSource = engineSource
     }
   }
@@ -722,6 +783,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       source = halSource
     }
 
+    #if DEBUG
+      source.debugZeroFillController = debugZeroFillController
+      debugSourceIncarnation += 1  // new source installed at the activeSource authority
+    #endif
     activeSource = source
     return source
   }

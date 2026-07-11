@@ -364,6 +364,10 @@ final class HALDeviceInputSource: AudioInputSource {
     HALDeviceInputSource.queryNativeStreamFormat(deviceID: deviceID)?.mSampleRate
   }
   private var forwarder: PreRollForwarder?
+
+  #if DEBUG
+    var debugZeroFillController: DebugZeroFillController?
+  #endif
   /// Dedicated thread draining `HALRenderContext.ring` off the HAL IO thread.
   /// Retained only to keep it alive; its loop exits on its own once
   /// `teardownUnit()` signals the semaphore after the stop flag is set.
@@ -550,6 +554,9 @@ final class HALDeviceInputSource: AudioInputSource {
     let ring = HALSampleRing(slotCount: Self.ringSlotCount, capacityPerSlot: capacityFrames)
     let stopped = HALStoppedFlag()
     let fwd = PreRollForwarder()
+    #if DEBUG
+      fwd.debugZeroFillController = debugZeroFillController
+    #endif
     let context = HALRenderContext(
       audioUnit: unit, scratch: scratch, capacityFrames: capacityFrames,
       ring: ring, stopped: stopped, liveness: captureLiveness, forwarder: fwd,

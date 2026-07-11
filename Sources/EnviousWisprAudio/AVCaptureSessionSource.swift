@@ -132,6 +132,10 @@ final class AVCaptureSessionSource: AudioInputSource {
   private var forwarder: PreRollForwarder?
 
   #if DEBUG
+    var debugZeroFillController: DebugZeroFillController?
+  #endif
+
+  #if DEBUG
     /// The device actually bound at cold `prepare()`, retained so the per-capture
     /// bench evidence (#1377 §3.5) can re-emit it on a warm-reuse trial where
     /// `prepare()` early-returns. The session keeps this exact input across warm
@@ -213,6 +217,9 @@ final class AVCaptureSessionSource: AudioInputSource {
     // startCapture() activates live forwarding.
     let fwd = PreRollForwarder()
     self.forwarder = fwd
+    #if DEBUG
+      fwd.debugZeroFillController = debugZeroFillController
+    #endif
     let preRollDelegate = CaptureDelegate(
       targetFormat: Self.targetFormat,
       forwarder: fwd,

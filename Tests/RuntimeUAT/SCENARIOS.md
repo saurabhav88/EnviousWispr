@@ -42,6 +42,7 @@ run_scenario("A5_proxy_buffer_drop_watchdog")
 | Cancel during WhisperKit model load leaves state inconsistent | A8b_cancel_during_whisperkit_load | model-load |
 | Switching backend mid-record aborts active recording | A9_backend_switch_mid_record | backend-switch |
 | BT codec switch mid-record corrupts state | B1_bluetooth_route_flip (founder-required) | bt-route |
+| Dead/zombie mic delivers all-zero audio, treated as no-speech (#1317) | Z1_all_zero_from_start / Z2_valid_then_all_zero / Z3_bounded_zero_then_restore | dead-mic |
 
 ## Index by scenario name
 
@@ -148,6 +149,27 @@ Founder physically toggles AirPods (or other BT input) power off/on during an ac
 
 **Negative control:** remove the BT route handler in `AudioDeviceManager` / capture-session-interruption flow. Recording behaves incorrectly on real BT toggle (audio cuts out, pipeline stuck).
 
+### Z1_all_zero_from_start (Lane A — dead-mic, #1317)
+Backends: both. Budget: 45s. Mechanism: dead-mic.
+
+Arm the DEBUG all-zero injector from the first captured sample: the whole take is digital silence (exactly `0.0`), reproducing the production `zombie_engine_zero_peak` dead-mic fault where a live-but-dead mic pipe delivers zeros. Assert the app handles the dead take HONESTLY (the app-owned no-speech log marker fires, no fabricated text) and the injector actually hit (`hit=true, zeroed>0`), then a disarmed control take recovers the canary phrase. Two-class result: a product failure with valid evidence is a real measurement; missing identity/arm/hit/log evidence is INVALID, never a pass.
+
+**Negative control:** make the injector a no-op (skip the zero-range application in `PreRollForwarder`), and the fault never fires — `hit=false`, evidence INVALID, the trial cannot be scored (it does not silently pass).
+
+### Z2_valid_then_all_zero (Lane A — dead-mic, #1317)
+Backends: both. Budget: 45s. Mechanism: dead-mic.
+
+Real audio for the first N live samples (`lead_samples`, default 16000 ≈ 1s), then all-zero forever. Exercises the content-blind liveness path — buffers keep flowing at full cadence, just zeroed, so the no-buffer watchdog stays satisfied. Assert the lead audio left a raw-ASR trace (`raw_text_preserved`) and the injector hit.
+
+**Negative control:** same as Z1 — a no-op injector leaves `hit=false` and INVALID evidence.
+
+### Z3_bounded_zero_then_restore (Lane A — dead-mic, #1317)
+Backends: both. Budget: 35s. Mechanism: dead-mic.
+
+Zero the first N live samples (`zero_samples`, default 8000 ≈ 0.5s) then restore real audio inside the same take. Assert the take recovers the canary in-session — the pipe is not poisoned by a transient dead start — and the injector hit.
+
+**Negative control:** hold the zero forever (drop the bounded-restore) and the canary never appears; `recovered_in_session=false`.
+
 ## Wire protocol
 
 The DEBUG endpoint accepts text, line-delimited:
@@ -171,6 +193,8 @@ Fixed command set (no arbitrary RPC):
 | `force_xpc_kill` | Invalidate `ASRManagerProxy` connection mid-stream |
 | `force_audio_xpc_kill` | Invalidate `AudioCaptureProxy` connection mid-stream |
 | `query_state` | Return current pipeline + backend state (one line, no side effects) |
+| `force_zero_fill(mode,N,trialID)` | #1317: arm the DEBUG all-zero injector in the HELPER (real service-side sample substitution at `PreRollForwarder`). `mode` ∈ {`zero_from_start`, `zero_after_samples`, `zero_next_samples`, `disarmed`}; `N` = LIVE-sample threshold/budget; `trialID` correlates the status query. |
+| `query_fault_status(trialID)` | #1317: read the merged fault status (helper injector fields + proxy XPC generation). Fails CLOSED to `ERR` on any missing/malformed/absent-generation condition or trial-id mismatch. `armed` is not evidence of `hit`. |
 
 ## Adding a new scenario
 

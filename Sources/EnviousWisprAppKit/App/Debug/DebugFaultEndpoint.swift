@@ -24,7 +24,9 @@
   ///   Token file is deleted on `stop()`.
   /// - Fixed command set (no arbitrary RPC, no method invocation, no shell escape):
   ///   `force_proxy_buffer_drop(N)`, `force_audio_wedge_start(N)`,
-  ///   `force_cancel`, `force_xpc_kill`, `force_audio_xpc_kill`, `query_state`.
+  ///   `force_cancel`, `force_xpc_kill`, `force_audio_xpc_kill`, `query_state`,
+  ///   `force_zero_fill(mode,N,trialID)`, `query_fault_status(trialID)` (#1317
+  ///   proof-bench; the last two drive the DEBUG all-zero injector across the helper).
   /// - Each command dispatches to `@MainActor` via `Task { @MainActor in ... }`
   ///   so command handling matches the actor isolation of the seams it drives.
   ///
@@ -253,8 +255,60 @@
           audioProxy.forceWedgeNextStartOps = n
           return "OK"
         }
+        // #1317 proof-bench: force_zero_fill(mode,N,trialID) — arm the DEBUG
+        // all-zero injector in the HELPER process (real service-side sample
+        // substitution, unlike the host-side force_proxy_buffer_drop). mode ∈
+        // {zero_from_start, zero_after_samples, zero_next_samples}; N is the LIVE
+        // sample threshold/budget (ignored for zero_from_start); trialID
+        // correlates the later query_fault_status.
+        if let arm = parseZeroFillArm(cmd) {
+          guard let audioProxy else { return "ERR no_dependency" }
+          let ok = await audioProxy.debugArmZeroFill(arm)
+          return ok ? "OK" : "ERR arm_failed"
+        }
+        // #1317 proof-bench: query_fault_status(trialID) — read the merged fault
+        // status (helper injector fields + proxy XPC generation). Fails CLOSED to
+        // ERR on any missing/malformed/absent-generation condition, and on a trial
+        // id mismatch. "armed" is never evidence of "hit".
+        if let trialID = parseStringArgCommand(cmd, prefix: "query_fault_status(") {
+          guard let audioProxy else { return "ERR no_dependency" }
+          guard let status = await audioProxy.debugFaultStatus() else { return "ERR no_status" }
+          guard status.trialID == trialID else { return "ERR trial_mismatch" }
+          return
+            "OK armed=\(status.armed) hit=\(status.hit) trial=\(status.trialID) "
+            + "mode=\(status.mode) zeroed=\(status.zeroedSampleCount) "
+            + "source_incarnation=\(status.sourceIncarnation) "
+            + "xpc_generation=\(status.xpcGeneration) "
+            + "capture_source=\(status.captureSourceType)"
+        }
         return "ERR unknown_command"
       }
+    }
+
+    /// Parse `force_zero_fill(<mode>,<N>,<trialID>)` into a `DebugZeroFillArm`.
+    /// Returns nil if the command is not this shape or any field is invalid — the
+    /// caller then falls through to `ERR unknown_command`. Only the first two commas
+    /// split (`maxSplits: 2`), so trialID is the final unsplit field and may itself
+    /// contain commas; it must be non-empty.
+    private func parseZeroFillArm(_ cmd: String) -> DebugZeroFillArm? {
+      let prefix = "force_zero_fill("
+      guard cmd.hasPrefix(prefix), cmd.hasSuffix(")") else { return nil }
+      let inner = cmd.dropFirst(prefix.count).dropLast()
+      let parts = inner.split(separator: ",", maxSplits: 2, omittingEmptySubsequences: false)
+      guard parts.count == 3 else { return nil }
+      guard let mode = DebugZeroFillArm.Mode(rawValue: String(parts[0])) else { return nil }
+      guard let n = Int(parts[1]) else { return nil }
+      let trialID = String(parts[2])
+      guard !trialID.isEmpty else { return nil }
+      return DebugZeroFillArm(mode: mode, n: n, trialID: trialID)
+    }
+
+    /// Parse `<prefix><arg>)` into the single string argument. Returns nil when the
+    /// command is not this shape or the argument is empty.
+    private func parseStringArgCommand(_ cmd: String, prefix: String) -> String? {
+      guard cmd.hasPrefix(prefix), cmd.hasSuffix(")") else { return nil }
+      let inner = String(cmd.dropFirst(prefix.count).dropLast())
+      return inner.isEmpty ? nil : inner
     }
 
     /// Parse `<prefix>N)` into N for the parameterized commands.

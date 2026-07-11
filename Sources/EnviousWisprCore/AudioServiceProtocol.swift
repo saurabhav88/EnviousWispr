@@ -81,6 +81,21 @@ import Foundation
   /// Return speech segments detected by service-side VAD.
   /// Reply carries Data of packed [Int32 startIndex, Int32 endIndex] pairs.
   func getVADSegments(reply: @escaping (Data) -> Void)
+
+  #if DEBUG
+    // MARK: - #1317 proof-bench DEBUG fault channel (compiled out of release)
+
+    /// Arm the DEBUG all-zero injector in the helper. `payload` is a JSON-encoded
+    /// `DebugZeroFillArm`. Reply carries an `NSError` on decode/arm failure, nil on
+    /// success. The whole method is `#if DEBUG` on BOTH the proxy (client) and the
+    /// handler (service), so the runtime `NSXPCInterface` matches in every build.
+    func debugArmZeroFill(_ payload: Data, reply: @escaping (NSError?) -> Void)
+
+    /// Read the injector's fault status from the helper. Reply's first `Data` is a
+    /// JSON-encoded `DebugFaultServiceStatus`; on encode failure the `Data` is nil
+    /// and the `NSError` is set. Never returns a default/empty status silently.
+    func debugFaultStatus(reply: @escaping (Data?, NSError?) -> Void)
+  #endif
 }
 
 /// XPC protocol: callbacks from audio service to host app.

@@ -64,6 +64,16 @@ protocol AudioInputSource: AnyObject {
   func abortPrepare()
   func rebuild()
 
+  #if DEBUG
+    /// #1317 proof-bench: DEBUG-only all-zero injector, assigned by
+    /// `AudioCaptureManager` on every new-source installation before `prepare()`
+    /// can construct a forwarder. Each conformer stores it and passes it into every
+    /// `PreRollForwarder` it creates. Declared as a REQUIREMENT (no default) so the
+    /// compiler forces every conformer to participate — a newly-added source cannot
+    /// silently bypass the injector. Compiled out of release.
+    var debugZeroFillController: DebugZeroFillController? { get set }
+  #endif
+
   /// #1434: stop-time capture-health facts (native rate, drop/error counters,
   /// divergence flag) the manager attaches to `CaptureResult.metadata`.
   /// Declared as a REQUIREMENT (not extension-only) so existential calls

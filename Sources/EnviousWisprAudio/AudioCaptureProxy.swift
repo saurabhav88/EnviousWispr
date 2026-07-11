@@ -2,6 +2,24 @@
 import EnviousWisprCore
 import Foundation
 
+#if DEBUG
+  /// #1317 proof-bench (DEBUG only): the endpoint-facing fault status — the
+  /// helper's `DebugFaultServiceStatus` fields plus the proxy's own live XPC
+  /// generation. Built only by `AudioCaptureProxy.debugFaultStatus()`; a `nil`
+  /// return there means fail-closed (`ERR`), never a defaulted instance of this.
+  /// `package` access: read by `DebugFaultEndpoint` in the app target.
+  package struct DebugFaultStatus: Sendable {
+    package let armed: Bool
+    package let hit: Bool
+    package let trialID: String
+    package let mode: String
+    package let zeroedSampleCount: Int
+    package let sourceIncarnation: UInt64
+    package let xpcGeneration: UInt64
+    package let captureSourceType: String
+  }
+#endif
+
 /// XPC-backed implementation of `AudioCaptureInterface`.
 ///
 /// Bridges the in-process `AudioCaptureInterface` contract to XPC calls against the
@@ -1027,6 +1045,77 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
       guard let live = slot.current else { return }
       reportLineDeath(
         generation: live.generation, cause: .invalidated, wasCapturing: isCapturing)
+    }
+
+    // MARK: - #1317 proof-bench arm/status channel
+
+    /// Arm the DEBUG all-zero injector in the helper. Returns `true` only on a
+    /// helper `OK` reply; ANY failure (no live line, transport error, arm error)
+    /// returns `false` so the endpoint fails closed. `package` access: driven by
+    /// `DebugFaultEndpoint` (`force_zero_fill(...)`).
+    package func debugArmZeroFill(_ arm: DebugZeroFillArm) async -> Bool {
+      guard let payload = try? JSONEncoder().encode(arm) else { return false }
+      // A freshly launched debug app with noise-suppression default OFF never
+      // called `buildEngine`, so no audio XPC line exists yet; the harness arms
+      // BEFORE the first recording, so `serviceProxy` would hit `onProxyError`
+      // and fail closed with `ERR arm_failed` before any helper is spawned.
+      // Bring the line up first — `acquireConnection()` is idempotent (returns
+      // the live line if one already exists), and the subsequent start reuses
+      // this same slot, so the helper we arm is the helper that will record.
+      // Cloud review PR #1504.
+      _ = acquireConnection()
+      // One-shot guard (like `stopCapture`): a reply followed by a per-call
+      // transport error (or vice versa) would otherwise resume twice and trap.
+      let ok: Bool? = try? await withCheckedThrowingContinuation {
+        (cont: CheckedContinuation<Bool, any Error>) in
+        let guard_ = OneShotContinuation(cont)
+        serviceProxy { proxy in
+          proxy.debugArmZeroFill(payload) { error in
+            guard_.resume(returning: error == nil)
+          }
+        } onProxyError: {
+          guard_.resume(returning: false)
+        }
+      }
+      return ok ?? false
+    }
+
+    /// Read the injector's fault status from the helper and merge the proxy's own
+    /// live XPC generation. Returns `nil` — never a defaulted status — on any
+    /// no-connection / transport / decode failure OR when there is no live line to
+    /// source an XPC generation from (absent-generation ⇒ fail closed ⇒ `ERR`).
+    /// "Armed" is not evidence of "hit"; the caller reads `hit` for that.
+    package func debugFaultStatus() async -> DebugFaultStatus? {
+      // Snapshot the live generation FIRST; a nil line means no fresh-pipe
+      // evidence exists, which is itself a fail-closed outcome.
+      guard let xpcGeneration = slot.current?.generation else { return nil }
+      // One-shot guard against a reply/error double-resume (see `debugArmZeroFill`).
+      // `try?` yields a double optional (continuation payload is itself optional);
+      // `?? nil` flattens it back to `DebugFaultServiceStatus?`.
+      let serviceStatus: DebugFaultServiceStatus? =
+        (try? await withCheckedThrowingContinuation {
+          (cont: CheckedContinuation<DebugFaultServiceStatus?, any Error>) in
+          let guard_ = OneShotContinuation(cont)
+          serviceProxy { proxy in
+            proxy.debugFaultStatus { data, _ in
+              guard let data,
+                let decoded = try? JSONDecoder().decode(
+                  DebugFaultServiceStatus.self, from: data)
+              else {
+                guard_.resume(returning: nil)
+                return
+              }
+              guard_.resume(returning: decoded)
+            }
+          } onProxyError: {
+            guard_.resume(returning: nil)
+          }
+        }) ?? nil
+      guard let s = serviceStatus else { return nil }
+      return DebugFaultStatus(
+        armed: s.armed, hit: s.hit, trialID: s.trialID, mode: s.mode,
+        zeroedSampleCount: s.zeroedSampleCount, sourceIncarnation: s.sourceIncarnation,
+        xpcGeneration: xpcGeneration, captureSourceType: s.captureSourceType)
     }
   #endif
 
