@@ -27,15 +27,17 @@ struct BundledVADModelLoaderTests {
     let checkedIn = Self.checkedInModelURL
     #expect(FileManager.default.fileExists(atPath: checkedIn.path))
 
+    // Flat, no "VAD/" subdirectory — matches how Tuist's `.folderReference`
+    // actually embeds the model at the top level of Contents/Resources in a
+    // real built bundle (Codex code-diff review r1 P1).
     let fixtureRoot = FileManager.default.temporaryDirectory
       .appendingPathComponent("BundledVADModelLoaderTests-\(UUID().uuidString)")
-    let vadDir = fixtureRoot.appendingPathComponent("VAD")
-    try FileManager.default.createDirectory(at: vadDir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: fixtureRoot) }
 
     try FileManager.default.copyItem(
       at: checkedIn,
-      to: vadDir.appendingPathComponent("silero-vad-unified-256ms-v6.0.0.mlmodelc"))
+      to: fixtureRoot.appendingPathComponent("silero-vad-unified-256ms-v6.0.0.mlmodelc"))
 
     let fixtureBundle = try #require(Bundle(path: fixtureRoot.path))
     _ = try BundledVADModelLoader.loadModel(in: fixtureBundle)

@@ -266,7 +266,11 @@ echo "==> [4c/9] Verify the bundled VAD model rode the archive into both bundles
 # a shipped build with no functional-test signal until users hit it — same
 # shape of gate as the EG-1 llama-server check below, run pre-sign so a
 # missing asset fails the build before any signature is applied.
-VAD_MODEL_REL="Contents/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc"
+# No "VAD/" segment: Tuist's `.folderReference` embeds the referenced folder
+# directly at the top level of Contents/Resources, flattening away its
+# source-tree parent directories (confirmed against a real built bundle;
+# Codex code-diff review r1 P1 caught the original path assuming otherwise).
+VAD_MODEL_REL="Contents/Resources/silero-vad-unified-256ms-v6.0.0.mlmodelc"
 test -d "$BUNDLE/$VAD_MODEL_REL" || {
     echo "::error::VAD model missing from app bundle at $VAD_MODEL_REL (#1224)"; exit 1;
 }

@@ -17,10 +17,16 @@ enum BundledVADModelLoader {
   }
 
   static func loadModel(in bundle: Bundle) throws -> MLModel {
+    // No `subdirectory:` — Tuist's `.folderReference` embeds the referenced
+    // folder directly at the top level of `Contents/Resources`, flattening
+    // away its source-tree parent directories (confirmed against a real
+    // built bundle: `Contents/Resources/silero-vad-....mlmodelc`, not
+    // `Contents/Resources/VAD/...`). Same top-level lookup shape as the
+    // existing `OutputClassifier.mlpackage` precedent
+    // (`CoreMLOutputClassifier.load(resourceURL:)`).
     guard
       let url = bundle.url(
-        forResource: "silero-vad-unified-256ms-v6.0.0", withExtension: "mlmodelc",
-        subdirectory: "VAD")
+        forResource: "silero-vad-unified-256ms-v6.0.0", withExtension: "mlmodelc")
     else {
       throw LoadError.resourceNotFound
     }
