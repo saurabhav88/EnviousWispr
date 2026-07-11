@@ -52,7 +52,7 @@ import Testing
   /// A synthetic componentSet manifest (2 shards + `entrypointFile`),
   /// independent of the real shipped manifest — tiny bytes so tests can stage
   /// a REAL admissible cache (zeros, 1000 + 2000 bytes) with no network.
-  fileprivate static func shardedFixtureRegistration(install: URL, metadata: URL) throws
+  static func shardedFixtureRegistration(install: URL, metadata: URL) throws
     -> DeliveryRegistration
   {
     func sha256(_ data: Data) -> String {
