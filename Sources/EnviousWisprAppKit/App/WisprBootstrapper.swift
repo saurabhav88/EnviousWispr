@@ -166,34 +166,54 @@ public final class WisprBootstrapper {
     // `isActiveProvider` is a LIVE read (r2). The runtime keeps the EGOne
     // manifest (contextTokens / promptFamily / activation blockers); the
     // adapter owns the delivery manifest (fetch/install/content identity).
+    //
+    // #1386 PR-1 rev2: retire the one shipped EG-1 monolith. The coordinator
+    // recognizes it by exact size + digest, records the owed replacement,
+    // deletes it, and asks the adapter for the normal download; fresh
+    // installs land in the owned `Models/eg-1` home.
     let egOneManifest = try? EGOneManifest.loadBundled()
     let egOneServerBinaryURL = Bundle.main.url(forResource: "llama-server", withExtension: nil)
+    let egOneAppSupport = FileManager.default.urls(
+      for: .applicationSupportDirectory, in: .userDomainMask)[0]
     var egOneAdapter: EGOneDeliveryAdapter?
+    var egOneLegacyUpgrade:
+      (registration: DeliveryRegistration, coordinator: EGOneLegacyUpgradeCoordinator)?
     if let deliveryManifest = try? DeliveryManifest.loadBundled(resource: "eg1-delivery-manifest") {
-      let appSupport = FileManager.default.urls(
-        for: .applicationSupportDirectory, in: .userDomainMask)[0]
       let registration = DeliveryRegistration(
         manifest: deliveryManifest,
-        // The existing user's install dir — unchanged, so a byte-correct file
-        // is adopted in place with zero re-download (#1348 Decision C/F).
-        installDirectory: appSupport.appendingPathComponent(
-          "EnviousWispr/PolishModels", isDirectory: true),
-        metadataDirectory: appSupport.appendingPathComponent(
+        installDirectory: egOneAppSupport.appendingPathComponent(
+          "EnviousWispr/Models/eg-1", isDirectory: true),
+        metadataDirectory: egOneAppSupport.appendingPathComponent(
           "EnviousWispr/ModelDelivery", isDirectory: true))
-      egOneAdapter = EGOneDeliveryAdapter(
+      let adapter = EGOneDeliveryAdapter(
         controller: modelDelivery.controller,
         registration: registration,
         version: egOneManifest?.version ?? deliveryManifest.identity.revision)
-      // Seed EG-1's first-run telemetry baseline before its first attempt
-      // (#1348 §16.2). Session-granularity approximation (same async-Task shape
-      // as Parakeet's own baseline); a rare early event stamps first_run=false.
-      let delivery = modelDelivery
-      Task { await delivery.recordFirstRunBaseline(for: registration) }
+      egOneAdapter = adapter
+
+      let coordinator = EGOneLegacyUpgradeCoordinator(
+        adapter: adapter,
+        appSupportDirectory: egOneAppSupport)
+      // `selected_provider` attaches here (settings in scope); coordinator
+      // stays provider-ignorant.
+      coordinator.onEvent = EGOneTelemetryBridge.legacyUpgradeHandler(
+        selectedProvider: { [weak settings] in settings?.llmProvider == .egOne })
+      egOneLegacyUpgrade = (registration, coordinator)
     }
     let egOneRuntime = EGOneRuntime(
       manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter)
     egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
     egOneRuntime.onEvent = EGOneTelemetryBridge.handler
+    if let egOneLegacyUpgrade {
+      // First-run baseline (#1348 §16.2) → legacy launch table → the RUNTIME
+      // decides if the completed replacement boots the server (PR #1500 P1).
+      let delivery = modelDelivery
+      Task {
+        await delivery.recordFirstRunBaseline(for: egOneLegacyUpgrade.registration)
+        await egOneLegacyUpgrade.coordinator.runLaunch()
+        egOneRuntime.activateAfterAutomaticReplacementIfNeeded()
+      }
+    }
     // Exactly one path sweeps orphans — a detached sweep alongside a spawn
     // would race it and kill the fresh server (Codex r10 P1).
     if settings.llmProvider == .egOne {

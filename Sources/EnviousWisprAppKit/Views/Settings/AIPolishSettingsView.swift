@@ -983,7 +983,7 @@ struct AIPolishSettingsView: View {
     switch egOne.installState {
     case .notInstalled:
       HStack {
-        Text("One-time download: 2.7 GB")
+        Text("One-time download: 2.9 GB")
           .font(.stHelper)
           .foregroundStyle(Color.stTextSecondary)
         Spacer()
@@ -992,7 +992,7 @@ struct AIPolishSettingsView: View {
     case .downloading(let fraction):
       VStack(alignment: .leading, spacing: 4) {
         ProgressView(value: max(0, min(1, fraction))) {
-          Text("Downloading EG-1 (2.7 GB)")
+          Text("Downloading EG-1 (2.9 GB)")
             .font(.stHelper)
         }
         Button("Cancel") { egOne.cancelDownload() }

@@ -282,6 +282,19 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     activateAndProbe()
   }
 
+  /// Automatic legacy replacement completed (#1386 PR-1, PR #1500 cloud P1):
+  /// an explicit activation trigger parallel to a completed user download
+  /// (`startDownload`'s admitted branch). The runtime owns the policy and
+  /// starts only when EG-1 is the live effective provider. Never called
+  /// reactively from the install-state stream (activation-loop precedent
+  /// above). Non-admitted cancellation, failure, or decline boots nothing;
+  /// admission-winning races retain the trusted model and may activate
+  /// normally.
+  public func activateAfterAutomaticReplacementIfNeeded() {
+    guard isActiveProvider?() == true else { return }
+    activateAndProbe()
+  }
+
   /// Orphan reap for no-spawn paths (#1271 confirm round + r11): a crash
   /// bypasses `applicationWillTerminate`, and when nothing spawns this
   /// session (provider not EG-1, model missing, manifest blocked) the

@@ -39,11 +39,9 @@ import Testing
     }
   }
 
-  // MARK: - Legacy store partial migration (cloud-review P2, PR #1384)
-
   private func makeTempDirs() throws -> (install: URL, metadata: URL, cleanup: () -> Void) {
     let root = FileManager.default.temporaryDirectory
-      .appendingPathComponent("eg1-migrate-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent("eg1-adapter-\(UUID().uuidString)", isDirectory: true)
     let install = root.appendingPathComponent("PolishModels", isDirectory: true)
     let metadata = root.appendingPathComponent("ModelDelivery", isDirectory: true)
     try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
@@ -51,24 +49,10 @@ import Testing
     return (install, metadata, { try? FileManager.default.removeItem(at: root) })
   }
 
-  /// Build the shipped EG-1 delivery manifest so the adapter's install name +
-  /// expected size are real (`eg-1-v1.gguf`, 2_889_511_680).
-  private func eg1Registration(install: URL, metadata: URL) throws -> DeliveryRegistration {
-    let url = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent().deletingLastPathComponent()
-      .deletingLastPathComponent().deletingLastPathComponent()
-      .appendingPathComponent("Sources/EnviousWispr/Resources/eg1-delivery-manifest.json")
-    let manifest = try DeliveryManifest.load(from: Data(contentsOf: url))
-    return DeliveryRegistration(
-      manifest: manifest, installDirectory: install, metadataDirectory: metadata)
-  }
-
   /// A synthetic componentSet manifest (2 shards + `entrypointFile`),
-  /// independent of the real shipped manifest (still single-file until the
-  /// shard-authoring step, #1417 §3.5) — proves `installedArtifactURL` and
-  /// `migrateLegacyStoreArtifacts`'s size check against an ACTUALLY sharded
-  /// manifest, not just the current single-file one.
-  private func shardedFixtureRegistration(install: URL, metadata: URL) throws
+  /// independent of the real shipped manifest — tiny bytes so tests can stage
+  /// a REAL admissible cache (zeros, 1000 + 2000 bytes) with no network.
+  static func shardedFixtureRegistration(install: URL, metadata: URL) throws
     -> DeliveryRegistration
   {
     func sha256(_ data: Data) -> String {
@@ -111,125 +95,11 @@ import Testing
   @Test func installedArtifactURLResolvesToEntrypointShardForComponentSetManifest() throws {
     let dirs = try makeTempDirs()
     defer { dirs.cleanup() }
-    let registration = try shardedFixtureRegistration(
+    let registration = try Self.shardedFixtureRegistration(
       install: dirs.install, metadata: dirs.metadata)
     let adapter = EGOneDeliveryAdapter(
       controller: ModelDeliveryController(), registration: registration, version: "v2-sharded")
     #expect(adapter.installedArtifactURL.lastPathComponent == "eg-1-00001-of-00002.gguf")
-  }
-
-  @MainActor
-  @Test func migrateLegacyStoreArtifactsSizeCheckUsesEntrypointSizeNotSum() throws {
-    let dirs = try makeTempDirs()
-    defer { dirs.cleanup() }
-    let registration = try shardedFixtureRegistration(
-      install: dirs.install, metadata: dirs.metadata)
-    let entrypointPath = try #require(registration.manifest.resolvedEntrypointPath)
-    // Entrypoint shard (shard 1) is 1000 bytes; shard 2 is 2000; sum is 3000.
-    // A `.partial` sized to the SUM would be wrong — it can only ever contain
-    // shard 1's own bytes. Size it to 1000 (shard 1's own size) and confirm
-    // the migration recognizes it as complete and promotes.
-    let partial = dirs.install.appendingPathComponent("\(entrypointPath).partial")
-    #expect(FileManager.default.createFile(atPath: partial.path, contents: nil))
-    let handle = try FileHandle(forWritingTo: partial)
-    try handle.truncate(atOffset: 1000)
-    try handle.close()
-
-    _ = EGOneDeliveryAdapter(
-      controller: ModelDeliveryController(), registration: registration, version: "v2-sharded")
-
-    #expect(
-      FileManager.default.fileExists(
-        atPath: dirs.install.appendingPathComponent(entrypointPath).path),
-      "the entrypoint-sized (not sum-sized) partial was promoted")
-    #expect(!FileManager.default.fileExists(atPath: partial.path))
-  }
-
-  @MainActor
-  @Test func completeLegacyPartialIsPromotedNotDeleted() throws {
-    let dirs = try makeTempDirs()
-    defer { dirs.cleanup() }
-    let registration = try eg1Registration(install: dirs.install, metadata: dirs.metadata)
-    // #1417: derive the expected install name and size from
-    // `resolvedEntrypointPath` — never a hardcoded legacy literal — so this
-    // test stays correct once the shipped manifest becomes N shards (the
-    // entrypoint's own name/size then, same as today's single file now).
-    let entrypointPath = try #require(registration.manifest.resolvedEntrypointPath)
-    let expectedSize = try #require(
-      registration.manifest.files.first(where: { $0.resolvedInstallPath == entrypointPath })?
-        .sizeBytes)
-    // A completed-but-not-installed download: full-size .partial, no install
-    // file. The .partial must REPORT the manifest's expected size (~2.9 GB) so
-    // the migration's size-match promote branch fires — but as a SPARSE file
-    // (truncate, no allocation) so the test never materializes gigabytes of RAM
-    // or disk on CI (cloud-review P1). The migration promotes via rename (O(1)),
-    // never a byte copy, so a sparse source is faithful.
-    let partial = dirs.install.appendingPathComponent("\(entrypointPath).partial")
-    let resume = dirs.install.appendingPathComponent("\(entrypointPath).resume.json")
-    #expect(FileManager.default.createFile(atPath: partial.path, contents: nil))
-    let handle = try FileHandle(forWritingTo: partial)
-    try handle.truncate(atOffset: UInt64(expectedSize))
-    try handle.close()
-    try Data("{}".utf8).write(to: resume)
-
-    _ = EGOneDeliveryAdapter(
-      controller: ModelDeliveryController(), registration: registration, version: "v1")
-
-    let fm = FileManager.default
-    // Promoted to the install name (so adoption can verify + admit offline).
-    #expect(fm.fileExists(atPath: dirs.install.appendingPathComponent(entrypointPath).path))
-    #expect(!fm.fileExists(atPath: partial.path))
-    #expect(!fm.fileExists(atPath: resume.path), "stale resume sidecar removed")
-  }
-
-  @MainActor
-  @Test func incompleteLegacyPartialIsReclaimed() throws {
-    let dirs = try makeTempDirs()
-    defer { dirs.cleanup() }
-    let registration = try eg1Registration(install: dirs.install, metadata: dirs.metadata)
-    let entrypointPath = try #require(registration.manifest.resolvedEntrypointPath)
-    // An interrupted download: short .partial, no install file.
-    let partial = dirs.install.appendingPathComponent("\(entrypointPath).partial")
-    try Data(count: 4096).write(to: partial)
-
-    _ = EGOneDeliveryAdapter(
-      controller: ModelDeliveryController(), registration: registration, version: "v1")
-
-    let fm = FileManager.default
-    // Reclaimed (no partial install file left behind); no bogus install created.
-    #expect(!fm.fileExists(atPath: partial.path))
-    #expect(!fm.fileExists(atPath: dirs.install.appendingPathComponent(entrypointPath).path))
-  }
-
-  @MainActor
-  @Test func staleOtherVersionSidecarsSweptButModelsKept() throws {
-    // Cloud-review P2 (#1363): a version bump (e.g. EG-2/EG-3 hot-swap) must not
-    // orphan an OLD version's download sidecars forever. The migration sweeps
-    // every .partial/.resume.json in the install dir regardless of version, but
-    // NEVER deletes a completed .gguf model (a superseded model is the user's
-    // working polish until the new one downloads; the founder's real install must
-    // survive).
-    let dirs = try makeTempDirs()
-    defer { dirs.cleanup() }
-    let registration = try eg1Registration(install: dirs.install, metadata: dirs.metadata)
-    let fm = FileManager.default
-    // An interrupted download from a DIFFERENT version + a completed model of
-    // that older version (neither matches the current manifest's v1 name).
-    let staleModel = dirs.install.appendingPathComponent("eg-1-v0.gguf")
-    let stalePartial = dirs.install.appendingPathComponent("eg-1-v0.gguf.partial")
-    let staleResume = dirs.install.appendingPathComponent("eg-1-v0.gguf.resume.json")
-    try Data("old-model-bytes".utf8).write(to: staleModel)
-    try Data(count: 4096).write(to: stalePartial)
-    try Data("{}".utf8).write(to: staleResume)
-
-    _ = EGOneDeliveryAdapter(
-      controller: ModelDeliveryController(), registration: registration, version: "v1")
-
-    #expect(!fm.fileExists(atPath: stalePartial.path), "stale partial swept (any version)")
-    #expect(!fm.fileExists(atPath: staleResume.path), "stale resume sidecar swept (any version)")
-    #expect(
-      fm.fileExists(atPath: staleModel.path),
-      "a completed .gguf model is never deleted by migration")
   }
 
   @Test func failureClassBucketsMatchExistingCopy() {
@@ -243,5 +113,172 @@ import Testing
     #expect(EGOneDeliveryAdapter.mapFailure(.cancelled) == .cancelled)
     #expect(EGOneDeliveryAdapter.mapFailure(.permissionDenied) == .http)
     #expect(EGOneDeliveryAdapter.mapFailure(.unknown) == .http)
+  }
+}
+
+/// Integration of the adapter's decline/admission hooks with the REAL
+/// coordinator and REAL controller (#1386 PR-1): Cancel/Remove persist the
+/// user's decline into the owed marker before any controller work, and
+/// admission through any door clears it. Tiny fixture manifest, zero network.
+@Suite struct EGOneLegacyUpgradeIntegrationTests {
+  private struct Harness {
+    let root: URL
+    let store: UserDefaults
+    let suite: String
+    let adapter: EGOneDeliveryAdapter
+    let coordinator: EGOneLegacyUpgradeCoordinator
+    let controller: ModelDeliveryController
+    let registration: DeliveryRegistration
+    let events: EventBox
+
+    func cleanup() {
+      store.removePersistentDomain(forName: suite)
+      try? FileManager.default.removeItem(at: root)
+    }
+  }
+
+  @MainActor
+  final class EventBox {
+    var events: [EGOneLegacyUpgradeCoordinator.Event] = []
+  }
+
+  private func markerURL(_ root: URL) -> URL {
+    root.appendingPathComponent("EnviousWispr/ModelDelivery/eg1-v1-replacement-owed")
+  }
+
+  @MainActor
+  private func makeHarness() throws -> Harness {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "eg1-integration-\(UUID().uuidString)", isDirectory: true)
+    let install = root.appendingPathComponent("EnviousWispr/Models/eg-1", isDirectory: true)
+    let metadata = root.appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true)
+    try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+
+    let suite = "eg1-integration-\(UUID().uuidString)"
+    let store = try #require(UserDefaults(suiteName: suite))
+
+    let registration = try EGOneDeliveryAdapterMappingTests.shardedFixtureRegistration(
+      install: install, metadata: metadata)
+    // The actor gets its OWN suite instance (region-moved), never the test
+    // body's — the ModelDeliveryControllerTests isolation pattern.
+    let controller = ModelDeliveryController(defaults: UserDefaults(suiteName: suite)!)
+    let adapter = EGOneDeliveryAdapter(
+      controller: controller, registration: registration, version: "v2-sharded",
+      defaults: store)
+    let coordinator = EGOneLegacyUpgradeCoordinator(
+      adapter: adapter, appSupportDirectory: root, defaults: store)
+    let events = EventBox()
+    coordinator.onEvent = { [events] event in
+      events.events.append(event)
+    }
+    return Harness(
+      root: root, store: store, suite: suite, adapter: adapter,
+      coordinator: coordinator, controller: controller, registration: registration,
+      events: events)
+  }
+
+  private func stageMarker(_ root: URL) throws {
+    let url = markerURL(root)
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data().write(to: url)
+  }
+
+  /// Stage byte-valid shard files so `admitIfComplete` can admit offline.
+  private func stageValidShards(_ registration: DeliveryRegistration) throws {
+    try Data(count: 1000).write(
+      to: registration.installDirectory.appendingPathComponent("eg-1-00001-of-00002.gguf"))
+    try Data(count: 2000).write(
+      to: registration.installDirectory.appendingPathComponent("eg-1-00002-of-00002.gguf"))
+  }
+
+  @MainActor
+  @Test func cancelClearsMarkerBeforeControllerCancel() async throws {
+    let h = try makeHarness()
+    defer { h.cleanup() }
+    try stageMarker(h.root)
+
+    await h.adapter.cancel()
+
+    #expect(!FileManager.default.fileExists(atPath: markerURL(h.root).path))
+    #expect(h.events.events == [.replacementDeclined])
+  }
+
+  @MainActor
+  @Test func cancelWhileKillSwitchOffClearsOwedMarkerAndDoesNotResume() async throws {
+    let h = try makeHarness()
+    defer { h.cleanup() }
+    try stageMarker(h.root)
+
+    h.store.set(false, forKey: DeliveryFlags.key("enabled", family: .egOne))
+    await h.adapter.cancel()
+
+    #expect(
+      !FileManager.default.fileExists(atPath: markerURL(h.root).path),
+      "contract §5c.10: the switch never silences an explicit decline")
+    #expect(h.events.events == [.replacementDeclined])
+
+    // Switch back on: the launch table finds no marker and starts nothing.
+    h.store.set(true, forKey: DeliveryFlags.key("enabled", family: .egOne))
+    await h.coordinator.runLaunch()
+
+    #expect(!FileManager.default.fileExists(atPath: markerURL(h.root).path))
+    #expect(await h.controller.isAdmitted(h.registration) == false)
+    #expect(
+      h.events.events == [.replacementDeclined],
+      "no detection, retirement, or completion after the decline")
+  }
+
+  @MainActor
+  @Test func cancelLosingAdmissionRaceLeavesAdmittedModelInstalledAndMarkerCleared()
+    async throws
+  {
+    let h = try makeHarness()
+    defer { h.cleanup() }
+    try stageMarker(h.root)
+    try stageValidShards(h.registration)
+
+    // Admission wins the race first...
+    #expect(await h.adapter.adoptIfPresent())
+    #expect(!FileManager.default.fileExists(atPath: markerURL(h.root).path))
+
+    // ...then the user's Cancel lands late. The verified model stays.
+    await h.adapter.cancel()
+
+    #expect(await h.controller.isAdmitted(h.registration))
+    #expect(!FileManager.default.fileExists(atPath: markerURL(h.root).path))
+  }
+
+  @MainActor
+  @Test func removeClearsMarkerBeforeControllerRemoval() async throws {
+    let h = try makeHarness()
+    defer { h.cleanup() }
+    try stageValidShards(h.registration)
+    #expect(await h.adapter.adoptIfPresent())
+    try stageMarker(h.root)
+
+    let outcome = await h.adapter.remove()
+
+    #expect(outcome == .removed)
+    #expect(!FileManager.default.fileExists(atPath: markerURL(h.root).path))
+    #expect(await h.controller.isAdmitted(h.registration) == false)
+    #expect(h.events.events.contains(.replacementDeclined))
+  }
+
+  @MainActor
+  @Test func manualDownloadAdmissionClearsMarker() async throws {
+    // A user's own Try Again/adoption completing the replacement counts: the
+    // marker clears through the same admission hook, no coordinator launch
+    // pass required.
+    let h = try makeHarness()
+    defer { h.cleanup() }
+    try stageMarker(h.root)
+    try stageValidShards(h.registration)
+
+    #expect(await h.adapter.adoptIfPresent())
+
+    #expect(!FileManager.default.fileExists(atPath: markerURL(h.root).path))
+    #expect(h.events.events.contains(.replacementCompleted))
   }
 }

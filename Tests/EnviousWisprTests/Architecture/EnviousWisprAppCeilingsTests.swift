@@ -322,14 +322,21 @@ import Testing
   /// presenter's own wiring was extracted into `.live(...)` to keep the root lean;
   /// all decision logic lives on the presenter, not here. Cap by deterministic
   /// rule (actual 1018 + 7, rounded up to nearest 5 = 1025).
+  /// Ratcheted 1025→1045 in #1386 PR-1 (2026-07-11): the composition root
+  /// constructs `EGOneLegacyUpgradeCoordinator` over the existing adapter,
+  /// wires its telemetry handler (attaching `selected_provider` here, where
+  /// settings is in scope, so the coordinator stays provider-ignorant), and
+  /// runs the one-time legacy launch table after the first-run baseline. All
+  /// retirement logic lives on the coordinator, not here. Cap by deterministic
+  /// rule (actual 1041 + ~2, rounded up to nearest 5 = 1045).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1025,
+      lineCount <= 1045,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 995. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1045. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }
