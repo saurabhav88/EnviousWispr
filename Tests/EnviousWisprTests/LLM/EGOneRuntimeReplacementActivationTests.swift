@@ -161,6 +161,11 @@ import Testing
 
     h.runtime.activateAfterAutomaticReplacementIfNeeded()
 
+    _ = await h.signal.next { event in
+      if case .healthChanged(_, "yellow", "not_started") = event { return true }
+      return false
+    }
+
     #expect(h.runtime.installState == .installed(version: "v2-sharded"))
     #expect(!h.signal.sawServerBinaryMissing)
   }
@@ -178,6 +183,11 @@ import Testing
     #expect(await h.adapter.adoptIfPresent())
 
     h.runtime.activateAfterAutomaticReplacementIfNeeded()
+
+    _ = await h.signal.next { event in
+      if case .healthChanged(_, "yellow", "not_started") = event { return true }
+      return false
+    }
 
     #expect(h.runtime.installState == .installed(version: "v2-sharded"))
     #expect(!h.signal.sawServerBinaryMissing)
