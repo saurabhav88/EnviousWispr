@@ -21,6 +21,10 @@
       case zeroFromStart = "zero_from_start"
       case zeroAfterSamples = "zero_after_samples"
       case zeroNextSamples = "zero_next_samples"
+      /// Clears any armed fault (disarms the controller). Lets the bench restore a
+      /// clean pipe for a positive-control take, so "no canary on the dead take" is
+      /// distinguishable from "TTS/ASR broken." `n`/`trialID` are ignored.
+      case disarmed = "disarmed"
     }
 
     package let mode: Mode

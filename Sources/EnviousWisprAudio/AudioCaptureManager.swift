@@ -148,6 +148,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       case .zeroFromStart: controllerMode = .zeroFromStart
       case .zeroAfterSamples: controllerMode = .zeroAfter(threshold: n)
       case .zeroNextSamples: controllerMode = .zeroNext(budget: n)
+      case .disarmed:
+        debugZeroFillController.disarm()
+        return
       }
       debugZeroFillController.arm(mode: controllerMode, trialID: trialID)
     }
