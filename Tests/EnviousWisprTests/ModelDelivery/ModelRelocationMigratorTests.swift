@@ -286,6 +286,37 @@ import Testing
     }
   }
 
+  /// Crash-recovery cleanup must still EARN its deletions. If the old directory
+  /// holds corrupt or hand-replaced bytes under a name the manifest happens to use,
+  /// deleting them because the name lines up is the provenance rule broken by the
+  /// very code that enforces it. (Codex PR-1 review r11.)
+  @Test func recoveryCleanupNeverDeletesUnverifiedBytesUnderAMatchingName() async throws {
+    let dirs = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    // Destination: the real, admitted model.
+    for f in files { try write(f.content, under: dirs.new, path: f.path) }
+    let p = try plan(files: files, dirs: dirs)
+    let gate = CacheAdmission(
+      manifest: p.manifest, installDirectory: dirs.new, metadataDirectory: dirs.metadata)
+    let validation = await gate.validateExistingCache()
+    try gate.promoteAndAdmit(
+      stagedComponents: [], stagingDirectory: dirs.new,
+      untouchedComponents: validation.verifiedComponents)
+    #expect(gate.isAdmitted())
+
+    // Old home: bytes that are NOT ours, wearing a manifest filename.
+    let victim = files[0]
+    try write(Data("not the bytes we shipped".utf8), under: dirs.old, path: victim.path)
+    let impostor = dirs.old.appendingPathComponent(victim.path)
+
+    let outcome = await ModelRelocationMigrator().migrate(p)
+
+    #expect(outcome == .noop)
+    #expect(
+      exists(impostor),
+      "unverified bytes must survive cleanup even when their filename matches ours")
+  }
+
   /// An already-admitted destination is the common case on every launch after
   /// the first: cheap no-op, no rehash, nothing touched.
   @Test func admittedDestinationIsANoop() async throws {

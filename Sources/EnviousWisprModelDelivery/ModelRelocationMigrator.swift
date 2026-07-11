@@ -108,9 +108,6 @@ public struct ModelRelocationMigrator: Sendable {
     case unrecognized
   }
 
-  /// `<metadata-dir>/<cache-key>.relocation.json` — the durable token. Survives
-  /// relaunch so a crash mid-transition is reconcilable, and so the legacy
-  /// cleanup can be retried on a later launch if it throws.
   /// What the pending legacy artifact is waiting FOR. A path alone is not enough:
   /// the same stranded file means "replace me" before the user asks for the model
   /// to be removed, and "just delete me" afterwards. Without this, a Remove whose
@@ -124,6 +121,9 @@ public struct ModelRelocationMigrator: Sendable {
     case remove
   }
 
+  /// `<metadata-dir>/<cache-key>.relocation.json` — the durable token. Survives
+  /// relaunch so a crash mid-transition is reconcilable, and so the legacy cleanup
+  /// can be retried on a later launch if it throws.
   struct Token: Codable, Equatable {
     /// Absolute path of the legacy artifact awaiting cleanup.
     let legacyPath: String
@@ -190,7 +190,7 @@ public struct ModelRelocationMigrator: Sendable {
     // sitting in an old location are provably redundant, so finish the job that
     // crash interrupted (Codex PR-1 review r7).
     if admission.isAdmitted() {
-      reconcileOldLocations(plan)
+      await reconcileOldLocations(plan)
       return .noop
     }
 
@@ -252,8 +252,9 @@ public struct ModelRelocationMigrator: Sendable {
     }
     guard admission.isAdmitted() else { return .unrecognized }
 
-    // Only now is the old copy provably redundant.
-    reconcileOldLocations(plan)
+    // Only now is the old copy provably redundant — and we just proved which
+    // components are byte-exact, so pass them rather than re-hashing multiple GB.
+    await reconcileOldLocations(plan, verifiedComponents: validation.verifiedComponents)
     return .relocated
   }
 
@@ -269,15 +270,41 @@ public struct ModelRelocationMigrator: Sendable {
   /// cannot account for. The directory itself goes only when nothing of the user's
   /// remains in it. A trusted-legacy artifact is deliberately NOT touched here: its
   /// deletion is governed by the durable token, never by this sweep.
-  private func reconcileOldLocations(_ plan: RelocationPlan) {
+  /// - Parameter verifiedComponents: components already PROVEN (this call) to be a
+  ///   byte-exact copy of the manifest. Pass them from the relocation path, which
+  ///   just validated them, to avoid re-hashing multiple GB. Pass nil on the
+  ///   crash-recovery path, where nothing has been proven yet and the old bytes must
+  ///   earn their deletion by digest.
+  private func reconcileOldLocations(
+    _ plan: RelocationPlan, verifiedComponents: Set<String>? = nil
+  ) async {
     let fm = FileManager.default
-    let roots = CacheAdmission.componentRoots(of: plan.manifest).sorted()
     for oldDirectory in plan.oldLocations {
       guard oldDirectory.standardizedFileURL != plan.destination.standardizedFileURL,
         fm.fileExists(atPath: oldDirectory.path)
       else { continue }
+
       sweepStaleSidecars(in: oldDirectory, plan: plan)
-      for root in roots {
+
+      // Delete ONLY components we have proven are the copy we reproduced. A
+      // filename match is not proof: the old directory could hold corrupt,
+      // truncated, or hand-replaced bytes under a shard's name, and deleting those
+      // because the name lines up is the provenance rule broken by the very code
+      // that enforces it (Codex PR-1 review r11). Whatever fails the hash is left
+      // exactly where it is.
+      let verified: Set<String>
+      if let verifiedComponents {
+        verified = verifiedComponents
+      } else {
+        let gate = CacheAdmission(
+          manifest: plan.manifest,
+          installDirectory: oldDirectory,
+          metadataDirectory: plan.metadataDirectory)
+        verified = await gate.validateExistingCache().verifiedComponents
+      }
+
+      let roots = componentRoots(of: verified, in: plan.manifest)
+      for root in roots.sorted() {
         try? fm.removeItem(at: oldDirectory.appendingPathComponent(root))
       }
       if let remaining = try? fm.contentsOfDirectory(atPath: oldDirectory.path),
@@ -286,6 +313,19 @@ public struct ModelRelocationMigrator: Sendable {
         try? fm.removeItem(at: oldDirectory)
       }
     }
+  }
+
+  /// Top-level on-disk roots belonging to the given (verified) components only.
+  private func componentRoots(of components: Set<String>, in manifest: DeliveryManifest) -> Set<
+    String
+  > {
+    Set(
+      manifest.files
+        .filter { components.contains($0.component) }
+        .map { file in
+          let p = file.resolvedInstallPath
+          return p.contains("/") ? String(p.split(separator: "/")[0]) : p
+        })
   }
 
   // MARK: - Legacy cleanup (runs ONLY after the replacement is admitted)

@@ -234,6 +234,12 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // would otherwise race this delete into a both-copies-gone state (#1386).
     if isPinnedInFlight?() == true || isMigratingLegacyLayout {
       removalPending = true
+      // Persist the intent NOW, not when the deferral is finally honored. The flag
+      // above is in-memory: if the app quits or crashes while the removal is still
+      // deferred, the durable token would still read `.replace` and the next launch
+      // would re-download the 2.9 GB model the user just deleted (Codex PR-1 review
+      // r11). Idempotent, and a no-op when no legacy artifact is pending.
+      onModelRemoved?()
       return
     }
     removalPending = false
