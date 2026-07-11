@@ -1811,7 +1811,6 @@ public final class TelemetryService {
     source: String,
     errorCode: String,
     stage: String,
-    installIntentSeen: Bool,
     checkKind: String,
     currentAppVersion: String
   ) {
@@ -1827,7 +1826,7 @@ public final class TelemetryService {
             "check_kind": checkKind,
             "current_app_version": currentAppVersion,
           ],
-          boolProps: ["is_critical": isCritical, "install_intent_seen": installIntentSeen]
+          boolProps: ["is_critical": isCritical]
         ))
     #endif
     PostHogSDK.shared.capture(
@@ -1838,7 +1837,6 @@ public final class TelemetryService {
         "source": source,
         "error_code": errorCode,
         "stage": stage,
-        "install_intent_seen": installIntentSeen,
         "check_kind": checkKind,
         "current_app_version": currentAppVersion,
       ]

@@ -461,16 +461,6 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
         source: source,
         errorCode: errorCodeString,
         stage: stage.rawValue,
-        // Codex code-diff review (round 1, #1447): `source` is set as early
-        // as a bare "Check for Updates" menu click or Sparkle's own default
-        // dialog being shown — well before any real install action — so
-        // this reads `true` on cycles where the user never asked to
-        // install anything, only to check. Diagnostic/defensive signal
-        // only, not a precise "install actually began" flag; a precise
-        // flag would need new state set exactly in `willInstallUpdate`/
-        // `willInstallUpdateOnQuit`, which this issue's plan explicitly
-        // declined (no new stored property).
-        installIntentSeen: source != "unknown",
         checkKind: checkKind,
         currentAppVersion: currentAppVersion
       )

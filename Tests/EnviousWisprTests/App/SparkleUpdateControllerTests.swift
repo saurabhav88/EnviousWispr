@@ -203,7 +203,6 @@ struct SparkleUpdateControllerTests {
         source: "menu",
         errorCode: "SUSparkleErrorDomain.1005",
         stage: "appcast",
-        installIntentSeen: true,
         checkKind: "background",
         currentAppVersion: "v-host"
       )
@@ -251,7 +250,7 @@ struct SparkleUpdateControllerTests {
           evt.stringProps.keys.sorted() == [
             "check_kind", "current_app_version", "error_code", "source", "stage", "version",
           ])
-        #expect(evt.boolProps.keys.sorted() == ["install_intent_seen", "is_critical"])
+        #expect(evt.boolProps.keys.sorted() == ["is_critical"])
       }
     }
 
@@ -364,7 +363,7 @@ struct SparkleUpdateControllerTests {
 
     // MARK: - #1447: updateCycleFailed telemetry-hook (Layer B — emission shape only)
 
-    @Test("updateCycleFailed propagates stage and install_intent_seen to hook")
+    @Test("updateCycleFailed propagates stage to hook")
     func updateCycleFailed_propagatesToHook() async {
       let box = EventBox()
       let originalHook = TelemetryService.shared.testEventHook
@@ -379,7 +378,6 @@ struct SparkleUpdateControllerTests {
         source: "menu",
         errorCode: "SUSparkleErrorDomain.1005",
         stage: "appcast",
-        installIntentSeen: true,
         checkKind: "background",
         currentAppVersion: "v-host"
       )
@@ -392,12 +390,11 @@ struct SparkleUpdateControllerTests {
       #expect(evt != nil, "update.cycle_failed event should be captured")
       #expect(evt?.stringProps["stage"] == "appcast")
       #expect(evt?.stringProps["error_code"] == "SUSparkleErrorDomain.1005")
-      #expect(evt?.boolProps["install_intent_seen"] == true)
       #expect(
         evt?.stringProps.keys.sorted() == [
           "check_kind", "current_app_version", "error_code", "source", "stage", "version",
         ])
-      #expect(evt?.boolProps.keys.sorted() == ["install_intent_seen", "is_critical"])
+      #expect(evt?.boolProps.keys.sorted() == ["is_critical"])
     }
 
     // MARK: - #846: telemetry-hook smoke (Layer B)
