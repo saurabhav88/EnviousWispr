@@ -2,6 +2,23 @@
 import EnviousWisprCore
 import Foundation
 
+#if DEBUG
+  /// #1317 proof-bench (DEBUG only): the endpoint-facing fault status — the
+  /// helper's `DebugFaultServiceStatus` fields plus the proxy's own live XPC
+  /// generation. Built only by `AudioCaptureProxy.debugFaultStatus()`; a `nil`
+  /// return there means fail-closed (`ERR`), never a defaulted instance of this.
+  /// `package` access: read by `DebugFaultEndpoint` in the app target.
+  package struct DebugFaultStatus: Sendable {
+    package let armed: Bool
+    package let hit: Bool
+    package let trialID: String
+    package let mode: String
+    package let zeroedSampleCount: Int
+    package let sourceIncarnation: UInt64
+    package let xpcGeneration: UInt64
+  }
+#endif
+
 /// XPC-backed implementation of `AudioCaptureInterface`.
 ///
 /// Bridges the in-process `AudioCaptureInterface` contract to XPC calls against the
@@ -1027,6 +1044,58 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
       guard let live = slot.current else { return }
       reportLineDeath(
         generation: live.generation, cause: .invalidated, wasCapturing: isCapturing)
+    }
+
+    // MARK: - #1317 proof-bench arm/status channel
+
+    /// Arm the DEBUG all-zero injector in the helper. Returns `true` only on a
+    /// helper `OK` reply; ANY failure (no live line, transport error, arm error)
+    /// returns `false` so the endpoint fails closed. `package` access: driven by
+    /// `DebugFaultEndpoint` (`force_zero_fill(...)`).
+    package func debugArmZeroFill(_ arm: DebugZeroFillArm) async -> Bool {
+      guard let payload = try? JSONEncoder().encode(arm) else { return false }
+      // Mirror `waitForFormatStabilization`: exactly one of {reply, onProxyError}
+      // fires for a reply-bearing call, so a plain continuation is safe here.
+      return await withCheckedContinuation { cont in
+        serviceProxy { proxy in
+          proxy.debugArmZeroFill(payload) { error in
+            cont.resume(returning: error == nil)
+          }
+        } onProxyError: {
+          cont.resume(returning: false)
+        }
+      }
+    }
+
+    /// Read the injector's fault status from the helper and merge the proxy's own
+    /// live XPC generation. Returns `nil` — never a defaulted status — on any
+    /// no-connection / transport / decode failure OR when there is no live line to
+    /// source an XPC generation from (absent-generation ⇒ fail closed ⇒ `ERR`).
+    /// "Armed" is not evidence of "hit"; the caller reads `hit` for that.
+    package func debugFaultStatus() async -> DebugFaultStatus? {
+      // Snapshot the live generation FIRST; a nil line means no fresh-pipe
+      // evidence exists, which is itself a fail-closed outcome.
+      guard let xpcGeneration = slot.current?.generation else { return nil }
+      let serviceStatus: DebugFaultServiceStatus? = await withCheckedContinuation { cont in
+        serviceProxy { proxy in
+          proxy.debugFaultStatus { data, _ in
+            guard let data,
+              let decoded = try? JSONDecoder().decode(DebugFaultServiceStatus.self, from: data)
+            else {
+              cont.resume(returning: nil)
+              return
+            }
+            cont.resume(returning: decoded)
+          }
+        } onProxyError: {
+          cont.resume(returning: nil)
+        }
+      }
+      guard let s = serviceStatus else { return nil }
+      return DebugFaultStatus(
+        armed: s.armed, hit: s.hit, trialID: s.trialID, mode: s.mode,
+        zeroedSampleCount: s.zeroedSampleCount, sourceIncarnation: s.sourceIncarnation,
+        xpcGeneration: xpcGeneration)
     }
   #endif
 

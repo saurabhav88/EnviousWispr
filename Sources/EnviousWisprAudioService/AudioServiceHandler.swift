@@ -336,6 +336,38 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
     }
   }
 
+  #if DEBUG
+    // MARK: - #1317 proof-bench DEBUG fault channel (compiled out of release)
+
+    func debugArmZeroFill(_ payload: Data, reply: @escaping (NSError?) -> Void) {
+      nonisolated(unsafe) let safeReply = reply
+      Task { @MainActor in
+        do {
+          let arm = try JSONDecoder().decode(DebugZeroFillArm.self, from: payload)
+          self.captureManager.debugArmZeroFill(mode: arm.mode, n: arm.n, trialID: arm.trialID)
+          safeReply(nil)
+        } catch {
+          // XPC error sanitization boundary.
+          safeReply(XPCErrorSanitizer.sanitizeForXPC(error))
+        }
+      }
+    }
+
+    func debugFaultStatus(reply: @escaping (Data?, NSError?) -> Void) {
+      nonisolated(unsafe) let safeReply = reply
+      Task { @MainActor in
+        let status = self.captureManager.debugFaultStatusSnapshot()
+        do {
+          let data = try JSONEncoder().encode(status)
+          safeReply(data, nil)
+        } catch {
+          // XPC error sanitization boundary. Never reply a default/empty status.
+          safeReply(nil, XPCErrorSanitizer.sanitizeForXPC(error))
+        }
+      }
+    }
+  #endif
+
   // MARK: - VAD (Step 5)
 
   func configureVAD(autoStop: Bool, silenceTimeout: Double, sensitivity: Float, energyGate: Bool) {

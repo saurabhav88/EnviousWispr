@@ -137,6 +137,30 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// capture-session id (which advances per capture even on warm reuse). Increments
     /// only on new-source install, destructive `rebuildEngine()`, and `buildEngine()`.
     private(set) var debugSourceIncarnation: UInt64 = 0
+
+    /// #1317 proof-bench (DEBUG only): arm the injector from the DEBUG XPC fault
+    /// path. Translates the Core wire enum into the controller's associated-value
+    /// `Mode` here so the injector type stays module-internal. `package` access:
+    /// reachable from the handler in `EnviousWisprAudioService` (same SPM package).
+    package func debugArmZeroFill(mode: DebugZeroFillArm.Mode, n: Int, trialID: String) {
+      let controllerMode: DebugZeroFillController.Mode
+      switch mode {
+      case .zeroFromStart: controllerMode = .zeroFromStart
+      case .zeroAfterSamples: controllerMode = .zeroAfter(threshold: n)
+      case .zeroNextSamples: controllerMode = .zeroNext(budget: n)
+      }
+      debugZeroFillController.arm(mode: controllerMode, trialID: trialID)
+    }
+
+    /// #1317 proof-bench (DEBUG only): snapshot the injector status plus the
+    /// manager's monotonic source-incarnation generation (the `fresh_pipe_proven`
+    /// oracle). Combines both manager-owned facts in one atomic read.
+    package func debugFaultStatusSnapshot() -> DebugFaultServiceStatus {
+      let s = debugZeroFillController.status()
+      return DebugFaultServiceStatus(
+        armed: s.armed, hit: s.hit, trialID: s.trialID, mode: s.mode,
+        zeroedSampleCount: s.zeroedSampleCount, sourceIncarnation: debugSourceIncarnation)
+    }
   #endif
 
   /// Issue #285 — mirror of `activeSource.captureGeneration` / `captureSourceType`
