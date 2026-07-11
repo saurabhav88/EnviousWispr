@@ -44,6 +44,13 @@ final class PreRollForwarder: @unchecked Sendable {
   private let capacity: Int
   private let lock: OSAllocatedUnfairLock<State>
 
+  #if DEBUG
+    /// #1317 proof-bench: DEBUG-only all-zero injector. Set by the owning source
+    /// (which received it from `AudioCaptureManager`) when it constructs the
+    /// forwarder. Nil means ordinary forwarding. Compiled out of release.
+    var debugZeroFillController: DebugZeroFillController?
+  #endif
+
   // MARK: - Init
 
   /// Create a forwarder with a preallocated ring buffer.
@@ -93,6 +100,30 @@ final class PreRollForwarder: @unchecked Sendable {
     case .store, .drop:
       break
     case .forward(let onSamples, let onBuffer, let continuation):
+      #if DEBUG
+        // #1317 proof-bench: substitute digital silence for the zeroed range,
+        // transforming BOTH the sample array and the PCM buffer, and recomputing
+        // level (0.0 only for a fully-zero chunk; recomputed RMS on a boundary
+        // chunk). Same delivery cadence/frame-count; content only.
+        if let ctl = debugZeroFillController,
+          let range = ctl.zeroRange(count: samples.count, context: .live)
+        {
+          var zeroed = samples
+          for i in range { zeroed[i] = 0 }
+          if let ch = buffer.floatChannelData {
+            let n = Int(buffer.frameLength)
+            for i in range where i < n { ch[0][i] = 0 }
+          }
+          let level: Float =
+            zeroed.contains(where: { $0 != 0 })
+            ? (zeroed.reduce(Float(0)) { $0 + $1 * $1 } / Float(zeroed.count)).squareRoot()
+            : 0
+          onSamples?(zeroed, level)
+          onBuffer?(buffer)
+          continuation?.yield(buffer)
+          return
+        }
+      #endif
       onSamples?(samples, level)
       onBuffer?(buffer)
       continuation?.yield(buffer)
@@ -169,13 +200,23 @@ final class PreRollForwarder: @unchecked Sendable {
     continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?,
     logPrefix: String
   ) -> Int {
-    let preRollSamples = beginActivation(
+    var preRollSamples = beginActivation(
       onSamples: onSamples,
       onBuffer: onBuffer,
       continuation: continuation
     )
 
     if !preRollSamples.isEmpty {
+      #if DEBUG
+        // #1317 proof-bench: zero_from_start also zeroes the drained pre-roll and
+        // activation delta, so real audio captured before arming cannot leak into a
+        // zero-from-start trial. Other modes leave pre-roll untouched.
+        if let ctl = debugZeroFillController,
+          let range = ctl.zeroRange(count: preRollSamples.count, context: .preRollDrain)
+        {
+          for i in range { preRollSamples[i] = 0 }
+        }
+      #endif
       Self.feedPreRoll(
         preRollSamples, onSamples: onSamples, onBuffer: onBuffer, continuation: continuation)
       AudioCaptureManager.btRouteLog(
@@ -186,8 +227,15 @@ final class PreRollForwarder: @unchecked Sendable {
         "\(logPrefix) pre-roll empty: no samples buffered during setup")
     }
 
-    let delta = commitCapture()
+    var delta = commitCapture()
     if !delta.isEmpty {
+      #if DEBUG
+        if let ctl = debugZeroFillController,
+          let range = ctl.zeroRange(count: delta.count, context: .preRollDrain)
+        {
+          for i in range { delta[i] = 0 }
+        }
+      #endif
       Self.feedPreRoll(delta, onSamples: onSamples, onBuffer: onBuffer, continuation: continuation)
       AudioCaptureManager.btRouteLog("\(logPrefix) pre-roll delta: \(delta.count) samples")
     }

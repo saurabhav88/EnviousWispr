@@ -164,6 +164,10 @@ final class AVAudioEngineSource: AudioInputSource {
   private var isRecovering = false
   private var forwarder: PreRollForwarder?
 
+  #if DEBUG
+    var debugZeroFillController: DebugZeroFillController?
+  #endif
+
   /// Called when an audio device operation fails.
   var onDeviceError: ((String) -> Void)?
 
@@ -375,6 +379,9 @@ final class AVAudioEngineSource: AudioInputSource {
 
     let fwd = PreRollForwarder()
     self.forwarder = fwd
+    #if DEBUG
+      fwd.debugZeroFillController = debugZeroFillController
+    #endif
 
     let tapHandler = Self.makeTapHandler(
       audioConverter: audioConverter,

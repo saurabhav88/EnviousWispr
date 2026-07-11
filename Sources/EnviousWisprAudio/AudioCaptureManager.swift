@@ -125,6 +125,20 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// Either AVAudioEngineSource (no BT) or AVCaptureSessionSource (BT output active).
   private var activeSource: (any AudioInputSource)?
 
+  #if DEBUG
+    /// #1317 proof-bench: the single DEBUG-only all-zero injector, handed to every
+    /// source on install so it can substitute digital silence at the forwarder.
+    /// Compiled out of release.
+    let debugZeroFillController = DebugZeroFillController()
+
+    /// #1317 proof-bench: monotonic, manager-owned resource generation — the
+    /// freshness oracle for `fresh_pipe_proven`. NOT `ObjectIdentifier(activeSource)`
+    /// (rebuild destroys resources while retaining the object) and NOT the
+    /// capture-session id (which advances per capture even on warm reuse). Increments
+    /// only on new-source install, destructive `rebuildEngine()`, and `buildEngine()`.
+    private(set) var debugSourceIncarnation: UInt64 = 0
+  #endif
+
   /// Issue #285 — mirror of `activeSource.captureGeneration` / `captureSourceType`
   /// captured at session start, so pipeline Sentry extras still resolve a real
   /// session id + backend tag after `stopCapture()` synchronously tears down
@@ -395,6 +409,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   public func rebuildEngine() {
     activeSource?.rebuild()
+    #if DEBUG
+      debugSourceIncarnation += 1  // destructive rebuild of the active source's resources
+    #endif
   }
 
   public func buildEngine(noiseSuppression: Bool) {
@@ -405,11 +422,18 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // buildEngine only creates an AVAudioEngine object, doesn't start it or install taps).
     if let engineSource = activeSource as? AVAudioEngineSource {
       engineSource.buildEngine(noiseSuppression: noiseSuppression)
+      #if DEBUG
+        debugSourceIncarnation += 1  // AVAudioEngine resources replaced on the active source
+      #endif
     } else {
       // Tear down any existing non-engine source before replacing
       activeSource?.rebuild()
       let engineSource = AVAudioEngineSource()
       engineSource.buildEngine(noiseSuppression: noiseSuppression)
+      #if DEBUG
+        engineSource.debugZeroFillController = debugZeroFillController
+        debugSourceIncarnation += 1  // new engine source installed
+      #endif
       activeSource = engineSource
     }
   }
@@ -722,6 +746,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       source = halSource
     }
 
+    #if DEBUG
+      source.debugZeroFillController = debugZeroFillController
+      debugSourceIncarnation += 1  // new source installed at the activeSource authority
+    #endif
     activeSource = source
     return source
   }
