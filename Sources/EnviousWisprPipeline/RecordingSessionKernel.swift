@@ -354,6 +354,23 @@ final class RecordingSessionKernel {
   /// must not pad accidental taps past the discard threshold.
   private var recordingStartedAtTick: UInt64?
 
+  /// #1393: monotonic elapsed time since the current recording began, immune
+  /// to wall-clock/timezone/NTP changes. Reuses `recordingStartedAtTick`
+  /// above rather than adding a second monotonic authority — same stamp
+  /// site, same clear site, same "visible-recording start" semantic the
+  /// discard gate already relies on. Checked comparison, not wrapping
+  /// subtraction: production `currentTick()` cannot realistically regress
+  /// below `start` (monotonic `systemUptime`, same-process, non-decreasing
+  /// quantization), but a broken or adversarially-injected clock should fail
+  /// to `0` for this newly user-facing value, not silently wrap into a huge
+  /// duration.
+  var recordingElapsedSeconds: TimeInterval? {
+    guard let start = recordingStartedAtTick else { return nil }
+    let now = currentTick()
+    guard now >= start else { return 0 }
+    return TimeInterval(now - start) * KernelFinalizationWiring.tickDurationSeconds
+  }
+
   /// Logical-tick value at the `→ stopping` transition (PR-4.5 #4, Codex r1).
   /// The visible-recording elapsed used by the #4 discard gate is computed
   /// as `(stoppingStartedAtTick - recordingStartedAtTick)`, NOT against

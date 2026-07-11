@@ -66,13 +66,22 @@ import Testing
       """)
   }
 
+  // #1393: raised 100 → 120 for `recordingElapsedSeconds` (a computed
+  // property mirroring `pipelineState`'s existing branch shape, exposing the
+  // kernel's own monotonic elapsed-recording value so `StatusView` and the
+  // recording overlay stop each stamping their own per-view clock — the
+  // #1393 timer-reset-on-History-tab root cause) plus the `Foundation`
+  // import that property's `TimeInterval` return type needs. No new
+  // collaborator, no new `func` (still a computed property, count stays 0
+  // per `nonPrivateMethodCount` above); only the paper-line ceiling moves.
+  // Deterministic rule: actual 109 + 10 → round up to nearest 5 = 120.
   @Test func lineCountCeiling() throws {
     let source = try CeilingsTestSupport.source(at: Self.sourcePath)
     let count = CeilingsTestSupport.lineCount(in: source)
     #expect(
-      count <= 100,
+      count <= 120,
       """
-      LiveRecordingState line count exceeded: \(count) > 100. \
+      LiveRecordingState line count exceeded: \(count) > 120. \
       Ratchet down if implementation came in lower; raise only via Bible §30.
       """)
   }
@@ -83,7 +92,7 @@ import Testing
     let allowed: Set<String> = [
       "EnviousWisprASR", "EnviousWisprAudio",
       "EnviousWisprCore", "EnviousWisprPipeline",
-      "Observation",
+      "Foundation", "Observation",
     ]
     let extras = actual.subtracting(allowed)
     #expect(

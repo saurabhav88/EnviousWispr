@@ -616,6 +616,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       interruptionCause: kernel.lastAudioInterruptionCause)
   }
 
+  /// #1393: the pipeline's own single source of truth for monotonic elapsed
+  /// recording time. `nil` outside an active/just-finished session.
+  public var recordingElapsedSeconds: TimeInterval? { kernel.recordingElapsedSeconds }
+
   /// The transcript the `store` closure built for the last completed session.
   public var currentTranscript: Transcript? { outcome.transcript }
 

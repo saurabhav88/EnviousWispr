@@ -195,9 +195,15 @@ final class DictationLifecycleCoordinator {
   /// current intent, so a redundant identical push is dropped (#930).
   private func showOverlayIntent(_ intent: OverlayIntent) {
     let audioCapture = self.audioCapture
+    // #1393: resolve the active driver the same way `activeTelemetryTarget()`
+    // does, so the overlay's elapsed-time provider reads from whichever
+    // backend is actually recording.
+    let backend = activeCaptureBackend() ?? lastCapturingBackend
+    let driver = backend == .whisperKit ? whisperKitKernelDriver : kernelDriver
     recordingOverlay.show(
       intent: intent,
       audioLevelProvider: { audioCapture.audioLevel },
+      recordingElapsedProvider: { [weak driver] in driver?.recordingElapsedSeconds },
       isRecordingLocked: recordingLockedAccess.get()
     )
   }

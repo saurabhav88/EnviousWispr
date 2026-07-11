@@ -48,6 +48,22 @@ struct LiveRecordingStateTests {
     #expect(state.pipelineState == .error("wk-marker"))
   }
 
+  @Test(
+    "recordingElapsedSeconds routes through asrManager.activeBackendType, mirroring pipelineState")
+  func recordingElapsedSecondsRoutesByBackend() {
+    let state = makeState()
+    // #1393: same routing shape as `pipelineState` above. Both drivers stay
+    // at `.idle` here (real FSM-driven `.recording` transitions are Live
+    // UAT territory per this file's own header comment, same limitation
+    // `pipelineState`'s own "recording" case has), so both branches read
+    // `nil` — this proves the routing selects the right driver's property
+    // without crashing, not a distinguishing nonzero value.
+    state.asrManager.setInitialBackendType(.parakeet)
+    #expect(state.recordingElapsedSeconds == nil)
+    state.asrManager.setInitialBackendType(.whisperKit)
+    #expect(state.recordingElapsedSeconds == nil)
+  }
+
   @Test("audioLevel reads through the audioCapture existential")
   func audioLevelReadsAudioCapture() {
     let audio = SettableAudioCapture()

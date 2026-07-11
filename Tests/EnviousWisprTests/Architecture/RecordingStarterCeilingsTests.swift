@@ -110,10 +110,20 @@ import Testing
     // bail on a raced engine (mirrors the existing recovery re-check). Two bare
     // `let entryBackend` captures + two guard blocks; no new collaborator (count
     // stays ≤ 7). Deterministic rule: actual 503 + 10 → round up to nearest 5 = 515.
+    // #1393: raised 515 → 535 for the `recordingElapsedProvider` argument (and
+    // its explanatory comment) on the recording overlay's FIRST `.recording`
+    // push — this call site runs before `DictationLifecycleCoordinator` ever
+    // sees a state change, so it must carry the real elapsed-time provider
+    // itself or the panel's identical-intent dedup guard would leave the
+    // floating pill stuck on the default `nil` provider for the whole
+    // recording (the #1393 timer-reset bug, second instance, found by Codex
+    // Grounded Review round 1). No new collaborator or method; only the
+    // paper-line ceiling moves. Deterministic rule: actual 522 + 10 → round
+    // up to nearest 5 = 535.
     #expect(
-      count <= 515,
+      count <= 535,
       """
-      RecordingStarter line count exceeded: \(count) > 515. \
+      RecordingStarter line count exceeded: \(count) > 535. \
       Raise via Bible §30 only.
       """)
   }

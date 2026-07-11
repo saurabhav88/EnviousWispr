@@ -92,12 +92,49 @@ final class AppWindowCoordinator {
   /// toolbar wordmark is the identity). Preferring the scene identifier, with a
   /// blank-title fallback, means titled system dialogs (Sparkle's attended-update
   /// window, save/open panels — all of which carry non-empty titles) never match.
-  private func isMainWindow(_ window: NSWindow) -> Bool {
+  private static func matchesMainWindowIdentity(_ window: NSWindow) -> Bool {
     // The main window carries the app name as its title (visually suppressed by
     // the principal toolbar item, but still set for the Window menu / VoiceOver).
     // Match on it: onboarding ("Setup"), Sparkle's update dialog, and save/open
     // panels all carry different titles, so none is mistaken for the main window.
     window.styleMask.contains(.titled) && window.title == AppConstants.appName
+  }
+
+  private func isMainWindow(_ window: NSWindow) -> Bool {
+    Self.matchesMainWindowIdentity(window)
+  }
+
+  /// #1392: the pure presentation decision, input-driven so it's testable
+  /// without touching real `NSWindow`/`NSApp` state. A window "counts" if it
+  /// matches the main-window identity AND is visible, minimized, or the
+  /// whole app is Cmd+H-hidden — not just currently onscreen. Bare
+  /// `isVisible` alone would revert to accessory (and effectively strand the
+  /// window) if the user minimized Settings or hid the app while an attended
+  /// update check was in flight (#1392 r1 finding).
+  static func isMainWindowPresented(
+    windowStates: [(matchesIdentity: Bool, isVisible: Bool, isMiniaturized: Bool)],
+    appIsHidden: Bool
+  ) -> Bool {
+    windowStates.contains { state in
+      state.matchesIdentity && (state.isVisible || state.isMiniaturized || appIsHidden)
+    }
+  }
+
+  /// #1392: whether the user still has a main app window right now. Static
+  /// and state-free — callers that don't own a window reference (Sparkle's
+  /// attended-update-session-end hook) can check without a new stored
+  /// dependency. Thin snapshot wrapper around the pure decision above; Live
+  /// UAT is what proves this wrapper's real-`NSApp` snapshot is correct.
+  static func isMainWindowPresented() -> Bool {
+    isMainWindowPresented(
+      windowStates: NSApp.windows.map {
+        (
+          matchesIdentity: matchesMainWindowIdentity($0), isVisible: $0.isVisible,
+          isMiniaturized: $0.isMiniaturized
+        )
+      },
+      appIsHidden: NSApp.isHidden
+    )
   }
 
   /// Remove both window-close observers. Called once from

@@ -2,6 +2,7 @@ import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprPipeline
+import Foundation
 import Observation
 
 /// PR7 of epic #763. Owns the "what is happening with dictation right now"
@@ -70,6 +71,15 @@ final class LiveRecordingState {
   /// the former root state getter.
   var audioLevel: Float {
     audioCapture.audioLevel
+  }
+
+  /// #1393: monotonic elapsed recording time, mirroring `pipelineState`'s
+  /// exact backend-branching shape.
+  var recordingElapsedSeconds: TimeInterval? {
+    if asrManager.activeBackendType == .whisperKit {
+      return whisperKitKernelDriver.recordingElapsedSeconds
+    }
+    return kernelDriver.recordingElapsedSeconds
   }
 
   /// In-flight transcript from the active pipeline. Live fallback in

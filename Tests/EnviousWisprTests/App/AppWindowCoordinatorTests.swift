@@ -120,4 +120,55 @@ struct AppWindowCoordinatorTests {
     coordinator.closeOnboardingWindow()
     #expect(dismissedCount == 1, "close fires the icon-refresh seam exactly once")
   }
+
+  // MARK: - #1392: isMainWindowPresented(windowStates:appIsHidden:)
+
+  /// Input-driven pure decision — no real `NSWindow`/`NSApp` state, matching
+  /// this suite's existing convention (real window-server behavior is Live
+  /// UAT-only, per the file header above).
+
+  @Test("matching visible window is presented")
+  func isMainWindowPresentedTrueForVisible() {
+    let present = AppWindowCoordinator.isMainWindowPresented(
+      windowStates: [(matchesIdentity: true, isVisible: true, isMiniaturized: false)],
+      appIsHidden: false
+    )
+    #expect(present)
+  }
+
+  @Test("matching minimized window is still presented — #1392 r1 finding")
+  func isMainWindowPresentedTrueForMinimized() {
+    let present = AppWindowCoordinator.isMainWindowPresented(
+      windowStates: [(matchesIdentity: true, isVisible: false, isMiniaturized: true)],
+      appIsHidden: false
+    )
+    #expect(present, "a minimized window still exists — isVisible alone is the wrong proxy")
+  }
+
+  @Test("matching window counts as presented while the whole app is Cmd+H-hidden")
+  func isMainWindowPresentedTrueWhenAppHidden() {
+    let present = AppWindowCoordinator.isMainWindowPresented(
+      windowStates: [(matchesIdentity: true, isVisible: false, isMiniaturized: false)],
+      appIsHidden: true
+    )
+    #expect(present)
+  }
+
+  @Test("no matching window in the list is not presented")
+  func isMainWindowPresentedFalseWhenAbsent() {
+    let present = AppWindowCoordinator.isMainWindowPresented(
+      windowStates: [],
+      appIsHidden: false
+    )
+    #expect(!present)
+  }
+
+  @Test("only a non-matching window (Sparkle's dialog) present is not presented")
+  func isMainWindowPresentedFalseForNonMatchingOnly() {
+    let present = AppWindowCoordinator.isMainWindowPresented(
+      windowStates: [(matchesIdentity: false, isVisible: true, isMiniaturized: false)],
+      appIsHidden: false
+    )
+    #expect(!present, "a titled-but-differently-named window (Sparkle's dialog) must not count")
+  }
 }

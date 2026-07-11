@@ -224,6 +224,12 @@ final class RecordingStarter {
     recordingOverlay.show(
       intent: .recording(audioLevel: 0),
       audioLevelProvider: { [audioCapture] in audioCapture.audioLevel },
+      // #1393: this is the FIRST `.recording` overlay push (fires before
+      // `DictationLifecycleCoordinator` sees any state change), so it must
+      // carry the real provider itself — the panel's identical-intent dedup
+      // guard means whatever is passed here is what actually renders for the
+      // whole recording if a later push is a no-op duplicate.
+      recordingElapsedProvider: { [weak active] in active?.recordingElapsedSeconds },
       isRecordingLocked: false
     )
     let pttStart = ContinuousClock.now
@@ -244,9 +250,12 @@ final class RecordingStarter {
       )
       let nsError = error as NSError
       let noMic =
-        nsError.domain == AudioError.errorDomain && nsError.code == AudioError.noBuiltInMicrophoneFound.errorCode
+        nsError.domain == AudioError.errorDomain
+        && nsError.code == AudioError.noBuiltInMicrophoneFound.errorCode
       active.setExternalError(
-        noMic ? "No microphone found. Please connect a microphone." : "Microphone unavailable — try again.")
+        noMic
+          ? "No microphone found. Please connect a microphone."
+          : "Microphone unavailable — try again.")
       return
     }
     guard !Task.isCancelled else {
