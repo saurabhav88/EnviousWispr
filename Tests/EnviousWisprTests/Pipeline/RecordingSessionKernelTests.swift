@@ -289,8 +289,10 @@ import Testing
       #expect(firstReading == 1.0)  // 10 ticks × 0.1s
     }
 
-    @Test("recordingElapsedSeconds returns to nil after the next session's reset")
-    func recordingElapsedSecondsNilAfterNextSessionReset() async {
+    @Test(
+      "recordingElapsedSeconds goes nil the instant state leaves .recording, and a fresh session starts at zero"
+    )
+    func recordingElapsedSecondsNilOutsideRecordingAndFreshOnNextStart() async {
       let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
@@ -298,17 +300,19 @@ import Testing
       context.clock.advance(by: 10)
       #expect(kernel.recordingElapsedSeconds != nil)
 
+      // r2 (cloud review P2, PR #1507): gated on `state == .recording`, not
+      // merely on `recordingStartedAtTick` being set. `recordingStartedAtTick`
+      // itself still isn't cleared until the NEXT session's `start(config:)`
+      // (unchanged internal lifecycle — the discard gate at `:2247`/`:2660`
+      // still needs it), but the PUBLIC `recordingElapsedSeconds` value now
+      // correctly goes nil the moment state leaves `.recording`, closing the
+      // exact stale-value window the overlay's first pill push could hit.
       await apply(.cancel, to: wrapper)  // recording → cancelled (terminal)
+      #expect(kernel.recordingElapsedSeconds == nil, "gated on .recording, not on the raw tick")
+
       await apply(.reset, to: wrapper)  // cancelled → idle
       #expect(kernel.state == .idle)
-      // `resetSessionState()` (which clears `recordingStartedAtTick`) runs
-      // from `start(config:)`, not from `.reset` — the value deliberately
-      // stays set through the prior session's terminal + `.reset` (matches
-      // `recordingStartedAtDate`'s existing lifecycle, both consumers only
-      // ever read while `pipelineState == .recording` so this is never
-      // observed as wrong). Assert that instead of a premature nil.
-      #expect(
-        kernel.recordingElapsedSeconds != nil, "value persists until the NEXT session's start")
+      #expect(kernel.recordingElapsedSeconds == nil)
 
       // A fresh session starts its own origin at zero again, not carrying
       // the prior session's elapsed time forward.
