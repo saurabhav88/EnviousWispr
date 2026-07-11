@@ -697,7 +697,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
   /// Resolve thinking/reasoning config based on provider, model, and user toggle.
   private func resolveThinkingConfig() -> (thinkingBudget: Int?, reasoningEffort: String?) {
-    guard llmProvider.supportsReasoning(model: llmModel) else { return (nil, nil) }
+    guard llmProvider.modelCapabilities(model: llmModel).supportsReasoning else {
+      return (nil, nil)
+    }
     switch llmProvider {
     case .gemini:
       return (useExtendedThinking ? LLMConstants.defaultThinkingBudget : 0, nil)

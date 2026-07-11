@@ -42,18 +42,6 @@ extension LLMProvider {
     case .none: return ""
     }
   }
-
-  /// Whether this provider + model combination supports reasoning/thinking controls.
-  public func supportsReasoning(model: String) -> Bool {
-    switch self {
-    case .gemini:
-      return model.hasPrefix("gemini-2.5") || model.hasPrefix("gemini-3")
-    case .openAI:
-      return model.hasPrefix("o1") || model.hasPrefix("o3") || model.hasPrefix("o4")
-    case .ollama, .appleIntelligence, .egOne, .none:
-      return false
-    }
-  }
 }
 
 /// Per-polish telemetry sidecar produced by AFM polish (#429; single-prompt since #1072).
