@@ -217,8 +217,12 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
 
 /// The safe verdict for an app already sitting at the destination.
 public enum ExistingDestinationDecision: Equatable, Sendable {
-  /// Same-or-newer, verified copy → open it, never downgrade or overwrite.
+  /// Same-or-newer, verified copy, NOT running → open it fresh, never downgrade
+  /// or overwrite.
   case openExisting
+  /// Same-or-newer, verified copy that is ALREADY running → activate it, never
+  /// spawn a duplicate (cloud Codex review #1490).
+  case activateRunning
   /// Older copy currently running → refuse; never downgrade to it and a running
   /// bundle cannot be safely overwritten (Codex r2 P1).
   case refuseRunningOlder
@@ -258,8 +262,10 @@ public struct FileManagerApplicationMover: ApplicationMoving {
     guard signatureValid else { return .conflict }
     let cmp = UpdateAvailabilityService.compareVersions(existingVersion, currentVersion)
     if cmp >= 0 {
-      // Same-or-newer, verified: open it, never downgrade or overwrite.
-      return .openExisting
+      // Same-or-newer, verified: activate it if already running (never
+      // duplicate — cloud #1490), otherwise open it fresh. Never downgrade or
+      // overwrite.
+      return isRunning ? .activateRunning : .openExisting
     }
     // Older, verified: replace when safe, refuse when it is running (a running
     // bundle cannot be overwritten and must not be downgraded to).
@@ -299,8 +305,13 @@ public struct FileManagerApplicationMover: ApplicationMoving {
         isRunning: isRunning, signatureValid: signatureValid)
       {
       case .openExisting:
-        // Same-or-newer, verified: open it, do not downgrade or overwrite.
+        // Same-or-newer, verified, not running: open it fresh, do not downgrade
+        // or overwrite.
         return .success(.existingUsable(destination))
+      case .activateRunning:
+        // Same-or-newer, verified, already running: activate it, never spawn a
+        // duplicate (cloud Codex review #1490).
+        return .success(.existingRunning(destination))
       case .refuseRunningOlder:
         // Older + running: never downgrade to it, and a running bundle cannot be
         // safely overwritten. Keep the current app alive (Codex r2 P1).
@@ -404,6 +415,17 @@ public struct NSWorkspaceRelocationRelauncher: RelocationRelaunching {
         continuation.resume(returning: error == nil && app != nil)
       }
     }
+  }
+
+  public func activateRunning(_ url: URL) async -> Bool {
+    // Bring the already-running instance at this exact URL to the front; never
+    // spawn a new one (cloud Codex review #1490).
+    let target = url.standardizedFileURL
+    let running = NSWorkspace.shared.runningApplications.first {
+      $0.bundleURL?.standardizedFileURL == target
+    }
+    guard let app = running else { return false }
+    return app.activate()
   }
 }
 

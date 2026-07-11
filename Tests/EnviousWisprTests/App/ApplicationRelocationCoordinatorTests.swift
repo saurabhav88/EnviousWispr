@@ -49,18 +49,28 @@ struct ApplicationRelocationCoordinatorTests {
 
   final class FakeRelauncher: RelocationRelaunching, @unchecked Sendable {
     var success = true
+    var activateSuccess = true
     private(set) var lastAttemptID: String?
+    private(set) var relaunchCalls = 0
+    private(set) var activatedURL: URL?
     func relaunch(_ installedURL: URL, attemptID: String) async -> Bool {
+      relaunchCalls += 1
       lastAttemptID = attemptID
       return success
+    }
+    func activateRunning(_ url: URL) async -> Bool {
+      activatedURL = url
+      return activateSuccess
     }
   }
 
   final class FakeHandshake: RelocationHandshaking, @unchecked Sendable {
     var ackHealthy = true
+    private(set) var awaitCalls = 0
     private(set) var writes: [(attemptID: String, path: String, healthy: Bool)] = []
     func awaitAck(attemptID: String, destination: URL, timeout: TimeInterval) async -> Bool {
-      ackHealthy
+      awaitCalls += 1
+      return ackHealthy
     }
     func writeAck(attemptID: String, resolvedPath: String, healthy: Bool) {
       writes.append((attemptID, resolvedPath, healthy))
@@ -321,13 +331,24 @@ struct ApplicationRelocationCoordinatorTests {
     #expect(d == .conflict)
   }
 
-  @Test("existing-destination: newer verified copy -> open it (no downgrade)")
+  @Test("existing-destination: newer verified, NOT running -> open fresh (no downgrade)")
   func decideNewerVerified() {
     let d = FileManagerApplicationMover.decideExistingDestination(
       existingBundleIdentifier: "com.enviouswispr.app",
       expectedBundleIdentifier: "com.enviouswispr.app",
-      existingVersion: "2.4.0", currentVersion: "2.3.0", isRunning: true, signatureValid: true)
+      existingVersion: "2.4.0", currentVersion: "2.3.0", isRunning: false, signatureValid: true)
     #expect(d == .openExisting)
+  }
+
+  @Test(
+    "existing-destination: newer verified + ALREADY running -> activate, never duplicate (cloud #1490)"
+  )
+  func decideNewerRunning() {
+    let d = FileManagerApplicationMover.decideExistingDestination(
+      existingBundleIdentifier: "com.enviouswispr.app",
+      expectedBundleIdentifier: "com.enviouswispr.app",
+      existingVersion: "2.4.0", currentVersion: "2.3.0", isRunning: true, signatureValid: true)
+    #expect(d == .activateRunning)
   }
 
   @Test("existing-destination: equal version verified -> open it")
@@ -389,5 +410,34 @@ struct ApplicationRelocationCoordinatorTests {
     await h.coordinator.pendingWork?.value
     #expect(h.relauncher.lastAttemptID == "attempt-1")
     #expect(h.terminate.count == 1)
+  }
+
+  // MARK: existingRunning activates the live copy, never duplicates (cloud #1490)
+
+  @Test(
+    "existingRunning: activates the running copy, no fresh launch, no handshake, then terminates")
+  func existingRunningActivates() async {
+    let dest = URL(fileURLWithPath: "/Applications/EnviousWispr.app")
+    let h = Self.makeHarness(
+      bundleURL: Self.translocatedURL, moverResult: .success(.existingRunning(dest)))
+    h.coordinator.evaluateAndOfferIfNeeded()
+    await h.coordinator.pendingWork?.value
+    #expect(h.relauncher.activatedURL == dest)  // brought the live copy to front
+    #expect(h.relauncher.relaunchCalls == 0)  // NO duplicate instance spawned
+    #expect(h.handshake.awaitCalls == 0)  // no handshake needed for an already-live copy
+    #expect(h.telemetry.relaunchedEvents.first?.2 == true)
+    #expect(h.terminate.count == 1)  // this translocated duplicate quits
+  }
+
+  @Test("existingRunning: activate failure keeps the original alive")
+  func existingRunningActivateFailure() async {
+    let dest = URL(fileURLWithPath: "/Applications/EnviousWispr.app")
+    let h = Self.makeHarness(
+      bundleURL: Self.translocatedURL, moverResult: .success(.existingRunning(dest)))
+    h.relauncher.activateSuccess = false
+    h.coordinator.evaluateAndOfferIfNeeded()
+    await h.coordinator.pendingWork?.value
+    #expect(h.terminate.count == 0)
+    #expect(h.telemetry.failedEvents.map(\.1) == ["relaunchRejected"])
   }
 }

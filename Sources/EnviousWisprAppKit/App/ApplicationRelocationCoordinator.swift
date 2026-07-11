@@ -96,15 +96,21 @@ public enum RelocationFailure: String, Error, Sendable {
 
 /// What the mover did with the chosen destination.
 public enum InstallResolution: Equatable, Sendable {
-  /// We staged, validated, and placed our own copy at this URL.
+  /// We staged, validated, and placed our own copy at this URL → launch fresh +
+  /// handshake.
   case installed(URL)
-  /// A same-identity, same-or-newer healthy copy already existed here; the
-  /// coordinator should simply open it rather than overwrite.
+  /// A same-identity, same-or-newer healthy copy already exists here but is NOT
+  /// running → launch it fresh + handshake.
   case existingUsable(URL)
+  /// A same-identity, same-or-newer healthy copy is ALREADY RUNNING here →
+  /// activate that instance and terminate self; never spawn a duplicate, and no
+  /// handshake is needed (the copy is verified and already live). Cloud Codex
+  /// review #1490.
+  case existingRunning(URL)
 
   public var url: URL {
     switch self {
-    case .installed(let u), .existingUsable(let u): return u
+    case .installed(let u), .existingUsable(let u), .existingRunning(let u): return u
     }
   }
 }
@@ -192,6 +198,9 @@ public protocol ApplicationMoving: Sendable {
 /// Launches the installed copy with the relaunch marker + attempt ID.
 public protocol RelocationRelaunching: Sendable {
   func relaunch(_ installedURL: URL, attemptID: String) async -> Bool
+  /// Bring an ALREADY-running instance at this URL to the front (no new
+  /// instance). Returns false if no such running instance is found.
+  func activateRunning(_ url: URL) async -> Bool
 }
 
 /// Waits (signal-based, bounded) for the relaunched copy to write its health
@@ -396,10 +405,30 @@ public final class ApplicationRelocationCoordinator {
       presenter.dismissProgress()
       telemetry.failed(reason: reason, failureClass: failure.rawValue)
       presenter.showFailure(failure)
+    case .success(.existingRunning(let url)):
+      // A verified same-or-newer copy is already running: bring it to the front
+      // and terminate this translocated duplicate. No new instance, no
+      // handshake (cloud Codex review #1490).
+      await activateAndHandOff(reason: reason, destination: destination, runningURL: url)
     case .success(let resolution):
       await relaunchAndHandOff(
         reason: reason, destination: destination, installedURL: resolution.url)
     }
+  }
+
+  /// The good copy is already running: activate it, then terminate self. If it
+  /// cannot be activated, keep the current process alive and report failure.
+  private func activateAndHandOff(reason: String, destination: Destination, runningURL: URL) async {
+    guard await relauncher.activateRunning(runningURL) else {
+      presenter.dismissProgress()
+      telemetry.failed(reason: reason, failureClass: RelocationFailure.relaunchRejected.rawValue)
+      presenter.showFailure(.relaunchRejected)
+      return
+    }
+    telemetry.relaunched(
+      reason: reason, destinationScope: destination.scope, relaunchConfirmed: true)
+    flushTelemetry()
+    terminate()
   }
 
   /// Relaunch, then wait for the new instance's health ack BEFORE terminating
