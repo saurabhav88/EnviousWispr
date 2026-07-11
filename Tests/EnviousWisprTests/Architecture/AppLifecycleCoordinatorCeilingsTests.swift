@@ -29,6 +29,12 @@ import Testing
 /// `runDidFinishLaunching` for the opt-in launch sync only. Allowlist 19 → 20
 /// (3 owned `var` + 17 injected `let`); non-private method count unchanged at 3.
 /// A narrow new coordinator, not god-object accretion (issue-636 §3b).
+/// Bible §30 entry (#1451, 2026-07-10): `applicationRelocationCoordinator` added
+/// — the App Translocation recovery limb. Injected `let`, called once by
+/// `runDidFinishLaunching` (`evaluateAndOfferIfNeeded()`); the coordinator owns
+/// all relocation policy, so this is one narrow delegation, not accretion (§3b).
+/// Allowlist 20 → 21 (3 owned `var` + 18 injected `let`); non-private method
+/// count unchanged at 3.
 @Suite struct AppLifecycleCoordinatorCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift"
@@ -54,6 +60,7 @@ import Testing
     "menuBarController",
     "appWindowCoordinator",
     "hotkeyService",
+    "applicationRelocationCoordinator",
   ]
 
   @Test func storedPropertyNamesMatchAllowlist() throws {
@@ -66,7 +73,7 @@ import Testing
       extras.isEmpty && missing.isEmpty,
       """
       AppLifecycleCoordinator stored-property set drifted from the \
-      20-name allowlist. Unexpected: \(extras.sorted()). Missing: \
+      21-name allowlist. Unexpected: \(extras.sorted()). Missing: \
       \(missing.sorted()). Adding a stored property is god-object drift — \
       raising the allowlist requires a Bible §30 entry. Removing one means \
       this allowlist must shrink in the same PR.

@@ -310,8 +310,9 @@ final class UpdateCoordinator {
       defaults.removeObject(forKey: Self.kLastAttemptSource)
     }
 
-    // Bundle version compare via the service's helper.
-    let cmp = service.compareVersions(currentBundleVersion, attemptVersion)
+    // Bundle version compare via the single version-comparison authority
+    // (#1451: now `static` on the service).
+    let cmp = UpdateAvailabilityService.compareVersions(currentBundleVersion, attemptVersion)
     if cmp == 0 {
       // Bundle matches the attempted version exactly → install completed.
       return .completed(version: attemptVersion, source: attemptSource)

@@ -101,7 +101,7 @@ public final class UpdateAvailabilityService {
     // While `.resolving`, only react to a strictly-newer version.
     if case .resolving = state {
       if let inflight = persistedPending(),
-        compareVersions(update.versionString, inflight.versionString) <= 0
+        Self.compareVersions(update.versionString, inflight.versionString) <= 0
       {
         return
       }
@@ -192,7 +192,7 @@ public final class UpdateAvailabilityService {
 
   func rehydratePendingIfNewer() {
     guard let pending = persistedPending() else { return }
-    let cmp = compareVersions(pending.versionString, currentBundleVersion)
+    let cmp = Self.compareVersions(pending.versionString, currentBundleVersion)
     if cmp > 0 {
       state = .available(pending)
       // Issue #739: post-#739 no in-app caller invokes dismissForSession, so
@@ -214,7 +214,13 @@ public final class UpdateAvailabilityService {
   /// Production tags are enforced `^[0-9]+\.[0-9]+\.[0-9]+$` per release.yml,
   /// so a simple split-by-dot integer compare is sufficient.
   /// Returns: -1 if a < b, 0 if equal, +1 if a > b.
-  public func compareVersions(_ a: String, _ b: String) -> Int {
+  ///
+  /// #1451: promoted to `static` so it is the single version-comparison
+  /// authority — `ApplicationMover` reuses it to decide older-vs-newer at the
+  /// relocation destination without needing an `UpdateAvailabilityService`
+  /// instance. Pure function; no instance state was ever read. `nonisolated` so
+  /// off-actor callers (the relocation mover) can reuse it.
+  nonisolated public static func compareVersions(_ a: String, _ b: String) -> Int {
     let aParts = a.split(separator: ".").map { Int($0) ?? 0 }
     let bParts = b.split(separator: ".").map { Int($0) ?? 0 }
     let count = max(aParts.count, bParts.count)
