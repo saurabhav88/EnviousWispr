@@ -211,9 +211,20 @@ public struct ModelRelocationMigrator: Sendable {
     // A previously-shipped layout we recognize: do NOT move it, do NOT load it,
     // do NOT delete it. Record the token and let the caller replace it.
     if let legacy = await trustedLegacyArtifact(in: oldDirectory, plan: plan) {
+      // Re-classification must NOT overwrite a decision the user already made.
+      //
+      // If a previous launch recorded `.remove` and the delete then failed, the
+      // artifact is still here — so we land here again, and writing a fresh token
+      // would reset the intent to its `.replace` default and re-download the 2.9 GB
+      // model the user threw away. That is the resurrection bug (r6) sneaking back
+      // in through classification (Codex PR-1 review r16). Carry a current-revision
+      // token's intent forward; only a token from another revision, or no token at
+      // all, starts fresh.
+      let intent = pendingLegacyIntent(plan) ?? .replace
       writeToken(
         Token(
           legacyPath: legacy.url.path,
+          intent: intent,
           legacySizeBytes: legacy.artifact.sizeBytes,
           legacySHA256: legacy.artifact.sha256,
           manifestDigest: plan.manifest.manifestDigest),

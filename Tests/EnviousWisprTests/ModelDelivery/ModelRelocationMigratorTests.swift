@@ -501,6 +501,29 @@ import Testing
     #expect(exists(monolith), "and the model they re-chose is still there to replace")
   }
 
+  /// A Remove that could not finish must SURVIVE re-classification. The next launch
+  /// re-runs migrate() before anything reads the token; if classification rewrote the
+  /// token from scratch it would reset the intent to `.replace` and re-download the
+  /// model the user deleted — the resurrection bug climbing back in through the
+  /// classifier. (Codex PR-1 review r16.)
+  @Test func reclassificationPreservesAnUnfinishedRemoval() async throws {
+    let dirs = try makeDirs()
+    try write(Self.legacyBytes, under: dirs.old, path: "eg-1-v1.gguf")
+    let p = try plan(files: ManifestFixture.smallFiles, dirs: dirs)
+    let migrator = ModelRelocationMigrator()
+    _ = await migrator.migrate(p)
+    migrator.markLegacyForRemoval(p)
+    #expect(migrator.pendingLegacyIntent(p) == .remove)
+
+    // The delete failed; the artifact is still here. Next launch re-classifies it.
+    let nextLaunch = ModelRelocationMigrator()
+    _ = await nextLaunch.migrate(p)
+
+    #expect(
+      nextLaunch.pendingLegacyIntent(p) == .remove,
+      "re-classification must not resurrect a model the user removed")
+  }
+
   /// Marking a removal when nothing is pending is a plain no-op — an ordinary
   /// Remove on a machine with no legacy artifact must not invent one.
   @Test func markingRemovalWithNoPendingArtifactIsANoop() async throws {
