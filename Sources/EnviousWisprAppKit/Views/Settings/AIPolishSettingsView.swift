@@ -156,7 +156,7 @@ struct AIPolishSettingsView: View {
   }
 
   private var isReasoningModel: Bool {
-    settings.llmProvider.supportsReasoning(model: settings.llmModel)
+    settings.llmProvider.modelCapabilities(model: settings.llmModel).supportsReasoning
   }
 
   private var showModelSection: Bool {

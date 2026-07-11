@@ -1,13 +1,46 @@
 import EnviousWisprCore
 import Foundation
+import os
 
 /// OpenAI Chat Completions API connector for transcript polishing.
+///
+/// Request shape is per-model (#1330): `LLMModelCapabilities` decides whether
+/// `temperature` is serialized, and a bounded unsupported-param
+/// strip-and-retry self-heals the static table against provider-side drift
+/// (one extra round-trip, memoized per model for the rest of the process).
 public struct OpenAIConnector: TranscriptPolisher {
+  /// Transport seam: one physical HTTP exchange. Injected by tests to script
+  /// reject/succeed sequences; production always uses the shared session.
+  typealias RequestExecutor = @Sendable (
+    URLRequest,
+    LLMTaskMetricsCollector
+  ) async throws -> (Data, URLResponse)
+
   private let keychainManager: KeychainManager
+  private let requestExecutor: RequestExecutor
   private let baseURL = "https://api.openai.com/v1/chat/completions"
+
+  /// Params the strip-retry may remove after a qualifying 400. Never
+  /// `model`/`messages`/`max_completion_tokens` — stripping the cap would
+  /// unbound cost, and the others are the request itself.
+  static let strippableParams: Set<String> = ["temperature", "reasoning_effort"]
+
+  /// Process-lifetime memo of params each exact model id rejected, so the
+  /// one-round-trip adaptation tax is paid once per model per app run.
+  /// Never persisted: an OpenAI-side fix resets on relaunch.
+  private static let paramMemo = OSAllocatedUnfairLock<[String: Set<String>]>(initialState: [:])
 
   public init(keychainManager: KeychainManager = KeychainManager()) {
     self.keychainManager = keychainManager
+    self.requestExecutor = { request, collector in
+      try await LLMNetworkSession.shared.session.data(for: request, delegate: collector)
+    }
+  }
+
+  /// Test seam. Production callers use the public init.
+  init(keychainManager: KeychainManager, requestExecutor: @escaping RequestExecutor) {
+    self.keychainManager = keychainManager
+    self.requestExecutor = requestExecutor
   }
 
   public func polish(
@@ -16,35 +49,26 @@ public struct OpenAIConnector: TranscriptPolisher {
     config: LLMProviderConfig,
     onToken: (@Sendable (String) -> Void)?
   ) async throws -> LLMResult {
+    // Key first: a user must have a usable key before model compatibility
+    // becomes the actionable failure (missing/rejected/unreadable-key
+    // precedence, #1330 grounded review r4).
     let apiKey = try getAPIKey(config: config)
+
+    // Responses-API-only families (-pro, codex) can never succeed on Chat
+    // Completions; fail deterministically with the model-unavailable notice
+    // instead of a doomed network call (today only HTTP 404 maps there, and
+    // the provider may answer 400 instead).
+    let capabilities = LLMProvider.openAI.modelCapabilities(model: config.model)
+    guard capabilities.supportsChatCompletions else {
+      throw LLMError.classified(.modelUnavailable)
+    }
 
     let messages: [[String: String]] = [
       ["role": "system", "content": instructions.systemPrompt],
       ["role": "user", "content": text],
     ]
 
-    var body: [String: Any] = [
-      "model": config.model,
-      "messages": messages,
-      "max_completion_tokens": config.maxTokens,
-      "temperature": config.temperature,
-      "store": false,
-    ]
-    if let reasoningEffort = config.reasoningEffort {
-      body["reasoning_effort"] = reasoningEffort
-    }
-
-    guard let url = URL(string: baseURL) else {
-      throw LLMError.requestFailed("Invalid OpenAI URL")
-    }
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.httpBody = try JSONSerialization.data(withJSONObject: body)
-    request.timeoutInterval = 60
-
-    return try await performWithRetry(request: request, config: config)
+    return try await performWithRetry(apiKey: apiKey, messages: messages, config: config)
   }
 
   public func polish(
@@ -72,17 +96,61 @@ public struct OpenAIConnector: TranscriptPolisher {
     )
   }
 
+  // MARK: - Request construction
+
+  /// Build the Chat Completions body for `config`, honoring the model's
+  /// temperature policy and any omissions (memoized or same-call strips).
+  /// Static and pure for fixture testing.
+  static func makeRequestBody(
+    config: LLMProviderConfig,
+    messages: [[String: String]],
+    omitting: Set<String> = []
+  ) -> [String: Any] {
+    let capabilities = LLMProvider.openAI.modelCapabilities(model: config.model)
+
+    var body: [String: Any] = [
+      "model": config.model,
+      "messages": messages,
+      "max_completion_tokens": config.maxTokens,
+      "store": false,
+    ]
+    if capabilities.temperaturePolicy == .include && !omitting.contains("temperature") {
+      body["temperature"] = config.temperature
+    }
+    if let reasoningEffort = config.reasoningEffort, !omitting.contains("reasoning_effort") {
+      body["reasoning_effort"] = reasoningEffort
+    }
+    return body
+  }
+
+  private func makeRequest(
+    apiKey: String, body: [String: Any]
+  ) throws -> URLRequest {
+    guard let url = URL(string: baseURL) else {
+      throw LLMError.requestFailed("Invalid OpenAI URL")
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    request.timeoutInterval = 60
+    return request
+  }
+
   // MARK: - Retry
 
   private func performWithRetry(
-    request: URLRequest,
+    apiKey: String,
+    messages: [[String: String]],
     config: LLMProviderConfig,
     maxRetries: Int = LLMRetryPolicy.defaultMaxRetries,
     delays: [UInt64] = LLMRetryPolicy.defaultDelays
   ) async throws -> LLMResult {
-    // Allocate the call number once per logical polish. Retries reuse the
-    // same number so logs never mistake a retried polish for multiple
-    // independent calls (Codex review finding P3).
+    // Allocate the call number once per logical polish. Transient retries
+    // AND shape-strip re-issues reuse the same number so logs never mistake
+    // one logical polish for multiple independent calls; each physical
+    // request still emits its own metrics line via executeOnce.
     let callNumber = LLMNetworkSession.shared.nextCallNumber()
     var lastError: Error?
     for attempt in 0...maxRetries {
@@ -97,76 +165,189 @@ public struct OpenAIConnector: TranscriptPolisher {
         try await Task.sleep(nanoseconds: delay)
       }
 
-      let collector = LLMTaskMetricsCollector()
-      var statusForLog = "pending"
       do {
-        defer {
-          let line = LLMTaskMetricsCollector.format(
-            provider: "openai", model: config.model, callNumber: callNumber,
-            status: statusForLog, metrics: collector.metrics
-          )
-          Task { await AppLogger.shared.log(line, level: .info, category: "LLM") }
-        }
-        let data: Data
-        let response: URLResponse
-        do {
-          (data, response) = try await LLMNetworkSession.shared.session.data(
-            for: request, delegate: collector
-          )
-        } catch {
-          statusForLog = "error:\(Self.shortError(error))"
-          throw error
-        }
-        guard let httpResponse = response as? HTTPURLResponse else {
-          statusForLog = "error:non_http_response"
-          throw LLMError.requestFailed("Invalid response")
-        }
-        statusForLog = String(httpResponse.statusCode)
-        switch httpResponse.statusCode {
-        case 200:
-          // Parse inside the defer scope so a malformed 200 payload
-          // (e.g. content-moderation refusal, unexpected schema)
-          // updates statusForLog to error_after_200 before the
-          // metrics line is written (Codex GitHub review P2).
-          do {
-            return try Self.parseSuccess(data: data, config: config)
-          } catch {
-            statusForLog = "error_after_200:\(Self.shortError(error))"
-            throw error
+        // Inner shape loop: a qualifying unsupported-param 400 rebuilds the
+        // body without the rejected param and re-issues immediately. Bounded
+        // by the allowlist size; does not consume a transient attempt.
+        var stripsThisCall = 0
+        while true {
+          let omitting = Self.memoizedOmissions(model: config.model)
+          let body = Self.makeRequestBody(
+            config: config, messages: messages, omitting: omitting)
+          let sentStrippable = Self.strippableParams.filter { body[$0] != nil }
+          let request = try makeRequest(apiKey: apiKey, body: body)
+
+          switch try await executeOnce(
+            request: request, config: config, callNumber: callNumber)
+          {
+          case .success(let result):
+            return result
+
+          case .httpFailure(let statusCode, let bodyString):
+            if statusCode == 400,
+              stripsThisCall < Self.strippableParams.count,
+              let param = Self.strippableParam(
+                fromErrorBody: bodyString, sentParams: sentStrippable)
+            {
+              stripsThisCall += 1
+              let firstStripForModel = Self.recordOmission(model: config.model, param: param)
+              if firstStripForModel {
+                Task {
+                  await AppLogger.shared.log(
+                    "OpenAI request shape adapted model=\(config.model) omitted_param=\(param)",
+                    level: .info, category: "LLM"
+                  )
+                }
+              }
+              continue
+            }
+
+            // #945: read the body INSIDE the error arm so the classifier can
+            // split the ambiguous pairs (out-of-credits vs rate-limited on
+            // 429; too-long vs generic 400).
+            #if DEBUG
+              let truncated = String(bodyString.prefix(200))
+              Task {
+                await AppLogger.shared.log(
+                  "OpenAI HTTP \(statusCode): \(truncated)",
+                  level: .verbose, category: "LLM"
+                )
+              }
+            #else
+              Task {
+                await AppLogger.shared.log(
+                  "OpenAI HTTP \(statusCode)",
+                  level: .verbose, category: "LLM"
+                )
+              }
+            #endif
+            throw LLMError.classified(
+              Self.classify(statusCode: statusCode, bodyString: bodyString))
           }
-        default:
-          // #945: read the body INSIDE the error arm so the classifier can split
-          // the ambiguous pairs (out-of-credits vs rate-limited on 429; too-long
-          // vs generic 400). `data` is already in hand from the call above.
-          let bodyString = String(data: data, encoding: .utf8) ?? ""
-          #if DEBUG
-            let truncated = String(bodyString.prefix(200))
-            Task {
-              await AppLogger.shared.log(
-                "OpenAI HTTP \(httpResponse.statusCode): \(truncated)",
-                level: .verbose, category: "LLM"
-              )
-            }
-          #else
-            Task {
-              await AppLogger.shared.log(
-                "OpenAI HTTP \(httpResponse.statusCode)",
-                level: .verbose, category: "LLM"
-              )
-            }
-          #endif
-          throw LLMError.classified(
-            Self.classify(statusCode: httpResponse.statusCode, bodyString: bodyString))
         }
       } catch {
-        if statusForLog == "pending" {
-          statusForLog = "error:\(Self.shortError(error))"
-        }
         lastError = error
         if !LLMRetryPolicy.isRetryable(error) { throw error }
       }
     }
     throw lastError ?? LLMError.requestFailed("All retries exhausted")
+  }
+
+  /// One physical HTTP exchange. Owns its own metrics collector, status
+  /// token, and metrics-line defer, so every request — transient retry or
+  /// shape-strip re-issue — emits exactly one task_metrics line under the
+  /// shared logical call number.
+  private enum AttemptOutcome {
+    case success(LLMResult)
+    case httpFailure(statusCode: Int, body: String)
+  }
+
+  private func executeOnce(
+    request: URLRequest,
+    config: LLMProviderConfig,
+    callNumber: Int
+  ) async throws -> AttemptOutcome {
+    let collector = LLMTaskMetricsCollector()
+    var statusForLog = "pending"
+    defer {
+      let line = LLMTaskMetricsCollector.format(
+        provider: "openai", model: config.model, callNumber: callNumber,
+        status: statusForLog, metrics: collector.metrics
+      )
+      Task { await AppLogger.shared.log(line, level: .info, category: "LLM") }
+    }
+
+    let data: Data
+    let response: URLResponse
+    do {
+      (data, response) = try await requestExecutor(request, collector)
+    } catch {
+      statusForLog = "error:\(Self.shortError(error))"
+      throw error
+    }
+    guard let httpResponse = response as? HTTPURLResponse else {
+      statusForLog = "error:non_http_response"
+      throw LLMError.requestFailed("Invalid response")
+    }
+    statusForLog = String(httpResponse.statusCode)
+
+    if httpResponse.statusCode == 200 {
+      // Parse inside the defer scope so a malformed 200 payload
+      // (e.g. content-moderation refusal, unexpected schema)
+      // updates statusForLog to error_after_200 before the
+      // metrics line is written (Codex GitHub review P2).
+      do {
+        return .success(try Self.parseSuccess(data: data, config: config))
+      } catch {
+        statusForLog = "error_after_200:\(Self.shortError(error))"
+        throw error
+      }
+    }
+
+    return .httpFailure(
+      statusCode: httpResponse.statusCode,
+      body: String(data: data, encoding: .utf8) ?? ""
+    )
+  }
+
+  // MARK: - Unsupported-param recovery
+
+  private struct OpenAIErrorEnvelope: Decodable {
+    struct APIError: Decodable {
+      let type: String?
+      let param: String?
+      let code: String?
+    }
+    let error: APIError
+  }
+
+  /// Extract the parameter a 400 body rejects, iff it qualifies for the
+  /// strip-retry: allowlisted, actually sent, and the structured error does
+  /// not contradict the unsupported-param reading. `code` MAY be absent —
+  /// the public API reference does not document the 400 schema and our
+  /// recorded evidence proves only `param` (#1330) — so fail open on a
+  /// missing code and closed on a contradicting one.
+  static func strippableParam(
+    fromErrorBody body: String,
+    sentParams: Set<String>
+  ) -> String? {
+    let allowedCodes: Set<String> = ["unsupported_parameter", "unsupported_value"]
+
+    guard
+      let data = body.data(using: .utf8),
+      let envelope = try? JSONDecoder().decode(OpenAIErrorEnvelope.self, from: data),
+      let param = envelope.error.param,
+      Self.strippableParams.contains(param),
+      sentParams.contains(param)
+    else {
+      return nil
+    }
+    guard envelope.error.type == nil || envelope.error.type == "invalid_request_error" else {
+      return nil
+    }
+    guard envelope.error.code == nil || allowedCodes.contains(envelope.error.code!) else {
+      return nil
+    }
+    return param
+  }
+
+  static func memoizedOmissions(model: String) -> Set<String> {
+    paramMemo.withLock { $0[model] ?? [] }
+  }
+
+  /// Record a rejected param for `model`. Returns true when newly learned
+  /// (first strip for this model+param this run), so callers log once.
+  @discardableResult
+  static func recordOmission(model: String, param: String) -> Bool {
+    paramMemo.withLock { memo in
+      memo[model, default: []].insert(param).inserted
+    }
+  }
+
+  /// Test hook: clear learned omissions for one model so scripted transport
+  /// tests stay independent even though the memo is process-global.
+  static func resetOmissions(model: String) {
+    _ = paramMemo.withLock { $0.removeValue(forKey: model) }
   }
 
   /// Parse a successful OpenAI 200 response into an LLMResult.

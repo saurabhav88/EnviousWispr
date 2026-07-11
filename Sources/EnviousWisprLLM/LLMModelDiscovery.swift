@@ -188,19 +188,31 @@ public struct LLMModelDiscovery: Sendable {
 
     return models.compactMap { model -> (id: String, displayName: String)? in
       guard let id = model["id"] as? String else { return nil }
-      // Only include chat-capable models (gpt- and o- prefixes)
-      guard
-        id.hasPrefix("gpt-") || id.hasPrefix("o-") || id.hasPrefix("o1") || id.hasPrefix("o3")
-          || id.hasPrefix("o4")
-      else { return nil }
-      // Skip realtime, audio, and search models
-      let skipPatterns = ["realtime", "audio", "search", "transcribe"]
-      if skipPatterns.contains(where: { id.contains($0) }) { return nil }
+      guard Self.isOpenAIChatCompletionCandidate(id) else { return nil }
       let displayName = id.replacingOccurrences(of: "-", with: " ")
         .split(separator: " ").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(
           separator: " ")
       return (id: id, displayName: displayName)
     }
+  }
+
+  /// Whether an OpenAI model id belongs in the picker's candidate list.
+  /// Owns the OpenAI-specific prefix and modality checks and consults the
+  /// capability authority for endpoint eligibility, so Responses-API-only
+  /// families (-pro, codex) never appear as permanently locked rows (#1330).
+  /// Shared alias ("latest") and version-duplicate ("-001") filtering stays
+  /// in `filterModels` — it applies to every provider, not just OpenAI.
+  static func isOpenAIChatCompletionCandidate(_ modelID: String) -> Bool {
+    let id = modelID.lowercased()
+    // Only chat-capable text models (gpt- and o- prefixes).
+    guard
+      id.hasPrefix("gpt-") || id.hasPrefix("o-") || id.hasPrefix("o1") || id.hasPrefix("o3")
+        || id.hasPrefix("o4")
+    else { return false }
+    // Skip non-text modalities.
+    let skipPatterns = ["realtime", "audio", "search", "transcribe"]
+    if skipPatterns.contains(where: { id.contains($0) }) { return false }
+    return LLMProvider.openAI.modelCapabilities(model: id).supportsChatCompletions
   }
 
   private func probeOpenAI(modelID: String, apiKey: String) async -> Bool {
