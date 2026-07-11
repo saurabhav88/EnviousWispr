@@ -202,7 +202,7 @@ public struct ModelRelocationMigrator: Sendable {
       if let oldDirectory = firstExistingOldLocation(plan),
         let legacy = await trustedLegacyArtifact(in: oldDirectory, plan: plan)
       {
-        journalTrustedLegacy(legacy, plan: plan)
+        guard journalTrustedLegacy(legacy, plan: plan) else { return .unrecognized }
         return .trustedLegacyPending(legacy.url)
       }
       return .noop
@@ -223,7 +223,14 @@ public struct ModelRelocationMigrator: Sendable {
     // A previously-shipped layout we recognize: do NOT move it, do NOT load it,
     // do NOT delete it. Record the token and let the caller replace it.
     if let legacy = await trustedLegacyArtifact(in: oldDirectory, plan: plan) {
-      journalTrustedLegacy(legacy, plan: plan)
+      // Could not journal ⇒ start NOTHING. The token and the admission marker share
+      // this metadata directory, so a filesystem that refuses the token would refuse
+      // the marker too: the replacement could download 2.9 GB and never be admitted.
+      // Worse, an unjournaled replacement that DID land would have no token for a later
+      // Remove to flip, so the next launch would reclassify the monolith as `.replace`
+      // and re-download a model the user deleted (GitHub cloud review, PR #1497).
+      // Treated as absent: nothing moved, nothing deleted, retry next launch.
+      guard journalTrustedLegacy(legacy, plan: plan) else { return .unrecognized }
       return .trustedLegacyPending(legacy.url)
     }
 
@@ -455,9 +462,11 @@ public struct ModelRelocationMigrator: Sendable {
   /// and re-download the 2.9 GB model the user threw away (Codex PR-1 review r16).
   /// Carry a current-revision token's intent forward; only a token from another
   /// revision, or none at all, starts fresh.
+  /// Returns false when the token could NOT be persisted — the caller must then treat
+  /// the artifact as absent and start nothing (see `migrate`).
   private func journalTrustedLegacy(
     _ legacy: (url: URL, artifact: TrustedLegacyArtifact), plan: RelocationPlan
-  ) {
+  ) -> Bool {
     writeToken(
       Token(
         legacyPath: legacy.url.path,
@@ -572,11 +581,23 @@ public struct ModelRelocationMigrator: Sendable {
       "\(plan.manifest.identity.cacheKey).relocation.json")
   }
 
-  private func writeToken(_ token: Token, plan: RelocationPlan) {
+  /// Returns false if the token could not be persisted.
+  ///
+  /// A silent failure here is not survivable: the token is the only durable record of
+  /// what is owed on the legacy artifact, so an unjournaled classification that still
+  /// drove a replacement would lose a later Remove and resurrect the model on the next
+  /// launch (GitHub cloud review, PR #1497).
+  @discardableResult
+  private func writeToken(_ token: Token, plan: RelocationPlan) -> Bool {
     let url = tokenURL(plan: plan)
-    try? FileManager.default.createDirectory(
-      at: plan.metadataDirectory, withIntermediateDirectories: true)
-    try? JSONEncoder().encode(token).write(to: url, options: .atomic)
+    do {
+      try FileManager.default.createDirectory(
+        at: plan.metadataDirectory, withIntermediateDirectories: true)
+      try JSONEncoder().encode(token).write(to: url, options: .atomic)
+      return true
+    } catch {
+      return false
+    }
   }
 
   private func readToken(plan: RelocationPlan) -> Token? {

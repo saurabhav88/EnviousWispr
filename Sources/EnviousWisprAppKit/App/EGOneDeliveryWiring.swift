@@ -169,15 +169,17 @@ enum EGOneDeliveryWiring {
 
       // The OUTCOME drives this launch; the token drives RECOVERY across launches.
       //
-      // Journaling can fail (unwritable metadata directory, a failed atomic write).
-      // If we keyed only off the token, that failure would silently skip the
-      // replacement and then try to activate a monolith this build cannot load —
-      // EG-1 unavailable, with nothing started to fix it (Codex PR-1 review r17).
-      // So a classification that found a trusted legacy artifact starts the
-      // replacement whether or not the note got written. Cleanup stays safe by
-      // construction: `cleanUpLegacy` deletes nothing without a token, so a failed
-      // write costs a leaked old file until a launch that can journal, never an
-      // unauthorized deletion.
+      // The two cannot disagree: `migrate` reports `.trustedLegacyPending` ONLY once the
+      // token is durably written, and returns `.unrecognized` — do nothing, touch
+      // nothing — when it cannot write it (GitHub cloud review, PR #1497).
+      //
+      // That supersedes r17 ("start the replacement even if journalling failed") and is
+      // the correct version of its intent. An unjournaled replacement could never be
+      // admitted ANYWAY: the token and the admission marker share this one metadata
+      // directory, so a filesystem refusing the token refuses the marker too. Starting a
+      // 2.9 GB download that cannot be admitted — and that would leave a later Remove
+      // with no token to flip, resurrecting the model on the next launch — is strictly
+      // worse than waiting for a launch that can journal.
       let intent = migrator.pendingLegacyIntent(relocation)
       let legacyNeedsReplacing: Bool
       if case .trustedLegacyPending = outcome {

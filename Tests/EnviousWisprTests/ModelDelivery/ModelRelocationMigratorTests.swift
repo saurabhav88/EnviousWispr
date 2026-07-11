@@ -661,6 +661,37 @@ import Testing
     #expect(migrator.pendingLegacyArtifact(p) == nil)
   }
 
+  /// If the token cannot be PERSISTED, the classification must start nothing.
+  ///
+  /// An unjournaled replacement could never be admitted anyway — the token and the
+  /// admission marker share one metadata directory — and if it somehow did land, a later
+  /// Remove would have no token to flip, so the next launch would reclassify the monolith
+  /// as `.replace` and re-download a model the user deleted. Treated as absent: nothing
+  /// moved, nothing deleted, retry next launch. (GitHub cloud review, PR #1497.)
+  @Test func aClassificationThatCannotBeJournaledStartsNothing() async throws {
+    let dirs = try makeDirs()
+    let monolith = dirs.old.appendingPathComponent("eg-1-v1.gguf")
+    try write(Self.legacyBytes, under: dirs.old, path: "eg-1-v1.gguf")
+    let p = try plan(files: ManifestFixture.smallFiles, dirs: dirs)
+
+    // The metadata directory refuses writes — the token cannot be persisted.
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o500], ofItemAtPath: dirs.metadata.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: dirs.metadata.path)
+    }
+
+    let migrator = ModelRelocationMigrator()
+    let outcome = await migrator.migrate(p)
+
+    #expect(
+      outcome == .unrecognized,
+      "an unjournaled classification must not drive a replacement")
+    #expect(migrator.pendingLegacyArtifact(p) == nil, "and nothing is pending")
+    #expect(exists(monolith), "the model is untouched — nothing moved, nothing deleted")
+  }
+
   /// Marking a removal when nothing is pending is a plain no-op — an ordinary
   /// Remove on a machine with no legacy artifact must not invent one.
   @Test func markingRemovalWithNoPendingArtifactIsANoop() async throws {
