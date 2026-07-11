@@ -138,7 +138,36 @@ def run_dead_mic_bench(manifest_path: str, backend: str, label: str) -> dict:
     this runner records the label, it does not switch backends."""
     print(f"=== #1317 dead-mic bench — build={label} backend={backend} ===")
     print(f"manifest: {manifest_path}")
-    print(f"pre-state: {query_state()}")
+    pre_state = query_state()
+    print(f"pre-state: {pre_state}")
+
+    # Fail closed if the running app is NOT on the requested backend. This runner
+    # does not switch backends; without this guard it would run every scenario
+    # against whatever is active while stamping the requested `--backend` into the
+    # scorecard — a mislabeled result is invalid evidence, not a valid one.
+    active_backend = _parse_query_state(pre_state).get("backend", "").lstrip(".").lower()
+    if active_backend != backend.lower():
+        reason = (
+            f"requested backend={backend} but running app is on "
+            f"'{active_backend or 'unknown'}' (query_state: {pre_state!r}); "
+            "switch the app's backend before running this bench")
+        print(f"  INVALID  {reason}")
+        return {
+            "label": label,
+            "backend": backend,
+            "manifest_path": manifest_path,
+            "any_invalid": True,
+            "cells": [{
+                "scenario": "backend_precondition",
+                "evidence_valid": False,
+                "passed": False,
+                "reason": reason,
+                "elapsed_seconds": 0.0,
+                "assertions": {},
+                "evidence": {"active_backend": active_backend,
+                             "requested_backend": backend},
+            }],
+        }
 
     cells = []
     any_invalid = False

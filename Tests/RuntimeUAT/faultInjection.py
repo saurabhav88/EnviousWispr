@@ -37,6 +37,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -776,6 +777,11 @@ def write_build_manifest(
         "asr_helper_path": exes["asr_helper"],
         "asr_helper_sha256": compute_sha256(exes["asr_helper"]),
         "app_bundle_id": _bundle_identifier(bundle_path),
+        # Build time = the hashed app executable's mtime. verify_running_identity
+        # requires the running PID to have started at/after this, so a stale
+        # process left over from an earlier build cannot pass identity when a
+        # fresh build has been copied over the same shared-bundle-id path.
+        "built_at_epoch": os.path.getmtime(exes["app"]),
         "source_ref": source_ref,
         "source_sha": source_sha,
         "clean_tree": clean_tree,
@@ -812,6 +818,22 @@ def _running_app_executable_path(pid: int) -> str:
     return out if idx == -1 else out[: idx + len(marker)]
 
 
+def _proc_start_epoch(pid: int):
+    """Epoch seconds when PID started, or None on any failure. `ps -o lstart=` in
+    the C locale gives a stable `Sat Jul 11 15:36:48 2026`. Used to prove the
+    RUNNING image is the build we hashed: a stale process (image A) left running
+    when a new build (image B) is copied over the same shared-bundle-id path would
+    otherwise pass identity — argv[0] path matches and the on-disk hash matches
+    manifest B — while actually executing image A. Its start predates B's build."""
+    try:
+        raw = subprocess.check_output(
+            ["ps", "-o", "lstart=", "-p", str(pid)], text=True,
+            env={**os.environ, "LC_ALL": "C"}).strip()
+        return datetime.strptime(raw, "%a %b %d %H:%M:%S %Y").timestamp()
+    except (subprocess.CalledProcessError, ValueError, OSError):
+        return None
+
+
 def verify_running_identity(manifest: dict) -> dict:
     """Fail-closed identity gate. Returns an evidence dict with a top-level
     `identity_ok` boolean plus every sub-check, so a failure names itself. Any
@@ -834,6 +856,21 @@ def verify_running_identity(manifest: dict) -> dict:
     ev["running_exe_path"] = exe_path
     ev["checks"]["exe_path_matches"] = exe_path == manifest.get("app_path")
 
+    # Running-image freshness: the PID must have started at/after the build we
+    # hashed. Without this, a stale process still executing an OLDER image passes
+    # (same argv[0] path, and the on-disk file the hash reads is already the NEW
+    # build) — the shared-bundle-id worktree trap. `ps` start time is
+    # second-resolution; allow 2s slack against the sub-second file mtime.
+    built_at = manifest.get("built_at_epoch")
+    start_epoch = _proc_start_epoch(pid)
+    ev["proc_start_epoch"] = start_epoch
+    ev["built_at_epoch"] = built_at
+    ev["checks"]["running_image_fresh"] = (
+        isinstance(built_at, (int, float))
+        and start_epoch is not None
+        and start_epoch >= built_at - 2
+    )
+
     try:
         hash_checks = {
             "app": compute_sha256(manifest["app_path"]) == manifest["app_sha256"],
@@ -851,7 +888,11 @@ def verify_running_identity(manifest: dict) -> dict:
     ev["source_ref"] = manifest.get("source_ref")
     ev["source_sha"] = manifest.get("source_sha")
 
-    ev["identity_ok"] = ev["checks"]["exe_path_matches"] and all(hash_checks.values())
+    ev["identity_ok"] = (
+        ev["checks"]["exe_path_matches"]
+        and ev["checks"]["running_image_fresh"]
+        and all(hash_checks.values())
+    )
     if not ev["identity_ok"]:
         ev["reason"] = "running build does not match manifest (see checks)"
     return ev
