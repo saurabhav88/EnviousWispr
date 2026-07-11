@@ -300,9 +300,17 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       do {
         try await cleanUpLegacy()
       } catch {
-        // Admitted shards stay usable; legacy bytes stay put; token survives for
-        // a next-launch retry. Do NOT run the deferred removal on this path.
+        // Deleting the superseded artifact failed — but the REPLACEMENT is
+        // admitted and perfectly usable, so polish must come back. We stopped the
+        // server a moment ago to unlink safely; leaving it stopped here would
+        // switch polish off for the rest of the session over a failed `rm` the
+        // next launch will retry anyway (Codex PR-1 review r5).
+        //
+        // Legacy bytes stay put; the token survives for that retry. The deferred
+        // removal is deliberately NOT run: there is a live cleanup owed on this
+        // path, and honoring a Remove through it would tangle the two.
         onEvent?(.legacyMigrationCleanupFailed)
+        if isActiveProvider?() == true { activateAndProbe() }
         return
       }
 
