@@ -273,6 +273,23 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     removeModel()
   }
 
+  /// `removeModel()` that the caller can AWAIT.
+  ///
+  /// The launch-time removal-recovery path needs the delivery removal to have
+  /// actually completed before it clears the durable token — otherwise it clears the
+  /// only record of the user's Remove while a fire-and-forget task is still deleting
+  /// the model, and a crash in that window leaves the model installed with nothing
+  /// left to retry from (Codex PR-1 review r14). Same work, same order; the caller
+  /// just gets to know when it is done.
+  public func removeModelAwaitingCompletion() async {
+    guard let delivery else { return }
+    removalPending = false
+    activationGeneration += 1
+    onModelRemoved?()
+    await server.stop()
+    _ = await delivery.remove()
+  }
+
   /// Replace a previously-shipped layout we recognize but can no longer load
   /// (EG-1's monolithic `eg-1-v1.gguf` vs the current 8-shard set) — #1386 PR-1.
   ///

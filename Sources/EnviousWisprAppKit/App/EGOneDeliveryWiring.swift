@@ -62,24 +62,32 @@ enum EGOneDeliveryWiring {
     let legacyDirectory = appSupport.appendingPathComponent(
       "EnviousWispr/PolishModels", isDirectory: true)
 
-    // With the kill switch off, nothing may MUTATE model bytes — but the model must
-    // still LOAD, so we read from wherever a usable copy actually is. Pointing a
-    // disabled build at the owned home would leave an unmigrated user staring at
-    // "not installed" while their model sat untouched in the old one: that is a
-    // second failure, not a rollback.
+    // With the kill switch off, nothing may MUTATE model bytes — so we read from
+    // wherever a usable copy already is. Pick by ADMISSION, never by directory
+    // existence: a relocation that failed partway leaves a half-populated
+    // `Models/eg-1` beside a perfectly good `PolishModels`, and "the folder is
+    // there" would choose the broken one (Codex PR-1 review r10). Both are real
+    // candidates — a machine that downloaded shards before this change has them in
+    // the legacy home.
     //
-    // Pick by ADMISSION, never by directory existence. A relocation that failed
-    // partway leaves a half-populated `Models/eg-1` beside a perfectly good
-    // `PolishModels`, and "the folder is there" would choose the broken one —
-    // breaking EG-1 in exactly the scenario the kill switch exists to rescue
-    // (Codex PR-1 review r10). Falls back to the legacy home when neither is
-    // admitted, so a disabled build still reads from where the bytes were.
+    // WHAT THE KILL SWITCH DOES AND DOES NOT PROMISE (Codex PR-1 review r14).
+    // It guarantees: no model bytes are moved, deleted, or fetched. It does NOT
+    // guarantee that polish keeps working — and for one cohort it cannot. A user
+    // still on the previously-shipped MONOLITH has bytes this build is structurally
+    // unable to load: the runtime boots the manifest's entrypoint, and the bundled
+    // manifest is sharded, so no directory choice can make an `eg-1-v1.gguf`
+    // loadable. Restoring that would mean shipping the old manifest AND the old load
+    // path alongside the new ones, permanently — dual-format support for a rollback
+    // lever. That is not worth it. With the switch off, such a user gets raw text
+    // (EG-1 is a limb) and their model is left completely untouched; flipping the
+    // switch back on runs the migration and polish returns. Nothing is lost, only
+    // deferred. Do not "fix" this by resurrecting the monolithic load path.
     let installDirectory: URL = {
       guard !EGOneDeliveryAdapter.isDeliveryEnabled() else { return ownedDirectory }
       return ModelRelocationMigrator.admittedLocation(
         manifest: manifest,
         candidates: [ownedDirectory, legacyDirectory],
-        metadataDirectory: metadataDirectory) ?? legacyDirectory
+        metadataDirectory: metadataDirectory) ?? ownedDirectory
     }()
 
     let registration = DeliveryRegistration(
@@ -165,13 +173,15 @@ enum EGOneDeliveryWiring {
         // The user removed EG-1 while a legacy artifact was still stranded. Finish
         // the removal they asked for, and fetch NOTHING.
         //
-        // `removeModel()` too, not just the legacy delete: a crash between writing
-        // the `.remove` intent and the delivery removal completing would otherwise
-        // leave the newly-admitted shards installed forever, with the UI still
-        // reporting the model as present — the user's explicit Remove silently
-        // undone by a crash (Codex PR-1 review r7). Both halves are idempotent, so
-        // re-running them after a clean removal costs nothing.
-        runtime.removeModel()
+        // Both halves, in this order, and the token clears LAST. The token is the
+        // only durable record that a Remove is owed; `cleanUpLegacy` clears it. So
+        // the delivery removal must be AWAITED first — clearing the token while a
+        // fire-and-forget removal was still running would, on a crash in that
+        // window, leave the newly-admitted 2.9 GB model installed with no record
+        // left to retry from, and the UI still reporting it present (Codex PR-1
+        // review r14). Both halves are idempotent, so a crash before the token
+        // clears simply repeats them on the next launch.
+        await runtime.removeModelAwaitingCompletion()
         try? await migrator.cleanUpLegacy(relocation)
         runtime.sweepStaleServersAtLaunch()
       case nil:
