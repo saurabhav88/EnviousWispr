@@ -106,17 +106,27 @@ final class AppWindowCoordinator {
 
   /// #1392: the pure presentation decision, input-driven so it's testable
   /// without touching real `NSWindow`/`NSApp` state. A window "counts" if it
-  /// matches the main-window identity AND is visible, minimized, or the
-  /// whole app is Cmd+H-hidden — not just currently onscreen. Bare
-  /// `isVisible` alone would revert to accessory (and effectively strand the
-  /// window) if the user minimized Settings or hid the app while an attended
-  /// update check was in flight (#1392 r1 finding).
+  /// matches the main-window identity AND is visible or minimized — not just
+  /// currently onscreen. Bare `isVisible` alone would revert to accessory
+  /// (and effectively strand the window) if the user minimized Settings
+  /// while an attended update check was in flight (#1392 r1 finding).
+  ///
+  /// r2 correction (code-diff review): deliberately does NOT also treat
+  /// "the whole app is Cmd+H-hidden" as presence. A window the user already
+  /// closed can still linger in `NSApp.windows` in a hidden-but-retained
+  /// state (SwiftUI single-instance `Window(id:)` scenes may keep the
+  /// underlying `NSWindow` around to support instant reopen); an app-wide
+  /// hidden flag can't distinguish that from a genuinely-still-open window
+  /// the user merely Cmd+H'd. Reverting to accessory while the app is
+  /// Cmd+H-hidden is accepted, documented behavior (Live UAT preface above)
+  /// — the user explicitly hid the whole app, so losing the Dock icon is not
+  /// a regression, and this check only ever needs to protect a window the
+  /// user can currently see or reach via the Dock/minimized state.
   static func isMainWindowPresented(
-    windowStates: [(matchesIdentity: Bool, isVisible: Bool, isMiniaturized: Bool)],
-    appIsHidden: Bool
+    windowStates: [(matchesIdentity: Bool, isVisible: Bool, isMiniaturized: Bool)]
   ) -> Bool {
     windowStates.contains { state in
-      state.matchesIdentity && (state.isVisible || state.isMiniaturized || appIsHidden)
+      state.matchesIdentity && (state.isVisible || state.isMiniaturized)
     }
   }
 
@@ -132,9 +142,7 @@ final class AppWindowCoordinator {
           matchesIdentity: matchesMainWindowIdentity($0), isVisible: $0.isVisible,
           isMiniaturized: $0.isMiniaturized
         )
-      },
-      appIsHidden: NSApp.isHidden
-    )
+      })
   }
 
   /// Remove both window-close observers. Called once from
