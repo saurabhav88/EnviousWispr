@@ -56,7 +56,8 @@ struct SentryAudioExtrasTests {
     )
     #expect(extras["capture.preferred_input_set"] as? Bool == false)
     #expect(extras["capture.input_device_uid_preferred"] is NSNull)
-    #expect(extras["capture.input_device_uid_system_default"] as? String == "BuiltInMicrophoneDevice")
+    #expect(
+      extras["capture.input_device_uid_system_default"] as? String == "BuiltInMicrophoneDevice")
     #expect(extras["capture.input_device_divergence"] as? Bool == false)
   }
 
@@ -105,7 +106,8 @@ struct SentryAudioExtrasTests {
       tapInstalled: true,
       formatMismatchObserved: true,
       inputDeviceUIDPreferred: nil,
-      inputDeviceUIDSystemDefault: nil
+      inputDeviceUIDSystemDefault: nil,
+      failureMode: .noBuffers
     )
     let extras = SentryAudioExtras.buildCaptureExtras(
       route: ctx.route,

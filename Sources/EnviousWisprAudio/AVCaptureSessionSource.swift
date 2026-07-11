@@ -380,7 +380,8 @@ final class AVCaptureSessionSource: AudioInputSource {
       tapInstalled: true,
       formatMismatchObserved: delegate?.didObserveFormatMismatch ?? false,
       inputDeviceUIDPreferred: nil,
-      inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID()
+      inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+      failureMode: .noBuffers
     )
     onCaptureStalled?(ctx)
   }

@@ -710,6 +710,7 @@ final class HALDeviceInputSource: AudioInputSource {
       formatMismatchObserved: false,
       inputDeviceUIDPreferred: targetDeviceUID,
       inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+      failureMode: .noBuffers,
       // #1434: the stall fires BEFORE stopCapture(), so the source stamps its
       // own live rate/divergence here — the stop-time metadata object does
       // not exist yet. (The XPC proxy's host-side watchdog leaves these nil.)

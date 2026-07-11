@@ -253,7 +253,8 @@ import Testing
         tapInstalled: true,
         formatMismatchObserved: false,
         inputDeviceUIDPreferred: nil,
-        inputDeviceUIDSystemDefault: nil)
+        inputDeviceUIDSystemDefault: nil,
+        failureMode: .noBuffers)
       kernel.externalCaptureStalled(crossDomain)
       await wrapper.drainReadyWork()
 

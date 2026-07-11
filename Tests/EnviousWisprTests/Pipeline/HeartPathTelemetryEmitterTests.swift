@@ -123,7 +123,8 @@ struct HeartPathTelemetryEmitterTests {
       tapInstalled: true,
       formatMismatchObserved: false,
       inputDeviceUIDPreferred: nil,
-      inputDeviceUIDSystemDefault: "BuiltInMicrophoneDevice"
+      inputDeviceUIDSystemDefault: "BuiltInMicrophoneDevice",
+      failureMode: .noBuffers
     )
   }
 

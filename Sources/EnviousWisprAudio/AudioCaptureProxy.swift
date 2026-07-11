@@ -406,6 +406,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
       inputDeviceUIDPreferred: preferredInputDeviceIDOverride.isEmpty
         ? nil : preferredInputDeviceIDOverride,
       inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+      failureMode: .noBuffers,
       selectedTransport: currentResolvedRoute?.selected,
       effectiveTransport: currentResolvedRoute?.effective,
       routeReason: currentResolvedRoute?.routeReason,

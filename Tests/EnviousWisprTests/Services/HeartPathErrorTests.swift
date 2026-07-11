@@ -14,7 +14,8 @@ struct HeartPathErrorTests {
       route: "bt", sourceType: "av_capture_session",
       engineStartedSuccessfully: true, tapInstalled: true,
       formatMismatchObserved: false,
-      inputDeviceUIDPreferred: nil, inputDeviceUIDSystemDefault: nil
+      inputDeviceUIDPreferred: nil, inputDeviceUIDSystemDefault: nil,
+      failureMode: .noBuffers
     )
     let sessionCtx = CaptureSessionInterruptionContext(
       kind: .wasInterrupted, reasonCode: 1,

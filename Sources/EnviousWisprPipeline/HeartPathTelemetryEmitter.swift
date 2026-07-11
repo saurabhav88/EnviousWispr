@@ -54,10 +54,12 @@ final class HeartPathTelemetryEmitter {
 
   // MARK: - Per-session dedup state
 
-  /// One Sentry event per wedge incident even though the stall watchdog and
-  /// the rawSamples-empty branch both observe the same session. Reset on
-  /// session-id change.
-  private var stallEventAlreadyCaptured: Bool = false
+  /// One Sentry event per (session, failure mode) even though the stall
+  /// watchdog and the rawSamples-empty branch both observe the same session.
+  /// A `Set` (not a single Bool, #1317 PR1) so a later failure mode for the
+  /// same session — e.g. `becameZeroMidCapture` after an earlier `noBuffers`
+  /// — is not hidden by the first mode's dedup. Reset on session-id change.
+  private var capturedStallModes: Set<CaptureStallFailureMode> = []
   private var lastObservedCaptureSession: UInt64 = 0
   /// Set when the proxy's reply-path swallowed an XPC failure. The
   /// rawSamples-empty branch dedups against this so we emit
@@ -92,8 +94,7 @@ final class HeartPathTelemetryEmitter {
     isActivelyCapturing: Bool
   ) -> Bool {
     resetIfNewSession(ctx.sessionID)
-    guard !stallEventAlreadyCaptured else { return false }
-    stallEventAlreadyCaptured = true
+    guard capturedStallModes.insert(ctx.failureMode).inserted else { return false }
 
     let extras = SentryAudioExtras.buildCaptureExtras(
       route: ctx.route,
@@ -102,7 +103,7 @@ final class HeartPathTelemetryEmitter {
       isActivelyCapturing: isActivelyCapturing,
       inputDeviceUIDPreferred: ctx.inputDeviceUIDPreferred,
       inputDeviceUIDSystemDefault: ctx.inputDeviceUIDSystemDefault,
-      failureMode: "stall_window_elapsed",
+      failureMode: ctx.failureMode.rawValue,
       stallContext: ctx,
       selectedTransport: ctx.selectedTransport,
       effectiveTransport: ctx.effectiveTransport,
@@ -174,9 +175,9 @@ final class HeartPathTelemetryEmitter {
   /// Mirrors the prior in-pipeline `emitNoAudioCapturedEvent` call sites.
   func noAudioCaptured(ctx: NoAudioContext) {
     resetIfNewSession(ctx.sessionID)
-    if stallEventAlreadyCaptured || xpcReplyFailedThisSession {
+    if !capturedStallModes.isEmpty || xpcReplyFailedThisSession {
       let dedupedFrom =
-        stallEventAlreadyCaptured ? "audio_capture_stalled" : "xpc_reply_failed"
+        !capturedStallModes.isEmpty ? "audio_capture_stalled" : "xpc_reply_failed"
       addBreadcrumb(
         "recording",
         dedupedBreadcrumbMessage,
@@ -292,7 +293,7 @@ final class HeartPathTelemetryEmitter {
   private func resetIfNewSession(_ sessionID: UInt64) {
     guard sessionID != lastObservedCaptureSession else { return }
     lastObservedCaptureSession = sessionID
-    stallEventAlreadyCaptured = false
+    capturedStallModes.removeAll()
     xpcReplyFailedThisSession = false
   }
 }
