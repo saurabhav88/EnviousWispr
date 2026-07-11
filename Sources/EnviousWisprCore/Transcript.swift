@@ -19,12 +19,15 @@ public struct ExecutionMetrics: Codable, Sendable {
   /// not just the filter result.
   public var polishFilterTripped: String?
   public var polishFellBackToRaw: Bool?
-  /// #1050 honest disaggregation of `polishFellBackToRaw`. Populated only for AFM
-  /// polish (nil for cloud / pre-#1050 records); nil also when polish CHANGED the
-  /// text (not a fallback). `no_change` (benign — model returned input unchanged),
-  /// `guard_discard` (`EnviousOutputFilter` caught bad output), or
+  /// #1050 honest disaggregation of `polishFellBackToRaw`. Populated for AFM
+  /// polish (nil for cloud / pre-#1050 records) and for the #1358 empty-output
+  /// recovery (any provider); nil also when polish CHANGED the text (not a
+  /// fallback). `no_change` (benign — model returned input unchanged),
+  /// `guard_discard` (`EnviousOutputFilter` caught bad output),
   /// `validator_discard` (`validatePolishOutput` caught bad output — invisible to
-  /// `polishFilterTripped`). Invariant: present iff `polishFellBackToRaw == true`.
+  /// `polishFilterTripped`), or `empty_output_floor` (#1358 — the limb chain
+  /// produced empty text and the wiring delivered a deterministic raw floor).
+  /// Invariant: present iff `polishFellBackToRaw == true`.
   public var polishFallbackReason: String?
   /// Deterministic ITN telemetry (#145). Populated per dictation; nil on
   /// pre-#145 transcripts on disk (additive optional Codable, back-compatible).
