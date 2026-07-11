@@ -286,20 +286,50 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// Run the pending legacy cleanup, if any, after an admission. Idempotent and safe
   /// to call on every successful download: with no token pending it does nothing.
   private func runLegacyCleanupIfNeeded() async {
-    // A deferred Remove outranks the cleanup. `cleanUpLegacy` clears the token, which
-    // is the only DURABLE record that a Remove is owed — `removalPending` is merely
-    // in-memory. Clearing it here (e.g. a Download completing while a recording still
-    // pins the model) would leave a crash before `retryPendingRemoval` with the model
-    // installed and no record of the user's action. Let the removal path, which orders
-    // removal-then-cleanup, own both.
-    guard !removalPending else { return }
-    guard let legacyCleanup, let delivery, await delivery.isAdmitted() else { return }
+    guard let legacyCleanup, let delivery, !isMigratingLegacyLayout else { return }
+    guard await delivery.isAdmitted() else { return }
+
+    // HOLD THE GATE — do not merely check `removalPending` and then await.
+    //
+    // `cleanUpLegacy` hashes and deletes multiple GB, so it suspends for a long time.
+    // A bare `guard !removalPending` before that await is a check-then-act across a
+    // suspension point: a Remove landing DURING the cleanup would not be deferred (the
+    // gate was not held), so it would flip the token to `.remove` and start deleting
+    // the shards while this cleanup was still running and about to clear that very
+    // token (GitHub cloud review, PR #1497 — a race my own previous fix introduced).
+    //
+    // Holding the gate makes `removeModel()` DEFER instead, which is the house rule for
+    // exactly this shape: refuse in an invalid state via a flag the owner checks, never
+    // re-check right before acting (`swift-concurrency-patterns.md`
+    // state-gate-over-recheck). The deferral is then honored below, in the safe order.
+    isMigratingLegacyLayout = true
+    defer { isMigratingLegacyLayout = false }
+
+    // A Remove already pending BEFORE the cleanup: removal first, then cleanup — the
+    // token is the only durable record that a Remove is owed, and cleanUpLegacy clears
+    // it.
+    if removalPending {
+      isMigratingLegacyLayout = false
+      guard case .removed = await removeModelAwaitingCompletion() else { return }
+      try? await legacyCleanup()
+      return
+    }
+
     do {
       try await legacyCleanup()
     } catch {
       // The replacement is admitted and usable; the token survives for a next-launch
       // retry. Never fatal.
       onEvent?(.legacyMigrationCleanupFailed)
+    }
+
+    // A Remove that landed DURING the cleanup was deferred by the gate. Honor it now.
+    // The legacy artifact is gone by this point, so what remains is an ordinary
+    // in-session Remove of the shards — the same durability every EG-1 Remove has ever
+    // had, and no longer entangled with the migration's durable record.
+    if removalPending {
+      isMigratingLegacyLayout = false
+      removeModel()
     }
   }
 
