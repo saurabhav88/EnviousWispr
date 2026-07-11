@@ -209,6 +209,86 @@ def force_audio_wedge_start(n: int) -> str:
     return send(f"force_audio_wedge_start({n})")
 
 
+# ─────────────────── #1317 proof-bench: zero-fill injector client ───────────────
+#
+# The proof bench reproduces the production dead-mic fault (all-zero / "digital
+# silence" audio, `zombie_engine_zero_peak`) deterministically, proves the
+# injector actually fired, and measures whether the running build handles a dead
+# take HONESTLY (no fabricated text) vs silently. Every gate fails CLOSED: a
+# missing artifact is INVALID evidence, never a defaulted pass.
+
+# Fixed canary phrase for the log-backed recovery oracle. Four uncommon-but-real
+# English words → strong ASR targets that will not appear by accident. Newness is
+# proven by a rotation-safe LogCursor, not by phrase uniqueness.
+CANARY_PHRASE = "saffron comet velvet anchor"
+CANARY_TOKENS = frozenset({"saffron", "comet", "velvet", "anchor"})
+
+APP_LOG_PATH = Path("~/Library/Logs/EnviousWispr/app.log").expanduser()
+
+# App-owned honest-handling marker for a dead take: the pipeline detected no
+# speech and skipped ASR instead of fabricating text. Peak is 0.0000 for a fully
+# zero-filled take. (RecordingSessionKernel.swift:1206-1210.)
+NO_SPEECH_MARKER = "VAD gate: no speech, skipping ASR"
+
+
+def arm_zero_fill(mode: str, n: int, trial_id: str) -> str:
+    """Arm the DEBUG all-zero injector in the helper. `mode` ∈ {zero_from_start,
+    zero_after_samples, zero_next_samples, disarmed}; `n` is the LIVE-sample
+    threshold/budget (ignored for zero_from_start/disarmed); `trial_id` correlates
+    the later query_fault_status. Returns the raw reply ("OK" / "ERR ...")."""
+    return send(f"force_zero_fill({mode},{n},{trial_id})")
+
+
+def disarm_zero_fill(trial_id: str = "clear") -> str:
+    """Clear any armed fault so a clean pipe returns for a positive-control take."""
+    return send(f"force_zero_fill(disarmed,0,{trial_id})")
+
+
+def query_fault_status(trial_id: str) -> dict:
+    """Read the merged fault status for `trial_id`. Returns a parsed dict on OK, or
+    {"ok": False, "error": <reply>} on any ERR / malformed reply. FAILS CLOSED: a
+    missing field or unparseable value is an error, never a defaulted 0/False."""
+    return _parse_fault_status(send(f"query_fault_status({trial_id})"))
+
+
+def _parse_bool(s: str) -> bool:
+    # Swift `Bool` string interpolation is lowercase "true"/"false".
+    if s == "true":
+        return True
+    if s == "false":
+        return False
+    raise ValueError(f"not a bool: {s!r}")
+
+
+def _parse_fault_status(reply: str) -> dict:
+    if not reply.startswith("OK "):
+        return {"ok": False, "error": reply}
+    fields: dict[str, str] = {}
+    for tok in reply[3:].split():
+        if "=" not in tok:
+            return {"ok": False, "error": f"malformed token {tok!r} in {reply!r}"}
+        k, v = tok.split("=", 1)
+        fields[k] = v
+    required = {"armed", "hit", "trial", "mode", "zeroed",
+                "source_incarnation", "xpc_generation"}
+    missing = required - fields.keys()
+    if missing:
+        return {"ok": False, "error": f"missing fields {sorted(missing)} in {reply!r}"}
+    try:
+        return {
+            "ok": True,
+            "armed": _parse_bool(fields["armed"]),
+            "hit": _parse_bool(fields["hit"]),
+            "trial": fields["trial"],
+            "mode": fields["mode"],
+            "zeroed": int(fields["zeroed"]),
+            "source_incarnation": int(fields["source_incarnation"]),
+            "xpc_generation": int(fields["xpc_generation"]),
+        }
+    except ValueError as e:
+        return {"ok": False, "error": f"unparseable status {reply!r}: {e}"}
+
+
 # ──────────────────────────── helpers ────────────────────────────
 
 
@@ -618,6 +698,314 @@ class _TTSAudio:
             except Exception:
                 self._proc.kill()
         return False
+
+
+# ─────────────────── #1317 proof-bench: build-identity manifest ──────────────
+#
+# Before any zero-fill trial is trusted, the harness proves the SINGLE running app
+# is exactly the build a manifest describes: one PID, its executable path == the
+# manifest path, and app + both embedded XPC helper SHA-256 hashes match. Two dev
+# builds share bundle id `com.enviouswispr.app.dev`, so the two A/B arms run
+# sequentially and identity is verified per trial (dev-bundle-id-collision).
+# Source SHA is manifest provenance stamped at build time, NOT inferred from
+# Info.plist (build-dev-app.sh stamps no git SHA).
+
+# Our two embedded XPC executables inside the .app. Sparkle's Downloader/Installer
+# are excluded — not ours.
+_APP_EXE_REL = "Contents/MacOS/EnviousWispr"
+_AUDIO_HELPER_REL = (
+    "Contents/XPCServices/EnviousWisprAudioService.xpc/Contents/MacOS/"
+    "EnviousWisprAudioService"
+)
+_ASR_HELPER_REL = (
+    "Contents/XPCServices/EnviousWisprASRService.xpc/Contents/MacOS/"
+    "EnviousWisprASRService"
+)
+
+
+def compute_sha256(path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def discover_bundle_executables(bundle_path) -> dict:
+    """Absolute paths of our three executables inside the .app:
+    {app, audio_helper, asr_helper}. Raises if any is missing."""
+    bundle = Path(bundle_path)
+    paths = {
+        "app": bundle / _APP_EXE_REL,
+        "audio_helper": bundle / _AUDIO_HELPER_REL,
+        "asr_helper": bundle / _ASR_HELPER_REL,
+    }
+    for label, p in paths.items():
+        if not p.exists():
+            raise RuntimeError(f"bundle missing {label} executable at {p}")
+    return {k: str(v) for k, v in paths.items()}
+
+
+def write_build_manifest(
+    bundle_path: str,
+    source_ref: str,
+    source_sha: str,
+    clean_tree: bool,
+    contract_version: str,
+    out_path: str,
+) -> dict:
+    """Stamp a build manifest AFTER a build: absolute exe paths + SHA-256 for the
+    app and both XPC helpers, plus source provenance. Written by run_gauntlet.py
+    per A/B arm; read by verify_running_identity."""
+    import json
+    exes = discover_bundle_executables(bundle_path)
+    manifest = {
+        "bundle_path": str(Path(bundle_path).resolve()),
+        "app_path": exes["app"],
+        "app_sha256": compute_sha256(exes["app"]),
+        "audio_helper_path": exes["audio_helper"],
+        "audio_helper_sha256": compute_sha256(exes["audio_helper"]),
+        "asr_helper_path": exes["asr_helper"],
+        "asr_helper_sha256": compute_sha256(exes["asr_helper"]),
+        "app_bundle_id": _bundle_identifier(bundle_path),
+        "source_ref": source_ref,
+        "source_sha": source_sha,
+        "clean_tree": clean_tree,
+        "contract_version": contract_version,
+    }
+    Path(out_path).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return manifest
+
+
+def _bundle_identifier(bundle_path) -> str:
+    plist = Path(bundle_path) / "Contents" / "Info.plist"
+    try:
+        out = subprocess.check_output(
+            ["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleIdentifier", str(plist)],
+            text=True,
+        )
+        return out.strip()
+    except (subprocess.CalledProcessError, OSError):
+        return ""
+
+
+def load_manifest(path) -> dict:
+    import json
+    with open(path) as f:
+        return json.load(f)
+
+
+def _running_app_executable_path(pid: int) -> str:
+    """argv[0] of the running app = its executable path (open-launched apps carry
+    the full path). Proves the running PID is the build we hashed."""
+    out = subprocess.check_output(["ps", "-o", "command=", "-p", str(pid)], text=True).strip()
+    marker = ".app/Contents/MacOS/EnviousWispr"
+    idx = out.find(marker)
+    return out if idx == -1 else out[: idx + len(marker)]
+
+
+def verify_running_identity(manifest: dict) -> dict:
+    """Fail-closed identity gate. Returns an evidence dict with a top-level
+    `identity_ok` boolean plus every sub-check, so a failure names itself. Any
+    ambiguity (0 or >1 PID, path mismatch, hash mismatch, read error) → not ok."""
+    ev: dict = {"identity_ok": False, "checks": {}}
+    try:
+        out = subprocess.check_output(["pgrep", "-x", APP_NAME], text=True)
+    except subprocess.CalledProcessError:
+        ev["reason"] = "no EnviousWispr process running"
+        return ev
+    pids = [int(p) for p in out.split() if p.strip()]
+    ev["checks"]["app_pid_count"] = len(pids)
+    if len(pids) != 1:
+        ev["reason"] = f"expected exactly 1 app PID, found {len(pids)}: {pids}"
+        return ev
+    pid = pids[0]
+    ev["pid"] = pid
+
+    exe_path = _running_app_executable_path(pid)
+    ev["running_exe_path"] = exe_path
+    ev["checks"]["exe_path_matches"] = exe_path == manifest.get("app_path")
+
+    try:
+        hash_checks = {
+            "app": compute_sha256(manifest["app_path"]) == manifest["app_sha256"],
+            "audio_helper": (
+                compute_sha256(manifest["audio_helper_path"])
+                == manifest["audio_helper_sha256"]),
+            "asr_helper": (
+                compute_sha256(manifest["asr_helper_path"])
+                == manifest["asr_helper_sha256"]),
+        }
+    except (OSError, KeyError) as e:
+        ev["reason"] = f"hash/manifest read failed: {e}"
+        return ev
+    ev["checks"]["hashes"] = hash_checks
+    ev["source_ref"] = manifest.get("source_ref")
+    ev["source_sha"] = manifest.get("source_sha")
+
+    ev["identity_ok"] = ev["checks"]["exe_path_matches"] and all(hash_checks.values())
+    if not ev["identity_ok"]:
+        ev["reason"] = "running build does not match manifest (see checks)"
+    return ev
+
+
+# ─────────────────── #1317 proof-bench: canary log oracle ────────────────────
+
+
+class LogCursor:
+    """Rotation-safe cursor over app.log. Snapshots end-of-file at construction;
+    `new_text()` returns only bytes appended since. On rotation (inode change or
+    shrink) it re-reads the whole current file so a fresh entry is never missed.
+    Fail-closed: a read error yields ''."""
+
+    def __init__(self, path=APP_LOG_PATH):
+        self.path = Path(path)
+        self._offset, self._inode = self._stat()
+
+    def _stat(self):
+        try:
+            st = self.path.stat()
+            return st.st_size, st.st_ino
+        except OSError:
+            return 0, -1
+
+    def new_text(self) -> str:
+        try:
+            st = self.path.stat()
+        except OSError:
+            return ""
+        rotated = (st.st_ino != self._inode) or (st.st_size < self._offset)
+        start = 0 if rotated else self._offset
+        try:
+            with open(self.path, "rb") as f:
+                f.seek(start)
+                data = f.read()
+        except OSError:
+            return ""
+        return data.decode("utf-8", errors="replace")
+
+
+def _normalize_tokens(text: str) -> set:
+    import re
+    return set(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
+
+
+def assert_canary_recovers(cursor: LogCursor) -> dict:
+    """Positive oracle for a recovery/control take. Requires, in text appended
+    since `cursor`: (1) a NEW `CORRECTION_DEBUG [RAW ASR]` line whose normalized
+    tokens contain ALL canary tokens, AND (2) a NEW `Pipeline timing TOTAL`
+    marker. Clipboard and a plain `idle` state are NOT accepted."""
+    text = cursor.new_text()
+    raw_asr_lines: list[str] = []
+    timing_seen = False
+    canary_line = None
+    for line in text.splitlines():
+        if "CORRECTION_DEBUG [RAW ASR]" in line:
+            raw = line.split("CORRECTION_DEBUG [RAW ASR]", 1)[1].strip()
+            raw_asr_lines.append(raw)
+            if CANARY_TOKENS <= _normalize_tokens(raw):
+                canary_line = raw
+        if "Pipeline timing TOTAL" in line:
+            timing_seen = True
+    return {
+        "canary_ok": canary_line is not None and timing_seen,
+        "raw_asr_new_entry": bool(raw_asr_lines),
+        "canary_tokens_matched": canary_line is not None,
+        "pipeline_timing_new": timing_seen,
+        "matched_raw_asr": canary_line,
+        "new_raw_asr_count": len(raw_asr_lines),
+    }
+
+
+def assert_dead_take_honest(cursor: LogCursor) -> dict:
+    """Negative oracle for a dead (zero-filled) take. HONEST handling = the app
+    emitted the no-speech marker (app-owned log line, not merely pipeline state)
+    AND fabricated NO canary text. A dead take that yields the canary would mean
+    text invented from silence — always a failure."""
+    text = cursor.new_text()
+    no_speech_seen = False
+    fabricated_canary = False
+    for line in text.splitlines():
+        if NO_SPEECH_MARKER in line:
+            no_speech_seen = True
+        if "CORRECTION_DEBUG [RAW ASR]" in line:
+            raw = line.split("CORRECTION_DEBUG [RAW ASR]", 1)[1]
+            if CANARY_TOKENS <= _normalize_tokens(raw):
+                fabricated_canary = True
+    return {
+        "honest_no_speech_marker": no_speech_seen,
+        "fabricated_canary": fabricated_canary,
+        "handled_honestly": no_speech_seen and not fabricated_canary,
+    }
+
+
+def _canary_take(*, record_seconds: float = 3.0, settle_timeout_s: float = 8.0) -> dict:
+    """Run ONE locked dictation take with the canary spoken via TTS, a LogCursor
+    open across it. Returns cursor text via both oracles + the terminal state so
+    the caller scores dead-take honesty and control-take recovery from the SAME
+    take shape."""
+    state = _active_state()
+    if "error" in state or "recording" in state:
+        _tap_rcmd()
+        time.sleep(0.8)  # settle: let a stray non-idle state clear before entering lock
+    cursor = LogCursor()
+    if not _start_recording_locked():
+        return {
+            "reached_recording": False,
+            "terminal_state": _active_state(),
+            "recovers": {"canary_ok": False},
+            "dead_honest": {"handled_honestly": False},
+        }
+    with _TTSAudio(CANARY_PHRASE):
+        time.sleep(record_seconds)  # settle: TTS playback window (live-audio UAT cadence)
+    _stop_recording_locked(settle_s=0.5)
+    deadline = time.monotonic() + settle_timeout_s
+    final = ""
+    while time.monotonic() < deadline:
+        final = _active_state()
+        if "complete" in final or final == "idle" or "error" in final:
+            break
+        time.sleep(0.1)  # settle: poll interval; loop breaks on terminal state signal
+    return {
+        "reached_recording": True,
+        "terminal_state": final,
+        "recovers": assert_canary_recovers(cursor),
+        "dead_honest": assert_dead_take_honest(cursor),
+    }
+
+
+# ─────────────────── #1317 proof-bench: evidence / trial schema ──────────────
+
+
+def _require_manifest(kwargs: dict) -> Optional[dict]:
+    """The manifest is mandatory: no manifest ⇒ no trusted identity ⇒ INVALID
+    evidence. run_gauntlet.py passes `manifest_path`; an ad-hoc CLI run can set
+    EW_BENCH_MANIFEST."""
+    mp = kwargs.get("manifest_path") or os.environ.get("EW_BENCH_MANIFEST")
+    if not mp:
+        return None
+    return load_manifest(mp)
+
+
+def _invalid_evidence(reason: str, **extra) -> dict:
+    return {
+        "evidence_valid": False,
+        "evidence": {"reason": reason, **extra},
+        "assertions": {},
+    }
+
+
+def _arm_and_prove_hit(mode: str, n: int, trial: str) -> dict:
+    """Arm the injector and snapshot the pre-fault status. Hit is proven AFTER the
+    take by the caller re-querying. Returns {"armed_ok", "arm_reply", "pre_status"}."""
+    reply = arm_zero_fill(mode, n, trial)
+    pre = query_fault_status(trial)
+    return {
+        "arm_reply": reply,
+        "armed_ok": reply == "OK" and pre.get("ok") and pre.get("armed") is True,
+        "pre_status": pre,
+    }
 
 
 # ──────────────────────────── Lane A scenarios ────────────────────────────
@@ -1326,7 +1714,154 @@ def B1_bluetooth_route_flip(*, founder_present: bool = False, **_) -> dict:
     return assert_terminated(timeout_s=15.0)
 
 
+# ─────────────────── #1317 proof-bench: dead-mic zero-fill scenarios ─────────
+#
+# Deterministic runtime cells scored A/B in Phase 1. Each returns the two-class
+# schema {evidence_valid, evidence, assertions}: a product FAILURE with valid
+# evidence is a real measurement; missing/ambiguous evidence is INVALID (never a
+# defaulted pass). `n` (LIVE-sample budgets) are kwargs so the live A/B run tunes
+# them against real TTS cadence without editing this file.
+
+
+def _zero_fill_trial(*, mode: str, n: int, trial: str, do_control: bool,
+                     kwargs: dict, extra_assertions=None) -> dict:
+    """Shared dead-mic trial: identity gate → arm+pre-status → fault take → HIT
+    proof → optional disarmed control take → scored assertions. Fails closed at
+    every gate."""
+    manifest = _require_manifest(kwargs)
+    if manifest is None:
+        return _invalid_evidence(
+            "no manifest (set EW_BENCH_MANIFEST or pass manifest_path)")
+    identity = verify_running_identity(manifest)
+    if not identity["identity_ok"]:
+        return _invalid_evidence("identity mismatch", identity=identity)
+
+    arm = _arm_and_prove_hit(mode, n, trial)
+    if not arm["armed_ok"]:
+        return _invalid_evidence("arm ack/pre-status failed", arm=arm, identity=identity)
+    inc_pre = arm["pre_status"]["source_incarnation"]
+
+    fault_take = _canary_take()
+
+    post = query_fault_status(trial)
+    hit_ok = bool(post.get("ok")) and post.get("hit") is True and post.get("zeroed", 0) > 0
+    if not hit_ok:
+        return _invalid_evidence(
+            "injector arm acked but never hit", post_status=post, arm=arm,
+            identity=identity)
+    inc_post = post["source_incarnation"]
+
+    control = None
+    if do_control:
+        disarm_zero_fill(trial)
+        control = _canary_take()
+
+    assertions = {
+        "dead_take_handled_honestly": fault_take["dead_honest"]["handled_honestly"],
+        "dead_take_fabricated_text": fault_take["dead_honest"]["fabricated_canary"],
+        "recovered_in_session": fault_take["recovers"]["canary_ok"],
+        # No rebuild is triggered here, so a changed incarnation would only come
+        # from a recovery mechanism (follow-up plan). Honest measurement.
+        "fresh_pipe_proven": inc_post != inc_pre,
+    }
+    if control is not None:
+        assertions["next_press_works"] = control["recovers"]["canary_ok"]
+    if extra_assertions is not None:
+        assertions.update(extra_assertions(fault_take, control))
+
+    return {
+        "evidence_valid": True,
+        "evidence": {
+            "identity": identity,
+            "arm": arm,
+            "post_status": post,
+            "source_incarnation_pre": inc_pre,
+            "source_incarnation_post": inc_post,
+            "fault_take": fault_take,
+            "control_take": control,
+            "trial_id": trial,
+            "mode": mode,
+            "n": n,
+        },
+        "assertions": assertions,
+    }
+
+
+def _trial_id(prefix: str) -> str:
+    return f"{prefix}-{int(time.monotonic() * 1000)}"
+
+
+@scenario(ScenarioMeta(
+    name="Z1_all_zero_from_start", lane="A", family="dead-mic", backends=["both"],
+    runtime_budget_seconds=45.0, founder_required=False,
+    negative_control="disarmed control take MUST recover the canary; the dead take "
+    "must NOT fabricate it",
+    description="Arm zero-fill from the first sample: the take is fully dead. Assert "
+    "the app handles it honestly (no-speech marker, no fabricated text) and the "
+    "injector hit, then a disarmed control take recovers the canary."))
+def Z1_all_zero_from_start(**kwargs) -> dict:
+    return _zero_fill_trial(
+        mode="zero_from_start", n=0, trial=_trial_id("Z1"), do_control=True,
+        kwargs=kwargs)
+
+
+@scenario(ScenarioMeta(
+    name="Z2_valid_then_all_zero", lane="A", family="dead-mic", backends=["both"],
+    runtime_budget_seconds=45.0, founder_required=False,
+    negative_control="lead audio must leave a raw-ASR trace; the zeroed tail must not "
+    "extend it with fabricated tokens",
+    description="Real audio for the first N live samples, then all-zero forever. "
+    "Exercises the content-blind liveness path (buffers keep flowing, just zero). "
+    "Assert lead audio was preserved (a raw-ASR entry exists) and the injector hit."))
+def Z2_valid_then_all_zero(*, lead_samples: int = 16000, **kwargs) -> dict:
+    def _extra(fault_take, _control):
+        return {"raw_text_preserved": fault_take["recovers"]["raw_asr_new_entry"]}
+    return _zero_fill_trial(
+        mode="zero_after_samples", n=lead_samples, trial=_trial_id("Z2"),
+        do_control=True, kwargs=kwargs, extra_assertions=_extra)
+
+
+@scenario(ScenarioMeta(
+    name="Z3_bounded_zero_then_restore", lane="A", family="dead-mic", backends=["both"],
+    runtime_budget_seconds=35.0, founder_required=False,
+    negative_control="the canary must appear AFTER the zero budget, proving the pipe "
+    "self-heals when real audio resumes",
+    description="Zero the first N live samples then restore real audio inside the same "
+    "take. Assert the take recovers the canary in-session (the pipe is not poisoned by "
+    "a transient dead start) and the injector hit."))
+def Z3_bounded_zero_then_restore(*, zero_samples: int = 8000, **kwargs) -> dict:
+    return _zero_fill_trial(
+        mode="zero_next_samples", n=zero_samples, trial=_trial_id("Z3"),
+        do_control=False, kwargs=kwargs)
+
+
 # ──────────────────────────── CLI entry ────────────────────────────
+
+
+# Required assertions per proof-bench scenario: the must-be-true product claims
+# for THIS build to "pass" the cell in a strict standalone run. A valid-evidence
+# product failure still exits nonzero here; the A/B baseline mode (run_gauntlet.py)
+# is what continues through product failures to build the full scorecard.
+_REQUIRED_ASSERTIONS = {
+    "Z1_all_zero_from_start": ["dead_take_handled_honestly", "next_press_works"],
+    "Z2_valid_then_all_zero": ["raw_text_preserved", "next_press_works"],
+    "Z3_bounded_zero_then_restore": ["recovered_in_session"],
+}
+
+
+def evaluate_trial(name: str, inner: dict) -> tuple[bool, str]:
+    """(passed, reason) for a scenario result under the strict contract: evidence
+    must be valid AND every required assertion true. Legacy scenarios with no
+    evidence schema always pass (they carry their own inline verdicts)."""
+    if "evidence_valid" not in inner:
+        return True, "legacy scenario (no evidence schema)"
+    if not inner.get("evidence_valid"):
+        return False, f"EVIDENCE INVALID: {inner.get('evidence', {}).get('reason')}"
+    required = _REQUIRED_ASSERTIONS.get(name, [])
+    failed = [a for a in required if not inner.get("assertions", {}).get(a)]
+    if failed:
+        return False, f"required assertions failed: {failed}"
+    return True, "ok"
 
 
 def main(argv: list[str]) -> int:
@@ -1335,8 +1870,12 @@ def main(argv: list[str]) -> int:
         return 0
     cmd = argv[0]
     if cmd == "run" and len(argv) >= 2:
-        result = run_scenario(argv[1])
-        print(result)
+        wrapped = run_scenario(argv[1])
+        print(wrapped)
+        passed, reason = evaluate_trial(argv[1], wrapped.get("result", {}))
+        if not passed:
+            print(reason, file=sys.stderr)
+            return 1
         return 0
     if cmd == "query":
         print(query_state())
