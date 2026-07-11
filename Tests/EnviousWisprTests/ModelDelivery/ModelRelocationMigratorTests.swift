@@ -622,6 +622,45 @@ import Testing
       "re-classification must not resurrect a model the user removed")
   }
 
+  /// The delete itself can FAIL — a read-only parent directory, a permissions problem.
+  /// When it does, the token MUST survive: it is the only record that a cleanup is
+  /// still owed, and without it the legacy model is stranded forever. The next launch
+  /// retries from it.
+  ///
+  /// This is the migrator half of the runtime's cleanup-failure branch (which is not
+  /// unit-testable — see the PR's named gap).
+  @Test func aFailedDeleteRetainsTheTokenForRetry() async throws {
+    let dirs = try makeDirs()
+    let monolith = dirs.old.appendingPathComponent("eg-1-v1.gguf")
+    try write(Self.legacyBytes, under: dirs.old, path: "eg-1-v1.gguf")
+    let p = try plan(files: ManifestFixture.smallFiles, dirs: dirs)
+    let migrator = ModelRelocationMigrator()
+    _ = await migrator.migrate(p)
+    #expect(migrator.pendingLegacyArtifact(p) == monolith)
+
+    // Unlinking a file needs write permission on its PARENT — deny it.
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dirs.old.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: dirs.old.path)
+    }
+
+    await #expect(throws: (any Error).self) {
+      try await migrator.cleanUpLegacy(p)
+    }
+
+    #expect(exists(monolith), "the artifact survives a failed delete")
+    #expect(
+      migrator.pendingLegacyArtifact(p) == monolith,
+      "and the token MUST survive it too, or the model is stranded forever")
+
+    // Permissions restored: the retry succeeds and clears the token.
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dirs.old.path)
+    try await migrator.cleanUpLegacy(p)
+    #expect(!exists(monolith))
+    #expect(migrator.pendingLegacyArtifact(p) == nil)
+  }
+
   /// Marking a removal when nothing is pending is a plain no-op — an ordinary
   /// Remove on a machine with no legacy artifact must not invent one.
   @Test func markingRemovalWithNoPendingArtifactIsANoop() async throws {
