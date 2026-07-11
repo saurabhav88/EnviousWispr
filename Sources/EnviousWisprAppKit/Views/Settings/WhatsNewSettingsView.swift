@@ -7,29 +7,34 @@ struct WhatsNewSettingsView: View {
   var body: some View {
     SettingsContentView {
       // Page title + subtitle now come from the injected page-header card.
-      ForEach(WhatsNewContent.groupedByVersion, id: \.version) { versionGroup in
+      ForEach(WhatsNewContent.entriesByVersion, id: \.version) { versionGroup in
         // Version header
         Text("v\(versionGroup.version)")
           .settingsRowTitle()
           .padding(.top, 8)
 
-        // Category sections within this version
-        ForEach(versionGroup.sections, id: \.category.id) { section in
-          BrandedSection(header: section.category.title) {
-            ForEach(Array(section.entries.enumerated()), id: \.element.id) { index, entry in
-              BrandedRow(showDivider: index < section.entries.count - 1) {
-                HStack(alignment: .top, spacing: 12) {
-                  Image(systemName: entry.icon)
-                    .font(.system(size: 16))
-                    .foregroundStyle(.stAccent)
-                    .frame(width: 24, alignment: .center)
-                  VStack(alignment: .leading, spacing: 2) {
-                    Text(entry.title)
-                      .settingsRowLabel()
-                    Text(entry.description)
-                      .settingsReadingCopy()
-                  }
-                }
+        // Each entry stands alone: its own specific title as the accent header,
+        // with the card below given entirely to the description. There is no
+        // category tier — the old generic eyebrows ("New Features", "Faster and
+        // More Reliable") repeated down the page and carried no information, so
+        // the eye could not use them to find anything (founder, 2026-07-11).
+        ForEach(versionGroup.entries) { entry in
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+              SettingsRowIcon(systemName: entry.icon)
+              Text(entry.title)
+                .font(.stRowTitle)
+                .foregroundStyle(.stAccent)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            .padding(.leading, 4)
+
+            BrandedSection {
+              BrandedRow(showDivider: false) {
+                Text(entry.description)
+                  .settingsReadingCopy()
               }
             }
           }

@@ -3,7 +3,21 @@
 
 Single source of truth: Sources/EnviousWisprAppKit/Views/Settings/WhatsNewContent.swift
 (the same copy users see in Settings > What's New). This script extracts the entries
-for one version and emits grouped, plain-English markdown for the GitHub release body.
+for one version and emits a flat, plain-English markdown list for the GitHub release body.
+
+Entries render in SOURCE ORDER: whatever order the author placed them in the Swift
+`entries` array is the order the reader gets, here and in the app. There is no category
+grouping (removed 2026-07-11 — the six generic headings repeated down every release and
+carried no information). Source order IS the hierarchy, so a version must be authored
+headline-feature-first.
+
+Parse contract: `title`, `description`, and `version` must be direct, ordinary
+double-quoted Swift literals. This script reads Swift source TEXT, it does not compile it.
+A raw string or a named constant makes the entry fail to parse (--self-test catches that,
+because it asserts the parsed count matches the number of `version:` fields). Concatenation
+silently captures only the first segment, and interpolation emits unresolved Swift source:
+NEITHER is caught by the count check, so both would ship wrong text. Validate by comparing
+parsed values against expected strings, not by counting items alone.
 
 Used by .github/workflows/release.yml. Designed to fail SAFELY: if it cannot produce
 notes for the requested version, it exits non-zero and the workflow falls back to
@@ -28,17 +42,6 @@ CONSTANTS_SWIFT = os.path.join(
     REPO_ROOT, "Sources/EnviousWisprCore/WhatsNewConstants.swift"
 )
 
-# Mirror of WhatsNewContent.Category raw values, in display order.
-CATEGORY_RAW = {
-    "newFeatures": "New Features",
-    "smarterAIPolish": "Smarter AI Polish",
-    "betterOllamaSupport": "Better Ollama Support",
-    "fasterAndMoreReliable": "Faster and More Reliable",
-    "qualityOfLife": "Quality of Life",
-    "privacyAndSecurity": "Privacy and Security",
-}
-CATEGORY_ORDER = list(CATEGORY_RAW.values())
-
 def parse_entries(swift_path):
     with open(swift_path, encoding="utf-8") as fh:
         text = fh.read()
@@ -51,9 +54,8 @@ def parse_entries(swift_path):
     for chunk in text.split("Entry(")[1:]:
         t = re.search(r'title:\s*\n?\s*"((?:[^"\\]|\\.)*)"', chunk, re.DOTALL)
         d = re.search(r'description:\s*\n?\s*"((?:[^"\\]|\\.)*)"', chunk, re.DOTALL)
-        c = re.search(r"category:\s*\.(\w+)", chunk)
         v = re.search(r'version:\s*"([\d.]+)"', chunk)
-        if not (t and d and c and v):
+        if not (t and d and v):
             continue
         title = t.group(1).replace('\\"', '"')
         title = re.sub(r"\s*\\\s*\n\s*", " ", title)
@@ -61,14 +63,7 @@ def parse_entries(swift_path):
         desc = d.group(1).replace('\\"', '"')
         desc = re.sub(r"\s*\\\s*\n\s*", " ", desc)
         desc = re.sub(r"\s+", " ", desc).strip()
-        entries.append(
-            {
-                "title": title,
-                "desc": desc,
-                "category": CATEGORY_RAW.get(c.group(1), c.group(1)),
-                "version": v.group(1),
-            }
-        )
+        entries.append({"title": title, "desc": desc, "version": v.group(1)})
     return entries
 
 
@@ -77,29 +72,18 @@ def version_key(v):
 
 
 def render(entries, version):
+    # Flat list in SOURCE ORDER — `parse_entries` walks the Swift file top-to-bottom,
+    # and `filter` preserves that order, so the author's sequence is the reader's.
+    # No sorting or grouping happens here by design.
     es = [e for e in entries if e["version"] == version]
     if not es:
         return None
-    # Known categories first in canonical display order, then any category present
-    # in the entries but not in CATEGORY_ORDER (e.g. a new WhatsNewContent.Category
-    # case added in Swift) appended in first-appearance order, so an entry is never
-    # silently dropped from release notes.
-    ordered = list(CATEGORY_ORDER)
-    for e in es:
-        if e["category"] not in ordered:
-            ordered.append(e["category"])
     out = []
-    for cat in ordered:
-        ces = [e for e in es if e["category"] == cat]
-        if not ces:
-            continue
-        out.append(f"### {cat}\n")
-        for e in ces:
-            title = e["title"].rstrip()
-            if title and title[-1] not in ".!?":
-                title += "."
-            out.append(f"- **{title}** {e['desc']}")
-        out.append("")
+    for e in es:
+        title = e["title"].rstrip()
+        if title and title[-1] not in ".!?":
+            title += "."
+        out.append(f"- **{title}** {e['desc']}")
     rendered = "\n".join(out).strip()
     return rendered or None
 
