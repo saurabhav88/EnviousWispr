@@ -395,11 +395,29 @@ public struct ModelRelocationMigrator: Sendable {
   ///
   /// No-op when nothing is pending (an ordinary Remove with no legacy artifact).
   public func markLegacyForRemoval(_ plan: RelocationPlan) {
+    setIntent(.remove, plan: plan)
+  }
+
+  /// The user took the removal back (they re-selected the model). The stranded
+  /// artifact is owed a REPLACEMENT again, not a delete.
+  ///
+  /// Without this, `removalPending` is cleared in memory but the durable token still
+  /// reads `.remove` — so a failed replacement download followed by a relaunch would
+  /// delete the model the user had just re-chosen (Codex PR-1 review r13). The
+  /// in-memory flag and the durable intent must move together or they will disagree
+  /// exactly when a crash makes it matter.
+  public func markLegacyForReplacement(_ plan: RelocationPlan) {
+    setIntent(.replace, plan: plan)
+  }
+
+  /// No-op when nothing is pending, when the token belongs to another revision, or
+  /// when the intent already matches.
+  private func setIntent(_ intent: LegacyIntent, plan: RelocationPlan) {
     guard var token = readToken(plan: plan),
       token.manifestDigest == plan.manifest.manifestDigest,
-      token.intent != .remove
+      token.intent != intent
     else { return }
-    token.intent = .remove
+    token.intent = intent
     writeToken(token, plan: plan)
   }
 

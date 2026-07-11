@@ -150,6 +150,9 @@ enum EGOneDeliveryWiring {
     // plain delete, so a failed cleanup can never resurrect a model the user threw
     // away.
     runtime.onModelRemoved = { migrator.markLegacyForRemoval(relocation) }
+    // ...and taking the removal back restores it, so the durable intent never
+    // outlives the decision that set it.
+    runtime.onModelRemovalCancelled = { migrator.markLegacyForReplacement(relocation) }
     Task { @MainActor in
       _ = await migrator.migrate(relocation)
       switch migrator.pendingLegacyIntent(relocation) {

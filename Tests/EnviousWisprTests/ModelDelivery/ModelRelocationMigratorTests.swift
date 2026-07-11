@@ -478,6 +478,29 @@ import Testing
     #expect(migrator.pendingLegacyIntent(p) == nil, "and nothing remains pending to re-fetch")
   }
 
+  /// The user removes the model, then takes it back by re-selecting it. The durable
+  /// intent must follow: leaving it at `.remove` would delete the model on the next
+  /// launch after they had explicitly re-chosen it. (Codex PR-1 review r13.)
+  @Test func takingTheRemovalBackRestoresTheReplacementIntent() async throws {
+    let dirs = try makeDirs()
+    let monolith = dirs.old.appendingPathComponent("eg-1-v1.gguf")
+    try write(Self.legacyBytes, under: dirs.old, path: "eg-1-v1.gguf")
+    let p = try plan(files: ManifestFixture.smallFiles, dirs: dirs)
+    let migrator = ModelRelocationMigrator()
+    _ = await migrator.migrate(p)
+
+    migrator.markLegacyForRemoval(p)
+    #expect(migrator.pendingLegacyIntent(p) == .remove)
+
+    // They re-select EG-1: the removal is taken back.
+    migrator.markLegacyForReplacement(p)
+
+    #expect(
+      migrator.pendingLegacyIntent(p) == .replace,
+      "a cancelled removal must not survive as a durable delete")
+    #expect(exists(monolith), "and the model they re-chose is still there to replace")
+  }
+
   /// Marking a removal when nothing is pending is a plain no-op — an ordinary
   /// Remove on a machine with no legacy artifact must not invent one.
   @Test func markingRemovalWithNoPendingArtifactIsANoop() async throws {

@@ -260,6 +260,12 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// "replace me" to "delete me". Nil in tests and when no relocation is wired.
   public var onModelRemoved: (@MainActor () -> Void)?
 
+  /// The inverse: the user took the removal back by re-selecting EG-1, so the
+  /// stranded artifact is owed a replacement again. The in-memory `removalPending`
+  /// flag and the durable intent must move TOGETHER — clearing one without the other
+  /// leaves them to disagree exactly when a crash makes it matter.
+  public var onModelRemovalCancelled: (@MainActor () -> Void)?
+
   /// Called on terminal pipeline states (alongside the deactivation retry).
   /// Idempotent: no-op unless a removal is actually pending.
   public func retryPendingRemoval() {
@@ -385,6 +391,12 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // itself then bails on a blocker — otherwise remove-during-recording
     // followed by re-selecting EG-1 still deletes the model the user just
     // re-picked once the recording ends (#1271 seam review P1).
+    //
+    // The DURABLE intent has to move with the in-memory flag (#1386): a Remove
+    // already flipped the pending legacy artifact's token to "delete me", and
+    // clearing only the flag would leave that token to delete the model on the next
+    // launch — after the user had taken the removal back (Codex PR-1 review r13).
+    if removalPending { onModelRemovalCancelled?() }
     removalPending = false
     guard let manifest, activationBlockers.isEmpty else {
       // Blocked manifest = spawn will never run this session, so its
