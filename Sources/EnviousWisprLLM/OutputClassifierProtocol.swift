@@ -14,6 +14,18 @@ public protocol OutputClassifierProtocol: Sendable {
   func score(input: String, polished: String) async throws -> Double
 }
 
+/// Outcome of one `OutputClassifierHolder.beginLoadIfNeeded` call. Drives
+/// whether the caller alerts Sentry, counts a PostHog event, or does nothing
+/// (`OutputClassifierEmissionPolicy.forOutcome`, `WisprBootstrapper.swift`).
+public enum OutputClassifierAttemptOutcome: Sendable, Equatable {
+  case skippedAlreadyReady
+  case skippedLoadInProgress
+  case skippedPermanentlyDisabled(reason: OutputClassifierDisabledReason)
+  case succeeded
+  case failedFirstTime(reason: OutputClassifierDisabledReason)
+  case failedRetryable(errorCategory: String)
+}
+
 /// Reference holder so the async-prewarmed classifier becomes visible to the
 /// per-polish construction site once loading completes.
 ///
@@ -26,9 +38,57 @@ public protocol OutputClassifierProtocol: Sendable {
 /// Mirrors the `CoordinatorHolder` pattern (swift-patterns nsapp-delegate-env).
 @MainActor
 public final class OutputClassifierHolder {
-  public var classifier: OutputClassifierProtocol?
+  private enum LoadState {
+    case notStarted
+    case loading
+    case ready(OutputClassifierProtocol)
+    case disabled(OutputClassifierDisabledReason)
+  }
+
+  private var state: LoadState
+
+  /// Read-only view for the one existing consumer (`LLMPolishStep`);
+  /// non-nil only in `.ready`. Preserves the exact pre-existing read contract.
+  public var classifier: OutputClassifierProtocol? {
+    guard case .ready(let classifier) = state else { return nil }
+    return classifier
+  }
 
   public init(classifier: OutputClassifierProtocol? = nil) {
-    self.classifier = classifier
+    state = classifier.map(LoadState.ready) ?? .notStarted
+  }
+
+  /// Single entry point for both trigger sites. Coalesces concurrent callers
+  /// (state-gate-over-recheck: `.loading` is set BEFORE the `await`, so a
+  /// second caller arriving during the suspension sees `.loading` and no-ops
+  /// — no re-check window). `OutputClassifierError` (the closed, typed set
+  /// `CoreMLOutputClassifier.load` maps every known failure into) is the only
+  /// thing that permanently disables the holder for the rest of this process.
+  /// `CancellationError` and any other unmapped error reset to `.notStarted`
+  /// so a later trigger may retry — neither is evidence the classifier itself
+  /// is broken.
+  public func beginLoadIfNeeded(
+    loader: @Sendable () async throws -> OutputClassifierProtocol
+  ) async -> OutputClassifierAttemptOutcome {
+    switch state {
+    case .ready: return .skippedAlreadyReady
+    case .loading: return .skippedLoadInProgress
+    case .disabled(let reason): return .skippedPermanentlyDisabled(reason: reason)
+    case .notStarted: state = .loading
+    }
+    do {
+      let classifier = try await loader()
+      state = .ready(classifier)
+      return .succeeded
+    } catch let error as OutputClassifierError {
+      state = .disabled(error.reason)
+      return .failedFirstTime(reason: error.reason)
+    } catch is CancellationError {
+      state = .notStarted
+      return .failedRetryable(errorCategory: "cancelled")
+    } catch {
+      state = .notStarted
+      return .failedRetryable(errorCategory: "unknown_load_error")
+    }
   }
 }
