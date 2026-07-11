@@ -252,6 +252,40 @@ import Testing
     #expect(!exists(dirs.old), "the old home is redundant once the new one is admitted")
   }
 
+  /// The crash window that would cost a user gigabytes forever: the process dies
+  /// AFTER the destination is admitted but BEFORE the old copy is cleaned up. The
+  /// next launch sees an admitted destination — and must still finish the cleanup
+  /// rather than early-returning and leaving a duplicate multi-GB model on disk
+  /// that nothing will ever look at again. (Codex PR-1 review r7.)
+  @Test func admittedDestinationStillReconcilesALeftoverOldCopy() async throws {
+    let dirs = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    // Simulate the interrupted state directly: destination admitted, source still
+    // fully populated — exactly what a crash between the two steps leaves behind.
+    for f in files {
+      try write(f.content, under: dirs.new, path: f.path)
+      try write(f.content, under: dirs.old, path: f.path)
+    }
+    let p = try plan(files: files, dirs: dirs)
+    let gate = CacheAdmission(
+      manifest: p.manifest, installDirectory: dirs.new, metadataDirectory: dirs.metadata)
+    let validation = await gate.validateExistingCache()
+    try gate.promoteAndAdmit(
+      stagedComponents: [], stagingDirectory: dirs.new,
+      untouchedComponents: validation.verifiedComponents)
+    #expect(gate.isAdmitted())
+
+    let outcome = await ModelRelocationMigrator().migrate(p)
+
+    #expect(outcome == .noop)
+    #expect(gate.isAdmitted(), "the admitted destination is untouched")
+    for f in files {
+      #expect(
+        !exists(dirs.old.appendingPathComponent(f.path)),
+        "the duplicate left by the crash must be reclaimed, not stranded forever")
+    }
+  }
+
   /// An already-admitted destination is the common case on every launch after
   /// the first: cheap no-op, no rehash, nothing touched.
   @Test func admittedDestinationIsANoop() async throws {

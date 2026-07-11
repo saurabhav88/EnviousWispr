@@ -120,7 +120,15 @@ enum EGOneDeliveryWiring {
         }
       case .remove:
         // The user removed EG-1 while a legacy artifact was still stranded. Finish
-        // the delete they asked for and fetch NOTHING.
+        // the removal they asked for, and fetch NOTHING.
+        //
+        // `removeModel()` too, not just the legacy delete: a crash between writing
+        // the `.remove` intent and the delivery removal completing would otherwise
+        // leave the newly-admitted shards installed forever, with the UI still
+        // reporting the model as present — the user's explicit Remove silently
+        // undone by a crash (Codex PR-1 review r7). Both halves are idempotent, so
+        // re-running them after a clean removal costs nothing.
+        runtime.removeModel()
         try? await migrator.cleanUpLegacy(relocation)
         runtime.sweepStaleServersAtLaunch()
       case nil:

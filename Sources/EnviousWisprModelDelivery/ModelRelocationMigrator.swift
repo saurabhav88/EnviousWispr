@@ -159,7 +159,17 @@ public struct ModelRelocationMigrator: Sendable {
 
     // Destination already good — the common case on every launch after the
     // first. Cheap marker check, no rehash.
-    if admission.isAdmitted() { return .noop }
+    //
+    // NOT a bare early-return: a crash between `promoteAndAdmit` (which writes the
+    // destination marker) and the old-copy cleanup below would land here forever
+    // after, leaving a duplicate multi-GB model in the old home that nothing ever
+    // revisits. Because the destination IS admitted, any of OUR components still
+    // sitting in an old location are provably redundant, so finish the job that
+    // crash interrupted (Codex PR-1 review r7).
+    if admission.isAdmitted() {
+      reconcileOldLocations(plan)
+      return .noop
+    }
 
     guard let oldDirectory = plan.oldLocations.first(where: { fm.fileExists(atPath: $0.path) }),
       oldDirectory.standardizedFileURL != plan.destination.standardizedFileURL
@@ -219,19 +229,40 @@ public struct ModelRelocationMigrator: Sendable {
     }
     guard admission.isAdmitted() else { return .unrecognized }
 
-    // Only now is the old copy provably redundant — and only the parts of it we
-    // actually reproduced. Deleting the whole directory would take anything ELSE
-    // in it with us: a foreign model, a user's own file, something we never
-    // validated and never copied. We do not delete what we cannot account for
-    // (Codex PR-1 review r3 P1).
-    for root in CacheAdmission.componentRoots(of: plan.manifest).sorted() {
-      try? fm.removeItem(at: oldDirectory.appendingPathComponent(root))
-    }
-    // The directory itself goes only if nothing of the user's remains in it.
-    if let remaining = try? fm.contentsOfDirectory(atPath: oldDirectory.path), remaining.isEmpty {
-      try? fm.removeItem(at: oldDirectory)
-    }
+    // Only now is the old copy provably redundant.
+    reconcileOldLocations(plan)
     return .relocated
+  }
+
+  /// Drop the parts of an old location that the ADMITTED destination has made
+  /// redundant. Safe to run at any time once the destination is admitted, which is
+  /// exactly why it is also the crash-recovery path: a process that died between
+  /// admitting the destination and cleaning the source resumes here on its next
+  /// launch instead of leaving a duplicate multi-GB model behind forever.
+  ///
+  /// Removes ONLY the component roots we reproduced. Deleting the whole directory
+  /// would take anything else in it with us — a foreign model, a user's own file,
+  /// something we never validated and never copied — and we do not delete what we
+  /// cannot account for. The directory itself goes only when nothing of the user's
+  /// remains in it. A trusted-legacy artifact is deliberately NOT touched here: its
+  /// deletion is governed by the durable token, never by this sweep.
+  private func reconcileOldLocations(_ plan: RelocationPlan) {
+    let fm = FileManager.default
+    let roots = CacheAdmission.componentRoots(of: plan.manifest).sorted()
+    for oldDirectory in plan.oldLocations {
+      guard oldDirectory.standardizedFileURL != plan.destination.standardizedFileURL,
+        fm.fileExists(atPath: oldDirectory.path)
+      else { continue }
+      sweepStaleSidecars(in: oldDirectory, plan: plan)
+      for root in roots {
+        try? fm.removeItem(at: oldDirectory.appendingPathComponent(root))
+      }
+      if let remaining = try? fm.contentsOfDirectory(atPath: oldDirectory.path),
+        remaining.isEmpty
+      {
+        try? fm.removeItem(at: oldDirectory)
+      }
+    }
   }
 
   // MARK: - Legacy cleanup (runs ONLY after the replacement is admitted)
