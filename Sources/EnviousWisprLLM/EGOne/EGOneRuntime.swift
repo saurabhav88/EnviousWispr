@@ -294,15 +294,33 @@ public final class EGOneRuntime: EGOneEndpointProviding {
 
       let outcome = await delivery.ensureAvailable()
       guard case .admitted = outcome else {
-        // Not admitted: token and legacy bytes both survive untouched; the next
-        // launch retries. Deliberately does NOT run a deferred removal — there
-        // is nothing new to remove, and the legacy copy is not ours to drop.
+        // The replacement did not arrive (failed, cancelled, out of disk). Legacy
+        // bytes survive untouched and the next launch retries.
+        //
+        // UNLESS the user hit Remove while it was downloading. That Remove was
+        // deferred by the gate, and dropping it here would lose it twice over: the
+        // model stays installed against the user's explicit action, AND the token
+        // still says `.replace`, so the next launch would re-download the very
+        // model they just threw away (Codex PR-1 review r9). Honor it — this is
+        // the last exit that did not.
+        if removalPending {
+          isMigratingLegacyLayout = false
+          removeModel()
+        }
         return
       }
       // CURRENT admission is the only thing that authorizes the delete — never
       // the `.admitted` we just read (it can be stale by now), never a
-      // file-presence check.
-      guard await delivery.isAdmitted() else { return }
+      // file-presence check. (The likeliest way it goes stale is a Remove that
+      // landed in this very window and deleted the shards — so a deferred removal
+      // must be honored here too, for the same reason as the exit above.)
+      guard await delivery.isAdmitted() else {
+        if removalPending {
+          isMigratingLegacyLayout = false
+          removeModel()
+        }
+        return
+      }
 
       // Nothing may hold the old artifact open when it is unlinked.
       await server.stop()
