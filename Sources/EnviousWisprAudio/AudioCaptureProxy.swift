@@ -210,6 +210,25 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
   public var zeroSignalDiscriminatorDeviceID: AudioDeviceID? { effectiveDiscriminatorDeviceID }
 
+  /// #1317 (cloud review round 2, P2): true once THIS session's reactive
+  /// detector has observed a zero-signal-candidate buffer while the device
+  /// discriminator was ineligible (muted, or mute-unknown). The device's
+  /// mute state can change mid-recording — the discriminator legitimately
+  /// re-checks it live on every buffer — but a STOP-time discriminator
+  /// check that ONLY reads the CURRENT (possibly since-unmuted) state would
+  /// mislabel a recording that was genuinely muted during its silent
+  /// stretch as the harness glitch, just because the user unmuted right
+  /// before releasing. This latch makes that earlier ineligible result
+  /// stick: once true, the STOP-time backstop fails closed for the rest of
+  /// the session regardless of the device's current live state. Reset in
+  /// `beginCapturePhase` alongside `deadAirDetector` (same session-scope as
+  /// the reactive detector itself); per the invariant on
+  /// `effectiveDiscriminatorDeviceID` above, no teardown path may clear it
+  /// early.
+  private var sawIneligibleZeroSignalDuringSession = false
+
+  public var zeroSignalDiscriminatorSawIneligible: Bool { sawIneligibleZeroSignalDuringSession }
+
   // MARK: - Capture-liveness watchdog (issue #285)
 
   /// Private serial queue that fires the stall `DispatchWorkItem`.
@@ -403,6 +422,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     hasReceivedBufferThisSession = false
     deadAirDetector = DeadAirStreamingDetector()
     captureStallReported = false
+    sawIneligibleZeroSignalDuringSession = false
     armCaptureStallWatchdog()
     return stream
   }
@@ -514,7 +534,14 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     guard
       let deviceID = effectiveDiscriminatorDeviceID,
       ZeroSignalDeviceDiscriminator.isEligible(deviceID: deviceID)
-    else { return }
+    else {
+      // #1317 (cloud review round 2, P2): a zero-signal-candidate buffer was
+      // observed while ineligible (muted) — latch it so the STOP-time
+      // backstop can't later see a since-unmuted live state and misclassify
+      // this genuinely-muted stretch as the harness glitch.
+      sawIneligibleZeroSignalDuringSession = true
+      return
+    }
 
     deadAirDetector.fired = true
     captureStallReported = true

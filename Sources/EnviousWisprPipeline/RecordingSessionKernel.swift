@@ -224,7 +224,12 @@ final class RecordingSessionKernel {
   /// retries, so the kernel defers to it instead of independently freezing
   /// its own snapshot, which could still race a mid-startup device switch).
   /// Alive/mute status is still re-checked live against that frozen device
-  /// on every call — only the device IDENTITY is frozen, not its mute state.
+  /// on every call — only the device IDENTITY is frozen, not its mute
+  /// state — EXCEPT that `zeroSignalDiscriminatorSawIneligible` (cloud
+  /// review round 2, second P2) short-circuits to ineligible if the device
+  /// was EVER seen muted during this session's own zero-signal candidate
+  /// buffers, so a since-unmuted live re-check can't override an earlier
+  /// genuine mute.
   private let zeroSignalDeviceEligible: @MainActor () -> Bool
   private let recordingStoppedTelemetry: @MainActor (_ sampleCount: Int) -> Void
   private let markPipelineTimingStart: @MainActor () -> Void
@@ -642,10 +647,15 @@ final class RecordingSessionKernel {
     // (including any of ITS OWN retries, which this kernel cannot see) —
     // instead of independently re-resolving `preferredInputDeviceIDOverride`/
     // `selectedInputDeviceUID`, which only reflects the kernel's OWN view
-    // and can already differ from what actually got captured.
+    // and can already differ from what actually got captured. Also checks
+    // `zeroSignalDiscriminatorSawIneligible` FIRST (cloud review round 2,
+    // second P2): a live re-check here would only see the device's CURRENT
+    // mute state, which can already have changed since a genuinely-muted
+    // silent stretch — that earlier ineligible result must stick.
     self.zeroSignalDeviceEligible =
       zeroSignalDeviceEligible
       ?? {
+        guard !audioCapture.zeroSignalDiscriminatorSawIneligible else { return false }
         guard let deviceID = audioCapture.zeroSignalDiscriminatorDeviceID else { return false }
         return ZeroSignalDeviceDiscriminator.isEligible(deviceID: deviceID)
       }
@@ -2972,7 +2982,12 @@ final class RecordingSessionKernel {
     guard suffixZeroCount >= AudioConstants.minimumTranscriptionSamples else { return nil }
     let prefixCount = samples.count - suffixZeroCount
     guard prefixCount > 0 else { return nil }
-    let prefix = Array(samples[0..<prefixCount])
+    // #1317 (cloud review P2): a slice view, not `Array(samples[..<prefixCount])`
+    // — a 60-minute capture's prefix can be hundreds of MB; copying it just to
+    // compute peak/dead-air stats doubles the already-held buffer in the stop
+    // path. `isDeadAir` is generic over `RandomAccessCollection` for exactly
+    // this call.
+    let prefix = samples[0..<prefixCount]
     let prefixPeak = prefix.reduce(Float(0)) { max($0, abs($1)) }
     guard !RawAudioDeadAirClassifier.isDeadAir(prefix, peak: prefixPeak) else { return nil }
     return .becameZeroMidCapture

@@ -165,4 +165,53 @@ struct DeadAirStreamingDetectorTests {
     #expect(whole.isAllZeroFromStart == chunked.isAllZeroFromStart)
     #expect(whole.isAllZeroFromStart)
   }
+
+  // MARK: - RawAudioDeadAirClassifier.isDeadAir generic-slice equivalence
+
+  /// #1317 (cloud review round 2, P2): `classifyZeroSignalAtStop` was
+  /// changed to pass an `ArraySlice` prefix view instead of copying into a
+  /// new `Array`, which required widening `isDeadAir` to a generic
+  /// `RandomAccessCollection`. An `ArraySlice`'s indices are offset from
+  /// the PARENT array's start, not zero-based — the windowed-RMS loop must
+  /// use `startIndex`/`endIndex`, not raw `0..<count` arithmetic, or it
+  /// reads the wrong elements (or traps) for any non-zero-offset slice.
+  /// This proves array and a non-zero-offset slice of the SAME values agree.
+  @Test("isDeadAir agrees for an Array and a non-zero-offset ArraySlice of the same values")
+  func isDeadAirAgreesForArrayAndOffsetSlice() {
+    var padded = [Float](repeating: 0.05, count: 1_000)  // clears every floor
+    padded.append(contentsOf: [Float](repeating: 0, count: threshold))  // quiet prefix content
+    let sliceStart = 1_000
+    let slice = padded[sliceStart...]
+    let array = Array(slice)
+    #expect(slice.startIndex == sliceStart)  // sanity: genuinely non-zero-offset
+
+    let arrayPeak = array.reduce(Float(0)) { max($0, abs($1)) }
+    let slicePeak = slice.reduce(Float(0)) { max($0, abs($1)) }
+    #expect(arrayPeak == slicePeak)
+
+    let arrayResult = RawAudioDeadAirClassifier.isDeadAir(array, peak: arrayPeak)
+    let sliceResult = RawAudioDeadAirClassifier.isDeadAir(slice, peak: slicePeak)
+    #expect(arrayResult == sliceResult)
+  }
+
+  /// Same equivalence claim, but with a loud window positioned so an
+  /// off-by-index-base bug would tile the WRONG 640-sample windows and
+  /// silently produce a false `isDeadAir == true` (the danger case, since
+  /// this feeds a fail-open decision) instead of just crashing.
+  @Test("isDeadAir agrees for an Array and an ArraySlice with a loud embedded window")
+  func isDeadAirAgreesForArrayAndOffsetSliceWithLoudWindow() {
+    var padded = [Float](repeating: 0, count: 1_000)
+    var body = [Float](repeating: 0, count: threshold)
+    for i in 2_000..<2_640 { body[i] = 0.05 }  // one loud tile-aligned-in-body window
+    padded.append(contentsOf: body)
+    let slice = padded[1_000...]
+    let array = Array(slice)
+    #expect(slice.startIndex == 1_000)
+
+    let peak: Float = 0.05
+    let arrayResult = RawAudioDeadAirClassifier.isDeadAir(array, peak: peak)
+    let sliceResult = RawAudioDeadAirClassifier.isDeadAir(slice, peak: peak)
+    #expect(arrayResult == sliceResult)
+    #expect(!arrayResult)  // the loud window must be found, not silently missed
+  }
 }

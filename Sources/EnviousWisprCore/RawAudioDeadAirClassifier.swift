@@ -30,7 +30,8 @@ public enum RawAudioDeadAirClassifier {
   /// Otherwise it falls through and lets Parakeet decide. Pure + static so
   /// the boundary cases (just-below / just-above each threshold) unit-test
   /// without a kernel.
-  public static func isDeadAir(_ samples: [Float], peak: Float) -> Bool {
+  public static func isDeadAir<C: RandomAccessCollection>(_ samples: C, peak: Float) -> Bool
+  where C.Element == Float, C.Index == Int {
     guard peak < DeadAirFloor.peak else { return false }
     guard !samples.isEmpty else { return true }
     var sumSquares: Float = 0
@@ -39,17 +40,20 @@ public enum RawAudioDeadAirClassifier {
     guard rms < DeadAirFloor.rms else { return false }
     // Loudest non-overlapping 40 ms window. A faint word lifts a local
     // window's RMS even when most of the buffer is silence around it; tiled
-    // windows keep this bounded at O(n).
+    // windows keep this bounded at O(n). Indices are offset from
+    // `samples.startIndex`, not 0 — an `ArraySlice` (e.g. a prefix view into
+    // a larger buffer, #1317 cloud review) does NOT start at index 0, so raw
+    // `0..<window`-style indexing would read the wrong elements or trap.
     let window = DeadAirFloor.windowSamples
     guard samples.count >= window else { return rms < DeadAirFloor.windowRms }
     var maxWindowRms = rms
-    var i = 0
-    while i + window <= samples.count {
+    var windowStart = samples.startIndex
+    while windowStart + window <= samples.endIndex {
       var ss: Float = 0
-      for j in i..<(i + window) { ss += samples[j] * samples[j] }
+      for j in windowStart..<(windowStart + window) { ss += samples[j] * samples[j] }
       let wr = (ss / Float(window)).squareRoot()
       if wr > maxWindowRms { maxWindowRms = wr }
-      i += window
+      windowStart += window
     }
     return maxWindowRms < DeadAirFloor.windowRms
   }
