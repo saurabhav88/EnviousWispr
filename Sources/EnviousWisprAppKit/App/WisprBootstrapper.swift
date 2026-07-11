@@ -374,12 +374,19 @@ public final class WisprBootstrapper {
           holder: outputClassifierHolder, provider: settings.llmProvider)
       }
       // #1480: tips on/off, input-device change, and onboarding completion each
-      // re-evaluate the Bluetooth card (dismiss/suppress, route re-check, or
-      // first surface after onboarding).
+      // re-evaluate the Bluetooth card (dismiss/suppress, route re-check, or first
+      // surface after onboarding). Deferred to the next run-loop cycle because the
+      // input picker writes `preferredInputDeviceIDOverride` and
+      // `selectedInputDeviceUID` as a synchronous PAIR (AudioSettingsView), so a
+      // reconcile on the first write would read a half-updated selection (cloud
+      // review P2). Deferring coalesces the pair into one evaluation over the
+      // settled state; the second fires and no-ops.
       switch key {
       case .showBluetoothTips, .preferredInputDeviceIDOverride, .selectedInputDeviceUID,
         .onboardingState:
-        bluetoothAwarenessPresenterHolder.presenter?.reconcile(trigger: .settingChanged)
+        DispatchQueue.main.async {
+          bluetoothAwarenessPresenterHolder.presenter?.reconcile(trigger: .settingChanged)
+        }
       default:
         break
       }
