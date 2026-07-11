@@ -66,6 +66,7 @@ private final class ExtrasAudioCapture: AudioCaptureInterface {
   var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?
   var onMaxDurationReached: (() -> Void)?
+  var onVADModelUnavailable: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
   var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
   var onXPCServiceError: ((XPCErrorContext) -> Void)?

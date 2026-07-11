@@ -35,6 +35,11 @@ public protocol AudioCaptureInterface: AnyObject {
   /// stop route when the graceful cap wedges. Single-owner:
   /// `CaptureVADSignalSource` claims it alongside `onVADAutoStop`.
   var onMaxDurationReached: (() -> Void)? { get set }
+  /// Fires when the service-side VAD model is unavailable (missing/corrupted
+  /// bundled asset — #1224). At most once per audio-service-process lifetime,
+  /// only at the first recording where the model is broken AND auto-stop is
+  /// on. Bypass, not failure — capture/transcription are unaffected.
+  var onVADModelUnavailable: (() -> Void)? { get set }
 
   // Telemetry callbacks (round-4 additions for #285 heart-path Sentry coverage).
   // Producers: source backends (`AVAudioEngineSource`, `AVCaptureSessionSource`,

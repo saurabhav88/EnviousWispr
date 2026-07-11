@@ -96,6 +96,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
   var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?
   var onMaxDurationReached: (() -> Void)?
+  var onVADModelUnavailable: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
   // XPC-only telemetry callbacks — a direct (non-XPC) source leaves these nil.
   var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?

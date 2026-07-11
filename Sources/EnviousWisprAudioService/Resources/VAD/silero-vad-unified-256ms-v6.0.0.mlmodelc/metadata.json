@@ -1,0 +1,120 @@
+[
+  {
+    "shortDescription" : "Silero VAD Unified Model 256ms (STFT + Encoder + Decoder) with noisy-OR aggregation",
+    "metadataOutputVersion" : "3.0",
+    "outputSchema" : [
+      {
+        "hasShapeFlexibility" : "0",
+        "isOptional" : "0",
+        "dataType" : "Float32",
+        "formattedType" : "MultiArray (Float32 1 × 1 × 1)",
+        "shortDescription" : "",
+        "shape" : "[1, 1, 1]",
+        "name" : "vad_output",
+        "type" : "MultiArray"
+      },
+      {
+        "hasShapeFlexibility" : "0",
+        "isOptional" : "0",
+        "dataType" : "Float32",
+        "formattedType" : "MultiArray (Float32 1 × 128)",
+        "shortDescription" : "",
+        "shape" : "[1, 128]",
+        "name" : "new_hidden_state",
+        "type" : "MultiArray"
+      },
+      {
+        "hasShapeFlexibility" : "0",
+        "isOptional" : "0",
+        "dataType" : "Float32",
+        "formattedType" : "MultiArray (Float32 1 × 128)",
+        "shortDescription" : "",
+        "shape" : "[1, 128]",
+        "name" : "new_cell_state",
+        "type" : "MultiArray"
+      }
+    ],
+    "version" : "6.0.0",
+    "modelParameters" : [
+
+    ],
+    "author" : "Fluid Infernece + Silero Team",
+    "specificationVersion" : 6,
+    "storagePrecision" : "Mixed (Float16, Float32)",
+    "mlProgramOperationTypeHistogram" : {
+      "Concat" : 9,
+      "Lstm" : 8,
+      "SliceByIndex" : 41,
+      "Clip" : 32,
+      "Pow" : 16,
+      "Transpose" : 16,
+      "Sub" : 2,
+      "Relu" : 40,
+      "Squeeze" : 18,
+      "Cast" : 54,
+      "Sigmoid" : 8,
+      "Add" : 16,
+      "ExpandDims" : 26,
+      "Sqrt" : 8,
+      "Mul" : 7,
+      "Conv" : 48,
+      "Pad" : 8
+    },
+    "computePrecision" : "Mixed (Float16, Float32, Int32)",
+    "stateSchema" : [
+
+    ],
+    "isUpdatable" : "0",
+    "availability" : {
+      "macOS" : "12.0",
+      "tvOS" : "15.0",
+      "visionOS" : "1.0",
+      "watchOS" : "8.0",
+      "iOS" : "15.0",
+      "macCatalyst" : "15.0"
+    },
+    "modelType" : {
+      "name" : "MLModelType_mlProgram"
+    },
+    "inputSchema" : [
+      {
+        "hasShapeFlexibility" : "0",
+        "isOptional" : "0",
+        "dataType" : "Float32",
+        "formattedType" : "MultiArray (Float32 1 × 4160)",
+        "shortDescription" : "",
+        "shape" : "[1, 4160]",
+        "name" : "audio_input",
+        "type" : "MultiArray"
+      },
+      {
+        "hasShapeFlexibility" : "0",
+        "isOptional" : "0",
+        "dataType" : "Float32",
+        "formattedType" : "MultiArray (Float32 1 × 128)",
+        "shortDescription" : "",
+        "shape" : "[1, 128]",
+        "name" : "hidden_state",
+        "type" : "MultiArray"
+      },
+      {
+        "hasShapeFlexibility" : "0",
+        "isOptional" : "0",
+        "dataType" : "Float32",
+        "formattedType" : "MultiArray (Float32 1 × 128)",
+        "shortDescription" : "",
+        "shape" : "[1, 128]",
+        "name" : "cell_state",
+        "type" : "MultiArray"
+      }
+    ],
+    "userDefinedMetadata" : {
+      "com.github.apple.coremltools.conversion_date" : "2025-09-15",
+      "com.github.apple.coremltools.source" : "torch==2.7.0",
+      "com.github.apple.coremltools.version" : "9.0b1",
+      "com.github.apple.coremltools.source_dialect" : "TorchScript"
+    },
+    "generatedClassName" : "silero_vad_unified_256ms_v6_0_0",
+    "method" : "predict"
+  }
+]

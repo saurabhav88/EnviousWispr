@@ -320,7 +320,21 @@ let project = Project(
       bundleId: audioServiceBundleId,
       deploymentTargets: deploymentTargets,
       infoPlist: .file(path: "Sources/EnviousWisprAudioService/Resources/Info.plist"),
-      sources: ["Sources/EnviousWisprAudioService/**"],
+      // #1224: Resources/ now holds the bundled VAD model — exclude it from
+      // the source glob like every other module's Resources/ (`firstPartyLibrary`
+      // helper above does the same), so Tuist doesn't sweep the compiled
+      // `.mlmodelc`'s internal files into the compile-sources phase.
+      sources: [
+        .glob(
+          "Sources/EnviousWisprAudioService/**",
+          excluding: ["Sources/EnviousWisprAudioService/Resources/**"])
+      ],
+      resources: [
+        .folderReference(
+          path:
+            "Sources/EnviousWisprAudioService/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc"
+        )
+      ],
       entitlements: .file(
         path: "Sources/EnviousWisprAudioService/Resources/EnviousWisprAudioService.entitlements"),
       dependencies: [
@@ -394,6 +408,16 @@ let project = Project(
         // stays eg1-manifest.json). Same Bundle.main route.
         "Sources/EnviousWispr/Resources/eg1-delivery-manifest.json",
         "Sources/EnviousWispr/Resources/llama-server",
+        // #1224: same VAD asset as the audio XPC service, for
+        // CaptureVADSignalSource's direct-capture-mode fallback
+        // (useXPCAudioService=false), which runs in THIS process, not the
+        // XPC service's. The physical file lives once, under
+        // EnviousWisprAudioService/Resources/; both targets folder-reference
+        // the same path so Tuist embeds an independent copy into each bundle.
+        .folderReference(
+          path:
+            "Sources/EnviousWisprAudioService/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc"
+        ),
       ],
       entitlements: .file(path: "Sources/EnviousWispr/Resources/EnviousWispr.entitlements"),
       // #919: the thin shell links ONLY the kit (the kit static-links the

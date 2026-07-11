@@ -127,7 +127,7 @@ public actor SilenceDetector {
   private var prebufferWriteIndex: Int = 0
   private var prebufferFilled: Bool = false
 
-  public let silenceTimeout: TimeInterval
+  public private(set) var silenceTimeout: TimeInterval
 
   /// Chunk size expected by the Silero VAD model (256ms at 16kHz).
   public nonisolated static let chunkSize = 4096
@@ -139,15 +139,25 @@ public actor SilenceDetector {
     return max(3, Int(ceil(silenceTimeout / chunkDurationSeconds)))
   }
 
+  /// - Parameter modelBundle: the bundle to load the VAD model from. Defaults
+  ///   to `.main`, which is process-scoped and correctly resolves to whichever
+  ///   process is calling (the audio XPC service or the main app's
+  ///   direct-capture-mode fallback both bundle this asset into their own
+  ///   `.main`, #1224). Explicit rather than implicit so the dependency is
+  ///   documented and tests can inject a fixture bundle.
   public init(
-    silenceTimeout: TimeInterval = 1.5, vadConfig: SmoothedVADConfig = SmoothedVADConfig()
+    silenceTimeout: TimeInterval = 1.5, vadConfig: SmoothedVADConfig = SmoothedVADConfig(),
+    modelBundle: Bundle = .main
   ) {
     // Delegate to the internal seam init with the real VAD factory. The seam is
     // internal (not public) so the protocol stays inside the module — #905 keeps
     // this MEDIUM, not REFACTOR. Tests reach the seam via `@testable import`.
     self.init(
       silenceTimeout: silenceTimeout, vadConfig: vadConfig,
-      makeStreamingVad: { try await VadManager(config: VadConfig(defaultThreshold: 0.5)) })
+      makeStreamingVad: {
+        let model = try BundledVADModelLoader.loadModel(in: modelBundle)
+        return VadManager(config: VadConfig(defaultThreshold: 0.5), vadModel: model)
+      })
   }
 
   /// #905 seam init — internal so the `StreamingVad` parameter does not widen the
@@ -187,6 +197,15 @@ public actor SilenceDetector {
   /// Update the SmoothedVAD configuration.
   public func updateConfig(_ config: SmoothedVADConfig) {
     vadConfig = config
+  }
+
+  /// Update the silence timeout on a retained instance (#1224). Needed once
+  /// the detector survives across recordings — the old per-recording
+  /// reconstruction picked up a changed value for free at init time.
+  /// `effectiveHangoverChunks` reads `silenceTimeout` live, so this takes
+  /// effect on the very next chunk processed.
+  public func updateSilenceTimeout(_ newValue: TimeInterval) {
+    silenceTimeout = newValue
   }
 
   /// Process a chunk of 4096 audio samples (16kHz mono).

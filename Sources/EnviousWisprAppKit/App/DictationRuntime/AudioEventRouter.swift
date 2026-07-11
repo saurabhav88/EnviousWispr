@@ -20,6 +20,7 @@ final class AudioEventRouter {
   let kernelDriver: KernelDictationDriver
   let whisperKitKernelDriver: KernelDictationDriver
   let captureTelemetry: CaptureTelemetryState
+  let recordingOverlay: RecordingOverlayPanel
 
   let resolveActiveCaptureBackend:
     @MainActor () -> DictationLifecycleCoordinator.LastCapturingBackend?
@@ -29,6 +30,7 @@ final class AudioEventRouter {
     kernelDriver: KernelDictationDriver,
     whisperKitKernelDriver: KernelDictationDriver,
     captureTelemetry: CaptureTelemetryState,
+    recordingOverlay: RecordingOverlayPanel,
     resolveActiveCaptureBackend: @escaping @MainActor () -> DictationLifecycleCoordinator
       .LastCapturingBackend?
   ) {
@@ -36,6 +38,7 @@ final class AudioEventRouter {
     self.kernelDriver = kernelDriver
     self.whisperKitKernelDriver = whisperKitKernelDriver
     self.captureTelemetry = captureTelemetry
+    self.recordingOverlay = recordingOverlay
     self.resolveActiveCaptureBackend = resolveActiveCaptureBackend
 
     NotificationCenter.default.addObserver(
@@ -130,6 +133,15 @@ final class AudioEventRouter {
           Task { await self.whisperKitKernelDriver.stopAndTranscribe() }
         }
       }
+    }
+
+    // #1224: the service already decided eligibility (broken + auto-stop-on +
+    // not-yet-shown) before firing this — no re-check needed here, just show
+    // the honest, low-weight notice via the existing in-panel mechanism.
+    // `flashRecordingNotice` no-ops if no recording panel is showing.
+    audioCapture.onVADModelUnavailable = { [weak self] in
+      self?.recordingOverlay.flashRecordingNotice(
+        "Auto-stop on silence is unavailable right now", dismissAfter: 4.0)
     }
   }
 }

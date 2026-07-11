@@ -249,13 +249,43 @@ fi
 if ! { grep -q "THIRD-PARTY NOTICES" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt" \
         && grep -q "swift-transformers" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt" \
         && grep -q "FluidAudio" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt" \
-        && grep -q "llama.cpp" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt"; }; then
+        && grep -q "llama.cpp" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt" \
+        && grep -q "Silero" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt"; }; then
     echo "::error::Bundled THIRD-PARTY-NOTICES.txt incomplete or stale"; exit 1
 fi
 if ! { grep -q "${VERSION}" "$LICENSES_DIR/SOURCE.txt" && grep -q "${COMMIT}" "$LICENSES_DIR/SOURCE.txt"; }; then
     echo "::error::Bundled SOURCE.txt not pinned to v${VERSION}/${COMMIT}"; exit 1
 fi
 echo "    license material sealed in Contents/Resources/Licenses (GPL-3.0.txt, THIRD-PARTY-NOTICES.txt, SOURCE.txt @ ${COMMIT:0:8})"
+
+echo "==> [4c/9] Verify the bundled VAD model rode the archive into both bundles (#1224)"
+# The fix for #1224 (VAD model downloads at record-start) bundles the model as
+# a Tuist folder-reference resource on BOTH the main app target and the audio
+# XPC service target (Project.swift), instead of it being fetched from the
+# network at runtime. A packaging mistake here (a dropped resources: entry, a
+# Tuist glob regression) would silently reintroduce the network dependency in
+# a shipped build with no functional-test signal until users hit it — same
+# shape of gate as the EG-1 llama-server check below, run pre-sign so a
+# missing asset fails the build before any signature is applied.
+# No "VAD/" segment: Tuist's `.folderReference` embeds the referenced folder
+# directly at the top level of Contents/Resources, flattening away its
+# source-tree parent directories (confirmed against a real built bundle;
+# Codex code-diff review r1 P1 caught the original path assuming otherwise).
+VAD_MODEL_REL="Contents/Resources/silero-vad-unified-256ms-v6.0.0.mlmodelc"
+test -d "$BUNDLE/$VAD_MODEL_REL" || {
+    echo "::error::VAD model missing from app bundle at $VAD_MODEL_REL (#1224)"; exit 1;
+}
+AUDIO_XPC_PRESIGN=""
+for XPC_SVC in "$BUNDLE/Contents/XPCServices"/*.xpc; do
+    [[ -d "$XPC_SVC" ]] || continue
+    BID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$XPC_SVC/Contents/Info.plist")"
+    [[ "$BID" == "com.enviouswispr.audioservice" ]] && AUDIO_XPC_PRESIGN="$XPC_SVC"
+done
+test -n "$AUDIO_XPC_PRESIGN" || { echo "::error::audio XPC service bundle not found (#1224)"; exit 1; }
+test -d "$AUDIO_XPC_PRESIGN/$VAD_MODEL_REL" || {
+    echo "::error::VAD model missing from audio XPC service bundle at $VAD_MODEL_REL (#1224)"; exit 1;
+}
+echo "    VAD model present in both the app and audio XPC service bundles"
 
 if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
     echo "==> CODESIGN_IDENTITY not set — skipping signing (unsigned assembly only)"
@@ -532,7 +562,8 @@ fi
 if ! { [[ -f "$NOTICES_IN_APP" ]] && grep -q "THIRD-PARTY NOTICES" "$NOTICES_IN_APP" \
         && grep -q "None of these components is GPL/LGPL" "$NOTICES_IN_APP" \
         && grep -q "swift-transformers" "$NOTICES_IN_APP" \
-        && grep -q "FluidAudio" "$NOTICES_IN_APP"; }; then
+        && grep -q "FluidAudio" "$NOTICES_IN_APP" \
+        && grep -q "Silero" "$NOTICES_IN_APP"; }; then
     echo "::error::THIRD-PARTY-NOTICES.txt missing or incomplete in shipped app ($NOTICES_IN_APP)"; exit 1
 fi
 # The DMG root must stay clean: only the app + the Applications alias, no loose

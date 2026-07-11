@@ -68,6 +68,10 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   /// #1408 A3: the helper's hard sample-count backstop, relayed as a normal
   /// auto-stop event (`maxDurationReachedTriggered`), never an interruption.
   public var onMaxDurationReached: (() -> Void)?
+  /// #1224: the bundled VAD model is unavailable. Bound by `AudioEventRouter`
+  /// alongside `onVADAutoStop`, which decides eligibility (auto-stop setting)
+  /// and shows the honest notice via `RecordingOverlayPanel`.
+  public var onVADModelUnavailable: (() -> Void)?
 
   // MARK: - Round-4 telemetry callbacks (issue #285)
 
@@ -1362,6 +1366,17 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
         operationID == active
       else { return }
       self.onMaxDurationReached?()
+    }
+  }
+
+  /// The bundled VAD model is unavailable (missing/corrupted asset — #1224).
+  /// No generation/capture-state guard, unlike the siblings above — this is a
+  /// bypass notice about the model's own health, not a stop-triggering event
+  /// tied to a specific capture. Never reads settings or references AppKit;
+  /// the upper layer (`AudioEventRouter`) decides eligibility and UI.
+  nonisolated public func vadModelUnavailable() {
+    Task { @MainActor [weak self] in
+      self?.onVADModelUnavailable?()
     }
   }
 }
