@@ -1,3 +1,4 @@
+import Darwin  // clonefile(2): APFS copy-on-write clone (see `relocate`).
 import EnviousWisprCore
 import Foundation
 
@@ -33,6 +34,26 @@ import Foundation
 /// never deletes an unrecognized foreign copy at all.
 public struct ModelRelocationMigrator: Sendable {
 
+  /// A layout WE shipped, identified by what it IS, not what it is called.
+  ///
+  /// The filename alone is not identity. A corrupt, hand-edited, or unrelated
+  /// file that happens to be named `eg-1-v1.gguf` is NOT ours, and the
+  /// provenance rule forbids deleting bytes we cannot prove we shipped — so the
+  /// digest is the gate, and a mismatch drops the file into the untouchable
+  /// `unrecognized` class.
+  public struct TrustedLegacyArtifact: Sendable, Equatable {
+    /// On-disk name inside the legacy directory.
+    public let name: String
+    public let sizeBytes: Int64
+    public let sha256: String
+
+    public init(name: String, sizeBytes: Int64, sha256: String) {
+      self.name = name
+      self.sizeBytes = sizeBytes
+      self.sha256 = sha256
+    }
+  }
+
   /// One model's relocation descriptor. Journaling/crash-safety is written once
   /// here and reused per family rather than reimplemented per engine.
   public struct RelocationPlan: Sendable {
@@ -44,17 +65,18 @@ public struct ModelRelocationMigrator: Sendable {
     public let destination: URL
     /// Where admission markers live (unchanged by relocation).
     public let metadataDirectory: URL
-    /// Relative filenames of previously-shipped layouts that this build can no
-    /// longer load but DOES recognize as its own (e.g. `["eg-1-v1.gguf"]`).
-    /// Presence of one of these in an old location ⇒ trusted-legacy outcome.
-    public let trustedLegacyArtifacts: [String]
+    /// Previously-shipped layouts this build can no longer load but DOES
+    /// recognize as its own. Identity is the DIGEST, never the filename: a
+    /// same-named file we did not ship is a stranger's, and strangers are never
+    /// deleted (the provenance rule — Codex PR-1 review P2).
+    public let trustedLegacyArtifacts: [TrustedLegacyArtifact]
 
     public init(
       manifest: DeliveryManifest,
       oldLocations: [URL],
       destination: URL,
       metadataDirectory: URL,
-      trustedLegacyArtifacts: [String] = []
+      trustedLegacyArtifacts: [TrustedLegacyArtifact] = []
     ) {
       self.manifest = manifest
       self.oldLocations = oldLocations
@@ -84,6 +106,11 @@ public struct ModelRelocationMigrator: Sendable {
   struct Token: Codable, Equatable {
     /// Absolute path of the legacy artifact awaiting cleanup.
     let legacyPath: String
+    /// Size of the artifact we VERIFIED at classification time. Re-checked
+    /// immediately before the delete: if the file changed underneath us between
+    /// classification and cleanup, it is no longer the artifact we proved was
+    /// ours, and we do not delete it.
+    let legacySizeBytes: Int64
     /// Manifest digest this token was minted against — a token from a different
     /// revision must never authorize a delete under the current one.
     let manifestDigest: String
@@ -113,11 +140,14 @@ public struct ModelRelocationMigrator: Sendable {
 
     // A previously-shipped layout we recognize: do NOT move it, do NOT load it,
     // do NOT delete it. Record the token and let the caller replace it.
-    if let legacy = trustedLegacyArtifact(in: oldDirectory, plan: plan) {
+    if let legacy = await trustedLegacyArtifact(in: oldDirectory, plan: plan) {
       writeToken(
-        Token(legacyPath: legacy.path, manifestDigest: plan.manifest.manifestDigest),
+        Token(
+          legacyPath: legacy.url.path,
+          legacySizeBytes: legacy.artifact.sizeBytes,
+          manifestDigest: plan.manifest.manifestDigest),
         plan: plan)
-      return .trustedLegacyPending(legacy)
+      return .trustedLegacyPending(legacy.url)
     }
 
     // Does the old directory satisfy the CURRENT manifest? Validate in place
@@ -174,6 +204,16 @@ public struct ModelRelocationMigrator: Sendable {
       return
     }
     if fm.fileExists(atPath: token.legacyPath) {
+      // The file must still be the artifact we PROVED was ours at classification
+      // time. If it changed underneath us (user swapped it, a partial write
+      // truncated it), it is no longer identifiable as ours — leave it, and drop
+      // the token so we never revisit it. Cheap stat, not a re-hash: the
+      // expensive proof was done once, at classification.
+      let size = (try? fm.attributesOfItem(atPath: token.legacyPath)[.size]) as? Int64
+      guard size == token.legacySizeBytes else {
+        clearToken(plan: plan)
+        return
+      }
       try fm.removeItem(atPath: token.legacyPath)
     }
     clearToken(plan: plan)
@@ -190,40 +230,55 @@ public struct ModelRelocationMigrator: Sendable {
 
   // MARK: - Internals
 
-  /// A recognized previously-shipped artifact in `directory`, if any. Only the
-  /// exact filenames this build ships as `trustedLegacyArtifacts` qualify — an
-  /// unrecognized file is never treated as ours.
-  private func trustedLegacyArtifact(in directory: URL, plan: RelocationPlan) -> URL? {
-    let fm = FileManager.default
-    for name in plan.trustedLegacyArtifacts {
-      let url = directory.appendingPathComponent(name)
-      if fm.fileExists(atPath: url.path) { return url }
+  /// A previously-shipped artifact in `directory` that we can PROVE is ours.
+  ///
+  /// The filename is only the lookup key; the digest is the identity (Codex PR-1
+  /// review P2). A file named `eg-1-v1.gguf` that we did not ship — corrupt,
+  /// truncated, hand-replaced, or someone else's — fails the hash and falls
+  /// through to `unrecognized`, where it is never moved, loaded, or deleted.
+  /// Size is the cheap gate so the multi-GB hash runs only on a real candidate.
+  private func trustedLegacyArtifact(in directory: URL, plan: RelocationPlan) async
+    -> (url: URL, artifact: TrustedLegacyArtifact)?
+  {
+    for artifact in plan.trustedLegacyArtifacts {
+      let url = directory.appendingPathComponent(artifact.name)
+      guard CacheAdmission.sizeMatches(url: url, expected: artifact.sizeBytes),
+        await CacheAdmission.streamingSHA256(of: url) == artifact.sha256
+      else { continue }
+      return (url, artifact)
     }
     return nil
   }
 
-  /// Move every manifest-listed file from `source` into `destination`. Same
-  /// volume ⇒ rename (instant, mtime preserved). Cross-volume ⇒ copy, leaving
-  /// the source intact for the caller to drop after admission.
+  /// Reproduce every manifest-listed component at `destination`, leaving the
+  /// source COMPLETELY INTACT. The source is dropped by the caller only after
+  /// the destination is admitted — verify-before-delete, applied to the move
+  /// itself (Codex PR-1 review P2).
   ///
-  /// Journal-free by construction: nothing is deleted here, so a crash mid-move
-  /// leaves the old copy intact and a partially-populated destination that the
-  /// next launch's admission check rejects and rebuilds.
+  /// This is deliberately NOT a rename. A per-component `moveItem` removes each
+  /// component from the source as it goes, so a crash (or a later component's
+  /// failure) leaves BOTH directories partial: the destination is unadmittable
+  /// and the source no longer validates, so the next launch classifies a
+  /// perfectly good model as `unrecognized` and re-downloads it. Copying keeps
+  /// the source a complete, valid fallback at every instant.
+  ///
+  /// Copying multiple GB would normally be the expensive choice — except on
+  /// APFS, where `clonefile(2)` makes a copy-on-write clone: no bytes are moved,
+  /// no extra space is used, and it returns immediately. We clone when we can and
+  /// fall back to a real copy (a different volume, or a non-APFS filesystem)
+  /// where we cannot.
   private func relocate(from source: URL, to destination: URL, manifest: DeliveryManifest) throws {
     let fm = FileManager.default
     try fm.createDirectory(at: destination, withIntermediateDirectories: true)
-    for root in CacheAdmission.componentRoots(of: manifest) {
+    // Sorted, not set-order: a deterministic sequence makes a partial-failure
+    // reproducible in a test instead of depending on hash ordering.
+    for root in CacheAdmission.componentRoots(of: manifest).sorted() {
       let from = source.appendingPathComponent(root)
       let to = destination.appendingPathComponent(root)
       guard fm.fileExists(atPath: from.path) else { continue }
       if fm.fileExists(atPath: to.path) { try fm.removeItem(at: to) }
-      do {
-        try fm.moveItem(at: from, to: to)
-      } catch {
-        // Cross-volume (or any rename refusal): copy instead. The source stays
-        // put; the caller drops it only after the destination is admitted.
-        try fm.copyItem(at: from, to: to)
-      }
+      if clonefile(from.path, to.path, 0) == 0 { continue }
+      try fm.copyItem(at: from, to: to)
     }
   }
 

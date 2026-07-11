@@ -20,7 +20,18 @@ enum EGOneDeliveryWiring {
   /// we shipped them and hold their digest — so the contract's automatic-
   /// replacement clause permits replacing them with no user click, but only ever
   /// verify-before-delete.
-  static let trustedLegacyArtifacts = ["eg-1-v1.gguf"]
+  ///
+  /// Size + digest are the SHIPPED values, lifted from the last monolithic
+  /// manifest (`eg1-manifest.json` at tag v2.3.2, and the pre-#1417 delivery
+  /// manifest, which agree). They are what makes this artifact identifiable as
+  /// OURS: a same-named file we did not ship fails the hash and is never
+  /// touched. Do not "simplify" this back to a filename match.
+  static let trustedLegacyArtifacts = [
+    ModelRelocationMigrator.TrustedLegacyArtifact(
+      name: "eg-1-v1.gguf",
+      sizeBytes: 2_889_511_680,
+      sha256: "3343fc1a30a3e82df7499a4775ef73dd6e28dea1cc39bb58197ec0b66ec874f6")
+  ]
 
   struct Wired {
     let adapter: EGOneDeliveryAdapter

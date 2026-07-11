@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 
@@ -28,10 +29,21 @@ import Testing
     try content.write(to: url)
   }
 
+  /// The bytes of the previously-shipped layout, and the descriptor that proves
+  /// they are ours. Identity is the DIGEST — the filename is only a lookup key.
+  private static let legacyBytes = Data("the-model-we-actually-shipped".utf8)
+
+  private static var legacyArtifact: ModelRelocationMigrator.TrustedLegacyArtifact {
+    .init(
+      name: "eg-1-v1.gguf",
+      sizeBytes: Int64(legacyBytes.count),
+      sha256: SHA256.hash(data: legacyBytes).map { String(format: "%02x", $0) }.joined())
+  }
+
   private func plan(
     files: [(path: String, content: Data, component: String)],
     dirs: (old: URL, new: URL, metadata: URL),
-    legacy: [String] = ["eg-1-v1.gguf"]
+    legacy: [ModelRelocationMigrator.TrustedLegacyArtifact] = [legacyArtifact]
   ) throws -> ModelRelocationMigrator.RelocationPlan {
     ModelRelocationMigrator.RelocationPlan(
       manifest: try ManifestFixture.manifest(files: files),
@@ -53,7 +65,7 @@ import Testing
   @Test func trustedLegacyMonolithIsRecordedAndLeftUntouched() async throws {
     let dirs = try makeDirs()
     let monolith = dirs.old.appendingPathComponent("eg-1-v1.gguf")
-    try write(Data("shipped-model-bytes".utf8), under: dirs.old, path: "eg-1-v1.gguf")
+    try write(Self.legacyBytes, under: dirs.old, path: "eg-1-v1.gguf")
     let p = try plan(files: ManifestFixture.smallFiles, dirs: dirs)
     let migrator = ModelRelocationMigrator()
 
@@ -74,7 +86,7 @@ import Testing
   /// next launch can retry rather than losing the only copy.
   @Test func pendingTokenSurvivesRelaunchWhenReplacementNeverArrives() async throws {
     let dirs = try makeDirs()
-    try write(Data("shipped-model-bytes".utf8), under: dirs.old, path: "eg-1-v1.gguf")
+    try write(Self.legacyBytes, under: dirs.old, path: "eg-1-v1.gguf")
     let p = try plan(files: ManifestFixture.smallFiles, dirs: dirs)
 
     _ = await ModelRelocationMigrator().migrate(p)
@@ -89,7 +101,7 @@ import Testing
   @Test func cleanUpLegacyDeletesTheArtifactAndIsIdempotent() async throws {
     let dirs = try makeDirs()
     let monolith = dirs.old.appendingPathComponent("eg-1-v1.gguf")
-    try write(Data("shipped-model-bytes".utf8), under: dirs.old, path: "eg-1-v1.gguf")
+    try write(Self.legacyBytes, under: dirs.old, path: "eg-1-v1.gguf")
     let p = try plan(files: ManifestFixture.smallFiles, dirs: dirs)
     let migrator = ModelRelocationMigrator()
     _ = await migrator.migrate(p)
@@ -108,7 +120,7 @@ import Testing
   @Test func tokenFromAnotherRevisionNeverAuthorizesADelete() async throws {
     let dirs = try makeDirs()
     let monolith = dirs.old.appendingPathComponent("eg-1-v1.gguf")
-    try write(Data("shipped-model-bytes".utf8), under: dirs.old, path: "eg-1-v1.gguf")
+    try write(Self.legacyBytes, under: dirs.old, path: "eg-1-v1.gguf")
     let p = try plan(files: ManifestFixture.smallFiles, dirs: dirs)
     let migrator = ModelRelocationMigrator()
     _ = await migrator.migrate(p)
@@ -122,7 +134,96 @@ import Testing
     #expect(exists(monolith), "a foreign-revision token must not delete our bytes")
   }
 
+  /// The filename is NOT identity. A file sitting at the legacy path with the
+  /// legacy NAME but bytes we never shipped — corrupt, truncated, hand-swapped,
+  /// or someone else's — must fail the digest and be treated as a stranger:
+  /// never tokenized, never deleted. (Codex PR-1 review P2.)
+  @Test func sameNamedFileWeDidNotShipIsNeverTrustedAndNeverDeleted() async throws {
+    let dirs = try makeDirs()
+    let impostor = dirs.old.appendingPathComponent("eg-1-v1.gguf")
+    try write(Data("NOT the bytes we shipped".utf8), under: dirs.old, path: "eg-1-v1.gguf")
+    let p = try plan(files: ManifestFixture.smallFiles, dirs: dirs)
+    let migrator = ModelRelocationMigrator()
+
+    let outcome = await migrator.migrate(p)
+
+    #expect(outcome == .unrecognized, "a same-named file we did not ship is not ours")
+    #expect(migrator.pendingLegacyArtifact(p) == nil, "and must never be marked for deletion")
+    // Even if a caller ignored the outcome and ran cleanup anyway, the absent
+    // token means nothing is deleted.
+    try migrator.cleanUpLegacy(p)
+    #expect(exists(impostor), "bytes we cannot prove are ours are never deleted")
+  }
+
+  /// If the legacy file CHANGES between classification and cleanup, it is no
+  /// longer the artifact we proved was ours — so we leave it alone rather than
+  /// delete something we can no longer identify.
+  @Test func legacyArtifactMutatedAfterClassificationIsNotDeleted() async throws {
+    let dirs = try makeDirs()
+    let monolith = dirs.old.appendingPathComponent("eg-1-v1.gguf")
+    try write(Self.legacyBytes, under: dirs.old, path: "eg-1-v1.gguf")
+    let p = try plan(files: ManifestFixture.smallFiles, dirs: dirs)
+    let migrator = ModelRelocationMigrator()
+    _ = await migrator.migrate(p)
+    #expect(migrator.pendingLegacyArtifact(p) != nil)
+
+    // Something replaced the file after we classified it.
+    try write(Data("swapped out from under us".utf8), under: dirs.old, path: "eg-1-v1.gguf")
+    try migrator.cleanUpLegacy(p)
+
+    #expect(exists(monolith), "a changed artifact is no longer identifiable as ours")
+    #expect(migrator.pendingLegacyArtifact(p) == nil, "and the stale token is dropped")
+  }
+
   // MARK: - Relocatable (a dev machine whose shards already sit in the old home)
+
+  /// The source must remain a COMPLETE, valid fallback until the destination is
+  /// admitted. A relocation that removed components from the source as it went
+  /// would leave both sides partial on a crash, turning a good model into an
+  /// `unrecognized` one and forcing a re-download. (Codex PR-1 review P2.)
+  ///
+  /// Proven by interrupting: pre-create a DIRECTORY at one component's
+  /// destination path so its copy fails, then assert the source is still whole.
+  @Test func interruptedRelocationLeavesTheSourceComplete() async throws {
+    let dirs = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: dirs.old, path: f.path) }
+    let p = try plan(files: files, dirs: dirs)
+
+    // Block the LAST component in the (deterministic, sorted) relocation order,
+    // so at least one component has already been reproduced at the destination
+    // when the failure hits. Blocking the FIRST would prove nothing: a
+    // move-based relocation that fails immediately never touches the source, so
+    // the test would pass against the very bug it exists to catch.
+    let victimRoot = CacheAdmission.componentRoots(of: p.manifest).sorted().last!
+    let blocker = dirs.new.appendingPathComponent(victimRoot, isDirectory: true)
+    try FileManager.default.createDirectory(at: blocker, withIntermediateDirectories: true)
+    try write(Data("blocker".utf8), under: blocker, path: "occupied/blocker.bin")
+    // Deny writes so removeItem/copy into it fails.
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o500], ofItemAtPath: blocker.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: blocker.path)
+    }
+
+    let outcome = await ModelRelocationMigrator().migrate(p)
+
+    // Whatever the outcome, the invariant is absolute: the source still holds a
+    // complete, valid copy, so the next launch can retry from it.
+    #expect(outcome != .relocated)
+    for f in files {
+      #expect(
+        exists(dirs.old.appendingPathComponent(f.path)),
+        "source must stay complete when relocation cannot finish")
+    }
+    let sourceGate = CacheAdmission(
+      manifest: p.manifest, installDirectory: dirs.old, metadataDirectory: dirs.metadata)
+    let validation = await sourceGate.validateExistingCache()
+    #expect(
+      validation.failedComponents.isEmpty,
+      "the source must still validate against the manifest — it is the fallback")
+  }
 
   /// Bytes that satisfy the CURRENT manifest are moved, re-admitted at the new
   /// home, and the old home is dropped — with zero fetch.
