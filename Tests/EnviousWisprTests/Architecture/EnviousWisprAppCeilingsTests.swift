@@ -329,14 +329,24 @@ import Testing
   /// runs the one-time legacy launch table after the first-run baseline. All
   /// retirement logic lives on the coordinator, not here. Cap by deterministic
   /// rule (actual 1041 + ~2, rounded up to nearest 5 = 1045).
+  /// Ratcheted 1045→1090 in #1452 (2026-07-11): `prewarmOutputClassifierIfNeeded`
+  /// rewritten to call `holder.beginLoadIfNeeded` and execute the new
+  /// `OutputClassifierEmissionPolicy.forOutcome` plan (dedupes the
+  /// `output_classifier_load_failed` Sentry alert to at most once per process
+  /// per disablement); the pure `OutputClassifierEmissionPolicy` struct is
+  /// appended as a free-standing top-level type AFTER the class's closing
+  /// brace, so it adds zero stored properties / methods to the composition
+  /// root itself (stored-property and method ceilings above are unchanged) —
+  /// only the file's physical line count grows. Cap by deterministic rule
+  /// (actual 1088 + ~2, rounded up to nearest 5 = 1090).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1045,
+      lineCount <= 1090,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1045. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1090. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

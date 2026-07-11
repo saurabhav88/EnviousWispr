@@ -792,41 +792,37 @@ public final class WisprBootstrapper {
   private static func prewarmOutputClassifierIfNeeded(
     holder: OutputClassifierHolder, provider: LLMProvider
   ) {
-    guard provider == .appleIntelligence, holder.classifier == nil else { return }
+    guard provider == .appleIntelligence else { return }
     Task {
-      guard let resourceURL = Bundle.main.resourceURL else {
-        await AppLogger.shared.log(
-          "[OutputClassifier] preWarm skipped: no bundle resourceURL — fail open",
-          level: .info, category: "LLM")
-        return
-      }
       let start = DispatchTime.now()
-      do {
-        // `load` is nonisolated-async → the heavy compile/load runs off the main
-        // actor (SE-0338); the holder is set back on the main actor here.
-        let classifier = try await CoreMLOutputClassifier.load(resourceURL: resourceURL)
-        holder.classifier = classifier
-        let elapsedMs = Int(
-          Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000)
-        await AppLogger.shared.log(
-          "[OutputClassifier] preWarm complete latency_ms=\(elapsedMs)",
-          level: .info, category: "LLM")
-      } catch {
-        let reason = (error as? OutputClassifierError)?.reason.rawValue ?? "load_failed"
-        let elapsedMs = Int(
-          Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000)
-        await AppLogger.shared.log(
-          "[OutputClassifier] preWarm failed reason=\(reason) — fail open to raw/sync-filtered polish",
-          level: .info, category: "LLM")
+      let outcome = await holder.beginLoadIfNeeded {
+        guard let resourceURL = Bundle.main.resourceURL else {
+          throw OutputClassifierError.disabled(.missingFile)
+        }
+        return try await CoreMLOutputClassifier.load(resourceURL: resourceURL)
+      }
+      let elapsedMs = Int(
+        Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000)
+      let plan = OutputClassifierEmissionPolicy.forOutcome(outcome)
+      if let logMessage = plan.logMessage {
+        await AppLogger.shared.log(logMessage, level: .info, category: "LLM")
+      }
+      if let category = plan.postHogErrorCategory {
         // #1177 (Telemetry Bible Phase 8): the polish path silently lost its safety
-        // net. Population event for the aggregate fail-open rate + a handled error
-        // (this retries on every provider switch, so a genuinely broken model becomes
-        // a recurring issue grouped per-reason). @MainActor static → direct emit.
+        // net. Population event for the aggregate fail-open rate, tagged by which
+        // of the three observation units this is (#1452 — see
+        // `OutputClassifierEmissionPolicy`). @MainActor static → direct emit.
         TelemetryService.shared.limbFailureObserved(
           limb: "output_safety", operation: "classifier_prewarm", result: "fell_open",
-          errorCategory: reason, durationMs: elapsedMs)
+          errorCategory: category, durationMs: plan.attemptedRealLoad ? elapsedMs : nil)
+      }
+      if let sentryReason = plan.sentryReason {
+        // #1452: at most one alert per process per disablement — repeated
+        // provider-switch triggers after this point return
+        // `.skippedPermanentlyDisabled` and never reach this branch again.
         SentryBreadcrumb.captureError(
-          error, category: .outputClassifierLoadFailed, stage: "llm", fingerprintDetail: reason)
+          OutputClassifierError.disabled(sentryReason), category: .outputClassifierLoadFailed,
+          stage: "llm", fingerprintDetail: sentryReason.rawValue)
       }
     }
   }
@@ -1040,5 +1036,52 @@ private struct ActionWirer: View {
           menuBarController.updateIcon()
         }
       }
+  }
+}
+
+/// Pure mapping from a classifier-load outcome to what `WisprBootstrapper`
+/// should log, count, and alert. Colocated with the sole caller
+/// (`prewarmOutputClassifierIfNeeded`); stateless and dependency-free (no
+/// `TelemetryService`/`SentryBreadcrumb` import) so the outcome→emission
+/// decision — the actual alert-dedup contract — is independently unit-testable
+/// without touching Sentry or PostHog. #1452.
+struct OutputClassifierEmissionPolicy: Equatable {
+  let logMessage: String?
+  let postHogErrorCategory: String?
+  let sentryReason: OutputClassifierDisabledReason?
+  /// True only when this call actually attempted a load (so `elapsedMs` is a
+  /// real, meaningful duration) — false for suppressed repeats, which measure
+  /// nothing because no load was attempted. Kept as an explicit field rather
+  /// than inferring it from `sentryReason == nil`, which is also nil for
+  /// `.failedRetryable` (a real attempt that just isn't alert-worthy).
+  let attemptedRealLoad: Bool
+
+  static func forOutcome(_ outcome: OutputClassifierAttemptOutcome) -> Self {
+    switch outcome {
+    case .skippedAlreadyReady, .skippedLoadInProgress:
+      return .init(
+        logMessage: nil, postHogErrorCategory: nil, sentryReason: nil, attemptedRealLoad: false)
+    case .succeeded:
+      return .init(
+        logMessage: "[OutputClassifier] preWarm complete", postHogErrorCategory: nil,
+        sentryReason: nil, attemptedRealLoad: true)
+    case .skippedPermanentlyDisabled(let reason):
+      // Suppressed repeat: counted (unit = "provider-triggered observation of an
+      // already-disabled classifier"), never re-alerted — this IS the fix.
+      return .init(
+        logMessage: nil, postHogErrorCategory: "suppressed_repeat:\(reason.rawValue)",
+        sentryReason: nil, attemptedRealLoad: false)
+    case .failedFirstTime(let reason):
+      return .init(
+        logMessage: "[OutputClassifier] preWarm failed reason=\(reason.rawValue) — fail open",
+        postHogErrorCategory: "attempted_load:\(reason.rawValue)", sentryReason: reason,
+        attemptedRealLoad: true)
+    case .failedRetryable(let category):
+      // Not the classifier's fault (cancellation / unknown transient error) — counted,
+      // never alerted, and the holder itself already allows a later retry.
+      return .init(
+        logMessage: nil, postHogErrorCategory: "retryable:\(category)", sentryReason: nil,
+        attemptedRealLoad: true)
+    }
   }
 }

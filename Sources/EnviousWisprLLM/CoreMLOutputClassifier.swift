@@ -54,15 +54,26 @@ public actor CoreMLOutputClassifier: OutputClassifierProtocol {
         contractURL: contractURL,
         tokenizerJSONURL: tokenizerJSON,
         tokenizerConfigURL: tokenizerConfig)
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw OutputClassifierError.disabled(.contractHashMismatch)
     }
-    let contract = try TokenizerContract.load(from: contractURL)
+    let contract: TokenizerContract
+    do {
+      contract = try TokenizerContract.load(from: contractURL)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw OutputClassifierError.disabled(.contractHashMismatch)
+    }
 
     // 3. Tokenizer via the public local-folder API (NOT the internal AutoTokenizer).
     let tokenizer: TokenizerWrapper
     do {
       tokenizer = try await AutoTokenizerWrapper.from(modelFolder: tokenizerFolder, strict: true)
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw OutputClassifierError.disabled(.tokenizerLoadFailed)
     }
@@ -90,6 +101,8 @@ public actor CoreMLOutputClassifier: OutputClassifierProtocol {
       }
     } catch let error as OutputClassifierError {
       throw error
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw OutputClassifierError.disabled(.modelLoadFailed)
     }

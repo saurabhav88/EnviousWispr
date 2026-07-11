@@ -69,6 +69,37 @@ import Testing
     }
   }
 
+  @Test(
+    "malformed contract JSON never leaks a raw decoding error out of CoreMLOutputClassifier.load (#1452)"
+  )
+  func malformedContractSurfacesAsClassifierError() async throws {
+    // Minimal resourceURL layout CoreMLOutputClassifier.load expects: only the
+    // tokenizer-folder files matter here — the malformed contract fails before
+    // the model-load steps are ever reached.
+    let resourceURL = FileManager.default.temporaryDirectory.appending(
+      path: "output-classifier-malformed-contract-\(UUID().uuidString)")
+    let tokenizerFolder = resourceURL.appending(
+      path: OutputClassifierManifest.tokenizerFolderName)
+    try FileManager.default.createDirectory(
+      at: tokenizerFolder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: resourceURL) }
+
+    try Data("not valid json".utf8).write(
+      to: tokenizerFolder.appending(path: OutputClassifierManifest.contractFileName))
+    try Data().write(to: tokenizerFolder.appending(path: "tokenizer.json"))
+    try Data().write(to: tokenizerFolder.appending(path: "tokenizer_config.json"))
+
+    do {
+      _ = try await CoreMLOutputClassifier.load(resourceURL: resourceURL)
+      Issue.record("expected OutputClassifierError.disabled(.contractHashMismatch), got success")
+    } catch let error as OutputClassifierError {
+      #expect(error.reason == .contractHashMismatch)
+    } catch {
+      Issue.record(
+        "expected OutputClassifierError.disabled(.contractHashMismatch), got raw \(error)")
+    }
+  }
+
   @Test("committed .mlpackage combined SHA matches the manifest constant")
   func mlpackageDigestMatchesManifest() throws {
     let pkg = OutputClassifierTestPaths.mlpackage
