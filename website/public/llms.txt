@@ -1,16 +1,17 @@
 # EnviousWispr
 
-> The fastest voice-to-text on macOS. Hold a hotkey, speak, release. Polished text lands on your clipboard or pastes directly. Runs entirely on-device with Parakeet (English) or WhisperKit (multilingual). No cloud, no account, no subscription. Free download.
+> Free, private voice-to-text for macOS. Hold a hotkey, speak, release. Polished text lands on your clipboard or pastes directly. Transcription runs on-device with Parakeet (25 European languages) or WhisperKit (99 languages). Optional AI polish can stay on-device with EG-1, Apple Intelligence, or Ollama; OpenAI and Gemini are optional bring-your-own-key cloud providers. No account, no subscription. Free download.
 
 Maker: Envious Labs LLC (Connecticut, USA). Founder: Saurabh Vaish.
 License: GNU General Public License v3 (GPLv3, open source on GitHub).
 Platform: macOS 14 (Sonoma) or later, Apple Silicon only.
-Last-updated: 2026-06-06
+Last-updated: 2026-07-10
 
 ## Product
 
 - [How it works](https://enviouswispr.com/how-it-works/): The end-to-end pipeline: hotkey hold, audio capture, on-device ASR, optional LLM polish, clipboard or paste-to-app delivery.
 - [Homepage](https://enviouswispr.com/): Download, screenshots, core value proposition, system requirements (Apple Silicon, macOS 14+).
+- [Best dictation apps for Mac](https://enviouswispr.com/compare/best-dictation-apps-for-mac/): A practical 2026 guide to six Mac dictation options, with honest picks by workflow.
 - [Compare to alternatives](https://enviouswispr.com/compare/): Index of comparison pages vs WisprFlow, Superwhisper, Apple Dictation, Dragon, MacWhisper, Otter.ai, and others.
 
 ## Comparisons
@@ -34,12 +35,14 @@ Last-updated: 2026-06-06
 - [Dictate in a whisper: soft and quiet speech](https://enviouswispr.com/blog/dictate-in-a-whisper-soft-speech/): Capturing quiet, whispered, and far-from-the-mic speech so you can dictate at night or in a shared office without raising your voice.
 - [Say it, get it formatted: dates, numbers, emails](https://enviouswispr.com/blog/spoken-text-formatting-dates-numbers-emails/): On-device conversion of spoken numbers, dates, times, money, percentages, phone numbers, emails, and web addresses into typed form, before any AI step.
 - [Speaking emoji in your dictation](https://enviouswispr.com/blog/speak-emoji-dictation/): Say "thumbs up emoji" to get the glyph; trigger-word based, 1,500+ emoji, runs on-device, never converts a bare word by accident.
+- [Dictate for a full hour](https://enviouswispr.com/blog/you-can-now-dictate-for-a-full-hour/): How EnviousWispr handles a single hour-long dictation on-device, with a warning before the limit and no lost transcript at the stop.
 
 ## Privacy and architecture
 
 - [On-device vs cloud dictation privacy](https://enviouswispr.com/blog/on-device-vs-cloud-dictation-privacy/): What each architecture does with your voice data and what that means for privacy.
 - [macOS dictation, offline and private](https://enviouswispr.com/blog/macos-dictation-offline-private/): How offline dictation works and why it matters.
 - [Voice coding on macOS without the cloud](https://enviouswispr.com/blog/voice-coding-macos-without-cloud/): Dictating code locally without sending to a remote server.
+- [Engineering small models for on-device dictation polish](https://enviouswispr.com/blog/on-device-dictation-polishing-small-models/): Benchmark-backed research on the reliability layers behind local dictation cleanup and the path to EG-1.
 
 ## Use cases
 
@@ -48,7 +51,6 @@ Last-updated: 2026-06-06
 - [Dictation for developers: code reviews and PRs](https://enviouswispr.com/blog/dictation-for-developers-code-reviews/): PR descriptions and review comments by voice.
 - [Dictation for writers: skip the blank page](https://enviouswispr.com/blog/dictation-for-writers-skip-blank-page/): First-draft workflow for writers.
 - [Voice input for RSI: keyboard-free workflow](https://enviouswispr.com/blog/voice-input-rsi-keyboard-free-workflow/): Accessibility and hands-free typing.
-- [Hands-free typing when a toddler climbs you](https://enviouswispr.com/blog/hands-free-typing-toddler-climbs-you/): Parent-friendly use case.
 - [Dictation for parents who type one-handed](https://enviouswispr.com/blog/dictation-parents-type-one-handed/): One-handed parenting workflow.
 - [Dictation for remote workers tired of typing](https://enviouswispr.com/blog/dictation-remote-workers-tired-of-typing/): Remote work fatigue.
 - [Switched typing to dictating git commits](https://enviouswispr.com/blog/switched-typing-to-dictating-git-commits/): Git commit message workflow.
@@ -64,7 +66,7 @@ Last-updated: 2026-06-06
 
 ## Behind the scenes
 
-- [Building commercial software solo with Claude Code](https://enviouswispr.com/blog/building-commercial-software-solo-with-claude-code/): How the app is built (one founder + Claude Code).
+- [The state of our solo Claude Code system](https://enviouswispr.com/blog/claude-code-system-june-2026/): A June 2026 update on how one founder builds and validates EnviousWispr with Claude Code.
 - [Moving Whisper off the Neural Engine](https://enviouswispr.com/blog/whisperkit-neural-engine-to-gpu/): Why we moved the Whisper-based engine from the Neural Engine to the GPU, with cold-start measurements (about 109 seconds down to about 13).
 - [Welcome to EnviousWispr](https://enviouswispr.com/blog/welcome-to-enviouswispr/): Launch post.
 
