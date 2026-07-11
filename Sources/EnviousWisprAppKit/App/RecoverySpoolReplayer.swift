@@ -58,6 +58,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// version, not the terms — recovery promises normal-quality, not byte-exact).
   private let currentVocabulary:
     @MainActor () -> (corrector: CorrectorVocabulary, polish: PolishVocabulary)
+  private let onCleanupFinished: @Sendable (String) -> Void
 
   init(
     asrManager: any ASRManagerInterface,
@@ -68,6 +69,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     keychainManager: KeychainManager,
     outputClassifierHolder: OutputClassifierHolder,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
+    onCleanupFinished: @escaping @Sendable (String) -> Void = { _ in },
     currentVocabulary: @escaping @MainActor () -> (
       corrector: CorrectorVocabulary, polish: PolishVocabulary
     )
@@ -80,6 +82,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     self.keychainManager = keychainManager
     self.outputClassifierHolder = outputClassifierHolder
     self.egOneRuntime = egOneRuntime
+    self.onCleanupFinished = onCleanupFinished
     self.currentVocabulary = currentVocabulary
   }
 
@@ -127,7 +130,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     }.value
     if isAborted() { return .aborted }
     guard let keyData else {
-      return fail(id, spoolStore: spoolStore, reason: "decrypt", category: .recoveryDecryptFailed)
+      return await fail(
+        id, spoolStore: spoolStore, reason: "decrypt", category: .recoveryDecryptFailed)
     }
 
     // Decrypt + reconstruct the valid prefix off the MainActor (heavy for a long
@@ -138,7 +142,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     }.value
     if isAborted() { return .aborted }
     guard let recovered, !recovered.samples.isEmpty else {
-      return fail(id, spoolStore: spoolStore, reason: "decrypt", category: .recoveryDecryptFailed)
+      return await fail(
+        id, spoolStore: spoolStore, reason: "decrypt", category: .recoveryDecryptFailed)
     }
 
     // Transcribe on the shared engine (batch). The marker already covers warm-up.
@@ -159,7 +164,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // Discard hard-resets the engine, which can throw here — that's an abort,
       // not a recovery failure (don't delete/log; the coordinator owns cleanup).
       if isAborted() { return .aborted }
-      return fail(
+      return await fail(
         id, spoolStore: spoolStore, reason: "transcribe", category: .recoveryTranscribeFailed)
     }
     // Discard during the model load: bail BEFORE the expensive batch transcribe.
@@ -171,12 +176,13 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // A Discard-driven engine reset kills the in-flight transcribe and surfaces
       // here as a throw — treat it as an abort (the user discarded), not a failure.
       if isAborted() { return .aborted }
-      return fail(
+      return await fail(
         id, spoolStore: spoolStore, reason: "transcribe", category: .recoveryTranscribeFailed)
     }
     if isAborted() { return .aborted }
     guard !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      return fail(id, spoolStore: spoolStore, reason: "empty", category: .recoveryTranscribeFailed)
+      return await fail(
+        id, spoolStore: spoolStore, reason: "empty", category: .recoveryTranscribeFailed)
     }
 
     // Polish under the recording's record-time settings (raw-fallback floor
@@ -242,7 +248,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   private func fail(
     _ id: String, spoolStore: RecoverySpoolStore, reason: String,
     category: SentryBreadcrumb.ErrorCategory
-  ) -> RecoveryReplayOutcome {
+  ) async -> RecoveryReplayOutcome {
     cleanUp(id, spoolStore: spoolStore)
     SentryBreadcrumb.captureError(
       RecoveryReplayError.failed(reason), category: category, stage: "recovery")
@@ -254,7 +260,14 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   private func cleanUp(_ id: String, spoolStore: RecoverySpoolStore) {
     try? spoolStore.delete(recoverySessionID: id)
     let keyStore = self.keyStore
-    Task.detached(priority: .utility) { try? keyStore.delete(for: id) }
+    let onCleanupFinished = self.onCleanupFinished
+    // A plain Task inherits MainActor and would run synchronous key-store I/O on
+    // the UI executor. A task group adds no ownership value for one operation,
+    // and @concurrent cannot annotate the dependency's synchronous API.
+    Task.detached(priority: .utility) {
+      try? keyStore.delete(for: id)
+      onCleanupFinished(id)
+    }
   }
 
   private static func transcriptionOptions(for settings: RecordingSettingsSnapshot?)

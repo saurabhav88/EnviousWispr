@@ -133,16 +133,6 @@ import Testing
     try bytes.write(to: store.appendingPathComponent("eg-1-v1.gguf"))
   }
 
-  /// Deterministic settle for ABSENCE assertions: a round-trip through the
-  /// controller actor drains work enqueued before it (actor FIFO), then
-  /// main-actor yields drain the fire-and-forget activation task's
-  /// completion hops. No wall clock.
-  @MainActor
-  private func settle(_ adapter: EGOneDeliveryAdapter) async {
-    _ = await adapter.isAdmitted()
-    for _ in 0..<20 { await Task.yield() }
-  }
-
   @MainActor
   @Test func automaticReplacementAdmissionStartsEGOneWhenEffectivelyActive() async throws {
     let h = try makeHarness(egOneActive: true)
@@ -150,7 +140,7 @@ import Testing
     try stageValidShards(h.registration)
     #expect(await h.adapter.adoptIfPresent())
 
-    h.runtime.activateAfterAutomaticReplacementIfNeeded()
+    _ = try #require(h.runtime.activateAfterAutomaticReplacementIfNeeded())
 
     let event = await h.signal.next { event in
       if case .healthChanged(_, _, "server_binary_missing") = event { return true }
@@ -169,8 +159,13 @@ import Testing
     try stageValidShards(h.registration)
     #expect(await h.adapter.adoptIfPresent())
 
-    h.runtime.activateAfterAutomaticReplacementIfNeeded()
-    await settle(h.adapter)
+    let activation = h.runtime.activateAfterAutomaticReplacementIfNeeded()
+    #expect(activation == nil)
+
+    _ = await h.signal.next { event in
+      if case .healthChanged(_, "yellow", "not_started") = event { return true }
+      return false
+    }
 
     #expect(h.runtime.installState == .installed(version: "v2-sharded"))
     #expect(!h.signal.sawServerBinaryMissing)
@@ -188,8 +183,13 @@ import Testing
     try stageValidShards(h.registration)
     #expect(await h.adapter.adoptIfPresent())
 
-    h.runtime.activateAfterAutomaticReplacementIfNeeded()
-    await settle(h.adapter)
+    let activation = h.runtime.activateAfterAutomaticReplacementIfNeeded()
+    #expect(activation == nil)
+
+    _ = await h.signal.next { event in
+      if case .healthChanged(_, "yellow", "not_started") = event { return true }
+      return false
+    }
 
     #expect(h.runtime.installState == .installed(version: "v2-sharded"))
     #expect(!h.signal.sawServerBinaryMissing)
@@ -247,9 +247,9 @@ import Testing
     await coordinator.runLaunch()
 
     h.provider.isEGOneActive = false
-    h.runtime.activateAfterAutomaticReplacementIfNeeded()
-    await settle(h.adapter)
+    let activation = h.runtime.activateAfterAutomaticReplacementIfNeeded()
 
+    #expect(activation == nil)
     #expect(!h.signal.sawServerBinaryMissing)
   }
 
@@ -265,8 +265,8 @@ import Testing
     defer { h.cleanup() }
     // No shards staged: adoption cannot admit and must not fetch.
 
-    h.runtime.activateAfterAutomaticReplacementIfNeeded()
-    await settle(h.adapter)
+    let activation = try #require(h.runtime.activateAfterAutomaticReplacementIfNeeded())
+    await activation.value
 
     #expect(h.runtime.installState == .notInstalled)
     #expect(!h.signal.sawServerBinaryMissing)

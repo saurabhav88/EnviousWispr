@@ -3,9 +3,14 @@ name: Main Post-Merge Check
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/main-post-merge.yml'
+  workflow_dispatch:
 
 concurrency:
-  group: main-post-merge
+  group: main-post-merge-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 # Shared Xcode-engine constants (#913 PR3).
@@ -21,10 +26,36 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Checkout
+      - name: Checkout PR head
+        if: github.event_name == 'pull_request'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Checkout push or dispatch ref
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 2
+
+      - name: Verify checked-out revision
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          EXPECTED_SHA="$GITHUB_SHA"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            EXPECTED_SHA="$PR_HEAD_SHA"
+          fi
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Checked out $ACTUAL_SHA, expected $EXPECTED_SHA"
+            exit 1
+          fi
+          echo "==> Running workflow revision $ACTUAL_SHA"
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
@@ -34,9 +65,29 @@ jobs:
       - name: Detect code changes
         id: changes
         env:
+          EVENT_NAME: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
-        run: scripts/ci/classify-changes.sh --push-diff "$BEFORE" "$AFTER"
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            push)
+              scripts/ci/classify-changes.sh --push-diff "$BEFORE" "$AFTER"
+              ;;
+            pull_request)
+              scripts/ci/classify-changes.sh "$BASE_SHA" "$HEAD_SHA"
+              ;;
+            workflow_dispatch)
+              echo "needs_build=true" >> "$GITHUB_OUTPUT"
+              echo "==> Manual diagnostic dispatch requires the full Xcode matrix"
+              ;;
+            *)
+              echo "::error::Unsupported event: $EVENT_NAME"
+              exit 1
+              ;;
+          esac
 
       - name: Verify environment
         if: steps.changes.outputs.needs_build == 'true'
@@ -176,6 +227,7 @@ jobs:
       # `build` step above, so the shippable release artifact stays non-testable
       # and fully optimized. (Mirrors the old `swift test -c release` behavior.)
       - name: Run logic tests (release config, Xcode)
+        id: release-tests
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
@@ -186,10 +238,11 @@ jobs:
             -configuration Release \
             -derivedDataPath "$DERIVED_DATA_PATH" \
             -destination 'platform=macOS,arch=arm64' \
+            -resultBundlePath "$GITHUB_WORKSPACE/xcode-test-release.xcresult" \
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
             VALID_ARCHS=arm64 \
-            ENABLE_TESTABILITY=YES | tee xcode-test-release.log
+            ENABLE_TESTABILITY=YES 2>&1 | tee xcode-test-release.log
 
           # Require a positive executed-test count (see pr-check.yml rationale).
           TESTS_RUN=$(grep -oE "Test run with [0-9]+ test" xcode-test-release.log | grep -oE "[0-9]+" | awk '{s+=$1} END{print s+0}')
@@ -199,11 +252,49 @@ jobs:
           fi
           echo "==> Xcode executed $TESTS_RUN tests (release)"
 
+      - name: Summarize release-test failure
+        if: failure() && steps.release-tests.outcome == 'failure'
+        run: |
+          RESULT_BUNDLE="$GITHUB_WORKSPACE/xcode-test-release.xcresult"
+          if [ ! -d "$RESULT_BUNDLE" ]; then
+            echo "::warning::Release-test xcresult was not created"
+            exit 0
+          fi
+
+          echo "::group::xcresult build summary"
+          xcrun xcresulttool get build-results \
+            --path "$RESULT_BUNDLE" \
+            --compact || echo "::warning::Build summary unavailable; raw xcresult will be uploaded"
+          echo "::endgroup::"
+
+          echo "::group::xcresult test summary"
+          xcrun xcresulttool get test-results summary \
+            --path "$RESULT_BUNDLE" \
+            --compact || echo "::warning::Test summary unavailable; raw xcresult will be uploaded"
+          echo "::endgroup::"
+
+      - name: Upload release-test failure diagnostics
+        if: failure() && steps.release-tests.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: main-release-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            xcode-test-release.log
+            xcode-test-release.xcresult
+          if-no-files-found: warn
+          retention-days: 7
+
       # Save only when the build/tests succeeded and the restore was not an exact
       # hit. The primary key carries github.sha, so a first run for this commit
-      # always saves; a rerun of the same commit exact-hits and skips.
+      # always saves; a rerun of the same commit exact-hits and skips. PR and
+      # manual diagnostic runs remain restore-only.
       - name: Save Xcode build cache
-        if: steps.changes.outputs.needs_build == 'true' && success() && steps.xcode-cache.outputs.cache-hit != 'true'
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          steps.changes.outputs.needs_build == 'true' &&
+          success() &&
+          steps.xcode-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
@@ -216,9 +307,16 @@ jobs:
         if: always()
         env:
           NEEDS_BUILD: ${{ steps.changes.outputs.needs_build }}
+          JOB_STATUS: ${{ job.status }}
         run: |
-          if [ "$NEEDS_BUILD" != "true" ]; then
-            echo "Non-code push (appcast, docs, etc.) — no build needed"
-          else
-            echo "Post-merge full validation passed"
-          fi
+          case "$JOB_STATUS:$NEEDS_BUILD" in
+            success:true)
+              echo "Full validation passed"
+              ;;
+            success:false)
+              echo "Change classified as non-code; full Xcode validation intentionally skipped"
+              ;;
+            *)
+              echo "Full validation did not pass: job_status=$JOB_STATUS needs_build=${NEEDS_BUILD:-unknown}"
+              ;;
+          esac
