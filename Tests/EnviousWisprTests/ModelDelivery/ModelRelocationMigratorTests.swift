@@ -271,6 +271,60 @@ import Testing
     #expect(gate.isAdmitted())
   }
 
+  /// Relocation must remove only what it actually reproduced. The old directory
+  /// can hold things that are not ours — a foreign model, a user's own file —
+  /// and deleting the whole directory would take them with it. (Codex PR-1
+  /// review r3 P1.)
+  @Test func relocationNeverDeletesUnrelatedFilesInTheOldDirectory() async throws {
+    let dirs = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: dirs.old, path: f.path) }
+    // Something of the user's, sitting in the same folder. Not ours, never
+    // validated, never copied.
+    let bystander = dirs.old.appendingPathComponent("someone-elses-model.gguf")
+    try write(Data("not ours".utf8), under: dirs.old, path: "someone-elses-model.gguf")
+    let p = try plan(files: files, dirs: dirs)
+
+    let outcome = await ModelRelocationMigrator().migrate(p)
+
+    #expect(outcome == .relocated)
+    #expect(exists(bystander), "a file we never validated must survive relocation")
+    // What we DID reproduce is gone from the old home.
+    for f in files {
+      #expect(!exists(dirs.old.appendingPathComponent(f.path)))
+    }
+    // The directory itself survives precisely because the bystander is still in it.
+    #expect(exists(dirs.old))
+  }
+
+  /// A retired downloader's scratch files are stranded the moment the install
+  /// directory moves — nothing will ever look in the old home again. They must be
+  /// swept, including on the trusted-legacy path, which is exactly the case where
+  /// an interrupted multi-GB `.partial` exists. (Codex PR-1 review r3 P2 / #1363.)
+  @Test func staleDownloadSidecarsAreSweptFromTheOldHome() async throws {
+    let dirs = try makeDirs()
+    try write(Self.legacyBytes, under: dirs.old, path: "eg-1-v1.gguf")
+    // An interrupted download from the retired store, plus its resume file.
+    try write(Data(repeating: 0x7, count: 4096), under: dirs.old, path: "eg-1-v1.gguf.partial")
+    try write(Data("{}".utf8), under: dirs.old, path: "eg-1-v1.gguf.resume.json")
+    let p = ModelRelocationMigrator.RelocationPlan(
+      manifest: try ManifestFixture.manifest(files: ManifestFixture.smallFiles),
+      oldLocations: [dirs.old],
+      destination: dirs.new,
+      metadataDirectory: dirs.metadata,
+      trustedLegacyArtifacts: [Self.legacyArtifact],
+      staleSidecarSuffixes: [".partial", ".resume.json"])
+
+    let outcome = await ModelRelocationMigrator().migrate(p)
+
+    #expect(outcome == .trustedLegacyPending(dirs.old.appendingPathComponent("eg-1-v1.gguf")))
+    #expect(!exists(dirs.old.appendingPathComponent("eg-1-v1.gguf.partial")), "partial reclaimed")
+    #expect(
+      !exists(dirs.old.appendingPathComponent("eg-1-v1.gguf.resume.json")), "resume reclaimed")
+    // The MODEL is not scratch: it survives, awaiting its verified replacement.
+    #expect(exists(dirs.old.appendingPathComponent("eg-1-v1.gguf")))
+  }
+
   // MARK: - Unrecognized (never ours, never touched)
 
   /// Bytes that match neither the current manifest nor a layout we shipped are

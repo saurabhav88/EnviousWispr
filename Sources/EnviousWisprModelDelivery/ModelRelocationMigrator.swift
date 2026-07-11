@@ -70,19 +70,27 @@ public struct ModelRelocationMigrator: Sendable {
     /// same-named file we did not ship is a stranger's, and strangers are never
     /// deleted (the provenance rule — Codex PR-1 review P2).
     public let trustedLegacyArtifacts: [TrustedLegacyArtifact]
+    /// Filename suffixes of a retired downloader's scratch files (e.g.
+    /// `[".partial", ".resume.json"]`). Swept from the old locations during
+    /// migration — once the install directory moves, nothing else will ever look
+    /// there again, so an interrupted multi-GB download would be stranded on the
+    /// user's disk forever. NEVER a model suffix: only genuine scratch.
+    public let staleSidecarSuffixes: [String]
 
     public init(
       manifest: DeliveryManifest,
       oldLocations: [URL],
       destination: URL,
       metadataDirectory: URL,
-      trustedLegacyArtifacts: [TrustedLegacyArtifact] = []
+      trustedLegacyArtifacts: [TrustedLegacyArtifact] = [],
+      staleSidecarSuffixes: [String] = []
     ) {
       self.manifest = manifest
       self.oldLocations = oldLocations
       self.destination = destination
       self.metadataDirectory = metadataDirectory
       self.trustedLegacyArtifacts = trustedLegacyArtifacts
+      self.staleSidecarSuffixes = staleSidecarSuffixes
     }
   }
 
@@ -142,6 +150,16 @@ public struct ModelRelocationMigrator: Sendable {
       oldDirectory.standardizedFileURL != plan.destination.standardizedFileURL
     else { return .noop }
 
+    // Stale download sidecars from a retired downloader (an interrupted
+    // multi-GB `.partial` and its resume file) are stranded the moment the
+    // install directory moves: the engine only ever sweeps its CURRENT dir, so
+    // nothing would ever look here again. Left behind, they silently cost the
+    // user gigabytes and can fail the replacement download's disk preflight.
+    // Swept before classification, because the trusted-legacy path returns
+    // early and that is exactly the case where a stranded partial exists.
+    // Never a model file — only the named sidecar suffixes.
+    sweepStaleSidecars(in: oldDirectory, plan: plan)
+
     // A previously-shipped layout we recognize: do NOT move it, do NOT load it,
     // do NOT delete it. Record the token and let the caller replace it.
     if let legacy = await trustedLegacyArtifact(in: oldDirectory, plan: plan) {
@@ -186,8 +204,18 @@ public struct ModelRelocationMigrator: Sendable {
     }
     guard admission.isAdmitted() else { return .unrecognized }
 
-    // Only now is the old home provably redundant.
-    try? fm.removeItem(at: oldDirectory)
+    // Only now is the old copy provably redundant — and only the parts of it we
+    // actually reproduced. Deleting the whole directory would take anything ELSE
+    // in it with us: a foreign model, a user's own file, something we never
+    // validated and never copied. We do not delete what we cannot account for
+    // (Codex PR-1 review r3 P1).
+    for root in CacheAdmission.componentRoots(of: plan.manifest).sorted() {
+      try? fm.removeItem(at: oldDirectory.appendingPathComponent(root))
+    }
+    // The directory itself goes only if nothing of the user's remains in it.
+    if let remaining = try? fm.contentsOfDirectory(atPath: oldDirectory.path), remaining.isEmpty {
+      try? fm.removeItem(at: oldDirectory)
+    }
     return .relocated
   }
 
@@ -239,6 +267,22 @@ public struct ModelRelocationMigrator: Sendable {
   }
 
   // MARK: - Internals
+
+  /// Delete a retired downloader's scratch files from an old location.
+  ///
+  /// Strictly suffix-matched, and the suffixes are scratch-only — a model file
+  /// is never a candidate. This is the one thing we DO delete from the old home
+  /// without proving a digest, because a `.partial` is by definition an
+  /// incomplete artifact that nothing can load, and leaving it costs the user
+  /// gigabytes that no future code path will ever reclaim.
+  private func sweepStaleSidecars(in directory: URL, plan: RelocationPlan) {
+    guard !plan.staleSidecarSuffixes.isEmpty,
+      let entries = try? FileManager.default.contentsOfDirectory(atPath: directory.path)
+    else { return }
+    for entry in entries where plan.staleSidecarSuffixes.contains(where: { entry.hasSuffix($0) }) {
+      try? FileManager.default.removeItem(at: directory.appendingPathComponent(entry))
+    }
+  }
 
   /// A previously-shipped artifact in `directory` that we can PROVE is ours.
   ///

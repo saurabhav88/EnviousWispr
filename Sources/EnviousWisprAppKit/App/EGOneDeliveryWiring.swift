@@ -76,7 +76,15 @@ enum EGOneDeliveryWiring {
         oldLocations: [legacyDirectory],
         destination: installDirectory,
         metadataDirectory: metadataDirectory,
-        trustedLegacyArtifacts: trustedLegacyArtifacts))
+        trustedLegacyArtifacts: trustedLegacyArtifacts,
+        // The retired EGOneModelStore downloaded IN PLACE, leaving a `.partial`
+        // (up to ~2.9 GB) and a resume sidecar in PolishModels. The adapter's own
+        // sweep only ever looks at its CURRENT install dir, so the moment that
+        // dir moves to Models/eg-1 nothing would ever reclaim them — a user
+        // interrupted mid-download would carry those gigabytes forever, and the
+        // replacement download's disk preflight could fail because of them.
+        // (Codex PR-1 review r3; this is the leftover half of #1363.)
+        staleSidecarSuffixes: [".partial", ".resume.json"]))
   }
 
   /// Launch transition. Relocation runs BEFORE EG-1 activates, so nothing loads
