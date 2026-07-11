@@ -62,15 +62,24 @@ enum EGOneDeliveryWiring {
     let legacyDirectory = appSupport.appendingPathComponent(
       "EnviousWispr/PolishModels", isDirectory: true)
 
-    // With the kill switch off, nothing may MUTATE model bytes — but the model
-    // must still LOAD, so we read from wherever the bytes already are. Pointing a
+    // With the kill switch off, nothing may MUTATE model bytes — but the model must
+    // still LOAD, so we read from wherever a usable copy actually is. Pointing a
     // disabled build at the owned home would leave an unmigrated user staring at
     // "not installed" while their model sat untouched in the old one: that is a
     // second failure, not a rollback.
+    //
+    // Pick by ADMISSION, never by directory existence. A relocation that failed
+    // partway leaves a half-populated `Models/eg-1` beside a perfectly good
+    // `PolishModels`, and "the folder is there" would choose the broken one —
+    // breaking EG-1 in exactly the scenario the kill switch exists to rescue
+    // (Codex PR-1 review r10). Falls back to the legacy home when neither is
+    // admitted, so a disabled build still reads from where the bytes were.
     let installDirectory: URL = {
       guard !EGOneDeliveryAdapter.isDeliveryEnabled() else { return ownedDirectory }
-      return FileManager.default.fileExists(atPath: ownedDirectory.path)
-        ? ownedDirectory : legacyDirectory
+      return ModelRelocationMigrator.admittedLocation(
+        manifest: manifest,
+        candidates: [ownedDirectory, legacyDirectory],
+        metadataDirectory: metadataDirectory) ?? legacyDirectory
     }()
 
     let registration = DeliveryRegistration(

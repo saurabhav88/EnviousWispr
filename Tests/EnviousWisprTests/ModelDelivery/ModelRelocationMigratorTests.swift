@@ -422,6 +422,40 @@ import Testing
     #expect(migrator.pendingLegacyArtifact(p) == nil)
   }
 
+  /// Existence is not validity. A relocation that failed partway leaves a
+  /// half-populated destination beside an intact source; a disabled (kill-switched)
+  /// build must read from the ADMITTED one, not from whichever directory happens to
+  /// exist — otherwise the rollback breaks EG-1 in exactly the scenario it exists to
+  /// rescue. (Codex PR-1 review r10.)
+  @Test func admittedLocationIgnoresAHalfPopulatedDirectory() async throws {
+    let dirs = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    // Intact, admitted copy in the OLD home.
+    for f in files { try write(f.content, under: dirs.old, path: f.path) }
+    let manifest = try ManifestFixture.manifest(files: files)
+    let oldGate = CacheAdmission(
+      manifest: manifest, installDirectory: dirs.old, metadataDirectory: dirs.metadata)
+    let validation = await oldGate.validateExistingCache()
+    try oldGate.promoteAndAdmit(
+      stagedComponents: [], stagingDirectory: dirs.old,
+      untouchedComponents: validation.verifiedComponents)
+    #expect(oldGate.isAdmitted())
+
+    // The new home EXISTS but holds only part of the model — what a relocation that
+    // died halfway leaves behind.
+    try write(files[0].content, under: dirs.new, path: files[0].path)
+    #expect(exists(dirs.new))
+
+    let chosen = ModelRelocationMigrator.admittedLocation(
+      manifest: manifest,
+      candidates: [dirs.new, dirs.old],
+      metadataDirectory: dirs.metadata)
+
+    #expect(
+      chosen == dirs.old,
+      "must choose the admitted copy, not the directory that merely exists")
+  }
+
   // MARK: - Unrecognized (never ours, never touched)
 
   /// Bytes that match neither the current manifest nor a layout we shipped are

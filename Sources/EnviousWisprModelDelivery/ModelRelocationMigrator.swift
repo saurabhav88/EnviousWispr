@@ -144,6 +144,29 @@ public struct ModelRelocationMigrator: Sendable {
 
   public init() {}
 
+  /// The first candidate directory that currently holds an ADMITTED copy of this
+  /// manifest — or nil when none does.
+  ///
+  /// Existence is not validity. A relocation that failed partway leaves a
+  /// half-populated destination directory sitting next to a perfectly good source,
+  /// and a caller that picks by "does the folder exist" would choose the broken one
+  /// (Codex PR-1 review r10). This is what the delivery kill switch consults to
+  /// decide where a no-mutation build should READ from, so it has to be the real
+  /// admission check — cheap (marker + size + mtime, no rehash) and synchronous.
+  public static func admittedLocation(
+    manifest: DeliveryManifest,
+    candidates: [URL],
+    metadataDirectory: URL
+  ) -> URL? {
+    candidates.first { candidate in
+      CacheAdmission(
+        manifest: manifest,
+        installDirectory: candidate,
+        metadataDirectory: metadataDirectory
+      ).isAdmitted()
+    }
+  }
+
   // MARK: - Migration (runs inside the migration latch, before any engine loads)
 
   /// Classify and, where possible, relocate. Filesystem only — never a network
