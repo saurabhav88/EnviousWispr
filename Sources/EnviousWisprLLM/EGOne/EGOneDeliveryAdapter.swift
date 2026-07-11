@@ -134,6 +134,14 @@ public final class EGOneDeliveryAdapter {
     return await controller.admitIfComplete(registration)
   }
 
+  /// Is the current manifest's set admitted right now? The re-check the legacy
+  /// migration performs immediately before deleting a superseded artifact
+  /// (#1386): a delete is authorized ONLY by CURRENT admission, never by a
+  /// journal phase, a file-presence check, or a stale `.admitted` outcome.
+  public func isAdmitted() async -> Bool {
+    await controller.isAdmitted(registration)
+  }
+
   /// One-shot repair after a cache-only load failure (§16.5); no-op when
   /// disabled.
   public func repair() async -> ModelDeliveryController.DeliveryOutcome {

@@ -168,35 +168,33 @@ public final class WisprBootstrapper {
     // adapter owns the delivery manifest (fetch/install/content identity).
     let egOneManifest = try? EGOneManifest.loadBundled()
     let egOneServerBinaryURL = Bundle.main.url(forResource: "llama-server", withExtension: nil)
-    var egOneAdapter: EGOneDeliveryAdapter?
-    if let deliveryManifest = try? DeliveryManifest.loadBundled(resource: "eg1-delivery-manifest") {
-      let appSupport = FileManager.default.urls(
-        for: .applicationSupportDirectory, in: .userDomainMask)[0]
-      let registration = DeliveryRegistration(
-        manifest: deliveryManifest,
-        // The existing user's install dir — unchanged, so a byte-correct file
-        // is adopted in place with zero re-download (#1348 Decision C/F).
-        installDirectory: appSupport.appendingPathComponent(
-          "EnviousWispr/PolishModels", isDirectory: true),
-        metadataDirectory: appSupport.appendingPathComponent(
-          "EnviousWispr/ModelDelivery", isDirectory: true))
-      egOneAdapter = EGOneDeliveryAdapter(
-        controller: modelDelivery.controller,
-        registration: registration,
-        version: egOneManifest?.version ?? deliveryManifest.identity.revision)
+    // Where EG-1's bytes live and when its launch transition runs: owned by
+    // `EGOneDeliveryWiring` (#1386), not by this composer.
+    let egOneWiring = EGOneDeliveryWiring.wire(
+      controller: modelDelivery.controller,
+      version: egOneManifest?.version,
+      appSupport: FileManager.default.urls(
+        for: .applicationSupportDirectory, in: .userDomainMask)[0])
+    if let egOneWiring {
       // Seed EG-1's first-run telemetry baseline before its first attempt
       // (#1348 §16.2). Session-granularity approximation (same async-Task shape
       // as Parakeet's own baseline); a rare early event stamps first_run=false.
       let delivery = modelDelivery
+      let registration = egOneWiring.registration
       Task { await delivery.recordFirstRunBaseline(for: registration) }
     }
     let egOneRuntime = EGOneRuntime(
-      manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter)
+      manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL,
+      delivery: egOneWiring?.adapter)
     egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
     egOneRuntime.onEvent = EGOneTelemetryBridge.handler
     // Exactly one path sweeps orphans — a detached sweep alongside a spawn
     // would race it and kill the fresh server (Codex r10 P1).
-    if settings.llmProvider == .egOne {
+    if let relocation = egOneWiring?.relocation {
+      EGOneDeliveryWiring.startLaunchTransition(
+        runtime: egOneRuntime, relocation: relocation,
+        providerIsEGOne: settings.llmProvider == .egOne)
+    } else if settings.llmProvider == .egOne {
       egOneRuntime.startIfActiveProvider()
     } else {
       egOneRuntime.sweepStaleServersAtLaunch()

@@ -22,6 +22,11 @@ public protocol EGOneEndpointProviding: AnyObject {
 /// identical states never re-fire).
 public enum EGOneRuntimeEvent: Sendable, Equatable {
   case healthChanged(from: String, to: String, reason: String?)
+  /// The replacement set was admitted, but deleting the superseded legacy
+  /// artifact failed (#1386). Not user-facing and not an error for the user:
+  /// polish works on the new set; the durable token survives and the next
+  /// launch retries the delete. Carries NO path (telemetry privacy boundary).
+  case legacyMigrationCleanupFailed
 }
 
 /// Single owner of the EG-1 inference server and its delivery adapter (#1271,
@@ -75,6 +80,19 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// still needs it.
   public var isPinnedInFlight: (@MainActor () -> Bool)?
   private var removalPending = false
+
+  /// The legacy-layout migration cleanup gate (#1386 PR-1). Held from before the
+  /// automatic `ensureAvailable()` that replaces a previously-shipped layout
+  /// until its legacy artifact is resolved — which is LATER than the controller's
+  /// own single-flight, because that clears when the fetch returns `.admitted`,
+  /// while the delete still lies ahead.
+  ///
+  /// Without this gate: cleanup re-checks admission → the user hits Remove →
+  /// Remove deletes the marker and every new shard → cleanup, already past its
+  /// check, deletes the legacy artifact. Both copies gone. So while the gate is
+  /// held, `removeModel()` defers through the EXISTING `removalPending` path (the
+  /// same deferral a recording already uses) instead of calling `remove`.
+  public private(set) var isMigratingLegacyLayout = false
 
   public let manifest: EGOneManifest?
   private let delivery: EGOneDeliveryAdapter?
@@ -211,7 +229,10 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// (#1271 matrix gap 3; same defer shape as switch-away deactivation).
   public func removeModel() {
     guard let delivery else { return }
-    if isPinnedInFlight?() == true {
+    // Same deferral, two reasons: a recording froze `.egOne` and still needs the
+    // artifact, OR a legacy-layout migration is mid-transition and its cleanup
+    // would otherwise race this delete into a both-copies-gone state (#1386).
+    if isPinnedInFlight?() == true || isMigratingLegacyLayout {
       removalPending = true
       return
     }
@@ -228,6 +249,72 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   public func retryPendingRemoval() {
     guard removalPending else { return }
     removeModel()
+  }
+
+  /// Replace a previously-shipped layout we recognize but can no longer load
+  /// (EG-1's monolithic `eg-1-v1.gguf` vs the current 8-shard set) — #1386 PR-1.
+  ///
+  /// Silent and automatic: the founder-approved policy for a TRUSTED
+  /// app-managed asset (contract § Automatic replacement of installed model
+  /// assets). No click, no prompt. While it runs, polish is simply unavailable
+  /// and dictation falls back to raw text — EG-1 is a limb, and that is the
+  /// Heart & Limbs contract, not a regression.
+  ///
+  /// Ordering is the whole point:
+  ///   fetch → CURRENT-admission re-check → stop server → delete legacy → clear
+  ///   token → release gate.
+  /// The legacy bytes are deleted ONLY after the replacement is admitted, so a
+  /// failed / cancelled / disk-full run leaves them intact for the next launch
+  /// to retry. `cleanUpLegacy` is injected by the composition root (it owns the
+  /// migrator + plan); this runtime owns the GATE and the ORDER.
+  ///
+  /// The caller must NOT hold the migration latch across this — it is a
+  /// multi-GB network transfer, and blocking the speech engines behind a polish
+  /// download would be a self-inflicted heart outage.
+  public func startLegacyLayoutMigration(
+    cleanUpLegacy: @escaping @Sendable () async throws -> Void
+  ) {
+    guard let delivery, !isMigratingLegacyLayout else { return }
+    isMigratingLegacyLayout = true
+    Task {
+      // `defer` owns the release: it runs on EVERY exit — success, throw, or
+      // cancellation. Without it, a throwing delete would strand the gate and
+      // leave Remove disabled for the rest of the process (#1386 Codex r6).
+      defer { isMigratingLegacyLayout = false }
+
+      let outcome = await delivery.ensureAvailable()
+      guard case .admitted = outcome else {
+        // Not admitted: token and legacy bytes both survive untouched; the next
+        // launch retries. Deliberately does NOT run a deferred removal — there
+        // is nothing new to remove, and the legacy copy is not ours to drop.
+        return
+      }
+      // CURRENT admission is the only thing that authorizes the delete — never
+      // the `.admitted` we just read (it can be stale by now), never a
+      // file-presence check.
+      guard await delivery.isAdmitted() else { return }
+
+      // Nothing may hold the old artifact open when it is unlinked.
+      await server.stop()
+
+      do {
+        try await cleanUpLegacy()
+      } catch {
+        // Admitted shards stay usable; legacy bytes stay put; token survives for
+        // a next-launch retry. Do NOT run the deferred removal on this path.
+        onEvent?(.legacyMigrationCleanupFailed)
+        return
+      }
+
+      // A Remove the user pressed during the transition was deferred by the
+      // gate; honor it now, against the newly-admitted shards.
+      if removalPending {
+        isMigratingLegacyLayout = false
+        removeModel()
+        return
+      }
+      if isActiveProvider?() == true { activateAndProbe() }
+    }
   }
 
   /// Monotonic activation token (#1271 Codex r5): ONLY `deactivate()` /

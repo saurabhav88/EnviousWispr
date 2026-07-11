@@ -23,6 +23,13 @@ enum EGOneTelemetryBridge {
           TelemetryService.shared.egOneDownloadEvent(
             name: "health_changed",
             properties: ["from": from, "to": to, "reason": reason ?? "none"])
+        case .legacyMigrationCleanupFailed:
+          // The replacement set IS admitted and polish works; only the delete of
+          // the superseded artifact failed. The next launch retries it from the
+          // durable token, so this is a disk-hygiene signal, not a user-visible
+          // failure. No path is carried (telemetry privacy boundary).
+          TelemetryService.shared.egOneDownloadEvent(
+            name: "legacy_migration_cleanup_failed", properties: [:])
         }
       }
     }
