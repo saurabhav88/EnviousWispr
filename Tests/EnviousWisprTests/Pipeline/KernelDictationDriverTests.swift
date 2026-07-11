@@ -104,6 +104,18 @@ import Testing
     #expect(h.driver.state == .recording)
   }
 
+  @Test("recordingElapsedSeconds passes through the kernel's value")
+  func recordingElapsedSecondsPassesThrough() async throws {
+    let h = makeDriver()
+    #expect(h.driver.recordingElapsedSeconds == nil, "idle → nil, matching the kernel directly")
+
+    try await h.driver.handle(event: .toggleRecording(.testDefault()))
+    await drainUntil { h.kernel.state == .recording }
+
+    #expect(h.driver.recordingElapsedSeconds != nil)
+    #expect(h.driver.recordingElapsedSeconds == h.kernel.recordingElapsedSeconds)
+  }
+
   @Test("handle(.toggleRecording) while recording requests a stop")
   func toggleRecordingWhileActiveStops() async throws {
     let h = makeDriver()

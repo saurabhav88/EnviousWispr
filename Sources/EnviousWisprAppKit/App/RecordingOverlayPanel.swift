@@ -129,6 +129,7 @@ final class RecordingOverlayPanel {
   /// Guards against identical intents to prevent flicker.
   func show(
     intent: OverlayIntent, audioLevelProvider: @escaping () -> Float = { 0 },
+    recordingElapsedProvider: @escaping () -> TimeInterval? = { nil },
     isRecordingLocked: Bool = false
   ) {
     let isRecordingIntent: Bool = if case .recording = intent { true } else { false }
@@ -155,7 +156,9 @@ final class RecordingOverlayPanel {
           .announcement: "Recording started",
           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
         ])
-      show(audioLevelProvider: audioLevelProvider, isRecordingLocked: isRecordingLocked)
+      show(
+        audioLevelProvider: audioLevelProvider, recordingElapsedProvider: recordingElapsedProvider,
+        isRecordingLocked: isRecordingLocked)
     case .processing(let label):
       NSAccessibility.post(
         element: NSApp.mainWindow as Any,
@@ -317,12 +320,17 @@ final class RecordingOverlayPanel {
 
   // MARK: - Legacy API (internal)
 
-  func show(audioLevelProvider: @escaping () -> Float, isRecordingLocked: Bool = false) {
+  func show(
+    audioLevelProvider: @escaping () -> Float,
+    recordingElapsedProvider: @escaping () -> TimeInterval? = { nil },
+    isRecordingLocked: Bool = false
+  ) {
     if panel != nil {
       // A panel already exists (e.g., "Starting..." polishing panel).
       // Transition to recording — mirrors transitionToPolishing() in reverse.
       transitionToRecording(
-        audioLevelProvider: audioLevelProvider, isRecordingLocked: isRecordingLocked)
+        audioLevelProvider: audioLevelProvider, recordingElapsedProvider: recordingElapsedProvider,
+        isRecordingLocked: isRecordingLocked)
       return
     }
     // Cancel any lingering deferred work from a prior session that wasn't
@@ -344,7 +352,9 @@ final class RecordingOverlayPanel {
     let work = DispatchWorkItem { [weak self] in
       guard let self, self.generation == token else { return }
       self.pendingCreateWork = nil
-      self.createPanel(audioLevelProvider: audioLevelProvider, isRecordingLocked: isRecordingLocked)
+      self.createPanel(
+        audioLevelProvider: audioLevelProvider, recordingElapsedProvider: recordingElapsedProvider,
+        isRecordingLocked: isRecordingLocked)
     }
     pendingCreateWork = work
     DispatchQueue.main.async(execute: work)
@@ -373,13 +383,16 @@ final class RecordingOverlayPanel {
   }
 
   private func createPanel(
-    audioLevelProvider: @escaping () -> Float, isRecordingLocked: Bool = false, y: CGFloat? = nil
+    audioLevelProvider: @escaping () -> Float,
+    recordingElapsedProvider: @escaping () -> TimeInterval? = { nil },
+    isRecordingLocked: Bool = false, y: CGFloat? = nil
   ) {
     guard panel == nil else { return }
 
     lockState.isLocked = isRecordingLocked
     let overlayView = RecordingOverlayView(
       audioLevelProvider: audioLevelProvider,
+      recordingElapsedProvider: recordingElapsedProvider,
       lockState: lockState,
       noticeState: noticeState
     )
@@ -633,7 +646,9 @@ final class RecordingOverlayPanel {
   /// Mirrors transitionToPolishing() — tears down the current panel and creates
   /// a recording panel at the same position on the next run loop cycle.
   private func transitionToRecording(
-    audioLevelProvider: @escaping () -> Float, isRecordingLocked: Bool = false
+    audioLevelProvider: @escaping () -> Float,
+    recordingElapsedProvider: @escaping () -> TimeInterval? = { nil },
+    isRecordingLocked: Bool = false
   ) {
     guard let existingPanel = panel else { return }
     clearRecordingNotice()  // #1060 (Codex P3): fresh session starts with no stale notice.
@@ -657,7 +672,8 @@ final class RecordingOverlayPanel {
       guard let self, self.generation == token else { return }
       self.pendingCreateWork = nil
       self.createPanel(
-        audioLevelProvider: audioLevelProvider, isRecordingLocked: isRecordingLocked)
+        audioLevelProvider: audioLevelProvider, recordingElapsedProvider: recordingElapsedProvider,
+        isRecordingLocked: isRecordingLocked)
     }
     pendingCreateWork = work
     DispatchQueue.main.async(execute: work)
@@ -1184,13 +1200,15 @@ private struct DistressCapsuleBackground: View {
 /// Compact recording indicator overlay.
 struct RecordingOverlayView: View {
   let audioLevelProvider: () -> Float
+  /// #1393: monotonic elapsed recording time, read from the shared kernel
+  /// source of truth instead of a per-view-instance stamp — a panel-recreate
+  /// (e.g. `transitionToRecording`) must not reset the displayed timer.
+  let recordingElapsedProvider: () -> TimeInterval?
   var lockState: OverlayLockState
   /// #1060: transient notice banner shown inside the recording capsule.
   var noticeState: OverlayNoticeState
   @State private var audioLevel: Float = 0
   @State private var elapsed: TimeInterval = 0
-
-  private let startTime = Date()
 
   var body: some View {
     VStack(spacing: 6) {
@@ -1231,7 +1249,7 @@ struct RecordingOverlayView: View {
     .task {
       while !Task.isCancelled {
         audioLevel = audioLevelProvider()
-        elapsed = Date().timeIntervalSince(startTime)
+        elapsed = recordingElapsedProvider() ?? 0
         try? await Task.sleep(for: .milliseconds(50))
       }
     }

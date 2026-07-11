@@ -134,8 +134,13 @@ extension SparkleUpdateController: @preconcurrency SPUStandardUserDriverDelegate
     NSApp.activate()
   }
 
-  /// Return to accessory mode when the entire update session ends.
+  /// Return to accessory mode when the entire update session ends — but only
+  /// if the user doesn't still have a main app window open (#1392). This
+  /// hook fires on every attended-check outcome (dismissed, error, or an
+  /// update found), so an unconditional revert here would take Settings down
+  /// with it whenever the user checked for updates from inside it.
   func standardUserDriverWillFinishUpdateSession() {
+    guard !AppWindowCoordinator.isMainWindowPresented() else { return }
     NSApp.setActivationPolicy(.accessory)
   }
 

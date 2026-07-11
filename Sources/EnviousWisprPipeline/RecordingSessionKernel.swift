@@ -354,6 +354,34 @@ final class RecordingSessionKernel {
   /// must not pad accidental taps past the discard threshold.
   private var recordingStartedAtTick: UInt64?
 
+  /// #1393: monotonic elapsed time since the CURRENT recording began, immune
+  /// to wall-clock/timezone/NTP changes. Reuses `recordingStartedAtTick`
+  /// above rather than adding a second monotonic authority — same stamp
+  /// site, same clear site, same "visible-recording start" semantic the
+  /// discard gate already relies on. Checked comparison, not wrapping
+  /// subtraction: production `currentTick()` cannot realistically regress
+  /// below `start` (monotonic `systemUptime`, same-process, non-decreasing
+  /// quantization), but a broken or adversarially-injected clock should fail
+  /// to `0` for this newly user-facing value, not silently wrap into a huge
+  /// duration.
+  ///
+  /// Gated on `state == .recording` (cloud review P2, PR #1507): the overlay
+  /// panel's FIRST `.recording` push (`RecordingStarter.start()`) installs
+  /// its provider before `start(config:)` ever runs — while `.recording` is
+  /// still `recordingStartedAtTick` from the PRIOR session, not yet cleared
+  /// by this session's `resetSessionState()`. Without this gate, a second
+  /// PTT press would briefly render the previous recording's stale elapsed
+  /// time during prewarm instead of `0:00`. Both StatusView and the overlay
+  /// already independently gate their OWN reads on `pipelineState ==
+  /// .recording`, so this is redundant-but-safe for them and is the actual
+  /// fix for the two overlay call sites that read before that guard exists.
+  var recordingElapsedSeconds: TimeInterval? {
+    guard state == .recording, let start = recordingStartedAtTick else { return nil }
+    let now = currentTick()
+    guard now >= start else { return 0 }
+    return TimeInterval(now - start) * KernelFinalizationWiring.tickDurationSeconds
+  }
+
   /// Logical-tick value at the `→ stopping` transition (PR-4.5 #4, Codex r1).
   /// The visible-recording elapsed used by the #4 discard gate is computed
   /// as `(stoppingStartedAtTick - recordingStartedAtTick)`, NOT against

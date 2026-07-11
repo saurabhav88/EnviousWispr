@@ -92,12 +92,57 @@ final class AppWindowCoordinator {
   /// toolbar wordmark is the identity). Preferring the scene identifier, with a
   /// blank-title fallback, means titled system dialogs (Sparkle's attended-update
   /// window, save/open panels — all of which carry non-empty titles) never match.
-  private func isMainWindow(_ window: NSWindow) -> Bool {
+  private static func matchesMainWindowIdentity(_ window: NSWindow) -> Bool {
     // The main window carries the app name as its title (visually suppressed by
     // the principal toolbar item, but still set for the Window menu / VoiceOver).
     // Match on it: onboarding ("Setup"), Sparkle's update dialog, and save/open
     // panels all carry different titles, so none is mistaken for the main window.
     window.styleMask.contains(.titled) && window.title == AppConstants.appName
+  }
+
+  private func isMainWindow(_ window: NSWindow) -> Bool {
+    Self.matchesMainWindowIdentity(window)
+  }
+
+  /// #1392: the pure presentation decision, input-driven so it's testable
+  /// without touching real `NSWindow`/`NSApp` state. A window "counts" if it
+  /// matches the main-window identity AND is visible or minimized — not just
+  /// currently onscreen. Bare `isVisible` alone would revert to accessory
+  /// (and effectively strand the window) if the user minimized Settings
+  /// while an attended update check was in flight (#1392 r1 finding).
+  ///
+  /// r2 correction (code-diff review): deliberately does NOT also treat
+  /// "the whole app is Cmd+H-hidden" as presence. A window the user already
+  /// closed can still linger in `NSApp.windows` in a hidden-but-retained
+  /// state (SwiftUI single-instance `Window(id:)` scenes may keep the
+  /// underlying `NSWindow` around to support instant reopen); an app-wide
+  /// hidden flag can't distinguish that from a genuinely-still-open window
+  /// the user merely Cmd+H'd. Reverting to accessory while the app is
+  /// Cmd+H-hidden is accepted, documented behavior (Live UAT preface above)
+  /// — the user explicitly hid the whole app, so losing the Dock icon is not
+  /// a regression, and this check only ever needs to protect a window the
+  /// user can currently see or reach via the Dock/minimized state.
+  static func isMainWindowPresented(
+    windowStates: [(matchesIdentity: Bool, isVisible: Bool, isMiniaturized: Bool)]
+  ) -> Bool {
+    windowStates.contains { state in
+      state.matchesIdentity && (state.isVisible || state.isMiniaturized)
+    }
+  }
+
+  /// #1392: whether the user still has a main app window right now. Static
+  /// and state-free — callers that don't own a window reference (Sparkle's
+  /// attended-update-session-end hook) can check without a new stored
+  /// dependency. Thin snapshot wrapper around the pure decision above; Live
+  /// UAT is what proves this wrapper's real-`NSApp` snapshot is correct.
+  static func isMainWindowPresented() -> Bool {
+    isMainWindowPresented(
+      windowStates: NSApp.windows.map {
+        (
+          matchesIdentity: matchesMainWindowIdentity($0), isVisible: $0.isVisible,
+          isMiniaturized: $0.isMiniaturized
+        )
+      })
   }
 
   /// Remove both window-close observers. Called once from

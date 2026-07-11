@@ -235,6 +235,103 @@ import Testing
       #expect(kernel.deliveredTranscript == "raw asr text")
       #expect(kernel.pasteCount == 1)
     }
+
+    // MARK: #1393 — recordingElapsedSeconds (reuses recordingStartedAtTick)
+
+    @Test("recordingElapsedSeconds is nil before recording begins")
+    func recordingElapsedSecondsNilBeforeRecording() async {
+      let (_, wrapper) = makeWrapper()
+      let kernel = wrapper.testKernel
+
+      #expect(kernel.state == .idle)
+      #expect(kernel.recordingElapsedSeconds == nil)
+    }
+
+    @Test("recordingElapsedSeconds is near-zero immediately at the recording transition")
+    func recordingElapsedSecondsNearZeroAtTransition() async {
+      let (_, wrapper) = makeWrapper()
+      let kernel = wrapper.testKernel
+
+      await apply(.start, to: wrapper)
+      #expect(kernel.state == .recording)
+      #expect(kernel.recordingElapsedSeconds == 0)
+    }
+
+    @Test("recordingElapsedSeconds advances by exactly tickDelta × tickDurationSeconds")
+    func recordingElapsedSecondsAdvancesByExactTickDelta() async {
+      let (context, wrapper) = makeWrapper()
+      let kernel = wrapper.testKernel
+
+      await apply(.start, to: wrapper)
+      #expect(kernel.state == .recording)
+
+      context.clock.advance(by: 30)  // 30 ticks × 0.1s = 3.0s
+      #expect(kernel.recordingElapsedSeconds == 3.0)
+
+      context.clock.advance(by: 20)  // +20 ticks = 5.0s total
+      #expect(kernel.recordingElapsedSeconds == 5.0)
+    }
+
+    @Test("recordingElapsedSeconds preserves the same origin throughout one session")
+    func recordingElapsedSecondsPreservesOriginThroughoutSession() async {
+      let (context, wrapper) = makeWrapper()
+      let kernel = wrapper.testKernel
+
+      await apply(.start, to: wrapper)
+      context.clock.advance(by: 10)
+      let firstReading = kernel.recordingElapsedSeconds
+
+      // Reading twice in a row (no state change, no new session) must not
+      // re-stamp the origin — this is the r2/r3 characterization of the exact
+      // per-view reset bug #1393 fixes, asserted at the kernel level.
+      let secondReading = kernel.recordingElapsedSeconds
+      #expect(firstReading == secondReading)
+      #expect(firstReading == 1.0)  // 10 ticks × 0.1s
+    }
+
+    @Test(
+      "recordingElapsedSeconds goes nil the instant state leaves .recording, and a fresh session starts at zero"
+    )
+    func recordingElapsedSecondsNilOutsideRecordingAndFreshOnNextStart() async {
+      let (context, wrapper) = makeWrapper()
+      let kernel = wrapper.testKernel
+
+      await apply(.start, to: wrapper)
+      context.clock.advance(by: 10)
+      #expect(kernel.recordingElapsedSeconds != nil)
+
+      // r2 (cloud review P2, PR #1507): gated on `state == .recording`, not
+      // merely on `recordingStartedAtTick` being set. `recordingStartedAtTick`
+      // itself still isn't cleared until the NEXT session's `start(config:)`
+      // (unchanged internal lifecycle — the discard gate at `:2247`/`:2660`
+      // still needs it), but the PUBLIC `recordingElapsedSeconds` value now
+      // correctly goes nil the moment state leaves `.recording`, closing the
+      // exact stale-value window the overlay's first pill push could hit.
+      await apply(.cancel, to: wrapper)  // recording → cancelled (terminal)
+      #expect(kernel.recordingElapsedSeconds == nil, "gated on .recording, not on the raw tick")
+
+      await apply(.reset, to: wrapper)  // cancelled → idle
+      #expect(kernel.state == .idle)
+      #expect(kernel.recordingElapsedSeconds == nil)
+
+      // A fresh session starts its own origin at zero again, not carrying
+      // the prior session's elapsed time forward.
+      await apply(.start, to: wrapper)
+      #expect(kernel.recordingElapsedSeconds == 0)
+    }
+
+    // Note: the r3 checked-comparison guard (`guard now >= start else { return
+    // 0 }`) protects against a broken/adversarially-injected clock returning a
+    // tick below the stamped start. This is not exercised here: the shared
+    // `FakeClock` this suite (and the wider simulator harness) depends on is
+    // intentionally monotonic-only (`advance(by:)`, no way to move backward),
+    // and Codex Grounded Review round 3 confirmed no production path can
+    // regress `currentTick()` below `recordingStartedAtTick` either (monotonic
+    // `systemUptime`, same-process, non-decreasing quantization). Adding
+    // backward-clock capability to the shared `FakeClock` for this one
+    // defensive-only branch was judged disproportionate; the guard's
+    // correctness is covered by code inspection (Grounded Review r3) instead
+    // of an automated test.
   }
 
 #endif  // DEBUG (RecordingSessionKernel FSM-invariant tests — testForceTransition / testActiveTaskCount hooks)

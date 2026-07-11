@@ -120,4 +120,55 @@ struct AppWindowCoordinatorTests {
     coordinator.closeOnboardingWindow()
     #expect(dismissedCount == 1, "close fires the icon-refresh seam exactly once")
   }
+
+  // MARK: - #1392: isMainWindowPresented(windowStates:)
+
+  /// Input-driven pure decision — no real `NSWindow`/`NSApp` state, matching
+  /// this suite's existing convention (real window-server behavior is Live
+  /// UAT-only, per the file header above). r2 (code-diff review): dropped
+  /// the app-hidden broadening a stale/closed-but-retained window could
+  /// exploit — presence is `isVisible || isMiniaturized` only now.
+
+  @Test("matching visible window is presented")
+  func isMainWindowPresentedTrueForVisible() {
+    let present = AppWindowCoordinator.isMainWindowPresented(
+      windowStates: [(matchesIdentity: true, isVisible: true, isMiniaturized: false)]
+    )
+    #expect(present)
+  }
+
+  @Test("matching minimized window is still presented — #1392 r1 finding")
+  func isMainWindowPresentedTrueForMinimized() {
+    let present = AppWindowCoordinator.isMainWindowPresented(
+      windowStates: [(matchesIdentity: true, isVisible: false, isMiniaturized: true)]
+    )
+    #expect(present, "a minimized window still exists — isVisible alone is the wrong proxy")
+  }
+
+  @Test("a matching but neither-visible-nor-minimized window is not presented — #1392 r2 finding")
+  func isMainWindowPresentedFalseForHiddenNotMinimized() {
+    // Covers a stale/closed-but-retained `NSWindow` still enumerable in
+    // `NSApp.windows`: it must never count as presented on its own, even
+    // though a real app-hide would ALSO put a genuinely-open window in this
+    // exact (isVisible: false, isMiniaturized: false) shape — that's the
+    // accepted tradeoff (Live UAT preface above), not a regression.
+    let present = AppWindowCoordinator.isMainWindowPresented(
+      windowStates: [(matchesIdentity: true, isVisible: false, isMiniaturized: false)]
+    )
+    #expect(!present)
+  }
+
+  @Test("no matching window in the list is not presented")
+  func isMainWindowPresentedFalseWhenAbsent() {
+    let present = AppWindowCoordinator.isMainWindowPresented(windowStates: [])
+    #expect(!present)
+  }
+
+  @Test("only a non-matching window (Sparkle's dialog) present is not presented")
+  func isMainWindowPresentedFalseForNonMatchingOnly() {
+    let present = AppWindowCoordinator.isMainWindowPresented(
+      windowStates: [(matchesIdentity: false, isVisible: true, isMiniaturized: false)]
+    )
+    #expect(!present, "a titled-but-differently-named window (Sparkle's dialog) must not count")
+  }
 }

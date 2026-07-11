@@ -16,7 +16,6 @@ struct StatusView: View {
   @Environment(DictationRuntime.self) private var dictationRuntime
   @Environment(\.asrManager) private var asrManagerEnv
   @State private var elapsed: TimeInterval = 0
-  @State private var recordingStart: Date?
 
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
   /// environment (see `AppEnvironmentKeys.swift`).
@@ -187,16 +186,12 @@ struct StatusView: View {
     .animation(.easeInOut(duration: 0.3), value: liveRecordingState.pipelineState)
     .task(id: liveRecordingState.pipelineState == .recording) {
       guard liveRecordingState.pipelineState == .recording else {
-        recordingStart = nil
+        elapsed = 0
         return
       }
-      elapsed = 0
-      recordingStart = Date()
       while !Task.isCancelled {
+        elapsed = liveRecordingState.recordingElapsedSeconds ?? 0
         try? await Task.sleep(for: .seconds(1))
-        if let start = recordingStart {
-          elapsed = Date().timeIntervalSince(start)
-        }
       }
     }
   }
