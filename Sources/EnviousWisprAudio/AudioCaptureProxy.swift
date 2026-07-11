@@ -16,6 +16,7 @@ import Foundation
     package let zeroedSampleCount: Int
     package let sourceIncarnation: UInt64
     package let xpcGeneration: UInt64
+    package let captureSourceType: String
   }
 #endif
 
@@ -1105,7 +1106,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
       return DebugFaultStatus(
         armed: s.armed, hit: s.hit, trialID: s.trialID, mode: s.mode,
         zeroedSampleCount: s.zeroedSampleCount, sourceIncarnation: s.sourceIncarnation,
-        xpcGeneration: xpcGeneration)
+        xpcGeneration: xpcGeneration, captureSourceType: s.captureSourceType)
     }
   #endif
 

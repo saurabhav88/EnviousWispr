@@ -278,7 +278,8 @@
             "OK armed=\(status.armed) hit=\(status.hit) trial=\(status.trialID) "
             + "mode=\(status.mode) zeroed=\(status.zeroedSampleCount) "
             + "source_incarnation=\(status.sourceIncarnation) "
-            + "xpc_generation=\(status.xpcGeneration)"
+            + "xpc_generation=\(status.xpcGeneration) "
+            + "capture_source=\(status.captureSourceType)"
         }
         return "ERR unknown_command"
       }

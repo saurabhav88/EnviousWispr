@@ -168,7 +168,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       let s = debugZeroFillController.status()
       return DebugFaultServiceStatus(
         armed: s.armed, hit: s.hit, trialID: s.trialID, mode: s.mode,
-        zeroedSampleCount: s.zeroedSampleCount, sourceIncarnation: debugSourceIncarnation)
+        zeroedSampleCount: s.zeroedSampleCount, sourceIncarnation: debugSourceIncarnation,
+        captureSourceType: activeSource?.captureSourceType ?? "none")
     }
   #endif
 

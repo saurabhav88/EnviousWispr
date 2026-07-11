@@ -270,7 +270,7 @@ def _parse_fault_status(reply: str) -> dict:
         k, v = tok.split("=", 1)
         fields[k] = v
     required = {"armed", "hit", "trial", "mode", "zeroed",
-                "source_incarnation", "xpc_generation"}
+                "source_incarnation", "xpc_generation", "capture_source"}
     missing = required - fields.keys()
     if missing:
         return {"ok": False, "error": f"missing fields {sorted(missing)} in {reply!r}"}
@@ -284,6 +284,7 @@ def _parse_fault_status(reply: str) -> dict:
             "zeroed": int(fields["zeroed"]),
             "source_incarnation": int(fields["source_incarnation"]),
             "xpc_generation": int(fields["xpc_generation"]),
+            "capture_source": fields["capture_source"],
         }
     except ValueError as e:
         return {"ok": False, "error": f"unparseable status {reply!r}: {e}"}
