@@ -1745,10 +1745,13 @@ def B1_bluetooth_route_flip(*, founder_present: bool = False, **_) -> dict:
 
 
 def _zero_fill_trial(*, mode: str, n: int, trial: str, do_control: bool,
-                     kwargs: dict, extra_assertions=None) -> dict:
+                     kwargs: dict, extra_assertions=None,
+                     fault_record_seconds: float = 3.0) -> dict:
     """Shared dead-mic trial: identity gate → arm+pre-status → fault take → HIT
     proof → optional disarmed control take → scored assertions. Fails closed at
-    every gate."""
+    every gate. `fault_record_seconds` lengthens the fault take so a "real audio
+    then dead" shape (zero_after) gets enough real speech PAST the TTS onset gap
+    before the mic goes dead."""
     manifest = _require_manifest(kwargs)
     if manifest is None:
         return _invalid_evidence(
@@ -1762,7 +1765,7 @@ def _zero_fill_trial(*, mode: str, n: int, trial: str, do_control: bool,
         return _invalid_evidence("arm ack/pre-status failed", arm=arm, identity=identity)
     inc_pre = arm["pre_status"]["source_incarnation"]
 
-    fault_take = _canary_take()
+    fault_take = _canary_take(record_seconds=fault_record_seconds)
 
     post = query_fault_status(trial)
     hit_ok = bool(post.get("ok")) and post.get("hit") is True and post.get("zeroed", 0) > 0
@@ -1786,13 +1789,19 @@ def _zero_fill_trial(*, mode: str, n: int, trial: str, do_control: bool,
         control = _canary_take()
 
     assertions = {
-        "dead_take_handled_honestly": fault_take["dead_honest"]["handled_honestly"],
-        "dead_take_fabricated_text": fault_take["dead_honest"]["fabricated_canary"],
         "recovered_in_session": fault_take["recovers"]["canary_ok"],
         # No rebuild is triggered here, so a changed incarnation would only come
         # from a recovery mechanism (follow-up plan). Honest measurement.
         "fresh_pipe_proven": inc_post != inc_pre,
     }
+    # Dead-take honesty is only meaningful for a FULLY dead take (zero_from_start).
+    # A partial shape (zero_after / zero_next) legitimately contains real audio, so
+    # the no-speech marker won't fire and any captured text is NOT "fabricated" —
+    # emitting those assertions there would mislabel correct behavior (the Z3
+    # false-"fabricated" the first live run showed).
+    if mode == "zero_from_start":
+        assertions["dead_take_handled_honestly"] = fault_take["dead_honest"]["handled_honestly"]
+        assertions["dead_take_fabricated_text"] = fault_take["dead_honest"]["fabricated_canary"]
     if control is not None:
         assertions["next_press_works"] = control["recovers"]["canary_ok"]
     if extra_assertions is not None:
@@ -1842,13 +1851,19 @@ def Z1_all_zero_from_start(**kwargs) -> dict:
     "extend it with fabricated tokens",
     description="Real audio for the first N live samples, then all-zero forever. "
     "Exercises the content-blind liveness path (buffers keep flowing, just zero). "
-    "Assert lead audio was preserved (a raw-ASR entry exists) and the injector hit."))
-def Z2_valid_then_all_zero(*, lead_samples: int = 16000, **kwargs) -> dict:
+    "Assert lead audio was preserved (a raw-ASR entry exists) and the injector hit. "
+    "Default lead is 3s / take is 6s: empirically (2026-07-11) a 1s lead landed on "
+    "the TTS onset gap and produced no transcript — the app preserves pre-death "
+    "speech fine given a real lead, so the window must clear the onset gap."))
+def Z2_valid_then_all_zero(*, lead_samples: int = 48000, **kwargs) -> dict:
     def _extra(fault_take, _control):
         return {"raw_text_preserved": fault_take["recovers"]["raw_asr_new_entry"]}
+    # lead 48000 (~3s real, past the ~0.5s TTS onset gap); fault take 6s so a real
+    # dead tail follows the lead and the injector actually hits.
     return _zero_fill_trial(
         mode="zero_after_samples", n=lead_samples, trial=_trial_id("Z2"),
-        do_control=True, kwargs=kwargs, extra_assertions=_extra)
+        do_control=True, kwargs=kwargs, extra_assertions=_extra,
+        fault_record_seconds=6.0)
 
 
 @scenario(ScenarioMeta(
