@@ -218,12 +218,13 @@ final class RecordingSessionKernel {
   /// injected (not a direct `AudioDeviceEnumerator`/`ZeroSignalDeviceDiscriminator`
   /// call) so deterministic kernel tests can substitute a fake instead of
   /// depending on the test machine's real microphone state. The production
-  /// default resolves the SAME bound/selected/default precedence the
-  /// reactive detector uses (`AudioCaptureInterface.preferredInputDeviceIDOverride`
-  /// / `.selectedInputDeviceUID`) — the device the session actually captured
-  /// from, not unconditionally the system default (Codex code-diff review:
-  /// a selected non-default mic muted while the system default happens to
-  /// be alive+unmuted must not misclassify as eligible).
+  /// default checks `audioCapture.zeroSignalDiscriminatorDeviceID` — the
+  /// device the CAPTURE LAYER froze at its own engine-start moment (cloud
+  /// review P2 round 2, PR #1512: only that layer sees its own internal
+  /// retries, so the kernel defers to it instead of independently freezing
+  /// its own snapshot, which could still race a mid-startup device switch).
+  /// Alive/mute status is still re-checked live against that frozen device
+  /// on every call — only the device IDENTITY is frozen, not its mute state.
   private let zeroSignalDeviceEligible: @MainActor () -> Bool
   private let recordingStoppedTelemetry: @MainActor (_ sampleCount: Int) -> Void
   private let markPipelineTimingStart: @MainActor () -> Void
@@ -429,6 +430,15 @@ final class RecordingSessionKernel {
   private var stoppingStartedAtTick: UInt64?
   private var recordingStartedAtDate: Date?
 
+  /// #1317 (cloud review P2, PR #1512): `DispatchTime.now().uptimeNanoseconds`
+  /// at the `→ recording` transition. `CaptureStallContext.armedAtUptimeNs`
+  /// shares this clock domain (not `recordingStartedAtDate`'s wall clock) —
+  /// the STOP-time zero-signal backstop needs a real arm time so
+  /// `SentryAudioExtras.buildCaptureExtras`'s `capture.stall.window_ms`
+  /// reflects THIS recording's length, not machine uptime. `nil` outside
+  /// `.recording`; reset on every session start alongside `recordingStartedAtDate`.
+  private var recordingStartedAtUptimeNs: UInt64?
+
   /// Fired at most once per recording when the VAD seam reports the recording is
   /// approaching `maxRecordingDuration` (#1060), carrying the remaining seconds.
   /// ADVISORY: the kernel does NOT stop on this (that is the separate stop
@@ -600,13 +610,12 @@ final class RecordingSessionKernel {
     minimumRecordingTicks: Int = 5,
     zombieZeroPeakTelemetry: @escaping @MainActor (ZeroPeakContext) -> Void = { _ in },
     stopTimeZeroSignalTelemetry: @escaping @MainActor (CaptureStallContext) -> Void = { _ in },
-    // #1317 (Codex code-diff review): nil default resolves inside `init`
-    // against the `audioCapture` PARAMETER (a default expression cannot
-    // reference a sibling parameter) — using the SAME bound/selected/default
-    // precedence the reactive detector uses (`AudioCaptureInterface` already
-    // exposes `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`, so
-    // this checks the device the session actually captured from, not
-    // unconditionally the system default).
+    // #1317 (cloud review P2 round 2, PR #1512): nil default resolves inside
+    // `init` against the `audioCapture` PARAMETER's own
+    // `zeroSignalDiscriminatorDeviceID` — the device the capture layer
+    // itself froze at its engine-start moment (see that protocol property's
+    // doc for why the kernel defers to it instead of independently
+    // resolving `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`).
     zeroSignalDeviceEligible: (@MainActor () -> Bool)? = nil,
     recordingStoppedTelemetry: @escaping @MainActor (_ sampleCount: Int) -> Void = { _ in },
     markPipelineTimingStart: @escaping @MainActor () -> Void = {},
@@ -627,14 +636,17 @@ final class RecordingSessionKernel {
     self.minimumRecordingTicks = minimumRecordingTicks
     self.zombieZeroPeakTelemetry = zombieZeroPeakTelemetry
     self.stopTimeZeroSignalTelemetry = stopTimeZeroSignalTelemetry
+    // #1317 (cloud review P2 round 2, PR #1512): the default reads
+    // `audioCapture.zeroSignalDiscriminatorDeviceID` — the device the
+    // capture layer itself froze at the moment its engine actually started
+    // (including any of ITS OWN retries, which this kernel cannot see) —
+    // instead of independently re-resolving `preferredInputDeviceIDOverride`/
+    // `selectedInputDeviceUID`, which only reflects the kernel's OWN view
+    // and can already differ from what actually got captured.
     self.zeroSignalDeviceEligible =
       zeroSignalDeviceEligible
       ?? {
-        guard
-          let deviceID = AudioDeviceEnumerator.resolveEffectiveInputDevice(
-            preferredOverride: audioCapture.preferredInputDeviceIDOverride,
-            selected: audioCapture.selectedInputDeviceUID)
-        else { return false }
+        guard let deviceID = audioCapture.zeroSignalDiscriminatorDeviceID else { return false }
         return ZeroSignalDeviceDiscriminator.isEligible(deviceID: deviceID)
       }
     self.recordingStoppedTelemetry = recordingStoppedTelemetry
@@ -1070,6 +1082,7 @@ final class RecordingSessionKernel {
     // Recording.
     transition(to: .recording)
     recordingStartedAtDate = Date()
+    recordingStartedAtUptimeNs = DispatchTime.now().uptimeNanoseconds
     lastStopReason = nil  // #1060: clear prior session's stop reason.
     lastSalvagedLeadTrimMs = nil  // #1434: clear prior session's salvage marker.
     lastCaptureHealth = nil  // #1434: clear prior session's capture health.
@@ -1276,7 +1289,7 @@ final class RecordingSessionKernel {
       stopTimeZeroSignalTelemetry(
         CaptureStallContext(
           sessionID: audioCapture.currentCaptureSessionID,
-          armedAtUptimeNs: 0,
+          armedAtUptimeNs: recordingStartedAtUptimeNs ?? DispatchTime.now().uptimeNanoseconds,
           firedAtUptimeNs: DispatchTime.now().uptimeNanoseconds,
           route: audioCapture.currentAudioRoute,
           sourceType: "stop_time_classification",
@@ -2729,6 +2742,7 @@ final class RecordingSessionKernel {
     recordingStartedAtTick = nil
     stoppingStartedAtTick = nil
     recordingStartedAtDate = nil
+    recordingStartedAtUptimeNs = nil
     loadTickCount = 0
     finalizeTickCount = 0
     loadAttemptStartedAtTick = 0
