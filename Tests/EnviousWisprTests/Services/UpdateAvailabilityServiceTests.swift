@@ -176,12 +176,13 @@ struct UpdateAvailabilityServiceTests {
 
   @Test("compareVersions handles standard semver ordering")
   func versionCompare() {
-    let (s, _) = Self.makeService()
-    #expect(s.compareVersions("2.4.0", "2.4.1") == -1)
-    #expect(s.compareVersions("2.4.1", "2.4.0") == 1)
-    #expect(s.compareVersions("2.4.0", "2.4.0") == 0)
-    #expect(s.compareVersions("2.4.10", "2.4.9") == 1)  // numeric, not lexical
-    #expect(s.compareVersions("3.0.0", "2.99.99") == 1)
+    // #1451: `compareVersions` is now `static` (single version-comparison
+    // authority; `ApplicationMover` reuses it).
+    #expect(UpdateAvailabilityService.compareVersions("2.4.0", "2.4.1") == -1)
+    #expect(UpdateAvailabilityService.compareVersions("2.4.1", "2.4.0") == 1)
+    #expect(UpdateAvailabilityService.compareVersions("2.4.0", "2.4.0") == 0)
+    #expect(UpdateAvailabilityService.compareVersions("2.4.10", "2.4.9") == 1)  // numeric, not lexical
+    #expect(UpdateAvailabilityService.compareVersions("3.0.0", "2.99.99") == 1)
   }
 
   // MARK: - .resolving watchdog

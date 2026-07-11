@@ -1520,6 +1520,81 @@ public final class TelemetryService {
     )
   }
 
+  // MARK: - App relocation (issue #1451)
+  //
+  // Pre-update recovery stage: the app is running from a translocated /
+  // read-only location that blocks Sparkle before the appcast is fetched. These
+  // are deliberately NOT `update.install_*` — that name stays reserved for real
+  // install-stage failures (#1447 producer-stage separation). All properties are
+  // bounded, low-cardinality; no paths, usernames, or free-form strings.
+  //   reason ∈ {translocated, read_only_volume}
+  //   destination_scope ∈ {system_applications, user_applications}
+  //   failure_class = RelocationFailure raw value
+
+  public func updateRelocationOffered(reason: String, destinationScope: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "update.relocation_offered",
+          stringProps: ["reason": reason, "destination_scope": destinationScope]))
+    #endif
+    PostHogSDK.shared.capture(
+      "update.relocation_offered",
+      properties: ["reason": reason, "destination_scope": destinationScope])
+  }
+
+  public func updateRelocationAccepted(reason: String, destinationScope: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "update.relocation_accepted",
+          stringProps: ["reason": reason, "destination_scope": destinationScope]))
+    #endif
+    PostHogSDK.shared.capture(
+      "update.relocation_accepted",
+      properties: ["reason": reason, "destination_scope": destinationScope])
+  }
+
+  public func updateRelocationDeclined(reason: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "update.relocation_declined", stringProps: ["reason": reason]))
+    #endif
+    PostHogSDK.shared.capture("update.relocation_declined", properties: ["reason": reason])
+  }
+
+  public func updateRelocationFailed(reason: String, failureClass: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "update.relocation_failed",
+          stringProps: ["reason": reason, "failure_class": failureClass]))
+    #endif
+    PostHogSDK.shared.capture(
+      "update.relocation_failed",
+      properties: ["reason": reason, "failure_class": failureClass])
+  }
+
+  public func updateRelocationRelaunched(
+    reason: String, destinationScope: String, relaunchConfirmed: Bool
+  ) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "update.relocation_relaunched",
+          stringProps: ["reason": reason, "destination_scope": destinationScope],
+          boolProps: ["relaunch_confirmed": relaunchConfirmed]))
+    #endif
+    PostHogSDK.shared.capture(
+      "update.relocation_relaunched",
+      properties: [
+        "reason": reason,
+        "destination_scope": destinationScope,
+        "relaunch_confirmed": relaunchConfirmed,
+      ])
+  }
+
   /// Issue #958: a proactive launch/foreground trigger evaluated, whether it
   /// actually fired a background check, and why. Emitted on EVERY return path.
   /// Bounded cardinality: `trigger ∈ {launch, foreground}`, `fired ∈ {true,false}`,
@@ -1744,6 +1819,10 @@ public final class TelemetryService {
   public enum FlushReason: String {
     case updateInstall = "update_install"
     case appTerminate = "app_terminate"
+    // #1451: the original process is about to terminate after handing off to the
+    // relocated copy. Non-blocking; unsent events persist to disk and deliver
+    // from the relaunched instance.
+    case relocation = "relocation"
   }
 
   /// Late-bound context for a flush, supplied by a provider closure (mirrors

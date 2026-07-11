@@ -59,6 +59,9 @@ final class AppLifecycleCoordinator {
   private let menuBarController: MenuBarController
   private let appWindowCoordinator: AppWindowCoordinator
   private let hotkeyService: HotkeyService
+  // #1451: launch-time App Translocation recovery limb. Called once on launch;
+  // never a prerequisite for anything below it.
+  private let applicationRelocationCoordinator: ApplicationRelocationCoordinator
 
   init(
     settings: SettingsManager,
@@ -78,6 +81,7 @@ final class AppLifecycleCoordinator {
     menuBarController: MenuBarController,
     appWindowCoordinator: AppWindowCoordinator,
     hotkeyService: HotkeyService,
+    applicationRelocationCoordinator: ApplicationRelocationCoordinator,
     // #1176: captured in the onboarding-dismiss closure below (NOT stored — keeps
     // this coordinator's stored-property ceiling clean).
     onboardingProgress: OnboardingProgress
@@ -99,6 +103,7 @@ final class AppLifecycleCoordinator {
     self.menuBarController = menuBarController
     self.appWindowCoordinator = appWindowCoordinator
     self.hotkeyService = hotkeyService
+    self.applicationRelocationCoordinator = applicationRelocationCoordinator
     // Icon-refresh seam: the window coordinator's two onboarding-dismiss
     // callsites route through this closure. Was wired in `AppDelegate.attach`
     // before PR-B.4.
@@ -125,6 +130,12 @@ final class AppLifecycleCoordinator {
     if settings.onboardingState == .completed {
       NSApp.setActivationPolicy(.accessory)
     }
+
+    // #1451: recover from App Translocation. Runs on EVERY launch (NOT gated by
+    // onboarding — the 14 stuck users already finished onboarding), returns
+    // immediately after scheduling any prompt, and is a limb: it never blocks
+    // the launch sequence below.
+    applicationRelocationCoordinator.evaluateAndOfferIfNeeded()
 
     // #879: the launch-preload telemetry callback wiring was removed. The
     // launch warm-up now routes through `KernelDictationDriver.ensureEngineWarm

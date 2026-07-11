@@ -37,10 +37,13 @@ import Testing
 
     @Test("FlushReason raw values are the bounded expected set")
     func flushReasonRawValuesBounded() {
-      // `.updateInstall` (Sparkle pre-relaunch) + `.appTerminate` (normal quit,
-      // Phase 1) are the only live reasons; a crash reason is intentionally absent.
+      // `.updateInstall` (Sparkle pre-relaunch), `.appTerminate` (normal quit,
+      // Phase 1), and `.relocation` (#1451, pre-terminate handoff after an App
+      // Translocation self-move) are the live reasons; a crash reason is
+      // intentionally absent.
       #expect(TelemetryService.FlushReason.updateInstall.rawValue == "update_install")
       #expect(TelemetryService.FlushReason.appTerminate.rawValue == "app_terminate")
+      #expect(TelemetryService.FlushReason.relocation.rawValue == "relocation")
     }
 
     @MainActor

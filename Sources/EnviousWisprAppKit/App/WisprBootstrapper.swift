@@ -639,6 +639,9 @@ public final class WisprBootstrapper {
       )
     )
 
+    // #1451: App Translocation recovery limb, driven from the launch sequence.
+    let applicationRelocationCoordinator = ApplicationRelocationCoordinator.live()
+
     // PR-B.4 of #763: process-lifecycle home. Constructed last. It receives the
     // 10 specific homes it reads.
     let appLifecycleCoordinator = AppLifecycleCoordinator(
@@ -659,6 +662,7 @@ public final class WisprBootstrapper {
       menuBarController: menuBarController,
       appWindowCoordinator: appWindowCoordinator,
       hotkeyService: hotkeyService,
+      applicationRelocationCoordinator: applicationRelocationCoordinator,
       onboardingProgress: onboardingProgress
     )
 
