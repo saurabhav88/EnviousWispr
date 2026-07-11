@@ -62,6 +62,11 @@ final class AppLifecycleCoordinator {
   // #1451: launch-time App Translocation recovery limb. Called once on launch;
   // never a prerequisite for anything below it.
   private let applicationRelocationCoordinator: ApplicationRelocationCoordinator
+  // #1480: forwards launch / device-change / pipeline-state facts to the
+  // Bluetooth awareness card's single decision owner. The coordinator carries no
+  // Bluetooth predicate, overlay branching, or once-per-launch state — it only
+  // hands the presenter a `Trigger` fact.
+  private let bluetoothAwarenessPresenter: BluetoothAwarenessPresenter
 
   init(
     settings: SettingsManager,
@@ -82,6 +87,7 @@ final class AppLifecycleCoordinator {
     appWindowCoordinator: AppWindowCoordinator,
     hotkeyService: HotkeyService,
     applicationRelocationCoordinator: ApplicationRelocationCoordinator,
+    bluetoothAwarenessPresenter: BluetoothAwarenessPresenter,
     // #1176: captured in the onboarding-dismiss closure below (NOT stored — keeps
     // this coordinator's stored-property ceiling clean).
     onboardingProgress: OnboardingProgress
@@ -104,6 +110,7 @@ final class AppLifecycleCoordinator {
     self.appWindowCoordinator = appWindowCoordinator
     self.hotkeyService = hotkeyService
     self.applicationRelocationCoordinator = applicationRelocationCoordinator
+    self.bluetoothAwarenessPresenter = bluetoothAwarenessPresenter
     // Icon-refresh seam: the window coordinator's two onboarding-dismiss
     // callsites route through this closure. Was wired in `AppDelegate.attach`
     // before PR-B.4.
@@ -162,6 +169,10 @@ final class AppLifecycleCoordinator {
       if state == .recording {
         self.audioEnvironmentSnapshotter?.recordingStarted()
       }
+      // #1480: any pipeline-state change re-evaluates the Bluetooth card — a
+      // record start supersedes + dismisses it (records `record_started`); a
+      // return to idle lets a not-yet-shown card surface (scenario 4).
+      self.bluetoothAwarenessPresenter.reconcile(trigger: .pipelineStateChanged)
     }
 
     // Start hotkeys now that the event loop is running.
@@ -232,6 +243,13 @@ final class AppLifecycleCoordinator {
         customWordsCoordinator: customWordsCoordinator,
         permissions: permissions
       ).emit()
+
+      // #1480: first launch-time evaluation of the Bluetooth card, after
+      // refreshOnLaunch() settled the launch state. Runs only for completed
+      // onboarding (onboarding owns the window otherwise); the presenter's own
+      // guards re-check Bluetooth / idle / tips-enabled. A headset that connects
+      // later is covered by the device-change ingress.
+      bluetoothAwarenessPresenter.reconcile(trigger: .launch)
     }
 
     // Pre-warm LLM backend with a real inference request.
@@ -289,6 +307,9 @@ final class AppLifecycleCoordinator {
       },
       onAudioDeviceEvent: { [weak self] in
         self?.audioEnvironmentSnapshotter?.audioDeviceEventOccurred()
+        // #1480: a device connect/disconnect/default-change re-evaluates the
+        // Bluetooth card (covers connect-later, and route-off dismissal).
+        self?.bluetoothAwarenessPresenter.reconcile(trigger: .deviceChanged)
       }
     )
   }

@@ -315,12 +315,19 @@ import Testing
   /// and performs the required launch-time reconcile after callback wiring.
   /// Policy remains outside the root. Cap by deterministic rule (actual 984
   /// + 10, rounded up to nearest 5 = 995).
+  /// Ratcheted 995→1025 in #1480 (2026-07-11): the composition root builds the
+  /// Bluetooth-awareness limb — a late-binding presenter holder, the
+  /// `BluetoothAwarenessPresenter.live(...)` factory call, the injection into
+  /// `AppLifecycleCoordinator`, and the settings.onChange reconcile hookup. The
+  /// presenter's own wiring was extracted into `.live(...)` to keep the root lean;
+  /// all decision logic lives on the presenter, not here. Cap by deterministic
+  /// rule (actual 1018 + 7, rounded up to nearest 5 = 1025).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 995,
+      lineCount <= 1025,
       """
       WisprBootstrapper line count exceeded: \(lineCount) > 995. \
       Raising the ceiling requires a Bible changelog entry.

@@ -482,6 +482,25 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("audio.capture_interrupted", properties: props)
   }
 
+  /// #1480: the Bluetooth cold-start education card. `action` is one of the
+  /// fixed set `shown` / `dismissed` / `settings_opened` / `suppressed_by_setting`
+  /// (event name `bt_awareness.<action>`); `reason` is present only for `dismissed`
+  /// (`got_it` / `record_started` / `route_changed` / `setting_disabled` /
+  /// `closed`). Content-free by construction: the closed vocab is owned by
+  /// `BluetoothAwarenessPresenter`; no transcript, device name, or user text exists
+  /// on this path.
+  public func bluetoothAwareness(action: String, reason: String?) {
+    let event = "bt_awareness.\(action)"
+    var props: [String: Any] = [:]
+    if let reason { props["reason"] = reason }
+    #if DEBUG
+      var stringProps: [String: String] = [:]
+      if let reason { stringProps["reason"] = reason }
+      testEventHook?(CapturedTelemetryEvent(name: event, stringProps: stringProps))
+    #endif
+    PostHogSDK.shared.capture(event, properties: props)
+  }
+
   public func dictationCompleted(
     result: String, inputMode: String, asrBackend: String,
     llmProvider: String?, fillerRemoval: Bool,

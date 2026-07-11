@@ -44,6 +44,7 @@ public final class SettingsManager {
     case useStreamingASR
     case warmEnginePolicy
     case appearance
+    case showBluetoothTips
   }
 
   public var onChange: ((SettingKey) -> Void)?
@@ -78,6 +79,7 @@ public final class SettingsManager {
     "useExtendedThinking", "whisperKitLanguage", "languageMode",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride",
     "useStreamingASR", "warmEnginePolicy", "appearancePreference",
+    "showBluetoothTips",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
   ]
 
@@ -369,6 +371,17 @@ public final class SettingsManager {
     didSet {
       defaults.set(appearancePreference.rawValue, forKey: "appearancePreference")
       onChange?(.appearance)
+    }
+  }
+
+  /// #1480: show the once-per-launch Bluetooth cold-start education popover.
+  /// UI-only — no pipeline sync; `BluetoothAwarenessPresenter` reads it via the
+  /// injected `tipsEnabled` closure and reconciles a visible card off when it
+  /// flips to false. Default ON (`SettingsDefaultValues.showBluetoothTips`).
+  public var showBluetoothTips: Bool {
+    didSet {
+      defaults.set(showBluetoothTips, forKey: "showBluetoothTips")
+      onChange?(.showBluetoothTips)
     }
   }
 
@@ -731,6 +744,10 @@ public final class SettingsManager {
       AppearancePreference(
         rawValue: defaults.string(forKey: "appearancePreference") ?? ""
       ) ?? SettingsDefaultValues.appearancePreference
+
+    showBluetoothTips =
+      defaults.object(forKey: "showBluetoothTips") as? Bool
+      ?? SettingsDefaultValues.showBluetoothTips
 
     // What's New: fresh install (nil) defaults to current version so new users aren't badged.
     let storedWhatsNew =

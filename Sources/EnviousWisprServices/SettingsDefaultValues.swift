@@ -76,4 +76,10 @@ enum SettingsDefaultValues {
 
   static let useStreamingASR = false
   static let warmEnginePolicy: WarmEnginePolicy = .seconds30
+
+  // #1480: show the once-per-launch Bluetooth cold-start education popover when
+  // the configured input is a Bluetooth mic. Default ON — it is light, dismissable,
+  // and only appears for Bluetooth users; the toggle is the annoyance escape hatch.
+  // The permanent Microphone-settings guide stays regardless of this flag.
+  static let showBluetoothTips = true
 }
