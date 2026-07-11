@@ -15,6 +15,15 @@ import Testing
 /// role as the audio-callback → telemetry wiring home (state-ownership row 9).
 /// No new collaborator slot, no new closure-injected dependency, no new
 /// import — only the line count moved.
+///
+/// Bible §30 entry (#1224, 2026-07-11): collaborator ceiling 4 → 5, line
+/// ceiling 137 → 148. The router gained `recordingOverlay` as a fifth
+/// collaborator so it can show the honest "auto-stop unavailable" notice
+/// when the bundled VAD model is broken — the same in-panel mechanism
+/// `RecordingStarter`/`RecordingFinalizer`/`DictationLifecycleCoordinator`
+/// already receive `recordingOverlay` for. Bound alongside the existing
+/// `onVADAutoStop` install; no re-check of the auto-stop setting here (the
+/// XPC service already decided eligibility before firing the callback).
 @Suite struct AudioEventRouterCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/DictationRuntime/AudioEventRouter.swift"
@@ -23,10 +32,11 @@ import Testing
     let body = try RouterCeilingParser.classBody(named: "AudioEventRouter", at: Self.sourcePath)
     let count = RouterCeilingParser.collaboratorCount(in: body)
     #expect(
-      count <= 4,
+      count <= 5,
       """
-      AudioEventRouter collaborator-slot ceiling exceeded: \(count) > 4. \
-      Allowed: audioCapture, pipeline, whisperKitKernelDriver, captureTelemetry.
+      AudioEventRouter collaborator-slot ceiling exceeded: \(count) > 5. \
+      Allowed: audioCapture, pipeline, whisperKitKernelDriver, captureTelemetry, \
+      recordingOverlay.
       """)
   }
 
@@ -62,9 +72,9 @@ import Testing
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      count <= 137,
+      count <= 148,
       """
-      AudioEventRouter line count exceeded: \(count) > 137. \
+      AudioEventRouter line count exceeded: \(count) > 148. \
       Raise via Bible §30 only.
       """)
   }

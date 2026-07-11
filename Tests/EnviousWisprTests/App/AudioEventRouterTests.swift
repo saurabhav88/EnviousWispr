@@ -46,6 +46,7 @@ struct AudioEventRouterTests {
       kernelDriver: parakeet,
       whisperKitKernelDriver: whisperKit,
       captureTelemetry: telemetry,
+      recordingOverlay: RecordingOverlayPanel(),
       resolveActiveCaptureBackend: { nil }
     )
 
@@ -74,6 +75,7 @@ struct AudioEventRouterTests {
       kernelDriver: parakeet,
       whisperKitKernelDriver: whisperKit,
       captureTelemetry: telemetry,
+      recordingOverlay: RecordingOverlayPanel(),
       resolveActiveCaptureBackend: { nil }
     )
 
@@ -132,6 +134,7 @@ struct AudioEventRouterTests {
       kernelDriver: driver,
       whisperKitKernelDriver: whisperKit,
       captureTelemetry: CaptureTelemetryState(),
+      recordingOverlay: RecordingOverlayPanel(),
       resolveActiveCaptureBackend: { .parakeet }
     )
 
@@ -192,6 +195,7 @@ struct AudioEventRouterTests {
       kernelDriver: parakeet,
       whisperKitKernelDriver: whisperKit,
       captureTelemetry: telemetry,
+      recordingOverlay: RecordingOverlayPanel(),
       resolveActiveCaptureBackend: { nil }
     )
 
@@ -223,6 +227,7 @@ struct AudioEventRouterTests {
       kernelDriver: parakeet,
       whisperKitKernelDriver: whisperKit,
       captureTelemetry: telemetry,
+      recordingOverlay: RecordingOverlayPanel(),
       resolveActiveCaptureBackend: {
         resolverCallCount += 1
         return nil

@@ -47,6 +47,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// `.maxDuration` stop the graceful wall-clock cap uses.
   public var onMaxDurationReached: (() -> Void)?
 
+  /// #1224: no-op for in-process capture — the bundled-VAD-unavailable notice
+  /// is owned by the XPC path's `AudioCaptureProxy`; direct-mode's
+  /// `CaptureVADSignalSource` keeps its existing plain log line instead
+  /// (§2.2 non-goals, issue-1224 plan).
+  public var onVADModelUnavailable: (() -> Void)?
+
   /// #1408 A3: the backstop threshold, instance-scoped so tests can inject a
   /// tiny limit (the production value is 58,560,000 samples — unreachable in a
   /// unit test). Production never touches it.

@@ -33,6 +33,17 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
   /// Service-owned SilenceDetector — runs VAD in the service process where samples live.
   private var silenceDetector: SilenceDetector?
 
+  /// Retained across recordings (#1224) — the loaded model survives the
+  /// process's lifetime instead of being rebuilt on every recording. `reset()`
+  /// still clears per-session streaming state at the top of each recording.
+  private var persistentSilenceDetector: SilenceDetector?
+
+  /// Classifies the bundled model's health and decides notice-eligibility
+  /// (#1224). The decision logic itself lives in `EnviousWisprAudio` (a
+  /// reachable, unit-tested module) since this XPC service target has no
+  /// unit-test bundle in this project's Xcode graph.
+  private var vadReadinessTracker = VADModelReadinessTracker()
+
   /// VAD monitoring task — started after beginCapture, cancelled on stopCapture/abortPreWarm.
   private var vadMonitorTask: Task<Void, Never>?
 
@@ -419,31 +430,42 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
   // MARK: - Service-side VAD monitoring (Step 5)
 
   /// Start the VAD monitoring task. Called after beginCapture succeeds.
+  /// #1224: the detector is now retained across recordings (`persistentSilenceDetector`)
+  /// instead of rebuilt every call; the bundled model loads once, ever, per
+  /// process lifetime.
   @MainActor
   private func startVADMonitoring() {
     let config = SmoothedVADConfig.fromSensitivity(vadSensitivity, energyGate: vadEnergyGate)
+    // Captured before the Task, like `config` above — matches how the
+    // pre-existing code already threads per-recording-current settings into
+    // the task without needing to read them back through `self` later.
+    let currentSilenceTimeout = vadSilenceTimeout
 
-    let detector = SilenceDetector(silenceTimeout: vadSilenceTimeout, vadConfig: config)
+    let detector =
+      persistentSilenceDetector
+      ?? SilenceDetector(silenceTimeout: vadSilenceTimeout, vadConfig: config)
+    persistentSilenceDetector = detector
     self.silenceDetector = detector
 
     vadMonitorTask = Task { @MainActor [weak self] in
-      // Prepare the VAD model
-      do {
-        try await detector.prepare()
-      } catch {
-        // #1177 (Telemetry Bible Phase 8b, A4): the VAD model failed to load, so
-        // silence auto-stop is silently disabled for this recording (the user must
-        // stop manually). Previously a bare `return` with not even a log. Report it
-        // as an in-process handled error (this runs in the audio XPC service, which
-        // has its own Sentry but cannot reach the host's PostHog / SentryBreadcrumb).
-        // Content-free (error type name only); fail-open continues — the heart path
-        // (capture) is unaffected, only the auto-stop limb is lost.
-        HelperObservability.captureHandledError(
-          category: "vad#prepare_failed", detail: String(reflecting: type(of: error)))
+      // Reset per-session streaming state (fresh every recording); the loaded
+      // model itself is NOT torn down — `reset()` never touches `vadManager`.
+      await detector.reset()
+      await detector.updateConfig(config)
+      await detector.updateSilenceTimeout(currentSilenceTimeout)
+
+      // `self?.` (not a hard unwrap) so this one-shot setup call never pins a
+      // strong `self` across the long-running loop below — the loop's own
+      // per-iteration `guard let self else { return }` is what lets this task
+      // notice the handler has been deallocated and exit promptly.
+      await self?.updateVADReadinessAndMaybeNotify(detector: detector)
+
+      guard await detector.isReady else {
+        // Classified broken (or `self` already gone) — nothing to monitor
+        // this recording. Same as the pre-fix behavior: a broken model runs
+        // no chunk-feed loop; capture/transcription are unaffected either way.
         return
       }
-
-      await detector.reset()
 
       var processedSampleCount = 0
       let chunkSize = SilenceDetector.chunkSize
@@ -475,6 +497,52 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
 
         try? await Task.sleep(for: .milliseconds(100))
       }
+    }
+  }
+
+  /// Classify the bundled VAD model's health at most once per process
+  /// lifetime, then check notice-eligibility on EVERY call regardless of
+  /// whether classification just happened now or on an earlier recording —
+  /// this is what closes the "detected while auto-stop is off, never told
+  /// after turning it on" trap (#1224, council round 1 finding).
+  @MainActor
+  private func updateVADReadinessAndMaybeNotify(detector: SilenceDetector) async {
+    // Attempt the load only once ever — a permanently broken bundled file
+    // gains nothing from retrying, and the tracker's `classifyIfNeeded` is a
+    // no-op once already classified, so calling `prepare()` again here would
+    // be a wasted (though harmless — `prepare()` is itself idempotent) call.
+    if case .unknown = vadReadinessTracker.readiness {
+      do {
+        try await detector.prepare()
+        vadReadinessTracker.classifyIfNeeded(failureReason: nil)
+        // No success telemetry call here: no lightweight non-error primitive
+        // exists from this process (`HelperObservability`'s only capture
+        // method is error-only), and PostHog's existing
+        // `dictation.completed{stop_reason=vad_auto_stop}` is a stronger,
+        // pre-existing proof the feature genuinely works (#1224 plan §3.4).
+      } catch {
+        // #1177 (Telemetry Bible Phase 8b, A4) / #1224: the VAD model failed
+        // to load, so silence auto-stop is disabled for this process's
+        // lifetime (the user must stop manually). Report it as an in-process
+        // handled error (this runs in the audio XPC service, which has its
+        // own Sentry but cannot reach the host's PostHog / SentryBreadcrumb).
+        // SAME category the pre-fix network failure used — deliberately not
+        // renamed, so before/after telemetry stays one continuous graph
+        // (founder direction, 2026-07-11) — with a `source` tag since network
+        // is no longer a possible cause going forward. Content-free (error
+        // type name only); fail-open continues — the heart path (capture) is
+        // unaffected, only the auto-stop limb is lost.
+        let reason = String(reflecting: type(of: error))
+        vadReadinessTracker.classifyIfNeeded(failureReason: reason)
+        HelperObservability.captureHandledError(
+          category: "vad#prepare_failed", detail: "source=bundle_missing reason=\(reason)")
+      }
+    }
+
+    // Runs on EVERY call regardless of whether classification just happened
+    // now or on an earlier recording — this is what actually closes the trap.
+    if vadReadinessTracker.shouldShowNotice(autoStopEnabled: vadAutoStop) {
+      clientProxy?.vadModelUnavailable()
     }
   }
 

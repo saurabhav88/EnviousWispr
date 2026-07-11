@@ -128,4 +128,12 @@ import Foundation
   /// ACTIVE begin op, so a maximally delayed event cannot stop a later
   /// recording.
   func maxDurationReachedTriggered(operationID: String)
+
+  /// The bundled VAD model is unavailable (missing/corrupted asset — a broken
+  /// install, not a network condition; #1224). Fires at most once per
+  /// audio-service-process lifetime, and only at the first recording where the
+  /// model is known-broken AND the user currently has auto-stop-on-silence
+  /// enabled. Bypass, not failure — capture/transcription are unaffected
+  /// either way; this only means silence auto-stop will not trigger.
+  func vadModelUnavailable()
 }

@@ -257,6 +257,31 @@ if ! { grep -q "${VERSION}" "$LICENSES_DIR/SOURCE.txt" && grep -q "${COMMIT}" "$
 fi
 echo "    license material sealed in Contents/Resources/Licenses (GPL-3.0.txt, THIRD-PARTY-NOTICES.txt, SOURCE.txt @ ${COMMIT:0:8})"
 
+echo "==> [4c/9] Verify the bundled VAD model rode the archive into both bundles (#1224)"
+# The fix for #1224 (VAD model downloads at record-start) bundles the model as
+# a Tuist folder-reference resource on BOTH the main app target and the audio
+# XPC service target (Project.swift), instead of it being fetched from the
+# network at runtime. A packaging mistake here (a dropped resources: entry, a
+# Tuist glob regression) would silently reintroduce the network dependency in
+# a shipped build with no functional-test signal until users hit it — same
+# shape of gate as the EG-1 llama-server check below, run pre-sign so a
+# missing asset fails the build before any signature is applied.
+VAD_MODEL_REL="Contents/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc"
+test -d "$BUNDLE/$VAD_MODEL_REL" || {
+    echo "::error::VAD model missing from app bundle at $VAD_MODEL_REL (#1224)"; exit 1;
+}
+AUDIO_XPC_PRESIGN=""
+for XPC_SVC in "$BUNDLE/Contents/XPCServices"/*.xpc; do
+    [[ -d "$XPC_SVC" ]] || continue
+    BID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$XPC_SVC/Contents/Info.plist")"
+    [[ "$BID" == "com.enviouswispr.audioservice" ]] && AUDIO_XPC_PRESIGN="$XPC_SVC"
+done
+test -n "$AUDIO_XPC_PRESIGN" || { echo "::error::audio XPC service bundle not found (#1224)"; exit 1; }
+test -d "$AUDIO_XPC_PRESIGN/$VAD_MODEL_REL" || {
+    echo "::error::VAD model missing from audio XPC service bundle at $VAD_MODEL_REL (#1224)"; exit 1;
+}
+echo "    VAD model present in both the app and audio XPC service bundles"
+
 if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
     echo "==> CODESIGN_IDENTITY not set — skipping signing (unsigned assembly only)"
 else

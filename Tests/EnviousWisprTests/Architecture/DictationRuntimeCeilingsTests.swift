@@ -32,6 +32,12 @@ import Testing
 ///   Cancel's seam, the exact cancel twin of #879's
 ///   `ensureActiveEngineWarmForOnboarding` (same thin forward to
 ///   `starter.activeDriver`, no new state, no new collaborator).
+/// - #1224 (2026-07-11): line cap 216 → 217 for one new `recordingOverlay:`
+///   argument threaded into the existing `AudioEventRouter(...)` construction
+///   call — the router needs it to show the bundled-VAD-model-unavailable
+///   notice. No new DictationRuntime collaborator, method, or import; the
+///   value was already a DictationRuntime.init parameter, just not yet
+///   passed to this one collaborator.
 @Suite struct DictationRuntimeCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/DictationRuntime/DictationRuntime.swift"
@@ -94,9 +100,9 @@ import Testing
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      count <= 216,
+      count <= 217,
       """
-      DictationRuntime line count exceeded: \(count) > 216. \
+      DictationRuntime line count exceeded: \(count) > 217. \
       Raise via Bible §30 only. PR10 ratcheted 100 → 200 to absorb the \
       7-collab field block + 6 façade methods + DR.init body building the \
       recording subsystem (HeartControlRecovery + Finalizer + Starter + \
@@ -105,7 +111,9 @@ import Testing
       init parameters (ensureSelectedReadyForPress, isEngineSwitching, \
       beginMinting, endMinting) + their doc comments — no new state. \
       #1388 ratcheted 215 → 216 for cancelActiveEngineWarmupForOnboarding \
-      (#879's cancel twin — thin forward, no new state).
+      (#879's cancel twin — thin forward, no new state). #1224 ratcheted \
+      216 → 217 for one new `recordingOverlay:` argument threaded into the \
+      existing AudioEventRouter(...) construction call.
       """)
   }
 
