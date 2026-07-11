@@ -391,12 +391,22 @@ import Testing
       try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: orphan.path)
     }
 
+    // Something of the user's, in the legacy directory. The RECOVERY path must not
+    // touch it: re-admitting the source by running a full promotion would prune every
+    // unlisted entry and delete this (Codex PR-1 review r18) — the recovery breaking
+    // the preservation guarantee the rest of the migrator enforces.
+    let bystander = dirs.old.appendingPathComponent("users-own-file.bin")
+    try write(Data("mine".utf8), under: dirs.old, path: "users-own-file.bin")
+
     let outcome = await ModelRelocationMigrator().migrate(p)
 
     #expect(outcome != .relocated)
     #expect(
       sourceGate.isAdmitted(),
       "an intact source must remain ADMITTED when promotion fails, or the fallback cannot find it")
+    #expect(
+      exists(bystander),
+      "restoring admission must not delete unrelated files from the legacy directory")
     // The invariant that actually matters: SOME usable copy is still findable by
     // admission. (The destination may also validate here — the clone succeeded and
     // only the orphan prune failed — and loading from it is perfectly fine. What must

@@ -265,13 +265,11 @@ public struct ModelRelocationMigrator: Sendable {
         stagingDirectory: plan.destination,
         untouchedComponents: validation.verifiedComponents)
     } catch {
-      restoreAdmission(
-        of: oldAdmission, components: validation.verifiedComponents, at: oldDirectory)
+      restoreAdmission(of: oldAdmission)
       return .unrecognized
     }
     guard admission.isAdmitted() else {
-      restoreAdmission(
-        of: oldAdmission, components: validation.verifiedComponents, at: oldDirectory)
+      restoreAdmission(of: oldAdmission)
       return .unrecognized
     }
 
@@ -455,14 +453,15 @@ public struct ModelRelocationMigrator: Sendable {
   ///
   /// Best-effort by nature: if re-admission ALSO fails we are on a filesystem that is
   /// refusing writes, and the bytes are still there to be re-validated (and
-  /// re-admitted) on the next launch. We never delete anything on this path.
-  private func restoreAdmission(
-    of admission: CacheAdmission, components: Set<String>, at directory: URL
-  ) {
-    try? admission.promoteAndAdmit(
-      stagedComponents: [],
-      stagingDirectory: directory,
-      untouchedComponents: components)
+  /// re-admitted) on the next launch.
+  ///
+  /// Stamps the marker ONLY — it must NOT run a full promotion. Promotion prunes every
+  /// entry the manifest does not name, so recovering the source's admission that way
+  /// would delete the user's unrelated files from the legacy directory: the recovery
+  /// path breaking the very preservation guarantee the rest of this type enforces
+  /// (Codex PR-1 review r18). Nothing on this path deletes anything, ever.
+  private func restoreAdmission(of admission: CacheAdmission) {
+    try? admission.stampAdmissionForVerifiedSet()
   }
 
   /// Delete a retired downloader's scratch files from an old location.

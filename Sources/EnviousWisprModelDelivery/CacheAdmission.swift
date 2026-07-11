@@ -183,6 +183,37 @@ struct CacheAdmission {
     try JSONEncoder().encode(marker).write(to: markerURL, options: .atomic)
   }
 
+  /// Stamp the admission marker for a set that is ALREADY in place, touching nothing
+  /// on disk (#1386).
+  ///
+  /// This is step (4) of `promoteAndAdmit` and nothing else — no promotion, and
+  /// crucially NO orphan cleanup. Used only to RESTORE an admission that a failed
+  /// promotion invalidated: the bytes were validated moments earlier and never moved,
+  /// so re-stamping them is honest, while running the full promote would prune every
+  /// unlisted entry from that directory and delete a user's unrelated files (Codex
+  /// PR-1 review r18).
+  ///
+  /// Never a substitute for `promoteAndAdmit` on a normal path: it admits what is
+  /// there without proving it, so the caller must have just proven it.
+  func stampAdmissionForVerifiedSet() throws {
+    let fm = FileManager.default
+    var stamps: [AdmissionMarker.FileStamp] = []
+    for file in manifest.files {
+      let url = installDirectory.appendingPathComponent(file.resolvedInstallPath)
+      let attrs = try fm.attributesOfItem(atPath: url.path)
+      guard let size = attrs[.size] as? Int64, size == file.sizeBytes,
+        let mtime = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970
+      else {
+        throw DeliveryFailure(reason: .cacheRepairFailed, detail: "restore_stamp:\(file.component)")
+      }
+      stamps.append(.init(path: file.resolvedInstallPath, sizeBytes: size, mtime: mtime))
+    }
+    try fm.createDirectory(at: metadataDirectory, withIntermediateDirectories: true)
+    let marker = AdmissionMarker(
+      manifestDigest: manifest.manifestDigest, admittedAt: Date(), files: stamps)
+    try JSONEncoder().encode(marker).write(to: markerURL, options: .atomic)
+  }
+
   /// Whether ANY manifest file of this component exists in the install dir
   /// (distinguishes repair-of-damage from a cold first download).
   func componentHasAnyFile(_ component: String) -> Bool {
