@@ -35,6 +35,14 @@ import Testing
 /// all relocation policy, so this is one narrow delegation, not accretion (§3b).
 /// Allowlist 20 → 21 (3 owned `var` + 18 injected `let`); non-private method
 /// count unchanged at 3.
+/// Bible §30 entry (#1480, 2026-07-11): `bluetoothAwarenessPresenter` added — the
+/// Bluetooth cold-start card's decision owner. Injected `let`; the three lifecycle
+/// closures (`onPipelineStateChange`, `onAudioDeviceEvent`, the launch
+/// completed-onboarding block) forward a `Trigger` fact to `reconcile(...)`. The
+/// coordinator carries NO Bluetooth predicate, overlay branching, or once-per-launch
+/// state — all decision logic lives on the presenter (§3b), so this is one narrow
+/// delegation, not accretion. Allowlist 21 → 22 (3 owned `var` + 19 injected `let`);
+/// non-private method count unchanged at 3.
 @Suite struct AppLifecycleCoordinatorCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift"
@@ -61,6 +69,7 @@ import Testing
     "appWindowCoordinator",
     "hotkeyService",
     "applicationRelocationCoordinator",
+    "bluetoothAwarenessPresenter",
   ]
 
   @Test func storedPropertyNamesMatchAllowlist() throws {
@@ -73,7 +82,7 @@ import Testing
       extras.isEmpty && missing.isEmpty,
       """
       AppLifecycleCoordinator stored-property set drifted from the \
-      21-name allowlist. Unexpected: \(extras.sorted()). Missing: \
+      22-name allowlist. Unexpected: \(extras.sorted()). Missing: \
       \(missing.sorted()). Adding a stored property is god-object drift — \
       raising the allowlist requires a Bible §30 entry. Removing one means \
       this allowlist must shrink in the same PR.

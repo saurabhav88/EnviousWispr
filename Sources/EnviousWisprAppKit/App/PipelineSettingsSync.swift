@@ -209,6 +209,8 @@ final class PipelineSettingsSync {
       break  // #1247: kernel pulls this live via `dictationAudioArchiveOptInProvider` — no push needed here.
     case .appearance:
       break  // UI-only; applied to NSApp.appearance by the app shell (#1047).
+    case .showBluetoothTips:
+      break  // #1480: UI-only; read by BluetoothAwarenessPresenter, no pipeline sync.
     }
   }
 

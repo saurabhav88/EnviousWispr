@@ -86,6 +86,69 @@ struct AudioSettingsView: View {
           }
         }
       }
+
+      // #1480: permanent Bluetooth cold-start guide. Same icons + tip wording as
+      // the once-per-launch popover (BluetoothTipsCopy is the single copy home),
+      // plus the preferred-mic-order line, the authoritative P.S., and the toggle
+      // that turns the popover off (this guide always stays).
+      BrandedPanel(
+        icon: "dot.radiowaves.left.and.right",
+        header: BluetoothTipsCopy.settingsHeader,
+        description: BluetoothTipsCopy.settingsIntro
+      ) {
+        VStack(alignment: .leading, spacing: 14) {
+          VStack(alignment: .leading, spacing: 12) {
+            bluetoothTipRow(icon: BluetoothTipsCopy.iconTiming, text: BluetoothTipsCopy.tipTiming)
+            bluetoothTipRow(
+              icon: BluetoothTipsCopy.iconReadiness, text: BluetoothTipsCopy.tipReadiness)
+            bluetoothTipRow(
+              icon: BluetoothTipsCopy.iconHeadphones, text: BluetoothTipsCopy.tipHeadphones)
+          }
+
+          InsetNotice(
+            text: BluetoothTipsCopy.micOrder,
+            systemImage: "list.bullet",
+            tint: .stAccent
+          )
+
+          Text(BluetoothTipsCopy.settingsPS)
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+          Divider().overlay(Color.stDivider)
+
+          Toggle(isOn: $settings.showBluetoothTips) {
+            VStack(alignment: .leading, spacing: 2) {
+              Text(BluetoothTipsCopy.showTipsToggle).settingsRowLabel()
+              Text("Shows the reminder popover once per launch. This guide always stays.")
+                .font(.stHelper)
+                .foregroundStyle(.stTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+          }
+          .toggleStyle(BrandedToggleStyle())
+        }
+      }
+    }
+  }
+
+  /// One tip row in the Bluetooth guide: accent icon badge + sentence, matching
+  /// the popover's rows (same icons, same copy via `BluetoothTipsCopy`).
+  private func bluetoothTipRow(icon: String, text: String) -> some View {
+    HStack(alignment: .center, spacing: 11) {
+      Image(systemName: icon)
+        .font(.system(size: 15, weight: .medium))
+        .foregroundStyle(.stAccent)
+        .frame(width: 34, height: 34)
+        .background(Color.stAccentLight, in: Circle())
+        .overlay(Circle().strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1))
+        .accessibilityHidden(true)
+      Text(text)
+        .font(.stBody)
+        .foregroundStyle(.stTextBody)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
     }
   }
 }

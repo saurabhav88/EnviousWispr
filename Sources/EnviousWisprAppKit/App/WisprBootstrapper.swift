@@ -346,8 +346,15 @@ public final class WisprBootstrapper {
       settingsChangeTelemetry?.flush()
     }
 
+    // #1480: late-binding bridge so this early-assigned onChange closure can
+    // forward setting-change facts to the (later-constructed) presenter.
+    let bluetoothAwarenessPresenterHolder = BluetoothAwarenessPresenterHolder()
+
     settings.onChange = {
-      [weak settingsSync, weak settings, weak settingsChangeTelemetry, outputClassifierHolder] key
+      [
+        weak settingsSync, weak settings, weak settingsChangeTelemetry, outputClassifierHolder,
+        bluetoothAwarenessPresenterHolder
+      ] key
       in
       guard let settingsSync, let settings else { return }
       settingsSync.handleSettingChanged(key, settings: settings)
@@ -365,6 +372,23 @@ public final class WisprBootstrapper {
       if key == .llmProvider {
         WisprBootstrapper.prewarmOutputClassifierIfNeeded(
           holder: outputClassifierHolder, provider: settings.llmProvider)
+      }
+      // #1480: tips on/off, input-device change, and onboarding completion each
+      // re-evaluate the Bluetooth card (dismiss/suppress, route re-check, or first
+      // surface after onboarding). Deferred to the next run-loop cycle because the
+      // input picker writes `preferredInputDeviceIDOverride` and
+      // `selectedInputDeviceUID` as a synchronous PAIR (AudioSettingsView), so a
+      // reconcile on the first write would read a half-updated selection (cloud
+      // review P2). Deferring coalesces the pair into one evaluation over the
+      // settled state; the second fires and no-ops.
+      switch key {
+      case .showBluetoothTips, .preferredInputDeviceIDOverride, .selectedInputDeviceUID,
+        .onboardingState:
+        DispatchQueue.main.async {
+          bluetoothAwarenessPresenterHolder.presenter?.reconcile(trigger: .settingChanged)
+        }
+      default:
+        break
       }
     }
 
@@ -642,6 +666,18 @@ public final class WisprBootstrapper {
     // #1451: App Translocation recovery limb, driven from the launch sequence.
     let applicationRelocationCoordinator = ApplicationRelocationCoordinator.live()
 
+    // #1480: Bluetooth cold-start card. Single decision owner; ingress facts come
+    // from AppLifecycleCoordinator + settings.onChange. Wiring lives in `.live(...)`;
+    // built before AppLifecycleCoordinator (which stores it).
+    let bluetoothAwarenessPresenter = BluetoothAwarenessPresenter.live(
+      overlay: recordingOverlay,
+      settings: settings,
+      liveRecordingState: liveRecordingState,
+      navigationCoordinator: navigationCoordinator,
+      appWindowCoordinator: appWindowCoordinator
+    )
+    bluetoothAwarenessPresenterHolder.presenter = bluetoothAwarenessPresenter
+
     // PR-B.4 of #763: process-lifecycle home. Constructed last. It receives the
     // 10 specific homes it reads.
     let appLifecycleCoordinator = AppLifecycleCoordinator(
@@ -663,6 +699,7 @@ public final class WisprBootstrapper {
       appWindowCoordinator: appWindowCoordinator,
       hotkeyService: hotkeyService,
       applicationRelocationCoordinator: applicationRelocationCoordinator,
+      bluetoothAwarenessPresenter: bluetoothAwarenessPresenter,
       onboardingProgress: onboardingProgress
     )
 

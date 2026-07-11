@@ -119,6 +119,14 @@ public enum OverlayIntent: Equatable, Sendable {
   /// wait." No session is minted. Auto-dismissed after a few seconds; re-shown
   /// on each blocked press.
   case recoveringLastRecording
+  /// Bluetooth cold-start education card (#1480). Shown once per launch when the
+  /// configured input is a Bluetooth microphone and dictation is idle, sitting in
+  /// the same top-middle slot as the recording pill. Unlike every other intent it
+  /// has NO auto-dismiss: it persists until the user starts recording (which
+  /// supersedes it via the single-slot dedup), taps "Got it" / close / "Adjust
+  /// settings", the input changes away from Bluetooth, or the tips setting is
+  /// turned off. Its decision + lifecycle are owned by `BluetoothAwarenessPresenter`.
+  case bluetoothAwareness
 }
 
 /// Why a recording ended at a terminal state WITHOUT a durable transcript save,

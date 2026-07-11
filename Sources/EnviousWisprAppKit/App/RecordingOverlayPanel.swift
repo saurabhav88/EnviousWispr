@@ -79,6 +79,13 @@ final class RecordingOverlayPanel {
   private var passiveChipDismissHandler: (() -> Void)?
   private var passiveChipAutoDismissHandler: ((UInt64) -> Void)?
 
+  // #1480 Bluetooth awareness card handlers — installed once by the composition
+  // root, invoked by the card view's three buttons. The presenter owns all
+  // state/teardown/telemetry; these just forward the user's tap.
+  private var bluetoothAwarenessGotItHandler: (() -> Void)?
+  private var bluetoothAwarenessCloseHandler: (() -> Void)?
+  private var bluetoothAwarenessAdjustSettingsHandler: (() -> Void)?
+
   // MARK: - Intent-driven API
 
   func setGrantHandler(_ handler: @escaping () -> Void) {
@@ -104,6 +111,18 @@ final class RecordingOverlayPanel {
     passiveChipLockHandler = onLock
     passiveChipDismissHandler = onDismiss
     passiveChipAutoDismissHandler = onAutoDismiss
+  }
+
+  /// #1480 — wire the Bluetooth awareness card's button actions. Installed once
+  /// by the composition root; each closure routes to `BluetoothAwarenessPresenter`.
+  func setBluetoothAwarenessHandlers(
+    onGotIt: @escaping () -> Void,
+    onClose: @escaping () -> Void,
+    onAdjustSettings: @escaping () -> Void
+  ) {
+    bluetoothAwarenessGotItHandler = onGotIt
+    bluetoothAwarenessCloseHandler = onClose
+    bluetoothAwarenessAdjustSettingsHandler = onAdjustSettings
   }
 
   /// Unified entry point: render the overlay for the given intent.
@@ -249,6 +268,16 @@ final class RecordingOverlayPanel {
           self?.hide()
         }).frame(width: 320, height: 56),
         width: 320, height: 56, dismissAfter: 6.0)
+    case .bluetoothAwareness:
+      NSAccessibility.post(
+        element: NSApp.mainWindow as Any,
+        notification: .announcementRequested,
+        userInfo: [
+          .announcement:
+            "Bluetooth microphone detected. Wait a moment before speaking on a cold start.",
+          .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
+        ])
+      showBluetoothAwareness()
     }
   }
 
@@ -608,8 +637,11 @@ final class RecordingOverlayPanel {
   ) {
     guard let existingPanel = panel else { return }
     clearRecordingNotice()  // #1060 (Codex P3): fresh session starts with no stale notice.
-    let y = existingPanel.frame.origin.y
-
+    // The recording pill always appears at its canonical top slot — do NOT inherit
+    // the outgoing panel's origin. A taller panel (e.g. the #1480 Bluetooth card)
+    // sits lower, so reusing its origin would drop the pill to mid-screen (#1480
+    // live UAT). A fresh recording is a new lifecycle, not a continuation of the
+    // superseded panel, so it re-anchors to the default position.
     panel = nil
     autoDismissTask?.cancel()
     autoDismissTask = nil
@@ -625,7 +657,7 @@ final class RecordingOverlayPanel {
       guard let self, self.generation == token else { return }
       self.pendingCreateWork = nil
       self.createPanel(
-        audioLevelProvider: audioLevelProvider, isRecordingLocked: isRecordingLocked, y: y)
+        audioLevelProvider: audioLevelProvider, isRecordingLocked: isRecordingLocked)
     }
     pendingCreateWork = work
     DispatchQueue.main.async(execute: work)
@@ -772,6 +804,69 @@ final class RecordingOverlayPanel {
       guard let self, self.generation == token else { return }
       self.pendingCreateWork = nil
       self.createPassiveChipPanel(payload: payload, y: y)
+    }
+    pendingCreateWork = work
+    DispatchQueue.main.async(execute: work)
+  }
+
+  /// #1480 — show the Bluetooth cold-start education card. Mirrors
+  /// `showPassiveChip`'s defer-to-next-run-loop + generation-guard shape, but has
+  /// NO auto-dismiss (plan §3D): the card persists until the presenter tears it
+  /// down (record-supersede, Got it / close / Adjust settings, route-off, or the
+  /// tips setting turning off).
+  func showBluetoothAwareness() {
+    guard panel == nil else {
+      transitionToBluetoothAwareness()
+      return
+    }
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+    generation &+= 1
+    let token = generation
+
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.generation == token else { return }
+      self.pendingCreateWork = nil
+      self.createBluetoothAwarenessPanel()
+    }
+    pendingCreateWork = work
+    DispatchQueue.main.async(execute: work)
+  }
+
+  private func createBluetoothAwarenessPanel(y: CGFloat? = nil) {
+    guard panel == nil else { return }
+    let onGotIt = bluetoothAwarenessGotItHandler
+    let onClose = bluetoothAwarenessCloseHandler
+    let onAdjust = bluetoothAwarenessAdjustSettingsHandler
+    let view = BluetoothAwarenessCardView(
+      onGotIt: { onGotIt?() },
+      onClose: { onClose?() },
+      onAdjustSettings: { onAdjust?() }
+    )
+    // Fixed width, content-driven height (`fitToContent`) so the multi-row card
+    // is never clipped and adapts to copy length in either appearance.
+    showPanel(content: view, width: 320, height: 0, y: y, fitToContent: true)
+  }
+
+  private func transitionToBluetoothAwareness() {
+    guard let existingPanel = panel else { return }
+    let y = existingPanel.frame.origin.y
+
+    panel = nil
+    autoDismissTask?.cancel()
+    autoDismissTask = nil
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+    CATransaction.flush()
+    existingPanel.close()
+
+    generation &+= 1
+    let token = generation
+
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.generation == token else { return }
+      self.pendingCreateWork = nil
+      self.createBluetoothAwarenessPanel(y: y)
     }
     pendingCreateWork = work
     DispatchQueue.main.async(execute: work)
