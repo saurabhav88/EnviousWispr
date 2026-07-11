@@ -140,7 +140,7 @@ import Testing
     try stageValidShards(h.registration)
     #expect(await h.adapter.adoptIfPresent())
 
-    h.runtime.activateAfterAutomaticReplacementIfNeeded()
+    _ = try #require(h.runtime.activateAfterAutomaticReplacementIfNeeded())
 
     let event = await h.signal.next { event in
       if case .healthChanged(_, _, "server_binary_missing") = event { return true }
@@ -159,7 +159,8 @@ import Testing
     try stageValidShards(h.registration)
     #expect(await h.adapter.adoptIfPresent())
 
-    h.runtime.activateAfterAutomaticReplacementIfNeeded()
+    let activation = h.runtime.activateAfterAutomaticReplacementIfNeeded()
+    #expect(activation == nil)
 
     _ = await h.signal.next { event in
       if case .healthChanged(_, "yellow", "not_started") = event { return true }
@@ -182,7 +183,8 @@ import Testing
     try stageValidShards(h.registration)
     #expect(await h.adapter.adoptIfPresent())
 
-    h.runtime.activateAfterAutomaticReplacementIfNeeded()
+    let activation = h.runtime.activateAfterAutomaticReplacementIfNeeded()
+    #expect(activation == nil)
 
     _ = await h.signal.next { event in
       if case .healthChanged(_, "yellow", "not_started") = event { return true }
@@ -245,8 +247,9 @@ import Testing
     await coordinator.runLaunch()
 
     h.provider.isEGOneActive = false
-    h.runtime.activateAfterAutomaticReplacementIfNeeded()
+    let activation = h.runtime.activateAfterAutomaticReplacementIfNeeded()
 
+    #expect(activation == nil)
     #expect(!h.signal.sawServerBinaryMissing)
   }
 
