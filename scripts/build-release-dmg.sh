@@ -249,7 +249,8 @@ fi
 if ! { grep -q "THIRD-PARTY NOTICES" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt" \
         && grep -q "swift-transformers" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt" \
         && grep -q "FluidAudio" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt" \
-        && grep -q "llama.cpp" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt"; }; then
+        && grep -q "llama.cpp" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt" \
+        && grep -q "Silero" "$LICENSES_DIR/THIRD-PARTY-NOTICES.txt"; }; then
     echo "::error::Bundled THIRD-PARTY-NOTICES.txt incomplete or stale"; exit 1
 fi
 if ! { grep -q "${VERSION}" "$LICENSES_DIR/SOURCE.txt" && grep -q "${COMMIT}" "$LICENSES_DIR/SOURCE.txt"; }; then
@@ -561,7 +562,8 @@ fi
 if ! { [[ -f "$NOTICES_IN_APP" ]] && grep -q "THIRD-PARTY NOTICES" "$NOTICES_IN_APP" \
         && grep -q "None of these components is GPL/LGPL" "$NOTICES_IN_APP" \
         && grep -q "swift-transformers" "$NOTICES_IN_APP" \
-        && grep -q "FluidAudio" "$NOTICES_IN_APP"; }; then
+        && grep -q "FluidAudio" "$NOTICES_IN_APP" \
+        && grep -q "Silero" "$NOTICES_IN_APP"; }; then
     echo "::error::THIRD-PARTY-NOTICES.txt missing or incomplete in shipped app ($NOTICES_IN_APP)"; exit 1
 fi
 # The DMG root must stay clean: only the app + the Applications alias, no loose

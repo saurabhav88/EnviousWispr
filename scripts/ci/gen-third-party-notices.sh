@@ -51,6 +51,12 @@ COMPONENTS=(
   # llama-server-PROVENANCE.md); its MIT license text is vendored in-repo,
   # hence the repo: path scheme (#1271 Codex code-diff r6).
   "llama.cpp (bundled llama-server binary)|fdb1db87|MIT|repo:Sources/EnviousWispr/Resources/llama-server-LICENSE.txt|https://github.com/ggml-org/llama.cpp|"
+  # #1224: the bundled Silero VAD CoreML model. Not a SwiftPM dep (a
+  # committed binary asset, same as llama-server above) — MIT-licensed by
+  # the Silero Team, converted to CoreML by FluidInference; vendored
+  # license text is the canonical one from the upstream silero-vad repo
+  # (the CoreML conversion repo itself ships no separate LICENSE file).
+  "Silero VAD (bundled CoreML model, converted by FluidInference)|v6.0.0|MIT|repo:Sources/EnviousWisprAudioService/Resources/silero-vad-coreml-LICENSE.txt|https://huggingface.co/FluidInference/silero-vad-coreml|"
 )
 
 # --- Cross-check the DIRECT-dep coverage against Package.resolved (Codex #2) ---
