@@ -749,16 +749,20 @@ final class HALDeviceInputSource: AudioInputSource {
   ///
   /// Two jobs, one contract:
   /// 1. SETTLED — poll the device's native rate until two consecutive reads
-  ///    agree (mirrors `AVAudioEngineSource.waitForFormatStabilization`'s
-  ///    two-reads-agree shape; Apple forum 770232 documents AirPods reporting
-  ///    a transient wrong rate corrected by a later notification).
+  ///    agree AND the agreed rate is usable (`> 0`; #1445 parity with
+  ///    `AVAudioEngineSource.isUsableFormat`). Mirrors
+  ///    `AVAudioEngineSource.waitForFormatStabilization`'s two-reads-agree
+  ///    shape; Apple forum 770232 documents AirPods reporting a transient
+  ///    wrong rate corrected by a later notification.
   /// 2. MATCHES — the settled rate must equal the rate this unit's converter
   ///    was built at in `prepare()`. A settled-but-DIVERGENT rate returns
   ///    false, which routes into the kernel's existing one-rebuild retry seam
   ///    (`RecordingSessionKernel` stabilization site) — `prepare()` then
   ///    re-reads the fresh rate and rebuilds the converter. The kernel makes
-  ///    exactly one rebuild attempt and never re-checks stabilization after
-  ///    it; residual failure is owned by the stall watchdog / ASR-empty paths.
+  ///    exactly one rebuild attempt; since #1445 it re-verifies stabilization
+  ///    once after that rebuild (diagnostic only — a false result does not
+  ///    trigger a second rebuild), and residual failure is owned by the stall
+  ///    watchdog / ASR-empty paths.
   ///
   /// No bound device / no live unit → true (nothing to stabilize; matches the
   /// manager's no-active-source short-circuit).
@@ -786,13 +790,24 @@ final class HALDeviceInputSource: AudioInputSource {
   /// drive it with an injected reader + no-op sleep (`test-timing`: assert on
   /// the returned value, never the wall clock).
   ///
-  /// SETTLED = two consecutive reads agree and are non-nil. The result is
+  /// SETTLED = two consecutive reads agree AND the agreed rate is usable
+  /// (`> 0`). During a device transition `nativeRateReader` can report a
+  /// non-nil `0.0`; two agreeing invalid reads must not read as stable
+  /// (parity with `AVAudioEngineSource.isUsableFormat`, #1473). The result is
   /// `matchesPrepared` — a settled-but-DIVERGENT rate is deliberately false
   /// (routes into the kernel's one-rebuild retry seam).
   struct RateSettleOutcome: Equatable {
     let settledRate: Double?
     let matchesPrepared: Bool
     let polls: Int
+  }
+
+  /// A read only counts toward "settled" when it is non-nil and `> 0` (mirrors
+  /// `AVAudioEngineSource.isUsableFormat`'s rate clause). Rejects zero,
+  /// negatives, and NaN (`Double.nan > 0` is false).
+  nonisolated static func isUsableRate(_ rate: Double?) -> Bool {
+    guard let rate else { return false }
+    return rate > 0
   }
 
   static func settleNativeRate(
@@ -813,7 +828,7 @@ final class HALDeviceInputSource: AudioInputSource {
     var lastRate = readRate()
     await sleep(.milliseconds(10))
     var currentRate = readRate()
-    if currentRate != nil, currentRate == lastRate {
+    if isUsableRate(currentRate), currentRate == lastRate {
       return outcome(currentRate, polls: 0)
     }
     // Bounded poll loop — polls is the budget (not wall-clock, so an injected
@@ -825,7 +840,7 @@ final class HALDeviceInputSource: AudioInputSource {
       await sleep(.seconds(pollInterval))
       polls += 1
       currentRate = readRate()
-      if currentRate != nil, currentRate == lastRate {
+      if isUsableRate(currentRate), currentRate == lastRate {
         return outcome(currentRate, polls: polls)
       }
     }

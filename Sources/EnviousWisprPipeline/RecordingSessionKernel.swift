@@ -837,11 +837,13 @@ final class RecordingSessionKernel {
     let stabilized = await audioCapture.waitForFormatStabilization(
       maxWait: 1.5, pollInterval: 0.2)
     guard isCurrent(sid) else { return }
-    // #1434: record the stabilization outcome for the session's capture-health
-    // telemetry (read at stall-emit by the observer and merged into the
-    // post-stop record at `stopCapture()`). Exactly ONE rebuild attempt below,
-    // and no second stabilization check after it — a still-broken device is
-    // owned by the stall watchdog / ASR-empty paths downstream.
+    // #1434/#1445: record the stabilization outcome for the session's
+    // capture-health telemetry (read at stall-emit by the observer and merged
+    // into the post-stop record at `stopCapture()`). Exactly ONE rebuild
+    // attempt below; #1445 adds one diagnostic re-verify after that rebuild
+    // (no second rebuild) so a rebuild that re-read a still-stale rate is
+    // visible in telemetry instead of being blindly trusted. A still-broken
+    // device is owned by the stall watchdog / ASR-empty paths downstream.
     formatStabilizedThisSession = stabilized
     captureRebuiltForFormatThisSession = !stabilized
     if !stabilized {
@@ -855,6 +857,24 @@ final class RecordingSessionKernel {
         return
       }
       guard isCurrent(sid) else { return }
+      // #1445: re-verify stabilization ONCE after the single rebuild. This is
+      // DIAGNOSTIC only — it records the truer post-rebuild outcome for
+      // capture-health telemetry (previously the pre-rebuild `false` was
+      // trusted blindly). A still-`false` result does NOT trigger a second
+      // rebuild or a new terminal; `captureRebuiltForFormatThisSession` stays
+      // true so a rebuild remains visible. Control then falls through to the
+      // existing stop/cancel latch checks below, which remain the cancel
+      // authority.
+      //
+      // NEAR-INSTANT budget (Codex code-diff P2): because the result is
+      // never acted on and capture proceeds regardless, this must NOT re-pay
+      // the full 1.5s stabilization budget on the exact affected-device path.
+      // A 50 ms snapshot (fast-path read + at most one short poll) captures
+      // "did the rebuild settle it" without adding heart-path PTT latency.
+      let reverified = await audioCapture.waitForFormatStabilization(
+        maxWait: 0.05, pollInterval: 0.05)
+      guard isCurrent(sid) else { return }
+      formatStabilizedThisSession = reverified
     }
     // The capture engine is up — every terminal from here must stop capture.
     captureLifecycle = .active

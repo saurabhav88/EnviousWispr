@@ -88,6 +88,47 @@ struct HALFormatStabilizationTests {
     let stabilized = await source.waitForFormatStabilization(maxWait: 1.5, pollInterval: 0.2)
     #expect(stabilized)
   }
+
+  // MARK: - #1445 validity guard (parity with AVAudioEngineSource.isUsableFormat)
+
+  @Test("isUsableRate rejects nil, zero, negative, and NaN; accepts positive (#1445)")
+  func isUsableRatePredicate() {
+    #expect(!HALDeviceInputSource.isUsableRate(nil))
+    #expect(!HALDeviceInputSource.isUsableRate(0))
+    #expect(!HALDeviceInputSource.isUsableRate(-1))
+    #expect(!HALDeviceInputSource.isUsableRate(Double.nan))
+    #expect(HALDeviceInputSource.isUsableRate(24000))
+  }
+
+  @Test("two agreeing 0.0 reads do NOT fast-settle; it settles on the later valid rate (#1445)")
+  func invalidZeroTwiceThenValidSettles() async {
+    // Before the guard, two agreeing 0.0 reads settled at polls==0 with an
+    // unusable settledRate. Now they fall through until a usable rate agrees.
+    let outcome = await settle(prepared: 24000, readings: [0.0, 0.0, 24000, 24000])
+    #expect(outcome.matchesPrepared)
+    #expect(outcome.settledRate == 24000)
+    #expect(outcome.polls >= 1)  // proves it did NOT fast-exit on the zeros
+  }
+
+  @Test("a device stuck at 0.0 never settles — invalid reads are not stable (#1445)")
+  func invalidZeroForeverIsUnstable() async {
+    let outcome = await settle(prepared: 24000, readings: [0.0, 0.0])
+    #expect(!outcome.matchesPrepared)
+    #expect(outcome.settledRate == nil)
+  }
+
+  @Test("no bound device short-circuits true WITHOUT reading the device rate (#1445)")
+  func unpreparedDoesNotReadDeviceRate() async {
+    let source = HALDeviceInputSource()
+    var readerCalls = 0
+    source.nativeRateReader = { _ in
+      readerCalls += 1
+      return 24000
+    }
+    let stabilized = await source.waitForFormatStabilization(maxWait: 1.5, pollInterval: 0.2)
+    #expect(stabilized)
+    #expect(readerCalls == 0)  // boundDeviceID/renderContext nil → short-circuit before any read
+  }
 }
 
 // MARK: - #1434 CaptureStopMetadata transport round-trip

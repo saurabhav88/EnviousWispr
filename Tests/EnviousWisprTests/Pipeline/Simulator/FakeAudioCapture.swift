@@ -49,6 +49,26 @@ final class FakeAudioCapture: AudioCaptureInterface {
   private(set) var abortPreWarmCallCount = 0
   private(set) var deliveredBufferCount = 0
 
+  // MARK: #1445 format-stabilization scripting
+
+  /// Scripted results for successive `waitForFormatStabilization` calls. Empty
+  /// (default) => every call returns `true` (stable), preserving every
+  /// pre-#1445 scenario. A `[false, true]` script drives the kernel's
+  /// one-rebuild-then-diagnostic-re-verify path: the first `false` triggers the
+  /// single rebuild, the second is the post-rebuild re-verify.
+  var stabilizationResults: [Bool] = []
+  private(set) var stabilizationCallCount = 0
+  private(set) var rebuildEngineCallCount = 0
+  private(set) var startEnginePhaseCallCount = 0
+
+  /// When set, the Nth (1-based) `waitForFormatStabilization` call parks on a
+  /// continuation until `releaseStabilizationGate()`, letting a test interleave
+  /// a cancel while the post-rebuild re-verify is in flight (#1445).
+  var gateStabilizationCall: Int?
+  private var gateContinuation: CheckedContinuation<Void, Never>?
+  private var gateReachedContinuation: CheckedContinuation<Void, Never>?
+  private var gateReached = false
+
   // MARK: Captured audio
 
   private var accumulatedSamples: [Float] = []
@@ -96,6 +116,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
   // MARK: AudioCaptureInterface — core lifecycle
 
   func startEnginePhase() async throws {
+    startEnginePhaseCallCount += 1
     if permissionDenied { throw FakeCaptureError.permissionDenied }
     if failEngineStart { throw FakeCaptureError.engineStartFailed }
   }
@@ -130,7 +151,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
     return CaptureResult(samples: accumulatedSamples, vadSegments: segments)
   }
 
-  func rebuildEngine() {}
+  func rebuildEngine() { rebuildEngineCallCount += 1 }
 
   func buildEngine(noiseSuppression: Bool) {
     noiseSuppressionEnabled = noiseSuppression
@@ -148,7 +169,32 @@ final class FakeAudioCapture: AudioCaptureInterface {
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async
     -> Bool
   {
-    true
+    stabilizationCallCount += 1
+    let thisCall = stabilizationCallCount
+    let result =
+      thisCall <= stabilizationResults.count
+      ? stabilizationResults[thisCall - 1]
+      : true
+    if let gate = gateStabilizationCall, gate == thisCall {
+      gateReached = true
+      gateReachedContinuation?.resume()
+      gateReachedContinuation = nil
+      await withCheckedContinuation { gateContinuation = $0 }
+    }
+    return result
+  }
+
+  /// Suspend until the gated `waitForFormatStabilization` call has parked (see
+  /// `gateStabilizationCall`). Returns immediately if it already parked.
+  func awaitStabilizationGateReached() async {
+    if gateReached { return }
+    await withCheckedContinuation { gateReachedContinuation = $0 }
+  }
+
+  /// Resume the parked `waitForFormatStabilization` call.
+  func releaseStabilizationGate() {
+    gateContinuation?.resume()
+    gateContinuation = nil
   }
 
   // MARK: AudioCaptureInterface — VAD
