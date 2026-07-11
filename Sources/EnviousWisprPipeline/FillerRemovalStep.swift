@@ -30,9 +30,26 @@ public final class FillerRemovalStep: TextProcessingStep {
 
   public init() {}
 
+  /// The single filler-stripping transform (#1358): regex replace + `\s{2,}`
+  /// collapse + whitespace/newline trim, applied exactly once. Returns the input
+  /// UNCHANGED when the regex is unavailable. This is the one authority for
+  /// "what does removing fillers leave"; `process()` and
+  /// `TextLexicalContent.hasLexicalContentAfterRemovingFillers` both call it so
+  /// there is never a second filler algorithm.
+  public static func removingFillers(from text: String) -> String {
+    guard let pattern = fillerPattern else { return text }
+    let range = NSRange(text.startIndex..., in: text)
+    let cleaned = pattern.stringByReplacingMatches(
+      in: text, range: range, withTemplate: ""
+    )
+    return cleaned.replacingOccurrences(
+      of: #"\s{2,}"#, with: " ", options: .regularExpression
+    ).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
   public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
     let text = context.text
-    guard let pattern = Self.fillerPattern else {
+    guard Self.fillerPattern != nil else {
       Task {
         await AppLogger.shared.log(
           "FillerRemoval: skipped — regex unavailable",
@@ -41,14 +58,7 @@ public final class FillerRemovalStep: TextProcessingStep {
       }
       return context
     }
-    let range = NSRange(text.startIndex..., in: text)
-    let cleaned = pattern.stringByReplacingMatches(
-      in: text, range: range, withTemplate: ""
-    )
-    // Collapse multiple spaces and trim
-    let result = cleaned.replacingOccurrences(
-      of: #"\s{2,}"#, with: " ", options: .regularExpression
-    ).trimmingCharacters(in: .whitespacesAndNewlines)
+    let result = Self.removingFillers(from: text)
 
     let removedCount = (text.count - result.count)
     if removedCount > 0 {

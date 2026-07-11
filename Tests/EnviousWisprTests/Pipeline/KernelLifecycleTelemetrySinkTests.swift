@@ -632,6 +632,29 @@ import Testing
       ])
   }
 
+  @Test(
+    ".noSpeech(.emptyAfterProcessing) emits the #1358 processing breadcrumb, NOT a heart-path capture",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1358",
+      "filler-only capture must end quietly, no Sentry error"
+    ))
+  func noSpeechEmptyAfterProcessingEmission() {
+    let recorder = Recorder()
+    let sink = makeSink(recorder: recorder)
+    sink.emit(.noSpeech(.emptyAfterProcessing))
+    // Breadcrumb only — mirrors the #979 asr-empty downgrade. The old bug fired
+    // a `heart_path_finalization` `emitCaptureError`; this must NOT.
+    #expect(
+      recorder.breadcrumbs == [
+        .init(
+          stage: "processing", message: "Text processing produced no lexical content",
+          dataKeys: ["backend"])
+      ])
+    #expect(
+      recorder.captureErrors.isEmpty,
+      "no heart_path_finalization Sentry capture for a quiet no-speech outcome")
+  }
+
   @Test(".cancelled emits NOTHING (PR-1 §B.7.4 only-one-new-event rule)")
   func cancelledEmitsNothing() {
     let recorder = Recorder()

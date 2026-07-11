@@ -332,6 +332,13 @@ final class KernelLifecycleTelemetrySink {
             "mode": telemetryState.noSpeechTelemetry?.mode
               ?? (outcome.streamingMode ? "streaming" : "batch"),
           ])
+      case .emptyAfterProcessing:
+        // #1358: the limb chain produced no lexical content (bare filler /
+        // non-speech artifact). Breadcrumb only — NOT a `heart_path_finalization`
+        // Sentry capture (mirrors the #979 asr-empty downgrade).
+        breadcrumb(
+          "processing", "Text processing produced no lexical content",
+          ["backend": backend.rawValue])
       }
 
     case .cancelled:

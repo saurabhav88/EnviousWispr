@@ -235,7 +235,30 @@ struct KernelFinalizationWiring {
       outcome.polishFallbackReason = ctx.polishFallbackReason
       outcome.polishError = result.polishError
       outcome.polishDurationSeconds = CFAbsoluteTimeGetCurrent() - start
-      return ctx.polishedText ?? ctx.text
+
+      // #1358: the display text after the limb chain. `ctx.polishedText ?? ctx.text`
+      // can be empty two ways for a short dictation: polish returned "" (no
+      // empty guard in `validatePolishOutput` below 10 input words) with an
+      // intact post-ITN floor `ctx.text`, OR a deterministic step emptied
+      // `ctx.text` itself (bare filler, or word-correction on malformed data).
+      // Deliver the first non-empty deterministic floor and STAMP the side-
+      // channels so store()/deliver()/metrics/recovery all read ONE identical
+      // value; return "" only when nothing lexical remains — the kernel routes
+      // that to the quiet `.noSpeech` terminal (mirrors the #979 downgrade).
+      if !(ctx.polishedText ?? ctx.text).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        return ctx.polishedText ?? ctx.text  // unchanged happy path
+      }
+      let floor = Self.emptyOutputRecoveryFloor(deterministicText: ctx.text, rawASR: raw)
+      if !floor.isEmpty {
+        outcome.rawText = floor
+        outcome.polishedText = nil  // the "" polish never persists; History == clipboard
+        // Preserve the invariant `(polishFallbackReason != nil) == pipelineFellBackToRaw`
+        // (`TextProcessingStep.swift`). `llmProvider`/`llmModel`/`polishMetadata`
+        // are retained — honest facts that a polish was attempted.
+        outcome.pipelineFellBackToRaw = true
+        outcome.polishFallbackReason = "empty_output_floor"
+      }
+      return floor
     }
 
     // store — build the Transcript exactly as TranscriptFinalizer.swift:129
@@ -381,6 +404,27 @@ struct KernelFinalizationWiring {
     return polishedText == nil || pipelineFellBackToRaw || polishedText == rawText
   }
 
+  /// #1358: given an EMPTY limb-chain display result, the deterministic recovery
+  /// floor to deliver. First non-empty of: the post-ITN `deterministicText`
+  /// (polish returned empty but the word-corrected/ITN'd text is intact — the
+  /// #145 floor), else the raw ASR when it still holds lexical content after
+  /// filler-stripping (a step erased a real word), else "" — which the kernel
+  /// routes to the quiet `.noSpeech` terminal.
+  ///
+  /// The raw-ASR rank ALWAYS strips fillers (via `TextLexicalContent`) regardless
+  /// of the `fillerRemovalEnabled` toggle: pasting a bare filler as a recovery
+  /// floor is never desired (founder directive 2026-07-11). Pure + `@MainActor`
+  /// (the filler classifier reads the shared regex). Tested parametrically.
+  @MainActor
+  static func emptyOutputRecoveryFloor(deterministicText: String, rawASR: String) -> String {
+    let deterministicFloor = deterministicText.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !deterministicFloor.isEmpty { return deterministicFloor }
+    if TextLexicalContent.hasLexicalContentAfterRemovingFillers(rawASR) {
+      return rawASR.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return ""
+  }
+
   private static func updateTranscriptMetrics(
     outcome: KernelFinalizationOutcome,
     context: KernelSessionContext,
@@ -402,6 +446,16 @@ struct KernelFinalizationWiring {
       rawText: outcome.rawText,
       pipelineFellBackToRaw: outcome.pipelineFellBackToRaw)
 
+    // The fallback fields were historically AFM-only (`polishMetadata != nil`);
+    // cloud/no-polish fallback reasons stay suppressed. #1358 adds a provider-
+    // agnostic producer — the empty-output recovery floor stamps
+    // `empty_output_floor` with no `polishMetadata` — so let THAT reason through
+    // the AFM gate (and only that reason) so the recovery is observable in
+    // telemetry without changing behavior for existing reasons. The pair is
+    // gated together, so the `(reason != nil) == fellBackToRaw` invariant holds.
+    let emitFallbackFields =
+      outcome.polishMetadata != nil || outcome.polishFallbackReason == "empty_output_floor"
+
     transcript.metrics = ExecutionMetrics(
       asrLatencySeconds: asrLatency,
       llmLatencySeconds: outcome.polishDurationSeconds,
@@ -412,8 +466,8 @@ struct KernelFinalizationWiring {
       streamingMode: outcome.streamingMode,
       e2eSeconds: e2e,
       polishFilterTripped: outcome.polishMetadata?.filterTripped,
-      polishFellBackToRaw: outcome.polishMetadata == nil ? nil : outcome.pipelineFellBackToRaw,
-      polishFallbackReason: outcome.polishMetadata == nil ? nil : outcome.polishFallbackReason,
+      polishFellBackToRaw: emitFallbackFields ? outcome.pipelineFellBackToRaw : nil,
+      polishFallbackReason: emitFallbackFields ? outcome.polishFallbackReason : nil,
       itnRan: outcome.itnRan,
       itnChanged: outcome.itnChanged,
       itnFloorDelivered: itnFloorDelivered,

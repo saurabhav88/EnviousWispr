@@ -27,9 +27,12 @@ public struct TextProcessingContext: Sendable {
   /// `pipelineFellBackToRaw` boolean (#1050). Nil when polish changed the text
   /// (not a fallback). One of `no_change` (model returned the input unchanged —
   /// benign), `guard_discard` (connector `EnviousOutputFilter` tripped — genuine
-  /// misbehavior caught; `polishMetadata.filterTripped` names which), or
+  /// misbehavior caught; `polishMetadata.filterTripped` names which),
   /// `validator_discard` (model differed but `validatePolishOutput` substituted
-  /// the original — genuine catch the `filter_tripped` signal cannot see).
+  /// the original — genuine catch the `filter_tripped` signal cannot see), or
+  /// `empty_output_floor` (#1358 — the limb chain produced empty text and
+  /// `KernelFinalizationWiring` delivered a deterministic raw floor; stamped by
+  /// the wiring, not by `LLMPolishStep.polishFallbackReason`).
   /// Invariant: `(polishFallbackReason != nil) == pipelineFellBackToRaw`.
   public var polishFallbackReason: String?
 

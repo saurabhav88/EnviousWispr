@@ -114,6 +114,13 @@ enum NoSpeechSource: Equatable, Sendable {
   /// ASR returned empty text on a path where VAD did NOT firmly say speech
   /// (`TP:902` — "ASR empty (no speech detected)").
   case asrEmptyNoSpeech
+  /// #1358: the limb chain produced no lexical content (a bare filler / non-
+  /// speech artifact — the recognizer's whole output was a filler like "uh").
+  /// The finalization wiring already delivered any recoverable deterministic
+  /// floor as non-empty, so an empty result here is genuinely no-speech — end
+  /// quietly instead of a `.failed(.emptyAfterProcessing)` heart-path capture
+  /// (mirrors the #979 asr-empty Sentry downgrade).
+  case emptyAfterProcessing
 }
 
 /// Kernel-side model-load wedge payload. The old pipeline used
@@ -1703,17 +1710,17 @@ final class RecordingSessionKernel {
         }
         // #1434: label from the EFFECTIVE outcome (the salvage path rebinds it
         // to the retry's `.transcript`), never the primary `.empty`.
-        var archiveOutcome = Self.dictationArchiveOutcome(
-          for: archiveEffectiveOutcome, effectiveSpeechEvidence: archiveSpeechEvidence)
         // A `.transcript` decode whose finalization did NOT reach `.completed`
-        // (empty after polish → `.failed(.emptyAfterProcessing)`, or superseded
-        // mid-finalize) is not a real completion — relabel so it stays distinct
-        // from normal completions in the metadata (Codex r6 P3). `runFinalizing`
-        // has already run by here, so `state` holds the terminal verdict.
-        // #1434: applies to salvaged deliveries too via the effective outcome.
-        if case .transcript = archiveEffectiveOutcome, !(isCurrent(sid) && state == .completed) {
-          archiveOutcome = .finalizationFailed
-        }
+        // is not a real completion — relabel so it stays distinct in the archive
+        // metadata (Codex r6 P3). `runFinalizing` has already run by here, so
+        // `state` holds the terminal verdict. #1434: applies to salvaged
+        // deliveries too via the effective outcome.
+        let archiveOutcome = Self.relabeledArchiveOutcome(
+          base: Self.dictationArchiveOutcome(
+            for: archiveEffectiveOutcome, effectiveSpeechEvidence: archiveSpeechEvidence),
+          effectiveOutcome: archiveEffectiveOutcome,
+          reachedCompleted: isCurrent(sid) && state == .completed,
+          reachedNoSpeech: isCurrent(sid) && state == .noSpeech)
         let archiveClass = archiveClassification
         let archiveBackend = adapter.engineIdentity.backendType.rawValue
         let archiveSettingsOptIn = dictationAudioArchiveOptInProvider()
@@ -1756,6 +1763,24 @@ final class RecordingSessionKernel {
       }
     }
 
+    /// Relabel the archive outcome for a `.transcript` decode whose finalization
+    /// did NOT reach `.completed`. #1358: a filler-only capture emptied by the
+    /// text steps now ends `.noSpeech` (quiet, not a failure) — archive it as
+    /// `.noSpeech` so diagnostic triage isn't skewed. An empty-after-polish
+    /// `.failed(.emptyAfterProcessing)` or a superseded mid-finalize decode
+    /// stays `.finalizationFailed`. Non-`.transcript` and completed decodes keep
+    /// their base label. Pure so a test can freeze the mapping (Codex r6 P3,
+    /// #1358 code-diff r2).
+    nonisolated static func relabeledArchiveOutcome(
+      base: DictationAudioArchive.Outcome,
+      effectiveOutcome: ASREngineOutcome,
+      reachedCompleted: Bool,
+      reachedNoSpeech: Bool
+    ) -> DictationAudioArchive.Outcome {
+      guard case .transcript = effectiveOutcome, !reachedCompleted else { return base }
+      return reachedNoSpeech ? .noSpeech : .finalizationFailed
+    }
+
     /// Whether the conditioned batch buffer (`asrSamples`) is the buffer the
     /// engine actually decoded — true ONLY for a conditioned-batch decode: a
     /// batch session, or a streaming session that fell back to batch rescue. A
@@ -1794,8 +1819,16 @@ final class RecordingSessionKernel {
     guard isCurrent(sid) else { return }
 
     // Empty after the limb steps — clipboard untouched (PR-1 §B.1.2).
+    // #1358: the finalization wiring already delivered any recoverable
+    // deterministic floor (post-ITN text, else lexical raw ASR) as non-empty,
+    // so an empty result here is genuinely non-lexical (a bare filler / non-
+    // speech artifact). End quietly as no-speech — never a heart-path failure
+    // (mirrors the #979 asr-empty downgrade). If the capture was interrupted,
+    // `interruptedTerminalFloor` floors this to `.audioInterrupted` to retain
+    // the #1408 crash-recovery spool.
     if processed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      finishTerminal(.failed(.emptyAfterProcessing), sid: sid)
+      lastNoSpeechSource = .emptyAfterProcessing
+      finishTerminal(.noSpeech, sid: sid)
       return
     }
 
@@ -2324,9 +2357,15 @@ final class RecordingSessionKernel {
         return false
       }
     case .finalizing:
-      // Safe point — only `completed` or a `failed` delivery outcome.
+      // Safe point — a delivery outcome (`completed`/`failed`) OR a legitimate
+      // no-delivery discovery. #1358: the limb chain can empty the transcript
+      // (bare filler / non-speech artifact) → `.noSpeech`; and if that capture
+      // was interrupted, `interruptedTerminalFloor` floors `.noSpeech` up to
+      // `.audioInterrupted` (retain the #1408 spool), so that floored terminal
+      // must be legal too or `finishTerminal` would silently never terminate.
+      // None of these is the cancel/interruption COMMAND the safe point blocks.
       switch next {
-      case .completed, .failed:
+      case .completed, .failed, .noSpeech, .audioInterrupted:
         return true
       default:
         return false
@@ -2906,6 +2945,12 @@ final class RecordingSessionKernel {
     }
     func testSetTranscriptionFailureError(_ error: (any Error)?) {
       telemetryState.transcriptionFailureError = error
+    }
+    /// #1358: pre-seed the interruption cause so a test can exercise
+    /// `interruptedTerminalFloor` (which reads `lastAudioInterruptionCause`)
+    /// without driving a real mid-recording interruption.
+    func testSetInterruptionCause(_ cause: EngineInterruptionCause?) {
+      telemetryState.interruptionCause = cause
     }
 
     /// Test-only recording-snapshot accessors. Used by Div 8 coverage to
