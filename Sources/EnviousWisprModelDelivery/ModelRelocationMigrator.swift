@@ -270,17 +270,28 @@ public struct ModelRelocationMigrator: Sendable {
 
   /// Delete a retired downloader's scratch files from an old location.
   ///
-  /// Strictly suffix-matched, and the suffixes are scratch-only — a model file
-  /// is never a candidate. This is the one thing we DO delete from the old home
-  /// without proving a digest, because a `.partial` is by definition an
-  /// incomplete artifact that nothing can load, and leaving it costs the user
-  /// gigabytes that no future code path will ever reclaim.
+  /// The scratch we reclaim must belong to an artifact WE know: a sidecar is only
+  /// a candidate when its name is `<known artifact><suffix>` — where the known
+  /// artifacts are this manifest's own install names and the trusted legacy
+  /// layouts we shipped. A bare suffix match would reach `custom-model.partial`,
+  /// which belongs to someone else's model and is not ours to reclaim (Codex PR-1
+  /// review r4).
+  ///
+  /// This is the one thing we delete from the old home without proving a digest,
+  /// and that is defensible only because a `.partial` of a KNOWN artifact is by
+  /// construction an incomplete file nothing can load — while leaving it costs the
+  /// user gigabytes that no future code path will ever look for again.
   private func sweepStaleSidecars(in directory: URL, plan: RelocationPlan) {
-    guard !plan.staleSidecarSuffixes.isEmpty,
-      let entries = try? FileManager.default.contentsOfDirectory(atPath: directory.path)
-    else { return }
-    for entry in entries where plan.staleSidecarSuffixes.contains(where: { entry.hasSuffix($0) }) {
-      try? FileManager.default.removeItem(at: directory.appendingPathComponent(entry))
+    guard !plan.staleSidecarSuffixes.isEmpty else { return }
+    let fm = FileManager.default
+    let knownArtifacts =
+      plan.manifest.files.map(\.resolvedInstallPath) + plan.trustedLegacyArtifacts.map(\.name)
+    for artifact in knownArtifacts {
+      for suffix in plan.staleSidecarSuffixes {
+        let sidecar = directory.appendingPathComponent(artifact + suffix)
+        guard fm.fileExists(atPath: sidecar.path) else { continue }
+        try? fm.removeItem(at: sidecar)
+      }
     }
   }
 

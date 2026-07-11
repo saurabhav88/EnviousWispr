@@ -325,6 +325,30 @@ import Testing
     #expect(exists(dirs.old.appendingPathComponent("eg-1-v1.gguf")))
   }
 
+  /// The sweep may only reclaim scratch belonging to an artifact WE know. Someone
+  /// else's interrupted download happens to end in `.partial` too — it is not ours
+  /// to delete, and a bare suffix match would have taken it. (Codex PR-1 review r4.)
+  @Test func sidecarSweepNeverReclaimsAnotherModelsScratch() async throws {
+    let dirs = try makeDirs()
+    try write(Self.legacyBytes, under: dirs.old, path: "eg-1-v1.gguf")
+    try write(Data(repeating: 0x7, count: 64), under: dirs.old, path: "eg-1-v1.gguf.partial")
+    // Not ours: a different model's interrupted download, same suffix.
+    let stranger = dirs.old.appendingPathComponent("custom-model.gguf.partial")
+    try write(Data(repeating: 0x9, count: 64), under: dirs.old, path: "custom-model.gguf.partial")
+    let p = ModelRelocationMigrator.RelocationPlan(
+      manifest: try ManifestFixture.manifest(files: ManifestFixture.smallFiles),
+      oldLocations: [dirs.old],
+      destination: dirs.new,
+      metadataDirectory: dirs.metadata,
+      trustedLegacyArtifacts: [Self.legacyArtifact],
+      staleSidecarSuffixes: [".partial", ".resume.json"])
+
+    _ = await ModelRelocationMigrator().migrate(p)
+
+    #expect(!exists(dirs.old.appendingPathComponent("eg-1-v1.gguf.partial")), "ours is reclaimed")
+    #expect(exists(stranger), "another model's scratch is not ours to delete")
+  }
+
   // MARK: - Unrecognized (never ours, never touched)
 
   /// Bytes that match neither the current manifest nor a layout we shipped are
