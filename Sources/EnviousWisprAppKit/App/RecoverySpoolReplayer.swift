@@ -58,6 +58,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// version, not the terms — recovery promises normal-quality, not byte-exact).
   private let currentVocabulary:
     @MainActor () -> (corrector: CorrectorVocabulary, polish: PolishVocabulary)
+  private let onCleanupFinished: @Sendable (String) -> Void
 
   init(
     asrManager: any ASRManagerInterface,
@@ -68,6 +69,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     keychainManager: KeychainManager,
     outputClassifierHolder: OutputClassifierHolder,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
+    onCleanupFinished: @escaping @Sendable (String) -> Void = { _ in },
     currentVocabulary: @escaping @MainActor () -> (
       corrector: CorrectorVocabulary, polish: PolishVocabulary
     )
@@ -80,6 +82,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     self.keychainManager = keychainManager
     self.outputClassifierHolder = outputClassifierHolder
     self.egOneRuntime = egOneRuntime
+    self.onCleanupFinished = onCleanupFinished
     self.currentVocabulary = currentVocabulary
   }
 
@@ -102,7 +105,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // One-attempt crash-loop guard: a marker already present means a prior attempt
     // crashed the app — abandon (delete + log), never retry.
     if spoolStore.hasAttemptMarker(for: id) {
-      await cleanUp(id, spoolStore: spoolStore)
+      cleanUp(id, spoolStore: spoolStore)
       SentryBreadcrumb.captureError(
         RecoveryReplayError.abandonedAfterAttempt,
         category: .recoveryAbandonedAfterAttempt, stage: "recovery")
@@ -226,14 +229,14 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       SentryBreadcrumb.add(
         stage: "recovery", message: "recovered transcript save failed",
         level: .warning, data: ["error": String(describing: error)])
-      await cleanUp(id, spoolStore: spoolStore)
+      cleanUp(id, spoolStore: spoolStore)
       TelemetryService.shared.recoveryCompleted(outcome: "failed", reason: "save")
       return .failed
     }
     transcriptCoordinator.append(transcript)
 
     // Success: delete spool (+ marker) + key.
-    await cleanUp(id, spoolStore: spoolStore)
+    cleanUp(id, spoolStore: spoolStore)
     TelemetryService.shared.recoveryCompleted(
       outcome: "recovered",
       recoveredSeconds: Int(recoveredSeconds.rounded()),
@@ -246,7 +249,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     _ id: String, spoolStore: RecoverySpoolStore, reason: String,
     category: SentryBreadcrumb.ErrorCategory
   ) async -> RecoveryReplayOutcome {
-    await cleanUp(id, spoolStore: spoolStore)
+    cleanUp(id, spoolStore: spoolStore)
     SentryBreadcrumb.captureError(
       RecoveryReplayError.failed(reason), category: category, stage: "recovery")
     TelemetryService.shared.recoveryCompleted(outcome: "failed", reason: reason)
@@ -254,13 +257,17 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   }
 
   /// Delete a spool (which also clears its attempt marker) and destroy its key.
-  private func cleanUp(_ id: String, spoolStore: RecoverySpoolStore) async {
+  private func cleanUp(_ id: String, spoolStore: RecoverySpoolStore) {
     try? spoolStore.delete(recoverySessionID: id)
     let keyStore = self.keyStore
+    let onCleanupFinished = self.onCleanupFinished
     // A plain Task inherits MainActor and would run synchronous key-store I/O on
     // the UI executor. A task group adds no ownership value for one operation,
     // and @concurrent cannot annotate the dependency's synchronous API.
-    await Task.detached(priority: .utility) { try? keyStore.delete(for: id) }.value
+    Task.detached(priority: .utility) {
+      try? keyStore.delete(for: id)
+      onCleanupFinished(id)
+    }
   }
 
   private static func transcriptionOptions(for settings: RecordingSettingsSnapshot?)

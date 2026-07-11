@@ -96,6 +96,7 @@ struct RecoverySpoolReplayerTests {
     let keyStore: RecoveryKeyStore
     let transcriptStore: TranscriptStore
     let transcriptCoordinator: TranscriptCoordinator
+    let cleanupEvents: AsyncStream<String>
   }
 
   private static func makeHarness() -> Harness {
@@ -104,6 +105,7 @@ struct RecoverySpoolReplayerTests {
     let transcriptStore = TranscriptStore(directory: tempDir())
     let transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
     let asr = FakeBatchASR()
+    let (cleanupEvents, cleanupContinuation) = AsyncStream.makeStream(of: String.self)
     let replayer = RecoverySpoolReplayer(
       asrManager: asr,
       keyStore: keyStore,
@@ -112,11 +114,13 @@ struct RecoverySpoolReplayerTests {
       transcriptCoordinator: transcriptCoordinator,
       keychainManager: KeychainManager(),
       outputClassifierHolder: OutputClassifierHolder(),
+      onCleanupFinished: { cleanupContinuation.yield($0) },
       currentVocabulary: { (.empty, .empty) })
     return Harness(
       replayer: replayer, asr: asr,
       spoolStore: RecoverySpoolStore(directory: spoolDir), keyStore: keyStore,
-      transcriptStore: transcriptStore, transcriptCoordinator: transcriptCoordinator)
+      transcriptStore: transcriptStore, transcriptCoordinator: transcriptCoordinator,
+      cleanupEvents: cleanupEvents)
   }
 
   /// Write a real encrypted spool + store its key, so the replayer can decrypt it.
@@ -139,6 +143,8 @@ struct RecoverySpoolReplayerTests {
     let id = "ok-\(UUID().uuidString)"
     try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+    var cleanupIterator = h.cleanupEvents.makeAsyncIterator()
+    #expect(await cleanupIterator.next() == id)
     #expect(outcome == .recovered)
     #expect(h.asr.transcribeCallCount == 1)
     let saved = h.transcriptCoordinator.transcripts
