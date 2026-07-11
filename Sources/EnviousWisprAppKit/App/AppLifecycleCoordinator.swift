@@ -171,8 +171,18 @@ final class AppLifecycleCoordinator {
       }
       // #1480: any pipeline-state change re-evaluates the Bluetooth card — a
       // record start supersedes + dismisses it (records `record_started`); a
-      // return to idle lets a not-yet-shown card surface (scenario 4).
-      self.bluetoothAwarenessPresenter.reconcile(trigger: .pipelineStateChanged)
+      // return to idle lets a not-yet-shown card surface (scenario 4). Deferred to
+      // the next run-loop cycle because this callback fires at the TOP of the
+      // pipeline handler, BEFORE the terminal overlay intent clears the recording
+      // pill (cloud review P2); reconcile must observe the settled `.hidden` slot,
+      // else the "Bluetooth connected mid-recording, show when idle returns" case
+      // is suppressed. Mirrors how the language chip surfaces after the overlay
+      // handler (`DictationLifecycleCoordinator.dispatchChipLifecycle`). Card
+      // teardown stays synchronous (single-slot dedup); only this bookkeeping/
+      // show re-check is deferred, so the §3D supersession contract holds.
+      DispatchQueue.main.async { [weak self] in
+        self?.bluetoothAwarenessPresenter.reconcile(trigger: .pipelineStateChanged)
+      }
     }
 
     // Start hotkeys now that the event loop is running.

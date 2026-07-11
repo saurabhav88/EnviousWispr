@@ -114,6 +114,23 @@ private func emitEquals(
     #expect(h.showCount == 1)
   }
 
+  @Test func idleButSlotStillRecording_waitsForClear_thenShows() {
+    // Cloud review P2: the pipeline callback fires before the overlay clears, so
+    // on a just-completed recording dictation is idle while the slot is still
+    // `.recording`. The card must NOT show until the slot is `.hidden` (the guard),
+    // and it DOES show on the deferred re-check once the pill is torn down.
+    let h = Harness()
+    h.isBluetooth = true
+    h.isIdle = true
+    h.currentIntent = .recording(audioLevel: 0)  // terminal overlay not sent yet
+    let p = h.makePresenter()
+    p.reconcile(trigger: .pipelineStateChanged)
+    #expect(h.showCount == 0)  // slot not clear → no show
+    h.currentIntent = .hidden  // overlay handler cleared the pill
+    p.reconcile(trigger: .pipelineStateChanged)  // the deferred re-check
+    #expect(h.showCount == 1)
+  }
+
   @Test func gate_requiresHiddenSlot() {
     let h = Harness()
     h.isBluetooth = true
