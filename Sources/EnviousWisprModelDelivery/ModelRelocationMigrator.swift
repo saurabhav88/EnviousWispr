@@ -191,12 +191,24 @@ public struct ModelRelocationMigrator: Sendable {
     // crash interrupted (Codex PR-1 review r7).
     if admission.isAdmitted() {
       await reconcileOldLocations(plan)
+      // ...and a stranded trusted artifact is STILL owed a cleanup, even here.
+      //
+      // The replacement now proceeds whether or not the note got written (r17), so a
+      // model can end up admitted with NO token. If this fast path just returned,
+      // every later launch would take it, `reconcileOldLocations` deliberately never
+      // touches a trusted-legacy artifact, and the 2.9 GB monolith would sit on the
+      // user's disk forever with nothing left that would ever look for it (Codex PR-1
+      // review r19). Re-journal it so cleanup can still reclaim it.
+      if let oldDirectory = firstExistingOldLocation(plan),
+        let legacy = await trustedLegacyArtifact(in: oldDirectory, plan: plan)
+      {
+        journalTrustedLegacy(legacy, plan: plan)
+        return .trustedLegacyPending(legacy.url)
+      }
       return .noop
     }
 
-    guard let oldDirectory = plan.oldLocations.first(where: { fm.fileExists(atPath: $0.path) }),
-      oldDirectory.standardizedFileURL != plan.destination.standardizedFileURL
-    else { return .noop }
+    guard let oldDirectory = firstExistingOldLocation(plan) else { return .noop }
 
     // Stale download sidecars from a retired downloader (an interrupted
     // multi-GB `.partial` and its resume file) are stranded the moment the
@@ -211,24 +223,7 @@ public struct ModelRelocationMigrator: Sendable {
     // A previously-shipped layout we recognize: do NOT move it, do NOT load it,
     // do NOT delete it. Record the token and let the caller replace it.
     if let legacy = await trustedLegacyArtifact(in: oldDirectory, plan: plan) {
-      // Re-classification must NOT overwrite a decision the user already made.
-      //
-      // If a previous launch recorded `.remove` and the delete then failed, the
-      // artifact is still here — so we land here again, and writing a fresh token
-      // would reset the intent to its `.replace` default and re-download the 2.9 GB
-      // model the user threw away. That is the resurrection bug (r6) sneaking back
-      // in through classification (Codex PR-1 review r16). Carry a current-revision
-      // token's intent forward; only a token from another revision, or no token at
-      // all, starts fresh.
-      let intent = pendingLegacyIntent(plan) ?? .replace
-      writeToken(
-        Token(
-          legacyPath: legacy.url.path,
-          intent: intent,
-          legacySizeBytes: legacy.artifact.sizeBytes,
-          legacySHA256: legacy.artifact.sha256,
-          manifestDigest: plan.manifest.manifestDigest),
-        plan: plan)
+      journalTrustedLegacy(legacy, plan: plan)
       return .trustedLegacyPending(legacy.url)
     }
 
@@ -443,6 +438,35 @@ public struct ModelRelocationMigrator: Sendable {
   }
 
   // MARK: - Internals
+
+  private func firstExistingOldLocation(_ plan: RelocationPlan) -> URL? {
+    plan.oldLocations.first {
+      $0.standardizedFileURL != plan.destination.standardizedFileURL
+        && FileManager.default.fileExists(atPath: $0.path)
+    }
+  }
+
+  /// Record that a trusted legacy artifact is owed a cleanup. Called from BOTH
+  /// classification paths, so the journalling rule lives in one place.
+  ///
+  /// Never overwrites a decision the user already made: if a previous launch recorded
+  /// `.remove` and the delete then failed, the artifact is still here and we land here
+  /// again — writing a fresh token would reset the intent to its `.replace` default
+  /// and re-download the 2.9 GB model the user threw away (Codex PR-1 review r16).
+  /// Carry a current-revision token's intent forward; only a token from another
+  /// revision, or none at all, starts fresh.
+  private func journalTrustedLegacy(
+    _ legacy: (url: URL, artifact: TrustedLegacyArtifact), plan: RelocationPlan
+  ) {
+    writeToken(
+      Token(
+        legacyPath: legacy.url.path,
+        intent: pendingLegacyIntent(plan) ?? .replace,
+        legacySizeBytes: legacy.artifact.sizeBytes,
+        legacySHA256: legacy.artifact.sha256,
+        manifestDigest: plan.manifest.manifestDigest),
+      plan: plan)
+  }
 
   /// Re-admit an intact source after a failed promotion to the destination.
   ///

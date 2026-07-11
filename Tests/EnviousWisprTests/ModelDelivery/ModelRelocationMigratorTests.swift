@@ -419,6 +419,40 @@ import Testing
       "the fallback must still find a usable copy after a failed promotion")
   }
 
+  /// The replacement can complete without a note ever being written (journalling is
+  /// allowed to fail — r17). If the admitted fast path then just returned, every later
+  /// launch would take it, and the 2.9 GB legacy model would sit on the user's disk
+  /// forever with nothing left that would ever look for it. The fast path must
+  /// re-journal a stranded artifact. (Codex PR-1 review r19.)
+  @Test func admittedDestinationStillJournalsAStrandedLegacyArtifact() async throws {
+    let dirs = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    // The replacement landed and is admitted...
+    for f in files { try write(f.content, under: dirs.new, path: f.path) }
+    let p = try plan(files: files, dirs: dirs)
+    let gate = CacheAdmission(
+      manifest: p.manifest, installDirectory: dirs.new, metadataDirectory: dirs.metadata)
+    let validation = await gate.validateExistingCache()
+    try gate.promoteAndAdmit(
+      stagedComponents: [], stagingDirectory: dirs.new,
+      untouchedComponents: validation.verifiedComponents)
+    #expect(gate.isAdmitted())
+
+    // ...but the legacy model is still there and NO token was ever written.
+    let monolith = dirs.old.appendingPathComponent("eg-1-v1.gguf")
+    try write(Self.legacyBytes, under: dirs.old, path: "eg-1-v1.gguf")
+    let migrator = ModelRelocationMigrator()
+    #expect(migrator.pendingLegacyArtifact(p) == nil, "precondition: nothing journaled")
+
+    let outcome = await migrator.migrate(p)
+
+    #expect(outcome == .trustedLegacyPending(monolith))
+    #expect(
+      migrator.pendingLegacyArtifact(p) == monolith,
+      "a stranded artifact must be re-journaled, or it is stranded forever")
+    #expect(exists(monolith), "and it is still not deleted before its cleanup runs")
+  }
+
   /// An already-admitted destination is the common case on every launch after
   /// the first: cheap no-op, no rehash, nothing touched.
   @Test func admittedDestinationIsANoop() async throws {
