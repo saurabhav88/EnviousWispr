@@ -43,15 +43,15 @@ struct VADModelReadinessTrackerTests {
 
     // Recording N: model just classified broken, but auto-stop is OFF (the
     // ~95% default) — must NOT fire.
-    #expect(tracker.shouldShowNotice(autoStopEnabled: false) == false)
+    #expect(tracker.shouldShowNotice(autoStopEnabled: false, recordingIsLive: true) == false)
 
     // Recording N+1: still off — still must not fire.
-    #expect(tracker.shouldShowNotice(autoStopEnabled: false) == false)
+    #expect(tracker.shouldShowNotice(autoStopEnabled: false, recordingIsLive: true) == false)
 
     // User turns auto-stop ON before recording N+2 — the notice MUST fire now,
     // despite `.broken` having been set two recordings earlier. This is the
     // exact defect a single fire-at-classification-time latch reintroduces.
-    #expect(tracker.shouldShowNotice(autoStopEnabled: true) == true)
+    #expect(tracker.shouldShowNotice(autoStopEnabled: true, recordingIsLive: true) == true)
   }
 
   @Test("notice fires at most once ever, even across many more eligible recordings")
@@ -59,9 +59,9 @@ struct VADModelReadinessTrackerTests {
     var tracker = VADModelReadinessTracker()
     tracker.classifyIfNeeded(failureReason: "LoadError.loadFailed")
 
-    #expect(tracker.shouldShowNotice(autoStopEnabled: true) == true)
+    #expect(tracker.shouldShowNotice(autoStopEnabled: true, recordingIsLive: true) == true)
     for _ in 0..<10 {
-      #expect(tracker.shouldShowNotice(autoStopEnabled: true) == false)
+      #expect(tracker.shouldShowNotice(autoStopEnabled: true, recordingIsLive: true) == false)
     }
   }
 
@@ -69,13 +69,32 @@ struct VADModelReadinessTrackerTests {
   func readyModelNeverShowsNotice() {
     var tracker = VADModelReadinessTracker()
     tracker.classifyIfNeeded(failureReason: nil)
-    #expect(tracker.shouldShowNotice(autoStopEnabled: true) == false)
-    #expect(tracker.shouldShowNotice(autoStopEnabled: false) == false)
+    #expect(tracker.shouldShowNotice(autoStopEnabled: true, recordingIsLive: true) == false)
+    #expect(tracker.shouldShowNotice(autoStopEnabled: false, recordingIsLive: true) == false)
   }
 
   @Test("an unclassified (still-unknown) model never shows the notice")
   func unknownModelNeverShowsNotice() {
     var tracker = VADModelReadinessTracker()
-    #expect(tracker.shouldShowNotice(autoStopEnabled: true) == false)
+    #expect(tracker.shouldShowNotice(autoStopEnabled: true, recordingIsLive: true) == false)
+  }
+
+  @Test(
+    "a not-live call (recording already stopped/cancelled) is inert — cloud review PR #1510 regression"
+  )
+  func notLiveCallDoesNotConsumeTheOneShot() {
+    var tracker = VADModelReadinessTracker()
+    tracker.classifyIfNeeded(failureReason: "LoadError.loadFailed")
+
+    // Recording N: classification's prepare() raced a near-instant stop —
+    // by the time this call lands, the recording is no longer live. Must
+    // NOT show the notice, and — critically — must NOT consume the one-shot
+    // either, since `noticeShown` becomes permanently unavailable otherwise.
+    #expect(tracker.shouldShowNotice(autoStopEnabled: true, recordingIsLive: false) == false)
+    #expect(tracker.noticeShown == false)
+
+    // Recording N+1: genuinely live this time — the notice must still be
+    // available to fire, proving the not-live call above did not burn it.
+    #expect(tracker.shouldShowNotice(autoStopEnabled: true, recordingIsLive: true) == true)
   }
 }

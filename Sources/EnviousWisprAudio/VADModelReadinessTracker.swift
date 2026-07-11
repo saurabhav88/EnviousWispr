@@ -38,10 +38,22 @@ public struct VADModelReadinessTracker: Sendable {
 
   /// Returns whether the caller should show the notice right now. Fires
   /// `true` at most once, ever, across this tracker's lifetime — and only
-  /// when the model is broken, the feature is currently enabled, and the
-  /// notice hasn't already fired.
-  public mutating func shouldShowNotice(autoStopEnabled: Bool) -> Bool {
-    guard case .broken = readiness, autoStopEnabled, !noticeShown else { return false }
+  /// when the model is broken, the feature is currently enabled, a recording
+  /// is actually live to show it in, and the notice hasn't already fired.
+  ///
+  /// - Parameter recordingIsLive: whether a recording is currently active.
+  ///   Cloud review (PR #1510): the caller's model-load attempt can still be
+  ///   in flight after the user has already stopped/cancelled the recording
+  ///   (`Task.cancel()` is cooperative; a load in progress doesn't observe
+  ///   it). Since this fires at most once EVER, consuming it while no
+  ///   recording is live to display it in would silently and permanently
+  ///   skip the notice for every later recording — so a not-live call is
+  ///   inert: it neither shows the notice nor consumes the one-shot,
+  ///   leaving it available for the next live, eligible recording.
+  public mutating func shouldShowNotice(autoStopEnabled: Bool, recordingIsLive: Bool) -> Bool {
+    guard case .broken = readiness, autoStopEnabled, recordingIsLive, !noticeShown else {
+      return false
+    }
     noticeShown = true
     return true
   }

@@ -540,8 +540,17 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
     }
 
     // Runs on EVERY call regardless of whether classification just happened
-    // now or on an earlier recording — this is what actually closes the trap.
-    if vadReadinessTracker.shouldShowNotice(autoStopEnabled: vadAutoStop) {
+    // now or on an earlier recording — this is what actually closes the
+    // trap. `recordingIsLive` guards against a cloud-review-flagged race
+    // (PR #1510): `cancelVADMonitoring()` only cancels this task
+    // cooperatively, so this line can still run after the user has already
+    // stopped/cancelled the recording; the tracker itself stays inert
+    // (neither shows nor consumes the one-shot notice) when no recording is
+    // live, since `flashRecordingNotice` no-ops without a panel to show it
+    // in — same liveness signal the chunk-feed loop below already uses.
+    if vadReadinessTracker.shouldShowNotice(
+      autoStopEnabled: vadAutoStop, recordingIsLive: captureManager.isCapturing)
+    {
       clientProxy?.vadModelUnavailable()
     }
   }
