@@ -238,11 +238,21 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     }
     removalPending = false
     activationGeneration += 1
+    // The user threw the model away, so a still-stranded legacy artifact is now
+    // owed a plain DELETE rather than a replacement. Without this, a legacy delete
+    // that failed would be re-read on the next launch as "a replacement is owed"
+    // and would silently re-download gigabytes of a model the user just removed
+    // (#1386; found while fixing Codex PR-1 review r6).
+    onModelRemoved?()
     Task {
       await self.server.stop()
       _ = await delivery.remove()
     }
   }
+
+  /// Set by the composition root: flips any pending legacy-artifact intent from
+  /// "replace me" to "delete me". Nil in tests and when no relocation is wired.
+  public var onModelRemoved: (@MainActor () -> Void)?
 
   /// Called on terminal pipeline states (alongside the deactivation retry).
   /// Idempotent: no-op unless a removal is actually pending.
@@ -301,15 +311,22 @@ public final class EGOneRuntime: EGOneEndpointProviding {
         try await cleanUpLegacy()
       } catch {
         // Deleting the superseded artifact failed — but the REPLACEMENT is
-        // admitted and perfectly usable, so polish must come back. We stopped the
-        // server a moment ago to unlink safely; leaving it stopped here would
-        // switch polish off for the rest of the session over a failed `rm` the
-        // next launch will retry anyway (Codex PR-1 review r5).
-        //
-        // Legacy bytes stay put; the token survives for that retry. The deferred
-        // removal is deliberately NOT run: there is a live cleanup owed on this
-        // path, and honoring a Remove through it would tangle the two.
+        // admitted and usable. Legacy bytes stay put; the durable token survives
+        // for a next-launch retry.
         onEvent?(.legacyMigrationCleanupFailed)
+        // An explicit Remove the user pressed during the transition outranks
+        // everything here. `activateAndProbe()` CLEARS `removalPending` (it treats
+        // re-selecting EG-1 as cancelling a deferred removal), so reactivating
+        // first would silently discard the user's action and leave the model
+        // installed (Codex PR-1 review r6 — a bug my own r5 fix introduced).
+        if removalPending {
+          isMigratingLegacyLayout = false
+          removeModel()
+          return
+        }
+        // No Remove pending: bring polish back. We stopped the server a moment ago
+        // to unlink safely, and leaving it stopped would switch polish off for the
+        // rest of the session over a failed `rm` (Codex PR-1 review r5).
         if isActiveProvider?() == true { activateAndProbe() }
         return
       }

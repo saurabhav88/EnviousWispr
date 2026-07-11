@@ -349,6 +349,45 @@ import Testing
     #expect(exists(stranger), "another model's scratch is not ours to delete")
   }
 
+  /// A Remove during the transition retires the pending REPLACEMENT. If the legacy
+  /// delete then fails, the next launch must finish the DELETE and fetch nothing —
+  /// otherwise we would see the stranded file, conclude a replacement was owed, and
+  /// silently re-download gigabytes of a model the user explicitly threw away.
+  /// (Found while fixing Codex PR-1 review r6.)
+  @Test func removeRetiresThePendingReplacementSoNothingIsResurrected() async throws {
+    let dirs = try makeDirs()
+    let monolith = dirs.old.appendingPathComponent("eg-1-v1.gguf")
+    try write(Self.legacyBytes, under: dirs.old, path: "eg-1-v1.gguf")
+    let p = try plan(files: ManifestFixture.smallFiles, dirs: dirs)
+    let migrator = ModelRelocationMigrator()
+    _ = await migrator.migrate(p)
+    #expect(migrator.pendingLegacyIntent(p) == .replace)
+
+    // The user hits Remove.
+    migrator.markLegacyForRemoval(p)
+
+    #expect(
+      migrator.pendingLegacyIntent(p) == .remove,
+      "a Remove must retire the replacement, not merely defer it")
+    // The next launch honors the delete...
+    try await migrator.cleanUpLegacy(p)
+    #expect(!exists(monolith))
+    #expect(migrator.pendingLegacyIntent(p) == nil, "and nothing remains pending to re-fetch")
+  }
+
+  /// Marking a removal when nothing is pending is a plain no-op — an ordinary
+  /// Remove on a machine with no legacy artifact must not invent one.
+  @Test func markingRemovalWithNoPendingArtifactIsANoop() async throws {
+    let dirs = try makeDirs()
+    let p = try plan(files: ManifestFixture.smallFiles, dirs: dirs)
+    let migrator = ModelRelocationMigrator()
+
+    migrator.markLegacyForRemoval(p)
+
+    #expect(migrator.pendingLegacyIntent(p) == nil)
+    #expect(migrator.pendingLegacyArtifact(p) == nil)
+  }
+
   // MARK: - Unrecognized (never ours, never touched)
 
   /// Bytes that match neither the current manifest nor a layout we shipped are

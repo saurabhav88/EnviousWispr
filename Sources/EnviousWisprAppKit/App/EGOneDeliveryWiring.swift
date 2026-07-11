@@ -106,17 +106,29 @@ enum EGOneDeliveryWiring {
     providerIsEGOne: Bool
   ) {
     let migrator = ModelRelocationMigrator()
+    // A Remove retires any pending replacement: the stranded artifact becomes a
+    // plain delete, so a failed cleanup can never resurrect a model the user threw
+    // away.
+    runtime.onModelRemoved = { migrator.markLegacyForRemoval(relocation) }
     Task { @MainActor in
       _ = await migrator.migrate(relocation)
-      if migrator.pendingLegacyArtifact(relocation) != nil {
+      switch migrator.pendingLegacyIntent(relocation) {
+      case .replace:
         runtime.sweepStaleServersAtLaunch()
         runtime.startLegacyLayoutMigration {
           try await migrator.cleanUpLegacy(relocation)
         }
-      } else if providerIsEGOne {
-        runtime.startIfActiveProvider()
-      } else {
+      case .remove:
+        // The user removed EG-1 while a legacy artifact was still stranded. Finish
+        // the delete they asked for and fetch NOTHING.
+        try? await migrator.cleanUpLegacy(relocation)
         runtime.sweepStaleServersAtLaunch()
+      case nil:
+        if providerIsEGOne {
+          runtime.startIfActiveProvider()
+        } else {
+          runtime.sweepStaleServersAtLaunch()
+        }
       }
     }
   }

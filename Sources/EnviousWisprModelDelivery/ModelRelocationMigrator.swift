@@ -111,9 +111,24 @@ public struct ModelRelocationMigrator: Sendable {
   /// `<metadata-dir>/<cache-key>.relocation.json` — the durable token. Survives
   /// relaunch so a crash mid-transition is reconcilable, and so the legacy
   /// cleanup can be retried on a later launch if it throws.
+  /// What the pending legacy artifact is waiting FOR. A path alone is not enough:
+  /// the same stranded file means "replace me" before the user asks for the model
+  /// to be removed, and "just delete me" afterwards. Without this, a Remove whose
+  /// legacy delete failed would be resurrected on the next launch — we would see
+  /// the old file, conclude a replacement was owed, and silently re-download
+  /// gigabytes of a model the user explicitly deleted.
+  public enum LegacyIntent: String, Codable, Sendable {
+    /// Fetch the current manifest's bytes, then delete this.
+    case replace
+    /// The user removed the model. Delete this; fetch NOTHING.
+    case remove
+  }
+
   struct Token: Codable, Equatable {
     /// Absolute path of the legacy artifact awaiting cleanup.
     let legacyPath: String
+    /// Defaults to `.replace` for a token written before intent existed.
+    var intent: LegacyIntent = .replace
     /// Size and digest of the artifact we VERIFIED at classification time. BOTH
     /// are re-checked immediately before the delete. Size alone is not enough: a
     /// same-size corruption or a same-size manual replacement would slip through
@@ -264,6 +279,29 @@ public struct ModelRelocationMigrator: Sendable {
       token.manifestDigest == plan.manifest.manifestDigest
     else { return nil }
     return URL(fileURLWithPath: token.legacyPath)
+  }
+
+  /// What the pending artifact is waiting for — `nil` when nothing is pending.
+  public func pendingLegacyIntent(_ plan: RelocationPlan) -> LegacyIntent? {
+    guard let token = readToken(plan: plan),
+      token.manifestDigest == plan.manifest.manifestDigest
+    else { return nil }
+    return token.intent
+  }
+
+  /// The user removed this model. The stranded legacy artifact is now owed a
+  /// plain DELETE, not a replacement — so if its delete fails and we retry on a
+  /// later launch, we delete it and fetch nothing, instead of resurrecting a
+  /// model the user threw away.
+  ///
+  /// No-op when nothing is pending (an ordinary Remove with no legacy artifact).
+  public func markLegacyForRemoval(_ plan: RelocationPlan) {
+    guard var token = readToken(plan: plan),
+      token.manifestDigest == plan.manifest.manifestDigest,
+      token.intent != .remove
+    else { return }
+    token.intent = .remove
+    writeToken(token, plan: plan)
   }
 
   // MARK: - Internals
