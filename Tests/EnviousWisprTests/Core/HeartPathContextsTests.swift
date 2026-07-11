@@ -18,7 +18,8 @@ struct HeartPathContextsTests {
       tapInstalled: true,
       formatMismatchObserved: false,
       inputDeviceUIDPreferred: "BuiltInMicrophoneDevice",
-      inputDeviceUIDSystemDefault: "BuiltInMicrophoneDevice"
+      inputDeviceUIDSystemDefault: "BuiltInMicrophoneDevice",
+      failureMode: .noBuffers
     )
     #expect(ctx.sessionID == 42)
     #expect(ctx.firedAtUptimeNs - ctx.armedAtUptimeNs == 800_000_000)

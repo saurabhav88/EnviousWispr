@@ -126,7 +126,8 @@ struct HeartPathTelemetryWiringTests {
       tapInstalled: true,
       formatMismatchObserved: false,
       inputDeviceUIDPreferred: nil,
-      inputDeviceUIDSystemDefault: nil
+      inputDeviceUIDSystemDefault: nil,
+      failureMode: .noBuffers
     )
   }
 

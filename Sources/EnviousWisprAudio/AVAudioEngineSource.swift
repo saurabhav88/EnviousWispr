@@ -515,7 +515,8 @@ final class AVAudioEngineSource: AudioInputSource {
       formatMismatchObserved: false,
       inputDeviceUIDPreferred: preferredInputDeviceIDOverride.isEmpty
         ? nil : preferredInputDeviceIDOverride,
-      inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID()
+      inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+      failureMode: .noBuffers
     )
     onCaptureStalled?(ctx)
   }

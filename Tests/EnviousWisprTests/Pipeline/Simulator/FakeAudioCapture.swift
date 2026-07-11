@@ -278,7 +278,8 @@ final class FakeAudioCapture: AudioCaptureInterface {
       tapInstalled: true,
       formatMismatchObserved: false,
       inputDeviceUIDPreferred: nil,
-      inputDeviceUIDSystemDefault: nil)
+      inputDeviceUIDSystemDefault: nil,
+      failureMode: .noBuffers)
   }
 
   /// Fire the XPC service-error callback (C6 — XPC capture crash). This is the
