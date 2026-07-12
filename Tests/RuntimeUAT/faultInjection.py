@@ -1080,8 +1080,20 @@ def _canary_take(*, record_seconds: float = 3.0, settle_timeout_s: float = 8.0) 
     the caller scores dead-take honesty and control-take recovery from the SAME
     take shape."""
     # Start from a genuinely idle app, so any terminal we observe below belongs to
-    # OUR take and not to a leftover pill from the previous one.
-    _settle_to_idle()
+    # OUR take and not to a leftover pill from the previous one. This is the stated
+    # PRECONDITION of `_start_take_tolerating_self_terminate` — which reads an
+    # `error`/`complete` state as "the take I just started already ended itself".
+    # If we never reached idle, that reading is FALSE EVIDENCE for a take that
+    # never ran, so fail closed rather than proceed on a broken precondition
+    # (cloud review, PR #1518).
+    if not _settle_to_idle():
+        return {
+            "reached_recording": False,
+            "terminal_state": _active_state(),
+            "settle_to_idle_failed": True,
+            "recovers": {"canary_ok": False, "raw_asr_new_entry": False},
+            "dead_honest": {"handled_honestly": False, "fabricated_canary": False},
+        }
     cursor = LogCursor()
     started = _start_take_tolerating_self_terminate()
     if started == "failed":
@@ -1978,6 +1990,14 @@ def _zero_fill_trial(*, mode: str, n: int, trial: str, do_control: bool,
                 "disarm ack failed", disarm_reply=disarm_reply, post_status=post,
                 arm=arm, identity=identity)
         control = _canary_take()
+        # Same fail-closed rule as the fault take: a control take that never got
+        # off the ground proves nothing about the NEXT press. Scoring its absent
+        # canary as `next_press_works=False` would report a product failure for
+        # what is missing evidence (cloud review, PR #1518).
+        if not control.get("reached_recording"):
+            return _invalid_evidence(
+                "control take never reached recording — next_press_works unprovable",
+                control_take=control, arm=arm, identity=identity, post_status=post)
 
     # A bumped source incarnation only proves RECOVERY if a source already
     # existed when we sampled inc_pre. With warm-engine policy off (source torn
