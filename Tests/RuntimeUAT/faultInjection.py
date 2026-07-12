@@ -221,35 +221,18 @@ def force_audio_wedge_start(n: int) -> str:
 # Fixed canary phrase for the log-backed recovery oracle. Four uncommon-but-real
 # English words → strong ASR targets that will not appear by accident. Newness is
 # proven by a rotation-safe LogCursor, not by phrase uniqueness.
-CANARY_PHRASE = "saffron comet velvet anchor"
-CANARY_TOKENS = frozenset({"saffron", "comet", "velvet", "anchor"})
 
 APP_LOG_PATH = Path("~/Library/Logs/EnviousWispr/app.log").expanduser()
 
 # App-owned honest-handling marker for a dead take: the pipeline detected no
 # speech and skipped ASR instead of fabricating text. Peak is 0.0000 for a fully
 # zero-filled take. (RecordingSessionKernel.swift:1206-1210.)
-NO_SPEECH_MARKER = "VAD gate: no speech, skipping ASR"
 
 
-def arm_zero_fill(mode: str, n: int, trial_id: str) -> str:
-    """Arm the DEBUG all-zero injector in the helper. `mode` ∈ {zero_from_start,
-    zero_after_samples, zero_next_samples, disarmed}; `n` is the LIVE-sample
-    threshold/budget (ignored for zero_from_start/disarmed); `trial_id` correlates
-    the later query_fault_status. Returns the raw reply ("OK" / "ERR ...")."""
-    return send(f"force_zero_fill({mode},{n},{trial_id})")
 
 
-def disarm_zero_fill(trial_id: str = "clear") -> str:
-    """Clear any armed fault so a clean pipe returns for a positive-control take."""
-    return send(f"force_zero_fill(disarmed,0,{trial_id})")
 
 
-def query_fault_status(trial_id: str) -> dict:
-    """Read the merged fault status for `trial_id`. Returns a parsed dict on OK, or
-    {"ok": False, "error": <reply>} on any ERR / malformed reply. FAILS CLOSED: a
-    missing field or unparseable value is an error, never a defaulted 0/False."""
-    return _parse_fault_status(send(f"query_fault_status({trial_id})"))
 
 
 def _parse_bool(s: str) -> bool:
@@ -261,34 +244,6 @@ def _parse_bool(s: str) -> bool:
     raise ValueError(f"not a bool: {s!r}")
 
 
-def _parse_fault_status(reply: str) -> dict:
-    if not reply.startswith("OK "):
-        return {"ok": False, "error": reply}
-    fields: dict[str, str] = {}
-    for tok in reply[3:].split():
-        if "=" not in tok:
-            return {"ok": False, "error": f"malformed token {tok!r} in {reply!r}"}
-        k, v = tok.split("=", 1)
-        fields[k] = v
-    required = {"armed", "hit", "trial", "mode", "zeroed",
-                "source_incarnation", "xpc_generation", "capture_source"}
-    missing = required - fields.keys()
-    if missing:
-        return {"ok": False, "error": f"missing fields {sorted(missing)} in {reply!r}"}
-    try:
-        return {
-            "ok": True,
-            "armed": _parse_bool(fields["armed"]),
-            "hit": _parse_bool(fields["hit"]),
-            "trial": fields["trial"],
-            "mode": fields["mode"],
-            "zeroed": int(fields["zeroed"]),
-            "source_incarnation": int(fields["source_incarnation"]),
-            "xpc_generation": int(fields["xpc_generation"]),
-            "capture_source": fields["capture_source"],
-        }
-    except ValueError as e:
-        return {"ok": False, "error": f"unparseable status {reply!r}: {e}"}
 
 
 # ──────────────────────────── helpers ────────────────────────────
@@ -447,71 +402,8 @@ def _tap_rcmd(hold_s: float = 0.05) -> None:
     sim.modifier_up(keycode)
 
 
-def _settle_to_idle(*, timeout_s: float = 12.0) -> bool:
-    """Wait until the app is genuinely idle. Callers that must attribute a LATER
-    terminal state to their OWN take depend on this: without it, a `complete`
-    left over from the previous take reads as "my take already finished"."""
-    deadline = time.monotonic() + timeout_s
-    dismissed = False
-    while time.monotonic() < deadline:
-        st = _active_state()
-        if st == "idle":
-            return True
-        if "recording" in st:
-            _tap_rcmd()  # stop a stray take rather than waiting out its whole length
-        elif "error" in st and not dismissed:
-            # A failure pill (e.g. #1317's "Mic problem. Resetting it.") persists
-            # until dismissed. Leaving it up would make the NEXT take's start
-            # read a stale `error` and conclude that take had already ended —
-            # which is exactly how the control take silently stopped running. One
-            # tap clears it; if that tap instead opens a take, the `recording`
-            # branch above closes it on the next pass, so this converges either
-            # way. `complete` is left alone (it lapses to idle on its own, and a
-            # tap there would START a take).
-            dismissed = True
-            _tap_rcmd()
-        time.sleep(0.15)  # settle: poll interval; loop breaks on the idle signal
-    return _active_state() == "idle"
 
 
-def _start_take_tolerating_self_terminate(*, timeout_s: float = 8.0) -> str:
-    """Enter locked recording for a take that may END ITSELF.
-
-    #1317: on a dead mic the app now fires its own terminal about a second in
-    (detector → reset → failure pill), without waiting for the user to stop. The
-    ordinary `_start_recording_locked()` cannot express that: it samples for a
-    `recording` state and RETRIES when it misses one — and every retry double-tap
-    starts ANOTHER take, so on a fully dead mic it sprays takes and still returns
-    False. This variant watches for EITHER outcome and never blind-retries into a
-    take that already ran.
-
-    Returns "recording" (take is live, caller owns the stop), "self_terminated"
-    (the app already ended it — do NOT tap again, that would start a new take),
-    or "failed" (never got off the ground).
-
-    Precondition: the app is idle, so any terminal observed here is OURS.
-    """
-    deadline = time.monotonic() + timeout_s
-    attempts = 0
-    while time.monotonic() < deadline and attempts < 2:
-        attempts += 1
-        _tap_rcmd()
-        time.sleep(0.25)  # settle: inside HotkeyService's 500ms double-press window
-        _tap_rcmd()
-        inner = time.monotonic() + 3.0
-        while time.monotonic() < inner:
-            st = _active_state()
-            if "recording" in st:
-                time.sleep(0.6)  # settle: HotkeyService lock cooldown before any later tap
-                return "recording"
-            if "error" in st or "complete" in st:
-                return "self_terminated"
-            time.sleep(0.05)  # settle: poll interval; loop breaks on the recording/terminal signal
-        time.sleep(0.4)  # settle: let the tap pair settle before a single retry
-    st = _active_state()
-    if "error" in st or "complete" in st:
-        return "self_terminated"
-    return "recording" if "recording" in st else "failed"
 
 
 def _start_recording_locked(*, gap_s: float = 0.25, settle_s: float = 0.8,
@@ -822,40 +714,6 @@ def discover_bundle_executables(bundle_path) -> dict:
     return {k: str(v) for k, v in paths.items()}
 
 
-def write_build_manifest(
-    bundle_path: str,
-    source_ref: str,
-    source_sha: str,
-    clean_tree: bool,
-    contract_version: str,
-    out_path: str,
-) -> dict:
-    """Stamp a build manifest AFTER a build: absolute exe paths + SHA-256 for the
-    app and both XPC helpers, plus source provenance. Written by run_gauntlet.py
-    per A/B arm; read by verify_running_identity."""
-    import json
-    exes = discover_bundle_executables(bundle_path)
-    manifest = {
-        "bundle_path": str(Path(bundle_path).resolve()),
-        "app_path": exes["app"],
-        "app_sha256": compute_sha256(exes["app"]),
-        "audio_helper_path": exes["audio_helper"],
-        "audio_helper_sha256": compute_sha256(exes["audio_helper"]),
-        "asr_helper_path": exes["asr_helper"],
-        "asr_helper_sha256": compute_sha256(exes["asr_helper"]),
-        "app_bundle_id": _bundle_identifier(bundle_path),
-        # Build time = the hashed app executable's mtime. verify_running_identity
-        # requires the running PID to have started at/after this, so a stale
-        # process left over from an earlier build cannot pass identity when a
-        # fresh build has been copied over the same shared-bundle-id path.
-        "built_at_epoch": os.path.getmtime(exes["app"]),
-        "source_ref": source_ref,
-        "source_sha": source_sha,
-        "clean_tree": clean_tree,
-        "contract_version": contract_version,
-    }
-    Path(out_path).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    return manifest
 
 
 def _bundle_identifier(bundle_path) -> str:
@@ -870,10 +728,6 @@ def _bundle_identifier(bundle_path) -> str:
         return ""
 
 
-def load_manifest(path) -> dict:
-    import json
-    with open(path) as f:
-        return json.load(f)
 
 
 def _running_app_executable_path(pid: int) -> str:
@@ -901,123 +755,11 @@ def _proc_start_epoch(pid: int):
         return None
 
 
-def verify_running_identity(manifest: dict) -> dict:
-    """Fail-closed identity gate. Returns an evidence dict with a top-level
-    `identity_ok` boolean plus every sub-check, so a failure names itself. Any
-    ambiguity (0 or >1 PID, path mismatch, hash mismatch, read error) → not ok."""
-    ev: dict = {"identity_ok": False, "checks": {}}
-    try:
-        out = subprocess.check_output(["pgrep", "-x", APP_NAME], text=True)
-    except subprocess.CalledProcessError:
-        ev["reason"] = "no EnviousWispr process running"
-        return ev
-    pids = [int(p) for p in out.split() if p.strip()]
-    ev["checks"]["app_pid_count"] = len(pids)
-    if len(pids) != 1:
-        ev["reason"] = f"expected exactly 1 app PID, found {len(pids)}: {pids}"
-        return ev
-    pid = pids[0]
-    ev["pid"] = pid
-
-    exe_path = _running_app_executable_path(pid)
-    ev["running_exe_path"] = exe_path
-    ev["checks"]["exe_path_matches"] = exe_path == manifest.get("app_path")
-
-    # Running-image freshness: the PID must have started at/after the build we
-    # hashed. Without this, a stale process still executing an OLDER image passes
-    # (same argv[0] path, and the on-disk file the hash reads is already the NEW
-    # build) — the shared-bundle-id worktree trap. `ps` start time is
-    # second-resolution; allow 2s slack against the sub-second file mtime.
-    built_at = manifest.get("built_at_epoch")
-    start_epoch = _proc_start_epoch(pid)
-    ev["proc_start_epoch"] = start_epoch
-    ev["built_at_epoch"] = built_at
-    ev["checks"]["running_image_fresh"] = (
-        isinstance(built_at, (int, float))
-        and start_epoch is not None
-        and start_epoch >= built_at - 2
-    )
-
-    try:
-        hash_checks = {
-            "app": compute_sha256(manifest["app_path"]) == manifest["app_sha256"],
-            "audio_helper": (
-                compute_sha256(manifest["audio_helper_path"])
-                == manifest["audio_helper_sha256"]),
-            "asr_helper": (
-                compute_sha256(manifest["asr_helper_path"])
-                == manifest["asr_helper_sha256"]),
-        }
-    except (OSError, KeyError) as e:
-        ev["reason"] = f"hash/manifest read failed: {e}"
-        return ev
-    ev["checks"]["hashes"] = hash_checks
-    ev["source_ref"] = manifest.get("source_ref")
-    ev["source_sha"] = manifest.get("source_sha")
-
-    ev["identity_ok"] = (
-        ev["checks"]["exe_path_matches"]
-        and ev["checks"]["running_image_fresh"]
-        and all(hash_checks.values())
-    )
-    if not ev["identity_ok"]:
-        ev["reason"] = "running build does not match manifest (see checks)"
-    return ev
 
 
 # ─────────────────── #1317 proof-bench: canary log oracle ────────────────────
 
 
-class LogCursor:
-    """Rotation-safe cursor over app.log. Holds the file OPEN at construction and
-    reads appended bytes from that fd, which FOLLOWS the inode through a rename —
-    so final evidence written to the renamed (rotated-away) file is not lost, which
-    a pathname-only cursor would miss. If the pathname later points at a NEW inode
-    (real rename rotation), the fresh file's bytes are appended too. `new_text()`
-    accumulates, so repeated calls are idempotent (two oracles read one take).
-    Fail-closed: a read error contributes nothing rather than raising."""
-
-    def __init__(self, path=APP_LOG_PATH):
-        self.path = Path(path)
-        self._file = None
-        self._inode = -1
-        self._buffer = b""
-        try:
-            self._file = open(self.path, "rb")  # noqa: SIM115 — held across reads
-            self._inode = os.fstat(self._file.fileno()).st_ino
-            self._file.seek(0, os.SEEK_END)
-        except OSError:
-            if self._file is not None:
-                self._file.close()
-            self._file = None
-
-    def new_text(self) -> str:
-        # Accumulate appended bytes from the held fd (follows a rename via inode).
-        if self._file is not None:
-            try:
-                self._buffer += self._file.read()
-            except OSError:
-                pass
-        # If the pathname now resolves to a NEW inode, a real rotation happened;
-        # read that fresh file WHOLE each call (not accumulated → no double count).
-        rotated_tail = b""
-        try:
-            if self.path.stat().st_ino != self._inode:
-                with open(self.path, "rb") as nf:
-                    rotated_tail = nf.read()
-        except OSError:
-            pass
-        return (self._buffer + rotated_tail).decode("utf-8", errors="replace")
-
-    def close(self) -> None:
-        if self._file is not None:
-            try:
-                self._file.close()
-            finally:
-                self._file = None
-
-    def __del__(self):
-        self.close()
 
 
 def _normalize_tokens(text: str) -> set:
@@ -1025,194 +767,21 @@ def _normalize_tokens(text: str) -> set:
     return set(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
 
 
-def assert_canary_recovers(cursor: LogCursor) -> dict:
-    """Positive oracle for a recovery/control take. Requires, in text appended
-    since `cursor`: (1) a NEW `CORRECTION_DEBUG [RAW ASR]` line whose normalized
-    tokens contain ALL canary tokens, AND (2) a NEW `Pipeline timing TOTAL`
-    marker. Clipboard and a plain `idle` state are NOT accepted."""
-    text = cursor.new_text()
-    raw_asr_lines: list[str] = []
-    timing_seen = False
-    canary_line = None
-    for line in text.splitlines():
-        if "CORRECTION_DEBUG [RAW ASR]" in line:
-            raw = line.split("CORRECTION_DEBUG [RAW ASR]", 1)[1].strip()
-            raw_asr_lines.append(raw)
-            if CANARY_TOKENS <= _normalize_tokens(raw):
-                canary_line = raw
-        if "Pipeline timing TOTAL" in line:
-            timing_seen = True
-    return {
-        "canary_ok": canary_line is not None and timing_seen,
-        "raw_asr_new_entry": bool(raw_asr_lines),
-        "canary_tokens_matched": canary_line is not None,
-        "pipeline_timing_new": timing_seen,
-        "matched_raw_asr": canary_line,
-        "new_raw_asr_count": len(raw_asr_lines),
-    }
 
 
-def assert_dead_take_honest(cursor: LogCursor) -> dict:
-    """Negative oracle for a dead (zero-filled) take. HONEST handling = the app
-    emitted the no-speech marker (app-owned log line, not merely pipeline state)
-    AND fabricated NO canary text. A dead take that yields the canary would mean
-    text invented from silence — always a failure."""
-    text = cursor.new_text()
-    no_speech_seen = False
-    fabricated_canary = False
-    for line in text.splitlines():
-        if NO_SPEECH_MARKER in line:
-            no_speech_seen = True
-        if "CORRECTION_DEBUG [RAW ASR]" in line:
-            raw = line.split("CORRECTION_DEBUG [RAW ASR]", 1)[1]
-            if CANARY_TOKENS <= _normalize_tokens(raw):
-                fabricated_canary = True
-    return {
-        "honest_no_speech_marker": no_speech_seen,
-        "fabricated_canary": fabricated_canary,
-        "handled_honestly": no_speech_seen and not fabricated_canary,
-    }
 
 
-def _canary_take(*, record_seconds: float = 3.0, settle_timeout_s: float = 8.0) -> dict:
-    """Run ONE locked dictation take with the canary spoken via TTS, a LogCursor
-    open across it. Returns cursor text via both oracles + the terminal state so
-    the caller scores dead-take honesty and control-take recovery from the SAME
-    take shape."""
-    # Start from a genuinely idle app, so any terminal we observe below belongs to
-    # OUR take and not to a leftover pill from the previous one. This is the stated
-    # PRECONDITION of `_start_take_tolerating_self_terminate` — which reads an
-    # `error`/`complete` state as "the take I just started already ended itself".
-    # If we never reached idle, that reading is FALSE EVIDENCE for a take that
-    # never ran, so fail closed rather than proceed on a broken precondition
-    # (cloud review, PR #1518).
-    if not _settle_to_idle():
-        return {
-            "reached_recording": False,
-            "terminal_state": _active_state(),
-            "settle_to_idle_failed": True,
-            "recovers": {"canary_ok": False, "raw_asr_new_entry": False},
-            "dead_honest": {"handled_honestly": False, "fabricated_canary": False},
-        }
-    cursor = LogCursor()
-    started = _start_take_tolerating_self_terminate()
-    if started == "failed":
-        cursor.close()
-        return {
-            "reached_recording": False,
-            "terminal_state": _active_state(),
-            "recovers": {"canary_ok": False, "raw_asr_new_entry": False},
-            "dead_honest": {"handled_honestly": False, "fabricated_canary": False},
-        }
-    if started == "recording":
-        with _TTSAudio(CANARY_PHRASE):
-            # Speak into the take, but WATCH the app rather than sleeping blind:
-            # on a dead mic it self-terminates mid-window, and the stop tap below
-            # must not land on an app that has already finished — that tap would
-            # START A NEW (all-zero) take whose empty result overwrites the real
-            # evidence in the cursor. Signal, not clock.
-            deadline = time.monotonic() + record_seconds
-            while time.monotonic() < deadline:
-                if "recording" not in _active_state():
-                    break  # the app ended the take itself (dead-mic reset)
-                time.sleep(0.1)  # settle: poll interval; loop breaks on the recording-ended signal
-        # Only WE stop a take the app is still running.
-        if "recording" in _active_state():
-            _stop_recording_locked(settle_s=0.5)
-    # else "self_terminated": the app already ended this take — tapping would
-    # start a new one. The cursor already holds the evidence.
-    deadline = time.monotonic() + settle_timeout_s
-    final = ""
-    while time.monotonic() < deadline:
-        final = _active_state()
-        if "complete" in final or final == "idle" or "error" in final:
-            break
-        time.sleep(0.1)  # settle: poll interval; loop breaks on terminal state signal
-    result = {
-        "reached_recording": True,
-        "terminal_state": final,
-        "recovers": assert_canary_recovers(cursor),
-        "dead_honest": assert_dead_take_honest(cursor),
-    }
-    cursor.close()
-    return result
 
 
 # ─────────────────── #1317 proof-bench: evidence / trial schema ──────────────
 
 
-def _require_manifest(kwargs: dict) -> Optional[dict]:
-    """The manifest is mandatory: no manifest ⇒ no trusted identity ⇒ INVALID
-    evidence. run_gauntlet.py passes `manifest_path`; an ad-hoc CLI run can set
-    EW_BENCH_MANIFEST."""
-    mp = kwargs.get("manifest_path") or os.environ.get("EW_BENCH_MANIFEST")
-    if not mp:
-        return None
-    return load_manifest(mp)
 
 
-def _invalid_evidence(reason: str, **extra) -> dict:
-    return {
-        "evidence_valid": False,
-        "evidence": {"reason": reason, **extra},
-        "assertions": {},
-    }
 
 
-def _prime_warm_source() -> None:
-    """Install a warm capture source BEFORE the injector is armed.
-
-    `fresh_pipe_proven` (below) is the oracle for "#1317's recovery really did
-    swap the poisoned capture pipe for a fresh one", and it reads a bump in
-    `source_incarnation`. That bump is only meaningful if a source was ALREADY
-    installed when we snapshot `inc_pre`:
-
-      * `AudioCaptureManager.rebuildEngine()` no-ops (and deliberately does NOT
-        bump the incarnation) when `activeSource` is nil, so with a torn-down
-        pipe a perfect fix would still score `fresh_pipe_proven = False`.
-      * conversely the fault take's own ordinary `startEnginePhase()` installs
-        the first source and bumps the incarnation — a cold start that would
-        masquerade as recovery if we did not require a pre-existing source.
-
-    The shipped warm-engine policy (`AudioCaptureManager.warmEnginePolicy`
-    defaults to `.seconds30`) keeps the source installed for 30s after a take,
-    so ONE short take immediately before arming guarantees the precondition
-    deterministically instead of depending on whatever a previous scenario
-    happened to leave behind. No TTS: we need the source installed, not audio.
-    """
-    state = _active_state()
-    if "error" in state or "recording" in state:
-        _tap_rcmd()
-        time.sleep(0.8)  # settle: clear a stray non-idle state before the priming take
-    if not _start_recording_locked():
-        return
-    time.sleep(1.0)  # settle: let the source install and buffers start flowing
-    _stop_recording_locked(settle_s=0.5)
-    # Settle all the way back to IDLE before returning. The priming take is
-    # followed immediately by arming + the fault take, and the double-tap that
-    # enters locked recording is ignored while the app is still finishing this
-    # take (transcribing/pasting, or sitting on a just-completed pill) — the
-    # fault take then never reaches recording, which scores as missing evidence
-    # instead of a product signal. A terminal state is NOT enough here:
-    # `complete` is terminal but still not ready to accept the next lock.
-    deadline = time.monotonic() + 12.0
-    while time.monotonic() < deadline:
-        if _active_state() == "idle":
-            break
-        time.sleep(0.1)  # settle: poll interval; loop breaks on the idle signal
-    time.sleep(0.6)  # settle: HotkeyService lock cooldown before the next double-tap
 
 
-def _arm_and_prove_hit(mode: str, n: int, trial: str) -> dict:
-    """Arm the injector and snapshot the pre-fault status. Hit is proven AFTER the
-    take by the caller re-querying. Returns {"armed_ok", "arm_reply", "pre_status"}."""
-    reply = arm_zero_fill(mode, n, trial)
-    pre = query_fault_status(trial)
-    return {
-        "arm_reply": reply,
-        "armed_ok": reply == "OK" and pre.get("ok") and pre.get("armed") is True,
-        "pre_status": pre,
-    }
 
 
 # ──────────────────────────── Lane A scenarios ────────────────────────────
@@ -1930,188 +1499,14 @@ def B1_bluetooth_route_flip(*, founder_present: bool = False, **_) -> dict:
 # them against real TTS cadence without editing this file.
 
 
-def _zero_fill_trial(*, mode: str, n: int, trial: str, do_control: bool,
-                     kwargs: dict, extra_assertions=None,
-                     fault_record_seconds: float = 3.0,
-                     require_warm_source: bool = True) -> dict:
-    """Shared dead-mic trial: identity gate → arm+pre-status → fault take → HIT
-    proof → optional disarmed control take → scored assertions. Fails closed at
-    every gate. `fault_record_seconds` lengthens the fault take so a "real audio
-    then dead" shape (zero_after) gets enough real speech PAST the TTS onset gap
-    before the mic goes dead."""
-    manifest = _require_manifest(kwargs)
-    if manifest is None:
-        return _invalid_evidence(
-            "no manifest (set EW_BENCH_MANIFEST or pass manifest_path)")
-    identity = verify_running_identity(manifest)
-    if not identity["identity_ok"]:
-        return _invalid_evidence("identity mismatch", identity=identity)
-
-    # Guarantee a warm source exists BEFORE arming, so `fresh_pipe_proven` is
-    # provable at all (see `_prime_warm_source`). Scenarios whose oracle does not
-    # depend on a rebuild (Z3: the zero budget is under the detector's threshold,
-    # so the take self-heals and recovery must NOT fire) opt out.
-    if require_warm_source:
-        _prime_warm_source()
-
-    arm = _arm_and_prove_hit(mode, n, trial)
-    if not arm["armed_ok"]:
-        return _invalid_evidence("arm ack/pre-status failed", arm=arm, identity=identity)
-    inc_pre = arm["pre_status"]["source_incarnation"]
-
-    fault_take = _canary_take(record_seconds=fault_record_seconds)
-    # A take that never entered recording produces the short-form result shape
-    # (no `fabricated_canary`), so scoring it would raise KeyError mid-trial and
-    # abort the scenario. It is MISSING EVIDENCE — the app never got to
-    # demonstrate anything — not a product failure. Fail closed, like every other
-    # gate here.
-    if not fault_take.get("reached_recording"):
-        return _invalid_evidence(
-            "fault take never reached recording (could not enter locked recording)",
-            fault_take=fault_take, arm=arm, identity=identity)
-
-    post = query_fault_status(trial)
-    hit_ok = bool(post.get("ok")) and post.get("hit") is True and post.get("zeroed", 0) > 0
-    if not hit_ok:
-        return _invalid_evidence(
-            "injector arm acked but never hit", post_status=post, arm=arm,
-            identity=identity)
-    inc_post = post["source_incarnation"]
-
-    control = None
-    disarm_reply = None
-    if do_control:
-        # A failed disarm means the pipe is still poisoned, so a control take that
-        # cannot hear the canary is MISSING EVIDENCE, not a product failure — fail
-        # closed to INVALID rather than scoring next_press_works=False.
-        disarm_reply = disarm_zero_fill(trial)
-        if disarm_reply != "OK":
-            return _invalid_evidence(
-                "disarm ack failed", disarm_reply=disarm_reply, post_status=post,
-                arm=arm, identity=identity)
-        control = _canary_take()
-        # Same fail-closed rule as the fault take: a control take that never got
-        # off the ground proves nothing about the NEXT press. Scoring its absent
-        # canary as `next_press_works=False` would report a product failure for
-        # what is missing evidence (cloud review, PR #1518).
-        if not control.get("reached_recording"):
-            return _invalid_evidence(
-                "control take never reached recording — next_press_works unprovable",
-                control_take=control, arm=arm, identity=identity, post_status=post)
-
-    # A bumped source incarnation only proves RECOVERY if a source already
-    # existed when we sampled inc_pre. With warm-engine policy off (source torn
-    # down after the previous stop), the fault take's ordinary startEnginePhase()
-    # installs the first source and bumps the incarnation — a normal cold start,
-    # not recovery. Gate on a source being present at inc_pre (capture_source !=
-    # "none") so a cold-start install can never masquerade as fresh_pipe_proven.
-    # Baseline (no recovery) must read False; the follow-up fix's recovery is the
-    # only thing that can bump the incarnation of an already-installed source.
-    pre_source_present = arm["pre_status"].get("capture_source", "none") != "none"
-    # Fail closed: with no warm source at `inc_pre`, `fresh_pipe_proven` cannot be
-    # proven either way (rebuildEngine() no-ops on a torn-down pipe). Scoring it
-    # False here would report a PRODUCT failure for what is really MISSING
-    # EVIDENCE — the same distinction the disarm-ack gate above enforces.
-    if require_warm_source and not pre_source_present:
-        return _invalid_evidence(
-            "no warm capture source at arm time — fresh_pipe_proven is unprovable "
-            "(priming take failed to install a source, or the warm-engine policy "
-            "tore it down before arming)",
-            arm=arm, identity=identity, post_status=post)
-    assertions = {
-        "recovered_in_session": fault_take["recovers"]["canary_ok"],
-        "fresh_pipe_proven": pre_source_present and inc_post != inc_pre,
-    }
-    # Dead-take honesty is only meaningful for a FULLY dead take (zero_from_start).
-    # A partial shape (zero_after / zero_next) legitimately contains real audio, so
-    # the no-speech marker won't fire and any captured text is NOT "fabricated" —
-    # emitting those assertions there would mislabel correct behavior (the Z3
-    # false-"fabricated" the first live run showed).
-    if mode == "zero_from_start":
-        assertions["dead_take_handled_honestly"] = fault_take["dead_honest"]["handled_honestly"]
-        assertions["dead_take_fabricated_text"] = fault_take["dead_honest"]["fabricated_canary"]
-    if control is not None:
-        assertions["next_press_works"] = control["recovers"]["canary_ok"]
-    if extra_assertions is not None:
-        assertions.update(extra_assertions(fault_take, control))
-
-    return {
-        "evidence_valid": True,
-        "evidence": {
-            "identity": identity,
-            "arm": arm,
-            "post_status": post,
-            "source_incarnation_pre": inc_pre,
-            "source_incarnation_post": inc_post,
-            "pre_source_present": pre_source_present,
-            "fault_take": fault_take,
-            "control_take": control,
-            "disarm_reply": disarm_reply,
-            "trial_id": trial,
-            "mode": mode,
-            "n": n,
-        },
-        "assertions": assertions,
-    }
 
 
-def _trial_id(prefix: str) -> str:
-    return f"{prefix}-{int(time.monotonic() * 1000)}"
 
 
-@scenario(ScenarioMeta(
-    name="Z1_all_zero_from_start", lane="A", family="dead-mic", backends=["both"],
-    runtime_budget_seconds=45.0, founder_required=False,
-    negative_control="disarmed control take MUST recover the canary; the dead take "
-    "must NOT fabricate it",
-    description="Arm zero-fill from the first sample: the take is fully dead. Assert "
-    "the app handles it honestly (no-speech marker, no fabricated text) and the "
-    "injector hit, then a disarmed control take recovers the canary."))
-def Z1_all_zero_from_start(**kwargs) -> dict:
-    return _zero_fill_trial(
-        mode="zero_from_start", n=0, trial=_trial_id("Z1"), do_control=True,
-        kwargs=kwargs)
 
 
-@scenario(ScenarioMeta(
-    name="Z2_valid_then_all_zero", lane="A", family="dead-mic", backends=["both"],
-    runtime_budget_seconds=45.0, founder_required=False,
-    negative_control="lead audio must leave a raw-ASR trace; the zeroed tail must not "
-    "extend it with fabricated tokens",
-    description="Real audio for the first N live samples, then all-zero forever. "
-    "Exercises the content-blind liveness path (buffers keep flowing, just zero). "
-    "Assert lead audio was preserved (a raw-ASR entry exists) and the injector hit. "
-    "Default lead is 3s / take is 6s: empirically (2026-07-11) a 1s lead landed on "
-    "the TTS onset gap and produced no transcript — the app preserves pre-death "
-    "speech fine given a real lead, so the window must clear the onset gap."))
-def Z2_valid_then_all_zero(*, lead_samples: int = 48000, **kwargs) -> dict:
-    def _extra(fault_take, _control):
-        return {"raw_text_preserved": fault_take["recovers"]["raw_asr_new_entry"]}
-    # lead 48000 (~3s real, past the ~0.5s TTS onset gap); fault take 6s so a real
-    # dead tail follows the lead and the injector actually hits.
-    return _zero_fill_trial(
-        mode="zero_after_samples", n=lead_samples, trial=_trial_id("Z2"),
-        do_control=True, kwargs=kwargs, extra_assertions=_extra,
-        fault_record_seconds=6.0)
 
 
-@scenario(ScenarioMeta(
-    name="Z3_bounded_zero_then_restore", lane="A", family="dead-mic", backends=["both"],
-    runtime_budget_seconds=35.0, founder_required=False,
-    negative_control="the canary must appear AFTER the zero budget, proving the pipe "
-    "self-heals when real audio resumes",
-    description="Zero the first N live samples then restore real audio inside the same "
-    "take. Assert the take recovers the canary in-session (the pipe is not poisoned by "
-    "a transient dead start) and the injector hit."))
-def Z3_bounded_zero_then_restore(*, zero_samples: int = 8000, **kwargs) -> dict:
-    # 8000 zeroed samples (0.5s) is deliberately BELOW the detector's 16000-sample
-    # (1s) confidence threshold, so #1317's recovery must NOT fire here: the pipe
-    # self-heals when real audio resumes and the take completes normally. This
-    # scenario therefore proves the absence of a false alarm, needs no rebuild,
-    # and opts out of the warm-source precondition.
-    return _zero_fill_trial(
-        mode="zero_next_samples", n=zero_samples, trial=_trial_id("Z3"),
-        do_control=False, kwargs=kwargs, require_warm_source=False)
 
 
 # ──────────────────────────── CLI entry ────────────────────────────
@@ -2121,22 +1516,6 @@ def Z3_bounded_zero_then_restore(*, zero_samples: int = 8000, **kwargs) -> dict:
 # for THIS build to "pass" the cell in a strict standalone run. A valid-evidence
 # product failure still exits nonzero here; the A/B baseline mode (run_gauntlet.py)
 # is what continues through product failures to build the full scorecard.
-_REQUIRED_ASSERTIONS = {
-    # `fresh_pipe_proven` is #1317 PR3's contract: a confirmed mic-harness glitch
-    # must leave the capture pipe REBUILT, not merely reported. It is required on
-    # exactly the two shapes that trip the detector — a fully dead take (Z1) and a
-    # take that dies mid-way (Z2) — and is the assertion that separates the fixed
-    # build from the baseline, which cannot bump the incarnation of an installed
-    # source. Z3's bounded gap stays below the detector threshold, so it must keep
-    # self-healing WITHOUT a rebuild and does not require it.
-    "Z1_all_zero_from_start": [
-        "dead_take_handled_honestly", "next_press_works", "fresh_pipe_proven",
-    ],
-    "Z2_valid_then_all_zero": [
-        "raw_text_preserved", "next_press_works", "fresh_pipe_proven",
-    ],
-    "Z3_bounded_zero_then_restore": ["recovered_in_session"],
-}
 
 
 def evaluate_trial(name: str, inner: dict) -> tuple[bool, str]:
