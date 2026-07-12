@@ -447,6 +447,73 @@ def _tap_rcmd(hold_s: float = 0.05) -> None:
     sim.modifier_up(keycode)
 
 
+def _settle_to_idle(*, timeout_s: float = 12.0) -> bool:
+    """Wait until the app is genuinely idle. Callers that must attribute a LATER
+    terminal state to their OWN take depend on this: without it, a `complete`
+    left over from the previous take reads as "my take already finished"."""
+    deadline = time.monotonic() + timeout_s
+    dismissed = False
+    while time.monotonic() < deadline:
+        st = _active_state()
+        if st == "idle":
+            return True
+        if "recording" in st:
+            _tap_rcmd()  # stop a stray take rather than waiting out its whole length
+        elif "error" in st and not dismissed:
+            # A failure pill (e.g. #1317's "Mic problem. Resetting it.") persists
+            # until dismissed. Leaving it up would make the NEXT take's start
+            # read a stale `error` and conclude that take had already ended —
+            # which is exactly how the control take silently stopped running. One
+            # tap clears it; if that tap instead opens a take, the `recording`
+            # branch above closes it on the next pass, so this converges either
+            # way. `complete` is left alone (it lapses to idle on its own, and a
+            # tap there would START a take).
+            dismissed = True
+            _tap_rcmd()
+        time.sleep(0.15)  # settle: poll interval; loop breaks on the idle signal
+    return _active_state() == "idle"
+
+
+def _start_take_tolerating_self_terminate(*, timeout_s: float = 8.0) -> str:
+    """Enter locked recording for a take that may END ITSELF.
+
+    #1317: on a dead mic the app now fires its own terminal about a second in
+    (detector → reset → failure pill), without waiting for the user to stop. The
+    ordinary `_start_recording_locked()` cannot express that: it samples for a
+    `recording` state and RETRIES when it misses one — and every retry double-tap
+    starts ANOTHER take, so on a fully dead mic it sprays takes and still returns
+    False. This variant watches for EITHER outcome and never blind-retries into a
+    take that already ran.
+
+    Returns "recording" (take is live, caller owns the stop), "self_terminated"
+    (the app already ended it — do NOT tap again, that would start a new take),
+    or "failed" (never got off the ground).
+
+    Precondition: the app is idle, so any terminal observed here is OURS.
+    """
+    deadline = time.monotonic() + timeout_s
+    attempts = 0
+    while time.monotonic() < deadline and attempts < 2:
+        attempts += 1
+        _tap_rcmd()
+        time.sleep(0.25)  # settle: inside HotkeyService's 500ms double-press window
+        _tap_rcmd()
+        inner = time.monotonic() + 3.0
+        while time.monotonic() < inner:
+            st = _active_state()
+            if "recording" in st:
+                time.sleep(0.6)  # settle: HotkeyService lock cooldown before any later tap
+                return "recording"
+            if "error" in st or "complete" in st:
+                return "self_terminated"
+            time.sleep(0.05)  # settle: poll interval; loop breaks on the recording/terminal signal
+        time.sleep(0.4)  # settle: let the tap pair settle before a single retry
+    st = _active_state()
+    if "error" in st or "complete" in st:
+        return "self_terminated"
+    return "recording" if "recording" in st else "failed"
+
+
 def _start_recording_locked(*, gap_s: float = 0.25, settle_s: float = 0.8,
                             timeout_s: float = 4.0,
                             post_lock_dwell_s: float = 0.6) -> bool:
@@ -1012,21 +1079,36 @@ def _canary_take(*, record_seconds: float = 3.0, settle_timeout_s: float = 8.0) 
     open across it. Returns cursor text via both oracles + the terminal state so
     the caller scores dead-take honesty and control-take recovery from the SAME
     take shape."""
-    state = _active_state()
-    if "error" in state or "recording" in state:
-        _tap_rcmd()
-        time.sleep(0.8)  # settle: let a stray non-idle state clear before entering lock
+    # Start from a genuinely idle app, so any terminal we observe below belongs to
+    # OUR take and not to a leftover pill from the previous one.
+    _settle_to_idle()
     cursor = LogCursor()
-    if not _start_recording_locked():
+    started = _start_take_tolerating_self_terminate()
+    if started == "failed":
+        cursor.close()
         return {
             "reached_recording": False,
             "terminal_state": _active_state(),
-            "recovers": {"canary_ok": False},
-            "dead_honest": {"handled_honestly": False},
+            "recovers": {"canary_ok": False, "raw_asr_new_entry": False},
+            "dead_honest": {"handled_honestly": False, "fabricated_canary": False},
         }
-    with _TTSAudio(CANARY_PHRASE):
-        time.sleep(record_seconds)  # settle: TTS playback window (live-audio UAT cadence)
-    _stop_recording_locked(settle_s=0.5)
+    if started == "recording":
+        with _TTSAudio(CANARY_PHRASE):
+            # Speak into the take, but WATCH the app rather than sleeping blind:
+            # on a dead mic it self-terminates mid-window, and the stop tap below
+            # must not land on an app that has already finished — that tap would
+            # START A NEW (all-zero) take whose empty result overwrites the real
+            # evidence in the cursor. Signal, not clock.
+            deadline = time.monotonic() + record_seconds
+            while time.monotonic() < deadline:
+                if "recording" not in _active_state():
+                    break  # the app ended the take itself (dead-mic reset)
+                time.sleep(0.1)  # settle: poll interval; loop breaks on the recording-ended signal
+        # Only WE stop a take the app is still running.
+        if "recording" in _active_state():
+            _stop_recording_locked(settle_s=0.5)
+    # else "self_terminated": the app already ended this take — tapping would
+    # start a new one. The cursor already holds the evidence.
     deadline = time.monotonic() + settle_timeout_s
     final = ""
     while time.monotonic() < deadline:
@@ -1094,6 +1176,19 @@ def _prime_warm_source() -> None:
         return
     time.sleep(1.0)  # settle: let the source install and buffers start flowing
     _stop_recording_locked(settle_s=0.5)
+    # Settle all the way back to IDLE before returning. The priming take is
+    # followed immediately by arming + the fault take, and the double-tap that
+    # enters locked recording is ignored while the app is still finishing this
+    # take (transcribing/pasting, or sitting on a just-completed pill) — the
+    # fault take then never reaches recording, which scores as missing evidence
+    # instead of a product signal. A terminal state is NOT enough here:
+    # `complete` is terminal but still not ready to accept the next lock.
+    deadline = time.monotonic() + 12.0
+    while time.monotonic() < deadline:
+        if _active_state() == "idle":
+            break
+        time.sleep(0.1)  # settle: poll interval; loop breaks on the idle signal
+    time.sleep(0.6)  # settle: HotkeyService lock cooldown before the next double-tap
 
 
 def _arm_and_prove_hit(mode: str, n: int, trial: str) -> dict:
@@ -1853,6 +1948,15 @@ def _zero_fill_trial(*, mode: str, n: int, trial: str, do_control: bool,
     inc_pre = arm["pre_status"]["source_incarnation"]
 
     fault_take = _canary_take(record_seconds=fault_record_seconds)
+    # A take that never entered recording produces the short-form result shape
+    # (no `fabricated_canary`), so scoring it would raise KeyError mid-trial and
+    # abort the scenario. It is MISSING EVIDENCE — the app never got to
+    # demonstrate anything — not a product failure. Fail closed, like every other
+    # gate here.
+    if not fault_take.get("reached_recording"):
+        return _invalid_evidence(
+            "fault take never reached recording (could not enter locked recording)",
+            fault_take=fault_take, arm=arm, identity=identity)
 
     post = query_fault_status(trial)
     hit_ok = bool(post.get("ok")) and post.get("hit") is True and post.get("zeroed", 0) > 0
