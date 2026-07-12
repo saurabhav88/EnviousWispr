@@ -150,6 +150,76 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.count == 1)
   }
 
+  // MARK: - Fast-follow: the zero-suffix trim (#1317, cloud review + live UAT repro)
+  //
+  // Reported bug: without the trim, a QUIET (but real) prefix's whole-buffer
+  // RMS clears the dead-air floor on its own, but gets diluted below it once
+  // the mic-glitch's zero suffix is averaged in — so the no-speech gate
+  // discards real words instead of transcribing them. Live UAT reproduced
+  // this with real speech ("saffron comet velvet anchor") on 2026-07-11.
+  // `0.0013` is the exact amplitude from the cloud reviewer's own example
+  // (see RecordingSessionKernelDeadAirFloorTests for the pure-math proof).
+
+  @Test(
+    "STOP-win: a quiet prefix that would be diluted below the dead-air floor by the zero suffix is trimmed and survives"
+  )
+  func stopWinQuietPrefixSurvivesZeroSuffixDilution() async {
+    let ctx = makeContext()
+    await startToRecording(ctx)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.0013)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+    ctx.vad.evidence = .confirmedNoSpeech  // Silero abstains on the quiet prefix
+
+    await ctx.wrapper.apply(.stop)
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(ctx.wrapper.testKernel.state == .completed)
+    #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
+    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
+  }
+
+  @Test(
+    "reactive becameZeroMidCapture: a quiet prefix that would be diluted below the dead-air floor by the zero suffix is trimmed and survives"
+  )
+  func reactiveQuietPrefixSurvivesZeroSuffixDilution() async {
+    let ctx = makeContext()
+    await startToRecording(ctx)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.0013)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+    ctx.vad.evidence = .confirmedNoSpeech
+
+    ctx.wrapper.testKernel.externalCaptureStalled(
+      stallContext(ctx, failureMode: .becameZeroMidCapture))
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(ctx.wrapper.testKernel.state == .completed)
+    #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
+    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
+    // The reactive win must still suppress STOP-time re-classification (§3.6 N4).
+    #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
+  }
+
+  @Test(
+    "STOP-win: an open VAD segment reaching past the trim boundary is clamped, not left dangling"
+  )
+  func stopWinClampsOpenSegmentPastTrimBoundary() async {
+    let ctx = makeContext()
+    await startToRecording(ctx)
+    ctx.capture.deliverBuffer(frameCount: 8_000, amplitude: 0.2)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+    ctx.vad.evidence = .voiced
+    // An OPEN segment that never resolved to silence before the zero-signal
+    // detector fired — its end still references the ORIGINAL (pre-trim)
+    // full sample count (Grounded Review r1).
+    ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 8_000 + threshold)]
+
+    await ctx.wrapper.apply(.stop)
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(ctx.wrapper.testKernel.state == .completed)
+    #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
+  }
+
   // MARK: - Fail-closed: muted / mute-unknown device never runs recovery
 
   @Test(

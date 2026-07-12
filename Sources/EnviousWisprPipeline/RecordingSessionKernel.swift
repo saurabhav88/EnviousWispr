@@ -1201,7 +1201,7 @@ final class RecordingSessionKernel {
     // capture-teardown latency does not count as visible-recording time.
     stoppingStartedAtTick = currentTick()
     captureLifecycle = .stopping
-    let captureResult = await audioCapture.stopCapture()
+    var captureResult = await audioCapture.stopCapture()
     // Guard BEFORE touching kernel state — if a new session started while
     // `stopCapture()` was suspended, these fields belong to that session now
     // (Codex P2-round4 stale-completion guard).
@@ -1322,8 +1322,30 @@ final class RecordingSessionKernel {
         finishTerminal(.failed(.zeroSignal), sid: sid)
         return
       }
-      // .becameZeroMidCapture: fall through unchanged — ASR transcribes the
-      // non-zero prefix already in captureResult.samples (§3.4).
+      // .becameZeroMidCapture: fall through — trimmed below (§3.4).
+    }
+
+    // #1317 fast-follow (cloud review PR #1512 + live UAT repro): trim the
+    // confirmed trailing zero suffix out of the salvaged capture ONCE, here —
+    // the single point downstream of BOTH ways `.becameZeroMidCapture` gets
+    // confirmed (the reactive mid-capture detector, stamped at
+    // `telemetryState.zeroSignalFailureMode` above before `captureResult`
+    // even existed; or the STOP-time backstop just above) and upstream of
+    // every consumer that would otherwise average the zero suffix into a
+    // real-speech decision — the no-speech dead-air gate below, whose
+    // whole-buffer RMS a long zero suffix can dilute under a quiet real
+    // utterance's own floor (the reported bug: real words silently
+    // discarded). Device-eligibility for the STOP-time branch was already
+    // checked in the `if` above; the reactive branch was already
+    // eligibility-gated when `AudioCaptureProxy` stamped it (§3.0).
+    if telemetryState.zeroSignalFailureMode == .becameZeroMidCapture {
+      let suffixCount = Self.trailingZeroSuffixCount(captureResult.samples)
+      if suffixCount > 0 {
+        captureResult = CaptureResult(
+          samples: Array(captureResult.samples.dropLast(suffixCount)),
+          vadSegments: captureResult.vadSegments,
+          metadata: captureResult.metadata)
+      }
     }
 
     // GAP 3 app.log parity: captured-sample-count log (TP:725-729) —
@@ -1429,7 +1451,18 @@ final class RecordingSessionKernel {
     // the bundled source when present (XPC works out of the box today);
     // fall back to the seam for direct-mode (which PR-4b wires up).
     let xpcSegments = captureResult.vadSegments
-    let vadSegments = !xpcSegments.isEmpty ? xpcSegments : vad.speechSegmentsAtStop()
+    let rawVadSegments = !xpcSegments.isEmpty ? xpcSegments : vad.speechSegmentsAtStop()
+    // #1317 fast-follow (Grounded Review r1): an OPEN segment (speech never
+    // resolved to silence before the recording ended) finalizes its end at
+    // the ORIGINAL full sample count — the zero-signal reactive detector's
+    // 1s confidence window can fire before the VAD silence timeout (1.5s
+    // default) ever closes it. Clamp every segment into the buffer's ACTUAL
+    // (possibly zero-suffix-trimmed above) coordinate space so
+    // `vadSpeechDurationMs` / the adapter's `voicedDurationSec` / LID window
+    // count never count samples that no longer exist — `SampleFilter` and
+    // WhisperKit's own backend already clamp defensively so this was never a
+    // crash risk, only a silently-inflated-duration one.
+    let vadSegments = Self.clampSegments(rawVadSegments, to: captureResult.samples.count)
     // PR-5 Rung 2B (#827): push the kernel-computed VAD speech segments to
     // the adapter at finalize-time, BEFORE the kernel-side conditioning
     // runs. The second engine (Rung 3) derives engine-specific decode
@@ -2962,6 +2995,36 @@ final class RecordingSessionKernel {
     RawAudioDeadAirClassifier.isDeadAir(samples, peak: peak)
   }
 
+  /// #1317 fast-follow: exact count of trailing exact-zero samples — the one
+  /// authority both `classifyZeroSignalAtStop` (below) and the post-capture
+  /// `.becameZeroMidCapture` trim in `runForwardPath` use, so the trim
+  /// boundary can never disagree with the classification decision that named
+  /// the session `.becameZeroMidCapture` in the first place.
+  nonisolated static func trailingZeroSuffixCount(_ samples: [Float]) -> Int {
+    var count = 0
+    for s in samples.reversed() {
+      if s == 0 { count += 1 } else { break }
+    }
+    return count
+  }
+
+  /// #1317 fast-follow (Grounded Review r1): clamps every segment's
+  /// start/end into `[0, sampleCount]`, dropping a segment that no longer
+  /// has any span once clamped. Pure so the boundary cases (in-range,
+  /// dangling past the boundary, entirely past the boundary) unit-test
+  /// without a kernel. See the call site in `runForwardPath` for why an
+  /// open VAD segment can reference a sample count the buffer no longer has.
+  nonisolated static func clampSegments(_ segments: [SpeechSegment], to sampleCount: Int)
+    -> [SpeechSegment]
+  {
+    segments.compactMap { segment in
+      let start = max(0, min(segment.startSample, sampleCount))
+      let end = max(start, min(segment.endSample, sampleCount))
+      guard end > start else { return nil }
+      return SpeechSegment(startSample: start, endSample: end)
+    }
+  }
+
   /// #1317 §3.6 STOP-win row: one-shot classification of a COMPLETE capture
   /// against the same all-zero rules the app-side streaming detector applies
   /// buffer-by-buffer (§3.1) — the backstop for a session whose STOP raced
@@ -2975,10 +3038,7 @@ final class RecordingSessionKernel {
     if samples.allSatisfy({ $0 == 0 }) {
       return .allZeroFromStart
     }
-    var suffixZeroCount = 0
-    for s in samples.reversed() {
-      if s == 0 { suffixZeroCount += 1 } else { break }
-    }
+    let suffixZeroCount = Self.trailingZeroSuffixCount(samples)
     guard suffixZeroCount >= AudioConstants.minimumTranscriptionSamples else { return nil }
     let prefixCount = samples.count - suffixZeroCount
     guard prefixCount > 0 else { return nil }
