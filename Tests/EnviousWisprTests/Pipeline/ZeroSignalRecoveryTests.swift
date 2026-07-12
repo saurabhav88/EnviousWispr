@@ -31,7 +31,8 @@ struct ZeroSignalRecoveryTests {
   }
 
   private func makeContext(
-    zeroSignalDeviceEligible: @escaping @MainActor () -> Bool = { true }
+    zeroSignalDeviceEligible: @escaping @MainActor () -> Bool = { true },
+    minimumRecordingTicks: Int = 0
   ) -> Context {
     let clock = FakeClock()
     let engine = FakeEngine(behavior: .batchSuccess(text: "hello"), clock: clock)
@@ -40,6 +41,7 @@ struct ZeroSignalRecoveryTests {
     let paste = FakePasteTarget()
     let wrapper = KernelRecordingSession(
       engine: engine, capture: capture, vad: vad, clock: clock, paste: paste,
+      minimumRecordingTicks: minimumRecordingTicks,
       zeroSignalDeviceEligible: zeroSignalDeviceEligible)
     return Context(wrapper: wrapper, engine: engine, capture: capture, vad: vad)
   }
@@ -68,10 +70,17 @@ struct ZeroSignalRecoveryTests {
 
   // MARK: - Reactive exit: allZeroFromStart
 
-  @Test("reactive allZeroFromStart → the honest zero-signal terminal, no salvage")
+  @Test("reactive allZeroFromStart → the honest zero-signal terminal, no salvage, ONE rebuild")
   func reactiveAllZeroFromStartFinishesHonestly() async {
     let ctx = makeContext()
     await startToRecording(ctx)
+    // The all-zero buffers the app-side detector fired ON. Production always
+    // has these — the detector's whole trigger is zero-valued audio ARRIVING —
+    // so the kernel's own buffer counter is non-zero by the time the reactive
+    // exit lands. (PR3: without them this session would legitimately discard
+    // as `.tooShort` on the zero-buffer branch of the duration gate, which is
+    // exactly what `shortDeadTapDiscardsAndNeverRebuilds` below pins.)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
 
     ctx.wrapper.testKernel.externalCaptureStalled(
       stallContext(ctx, failureMode: .allZeroFromStart))
@@ -80,9 +89,11 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.state == .failed(.zeroSignal))
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .allZeroFromStart)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == nil)
+    // PR3: the poisoned capture pipeline is reset exactly once.
+    #expect(ctx.capture.rebuildEngineCallCount == 1)
   }
 
-  @Test("reactive noBuffers is UNCHANGED — still the existing captureStall terminal")
+  @Test("reactive noBuffers is UNCHANGED — still the existing captureStall terminal, NO rebuild")
   func reactiveNoBuffersUnaffected() async {
     let ctx = makeContext()
     await startToRecording(ctx)
@@ -92,6 +103,9 @@ struct ZeroSignalRecoveryTests {
 
     #expect(ctx.wrapper.testKernel.state == .failed(.captureStalled))
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
+    // An ordinary capture stall is NOT the mic-harness glitch — the stall
+    // watchdog owns it, and PR3 must never reset the engine for it.
+    #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
   // MARK: - Reactive exit: becameZeroMidCapture — normal-stop-path salvage
@@ -111,6 +125,8 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.state == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
+    // PR3: the mic is reset AND the user still keeps the words they said.
+    #expect(ctx.capture.rebuildEngineCallCount == 1)
   }
 
   // MARK: - STOP-win: the detector never fired, classify at stop
@@ -130,6 +146,8 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.count == 1)
     #expect(
       ctx.wrapper.stopTimeZeroSignalTelemetryFired.first?.failureMode == .allZeroFromStart)
+    // PR3: the STOP-time backstop reaches the same single rebuild site.
+    #expect(ctx.capture.rebuildEngineCallCount == 1)
   }
 
   @Test("STOP-win: meaningful prefix then zero suffix at stop salvages and completes")
@@ -148,6 +166,7 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.count == 1)
+    #expect(ctx.capture.rebuildEngineCallCount == 1)
   }
 
   // MARK: - Fast-follow: the zero-suffix trim (#1317, cloud review + live UAT repro)
@@ -237,6 +256,9 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.state == .noSpeech)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
+    // A genuinely MUTED mic is a hardware state, not a harness glitch. Resetting
+    // the engine would not unmute it — fail closed, never rebuild (§3.0).
+    #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
   // MARK: - No false alarm: a genuine quiet room stays no-speech
@@ -255,6 +277,9 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.state == .noSpeech)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
+    // The false-alarm guard that matters most: a healthy mic in a silent room
+    // must never trigger a capture-pipeline reset.
+    #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
   // MARK: - Exactly one classified event (Set-dedup, §3.6 N4)
@@ -279,5 +304,84 @@ struct ZeroSignalRecoveryTests {
     // STOP-time telemetry never fires for a reactive win — the reactive
     // path's own event rides the WedgeRecoveryRouter funnel instead (§3.6).
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
+    // Both confirmation routes converge on ONE site, so a session confirmed by
+    // BOTH (had the guard been missing) still rebuilds exactly once.
+    #expect(ctx.capture.rebuildEngineCallCount == 1)
+  }
+
+  // MARK: - PR3: the discard gates keep precedence over recovery
+
+  @Test(
+    "a dead tap too short to clear the duration gate still discards as too-short and NEVER resets the mic"
+  )
+  func shortDeadTapDiscardsAndNeverRebuilds() async {
+    // Capture samples include PRE-ROLL, so a sub-minimum VISIBLE tap can still
+    // carry a full second of (zero) audio — enough for the classifier's
+    // threshold. `minimumRecordingTicks: 5` + a FakeClock that does not advance
+    // between start and stop reproduces exactly that: the samples qualify, the
+    // visible recording does not. Founder-locked (plan §14): very short dead
+    // taps keep today's honest behaviour — no reset message, no engine reset.
+    let ctx = makeContext(minimumRecordingTicks: 5)
+    await startToRecording(ctx)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+    ctx.vad.evidence = .confirmedNoSpeech
+
+    await ctx.wrapper.apply(.stop)
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(ctx.wrapper.testKernel.state == .discarded)
+    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
+    #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
+    #expect(ctx.capture.rebuildEngineCallCount == 0)
+  }
+
+  // MARK: - PR3: the zero-signal rebuild is independent of the format rebuild
+
+  @Test(
+    "a session that ALSO rebuilt for an unstable format still issues exactly one zero-signal rebuild"
+  )
+  func formatRebuildAndZeroSignalRebuildAreIndependent() async {
+    // Two different failures at two different lifecycle phases: the capture
+    // START phase rebuilds once for a format that never stabilised
+    // (RecordingSessionKernel:966), and the POST-STOP phase rebuilds once more
+    // because the harness then delivered dead audio. The PR3 invariant is
+    // exactly one ZERO-SIGNAL rebuild — not one rebuild of every kind per
+    // session — so the correct total here is 2.
+    let ctx = makeContext()
+    ctx.capture.stabilizationResults = [false, true]
+    await startToRecording(ctx)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+    ctx.vad.evidence = .confirmedNoSpeech
+
+    await ctx.wrapper.apply(.stop)
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(ctx.wrapper.testKernel.state == .failed(.zeroSignal))
+    #expect(ctx.capture.rebuildEngineCallCount == 2)  // 1 format + 1 zero-signal
+  }
+
+  // MARK: - PR3: a poisoned source is never silently reused across presses
+
+  @Test("each consecutive dead press resets the mic again — the poisoned source is never reused")
+  func consecutiveDeadPressesEachRebuild() async {
+    let ctx = makeContext()
+
+    for press in 1...3 {
+      await startToRecording(ctx)
+      ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+      ctx.vad.evidence = .confirmedNoSpeech
+
+      await ctx.wrapper.apply(.stop)
+      await ctx.wrapper.drainReadyWork()
+
+      #expect(ctx.wrapper.testKernel.state == .failed(.zeroSignal))
+      // Best-effort convergence (§3.3): the rebuild is fire-and-forget, so a
+      // still-poisoned source on the next press must re-fire recovery rather
+      // than silently hand the user another dead take.
+      #expect(ctx.capture.rebuildEngineCallCount == press)
+
+      await ctx.wrapper.apply(.reset)
+      await ctx.wrapper.drainReadyWork()
+    }
   }
 }

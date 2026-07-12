@@ -1065,6 +1065,37 @@ def _invalid_evidence(reason: str, **extra) -> dict:
     }
 
 
+def _prime_warm_source() -> None:
+    """Install a warm capture source BEFORE the injector is armed.
+
+    `fresh_pipe_proven` (below) is the oracle for "#1317's recovery really did
+    swap the poisoned capture pipe for a fresh one", and it reads a bump in
+    `source_incarnation`. That bump is only meaningful if a source was ALREADY
+    installed when we snapshot `inc_pre`:
+
+      * `AudioCaptureManager.rebuildEngine()` no-ops (and deliberately does NOT
+        bump the incarnation) when `activeSource` is nil, so with a torn-down
+        pipe a perfect fix would still score `fresh_pipe_proven = False`.
+      * conversely the fault take's own ordinary `startEnginePhase()` installs
+        the first source and bumps the incarnation — a cold start that would
+        masquerade as recovery if we did not require a pre-existing source.
+
+    The shipped warm-engine policy (`AudioCaptureManager.warmEnginePolicy`
+    defaults to `.seconds30`) keeps the source installed for 30s after a take,
+    so ONE short take immediately before arming guarantees the precondition
+    deterministically instead of depending on whatever a previous scenario
+    happened to leave behind. No TTS: we need the source installed, not audio.
+    """
+    state = _active_state()
+    if "error" in state or "recording" in state:
+        _tap_rcmd()
+        time.sleep(0.8)  # settle: clear a stray non-idle state before the priming take
+    if not _start_recording_locked():
+        return
+    time.sleep(1.0)  # settle: let the source install and buffers start flowing
+    _stop_recording_locked(settle_s=0.5)
+
+
 def _arm_and_prove_hit(mode: str, n: int, trial: str) -> dict:
     """Arm the injector and snapshot the pre-fault status. Hit is proven AFTER the
     take by the caller re-querying. Returns {"armed_ok", "arm_reply", "pre_status"}."""
@@ -1794,7 +1825,8 @@ def B1_bluetooth_route_flip(*, founder_present: bool = False, **_) -> dict:
 
 def _zero_fill_trial(*, mode: str, n: int, trial: str, do_control: bool,
                      kwargs: dict, extra_assertions=None,
-                     fault_record_seconds: float = 3.0) -> dict:
+                     fault_record_seconds: float = 3.0,
+                     require_warm_source: bool = True) -> dict:
     """Shared dead-mic trial: identity gate → arm+pre-status → fault take → HIT
     proof → optional disarmed control take → scored assertions. Fails closed at
     every gate. `fault_record_seconds` lengthens the fault take so a "real audio
@@ -1807,6 +1839,13 @@ def _zero_fill_trial(*, mode: str, n: int, trial: str, do_control: bool,
     identity = verify_running_identity(manifest)
     if not identity["identity_ok"]:
         return _invalid_evidence("identity mismatch", identity=identity)
+
+    # Guarantee a warm source exists BEFORE arming, so `fresh_pipe_proven` is
+    # provable at all (see `_prime_warm_source`). Scenarios whose oracle does not
+    # depend on a rebuild (Z3: the zero budget is under the detector's threshold,
+    # so the take self-heals and recovery must NOT fire) opt out.
+    if require_warm_source:
+        _prime_warm_source()
 
     arm = _arm_and_prove_hit(mode, n, trial)
     if not arm["armed_ok"]:
@@ -1845,6 +1884,16 @@ def _zero_fill_trial(*, mode: str, n: int, trial: str, do_control: bool,
     # Baseline (no recovery) must read False; the follow-up fix's recovery is the
     # only thing that can bump the incarnation of an already-installed source.
     pre_source_present = arm["pre_status"].get("capture_source", "none") != "none"
+    # Fail closed: with no warm source at `inc_pre`, `fresh_pipe_proven` cannot be
+    # proven either way (rebuildEngine() no-ops on a torn-down pipe). Scoring it
+    # False here would report a PRODUCT failure for what is really MISSING
+    # EVIDENCE — the same distinction the disarm-ack gate above enforces.
+    if require_warm_source and not pre_source_present:
+        return _invalid_evidence(
+            "no warm capture source at arm time — fresh_pipe_proven is unprovable "
+            "(priming take failed to install a source, or the warm-engine policy "
+            "tore it down before arming)",
+            arm=arm, identity=identity, post_status=post)
     assertions = {
         "recovered_in_session": fault_take["recovers"]["canary_ok"],
         "fresh_pipe_proven": pre_source_present and inc_post != inc_pre,
@@ -1931,9 +1980,14 @@ def Z2_valid_then_all_zero(*, lead_samples: int = 48000, **kwargs) -> dict:
     "take. Assert the take recovers the canary in-session (the pipe is not poisoned by "
     "a transient dead start) and the injector hit."))
 def Z3_bounded_zero_then_restore(*, zero_samples: int = 8000, **kwargs) -> dict:
+    # 8000 zeroed samples (0.5s) is deliberately BELOW the detector's 16000-sample
+    # (1s) confidence threshold, so #1317's recovery must NOT fire here: the pipe
+    # self-heals when real audio resumes and the take completes normally. This
+    # scenario therefore proves the absence of a false alarm, needs no rebuild,
+    # and opts out of the warm-source precondition.
     return _zero_fill_trial(
         mode="zero_next_samples", n=zero_samples, trial=_trial_id("Z3"),
-        do_control=False, kwargs=kwargs)
+        do_control=False, kwargs=kwargs, require_warm_source=False)
 
 
 # ──────────────────────────── CLI entry ────────────────────────────
@@ -1944,8 +1998,19 @@ def Z3_bounded_zero_then_restore(*, zero_samples: int = 8000, **kwargs) -> dict:
 # product failure still exits nonzero here; the A/B baseline mode (run_gauntlet.py)
 # is what continues through product failures to build the full scorecard.
 _REQUIRED_ASSERTIONS = {
-    "Z1_all_zero_from_start": ["dead_take_handled_honestly", "next_press_works"],
-    "Z2_valid_then_all_zero": ["raw_text_preserved", "next_press_works"],
+    # `fresh_pipe_proven` is #1317 PR3's contract: a confirmed mic-harness glitch
+    # must leave the capture pipe REBUILT, not merely reported. It is required on
+    # exactly the two shapes that trip the detector — a fully dead take (Z1) and a
+    # take that dies mid-way (Z2) — and is the assertion that separates the fixed
+    # build from the baseline, which cannot bump the incarnation of an installed
+    # source. Z3's bounded gap stays below the detector threshold, so it must keep
+    # self-healing WITHOUT a rebuild and does not require it.
+    "Z1_all_zero_from_start": [
+        "dead_take_handled_honestly", "next_press_works", "fresh_pipe_proven",
+    ],
+    "Z2_valid_then_all_zero": [
+        "raw_text_preserved", "next_press_works", "fresh_pipe_proven",
+    ],
     "Z3_bounded_zero_then_restore": ["recovered_in_session"],
 }
 
