@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -120,5 +121,100 @@ struct RecordingSessionKernelDeadAirFloorTests {
     for i in samples.indices { samples[i] = (i % 7 == 0) ? 0.0008 : 0.0002 }
     #expect(peak(samples) < RecordingSessionKernel.DeadAirFloor.peak)
     #expect(isDeadAir(samples))
+  }
+
+  // MARK: - trailingZeroSuffixCount (#1317 fast-follow)
+
+  @Test("trailingZeroSuffixCount: no trailing zero is 0")
+  func trailingZeroSuffixCountNoZeroIsZero() {
+    #expect(RecordingSessionKernel.trailingZeroSuffixCount([0.1, 0.2, 0.3]) == 0)
+  }
+
+  @Test("trailingZeroSuffixCount: counts only the trailing run, not an interior zero")
+  func trailingZeroSuffixCountStopsAtFirstNonZeroFromEnd() {
+    #expect(RecordingSessionKernel.trailingZeroSuffixCount([0.1, 0, 0.2, 0, 0]) == 2)
+  }
+
+  @Test("trailingZeroSuffixCount: an all-zero buffer counts every sample")
+  func trailingZeroSuffixCountAllZero() {
+    #expect(
+      RecordingSessionKernel.trailingZeroSuffixCount([Float](repeating: 0, count: 100)) == 100)
+  }
+
+  @Test("trailingZeroSuffixCount: an empty buffer is 0")
+  func trailingZeroSuffixCountEmpty() {
+    #expect(RecordingSessionKernel.trailingZeroSuffixCount([]) == 0)
+  }
+
+  // MARK: - classifyZeroSignalAtStop dilution guard (#1317 fast-follow)
+  //
+  // Cloud review's own example: "16k samples around 0.0013" — an amplitude
+  // that clears the whole-buffer RMS floor (0.00125) ALONE (see
+  // `rmsJustAboveIsNotDeadAir` above) but, once diluted by an appended
+  // exact-zero suffix, drags the combined whole-buffer RMS below the floor,
+  // falling through to the loudest-window check — which this same amplitude
+  // (0.0013 < the 0.002 window floor) ALSO fails. That is the reported bug:
+  // a real quiet utterance silently discarded once the mic-glitch's zero
+  // tail is averaged in. `classifyZeroSignalAtStop` must still recognize
+  // this shape (it evaluates the prefix alone); the trim (proven below and
+  // exercised end-to-end in ZeroSignalRecoveryTests) is what keeps the
+  // no-speech gate from re-diluting it downstream.
+
+  @Test(
+    "classifyZeroSignalAtStop: a quiet prefix that clears the RMS floor alone still classifies as becameZeroMidCapture"
+  )
+  func classifyZeroSignalAtStopRecognizesQuietPrefix() {
+    var samples = [Float](repeating: 0.0013, count: 16_000)
+    samples.append(contentsOf: [Float](repeating: 0, count: 16_000))
+    #expect(RecordingSessionKernel.classifyZeroSignalAtStop(samples) == .becameZeroMidCapture)
+  }
+
+  @Test(
+    "the zero-suffix dilution is real (whole buffer reads dead air) and trimming to the prefix fixes it"
+  )
+  func wholeBufferDilutionIsRealAndTrimFixesIt() {
+    var samples = [Float](repeating: 0.0013, count: 16_000)
+    samples.append(contentsOf: [Float](repeating: 0, count: 16_000))
+    // Before the trim: the kernel's no-speech gate sees this whole buffer —
+    // dead air, incorrectly (the reported bug).
+    #expect(isDeadAir(samples))
+    // After the trim the fast-follow now applies before that gate runs: the
+    // same prefix alone is NOT dead air — the words survive.
+    let suffixCount = RecordingSessionKernel.trailingZeroSuffixCount(samples)
+    let trimmed = Array(samples.dropLast(suffixCount))
+    #expect(!isDeadAir(trimmed))
+  }
+
+  // MARK: - clampSegments (#1317 fast-follow, Grounded Review r1)
+
+  @Test("clampSegments: an in-range segment passes through unchanged")
+  func clampSegmentsInRangePassesThrough() {
+    let result = RecordingSessionKernel.clampSegments(
+      [SpeechSegment(startSample: 0, endSample: 8_000)], to: 24_000)
+    #expect(result.count == 1)
+    #expect(result[0].startSample == 0)
+    #expect(result[0].endSample == 8_000)
+  }
+
+  @Test(
+    "clampSegments: an open segment finalized at the original full sample count is clamped to the trim boundary"
+  )
+  func clampSegmentsClampsOpenSegmentPastTrimBoundary() {
+    // Mirrors SilenceDetector.finalizeSegments closing an open segment at
+    // the ORIGINAL raw sample count when the zero-signal reactive detector's
+    // 1s confidence window fires before VAD's own 1.5s silence timeout ever
+    // closes the segment (Grounded Review r1).
+    let result = RecordingSessionKernel.clampSegments(
+      [SpeechSegment(startSample: 0, endSample: 24_000)], to: 8_000)
+    #expect(result.count == 1)
+    #expect(result[0].startSample == 0)
+    #expect(result[0].endSample == 8_000)
+  }
+
+  @Test("clampSegments: a segment starting entirely past the trim boundary is dropped")
+  func clampSegmentsDropsSegmentEntirelyPastBoundary() {
+    let result = RecordingSessionKernel.clampSegments(
+      [SpeechSegment(startSample: 20_000, endSample: 24_000)], to: 8_000)
+    #expect(result.isEmpty)
   }
 }

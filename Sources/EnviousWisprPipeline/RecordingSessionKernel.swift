@@ -35,6 +35,11 @@ public enum RecordingFailureReason: Equatable, Sendable {
   case asrWedged
   case emptyAfterProcessing
   case captureStalled
+  /// #1317: the mic HARNESS delivered all-zero audio from a running,
+  /// unmuted device — distinct from `.captureStalled` (no buffers at all).
+  /// Fires only for `.allZeroFromStart`; `.becameZeroMidCapture` completes
+  /// normally with the salvaged prefix (§3.5).
+  case zeroSignal
 }
 
 /// The 14 recording-session FSM states (PR-1 §B.1.1). Seven are terminal.
@@ -201,6 +206,31 @@ final class RecordingSessionKernel {
   // MARK: Telemetry fan-out
 
   private let zombieZeroPeakTelemetry: @MainActor (ZeroPeakContext) -> Void
+  /// #1317 §3.6 N4: STOP-time zero-signal classification runs INSIDE the
+  /// kernel after `stopCapture()` and does not traverse the reactive
+  /// `WedgeRecoveryRouter` funnel that the app-side detector's event rides —
+  /// so it submits its own event through this closure, wired to the SAME
+  /// `HeartPathTelemetryEmitter.stallFired` authority the reactive path
+  /// uses. The emitter's per-mode dedup makes a duplicate submission (both
+  /// paths agreeing on the same session + mode) safe.
+  private let stopTimeZeroSignalTelemetry: @MainActor (CaptureStallContext) -> Void
+  /// #1317 §3.0/§3.6: the STOP-time device-alive/not-muted discriminator,
+  /// injected (not a direct `AudioDeviceEnumerator`/`ZeroSignalDeviceDiscriminator`
+  /// call) so deterministic kernel tests can substitute a fake instead of
+  /// depending on the test machine's real microphone state. The production
+  /// default checks `audioCapture.zeroSignalDiscriminatorDeviceID` — the
+  /// device the CAPTURE LAYER froze at its own engine-start moment (cloud
+  /// review P2 round 2, PR #1512: only that layer sees its own internal
+  /// retries, so the kernel defers to it instead of independently freezing
+  /// its own snapshot, which could still race a mid-startup device switch).
+  /// Alive/mute status is still re-checked live against that frozen device
+  /// on every call — only the device IDENTITY is frozen, not its mute
+  /// state — EXCEPT that `zeroSignalDiscriminatorSawIneligible` (cloud
+  /// review round 2, second P2) short-circuits to ineligible if the device
+  /// was EVER seen muted during this session's own zero-signal candidate
+  /// buffers, so a since-unmuted live re-check can't override an earlier
+  /// genuine mute.
+  private let zeroSignalDeviceEligible: @MainActor () -> Bool
   private let recordingStoppedTelemetry: @MainActor (_ sampleCount: Int) -> Void
   private let markPipelineTimingStart: @MainActor () -> Void
   private let markASRTimingStart: @MainActor (_ streaming: Bool) -> Void
@@ -266,6 +296,17 @@ final class RecordingSessionKernel {
   /// `resetForNewSession()`, which `start(config:)` calls before `.preparing`.
   var lastAudioInterruptionCause: EngineInterruptionCause? {
     telemetryState.interruptionCause
+  }
+
+  /// #1317: which zero-signal failure mode this session was classified as, or
+  /// `nil` if it never was. Stamped once by the winning classification
+  /// (reactive `.zeroSignal` exit OR STOP-time), cleared per session in
+  /// `KernelTelemetryState.resetForNewSession`. Drives both the
+  /// `.zeroSignal` pill (`allZeroFromStart`) and the partial-capture
+  /// disclosure (`becameZeroMidCapture`) — read-through to
+  /// `KernelTelemetryState.zeroSignalFailureMode`, the single home (§3.5).
+  var zeroSignalFailureMode: CaptureStallFailureMode? {
+    telemetryState.zeroSignalFailureMode
   }
 
   /// #1434: per-session stabilization outcome (set at the pre-capture
@@ -393,6 +434,15 @@ final class RecordingSessionKernel {
   /// `stopCapture()`. `nil` outside `.stopping`+; reset on every session start.
   private var stoppingStartedAtTick: UInt64?
   private var recordingStartedAtDate: Date?
+
+  /// #1317 (cloud review P2, PR #1512): `DispatchTime.now().uptimeNanoseconds`
+  /// at the `→ recording` transition. `CaptureStallContext.armedAtUptimeNs`
+  /// shares this clock domain (not `recordingStartedAtDate`'s wall clock) —
+  /// the STOP-time zero-signal backstop needs a real arm time so
+  /// `SentryAudioExtras.buildCaptureExtras`'s `capture.stall.window_ms`
+  /// reflects THIS recording's length, not machine uptime. `nil` outside
+  /// `.recording`; reset on every session start alongside `recordingStartedAtDate`.
+  private var recordingStartedAtUptimeNs: UInt64?
 
   /// Fired at most once per recording when the VAD seam reports the recording is
   /// approaching `maxRecordingDuration` (#1060), carrying the remaining seconds.
@@ -539,6 +589,10 @@ final class RecordingSessionKernel {
     case vadAutoStop
     case maxDuration
     case captureStall
+    /// #1317: the all-zero harness-glitch exit, dedicated (not `.captureStall`,
+    /// which discards the captured result — this exit runs the normal stop
+    /// path so a `.becameZeroMidCapture` prefix survives, §3.2).
+    case zeroSignal(CaptureStallFailureMode)
     case audioInterruption
     case asrInterruption
     case cancel
@@ -560,6 +614,14 @@ final class RecordingSessionKernel {
     wedgeStallTicks: Int = 2,
     minimumRecordingTicks: Int = 5,
     zombieZeroPeakTelemetry: @escaping @MainActor (ZeroPeakContext) -> Void = { _ in },
+    stopTimeZeroSignalTelemetry: @escaping @MainActor (CaptureStallContext) -> Void = { _ in },
+    // #1317 (cloud review P2 round 2, PR #1512): nil default resolves inside
+    // `init` against the `audioCapture` PARAMETER's own
+    // `zeroSignalDiscriminatorDeviceID` — the device the capture layer
+    // itself froze at its engine-start moment (see that protocol property's
+    // doc for why the kernel defers to it instead of independently
+    // resolving `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`).
+    zeroSignalDeviceEligible: (@MainActor () -> Bool)? = nil,
     recordingStoppedTelemetry: @escaping @MainActor (_ sampleCount: Int) -> Void = { _ in },
     markPipelineTimingStart: @escaping @MainActor () -> Void = {},
     markASRTimingStart: @escaping @MainActor (_ streaming: Bool) -> Void = { _ in },
@@ -578,6 +640,25 @@ final class RecordingSessionKernel {
     self.wedgeStallTicks = wedgeStallTicks
     self.minimumRecordingTicks = minimumRecordingTicks
     self.zombieZeroPeakTelemetry = zombieZeroPeakTelemetry
+    self.stopTimeZeroSignalTelemetry = stopTimeZeroSignalTelemetry
+    // #1317 (cloud review P2 round 2, PR #1512): the default reads
+    // `audioCapture.zeroSignalDiscriminatorDeviceID` — the device the
+    // capture layer itself froze at the moment its engine actually started
+    // (including any of ITS OWN retries, which this kernel cannot see) —
+    // instead of independently re-resolving `preferredInputDeviceIDOverride`/
+    // `selectedInputDeviceUID`, which only reflects the kernel's OWN view
+    // and can already differ from what actually got captured. Also checks
+    // `zeroSignalDiscriminatorSawIneligible` FIRST (cloud review round 2,
+    // second P2): a live re-check here would only see the device's CURRENT
+    // mute state, which can already have changed since a genuinely-muted
+    // silent stretch — that earlier ineligible result must stick.
+    self.zeroSignalDeviceEligible =
+      zeroSignalDeviceEligible
+      ?? {
+        guard !audioCapture.zeroSignalDiscriminatorSawIneligible else { return false }
+        guard let deviceID = audioCapture.zeroSignalDiscriminatorDeviceID else { return false }
+        return ZeroSignalDeviceDiscriminator.isEligible(deviceID: deviceID)
+      }
     self.recordingStoppedTelemetry = recordingStoppedTelemetry
     self.markPipelineTimingStart = markPipelineTimingStart
     self.markASRTimingStart = markASRTimingStart
@@ -1011,6 +1092,7 @@ final class RecordingSessionKernel {
     // Recording.
     transition(to: .recording)
     recordingStartedAtDate = Date()
+    recordingStartedAtUptimeNs = DispatchTime.now().uptimeNanoseconds
     lastStopReason = nil  // #1060: clear prior session's stop reason.
     lastSalvagedLeadTrimMs = nil  // #1434: clear prior session's salvage marker.
     lastCaptureHealth = nil  // #1434: clear prior session's capture health.
@@ -1064,6 +1146,27 @@ final class RecordingSessionKernel {
     case .captureStall:
       finishTerminal(.failed(.captureStalled), sid: sid)
       return
+    case .zeroSignal(let mode):
+      // #1317. Stamp the side-channel BEFORE the terminal — the pill mapper
+      // and the driver's partial-capture disclosure both read it (§3.5).
+      telemetryState.zeroSignalFailureMode = mode
+      switch mode {
+      case .noBuffers:
+        // Unreachable by construction: `externalCaptureStalled` routes
+        // `.noBuffers` to `.captureStall`, never to `.zeroSignal` (§3.2).
+        // Fail safely rather than silently mis-terminating.
+        finishTerminal(.failed(.captureStalled), sid: sid)
+        return
+      case .allZeroFromStart:
+        // Nothing to salvage — honest terminal, no normal-stop tail (§3.4).
+        finishTerminal(.failed(.zeroSignal), sid: sid)
+        return
+      case .becameZeroMidCapture:
+        // Fall through into the normal stop tail below so ASR transcribes
+        // the non-zero prefix already captured (§3.4). The rebuild (PR3)
+        // and the partial-capture disclosure both read the stamped mode.
+        break
+      }
     case .userStop, .vadAutoStop, .maxDuration:
       break
     }
@@ -1098,7 +1201,7 @@ final class RecordingSessionKernel {
     // capture-teardown latency does not count as visible-recording time.
     stoppingStartedAtTick = currentTick()
     captureLifecycle = .stopping
-    let captureResult = await audioCapture.stopCapture()
+    var captureResult = await audioCapture.stopCapture()
     // Guard BEFORE touching kernel state — if a new session started while
     // `stopCapture()` was suspended, these fields belong to that session now
     // (Codex P2-round4 stale-completion guard).
@@ -1178,6 +1281,73 @@ final class RecordingSessionKernel {
       return
     }
 
+    // #1317 §3.6 STOP-win row: only when the reactive detector never fired
+    // for this session (raced by STOP, or the capture was too short to reach
+    // its own confidence threshold). MUST run before the no-speech gate
+    // below (N1) — that gate would otherwise swallow an all-zero capture as
+    // ordinary quiet-room silence. `zeroSignalDeviceEligible` resolves the
+    // SAME bound/selected/default precedence the reactive detector uses —
+    // the device the session actually captured from (Codex code-diff
+    // review: checking unconditionally the system default would misclassify
+    // a selected non-default mic that's genuinely muted while the system
+    // default happens to be alive+unmuted).
+    if telemetryState.zeroSignalFailureMode == nil,
+      let mode = Self.classifyZeroSignalAtStop(captureResult.samples),
+      zeroSignalDeviceEligible()
+    {
+      telemetryState.zeroSignalFailureMode = mode
+      stopTimeZeroSignalTelemetry(
+        CaptureStallContext(
+          sessionID: audioCapture.currentCaptureSessionID,
+          armedAtUptimeNs: recordingStartedAtUptimeNs ?? DispatchTime.now().uptimeNanoseconds,
+          firedAtUptimeNs: DispatchTime.now().uptimeNanoseconds,
+          route: audioCapture.currentAudioRoute,
+          sourceType: "stop_time_classification",
+          engineStartedSuccessfully: true,
+          tapInstalled: true,
+          formatMismatchObserved: false,
+          inputDeviceUIDPreferred: audioCapture.preferredInputDeviceIDOverride.isEmpty
+            ? nil : audioCapture.preferredInputDeviceIDOverride,
+          inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+          failureMode: mode,
+          selectedTransport: audioCapture.currentResolvedRoute?.selected,
+          effectiveTransport: audioCapture.currentResolvedRoute?.effective,
+          routeReason: audioCapture.currentResolvedRoute?.routeReason,
+          routeFallbackReason: audioCapture.currentResolvedRoute?.routeFallbackReason,
+          inputSelectionMode: audioCapture.currentResolvedRoute?.inputSelectionMode,
+          outputTransport: audioCapture.currentResolvedRoute?.outputTransport,
+          routeResolutionSource: audioCapture.currentResolvedRoute?.routeResolutionSource
+        ))
+      if mode == .allZeroFromStart {
+        finishTerminal(.failed(.zeroSignal), sid: sid)
+        return
+      }
+      // .becameZeroMidCapture: fall through — trimmed below (§3.4).
+    }
+
+    // #1317 fast-follow (cloud review PR #1512 + live UAT repro): trim the
+    // confirmed trailing zero suffix out of the salvaged capture ONCE, here —
+    // the single point downstream of BOTH ways `.becameZeroMidCapture` gets
+    // confirmed (the reactive mid-capture detector, stamped at
+    // `telemetryState.zeroSignalFailureMode` above before `captureResult`
+    // even existed; or the STOP-time backstop just above) and upstream of
+    // every consumer that would otherwise average the zero suffix into a
+    // real-speech decision — the no-speech dead-air gate below, whose
+    // whole-buffer RMS a long zero suffix can dilute under a quiet real
+    // utterance's own floor (the reported bug: real words silently
+    // discarded). Device-eligibility for the STOP-time branch was already
+    // checked in the `if` above; the reactive branch was already
+    // eligibility-gated when `AudioCaptureProxy` stamped it (§3.0).
+    if telemetryState.zeroSignalFailureMode == .becameZeroMidCapture {
+      let suffixCount = Self.trailingZeroSuffixCount(captureResult.samples)
+      if suffixCount > 0 {
+        captureResult = CaptureResult(
+          samples: Array(captureResult.samples.dropLast(suffixCount)),
+          vadSegments: captureResult.vadSegments,
+          metadata: captureResult.metadata)
+      }
+    }
+
     // GAP 3 app.log parity: captured-sample-count log (TP:725-729) —
     // gives debug-mode log readers the duration of the visible recording
     // before any VAD / conditioning runs.
@@ -1211,10 +1381,17 @@ final class RecordingSessionKernel {
           rawSampleCount: captureResult.samples.count,
           peakAudioLevel: rawPeakAudioLevel
         )
-        emitZombieZeroPeakIfNeeded(
-          rawSamples: captureResult.samples,
-          peakAudioLevel: rawPeakAudioLevel
-        )
+        // #1317 N2: a classified zero-signal session emits ONLY the new
+        // failure-mode event — never the legacy zombie telemetry too.
+        // `zombie_engine_zero_peak` stays the fallback for an exact-zero
+        // capture that was NOT confidently classified (mute/liveness
+        // ambiguity fails closed above, §3.6).
+        if telemetryState.zeroSignalFailureMode == nil {
+          emitZombieZeroPeakIfNeeded(
+            rawSamples: captureResult.samples,
+            peakAudioLevel: rawPeakAudioLevel
+          )
+        }
         // GAP 3 app.log parity: emit the VAD filtered log here too — for
         // dead-air `.confirmedNoSpeech`, conditioner never runs (we return
         // below), so the filtered count is 0 by definition. Without this, the
@@ -1274,7 +1451,18 @@ final class RecordingSessionKernel {
     // the bundled source when present (XPC works out of the box today);
     // fall back to the seam for direct-mode (which PR-4b wires up).
     let xpcSegments = captureResult.vadSegments
-    let vadSegments = !xpcSegments.isEmpty ? xpcSegments : vad.speechSegmentsAtStop()
+    let rawVadSegments = !xpcSegments.isEmpty ? xpcSegments : vad.speechSegmentsAtStop()
+    // #1317 fast-follow (Grounded Review r1): an OPEN segment (speech never
+    // resolved to silence before the recording ended) finalizes its end at
+    // the ORIGINAL full sample count — the zero-signal reactive detector's
+    // 1s confidence window can fire before the VAD silence timeout (1.5s
+    // default) ever closes it. Clamp every segment into the buffer's ACTUAL
+    // (possibly zero-suffix-trimmed above) coordinate space so
+    // `vadSpeechDurationMs` / the adapter's `voicedDurationSec` / LID window
+    // count never count samples that no longer exist — `SampleFilter` and
+    // WhisperKit's own backend already clamp defensively so this was never a
+    // crash risk, only a silently-inflated-duration one.
+    let vadSegments = Self.clampSegments(rawVadSegments, to: captureResult.samples.count)
     // PR-5 Rung 2B (#827): push the kernel-computed VAD speech segments to
     // the adapter at finalize-time, BEFORE the kernel-side conditioning
     // runs. The second engine (Rung 3) derives engine-specific decode
@@ -2145,10 +2333,18 @@ final class RecordingSessionKernel {
   /// `SessionID`), so the guard is on kernel terminal state, not ID
   /// equality — the App-side `WedgeRecoveryRouter` already filters by
   /// capture session via its own `isCurrentSession(ctx.sessionID)` check.
+  ///
+  /// #1317 §3.2: routes by `ctx.failureMode` — `.noBuffers` keeps today's
+  /// `.captureStall` exit; `.allZeroFromStart` / `.becameZeroMidCapture` take
+  /// the dedicated `.zeroSignal` exit (normal stop path, prefix survives).
   func externalCaptureStalled(_ ctx: CaptureStallContext) {
-    _ = ctx
     guard !state.isTerminal else { return }
-    deliverRecordingExitIfCurrent(.captureStall, sid: currentSessionID)
+    switch ctx.failureMode {
+    case .noBuffers:
+      deliverRecordingExitIfCurrent(.captureStall, sid: currentSessionID)
+    case .allZeroFromStart, .becameZeroMidCapture:
+      deliverRecordingExitIfCurrent(.zeroSignal(ctx.failureMode), sid: currentSessionID)
+    }
   }
 
   /// The buffer-handoff callback (PR-3 plan §3.4 — reuses the shipped
@@ -2261,6 +2457,7 @@ final class RecordingSessionKernel {
     case .vadAutoStop: lastStopReason = "vad_auto_stop"
     case .maxDuration: lastStopReason = "max_duration"
     case .captureStall: lastStopReason = "capture_stall"
+    case .zeroSignal(let mode): lastStopReason = "zero_signal_\(mode.rawValue)"
     case .audioInterruption: lastStopReason = "audio_interruption"
     case .asrInterruption: lastStopReason = "asr_interruption"
     case .cancel: lastStopReason = "cancel"
@@ -2588,6 +2785,7 @@ final class RecordingSessionKernel {
     recordingStartedAtTick = nil
     stoppingStartedAtTick = nil
     recordingStartedAtDate = nil
+    recordingStartedAtUptimeNs = nil
     loadTickCount = 0
     finalizeTickCount = 0
     loadAttemptStartedAtTick = 0
@@ -2795,6 +2993,64 @@ final class RecordingSessionKernel {
     -> Bool
   {
     RawAudioDeadAirClassifier.isDeadAir(samples, peak: peak)
+  }
+
+  /// #1317 fast-follow: exact count of trailing exact-zero samples — the one
+  /// authority both `classifyZeroSignalAtStop` (below) and the post-capture
+  /// `.becameZeroMidCapture` trim in `runForwardPath` use, so the trim
+  /// boundary can never disagree with the classification decision that named
+  /// the session `.becameZeroMidCapture` in the first place.
+  nonisolated static func trailingZeroSuffixCount(_ samples: [Float]) -> Int {
+    var count = 0
+    for s in samples.reversed() {
+      if s == 0 { count += 1 } else { break }
+    }
+    return count
+  }
+
+  /// #1317 fast-follow (Grounded Review r1): clamps every segment's
+  /// start/end into `[0, sampleCount]`, dropping a segment that no longer
+  /// has any span once clamped. Pure so the boundary cases (in-range,
+  /// dangling past the boundary, entirely past the boundary) unit-test
+  /// without a kernel. See the call site in `runForwardPath` for why an
+  /// open VAD segment can reference a sample count the buffer no longer has.
+  nonisolated static func clampSegments(_ segments: [SpeechSegment], to sampleCount: Int)
+    -> [SpeechSegment]
+  {
+    segments.compactMap { segment in
+      let start = max(0, min(segment.startSample, sampleCount))
+      let end = max(start, min(segment.endSample, sampleCount))
+      guard end > start else { return nil }
+      return SpeechSegment(startSample: start, endSample: end)
+    }
+  }
+
+  /// #1317 §3.6 STOP-win row: one-shot classification of a COMPLETE capture
+  /// against the same all-zero rules the app-side streaming detector applies
+  /// buffer-by-buffer (§3.1) — the backstop for a session whose STOP raced
+  /// the detector, or whose capture was too short to reach the detector's
+  /// own confidence threshold before it ended. Pure + nonisolated so the
+  /// boundary cases unit-test without a kernel. Sample-shape only — the
+  /// caller still runs the §3.0 device-alive/not-muted discriminator before
+  /// trusting the result.
+  nonisolated static func classifyZeroSignalAtStop(_ samples: [Float]) -> CaptureStallFailureMode? {
+    guard samples.count >= AudioConstants.minimumTranscriptionSamples else { return nil }
+    if samples.allSatisfy({ $0 == 0 }) {
+      return .allZeroFromStart
+    }
+    let suffixZeroCount = Self.trailingZeroSuffixCount(samples)
+    guard suffixZeroCount >= AudioConstants.minimumTranscriptionSamples else { return nil }
+    let prefixCount = samples.count - suffixZeroCount
+    guard prefixCount > 0 else { return nil }
+    // #1317 (cloud review P2): a slice view, not `Array(samples[..<prefixCount])`
+    // — a 60-minute capture's prefix can be hundreds of MB; copying it just to
+    // compute peak/dead-air stats doubles the already-held buffer in the stop
+    // path. `isDeadAir` is generic over `RandomAccessCollection` for exactly
+    // this call.
+    let prefix = samples[0..<prefixCount]
+    let prefixPeak = prefix.reduce(Float(0)) { max($0, abs($1)) }
+    guard !RawAudioDeadAirClassifier.isDeadAir(prefix, peak: prefixPeak) else { return nil }
+    return .becameZeroMidCapture
   }
 
   /// Fraction of non-overlapping 40 ms windows in `slice` whose RMS clears the

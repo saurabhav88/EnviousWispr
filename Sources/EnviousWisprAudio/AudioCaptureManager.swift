@@ -21,6 +21,31 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// production writes stay inside this file.
   public internal(set) var isCapturing = false
 
+  /// #1317 (cloud review P2, PR #1512, round 2): device resolved via
+  /// `AudioDeviceEnumerator.resolveEffectiveInputDevice` and frozen at the
+  /// TOP of `startEnginePhase()` — the same synchronous turn `resolveSource()`
+  /// itself reads `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`
+  /// to build/reuse a source, so this mirrors the device the engine actually
+  /// binds to for THIS attempt (re-freezes naturally on a kernel-driven
+  /// rebuild retry, since that re-invokes `startEnginePhase()`). Exposed via
+  /// `AudioCaptureInterface.zeroSignalDiscriminatorDeviceID` so the pipeline
+  /// layer's STOP-time backstop reads this SAME frozen value instead of
+  /// independently re-resolving (which cannot see this class's retries) —
+  /// it does so AFTER capture has already ended — a normal `stopCapture()`
+  /// OR any interruption teardown path, both of which run their own
+  /// cleanup BEFORE the kernel's read happens (the kernel falls through a
+  /// salvageable interruption into the SAME normal stop tail that reads
+  /// this). INVARIANT: no teardown path may clear this field — the next
+  /// `startEnginePhase()` overwrites it for the next session, and nothing
+  /// ever reads a stale cross-session value in between, so clearing it
+  /// early only ever loses the CURRENT session's read (cloud review round
+  /// 6 P1 caught this in `stopCapture()`; round 7 P2 caught the same class
+  /// in the interruption path — audit every write site against this
+  /// invariant before adding a new one).
+  private var effectiveDiscriminatorDeviceID: AudioDeviceID?
+
+  public var zeroSignalDiscriminatorDeviceID: AudioDeviceID? { effectiveDiscriminatorDeviceID }
+
   /// Current audio level (0.0 - 1.0) for waveform visualization.
   public private(set) var audioLevel: Float = 0.0
 
@@ -262,6 +287,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   // MARK: - AudioCaptureInterface
 
   public func startEnginePhase() async throws {
+    // #1317 (cloud review P2, round 2): freeze the discriminator device NOW,
+    // same synchronous turn `resolveSource()` reads the live UID properties.
+    effectiveDiscriminatorDeviceID = AudioDeviceEnumerator.resolveEffectiveInputDevice(
+      preferredOverride: preferredInputDeviceIDOverride, selected: selectedInputDeviceUID)
     // Re-evaluate route on every recording start — BT state may have changed.
     onLifecycleSignal?("manager_resolve_source_entered")
     let source = resolveSource()
@@ -322,6 +351,11 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         self.activeSource.map({ ObjectIdentifier($0) }) == sourceID
       else { return }
       self.isCapturing = false
+      // #1317 (cloud review P2, round 7): NOT cleared here — see the
+      // field's doc comment. A teardown-time clear here can race the
+      // kernel's STOP-time read the same way `stopCapture()` did (round 6
+      // P1): the kernel falls through interruption exits into the SAME
+      // normal stop tail when the interruption's audio is salvageable.
       self.audioLevel = 0.0
       self.onEngineInterrupted?(cause)
     }
@@ -392,6 +426,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     let stopMetadata = source.captureStopMetadata
 
     isCapturing = false
+    // #1317 (cloud review P1, round 6): do NOT clear `effectiveDiscriminatorDeviceID`
+    // here — the kernel's STOP-time backstop reads `zeroSignalDiscriminatorDeviceID`
+    // AFTER this `stopCapture()` call returns. The next `startEnginePhase()`
+    // already overwrites it for the next session.
     audioLevel = 0.0
 
     // Deactivate capture but keep engine warm. The tap stays installed and the

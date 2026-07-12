@@ -105,6 +105,30 @@ public protocol AudioCaptureInterface: AnyObject {
   /// active source in direct mode; constant for the proxy.
   var captureSourceType: String { get }
 
+  /// #1317 (cloud review P2, PR #1512, round 2): input device resolved and
+  /// frozen at the moment THIS session's engine actually started capturing
+  /// (including any internal retry) — not a live re-read of
+  /// `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`, which a
+  /// mid-session settings change can already have moved past. The pipeline
+  /// layer's zero-signal device discriminator (§3.0) reads this so its
+  /// STOP-time backstop evaluates the device the session actually captured
+  /// from — only the concrete capture layer knows exactly when and how many
+  /// times an engine-start attempt actually ran. Default `nil` (fail closed).
+  var zeroSignalDiscriminatorDeviceID: AudioDeviceID? { get }
+
+  /// #1317 (cloud review round 2, P2; scope narrowed round 3, P2): true
+  /// once a reactive zero-signal check observed a candidate buffer,
+  /// somewhere in the CURRENT trailing all-zero run, while the device was
+  /// ineligible (muted). The kernel's STOP-time backstop must fail closed
+  /// once this is true even if the device's LIVE state has since become
+  /// eligible (the user unmuted right before releasing does not undo that
+  /// THAT silent stretch was genuinely muted) — but scoped to the current
+  /// run only, so an earlier resolved mute elsewhere in the same recording
+  /// can't blind the backstop to a later, unrelated genuine failure.
+  /// Default `false` — conformers with no reactive per-buffer detector
+  /// (there is nothing to observe) correctly never set it.
+  var zeroSignalDiscriminatorSawIneligible: Bool { get }
+
   // Configuration properties (read-write)
   var noiseSuppressionEnabled: Bool { get set }
   var selectedInputDeviceUID: String { get set }
@@ -143,4 +167,16 @@ extension AudioCaptureInterface {
   public func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
     try await beginCapturePhase(recoveryPayload: nil)
   }
+
+  /// #1317: fail-closed default so every existing conformer (test fakes,
+  /// simulator doubles) that has no reason to track this stays
+  /// source-compatible. Real capture backends (`AudioCaptureProxy`,
+  /// `AudioCaptureManager`) override it with the device frozen at their own
+  /// engine-start moment.
+  public var zeroSignalDiscriminatorDeviceID: AudioDeviceID? { nil }
+
+  /// #1317 (cloud review round 2, P2): default `false` — test fakes and
+  /// `AudioCaptureManager` (no reactive per-buffer detector) have nothing to
+  /// latch. `AudioCaptureProxy` overrides it with its own session-scoped latch.
+  public var zeroSignalDiscriminatorSawIneligible: Bool { false }
 }

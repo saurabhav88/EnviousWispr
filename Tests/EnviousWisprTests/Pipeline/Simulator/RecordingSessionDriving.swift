@@ -122,6 +122,13 @@ final class LimbInjectionBox {
   var storageWriteFails = false
 }
 
+/// #1317: reference-type holder so `stopTimeZeroSignalTelemetry`'s closure
+/// (constructed before `self` fully exists, same constraint `LimbInjectionBox`
+/// works around) can append fired contexts without capturing `self`.
+final class StopTimeZeroSignalTelemetryLog {
+  var fired: [CaptureStallContext] = []
+}
+
 @MainActor
 final class KernelRecordingSession: RecordingSessionDriving {
   private let kernel: RecordingSessionKernel
@@ -138,6 +145,13 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// this wrapper mirrors that by constructing it once and passing it in.
   let telemetryState = KernelTelemetryState()
 
+  private let stopTimeTelemetryLog = StopTimeZeroSignalTelemetryLog()
+  /// #1317: `CaptureStallContext`s the kernel's STOP-time classification
+  /// submitted via `stopTimeZeroSignalTelemetry`, in fire order. Lets a test
+  /// assert exactly one classified event fired (dedup) without a real
+  /// `HeartPathTelemetryEmitter`.
+  var stopTimeZeroSignalTelemetryFired: [CaptureStallContext] { stopTimeTelemetryLog.fired }
+
   init(
     engine: FakeEngine,
     capture: FakeAudioCapture,
@@ -147,11 +161,18 @@ final class KernelRecordingSession: RecordingSessionDriving {
     // #1408: the floor's regression guard needs the minimum-recording gate ARMED
     // (the inventory zeroes it, see the note at the `minimumRecordingTicks`
     // argument below). Defaulted so every existing scenario is unchanged.
-    minimumRecordingTicks: Int = 0
+    minimumRecordingTicks: Int = 0,
+    // #1317: deterministic by default (`true`) — real scenarios exercising
+    // the muted/unknown fail-closed path override this explicitly. Avoids
+    // every other test in the 38-scenario inventory depending on the test
+    // machine's real microphone/mute state via the kernel's production
+    // default (real CoreAudio calls).
+    zeroSignalDeviceEligible: @escaping @MainActor () -> Bool = { true }
   ) {
     self.vad = vad
     let limb = self.limb
     let telemetryState = self.telemetryState
+    let stopTimeTelemetryLog = self.stopTimeTelemetryLog
     self.kernel = RecordingSessionKernel(
       adapter: engine,
       audioCapture: capture,
@@ -186,6 +207,10 @@ final class KernelRecordingSession: RecordingSessionDriving {
       // minimum-recording threshold would discard most scenarios. The
       // dedicated #4 coverage lives in `ConductorParitySeamTests`.
       minimumRecordingTicks: minimumRecordingTicks,
+      stopTimeZeroSignalTelemetry: { [stopTimeTelemetryLog] ctx in
+        stopTimeTelemetryLog.fired.append(ctx)
+      },
+      zeroSignalDeviceEligible: zeroSignalDeviceEligible,
       telemetryState: telemetryState)
   }
 
@@ -341,6 +366,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
     case .asrWedged: return .asrWedged
     case .emptyAfterProcessing: return .emptyAfterProcessing
     case .captureStalled: return .captureStalled
+    case .zeroSignal: return .zeroSignal
     }
   }
 }

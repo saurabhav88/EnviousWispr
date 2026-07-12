@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import CoreAudio
 import EnviousWisprCore
 import Foundation
 
@@ -185,6 +186,57 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   /// into the next session.
   private var captureStartUptimeNs: UInt64 = 0
 
+  /// #1317 (cloud review P2, PR #1512, round 2): device resolved via
+  /// `AudioDeviceEnumerator.resolveEffectiveInputDevice` and frozen inside
+  /// `awaitStartEnginePhaseReply` — the same synchronous snapshot used for
+  /// THIS attempt's XPC `preferredDeviceUID`/`selectedDeviceUID` send
+  /// (including retries, since that whole function re-runs on resend).
+  /// `evaluateDeadAirDetector` evaluates the alive/mute discriminator
+  /// against THIS device, not a live re-read — a device switch applied
+  /// mid-recording (settings apply immediately; the active capture source
+  /// does not rebuild until the next recording) must not retroactively
+  /// change which device this session's zero-signal check evaluates.
+  /// `nil` if no session has started, or none could be resolved. Exposed
+  /// via `AudioCaptureInterface.zeroSignalDiscriminatorDeviceID` so the
+  /// pipeline layer's STOP-time backstop reads this SAME frozen value —
+  /// which it does AFTER capture has already ended — a normal `stopCapture()`
+  /// OR any interruption/line-death teardown path, both of which run their
+  /// own cleanup BEFORE the kernel's read happens (the kernel falls through
+  /// a salvageable interruption into the SAME normal stop tail that reads
+  /// this). INVARIANT: no teardown path may clear this field — the next
+  /// `startEnginePhase()` overwrites it for the next session, and nothing
+  /// ever reads a stale cross-session value in between, so clearing it
+  /// early only ever loses the CURRENT session's read (cloud review round
+  /// 6 P1 caught this in `stopCapture()`; round 7 P2 caught the same class
+  /// in both files' interruption paths — audit every write site against
+  /// this invariant before adding a new one).
+  private var effectiveDiscriminatorDeviceID: AudioDeviceID?
+
+  public var zeroSignalDiscriminatorDeviceID: AudioDeviceID? { effectiveDiscriminatorDeviceID }
+
+  /// #1317 (cloud review round 2, P2; scope narrowed round 3, P2): true
+  /// once the CURRENT trailing all-zero run (not the whole session — see
+  /// below) has been observed while the device discriminator was
+  /// ineligible (muted, or mute-unknown). The device's mute state can
+  /// change mid-recording — the discriminator legitimately re-checks it
+  /// live on every buffer — but a STOP-time discriminator check that ONLY
+  /// reads the CURRENT (possibly since-unmuted) state would mislabel a
+  /// recording that was genuinely muted during its silent stretch as the
+  /// harness glitch, just because the user unmuted right before releasing.
+  /// This latch makes that earlier ineligible result stick for THAT run.
+  /// Scoped to the current run, not session-wide: `evaluateDeadAirDetector`
+  /// clears it the moment a non-zero sample breaks the trailing zero-run
+  /// (`consecutiveExactZeroSuffix` resets), because an earlier resolved
+  /// mute must not blind the backstop to a later, unrelated genuine
+  /// zero-signal failure elsewhere in the same recording (round 3: a
+  /// session-wide latch did exactly that). Reset in `beginCapturePhase`
+  /// alongside `deadAirDetector` (same session-scope as the reactive
+  /// detector itself); per the invariant on `effectiveDiscriminatorDeviceID`
+  /// above, no teardown path may clear it early.
+  private var sawIneligibleZeroSignalDuringSession = false
+
+  public var zeroSignalDiscriminatorSawIneligible: Bool { sawIneligibleZeroSignalDuringSession }
+
   // MARK: - Capture-liveness watchdog (issue #285)
 
   /// Private serial queue that fires the stall `DispatchWorkItem`.
@@ -197,6 +249,23 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   /// Flips true on the MainActor inside `audioBufferCaptured` when any buffer
   /// for the active session reaches us. Reset to false when arming.
   private var hasReceivedBufferThisSession: Bool = false
+
+  /// #1317: per-capture-generation all-zero harness-glitch detector state.
+  /// Reset alongside `hasReceivedBufferThisSession` at every fresh
+  /// `beginCapturePhase`.
+  private var deadAirDetector = DeadAirStreamingDetector()
+
+  /// #1317 (Codex code-diff review r3): `AudioCaptureInterface.onCaptureStalled`
+  /// is documented as at-most-once per session, but the no-buffer watchdog
+  /// (`captureStallWatchdogFired`) and the all-zero detector
+  /// (`evaluateDeadAirDetector`) are two INDEPENDENT firing paths, each
+  /// guarded only by its own state (`hasReceivedBufferThisSession` /
+  /// `deadAirDetector.fired`). A delayed-buffer race — the watchdog fires on
+  /// zero buffers, then late buffers arrive before the async stop completes
+  /// and happen to cross the all-zero threshold — could fire BOTH,
+  /// duplicating the callback and its telemetry. This flag is the ONE shared
+  /// latch both paths check-and-set before calling `onCaptureStalled`.
+  private var captureStallReported = false
 
   /// 16kHz mono Float32 format used for buffer reconstruction.
   /// Matches AudioCaptureManager.targetSampleRate / targetChannels.
@@ -287,13 +356,22 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   }
 
   private func awaitStartEnginePhaseReply(operationID: String) async throws {
+    // #1317 (cloud review P2, round 2): snapshot the UIDs used for THIS
+    // specific attempt (including retries — this whole function re-runs on
+    // each retry) and freeze the discriminator device against that SAME
+    // snapshot, not a live re-read at some later point. This is the moment
+    // closest to the actual XPC device bind.
+    let preferredUID = preferredInputDeviceIDOverride
+    let selectedUID = selectedInputDeviceUID
+    effectiveDiscriminatorDeviceID = AudioDeviceEnumerator.resolveEffectiveInputDevice(
+      preferredOverride: preferredUID, selected: selectedUID)
     try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
       let guard_ = OneShotContinuation(cont)
       serviceProxy { proxy in
         proxy.startEnginePhase(
           operationID: operationID,
-          preferredDeviceUID: self.preferredInputDeviceIDOverride,
-          selectedDeviceUID: self.selectedInputDeviceUID
+          preferredDeviceUID: preferredUID,
+          selectedDeviceUID: selectedUID
         ) { nsError in
           if let error = nsError { guard_.resume(throwing: error) } else { guard_.resume() }
         }
@@ -344,7 +422,15 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
     isCapturing = true
     captureStartUptimeNs = DispatchTime.now().uptimeNanoseconds  // #455
+    // #1317: `effectiveDiscriminatorDeviceID` is NOT (re-)frozen here — it is
+    // already frozen by `awaitStartEnginePhaseReply` (round 2 fix), which ran
+    // as part of the preceding `startEnginePhase()` (or this call's own
+    // retry-prefix on a resend). Re-freezing here would re-read live UIDs at
+    // a LATER point, reintroducing the exact race cloud review flagged.
     hasReceivedBufferThisSession = false
+    deadAirDetector = DeadAirStreamingDetector()
+    captureStallReported = false
+    sawIneligibleZeroSignalDuringSession = false
     armCaptureStallWatchdog()
     return stream
   }
@@ -397,6 +483,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     guard activeCaptureGeneration == armedSession else { return }
     guard isCapturing else { return }
     guard !hasReceivedBufferThisSession else { return }
+    guard !captureStallReported else { return }
 
     let ctx = CaptureStallContext(
       sessionID: armedSession,
@@ -411,6 +498,86 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
         ? nil : preferredInputDeviceIDOverride,
       inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
       failureMode: .noBuffers,
+      selectedTransport: currentResolvedRoute?.selected,
+      effectiveTransport: currentResolvedRoute?.effective,
+      routeReason: currentResolvedRoute?.routeReason,
+      routeFallbackReason: currentResolvedRoute?.routeFallbackReason,
+      inputSelectionMode: currentResolvedRoute?.inputSelectionMode,
+      outputTransport: currentResolvedRoute?.outputTransport,
+      routeResolutionSource: currentResolvedRoute?.routeResolutionSource
+    )
+    captureStallReported = true
+    onCaptureStalled?(ctx)
+  }
+
+  /// #1317: feed this buffer's raw samples into the per-generation all-zero
+  /// harness-glitch detector; when it crosses a confidence threshold, run the
+  /// §3.0 device-alive + not-muted discriminator and — only if it passes —
+  /// fire `onCaptureStalled` with the matching failure mode. A muted or
+  /// mute-unknown device fails closed: no fire, today's honest no-speech
+  /// path is untouched, and the next buffer re-evaluates (mute state can
+  /// legitimately change mid-recording).
+  private func evaluateDeadAirDetector(buffer: AVAudioPCMBuffer, sessionID: UInt64) {
+    guard !deadAirDetector.fired, !captureStallReported,
+      let channelData = buffer.floatChannelData
+    else { return }
+    let frameCount = Int(buffer.frameLength)
+    guard frameCount > 0 else { return }
+    let suffixBefore = deadAirDetector.consecutiveExactZeroSuffix
+    deadAirDetector.ingest(UnsafeBufferPointer(start: channelData[0], count: frameCount))
+    // #1317 (cloud review round 3, P2): a non-zero sample anywhere in this
+    // buffer breaks the trailing zero-run — `consecutiveExactZeroSuffix`
+    // after ingest is then strictly less than `suffixBefore + frameCount`
+    // (it only counts zeros AFTER the last non-zero sample). Any earlier
+    // ineligible (muted) result applied to THAT run, not this new one, so it
+    // must not suppress detection of a later, unrelated zero-signal failure
+    // (an earlier accidental mute-then-unmute must not blind the backstop
+    // to a genuine harness glitch later in the same recording).
+    if deadAirDetector.consecutiveExactZeroSuffix != suffixBefore + frameCount {
+      sawIneligibleZeroSignalDuringSession = false
+    }
+
+    let mode: CaptureStallFailureMode
+    if deadAirDetector.isAllZeroFromStart {
+      mode = .allZeroFromStart
+    } else if deadAirDetector.isBecameZeroMidCapture {
+      mode = .becameZeroMidCapture
+    } else {
+      return
+    }
+
+    // #1317 (cloud review P2, round 2): evaluate against the device FROZEN
+    // inside `awaitStartEnginePhaseReply` at engine-start, not a live
+    // re-read — `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`
+    // can already reflect a device the user switched to mid-recording,
+    // before the active capture source itself rebuilds.
+    guard
+      let deviceID = effectiveDiscriminatorDeviceID,
+      ZeroSignalDeviceDiscriminator.isEligible(deviceID: deviceID)
+    else {
+      // #1317 (cloud review round 2, P2): a zero-signal-candidate buffer was
+      // observed while ineligible (muted) — latch it so the STOP-time
+      // backstop can't later see a since-unmuted live state and misclassify
+      // this genuinely-muted stretch as the harness glitch.
+      sawIneligibleZeroSignalDuringSession = true
+      return
+    }
+
+    deadAirDetector.fired = true
+    captureStallReported = true
+    let ctx = CaptureStallContext(
+      sessionID: sessionID,
+      armedAtUptimeNs: captureStartUptimeNs,
+      firedAtUptimeNs: DispatchTime.now().uptimeNanoseconds,
+      route: currentAudioRoute,
+      sourceType: "xpc_proxy",
+      engineStartedSuccessfully: true,
+      tapInstalled: true,
+      formatMismatchObserved: false,
+      inputDeviceUIDPreferred: preferredInputDeviceIDOverride.isEmpty
+        ? nil : preferredInputDeviceIDOverride,
+      inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+      failureMode: mode,
       selectedTransport: currentResolvedRoute?.selected,
       effectiveTransport: currentResolvedRoute?.effective,
       routeReason: currentResolvedRoute?.routeReason,
@@ -471,6 +638,12 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     isCapturing = false
     activeCaptureOperationID = nil  // #1408 A3: session over, relay echoes are stale now
     captureStartUptimeNs = 0  // #455
+    // #1317 (cloud review P1, round 6): do NOT clear `effectiveDiscriminatorDeviceID`
+    // here — `RecordingSessionKernel` reads `zeroSignalDiscriminatorDeviceID`
+    // via the STOP-time backstop AFTER this `stopCapture()` call returns.
+    // Clearing it here made the backstop permanently see `nil` and silently
+    // disabled it on every real capture. The next `startEnginePhase()`
+    // already overwrites it for the next session.
     audioLevel = 0
     bufferContinuation?.finish()
     bufferContinuation = nil
@@ -985,6 +1158,11 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
       isCapturing = false
       activeCaptureOperationID = nil  // #1408 A3
       captureStartUptimeNs = 0  // #455
+      // #1317 (cloud review P2, round 7): NOT cleared here — see the field's
+      // doc comment. A teardown-time clear (this method, an interruption
+      // path) can race the kernel's STOP-time read the same way `stopCapture()`
+      // did (round 6 P1): the kernel falls through interruption exits into
+      // the SAME normal stop tail when the interruption's audio is salvageable.
       audioLevel = 0
       captureGeneration &+= 1
       bufferContinuation?.finish()
@@ -1288,6 +1466,11 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
           return
         }
       #endif
+      // #1317: mid-recording all-zero harness-glitch detector. After the
+      // generation guard, on the already-reconstructed float buffer, before
+      // yielding — no new XPC callback, no RT-thread work (§3.1).
+      self.evaluateDeadAirDetector(
+        buffer: safeBuffer, sessionID: self.activeCaptureGeneration)
       self.hasReceivedBufferThisSession = true
       self.audioLevel = audioLevel
       self.bufferContinuation?.yield(safeBuffer)
@@ -1319,6 +1502,9 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
         self.isCapturing = false
         self.activeCaptureOperationID = nil  // #1408 A3
         self.captureStartUptimeNs = 0  // #455
+        // #1317 (cloud review P2, round 7): NOT cleared here — see the
+        // field's doc comment; same reasoning as the sibling teardown block
+        // above.
         self.audioLevel = 0
         self.captureGeneration &+= 1
         self.bufferContinuation?.finish()
