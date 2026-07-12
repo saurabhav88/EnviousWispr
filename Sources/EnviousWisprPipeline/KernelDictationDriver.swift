@@ -1510,10 +1510,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     case .captureStalled:
       return "No audio detected — try again."
     case .zeroSignal:
-      // #1317 PR2: the harness delivered all-zero audio from a running,
-      // unmuted mic. Honest, no auto-reset yet — PR3 adds the rebuild and
-      // upgrades this to "Mic problem. Resetting it."
-      return "Couldn't hear your mic. Try again."
+      // #1317 PR3: the harness delivered all-zero audio from a running,
+      // unmuted mic. The kernel has already requested the capture-pipeline
+      // rebuild by the time this failure is mapped, so the copy states what
+      // the app is actually doing (founder-chosen wording).
+      return "Mic problem. Resetting it."
     }
   }
 }

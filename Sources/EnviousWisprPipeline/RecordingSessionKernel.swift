@@ -1147,25 +1147,31 @@ final class RecordingSessionKernel {
       finishTerminal(.failed(.captureStalled), sid: sid)
       return
     case .zeroSignal(let mode):
-      // #1317. Stamp the side-channel BEFORE the terminal — the pill mapper
-      // and the driver's partial-capture disclosure both read it (§3.5).
-      telemetryState.zeroSignalFailureMode = mode
       switch mode {
       case .noBuffers:
         // Unreachable by construction: `externalCaptureStalled` routes
         // `.noBuffers` to `.captureStall`, never to `.zeroSignal` (§3.2).
-        // Fail safely rather than silently mis-terminating.
+        // Fail safely rather than silently mis-terminating — and do NOT stamp
+        // the side-channel, so `.noBuffers` can never reach the zero-signal
+        // recovery switch below (PR3 grounded review Q6).
         finishTerminal(.failed(.captureStalled), sid: sid)
         return
-      case .allZeroFromStart:
-        // Nothing to salvage — honest terminal, no normal-stop tail (§3.4).
-        finishTerminal(.failed(.zeroSignal), sid: sid)
-        return
-      case .becameZeroMidCapture:
-        // Fall through into the normal stop tail below so ASR transcribes
-        // the non-zero prefix already captured (§3.4). The rebuild (PR3)
-        // and the partial-capture disclosure both read the stamped mode.
-        break
+      case .allZeroFromStart, .becameZeroMidCapture:
+        // #1317. Stamp the side-channel BEFORE the terminal — the pill mapper
+        // and the driver's partial-capture disclosure both read it (§3.5).
+        //
+        // PR3: BOTH confirmed zero-signal modes now fall through into the
+        // normal stop tail. `.allZeroFromStart` used to take an immediate
+        // terminal here, which was behaviourally identical while there was no
+        // rebuild — but that early return never reaches `stopCapture()` (its
+        // capture stop happens inside `finishTerminal`'s detached cleanup
+        // Task, :2715), so it could never own the single post-stop rebuild
+        // site. Its terminal now fires below, after the stop completes and
+        // after the rebuild request, still BEFORE the VAD no-speech gate that
+        // would otherwise swallow an exact-zero capture as quiet-room silence
+        // (§3.6 N1). `.becameZeroMidCapture` continues into ASR so the
+        // captured prefix is transcribed (§3.4).
+        telemetryState.zeroSignalFailureMode = mode
       }
     case .userStop, .vadAutoStop, .maxDuration:
       break
@@ -1318,11 +1324,57 @@ final class RecordingSessionKernel {
           outputTransport: audioCapture.currentResolvedRoute?.outputTransport,
           routeResolutionSource: audioCapture.currentResolvedRoute?.routeResolutionSource
         ))
-      if mode == .allZeroFromStart {
+    }
+
+    // #1317 PR3 — THE single zero-signal recovery site (plan §3.3).
+    //
+    // Every confirmed zero-signal session converges here, and only here:
+    //   * reactive `.allZeroFromStart`   — stamped at the exit switch (:1149)
+    //   * reactive `.becameZeroMidCapture` — stamped at the exit switch
+    //   * STOP-time backstop (either mode) — stamped immediately above
+    // so exactly ONE `rebuildEngine()` request is issued per zero-signal
+    // session. No terminal handler, driver, router, or the `finishTerminal`
+    // cleanup Task may rebuild for zero-signal.
+    //
+    // Placement is load-bearing on BOTH sides:
+    //   * AFTER `stopCapture()` (:1204) — the capture layer deactivates the
+    //     source before its stop reply returns (`AudioCaptureManager:411`), so
+    //     the rebuild cannot race a still-live capture callback.
+    //   * AFTER the too-short / no-audio gates (:1260, :1279) — capture
+    //     samples include PRE-ROLL, so a sub-500ms visible tap can still carry
+    //     >= 16000 samples and reach the detector's threshold. Rebuilding (or
+    //     terminating as zero-signal) above those gates would hijack sessions
+    //     that correctly discard as `.tooShort` today, and would break the
+    //     founder-locked rule that very short dead taps keep today's behaviour.
+    //
+    // `rebuildEngine()` is fire-and-forget across XPC (`AudioCaptureProxy:687`),
+    // so it is requested BEFORE `finishTerminal` — which drains the task bag and
+    // flips the UI — to give the request the earliest possible ordering and keep
+    // the next-press race window as small as the synchronous interface allows.
+    // Exhaustive on purpose (no `default`): a future failure mode must make a
+    // deliberate choice here rather than silently inheriting engine recovery.
+    // `.noBuffers` is the ordinary capture stall — the stall watchdog owns it,
+    // and it is never even stamped (:1154). `nil` is the healthy session.
+    let zeroSignalRecoveryMode: CaptureStallFailureMode?
+    switch telemetryState.zeroSignalFailureMode {
+    case .allZeroFromStart: zeroSignalRecoveryMode = .allZeroFromStart
+    case .becameZeroMidCapture: zeroSignalRecoveryMode = .becameZeroMidCapture
+    case .noBuffers, nil: zeroSignalRecoveryMode = nil
+    }
+
+    if let zeroSignalRecoveryMode {
+      audioCapture.rebuildEngine()  // ← THE single zero-signal rebuild site.
+      log("zero-signal recovery: rebuild requested (\(zeroSignalRecoveryMode.rawValue))")
+      if zeroSignalRecoveryMode == .allZeroFromStart {
+        // Nothing to salvage — take the honest terminal now, still ahead of the
+        // VAD no-speech gate below, which would otherwise report an exact-zero
+        // capture as ordinary quiet-room silence (§3.6 N1).
         finishTerminal(.failed(.zeroSignal), sid: sid)
         return
       }
-      // .becameZeroMidCapture: fall through — trimmed below (§3.4).
+      // `.becameZeroMidCapture`: fall through. The mic died mid-take, but the
+      // non-zero prefix is trimmed just below and still transcribed and pasted,
+      // so the user keeps the words they actually said (§3.4).
     }
 
     // #1317 fast-follow (cloud review PR #1512 + live UAT repro): trim the
