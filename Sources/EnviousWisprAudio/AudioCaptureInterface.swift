@@ -111,14 +111,17 @@ public protocol AudioCaptureInterface: AnyObject {
   /// times an engine-start attempt actually ran. Default `nil` (fail closed).
   var zeroSignalDiscriminatorDeviceID: AudioDeviceID? { get }
 
-  /// #1317 (cloud review round 2, P2): true once a reactive zero-signal
-  /// check this session observed a candidate buffer while the device was
+  /// #1317 (cloud review round 2, P2; scope narrowed round 3, P2): true
+  /// once a reactive zero-signal check observed a candidate buffer,
+  /// somewhere in the CURRENT trailing all-zero run, while the device was
   /// ineligible (muted). The kernel's STOP-time backstop must fail closed
   /// once this is true even if the device's LIVE state has since become
   /// eligible (the user unmuted right before releasing does not undo that
-  /// the silent stretch itself was genuinely muted). Default `false` —
-  /// conformers with no reactive per-buffer detector (there is nothing to
-  /// observe) correctly never set it.
+  /// THAT silent stretch was genuinely muted) — but scoped to the current
+  /// run only, so an earlier resolved mute elsewhere in the same recording
+  /// can't blind the backstop to a later, unrelated genuine failure.
+  /// Default `false` — conformers with no reactive per-buffer detector
+  /// (there is nothing to observe) correctly never set it.
   var zeroSignalDiscriminatorSawIneligible: Bool { get }
 
   // Configuration properties (read-write)

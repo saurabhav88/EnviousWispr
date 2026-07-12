@@ -210,21 +210,25 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
   public var zeroSignalDiscriminatorDeviceID: AudioDeviceID? { effectiveDiscriminatorDeviceID }
 
-  /// #1317 (cloud review round 2, P2): true once THIS session's reactive
-  /// detector has observed a zero-signal-candidate buffer while the device
-  /// discriminator was ineligible (muted, or mute-unknown). The device's
-  /// mute state can change mid-recording — the discriminator legitimately
-  /// re-checks it live on every buffer — but a STOP-time discriminator
-  /// check that ONLY reads the CURRENT (possibly since-unmuted) state would
-  /// mislabel a recording that was genuinely muted during its silent
-  /// stretch as the harness glitch, just because the user unmuted right
-  /// before releasing. This latch makes that earlier ineligible result
-  /// stick: once true, the STOP-time backstop fails closed for the rest of
-  /// the session regardless of the device's current live state. Reset in
-  /// `beginCapturePhase` alongside `deadAirDetector` (same session-scope as
-  /// the reactive detector itself); per the invariant on
-  /// `effectiveDiscriminatorDeviceID` above, no teardown path may clear it
-  /// early.
+  /// #1317 (cloud review round 2, P2; scope narrowed round 3, P2): true
+  /// once the CURRENT trailing all-zero run (not the whole session — see
+  /// below) has been observed while the device discriminator was
+  /// ineligible (muted, or mute-unknown). The device's mute state can
+  /// change mid-recording — the discriminator legitimately re-checks it
+  /// live on every buffer — but a STOP-time discriminator check that ONLY
+  /// reads the CURRENT (possibly since-unmuted) state would mislabel a
+  /// recording that was genuinely muted during its silent stretch as the
+  /// harness glitch, just because the user unmuted right before releasing.
+  /// This latch makes that earlier ineligible result stick for THAT run.
+  /// Scoped to the current run, not session-wide: `evaluateDeadAirDetector`
+  /// clears it the moment a non-zero sample breaks the trailing zero-run
+  /// (`consecutiveExactZeroSuffix` resets), because an earlier resolved
+  /// mute must not blind the backstop to a later, unrelated genuine
+  /// zero-signal failure elsewhere in the same recording (round 3: a
+  /// session-wide latch did exactly that). Reset in `beginCapturePhase`
+  /// alongside `deadAirDetector` (same session-scope as the reactive
+  /// detector itself); per the invariant on `effectiveDiscriminatorDeviceID`
+  /// above, no teardown path may clear it early.
   private var sawIneligibleZeroSignalDuringSession = false
 
   public var zeroSignalDiscriminatorSawIneligible: Bool { sawIneligibleZeroSignalDuringSession }
@@ -515,7 +519,19 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     else { return }
     let frameCount = Int(buffer.frameLength)
     guard frameCount > 0 else { return }
+    let suffixBefore = deadAirDetector.consecutiveExactZeroSuffix
     deadAirDetector.ingest(UnsafeBufferPointer(start: channelData[0], count: frameCount))
+    // #1317 (cloud review round 3, P2): a non-zero sample anywhere in this
+    // buffer breaks the trailing zero-run — `consecutiveExactZeroSuffix`
+    // after ingest is then strictly less than `suffixBefore + frameCount`
+    // (it only counts zeros AFTER the last non-zero sample). Any earlier
+    // ineligible (muted) result applied to THAT run, not this new one, so it
+    // must not suppress detection of a later, unrelated zero-signal failure
+    // (an earlier accidental mute-then-unmute must not blind the backstop
+    // to a genuine harness glitch later in the same recording).
+    if deadAirDetector.consecutiveExactZeroSuffix != suffixBefore + frameCount {
+      sawIneligibleZeroSignalDuringSession = false
+    }
 
     let mode: CaptureStallFailureMode
     if deadAirDetector.isAllZeroFromStart {
