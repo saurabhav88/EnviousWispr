@@ -98,8 +98,6 @@ final class AVAudioEngineSource: AudioInputSource {
   // MARK: - Round-4 telemetry (issue #285) — capture liveness watchdog.
 
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
-  /// Direct engine source has no AVCaptureSession layer; callback stays nil.
-  var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
   private(set) var captureGeneration: UInt64 = 0
 
   nonisolated let captureSourceType: String = "av_audio_engine"
@@ -270,7 +268,7 @@ final class AVAudioEngineSource: AudioInputSource {
       // BT output active — skip device switch.
       // Forcing built-in mic via setInputDevice crashes the XPC service.
       // Root cause: CoreAudio creates corrupted CADefaultDeviceAggregate.
-      // Path forward: AVCaptureSessionSource handles BT case.
+      // Path forward: HALDeviceInputSource handles the BT case.
       resolvedDeviceID = nil
       btCrashLogger.info(
         "BT output active — skipping setInputDevice (aggregate device crash prevention)")

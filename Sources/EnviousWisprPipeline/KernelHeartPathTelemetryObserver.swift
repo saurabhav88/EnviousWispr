@@ -13,11 +13,10 @@ import Foundation
 //
 // This observer watches RAW `kernel.state` transitions, so no terminal is
 // missed. PR-4b.1: the observer no longer claims the shared
-// `AudioCaptureInterface` callbacks (`onCaptureSessionInterruption`,
-// `onXPCReplyFailed`). Those are single-owner; the App-side routers stay as
-// sole subscribers. The driver's `HeartPathTelemetryTarget` conformance
-// already forwards into the observer's `handleCaptureSessionInterruption(_:)`
-// and `handleXPCReplyFailed(_:)` methods via `WedgeRecoveryRouter`'s
+// `AudioCaptureInterface` callback `onXPCReplyFailed`. It is single-owner; the
+// App-side routers stay as sole subscribers. The driver's
+// `HeartPathTelemetryTarget` conformance already forwards into the observer's
+// `handleXPCReplyFailed(_:)` method via `WedgeRecoveryRouter`'s
 // `resolveActiveTelemetryTarget()` (PR-4b.4 wires the App router's Parakeet
 // branch). The capture-stall signal — which the kernel DOES consume for
 // control flow — reaches the observer the same way, through the driver's
@@ -151,10 +150,6 @@ final class KernelHeartPathTelemetryObserver {
 
   func handleXPCReplyFailed(_ ctx: XPCReplyFailureContext) {
     emitter.xpcReplyFailed(ctx: ctx)
-  }
-
-  func handleCaptureSessionInterruption(_ ctx: CaptureSessionInterruptionContext) {
-    emitter.captureSessionInterrupted(ctx: ctx)
   }
 
   // MARK: Raw-state observation

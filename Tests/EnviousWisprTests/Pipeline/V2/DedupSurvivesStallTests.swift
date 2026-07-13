@@ -144,7 +144,6 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
   var onMaxDurationReached: (() -> Void)?
   var onVADModelUnavailable: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
-  var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
   var onXPCServiceError: ((XPCErrorContext) -> Void)?
   var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
   var onAudioStartRetryResolved: ((AudioStartRetryContext) -> Void)?

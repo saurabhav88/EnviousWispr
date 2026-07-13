@@ -43,14 +43,6 @@ import Testing
       #expect(CaptureRouteResolver.debugPolicyOverride(defaults: defaults) == .forceEngine)
     }
 
-    @Test("forceCaptureSession string → .forceCaptureSession")
-    func forceCaptureSessionMaps() {
-      let defaults = makeDefaults()
-      defaults.set("forceCaptureSession", forKey: CaptureRouteResolver.debugPolicyOverrideKey)
-      #expect(
-        CaptureRouteResolver.debugPolicyOverride(defaults: defaults) == .forceCaptureSession)
-    }
-
     @Test("forceHALDeviceInput string → .forceHALDeviceInput")
     func forceHALDeviceInputMaps() {
       let defaults = makeDefaults()
@@ -81,15 +73,6 @@ struct CaptureRouteResolverForceMappingTests {
     #expect(d.reason == .forcedEngine)
   }
 
-  @Test("forceCaptureSession policy → .captureSession / .forcedCaptureSession (no hardware)")
-  func forceCaptureSessionDecision() {
-    var resolver = CaptureRouteResolver()
-    resolver.policy = .forceCaptureSession
-    let d = resolver.resolve(preferredInputDeviceUID: "", noiseSuppression: false)
-    #expect(d.sourceType == .captureSession)
-    #expect(d.reason == .forcedCaptureSession)
-  }
-
   @Test("forceHALDeviceInput policy → .halDeviceInput / .forcedHALDeviceInput (no hardware)")
   func forceHALDeviceInputDecision() {
     var resolver = CaptureRouteResolver()
@@ -106,15 +89,19 @@ struct CaptureRouteResolverForceMappingTests {
   // with no override, so it silently depended on the test machine having no
   // Bluetooth output connected at run time (false whenever a real BT
   // headset, e.g. AirPods or Bose, is the current system default output).
-  @Test("automatic route with no BT output only ever emits a shipping backend")
+  // #1524 TIGHTENED: with the capture-session backend deleted, the non-BT
+  // `.automatic` answer is `.audioEngine` and nothing else. This is now the
+  // EMPIRICAL half of the closed-world argument the deletion rested on — the
+  // plan proved it by reading the three returns of `resolveAutomatic`; this
+  // proves it by executing them.
+  @Test("automatic route with no BT output always resolves to the engine backend")
   func automaticNeverEmitsDormantCaseWithoutBTOutput() {
     var resolver = CaptureRouteResolver()  // .automatic by default
     resolver.defaultOutputDeviceID = { nil }
     resolver.isBluetoothOutputDevice = { _ in false }
     for pref in ["", "some-device-uid"] {
       let d = resolver.resolve(preferredInputDeviceUID: pref, noiseSuppression: false)
-      #expect(d.sourceType == .audioEngine || d.sourceType == .captureSession)
-      #expect(d.sourceType != .halDeviceInput)
+      #expect(d.sourceType == .audioEngine)
     }
   }
 

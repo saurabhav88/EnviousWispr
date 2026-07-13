@@ -1117,10 +1117,6 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     observer.handleXPCReplyFailed(ctx)
   }
 
-  public func handleCaptureSessionInterruption(_ ctx: CaptureSessionInterruptionContext) {
-    observer.handleCaptureSessionInterruption(ctx)
-  }
-
   // MARK: DEBUG
 
   #if DEBUG

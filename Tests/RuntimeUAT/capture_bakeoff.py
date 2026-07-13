@@ -28,9 +28,12 @@ switches the input device in Settings (the device selection lives in the shared
 `com.enviouswispr.app` store — the founder's real settings — so the harness never
 pokes it; it only sets the per-build dev knobs).
 
-Slice 2a covers candidates A (AVCaptureSession, device-targeted) and C
-(AVAudioEngine, device-override). Slices 2b/2c add D (AUHAL) and E
-(VoiceProcessingIO) by extending CANDIDATES once their force-policies exist.
+Candidates: C (AVAudioEngine, device-override) and D (AUHAL, device-pinned).
+
+#1524 RETIRED candidate A (AVCaptureSession): the backend it forced was deleted
+with the capture-session source, which had been unreachable on the ship path
+since D won the #1377 bake-off. C and D are retained deliberately — they are the
+A/B instrument for validating the step-3b cutover.
 """
 
 import argparse
@@ -53,9 +56,9 @@ XPC_KEY = "useXPCAudioService"
 
 BT_ROUTE_LOG = os.path.expanduser("~/Library/Logs/EnviousWispr/bt-route.log")
 EVIDENCE_MARKER = "CAPTURE_EVIDENCE"
-# AVCaptureSessionSource logs this when a pinned target UID is not a live device
-# and it silently records the built-in instead. A trial that fell back did NOT
-# capture the requested device, so it must FAIL even if a transcript landed.
+# A source logs this when a pinned target UID is not a live device and it
+# silently records the built-in instead. A trial that fell back did NOT capture
+# the requested device, so it must FAIL even if a transcript landed.
 FALLBACK_MARKER = "not found — falling back"
 
 # Checkout root derived from THIS script's location (…/<checkout>/Tests/RuntimeUAT/
@@ -66,13 +69,8 @@ _CHECKOUT_ROOT = os.path.dirname(
 )
 DEFAULT_SCORECARD = os.path.join(_CHECKOUT_ROOT, ".validation", "capture-bakeoff-scorecard.json")
 
-# candidate -> force policy + expected backend tag. Extend for E in 2c.
+# candidate -> force policy + expected backend tag.
 CANDIDATES = {
-    "A": {
-        "policy": "forceCaptureSession",
-        "backend": "av_capture_session",
-        "desc": "AVCaptureSession, device-targeted",
-    },
     "C": {
         "policy": "forceEngine",
         "backend": "av_audio_engine",
@@ -268,9 +266,9 @@ def run_trial(candidate, device_label, sentence=DEFAULT_SENTENCE, expect=None):
     # The FORCED policy must actually be active. Without this, a trial run while
     # the app is on `.automatic` (dev defaults not applied / not relaunched) can
     # still pass: under Bluetooth output the automatic route ALSO yields
-    # `av_capture_session`, so candidate A's backend check would match and credit
-    # A for behavior the automatic route produced, not the forced candidate
-    # (cloud review P2). Requires the manager companion row (in-process only).
+    # `hal_device_input`, so candidate D's backend check would match and credit D
+    # for behavior the automatic route produced, not the forced candidate (cloud
+    # review P2). Requires the manager companion row (in-process only).
     policy_ok = bound_policy == expected_policy
     evidence_found = source_ev is not None
     fell_back = _fell_back_since(since)

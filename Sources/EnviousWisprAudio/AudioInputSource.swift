@@ -5,7 +5,6 @@ import EnviousWisprCore
 ///
 /// Two conformers:
 /// - `AVAudioEngineSource`: existing AVAudioEngine tap path (supports voice processing)
-/// - `AVCaptureSessionSource`: AVCaptureSession path (avoids BT A2DP→SCO switch)
 ///
 /// `AudioCaptureManager` picks the source via `CaptureRouteResolver` and delegates
 /// all hardware interaction to it. The manager owns app-facing state (capturedSamples,
@@ -29,9 +28,6 @@ protocol AudioInputSource: AnyObject {
   /// Source must cancel any pending watchdog on `stop()` / `deactivateCapture()`.
   var onCaptureStalled: ((CaptureStallContext) -> Void)? { get set }
 
-  /// AVCaptureSession-specific: interruption / runtime-error telemetry.
-  /// `AVAudioEngineSource` leaves nil (no AVCaptureSession layer).
-  var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)? { get set }
 
   /// Monotonic capture-session id. Increments inside `startCapture`.
   /// Zero if no session has started. Used for watchdog generation check +
@@ -39,9 +35,9 @@ protocol AudioInputSource: AnyObject {
   var captureGeneration: UInt64 { get }
 
   /// Low-cardinality tag naming the concrete capture backend
-  /// (`"av_audio_engine"` vs `"av_capture_session"`). Surfaced via
+  /// (`"av_audio_engine"` vs `"hal_device_input"`). Surfaced via
   /// `AudioCaptureManager.captureSourceType` so pipeline Sentry extras
-  /// distinguish BT-direct (AVCaptureSession) from AVAudioEngine paths.
+  /// distinguish device-pinned from AVAudioEngine paths.
   var captureSourceType: String { get }
 
   // Lifecycle (mirrors AudioCaptureManager's two-phase start)
@@ -59,7 +55,7 @@ protocol AudioInputSource: AnyObject {
   var isCapturing: Bool { get }  // periphery:ignore - used by conformers for internal guards
   var isRunning: Bool { get }
 
-  // Engine-specific (no-op for AVCaptureSessionSource)
+  // Engine-specific (no-op for HALDeviceInputSource)
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool
   func abortPrepare()
   func rebuild()

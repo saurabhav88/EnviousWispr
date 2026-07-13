@@ -19,10 +19,10 @@ import Testing
 ///      still pass emitter unit tests. We must observe both the Sentry
 ///      dedup contract AND the `state` flip contract holding at the
 ///      pipeline boundary.
-///   4. Backend wiring proof: each pipeline must construct its emitter
-///      with the correct `ASRBackendType`. The asymmetric `"backend"`
-///      extra on `captureSessionInterruption` is the cheapest observable
-///      witness.
+///   4. (Retired #1524.) The backend-wiring proof used the asymmetric
+///      `"backend"` extra on `captureSessionInterruption` as its witness.
+///      That extra existed ONLY on that emit, and both died with the
+///      capture-session backend; no surviving emit carries a `backend` key.
 ///
 /// Codex round-2 (2026-04-30) caught that an earlier version of the dedup
 /// test only fired Sentry events from `.idle` state, so the
@@ -131,40 +131,7 @@ struct HeartPathTelemetryWiringTests {
     )
   }
 
-  private static func interruptionContext(
-    sessionID: UInt64
-  ) -> CaptureSessionInterruptionContext {
-    CaptureSessionInterruptionContext(
-      kind: .runtimeError,
-      reasonCode: 1,
-      reasonLabel: nil,
-      errorDomain: "AVFoundationErrorDomain",
-      errorCode: -11800,
-      errorDescription: nil,
-      sessionID: sessionID,
-      isActivelyCapturing: true
-    )
-  }
-
   // MARK: - Tests
-
-  /// Codex gap #4 — Parakeet pipeline must construct its emitter with
-  /// `.parakeet`. The captureSessionInterruption extras are the cheapest
-  /// witness: Parakeet omits the `"backend"` key.
-  @Test("KernelDictationDriver interruption extras omit backend key (Parakeet wiring)")
-  func parakeetPipelineWiringOmitsBackendExtra() {
-    let spy = CaptureSpy()
-    let pipeline = Self.makePipeline(captureErrorSink: Self.spySink(spy))
-
-    pipeline.handleCaptureSessionInterruption(Self.interruptionContext(sessionID: 1))
-
-    #expect(spy.calls.count == 1)
-    let call = spy.calls[0]
-    #expect(call.category == .audioCaptureFailed)
-    #expect(call.stage == "audio")
-    #expect(call.extra["backend"] == nil)
-    #expect(call.extra["capture_session_id"] as? Int == 1)
-  }
 
   /// Codex gap #3 (Sentry-emit half) — pipeline-level emit dedup. Two
   /// consecutive `handleCaptureStall` calls on the same session must
@@ -296,8 +263,7 @@ struct HeartPathTelemetryWiringTests {
 
 /// Minimal `AudioCaptureInterface` stub for pipeline-construction tests.
 /// All capture lifecycle methods are no-ops; only the small read-only
-/// surface the pipeline reads in `handleCaptureStall` /
-/// `handleCaptureSessionInterruption` matters.
+/// surface the pipeline reads in `handleCaptureStall` matters.
 @MainActor
 private final class NoOpAudioCapture: AudioCaptureInterface {
   var isCapturing: Bool = false
@@ -311,7 +277,6 @@ private final class NoOpAudioCapture: AudioCaptureInterface {
   var onMaxDurationReached: (() -> Void)?
   var onVADModelUnavailable: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
-  var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
   var onXPCServiceError: ((XPCErrorContext) -> Void)?
   var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
   var onAudioStartRetryResolved: ((AudioStartRetryContext) -> Void)?

@@ -15,7 +15,7 @@ public enum CaptureStallFailureMode: String, Sendable, Hashable {
 }
 
 /// Context attached to a stalled-capture telemetry event. Built by an audio
-/// source (`AVAudioEngineSource`, `AVCaptureSessionSource`, or `AudioCaptureProxy`)
+/// source (`AVAudioEngineSource`, `HALDeviceInputSource`, or `AudioCaptureProxy`)
 /// at watchdog-fire time and consumed by the pipeline's emission site.
 ///
 /// All fields are Sendable and safe to carry across actor boundaries. No PII:
@@ -136,45 +136,6 @@ public struct CaptureStallContext: Sendable {
       formatStabilized: formatStabilized,
       captureRebuiltForFormat: captureRebuiltForFormat
     )
-  }
-}
-
-/// Context for `AVCaptureSessionSource` interruption / runtime-error notifications.
-/// Carries the diagnostic payload (reason code, runtime NSError fields) that the
-/// underlying notification userInfo would otherwise drop on the floor.
-public struct CaptureSessionInterruptionContext: Sendable {
-  public enum Kind: String, Sendable {
-    case wasInterrupted
-    case runtimeError
-  }
-
-  public let kind: Kind
-  public let reasonCode: Int?
-  public let reasonLabel: String?
-  public let errorDomain: String?
-  public let errorCode: Int?
-  public let errorDescription: String?
-  public let sessionID: UInt64
-  public let isActivelyCapturing: Bool
-
-  public init(
-    kind: Kind,
-    reasonCode: Int?,
-    reasonLabel: String?,
-    errorDomain: String?,
-    errorCode: Int?,
-    errorDescription: String?,
-    sessionID: UInt64,
-    isActivelyCapturing: Bool
-  ) {
-    self.kind = kind
-    self.reasonCode = reasonCode
-    self.reasonLabel = reasonLabel
-    self.errorDomain = errorDomain
-    self.errorCode = errorCode
-    self.errorDescription = errorDescription
-    self.sessionID = sessionID
-    self.isActivelyCapturing = isActivelyCapturing
   }
 }
 

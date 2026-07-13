@@ -105,7 +105,7 @@ struct KernelInterruptedTranscriptTests {
     let saved = InterruptedSavedTranscriptBox()
     let wiring = makeWiring(telemetryState: telemetryState, saved: saved)
 
-    telemetryState.interruptionCause = .captureSessionLost
+    telemetryState.interruptionCause = .engineLost
     try await wiring.store("hi", UUID())
 
     #expect(try #require(saved.transcript).inputDeviceWasRemoved == false)

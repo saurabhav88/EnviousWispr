@@ -375,13 +375,17 @@ import Testing
     /// longer stamp a cause, reach the floor, or claim an interruption at all.
     /// This freeze keeps the retirement honest — a resurrected cap case would
     /// change the enum's shape and redden here before it could lie again.
-    @Test("the cause enum has exactly the four genuine interruption causes")
+    @Test("the cause enum has exactly the three genuine interruption causes")
     func causeEnumHasNoDurationCap() {
       #expect(
         EngineInterruptionCause.allCases == [
-          .deviceRemoved, .engineLost, .captureSessionLost, .xpcConnectionLost,
+          .deviceRemoved, .engineLost, .xpcConnectionLost,
         ])
       #expect(EngineInterruptionCause(rawValue: "max_duration_reached") == nil)
+      // #1524 retired the capture-session backend and its cause with it. The
+      // wire value must no longer resolve — `hostCause` collapses it to
+      // `.engineLost` via the unknown-value fallback (EngineInterruptionCauseTests).
+      #expect(EngineInterruptionCause(rawValue: "capture_session_lost") == nil)
     }
 
     /// Outside an interruption the floor is a no-op on every terminal. If it were
@@ -435,10 +439,10 @@ import Testing
       let (context, wrapper) = makeWrapper()
       await startRecording(context)
 
-      wrapper.testKernel.externalEngineInterrupted(.captureSessionLost)
+      wrapper.testKernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
 
-      #expect(wrapper.telemetryState.interruptionCause == .captureSessionLost)
+      #expect(wrapper.telemetryState.interruptionCause == .engineLost)
       #expect(
         wrapper.testKernel.lastAudioInterruptionCause == wrapper.telemetryState.interruptionCause)
     }
@@ -481,27 +485,27 @@ import Testing
     /// conflating them is how a duplicated switch would drift.
     @Test("recoverability is not the telemetry-capture set")
     func recoverabilityDivergesFromCaptureSet() {
-      #expect(EngineInterruptionCause.captureSessionLost.hasRecoverableAudio)
       #expect(!EngineInterruptionCause.xpcConnectionLost.hasRecoverableAudio)
       #expect(EngineInterruptionCause.engineLost.hasRecoverableAudio)
       #expect(EngineInterruptionCause.deviceRemoved.hasRecoverableAudio)
     }
 
-    /// And `isDeviceLoss` is a THIRD question. A capture-session interruption is
-    /// salvaged like a disconnect but is not one: telling that user "Microphone
-    /// disconnected," or badging their transcript with a crossed-out microphone,
-    /// would describe an event that never happened.
-    @Test("a capture-session loss is recoverable but is NOT a device loss")
-    func captureSessionLossIsRecoverableButNotDeviceLoss() {
-      #expect(EngineInterruptionCause.captureSessionLost.hasRecoverableAudio)
-      #expect(!EngineInterruptionCause.captureSessionLost.isDeviceLoss)
+    /// And `isDeviceLoss` is a THIRD question. An engine that failed to recover
+    /// with the device still attached is salvaged like a disconnect but is not
+    /// one: telling that user "Microphone disconnected," or badging their
+    /// transcript with a crossed-out microphone, would describe an event that
+    /// never happened. (#1524 retired `.captureSessionLost`, which carried this
+    /// same shape; `.engineLost` is now the sole exemplar.)
+    @Test("an engine loss is recoverable but is NOT a device loss")
+    func engineLossIsRecoverableButNotDeviceLoss() {
+      #expect(EngineInterruptionCause.engineLost.hasRecoverableAudio)
+      #expect(!EngineInterruptionCause.engineLost.isDeviceLoss)
     }
 
     /// Exactly one cause is backed by a real `DeviceIsAlive` check. Each exclusion
     /// is a claim we could not back: `.engineLost` also covers a recovery timeout
     /// and a failed engine restart with the mic still attached;
-    /// `.captureSessionLost` fires for any capture-session interruption AND every
-    /// runtime error; `.xpcConnectionLost` means our helper died, not the mic.
+    /// `.xpcConnectionLost` means our helper died, not the mic.
     @Test("only .deviceRemoved is a device loss")
     func deviceLossSetIsExactlyDeviceRemoved() {
       let deviceLosses = EngineInterruptionCause.allCases.filter(\.isDeviceLoss)
@@ -554,9 +558,9 @@ import Testing
       let recoverable = Set(EngineInterruptionCause.allCases.filter(\.hasRecoverableAudio))
       let deviceLoss = Set(EngineInterruptionCause.allCases.filter(\.isDeviceLoss))
       #expect(recoverable != deviceLoss, "recoverability and device-loss are different questions")
-      // A capture-session loss is salvageable but is not a disconnect...
-      #expect(recoverable.contains(.captureSessionLost))
-      #expect(!deviceLoss.contains(.captureSessionLost))
+      // An engine loss is salvageable but is not a disconnect...
+      #expect(recoverable.contains(.engineLost))
+      #expect(!deviceLoss.contains(.engineLost))
       // ...and a dead helper is neither: its samples are gone AND it is our
       // process that died, not the user's microphone.
       #expect(!recoverable.contains(.xpcConnectionLost))

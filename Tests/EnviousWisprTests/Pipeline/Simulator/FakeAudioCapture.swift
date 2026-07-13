@@ -99,7 +99,6 @@ final class FakeAudioCapture: AudioCaptureInterface {
   var onVADModelUnavailable: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
   // XPC-only telemetry callbacks — a direct (non-XPC) source leaves these nil.
-  var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
   var onXPCServiceError: ((XPCErrorContext) -> Void)?
   var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
   var onAudioStartRetryResolved: ((AudioStartRetryContext) -> Void)?

@@ -101,17 +101,6 @@ struct HeartPathTelemetryEmitterTests {
     "xpc.reply_stage", "xpc.error_domain", "xpc.error_code", "capture_session_id",
   ]
 
-  private static let interruptionBaseExtraKeys: Set<String> = [
-    "capture_session.kind",
-    "capture_session.reason_code",
-    "capture_session.reason_label",
-    "capture_session.error_domain",
-    "capture_session.error_code",
-    // #1095: capture_session.error_description (raw OS string) no longer emitted.
-    "capture.is_actively_capturing",
-    "capture_session_id",
-  ]
-
   private static func stallContext(sessionID: UInt64 = 42) -> CaptureStallContext {
     CaptureStallContext(
       sessionID: sessionID,
@@ -138,21 +127,6 @@ struct HeartPathTelemetryEmitterTests {
     )
   }
 
-  private static func interruptionContext(
-    sessionID: UInt64 = 42
-  ) -> CaptureSessionInterruptionContext {
-    CaptureSessionInterruptionContext(
-      kind: .runtimeError,
-      reasonCode: 1,
-      reasonLabel: nil,
-      errorDomain: "AVFoundationErrorDomain",
-      errorCode: -11800,
-      errorDescription: "operation could not be completed",
-      sessionID: sessionID,
-      isActivelyCapturing: true
-    )
-  }
-
   private static func noAudioContext(sessionID: UInt64 = 42) -> NoAudioContext {
     NoAudioContext(
       sessionID: sessionID,
@@ -173,7 +147,7 @@ struct HeartPathTelemetryEmitterTests {
       route: "bt_headset",
       sampleCount: 32_000,
       isActivelyCapturing: false,
-      captureSourceType: "av_capture_session",
+      captureSourceType: "hal_device_input",
       inputDeviceUIDPreferred: nil,
       inputDeviceUIDSystemDefault: "BuiltInMicrophoneDevice"
     )
@@ -233,34 +207,6 @@ struct HeartPathTelemetryEmitterTests {
     #expect(captured.extra["xpc.error_domain"] as? String == "NSCocoaErrorDomain")
     #expect(captured.extra["xpc.error_code"] as? Int == 4099)
     #expect(captured.extra["capture_session_id"] as? Int == 12)
-  }
-
-  // MARK: - captureSessionInterrupted backend asymmetry
-
-  @Test("captureSessionInterrupted omits backend extra for Parakeet")
-  func interruptionParakeetOmitsBackend() {
-    let recorder = Recorder()
-    let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
-
-    emitter.captureSessionInterrupted(ctx: Self.interruptionContext())
-
-    #expect(recorder.errors.count == 1)
-    let captured = recorder.errors[0]
-    #expect(captured.category == .audioCaptureFailed)
-    #expect(captured.stage == "audio")
-    #expect(captured.extra["backend"] == nil)
-    #expect(captured.extra["capture_session.kind"] as? String == "runtimeError")
-  }
-
-  @Test("captureSessionInterrupted includes backend extra for WhisperKit")
-  func interruptionWhisperKitIncludesBackend() {
-    let recorder = Recorder()
-    let emitter = Self.makeEmitter(backend: .whisperKit, recorder: recorder)
-
-    emitter.captureSessionInterrupted(ctx: Self.interruptionContext())
-
-    #expect(recorder.errors.count == 1)
-    #expect(recorder.errors[0].extra["backend"] as? String == "whisperKit")
   }
 
   // MARK: - noAudioCaptured dedup paths
@@ -433,11 +379,10 @@ struct HeartPathTelemetryEmitterTests {
 
     _ = emitter.stallFired(ctx: Self.stallContext(sessionID: 1), isActivelyCapturing: true)
     emitter.xpcReplyFailed(ctx: Self.xpcContext(sessionID: 2))
-    emitter.captureSessionInterrupted(ctx: Self.interruptionContext(sessionID: 3))
     emitter.noAudioCaptured(ctx: Self.noAudioContext(sessionID: 4))
     _ = emitter.zombieZeroPeak(ctx: Self.zeroPeakContext(sessionID: 5))
 
-    #expect(recorder.errors.count == 5)
+    #expect(recorder.errors.count == 4)
 
     guard let stallErr = recorder.errors[0].error as? HeartPathError,
       case .audioCaptureStalled(let stallSession, _) = stallErr
@@ -455,18 +400,10 @@ struct HeartPathTelemetryEmitterTests {
     }
     #expect(xpcCtx.sessionID == 2)
 
-    guard let interruptionErr = recorder.errors[2].error as? HeartPathError,
-      case .captureSessionInterrupted(let intCtx) = interruptionErr
-    else {
-      Issue.record("expected .captureSessionInterrupted, got \(recorder.errors[2].error)")
-      return
-    }
-    #expect(intCtx.sessionID == 3)
-
-    guard let noAudioErr = recorder.errors[3].error as? HeartPathError,
+    guard let noAudioErr = recorder.errors[2].error as? HeartPathError,
       case .noAudioCaptured(let naSession, let durationMs, let wasStreaming, let route) = noAudioErr
     else {
-      Issue.record("expected .noAudioCaptured, got \(recorder.errors[3].error)")
+      Issue.record("expected .noAudioCaptured, got \(recorder.errors[2].error)")
       return
     }
     #expect(naSession == 4)
@@ -474,10 +411,10 @@ struct HeartPathTelemetryEmitterTests {
     #expect(!wasStreaming)
     #expect(route == "built_in_mic")
 
-    guard let zombieErr = recorder.errors[4].error as? HeartPathError,
+    guard let zombieErr = recorder.errors[3].error as? HeartPathError,
       case .zombieEngineZeroPeak(let zSession, _, let zRoute, let sampleCount) = zombieErr
     else {
-      Issue.record("expected .zombieEngineZeroPeak, got \(recorder.errors[4].error)")
+      Issue.record("expected .zombieEngineZeroPeak, got \(recorder.errors[3].error)")
       return
     }
     #expect(zSession == 5)
@@ -515,30 +452,6 @@ struct HeartPathTelemetryEmitterTests {
     #expect(
       actualKeys == Self.xpcExtraKeys,
       "xpc extras key-set drift: \(actualKeys.symmetricDifference(Self.xpcExtraKeys))")
-  }
-
-  /// Codex code-review gap #1 (interruption + backend asymmetry): exact
-  /// key-set for both backends. Parakeet omits `backend`; WhisperKit adds
-  /// it. The full set is otherwise identical.
-  @Test("captureSessionInterrupted extras key-set is exact per backend")
-  func captureSessionInterruptedExtrasKeySetExact() {
-    let parakeetRec = Recorder()
-    let parakeet = Self.makeEmitter(backend: .parakeet, recorder: parakeetRec)
-    parakeet.captureSessionInterrupted(ctx: Self.interruptionContext())
-    let parakeetKeys = Set(parakeetRec.errors[0].extra.keys)
-    #expect(
-      parakeetKeys == Self.interruptionBaseExtraKeys,
-      "parakeet interruption key drift: \(parakeetKeys.symmetricDifference(Self.interruptionBaseExtraKeys))"
-    )
-
-    let whisperRec = Recorder()
-    let whisper = Self.makeEmitter(backend: .whisperKit, recorder: whisperRec)
-    whisper.captureSessionInterrupted(ctx: Self.interruptionContext())
-    let whisperKeys = Set(whisperRec.errors[0].extra.keys)
-    let expectedWhisperKeys = Self.interruptionBaseExtraKeys.union(["backend"])
-    #expect(
-      whisperKeys == expectedWhisperKeys,
-      "whisperKit interruption key drift: \(whisperKeys.symmetricDifference(expectedWhisperKeys))")
   }
 
   /// Codex code-review gap #1 (noAudio fresh): exact key-set when no prior

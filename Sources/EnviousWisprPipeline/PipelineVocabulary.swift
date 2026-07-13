@@ -151,5 +151,4 @@ public enum RecordingTerminalKind: Equatable, Sendable {
 public protocol HeartPathTelemetryTarget: AnyObject {
   func handleCaptureStall(_ ctx: CaptureStallContext)
   func handleXPCReplyFailed(_ ctx: XPCReplyFailureContext)
-  func handleCaptureSessionInterruption(_ ctx: CaptureSessionInterruptionContext)
 }

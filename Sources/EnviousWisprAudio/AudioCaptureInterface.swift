@@ -42,7 +42,7 @@ public protocol AudioCaptureInterface: AnyObject {
   var onVADModelUnavailable: (() -> Void)? { get set }
 
   // Telemetry callbacks (round-4 additions for #285 heart-path Sentry coverage).
-  // Producers: source backends (`AVAudioEngineSource`, `AVCaptureSessionSource`,
+  // Producers: source backends (`AVAudioEngineSource`, `HALDeviceInputSource`,
   //            `AudioCaptureProxy`). Consumers: pipeline layer + the former root state.
   // All callbacks fire on the MainActor. Conformers that don't produce a given
   // signal leave the closure nil (e.g. direct sources leave XPC callbacks nil).
@@ -54,11 +54,6 @@ public protocol AudioCaptureInterface: AnyObject {
   /// must not treat this as a control-flow signal.
   var onCaptureStalled: ((CaptureStallContext) -> Void)? { get set }
 
-  /// Fires on `AVCaptureSessionWasInterrupted` / `AVCaptureSessionRuntimeError`
-  /// notifications from `AVCaptureSessionSource`. Carries the diagnostic
-  /// payload (interruption reason, runtime NSError) that the notification
-  /// userInfo would otherwise drop. Non-BT sources leave nil.
-  var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)? { get set }
 
   /// Fires from the proxy's XPC interruption / invalidation handlers.
   /// Direct sources have no XPC layer and leave nil. Consumer emits
@@ -99,10 +94,10 @@ public protocol AudioCaptureInterface: AnyObject {
   var isActivelyCapturing: Bool { get }
 
   /// Low-cardinality string identifying the concrete capture backend driving
-  /// the current session. Values: `"av_audio_engine"`, `"av_capture_session"`,
-  /// `"xpc_proxy"`. Used by pipeline-layer Sentry extras so BT-direct sessions
-  /// (AVCaptureSession) are not mislabeled as AVAudioEngine. Delegates to the
-  /// active source in direct mode; constant for the proxy.
+  /// the current session. Values: `"av_audio_engine"`, `"hal_device_input"`,
+  /// `"xpc_proxy"`. Used by pipeline-layer Sentry extras so device-pinned
+  /// sessions are not mislabeled as AVAudioEngine. Delegates to the active
+  /// source in direct mode; constant for the proxy.
   var captureSourceType: String { get }
 
   /// #1317 (cloud review P2, PR #1512, round 2): input device resolved and

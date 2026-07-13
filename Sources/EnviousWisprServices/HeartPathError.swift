@@ -14,7 +14,6 @@ import Foundation
 public enum HeartPathError: LocalizedError, Sendable {
   case audioCaptureStalled(sessionID: UInt64, ctx: CaptureStallContext)
   case noAudioCaptured(sessionID: UInt64, durationMs: Int, wasStreaming: Bool, route: String)
-  case captureSessionInterrupted(ctx: CaptureSessionInterruptionContext)
   case pasteCascadeClipboardFallback(
     tiersAttempted: [String], focusClassification: String, targetBundleID: String?)
   case pasteCGEventCreationFailed(accessibilityTrusted: Bool)
@@ -37,9 +36,6 @@ public enum HeartPathError: LocalizedError, Sendable {
       return "Audio capture stalled: no buffers delivered (session \(sessionID))"
     case .noAudioCaptured(let sessionID, let durationMs, _, _):
       return "No audio captured after \(durationMs)ms (session \(sessionID))"
-    case .captureSessionInterrupted(let ctx):
-      return
-        "AVCaptureSession \(ctx.kind.rawValue): \(ctx.reasonLabel ?? ctx.errorDescription ?? "unknown")"
     case .pasteCascadeClipboardFallback(let tiers, _, _):
       return "Paste cascade fell back to clipboard after tiers: \(tiers.joined(separator: ","))"
     case .pasteCGEventCreationFailed(let trusted):

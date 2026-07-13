@@ -259,13 +259,12 @@ final class KernelLifecycleTelemetrySink {
       // (issue #1174 A3): `.engineLost` and, since #1408, `.deviceRemoved` — the
       // verified-disconnect half that used to hide inside `.engineLost`. Both are
       // genuine unowned losses, so splitting the cause must not halve the alert.
-      // The other two are already accounted for: `.captureSessionLost` by
-      // `captureSessionInterrupted`, `.xpcConnectionLost` by `onXPCServiceError`.
+      // `.xpcConnectionLost` is already accounted for by `onXPCServiceError`.
       // (`.maxDurationReached` was deleted by #1408 A3 — the cap is a normal
-      // auto-stop and no longer stamps a cause at all.) Category is
-      // `.audioCaptureFailed` (matching the `captureSessionInterrupted` sibling),
-      // never `.xpcServiceError` — a benign device disconnect must not page the
-      // "XPC Service Crash >1/hr" alert.
+      // auto-stop and no longer stamps a cause at all. `.captureSessionLost`
+      // was deleted by #1524 with the capture-session backend itself.) Category
+      // is `.audioCaptureFailed`, never `.xpcServiceError` — a benign device
+      // disconnect must not page the "XPC Service Crash >1/hr" alert.
       //
       // NOTE: reaching this terminal at all now means salvage did not produce a
       // transcript. A salvaged dictation ends `.completed` and never lands here,
@@ -280,7 +279,7 @@ final class KernelLifecycleTelemetrySink {
           .audioCaptureFailed, "audio",
           ["was_recording": true, "backend": backend.rawValue],
           snapshot: snapshot)
-      case .captureSessionLost, .xpcConnectionLost:
+      case .xpcConnectionLost:
         break
       }
       updateRecordingState(false, nil, nil)

@@ -11,17 +11,11 @@ struct HeartPathErrorTests {
   func localizedDescriptionCoverage() {
     let stallCtx = CaptureStallContext(
       sessionID: 1, armedAtUptimeNs: 0, firedAtUptimeNs: 800_000_000,
-      route: "bt", sourceType: "av_capture_session",
+      route: "bt", sourceType: "hal_device_input",
       engineStartedSuccessfully: true, tapInstalled: true,
       formatMismatchObserved: false,
       inputDeviceUIDPreferred: nil, inputDeviceUIDSystemDefault: nil,
       failureMode: .noBuffers
-    )
-    let sessionCtx = CaptureSessionInterruptionContext(
-      kind: .wasInterrupted, reasonCode: 1,
-      reasonLabel: "audio_device_in_use_by_another_client",
-      errorDomain: nil, errorCode: nil, errorDescription: nil,
-      sessionID: 1, isActivelyCapturing: true
     )
     let replyCtx = XPCReplyFailureContext(
       replyStage: "stop_capture", errorDomain: "NSCocoaErrorDomain",
@@ -31,7 +25,6 @@ struct HeartPathErrorTests {
     let cases: [HeartPathError] = [
       .audioCaptureStalled(sessionID: 1, ctx: stallCtx),
       .noAudioCaptured(sessionID: 1, durationMs: 2000, wasStreaming: true, route: "bt"),
-      .captureSessionInterrupted(ctx: sessionCtx),
       .pasteCascadeClipboardFallback(
         tiersAttempted: ["ax1", "cgevent"], focusClassification: "text_field",
         targetBundleID: "com.apple.Terminal"),

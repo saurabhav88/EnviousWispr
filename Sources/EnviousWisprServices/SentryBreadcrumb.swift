@@ -69,7 +69,7 @@ public enum SentryBreadcrumb {
   }
 
   /// Update the audio route tag. Called when capture route is resolved or changes.
-  /// Values are low-cardinality: built_in_mic, bt_headset, capture_session, audio_engine, unknown.
+  /// Values are low-cardinality: built_in_mic, hal_device_input, audio_engine, failed, unknown.
   public static func updateAudioRoute(_ route: String) {
     SentrySDK.configureScope { scope in
       scope.setTag(value: route, key: "audio.route")

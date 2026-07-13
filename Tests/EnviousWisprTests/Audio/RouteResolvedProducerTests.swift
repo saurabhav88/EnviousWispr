@@ -34,15 +34,15 @@ struct RouteResolvedProducerTests {
 
   @Test("re-fires when the reason differs (same sourceType)")
   func reasonChanged() {
-    let prior = decision(.captureSession, .btOutputAutoInput)
-    let next = decision(.captureSession, .btOutputUserSelectedDevice)
+    let prior = decision(.halDeviceInput, .btOutputAutoInput)
+    let next = decision(.halDeviceInput, .btOutputUserSelectedDevice)
     #expect(CaptureRouteDecision.routeResolvedChanged(from: prior, to: next))
   }
 
   @Test("re-fires when the sourceType flips")
   func sourceTypeFlipped() {
     let prior = decision(.audioEngine, .noBTAutoInput)
-    let next = decision(.captureSession, .btOutputAutoInput)
+    let next = decision(.halDeviceInput, .btOutputAutoInput)
     #expect(CaptureRouteDecision.routeResolvedChanged(from: prior, to: next))
   }
 }

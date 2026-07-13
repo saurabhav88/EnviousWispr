@@ -31,11 +31,6 @@ public enum EngineInterruptionCause: String, Sendable, Equatable, CaseIterable {
   /// Does NOT mean the microphone went away. Use `.deviceRemoved` for that.
   case engineLost = "engine_lost"
 
-  /// A DIRECT-mode `AVCaptureSession` interruption. Already captured by
-  /// `captureSessionInterrupted` → `.audioCaptureFailed`, so A3 does NOT
-  /// re-capture. (In XPC mode this path does not exist — see `.engineLost`.)
-  case captureSessionLost = "capture_session_lost"
-
   /// An audio XPC connection break (interrupt / invalidate handler). Already
   /// captured by `onXPCServiceError` → `.xpcServiceError`. NOT re-captured.
   case xpcConnectionLost = "xpc_connection_lost"
@@ -52,19 +47,16 @@ extension EngineInterruptionCause {
   /// #1408. Does the capture manager still hold `capturedSamples` after this
   /// interruption — i.e. can the recording be transcribed rather than thrown away?
   ///
-  /// Deliberately NOT the same question as "does this cause already have a
-  /// telemetry owner" (the doc comments above): the two disagree on
-  /// `.captureSessionLost`, which is suppressed for capture purposes yet leaves
-  /// the manager alive and holding audio; `.xpcConnectionLost` is the only
-  /// cause whose sample owner is gone.
+  /// `.xpcConnectionLost` is the only cause whose sample owner is gone; every
+  /// other cause leaves the manager alive and still holding audio.
   ///
   /// The single authority for that question: the kernel's salvage guard and
   /// `KernelLifecycleTelemetrySink`'s `salvage_attempted` both read it, so the
-  /// switch is never copied. Exhaustive on purpose — a fifth cause must fail to
+  /// switch is never copied. Exhaustive on purpose — a new cause must fail to
   /// compile rather than silently default to "recoverable."
   public var hasRecoverableAudio: Bool {
     switch self {
-    case .deviceRemoved, .engineLost, .captureSessionLost: true
+    case .deviceRemoved, .engineLost: true
     case .xpcConnectionLost: false
     }
   }
@@ -73,8 +65,8 @@ extension EngineInterruptionCause {
   /// disconnected" pill and the History "Interrupted" badge describe?
   ///
   /// A THIRD question, distinct from both `hasRecoverableAudio` and the
-  /// telemetry-capture set above. `.engineLost` and `.captureSessionLost` also
-  /// interrupt capture and are also salvaged, but no microphone is known to
+  /// telemetry-capture set above. `.engineLost` also interrupts capture and is
+  /// also salvaged, but no microphone is known to
   /// have disconnected. Showing that user a disconnect notice, or badging
   /// their transcript with a crossed-out microphone, would be a lie. The salvage
   /// still happens; only the microphone claim is withheld, and telemetry still
@@ -83,8 +75,6 @@ extension EngineInterruptionCause {
   /// Exactly one cause earns it, and every exclusion is a claim we cannot back:
   /// - `.engineLost` also covers a recovery timeout and a failed engine restart,
   ///   with the device still attached.
-  /// - `.captureSessionLost` is raised for `AVCaptureSessionWasInterrupted` for
-  ///   ANY reason and for every `AVCaptureSessionRuntimeError`, mic still there.
   /// - `.xpcConnectionLost` means OUR helper process died.
   ///
   /// Only `.deviceRemoved` is backed by evidence — a `CoreAudioDeviceLiveness`
@@ -99,7 +89,7 @@ extension EngineInterruptionCause {
   public var isDeviceLoss: Bool {
     switch self {
     case .deviceRemoved: true
-    case .engineLost, .captureSessionLost, .xpcConnectionLost: false
+    case .engineLost, .xpcConnectionLost: false
     }
   }
 
@@ -120,14 +110,17 @@ extension EngineInterruptionCause {
   /// unknown — helper and host ship in one bundle, so skew cannot happen in
   /// practice.)
   ///
-  /// Everything else collapses to `.engineLost`: across XPC there is no
-  /// capture-session relay, so on the host side those have no other owner and
-  /// must still be captured.
+  /// Everything else collapses to `.engineLost`: on the host side those have no
+  /// other owner and must still be captured. The retired `capture_session_lost`
+  /// wire value (#1524) is now an UNKNOWN raw value and lands on the same
+  /// `?? .engineLost` fallback — behaviour is unchanged, and the assertion that
+  /// proves it lives in `EngineInterruptionCauseTests`. Do not "clean up" that
+  /// nil-coalescing: retiring the case INCREASED its load.
   public static func hostCause(forRelayedRawValue raw: String) -> EngineInterruptionCause {
     let relayed = EngineInterruptionCause(rawValue: raw) ?? .engineLost
     switch relayed {
     case .deviceRemoved: return relayed
-    case .engineLost, .captureSessionLost, .xpcConnectionLost: return .engineLost
+    case .engineLost, .xpcConnectionLost: return .engineLost
     }
   }
 }

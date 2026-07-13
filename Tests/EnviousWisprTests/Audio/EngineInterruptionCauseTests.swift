@@ -8,9 +8,12 @@ import Testing
 // channel; the host preserves `.deviceRemoved` (#1408 — the helper ran the
 // liveness check, the host cannot re-run it) and collapses every other loss
 // cause to `.engineLost` (none has another owner across the boundary). Unknown /
-// legacy raw values fail toward visibility (`.engineLost`) — including the
-// retired `max_duration_reached` (#1408 A3: the cap is a normal auto-stop and
-// left the interruption channel entirely).
+// legacy raw values fail toward visibility (`.engineLost`) — including two
+// RETIRED wire values: `max_duration_reached` (#1408 A3: the cap is a normal
+// auto-stop and left the interruption channel entirely) and
+// `capture_session_lost` (#1524: the capture-session backend was deleted).
+// The wire is a string and outlives the symbols that produced it, so both
+// retired values are still asserted here.
 @Suite("EngineInterruptionCause XPC host remap")
 struct EngineInterruptionCauseTests {
 
@@ -35,8 +38,12 @@ struct EngineInterruptionCauseTests {
   func lossesCollapseToEngineLost() {
     #expect(
       EngineInterruptionCause.hostCause(forRelayedRawValue: "engine_lost") == .engineLost)
-    // An XPC-mode AVCaptureSession interruption has no capture-session relay, so
-    // it must be captured here — not suppressed as it would be in direct mode.
+    // RETIRED wire value (#1524). The case is gone from the enum, so this string
+    // no longer resolves and lands on the same `?? .engineLost` fallback it used
+    // to reach through the switch — behaviour is unchanged. THIS ASSERTION IS THE
+    // PROOF that deleting the case was behaviour-preserving; it passed before the
+    // deletion and passes after it. Do not remove it, and do not "clean up" the
+    // nil-coalescing in `hostCause`: retiring the case INCREASED its load.
     #expect(
       EngineInterruptionCause.hostCause(forRelayedRawValue: "capture_session_lost") == .engineLost)
     #expect(

@@ -27,7 +27,6 @@ final class RouterTestAudioCapture: AudioCaptureInterface {
   var onMaxDurationReached: (() -> Void)?
   var onVADModelUnavailable: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
-  var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
   var onXPCServiceError: ((XPCErrorContext) -> Void)?
   var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
   var onAudioStartRetryResolved: ((AudioStartRetryContext) -> Void)?
@@ -197,18 +196,4 @@ enum DictationRuntimeFixtures {
     )
   }
 
-  static func captureSessionInterruptionContext(
-    sessionID: UInt64
-  ) -> CaptureSessionInterruptionContext {
-    CaptureSessionInterruptionContext(
-      kind: .wasInterrupted,
-      reasonCode: 1,
-      reasonLabel: "test",
-      errorDomain: nil,
-      errorCode: nil,
-      errorDescription: nil,
-      sessionID: sessionID,
-      isActivelyCapturing: true
-    )
-  }
 }

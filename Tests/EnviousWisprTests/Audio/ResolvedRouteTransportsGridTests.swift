@@ -22,10 +22,10 @@ struct ResolvedRouteTransportsGridTests {
 
   @Test(
     "derive is total over the sourceType × reason grid",
-    arguments: [CaptureSourceType.audioEngine, .captureSession, .halDeviceInput],
+    arguments: [CaptureSourceType.audioEngine, .halDeviceInput],
     [
       CaptureRouteReason.btOutputAutoInput, .btOutputUserSelectedDevice, .noBTAutoInput,
-      .noBTUserSelectedDevice, .forcedEngine, .forcedCaptureSession,
+      .noBTUserSelectedDevice, .forcedEngine, .forcedHALDeviceInput,
       .fallbackToEngine, .failedNoFallback,
     ])
   func totalOverGrid(source: CaptureSourceType, reason: CaptureRouteReason) {
@@ -38,11 +38,6 @@ struct ResolvedRouteTransportsGridTests {
     let isFallbackRung = (reason == .fallbackToEngine || reason == .failedNoFallback)
     #expect((r.routeFallbackReason != nil) == isFallbackRung)
     if isFallbackRung { #expect(r.routeFallbackReason == reason.rawValue) }
-
-    // The capture-session path still opens the built-in mic.
-    if source == .captureSession {
-      #expect(r.effective == "built_in")
-    }
 
     // Empty UIDs → Auto; no user-selected transport.
     #expect(r.inputSelectionMode == "auto")
@@ -99,7 +94,7 @@ struct ResolvedRouteTransportsGridTests {
     // UID in selectedInputDeviceUID with an empty picker must not emit
     // explicit/bluetooth while route_reason stays Auto. All three agree on Auto.
     let r = ResolvedRouteTransports.derive(
-      decision: makeDecision(.captureSession, .btOutputAutoInput),
+      decision: makeDecision(.halDeviceInput, .btOutputAutoInput),
       preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "fake-bt-uid")
     #expect(r.inputSelectionMode == "auto")
     #expect(r.selected == "unknown")

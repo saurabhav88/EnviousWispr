@@ -32,7 +32,7 @@ struct SentryAudioExtrasTests {
   func divergence() {
     let extras = SentryAudioExtras.buildCaptureExtras(
       route: "bt",
-      sourceType: "av_capture_session",
+      sourceType: "hal_device_input",
       sessionID: 1,
       isActivelyCapturing: true,
       inputDeviceUIDPreferred: "MacBookMic",
@@ -101,7 +101,7 @@ struct SentryAudioExtrasTests {
       armedAtUptimeNs: 1_000_000_000,
       firedAtUptimeNs: 1_800_000_000,
       route: "bt",
-      sourceType: "av_capture_session",
+      sourceType: "hal_device_input",
       engineStartedSuccessfully: true,
       tapInstalled: true,
       formatMismatchObserved: true,

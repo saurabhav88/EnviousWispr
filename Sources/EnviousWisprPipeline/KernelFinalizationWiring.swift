@@ -296,11 +296,11 @@ struct KernelFinalizationWiring {
         // the exit, and nothing clears it until the next `start(config:)`. No
         // widened `store` signature; the holder is the single home.
         //
-        // `isDeviceLoss`, NOT `!= nil`. An engine that failed to recover and a
-        // broad capture-session failure are salvaged too, and badging those
-        // transcripts with a permanent crossed-out microphone would tell the user
-        // something that did not happen. This badge is durable and unfixable
-        // after the fact, so it takes the strictest predicate.
+        // `isDeviceLoss`, NOT `!= nil`. An engine that failed to recover with
+        // the device still attached is salvaged too, and badging that transcript
+        // with a permanent crossed-out microphone would tell the user something
+        // that did not happen. This badge is durable and unfixable after the
+        // fact, so it takes the strictest predicate.
         inputDeviceWasRemoved: telemetryState.interruptionCause?.isDeviceLoss == true)
       outcome.transcript = transcript
       do {

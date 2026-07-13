@@ -15,7 +15,7 @@ import Foundation
 /// inter-signal cadence using a monotonic clock. The post-signal silence gate
 /// ("gate B") fires when both:
 ///
-///   - silence > 800ms floor (matches `AVCaptureSessionSource` first-buffer
+///   - silence > 800ms floor (matches the capture sources' first-buffer
 ///     liveness latch, the only foreground-user-watching silence threshold
 ///     in our codebase).
 ///   - silence > 5x the worst inter-signal gap observed so far in this
@@ -43,7 +43,7 @@ import Foundation
 @MainActor
 public final class LoadProgressWatcher {
   /// Minimum silence (seconds) before the watcher can fire, even if the ratio
-  /// gate is met. The 0.8s default matches `AVCaptureSessionSource`'s
+  /// gate is met. The 0.8s default matches the capture sources'
   /// first-buffer liveness latch — the right beat for XPC lifecycle signals.
   ///
   /// #1339 made this injectable: for INTERNET TRANSFER watching the 0.8s beat
