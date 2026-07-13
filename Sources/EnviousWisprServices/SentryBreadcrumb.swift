@@ -151,32 +151,14 @@ public enum SentryBreadcrumb {
     tags: [String: String] = [:],
     fingerprintDetail: String? = nil
   ) {
-    let event = Event(level: .error)
-    event.message = SentryMessage(
-      formatted: "\(category.rawValue): \(Self.structuredDescriptor(error))")
-    var eventTags = [
-      "pipeline.stage": stage,
-      "error.category": category.rawValue,
-    ]
-    for (key, value) in tags {
-      eventTags[key] = value
-    }
-
-    let eventExtra = mergedExtra(extra)
+    let event = Self.makeHandledErrorEvent(
+      error, category: category, stage: stage, extra: extra, tags: tags,
+      fingerprintDetail: fingerprintDetail)
+    let eventExtra = event.extra
 
     // Test spy hooks — invoked synchronously before SDK dispatch. Production sets nil.
-    Self.captureErrorTagsDelegate?(eventTags)
+    Self.captureErrorTagsDelegate?(event.tags ?? [:])
     Self.captureErrorDelegate?(error, category, stage, eventExtra)
-    event.tags = eventTags
-    if let eventExtra {
-      event.extra = eventExtra
-    }
-
-    // Group by category + underlying error signature so distinct defects that
-    // share a broad category get their own stable, release-independent issue
-    // instead of merging under one stacktrace bin (#1144).
-    event.fingerprint = Self.handledErrorFingerprint(
-      for: category, error: error, detail: fingerprintDetail)
 
     // Also add a breadcrumb so the error appears in the trail
     add(
@@ -195,6 +177,57 @@ public enum SentryBreadcrumb {
     }
   }
 
+  /// Build the handled-error `Event` exactly as `captureError` sends it. Pure: the
+  /// only side-effect-free surface where a test can assert the complete production
+  /// wire shape (title, tags, fingerprint) rather than re-deriving it. `captureError`
+  /// hands the returned event to the SDK unchanged.
+  ///
+  /// `environment` is injectable for the same reason `handledErrorFingerprint`'s is:
+  /// the default reads the bundle, and a test runner's bundle is not production, so a
+  /// test asserting the production fingerprint must pass `"production"` explicitly.
+  ///
+  /// Stays `@MainActor` (unlike the pure fingerprint helpers): `mergedExtra` invokes
+  /// the `@MainActor` audio-environment provider.
+  static func makeHandledErrorEvent(
+    _ error: any Error,
+    category: ErrorCategory,
+    stage: String,
+    extra: [String: Any]? = nil,
+    tags: [String: String] = [:],
+    fingerprintDetail: String? = nil,
+    environment: String = ObservabilityBootstrap.currentEnvironment
+  ) -> Event {
+    let event = Event(level: .error)
+    event.message = SentryMessage(
+      formatted: "\(category.rawValue): \(Self.structuredDescriptor(error))")
+
+    var eventTags = [
+      "pipeline.stage": stage,
+      "error.category": category.rawValue,
+    ]
+    // Readable name for the pinned identity. Metadata only — never in the
+    // fingerprint, so renaming it can never re-group an issue (#1524).
+    if let stable = error as? any StableSentryErrorIdentity {
+      eventTags["error.identity"] = stable.sentrySemanticID
+    }
+    for (key, value) in tags {
+      eventTags[key] = value
+    }
+    event.tags = eventTags
+
+    if let eventExtra = mergedExtra(extra) {
+      event.extra = eventExtra
+    }
+
+    // Group by category + underlying error signature so distinct defects that
+    // share a broad category get their own stable, release-independent issue
+    // instead of merging under one stacktrace bin (#1144).
+    event.fingerprint = Self.handledErrorFingerprint(
+      for: category, error: error, detail: fingerprintDetail, environment: environment)
+
+    return event
+  }
+
   /// Structural, content-free descriptor for an error: `"<domain>#<code>"`.
   /// Used in the captured event's `message` instead of `error.localizedDescription`,
   /// which on framework errors can interpolate arbitrary OS strings. Domain and
@@ -209,7 +242,13 @@ public enum SentryBreadcrumb {
   /// `[REDACTED]`), and the per-launch pointer fragments Sentry grouping. When the
   /// domain carries that artifact, fall back to the plain simple type name instead
   /// (#1229).
+  /// An error type that declares `StableSentryErrorIdentity` overrides the bridged
+  /// identity with a pinned one, so its Sentry grouping cannot move when the type's
+  /// cases change (#1524). Every other error keeps the bridged behaviour unchanged.
   nonisolated static func structuredDescriptor(_ error: any Error) -> String {
+    if let stable = error as? any StableSentryErrorIdentity {
+      return stable.sentryFingerprintDescriptor
+    }
     let ns = error as NSError
     if ns.domain.contains("(unknown context at ") {
       return "\(type(of: error))#\(ns.code)"
