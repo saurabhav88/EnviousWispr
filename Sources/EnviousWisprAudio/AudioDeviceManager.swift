@@ -258,7 +258,11 @@ public enum AudioDeviceEnumerator {
     transportTypeRaw(for: deviceID) ?? 0
   }
 
-  private static func inputChannelCount(for deviceID: AudioDeviceID) -> Int {
+  /// Total native input channel count for a device, summed across every input
+  /// stream (`kAudioDevicePropertyStreamConfiguration`). Module-internal (#1523)
+  /// so the capture backend can record it as prepare-time fleet telemetry —
+  /// this is the single channel-count authority; do not add a second reader.
+  static func inputChannelCount(for deviceID: AudioDeviceID) -> Int {
     var propertyAddress = AudioObjectPropertyAddress(
       mSelector: kAudioDevicePropertyStreamConfiguration,
       mScope: kAudioObjectPropertyScopeInput,

@@ -68,19 +68,27 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   /// device while capturing (#1434 — log-and-telemetry only in v1; never
   /// interrupts the recording).
   public let rateDivergenceDetected: Bool
+  /// The bound device's total native input channel count, summed across every
+  /// input stream at prepare time (#1523 — fleet-visibility for the multi-channel
+  /// down-mix. AUHAL always takes channel 0; this records how many channels the
+  /// device exposed so a >1-channel population is measurable). Nil when the
+  /// source doesn't read a channel count (the AVAudioEngine backend leaves it nil).
+  public let nativeChannelCount: Int?
 
   public init(
     nativeRateHz: Double?,
     ringDropCount: Int = 0,
     converterErrorCount: Int = 0,
     zeroOutputCount: Int = 0,
-    rateDivergenceDetected: Bool = false
+    rateDivergenceDetected: Bool = false,
+    nativeChannelCount: Int? = nil
   ) {
     self.nativeRateHz = nativeRateHz
     self.ringDropCount = ringDropCount
     self.converterErrorCount = converterErrorCount
     self.zeroOutputCount = zeroOutputCount
     self.rateDivergenceDetected = rateDivergenceDetected
+    self.nativeChannelCount = nativeChannelCount
   }
 }
 

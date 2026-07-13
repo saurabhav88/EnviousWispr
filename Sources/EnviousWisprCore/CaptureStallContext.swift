@@ -56,6 +56,10 @@ public struct CaptureStallContext: Sendable {
   public let rateDivergenceDetected: Bool?
   public let formatStabilized: Bool?
   public let captureRebuiltForFormat: Bool?
+  /// #1523: the bound device's total native input channel count, source-stamped
+  /// at watchdog-fire time (direct HAL stalls populate it; the XPC proxy's
+  /// host-side watchdog leaves it nil). Preserved through `enrichedWithStabilizationFlags`.
+  public let nativeChannelCount: Int?
 
   public init(
     sessionID: UInt64,
@@ -79,7 +83,8 @@ public struct CaptureStallContext: Sendable {
     nativeRateHz: Double? = nil,
     rateDivergenceDetected: Bool? = nil,
     formatStabilized: Bool? = nil,
-    captureRebuiltForFormat: Bool? = nil
+    captureRebuiltForFormat: Bool? = nil,
+    nativeChannelCount: Int? = nil
   ) {
     self.sessionID = sessionID
     self.armedAtUptimeNs = armedAtUptimeNs
@@ -103,6 +108,7 @@ public struct CaptureStallContext: Sendable {
     self.rateDivergenceDetected = rateDivergenceDetected
     self.formatStabilized = formatStabilized
     self.captureRebuiltForFormat = captureRebuiltForFormat
+    self.nativeChannelCount = nativeChannelCount
   }
 
   /// Kernel-side enrichment (#1434): the kernel owns the stabilization record
@@ -134,7 +140,8 @@ public struct CaptureStallContext: Sendable {
       nativeRateHz: nativeRateHz,
       rateDivergenceDetected: rateDivergenceDetected,
       formatStabilized: formatStabilized,
-      captureRebuiltForFormat: captureRebuiltForFormat
+      captureRebuiltForFormat: captureRebuiltForFormat,
+      nativeChannelCount: nativeChannelCount
     )
   }
 }

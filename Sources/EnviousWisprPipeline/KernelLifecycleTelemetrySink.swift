@@ -713,7 +713,8 @@ final class KernelLifecycleTelemetrySink {
         captureZeroOutputCount: health?.stopMetadata?.zeroOutputCount,
         captureRateDivergenceDetected: health?.stopMetadata?.rateDivergenceDetected,
         captureFormatStabilized: health?.formatStabilized,
-        captureRebuiltForFormat: health?.captureRebuiltForFormat
+        captureRebuiltForFormat: health?.captureRebuiltForFormat,
+        captureNativeChannelCount: health?.stopMetadata?.nativeChannelCount
       )
       if let noAudioCapturedRich {
         noAudioCapturedRich(ctx)

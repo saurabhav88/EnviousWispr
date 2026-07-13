@@ -40,6 +40,8 @@ internal struct ASREmptyResultDiagnostics {
   var captureRateDivergenceDetected: Bool?
   var captureFormatStabilized: Bool?
   var captureRebuiltForFormat: Bool?
+  // #1523 bound device's total native input channel count at the empty terminal.
+  var captureNativeChannelCount: Int?
 
   var incrementalAccepted: Bool?
   var incrementalResultChars: Int?
@@ -117,6 +119,7 @@ internal struct ASREmptyResultDiagnostics {
     put(captureRateDivergenceDetected, key: "capture.rate_divergence_detected", into: &extra)
     put(captureFormatStabilized, key: "capture.format_stabilized", into: &extra)
     put(captureRebuiltForFormat, key: "capture.rebuilt_for_format", into: &extra)
+    put(captureNativeChannelCount, key: "capture.native_channel_count", into: &extra)
 
     put(incrementalAccepted, key: "asr.incremental_accepted", into: &extra)
     put(incrementalResultChars, key: "asr.incremental_result_chars", into: &extra)

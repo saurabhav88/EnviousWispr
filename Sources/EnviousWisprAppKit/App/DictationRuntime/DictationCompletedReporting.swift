@@ -40,6 +40,9 @@ enum DictationCompletedReporting {
       captureRateDivergenceDetected: whenTrue(health?.rateDivergenceDetected),
       captureFormatStabilized: health?.formatStabilized,
       captureRebuiltForFormat: whenTrue(health?.captureRebuiltForFormat),
+      // #1523: bound device's native channel count (nil omits; 0 emits as an
+      // anomaly). Not gated on positivity — 1 and 2 are both meaningful.
+      captureNativeChannelCount: health?.nativeChannelCount,
       salvagedLeadTrimMs: driver.lastSalvagedLeadTrimMs,
       // #1408: which interruption cut this dictation short. `stop_reason` already
       // says one did; this names it. Absent on an uninterrupted completion.

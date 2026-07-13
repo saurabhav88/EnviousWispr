@@ -64,5 +64,34 @@ struct DictationCompletedRouteFieldsTests {
       // The pre-existing input_mode key is still emitted.
       #expect(props?["input_mode"] == "ptt")
     }
+
+    @Test("#1523: channel count threads into dictation.completed as an int prop")
+    func channelCountThreadedAsIntProp() {
+      let box = Box()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Transcript(text: "hello"), inputMode: "ptt",
+        captureNativeChannelCount: 2)
+
+      #expect(box.event?.intProps["capture_native_channel_count"] == 2)
+    }
+
+    @Test("#1523: a nil channel count omits the int key")
+    func channelCountOmittedWhenNil() {
+      let box = Box()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Transcript(text: "hello"), inputMode: "ptt")
+
+      #expect(box.event?.intProps["capture_native_channel_count"] == nil)
+    }
   #endif
 }

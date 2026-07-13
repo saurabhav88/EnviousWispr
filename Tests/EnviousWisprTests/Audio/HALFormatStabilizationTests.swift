@@ -157,4 +157,29 @@ struct CaptureStopMetadataTransportTests {
     #expect(CaptureResult(samples: []).metadata == nil)
     #expect(CaptureResult(samples: [], vadSegments: []).metadata == nil)
   }
+
+  @Test("#1523: a populated channel count survives the XPC round trip")
+  func channelCountRoundTrip() throws {
+    let original = CaptureStopMetadata(
+      nativeRateHz: 48000, ringDropCount: 0, converterErrorCount: 0,
+      zeroOutputCount: 0, rateDivergenceDetected: false, nativeChannelCount: 4)
+    let data = try JSONEncoder().encode(original)
+    let decoded = try JSONDecoder().decode(CaptureStopMetadata.self, from: data)
+    #expect(decoded == original)
+    #expect(decoded.nativeChannelCount == 4)
+  }
+
+  @Test("#1523: a pre-field JSON blob (no channel key) decodes to a nil count")
+  func preFieldBlobDecodesToNilChannelCount() throws {
+    // A stop-reply blob encoded before #1523 shipped — no `nativeChannelCount`
+    // key. The optional must decode to nil (forward-compatible XPC boundary).
+    let preFieldJSON = """
+      {"nativeRateHz":24000,"ringDropCount":1,"converterErrorCount":0,\
+      "zeroOutputCount":0,"rateDivergenceDetected":false}
+      """
+    let data = Data(preFieldJSON.utf8)
+    let decoded = try JSONDecoder().decode(CaptureStopMetadata.self, from: data)
+    #expect(decoded.nativeChannelCount == nil)
+    #expect(decoded.nativeRateHz == 24000)
+  }
 }

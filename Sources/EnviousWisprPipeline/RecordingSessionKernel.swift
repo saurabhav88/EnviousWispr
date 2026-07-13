@@ -1230,7 +1230,8 @@ final class RecordingSessionKernel {
       zeroOutputCount: captureResult.metadata?.zeroOutputCount,
       rateDivergenceDetected: captureResult.metadata?.rateDivergenceDetected,
       formatStabilized: formatStabilizedThisSession,
-      captureRebuiltForFormat: captureRebuiltForFormatThisSession
+      captureRebuiltForFormat: captureRebuiltForFormatThisSession,
+      nativeChannelCount: captureResult.metadata?.nativeChannelCount
     )
     recordingStoppedTelemetry(captureResult.samples.count)
     await (vad as? CaptureVADSignalSource)?.finalizeAtStop(
@@ -1322,7 +1323,12 @@ final class RecordingSessionKernel {
           routeFallbackReason: audioCapture.currentResolvedRoute?.routeFallbackReason,
           inputSelectionMode: audioCapture.currentResolvedRoute?.inputSelectionMode,
           outputTransport: audioCapture.currentResolvedRoute?.outputTransport,
-          routeResolutionSource: audioCapture.currentResolvedRoute?.routeResolutionSource
+          routeResolutionSource: audioCapture.currentResolvedRoute?.routeResolutionSource,
+          // #1523: stamp the bound device's channel count on the zero-signal
+          // terminal. This is the near-silent-capture event §3a correlates a
+          // >1-channel count against (voice on a later channel → AUHAL takes
+          // channel 0 → silence), so the count belongs precisely here.
+          nativeChannelCount: captureResult.metadata?.nativeChannelCount
         ))
     }
 
@@ -2960,6 +2966,7 @@ final class RecordingSessionKernel {
     diagnostics.captureRateDivergenceDetected = health.stopMetadata?.rateDivergenceDetected
     diagnostics.captureFormatStabilized = health.formatStabilized
     diagnostics.captureRebuiltForFormat = health.captureRebuiltForFormat
+    diagnostics.captureNativeChannelCount = health.stopMetadata?.nativeChannelCount
     telemetryState.asrEmptyDiagnostics = diagnostics
   }
 

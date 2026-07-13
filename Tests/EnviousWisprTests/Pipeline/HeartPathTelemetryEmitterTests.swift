@@ -224,6 +224,21 @@ struct HeartPathTelemetryEmitterTests {
     #expect(captured.category == .audioCaptureFailed)
     #expect(captured.stage == "recording")
     #expect(captured.extra["capture.failure_mode"] as? String == "no_audio_captured")
+    // #1523: an unstamped no-audio terminal omits the channel-count key.
+    #expect(captured.extra["capture.native_channel_count"] == nil)
+  }
+
+  @Test("#1523: a stamped channel count rides the no-audio captureError extras")
+  func noAudioCarriesChannelCount() {
+    let recorder = Recorder()
+    let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
+
+    var ctx = Self.noAudioContext(sessionID: 5)
+    ctx.captureNativeChannelCount = 8
+    emitter.noAudioCaptured(ctx: ctx)
+
+    #expect(recorder.errors.count == 1)
+    #expect(recorder.errors[0].extra["capture.native_channel_count"] as? Int == 8)
   }
 
   @Test("noAudioCaptured dedups to a breadcrumb after a stall in the same session")
