@@ -50,6 +50,24 @@ struct ASREmptyResultDiagnosticsTests {
     assertNoContentLikeKeys(extra)
   }
 
+  @Test("#1523: a stamped channel count emits capture.native_channel_count; nil omits it")
+  func channelCountEmitsOnASREmpty() {
+    var diagnostics = ASREmptyResultDiagnostics(
+      backend: "parakeet",
+      mode: "streaming",
+      hasSpeechEvidence: false,
+      rawSampleCount: 0,
+      vadSegmentCount: 0,
+      vadSpeechDurationMs: 0,
+      peakAudioLevel: 0.0
+    )
+    // Nil before the kernel stamps it → key absent.
+    #expect(diagnostics.sentryExtra()["capture.native_channel_count"] == nil)
+
+    diagnostics.captureNativeChannelCount = 2
+    #expect(diagnostics.sentryExtra()["capture.native_channel_count"] as? Int == 2)
+  }
+
   @Test("WhisperKit diagnostics keep comparable base fields and worker subset")
   func whisperKitDiagnosticsShape() {
     let diagnostics = ASREmptyResultDiagnostics(

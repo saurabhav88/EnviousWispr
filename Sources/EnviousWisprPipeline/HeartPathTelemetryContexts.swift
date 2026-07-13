@@ -33,6 +33,8 @@ struct NoAudioContext: Sendable {
   var captureRateDivergenceDetected: Bool? = nil
   var captureFormatStabilized: Bool? = nil
   var captureRebuiltForFormat: Bool? = nil
+  // #1523: bound device's total native input channel count at the no-audio terminal.
+  var captureNativeChannelCount: Int? = nil
 }
 
 /// Per-call context for `HeartPathTelemetryEmitter.zombieZeroPeakIfNeeded(...)`.

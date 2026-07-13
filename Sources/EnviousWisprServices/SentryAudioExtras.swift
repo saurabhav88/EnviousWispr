@@ -71,6 +71,9 @@ public enum SentryAudioExtras {
       if let rebuilt = ctx.captureRebuiltForFormat {
         extras["capture.rebuilt_for_format"] = rebuilt
       }
+      if let channels = ctx.nativeChannelCount {
+        extras["capture.native_channel_count"] = channels
+      }
     }
 
     if let swap = polishModelSwapMs {

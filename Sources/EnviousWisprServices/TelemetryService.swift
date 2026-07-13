@@ -77,7 +77,8 @@ public final class TelemetryService {
     captureNativeRateHz: Double? = nil, captureRingDropCount: Int? = nil,
     captureConverterErrorCount: Int? = nil, captureZeroOutputCount: Int? = nil,
     captureRateDivergenceDetected: Bool? = nil, captureFormatStabilized: Bool? = nil,
-    captureRebuiltForFormat: Bool? = nil, salvagedLeadTrimMs: Int? = nil,
+    captureRebuiltForFormat: Bool? = nil, captureNativeChannelCount: Int? = nil,
+    salvagedLeadTrimMs: Int? = nil,
     // #1408: present only on a salvaged completion — WHICH interruption cut the
     // recording short. `stop_reason` already says an interruption ended it; this
     // says which one. Low-cardinality reason string.
@@ -98,8 +99,15 @@ public final class TelemetryService {
       if let ism = inputSelectionMode { hookStringProps["input_selection_mode"] = ism }
       if let ot = outputTransport { hookStringProps["output_transport"] = ot }
       if let rrs = routeResolutionSource { hookStringProps["route_resolution_source"] = rrs }
+      // #1523: mirror the emitted int key's presence-only semantics so the
+      // channel-count threading is unit-testable by exact production spelling.
+      var hookIntProps: [String: Int] = [:]
+      if let channels = captureNativeChannelCount {
+        hookIntProps["capture_native_channel_count"] = channels
+      }
       testEventHook?(
-        CapturedTelemetryEvent(name: "dictation.completed", stringProps: hookStringProps))
+        CapturedTelemetryEvent(
+          name: "dictation.completed", stringProps: hookStringProps, intProps: hookIntProps))
     #endif
     let m = t.metrics
     dictationCompleted(
@@ -143,6 +151,7 @@ public final class TelemetryService {
       captureRateDivergenceDetected: captureRateDivergenceDetected,
       captureFormatStabilized: captureFormatStabilized,
       captureRebuiltForFormat: captureRebuiltForFormat,
+      captureNativeChannelCount: captureNativeChannelCount,
       salvagedLeadTrimMs: salvagedLeadTrimMs,
       interruptedBy: interruptedBy
     )
@@ -521,7 +530,8 @@ public final class TelemetryService {
     captureNativeRateHz: Double? = nil, captureRingDropCount: Int? = nil,
     captureConverterErrorCount: Int? = nil, captureZeroOutputCount: Int? = nil,
     captureRateDivergenceDetected: Bool? = nil, captureFormatStabilized: Bool? = nil,
-    captureRebuiltForFormat: Bool? = nil, salvagedLeadTrimMs: Int? = nil,
+    captureRebuiltForFormat: Bool? = nil, captureNativeChannelCount: Int? = nil,
+    salvagedLeadTrimMs: Int? = nil,
     interruptedBy: String? = nil
   ) {
     var props: [String: Any] = [
@@ -548,6 +558,7 @@ public final class TelemetryService {
     if let div = captureRateDivergenceDetected { props["capture_rate_divergence_detected"] = div }
     if let stab = captureFormatStabilized { props["capture_format_stabilized"] = stab }
     if let rebuilt = captureRebuiltForFormat { props["capture_rebuilt_for_format"] = rebuilt }
+    if let channels = captureNativeChannelCount { props["capture_native_channel_count"] = channels }
     if let trim = salvagedLeadTrimMs { props["salvaged_lead_trim_ms"] = trim }
     if let p = llmProvider { props["llm_provider"] = p }
     if let a = targetApp { props["target_app"] = a }

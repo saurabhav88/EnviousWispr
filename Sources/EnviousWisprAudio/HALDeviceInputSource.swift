@@ -378,6 +378,13 @@ final class HALDeviceInputSource: AudioInputSource {
   private var boundUID: String?
   private var boundTransport: String?
   private var lastBindOK = true
+  /// #1523: the bound device's total native input channel count, read once at
+  /// prepare from the single channel-count authority
+  /// (`AudioDeviceEnumerator.inputChannelCount`). A prepare-time constant of the
+  /// bound device — not per-session health — so it survives warm-unit reuse and
+  /// is cleared only in `teardownUnit()`. AUHAL down-mixes to mono by taking
+  /// channel 0; this records how many channels the device actually exposed.
+  private var boundNativeChannelCount: Int?
 
   var actualBoundTransport: String? { boundTransport }
 
@@ -394,10 +401,16 @@ final class HALDeviceInputSource: AudioInputSource {
     return boundDeviceID == resolveDeviceID()
   }
 
-  /// #1434: stop-time capture-health facts. The manager snapshots this BEFORE
-  /// deactivate/teardown and attaches it to `CaptureResult.metadata` — the one
-  /// transport object for both the in-process and XPC stop paths.
-  var captureStopMetadata: CaptureStopMetadata? {
+  /// #1523: the last live stop-metadata, cached in `teardownUnit()` right before
+  /// the render context + bound-device state are cleared. The device-vanish path
+  /// (`handleDeviceMayHaveVanished`) tears the unit down BEFORE the manager reads
+  /// `captureStopMetadata`, so without this cache a salvaged completion would
+  /// lose EVERY capture-health fact (rate, counters, channel count), not just the
+  /// new field. Reset when the next capture starts so a session never serves the
+  /// prior session's metadata.
+  private var cachedStopMetadata: CaptureStopMetadata?
+
+  private func computeStopMetadataFromLiveState() -> CaptureStopMetadata? {
     guard let context = renderContext else { return nil }
     let snap = context.counters.snapshot()
     return CaptureStopMetadata(
@@ -405,8 +418,18 @@ final class HALDeviceInputSource: AudioInputSource {
       ringDropCount: snap.ringDrops,
       converterErrorCount: snap.converterErrors,
       zeroOutputCount: snap.zeroOutputs,
-      rateDivergenceDetected: formatDivergenceObserved
+      rateDivergenceDetected: formatDivergenceObserved,
+      nativeChannelCount: boundNativeChannelCount
     )
+  }
+
+  /// #1434: stop-time capture-health facts. The manager snapshots this BEFORE
+  /// deactivate/teardown and attaches it to `CaptureResult.metadata` — the one
+  /// transport object for both the in-process and XPC stop paths. Serves live
+  /// state while the unit is up, falling back to the pre-teardown cache so the
+  /// device-vanish salvage (teardown-before-read) keeps its metadata (#1523).
+  var captureStopMetadata: CaptureStopMetadata? {
+    computeStopMetadataFromLiveState() ?? cachedStopMetadata
   }
 
   private static let listenerQueue = DispatchQueue(
@@ -613,13 +636,23 @@ final class HALDeviceInputSource: AudioInputSource {
     boundDeviceID = deviceID
     boundUID = AudioDeviceEnumerator.inputDeviceUID(for: deviceID)
     boundTransport = AudioDeviceEnumerator.transportLabel(for: deviceID)
+    // #1523: read the device's total native channel count once at prepare from
+    // the single channel-count authority. We capture mono (client format
+    // channels: 1 above) and AUHAL down-mixes by TAKING CHANNEL 0 — so a device
+    // whose meaningful audio is on a later channel would be captured as silence.
+    // This value makes a >1-channel fleet population measurable; it does NOT
+    // change what we capture (measure-only, #1523). Do not build a channel
+    // selector until this telemetry shows both a >1-channel population and a
+    // buried-audio report.
+    boundNativeChannelCount = AudioDeviceEnumerator.inputChannelCount(for: deviceID)
     // #1434: the native rate + ratio in the prepare line is the per-recording
     // rate evidence D4 flagged as the highest-value instrumentation gap.
     let ratio = Self.targetFormat.sampleRate / nativeFormat.sampleRate
     AudioCaptureManager.btRouteLog(
       "HALDeviceInputSource: prepared with device \(deviceID) (uid=\(boundUID ?? "unknown")) "
         + "nativeRate=\(Int(nativeFormat.sampleRate)) targetRate=\(Int(Self.targetFormat.sampleRate)) "
-        + "ratio=\(String(format: "%.3f", ratio))"
+        + "ratio=\(String(format: "%.3f", ratio)) "
+        + "nativeChannels=\(boundNativeChannelCount.map(String.init) ?? "nil")"
     )
   }
 
@@ -649,6 +682,9 @@ final class HALDeviceInputSource: AudioInputSource {
     // or pre-roll ring drop must not bleed into the next recording's telemetry.
     renderContext?.counters.reset()
     formatDivergenceObserved = false
+    // #1523: a fresh session must never serve the previous session's cached
+    // stop-metadata; the live path repopulates it via teardownUnit().
+    cachedStopMetadata = nil
     armCaptureStallWatchdog()
 
     isCapturing = true
@@ -713,7 +749,8 @@ final class HALDeviceInputSource: AudioInputSource {
       // own live rate/divergence here — the stop-time metadata object does
       // not exist yet. (The XPC proxy's host-side watchdog leaves these nil.)
       nativeRateHz: renderContext?.nativeFormat.sampleRate,
-      rateDivergenceDetected: formatDivergenceObserved
+      rateDivergenceDetected: formatDivergenceObserved,
+      nativeChannelCount: boundNativeChannelCount
     )
     onCaptureStalled?(ctx)
   }
@@ -873,6 +910,11 @@ final class HALDeviceInputSource: AudioInputSource {
   // MARK: - Private: teardown
 
   private func teardownUnit() {
+    // #1523: snapshot the live stop-metadata BEFORE any state is cleared, so the
+    // device-vanish salvage (which tears the unit down before the manager reads
+    // `captureStopMetadata`) still has rate/counters/channel-count. Only cache a
+    // non-nil compute so a double-teardown never overwrites a good snapshot.
+    if let live = computeStopMetadataFromLiveState() { cachedStopMetadata = live }
     // Single authority for "this unit is going away" — every caller (normal
     // stop, abort, rebuild, AND device-vanish) must disarm the stall
     // watchdog and drop `isCapturing`, mirroring
@@ -916,6 +958,7 @@ final class HALDeviceInputSource: AudioInputSource {
     boundDeviceID = nil
     boundUID = nil
     boundTransport = nil
+    boundNativeChannelCount = nil
   }
 
   // MARK: - Private: device resolution
