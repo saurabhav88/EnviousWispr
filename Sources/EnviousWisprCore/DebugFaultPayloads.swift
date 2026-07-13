@@ -53,7 +53,7 @@
     /// oracle. NOT the capture-session id.
     package let sourceIncarnation: UInt64
     /// Low-cardinality tag of the ACTIVE capture backend the injector is riding
-    /// (`av_audio_engine` / `hal_device_input` / `av_capture_session` / `none`),
+    /// (`av_audio_engine` / `hal_device_input` / `none`),
     /// so the scorecard records WHICH mic route each trial ran on — the built-in
     /// vs Bluetooth path cannot otherwise be distinguished in the evidence.
     package let captureSourceType: String

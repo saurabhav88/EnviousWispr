@@ -7,7 +7,7 @@ import os
 ///
 /// Owns app-facing state (capturedSamples, audioLevel, isCapturing) and the
 /// `AudioCaptureInterface` contract. Delegates all hardware interaction to the
-/// active `AudioInputSource` (`AVAudioEngineSource` or `AVCaptureSessionSource`).
+/// active `AudioInputSource` (`AVAudioEngineSource` or `HALDeviceInputSource`).
 ///
 /// **Ownership boundaries:**
 /// - Sources own hardware/session/engine lifecycle, conversion, tap logic, recovery
@@ -96,8 +96,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// Stall watchdog callback (forwarded to active source in Phase B implementation).
   public var onCaptureStalled: ((CaptureStallContext) -> Void)?
 
-  /// AVCaptureSession interruption context (forwarded from `AVCaptureSessionSource`).
-  public var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
 
   /// Only the XPC proxy invokes this; direct-mode manager leaves nil.
   public var onXPCServiceError: ((XPCErrorContext) -> Void)?
@@ -120,7 +118,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   }
 
   /// Delegates to the active source so the pipeline can attribute Sentry
-  /// events to the concrete backend (AVAudioEngine vs AVCaptureSession).
+  /// events to the concrete backend (AVAudioEngine vs HALDeviceInput).
   /// Falls back to the cached last-known value after stopCapture tears the
   /// source down (see `cachedSourceType` rationale at field declaration).
   public var captureSourceType: String {
@@ -153,7 +151,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   public nonisolated static let targetSampleRate: Double = 16000
 
   /// The active capture source. Created on buildEngine/startEnginePhase.
-  /// Either AVAudioEngineSource (no BT) or AVCaptureSessionSource (BT output active).
+  /// Either AVAudioEngineSource (no BT) or HALDeviceInputSource (BT output active).
   private var activeSource: (any AudioInputSource)?
 
   #if DEBUG
@@ -339,8 +337,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // (The `ingestSamples` body lives below `stopCapture()` — extracted so the
     // #1408 A3 backstop is unit-testable with an injected `maxRecordingSamplesLimit`.)
     // #1408: the SOURCE names the cause; the manager only forwards it. This used
-    // to be inferred from the source's class (`source is AVCaptureSessionSource
-    // ? .captureSessionLost : .engineLost`), which cannot distinguish a device
+    // to be inferred from the source's class, which cannot distinguish a device
     // that was verified gone (`.deviceRemoved`) from an engine that merely failed
     // to recover (`.engineLost`) — both live inside `AVAudioEngineSource`. Only
     // the source runs the `kAudioDevicePropertyDeviceIsAlive` check, so only the
@@ -361,7 +358,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     }
 
     // Forward heart-path telemetry callbacks (issue #285) — direct capture
-    // mode must surface the same stall / AVCaptureSession interruption signals
+    // mode must surface the same stall signals
     // the XPC proxy already exposes. Stale callbacks from a replaced source
     // are rejected via the sourceID guard.
     source.onCaptureStalled = { [weak self] ctx in
@@ -369,12 +366,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         self.activeSource.map({ ObjectIdentifier($0) }) == sourceID
       else { return }
       self.onCaptureStalled?(ctx)
-    }
-    source.onCaptureSessionInterruption = { [weak self] ctx in
-      guard let self,
-        self.activeSource.map({ ObjectIdentifier($0) }) == sourceID
-      else { return }
-      self.onCaptureSessionInterruption?(ctx)
     }
 
     source.onLifecycleSignal = onLifecycleSignal
@@ -687,9 +678,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       // new candidate must be added here explicitly; the compiler cannot
       // force this equality-style mapping the way it forces the `switch`
       // below. `existingSourceType == decision.sourceType` (three-way, not a
-      // boolean) so a captureSession↔halDeviceInput mismatch is never
-      // silently read as a match, which a plain "is engine" boolean would do
-      // once a third candidate exists.
+      // boolean) so an audioEngine↔halDeviceInput mismatch is never
+      // silently read as a match, which a plain "is engine" boolean would do.
       let existingSourceType = Self.sourceType(of: existing)
 
       // Check full config signature, not just source type.
@@ -710,24 +700,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         let vpMatch = engineSource.noiseSuppressionEnabled == noiseSuppressionEnabled
         configMatch = deviceMatch && vpMatch
       }
-      #if DEBUG
-        // A warm AVCaptureSessionSource from a forced-capture-session trial keeps
-        // its pinned `targetDeviceUID`. When the override is cleared and we
-        // return to `.automatic`, reuse must NOT keep that stale target, or
-        // `.automatic` would capture the forced device instead of built-in.
-        // Compare the target the same way the engine path compares its device.
-        // Release never sets a target (the switch-arm that assigns it is
-        // DEBUG-only), so this is a no-op there. (Cloud review P2.)
-        if configMatch, let captureSource = existing as? AVCaptureSessionSource {
-          let wantsTarget =
-            decision.reason == .forcedCaptureSession ? effectiveInputDeviceUID() : ""
-          let normalize: (String?) -> String = { ($0?.isEmpty ?? true) ? "" : $0! }
-          configMatch = normalize(captureSource.targetDeviceUID) == normalize(wantsTarget)
-        }
-      // Candidate D (#1377 slice 2b): same stale-target trap as candidate A
-      // above — a warm HAL source from a forced trial must not be reused
-      // once the override clears (or changes device).
-      #endif
+      // Candidate D (#1377 slice 2b): a warm HAL source from a forced trial
+      // must not be reused once the override clears (or changes device).
       if configMatch, let halSource = existing as? HALDeviceInputSource {
         var wantsTarget = decision.effectiveDeviceUID
         #if DEBUG
@@ -782,23 +756,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
     let source: any AudioInputSource
     switch decision.sourceType {
-    case .captureSession:
-      if decision.vpAvailable == false && noiseSuppressionEnabled {
-        Self.btRouteLog(
-          "Noise suppression unavailable on AVCaptureSession path — VP requires AVAudioEngine to own input"
-        )
-      }
-      let captureSource = AVCaptureSessionSource()
-      #if DEBUG
-        // Candidate A (#1377): under a force-case, pin the capture session to the
-        // user-selected device (e.g. Bluetooth). `.automatic` never emits
-        // `.forcedCaptureSession`, so the shipped path leaves the target nil
-        // (built-in) — byte-identical to today.
-        if decision.reason == .forcedCaptureSession {
-          captureSource.targetDeviceUID = effectiveInputDeviceUID()
-        }
-      #endif
-      source = captureSource
     case .audioEngine:
       let engineSource = AVAudioEngineSource()
       engineSource.noiseSuppressionEnabled = noiseSuppressionEnabled
@@ -842,7 +799,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// third candidate exists, so this maps each concrete type explicitly.
   private static func sourceType(of source: any AudioInputSource) -> CaptureSourceType? {
     if source is AVAudioEngineSource { return .audioEngine }
-    if source is AVCaptureSessionSource { return .captureSession }
     if source is HALDeviceInputSource { return .halDeviceInput }
     return nil
   }
@@ -853,7 +809,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// enum case and must be audited, not trusted to the compiler).
   private static func backendLabel(for sourceType: CaptureSourceType) -> String {
     switch sourceType {
-    case .captureSession: return "AVCaptureSession"
     case .audioEngine: return "AVAudioEngine"
     case .halDeviceInput: return "HALDeviceInput"
     }

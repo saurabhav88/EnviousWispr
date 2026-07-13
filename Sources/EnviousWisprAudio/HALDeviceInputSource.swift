@@ -5,7 +5,7 @@ import EnviousWisprCore
 import os
 
 /// Cross-thread set-once latch for "did any buffer reach the delegate this
-/// session." Mirrors `AVCaptureSessionSource`'s `CaptureLivenessFlag` (a
+/// session." Mirrors the former capture-session source's `CaptureLivenessFlag` (a
 /// private type per file, so not shared directly).
 private final class HALCaptureLivenessFlag: Sendable {
   private let _lock = OSAllocatedUnfairLock(initialState: false)
@@ -192,7 +192,7 @@ private final class HALRenderContext: @unchecked Sendable {
   /// Drain everything currently in the ring and forward through
   /// `PreRollForwarder`, reconstructing an `AVAudioPCMBuffer` per chunk (the
   /// same per-chunk allocation shape `AVAudioEngineSource`'s tap handler and
-  /// `AVCaptureSessionSource`'s delegate already use on their own callback
+  /// the source delegates already use on their own callback
   /// queues — here it runs one hop off the true HAL IO thread instead of on
   /// it, since this function is called from the dedicated consumer thread,
   /// never directly from the render callback).
@@ -276,9 +276,9 @@ private final class HALRenderContext: @unchecked Sendable {
 
 /// AUHAL (`kAudioUnitSubType_HALOutput`) input-only audio capture source —
 /// #1377 candidate D, reinstated 2026-07-08 to spike against candidate A
-/// (`AVCaptureSessionSource`) on real Bluetooth hardware. Opens ANY device
+/// (the retired capture-session source) on real Bluetooth hardware. Opens ANY device
 /// directly by `AudioDeviceID` (built-in, wired, or Bluetooth) via
-/// `kAudioOutputUnitProperty_CurrentDevice`, without an `AVCaptureSession` or
+/// `kAudioOutputUnitProperty_CurrentDevice`, without a capture session or
 /// `AVAudioEngine` aggregate-device layer.
 ///
 /// Format conversion is done EXPLICITLY, not by AUHAL: AUHAL input does NOT
@@ -309,8 +309,6 @@ final class HALDeviceInputSource: AudioInputSource {
   var onInterrupted: ((EngineInterruptionCause) -> Void)?
   var onLifecycleSignal: (@Sendable (String) -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
-  /// No `AVCaptureSession` layer — stays nil, matching `AVAudioEngineSource`.
-  var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
   private(set) var captureGeneration: UInt64 = 0
 
   nonisolated let captureSourceType: String = "hal_device_input"

@@ -23,7 +23,6 @@ struct WedgeRecoveryRouterTests {
 
     #expect(audio.onCaptureStalled == nil)
     #expect(audio.onXPCReplyFailed == nil)
-    #expect(audio.onCaptureSessionInterruption == nil)
 
     let router = WedgeRecoveryRouter(
       audioCapture: audio,
@@ -35,7 +34,6 @@ struct WedgeRecoveryRouterTests {
 
     #expect(audio.onCaptureStalled != nil)
     #expect(audio.onXPCReplyFailed != nil)
-    #expect(audio.onCaptureSessionInterruption != nil)
     withExtendedLifetime(router) {}
   }
 
@@ -69,10 +67,8 @@ struct WedgeRecoveryRouterTests {
     audio.onCaptureStalled?(DictationRuntimeFixtures.captureStallContext(sessionID: 7))
     audio.onXPCReplyFailed?(
       DictationRuntimeFixtures.xpcReplyFailureContext(sessionID: 8))
-    audio.onCaptureSessionInterruption?(
-      DictationRuntimeFixtures.captureSessionInterruptionContext(sessionID: 9))
 
-    #expect(sessionFilterCalls == [7, 8, 9])
+    #expect(sessionFilterCalls == [7, 8])
     #expect(resolverCallCount == 0)
     withExtendedLifetime(router) {}
   }
@@ -103,10 +99,8 @@ struct WedgeRecoveryRouterTests {
     audio.onCaptureStalled?(DictationRuntimeFixtures.captureStallContext(sessionID: 1))
     audio.onXPCReplyFailed?(
       DictationRuntimeFixtures.xpcReplyFailureContext(sessionID: 1))
-    audio.onCaptureSessionInterruption?(
-      DictationRuntimeFixtures.captureSessionInterruptionContext(sessionID: 1))
 
-    #expect(resolverCallCount == 3)
+    #expect(resolverCallCount == 2)
     withExtendedLifetime(router) {}
   }
 }

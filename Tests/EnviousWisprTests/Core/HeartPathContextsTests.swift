@@ -27,12 +27,6 @@ struct HeartPathContextsTests {
     #expect(ctx.formatMismatchObserved == false)
   }
 
-  @Test("CaptureSessionInterruptionContext kinds are stable")
-  func captureSessionInterruptionKinds() {
-    #expect(CaptureSessionInterruptionContext.Kind.wasInterrupted.rawValue == "wasInterrupted")
-    #expect(CaptureSessionInterruptionContext.Kind.runtimeError.rawValue == "runtimeError")
-  }
-
   @Test("XPCReplyFailureContext retains replyStage verbatim")
   func xpcReplyFailureContext() {
     let ctx = XPCReplyFailureContext(

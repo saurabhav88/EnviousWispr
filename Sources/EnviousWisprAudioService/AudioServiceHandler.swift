@@ -114,8 +114,8 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
     // Engine interruption callback: fires on @MainActor. Relay the cause's raw
     // value across XPC. The host preserves `.deviceRemoved` (the helper ran the
     // liveness check; the host cannot re-run it) and collapses every other loss
-    // cause to `.engineLost` (AVCaptureSession interruptions have no separate
-    // relay across the boundary, so they have no other owner there). See
+    // cause to `.engineLost` (no other loss cause has a separate relay across
+    // the boundary, so none has another owner there). See
     // `AudioCaptureProxy.engineInterrupted(cause:)` (issue #1174 A3; the
     // max-duration cap left this channel in #1408 A3 — it relays via
     // `maxDurationReachedTriggered` below).

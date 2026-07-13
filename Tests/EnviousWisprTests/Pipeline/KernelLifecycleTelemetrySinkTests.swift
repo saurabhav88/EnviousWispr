@@ -379,8 +379,8 @@ import Testing
   // #1174 A3 — matcher-set-adversarial: the `.audioInterrupted` capture gate
   // flips on the cause. Only `.engineLost` (a lost dictation with no other owner)
   // captures `.audioCaptureFailed`; the two already-owned causes
-  // (`.captureSessionLost`, `.xpcConnectionLost`) must emit NO captureError, so
-  // A3 never double-counts a loss already owned by `captureSessionInterrupted`
+  // (`.xpcConnectionLost`) must emit NO captureError, so
+  // A3 never double-counts a loss already owned by another emitter
   // / `onXPCServiceError`. (`.maxDurationReached` was deleted by #1408 A3 — the
   // cap routes as a normal stop and can no longer reach this gate at all.)
   // Every case resets recording state.
@@ -404,7 +404,7 @@ import Testing
   @Test(".audioInterrupted suppresses the two already-owned causes (no double-count)")
   func audioInterruptedSuppressesOwnedCauses() {
     for cause: EngineInterruptionCause in [
-      .captureSessionLost, .xpcConnectionLost,
+      .xpcConnectionLost
     ] {
       let recorder = Recorder()
       let sink = makeSink(recorder: recorder)

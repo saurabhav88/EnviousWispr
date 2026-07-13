@@ -238,7 +238,7 @@
         // continuation. Tests the PROXY-side stall watchdog (XPC-channel buffer
         // drop), NOT real OS-level audio interruption recovery in
         // `AVAudioEngineSource.handleEngineConfigurationChange()` or
-        // `AVCaptureSessionSource` interruption handlers — those run in the
+        // capture-source interruption handlers — those run in the
         // service process and are not reachable from this host-process endpoint.
         // For real audio-stack interruption testing see `docs/LANE_B_AUDIO_TESTS.md`.
         if let n = parseIntCommand(cmd, prefix: "force_proxy_buffer_drop(") {

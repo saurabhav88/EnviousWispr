@@ -75,10 +75,6 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
     let effective: String
     let usedActualBoundTransport: Bool
     switch decision.sourceType {
-    case .captureSession:
-      // The capture-session path opens the built-in mic only today (bible R4).
-      effective = "built_in"
-      usedActualBoundTransport = false
     case .audioEngine:
       // Mirror AVAudioEngineSource's device resolution exactly: the preferred
       // override, else the stored selection, else the system-default input

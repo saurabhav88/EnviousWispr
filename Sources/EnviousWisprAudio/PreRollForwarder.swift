@@ -202,7 +202,7 @@ final class PreRollForwarder: @unchecked Sendable {
   // MARK: - Two-Step Activation (Convenience)
 
   /// Full two-step activation: beginActivation, feed pre-roll, commitCapture, feed delta.
-  /// Consolidates the repeated pattern from both AVAudioEngineSource and AVCaptureSessionSource.
+  /// Consolidates the repeated pattern shared by the capture source backends.
   func activate(
     onSamples: (@Sendable (_ samples: [Float], _ audioLevel: Float) -> Void)?,
     onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?,

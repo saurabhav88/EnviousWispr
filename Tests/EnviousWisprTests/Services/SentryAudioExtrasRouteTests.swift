@@ -16,7 +16,7 @@ struct SentryAudioExtrasRouteTests {
   @Test("route params populate the capture.* keys")
   func routeKeysPresent() {
     let extras = SentryAudioExtras.buildCaptureExtras(
-      route: "capture_session_bt", sourceType: "xpc_proxy", sessionID: 1,
+      route: "hal_device_input", sourceType: "xpc_proxy", sessionID: 1,
       isActivelyCapturing: true, inputDeviceUIDPreferred: nil,
       inputDeviceUIDSystemDefault: nil, failureMode: "no_audio_captured",
       selectedTransport: "bluetooth", effectiveTransport: "built_in",

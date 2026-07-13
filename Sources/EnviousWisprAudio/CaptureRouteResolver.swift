@@ -3,11 +3,10 @@ import Foundation  // UserDefaults (DEBUG bench override); explicit, not transit
 
 /// Policy for selecting the audio capture source.
 /// `.automatic` decides based on output route + input intent.
-/// `.forceEngine` / `.forceCaptureSession` are for debugging/testing.
+/// `.forceEngine` / `.forceHALDeviceInput` are for debugging/testing.
 enum CaptureSourcePolicy: Sendable {
   case automatic
   case forceEngine
-  case forceCaptureSession
   /// #1377 slice 2b (reinstated 2026-07-08) — force-select candidate D
   /// (`HALDeviceInputSource`) for the bake-off spike. `.automatic` never
   /// emits this; unreachable outside the bench.
@@ -17,7 +16,6 @@ enum CaptureSourcePolicy: Sendable {
 /// Which capture backend to use.
 public enum CaptureSourceType: Sendable {
   case audioEngine
-  case captureSession
   /// HAL-backed input source; follows the live system-default input when no
   /// target UID is supplied.
   case halDeviceInput
@@ -30,7 +28,6 @@ public enum CaptureRouteReason: String, Sendable {
   case noBTAutoInput
   case noBTUserSelectedDevice
   case forcedEngine
-  case forcedCaptureSession
   case forcedHALDeviceInput
   case fallbackToEngine
   case failedNoFallback
@@ -50,8 +47,6 @@ extension CaptureRouteReason {
       return "hal_device_input"
     case .forcedEngine, .fallbackToEngine:
       return "audio_engine"
-    case .forcedCaptureSession:
-      return "capture_session"
     case .forcedHALDeviceInput:
       return "hal_device_input"
     case .failedNoFallback:
@@ -129,14 +124,6 @@ struct CaptureRouteResolver {
         reason: .forcedEngine,
         rationale: "Policy override: forced engine",
         vpAvailable: true,
-        fallbackAllowed: false
-      )
-    case .forceCaptureSession:
-      return CaptureRouteDecision(
-        sourceType: .captureSession,
-        reason: .forcedCaptureSession,
-        rationale: "Policy override: forced capture session",
-        vpAvailable: false,
         fallbackAllowed: false
       )
     case .forceHALDeviceInput:
@@ -219,7 +206,7 @@ struct CaptureRouteResolver {
     /// Suite: `UserDefaults.standard`, which on the DEBUG dev build resolves to
     /// `com.enviouswispr.app.dev` — the SAME per-build store as
     /// `useXPCAudioService` (`SettingsManager.swift:455`). The harness sets it via
-    /// `defaults write com.enviouswispr.app.dev captureSourcePolicyOverride forceCaptureSession`.
+    /// `defaults write com.enviouswispr.app.dev captureSourcePolicyOverride forceHALDeviceInput`.
     /// Compiled out of release entirely; `.automatic` is the only path users reach.
     static let debugPolicyOverrideKey = "captureSourcePolicyOverride"
 
@@ -227,7 +214,6 @@ struct CaptureRouteResolver {
       guard let raw = defaults.string(forKey: debugPolicyOverrideKey) else { return nil }
       switch raw {
       case "forceEngine": return .forceEngine
-      case "forceCaptureSession": return .forceCaptureSession
       case "forceHALDeviceInput": return .forceHALDeviceInput
       default: return nil
       }

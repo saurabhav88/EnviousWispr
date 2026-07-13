@@ -86,7 +86,6 @@ struct FakeAudioCaptureTests {
     let capture = FakeAudioCapture()
     #expect(capture.onXPCServiceError == nil)
     #expect(capture.onXPCReplyFailed == nil)
-    #expect(capture.onCaptureSessionInterruption == nil)
     #expect(capture.onRouteResolved == nil)
   }
 

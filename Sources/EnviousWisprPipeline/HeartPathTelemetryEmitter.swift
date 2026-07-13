@@ -45,7 +45,7 @@ final class HeartPathTelemetryEmitter {
   // MARK: - Identity & dependencies
 
   /// Backend that owns this emitter. Used to preserve the historical
-  /// asymmetry where WhisperKit's `captureSessionInterruption` extra carried
+  /// asymmetry where WhisperKit's capture-interruption extra carried
   /// `"backend": "whisperKit"` while Parakeet's did not.
   private let backend: ASRBackendType
   private let captureTelemetry: CaptureTelemetryState
@@ -137,36 +137,6 @@ final class HeartPathTelemetryEmitter {
         "xpc.error_code": ctx.errorCode,
         "capture_session_id": Int(ctx.sessionID),
       ]
-    )
-  }
-
-  /// Emit `audio_capture_failed` for a capture-session interruption. Backend
-  /// extra preserved exactly as it was per pipeline (WhisperKit included it,
-  /// Parakeet did not).
-  func captureSessionInterrupted(ctx: CaptureSessionInterruptionContext) {
-    var extra: [String: Any] = [
-      "capture_session.kind": ctx.kind.rawValue,
-      "capture_session.reason_code": ctx.reasonCode.map { $0 } ?? NSNull(),
-      "capture_session.reason_label": ctx.reasonLabel ?? NSNull(),
-      "capture_session.error_domain": ctx.errorDomain ?? NSNull(),
-      "capture_session.error_code": ctx.errorCode.map { $0 } ?? NSNull(),
-      // #1095: the raw OS `errorDescription` (a free-form `localizedDescription`)
-      // is intentionally NOT emitted — `error_domain` + `error_code` above carry
-      // the error identity content-free. The field stays on the context for the
-      // error's own `errorDescription` (HeartPathError), not for telemetry.
-      "capture.is_actively_capturing": ctx.isActivelyCapturing,
-      "capture_session_id": Int(ctx.sessionID),
-    ]
-    // Historical asymmetry — only WhisperKit's interruption carried the
-    // backend extra. Preserve to keep Sentry grouping/triage stable.
-    if backend == .whisperKit {
-      extra["backend"] = backend.rawValue
-    }
-    captureError(
-      HeartPathError.captureSessionInterrupted(ctx: ctx),
-      .audioCaptureFailed,
-      "audio",
-      extra
     )
   }
 

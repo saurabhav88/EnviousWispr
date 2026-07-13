@@ -77,7 +77,6 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   // MARK: - Round-4 telemetry callbacks (issue #285)
 
   public var onCaptureStalled: ((CaptureStallContext) -> Void)?
-  public var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
   public var onXPCServiceError: ((XPCErrorContext) -> Void)?
   public var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
   public var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
@@ -1513,7 +1512,7 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
         // `.deviceRemoved` survives intact (the helper ran the liveness check);
         // every other loss cause collapses to `.engineLost` (no other owner
         // across the XPC boundary — there is no capture-session relay, so an
-        // XPC-mode AVCaptureSession interruption must be captured here too).
+        // XPC-mode interruptions must be captured here too).
         // The hard max-duration cap no longer travels here at all (#1408 A3:
         // `maxDurationReachedTriggered` is its own event channel).
         self.onEngineInterrupted?(EngineInterruptionCause.hostCause(forRelayedRawValue: cause))

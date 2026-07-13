@@ -3,9 +3,9 @@ import EnviousWisprCore
 import EnviousWisprPipeline
 import Foundation
 
-/// PR8 of #763 — routes capture-stall, XPC reply timeout, and capture-session
-/// interruption events to the active pipeline's telemetry target. Filters
-/// stale callbacks via `isCurrentSession` before dispatching.
+/// PR8 of #763 — routes capture-stall and XPC reply timeout events to the
+/// active pipeline's telemetry target. Filters stale callbacks via
+/// `isCurrentSession` before dispatching.
 @MainActor
 final class WedgeRecoveryRouter {
   let isCurrentSession: @MainActor (UInt64) -> Bool
@@ -28,10 +28,6 @@ final class WedgeRecoveryRouter {
     audioCapture.onXPCReplyFailed = { [weak self] ctx in
       guard let self, self.isCurrentSession(ctx.sessionID) else { return }
       self.resolveActiveTelemetryTarget()?.handleXPCReplyFailed(ctx)
-    }
-    audioCapture.onCaptureSessionInterruption = { [weak self] ctx in
-      guard let self, self.isCurrentSession(ctx.sessionID) else { return }
-      self.resolveActiveTelemetryTarget()?.handleCaptureSessionInterruption(ctx)
     }
   }
 
