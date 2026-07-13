@@ -30,6 +30,24 @@ public enum ModelLoadWatchdog {
   }
 }
 
+// MARK: - Sentry identity
+
+/// Pins `WedgeError`'s Sentry grouping key to the exact string it has been
+/// sending in production, so a future second case/shape can never renumber
+/// it (#1525 PR B). Not derived — measured against shipping code and
+/// cross-checked against the live Sentry issue title (ENVIOUSWISPR-30,
+/// `docs/sentry-identity-refactor/BIBLE.md` §2.5.5). `WedgeError` has one
+/// shape today, so there is nothing to reorder yet; this pin closes the
+/// latent risk before a second shape is ever added, mirroring
+/// `HeartPathError`'s shipped pattern (#1524).
+extension ModelLoadWatchdog.WedgeError: StableSentryErrorIdentity {
+  public var sentryFingerprintDescriptor: String {
+    "EnviousWisprCore.ModelLoadWatchdog.WedgeError#1"
+  }
+
+  public var sentrySemanticID: String { "modelload.wedge" }
+}
+
 /// #1388 step 1: thrown from `loadModel()` when the in-flight load was
 /// deliberately cancelled — a user Cancel during onboarding install, or the
 /// wedge guard's teardown (both route through `cancelInFlightLoad()`).
