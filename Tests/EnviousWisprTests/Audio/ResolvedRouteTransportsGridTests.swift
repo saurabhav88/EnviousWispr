@@ -1,3 +1,4 @@
+import CoreAudio
 import Foundation
 import Testing
 
@@ -19,6 +20,18 @@ struct ResolvedRouteTransportsGridTests {
       sourceType: source, reason: reason, rationale: "test",
       vpAvailable: false, fallbackAllowed: false)
   }
+
+  // #1529 — a fixed fake default device, injected via `derive`'s device-lookup
+  // closures, so tests asserting a specific `effective`/`selected` label never
+  // depend on which mic is actually live on the machine running the suite.
+  private let fakeDefaultDeviceID = AudioDeviceID(42)
+
+  private func fakeDefaultInputDeviceID() -> AudioDeviceID? { fakeDefaultDeviceID }
+  private func fakeDefaultOutputDeviceID() -> AudioDeviceID? { nil }
+  private func fakeTransportLabelForDevice(_ deviceID: AudioDeviceID) -> String? {
+    deviceID == fakeDefaultDeviceID ? "built_in" : nil
+  }
+  private func fakeTransportLabelForUID(_ uid: String) -> String? { nil }
 
   @Test(
     "derive is total over the sourceType × reason grid",
@@ -93,9 +106,15 @@ struct ResolvedRouteTransportsGridTests {
     // The exact misclassification the cloud reviewer flagged: a stored device
     // UID in selectedInputDeviceUID with an empty picker must not emit
     // explicit/bluetooth while route_reason stays Auto. All three agree on Auto.
+    // #1529 — the fake default device is injected so `effective == "built_in"`
+    // holds regardless of which mic is actually live on this machine.
     let r = ResolvedRouteTransports.derive(
       decision: makeDecision(.halDeviceInput, .btOutputAutoInput),
-      preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "fake-bt-uid")
+      preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "fake-bt-uid",
+      defaultInputDeviceID: fakeDefaultInputDeviceID,
+      defaultOutputDeviceID: fakeDefaultOutputDeviceID,
+      transportLabelForDevice: fakeTransportLabelForDevice,
+      transportLabelForUID: fakeTransportLabelForUID)
     #expect(r.inputSelectionMode == "auto")
     #expect(r.selected == "unknown")
     #expect(r.routeReason == "btOutputAutoInput")
@@ -117,12 +136,22 @@ struct ResolvedRouteTransportsGridTests {
     // AVAudioEngineSource resolves a missing pinned UID to nil and captures from
     // the system-default input (`resolvedDeviceID ?? defaultInputDeviceID()`),
     // so the effective transport must match Auto, NOT report "unknown".
+    // #1529 — both calls inject the SAME fake default device so the comparison
+    // is deterministic instead of racing two independent live CoreAudio reads.
     let disconnected = ResolvedRouteTransports.derive(
       decision: makeDecision(.audioEngine, .noBTUserSelectedDevice),
-      preferredInputDeviceIDOverride: "fake-disconnected-uid", selectedInputDeviceUID: "")
+      preferredInputDeviceIDOverride: "fake-disconnected-uid", selectedInputDeviceUID: "",
+      defaultInputDeviceID: fakeDefaultInputDeviceID,
+      defaultOutputDeviceID: fakeDefaultOutputDeviceID,
+      transportLabelForDevice: fakeTransportLabelForDevice,
+      transportLabelForUID: fakeTransportLabelForUID)
     let auto = ResolvedRouteTransports.derive(
       decision: makeDecision(.audioEngine, .noBTAutoInput),
-      preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "")
+      preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "",
+      defaultInputDeviceID: fakeDefaultInputDeviceID,
+      defaultOutputDeviceID: fakeDefaultOutputDeviceID,
+      transportLabelForDevice: fakeTransportLabelForDevice,
+      transportLabelForUID: fakeTransportLabelForUID)
     #expect(disconnected.effective == auto.effective)
     // The user's pick is unavailable, so `selected` stays unknown.
     #expect(disconnected.selected == "unknown")

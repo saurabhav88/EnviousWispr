@@ -103,10 +103,11 @@ public enum AudioDeviceEnumerator {
   /// the software harness glitch. Only the ABSENCE of an explicit UID (the
   /// user is on system-default / "Auto") falls through to the default.
   public static func resolveEffectiveInputDevice(
-    preferredOverride: String, selected: String
+    preferredOverride: String, selected: String,
+    defaultInputDeviceIDProvider: () -> AudioDeviceID? = AudioDeviceEnumerator.defaultInputDeviceID
   ) -> AudioDeviceID? {
     let uid = !preferredOverride.isEmpty ? preferredOverride : selected
-    guard !uid.isEmpty else { return defaultInputDeviceID() }
+    guard !uid.isEmpty else { return defaultInputDeviceIDProvider() }
     return deviceID(forUID: uid)
   }
 

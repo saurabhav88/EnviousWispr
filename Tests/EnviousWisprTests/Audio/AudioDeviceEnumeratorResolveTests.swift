@@ -16,9 +16,14 @@ struct AudioDeviceEnumeratorResolveTests {
 
   @Test("no explicit selection (both empty) falls through to the system default")
   func noExplicitSelectionUsesDefault() {
+    // #1529 — inject a fixed fake default device instead of two independent
+    // live CoreAudio reads (one inside the resolver, one in the assertion),
+    // which could disagree if the live default device changed between calls.
+    let fakeDefaultDeviceID = AudioDeviceID(42)
     let resolved = AudioDeviceEnumerator.resolveEffectiveInputDevice(
-      preferredOverride: "", selected: "")
-    #expect(resolved == AudioDeviceEnumerator.defaultInputDeviceID())
+      preferredOverride: "", selected: "",
+      defaultInputDeviceIDProvider: { fakeDefaultDeviceID })
+    #expect(resolved == fakeDefaultDeviceID)
   }
 
   @Test(
