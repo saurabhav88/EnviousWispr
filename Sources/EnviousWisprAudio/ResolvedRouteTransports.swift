@@ -55,7 +55,12 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
     decision: CaptureRouteDecision,
     preferredInputDeviceIDOverride: String,
     selectedInputDeviceUID: String,
-    actualBoundTransport: String? = nil
+    actualBoundTransport: String? = nil,
+    defaultInputDeviceID: () -> AudioDeviceID? = AudioDeviceEnumerator.defaultInputDeviceID,
+    defaultOutputDeviceID: () -> AudioDeviceID? = AudioDeviceEnumerator.defaultOutputDeviceID,
+    transportLabelForDevice: (AudioDeviceID) -> String? = AudioDeviceEnumerator.transportLabel(
+      for:),
+    transportLabelForUID: (String) -> String? = AudioDeviceEnumerator.transportLabel(forUID:)
   ) -> ResolvedRouteTransports {
     // The user's EXPLICIT pick is the settings mic picker, which binds to
     // `preferredInputDeviceIDOverride` ("Auto" = empty) — AND the route resolver
@@ -70,7 +75,7 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
     let selected =
       preferredInputDeviceIDOverride.isEmpty
       ? "unknown"
-      : (AudioDeviceEnumerator.transportLabel(forUID: preferredInputDeviceIDOverride) ?? "unknown")
+      : (transportLabelForUID(preferredInputDeviceIDOverride) ?? "unknown")
 
     let effective: String
     let usedActualBoundTransport: Bool
@@ -84,10 +89,10 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
       let engineUID =
         preferredInputDeviceIDOverride.isEmpty
         ? selectedInputDeviceUID : preferredInputDeviceIDOverride
-      if !engineUID.isEmpty, let label = AudioDeviceEnumerator.transportLabel(forUID: engineUID) {
+      if !engineUID.isEmpty, let label = transportLabelForUID(engineUID) {
         effective = label
-      } else if let defaultID = AudioDeviceEnumerator.defaultInputDeviceID() {
-        effective = AudioDeviceEnumerator.transportLabel(for: defaultID) ?? "unknown"
+      } else if let defaultID = defaultInputDeviceID() {
+        effective = transportLabelForDevice(defaultID) ?? "unknown"
       } else {
         effective = "unknown"
       }
@@ -100,10 +105,10 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
         let halUID =
           preferredInputDeviceIDOverride.isEmpty
           ? selectedInputDeviceUID : preferredInputDeviceIDOverride
-        if !halUID.isEmpty, let label = AudioDeviceEnumerator.transportLabel(forUID: halUID) {
+        if !halUID.isEmpty, let label = transportLabelForUID(halUID) {
           effective = label
-        } else if let defaultID = AudioDeviceEnumerator.defaultInputDeviceID() {
-          effective = AudioDeviceEnumerator.transportLabel(for: defaultID) ?? "unknown"
+        } else if let defaultID = defaultInputDeviceID() {
+          effective = transportLabelForDevice(defaultID) ?? "unknown"
         } else {
           effective = "unknown"
         }
@@ -116,8 +121,8 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
       ? decision.reason.rawValue : nil
 
     let outputTransport =
-      AudioDeviceEnumerator.defaultOutputDeviceID()
-      .flatMap { AudioDeviceEnumerator.transportLabel(for: $0) } ?? "unknown"
+      defaultOutputDeviceID()
+      .flatMap { transportLabelForDevice($0) } ?? "unknown"
 
     return ResolvedRouteTransports(
       selected: selected,
