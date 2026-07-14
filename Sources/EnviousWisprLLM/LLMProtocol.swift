@@ -268,6 +268,65 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
   }
 }
 
+// MARK: - Sentry identity
+
+/// Pins each case's Sentry grouping key to the exact string it has been
+/// sending in production, so the identity survives any future add/remove of
+/// a case (#1525 PR E; mirrors `HeartPathError`/`OutputClassifierError`).
+///
+/// The 13 descriptors below are NOT derived — they were MEASURED against
+/// shipping code (both a throwaway `swift test` and the canonical
+/// `scripts/xcode-test.sh` Xcode-engine run agree) and cross-checked against
+/// live Sentry issue titles (`docs/audits/2026-07-14-1525-pr-e-preflight.md`).
+/// The bridged codes do NOT follow source declaration order — they group by
+/// associated-value payload shape, sequential by declaration order within
+/// each shape group. Live data proves this has already drifted release to
+/// release for `.classified` (`#6` on dist 2.2.1, `#8` on dist 2.3.1) — this
+/// pin freezes it going forward.
+///
+/// NEVER change any of these shipped `sentryFingerprintDescriptor` values:
+/// doing so would split an existing production Sentry issue's history in
+/// two. A NEW case gets a fresh unused number, never a reused one. Both
+/// switches are exhaustive, so a new case cannot compile until it declares
+/// its own identity here.
+extension LLMError: StableSentryErrorIdentity {
+  public var sentryFingerprintDescriptor: String {
+    switch self {
+    case .requestFailed: return "EnviousWisprLLM.LLMError#0"
+    case .modelNotFound: return "EnviousWisprLLM.LLMError#1"
+    case .frameworkUnavailable: return "EnviousWisprLLM.LLMError#2"
+    case .modelNotReady: return "EnviousWisprLLM.LLMError#3"
+    case .unsupportedInputLanguage: return "EnviousWisprLLM.LLMError#4"
+    case .outputLanguageDrift: return "EnviousWisprLLM.LLMError#5"
+    case .egOneSkipped: return "EnviousWisprLLM.LLMError#6"
+    case .localPolishNotReady: return "EnviousWisprLLM.LLMError#7"
+    case .classified: return "EnviousWisprLLM.LLMError#8"
+    case .invalidAPIKey: return "EnviousWisprLLM.LLMError#9"
+    case .rateLimited: return "EnviousWisprLLM.LLMError#10"
+    case .emptyResponse: return "EnviousWisprLLM.LLMError#11"
+    case .providerUnavailable: return "EnviousWisprLLM.LLMError#12"
+    }
+  }
+
+  public var sentrySemanticID: String {
+    switch self {
+    case .requestFailed: return "llm.request_failed"
+    case .modelNotFound: return "llm.model_not_found"
+    case .frameworkUnavailable: return "llm.framework_unavailable"
+    case .modelNotReady: return "llm.model_not_ready"
+    case .unsupportedInputLanguage: return "llm.unsupported_input_language"
+    case .outputLanguageDrift: return "llm.output_language_drift"
+    case .egOneSkipped: return "llm.eg_one_skipped"
+    case .localPolishNotReady: return "llm.local_polish_not_ready"
+    case .classified: return "llm.classified"
+    case .invalidAPIKey: return "llm.invalid_api_key"
+    case .rateLimited: return "llm.rate_limited"
+    case .emptyResponse: return "llm.empty_response"
+    case .providerUnavailable: return "llm.provider_unavailable"
+    }
+  }
+}
+
 /// Why an EG-1 polish was silently bypassed (#1271). Raw values are the
 /// `llm.polish_skipped` telemetry reason strings — one `local_polish_`
 /// prefix so a single analytics query captures every EG-1 skip mode
