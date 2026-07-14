@@ -153,10 +153,24 @@ private final class HALRenderContext: @unchecked Sendable {
   /// P2: `DispatchQueue.async` from the HAL IO thread can allocate/lock —
   /// signaling a semaphore is the RT-safe wake primitive).
   let semaphore = DispatchSemaphore(value: 0)
-  /// Set once per session by the callback consumer; read by the MainActor
-  /// watchdog closure via `wasReceived()` on `liveness` instead — kept here
-  /// only so the consumer can skip the cross-thread mark after the first hit.
-  var bufferSeenThisSession = false
+  #if DEBUG
+    /// (#1540) DEBUG-only best-effort tripwire for the teardown lifetime
+    /// assumption — NOT a formal proof. The render callback increments this on
+    /// entry and `defer`-decrements on every exit; `teardownUnit()` reads it
+    /// after AudioOutputUnitStop/Uninitialize/Dispose and before freeing
+    /// `scratch`. A NONZERO reading is always a real fault (a callback was
+    /// genuinely still running at free time = a use-after-free window) — there
+    /// are no false positives. A zero reading is strong but not conclusive: a
+    /// callback paused between resolving `inRefCon` and the increment below is
+    /// briefly invisible (Codex r1 P2). Combined with the burn-in stress it is
+    /// enough signal to catch the assumption breaking without a sanitizer; zero
+    /// release cost (compiled out).
+    let inFlightRenderCallbacks = OSAllocatedUnfairLock(initialState: 0)
+    /// Set if a callback observed `stopped` already set on entry. Informational
+    /// only — a callback that bails at the stop guard before touching `scratch`
+    /// is SAFE by design; only a nonzero in-flight count at free time is a UAF.
+    let callbackEnteredAfterStop = OSAllocatedUnfairLock(initialState: false)
+  #endif
   /// Reused destination for `ring.pop(into:)` — sized once to `capacityFrames`
   /// so the drain's bounded memcpy (shared lock with the RT `push()` side)
   /// never allocates; the per-chunk `[Float]`/`AVAudioPCMBuffer` `forward()`
@@ -210,12 +224,16 @@ private final class HALRenderContext: @unchecked Sendable {
       // a buffer downstream — never on mere receipt of a native-rate chunk
       // (cloud review P2). Marking on receipt would let a converter that
       // silently fails on every call (e.g. an unexpected format edge case)
-      // permanently defeat the "no audio detected" stall watchdog, since
-      // `bufferSeenThisSession` only ever flips once per recording.
-      let routed = forward(nativeBuffer: nativeBuffer)
-      if routed, !bufferSeenThisSession {
+      // permanently defeat the "no audio detected" stall watchdog.
+      // `markReceived()` is an idempotent latch, so marking on every routed
+      // buffer is correct and cheap (one uncontended lock on this consumer
+      // thread). `liveness` is the SINGLE authority — a former separate
+      // `bufferSeenThisSession` dedup flag created a check-then-set race where a
+      // session reset landing between the mark and the flag-set left the flag
+      // true while liveness was reset false, falsely tripping the watchdog
+      // (#1540, Codex r1 P2). Deleting the flag closes that race.
+      if forward(nativeBuffer: nativeBuffer) {
         liveness.markReceived()
-        bufferSeenThisSession = true
       }
     }
   }
@@ -267,9 +285,6 @@ private final class HALRenderContext: @unchecked Sendable {
     return true
   }
 
-  func resetSession() {
-    bufferSeenThisSession = false
-  }
 }
 
 /// AUHAL (`kAudioUnitSubType_HALOutput`) input-only audio capture source —
@@ -673,7 +688,6 @@ final class HALDeviceInputSource: AudioInputSource {
 
     captureGeneration &+= 1
     captureLiveness.reset()
-    renderContext?.resetSession()
     // #1434: per-session capture-health state. The warm unit outlives sessions
     // (deactivateCapture keeps it pre-rolling), so an idle-time format change
     // or pre-roll ring drop must not bleed into the next recording's telemetry.
@@ -937,13 +951,44 @@ final class HALDeviceInputSource: AudioInputSource {
     removeDeviceIsAliveListener()
     removeFormatChangeListeners()
     if let unit = audioUnit {
-      // Synchronous per Apple docs — blocks until the IO thread has genuinely
-      // stopped calling the render callback, so nothing below can race a live
-      // `halRenderProc` invocation.
+      // These are expected to be synchronous: `AudioOutputUnitStop` +
+      // `AudioUnitUninitialize` + dispose should leave no `halRenderProc`
+      // running, so nothing below races a live callback touching `scratch`.
+      // Apple's docs do NOT explicitly promise the callback has RETURNED
+      // (#1540), so the DEBUG quiescence assert below verifies it empirically
+      // rather than trusting the assumption — this is the load-bearing check
+      // before the in-process collapse (C1) makes a UAF here a full-app crash.
       AudioOutputUnitStop(unit)
       AudioUnitUninitialize(unit)
       AudioComponentInstanceDispose(unit)
     }
+    #if DEBUG
+      // (#1540) Best-effort quiescence tripwire for the assumption above: after
+      // stop/uninitialize/dispose, NO render callback should still be running,
+      // so freeing `scratch` below cannot be a use-after-free. A NONZERO count
+      // here is always a real fault (a callback genuinely still in flight at
+      // free time) — no false positives — and under stress this catches Apple's
+      // stop failing to quiesce before the in-process collapse (C1) turns it
+      // into a full-app crash. A zero count is strong but not conclusive (see
+      // the counter's declaration). `callbackEnteredAfterStop` is logged for
+      // context but is NOT itself a fault (a callback that bails at the stop
+      // guard is safe).
+      if let context = renderContext {
+        let inFlight = context.inFlightRenderCallbacks.withLock { $0 }
+        let racedStop = context.callbackEnteredAfterStop.withLock { $0 }
+        if inFlight != 0 || racedStop {
+          AudioCaptureManager.btRouteLog(
+            "HAL teardown quiescence (#1540): inFlightRenderCallbacks=\(inFlight) callbackEnteredAfterStop=\(racedStop)"
+              + (inFlight != 0
+                ? " — AudioOutputUnitStop did NOT quiesce the RT callback before free (UAF window)"
+                : " — callback raced the stop flag but bailed safely (no UAF)"))
+        }
+        assert(
+          inFlight == 0,
+          "HAL teardown: \(inFlight) render callback(s) still in flight after stop/dispose — freeing scratch is a use-after-free (#1540)"
+        )
+      }
+    #endif
     // Wake the consumer thread (blocked on the semaphore) so it observes
     // `stoppedFlag` and exits its loop. No RT callback can signal again after
     // `AudioOutputUnitStop` returned above, so this is the FINAL signal —
@@ -1176,6 +1221,14 @@ private func halRenderProc(
   ioData: UnsafeMutablePointer<AudioBufferList>?
 ) -> OSStatus {
   let context = Unmanaged<HALRenderContext>.fromOpaque(inRefCon).takeUnretainedValue()
+  #if DEBUG
+    // (#1540) Count this callback as in-flight for the whole invocation so
+    // `teardownUnit()` can assert quiescence before freeing `scratch`. The
+    // `defer` guarantees the decrement on EVERY return path below.
+    context.inFlightRenderCallbacks.withLock { $0 += 1 }
+    defer { context.inFlightRenderCallbacks.withLock { $0 -= 1 } }
+    if context.stopped.isSet() { context.callbackEnteredAfterStop.withLock { $0 = true } }
+  #endif
   guard !context.stopped.isSet() else { return noErr }
 
   // Clamp BEFORE calling AudioUnitRender, not just after: if
