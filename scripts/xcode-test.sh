@@ -5,11 +5,10 @@ set -euo pipefail
 # (#913 PR7). Canonical replacement for the retired CLT-only `swift-test.sh`
 # (whose header falsely claimed "Xcode is not installed").
 #
-# Mirrors CI exactly: pr-check.yml runs the Debug test lane (the PR `build-check`
-# gate); main-post-merge.yml adds the Release-config lane with
-# ENABLE_TESTABILITY=YES. `--release` runs that second lane locally — required
-# for PRs that add `#if DEBUG`-gated test symbols (the PR gate never compiles
-# tests in release).
+# Mirrors CI: pr-check.yml runs Debug tests and compiles the Release test
+# targets without executing them; main-post-merge.yml additionally runs the
+# Release suite with ENABLE_TESTABILITY=YES. `--release` runs that full
+# Release suite locally for reproduction or stronger pre-push proof.
 #
 # Usage:
 #   scripts/xcode-test.sh                 # Debug lane (matches the PR gate)
