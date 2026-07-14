@@ -328,13 +328,14 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   public var onSessionEndedWithoutSave: (@MainActor (String?, RecordingTerminalKind) -> Void)?
 
-  /// Fire-once latch for `onSessionEndedWithoutSave` (sibling to `lastFiredState`).
-  /// Tracks the last RAW `kernel.state` the ended-without-save check evaluated so
-  /// a re-armed observation can't double-fire for one terminal, while two
-  /// consecutive sessions ending at the SAME terminal still each fire (the
-  /// intervening `.idle`/`.preparing`/`.recording` transitions change this value).
+  /// Fire-once latch for `onSessionEndedWithoutSave` (#1548 D1). Tracks the
+  /// `currentSessionID` the ended-without-save check last fired for, so a
+  /// re-armed observation can't double-fire for one concluded session while two
+  /// consecutive sessions each fire (each has a distinct `SessionID`). Keyed by
+  /// session identity, NOT state — a conclusion now lands on `.idle` with the
+  /// ending on `recordingOutcome` (r1 Q1.1). `nil` until the first conclusion.
   @ObservationIgnored
-  private var lastEndedWithoutSaveObservedState: RecordingSessionState
+  private var lastEndedWithoutSaveSessionID: SessionID?
 
   /// #1063 PR2 (Codex terminal-kind matrix) — disposition for the CURRENT
   /// session's `.cancelled` terminal. `.cancelled` is reached by BOTH a genuine
@@ -400,8 +401,9 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     self.steps = steps
     self.adapter = adapter
     self.captureErrorSink = captureErrorSink
-    self.lastFiredState = Self.pipelineState(for: kernel.state, externalError: nil)
-    self.lastEndedWithoutSaveObservedState = kernel.state
+    self.lastFiredState = Self.pipelineState(
+      for: kernel.state, outcome: kernel.recordingOutcome, externalError: nil)
+    self.lastEndedWithoutSaveSessionID = nil
   }
 
   /// Cold-boot warm-up coordinator (#879). The SINGLE shared entry every warm-up
@@ -611,7 +613,9 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// The kernel's `RecordingSessionState` mapped to the legacy `PipelineState`.
   public var state: PipelineState {
     Self.pipelineState(
-      for: kernel.state, externalError: lastExternalError,
+      for: kernel.state, outcome: kernel.recordingOutcome,
+      deliveringPhase: kernel.deliveringPhase,
+      externalError: lastExternalError,
       failureDetail: kernel.lastFailureDetail,
       interruptionCause: kernel.lastAudioInterruptionCause)
   }
@@ -765,7 +769,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// an inappropriate stop request mid-warm-up or duplicate a stop already
   /// in flight.
   public func stopAndTranscribe() async {
-    guard kernel.state == .recording else { return }
+    guard kernel.state == .live else { return }
     kernel.requestStop()
     await awaitKernelTerminal()
   }
@@ -785,17 +789,16 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// behavior for those states via `setExternalError`.
   public func handleEngineInterruption(_ cause: EngineInterruptionCause) {
     switch kernel.state {
-    case .recording:
+    case .live:
       kernel.externalEngineInterrupted(cause)
-    case .preparing, .warmingUp, .stopping, .transcribing, .finalizing:
+    case .arming, .stopping, .delivering:
       // Direct PostHog state update — the kernel won't reach
-      // `.audioInterrupted` from here, so the lifecycle sink's
+      // `.audioInterrupted` from here (§5.2 parity), so the lifecycle sink's
       // `.audioInterrupted` handler never fires.
       SentryBreadcrumb.updateRecordingState(active: false)
       setExternalError(InterruptionMessages.message(for: cause))
-    case .idle, .completed, .failed, .cancelled, .discarded, .noSpeech,
-      .audioInterrupted, .asrInterrupted:
-      // Already idle / terminal — no useful action. Router-stale calls
+    case .idle:
+      // Already idle / concluded — no useful action. Router-stale calls
       // land here.
       break
     }
@@ -813,10 +816,25 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// behavior for `.preparing`, `.warmingUp`, `.stopping`, `.finalizing`
   /// via direct Sentry emission + `setExternalError`.
   public func handleASRServiceInterruption() {
+    // `.live` and `.delivering(.transcribing)` route to the kernel FSM; every
+    // other active state (including the `delivering(.finalizing(_))` safe point)
+    // takes the driver fallback (§5.2 parity).
+    let routesToKernel: Bool
     switch kernel.state {
-    case .recording, .transcribing:
+    case .live:
+      routesToKernel = true
+    case .delivering:
+      routesToKernel = (kernel.deliveringPhase == .transcribing)
+    case .arming, .stopping:
+      routesToKernel = false
+    case .idle:
+      // Already idle / concluded — no useful action. Router-stale calls
+      // land here.
+      return
+    }
+    if routesToKernel {
       kernel.externalASRInterrupted()
-    case .preparing, .warmingUp, .stopping, .finalizing:
+    } else {
       // Kernel won't reach `.asrInterrupted` from here, so the lifecycle
       // sink's `.asrInterrupted(wasRecording:)` handler never fires —
       // emit the captureError directly with `was_recording == false`.
@@ -840,11 +858,6 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         .xpcServiceError, "asr",
         ["was_recording": false, "backend": backendID], nil)
       setExternalError(Self.asrInterruptedMessage)
-    case .idle, .completed, .failed, .cancelled, .discarded, .noSpeech,
-      .audioInterrupted, .asrInterrupted:
-      // Already idle / terminal — no useful action. Router-stale calls
-      // land here.
-      break
     }
   }
 
@@ -912,69 +925,58 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     if let lastExternalError {
       return .error(message: lastExternalError)
     }
+    // A concluded session carries its ending category on `recordingOutcome`
+    // (state has returned to `.idle`, #1548 D1). The ending pill reads from the
+    // outcome, not an FSM terminal state.
+    if let outcome = kernel.recordingOutcome {
+      switch outcome {
+      case .completed, .cancelled, .discarded, .noSpeech:
+        return .hidden
+      case .failed(let reason):
+        // Thread `kernel.lastFailureDetail` so the overlay surfaces the same
+        // enriched "Model load failed: <detail>" / "Recording failed: <detail>"
+        // / "Transcription failed: <detail>" string the `state` getter does.
+        return .error(
+          message: Self.failureMessage(reason, detail: kernel.lastFailureDetail))
+      case .noTransport:
+        // Existing "No audio captured" copy (locked projection, §4 / §7) — no
+        // new user-facing string.
+        return .error(message: Self.failureMessage(.noAudioCaptured, detail: nil))
+      case .audioInterrupted:
+        return .interruption(
+          message: InterruptionMessages.message(for: kernel.lastAudioInterruptionCause))
+      case .asrInterrupted:
+        return .error(message: Self.asrInterruptedMessage)
+      }
+    }
     switch kernel.state {
-    case .idle, .completed, .cancelled, .discarded, .noSpeech:
+    case .idle:
       return .hidden
-    case .warmingUp:
-      // A real model load is running — `runForwardPath` only transitions to
-      // `.warmingUp` when `adapter.readiness != .ready`. #879: replace the bare
-      // "Preparing dictation…" wall with the honest cold-boot pill so the wall
-      // is unreachable on any cold path. Both press paths (`RecordingStarter`
-      // `start()` PTT and `toggle(source:)`) now return early on a cold engine
-      // without minting a session, so the only way a session reaches
-      // `.warmingUp` is a readiness-flip race (ready at the press-time snapshot,
-      // not-ready by the time the kernel starts) — and that race gets the
-      // plain-English pill here instead of the wall.
-      // #959: a warm-respawn (idle ASR service reaped, model still cached,
-      // re-warm ~0.2s) sets the latch — route through the #930 warm `.recording`
-      // morph so no cold pill flashes for the sub-second reload. True cold boot
-      // (latch unset) keeps the honest pill.
-      return warmRespawnInFlight
-        ? .recording(audioLevel: 0)
-        : .cachingModel(engineLabel: adapter.engineIdentity.displayName)
-    case .preparing:
-      // `.preparing` is a sub-10ms bookkeeping step (mint session, spawn the
-      // forward path). On a WARM engine (`adapter.readiness == .ready`) no
-      // `.warmingUp` load follows, so "Preparing dictation..." is a phantom
-      // flash on every press (#930). Project straight to the recording pill so
-      // the overlay is created ONCE at press time and the real `.recording`
-      // (same `.recording(audioLevel: 0)` intent) dedups into it — no label,
-      // and no tear-down/rebuild stutter that a `.hidden` projection caused
-      // (UAT 2026-05-31: `.hidden` forced a fresh-create pop; the label flash
-      // was equally unwanted). On a COLD engine a real `.warmingUp` load
-      // follows, so surface the honest cold-boot pill (#879), not the bare wall.
-      // #959: a warm-respawn also takes the warm morph (latch set) even though
-      // readiness is briefly `.notReady` during the ~0.2s reload.
+    case .arming:
+      // The pill is HIDDEN during Arming — it shows only when transport is
+      // proven (`.live`). Showing the recording pill early would defeat the
+      // whole transport gate (§3.2, D-013/D-020). A GENUINE cold model-load
+      // (`adapter.readiness != .ready`, not a warm-respawn) still surfaces the
+      // honest cold-boot pill; a warm engine / warm-respawn stays hidden until
+      // the first buffer.
       return (warmRespawnInFlight || adapter.readiness == .ready)
-        ? .recording(audioLevel: 0)
+        ? .hidden
         : .cachingModel(engineLabel: adapter.engineIdentity.displayName)
-    case .recording:
+    case .live:
       // The real level is supplied by `AudioCaptureManager` downstream — the
       // pipeline returns 0 here, exactly as the old Parakeet pipeline did.
       return .recording(audioLevel: 0)
-    case .stopping, .transcribing:
+    case .stopping:
       return .processing(label: transcribingPillLabel)
-    case .finalizing:
-      switch kernel.finalizingSubStatus {
-      case .transcribing:
+    case .delivering:
+      // The transcribing/polishing label comes from the delivering sub-phase
+      // (nested `FinalizingSubStatus`), replacing the old `finalizingSubStatus`.
+      switch kernel.deliveringPhase {
+      case .transcribing, .finalizing(.transcribing):
         return .processing(label: transcribingPillLabel)
-      case .polishing:
+      case .finalizing(.polishing):
         return .processing(label: "Polishing...")
       }
-    case .failed(let reason):
-      // Thread `kernel.lastFailureDetail` so the overlay surfaces the same
-      // enriched "Model load failed: <detail>" / "Recording failed: <detail>"
-      // / "Transcription failed: <detail>" string the `state` getter does —
-      // overlay is the visible user-facing path, and `state` is read by the
-      // lifecycle coordinator (Codex review of Div 4: keep the two paths in
-      // sync).
-      return .error(
-        message: Self.failureMessage(reason, detail: kernel.lastFailureDetail))
-    case .audioInterrupted:
-      return .interruption(
-        message: InterruptionMessages.message(for: kernel.lastAudioInterruptionCause))
-    case .asrInterrupted:
-      return .error(message: Self.asrInterruptedMessage)
     }
   }
 
@@ -991,11 +993,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       try await kernel.preWarm()
     case .toggleRecording(let config):
       switch kernel.state {
-      case .idle, .completed, .failed, .cancelled, .discarded, .noSpeech,
-        .audioInterrupted, .asrInterrupted:
+      case .idle:
         // Start: clear the prior session's surfaces, capture finalization
         // context AT RECORDING START (PR-4.5 #6, parity with old
-        // the old Parakeet pipeline), then mint a new session.
+        // the old Parakeet pipeline), then mint a new session. `.idle` is also
+        // where a concluded session rests (its outcome is cleared by `start`).
         //
         // The frontmost app + focused AX element are captured here so that a
         // polish step taking seconds — during which focus may shift to the
@@ -1041,9 +1043,9 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // covers long-idle paths between recordings.
         steps.llmPolish.preWarm()
         kernel.start(config: config)
-      case .recording:
+      case .live:
         kernel.requestStop()
-      case .preparing, .warmingUp, .stopping, .transcribing, .finalizing:
+      case .arming, .stopping, .delivering:
         // Mid-session — don't interrupt processing (PR-1 §B.1.2).
         break
       }
@@ -1136,12 +1138,20 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   // MARK: Kernel-state observation
 
-  /// Arm `withObservationTracking` on `kernel.state`; the `onChange` closure
-  /// hops to `@MainActor` before re-reading state and re-arming (PR-4 §3.7,
-  /// Gemini concurrency premise — the explicit hop is the safe pattern).
+  /// Arm `withObservationTracking` on the kernel lifecycle tuple; the `onChange`
+  /// closure hops to `@MainActor` before re-reading and re-arming (PR-4 §3.7,
+  /// Gemini concurrency premise — the explicit hop is the safe pattern). #1548
+  /// D1: tracks `recordingOutcome` (a conclusion lands on `.idle`) and
+  /// `deliveringPhase` (the public `.transcribing → .polishing` boundary is a
+  /// phase change, not a state transition) in addition to `state`. Every
+  /// downstream fire dedupes (public `PipelineState` for `fireStateChangeIfNeeded`,
+  /// `currentSessionID` for the ended-without-save latch), so the extra wake-ups
+  /// are safe.
   private func observeKernelState() {
     withObservationTracking {
       _ = kernel.state
+      _ = kernel.recordingOutcome
+      _ = kernel.deliveringPhase
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         guard let self else { return }
@@ -1183,7 +1193,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// fail / abort): drop the latch WITHOUT emitting completed.
   private func updateWarmRespawnLatch() {
     switch kernel.state {
-    case .recording:
+    case .live:
       residentModelLostWhileIdle = false
       guard warmRespawnInFlight else { return }
       if let started = warmRespawnStartedAt {
@@ -1193,14 +1203,15 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       }
       warmRespawnInFlight = false
       warmRespawnStartedAt = nil
-    case .idle, .completed, .cancelled, .discarded, .noSpeech, .failed,
-      .audioInterrupted, .asrInterrupted, .stopping, .transcribing, .finalizing:
+    case .idle, .stopping, .delivering:
       // Reached a non-recording state — if a warm-respawn latch is still set the
-      // start aborted before capture; drop it without emitting completed.
+      // start aborted before capture (or the latch was cleared at `.live`
+      // already; the guard makes the post-recording states a no-op). Drop it
+      // without emitting completed.
       guard warmRespawnInFlight else { return }
       warmRespawnInFlight = false
       warmRespawnStartedAt = nil
-    case .preparing, .warmingUp:
+    case .arming:
       break  // still warming — keep the latch so the overlay stays morphed
     }
   }
@@ -1221,10 +1232,14 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// change the latch). `.completed` is never a signal here (its durable-save
   /// callback owns cleanup); `.idle` and the transient states map to nil.
   private func fireSessionEndedWithoutSaveIfNeeded() {
-    defer { lastEndedWithoutSaveObservedState = kernel.state }
-    guard kernel.state != lastEndedWithoutSaveObservedState else { return }
+    // A concluded session carries its ending on `recordingOutcome`; fire once
+    // per concluded session, deduped by `currentSessionID` (NOT by state — two
+    // sessions may publish an outcome with idle between them, r1 Q1.1). #1548 D1.
+    guard let outcome = kernel.recordingOutcome else { return }
+    guard kernel.currentSessionID != lastEndedWithoutSaveSessionID else { return }
+    lastEndedWithoutSaveSessionID = kernel.currentSessionID
     let kind: RecordingTerminalKind?
-    if kernel.state == .cancelled {
+    if case .cancelled = outcome {
       // `.cancelled` is ambiguous (Codex terminal-kind matrix): a genuine user
       // cancel DELETES, but a fault/system cancel (active reset, external-error,
       // settings rebuild) RETAINS recoverable audio. Resolve via the per-cancel
@@ -1234,29 +1249,28 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       kind = pendingCancelDisposition
       pendingCancelDisposition = .failure
     } else {
-      kind = Self.endedWithoutSaveKind(for: kernel.state)
+      kind = Self.endedWithoutSaveKind(for: outcome)
     }
     guard let kind else { return }
     onSessionEndedWithoutSave?(context.config?.recoverySessionID, kind)
   }
 
-  /// Classify the UNAMBIGUOUS non-`.completed` terminals for the crash-recovery
+  /// Classify the UNAMBIGUOUS non-`.completed` outcomes for the crash-recovery
   /// cleanup signal. `.cancelled` is EXCLUDED (returns nil) — it is ambiguous
   /// (user discard vs fault/system retain) and resolved at the fire site via
-  /// `pendingCancelDisposition`. Also nil for `.completed` (durable save ran),
-  /// `.idle`, and non-terminal states. Exhaustive so a new `RecordingSessionState`
-  /// forces a routing decision. Internal (not private) so the split is unit-tested
-  /// directly (`matcher-set-adversarial-tests`).
-  static func endedWithoutSaveKind(for s: RecordingSessionState)
+  /// `pendingCancelDisposition`. Also nil for `.completed` (durable save ran).
+  /// Exhaustive so a new `RecordingOutcome` forces a routing decision. Internal
+  /// (not private) so the split is unit-tested directly
+  /// (`matcher-set-adversarial-tests`). #1548 D1: keyed by outcome, not state.
+  static func endedWithoutSaveKind(for outcome: RecordingOutcome)
     -> RecordingTerminalKind?
   {
-    switch s {
+    switch outcome {
     case .discarded, .noSpeech:
       return .discard
-    case .failed, .audioInterrupted, .asrInterrupted:
+    case .failed, .audioInterrupted, .asrInterrupted, .noTransport:
       return .failure
-    case .cancelled, .completed, .idle, .preparing, .warmingUp, .recording,
-      .stopping, .transcribing, .finalizing:
+    case .cancelled, .completed:
       return nil
     }
   }
@@ -1283,12 +1297,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// push of the correct label, which the overlay dedups (`show(intent:)`).
   private func observeFinalizingSubStatus() {
     withObservationTracking {
-      _ = kernel.finalizingSubStatus
+      _ = kernel.deliveringPhase
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         guard let self else { return }
         defer { self.observeFinalizingSubStatus() }
-        if self.kernel.state == .finalizing {
+        if self.kernel.state == .delivering {
           self.onOverlayIntentChange?(self.overlayIntent)
         }
       }
@@ -1324,8 +1338,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// sessions.
   private func clearContextConfigIfTerminalOrIdle() {
     switch kernel.state {
-    case .idle, .completed, .cancelled, .failed, .noSpeech, .discarded,
-      .audioInterrupted, .asrInterrupted:
+    case .idle:
+      // `.idle` is both pre-start and post-conclusion (#1548 D1); clearing here
+      // fires once per conclusion (state returns to `.idle`) and is idempotent
+      // pre-start. Paste has already completed by the time the kernel concludes.
       // Stamp the bundle id into the recording snapshot BEFORE nulling
       // `targetApp` — the lifecycle sink's snapshot read
       // (`KernelLifecycleTelemetrySink:370`) falls back to `context.targetApp`,
@@ -1336,7 +1352,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       context.config = nil
       context.targetApp = nil
       context.targetElement = nil
-    case .preparing, .warmingUp, .recording, .stopping, .transcribing, .finalizing:
+    case .arming, .live, .stopping, .delivering:
       break
     }
   }
@@ -1382,14 +1398,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     }
   }
 
+  /// `true` when the session is NOT in flight — `.idle` is both pre-start and
+  /// post-conclusion (a conclusion returns to `.idle` with the ending on
+  /// `recordingOutcome`, #1548 D1). Every active state carries a nil outcome, so
+  /// `state == .idle` is the exact "done / resting" predicate the old
+  /// `{idle + 7 terminals}` set expressed.
   private static func isTerminal(_ s: RecordingSessionState) -> Bool {
-    switch s {
-    case .idle, .completed, .cancelled, .discarded, .noSpeech, .failed,
-      .audioInterrupted, .asrInterrupted:
-      return true
-    case .preparing, .warmingUp, .recording, .stopping, .transcribing, .finalizing:
-      return false
-    }
+    s == .idle
   }
 
   // MARK: State mapping — total, mechanical (PR-4 §3.7)
@@ -1408,50 +1423,68 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// defaults to nil, which yields the neutral "Recording interrupted" line —
   /// never a disconnect claim. Only the instance `state` getter has a kernel to
   /// read the real cause from; test callers keep the byte-parity default.
-  public static func pipelineState(
-    for state: RecordingSessionState, externalError: String?,
+  // Internal (was public): the signature now names the internal
+  // `RecordingOutcome` / `DeliveringPhase` types. No App-layer caller exists
+  // (only same-module `state` getter + `@testable` tests); the App reads the
+  // public `state` getter's `PipelineState` (#1548 D1, §2.5).
+  static func pipelineState(
+    for state: RecordingSessionState,
+    outcome: RecordingOutcome?,
+    deliveringPhase: DeliveringPhase = .transcribing,
+    externalError: String?,
     failureDetail: String? = nil,
     interruptionCause: EngineInterruptionCause? = nil
   ) -> PipelineState {
     if let externalError {
       return .error(externalError)
     }
+    // A concluded session's public state comes from `recordingOutcome` (state
+    // has returned to `.idle`, #1548 D1). Byte-parity with the old terminal-state
+    // mapping.
+    if let outcome {
+      switch outcome {
+      case .completed:
+        return .complete
+      case .cancelled, .discarded, .noSpeech:
+        return .idle
+      case .failed(let reason):
+        return .error(failureMessage(reason, detail: failureDetail))
+      case .noTransport:
+        return .error(failureMessage(.noAudioCaptured, detail: nil))
+      case .audioInterrupted:
+        return .error(InterruptionMessages.message(for: interruptionCause))
+      case .asrInterrupted:
+        return .error(asrInterruptedMessage)
+      }
+    }
     switch state {
-    case .idle, .cancelled, .discarded, .noSpeech:
+    case .idle:
       return .idle
-    case .preparing, .warmingUp:
+    case .arming:
       return .loadingModel
-    case .recording:
+    case .live:
       return .recording
-    case .stopping, .transcribing:
+    case .stopping:
       return .transcribing
-    case .finalizing:
-      // Seam audit Div 3 (2026-05-26): the old Parakeet pipeline set public
-      // `.polishing` only when the polish step's `onWillProcess` fired
-      // (TP:187-188). The kernel collapses both the early-finalizing
-      // (transcript save / `.transcribing` sub-status) AND the polish
-      // sub-status into public `.polishing`. WONTFIX: routing through
-      // `kernel.finalizingSubStatus` cascades into two real safe-point
-      // bugs — (1) `observeKernelState` only watches `kernel.state`, so the
-      // sub-status flip never reaches `onStateChange`; (2)
-      // `ASREventRouter` would route ASR crashes during the early window
-      // into `handleASRServiceInterruption`, which sets an external error
-      // and breaks the `.finalizing` safe point (verified Codex r1 on the
-      // attempted Div 3 fix). The user-visible cost of the current
-      // collapse is "Polishing..." appears a few hundred ms early in
-      // MainWindow. The floating OVERLAY does not pay that cost: the
-      // `overlayIntent` getter routes through `finalizingSubStatus`, and the
-      // dedicated `observeFinalizingSubStatus` channel (#930) refreshes the
-      // overlay live on the flip WITHOUT touching this public mapper.
-      return .polishing
-    case .completed:
-      return .complete
-    case .failed(let reason):
-      return .error(failureMessage(reason, detail: failureDetail))
-    case .audioInterrupted:
-      return .error(InterruptionMessages.message(for: interruptionCause))
-    case .asrInterrupted:
-      return .error(asrInterruptedMessage)
+    case .delivering:
+      // The transcribe → polish PUBLIC boundary is the delivering sub-phase
+      // `.transcribing → .finalizing(_)`. Byte-parity with the old
+      // `.transcribing`-state → `.transcribing` / `.finalizing`-state →
+      // `.polishing` mapping. Seam audit Div 3 (2026-05-26): the old pipeline
+      // set public `.polishing` only when the polish step fired; the kernel
+      // collapses both the early-finalizing (transcript save) AND polish into
+      // public `.polishing`, so "Polishing..." appears a few hundred ms early
+      // in MainWindow (accepted cost). `observeKernelState` now tracks
+      // `deliveringPhase`, so the public flip reaches `onStateChange`; the
+      // `.finalizing(.transcribing) → .finalizing(.polishing)` flip dedupes to
+      // no public change. The floating overlay refreshes live via
+      // `observeFinalizingSubStatus` (#930).
+      switch deliveringPhase {
+      case .transcribing:
+        return .transcribing
+      case .finalizing:
+        return .polishing
+      }
     }
   }
 

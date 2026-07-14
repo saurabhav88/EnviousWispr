@@ -103,9 +103,16 @@ final class KernelHeartPathTelemetryObserver {
   private let emitter: HeartPathTelemetryEmitter
   private let emitLifecycleEvent: @MainActor (KernelLifecycleEvent) -> Void
 
-  /// The last kernel state the observer emitted for — so a re-armed
-  /// observation that fires without a state change emits nothing.
+  /// The last observation tuple the observer emitted for (#1548 D1). Two
+  /// projections became invisible to a state-only watcher: an idle→idle
+  /// `recordingOutcome` reset (conclusion lands on `.idle`, already-idle) and a
+  /// `deliveringPhase`-only change (same `.delivering` state). So the observer
+  /// tracks `(state, recordingOutcome, didLoadModelThisSession, deliveringPhase)`
+  /// and emits on the DELTA (§3.7 / plan §200).
   private var lastObservedState: RecordingSessionState
+  private var lastObservedOutcome: RecordingOutcome?
+  private var lastObservedDidLoadModel: Bool
+  private var lastObservedDeliveringPhase: DeliveringPhase
 
   init(
     kernel: RecordingSessionKernel,
@@ -118,6 +125,9 @@ final class KernelHeartPathTelemetryObserver {
     self.emitter = emitter
     self.emitLifecycleEvent = emitLifecycleEvent
     self.lastObservedState = kernel.state
+    self.lastObservedOutcome = kernel.recordingOutcome
+    self.lastObservedDidLoadModel = kernel.didLoadModelThisSession
+    self.lastObservedDeliveringPhase = kernel.deliveringPhase
   }
 
   // MARK: Capture-diagnostic callbacks (the kernel does not consume these)
@@ -154,128 +164,119 @@ final class KernelHeartPathTelemetryObserver {
   /// in place of the deleted `start()` method.
   func observeKernelState() {
     withObservationTracking {
+      // Track the full lifecycle tuple (#1548 D1) — not just `state`.
       _ = kernel.state
+      _ = kernel.recordingOutcome
+      _ = kernel.didLoadModelThisSession
+      _ = kernel.deliveringPhase
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         guard let self else { return }
-        self.handleStateChange()
+        self.handleObservationChange()
         self.observeKernelState()
       }
     }
   }
 
-  /// Emit the lifecycle event for the current kernel state, if it changed.
-  /// Reads kernel sibling observables (`discardReason`, `didLoadModelThisSession`,
-  /// `lastNoSpeechSource`, `finalizingSubStatus`) at mapping time so the event
-  /// carries the right associated values without racing the state transition
-  /// (PR-4b.2 §3.6 OQ-3, r7).
-  private func handleStateChange() {
+  /// Emit the lifecycle event for the observation DELTA since the last fire
+  /// (#1548 D1). The ending category now lives on `recordingOutcome` (not an
+  /// FSM terminal state), and the transcribe/finalize boundary is a
+  /// `deliveringPhase` change with no state transition, so both are detected by
+  /// comparing against the last-observed tuple. At most one event per fire;
+  /// real transitions are separated by suspension points so nothing is missed.
+  private func handleObservationChange() {
     let state = kernel.state
-    guard state != lastObservedState else { return }
-    let priorState = lastObservedState
+    let outcome = kernel.recordingOutcome
+    let didLoadModel = kernel.didLoadModelThisSession
+    let phase = kernel.deliveringPhase
+
+    let prevState = lastObservedState
+    let prevOutcome = lastObservedOutcome
+    let prevDidLoadModel = lastObservedDidLoadModel
+    let prevPhase = lastObservedDeliveringPhase
+
+    // Update the snapshot first so a re-entrant fire sees the latest tuple.
     lastObservedState = state
-    guard
-      let event = Self.lifecycleEvent(
-        for: state,
-        priorState: priorState,
-        discardReason: kernel.discardReason,
-        didLoadModelThisSession: kernel.didLoadModelThisSession,
-        lastNoSpeechSource: kernel.lastNoSpeechSource,
-        lastAudioInterruptionCause: kernel.lastAudioInterruptionCause,
-        isStreamingSession: kernel.isStreamingSession
-      )
-    else { return }
-    emitLifecycleEvent(event)
+    lastObservedOutcome = outcome
+    lastObservedDidLoadModel = didLoadModel
+    lastObservedDeliveringPhase = phase
+
+    // `withObservationTracking` is NOT a lossless event queue — two tracked
+    // properties can mutate before the re-arm task runs, coalescing into ONE
+    // fire (e.g. idle→arming then didLoadModel=true; or entry into Delivering
+    // then the phase advance). So emit EVERY applicable event this fire — never
+    // just the first-by-priority — in logical order (impl-design consult, Dec 3).
+    var events: [KernelLifecycleEvent] = []
+
+    if prevState == .idle, state == .arming {
+      events.append(.pipelineStartingUp)
+    }
+
+    if !prevDidLoadModel, didLoadModel,
+      prevState == .arming || state == .arming
+    {
+      // A real model-load began while Arming (was `→ .warmingUp`, same gate).
+      events.append(.modelLoading)
+    }
+
+    if prevState == .arming, state == .live {
+      // Transport proven — the recording pill shows (was `→ .recording`).
+      events.append(.recordingCommitted(isStreaming: kernel.isStreamingSession))
+    }
+
+    if prevState == .stopping, state == .delivering {
+      // ASR begins (was `→ .transcribing`).
+      events.append(.transcriptionStarted)
+    }
+
+    if prevPhase == .transcribing,
+      prevState == .delivering || state == .delivering,
+      case .finalizing = phase
+    {
+      // ASR returned non-empty text (was `.transcribing → .finalizing`).
+      events.append(.asrCompleted)
+    }
+
+    if prevOutcome == nil, let outcome,
+      let event = Self.terminalEvent(
+        for: outcome, isStreaming: kernel.isStreamingSession)
+    {
+      // Conclusion — the ending event (the paired `→ .idle` has none).
+      events.append(event)
+    }
+
+    for event in events {
+      emitLifecycleEvent(event)
+    }
   }
 
-  /// Map a kernel state (plus the sibling observables that the event payloads
-  /// depend on) to its lifecycle event. States with no §B.7 event (`idle` /
-  /// `preparing`) map to `nil` — observing raw state still guarantees no
-  /// terminal is missed.
-  ///
-  /// - parameter priorState: the state we just transitioned out of. Used to
-  ///   gate `.finalizing` → `.asrCompleted` to the post-transcribing branch
-  ///   only.
-  /// - parameter didLoadModelThisSession: kernel-stamped truthy when the
-  ///   adapter was NOT `.ready` at the warm-up gate (PR-4b.2 §3.6).
-  /// - parameter lastNoSpeechSource: kernel-stamped at the two distinct
-  ///   `.noSpeech` forward-path sites (VAD gate vs ASR-empty no-speech).
-  /// - parameter isStreamingSession: kernel-stamped at `beginSession` —
-  ///   `config.useStreamingASR && adapter.capabilities.supportsStreaming`.
-  ///   Threaded through `.recordingCommitted(isStreaming:)` so the sink
-  ///   emits the same flag old TP did (Codex review #11 r2).
-  static func lifecycleEvent(
-    for state: RecordingSessionState,
-    priorState: RecordingSessionState,
-    discardReason: DiscardReason?,
-    didLoadModelThisSession: Bool,
-    lastNoSpeechSource: NoSpeechSource?,
-    lastAudioInterruptionCause: EngineInterruptionCause?,
-    isStreamingSession: Bool
+  /// Map a concluded session's `RecordingOutcome` to its terminal lifecycle
+  /// event (#1548 D1). `.noTransport` projects to the existing
+  /// `.failed(.noAudioCaptured)` telemetry (locked projection, plan §4 / §7) —
+  /// no new Sentry/PostHog identity.
+  static func terminalEvent(
+    for outcome: RecordingOutcome,
+    isStreaming: Bool
   ) -> KernelLifecycleEvent? {
-    switch state {
-    case .recording:
-      return .recordingCommitted(isStreaming: isStreamingSession)
-    case .transcribing:
-      return .transcriptionStarted
+    switch outcome {
     case .completed:
       return .pipelineCompleted
     case .failed(let reason):
       return .failed(reason)
-    case .audioInterrupted:
-      // The cause is a sibling observable stamped by `externalEngineInterrupted`
-      // before the `→ .audioInterrupted` transition (the terminal's only path),
-      // mirroring `discardReason` / `lastNoSpeechSource`. Default defensively to
-      // `.engineLost` (capture) if somehow absent — a lost recording at this
-      // terminal with no cause is still an unowned loss.
-      return .audioInterrupted(cause: lastAudioInterruptionCause ?? .engineLost)
-    case .asrInterrupted:
-      // Bridge matrix #3 — old TP:1145 reported `was_recording == state == .recording`
-      // at crash time. The kernel reaches `.asrInterrupted` from either
-      // `.recording` (via `deliverRecordingExit(.asrInterruption)`) or
-      // `.transcribing` (via `finishTerminal(.asrInterrupted)`); the prior
-      // state distinguishes them.
-      return .asrInterrupted(wasRecording: priorState == .recording)
-    case .discarded:
-      // The reason is a sibling observable set before the `→ discarded`
-      // transition (PR-4 §3.8a); default defensively if somehow absent.
-      return .discarded(discardReason ?? .releasedBeforeRecording)
-    case .noSpeech:
-      // Source stamped at the kernel transition site (PR-4b.2 §3.6 r7).
-      // Default defensively to `.vadGate` if somehow absent — both sites
-      // stamp, so an absent source means the kernel reached `.noSpeech`
-      // via a path the inventory did not anticipate; better to emit a
-      // breadcrumb that names "no speech" than to silently drop the event.
-      return .noSpeech(lastNoSpeechSource ?? .vadGate)
     case .cancelled:
       return .cancelled
-    case .warmingUp:
-      // PR-4b.2 §3.6 — only fire `.modelLoading` if the adapter was not
-      // already loaded (parity with old TP:363 conditional).
-      return didLoadModelThisSession ? .modelLoading : nil
-    case .stopping:
-      return nil
-    case .finalizing:
-      // PR-4b.2 §3.6 — only fire `.asrCompleted` on the post-transcribing
-      // path. Old TP:922 was inside the transcript branch; the kernel only
-      // reaches `.finalizing` from `.transcribing` via `runFinalizing(asrText:)`
-      // (`RecordingSessionKernel.swift:836` — the `.transcript(...)` arm of
-      // the finalize switch). The `.empty` and no-speech arms jump straight
-      // to terminal, so `priorState == .transcribing` IS the structural
-      // signal that ASR returned non-empty text. (Codex review #11:
-      // `kernel.deliveredTranscript` is set INSIDE `runFinalizing` AFTER the
-      // `→ .finalizing` transition, so reading it at mapping time would
-      // always be nil and the breadcrumb would never fire.)
-      guard priorState == .transcribing else { return nil }
-      return .asrCompleted
-    case .preparing:
-      // PR-5 Rung 5 Pass 2 #1 — startup breadcrumb. `.preparing` is the
-      // single per-session entry point from `.idle` / terminal; the
-      // observer fires on state-change only so this event lands exactly
-      // once per session start.
-      return .pipelineStartingUp
-    case .idle:
-      return nil
+    case .discarded(let reason):
+      return .discarded(reason)
+    case .noSpeech(let source):
+      return .noSpeech(source)
+    case .audioInterrupted(let cause):
+      // Default defensively to `.engineLost` if the cause was not stamped — a
+      // lost recording with no cause is still an unowned loss (#1174 A3).
+      return .audioInterrupted(cause: cause ?? .engineLost)
+    case .asrInterrupted(let wasRecording):
+      return .asrInterrupted(wasRecording: wasRecording)
+    case .noTransport:
+      return .failed(.noAudioCaptured)
     }
   }
 }

@@ -42,39 +42,63 @@ public enum RecordingFailureReason: Equatable, Sendable {
   case zeroSignal
 }
 
-/// The 14 recording-session FSM states (PR-1 §B.1.1). Seven are terminal.
-public enum RecordingSessionState: Equatable, Sendable {
+/// The 5 recording-session FSM states (#1548, heartpath D1). None is terminal:
+/// the session's ending CATEGORY moved to the sibling `RecordingOutcome`
+/// observable, and a concluded session returns to `.idle` with
+/// `recordingOutcome` set. `state` is pure lifecycle POSITION.
+///
+/// - `arming`: preparing + warming the model + opening the mic — the pill is
+///   HIDDEN here (transport not yet proven). Was `preparing` + `warmingUp`.
+/// - `live`: a converted buffer has arrived; the recording pill shows. Was
+///   `recording`. Entered on the FIRST buffer, not on capture-start return.
+/// - `delivering`: transcribe + finalize, sub-phase carried by
+///   `deliveringPhase`. Was `transcribing` + `finalizing`.
+public enum RecordingSessionState: CaseIterable, Equatable, Sendable {
   case idle
-  case preparing
-  case warmingUp
-  case recording
+  case arming
+  case live
   case stopping
-  case transcribing
-  case finalizing
-  // Terminal states.
+  case delivering
+}
+
+/// The ending category of a session + its payload (#1548 D1). A sibling
+/// `@Observable` on the kernel; `recordingOutcome != nil` is the
+/// session-concluded barrier that replaced `state.isTerminal`. A DECLARED enum
+/// (D-024: ending identity is named, never inherited from FSM position).
+/// Internal — the App layer reads only the driver's mapped types (§2.5); the
+/// driver + observer (same module) are the only consumers.
+enum RecordingOutcome: Equatable, Sendable {
   case completed
   case failed(RecordingFailureReason)
   case cancelled
-  case discarded
-  case noSpeech
-  case audioInterrupted
-  case asrInterrupted
+  /// The reason moved here from the deleted `discardReason` sibling.
+  case discarded(DiscardReason)
+  /// The source moved here from the deleted `lastNoSpeechSource` sibling.
+  case noSpeech(NoSpeechSource)
+  /// A direct interruption may have no stamped cause (the observer defaults to
+  /// `.engineLost`), so the cause is optional (`:1133`).
+  case audioInterrupted(EngineInterruptionCause?)
+  /// `wasRecording` folds in the observer's old `priorState == .recording`
+  /// distinction — true when the session was `.live` at interruption.
+  case asrInterrupted(wasRecording: Bool)
+  /// #1548: the Arming no-buffer deadline elapsed — no converted buffer ever
+  /// reached the routed-buffer latch. Projects to the existing
+  /// `.failed(.noAudioCaptured)` telemetry + "No audio captured" copy.
+  case noTransport
+}
 
-  /// `true` for the seven terminal states (PR-1 §B.1.1).
-  public var isTerminal: Bool {
-    switch self {
-    case .completed, .failed, .cancelled, .discarded, .noSpeech,
-      .audioInterrupted, .asrInterrupted:
-      return true
-    case .idle, .preparing, .warmingUp, .recording, .stopping, .transcribing,
-      .finalizing:
-      return false
-    }
-  }
+/// The `delivering` sub-phase (#1548 D1). Nests the existing
+/// `FinalizingSubStatus` so today's Transcribing/Polishing overlay label
+/// survives, and carries the cancel/ASR-interrupt SAFE POINT: cancel is
+/// accepted only in `.transcribing`; every `.finalizing(_)` is beyond it.
+enum DeliveringPhase: Equatable, Sendable {
+  case transcribing
+  case finalizing(FinalizingSubStatus)
 }
 
 /// The `finalizing` sub-status surfaced for the overlay string (PR-1 §B.4,
 /// PR-3 plan §3.5). The kernel owns the observation point; a limb only emits.
+/// Now nested inside `DeliveringPhase.finalizing` (#1548 D1).
 enum FinalizingSubStatus: Equatable, Sendable {
   case transcribing
   case polishing
@@ -254,17 +278,22 @@ final class RecordingSessionKernel {
   /// `idle → preparing` / `terminal → preparing` (PR-1 §B.1.5).
   private(set) var currentSessionID = SessionID()
 
-  /// The `finalizing` sub-status — `polishing` once the polish signal is
-  /// observed (PR-1 §B.4).
-  private(set) var finalizingSubStatus: FinalizingSubStatus = .transcribing
+  /// The ending category of the current (or last) session, or `nil` while a
+  /// session is in flight (#1548 D1). `recordingOutcome != nil` is the
+  /// session-concluded barrier that replaced `state.isTerminal`. Set exactly
+  /// once per session, synchronously inside `finishTerminal`, AFTER conclusion
+  /// legality is verified and BEFORE the `→ .idle` transition; cleared at the
+  /// two new-session sites (`start`'s `resetSessionState` + `reset()`).
+  private(set) var recordingOutcome: RecordingOutcome?
+
+  /// The `delivering` sub-phase (#1548 D1) — `.transcribing`, then
+  /// `.finalizing(.transcribing)`, then `.finalizing(.polishing)` once the
+  /// polish signal is observed. Carries the cancel SAFE POINT (cancel accepted
+  /// only in `.transcribing`). Nests the old `finalizingSubStatus` (PR-1 §B.4).
+  private(set) var deliveringPhase: DeliveringPhase = .transcribing
 
   /// The text delivered to the user, or `nil` if none.
   private(set) var deliveredTranscript: String?
-
-  /// Why the session was `discarded`, or `nil` if it did not reach `discarded`
-  /// (PR-4 plan §3.8a). Set immediately before the `→ discarded` transition so
-  /// a state observer reads the correct reason.
-  private(set) var discardReason: DiscardReason?
 
   /// `true` if this session entered the model-load branch (i.e. adapter was
   /// not already `.ready` at the warm-up gate). Set immediately BEFORE the
@@ -274,13 +303,6 @@ final class RecordingSessionKernel {
   /// the old Parakeet pipeline was conditional on entering the
   /// load branch at `:363`). Reset on session start.
   private(set) var didLoadModelThisSession: Bool = false
-
-  /// Which path led to `.noSpeech` for this session, or `nil` if the session
-  /// did not reach `.noSpeech`. Set immediately BEFORE the `→ noSpeech`
-  /// transition at each of the two distinct forward-path sites (VAD gate vs
-  /// ASR-empty no-speech). The observer reads this at lifecycle-event mapping
-  /// time to choose `.vadGate` or `.asrEmptyNoSpeech`. Reset on session start.
-  private(set) var lastNoSpeechSource: NoSpeechSource?
 
   /// Why the audio engine was interrupted for this session, or `nil` if no
   /// interruption reached the recording exit. Stamped by
@@ -355,14 +377,14 @@ final class RecordingSessionKernel {
   /// advancing (PR-3 plan §3.3 — deterministic step ordering).
   private(set) var workEpoch: UInt64 = 0
 
-  /// The user-visible error category for the current terminal state, derived
-  /// from the FSM state (PR-1 §B.1.3). `nil` for non-error terminals.
+  /// The user-visible error category for the concluded session, derived from
+  /// `recordingOutcome` (#1548 D1). `nil` for non-error outcomes / in flight.
   // periphery:ignore - test seam (read only by the simulator)
   var userVisibleError: KernelErrorCategory? {
-    switch state {
+    switch recordingOutcome {
     case .audioInterrupted:
       return .interruption
-    case .asrInterrupted, .failed:
+    case .asrInterrupted, .failed, .noTransport:
       return .recoverableError
     default:
       return nil
@@ -417,7 +439,7 @@ final class RecordingSessionKernel {
   /// .recording`, so this is redundant-but-safe for them and is the actual
   /// fix for the two overlay call sites that read before that guard exists.
   var recordingElapsedSeconds: TimeInterval? {
-    guard state == .recording, let start = recordingStartedAtTick else { return nil }
+    guard state == .live, let start = recordingStartedAtTick else { return nil }
     let now = currentTick()
     guard now >= start else { return 0 }
     return TimeInterval(now - start) * KernelFinalizationWiring.tickDurationSeconds
@@ -504,7 +526,7 @@ final class RecordingSessionKernel {
   /// Reading scope is intentionally narrow: this is the user-message
   /// enrichment seam, not a general error-introspection API.
   var lastFailureDetail: String? {
-    guard case .failed(let reason) = state else { return nil }
+    guard case .failed(let reason) = recordingOutcome else { return nil }
     switch reason {
     case .modelLoadFailed:
       return telemetryState.modelLoadError?.localizedDescription
@@ -533,6 +555,30 @@ final class RecordingSessionKernel {
   private var pendingRecordingExit: RecordingExit?
   private var recordingExitLatched = false
 
+  /// How Arming resolved (#1548 D1). The forward path parks on
+  /// `awaitArmingResolution()` after `beginCapturePhase()`; the FIRST of a
+  /// first-buffer commit, the no-buffer deadline, or a conclusion
+  /// (stop/cancel/structural-failure via `finishTerminal`) resumes it once.
+  private enum ArmingResolution: Equatable, Sendable {
+    /// The first converted, retained buffer arrived — `commitLiveFromFirstBuffer`
+    /// already flipped Arming → Live, stamped, and started VAD.
+    case committedLive
+    /// The 800 ms no-buffer watchdog fired while still Arming (`.noBuffers`).
+    case deadline
+    /// A conclusion (stop / cancel / structural failure) already set
+    /// `recordingOutcome`; the forward path's barrier guard bails.
+    case aborted
+  }
+  /// Mirror of the recording-exit pending-slot pattern (`:2508`): the winner is
+  /// recorded here when it fires BEFORE the forward path installs its waiter
+  /// (pre-roll callbacks run while `beginCapturePhase()` is suspended, r2 Q2.1).
+  private var armingResolution: ArmingResolution?
+  private var armingContinuation: CheckedContinuation<ArmingResolution, Never>?
+  /// A zero-signal event (`.allZeroFromStart` / `.becameZeroMidCapture`) that
+  /// arrived DURING Arming is latched here, not concluded — `commitLiveFromFirstBuffer`
+  /// delivers it into the Live/stop tail once transport is proven (§3.6).
+  private var pendingArmingZeroSignal: CaptureStallFailureMode?
+
   /// Test-observation signal for the simulator's drain (companion to
   /// `workEpoch`). `true` only in the window between `deliverRecordingExit`
   /// latching an exit from `.recording` and the forward path consuming it and
@@ -546,7 +592,7 @@ final class RecordingSessionKernel {
   /// production reader — observation only.
   // periphery:ignore - test seam (simulator drain gate; no production reader)
   var hasUnconsumedRecordingExit: Bool {
-    recordingExitLatched && state == .recording
+    recordingExitLatched && state == .live
   }
 
   /// Buffers handed to the adapter this session — the sub-minimum-duration
@@ -674,7 +720,10 @@ final class RecordingSessionKernel {
   /// processing"). `config` freezes per-recording settings (VAD, decode
   /// language, model-unload policy) for this session (PR-4 plan §3.3a).
   func start(config: DictationSessionConfig) {
-    guard state == .idle || state.isTerminal else {
+    // Legal from `.idle` — which is also where a concluded session rests
+    // (`recordingOutcome != nil`); `resetSessionState()` below clears the
+    // outcome barrier for the new session (#1548 D1).
+    guard state == .idle else {
       log("start ignored — session active at \(state)")
       return
     }
@@ -683,71 +732,89 @@ final class RecordingSessionKernel {
     resetSessionState()
     sessionConfig = config
     telemetryState.resetForNewSession(polishEnabled: config.llmProvider != .none)
-    transition(to: .preparing)
+    transition(to: .arming)
     spawn(sid) { [weak self] in
       await self?.runForwardPath(sid)
     }
   }
 
-  /// Request a stop. From `recording` it latches the recording-exit; from
-  /// `preparing` / `warmingUp` it latches a stop the forward path resolves to
-  /// `discarded`; elsewhere it is ignored (PR-1 §B.1.2, invariant 1).
+  /// Request a stop. From `.live` it latches the recording-exit; from `.arming`
+  /// it latches a stop the forward path resolves to `discarded` AND wakes a
+  /// suspended Arming waiter (#1548 D1, r3 Q2.3); elsewhere ignored (PR-1
+  /// §B.1.2, invariant 1).
   func requestStop() {
     switch state {
-    case .recording:
+    case .live:
       deliverRecordingExit(.userStop)
-    case .preparing, .warmingUp:
+    case .arming:
+      // Latched, then the forward path's post-Arming checkpoint concludes
+      // `.discarded(.releasedBeforeRecording)`. `resolveArming(.aborted)` wakes
+      // it if it is already parked in `awaitArmingResolution()`; if it is still
+      // in an earlier await, the existing latch checkpoints consume `stopLatched`.
+      // `detachedAdapterCancel()` breaks a model-warmup await that has no
+      // deadline (WhisperKit) — without it, a stop during a slow cold load would
+      // strand the session until the load finished (impl-design consult, Dec 1).
       stopLatched = true
+      detachedAdapterCancel()
+      resolveArming(.aborted)
       bump()
-    case .idle, .stopping, .transcribing, .finalizing, .completed, .failed,
-      .cancelled, .discarded, .noSpeech, .audioInterrupted, .asrInterrupted:
+    case .idle, .stopping, .delivering:
       log("stop ignored at \(state)")
     }
   }
 
-  /// Cancel. From `A⁻` (before `finalizing`) it routes to `cancelled`; from
-  /// `finalizing` it is ignored — the safe point is inviolable (PR-1 §B.1.4
-  /// invariant 5); elsewhere ignored.
+  /// Cancel. Before the safe point it routes to `cancelled`; inside
+  /// `delivering(.finalizing(_))` it is ignored — the safe point is inviolable
+  /// (PR-1 §B.1.4 invariant 5); elsewhere ignored (#1548 D1).
   func cancel() {
     switch state {
-    case .recording:
+    case .live:
       deliverRecordingExit(.cancel)
-    case .preparing, .warmingUp:
+    case .arming:
       cancelRequested = true
       detachedAdapterCancel()
+      // Wake a suspended Arming waiter (r3 Q2.3); the forward path's post-Arming
+      // checkpoint concludes `.cancelled`.
+      resolveArming(.aborted)
       bump()
-    case .stopping, .transcribing:
-      // Cancel from `A⁻` after `recording` — no transcript exists yet, so the
-      // safe point does not apply (PR-1 §B.1.2 `A⁻ | cancel → cancelled`).
-      // Terminate now; `finishTerminal` discards the adapter's open session
-      // (which also unblocks an in-flight `finalize()`), and the forward path
-      // drops its in-flight `stopCapture()` / `finalize()` result when it
-      // returns (state is terminal). `stopping` is included so a cancel
+    case .stopping:
+      // Cancel after `.live`, before a transcript exists — the safe point does
+      // not apply. Terminate now; `finishTerminal` discards the adapter's open
+      // session (which also unblocks an in-flight `finalize()`), and the forward
+      // path drops its in-flight `stopCapture()` / `finalize()` result when it
+      // returns (`recordingOutcome != nil`). `stopping` is included so a cancel
       // during a slow capture-stop is not lost (Codex P2).
       finishTerminal(.cancelled, sid: currentSessionID)
-    case .finalizing:
-      log("cancel ignored — safe point (transcript in hand)")
-    case .idle, .completed, .failed, .cancelled, .discarded, .noSpeech,
-      .audioInterrupted, .asrInterrupted:
+    case .delivering:
+      switch deliveringPhase {
+      case .transcribing:
+        // Before the transcript is in hand — cancel honored (§5.2).
+        finishTerminal(.cancelled, sid: currentSessionID)
+      case .finalizing:
+        log("cancel ignored — safe point (transcript in hand)")
+      }
+    case .idle:
       log("cancel ignored at \(state)")
     }
   }
 
-  /// Reset to `idle`. Legal only from a terminal state; from `finalizing` it
-  /// is deferred (not implemented as a queue in PR-3 — logged and refused,
-  /// the safe point completes then `start` mints fresh); elsewhere ignored.
+  /// Reset to a fresh idle. Legal only once the session has concluded
+  /// (`recordingOutcome != nil`); while in flight it is deferred (logged and
+  /// refused — the safe point completes then `start` mints fresh) (#1548 D1).
   func reset() {
-    guard state.isTerminal else {
+    guard recordingOutcome != nil else {
       log("reset ignored / deferred at \(state)")
       return
     }
     // Mint a fresh `SessionID` so any same-session async work still unwinding
-    // from the terminal state fails its next `isCurrent(sid)` guard. Without
-    // this, those continuations see `.idle` (non-terminal) after the reset and
-    // could resume into transcription/finalization, delivering text after the
-    // user reset (Codex P1-round5).
+    // fails its next `isCurrent(sid)` guard. Without this, those continuations
+    // could resume after the reset and deliver text the user cancelled (Codex
+    // P1-round5). Clear ONLY the outcome barrier — NOT the full
+    // `resetSessionState()`, which would reset `captureLifecycle` and drop an
+    // in-flight terminal-cleanup stop (#1548 §3.1). `state` is already `.idle`
+    // (a conclusion returns there), so no transition is needed.
     currentSessionID = SessionID()
-    transition(to: .idle)
+    recordingOutcome = nil
     // Do not claim resources released while a capture stop is still in flight.
     // The detached stop task (gated on `captureLifecycle`, not `SessionID`)
     // flips both fields when `stopCapture()` returns (Codex P2-round6).
@@ -780,7 +847,7 @@ final class RecordingSessionKernel {
   /// retry capture as needed); an adapter-warm failure leaves `.readiness`
   /// non-ready and the session's own warm-up path handles it.
   func preWarm() async throws {
-    guard state == .idle || state.isTerminal else {
+    guard state == .idle else {
       log("preWarm ignored — session active at \(state)")
       return
     }
@@ -806,7 +873,7 @@ final class RecordingSessionKernel {
     // spawning the heavy warmUp() and awaiting capture pre-warm, otherwise
     // this stale continuation would launch work against a session the
     // kernel has already moved past.
-    guard isCurrent(sid), state == .idle || state.isTerminal else {
+    guard isCurrent(sid), state == .idle else {
       log("preWarm aborted post-cache-warm sid=\(sid.raw) state=\(state)")
       return
     }
@@ -891,8 +958,7 @@ final class RecordingSessionKernel {
     guard isCurrent(sid) else { return }
     if stopLatched {
       // PTT released before `recording` — no transcribable audio (PR-1 §B.1.2).
-      discardReason = .releasedBeforeRecording
-      finishTerminal(.discarded, sid: sid)
+      finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
       return
     }
     if cancelRequested {
@@ -902,10 +968,10 @@ final class RecordingSessionKernel {
 
     // Warm-up (skipped if the adapter is already ready — the warm path).
     if adapter.readiness != .ready {
-      // Stamp BEFORE the transition so the lifecycle-event observer reads
-      // the truthy flag at `.warmingUp` mapping time (PR-4b.2 §3.6 OQ-3).
+      // Stamp the model-load flag — the observer fires `.modelLoading` on this
+      // flip while Arming (#1548 D1: warmingUp folded into arming, no state
+      // transition here), and the overlay reads it for the cold-boot pill.
       didLoadModelThisSession = true
-      transition(to: .warmingUp)
       let warmResult = await warmUp(sid)
       guard isCurrent(sid) else { return }
       switch warmResult {
@@ -921,8 +987,7 @@ final class RecordingSessionKernel {
         finishTerminal(.cancelled, sid: sid)
         return
       case .stopped:
-        discardReason = .releasedBeforeRecording
-        finishTerminal(.discarded, sid: sid)
+        finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
         return
       }
     }
@@ -994,8 +1059,7 @@ final class RecordingSessionKernel {
     // The capture engine is up — every terminal from here must stop capture.
     captureLifecycle = .active
     if stopLatched {
-      discardReason = .releasedBeforeRecording
-      finishTerminal(.discarded, sid: sid)
+      finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
       return
     }
     if cancelRequested {
@@ -1074,46 +1138,44 @@ final class RecordingSessionKernel {
       return
     }
     guard isCurrent(sid) else { return }
-    // Final latch check before `recording` — a stop / cancel that arrived
-    // while `beginCapturePhase()` / `beginSession()` was suspended set only
-    // `stopLatched` / `cancelRequested` (the FSM was still `warmingUp`); it
-    // must be consumed here, not lost on the way into `recording` (Codex P1).
+    // Arming → await transport. The pill stays HIDDEN until a converted,
+    // retained buffer proves transport; `commitLiveFromFirstBuffer` (fired from
+    // the buffer callback) flips Arming → Live, stamps recording-start, and
+    // starts VAD (#1548 D1). The forward path parks here until the FIRST of:
+    // a first-buffer commit, the 800 ms no-buffer deadline, or a conclusion
+    // (stop / cancel / structural failure). Pre-roll callbacks can fire while
+    // `beginCapturePhase()` was suspended, so the winner may already be recorded
+    // in the pending slot (r2 Q2.1) — `awaitArmingResolution()` consumes it.
+    let resolution = await awaitArmingResolution()
+    guard isCurrent(sid), recordingOutcome == nil else { return }
+    // A stop / cancel that arrived during Arming latched here (r3 Q2.3) and is
+    // consumed BEFORE the resolution — a stop before transport is a discard,
+    // matching the pre-#1548 pre-`.recording` latch semantics, even if a late
+    // buffer also committed Live.
     if stopLatched {
-      discardReason = .releasedBeforeRecording
-      finishTerminal(.discarded, sid: sid)
+      finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
       return
     }
     if cancelRequested {
       finishTerminal(.cancelled, sid: sid)
       return
     }
-
-    // Recording.
-    transition(to: .recording)
-    recordingStartedAtDate = Date()
-    recordingStartedAtUptimeNs = DispatchTime.now().uptimeNanoseconds
-    lastStopReason = nil  // #1060: clear prior session's stop reason.
-    lastSalvagedLeadTrimMs = nil  // #1434: clear prior session's salvage marker.
-    lastCaptureHealth = nil  // #1434: clear prior session's capture health.
-    lastRecordingDurationSeconds = nil
-    // #1376: snapshot the resolved route AFTER all start retries (this
-    // transition is downstream of every startEnginePhase/beginCapturePhase
-    // path) so the recorded value reflects the FINAL resolved route.
-    lastResolvedRoute = audioCapture.currentResolvedRoute
-    // Stamp visible-recording start for the #4 discard gate (PR-4.5 #4, §5b).
-    // Set ONLY after the transition to .recording; pre-roll buffers fed
-    // earlier do not count toward minimum-duration.
-    recordingStartedAtTick = currentTick()
-    resourcesReleased = false
-    (vad as? CaptureVADSignalSource)?.startMonitoring(
-      recordingStartTime: Date(),
-      isRecording: { [weak self] in
-        self?.state == .recording && self?.currentSessionID == sid
-      }
-    )
+    switch resolution {
+    case .committedLive:
+      break  // now `.live` — fall through to the recording-exit tail
+    case .deadline:
+      // No converted buffer reached the routed-buffer latch within 800 ms —
+      // end the take honestly (§3.5). Existing "No audio captured" copy.
+      finishTerminal(.noTransport, sid: sid)
+      return
+    case .aborted:
+      // Woken by a conclusion whose barrier the guard above already caught, or
+      // a spurious wake with no latch set — bail defensively.
+      return
+    }
 
     let exit = await awaitRecordingExit()
-    guard isCurrent(sid), !state.isTerminal else { return }
+    guard isCurrent(sid), recordingOutcome == nil else { return }
     audioCapture.onBufferCaptured = nil
 
     // `finishTerminal` discards the adapter's open session (`adapterSessionActive`)
@@ -1134,12 +1196,13 @@ final class RecordingSessionKernel {
         if lastAudioInterruptionCause == nil {
           log("audio interruption exit with no stamped cause — refusing salvage")
         }
-        finishTerminal(.audioInterrupted, sid: sid)
+        finishTerminal(.audioInterrupted(lastAudioInterruptionCause), sid: sid)
         return
       }
       break
     case .asrInterruption:
-      finishTerminal(.asrInterrupted, sid: sid)
+      // Concluding from `.live` — `wasRecording: true` (§3.7).
+      finishTerminal(.asrInterrupted(wasRecording: true), sid: sid)
       return
     case .captureStall:
       finishTerminal(.failed(.captureStalled), sid: sid)
@@ -1212,7 +1275,7 @@ final class RecordingSessionKernel {
     guard isCurrent(sid) else { return }
     captureLifecycle = .stopped
     resourcesReleased = true
-    guard !state.isTerminal else { return }
+    guard recordingOutcome == nil else { return }
     // #1434: stamp the ONE capture-health record NOW — before the too-short /
     // no-audio / dead-air early terminals below — so no-audio, asrEmpty, and
     // completed all read the same record (Codex r2 ordering contract).
@@ -1276,8 +1339,7 @@ final class RecordingSessionKernel {
           level: .info, category: "Pipeline"
         )
       }
-      discardReason = .tooShort
-      finishTerminal(.discarded, sid: sid)
+      finishTerminal(.discarded(.tooShort), sid: sid)
       return
     }
     if captureResult.samples.isEmpty {
@@ -1427,9 +1489,6 @@ final class RecordingSessionKernel {
     var attemptedFromEnergyDespiteNoSegments = false
     if speechEvidence == .confirmedNoSpeech {
       if Self.rawAudioIsDeadAir(captureResult.samples, peak: rawPeakAudioLevel) {
-        // Stamp BEFORE the transition so the lifecycle-event observer reads
-        // the source at `.noSpeech` mapping time (PR-4b.2 §3.6 r7).
-        lastNoSpeechSource = .vadGate
         telemetryState.noSpeechTelemetry = KernelNoSpeechTelemetry(
           mode: isStreamingSession ? "streaming" : "batch",
           rawSampleCount: captureResult.samples.count,
@@ -1468,7 +1527,7 @@ final class RecordingSessionKernel {
             level: .info, category: "Pipeline"
           )
         }
-        finishTerminal(.noSpeech, sid: sid)
+        finishTerminal(.noSpeech(.vadGate), sid: sid)
         return
       }
       // Faint speech: zero VAD segments but raw energy above the dead-air floor.
@@ -1541,7 +1600,7 @@ final class RecordingSessionKernel {
     // must skip observe too, otherwise a future engine that stores observed
     // segments for use in finalize would see them and apply them to the
     // next session.
-    guard isCurrent(sid), !state.isTerminal else { return }
+    guard isCurrent(sid), recordingOutcome == nil else { return }
     adapter.observeSpeechSegments(
       vadSegments, rawCaptureSamples: captureResult.samples)
     // Raw audio for the conditioner is `captureResult.samples` (parity with
@@ -1690,12 +1749,14 @@ final class RecordingSessionKernel {
         + "voicedFraction=\(tailVoicedFractionForTelemetry.map { String(format: "%.2f", $0) } ?? "n/a") "
         + "refusedReason=\(tailRefusedReason ?? "n/a")")
 
-    // Transcribing.
+    // Transcribing — enter `.delivering` with the `.transcribing` sub-phase
+    // (cancel + ASR-interrupt still accepted; the safe point is not yet in force).
     let asrStart = CFAbsoluteTimeGetCurrent()
     markASRTimingStart(isStreamingSession)
-    transition(to: .transcribing)
+    deliveringPhase = .transcribing
+    transition(to: .delivering)
     let outcome = await finalize(sid, batchSamples: asrSamples)
-    guard isCurrent(sid), !state.isTerminal else { return }
+    guard isCurrent(sid), recordingOutcome == nil else { return }
     let asrEnd = CFAbsoluteTimeGetCurrent()
     markASRTimingEnd()
 
@@ -1857,7 +1918,7 @@ final class RecordingSessionKernel {
         // for. Idempotent: outcome.asrEndedAtSeconds is a plain overwrite.
         markASRTimingEnd()
         if let salvaged = salvageAttemptResult {
-          guard isCurrent(sid), !state.isTerminal else { return }
+          guard isCurrent(sid), recordingOutcome == nil else { return }
           let trimMs = salvaged.trimSamples * 1000 / Int(AudioConstants.sampleRate)
           lastSalvagedLeadTrimMs = trimMs
           var completed = KernelASRCompletedTelemetry(
@@ -1884,14 +1945,11 @@ final class RecordingSessionKernel {
           salvageDelivered = true
         } else {
           // The ladder awaited — a supersede/cancel during it owns the session.
-          guard isCurrent(sid), !state.isTerminal else { return }
+          guard isCurrent(sid), recordingOutcome == nil else { return }
         }
       }
       if !salvageDelivered {
         if !effectiveSpeechEvidence {
-          // Stamp BEFORE the transition so the observer reads the source
-          // at `.noSpeech` mapping time (PR-4b.2 §3.6 r7).
-          lastNoSpeechSource = .asrEmptyNoSpeech
           telemetryState.noSpeechTelemetry = KernelNoSpeechTelemetry(
             mode: isStreamingSession ? "streaming" : "batch",
             rawSampleCount: captureResult.samples.count,
@@ -1918,7 +1976,8 @@ final class RecordingSessionKernel {
           }
         }
         finishTerminal(
-          effectiveSpeechEvidence ? .failed(.asrEmpty) : .noSpeech, sid: sid)
+          effectiveSpeechEvidence ? .failed(.asrEmpty) : .noSpeech(.asrEmptyNoSpeech),
+          sid: sid)
       }
     case .cancelled:
       finishTerminal(.cancelled, sid: sid)
@@ -1980,15 +2039,20 @@ final class RecordingSessionKernel {
         // to the retry's `.transcript`), never the primary `.empty`.
         // A `.transcript` decode whose finalization did NOT reach `.completed`
         // is not a real completion — relabel so it stays distinct in the archive
-        // metadata (Codex r6 P3). `runFinalizing` has already run by here, so
-        // `state` holds the terminal verdict. #1434: applies to salvaged
-        // deliveries too via the effective outcome.
+        // metadata (Codex r6 P3). `runFinalizing`/`finishTerminal` have already
+        // run by here, so `recordingOutcome` holds the ending verdict (state has
+        // returned to `.idle`, #1548 D1). #1434: applies to salvaged deliveries
+        // too via the effective outcome.
+        let reachedNoSpeech: Bool = {
+          if case .noSpeech = recordingOutcome { return true }
+          return false
+        }()
         let archiveOutcome = Self.relabeledArchiveOutcome(
           base: Self.dictationArchiveOutcome(
             for: archiveEffectiveOutcome, effectiveSpeechEvidence: archiveSpeechEvidence),
           effectiveOutcome: archiveEffectiveOutcome,
-          reachedCompleted: isCurrent(sid) && state == .completed,
-          reachedNoSpeech: isCurrent(sid) && state == .noSpeech)
+          reachedCompleted: isCurrent(sid) && recordingOutcome == .completed,
+          reachedNoSpeech: isCurrent(sid) && reachedNoSpeech)
         let archiveClass = archiveClassification
         let archiveBackend = adapter.engineIdentity.backendType.rawValue
         let archiveSettingsOptIn = dictationAudioArchiveOptInProvider()
@@ -2067,15 +2131,17 @@ final class RecordingSessionKernel {
   #endif
 
   /// The finalizing phase — the transcript is in hand, the safe point is in
-  /// force (PR-1 §B.5). Cancel / interruption from here are ignored.
+  /// force (PR-1 §B.5). Cancel / interruption from here are ignored. Stays in
+  /// `.delivering`; the sub-phase advances to `.finalizing(_)`, which is what
+  /// `isLegalConclusion` reads to enforce the safe point (#1548 D1).
   private func runFinalizing(_ sid: SessionID, asrText: String, transcriptID: UUID) async {
-    transition(to: .finalizing)
-    finalizingSubStatus = .transcribing
+    deliveringPhase = .finalizing(.transcribing)
+    bump()
 
     let processed: String
     do {
       processed = try await processText(asrText) { [weak self] in
-        self?.finalizingSubStatus = .polishing
+        self?.deliveringPhase = .finalizing(.polishing)
         self?.bump()
       }
     } catch {
@@ -2095,8 +2161,7 @@ final class RecordingSessionKernel {
     // `interruptedTerminalFloor` floors this to `.audioInterrupted` to retain
     // the #1408 crash-recovery spool.
     if processed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      lastNoSpeechSource = .emptyAfterProcessing
-      finishTerminal(.noSpeech, sid: sid)
+      finishTerminal(.noSpeech(.emptyAfterProcessing), sid: sid)
       return
     }
 
@@ -2339,29 +2404,29 @@ final class RecordingSessionKernel {
   // NOT. Between sessions the kernel sits at `.idle`, which is non-terminal
   // but also non-recording — the no-op at `.idle` is delivered by
   // `deliverRecordingExitIfCurrent`'s `state == .recording` guard (`:1103`),
-  // not by `!state.isTerminal`. `routeASRInterruption` similarly switches on
+  // not by `recordingOutcome == nil`. `routeASRInterruption` similarly switches on
   // state and falls through to `default: return` for non-recording /
   // non-transcribing states.
 
   /// Route an external audio-interruption (BT disconnect, mic route change)
   /// into the FSM. Replaces the removed direct subscription to
   /// `audioCapture.onEngineInterrupted`. Idempotent: a second call after a
-  /// terminal short-circuits via `!state.isTerminal`.
+  /// terminal short-circuits via `recordingOutcome == nil`.
   func externalEngineInterrupted(_ cause: EngineInterruptionCause) {
-    guard !state.isTerminal else { return }
+    guard recordingOutcome == nil else { return }
     // Stamp the cause + freeze the recording snapshot ONLY on the interruption
     // that actually latches the exit (first-wins), BEFORE delivering it so the
-    // observer reads the right cause at the `→ .audioInterrupted` transition
-    // (the exit resolves the recording-loop continuation, which then calls
-    // `finishTerminal(.audioInterrupted)`). A later callback in the post-latch /
-    // pre-transition window — `state` still `.recording` but `recordingExitLatched`
-    // already true — has its exit ignored by `deliverRecordingExit`, so it must
-    // NOT overwrite the cause/snapshot the terminal will use (cloud review #1207:
-    // an already-owned `.deviceRemoved` could otherwise be replaced by a
-    // stale `.engineLost` and mislabel the loss). The guard
-    // mirrors `deliverRecordingExitIfCurrent`'s accept condition. The freeze
-    // reports real duration / route / backend (mirrors `routeASRInterruption`).
-    if state == .recording, !recordingExitLatched {
+    // observer reads the right cause at conclusion (the exit resolves the
+    // recording-loop continuation, which then concludes `.audioInterrupted`). A
+    // later callback in the post-latch / pre-conclusion window — `state` still
+    // `.live` but `recordingExitLatched` already true — has its exit ignored by
+    // `deliverRecordingExit`, so it must NOT overwrite the cause/snapshot the
+    // conclusion will use (cloud review #1207: an already-owned `.deviceRemoved`
+    // could otherwise be replaced by a stale `.engineLost` and mislabel the
+    // loss). The guard mirrors `deliverRecordingExitIfCurrent`'s accept
+    // condition. An interruption OUTSIDE `.live` (during Arming / Stopping)
+    // takes the driver's fallback path, NOT this FSM route (§5.2 parity).
+    if state == .live, !recordingExitLatched {
       telemetryState.interruptionCause = cause
       freezeRecordingSnapshot()
     }
@@ -2372,7 +2437,7 @@ final class RecordingSessionKernel {
   /// equivalent in shape to the adapter's own engine-crash) into the FSM.
   /// Mirror of the internal `routeASRInterruption(sid:)` path.
   func externalASRInterrupted() {
-    guard !state.isTerminal else { return }
+    guard recordingOutcome == nil else { return }
     routeASRInterruption(sid: currentSessionID)
   }
 
@@ -2385,16 +2450,28 @@ final class RecordingSessionKernel {
   /// equality — the App-side `WedgeRecoveryRouter` already filters by
   /// capture session via its own `isCurrentSession(ctx.sessionID)` check.
   ///
-  /// #1317 §3.2: routes by `ctx.failureMode` — `.noBuffers` keeps today's
-  /// `.captureStall` exit; `.allZeroFromStart` / `.becameZeroMidCapture` take
-  /// the dedicated `.zeroSignal` exit (normal stop path, prefix survives).
+  /// #1317 §3.2 / #1548 D1: routes by `ctx.failureMode` AND lifecycle state.
+  /// - `.noBuffers` while `.arming` → the no-buffer deadline: resolve Arming to
+  ///   `.deadline`, which the forward path concludes `.noTransport` (§3.5).
+  /// - `.noBuffers` while `.live` → today's `.captureStall` exit.
+  /// - `.allZeroFromStart` / `.becameZeroMidCapture` while `.arming` → LATCH the
+  ///   mode; `commitLiveFromFirstBuffer` delivers it once transport is proven
+  ///   (§3.6). While `.live` → the dedicated `.zeroSignal` exit (prefix survives).
   func externalCaptureStalled(_ ctx: CaptureStallContext) {
-    guard !state.isTerminal else { return }
+    guard recordingOutcome == nil else { return }
     switch ctx.failureMode {
     case .noBuffers:
-      deliverRecordingExitIfCurrent(.captureStall, sid: currentSessionID)
+      if state == .arming {
+        resolveArming(.deadline)
+      } else {
+        deliverRecordingExitIfCurrent(.captureStall, sid: currentSessionID)
+      }
     case .allZeroFromStart, .becameZeroMidCapture:
-      deliverRecordingExitIfCurrent(.zeroSignal(ctx.failureMode), sid: currentSessionID)
+      if state == .arming {
+        pendingArmingZeroSignal = ctx.failureMode
+      } else {
+        deliverRecordingExitIfCurrent(.zeroSignal(ctx.failureMode), sid: currentSessionID)
+      }
     }
   }
 
@@ -2431,9 +2508,58 @@ final class RecordingSessionKernel {
           sequence: self.bufferSequence, sessionID: sid)
         self.adapter.acceptAudio(handoff)
         self.bufferCountThisSession += 1
+        // #1548 D1: the FIRST converted, retained buffer is TRANSPORT — flip
+        // Arming → Live (shows the pill). Amplitude is irrelevant; a zero-filled
+        // buffer is transport (a dead BT link delivering zeros for 800 ms is
+        // FINE — the silence is caught later, in D2). Guarded to fire once
+        // (`state == .arming`).
+        self.commitLiveFromFirstBuffer(sid: sid)
         self.bump()
       }
     }
+  }
+
+  /// The FIRST converted, retained buffer of the session flips Arming → Live
+  /// (#1548 D1). Runs the machinery that used to fire at the `.recording`
+  /// transition — recording-start stamps, resolved-route snapshot, VAD start —
+  /// and resolves the Arming waiter. Idempotent: only the first buffer (while
+  /// `state == .arming`, `recordingOutcome == nil`) commits.
+  private func commitLiveFromFirstBuffer(sid: SessionID) {
+    // `armingResolution == nil` closes the deadline/first-buffer race: if the
+    // deadline (or a stop/cancel) already latched a winner, a late buffer must
+    // NOT commit Live (impl-design consult, Decision 2).
+    guard isCurrent(sid), state == .arming, recordingOutcome == nil,
+      armingResolution == nil
+    else { return }
+    guard transition(to: .live) else { return }
+    recordingStartedAtDate = Date()
+    recordingStartedAtUptimeNs = DispatchTime.now().uptimeNanoseconds
+    lastStopReason = nil  // #1060: clear prior session's stop reason.
+    lastSalvagedLeadTrimMs = nil  // #1434: clear prior session's salvage marker.
+    lastCaptureHealth = nil  // #1434: clear prior session's capture health.
+    lastRecordingDurationSeconds = nil
+    // #1376: snapshot the resolved route AFTER all start retries so the recorded
+    // value reflects the FINAL resolved route.
+    lastResolvedRoute = audioCapture.currentResolvedRoute
+    // Stamp visible-recording start for the #4 discard gate (PR-4.5 #4, §5b).
+    // Set ONLY after the transition to `.live`; pre-roll buffers fed earlier do
+    // not count toward minimum-duration.
+    recordingStartedAtTick = currentTick()
+    resourcesReleased = false
+    (vad as? CaptureVADSignalSource)?.startMonitoring(
+      recordingStartTime: Date(),
+      isRecording: { [weak self] in
+        self?.state == .live && self?.currentSessionID == sid
+      }
+    )
+    // Deliver any zero-signal event latched during Arming into the Live/stop
+    // tail now that transport is proven (§3.6). The existing recording-exit
+    // channel + salvage/all-zero handling process it unchanged.
+    if let latched = pendingArmingZeroSignal {
+      pendingArmingZeroSignal = nil
+      deliverRecordingExit(.zeroSignal(latched))
+    }
+    resolveArming(.committedLive)
   }
 
   // MARK: VAD subscription
@@ -2477,9 +2603,44 @@ final class RecordingSessionKernel {
               + "current=\(self.currentSessionID.raw) totalDrops=\(self.staleVADSignalDrops)")
           continue
         }
-        guard self.state == .recording else { continue }
+        guard self.state == .live else { continue }
         self.onApproachingMaxDuration?(warning.remainingSeconds)
       }
+    }
+  }
+
+  // MARK: Arming-resolution channel (#1548 D1)
+
+  /// The forward path parks here after `beginCapturePhase()` until Arming
+  /// resolves. Mirrors `awaitRecordingExit()`'s pending-before-continuation
+  /// pattern so a winner recorded before the waiter is installed (pre-roll
+  /// during a suspended `beginCapturePhase`, r2 Q2.1) is not lost.
+  ///
+  /// `armingResolution` is a per-session WINNER LATCH — it stays populated until
+  /// `resetSessionState()`, NOT cleared on read. This prevents the deadline /
+  /// first-buffer race: once the deadline resumes the waiter (leaving state
+  /// `.arming`), a buffer arriving before the resumed forward task runs must NOT
+  /// commit Live — `commitLiveFromFirstBuffer` and `resolveArming` both gate on
+  /// the latch being empty (impl-design consult, Decision 2).
+  private func awaitArmingResolution() async -> ArmingResolution {
+    if let winner = armingResolution {
+      return winner
+    }
+    return await withCheckedContinuation { continuation in
+      armingContinuation = continuation
+    }
+  }
+
+  /// Record the Arming winner (first-wins latch). Sets `armingResolution`, then
+  /// resumes a suspended waiter. A later resolve is a no-op — the latch already
+  /// fixed the winner, so a late buffer cannot commit Live after a deadline /
+  /// stop / cancel already resolved Arming.
+  private func resolveArming(_ resolution: ArmingResolution) {
+    guard armingResolution == nil else { return }
+    armingResolution = resolution
+    if let continuation = armingContinuation {
+      armingContinuation = nil
+      continuation.resume(returning: resolution)
     }
   }
 
@@ -2523,7 +2684,7 @@ final class RecordingSessionKernel {
   }
 
   private func deliverRecordingExitIfCurrent(_ exit: RecordingExit, sid: SessionID) {
-    guard isCurrent(sid), state == .recording else { return }
+    guard isCurrent(sid), state == .live else { return }
     deliverRecordingExit(exit)
   }
 
@@ -2547,15 +2708,20 @@ final class RecordingSessionKernel {
     // mid-transcribe crash routed cleanly; the kernel's pre-PR-4.5 callback
     // guard silently dropped it. Logging the state at routing makes "crashed
     // but no terminal" futures debuggable from app.log alone.
-    log("ASR interruption routed sid=\(sid.raw) state=\(state)")
+    log("ASR interruption routed sid=\(sid.raw) state=\(state)/\(deliveringPhase)")
     switch state {
-    case .recording:
+    case .live:
       freezeRecordingSnapshot()
       deliverRecordingExit(.asrInterruption)
-    case .transcribing:
+    case .delivering where deliveringPhase == .transcribing:
+      // Pre-transcript delivering — the continuation is gone, so conclude
+      // directly. `wasRecording: false` (not `.live`) folds in the observer's
+      // old `priorState == .recording` distinction (§3.7).
       freezeRecordingSnapshot()
-      finishTerminal(.asrInterrupted, sid: sid)
+      finishTerminal(.asrInterrupted(wasRecording: false), sid: sid)
     default:
+      // `.arming` / `.stopping` / `delivering(.finalizing(_))` (safe point) —
+      // unchanged prior drop (out of scope for #7 / #1548).
       return
     }
   }
@@ -2578,83 +2744,107 @@ final class RecordingSessionKernel {
     return true
   }
 
-  /// The legal FSM edges (PR-1 §B.1.2 transition table). Any pair not listed
-  /// here is a forbidden transition — `transition(to:)` refuses it. Encoded as
-  /// the per-from-state allowed `to` set rather than a blanket "any active
-  /// jump is fine" (Codex P2-round3): a gross jump like `preparing → completed`
-  /// or `recording → finalizing` must be rejected.
+  /// The legal FSM edges (#1548 D1 — the 5-state table). Any pair not listed
+  /// here is a forbidden transition — `transition(to:)` refuses it. The ending
+  /// CATEGORY moved to `recordingOutcome`, so every conclusion is now
+  /// `<active> → idle`; which OUTCOME is legal from which state is enforced
+  /// separately by `isLegalConclusion` (the category-legality the old 14-state
+  /// table used to carry on the terminal edges).
   private func isLegalTransition(
     from current: RecordingSessionState, to next: RecordingSessionState
   ) -> Bool {
     if current == next { return false }
     switch current {
     case .idle:
-      // Only `start` — `idle → preparing`.
-      if case .preparing = next { return true }
+      // Only `start` — `idle → arming`.
+      return next == .arming
+    case .arming:
+      // Transport proven (`→ live`) or a conclusion (`→ idle`, outcome set).
+      return next == .live || next == .idle
+    case .live:
+      // Stop accepted (`→ stopping`) or a conclusion (`→ idle`).
+      return next == .stopping || next == .idle
+    case .stopping:
+      // ASR begins (`→ delivering`) or a conclusion (`→ idle`).
+      return next == .delivering || next == .idle
+    case .delivering:
+      // Only a conclusion (`→ idle`); the transcribing/finalizing sub-phase is
+      // carried by `deliveringPhase`, not by an FSM transition.
+      return next == .idle
+    }
+  }
+
+  /// Which ending OUTCOME is legal from which state (#1548 D1) — the
+  /// category-legality the old 14-state transition table enforced on its
+  /// terminal edges, now that every conclusion is `<active> → idle`. Mirrors
+  /// the old table's terminal edges EXACTLY (plus `.noTransport` from Arming),
+  /// so no session the old code could conclude is stranded here. Evaluates the
+  /// POST-`interruptedTerminalFloor` outcome (r3 Q2.2): the floor can raise a
+  /// no-transcript ending to `.audioInterrupted` from `stopping` /
+  /// `delivering(_)`, so `.audioInterrupted` is legal there. `finishTerminal`
+  /// refuses an illegal pair BEFORE setting `recordingOutcome`.
+  private func isLegalConclusion(
+    outcome: RecordingOutcome,
+    from current: RecordingSessionState,
+    deliveringPhase phase: DeliveringPhase
+  ) -> Bool {
+    switch current {
+    case .idle:
+      // Nothing concludes from a resting/already-concluded idle.
       return false
-    case .preparing:
-      switch next {
-      case .warmingUp, .recording, .failed, .discarded, .cancelled,
-        .audioInterrupted, .asrInterrupted:
+    case .arming:
+      // Old preparing/warmingUp terminal edges + the new no-transport exit.
+      switch outcome {
+      case .failed, .discarded, .cancelled, .noTransport:
         return true
-      default:
+      case .completed, .noSpeech, .audioInterrupted, .asrInterrupted:
         return false
       }
-    case .warmingUp:
-      switch next {
-      case .recording, .failed, .discarded, .cancelled, .audioInterrupted,
-        .asrInterrupted:
+    case .live:
+      // Old recording terminal edges. `.asrInterrupted` is `wasRecording: true`
+      // ONLY from `.live` (impl-design consult, Decision 4 — the payload is
+      // legality-checked so a wrong flag cannot corrupt `was_recording`).
+      switch outcome {
+      case .failed, .discarded, .cancelled, .audioInterrupted:
         return true
-      default:
-        return false
-      }
-    case .recording:
-      switch next {
-      case .stopping, .failed, .discarded, .cancelled, .audioInterrupted,
-        .asrInterrupted:
+      case .asrInterrupted(wasRecording: true):
         return true
-      default:
+      case .asrInterrupted(wasRecording: false), .completed, .noSpeech, .noTransport:
         return false
       }
     case .stopping:
-      switch next {
-      case .transcribing, .failed, .noSpeech, .discarded, .cancelled,
-        .audioInterrupted, .asrInterrupted:
+      // Old stopping terminal edges (incl. the floored `.audioInterrupted`).
+      switch outcome {
+      case .failed, .noSpeech, .discarded, .cancelled, .audioInterrupted:
         return true
-      default:
+      case .asrInterrupted(wasRecording: false):
+        return true
+      case .asrInterrupted(wasRecording: true), .completed, .noTransport:
         return false
       }
-    case .transcribing:
-      switch next {
-      case .finalizing, .failed, .noSpeech, .cancelled, .audioInterrupted,
-        .asrInterrupted:
-        return true
-      default:
-        return false
-      }
-    case .finalizing:
-      // Safe point — a delivery outcome (`completed`/`failed`) OR a legitimate
-      // no-delivery discovery. #1358: the limb chain can empty the transcript
-      // (bare filler / non-speech artifact) → `.noSpeech`; and if that capture
-      // was interrupted, `interruptedTerminalFloor` floors `.noSpeech` up to
-      // `.audioInterrupted` (retain the #1408 spool), so that floored terminal
-      // must be legal too or `finishTerminal` would silently never terminate.
-      // None of these is the cancel/interruption COMMAND the safe point blocks.
-      switch next {
-      case .completed, .failed, .noSpeech, .audioInterrupted:
-        return true
-      default:
-        return false
-      }
-    case .completed, .failed, .cancelled, .discarded, .noSpeech,
-      .audioInterrupted, .asrInterrupted:
-      // A terminal state may only move to `idle` (reset) or `preparing`
-      // (start of a new session).
-      switch next {
-      case .idle, .preparing:
-        return true
-      default:
-        return false
+    case .delivering:
+      switch phase {
+      case .transcribing:
+        // Old transcribing terminal edges. `.asrInterrupted` here is
+        // `wasRecording: false` (routed from `delivering(.transcribing)`).
+        switch outcome {
+        case .failed, .noSpeech, .cancelled, .audioInterrupted:
+          return true
+        case .asrInterrupted(wasRecording: false):
+          return true
+        case .asrInterrupted(wasRecording: true), .completed, .discarded, .noTransport:
+          return false
+        }
+      case .finalizing:
+        // Old finalizing terminal edges — the SAFE POINT: no `.cancelled`, no
+        // `.asrInterrupted`. Only a delivery outcome or a legitimate
+        // no-delivery discovery, and the floored `.audioInterrupted`.
+        switch outcome {
+        case .completed, .failed, .noSpeech, .audioInterrupted:
+          return true
+        case .cancelled, .discarded, .asrInterrupted, .noTransport:
+          return false
+        }
       }
     }
   }
@@ -2698,25 +2888,44 @@ final class RecordingSessionKernel {
   /// `.failed(reason)` (`.asrEmpty`, `.asrFailed`, `.captureStartFailed`,
   /// `.modelLoadFailed`) keeps its own honest reason and is already spool-retaining.
   private func interruptedTerminalFloor(
-    _ terminal: RecordingSessionState
-  ) -> RecordingSessionState {
-    guard lastAudioInterruptionCause != nil else { return terminal }
-    switch terminal {
+    _ outcome: RecordingOutcome
+  ) -> RecordingOutcome {
+    guard let cause = lastAudioInterruptionCause else { return outcome }
+    switch outcome {
     case .discarded, .noSpeech, .failed(.noAudioCaptured):
-      return .audioInterrupted
+      return .audioInterrupted(cause)
     default:
-      return terminal
+      return outcome
     }
   }
 
-  /// Reach a terminal state: transition, run nonblocking cleanup, drain the
-  /// task bag (PR-1 §B.1.6, PR-3 plan §3.1a — cancel + clear, never `await`).
-  /// Discards the adapter's open session and stops the capture engine if
-  /// either is still in flight (PR-1 §B.1.3 cleanup column; Codex P1b / P2-r3).
-  private func finishTerminal(_ rawTerminal: RecordingSessionState, sid: SessionID) {
-    guard isCurrent(sid) else { return }
-    let terminal = interruptedTerminalFloor(rawTerminal)
-    guard transition(to: terminal) else { return }
+  /// Conclude the session: set the ending `recordingOutcome`, return the FSM to
+  /// `.idle`, run nonblocking cleanup, drain the task bag (PR-1 §B.1.6, PR-3
+  /// plan §3.1a — cancel + clear, never `await`). Discards the adapter's open
+  /// session and stops the capture engine if either is still in flight (PR-1
+  /// §B.1.3 cleanup column; Codex P1b / P2-r3). `recordingOutcome != nil` is
+  /// the session-concluded barrier (#1548 D1).
+  ///
+  /// Fixed order (§5.3 r4): floor + `isLegalConclusion` validate → set
+  /// `recordingOutcome` → resolve a suspended Arming waiter → `→ .idle` → drain.
+  private func finishTerminal(_ rawOutcome: RecordingOutcome, sid: SessionID) {
+    // Set-once barrier: `isCurrent` fences stale sessions; `recordingOutcome ==
+    // nil` prevents a double conclusion.
+    guard isCurrent(sid), recordingOutcome == nil else { return }
+    let outcome = interruptedTerminalFloor(rawOutcome)
+    guard isLegalConclusion(outcome: outcome, from: state, deliveringPhase: deliveringPhase) else {
+      forbiddenTransitionRejected = true
+      log("FORBIDDEN conclusion \(outcome) from \(state)/\(deliveringPhase) — refused")
+      return
+    }
+    let wasArming = (state == .arming)
+    let terminal = outcome  // local alias for the existing telemetry logs below
+    recordingOutcome = outcome
+    // Wake a forward path suspended in `awaitArmingResolution()` (r3 Q2.3); its
+    // barrier guard then bails. Harmless when no waiter exists (the deadline
+    // path already consumed it) — the pending slot is cleared next session.
+    if wasArming { resolveArming(.aborted) }
+    guard transition(to: .idle) else { return }
     audioCapture.onBufferCaptured = nil
     // PR-4b.1: `onEngineInterrupted` and `onCaptureStalled`
     // are no longer owned by the kernel — the App-side routers stay as sole
@@ -2848,12 +3057,14 @@ final class RecordingSessionKernel {
     finalizeWedgeDetected = false
     finalizeCompleted = false
     modelLoadWedgeTelemetry = nil
-    finalizingSubStatus = .transcribing
+    deliveringPhase = .transcribing
+    recordingOutcome = nil
+    armingResolution = nil
+    armingContinuation = nil
+    pendingArmingZeroSignal = nil
     deliveredTranscript = nil
     deliveryOutcome = nil
-    discardReason = nil
     didLoadModelThisSession = false
-    lastNoSpeechSource = nil
     // #1408: `lastAudioInterruptionCause` is NOT cleared here. Its storage moved
     // to `KernelTelemetryState.interruptionCause`, whose `resetForNewSession()`
     // is the sole clearer — `start(config:)` calls it immediately after this,
@@ -2994,12 +3205,12 @@ final class RecordingSessionKernel {
       // Re-guard before EACH dispatch — a PTT-cancel/new session mid-ladder
       // abandons it (the in-flight decode, if any, is dropped by the finalize
       // wrapper's own stale guard).
-      guard isCurrent(sid), !state.isTerminal else {
+      guard isCurrent(sid), recordingOutcome == nil else {
         telemetryState.asrEmptyDiagnostics?.salvageAbortedReason = "superseded"
         return nil
       }
       let retry = await finalize(sid, batchSamples: Array(samples[trim...]))
-      guard isCurrent(sid), !state.isTerminal else {
+      guard isCurrent(sid), recordingOutcome == nil else {
         telemetryState.asrEmptyDiagnostics?.salvageAbortedReason = "superseded"
         return nil
       }
@@ -3275,24 +3486,30 @@ final class RecordingSessionKernel {
       freezeRecordingSnapshot()
     }
 
-    /// Test-only finalizing-sub-status setter. Lets unit tests flip the
-    /// `.transcribing` ↔ `.polishing` sub-status without driving a real
-    /// polish-step `onWillProcess`. The driver's `overlayIntent` routes
-    /// overlay-label text through this sub-status (`.processing("Transcribing...")`
-    /// vs `"Polishing..."`).
+    /// Test-only delivering-sub-phase setter. Lets unit tests flip the
+    /// `.transcribing` ↔ `.polishing` finalizing sub-status without driving a
+    /// real polish-step `onWillProcess`. The driver's `overlayIntent` routes
+    /// overlay-label text through `deliveringPhase` (#1548 D1). Sets the nested
+    /// `.finalizing(status)` sub-phase.
     func testSetFinalizingSubStatus(_ status: FinalizingSubStatus) {
-      finalizingSubStatus = status
+      deliveringPhase = .finalizing(status)
+    }
+
+    /// Test-only `deliveringPhase` setter — flip the whole sub-phase
+    /// (`.transcribing` vs `.finalizing(_)`) to exercise the cancel safe point.
+    func testSetDeliveringPhase(_ phase: DeliveringPhase) {
+      deliveringPhase = phase
     }
 
     /// #1408: surface the terminal floor as a pure function so a test can prove
-    /// it covers EVERY terminal whose `RecordingTerminalKind` is `.discard`.
+    /// it covers EVERY outcome whose `RecordingTerminalKind` is `.discard`.
     /// The floor's mapped set and `KernelDictationDriver.endedWithoutSaveKind`'s
     /// discard set are two lists of the same fact; without this seam they can
-    /// drift, and a new spool-deleting terminal would silently escape the floor.
-    func testInterruptedTerminalFloor(_ terminal: RecordingSessionState)
-      -> RecordingSessionState
+    /// drift, and a new spool-deleting outcome would silently escape the floor.
+    func testInterruptedTerminalFloor(_ outcome: RecordingOutcome)
+      -> RecordingOutcome
     {
-      interruptedTerminalFloor(terminal)
+      interruptedTerminalFloor(outcome)
     }
   #endif
 }
