@@ -191,9 +191,14 @@ jobs:
           fi
           echo "==> Xcode executed $TESTS_RUN tests (debug)"
 
-  # Release lane: Xcode release build + FoundationModels compile probe. Runs in
-  # parallel with build-debug (issue #906). The probe is a standalone macOS-26
-  # SDK compile (~5s). Step-level needs_build gating. (#913 PR3 → Xcode engine.)
+  # Release lane: Xcode release build + Release test-target compile +
+  # FoundationModels compile probe. Runs in parallel with build-debug (issue
+  # #906). The probe is a standalone macOS-26 SDK compile (~5s). The Release
+  # test-target compile (issue #1539) catches a test file that references a
+  # #if DEBUG-only Sources symbol without gating itself — that class compiles
+  # fine in Debug (this lane's sibling `build-debug`) but silently vanishes in
+  # Release, previously surfacing only post-merge in main-post-merge.yml. Step-
+  # level needs_build gating. (#913 PR3 → Xcode engine.)
   build-release:
     runs-on: macos-26
     timeout-minutes: 45
@@ -313,6 +318,43 @@ jobs:
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
             VALID_ARCHS=arm64
+
+      # Compiles (never runs) both Release-config test targets so a test file
+      # that references a #if DEBUG-only Sources symbol without gating itself
+      # fails HERE, on the PR, instead of post-merge in main-post-merge.yml
+      # (issue #1539; recurred twice in 3 days: #1358/#1498, #1536/#1538).
+      # ENABLE_TESTABILITY=YES mirrors main-post-merge.yml's release-test
+      # rationale (Release doesn't enable testability by default); it is NOT
+      # set on the plain `build` step above, so the shippable release artifact
+      # stays non-testable and fully optimized.
+      - name: Build for testing (release, Xcode)
+        id: release-test-build
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_RELEASE_SCHEME" \
+            -configuration Release \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -destination 'platform=macOS,arch=arm64' \
+            -resultBundlePath "$GITHUB_WORKSPACE/xcode-build-for-testing-release.xcresult" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            VALID_ARCHS=arm64 \
+            ENABLE_TESTABILITY=YES 2>&1 | tee xcode-build-for-testing-release.log
+
+      - name: Upload release test-build failure evidence
+        if: failure() && steps.release-test-build.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-test-build-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            xcode-build-for-testing-release.log
+            xcode-build-for-testing-release.xcresult
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verify FoundationModels compile probe
         if: steps.changes.outputs.needs_build == 'true'

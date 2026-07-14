@@ -10,7 +10,7 @@
 
 ### Build Verification
 - [ ] Dev build passes locally (`scripts/build-dev-app.sh`, Xcode/Tuist engine)
-- [ ] Logic tests pass locally (`scripts/xcode-test.sh`; add `--release` if the PR adds `#if DEBUG`-gated test symbols)
+- [ ] Logic tests pass locally (`scripts/xcode-test.sh`; use `--release` to reproduce a Release-config failure locally)
 - [ ] CI `build-check` status is green
 
 ### Behavioral Testing (Local UAT)
