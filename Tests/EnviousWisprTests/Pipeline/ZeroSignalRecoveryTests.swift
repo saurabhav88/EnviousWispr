@@ -138,6 +138,9 @@ struct ZeroSignalRecoveryTests {
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
     ctx.vad.evidence = .confirmedNoSpeech
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
@@ -159,6 +162,9 @@ struct ZeroSignalRecoveryTests {
     ctx.vad.evidence = .voiced
     ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 8_000)]
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
@@ -189,6 +195,9 @@ struct ZeroSignalRecoveryTests {
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
     ctx.vad.evidence = .confirmedNoSpeech  // Silero abstains on the quiet prefix
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
@@ -232,6 +241,9 @@ struct ZeroSignalRecoveryTests {
     // full sample count (Grounded Review r1).
     ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 8_000 + threshold)]
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
@@ -250,6 +262,9 @@ struct ZeroSignalRecoveryTests {
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
     ctx.vad.evidence = .confirmedNoSpeech
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
@@ -271,6 +286,9 @@ struct ZeroSignalRecoveryTests {
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.001)
     ctx.vad.evidence = .confirmedNoSpeech
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
@@ -326,6 +344,9 @@ struct ZeroSignalRecoveryTests {
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
     ctx.vad.evidence = .confirmedNoSpeech
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
@@ -353,6 +374,9 @@ struct ZeroSignalRecoveryTests {
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
     ctx.vad.evidence = .confirmedNoSpeech
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
@@ -371,7 +395,10 @@ struct ZeroSignalRecoveryTests {
       ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
       ctx.vad.evidence = .confirmedNoSpeech
 
-      await ctx.wrapper.apply(.stop)
+      // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.apply(.stop)
       await ctx.wrapper.drainReadyWork()
 
       #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))

@@ -51,6 +51,10 @@ struct KernelSalvageRetryTests {
     await ctx.wrapper.apply(.start)
     await ctx.wrapper.drainReadyWork()
     deliverFailureShapedCapture(ctx)
+    // #1548 D1: the first converted buffer flips Arming → Live (transport gate)
+    // via an async @MainActor hop — drain so the commit lands BEFORE the stop,
+    // otherwise the stop aborts a still-Arming session as released-before-recording.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
   }
@@ -116,6 +120,8 @@ struct KernelSalvageRetryTests {
     ctx.capture.deliverBuffer(frameCount: 48000, amplitude: 0.25)
     ctx.vad.evidence = .voiced
     ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 48000)]
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
     let kernel = ctx.wrapper.testKernel
@@ -150,6 +156,8 @@ struct KernelSalvageRetryTests {
     deliverFailureShapedCapture(ctx)
     ctx.vad.evidence = .confirmedNoSpeech
     ctx.vad.segments = []
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
     let kernel = ctx.wrapper.testKernel
@@ -174,6 +182,8 @@ struct KernelSalvageRetryTests {
     ctx.capture.deliverBuffer(frameCount: 48000, amplitude: 0.25)
     ctx.vad.evidence = .voiced
     ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 48000)]
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
     let kernel = ctx.wrapper.testKernel

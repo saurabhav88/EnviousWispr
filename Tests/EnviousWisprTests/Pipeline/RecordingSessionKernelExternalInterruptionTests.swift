@@ -46,19 +46,25 @@ import Testing
       return (context, wrapper)
     }
 
-    private func startToRecording(_ wrapper: KernelRecordingSession) async {
-      await wrapper.apply(.start)
-      await wrapper.drainReadyWork()
+    /// Start a session and drive it to `.live`. #1548 D1: reaching `.live` now
+    /// requires the FIRST converted buffer (the transport gate), delivered via
+    /// an async @MainActor hop — so deliver one buffer and drain until the
+    /// Arming → Live commit lands. Callers that then interrupt do so from `.live`.
+    private func startToRecording(_ context: SimulatorContext) async {
+      await context.sut.apply(.start)
+      await context.sut.drainReadyWork()
+      context.capture.deliverBuffer()
+      await context.sut.drainReadyWork()
     }
 
     // MARK: 1. Routing — each entry produces the right terminal
 
     @Test("externalEngineInterrupted routes to the audio-interrupted terminal")
     func engineInterruptedRoutes() async {
-      let (_, wrapper) = makeWrapper()
+      let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      await startToRecording(wrapper)
+      await startToRecording(context)
       #expect(kernel.state == .live)
 
       kernel.externalEngineInterrupted(.engineLost)
@@ -69,10 +75,10 @@ import Testing
 
     @Test("externalASRInterrupted routes to the ASR-interrupted terminal")
     func asrInterruptedRoutes() async {
-      let (_, wrapper) = makeWrapper()
+      let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      await startToRecording(wrapper)
+      await startToRecording(context)
       #expect(kernel.state == .live)
 
       kernel.externalASRInterrupted()
@@ -105,7 +111,7 @@ import Testing
       let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      await startToRecording(wrapper)
+      await startToRecording(context)
       #expect(kernel.state == .live)
 
       kernel.externalCaptureStalled(context.capture.makeStallContext())
@@ -118,10 +124,10 @@ import Testing
 
     @Test("a second externalEngineInterrupted after the first reached terminal is a no-op")
     func engineInterruptedIdempotent() async {
-      let (_, wrapper) = makeWrapper()
+      let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      await startToRecording(wrapper)
+      await startToRecording(context)
       kernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
       let firstOutcome = kernel.recordingOutcome
@@ -134,10 +140,10 @@ import Testing
 
     @Test("a second externalASRInterrupted after the first reached terminal is a no-op")
     func asrInterruptedIdempotent() async {
-      let (_, wrapper) = makeWrapper()
+      let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      await startToRecording(wrapper)
+      await startToRecording(context)
       kernel.externalASRInterrupted()
       await wrapper.drainReadyWork()
       let firstOutcome = kernel.recordingOutcome
@@ -153,7 +159,7 @@ import Testing
       let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      await startToRecording(wrapper)
+      await startToRecording(context)
       kernel.externalCaptureStalled(context.capture.makeStallContext())
       await wrapper.drainReadyWork()
       let firstOutcome = kernel.recordingOutcome
@@ -187,7 +193,7 @@ import Testing
       let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      await startToRecording(wrapper)
+      await startToRecording(context)
       await wrapper.apply(.cancel)  // → cancelled
       await wrapper.drainReadyWork()
       #expect(kernel.recordingOutcome == .cancelled)
@@ -204,10 +210,10 @@ import Testing
 
     @Test("an engine interruption followed by an ASR interruption lands a single terminal")
     func doubleFireOneWins() async {
-      let (_, wrapper) = makeWrapper()
+      let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      await startToRecording(wrapper)
+      await startToRecording(context)
       kernel.externalEngineInterrupted(.engineLost)
       // Second call lands BEFORE the first has settled — the FSM is still in
       // `.recording` so the guard does not bite yet. The forward path picks
@@ -232,10 +238,10 @@ import Testing
       // `.recording`) must NOT overwrite the cause the `.audioInterrupted` terminal
       // will use — else a verified `.deviceRemoved` could be replaced by a stale
       // `.engineLost` and mislabel the loss (or vice-versa).
-      let (_, wrapper) = makeWrapper()
+      let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      await startToRecording(wrapper)
+      await startToRecording(context)
       // First (latching) interruption: a verified device removal → must be the
       // cause the terminal carries.
       kernel.externalEngineInterrupted(.deviceRemoved)
@@ -255,10 +261,10 @@ import Testing
 
     @Test("externalCaptureStalled tolerates an arbitrary UInt64 capture sessionID")
     func captureStallCrossDomainSessionID() async {
-      let (_, wrapper) = makeWrapper()
+      let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      await startToRecording(wrapper)
+      await startToRecording(context)
 
       // The capture-layer sessionID is a `UInt64` capture counter — a different
       // domain than the kernel's UUID `SessionID`. The guard is on kernel

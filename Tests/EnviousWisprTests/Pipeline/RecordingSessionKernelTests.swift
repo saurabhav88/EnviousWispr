@@ -46,6 +46,17 @@ import Testing
       await wrapper.drainReadyWork()
     }
 
+    /// Start a session and drive it to `.live`. #1548 D1: reaching `.live` now
+    /// requires the FIRST converted buffer (the transport gate), delivered via
+    /// an async @MainActor hop — deliver one buffer and drain so the commit lands.
+    private func startToLive(
+      _ context: SimulatorContext, _ wrapper: KernelRecordingSession
+    ) async {
+      await apply(.start, to: wrapper)
+      context.capture.deliverBuffer()
+      await wrapper.drainReadyWork()
+    }
+
     // MARK: Invariant 1 — SessionID minted fresh, never reused
 
     @Test("each session mints a distinct SessionID")
@@ -254,10 +265,10 @@ import Testing
 
     @Test("recordingElapsedSeconds is near-zero immediately at the recording transition")
     func recordingElapsedSecondsNearZeroAtTransition() async {
-      let (_, wrapper) = makeWrapper()
+      let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      await apply(.start, to: wrapper)
+      await startToLive(context, wrapper)
       #expect(kernel.state == .live)
       #expect(kernel.recordingElapsedSeconds == 0)
     }
@@ -267,7 +278,7 @@ import Testing
       let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      await apply(.start, to: wrapper)
+      await startToLive(context, wrapper)
       #expect(kernel.state == .live)
 
       context.clock.advance(by: 30)  // 30 ticks × 0.1s = 3.0s
@@ -282,7 +293,7 @@ import Testing
       let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      await apply(.start, to: wrapper)
+      await startToLive(context, wrapper)
       context.clock.advance(by: 10)
       let firstReading = kernel.recordingElapsedSeconds
 
@@ -301,7 +312,7 @@ import Testing
       let (context, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      await apply(.start, to: wrapper)
+      await startToLive(context, wrapper)
       context.clock.advance(by: 10)
       #expect(kernel.recordingElapsedSeconds != nil)
 
@@ -321,7 +332,7 @@ import Testing
 
       // A fresh session starts its own origin at zero again, not carrying
       // the prior session's elapsed time forward.
-      await apply(.start, to: wrapper)
+      await startToLive(context, wrapper)
       #expect(kernel.recordingElapsedSeconds == 0)
     }
 
