@@ -359,7 +359,7 @@ import Testing
   /// PR-C.1 of #763 (#813) widened the allowlist to the full engine-module set
   /// (`EnviousWisprASR`, `EnviousWisprAudio`, `EnviousWisprLLM`,
   /// `EnviousWisprPipeline`). This is the deliberate consequence of making
-  /// `EnviousWisprApp` the construction root: it now builds `AudioCaptureProxy`,
+  /// `EnviousWisprApp` the construction root: it now builds `AudioCaptureManager`,
   /// `ASRManagerProxy`, both pipelines,
   /// `LLMModelDiscoveryCoordinator`, etc. — the construction that used to live
   /// in the former root-state initializer. A composition root importing the modules it

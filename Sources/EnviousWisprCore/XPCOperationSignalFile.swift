@@ -13,8 +13,6 @@ import Foundation
 /// replies can be healthy while quiet. Once at least one inter-signal cadence
 /// exists, later silence still fires through the normal floor + 5x-gap rule.
 public final class XPCOperationSignalFile: Sendable {
-  public static let audio = XPCOperationSignalFile(
-    filePath: "/tmp/com.enviouswispr.audio-operation-signal")
   public static let asr = XPCOperationSignalFile(
     filePath: "/tmp/com.enviouswispr.asr-operation-signal")
 

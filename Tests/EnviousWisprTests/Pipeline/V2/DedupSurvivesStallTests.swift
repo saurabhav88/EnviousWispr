@@ -20,8 +20,8 @@ import Testing
 ///
 /// Uses a `NeverFinishingAudioCapture` stub so the pipeline parks in
 /// `.recording` without racing against the audio path's auto-completion.
-/// Does NOT exercise the `AudioCaptureProxy.forceStallRemainingBuffers`
-/// proxy seam — that's Lane A scenario A5's responsibility.
+/// Does NOT exercise the DEBUG capture fault-injection seam — that's Lane A
+/// scenario A5's responsibility.
 @MainActor
 @Suite("V2 Lane C — dedup state survives recording restart")
 struct DedupSurvivesStallTests {
@@ -142,11 +142,7 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
   var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?
   var onMaxDurationReached: (() -> Void)?
-  var onVADModelUnavailable: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
-  var onXPCServiceError: ((XPCErrorContext) -> Void)?
-  var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
-  var onAudioStartRetryResolved: ((AudioStartRetryContext) -> Void)?
   var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
   var currentCaptureSessionID: UInt64 = 0
   var isActivelyCapturing: Bool = false

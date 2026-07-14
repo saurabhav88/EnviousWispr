@@ -1,21 +1,19 @@
 #if DEBUG
   import Foundation
 
-  /// #1317 proof-bench (DEBUG only): JSON wire payloads for the DEBUG all-zero
-  /// injector's XPC arm/status channel. They cross the `@objc AudioServiceProtocol`
-  /// boundary as `Data` (the protocol is `@objc`, so only plist types travel
-  /// directly). Whole file compiled out of release.
+  /// #1317 proof-bench (DEBUG only): JSON-friendly payloads for the DEBUG
+  /// all-zero injector's arm/status channel, now driven in-process (#1543).
+  /// Whole file compiled out of release.
   ///
   /// `package` access: shared across `EnviousWisprCore`, `EnviousWisprAudio`
-  /// (proxy + manager), `EnviousWisprAudioService` (handler), and
-  /// `EnviousWisprAppKit` (`DebugFaultEndpoint`) — all one SPM package. Matches
-  /// the existing DEBUG-seam access level (`AudioCaptureProxy.forceStallRemainingBuffers`).
+  /// (`AudioCaptureManager`), and `EnviousWisprAppKit` (`DebugFaultEndpoint`) —
+  /// all one SPM package.
 
   /// Arm request: which zero-fill mode, its sample budget/threshold, and the
   /// trial id the harness correlates status against.
   package struct DebugZeroFillArm: Codable, Sendable {
-    /// Wire form of `DebugZeroFillController.Mode`. `AudioCaptureManager` (service
-    /// side) translates this into the controller's associated-value enum — the
+    /// Wire form of `DebugZeroFillController.Mode`. `AudioCaptureManager`
+    /// translates this into the controller's associated-value enum — the
     /// controller type itself stays module-internal.
     package enum Mode: String, Codable, Sendable {
       case zeroFromStart = "zero_from_start"
@@ -40,9 +38,9 @@
     }
   }
 
-  /// Service-side status snapshot returned across XPC. The proxy merges its own
-  /// `ConnectionSlot.current.generation` on top of these fields before handing a
-  /// complete status to the endpoint; `armed` is never evidence of `hit`.
+  /// In-process fault-status snapshot handed straight to the endpoint by
+  /// `AudioCaptureManager.debugFaultStatusSnapshot()` (#1543); `armed` is never
+  /// evidence of `hit`.
   package struct DebugFaultServiceStatus: Codable, Sendable {
     package let armed: Bool
     package let hit: Bool
@@ -53,9 +51,9 @@
     /// oracle. NOT the capture-session id.
     package let sourceIncarnation: UInt64
     /// Low-cardinality tag of the ACTIVE capture backend the injector is riding
-    /// (`av_audio_engine` / `hal_device_input` / `none`),
-    /// so the scorecard records WHICH mic route each trial ran on — the built-in
-    /// vs Bluetooth path cannot otherwise be distinguished in the evidence.
+    /// (`hal_device_input` / `none`), so the scorecard records WHICH mic route
+    /// each trial ran on — the built-in vs Bluetooth path cannot otherwise be
+    /// distinguished in the evidence.
     package let captureSourceType: String
 
     package init(

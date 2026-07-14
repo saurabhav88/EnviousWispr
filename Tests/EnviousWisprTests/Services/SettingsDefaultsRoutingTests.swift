@@ -65,7 +65,6 @@ struct SettingsDefaultsRoutingTests {
   @Test("unifiedDefaultsKeys excludes per-build knobs")
   func exclusionsHold() {
     let keys = Set(SettingsManager.unifiedDefaultsKeys)
-    #expect(!keys.contains("useXPCAudioService"))
     #expect(!keys.contains("useXPCASRService"))
     #expect(!keys.contains("accessibilityWarningDismissed"))
     // Removed setting (#734/#1533): the legacy `noiseSuppression` key is
@@ -100,21 +99,10 @@ struct SettingsDefaultsRoutingTests {
     #expect(SettingsManager(defaults: suite).appearancePreference == .system)
   }
 
-  @Test("useXPCAudioService writes to .standard, never the injected store")
-  func useXPCStaysPerBuild() {
-    let suite = Self.freshSuite()
-    let settings = SettingsManager(defaults: suite)
-    settings.useXPCAudioService = false
-    // The per-build knob must NOT land in the injected (shared) suite.
-    #expect(suite.object(forKey: "useXPCAudioService") == nil)
-    #expect(UserDefaults.standard.object(forKey: "useXPCAudioService") as? Bool == false)
-    UserDefaults.standard.removeObject(forKey: "useXPCAudioService")  // cleanup
-  }
-
   #if DEBUG
-    // AFM adapter PoC dev knob — same per-build contract as useXPCAudioService:
-    // writes to .standard (not the injected store) and stays out of the unified
-    // key set. DEBUG-gated because the property only exists in DEBUG builds.
+    // AFM adapter PoC dev knob — a per-build contract: writes to .standard (not
+    // the injected store) and stays out of the unified key set. DEBUG-gated
+    // because the property only exists in DEBUG builds.
     @Test("devAdapterPolishEnabled writes to .standard and stays out of unified defaults")
     func devAdapterStaysPerBuild() {
       let suite = Self.freshSuite()

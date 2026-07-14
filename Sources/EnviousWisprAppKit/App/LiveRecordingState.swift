@@ -19,8 +19,8 @@ import Observation
 /// **Existential storage rationale.** `audioCapture` and `asrManager` are
 /// stored as the same existential protocol types the former root state uses
 /// (the former root-state file) so PR7 can be a pure facts-move with no shape
-/// change. Both concrete conformers (`AudioCaptureManager`,
-/// `AudioCaptureProxy`, `ASRManager`) are `@Observable`; SwiftUI body
+/// change. The concrete conformers (`AudioCaptureManager`,
+/// `ASRManager`) are `@Observable`; SwiftUI body
 /// tracking propagates through the existential. `LiveRecordingStateTests`
 /// includes a focused `withObservationTracking` check to verify this; if
 /// it fails, switch to concrete types before PR merge.

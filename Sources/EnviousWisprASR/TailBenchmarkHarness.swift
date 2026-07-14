@@ -368,7 +368,7 @@ public enum TailBenchmarkHarness {
     }
   }
 
-  // MARK: Text + audio helpers
+  // MARK: Text + audio utilities
 
   /// Join confirmed + released tail, removing a duplicated k-word phrase at the
   /// seam (the release-only arm's own dedup — the LocalAgreement overlap the

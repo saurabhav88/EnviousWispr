@@ -136,8 +136,8 @@ public enum CoreAudioDeviceMute {
 }
 
 /// #1317 §3.0: the single, shared "is this device eligible for harness-glitch
-/// recovery" decision — device `.alive` AND NOT muted. Both the app-side
-/// reactive detector (`AudioCaptureProxy`) and the kernel's STOP-time
+/// recovery" decision — device `.alive` AND NOT muted. Both the in-process
+/// reactive detector (`AudioCaptureManager`) and the kernel's STOP-time
 /// classification read through this ONE function so the discriminator has a
 /// single authority, not two independent alive+mute combinations.
 public enum ZeroSignalDeviceDiscriminator {

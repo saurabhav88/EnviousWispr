@@ -46,6 +46,21 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   public var zeroSignalDiscriminatorDeviceID: AudioDeviceID? { effectiveDiscriminatorDeviceID }
 
+  /// #1317 (ported in-process from the former app-side capture proxy at the C1
+  /// collapse, #1543): true once the CURRENT trailing all-zero run has been observed
+  /// while the device discriminator was ineligible (muted/mute-unknown). The
+  /// kernel's STOP-time backstop reads this guard-first so a genuinely-muted
+  /// silent stretch is not misread as the harness glitch just because the user
+  /// unmuted right before releasing. Scoped to the current run, not
+  /// session-wide: a non-zero sample that breaks the trailing zero-run clears
+  /// it (`feedDeadAirDetector`), so an earlier resolved mute cannot blind the
+  /// backstop to a later, unrelated genuine zero-signal failure. Reset in
+  /// `beginCapturePhase`; per the `effectiveDiscriminatorDeviceID` invariant no
+  /// teardown path may clear it early.
+  private var sawIneligibleZeroSignalDuringSession = false
+
+  public var zeroSignalDiscriminatorSawIneligible: Bool { sawIneligibleZeroSignalDuringSession }
+
   /// Current audio level (0.0 - 1.0) for waveform visualization.
   public private(set) var audioLevel: Float = 0.0
 
@@ -72,12 +87,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// `.maxDuration` stop the graceful wall-clock cap uses.
   public var onMaxDurationReached: (() -> Void)?
 
-  /// #1224: no-op for in-process capture — the bundled-VAD-unavailable notice
-  /// is owned by the XPC path's `AudioCaptureProxy`; direct-mode's
-  /// `CaptureVADSignalSource` keeps its existing plain log line instead
-  /// (§2.2 non-goals, issue-1224 plan).
-  public var onVADModelUnavailable: (() -> Void)?
-
   /// #1408 A3: the backstop threshold, instance-scoped so tests can inject a
   /// tiny limit (the production value is 58,560,000 samples — unreachable in a
   /// unit test). Production never touches it.
@@ -93,28 +102,25 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   // MARK: - Round-4 telemetry callbacks (issue #285)
 
-  /// Stall watchdog callback (forwarded to active source in Phase B implementation).
+  /// Stall watchdog callback. Two in-process producers fire it — the HAL
+  /// no-buffer watchdog (forwarded from `source.onCaptureStalled`) and the
+  /// reactive all-zero dead-air detector below — both gated by the shared
+  /// `captureStallReported` latch so the documented at-most-once-per-session
+  /// contract holds.
   public var onCaptureStalled: ((CaptureStallContext) -> Void)?
-
-  /// Only the XPC proxy invokes this; direct-mode manager leaves nil.
-  public var onXPCServiceError: ((XPCErrorContext) -> Void)?
-
-  /// Only the XPC proxy invokes this; direct-mode manager leaves nil.
-  public var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
-
-  /// Only the XPC proxy invokes this (#1194); direct-mode manager leaves nil.
-  public var onAudioStartRetryResolved: ((AudioStartRetryContext) -> Void)?
 
   /// Fired by `resolveSource()` — initial resolution + changed-only afterwards.
   public var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
 
-  /// Monotonic counter, increments on each begin/start-capture.
-  /// Delegates to the active source's session counter so dedup and correlation
-  /// extras at the pipeline layer always read the live value. Returns 0 when
-  /// no source has been resolved yet.
-  public var currentCaptureSessionID: UInt64 {
-    activeSource?.captureGeneration ?? cachedCaptureGeneration
-  }
+  /// Monotonic, APP-LIFETIME session id, incremented once per capture session in
+  /// `beginCapturePhase`. Manager-owned (NOT delegated to the active source's
+  /// `captureGeneration`, which resets to 1 on every new `HALDeviceInputSource`
+  /// — a warm teardown or route change would then repeat ids and collide the
+  /// pipeline's per-session dedup, #1543 Codex review P2). This restores the
+  /// app-lifetime uniqueness the deleted proxy's counter provided. Returns 0
+  /// before the first session; never persisted; not meaningful across launches.
+  public var currentCaptureSessionID: UInt64 { captureSessionCounter }
+  private var captureSessionCounter: UInt64 = 0
 
   /// Delegates to the active source so the pipeline can attribute Sentry
   /// events to the concrete backend (HALDeviceInput).
@@ -163,10 +169,11 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// only on new-source install and destructive `rebuildEngine()`.
     private(set) var debugSourceIncarnation: UInt64 = 0
 
-    /// #1317 proof-bench (DEBUG only): arm the injector from the DEBUG XPC fault
-    /// path. Translates the Core wire enum into the controller's associated-value
-    /// `Mode` here so the injector type stays module-internal. `package` access:
-    /// reachable from the handler in `EnviousWisprAudioService` (same SPM package).
+    /// #1317 proof-bench (DEBUG only): arm the injector from the in-process
+    /// DEBUG fault endpoint (#1543). Translates the Core wire enum into the
+    /// controller's associated-value `Mode` here so the injector type stays
+    /// module-internal. `package` access: reachable from `DebugFaultEndpoint` in
+    /// `EnviousWisprAppKit` (same SPM package).
     /// `n` is intentionally NOT validated here: the controller's range math is
     /// provably safe for any `Int`, including negatives (`zeroAfter` short-circuits
     /// on `startSeen >= threshold`; `zeroNext` guards `startSeen < budget`), so a
@@ -198,12 +205,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     }
   #endif
 
-  /// Issue #285 — mirror of `activeSource.captureGeneration` / `captureSourceType`
-  /// captured at session start, so pipeline Sentry extras still resolve a real
-  /// session id + backend tag after `stopCapture()` synchronously tears down
-  /// the source (warmEnginePolicy == .off). Without this cache, post-stop
-  /// reads fall back to `0` / `"unknown"` and break stall-vs-no-audio dedup.
-  private var cachedCaptureGeneration: UInt64 = 0
+  /// Issue #285 — mirror of `activeSource.captureSourceType` captured at session
+  /// start, so pipeline Sentry extras still resolve a real backend tag after
+  /// `stopCapture()` synchronously tears down the source (warmEnginePolicy ==
+  /// .off). Without this cache, post-stop reads fall back to `"unknown"`. (The
+  /// session id no longer needs a cache — it is the manager-owned
+  /// `captureSessionCounter`, which persists across teardown, #1543.)
   private var cachedSourceType: String = "unknown"
 
   /// Route resolver — decides which source to use based on BT state + user preference.
@@ -275,6 +282,40 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       for: decision, actualBoundTransport: actualBoundTransport)
   }
 
+  // MARK: - Reactive dead-air detector state (#1317, ported in-process at C1 #1543)
+
+  /// Per-capture-generation all-zero harness-glitch detector. Fed the
+  /// authoritative captured samples on the MainActor via `ingestSamples` —
+  /// the in-process equivalent of the proxy's per-buffer MainActor hop, so the
+  /// detector is never mutated from the HAL consumer thread. Reset at every
+  /// fresh `beginCapturePhase`.
+  private var deadAirDetector = DeadAirStreamingDetector()
+
+  /// The ONE shared latch the HAL no-buffer watchdog and the dead-air detector
+  /// both check-and-set before calling `onCaptureStalled`, so the callback's
+  /// documented at-most-once-per-session contract holds across the two
+  /// independent firing paths. Reset per session in `beginCapturePhase`.
+  private var captureStallReported = false
+
+  /// Uptime stamp frozen when live capture begins — the `armedAtUptimeNs`
+  /// baseline for a dead-air `CaptureStallContext`. Zero outside a session.
+  private var captureStartUptimeNs: UInt64 = 0
+
+  // MARK: - Crash-recovery spool state (#1063; ported in-process at C1 #1543)
+
+  /// The live spool writer, built from the recovery directive at
+  /// `beginCapturePhase` and fed the authoritative captured samples on a poll
+  /// loop. nil when recovery is off / failed to arm. MainActor-confined.
+  private var recoverySpoolWriter: RecoverySpoolWriter?
+  /// Poll task feeding new captured samples to the writer. Cancelled on stop.
+  private var recoveryFeedTask: Task<Void, Never>?
+  /// High-water mark of `capturedSamples` already handed to the writer, so the
+  /// clean-stop tail is `captureResult.samples[recoveryFedSampleCount...]`.
+  private var recoveryFedSampleCount: Int = 0
+  /// Single-finalize guard across the clean-stop vs low-disk race (the writer
+  /// is also idempotent; this avoids even queuing the second call).
+  private var recoveryFinalized: Bool = false
+
   public init() {}
 
   // MARK: - AudioCaptureInterface
@@ -296,16 +337,14 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     onLifecycleSignal?("manager_prepare_completed")
   }
 
-  /// In-process capture path. `recoveryPayload` is accepted for protocol
-  /// conformance but IGNORED: the crash-recovery spool runs in the XPC audio
-  /// helper (`AudioServiceHandler`), which owns the authoritative
-  /// `capturedSamples` in the default (`useXPCAudioService`) topology. The
-  /// in-process path is a dev/fallback path and gets recovery in a later phase;
-  /// the heart path here is byte-identical regardless. (#1063 PR1.)
+  /// In-process capture path. `recoveryPayload` is an opaque encoded
+  /// `RecoverySpoolDirective`; when present and enabled it arms the
+  /// crash-recovery spool limb (ported in-process at the C1 XPC collapse,
+  /// #1543 — the helper used to own this). Fail-open: any decode/preflight
+  /// failure leaves recovery off and capture byte-identical.
   public func beginCapturePhase(recoveryPayload: Data?) async throws
     -> AsyncStream<AVAudioPCMBuffer>
   {
-    _ = recoveryPayload  // intentionally unused in-process (see doc above)
     guard let source = activeSource else {
       throw AudioError.formatCreationFailed(
         source: "AudioCaptureManager.beginCapturePhase.no_active_source")
@@ -315,6 +354,11 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     capturedSamples = []
     capturedSamples.reserveCapacity(16000 * 30)
     audioLevel = 0.0
+
+    // Reset per-session reactive dead-air + stall-latch state (#1317 / #1543).
+    deadAirDetector = DeadAirStreamingDetector()
+    sawIneligibleZeroSignalDuringSession = false
+    captureStallReported = false
 
     // Wire source callbacks → manager state.
     // Source identity check prevents stale callbacks from a replaced source
@@ -358,9 +402,16 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // are rejected via the sourceID guard.
     source.onCaptureStalled = { [weak self] ctx in
       guard let self,
-        self.activeSource.map({ ObjectIdentifier($0) }) == sourceID
+        self.activeSource.map({ ObjectIdentifier($0) }) == sourceID,
+        !self.captureStallReported
       else { return }
-      self.onCaptureStalled?(ctx)
+      self.captureStallReported = true
+      // #1543 (Codex review P2): the HAL source stamps its per-instance
+      // generation and a coarse `route: "hal_device_input"`. Overlay the
+      // manager's app-lifetime session id (so dedup + `isCurrentSession` see the
+      // same unique id the dead-air path uses) and the frozen route decision
+      // (so built-in vs Bluetooth stalls bucket correctly with transport detail).
+      self.onCaptureStalled?(self.enrichStallContext(ctx))
     }
 
     source.onLifecycleSignal = onLifecycleSignal
@@ -368,19 +419,26 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     let stream = try await source.startCapture()
     onLifecycleSignal?("manager_start_capture_completed")
     isCapturing = true
+    // App-lifetime session id (#1543): one increment per live capture session,
+    // read by the dead-air ctx, correlation extras, dedup, and the stall filter.
+    captureSessionCounter &+= 1
+    captureStartUptimeNs = DispatchTime.now().uptimeNanoseconds
+    // Crash-recovery limb: arm the spool from the directive AFTER capture is
+    // live (the feed loop guards on `isCapturing`). Fail-open — never throws,
+    // never gates the returned stream (heart path is byte-identical).
+    startRecoverySpooling(payload: recoveryPayload)
     #if DEBUG
       // Bake-off manager-side evidence companion (#1377 §3.5): pairs the app's
       // REQUEST (backend + requested device) with each source's own
-      // `CAPTURE_EVIDENCE` (actual bound device). In-process only, so
-      // `captureSourceType` is the real backend, never the `"xpc_proxy"` mask.
+      // `CAPTURE_EVIDENCE` (actual bound device). Capture is in-process, so
+      // `captureSourceType` is always the real backend.
       let requestedUID = effectiveInputDeviceUID()
       Self.btRouteLog(
         "CAPTURE_EVIDENCE [manager] backend=\(source.captureSourceType) requestedUID=\(requestedUID.isEmpty ? "auto" : requestedUID) generation=\(source.captureGeneration)"
       )
     #endif
-    // Mirror source identity so pipeline-layer Sentry extras still resolve
+    // Mirror source backend tag so pipeline-layer Sentry extras still resolve
     // after stopCapture tears `activeSource` down synchronously.
-    cachedCaptureGeneration = source.captureGeneration
     cachedSourceType = source.captureSourceType
     return stream
   }
@@ -401,10 +459,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       return CaptureResult(samples: samples)
     }
 
-    // Snapshot identity BEFORE any teardown path so the pipeline's post-stop
-    // Sentry extras still resolve when warmEnginePolicy == .off nils activeSource
-    // synchronously (#285).
-    cachedCaptureGeneration = source.captureGeneration
+    // Snapshot the backend tag BEFORE any teardown path so the pipeline's
+    // post-stop Sentry extras still resolve when warmEnginePolicy == .off nils
+    // activeSource synchronously (#285).
     cachedSourceType = source.captureSourceType
     // #1434: capture-health snapshot must ALSO precede teardown — with
     // warmEnginePolicy == .off, scheduleWarmEngineTeardown() below destroys
@@ -438,6 +495,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // In-process path returns empty vadSegments; pipeline owns its own SilenceDetector.
     let samples = capturedSamples
     capturedSamples = []
+    captureStartUptimeNs = 0
+
+    // Crash-recovery limb (AFTER the authoritative result is frozen so it never
+    // delays delivery): append the tail beyond what the poll loop fed, then
+    // finalize with the clean marker. Uses `samples`, never the now-cleared
+    // live buffer. Fail-open. (#1543)
+    stopRecoverySpooling(tail: samples)
     return CaptureResult(samples: samples, metadata: stopMetadata)
   }
 
@@ -458,6 +522,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     guard isCapturing else { return }
     audioLevel = level
     capturedSamples.append(contentsOf: samples)
+    // #1317 (#1543): reactive all-zero harness-glitch detection on the same
+    // MainActor-isolated authoritative samples that accumulate above — the
+    // in-process equivalent of the proxy's per-buffer MainActor hop.
+    feedDeadAirDetector(samples)
     if capturedSamples.count >= maxRecordingSamplesLimit {
       isCapturing = false
       audioLevel = 0.0
@@ -792,5 +860,206 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   // periphery:ignore - XPC capture contract (invoked via NSXPC proxy)
   public func getVADSegments() async -> [SpeechSegment] {
     return []
+  }
+
+  // MARK: - Reactive dead-air detection (#1317, ported in-process at C1 #1543)
+
+  /// Feed this batch's raw samples into the per-generation all-zero
+  /// harness-glitch detector; when it crosses a confidence threshold, run the
+  /// §3.0 device-alive + not-muted discriminator and — only if it passes —
+  /// fire `onCaptureStalled` with the matching failure mode. A muted or
+  /// mute-unknown device fails closed: no fire, today's honest no-speech path
+  /// is untouched, the trailing-zero-run latch is set so the kernel's STOP-time
+  /// backstop stays fail-closed, and the next batch re-evaluates (mute state
+  /// can legitimately change mid-recording). MainActor-isolated (called from
+  /// `ingestSamples`), so the detector is never mutated off the consumer thread.
+  private func feedDeadAirDetector(_ samples: [Float]) {
+    guard !deadAirDetector.fired, !captureStallReported, !samples.isEmpty else { return }
+    let suffixBefore = deadAirDetector.consecutiveExactZeroSuffix
+    samples.withUnsafeBufferPointer { deadAirDetector.ingest($0) }
+    // A non-zero sample anywhere in this batch breaks the trailing zero-run —
+    // `consecutiveExactZeroSuffix` after ingest is then strictly less than
+    // `suffixBefore + samples.count`. Any earlier ineligible (muted) result
+    // applied to THAT run, not this new one, so it must not suppress detection
+    // of a later, unrelated zero-signal failure.
+    if deadAirDetector.consecutiveExactZeroSuffix != suffixBefore + samples.count {
+      sawIneligibleZeroSignalDuringSession = false
+    }
+
+    let mode: CaptureStallFailureMode
+    if deadAirDetector.isAllZeroFromStart {
+      mode = .allZeroFromStart
+    } else if deadAirDetector.isBecameZeroMidCapture {
+      mode = .becameZeroMidCapture
+    } else {
+      return
+    }
+
+    // Evaluate against the device FROZEN at engine-start (`startEnginePhase`),
+    // not a live re-read — the live UID properties can already reflect a device
+    // the user switched to mid-recording.
+    guard
+      let deviceID = effectiveDiscriminatorDeviceID,
+      ZeroSignalDeviceDiscriminator.isEligible(deviceID: deviceID)
+    else {
+      // A zero-signal-candidate batch observed while ineligible (muted) — latch
+      // it so the STOP-time backstop can't later see a since-unmuted live state
+      // and misclassify this genuinely-muted stretch as the harness glitch.
+      sawIneligibleZeroSignalDuringSession = true
+      return
+    }
+
+    deadAirDetector.fired = true
+    fireDeadAirStall(mode: mode)
+  }
+
+  /// Overlay the manager's app-lifetime session id + frozen route decision onto
+  /// a HAL-built stall context before forwarding (#1543 Codex review P2). The
+  /// HAL source cannot see either; source-stamped health fields are preserved.
+  private func enrichStallContext(_ ctx: CaptureStallContext) -> CaptureStallContext {
+    ctx.enrichedWithManagerRoute(
+      sessionID: currentCaptureSessionID,
+      route: currentAudioRoute,
+      selectedTransport: currentResolvedRoute?.selected,
+      effectiveTransport: currentResolvedRoute?.effective,
+      routeReason: currentResolvedRoute?.routeReason,
+      routeFallbackReason: currentResolvedRoute?.routeFallbackReason,
+      inputSelectionMode: currentResolvedRoute?.inputSelectionMode,
+      outputTransport: currentResolvedRoute?.outputTransport,
+      routeResolutionSource: currentResolvedRoute?.routeResolutionSource)
+  }
+
+  /// Build and fire the dead-air `CaptureStallContext`. Sets the shared
+  /// `captureStallReported` latch first so the HAL no-buffer watchdog and this
+  /// path together honor the at-most-once-per-session contract.
+  private func fireDeadAirStall(mode: CaptureStallFailureMode) {
+    captureStallReported = true
+    let ctx = CaptureStallContext(
+      sessionID: currentCaptureSessionID,
+      armedAtUptimeNs: captureStartUptimeNs,
+      firedAtUptimeNs: DispatchTime.now().uptimeNanoseconds,
+      route: currentAudioRoute,
+      sourceType: captureSourceType,
+      engineStartedSuccessfully: true,
+      tapInstalled: true,
+      formatMismatchObserved: false,
+      inputDeviceUIDPreferred: preferredInputDeviceIDOverride.isEmpty
+        ? nil : preferredInputDeviceIDOverride,
+      inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+      failureMode: mode,
+      selectedTransport: currentResolvedRoute?.selected,
+      effectiveTransport: currentResolvedRoute?.effective,
+      routeReason: currentResolvedRoute?.routeReason,
+      routeFallbackReason: currentResolvedRoute?.routeFallbackReason,
+      inputSelectionMode: currentResolvedRoute?.inputSelectionMode,
+      outputTransport: currentResolvedRoute?.outputTransport,
+      routeResolutionSource: currentResolvedRoute?.routeResolutionSource
+    )
+    onCaptureStalled?(ctx)
+  }
+
+  // MARK: - Crash-recovery spool (#1063; ported in-process at C1 #1543)
+
+  /// Decode the directive and arm the spool writer + feed loop. Fail-open: any
+  /// decode/preflight failure leaves recovery off and capture byte-identical.
+  private func startRecoverySpooling(payload: Data?) {
+    recoveryFinalized = false
+    recoveryFedSampleCount = 0
+    recoverySpoolWriter = nil
+    guard let payload,
+      let directive = try? JSONDecoder().decode(RecoverySpoolDirective.self, from: payload),
+      directive.enabled
+    else { return }
+    // Low-disk preflight: don't start a spool when free space is already below
+    // the watermark the heart path needs (History save / ASR temp / model cache).
+    guard Self.hasSufficientDiskSpace(forSpoolAt: directive.spoolPath) else { return }
+
+    let writer = RecoverySpoolWriter(
+      recoverySessionID: directive.recoverySessionID,
+      spoolURL: URL(fileURLWithPath: directive.spoolPath),
+      cipher: RecoverySpoolCipher(directive: directive),
+      settings: directive.settingsSnapshot)
+    writer.start()
+    recoverySpoolWriter = writer
+    startRecoveryFeed(writer: writer, spoolPath: directive.spoolPath)
+  }
+
+  /// Poll the authoritative `capturedSamples` and append new ranges to the
+  /// writer — mirrors the crash-recovery feed the helper ran. Lossless (the
+  /// same buffer `stopCapture` returns), off the RT thread, batched at
+  /// ~`chunkIntervalSeconds`, durable-flushed ~every `flushIntervalSeconds`.
+  private func startRecoveryFeed(writer: RecoverySpoolWriter, spoolPath: String) {
+    recoveryFeedTask = Task { @MainActor [weak self] in
+      var pollCount = 0
+      let flushEvery = max(
+        1,
+        Int(
+          (RecoveryConstants.flushIntervalSeconds / RecoveryConstants.chunkIntervalSeconds)
+            .rounded()))
+      while !Task.isCancelled {
+        guard let self else { return }
+        guard self.isCapturing, writer.isHealthy else { return }
+
+        let currentCount = self.capturedSamples.count
+        if currentCount > self.recoveryFedSampleCount {
+          let chunk = Array(self.capturedSamples[self.recoveryFedSampleCount..<currentCount])
+          writer.append(chunk)
+          self.recoveryFedSampleCount = currentCount
+        }
+
+        pollCount += 1
+        if pollCount % flushEvery == 0 {
+          writer.flush()
+          // Low-disk watermark re-check: stop spooling with an honest terminal
+          // marker before recovery can starve the disk the heart path needs.
+          if !Self.hasSufficientDiskSpace(forSpoolAt: spoolPath) {
+            self.finalizeRecovery(.lowDiskWatermark)
+            return
+          }
+        }
+
+        try? await Task.sleep(for: .seconds(RecoveryConstants.chunkIntervalSeconds))
+      }
+    }
+  }
+
+  /// Clean stop: feed the final tail beyond what the poll loop wrote, then
+  /// finalize with the clean marker. Runs once (guarded).
+  private func stopRecoverySpooling(tail: [Float]) {
+    guard !recoveryFinalized, let writer = recoverySpoolWriter else { return }
+    recoveryFinalized = true
+    recoveryFeedTask?.cancel()
+    recoveryFeedTask = nil
+    if tail.count > recoveryFedSampleCount {
+      writer.append(Array(tail[recoveryFedSampleCount...]))
+    }
+    writer.flush()
+    writer.finalize(reason: .cleanFinalized)
+    recoverySpoolWriter = nil
+  }
+
+  /// Finalize the spool for a non-clean reason (low disk). Guarded so clean-stop
+  /// and this cannot both write a terminal marker.
+  private func finalizeRecovery(_ reason: RecoverySpoolTerminationReason) {
+    guard !recoveryFinalized, let writer = recoverySpoolWriter else { return }
+    recoveryFinalized = true
+    recoveryFeedTask?.cancel()
+    recoveryFeedTask = nil
+    writer.finalize(reason: reason)
+    recoverySpoolWriter = nil
+  }
+
+  /// True when the spool volume has at least the low-disk watermark free. Reads
+  /// the spool's parent directory (the file may not exist yet). Fail-open: an
+  /// unreadable value arms recovery anyway — the writer's backpressure cap is
+  /// the backstop.
+  private static func hasSufficientDiskSpace(forSpoolAt path: String) -> Bool {
+    let dir = URL(fileURLWithPath: path).deletingLastPathComponent()
+    guard
+      let values = try? dir.resourceValues(
+        forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+      let available = values.volumeAvailableCapacityForImportantUsage
+    else { return true }
+    return available >= RecoveryConstants.lowDiskWatermarkBytes
   }
 }

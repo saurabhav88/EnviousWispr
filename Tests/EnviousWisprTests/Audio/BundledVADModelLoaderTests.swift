@@ -19,7 +19,7 @@ struct BundledVADModelLoaderTests {
       .deletingLastPathComponent()  // EnviousWisprTests/ -> .../Tests/
       .deletingLastPathComponent()  // Tests/ -> repo root
       .appendingPathComponent(
-        "Sources/EnviousWisprAudioService/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc")
+        "Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc")
   }
 
   @Test("loads the model given a bundle containing the real resource")

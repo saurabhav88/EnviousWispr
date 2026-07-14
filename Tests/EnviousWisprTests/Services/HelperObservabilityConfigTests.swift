@@ -20,12 +20,12 @@ struct HelperObservabilityConfigTests {
 
   // MARK: - makeConfig (scope tags)
 
-  @Test("audio role + release bundle builds the expected scope tags")
-  func audioRoleBuildsExpectedScopeTags() {
+  @Test("asr role + release bundle builds the expected scope tags")
+  func asrReleaseRoleBuildsExpectedScopeTags() {
     let config = HelperObservability.makeConfig(
-      role: .audioXPC, bundleID: "com.enviouswispr.audioservice", version: "1.2.3")
-    #expect(config.role.rawValue == "audio_xpc")
-    #expect(config.bundleId == "com.enviouswispr.audioservice")
+      role: .asrXPC, bundleID: "com.enviouswispr.asrservice", version: "1.2.3")
+    #expect(config.role.rawValue == "asr_xpc")
+    #expect(config.bundleId == "com.enviouswispr.asrservice")
     #expect(config.environment == "production")
     #expect(config.buildType == "release")
   }
@@ -44,11 +44,11 @@ struct HelperObservabilityConfigTests {
   @Test("release name uses the app project prefix + the helper bundle version")
   func releaseNameUsesAppProjectPrefixAndHelperBundleVersion() {
     let config = HelperObservability.makeConfig(
-      role: .audioXPC, bundleID: "com.enviouswispr.audioservice", version: "9.9.9")
-    // All three processes report under ONE release identity: the app's exact
-    // string — NOT a helper-bundle-derived `com.enviouswispr.audioservice@…`.
+      role: .asrXPC, bundleID: "com.enviouswispr.asrservice", version: "9.9.9")
+    // The app + helper report under ONE release identity: the app's exact
+    // string — NOT a helper-bundle-derived `com.enviouswispr.asrservice@…`.
     #expect(config.releaseName == "com.enviouswispr.app@9.9.9")
-    #expect(config.releaseName.contains("audioservice") == false)
+    #expect(config.releaseName.contains("asrservice") == false)
   }
 
   // MARK: - apply (Sentry.Options surface)
@@ -98,7 +98,7 @@ struct HelperObservabilityConfigTests {
     // when the secret is unset) — start must skip, never call the SDK.
     let skipped = StartProbe()
     HelperObservability.start(
-      role: .audioXPC,
+      role: .asrXPC,
       dsnResolver: { "" },
       startSDK: { _ in skipped.startCalled = true },
       configureScope: { _ in skipped.scopeCalled = true })
@@ -108,7 +108,7 @@ struct HelperObservabilityConfigTests {
     // A real DSN runs both limbs.
     let ran = StartProbe()
     HelperObservability.start(
-      role: .audioXPC,
+      role: .asrXPC,
       dsnResolver: { "https://key@o0.ingest.sentry.io/1" },
       startSDK: { _ in ran.startCalled = true },
       configureScope: { _ in ran.scopeCalled = true })
@@ -122,7 +122,7 @@ struct HelperObservabilityConfigTests {
   private func appliedOptions() -> Options {
     let options = Options()
     let config = HelperObservability.makeConfig(
-      role: .audioXPC, bundleID: "com.enviouswispr.audioservice", version: "1.2.3")
+      role: .asrXPC, bundleID: "com.enviouswispr.asrservice", version: "1.2.3")
     HelperObservability.apply(
       config: config, dsn: "https://key@o0.ingest.sentry.io/1", to: options)
     return options
@@ -134,25 +134,8 @@ struct HelperObservabilityConfigTests {
     var scopeCalled = false
   }
 
-  // MARK: - captureHandledError (#1177 Phase 8b)
-
-  @Test("handled-error event groups by category and carries only the content-free detail")
-  func handledErrorEventShape() {
-    let event = HelperObservability.makeHandledErrorEvent(
-      category: "vad#prepare_failed", detail: "FluidAudio.VadError")
-    #expect(event.message?.formatted == "vad#prepare_failed")
-    #expect(event.fingerprint == ["helper_handled_error", "vad#prepare_failed"])
-    #expect((event.extra?["detail"] as? String) == "FluidAudio.VadError")
-    // The audio service feeds an error TYPE name, never a transcript — assert the
-    // transcript sentinel can never appear via this path.
-    let serialized = "\(String(describing: event.message)) \(String(describing: event.extra))"
-    #expect(!serialized.contains(Self.marker))
-  }
-
-  @Test("handled-error event omits empty detail")
-  func handledErrorEventOmitsEmptyDetail() {
-    let event = HelperObservability.makeHandledErrorEvent(category: "vad#prepare_failed")
-    #expect(event.extra?["detail"] == nil)
-    #expect(event.fingerprint == ["helper_handled_error", "vad#prepare_failed"])
-  }
+  // #1543: the `makeHandledErrorEvent` tests are gone with the method — the only
+  // caller was the deleted capture helper's VAD-prepare-failed path. That
+  // telemetry now emits in-process via `SentryBreadcrumb` + PostHog from
+  // `CaptureVADSignalSource`.
 }

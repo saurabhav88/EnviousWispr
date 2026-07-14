@@ -61,11 +61,6 @@ final class HeartPathTelemetryEmitter {
   /// — is not hidden by the first mode's dedup. Reset on session-id change.
   private var capturedStallModes: Set<CaptureStallFailureMode> = []
   private var lastObservedCaptureSession: UInt64 = 0
-  /// Set when the proxy's reply-path swallowed an XPC failure. The
-  /// rawSamples-empty branch dedups against this so we emit
-  /// `xpc_service_error` once instead of also firing `no_audio_captured`
-  /// for the same incident.
-  private var xpcReplyFailedThisSession: Bool = false
 
   init(
     backend: ASRBackendType,
@@ -122,37 +117,17 @@ final class HeartPathTelemetryEmitter {
     return true
   }
 
-  /// Emit `xpc_service_error`. Marks the session so a subsequent rawSamples-empty
-  /// branch dedups to a breadcrumb instead of a duplicate captureError.
-  func xpcReplyFailed(ctx: XPCReplyFailureContext) {
-    resetIfNewSession(ctx.sessionID)
-    xpcReplyFailedThisSession = true
-    captureError(
-      HeartPathError.xpcReplyFailed(ctx: ctx),
-      .xpcServiceError,
-      "audio",
-      [
-        "xpc.reply_stage": ctx.replyStage,
-        "xpc.error_domain": ctx.errorDomain,
-        "xpc.error_code": ctx.errorCode,
-        "capture_session_id": Int(ctx.sessionID),
-      ]
-    )
-  }
-
-  /// Emit either a deduped breadcrumb (if a stall or XPC failure already
-  /// fired for this session) or a terminal `no_audio_captured` captureError.
-  /// Mirrors the prior in-pipeline `emitNoAudioCapturedEvent` call sites.
+  /// Emit either a deduped breadcrumb (if a stall already fired for this
+  /// session) or a terminal `no_audio_captured` captureError. Mirrors the prior
+  /// in-pipeline `emitNoAudioCapturedEvent` call sites.
   func noAudioCaptured(ctx: NoAudioContext) {
     resetIfNewSession(ctx.sessionID)
-    if !capturedStallModes.isEmpty || xpcReplyFailedThisSession {
-      let dedupedFrom =
-        !capturedStallModes.isEmpty ? "audio_capture_stalled" : "xpc_reply_failed"
+    if !capturedStallModes.isEmpty {
       addBreadcrumb(
         "recording",
         dedupedBreadcrumbMessage,
         [
-          "deduped_from": dedupedFrom,
+          "deduped_from": "audio_capture_stalled",
           "capture_session_id": Int(ctx.sessionID),
         ]
       )
@@ -266,6 +241,5 @@ final class HeartPathTelemetryEmitter {
     guard sessionID != lastObservedCaptureSession else { return }
     lastObservedCaptureSession = sessionID
     capturedStallModes.removeAll()
-    xpcReplyFailedThisSession = false
   }
 }

@@ -944,9 +944,8 @@ final class RecordingSessionKernel {
     // is already settled (AudioCaptureManager:355 short-circuits when
     // there's no active source; per-source impls return on the first
     // poll once stable). The 1.5s/0.2s pair matches the existing
-    // stabilization sites at AudioCaptureProxy:391 and
-    // AudioCaptureManager:334 — re-using a value the codebase has
-    // already shipped, not introducing a new arbitrary timeout.
+    // stabilization site in AudioCaptureManager — re-using a value the
+    // codebase has already shipped, not introducing a new arbitrary timeout.
     // Codex r1 on this fix flagged that gating the call on a "pre-warmed"
     // flag could survive an aborted preWarm and skip stabilization on
     // a later cold start; running unconditionally avoids that.
@@ -1124,13 +1123,12 @@ final class RecordingSessionKernel {
       finishTerminal(.cancelled, sid: sid)
       return
     case .audioInterruption:
-      // #1408: the device died mid-recording. If the capture manager is still
-      // alive and holding `capturedSamples`, fall through into the normal stop
+      // #1408: the device died mid-recording. With capture in-process (#1543)
+      // the manager is always still alive and holding `capturedSamples`, so
+      // every stamped cause is recoverable: fall through into the normal stop
       // tail and transcribe what we have — salvage inherits the min-duration
       // gate, VAD finalize, soft-onset preservation, energetic-tail recovery,
-      // degraded-lead retry and conditioning for free (plan §3.2). Only
-      // `.xpcConnectionLost` (the helper that OWNED the samples is gone) still
-      // fails honestly; the crash-recovery spool owns that case. `nil` cause →
+      // degraded-lead retry and conditioning for free (plan §3.2). `nil` cause →
       // `false` by optional chaining, so an unstamped interruption fails closed.
       guard lastAudioInterruptionCause?.hasRecoverableAudio == true else {
         if lastAudioInterruptionCause == nil {
@@ -1235,8 +1233,7 @@ final class RecordingSessionKernel {
     )
     recordingStoppedTelemetry(captureResult.samples.count)
     await (vad as? CaptureVADSignalSource)?.finalizeAtStop(
-      rawSampleCount: captureResult.samples.count,
-      xpcSegments: captureResult.vadSegments
+      rawSampleCount: captureResult.samples.count
     )
     let rawPeakAudioLevel = peakAudioLevel(in: captureResult.samples)
 
@@ -1353,8 +1350,7 @@ final class RecordingSessionKernel {
     //     that correctly discard as `.tooShort` today, and would break the
     //     founder-locked rule that very short dead taps keep today's behaviour.
     //
-    // `rebuildEngine()` is fire-and-forget across XPC (`AudioCaptureProxy:687`),
-    // so it is requested BEFORE `finishTerminal` — which drains the task bag and
+    // `rebuildEngine()` is requested BEFORE `finishTerminal` — which drains the task bag and
     // flips the UI — to give the request the earliest possible ordering and keep
     // the next-press race window as small as the synchronous interface allows.
     // Exhaustive on purpose (no `default`): a future failure mode must make a
@@ -1395,7 +1391,7 @@ final class RecordingSessionKernel {
     // utterance's own floor (the reported bug: real words silently
     // discarded). Device-eligibility for the STOP-time branch was already
     // checked in the `if` above; the reactive branch was already
-    // eligibility-gated when `AudioCaptureProxy` stamped it (§3.0).
+    // eligibility-gated when `AudioCaptureManager` stamped it (§3.0).
     if telemetryState.zeroSignalFailureMode == .becameZeroMidCapture {
       let suffixCount = Self.trailingZeroSuffixCount(captureResult.samples)
       if suffixCount > 0 {
@@ -1500,10 +1496,8 @@ final class RecordingSessionKernel {
     // (capture/VAD policy lives here, not in the adapter); the adapter
     // receives the ASR-ready samples via `finalize(batchSamples:)`.
     //
-    // VAD segments come from two possible sources (PR-4.5 #5, Codex r1+r2).
-    // XPC mode: `AudioCaptureProxy.stopCapture()` bundles them atomically
-    // into `captureResult.vadSegments` (`AudioCaptureProxy.swift:282`).
-    // Direct mode: `AudioCaptureManager.stopCapture()` returns segments
+    // VAD segments come from the in-process path (PR-4.5 #5, Codex r1+r2).
+    // `AudioCaptureManager.stopCapture()` returns segments
     // empty — the in-process `SilenceDetector` owns them; the VAD seam
     // (`CaptureVADSignalSource.segmentsProvider`) bridges them in. Prefer
     // the bundled source when present (XPC works out of the box today);
@@ -2307,8 +2301,8 @@ final class RecordingSessionKernel {
 
   /// Bind the adapter's mid-recording engine-crash signal (PR-4 plan §3.2).
   ///
-  /// PR-4b.1: the three shared `AudioCaptureInterface` callbacks
-  /// (`onEngineInterrupted`, `onCaptureStalled`, `onXPCServiceError`) are no
+  /// PR-4b.1: the shared `AudioCaptureInterface` callbacks
+  /// (`onEngineInterrupted`, `onCaptureStalled`) are no
   /// longer claimed here. `AudioCaptureInterface` callbacks are single-owner;
   /// the App-side `AudioEventRouter` + `WedgeRecoveryRouter` stay as the sole
   /// subscribers and forward into the kernel through the driver's
@@ -2332,8 +2326,8 @@ final class RecordingSessionKernel {
   // MARK: External entry points (PR-4b.1)
   //
   // PR-4b.1 removed the kernel's direct subscriptions to the shared
-  // `AudioCaptureInterface` callbacks (`onEngineInterrupted`, `onCaptureStalled`,
-  // `onXPCServiceError`). The App-side routers stay as sole subscribers; the
+  // `AudioCaptureInterface` callbacks (`onEngineInterrupted`,
+  // `onCaptureStalled`). The App-side routers stay as sole subscribers; the
   // driver (`KernelDictationDriver` — same module) forwards the calls into
   // these internal entry methods. PR-4b.4 wires the App routers' Parakeet
   // branches.
@@ -2363,8 +2357,8 @@ final class RecordingSessionKernel {
     // pre-transition window — `state` still `.recording` but `recordingExitLatched`
     // already true — has its exit ignored by `deliverRecordingExit`, so it must
     // NOT overwrite the cause/snapshot the terminal will use (cloud review #1207:
-    // an already-owned `.xpcConnectionLost` could otherwise be replaced by a
-    // stale `.engineLost` and get falsely captured). The guard
+    // an already-owned `.deviceRemoved` could otherwise be replaced by a
+    // stale `.engineLost` and mislabel the loss). The guard
     // mirrors `deliverRecordingExitIfCurrent`'s accept condition. The freeze
     // reports real duration / route / backend (mirrors `routeASRInterruption`).
     if state == .recording, !recordingExitLatched {
@@ -2374,10 +2368,9 @@ final class RecordingSessionKernel {
     deliverRecordingExitIfCurrent(.audioInterruption, sid: currentSessionID)
   }
 
-  /// Route an external ASR-XPC interruption (audio-capture XPC service error,
+  /// Route an external ASR-XPC interruption (the ASR helper crashing,
   /// equivalent in shape to the adapter's own engine-crash) into the FSM.
-  /// Mirror of the internal `routeASRInterruption(sid:)` path the removed
-  /// `onXPCServiceError` subscription used to invoke.
+  /// Mirror of the internal `routeASRInterruption(sid:)` path.
   func externalASRInterrupted() {
     guard !state.isTerminal else { return }
     routeASRInterruption(sid: currentSessionID)
@@ -2725,7 +2718,7 @@ final class RecordingSessionKernel {
     let terminal = interruptedTerminalFloor(rawTerminal)
     guard transition(to: terminal) else { return }
     audioCapture.onBufferCaptured = nil
-    // PR-4b.1: `onEngineInterrupted`, `onCaptureStalled`, and `onXPCServiceError`
+    // PR-4b.1: `onEngineInterrupted` and `onCaptureStalled`
     // are no longer owned by the kernel — the App-side routers stay as sole
     // subscribers, so the kernel must not nil-clear them on session terminal
     // (doing so would steal them from the App router for the lifetime of the

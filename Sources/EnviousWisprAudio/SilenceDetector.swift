@@ -141,9 +141,8 @@ public actor SilenceDetector {
 
   /// - Parameter modelBundle: the bundle to load the VAD model from. Defaults
   ///   to `.main`, which is process-scoped and correctly resolves to whichever
-  ///   process is calling (the audio XPC service or the main app's
-  ///   direct-capture-mode fallback both bundle this asset into their own
-  ///   `.main`, #1224). Explicit rather than implicit so the dependency is
+  ///   process is calling (the main app and the ASR service both bundle this
+  ///   asset into their own `.main`, #1224). Explicit rather than implicit so the dependency is
   ///   documented and tests can inject a fixture bundle.
   public init(
     silenceTimeout: TimeInterval = 1.5, vadConfig: SmoothedVADConfig = SmoothedVADConfig(),

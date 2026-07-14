@@ -283,7 +283,7 @@ final class AppLifecycleCoordinator {
       // V2 fault-injection (issue #291). Only when explicitly opted in via env var.
       if DebugFaultEndpoint.isRequested {
         let endpoint = DebugFaultEndpoint(
-          audioProxy: audioCapture as? AudioCaptureProxy,
+          audioCapture: audioCapture as? AudioCaptureManager,
           asrProxy: asrManager as? ASRManagerProxy,
           kernelDriver: kernelDriver,
           whisperKitKernelDriver: whisperKitKernelDriver,

@@ -7,8 +7,7 @@
 # Bible if the new edge represents an architectural decision):
 #   EnviousWispr           -> AppKit (thin launchable shell; #919). Imports ONLY the kit.
 #   EnviousWisprAppKit     -> Core, Storage, PostProcessing, Audio, Services, ASR, LLM, Pipeline, Contacts (app-shell library; #919, top of stack)
-#   EnviousWisprAudioService -> Core, Audio, ObservabilityCore (XPC executable)
-#   EnviousWisprASRService -> Core, ASR, Audio, ObservabilityCore (XPC executable)
+#   EnviousWisprASRService -> Core, ASR, Audio, ObservabilityCore (XPC executable; the audio capture XPC service was removed at #1543)
 #   EnviousWisprPipeline   -> Core, ASR, Audio, LLM, PostProcessing, Services, Storage
 #   EnviousWisprASR        -> Core, Audio
 #   EnviousWisprServices   -> Core, ObservabilityCore
@@ -39,7 +38,6 @@ permitted_imports_for() {
     EnviousWisprModelDelivery)     echo "EnviousWisprCore" ;;
     EnviousWisprServices)          echo "EnviousWisprCore EnviousWisprObservabilityCore" ;;
     EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
-    EnviousWisprAudioService)      echo "EnviousWisprCore EnviousWisprAudio EnviousWisprObservabilityCore" ;;
     EnviousWisprASRService)        echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprObservabilityCore" ;;
     EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPipeline EnviousWisprContacts" ;;
     EnviousWispr)                  echo "EnviousWisprAppKit" ;;

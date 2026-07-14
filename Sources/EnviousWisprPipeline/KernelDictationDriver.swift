@@ -1110,10 +1110,6 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     kernel.externalCaptureStalled(ctx)
   }
 
-  public func handleXPCReplyFailed(_ ctx: XPCReplyFailureContext) {
-    observer.handleXPCReplyFailed(ctx)
-  }
-
   // MARK: DEBUG
 
   #if DEBUG

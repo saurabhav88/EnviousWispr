@@ -17,11 +17,6 @@ struct HeartPathErrorTests {
       inputDeviceUIDPreferred: nil, inputDeviceUIDSystemDefault: nil,
       failureMode: .noBuffers
     )
-    let replyCtx = XPCReplyFailureContext(
-      replyStage: "stop_capture", errorDomain: "NSCocoaErrorDomain",
-      errorCode: 4097, errorDescription: "invalidated", sessionID: 1
-    )
-
     let cases: [HeartPathError] = [
       .audioCaptureStalled(sessionID: 1, ctx: stallCtx),
       .noAudioCaptured(sessionID: 1, durationMs: 2000, wasStreaming: true, route: "bt"),
@@ -32,9 +27,6 @@ struct HeartPathErrorTests {
       .pasteAppleScriptFailed(
         errorCode: 1002, errorMessage: "Not authorized",
         targetBundleID: "com.apple.Terminal"),
-      .audioXPCInterrupted(handler: .invalidate, wasCapturing: true),
-      .xpcReplyFailed(ctx: replyCtx),
-      .xpcServerClientProxyNil(sessionID: 1, consecutiveDrops: 5),
       .emptyAfterProcessing(route: "built_in_mic", wasPolishEnabled: true),
       .zombieEngineZeroPeak(sessionID: 7, durationMs: 9000, route: "bt", sampleCount: 145360),
       .audioEngineInterrupted(route: "built_in_mic", durationMs: 3200),
@@ -44,12 +36,6 @@ struct HeartPathErrorTests {
       let desc = heart.errorDescription ?? ""
       #expect(!desc.isEmpty, "empty description for \(heart)")
     }
-  }
-
-  @Test("XPCHandlerKind rawValues are stable")
-  func handlerKinds() {
-    #expect(XPCHandlerKind.interrupt.rawValue == "interrupt")
-    #expect(XPCHandlerKind.invalidate.rawValue == "invalidate")
   }
 
   @Test("zombieEngineZeroPeak description includes all fields")

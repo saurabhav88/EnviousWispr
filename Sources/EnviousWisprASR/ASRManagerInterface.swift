@@ -87,7 +87,8 @@ public protocol ASRManagerInterface: AnyObject {
   var feedsSharedProgressFile: Bool { get }
 
   // Crash notification — fires when XPC ASR service dies during an active session.
-  // Wired by the former root state to route to the active pipeline (same pattern as AudioCaptureProxy.onEngineInterrupted).
+  // Wired by the App-side router to route to the active pipeline (same pattern as
+  // the capture manager's `onEngineInterrupted`).
   var onServiceInterrupted: (() -> Void)? { get set }
 }
 

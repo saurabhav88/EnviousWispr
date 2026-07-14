@@ -8,7 +8,7 @@ import Foundation
 // `ExpectedOutcome`. The `ScenarioRunner` (this target) executes the steps
 // against a `RecordingSessionDriving` SUT. In PR-2 the SUT is `StubRecordingSession`
 // (harness self-test); from PR-3 it is the real kernel behind a test-side
-// wrapper, and the 38-scenario inventory becomes merge-blocking.
+// wrapper, and the 37-scenario inventory becomes merge-blocking.
 
 /// A session-lifecycle trigger — the kernel's public entry points
 /// (PR-1 §B.1.2 transition table).
@@ -82,9 +82,6 @@ enum CaptureDirective: Sendable {
   case interrupt
   /// Change the audio route mid-session.
   case routeChange
-  /// #1408: raise the ONE interruption whose sample owner is gone — the audio
-  /// XPC helper died. Salvage must refuse and the recording must fail honestly.
-  case interruptUnrecoverable
   /// Deny / revoke microphone permission.
   case permissionDenied
   /// Fail capture start.

@@ -39,7 +39,6 @@ public final class SettingsManager {
     case languageMode
     case selectedInputDeviceUID
     case preferredInputDeviceIDOverride
-    case useXPCAudioService
     case useStreamingASR
     case warmEnginePolicy
     case appearance
@@ -59,13 +58,13 @@ public final class SettingsManager {
 
   /// The store backing all user-preference reads/writes. Injected for testability;
   /// production resolves to `SettingsDefaults.store` (the build-shared suite, #923).
-  /// EXCEPTION: the per-build `useXPCAudioService` knob deliberately uses
-  /// `UserDefaults.standard` directly, never this store.
+  /// EXCEPTION: the per-build `devAdapterPolishEnabled` knob (DEBUG only)
+  /// deliberately uses `UserDefaults.standard` directly, never this store.
   private let defaults: UserDefaults
 
   /// The UserDefaults keys SettingsManager owns that are UNIFIED across builds
-  /// (the #923 migration's source of truth). Excludes `useXPCAudioService`
-  /// (per-build XPC debug knob); the legacy `noiseSuppression` key is not a
+  /// (the #923 migration's source of truth). Excludes the per-build DEBUG
+  /// `devAdapterPolishEnabled` knob; the legacy `noiseSuppression` key is not a
   /// live setting and is stripped on load by the #734 migration below.
   public nonisolated static let unifiedDefaultsKeys: [String] = [
     "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
@@ -455,24 +454,11 @@ public final class SettingsManager {
     }
   }
 
-  /// Use XPC audio service instead of in-process AudioCaptureManager.
-  /// Default: true (Step 7 — XPC is the standard path).
-  /// Cold flag — read at launch only. Changing requires app restart.
-  /// Escape hatch: defaults write com.enviouswispr.app.dev useXPCAudioService -bool false
-  /// Does NOT fire onChange — this is not a live-switchable setting.
-  public var useXPCAudioService: Bool {
-    didSet {
-      // PER-BUILD EXCEPTION (#923): write to the build's own store, never the
-      // shared `defaults`. Developer XPC debug knob, excluded from unification.
-      UserDefaults.standard.set(useXPCAudioService, forKey: "useXPCAudioService")
-    }
-  }
-
   #if DEBUG
     /// DEV-ONLY per-build knob (AFM adapter PoC): when ON and EW_AFM_ADAPTER_PATH
     /// is set, on-device Apple Intelligence polish runs through the local
     /// `.fmadapter`. Lets the founder A/B adapter↔stock live on dev builds.
-    /// PER-BUILD EXCEPTION (#923), exactly like `useXPCAudioService`: persisted to
+    /// PER-BUILD EXCEPTION (#923): persisted to
     /// `UserDefaults.standard` (the build's own store), excluded from
     /// `unifiedDefaultsKeys` + the #923 migration, NOT in the `SettingKey` enum
     /// (no onChange/telemetry — the connector reads it fresh per dictation).
@@ -702,15 +688,10 @@ public final class SettingsManager {
     preferredInputDeviceIDOverride =
       defaults.string(forKey: "preferredInputDeviceIDOverride")
       ?? SettingsDefaultValues.preferredInputDeviceIDOverride
-    // PER-BUILD EXCEPTION (#923): useXPCAudioService is a developer XPC debug
-    // knob, NOT a unified user preference — read/write via UserDefaults.standard
-    // (the build's own store), never the shared `defaults`. Matches the bootstrap
-    // read at WisprBootstrapper and stays out of unifiedDefaultsKeys.
-    useXPCAudioService = UserDefaults.standard.object(forKey: "useXPCAudioService") as? Bool ?? true
     #if DEBUG
-      // PER-BUILD EXCEPTION (#923), like useXPCAudioService: AFM adapter PoC dev
-      // knob, read from the build's own store, default ON. Stays out of
-      // unifiedDefaultsKeys + the migration. Compiled out of release.
+      // PER-BUILD EXCEPTION (#923): AFM adapter PoC dev knob, read from the
+      // build's own store, default ON. Stays out of unifiedDefaultsKeys + the
+      // migration. Compiled out of release.
       devAdapterPolishEnabled =
         UserDefaults.standard.object(forKey: "devAdapterPolishEnabled") as? Bool ?? true
     #endif

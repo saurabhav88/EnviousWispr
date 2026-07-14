@@ -27,8 +27,8 @@ import Foundation
 /// Process placement: host app. CoreAudio system-object property listeners
 /// fire in any process; `AVCaptureDevice.wasConnected/wasDisconnected`
 /// notifications post via NotificationCenter to any registered observer.
-/// Service-side observers are out of scope (audio service has no
-/// `ObservabilityBootstrap.initialize()` call) — `Audio engine interrupted`
+/// Capture runs in-process now (#1543), so these observers see the same
+/// notifications the recording path does — `Audio engine interrupted`
 /// Sentry event from the recovery path covers engine-config events for now.
 ///
 /// Concurrency: `@MainActor`. Observer callbacks fire on HAL/NotificationCenter

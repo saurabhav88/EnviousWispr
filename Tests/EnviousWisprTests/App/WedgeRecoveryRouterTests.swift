@@ -11,7 +11,7 @@ import Testing
 @Suite("WedgeRecoveryRouter")
 struct WedgeRecoveryRouterTests {
 
-  @Test("init installs the three wedge callbacks on audioCapture")
+  @Test("init installs the capture-stall callback on audioCapture")
   func installsWedgeCallbacks() {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
@@ -22,7 +22,6 @@ struct WedgeRecoveryRouterTests {
       audioCapture: audio, store: store)
 
     #expect(audio.onCaptureStalled == nil)
-    #expect(audio.onXPCReplyFailed == nil)
 
     let router = WedgeRecoveryRouter(
       audioCapture: audio,
@@ -33,7 +32,6 @@ struct WedgeRecoveryRouterTests {
     )
 
     #expect(audio.onCaptureStalled != nil)
-    #expect(audio.onXPCReplyFailed != nil)
     withExtendedLifetime(router) {}
   }
 
@@ -65,10 +63,8 @@ struct WedgeRecoveryRouterTests {
     )
 
     audio.onCaptureStalled?(DictationRuntimeFixtures.captureStallContext(sessionID: 7))
-    audio.onXPCReplyFailed?(
-      DictationRuntimeFixtures.xpcReplyFailureContext(sessionID: 8))
 
-    #expect(sessionFilterCalls == [7, 8])
+    #expect(sessionFilterCalls == [7])
     #expect(resolverCallCount == 0)
     withExtendedLifetime(router) {}
   }
@@ -97,10 +93,8 @@ struct WedgeRecoveryRouterTests {
     )
 
     audio.onCaptureStalled?(DictationRuntimeFixtures.captureStallContext(sessionID: 1))
-    audio.onXPCReplyFailed?(
-      DictationRuntimeFixtures.xpcReplyFailureContext(sessionID: 1))
 
-    #expect(resolverCallCount == 2)
+    #expect(resolverCallCount == 1)
     withExtendedLifetime(router) {}
   }
 }

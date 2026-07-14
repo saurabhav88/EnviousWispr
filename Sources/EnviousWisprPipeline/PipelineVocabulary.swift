@@ -15,9 +15,8 @@ enum InterruptionMessages {
   static let micDisconnected = "Microphone disconnected"
 
   /// #1408. Shown for every other interruption: an engine that failed to
-  /// recover with the microphone still attached, a capture-session
-  /// interruption, our own audio helper dying. Says exactly what we know and
-  /// nothing we cannot back.
+  /// recover with the microphone still attached, or a capture-session
+  /// interruption. Says exactly what we know and nothing we cannot back.
   static let recordingInterrupted = "Recording interrupted"
 
   /// #1408: the SINGLE place that decides which interruption sentence a user
@@ -150,5 +149,4 @@ public enum RecordingTerminalKind: Equatable, Sendable {
 @MainActor
 public protocol HeartPathTelemetryTarget: AnyObject {
   func handleCaptureStall(_ ctx: CaptureStallContext)
-  func handleXPCReplyFailed(_ ctx: XPCReplyFailureContext)
 }

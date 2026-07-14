@@ -30,8 +30,6 @@ struct AudioEventRouterTests {
       audioCapture: audio, store: store)
 
     #expect(audio.onEngineInterrupted == nil)
-    #expect(audio.onXPCServiceError == nil)
-    #expect(audio.onAudioStartRetryResolved == nil)
     // `makeParakeetDriver` runs `KernelDictationDriverFactory.make` which
     // claims `onVADAutoStop` via `CaptureVADSignalSource.bind`. To exercise
     // the App router's unclaimed-fallback path explicitly, clear the slot
@@ -43,13 +41,10 @@ struct AudioEventRouterTests {
       audioCapture: audio,
       kernelDriver: parakeet,
       whisperKitKernelDriver: whisperKit,
-      recordingOverlay: RecordingOverlayPanel(),
       resolveActiveCaptureBackend: { nil }
     )
 
     #expect(audio.onEngineInterrupted != nil)
-    #expect(audio.onXPCServiceError != nil)
-    #expect(audio.onAudioStartRetryResolved != nil)
     #expect(audio.onVADAutoStop != nil)
     withExtendedLifetime(router) {}
   }
@@ -70,7 +65,6 @@ struct AudioEventRouterTests {
       audioCapture: audio,
       kernelDriver: parakeet,
       whisperKitKernelDriver: whisperKit,
-      recordingOverlay: RecordingOverlayPanel(),
       resolveActiveCaptureBackend: { nil }
     )
 
@@ -128,7 +122,6 @@ struct AudioEventRouterTests {
       audioCapture: audio,
       kernelDriver: driver,
       whisperKitKernelDriver: whisperKit,
-      recordingOverlay: RecordingOverlayPanel(),
       resolveActiveCaptureBackend: { .parakeet }
     )
 
@@ -188,7 +181,6 @@ struct AudioEventRouterTests {
       audioCapture: audio,
       kernelDriver: parakeet,
       whisperKitKernelDriver: whisperKit,
-      recordingOverlay: RecordingOverlayPanel(),
       resolveActiveCaptureBackend: {
         resolverCallCount += 1
         return nil

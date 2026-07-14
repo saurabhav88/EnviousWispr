@@ -96,12 +96,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
   var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?
   var onMaxDurationReached: (() -> Void)?
-  var onVADModelUnavailable: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
-  // XPC-only telemetry callbacks — a direct (non-XPC) source leaves these nil.
-  var onXPCServiceError: ((XPCErrorContext) -> Void)?
-  var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
-  var onAudioStartRetryResolved: ((AudioStartRetryContext) -> Void)?
   var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
 
   // MARK: AudioCaptureInterface — configuration (inert storage)
@@ -275,15 +270,6 @@ final class FakeAudioCapture: AudioCaptureInterface {
       inputDeviceUIDPreferred: nil,
       inputDeviceUIDSystemDefault: nil,
       failureMode: .noBuffers)
-  }
-
-  /// Fire the XPC service-error callback (C6 — XPC capture crash). This is the
-  /// ASR-interruption channel, distinct from `raiseEngineInterruption()`.
-  func fireXPCServiceError() {
-    onXPCServiceError?(
-      XPCErrorContext(
-        kind: .interruptCapturing,
-        sessionID: currentCaptureSessionID))
   }
 
   // MARK: Helpers

@@ -24,9 +24,7 @@ BUILT_APP="$DERIVED_DATA/Build/Products/Dev/EnviousWispr Local.app"
 APP_PATH="$PROJECT_ROOT/build/EnviousWispr Local.app"
 DEV_CERT_NAME="EnviousWispr Dev"
 DEV_BUNDLE_ID="com.enviouswispr.app.dev"
-AUDIO_XPC="EnviousWisprAudioService.xpc"
 ASR_XPC="EnviousWisprASRService.xpc"
-AUDIO_XPC_ID="com.enviouswispr.audioservice.dev"
 ASR_XPC_ID="com.enviouswispr.asrservice.dev"
 
 cd "$PROJECT_ROOT"
@@ -98,7 +96,6 @@ test -d "$BUILT_APP" || { echo "ERROR: built app not found at $BUILT_APP"; exit 
 # Strict verification BEFORE copying out of DerivedData (copies can pick up
 # FileProvider xattrs that break --strict; we copy with --norsrc + xattr -cr).
 echo "==> Step 5: Verifying signatures (strict, in DerivedData)..."
-codesign --verify --strict "$BUILT_APP/Contents/XPCServices/$AUDIO_XPC"
 codesign --verify --strict "$BUILT_APP/Contents/XPCServices/$ASR_XPC"
 codesign --verify --strict "$BUILT_APP"
 
@@ -119,8 +116,6 @@ echo "==> Step 7: Verifying deployed bundle..."
   || { echo "ERROR: app executable missing/not executable"; exit 1; }
 [ "$(plutil -extract SUFeedURL raw "$APP_PATH/Contents/Info.plist")" = "" ] \
   || { echo "ERROR: dev SUFeedURL must be blank"; exit 1; }
-[ "$(plutil -extract CFBundleIdentifier raw "$APP_PATH/Contents/XPCServices/$AUDIO_XPC/Contents/Info.plist")" = "$AUDIO_XPC_ID" ] \
-  || { echo "ERROR: audio XPC id mismatch"; exit 1; }
 [ "$(plutil -extract CFBundleIdentifier raw "$APP_PATH/Contents/XPCServices/$ASR_XPC/Contents/Info.plist")" = "$ASR_XPC_ID" ] \
   || { echo "ERROR: asr XPC id mismatch"; exit 1; }
 # #1271: EG-1 inference server + manifest must ship in Resources. On dev the
@@ -133,7 +128,6 @@ echo "==> Step 7: Verifying deployed bundle..."
 
 # Post-copy signature verification (non-strict: ditto+xattr can perturb xattrs
 # but not the seal; this confirms the copied bundle is still validly signed).
-codesign --verify "$APP_PATH/Contents/XPCServices/$AUDIO_XPC"
 codesign --verify "$APP_PATH/Contents/XPCServices/$ASR_XPC"
 codesign --verify "$APP_PATH"
 

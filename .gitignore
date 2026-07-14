@@ -122,12 +122,13 @@ EnviousWispr.app/
 !Sources/EnviousWisprLLM/Resources/OutputClassifier.mlpackage/
 !Sources/EnviousWisprLLM/Resources/OutputClassifier.mlpackage/**
 
-# #1224: the bundled Silero VAD model is COMMITTED (embed, never download —
-# same rationale as the classifier above). Re-include this one .mlmodelc +
-# its inner coremldata.bin / weights/weight.bin, overriding the broad *.bin
-# glob above. Whole asset is ~1 MB.
-!Sources/EnviousWisprAudioService/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc/
-!Sources/EnviousWisprAudioService/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc/**
+# #1224 (#1543: relocated to the app target when audio capture came in-process):
+# the bundled Silero VAD model is COMMITTED (embed, never download — same
+# rationale as the classifier above). Re-include this one .mlmodelc + its inner
+# coremldata.bin / weights/weight.bin, overriding the broad *.bin glob above.
+# Whole asset is ~1 MB.
+!Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc/
+!Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc/**
 
 # Dolt database files (added by bd init)
 .dolt/

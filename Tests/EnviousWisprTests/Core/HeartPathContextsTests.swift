@@ -65,23 +65,47 @@ struct HeartPathContextsTests {
       ).nativeChannelCount == nil)
   }
 
-  @Test("XPCReplyFailureContext retains replyStage verbatim")
-  func xpcReplyFailureContext() {
-    let ctx = XPCReplyFailureContext(
-      replyStage: "stop_capture",
-      errorDomain: "NSCocoaErrorDomain",
-      errorCode: 4097,
-      errorDescription: "Connection invalidated.",
-      sessionID: 7
+  @Test("#1543: enrichedWithManagerRoute overlays session id + route, preserves source fields")
+  func managerRouteEnrichmentOverlaysAndPreserves() {
+    // A HAL-built stall: per-source generation id, coarse `hal_device_input`
+    // route, nil resolved-route fields, but real source-stamped health fields.
+    let halBuilt = CaptureStallContext(
+      sessionID: 1,  // per-source generation — repeats across source rebuilds
+      armedAtUptimeNs: 100,
+      firedAtUptimeNs: 200,
+      route: "hal_device_input",
+      sourceType: "hal_device_input",
+      engineStartedSuccessfully: true,
+      tapInstalled: true,
+      formatMismatchObserved: false,
+      inputDeviceUIDPreferred: "BuiltInMicrophoneDevice",
+      inputDeviceUIDSystemDefault: "BuiltInMicrophoneDevice",
+      failureMode: .noBuffers,
+      nativeRateHz: 48_000,
+      rateDivergenceDetected: true,
+      nativeChannelCount: 2
     )
-    #expect(ctx.replyStage == "stop_capture")
-    #expect(ctx.errorCode == 4097)
-  }
-
-  @Test("XPCErrorKind rawValues match protocol contract")
-  func xpcErrorKindRawValues() {
-    #expect(XPCErrorKind.interruptCapturing.rawValue == "interruptCapturing")
-    #expect(XPCErrorKind.invalidateCapturing.rawValue == "invalidateCapturing")
-    #expect(XPCErrorKind.invalidateIdle.rawValue == "invalidateIdle")
+    let enriched = halBuilt.enrichedWithManagerRoute(
+      sessionID: 7,  // manager's app-lifetime id
+      route: "built_in_mic",
+      selectedTransport: "builtin",
+      effectiveTransport: "builtin",
+      routeReason: "no_bt_auto_input",
+      routeFallbackReason: nil,
+      inputSelectionMode: "auto",
+      outputTransport: "speaker",
+      routeResolutionSource: "app_derived")
+    // Overlaid: app-lifetime session id + real route bucket + transport detail.
+    #expect(enriched.sessionID == 7)
+    #expect(enriched.route == "built_in_mic")
+    #expect(enriched.selectedTransport == "builtin")
+    #expect(enriched.routeReason == "no_bt_auto_input")
+    // Preserved: source-stamped health + device fields + failure mode.
+    #expect(enriched.nativeRateHz == 48_000)
+    #expect(enriched.rateDivergenceDetected == true)
+    #expect(enriched.nativeChannelCount == 2)
+    #expect(enriched.inputDeviceUIDPreferred == "BuiltInMicrophoneDevice")
+    #expect(enriched.failureMode == .noBuffers)
+    #expect(enriched.armedAtUptimeNs == 100)
   }
 }

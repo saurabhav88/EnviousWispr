@@ -9,21 +9,12 @@ import Testing
 /// test fails with a specific message. Caps lower-is-free, raise via the
 /// Bible §30 changelog.
 ///
-/// Bible §30 entry (#1194, 2026-07-02): line ceiling 125 → 137. The router
-/// gained one wiring block (`onAudioStartRetryResolved` →
-/// `TelemetryService.audioStartRetryResolved`), consistent with its existing
-/// role as the audio-callback → telemetry wiring home (state-ownership row 9).
-/// No new collaborator slot, no new closure-injected dependency, no new
-/// import — only the line count moved.
-///
-/// Bible §30 entry (#1224, 2026-07-11): collaborator ceiling 4 → 5, line
-/// ceiling 137 → 148. The router gained `recordingOverlay` as a fifth
-/// collaborator so it can show the honest "auto-stop unavailable" notice
-/// when the bundled VAD model is broken — the same in-panel mechanism
-/// `RecordingStarter`/`RecordingFinalizer`/`DictationLifecycleCoordinator`
-/// already receive `recordingOverlay` for. Bound alongside the existing
-/// `onVADAutoStop` install; no re-check of the auto-stop setting here (the
-/// XPC service already decided eligibility before firing the callback).
+/// #1543: the router SHRANK when audio capture came in-process. It lost the
+/// two boundary-failure wiring blocks (the XPC-service-error and start-retry
+/// callbacks — failures that can no longer occur) and the `recordingOverlay` collaborator
+/// (the "auto-stop unavailable" notice is now bound on the shared
+/// `CaptureVADSignalSource` in the bootstrapper, not here). Ceilings tightened
+/// to lock the shrink: collaborators 5 → 3, line ceiling 148 → 90.
 @Suite struct AudioEventRouterCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/DictationRuntime/AudioEventRouter.swift"
@@ -32,11 +23,10 @@ import Testing
     let body = try RouterCeilingParser.classBody(named: "AudioEventRouter", at: Self.sourcePath)
     let count = RouterCeilingParser.collaboratorCount(in: body)
     #expect(
-      count <= 5,
+      count <= 3,
       """
-      AudioEventRouter collaborator-slot ceiling exceeded: \(count) > 5. \
-      Allowed: audioCapture, pipeline, whisperKitKernelDriver, captureTelemetry, \
-      recordingOverlay.
+      AudioEventRouter collaborator-slot ceiling exceeded: \(count) > 3. \
+      Allowed: audioCapture, kernelDriver, whisperKitKernelDriver.
       """)
   }
 
@@ -72,9 +62,9 @@ import Testing
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      count <= 148,
+      count <= 90,
       """
-      AudioEventRouter line count exceeded: \(count) > 148. \
+      AudioEventRouter line count exceeded: \(count) > 90. \
       Raise via Bible §30 only.
       """)
   }

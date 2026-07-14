@@ -18,24 +18,19 @@ source (tools-and-apps.md RULE: uat-verdicts-from-app-log).
 Reuses `wispr_eyes.test_recording()` / `tts()` — no reinvented recording or TTS
 loop (validation-discipline.md RULE: use-existing-uat-harness-first).
 
-WHY log evidence, not app-derived telemetry: the app-side `captureSourceType` is
-masked `"xpc_proxy"` on the default XPC path (plan §2.5 boundary 3). The
-unforgeable proof a recording captured the INTENDED device is (a) a correct,
-non-silent transcript of a known sentence, and (b) the CAPTURE_EVIDENCE line
-naming the device that actually bound and the real backend. That line is written
-by the DEBUG capture manager in whichever process hosts it, so it reports the
-REAL backend on BOTH the in-process and the default XPC path — the `"xpc_proxy"`
-mask only hides the app-side `captureSourceType`, which this bench never reads.
-So this validator does NOT require in-process mode; `configure` remains available
-to force it (e.g. to also unmask the app-side tag), and every trial records which
-path actually produced the evidence.
+WHY log evidence, not app-derived telemetry: the unforgeable proof a recording
+captured the INTENDED device is (a) a correct, non-silent transcript of a known
+sentence, and (b) the CAPTURE_EVIDENCE line naming the device that actually bound
+and the real backend. Capture runs in-process (#1543), so `captureSourceType`
+now reports the real backend directly — but this bench still reads the
+CAPTURE_EVIDENCE log line, which is the unforgeable source.
 
 COLD-STATE protocol: between devices, quit the dev app, relaunch, select the
 target device in Settings, and confirm the speaker is actually producing audio
 into the INTENDED device. This module is the driver; the human runs the matrix
 device-by-device and switches the input device in Settings (device selection
 lives in the shared `com.enviouswispr.app` store — the founder's real settings —
-so the harness never pokes it; it only sets the per-build dev knobs).
+so the harness never pokes it).
 """
 
 import argparse
@@ -47,13 +42,6 @@ import time
 import wispr_eyes
 
 # --- Constants ---------------------------------------------------------------
-
-# Per-build dev store (DEBUG dev bundle id). `useXPCAudioService` reads
-# UserDefaults.standard, which for the dev build resolves here
-# (SettingsManager.swift). NOT the shared `com.enviouswispr.app` store where user
-# prefs (incl. the input device) live.
-DEV_DEFAULTS_DOMAIN = "com.enviouswispr.app.dev"
-XPC_KEY = "useXPCAudioService"
 
 BT_ROUTE_LOG = os.path.expanduser("~/Library/Logs/EnviousWispr/bt-route.log")
 EVIDENCE_MARKER = "CAPTURE_EVIDENCE"
@@ -74,54 +62,6 @@ _CHECKOUT_ROOT = os.path.dirname(
 DEFAULT_SCORECARD = os.path.join(_CHECKOUT_ROOT, ".validation", "capture-bakeoff-scorecard.json")
 
 DEFAULT_SENTENCE = "Let's grab coffee before the standup and review the pull request together."
-
-
-# --- Bench configuration (per-build dev knobs only) --------------------------
-
-
-def read_uses_xpc():
-    """The build's live `useXPCAudioService` (default true when unset). Read-only.
-
-    Tells a trial which path actually produced its CAPTURE_EVIDENCE — the evidence
-    is real either way, but the row records the path so a reader knows.
-    """
-    out = subprocess.run(
-        ["defaults", "read", DEV_DEFAULTS_DOMAIN, XPC_KEY],
-        capture_output=True, text=True,
-    )
-    if out.returncode != 0:
-        return True  # unset → the shipped default is XPC on
-    return out.stdout.strip() not in ("0", "false", "NO")
-
-
-def configure_in_process():
-    """OPTIONAL: force in-process capture (useXPCAudioService=false).
-
-    Not required for a valid measurement — CAPTURE_EVIDENCE is real on both the
-    in-process and the default XPC path (see module docstring). Use this only to
-    also exercise/unmask the in-process path. The key is cold — read at launch
-    only — so the caller MUST relaunch the dev app after this returns. Does not
-    touch the shared user-settings store.
-    """
-    subprocess.run(
-        ["defaults", "write", DEV_DEFAULTS_DOMAIN, XPC_KEY, "-bool", "false"], check=True
-    )
-    print("[bakeoff] in-process capture ON (useXPCAudioService=false).")
-    print("[bakeoff] RELAUNCH the dev app now (cold flag), then select the target device in "
-          "Settings and confirm you will speak into it.")
-
-
-def clear_bench():
-    """Remove the bench dev knob, restoring the normal (XPC) path.
-
-    Deleting the key makes the app read its default: XPC on. Relaunch afterward
-    to return to the shipped path.
-    """
-    subprocess.run(
-        ["defaults", "delete", DEV_DEFAULTS_DOMAIN, XPC_KEY],
-        check=False,  # a missing key is fine
-    )
-    print("[bakeoff] bench knob cleared. Relaunch for the normal XPC path.")
 
 
 # --- Capture-side evidence (bt-route.log CAPTURE_EVIDENCE) --------------------
@@ -227,13 +167,12 @@ def run_trial(device_label, sentence=DEFAULT_SENTENCE, expect=None):
     """Run one device trial on the ALREADY-RELAUNCHED in-process dev app and
     return a scorecard row.
 
-    Preconditions (human, cold-state): configure_in_process() run, app relaunched,
-    the intended device selected in Settings, quiet room, speaker will actually
-    talk. This function does not switch devices or relaunch — it drives the
-    recording and reads the verdict from the logs.
+    Preconditions (human, cold-state): app relaunched, the intended device
+    selected in Settings, quiet room, speaker will actually talk. This function
+    does not switch devices or relaunch — it drives the recording and reads the
+    verdict from the logs.
     """
     since = _bt_route_line_count()
-    uses_xpc = read_uses_xpc()
 
     transcript_pass = wispr_eyes.test_recording(sentence=sentence, expect=expect)
 
@@ -265,7 +204,7 @@ def run_trial(device_label, sentence=DEFAULT_SENTENCE, expect=None):
     row = {
         "device_label": device_label,
         "sentence": sentence,
-        "measured_path": "xpc" if uses_xpc else "in_process",
+        "measured_path": "in_process",
         "transcript_pass": bool(transcript_pass),
         "expected_backend": EXPECTED_BACKEND,
         "bound_backend": bound_backend,
@@ -328,9 +267,6 @@ def main():
     ap = argparse.ArgumentParser(description="#1533 heart-path capture verification driver")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("configure", help="OPTIONAL: force in-process capture (per-build dev knob)")
-    sub.add_parser("clear", help="remove the bench knob (restore XPC)")
-
     p_trial = sub.add_parser("trial", help="run one device trial on the relaunched app")
     p_trial.add_argument("device_label", help="human label for the selected device, e.g. 'bose-bt'")
     p_trial.add_argument("--sentence", default=DEFAULT_SENTENCE)
@@ -338,11 +274,7 @@ def main():
     p_trial.add_argument("--scorecard", default=DEFAULT_SCORECARD)
 
     args = ap.parse_args()
-    if args.cmd == "configure":
-        configure_in_process()
-    elif args.cmd == "clear":
-        clear_bench()
-    elif args.cmd == "trial":
+    if args.cmd == "trial":
         row = run_trial(args.device_label, sentence=args.sentence, expect=args.expect)
         write_scorecard([row], args.scorecard)
 

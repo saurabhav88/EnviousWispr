@@ -78,7 +78,6 @@ final class DictationRuntime {
       audioCapture: audioCapture,
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
-      recordingOverlay: recordingOverlay,
       resolveActiveCaptureBackend: resolveActiveCaptureBackend
     )
     self.asrEventRouter = ASREventRouter(

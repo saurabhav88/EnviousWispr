@@ -10,7 +10,7 @@ import Foundation
 // `ExpectedOutcome`. Deterministic: one run per scenario is the pass
 // (epic §3a). In PR-2 the SUT is `StubRecordingSession` and only the harness
 // mechanics are exercised; from PR-3 the SUT is the real kernel and the
-// 38-scenario inventory becomes merge-blocking.
+// 37-scenario inventory becomes merge-blocking.
 
 /// The fakes + SUT bundle one scenario runs against.
 @MainActor
@@ -137,8 +137,8 @@ struct ScenarioRunner {
   }
 
   private func apply(captureDirective: CaptureDirective, context: SimulatorContext) {
-    // PR-4b.1: the kernel no longer subscribes to `audioCapture.onEngineInterrupted`,
-    // `onCaptureStalled`, or `onXPCServiceError`. The simulator routes these
+    // PR-4b.1: the kernel no longer subscribes to `audioCapture.onEngineInterrupted`
+    // or `onCaptureStalled`. The simulator routes these
     // signals through the kernel's new internal entry methods (
     // `externalEngineInterrupted` / `externalASRInterrupted` /
     // `externalCaptureStalled`) instead of firing the now-unsubscribed capture
@@ -163,10 +163,6 @@ struct ScenarioRunner {
       // Bluetooth headset walked away) → captured, and (#1408) salvaged: the
       // capture manager is still alive and still holding the samples.
       kernel?.externalEngineInterrupted(.deviceRemoved)
-    case .interruptUnrecoverable:
-      // #1408 (C7): the audio XPC helper that OWNED `capturedSamples` is gone.
-      // Salvage must refuse — there is nothing left in memory to transcribe.
-      kernel?.externalEngineInterrupted(.xpcConnectionLost)
     case .permissionDenied:
       context.capture.permissionDenied = true
     case .startFailure:

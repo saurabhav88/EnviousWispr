@@ -50,7 +50,6 @@ SECRETS_XCCONFIG="$PROJ_ROOT/build/ReleaseSecrets.xcconfig"
 APP_NAME="EnviousWispr.app"
 BUNDLE="build/${APP_NAME}"   # relative — notarize/create-dmg run with cwd = repo root
 ENTITLEMENTS="$PROJ_ROOT/Sources/EnviousWispr/Resources/EnviousWispr.entitlements"
-AUDIO_ENTITLEMENTS="$PROJ_ROOT/Sources/EnviousWisprAudioService/Resources/EnviousWisprAudioService.entitlements"
 ASR_ENTITLEMENTS="$PROJ_ROOT/Sources/EnviousWisprASRService/Resources/EnviousWisprASRService.entitlements"
 PROFILE="$PROJ_ROOT/signing/EnviousWispr_DeveloperID.provisionprofile"
 
@@ -87,7 +86,7 @@ TUIST=("$MISE_BIN" x tuist@4.195.11 -- tuist)
 echo "==> [0/9] Generate project + secret xcconfig (v${VERSION})"
 "${TUIST[@]}" generate --no-open
 test -d "$WORKSPACE"
-test -f "$ENTITLEMENTS"; test -f "$AUDIO_ENTITLEMENTS"; test -f "$ASR_ENTITLEMENTS"; test -f "$PROFILE"
+test -f "$ENTITLEMENTS"; test -f "$ASR_ENTITLEMENTS"; test -f "$PROFILE"
 
 mkdir -p "$PROJ_ROOT/build"
 # POSTHOG_API_KEY has no `//`, so it survives the xcconfig substitution and is
@@ -275,17 +274,7 @@ VAD_MODEL_REL="Contents/Resources/silero-vad-unified-256ms-v6.0.0.mlmodelc"
 test -d "$BUNDLE/$VAD_MODEL_REL" || {
     echo "::error::VAD model missing from app bundle at $VAD_MODEL_REL (#1224)"; exit 1;
 }
-AUDIO_XPC_PRESIGN=""
-for XPC_SVC in "$BUNDLE/Contents/XPCServices"/*.xpc; do
-    [[ -d "$XPC_SVC" ]] || continue
-    BID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$XPC_SVC/Contents/Info.plist")"
-    [[ "$BID" == "com.enviouswispr.audioservice" ]] && AUDIO_XPC_PRESIGN="$XPC_SVC"
-done
-test -n "$AUDIO_XPC_PRESIGN" || { echo "::error::audio XPC service bundle not found (#1224)"; exit 1; }
-test -d "$AUDIO_XPC_PRESIGN/$VAD_MODEL_REL" || {
-    echo "::error::VAD model missing from audio XPC service bundle at $VAD_MODEL_REL (#1224)"; exit 1;
-}
-echo "    VAD model present in both the app and audio XPC service bundles"
+echo "    VAD model present in the app bundle"
 
 if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
     echo "==> CODESIGN_IDENTITY not set — skipping signing (unsigned assembly only)"
@@ -319,19 +308,19 @@ else
     echo "    [4/6] Sparkle.framework"
     codesign "${SIGN_FLAGS[@]}" "$SPARKLE_CONTENTS"
     # 5. App XPC services — discover by glob, match entitlements by bundle id.
-    AUDIO_XPC=""; ASR_XPC=""
+    # #1543: audio capture is in-process now; only the ASR helper remains.
+    ASR_XPC=""
     for XPC_SVC in "$BUNDLE/Contents/XPCServices"/*.xpc; do
         [[ -d "$XPC_SVC" ]] || continue
         BID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$XPC_SVC/Contents/Info.plist")"
         case "$BID" in
-            com.enviouswispr.audioservice) ENT="$AUDIO_ENTITLEMENTS"; AUDIO_XPC="$XPC_SVC" ;;
             com.enviouswispr.asrservice)   ENT="$ASR_ENTITLEMENTS";   ASR_XPC="$XPC_SVC" ;;
             *) echo "::error::unexpected app XPC bundle id: $BID"; exit 1 ;;
         esac
         echo "    [5/6] app xpc: $(basename "$XPC_SVC") ($BID)"
         codesign "${SIGN_FLAGS[@]}" --entitlements "$ENT" "$XPC_SVC"
     done
-    test -n "$AUDIO_XPC"; test -n "$ASR_XPC"
+    test -n "$ASR_XPC"
     # 5.5. EG-1 inference server (#1271) — a bare Mach-O in Contents/Resources,
     # signed like Sparkle's Autoupdate (a missed bare Mach-O is exactly the
     # class that failed v1.5.2/v1.5.3 notarization). Must be sealed BEFORE the

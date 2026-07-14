@@ -47,7 +47,7 @@ struct SentryAudioExtrasTests {
   func noPreferredInputIsNotDivergence() {
     let extras = SentryAudioExtras.buildCaptureExtras(
       route: "built_in_mic",
-      sourceType: "xpc_proxy",
+      sourceType: "hal_device_input",
       sessionID: 1,
       isActivelyCapturing: false,
       inputDeviceUIDPreferred: nil,
@@ -65,7 +65,7 @@ struct SentryAudioExtrasTests {
   func bothUnknownInputUIDsAreNotDivergence() {
     let extras = SentryAudioExtras.buildCaptureExtras(
       route: "built_in_mic",
-      sourceType: "xpc_proxy",
+      sourceType: "hal_device_input",
       sessionID: 1,
       isActivelyCapturing: false,
       inputDeviceUIDPreferred: nil,
@@ -82,7 +82,7 @@ struct SentryAudioExtrasTests {
   func emptyPreferredInputUIDIsNotSet() {
     let extras = SentryAudioExtras.buildCaptureExtras(
       route: "built_in_mic",
-      sourceType: "xpc_proxy",
+      sourceType: "hal_device_input",
       sessionID: 1,
       isActivelyCapturing: false,
       inputDeviceUIDPreferred: "",
@@ -176,7 +176,7 @@ struct SentryAudioExtrasTests {
   func zombieExtrasOmitted() {
     let extras = SentryAudioExtras.buildCaptureExtras(
       route: "bt",
-      sourceType: "xpc_proxy",
+      sourceType: "hal_device_input",
       sessionID: 1,
       isActivelyCapturing: false,
       inputDeviceUIDPreferred: nil,
@@ -190,7 +190,7 @@ struct SentryAudioExtrasTests {
   func zombieExtrasPassthrough() {
     let extras = SentryAudioExtras.buildCaptureExtras(
       route: "bt",
-      sourceType: "xpc_proxy",
+      sourceType: "hal_device_input",
       sessionID: 1,
       isActivelyCapturing: false,
       inputDeviceUIDPreferred: nil,

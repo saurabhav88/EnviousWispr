@@ -35,44 +35,20 @@ public protocol AudioCaptureInterface: AnyObject {
   /// stop route when the graceful cap wedges. Single-owner:
   /// `CaptureVADSignalSource` claims it alongside `onVADAutoStop`.
   var onMaxDurationReached: (() -> Void)? { get set }
-  /// Fires when the service-side VAD model is unavailable (missing/corrupted
-  /// bundled asset — #1224). At most once per audio-service-process lifetime,
-  /// only at the first recording where the model is broken AND auto-stop is
-  /// on. Bypass, not failure — capture/transcription are unaffected.
-  var onVADModelUnavailable: (() -> Void)? { get set }
 
   // Telemetry callbacks (round-4 additions for #285 heart-path Sentry coverage).
-  // Producers: source backends (`HALDeviceInputSource`, `AudioCaptureProxy`).
-  //            Consumers: pipeline layer + the former root state.
-  // All callbacks fire on the MainActor. Conformers that don't produce a given
-  // signal leave the closure nil (e.g. direct sources leave XPC callbacks nil).
+  // Producer: the sole capture backend (`HALDeviceInputSource`, via
+  // `AudioCaptureManager`). Consumers: pipeline + app-shell layers.
+  // All callbacks fire on the MainActor.
 
   /// Fires once per capture session when the liveness watchdog observes zero
-  /// audio buffers within `Constants.audioCaptureStallWindowMs` of tap install.
-  /// At most one call per `currentCaptureSessionID`. Never called after a
-  /// subsequent `stopCapture` for that session. Telemetry-only: consumers
-  /// must not treat this as a control-flow signal.
+  /// audio buffers within `Constants.audioCaptureStallWindowMs` of tap install,
+  /// or the reactive dead-air detector confirms an all-zero capture. At most
+  /// one call per `currentCaptureSessionID` (the two producers share the
+  /// manager's `captureStallReported` latch). Never called after a subsequent
+  /// `stopCapture` for that session. Telemetry-only: consumers must not treat
+  /// this as a control-flow signal.
   var onCaptureStalled: ((CaptureStallContext) -> Void)? { get set }
-
-  /// Fires from the proxy's XPC interruption / invalidation handlers.
-  /// Direct sources have no XPC layer and leave nil. Consumer emits
-  /// `captureError(.xpcServiceError)`. Idle interrupts do NOT invoke (silent
-  /// end-to-end per §3.5 Channel 2 in the round-4 plan).
-  var onXPCServiceError: ((XPCErrorContext) -> Void)? { get set }
-
-  /// Fires when a non-throwing XPC call (`stopCapture`, `getSamplesSnapshot`,
-  /// `getSpeechSegments`) swallowed a transport error in its internal catch
-  /// block. The proxy invokes the callback BEFORE returning its empty default
-  /// so the pipeline can emit the correct root cause instead of misrouting
-  /// into "no_audio_captured".
-  var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)? { get set }
-
-  /// Fires once per resolved start-op retry in the XPC proxy (#1194): a
-  /// pre-capture start operation hit a dead-line signature, the proxy
-  /// reacquired the connection and resent exactly once, and the retry either
-  /// recovered or exhausted. Diagnostic-only — consumers must not branch
-  /// control flow on it. Direct sources have no XPC layer and leave nil.
-  var onAudioStartRetryResolved: ((AudioStartRetryContext) -> Void)? { get set }
 
   /// Fires on the first route resolution and on every subsequent resolution
   /// where sourceType or reason differs from the prior call. No-op on
@@ -93,7 +69,8 @@ public protocol AudioCaptureInterface: AnyObject {
   var isActivelyCapturing: Bool { get }
 
   /// Low-cardinality string identifying the concrete capture backend driving
-  /// the current session. Values: `"hal_device_input"`, `"xpc_proxy"`. Used by
+  /// the current session. Value: `"hal_device_input"` (the sole in-process
+  /// backend since #1543). Used by
   /// pipeline-layer Sentry extras. Delegates to the active source in direct
   /// mode; constant for the proxy.
   var captureSourceType: String { get }
@@ -161,13 +138,13 @@ extension AudioCaptureInterface {
 
   /// #1317: fail-closed default so every existing conformer (test fakes,
   /// simulator doubles) that has no reason to track this stays
-  /// source-compatible. Real capture backends (`AudioCaptureProxy`,
-  /// `AudioCaptureManager`) override it with the device frozen at their own
-  /// engine-start moment.
+  /// source-compatible. The real capture backend (`AudioCaptureManager`)
+  /// overrides it with the device frozen at its own engine-start moment.
   public var zeroSignalDiscriminatorDeviceID: AudioDeviceID? { nil }
 
   /// #1317 (cloud review round 2, P2): default `false` — test fakes and
-  /// `AudioCaptureManager` (no reactive per-buffer detector) have nothing to
-  /// latch. `AudioCaptureProxy` overrides it with its own session-scoped latch.
+  /// simulator doubles have no reactive per-buffer detector, so nothing to
+  /// latch. `AudioCaptureManager` overrides it with its own session-scoped
+  /// latch (ported in-process at #1543).
   public var zeroSignalDiscriminatorSawIneligible: Bool { false }
 }
