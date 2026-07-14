@@ -38,7 +38,6 @@ public final class SettingsManager {
     case whisperKitLanguage
     case languageMode
     case selectedInputDeviceUID
-    case noiseSuppression
     case preferredInputDeviceIDOverride
     case useXPCAudioService
     case useStreamingASR
@@ -66,7 +65,8 @@ public final class SettingsManager {
 
   /// The UserDefaults keys SettingsManager owns that are UNIFIED across builds
   /// (the #923 migration's source of truth). Excludes `useXPCAudioService`
-  /// (per-build XPC debug knob) and `noiseSuppression` (removed/forced-off).
+  /// (per-build XPC debug knob); the legacy `noiseSuppression` key is not a
+  /// live setting and is stripped on load by the #734 migration below.
   public nonisolated static let unifiedDefaultsKeys: [String] = [
     "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
     "autoCopyToClipboard", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
@@ -446,13 +446,6 @@ public final class SettingsManager {
     }
   }
 
-  public var noiseSuppression: Bool {
-    didSet {
-      defaults.set(noiseSuppression, forKey: "noiseSuppression")
-      onChange?(.noiseSuppression)
-    }
-  }
-
   /// User override for input device. Empty string means "Auto" (smart selection).
   public var preferredInputDeviceIDOverride: String {
     didSet {
@@ -706,7 +699,6 @@ public final class SettingsManager {
     selectedInputDeviceUID =
       defaults.string(forKey: "selectedInputDeviceUID")
       ?? SettingsDefaultValues.selectedInputDeviceUID
-    noiseSuppression = SettingsDefaultValues.noiseSuppression
     preferredInputDeviceIDOverride =
       defaults.string(forKey: "preferredInputDeviceIDOverride")
       ?? SettingsDefaultValues.preferredInputDeviceIDOverride

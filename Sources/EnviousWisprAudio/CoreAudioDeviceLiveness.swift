@@ -19,11 +19,10 @@ public enum DeviceLiveness: Sendable, Equatable {
 /// The single home for reading `kAudioDevicePropertyDeviceIsAlive` and turning
 /// the result into a `DeviceLiveness`.
 ///
-/// Two capture sources ask this question (`AVAudioEngineSource` on an engine
-/// config change, `HALDeviceInputSource` from its liveness listener) and both
-/// used to inline the read, ignore the returned `OSStatus`, and test the
-/// `isAlive` out-parameter alone. That is wrong in BOTH directions once the
-/// answer drives user-facing copy:
+/// The capture source (`HALDeviceInputSource`, from its liveness listener) asks
+/// this question. It used to inline the read, ignore the returned `OSStatus`,
+/// and test the `isAlive` out-parameter alone. That is wrong in BOTH directions
+/// once the answer drives user-facing copy:
 ///
 /// - `isAlive` is a zero-initialized out-parameter. On any failed read it stays
 ///   zero, so an unchecked read reports "dead" for a transient error and would

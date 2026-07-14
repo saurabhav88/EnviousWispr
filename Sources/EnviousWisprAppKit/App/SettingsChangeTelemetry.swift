@@ -83,7 +83,7 @@ enum SettingsProjection {
     // Not instrumented.
     case .selectedBackend, .onboardingState, .hasCompletedOnboarding,
       .isDebugModeEnabled, .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage,
-      .selectedInputDeviceUID, .noiseSuppression, .preferredInputDeviceIDOverride,
+      .selectedInputDeviceUID, .preferredInputDeviceIDOverride,
       .useXPCAudioService,
       // #1480: the popover's own lifecycle telemetry (`bt_awareness.*`) owns this
       // signal, incl. `suppressed_by_setting`; no separate settings.changed delta.

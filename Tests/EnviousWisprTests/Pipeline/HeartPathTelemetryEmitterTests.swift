@@ -67,8 +67,7 @@ struct HeartPathTelemetryEmitterTests {
   /// Tests assert the full key-set matches so a forgotten/added extras key
   /// trips the suite immediately. Stall, no-audio, and zombie events all
   /// share this baseline; stall adds the `capture.stall.*` keys; zombie
-  /// adds the `time_since_last_successful_recording_ms` /
-  /// `config_change_count_since_launch` keys.
+  /// adds the `time_since_last_successful_recording_ms` key.
   private static let baselineCaptureExtraKeys: Set<String> = [
     "capture.source_type",
     "capture.route",
@@ -93,8 +92,7 @@ struct HeartPathTelemetryEmitterTests {
 
   private static let zombieExtraKeys: Set<String> =
     baselineCaptureExtraKeys.union([
-      "capture.time_since_last_successful_recording_ms",
-      "capture.config_change_count_since_launch",
+      "capture.time_since_last_successful_recording_ms"
     ])
 
   private static let xpcExtraKeys: Set<String> = [
@@ -107,7 +105,7 @@ struct HeartPathTelemetryEmitterTests {
       armedAtUptimeNs: 1_000,
       firedAtUptimeNs: 2_000,
       route: "built_in_mic",
-      sourceType: "av_audio_engine",
+      sourceType: "hal_device_input",
       engineStartedSuccessfully: true,
       tapInstalled: true,
       formatMismatchObserved: false,
@@ -134,7 +132,7 @@ struct HeartPathTelemetryEmitterTests {
       wasStreaming: false,
       route: "built_in_mic",
       isActivelyCapturing: false,
-      captureSourceType: "av_audio_engine",
+      captureSourceType: "hal_device_input",
       inputDeviceUIDPreferred: nil,
       inputDeviceUIDSystemDefault: "BuiltInMicrophoneDevice"
     )

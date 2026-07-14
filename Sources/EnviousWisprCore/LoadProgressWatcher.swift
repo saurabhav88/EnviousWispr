@@ -87,8 +87,8 @@ public final class LoadProgressWatcher {
   /// Require two observed progress signals before ratio-based silence can fire.
   /// This keeps the 800ms floor from becoming a standalone timeout after only
   /// one lifecycle tick. XPC lifecycle operations keep this safer default:
-  /// cold `startRunning()`, `AVAudioEngine.start()`, and large stop replies can
-  /// legitimately stay quiet for longer than the floor before their next signal.
+  /// cold `startRunning()`, capture-source `prepare()`, and large stop replies
+  /// can legitimately stay quiet for longer than the floor before their next signal.
   private let requiresObservedGap: Bool
 
   /// Monotonic clock source. Production uses `ProcessInfo.processInfo.systemUptime`

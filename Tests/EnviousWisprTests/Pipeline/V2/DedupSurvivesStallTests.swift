@@ -112,7 +112,7 @@ struct DedupSurvivesStallTests {
       armedAtUptimeNs: 1_000,
       firedAtUptimeNs: 2_000,
       route: "built_in_mic",
-      sourceType: "av_audio_engine",
+      sourceType: "hal_device_input",
       engineStartedSuccessfully: true,
       tapInstalled: true,
       formatMismatchObserved: false,
@@ -151,7 +151,6 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
   var currentCaptureSessionID: UInt64 = 0
   var isActivelyCapturing: Bool = false
   var captureSourceType: String = "fixture_mock"
-  var noiseSuppressionEnabled: Bool = false
   var selectedInputDeviceUID: String = ""
   var preferredInputDeviceIDOverride: String = ""
   var warmEnginePolicy: WarmEnginePolicy = .off
@@ -182,7 +181,6 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
     return CaptureResult(samples: [])
   }
   func rebuildEngine() {}
-  func buildEngine(noiseSuppression: Bool) {}
   func preWarm() async throws {}
   func abortPreWarm() {
     continuation?.finish()

@@ -7,7 +7,7 @@ import os
 ///
 /// Owns app-facing state (capturedSamples, audioLevel, isCapturing) and the
 /// `AudioCaptureInterface` contract. Delegates all hardware interaction to the
-/// active `AudioInputSource` (`AVAudioEngineSource` or `HALDeviceInputSource`).
+/// active `AudioInputSource` (always `HALDeviceInputSource`, the sole backend).
 ///
 /// **Ownership boundaries:**
 /// - Sources own hardware/session/engine lifecycle, conversion, tap logic, recovery
@@ -96,7 +96,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// Stall watchdog callback (forwarded to active source in Phase B implementation).
   public var onCaptureStalled: ((CaptureStallContext) -> Void)?
 
-
   /// Only the XPC proxy invokes this; direct-mode manager leaves nil.
   public var onXPCServiceError: ((XPCErrorContext) -> Void)?
 
@@ -118,7 +117,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   }
 
   /// Delegates to the active source so the pipeline can attribute Sentry
-  /// events to the concrete backend (AVAudioEngine vs HALDeviceInput).
+  /// events to the concrete backend (HALDeviceInput).
   /// Falls back to the cached last-known value after stopCapture tears the
   /// source down (see `cachedSourceType` rationale at field declaration).
   public var captureSourceType: String {
@@ -127,9 +126,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   /// Authoritative capture-active predicate.
   public var isActivelyCapturing: Bool { isCapturing }
-
-  /// Whether noise suppression via Apple Voice Processing is enabled.
-  public var noiseSuppressionEnabled = false
 
   /// Persistent UID of the selected input device. Empty string means system default.
   public var selectedInputDeviceUID: String = ""
@@ -150,8 +146,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// Target format: 16kHz, mono, Float32 — required by both Parakeet and WhisperKit.
   public nonisolated static let targetSampleRate: Double = 16000
 
-  /// The active capture source. Created on buildEngine/startEnginePhase.
-  /// Either AVAudioEngineSource (no BT) or HALDeviceInputSource (BT output active).
+  /// The active capture source. Created on startEnginePhase / preWarm.
+  /// Always a HALDeviceInputSource — the sole capture backend.
   private var activeSource: (any AudioInputSource)?
 
   #if DEBUG
@@ -164,7 +160,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// freshness oracle for `fresh_pipe_proven`. NOT `ObjectIdentifier(activeSource)`
     /// (rebuild destroys resources while retaining the object) and NOT the
     /// capture-session id (which advances per capture even on warm reuse). Increments
-    /// only on new-source install, destructive `rebuildEngine()`, and `buildEngine()`.
+    /// only on new-source install and destructive `rebuildEngine()`.
     private(set) var debugSourceIncarnation: UInt64 = 0
 
     /// #1317 proof-bench (DEBUG only): arm the injector from the DEBUG XPC fault
@@ -257,7 +253,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     ResolvedRouteTransports.derive(
       decision: decision,
       preferredInputDeviceIDOverride: preferredInputDeviceIDOverride,
-      selectedInputDeviceUID: selectedInputDeviceUID,
       actualBoundTransport: actualBoundTransport
     )
   }
@@ -288,7 +283,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // #1317 (cloud review P2, round 2): freeze the discriminator device NOW,
     // same synchronous turn `resolveSource()` reads the live UID properties.
     effectiveDiscriminatorDeviceID = AudioDeviceEnumerator.resolveEffectiveInputDevice(
-      preferredOverride: preferredInputDeviceIDOverride, selected: selectedInputDeviceUID)
+      preferredOverride: preferredInputDeviceIDOverride)
     // Re-evaluate route on every recording start — BT state may have changed.
     onLifecycleSignal?("manager_resolve_source_entered")
     let source = resolveSource()
@@ -338,11 +333,11 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // #1408 A3 backstop is unit-testable with an injected `maxRecordingSamplesLimit`.)
     // #1408: the SOURCE names the cause; the manager only forwards it. This used
     // to be inferred from the source's class, which cannot distinguish a device
-    // that was verified gone (`.deviceRemoved`) from an engine that merely failed
-    // to recover (`.engineLost`) — both live inside `AVAudioEngineSource`. Only
-    // the source runs the `kAudioDevicePropertyDeviceIsAlive` check, so only the
-    // source can answer. Passing the cause as a parameter also means the closure
-    // captures no `source` reference at all.
+    // that was verified gone (`.deviceRemoved`) from a source that merely failed
+    // to recover (`.engineLost`). Only the source runs the
+    // `kAudioDevicePropertyDeviceIsAlive` check, so only the source can answer.
+    // Passing the cause as a parameter also means the closure captures no
+    // `source` reference at all.
     source.onInterrupted = { [weak self] cause in
       guard let self,
         self.activeSource.map({ ObjectIdentifier($0) }) == sourceID
@@ -375,12 +370,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     isCapturing = true
     #if DEBUG
       // Bake-off manager-side evidence companion (#1377 §3.5): pairs the app's
-      // REQUEST (backend + requested device + active policy) with each source's
-      // own `CAPTURE_EVIDENCE` (actual bound device). In-process only, so
+      // REQUEST (backend + requested device) with each source's own
+      // `CAPTURE_EVIDENCE` (actual bound device). In-process only, so
       // `captureSourceType` is the real backend, never the `"xpc_proxy"` mask.
       let requestedUID = effectiveInputDeviceUID()
       Self.btRouteLog(
-        "CAPTURE_EVIDENCE [manager] backend=\(source.captureSourceType) requestedUID=\(requestedUID.isEmpty ? "auto" : requestedUID) policy=\(routeResolver.policy) generation=\(source.captureGeneration)"
+        "CAPTURE_EVIDENCE [manager] backend=\(source.captureSourceType) requestedUID=\(requestedUID.isEmpty ? "auto" : requestedUID) generation=\(source.captureGeneration)"
       )
     #endif
     // Mirror source identity so pipeline-layer Sentry extras still resolve
@@ -484,30 +479,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     #if DEBUG
       debugSourceIncarnation += 1  // destructive rebuild of the active source's resources
     #endif
-  }
-
-  public func buildEngine(noiseSuppression: Bool) {
-    noiseSuppressionEnabled = noiseSuppression
-    // buildEngine is called at app startup for VP config. Create an engine source
-    // for now — startEnginePhase will re-resolve if BT state requires capture session.
-    // If re-resolved to capture session, this engine source is discarded (no resources held —
-    // buildEngine only creates an AVAudioEngine object, doesn't start it or install taps).
-    if let engineSource = activeSource as? AVAudioEngineSource {
-      engineSource.buildEngine(noiseSuppression: noiseSuppression)
-      #if DEBUG
-        debugSourceIncarnation += 1  // AVAudioEngine resources replaced on the active source
-      #endif
-    } else {
-      // Tear down any existing non-engine source before replacing
-      activeSource?.rebuild()
-      let engineSource = AVAudioEngineSource()
-      engineSource.buildEngine(noiseSuppression: noiseSuppression)
-      #if DEBUG
-        engineSource.debugZeroFillController = debugZeroFillController
-        debugSourceIncarnation += 1  // new engine source installed
-      #endif
-      activeSource = engineSource
-    }
   }
 
   public func preWarm() async throws {
@@ -658,57 +629,26 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // Cancel any in-flight engine stop from a previous teardown.
     engineStopTask?.cancel()
     engineStopTask = nil
-    #if DEBUG
-      // Bake-off control plane (#1377 slice 2a): a runtime override pins a
-      // candidate engine for the bench, refreshed every resolve so the harness
-      // can switch candidates between recordings. Nil → `.automatic` — the only
-      // path release ever takes, since there is no release setter for `policy`.
-      routeResolver.policy = CaptureRouteResolver.debugPolicyOverride() ?? .automatic
-    #endif
     // Snapshot the prior decision for the changed-only `onRouteResolved` fire.
     let priorRouteDecision = lastRouteDecision
 
     // If a source is already running (warm engine), check route compatibility
     if let existing = activeSource, existing.isRunning {
       let decision = routeResolver.resolve(
-        preferredInputDeviceUID: preferredInputDeviceIDOverride,
-        noiseSuppression: noiseSuppressionEnabled
+        preferredInputDeviceUID: preferredInputDeviceIDOverride
       )
       // Non-switch consumer of `CaptureSourceType` (#1377 §6 audit point) — a
-      // new candidate must be added here explicitly; the compiler cannot
-      // force this equality-style mapping the way it forces the `switch`
-      // below. `existingSourceType == decision.sourceType` (three-way, not a
-      // boolean) so an audioEngine↔halDeviceInput mismatch is never
-      // silently read as a match, which a plain "is engine" boolean would do.
+      // new candidate must be added here explicitly; the compiler cannot force
+      // this equality-style mapping the way it forces the `switch` below.
       let existingSourceType = Self.sourceType(of: existing)
 
       // Check full config signature, not just source type.
-      // Device/VP changes between recordings must trigger rebuild.
+      // Device changes between recordings must trigger rebuild.
       var configMatch = existingSourceType == decision.sourceType
-      if configMatch, let engineSource = existing as? AVAudioEngineSource {
-        // Compare effective device selection: preferredInputDeviceIDOverride
-        // takes priority, fall back to selectedInputDeviceUID when empty.
-        let oldEffective =
-          engineSource.preferredInputDeviceIDOverride.isEmpty
-          ? engineSource.selectedInputDeviceUID
-          : engineSource.preferredInputDeviceIDOverride
-        let newEffective =
-          preferredInputDeviceIDOverride.isEmpty
-          ? selectedInputDeviceUID
-          : preferredInputDeviceIDOverride
-        let deviceMatch = oldEffective == newEffective
-        let vpMatch = engineSource.noiseSuppressionEnabled == noiseSuppressionEnabled
-        configMatch = deviceMatch && vpMatch
-      }
-      // Candidate D (#1377 slice 2b): a warm HAL source from a forced trial
-      // must not be reused once the override clears (or changes device).
+      // A warm HAL source must not be reused once the resolved target device
+      // changes (or the bound device drifts from the resolved target).
       if configMatch, let halSource = existing as? HALDeviceInputSource {
-        var wantsTarget = decision.effectiveDeviceUID
-        #if DEBUG
-          if decision.reason == .forcedHALDeviceInput {
-            wantsTarget = effectiveInputDeviceUID()
-          }
-        #endif
+        let wantsTarget = decision.effectiveDeviceUID
         let normalize: (String?) -> String = { ($0?.isEmpty ?? true) ? "" : $0! }
         configMatch =
           normalize(halSource.targetDeviceUID) == normalize(wantsTarget)
@@ -738,49 +678,26 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     }
 
     let decision = routeResolver.resolve(
-      preferredInputDeviceUID: preferredInputDeviceIDOverride,
-      noiseSuppression: noiseSuppressionEnabled
+      preferredInputDeviceUID: preferredInputDeviceIDOverride
     )
     adoptRouteDecision(decision, prior: priorRouteDecision)
 
     // Structured telemetry log
     Self.btRouteLog(
-      "Route decision: source=\(decision.sourceType), reason=\(decision.reason.rawValue), vp=\(decision.vpAvailable), fallback=\(decision.fallbackAllowed) — \(decision.rationale)"
+      "Route decision: source=\(decision.sourceType), reason=\(decision.reason.rawValue) — \(decision.rationale)"
     )
     Task {
       await AppLogger.shared.log(
-        "Capture route: \(decision.reason.rawValue) → \(Self.backendLabel(for: decision.sourceType)), VP=\(decision.vpAvailable)",
+        "Capture route: \(decision.reason.rawValue) → \(Self.backendLabel(for: decision.sourceType))",
         level: .info, category: "Audio"
       )
     }
 
     let source: any AudioInputSource
     switch decision.sourceType {
-    case .audioEngine:
-      let engineSource = AVAudioEngineSource()
-      engineSource.noiseSuppressionEnabled = noiseSuppressionEnabled
-      engineSource.selectedInputDeviceUID = selectedInputDeviceUID
-      engineSource.preferredInputDeviceIDOverride = preferredInputDeviceIDOverride
-      #if DEBUG
-        // Candidate C (#1377): under a force-case, bypass the BT-output force-nil
-        // so the engine targets the selected BT device. `.automatic` never emits
-        // `.forcedEngine`, so the shipped crash-dodge is unchanged.
-        if decision.reason == .forcedEngine {
-          engineSource.benchBypassBTOutputForceNil = true
-        }
-      #endif
-      source = engineSource
     case .halDeviceInput:
       let halSource = HALDeviceInputSource()
       halSource.targetDeviceUID = decision.effectiveDeviceUID
-      #if DEBUG
-        // Candidate D (#1377 slice 2b, reinstated 2026-07-08): under a
-        // force-case, pin the AUHAL source to the user-selected device. Only
-        // ever reachable via `.forceHALDeviceInput`.
-        if decision.reason == .forcedHALDeviceInput {
-          halSource.targetDeviceUID = effectiveInputDeviceUID()
-        }
-      #endif
       source = halSource
     }
 
@@ -794,11 +711,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   /// Maps a concrete `any AudioInputSource` instance to its `CaptureSourceType`
   /// tag. The non-switch consumer `resolveSource()` uses for warm-reuse
-  /// compatibility (#1377 §6 audit point) — a plain `is AVAudioEngineSource`
-  /// boolean silently treats every non-engine source as equivalent once a
-  /// third candidate exists, so this maps each concrete type explicitly.
+  /// compatibility (#1377 §6 audit point) — maps each concrete type explicitly
+  /// so a future second backend cannot be silently read as a match.
   private static func sourceType(of source: any AudioInputSource) -> CaptureSourceType? {
-    if source is AVAudioEngineSource { return .audioEngine }
     if source is HALDeviceInputSource { return .halDeviceInput }
     return nil
   }
@@ -809,16 +724,14 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// enum case and must be audited, not trusted to the compiler).
   private static func backendLabel(for sourceType: CaptureSourceType) -> String {
     switch sourceType {
-    case .audioEngine: return "AVAudioEngine"
     case .halDeviceInput: return "HALDeviceInput"
     }
   }
 
   #if DEBUG
     /// Effective input-device UID: the explicit override takes priority, else the
-    /// selected device — the same order the warm-reuse device comparison and the
-    /// engine source's own resolution use. Used to pin a bench candidate's target
-    /// device (#1377). DEBUG-only: only the bake-off force-cases read it.
+    /// selected device — the same order the warm-reuse device comparison uses.
+    /// DEBUG-only: read by the manager-side `CAPTURE_EVIDENCE` companion log.
     private func effectiveInputDeviceUID() -> String {
       preferredInputDeviceIDOverride.isEmpty
         ? selectedInputDeviceUID : preferredInputDeviceIDOverride

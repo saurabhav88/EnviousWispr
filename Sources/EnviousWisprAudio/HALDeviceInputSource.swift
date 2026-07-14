@@ -143,8 +143,7 @@ private final class HALRenderContext: @unchecked Sendable {
   /// because the Bose's Bluetooth profile is already 16kHz natively.
   let nativeFormat: AVAudioFormat
   let targetFormat: AVAudioFormat
-  /// Resamples `nativeFormat` → `targetFormat` on the consumer thread —
-  /// mirrors `AVAudioEngineSource`'s own `AVAudioConverter` usage exactly.
+  /// Resamples `nativeFormat` → `targetFormat` on the consumer thread.
   let converter: AVAudioConverter
   /// #1434 capture-health counters — RT + consumer threads increment, the
   /// MainActor source snapshots at stop and resets per session.
@@ -190,11 +189,10 @@ private final class HALRenderContext: @unchecked Sendable {
   }
 
   /// Drain everything currently in the ring and forward through
-  /// `PreRollForwarder`, reconstructing an `AVAudioPCMBuffer` per chunk (the
-  /// same per-chunk allocation shape `AVAudioEngineSource`'s tap handler and
-  /// the source delegates already use on their own callback
-  /// queues — here it runs one hop off the true HAL IO thread instead of on
-  /// it, since this function is called from the dedicated consumer thread,
+  /// `PreRollForwarder`, reconstructing an `AVAudioPCMBuffer` per chunk (a
+  /// per-chunk allocation that here runs one hop off the true HAL IO thread
+  /// instead of on it, since this function is called from the dedicated
+  /// consumer thread,
   /// never directly from the render callback).
   func drainAndForward() {
     while let (count, _) = ring.pop(into: &popScratch) {
@@ -279,14 +277,13 @@ private final class HALRenderContext: @unchecked Sendable {
 /// (the retired capture-session source) on real Bluetooth hardware. Opens ANY device
 /// directly by `AudioDeviceID` (built-in, wired, or Bluetooth) via
 /// `kAudioOutputUnitProperty_CurrentDevice`, without a capture session or
-/// `AVAudioEngine` aggregate-device layer.
+/// aggregate-device layer.
 ///
 /// Format conversion is done EXPLICITLY, not by AUHAL: AUHAL input does NOT
 /// resample (Apple QA1777 — "does not provide sample rate conversion" for
 /// input on macOS), so the client format is set to the hardware's own native
 /// rate (mono Float32), and an `AVAudioConverter` resamples to the pipeline's
-/// 16kHz on the consumer thread, mirroring `AVAudioEngineSource`'s own
-/// converter usage.
+/// 16kHz on the consumer thread.
 ///
 /// RT-safety: the render callback (`halRenderProc`, true HAL IO thread) does
 /// `AudioUnitRender` into a preallocated scratch buffer (every read clamped to
@@ -792,11 +789,10 @@ final class HALDeviceInputSource: AudioInputSource {
   ///
   /// Two jobs, one contract:
   /// 1. SETTLED — poll the device's native rate until two consecutive reads
-  ///    agree AND the agreed rate is usable (`> 0`; #1445 parity with
-  ///    `AVAudioEngineSource.isUsableFormat`). Mirrors
-  ///    `AVAudioEngineSource.waitForFormatStabilization`'s two-reads-agree
-  ///    shape; Apple forum 770232 documents AirPods reporting a transient
-  ///    wrong rate corrected by a later notification.
+  ///    agree AND the agreed rate is usable (`> 0`; #1445 — the `isUsableFormat`
+  ///    rate clause). Two-reads-agree shape; Apple forum 770232 documents
+  ///    AirPods reporting a transient wrong rate corrected by a later
+  ///    notification.
   /// 2. MATCHES — the settled rate must equal the rate this unit's converter
   ///    was built at in `prepare()`. A settled-but-DIVERGENT rate returns
   ///    false, which routes into the kernel's existing one-rebuild retry seam
@@ -836,7 +832,7 @@ final class HALDeviceInputSource: AudioInputSource {
   /// SETTLED = two consecutive reads agree AND the agreed rate is usable
   /// (`> 0`). During a device transition `nativeRateReader` can report a
   /// non-nil `0.0`; two agreeing invalid reads must not read as stable
-  /// (parity with `AVAudioEngineSource.isUsableFormat`, #1473). The result is
+  /// (the `isUsableFormat` rule, #1473). The result is
   /// `matchesPrepared` — a settled-but-DIVERGENT rate is deliberately false
   /// (routes into the kernel's one-rebuild retry seam).
   struct RateSettleOutcome: Equatable {
@@ -845,12 +841,23 @@ final class HALDeviceInputSource: AudioInputSource {
     let polls: Int
   }
 
-  /// A read only counts toward "settled" when it is non-nil and `> 0` (mirrors
-  /// `AVAudioEngineSource.isUsableFormat`'s rate clause). Rejects zero,
-  /// negatives, and NaN (`Double.nan > 0` is false).
+  /// A read only counts toward "settled" when it is non-nil and `> 0` (shares
+  /// the rate clause of `isUsableFormat`). Rejects zero, negatives, and NaN
+  /// (`Double.nan > 0` is false).
   nonisolated static func isUsableRate(_ rate: Double?) -> Bool {
     guard let rate else { return false }
     return rate > 0
+  }
+
+  /// A hardware format only counts as settled once it is also usable. During a
+  /// device transition a format read can report 0 Hz or 0 channels; two
+  /// consecutive *invalid* reads compare equal, so an equality-only check would
+  /// call that "stable" and hand an unusable format to converter creation.
+  /// Rate + channel-count validity authority (#1473).
+  nonisolated static func isUsableFormat(sampleRate: Double, channelCount: AVAudioChannelCount)
+    -> Bool
+  {
+    sampleRate > 0 && channelCount > 0
   }
 
   static func settleNativeRate(
@@ -917,9 +924,8 @@ final class HALDeviceInputSource: AudioInputSource {
     if let live = computeStopMetadataFromLiveState() { cachedStopMetadata = live }
     // Single authority for "this unit is going away" — every caller (normal
     // stop, abort, rebuild, AND device-vanish) must disarm the stall
-    // watchdog and drop `isCapturing`, mirroring
-    // `AVAudioEngineSource.emergencyTeardown()`'s same reset (its comment:
-    // "isCapturing flips false ... which guards a late-fired watchdog").
+    // watchdog and drop `isCapturing`. `isCapturing` flips false here, which
+    // guards a late-fired watchdog.
     // Without this, a device-vanish mid-recording left the watchdog armed
     // and `isCapturing` stuck true — a late-firing watchdog could fire
     // `onCaptureStalled` after `onInterrupted` already handled the session,
@@ -993,10 +999,9 @@ final class HALDeviceInputSource: AudioInputSource {
 
   // MARK: - Private: disconnect handling
 
-  /// Mirrors `AVAudioEngineSource.handleEngineConfigurationChange`'s liveness
-  /// check (both go through `CoreAudioDeviceLiveness`) — device-vanished is
-  /// engine-independent per #1377 bake-off findings, so candidate D needs the same
-  /// detection. Fires `onInterrupted()`; the manager keeps holding the accumulated
+  /// Runs the shared `CoreAudioDeviceLiveness` check — device-vanished is
+  /// backend-independent per #1377 bake-off findings. Fires `onInterrupted()`;
+  /// the manager keeps holding the accumulated
   /// `capturedSamples`, and #1408 made `RecordingSessionKernel` transcribe them at
   /// the recording exit. The kernel saves the partial dictation, not the manager.
   private func registerDeviceIsAliveListener(deviceID: AudioDeviceID) {
@@ -1128,8 +1133,8 @@ final class HALDeviceInputSource: AudioInputSource {
     AudioCaptureManager.btRouteLog(
       "HALDeviceInputSource: device \(deviceID) \(liveness == .removed ? "went away" : "liveness unverified") — interrupting (\(cause.rawValue))"
     )
-    // Tear down BEFORE firing onInterrupted (mirrors AVAudioEngineSource's
-    // emergencyTeardown-then-onInterrupted order). Without this, `isRunning`
+    // Tear down BEFORE firing onInterrupted (teardown-then-onInterrupted
+    // order). Without this, `isRunning`
     // still reports true (we never called AudioOutputUnitStop), so the
     // manager's warm-reuse check would try to resume capture on a HAL unit
     // bound to a device that no longer exists on the NEXT recording instead

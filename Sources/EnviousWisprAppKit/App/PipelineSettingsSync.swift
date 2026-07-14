@@ -72,11 +72,6 @@ final class PipelineSettingsSync {
     whisperKitKernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
     whisperKitKernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
 
-    if settings.noiseSuppression {
-      audioCapture.buildEngine(noiseSuppression: true)
-    } else {
-      audioCapture.noiseSuppressionEnabled = false
-    }
     audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
     audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
     audioCapture.warmEnginePolicy = settings.warmEnginePolicy
@@ -182,17 +177,6 @@ final class PipelineSettingsSync {
       audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
     case .preferredInputDeviceIDOverride:
       audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
-    case .noiseSuppression:
-      // Runtime voice-processing toggling is unreliable — full engine rebuild.
-      // Cancel active recording first to avoid corrupted state.
-      if kernelDriver.state == .recording {
-        Task { [weak self] in
-          await self?.kernelDriver.cancelRecording()
-          self?.audioCapture.buildEngine(noiseSuppression: settings.noiseSuppression)
-        }
-      } else {
-        audioCapture.buildEngine(noiseSuppression: settings.noiseSuppression)
-      }
     case .warmEnginePolicy:
       audioCapture.warmEnginePolicy = settings.warmEnginePolicy
     case .autoCopyToClipboard, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity,

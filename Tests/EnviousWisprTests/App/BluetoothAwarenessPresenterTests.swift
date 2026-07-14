@@ -305,27 +305,29 @@ private func emitEquals(
   @Test func effectiveInput_overrideWinsOverBluetoothDefault() {
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "builtin",
-      selectedUID: "airpods",
       defaultInputIsBluetooth: { true },
       uidIsBluetooth: { $0 == "airpods" }  // "builtin" -> false
     )
     #expect(result == false)  // explicit non-BT override beats a BT default
   }
 
-  @Test func effectiveInput_selectedUidBluetoothWhenNoOverride() {
+  @Test func effectiveInput_autoUsesDefaultNotRememberedSelection() {
+    // Cloud review P2 (PR #1536): on Auto (empty override) HAL follows the
+    // system-default input and NEVER opens `selectedInputDeviceUID`, so the card
+    // must classify the DEFAULT — not a remembered device that would resolve to
+    // Bluetooth. Default is non-BT here → no card, even though a stale "airpods"
+    // selection would have resolved BT under the old precedence.
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "",
-      selectedUID: "airpods",
       defaultInputIsBluetooth: { false },
       uidIsBluetooth: { $0 == "airpods" }
     )
-    #expect(result == true)
+    #expect(result == false)
   }
 
   @Test func effectiveInput_defaultBluetoothWhenBothEmpty() {
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "",
-      selectedUID: "",
       defaultInputIsBluetooth: { true },
       uidIsBluetooth: { _ in false }
     )
@@ -335,7 +337,6 @@ private func emitEquals(
   @Test func effectiveInput_defaultNotBluetoothWhenBothEmpty() {
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "",
-      selectedUID: "",
       defaultInputIsBluetooth: { false },
       uidIsBluetooth: { _ in true }
     )
@@ -344,11 +345,10 @@ private func emitEquals(
 
   @Test func effectiveInput_unresolvableUid_fallsBackToDefaultBluetooth() {
     // Cloud review P2: a disconnected pinned device records through the DEFAULT
-    // input (AVAudioEngineSource `resolvedDeviceID ?? defaultInputDeviceID()`), so a
+    // input (the HAL source resolves a missing UID to the system default), so a
     // stale UID with a Bluetooth default must show the card, not fail closed.
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "ghost-device",
-      selectedUID: "",
       defaultInputIsBluetooth: { true },
       uidIsBluetooth: { _ in nil }  // removed/unknown device
     )
@@ -359,7 +359,6 @@ private func emitEquals(
     // Stale UID but the default input is NOT Bluetooth → no card (no false positive).
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "ghost-device",
-      selectedUID: "",
       defaultInputIsBluetooth: { false },
       uidIsBluetooth: { _ in nil }
     )
@@ -370,7 +369,6 @@ private func emitEquals(
     // A UID that DOES resolve is authoritative — the default is not consulted.
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "builtin",
-      selectedUID: "",
       defaultInputIsBluetooth: { true },  // default is BT...
       uidIsBluetooth: { _ in false }  // ...but the pinned built-in resolves non-BT
     )
@@ -380,7 +378,6 @@ private func emitEquals(
   @Test func effectiveInput_noDefaultDevice_failsClosed() {
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "",
-      selectedUID: "",
       defaultInputIsBluetooth: { nil },  // no default input device
       uidIsBluetooth: { _ in true }
     )

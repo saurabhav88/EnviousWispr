@@ -49,7 +49,6 @@ final class DictationRuntime {
     asrManager: any ASRManagerInterface,
     kernelDriver: KernelDictationDriver,
     whisperKitKernelDriver: KernelDictationDriver,
-    captureTelemetry: CaptureTelemetryState,
     settings: SettingsManager,
     permissions: PermissionsService,
     recordingOverlay: RecordingOverlayPanel,
@@ -79,7 +78,6 @@ final class DictationRuntime {
       audioCapture: audioCapture,
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
-      captureTelemetry: captureTelemetry,
       recordingOverlay: recordingOverlay,
       resolveActiveCaptureBackend: resolveActiveCaptureBackend
     )

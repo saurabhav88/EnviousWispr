@@ -1,9 +1,7 @@
 import Foundation
 
 /// App-wide telemetry state for audio capture diagnostics. Owns dedupe state
-/// for zombie-engine zero-peak events (#302) and the monotonic counter of
-/// `AVAudioEngineConfigurationChange` notifications since launch (used as the
-/// smoking-gun diagnostic for #294).
+/// for zombie-engine zero-peak events (#302).
 ///
 /// Shared across both pipelines so a Parakeet-to-WhisperKit switch does not
 /// reset dedupe, and so `timeSinceLastSuccessfulRecordingMs` is an app-level
@@ -13,7 +11,6 @@ public final class CaptureTelemetryState {
   private var lastZombieEmittedAt: ContinuousClock.Instant?
   private var lastZombieRoute: String?
   private var lastSuccessfulRecordingAt: ContinuousClock.Instant?
-  private(set) public var configurationChangeCount: Int = 0
 
   private let currentInstant: @MainActor () -> ContinuousClock.Instant
 
@@ -48,10 +45,6 @@ public final class CaptureTelemetryState {
   public func markZombieEmitted(route: String) {
     lastZombieEmittedAt = currentInstant()
     lastZombieRoute = route
-  }
-
-  public func incrementConfigChange() {
-    configurationChangeCount += 1
   }
 
   /// Milliseconds since the last successful recording. Nil if the app session

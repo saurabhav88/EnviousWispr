@@ -12,14 +12,14 @@ struct SentryAudioExtrasTests {
   func baseExtras() {
     let extras = SentryAudioExtras.buildCaptureExtras(
       route: "built_in_mic",
-      sourceType: "av_audio_engine",
+      sourceType: "hal_device_input",
       sessionID: 3,
       isActivelyCapturing: true,
       inputDeviceUIDPreferred: "ABC",
       inputDeviceUIDSystemDefault: "ABC",
       failureMode: "stalled"
     )
-    #expect(extras["capture.source_type"] as? String == "av_audio_engine")
+    #expect(extras["capture.source_type"] as? String == "hal_device_input")
     #expect(extras["capture.route"] as? String == "built_in_mic")
     #expect(extras["capture.failure_mode"] as? String == "stalled")
     #expect(extras["capture.is_actively_capturing"] as? Bool == true)
@@ -162,7 +162,7 @@ struct SentryAudioExtrasTests {
   func polishSwapOmission() {
     let extras = SentryAudioExtras.buildCaptureExtras(
       route: "built_in_mic",
-      sourceType: "av_audio_engine",
+      sourceType: "hal_device_input",
       sessionID: 1,
       isActivelyCapturing: true,
       inputDeviceUIDPreferred: nil,
@@ -172,7 +172,7 @@ struct SentryAudioExtrasTests {
     #expect(extras["polish.recent_model_swap_ms"] == nil)
   }
 
-  @Test("zombie telemetry extras: nil inputs omit both keys")
+  @Test("zombie telemetry extras: nil inputs omit the key")
   func zombieExtrasOmitted() {
     let extras = SentryAudioExtras.buildCaptureExtras(
       route: "bt",
@@ -184,7 +184,6 @@ struct SentryAudioExtrasTests {
       failureMode: "zombie_engine_zero_peak"
     )
     #expect(extras["capture.time_since_last_successful_recording_ms"] == nil)
-    #expect(extras["capture.config_change_count_since_launch"] == nil)
   }
 
   @Test("zombie telemetry extras: values passed through with stable keys")
@@ -197,10 +196,8 @@ struct SentryAudioExtrasTests {
       inputDeviceUIDPreferred: nil,
       inputDeviceUIDSystemDefault: nil,
       failureMode: "zombie_engine_zero_peak",
-      timeSinceLastSuccessfulRecordingMs: 45_000,
-      configChangeCountSinceLaunch: 0
+      timeSinceLastSuccessfulRecordingMs: 45_000
     )
     #expect(extras["capture.time_since_last_successful_recording_ms"] as? Int == 45_000)
-    #expect(extras["capture.config_change_count_since_launch"] as? Int == 0)
   }
 }

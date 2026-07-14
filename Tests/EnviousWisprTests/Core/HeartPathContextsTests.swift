@@ -13,7 +13,7 @@ struct HeartPathContextsTests {
       armedAtUptimeNs: 1_000_000_000,
       firedAtUptimeNs: 1_800_000_000,
       route: "built_in_mic",
-      sourceType: "av_audio_engine",
+      sourceType: "hal_device_input",
       engineStartedSuccessfully: true,
       tapInstalled: true,
       formatMismatchObserved: false,
@@ -23,7 +23,7 @@ struct HeartPathContextsTests {
     )
     #expect(ctx.sessionID == 42)
     #expect(ctx.firedAtUptimeNs - ctx.armedAtUptimeNs == 800_000_000)
-    #expect(ctx.sourceType == "av_audio_engine")
+    #expect(ctx.sourceType == "hal_device_input")
     #expect(ctx.formatMismatchObserved == false)
   }
 

@@ -1,21 +1,7 @@
 import CoreAudio
-import Foundation  // UserDefaults (DEBUG bench override); explicit, not transitive via CoreAudio
 
-/// Policy for selecting the audio capture source.
-/// `.automatic` decides based on output route + input intent.
-/// `.forceEngine` / `.forceHALDeviceInput` are for debugging/testing.
-enum CaptureSourcePolicy: Sendable {
-  case automatic
-  case forceEngine
-  /// #1377 slice 2b (reinstated 2026-07-08) — force-select candidate D
-  /// (`HALDeviceInputSource`) for the bake-off spike. `.automatic` never
-  /// emits this; unreachable outside the bench.
-  case forceHALDeviceInput
-}
-
-/// Which capture backend to use.
+/// Which capture backend to use. The HAL device source is the sole backend.
 public enum CaptureSourceType: Sendable {
-  case audioEngine
   /// HAL-backed input source; follows the live system-default input when no
   /// target UID is supplied.
   case halDeviceInput
@@ -27,10 +13,6 @@ public enum CaptureRouteReason: String, Sendable {
   case btOutputUserSelectedDevice
   case noBTAutoInput
   case noBTUserSelectedDevice
-  case forcedEngine
-  case forcedHALDeviceInput
-  case fallbackToEngine
-  case failedNoFallback
 }
 
 extension CaptureRouteReason {
@@ -45,12 +27,6 @@ extension CaptureRouteReason {
       return "built_in_mic"
     case .btOutputAutoInput, .btOutputUserSelectedDevice:
       return "hal_device_input"
-    case .forcedEngine, .fallbackToEngine:
-      return "audio_engine"
-    case .forcedHALDeviceInput:
-      return "hal_device_input"
-    case .failedNoFallback:
-      return "failed"
     }
   }
 }
@@ -74,11 +50,6 @@ public struct CaptureRouteDecision: Sendable {
   public let sourceType: CaptureSourceType
   public let reason: CaptureRouteReason
   public let rationale: String
-  public let vpAvailable: Bool
-  /// Backend-level fallback only: whether this decision may switch to a
-  /// different `CaptureSourceType`. Device-level fallback inside a backend is
-  /// owned by that source.
-  public let fallbackAllowed: Bool
   /// Concrete device UID for HALDeviceInputSource. Nil means follow the live
   /// system-default input device at prepare time.
   public let effectiveDeviceUID: String?
@@ -87,15 +58,11 @@ public struct CaptureRouteDecision: Sendable {
     sourceType: CaptureSourceType,
     reason: CaptureRouteReason,
     rationale: String,
-    vpAvailable: Bool,
-    fallbackAllowed: Bool,
     effectiveDeviceUID: String? = nil
   ) {
     self.sourceType = sourceType
     self.reason = reason
     self.rationale = rationale
-    self.vpAvailable = vpAvailable
-    self.fallbackAllowed = fallbackAllowed
     self.effectiveDeviceUID = effectiveDeviceUID
   }
 }
@@ -107,43 +74,15 @@ public struct CaptureRouteDecision: Sendable {
 @MainActor
 struct CaptureRouteResolver {
 
-  var policy: CaptureSourcePolicy = .automatic
   var defaultOutputDeviceID: () -> AudioDeviceID? = AudioDeviceEnumerator.defaultOutputDeviceID
   var isBluetoothOutputDevice: (AudioDeviceID) -> Bool = AudioDeviceEnumerator.isBluetoothDevice
 
-  /// Resolve which capture source to use.
+  /// Resolve which capture source to use. Every route now returns the HAL
+  /// device source; the reason distinguishes BT-output vs no-BT context and
+  /// auto vs explicit device pick for telemetry only.
   ///
-  /// - Parameters:
-  ///   - preferredInputDeviceUID: User's explicit device choice. Empty = Auto.
-  ///   - noiseSuppression: Whether noise suppression is requested (only available on engine path).
-  func resolve(preferredInputDeviceUID: String, noiseSuppression: Bool) -> CaptureRouteDecision {
-    switch policy {
-    case .forceEngine:
-      return CaptureRouteDecision(
-        sourceType: .audioEngine,
-        reason: .forcedEngine,
-        rationale: "Policy override: forced engine",
-        vpAvailable: true,
-        fallbackAllowed: false
-      )
-    case .forceHALDeviceInput:
-      return CaptureRouteDecision(
-        sourceType: .halDeviceInput,
-        reason: .forcedHALDeviceInput,
-        rationale: "Policy override: forced HAL device input (#1377 candidate D spike)",
-        vpAvailable: false,
-        fallbackAllowed: false
-      )
-    case .automatic:
-      return resolveAutomatic(
-        preferredInputDeviceUID: preferredInputDeviceUID, noiseSuppression: noiseSuppression)
-    }
-  }
-
-  // periphery:ignore:parameters noiseSuppression - reserved for future VP-aware routing decisions
-  private func resolveAutomatic(preferredInputDeviceUID: String, noiseSuppression: Bool)
-    -> CaptureRouteDecision
-  {
+  /// - Parameter preferredInputDeviceUID: User's explicit device choice. Empty = Auto.
+  func resolve(preferredInputDeviceUID: String) -> CaptureRouteDecision {
     let btOutputActive: Bool
     if let outID = defaultOutputDeviceID() {
       btOutputActive = isBluetoothOutputDevice(outID)
@@ -151,72 +90,32 @@ struct CaptureRouteResolver {
       btOutputActive = false
     }
 
-    // No BT output — safe to use AVAudioEngine for everything
-    guard btOutputActive else {
-      if preferredInputDeviceUID.isEmpty {
-        return CaptureRouteDecision(
-          sourceType: .audioEngine,
-          reason: .noBTAutoInput,
-          rationale: "No BT output — engine with system default input",
-          vpAvailable: true,
-          fallbackAllowed: false
-        )
-      } else {
-        return CaptureRouteDecision(
-          sourceType: .audioEngine,
-          reason: .noBTUserSelectedDevice,
-          rationale: "No BT output — engine with user device \(preferredInputDeviceUID)",
-          vpAvailable: true,
-          fallbackAllowed: false
-        )
-      }
-    }
-
-    // BT output active: use the low-level device source. It opens the chosen
-    // input directly, so there is no aggregate-device workaround left here.
+    // The HAL device source opens the chosen input directly (nil UID follows
+    // the live system default), so it serves every output route.
     let effectiveDeviceUID = preferredInputDeviceUID.isEmpty ? nil : preferredInputDeviceUID
-    let reason: CaptureRouteReason =
-      preferredInputDeviceUID.isEmpty ? .btOutputAutoInput : .btOutputUserSelectedDevice
-    let rationale =
-      preferredInputDeviceUID.isEmpty
-      ? "BT output active, auto input: HAL device source follows system default"
-      : "BT output active, explicit device pick: HAL device source targets \(preferredInputDeviceUID)"
+    let reason: CaptureRouteReason
+    let rationale: String
+    switch (btOutputActive, preferredInputDeviceUID.isEmpty) {
+    case (true, true):
+      reason = .btOutputAutoInput
+      rationale = "BT output active, auto input: HAL device source follows system default"
+    case (true, false):
+      reason = .btOutputUserSelectedDevice
+      rationale =
+        "BT output active, explicit device pick: HAL device source targets \(preferredInputDeviceUID)"
+    case (false, true):
+      reason = .noBTAutoInput
+      rationale = "No BT output: HAL device source follows system default"
+    case (false, false):
+      reason = .noBTUserSelectedDevice
+      rationale = "No BT output: HAL device source targets \(preferredInputDeviceUID)"
+    }
 
     return CaptureRouteDecision(
       sourceType: .halDeviceInput,
       reason: reason,
       rationale: rationale,
-      vpAvailable: false,
-      fallbackAllowed: false,
       effectiveDeviceUID: effectiveDeviceUID
     )
   }
 }
-
-#if DEBUG
-  extension CaptureRouteResolver {
-    /// DEBUG-only bench control plane (#1377 slice 2a — capture-backend bake-off).
-    ///
-    /// The single runtime injection path that lets the bake-off harness pin a
-    /// candidate capture engine WITHOUT touching the `.automatic` route. Reads a
-    /// `defaults` string the harness writes and maps it to an existing force
-    /// policy; returns nil when unset (the normal case), so a build with no
-    /// override behaves exactly as today.
-    ///
-    /// Suite: `UserDefaults.standard`, which on the DEBUG dev build resolves to
-    /// `com.enviouswispr.app.dev` — the SAME per-build store as
-    /// `useXPCAudioService` (`SettingsManager.swift:455`). The harness sets it via
-    /// `defaults write com.enviouswispr.app.dev captureSourcePolicyOverride forceHALDeviceInput`.
-    /// Compiled out of release entirely; `.automatic` is the only path users reach.
-    static let debugPolicyOverrideKey = "captureSourcePolicyOverride"
-
-    static func debugPolicyOverride(defaults: UserDefaults = .standard) -> CaptureSourcePolicy? {
-      guard let raw = defaults.string(forKey: debugPolicyOverrideKey) else { return nil }
-      switch raw {
-      case "forceEngine": return .forceEngine
-      case "forceHALDeviceInput": return .forceHALDeviceInput
-      default: return nil
-      }
-    }
-  }
-#endif

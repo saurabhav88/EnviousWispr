@@ -101,7 +101,6 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
   // MARK: - Configuration (stored locally, forwarded to service)
 
-  public var noiseSuppressionEnabled = false
   public var selectedInputDeviceUID: String = ""
   public var preferredInputDeviceIDOverride: String = ""
 
@@ -329,20 +328,26 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   /// `onRouteResolved` per the interface's changed-only contract.
   private func deriveResolvedRoute() {
     let decision = routeResolver.resolve(
-      preferredInputDeviceUID: preferredInputDeviceIDOverride,
-      noiseSuppression: noiseSuppressionEnabled
+      preferredInputDeviceUID: preferredInputDeviceIDOverride
     )
     let prior = lastRouteDecision
     lastRouteDecision = decision
     currentAudioRoute = decision.reason.coarseAudioRouteLabel
     currentResolvedRoute = ResolvedRouteTransports.derive(
       decision: decision,
-      preferredInputDeviceIDOverride: preferredInputDeviceIDOverride,
-      selectedInputDeviceUID: selectedInputDeviceUID
+      preferredInputDeviceIDOverride: preferredInputDeviceIDOverride
     )
     guard CaptureRouteDecision.routeResolvedChanged(from: prior, to: decision) else { return }
     onRouteResolved?(decision, prior.map { $0.sourceType != decision.sourceType } ?? false)
   }
+
+  #if DEBUG
+    /// Test seam (#1533): drive the app-side telemetry route derivation without
+    /// an XPC connection, so a test can prove the proxy still owns a working
+    /// `CaptureRouteResolver` and the second (telemetry-only) consumer of the
+    /// shared resolver cannot silently disappear.
+    func deriveResolvedRouteForTest() { deriveResolvedRoute() }
+  #endif
 
   public func startEnginePhase() async throws {
     try await withStartRetry(stage: "start_engine") { operationID in
@@ -359,11 +364,13 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     // specific attempt (including retries — this whole function re-runs on
     // each retry) and freeze the discriminator device against that SAME
     // snapshot, not a live re-read at some later point. This is the moment
-    // closest to the actual XPC device bind.
+    // closest to the actual XPC device bind. The discriminator resolves from
+    // the override only (mirrors HAL, #1533); the selected UID is still
+    // forwarded to the helper as remembered state.
     let preferredUID = preferredInputDeviceIDOverride
     let selectedUID = selectedInputDeviceUID
     effectiveDiscriminatorDeviceID = AudioDeviceEnumerator.resolveEffectiveInputDevice(
-      preferredOverride: preferredUID, selected: selectedUID)
+      preferredOverride: preferredUID)
     try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
       let guard_ = OneShotContinuation(cont)
       serviceProxy { proxy in
@@ -687,15 +694,6 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     serviceProxy { proxy in proxy.rebuildEngine() }
   }
 
-  public func buildEngine(noiseSuppression: Bool) {
-    noiseSuppressionEnabled = noiseSuppression
-    // If acquisition created a fresh line, replayConfig already sent the new
-    // value (the property is set above, before acquisition). The explicit send
-    // below covers the reused-line case; buildEngine is idempotent service-side.
-    acquireConnection()
-    serviceProxy { proxy in proxy.buildEngine(noiseSuppression: noiseSuppression) }
-  }
-
   public func preWarm() async throws {
     let proxyStart = ContinuousClock.now
 
@@ -953,14 +951,13 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     return gen
   }
 
-  /// Replays stored configuration to a freshly acquired connection. All three
-  /// items are fire-and-forget; per-item ordering against the start ops is
-  /// proven in the plan (§3.2): VAD is applied synchronously on delivery
-  /// service-side (the one start-critical item), the other two are not
-  /// consumed in the start window. buildEngine is idempotent service-side.
+  /// Replays stored configuration to a freshly acquired connection. Both items
+  /// are fire-and-forget; per-item ordering against the start ops is proven in
+  /// the plan (§3.2): VAD is applied synchronously on delivery service-side (the
+  /// one start-critical item), the warm-engine policy is not consumed in the
+  /// start window.
   private func replayConfig() {
     serviceProxy { [self] proxy in
-      proxy.buildEngine(noiseSuppression: noiseSuppressionEnabled)
       if let vad = vadConfig {
         proxy.configureVAD(
           autoStop: vad.autoStop, silenceTimeout: vad.silenceTimeout,
@@ -1237,10 +1234,10 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     /// `DebugFaultEndpoint` (`force_zero_fill(...)`).
     package func debugArmZeroFill(_ arm: DebugZeroFillArm) async -> Bool {
       guard let payload = try? JSONEncoder().encode(arm) else { return false }
-      // A freshly launched debug app with noise-suppression default OFF never
-      // called `buildEngine`, so no audio XPC line exists yet; the harness arms
-      // BEFORE the first recording, so `serviceProxy` would hit `onProxyError`
-      // and fail closed with `ERR arm_failed` before any helper is spawned.
+      // A freshly launched debug app has sent no configuration yet, so no audio
+      // XPC line exists; the harness arms BEFORE the first recording, so
+      // `serviceProxy` would hit `onProxyError` and fail closed with
+      // `ERR arm_failed` before any helper is spawned.
       // Bring the line up first — `acquireConnection()` is idempotent (returns
       // the live line if one already exists), and the subsequent start reuses
       // this same slot, so the helper we arm is the helper that will record.

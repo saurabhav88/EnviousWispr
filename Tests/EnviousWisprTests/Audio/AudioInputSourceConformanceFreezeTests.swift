@@ -4,11 +4,10 @@ import Testing
 
 @testable import EnviousWisprAudio
 
-// #1377 slice 2a — freezes the `AudioInputSource` contract every capture engine
-// must satisfy, so a new candidate conformer (slices 2b/2c: HAL, VoiceProcessingIO)
-// cannot silently ship a heart-path regression. Protocol CONFORMANCE is already
-// compiler-enforced; this locks the hardware-free behavioral invariants a stored
-// property can't express:
+// #1377 slice 2a — freezes the `AudioInputSource` contract the sole capture
+// backend must satisfy, so a change cannot silently ship a heart-path
+// regression. Protocol CONFORMANCE is already compiler-enforced; this locks the
+// hardware-free behavioral invariants a stored property can't express:
 //   - a fresh conformer has NOT started a session (`captureGeneration == 0`),
 //   - it is not capturing,
 //   - it exposes a NON-EMPTY, UNIQUE `captureSourceType` tag (catches a
@@ -25,17 +24,14 @@ import Testing
 @Suite("AudioInputSource conformance freeze — #1377")
 struct AudioInputSourceConformanceFreezeTests {
 
-  /// Every shipped/candidate conformer. Slices 2b/2c append their new sources
-  /// here; the parametric tests then cover them automatically.
+  /// Every shipped conformer. A future backend appends its source here; the
+  /// parametric tests then cover it automatically.
   enum ConformerKind: String, CaseIterable, Sendable {
-    case audioEngine
-    /// Candidate D (#1377 slice 2b, reinstated 2026-07-08).
     case halDeviceInput
   }
 
   private func make(_ kind: ConformerKind) -> any AudioInputSource {
     switch kind {
-    case .audioEngine: return AVAudioEngineSource()
     case .halDeviceInput: return HALDeviceInputSource()
     }
   }
@@ -44,7 +40,6 @@ struct AudioInputSourceConformanceFreezeTests {
   /// collision is caught at test time, not in production Sentry extras.
   private func expectedTag(_ kind: ConformerKind) -> String {
     switch kind {
-    case .audioEngine: return "av_audio_engine"
     case .halDeviceInput: return "hal_device_input"
     }
   }

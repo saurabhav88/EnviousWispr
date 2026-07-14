@@ -71,7 +71,6 @@ enum SettingsDefaultValues {
   static let whisperKitLanguage = "en"
 
   static let selectedInputDeviceUID = ""
-  static let noiseSuppression = false
   static let preferredInputDeviceIDOverride = ""
 
   static let useStreamingASR = false

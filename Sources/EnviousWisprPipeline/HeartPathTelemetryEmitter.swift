@@ -239,7 +239,6 @@ final class HeartPathTelemetryEmitter {
         failureMode: "zombie_engine_zero_peak",
         timeSinceLastSuccessfulRecordingMs:
           captureTelemetry.timeSinceLastSuccessfulRecordingMs(),
-        configChangeCountSinceLaunch: captureTelemetry.configurationChangeCount,
         selectedTransport: ctx.selectedTransport,
         effectiveTransport: ctx.effectiveTransport,
         routeReason: ctx.routeReason,

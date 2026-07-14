@@ -15,8 +15,8 @@ public enum CaptureStallFailureMode: String, Sendable, Hashable {
 }
 
 /// Context attached to a stalled-capture telemetry event. Built by an audio
-/// source (`AVAudioEngineSource`, `HALDeviceInputSource`, or `AudioCaptureProxy`)
-/// at watchdog-fire time and consumed by the pipeline's emission site.
+/// source (`HALDeviceInputSource` or `AudioCaptureProxy`) at watchdog-fire time
+/// and consumed by the pipeline's emission site.
 ///
 /// All fields are Sendable and safe to carry across actor boundaries. No PII:
 /// device UIDs are opaque CoreAudio identifiers, not human-visible strings.

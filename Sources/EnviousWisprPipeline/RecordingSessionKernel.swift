@@ -1005,7 +1005,7 @@ final class RecordingSessionKernel {
     }
     // PR-4.5 #0 (Codex r2): Begin the adapter session BEFORE
     // `beginCapturePhase()`. The previous order opened the adapter AFTER
-    // capture started — but `AVAudioEngineSource.PreRollForwarder.activate()`
+    // capture started — but the source's `PreRollForwarder.activate()`
     // drains real pre-roll DURING `beginCapturePhase`, so the buffer-callback
     // gate (`adapterSessionActive == true`) was still false when the pre-roll
     // arrived, and the buffers were dropped. The Parakeet adapter's
@@ -2422,7 +2422,7 @@ final class RecordingSessionKernel {
         // PR-4.5 #0 pre-roll restoration: accept buffers as soon as the
         // adapter session is open, NOT when the FSM has reached `.recording`.
         // The old Parakeet pipeline (`:535-539`) retained pre-roll fed
-        // by `AVAudioEngineSource.PreRollForwarder` (`:329-335`) for the
+        // by the source's `PreRollForwarder` for the
         // adapter's batch rescue; the fresh kernel's `state == .recording`
         // gate dropped that pre-roll. `adapterSessionActive` is set true the
         // moment `beginSession()` returns (line 529-ish) — its `removeAll`

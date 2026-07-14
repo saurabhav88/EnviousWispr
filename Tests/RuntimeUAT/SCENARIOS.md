@@ -30,7 +30,7 @@ run_scenario("A5_proxy_buffer_drop_watchdog")
 | Symptom (something broke in production?) | Scenario | Mechanism family |
 |---|---|---|
 | Proxy-side buffer-drop watchdog regression | A5_proxy_buffer_drop_watchdog | proxy-watchdog |
-| Real OS-level audio interruption (BT codec switch, Zoom mic-grab, AVAudioEngineConfigurationChange) | See `docs/LANE_B_AUDIO_TESTS.md` (HITL only — not synthetic-viable, see `docs/audits/2026-05-02-v2-synthetic-viability-codex.txt`) | hardware/HITL |
+| Real OS-level audio interruption (BT codec switch, Zoom mic-grab, device sleep/wake) | See `docs/LANE_B_AUDIO_TESTS.md` (HITL only — not synthetic-viable, see `docs/audits/2026-05-02-v2-synthetic-viability-codex.txt`) | hardware/HITL |
 | Pipeline stuck after ASR service crash | A3_asr_xpc_kill | xpc |
 | Pipeline stuck after audio service crash | A4_audio_xpc_kill | xpc |
 | Record press silently fails on a dead/reaped audio line (first-press cold-start race, #1194) | A10_audio_start_wedge_retry | xpc |
@@ -79,7 +79,7 @@ Backends: both. Budget: 15s. Mechanism: proxy-watchdog.
 
 Start recording, dispatch `force_proxy_buffer_drop(1000)` so the next 1000 buffers are dropped inside `AudioCaptureProxy.audioBufferCaptured` before they reach the app continuation. After `audioCaptureStallWindowMs`, the proxy-side watchdog fires and pipeline reaches `.error`.
 
-**This scenario does NOT test real OS-level audio interruption recovery.** Originally named `A5_forced_stall` and presented as audio-interruption testing — that was a lie. The endpoint pokes the host-side proxy buffer queue; the actual recovery paths in `AVAudioEngineSource.handleEngineConfigurationChange()` and the capture sources' interruption handlers live in the `EnviousWisprAudioService` process and are not reachable from this host endpoint. Verified 2026-05-02: real-world Sentry shows zero `AVAudioEngineConfigurationChange` fires in 14d across BT codec switch (HFP↔A2DP), Zoom mic-grab/release, Spotify, Discord testing. See `docs/audits/2026-05-02-v2-synthetic-viability-codex.txt` and `docs/LANE_B_AUDIO_TESTS.md`.
+**This scenario does NOT test real OS-level audio interruption recovery.** Originally named `A5_forced_stall` and presented as audio-interruption testing — that was a lie. The endpoint pokes the host-side proxy buffer queue; the actual recovery paths in the capture source's interruption handlers live in the `EnviousWisprAudioService` process and are not reachable from this host endpoint. Historically (verified 2026-05-02, on the since-deleted AVAudioEngine backend), real-world Sentry showed zero engine-configuration-change fires in 14d across BT codec switch (HFP↔A2DP), Zoom mic-grab/release, Spotify, Discord testing. See `docs/audits/2026-05-02-v2-synthetic-viability-codex.txt` and `docs/LANE_B_AUDIO_TESTS.md`.
 
 **What this scenario validates:** the proxy-side watchdog arms correctly, fires on buffer-arrival gap, pipeline reaches terminal state on watchdog fire, next dictation re-arms capture cleanly.
 
