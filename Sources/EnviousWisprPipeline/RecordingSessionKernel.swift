@@ -3444,6 +3444,24 @@ final class RecordingSessionKernel {
       transition(to: next)
     }
 
+    /// #1548 D1 test seam — force a CONCLUSION (set `recordingOutcome`, return
+    /// the FSM to `.idle`) without driving a full session. Replaces old tests
+    /// that forced a terminal STATE (`testForceTransition(to: .completed)` etc.).
+    /// Bypasses `isLegalConclusion` so a test can stage any outcome directly.
+    func testForceConclude(_ outcome: RecordingOutcome) {
+      recordingOutcome = outcome
+      state = .idle
+      bump()
+    }
+
+    /// #1548 D1 test seam — set the FSM state directly to one of the 5 cases
+    /// (no legality check), for consumer-mapping tests that need a specific
+    /// in-flight state without driving the forward path.
+    func testForceState(_ next: RecordingSessionState) {
+      state = next
+      bump()
+    }
+
     /// The count of task references still held on the kernel — the §3.1a
     /// "no active task references remain after a terminal state" invariant.
     var testActiveTaskCount: Int { taskBag.count }
