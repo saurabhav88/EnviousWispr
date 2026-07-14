@@ -199,13 +199,16 @@ def _device_bound_as_requested(source_ev, requested_uid, fell_back):
     CAPTURE_EVIDENCE `boundUID` (the exact bound device) → must equal
     `requested_uid`. This proves the REQUESTED device bound, not merely a
     non-built-in one (a USB/virtual mic would pass a transport-only check).
-    When no specific device was requested (`auto`/`built_in`), built-in is the
-    correct outcome and the check passes.
+    When no specific device was requested, whatever HAL follows is correct and
+    the check passes. `system_default` is the source row's requestedUID on the
+    Auto path (HAL follows the live system default, targetDeviceUID == nil), so
+    it is a non-specific request too — otherwise a valid Auto recording fails
+    `boundUID == "system_default"` (cloud review P2, PR #1536).
     """
     if fell_back:
         return False
-    if requested_uid in ("", "auto", "built_in"):
-        return True  # no specific device asked; built-in is the right result
+    if requested_uid in ("", "auto", "built_in", "system_default"):
+        return True  # no specific device asked; whatever HAL follows is correct
     if source_ev is None:
         return False  # cannot confirm what bound
     bound_uid = source_ev.get("boundUID")
