@@ -22,7 +22,6 @@ import Testing
     // meaningful concept for them.
     let executableTargets: Set<String> = [
       "EnviousWispr",
-      "EnviousWisprAudioService",
       "EnviousWisprASRService",
     ]
 

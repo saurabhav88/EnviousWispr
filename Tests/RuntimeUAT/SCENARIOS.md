@@ -12,7 +12,7 @@ Drive the harness from repo root:
 
 ```bash
 python3 Tests/RuntimeUAT/faultInjection.py list             # print menu
-python3 Tests/RuntimeUAT/faultInjection.py run A5_proxy_buffer_drop_watchdog
+python3 Tests/RuntimeUAT/faultInjection.py run A3_asr_xpc_kill
 python3 Tests/RuntimeUAT/faultInjection.py query            # current state
 ```
 
@@ -22,18 +22,15 @@ Or via Python:
 import sys; sys.path.insert(0, "Tests/RuntimeUAT")
 from wispr_eyes import list_scenarios, run_scenario
 list_scenarios()
-run_scenario("A5_proxy_buffer_drop_watchdog")
+run_scenario("A3_asr_xpc_kill")
 ```
 
 ## Index by symptom
 
 | Symptom (something broke in production?) | Scenario | Mechanism family |
 |---|---|---|
-| Proxy-side buffer-drop watchdog regression | A5_proxy_buffer_drop_watchdog | proxy-watchdog |
 | Real OS-level audio interruption (BT codec switch, Zoom mic-grab, device sleep/wake) | See `docs/LANE_B_AUDIO_TESTS.md` (HITL only — not synthetic-viable, see `docs/audits/2026-05-02-v2-synthetic-viability-codex.txt`) | hardware/HITL |
 | Pipeline stuck after ASR service crash | A3_asr_xpc_kill | xpc |
-| Pipeline stuck after audio service crash | A4_audio_xpc_kill | xpc |
-| Record press silently fails on a dead/reaped audio line (first-press cold-start race, #1194) | A10_audio_start_wedge_retry | xpc |
 | Cancel mid-record leaks task / state | A2_force_cancel | timing |
 | Rapid stop/start corrupts state | A1_rapid_stop_start | timing |
 | Live setting toggle doesn't apply mid-record | A6_settings_storm | settings |
@@ -67,23 +64,7 @@ Start recording, wait 1s, dispatch `force_xpc_kill` to invalidate the active `AS
 
 **Negative control:** remove the ASR-crash handler at `WhisperKitPipeline.swift:1044` (or the Parakeet-side equivalent). Pipeline gets stuck; `assert_terminated` returns `terminal=False`.
 
-### A4_audio_xpc_kill (Lane A — XPC)
-Backends: both. Budget: 5s. Mechanism: xpc.
-
-Start recording, dispatch `force_audio_xpc_kill`. The audio service connection invalidates; pipeline reaches `.error` and audio engine is `.idle`.
-
-**Negative control:** remove the audio-XPC `invalidationHandler` body in `AudioCaptureProxy`. Pipeline doesn't observe the crash and stays stuck.
-
-### A5_proxy_buffer_drop_watchdog (Lane A — proxy-watchdog)
-Backends: both. Budget: 15s. Mechanism: proxy-watchdog.
-
-Start recording, dispatch `force_proxy_buffer_drop(1000)` so the next 1000 buffers are dropped inside `AudioCaptureProxy.audioBufferCaptured` before they reach the app continuation. After `audioCaptureStallWindowMs`, the proxy-side watchdog fires and pipeline reaches `.error`.
-
-**This scenario does NOT test real OS-level audio interruption recovery.** Originally named `A5_forced_stall` and presented as audio-interruption testing — that was a lie. The endpoint pokes the host-side proxy buffer queue; the actual recovery paths in the capture source's interruption handlers live in the `EnviousWisprAudioService` process and are not reachable from this host endpoint. Historically (verified 2026-05-02, on the since-deleted AVAudioEngine backend), real-world Sentry showed zero engine-configuration-change fires in 14d across BT codec switch (HFP↔A2DP), Zoom mic-grab/release, Spotify, Discord testing. See `docs/audits/2026-05-02-v2-synthetic-viability-codex.txt` and `docs/LANE_B_AUDIO_TESTS.md`.
-
-**What this scenario validates:** the proxy-side watchdog arms correctly, fires on buffer-arrival gap, pipeline reaches terminal state on watchdog fire, next dictation re-arms capture cleanly.
-
-**Negative control:** remove the proxy-side stall watchdog (`armCaptureStallWatchdog`). Buffers drop silently; pipeline remains in `.recording` indefinitely.
+**A4_audio_xpc_kill and A5_proxy_buffer_drop_watchdog were removed (#1543)** — both drove the deleted host-side audio-capture proxy DEBUG commands, which cannot exist now that capture runs in-process. Real OS-level audio interruption (BT codec switch, Zoom mic-grab, device sleep/wake) is covered by the HITL Lane B matrix (`docs/LANE_B_AUDIO_TESTS.md`); the capture-stall watchdog is exercised in-process by the #1317 zero-fill proof-bench.
 
 ### A6_settings_storm (Lane A — settings)
 Backends: both. Budget: 30s. Mechanism: settings.
@@ -97,7 +78,7 @@ During an active recording, navigate to AI Polish settings. Toggle `wordCorrecti
 ### A7_app_quit (Lane A — app-quit)
 Backends: both. Budget: 10s. Mechanism: app-quit.
 
-During an active recording, invoke `Quit EnviousWispr` (Cocoa terminate via the menu). `applicationWillTerminate` runs, cleans up XPC helpers + audio engine. Next launch starts clean — no orphan helper processes from `pgrep -x EnviousWisprAudioService EnviousWisprASRService`.
+During an active recording, invoke `Quit EnviousWispr` (Cocoa terminate via the menu). `applicationWillTerminate` runs, cleans up the ASR XPC helper + audio engine. Next launch starts clean — no orphan helper processes from `pgrep -x EnviousWisprASRService`.
 
 **Out of scope:** raw `SIGTERM`, `kill -9`, force-quit. No `signal` / `DispatchSourceSignal` handler exists in the codebase; A7 validates only the Cocoa terminate path.
 
@@ -124,12 +105,9 @@ During an active recording, attempt to flip `selectedBackend` via the Speech Eng
 
 **Negative control:** remove `if parakeetActive || whisperKitActive { break }` in `PipelineSettingsSync.handleSettingChanged(.selectedBackend, …)`. Active recording aborts on backend toggle.
 
-### A10_audio_start_wedge_retry (Lane A — xpc, #1194)
-Backends: both. Budget: 20s. Mechanism: xpc.
-
-Arm `force_audio_wedge_start(1)` while idle, then press record. The next START operation (`start_engine` / `begin_capture` / `start_engine_prewarm`) throws the watchdog wedge error before dispatch — no transport error, no invalidation: the one dead-line shape where ONLY the operation watchdog notices. The #1194 bounded retry must retire the wedged line, reacquire a fresh connection (with config replay + prefix), and resend once — the press succeeds silently. Verdict from app.log: `forced wedge (DEBUG)`, `line death ... cause=wedged`, `start retry resolved ... outcome=recovered`.
-
-**Negative control:** arm `force_audio_wedge_start(2)` — the retry wedges too, exhausting the single-retry budget; the press fails with today's error UX and app.log shows `outcome=exhausted`. (Equivalently: remove the `withStartRetry` catch in `AudioCaptureProxy`.)
+**A10_audio_start_wedge_retry was removed (#1543)** — it drove the deleted
+XPC line-death start-retry (#1194), which cannot occur with capture in-process
+(no XPC line to wedge).
 
 ### A11_asr_kill_mid_model_load (Lane A — model-load, #1388)
 Backends: parakeet. Budget: 30s. Mechanism: model-load.
@@ -181,14 +159,13 @@ Fixed command set (no arbitrary RPC):
 
 | Command | Effect |
 |---|---|
-| `force_proxy_buffer_drop(N)` | Drop next N buffers inside `AudioCaptureProxy.audioBufferCaptured` (host-side proxy queue). Tests proxy watchdog only — does NOT exercise real audio-stack interruption recovery. |
-| `force_audio_wedge_start(N)` | Treat the next N audio START operations as wedged inside `AudioCaptureProxy.withAudioXPCOperationSignal` (#1194) — no transport error, no invalidation. Never affects `stop_capture`. |
 | `force_cancel` | Invoke `forceCancelNow()` on the active backend's pipeline |
 | `force_xpc_kill` | Invalidate `ASRManagerProxy` connection mid-stream |
-| `force_audio_xpc_kill` | Invalidate `AudioCaptureProxy` connection mid-stream |
 | `query_state` | Return current pipeline + backend state (one line, no side effects) |
-| `force_zero_fill(mode,N,trialID)` | #1317: arm the DEBUG all-zero injector in the HELPER (real service-side sample substitution at `PreRollForwarder`). `mode` ∈ {`zero_from_start`, `zero_after_samples`, `zero_next_samples`, `disarmed`}; `N` = LIVE-sample threshold/budget; `trialID` correlates the status query. |
-| `query_fault_status(trialID)` | #1317: read the merged fault status (helper injector fields + proxy XPC generation). Fails CLOSED to `ERR` on any missing/malformed/absent-generation condition or trial-id mismatch. `armed` is not evidence of `hit`. |
+| `force_zero_fill(mode,N,trialID)` | #1317: arm the DEBUG all-zero injector in-process on `AudioCaptureManager` (#1543). `mode` ∈ {`zero_from_start`, `zero_after_samples`, `zero_next_samples`, `disarmed`}; `N` = LIVE-sample threshold/budget; `trialID` correlates the status query. |
+| `query_fault_status(trialID)` | #1317: read the in-process fault status (injector fields + manager source-incarnation). Fails CLOSED to `ERR` on an absent manager or trial-id mismatch. `armed` is not evidence of `hit`. |
+
+(#1543 removed `force_proxy_buffer_drop`, `force_audio_wedge_start`, and `force_audio_xpc_kill` with the audio-capture boundary.)
 
 ## Adding a new scenario
 

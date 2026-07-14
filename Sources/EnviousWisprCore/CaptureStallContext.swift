@@ -14,9 +14,9 @@ public enum CaptureStallFailureMode: String, Sendable, Hashable {
   case becameZeroMidCapture = "became_zero_mid_capture"
 }
 
-/// Context attached to a stalled-capture telemetry event. Built by an audio
-/// source (`HALDeviceInputSource` or `AudioCaptureProxy`) at watchdog-fire time
-/// and consumed by the pipeline's emission site.
+/// Context attached to a stalled-capture telemetry event. Built by the
+/// in-process capture path (`HALDeviceInputSource` / `AudioCaptureManager`) at
+/// watchdog-fire time and consumed by the pipeline's emission site.
 ///
 /// All fields are Sendable and safe to carry across actor boundaries. No PII:
 /// device UIDs are opaque CoreAudio identifiers, not human-visible strings.
@@ -111,6 +111,55 @@ public struct CaptureStallContext: Sendable {
     self.nativeChannelCount = nativeChannelCount
   }
 
+  /// #1543 in-process forward enrichment: the capture MANAGER owns the
+  /// app-lifetime session id and the resolved route decision; the HAL source
+  /// (which builds this context) sees neither — its `captureGeneration` resets
+  /// per source instance and it only knows `route: "hal_device_input"`. The
+  /// manager overlays its session id (so the event carries the SAME id the
+  /// pipeline dedup + `isCurrentSession` filter key on, app-lifetime unique like
+  /// the deleted proxy's counter) and its frozen route decision (so a built-in
+  /// vs Bluetooth stall lands in the right route bucket with transport/reason
+  /// detail). Source-stamped health fields (rate/divergence/channels/device
+  /// UIDs) are preserved as-is. Transport strings are passed individually rather
+  /// than as `ResolvedRouteTransports` to keep this Core type dependency-free.
+  public func enrichedWithManagerRoute(
+    sessionID: UInt64,
+    route: String,
+    selectedTransport: String?,
+    effectiveTransport: String?,
+    routeReason: String?,
+    routeFallbackReason: String?,
+    inputSelectionMode: String?,
+    outputTransport: String?,
+    routeResolutionSource: String?
+  ) -> CaptureStallContext {
+    CaptureStallContext(
+      sessionID: sessionID,
+      armedAtUptimeNs: armedAtUptimeNs,
+      firedAtUptimeNs: firedAtUptimeNs,
+      route: route,
+      sourceType: sourceType,
+      engineStartedSuccessfully: engineStartedSuccessfully,
+      tapInstalled: tapInstalled,
+      formatMismatchObserved: formatMismatchObserved,
+      inputDeviceUIDPreferred: inputDeviceUIDPreferred,
+      inputDeviceUIDSystemDefault: inputDeviceUIDSystemDefault,
+      failureMode: failureMode,
+      selectedTransport: selectedTransport,
+      effectiveTransport: effectiveTransport,
+      routeReason: routeReason,
+      routeFallbackReason: routeFallbackReason,
+      inputSelectionMode: inputSelectionMode,
+      outputTransport: outputTransport,
+      routeResolutionSource: routeResolutionSource,
+      nativeRateHz: nativeRateHz,
+      rateDivergenceDetected: rateDivergenceDetected,
+      formatStabilized: formatStabilized,
+      captureRebuiltForFormat: captureRebuiltForFormat,
+      nativeChannelCount: nativeChannelCount
+    )
+  }
+
   /// Kernel-side enrichment (#1434): the kernel owns the stabilization record
   /// (private telemetry state) and merges it into the context inside its own
   /// stall handler; the observer stays a plain forwarder. Source-stamped
@@ -143,89 +192,5 @@ public struct CaptureStallContext: Sendable {
       captureRebuiltForFormat: captureRebuiltForFormat,
       nativeChannelCount: nativeChannelCount
     )
-  }
-}
-
-/// Context for a swallowed XPC reply-path error on a non-throwing proxy call
-/// (stopCapture / getSamplesSnapshot / getSpeechSegments). Reported via
-/// `onXPCReplyFailed` before the proxy returns its empty default, so the
-/// pipeline can emit the correct root cause instead of misrouting into
-/// "no_audio_captured".
-public struct XPCReplyFailureContext: Sendable {
-  public let replyStage: String
-  public let errorDomain: String
-  public let errorCode: Int
-  public let errorDescription: String
-  public let sessionID: UInt64
-
-  public init(
-    replyStage: String,
-    errorDomain: String,
-    errorCode: Int,
-    errorDescription: String,
-    sessionID: UInt64
-  ) {
-    self.replyStage = replyStage
-    self.errorDomain = errorDomain
-    self.errorCode = errorCode
-    self.errorDescription = errorDescription
-    self.sessionID = sessionID
-  }
-}
-
-/// Context for one resolved start-op retry inside `AudioCaptureProxy` (#1194).
-/// Reported via `onAudioStartRetryResolved` after the bounded
-/// reacquire-and-resend resolves either way. Diagnostic-only: consumers must
-/// not branch control flow on it. No PII — four low-cardinality fields.
-public struct AudioStartRetryContext: Sendable {
-  /// The failed public stage: `start_engine` | `begin_capture` | `start_engine_prewarm`.
-  public let stage: String
-  /// What killed the first attempt: `wedged` | `service_unreachable`.
-  public let trigger: String
-  /// `recovered` (silent same-press save) | `exhausted` (today's failure UX).
-  public let outcome: String
-  /// Line-death detection → retry resolution latency in milliseconds.
-  public let recoveryMs: Int
-
-  public init(stage: String, trigger: String, outcome: String, recoveryMs: Int) {
-    self.stage = stage
-    self.trigger = trigger
-    self.outcome = outcome
-    self.recoveryMs = recoveryMs
-  }
-}
-
-/// Classifies XPC interruption / invalidation events for the `onXPCServiceError`
-/// callback on `AudioCaptureInterface`. Exhaustive: any new XPC channel
-/// requires adding a case, which the compiler enforces at every consumer
-/// switch site.
-public enum XPCErrorKind: String, Sendable {
-  case interruptCapturing
-  case invalidateCapturing
-  case invalidateIdle
-}
-
-/// Context for XPC interrupt / invalidate handler fires. Consumed by
-/// the former root state which emits the captureError.
-public struct XPCErrorContext: Sendable {
-  public let kind: XPCErrorKind
-  public let sessionID: UInt64?
-  /// #455: when the interrupt/invalidate fired while a capture session was
-  /// active, this is the elapsed nanoseconds since capture start. Nil for idle
-  /// interrupts. Surfaces in the Sentry breadcrumb as
-  /// `audio.recording_duration_ms` so triage can distinguish "fired
-  /// immediately after start" (likely device binding race) from "fired
-  /// mid-dictation" (likely launchd kill under memory pressure or system
-  /// event).
-  public let recordingDurationNs: UInt64?
-
-  public init(
-    kind: XPCErrorKind,
-    sessionID: UInt64?,
-    recordingDurationNs: UInt64? = nil
-  ) {
-    self.kind = kind
-    self.sessionID = sessionID
-    self.recordingDurationNs = recordingDurationNs
   }
 }

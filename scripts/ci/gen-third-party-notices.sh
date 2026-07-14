@@ -56,7 +56,7 @@ COMPONENTS=(
   # the Silero Team, converted to CoreML by FluidInference; vendored
   # license text is the canonical one from the upstream silero-vad repo
   # (the CoreML conversion repo itself ships no separate LICENSE file).
-  "Silero VAD (bundled CoreML model, converted by FluidInference)|v6.0.0|MIT|repo:Sources/EnviousWisprAudioService/Resources/silero-vad-coreml-LICENSE.txt|https://huggingface.co/FluidInference/silero-vad-coreml|"
+  "Silero VAD (bundled CoreML model, converted by FluidInference)|v6.0.0|MIT|repo:Sources/EnviousWispr/Resources/silero-vad-coreml-LICENSE.txt|https://huggingface.co/FluidInference/silero-vad-coreml|"
 )
 
 # --- Cross-check the DIRECT-dep coverage against Package.resolved (Codex #2) ---

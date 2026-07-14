@@ -34,10 +34,10 @@ import Testing
       #expect(event(.noSpeech) == .noSpeech(.vadGate))
       // #1174 A3 — absent cause defaults defensively to `.engineLost` (capture).
       #expect(event(.audioInterrupted) == .audioInterrupted(cause: .engineLost))
-      // The stamped cause threads through unchanged (here an already-owned one).
+      // The stamped cause threads through unchanged (here a verified device loss).
       #expect(
-        event(.audioInterrupted, lastAudioInterruptionCause: .xpcConnectionLost)
-          == .audioInterrupted(cause: .xpcConnectionLost))
+        event(.audioInterrupted, lastAudioInterruptionCause: .deviceRemoved)
+          == .audioInterrupted(cause: .deviceRemoved))
       // Default priorState `.idle` → wasRecording == false (the non-recording
       // path); the routing test below covers the `.recording` → true case
       // and the `.transcribing` → false case.

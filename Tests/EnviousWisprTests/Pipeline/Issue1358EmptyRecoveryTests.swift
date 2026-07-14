@@ -253,7 +253,7 @@ private final class SavedBox {
       // With an interruption cause, the empty no-speech is floored UP so the
       // #1408 crash-recovery spool is retained.
       let interrupted = freshKernelAtFinalizing()
-      interrupted.testSetInterruptionCause(.xpcConnectionLost)
+      interrupted.testSetInterruptionCause(.engineLost)
       #expect(interrupted.testInterruptedTerminalFloor(.noSpeech) == .audioInterrupted)
 
       // With no interruption, the clean cold-mic filler stays quiet no-speech.

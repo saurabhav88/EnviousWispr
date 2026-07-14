@@ -33,9 +33,6 @@ struct StableSentryErrorIdentityTests {
         sourceType: "audioEngine", engineStartedSuccessfully: true, tapInstalled: true,
         formatMismatchObserved: false, inputDeviceUIDPreferred: nil,
         inputDeviceUIDSystemDefault: nil, failureMode: .noBuffers)
-      let replyCtx = XPCReplyFailureContext(
-        replyStage: "start", errorDomain: "d", errorCode: 1, errorDescription: "e",
-        sessionID: 1)
 
       return [
         (
@@ -58,18 +55,6 @@ struct StableSentryErrorIdentityTests {
         (
           .pasteAppleScriptFailed(errorCode: nil, errorMessage: nil, targetBundleID: nil),
           .pasteFailed, "\(domain)#5", "heartpath.paste_applescript_failed"
-        ),
-        (
-          .audioXPCInterrupted(handler: .interrupt, wasCapturing: true), .xpcServiceError,
-          "\(domain)#6", "heartpath.audio_xpc_interrupted"
-        ),
-        (
-          .xpcReplyFailed(ctx: replyCtx), .xpcServiceError, "\(domain)#7",
-          "heartpath.xpc_reply_failed"
-        ),
-        (
-          .xpcServerClientProxyNil(sessionID: 1, consecutiveDrops: 1), .xpcServiceError,
-          "\(domain)#8", "heartpath.xpc_server_client_proxy_nil"
         ),
         (
           .emptyAfterProcessing(route: "builtin", wasPolishEnabled: true),
@@ -143,14 +128,6 @@ struct StableSentryErrorIdentityTests {
         .pasteCascadeClipboardFallback(
           tiersAttempted: ["a"], focusClassification: "f", targetBundleID: nil),
         .pasteCGEventCreationFailed(accessibilityTrusted: true), .pasteFailed
-      ),
-      (
-        .audioXPCInterrupted(handler: .interrupt, wasCapturing: true),
-        .xpcReplyFailed(
-          ctx: XPCReplyFailureContext(
-            replyStage: "start", errorDomain: "d", errorCode: 1, errorDescription: "e",
-            sessionID: 1)),
-        .xpcServiceError
       ),
       (
         .zombieEngineZeroPeak(sessionID: 1, durationMs: 0, route: "builtin", sampleCount: 1),

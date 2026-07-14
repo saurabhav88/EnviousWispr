@@ -6,19 +6,7 @@ import Foundation
 /// Info.plist. Dev builds stamp a `.dev` suffix during bundle assembly — this
 /// helper derives the correct name at runtime by checking the host app's bundle ID.
 public enum XPCServiceName {
-  private static let audioServiceBase = "com.enviouswispr.audioservice"
   private static let asrServiceBase = "com.enviouswispr.asrservice"
-
-  /// XPC service name for the audio capture service.
-  /// Returns `com.enviouswispr.audioservice.dev` when running inside a dev bundle,
-  /// `com.enviouswispr.audioservice` otherwise.
-  public static var audioService: String {
-    let hostID = Bundle.main.bundleIdentifier ?? ""
-    if hostID.hasSuffix(".dev") {
-      return audioServiceBase + ".dev"
-    }
-    return audioServiceBase
-  }
 
   /// XPC service name for the ASR transcription service.
   /// Returns `com.enviouswispr.asrservice.dev` when running inside a dev bundle,

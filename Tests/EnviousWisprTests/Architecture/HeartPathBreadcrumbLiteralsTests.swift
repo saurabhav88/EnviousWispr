@@ -29,16 +29,14 @@ import Testing
   // practice never fired in production, per the 2026-05-02 finding). Route-change
   // evidence survives via `AudioSystemEventReporter`'s CoreAudio listeners, not
   // this router breadcrumb.
+  // NOTE (#1543): the boundary-failure breadcrumb literals (the "Audio XPC
+  // interrupted" message, the interrupted-error case, the `xpc.*` extras,
+  // `capture.route`, `audio.recording_duration_ms`) were removed with the
+  // audio-capture boundary itself — those breadcrumbs can no longer be produced
+  // in-process. The engine-interruption breadcrumb survives, now spelled "Audio
+  // engine interrupted."
   private static let requiredLiterals: [String] = [
-    "\"Audio XPC interrupted\"",
-    ".audioXPCInterrupted",
-    ".xpcServiceError",
-    "\"xpc.handler\"",
-    "\"xpc.was_capturing\"",
-    "\"xpc.kind\"",
-    "\"capture_session_id\"",
-    "\"capture.route\"",
-    "\"audio.recording_duration_ms\"",
+    "\"Audio engine interrupted\"",
     "\"parakeet_state\"",
     "\"whisperkit_state\"",
     "[AudioEventRouter] Audio onEngineInterrupted",

@@ -173,41 +173,10 @@ def force_xpc_kill() -> str:
     return send("force_xpc_kill")
 
 
-def force_audio_xpc_kill() -> str:
-    return send("force_audio_xpc_kill")
-
-
-def force_proxy_buffer_drop(n: int) -> str:
-    """Drop next N capture buffers inside AudioCaptureProxy.audioBufferCaptured.
-
-    Tests the PROXY-side stall watchdog (drops buffers before they reach the
-    app continuation, watchdog fires on the gap). Does NOT exercise the real
-    audio-stack interruption recovery path in the capture source — those
-    handlers live in the service process and are not reachable from this
-    host-side endpoint.
-
-    For real audio-stack interruption testing (BT codec switch, Zoom mic-grab)
-    see docs/LANE_B_AUDIO_TESTS.md.
-    """
-    return send(f"force_proxy_buffer_drop({n})")
-
-
-def force_audio_wedge_start(n: int) -> str:
-    """Treat the next N audio START operations as wedged (#1194).
-
-    Sets AudioCaptureProxy.forceWedgeNextStartOps via the DEBUG endpoint: the
-    next N start ops (start_engine / begin_capture / start_engine_prewarm,
-    including retry stages) throw the watchdog wedge error BEFORE dispatch —
-    no transport error, no invalidation. This is the watchdog-only wedge
-    shape: with n=1 the press's first attempt wedges and the bounded retry
-    recovers on a fresh connection; with n=2 the retry wedges too and the
-    press fails with outcome=exhausted. Never affects stop_capture.
-
-    Verdicts come from app.log ("forced wedge (DEBUG)", "line death",
-    "start retry resolved ... outcome=recovered|exhausted"), per
-    uat-verdicts-from-app-log.
-    """
-    return send(f"force_audio_wedge_start({n})")
+# #1543: audio capture is in-process now — the audio-boundary DEBUG commands
+# (force_audio_xpc_kill / force_proxy_buffer_drop / force_audio_wedge_start) and
+# their scenarios were removed with the audio-capture boundary. The ASR-service
+# kill (force_xpc_kill) and the in-process zero-fill injector below remain.
 
 
 # ─────────────────── #1317 proof-bench: zero-fill injector client ───────────────
@@ -309,7 +278,7 @@ def assert_terminated(timeout_s: float = 5.0) -> dict:
 
 def list_xpc_service_pids() -> list[str]:
     """Return PIDs of all live EnviousWispr XPC service helpers
-    (`EnviousWisprAudioService`, `EnviousWisprASRService`).
+    (`EnviousWisprASRService`; audio capture is in-process since #1543).
 
     On macOS, XPC services are launchd-managed: invalidating the connection
     does not terminate the helper process — launchd respawns it as needed.
@@ -671,13 +640,9 @@ class _TTSAudio:
 # Source SHA is manifest provenance stamped at build time, NOT inferred from
 # Info.plist (build-dev-app.sh stamps no git SHA).
 
-# Our two embedded XPC executables inside the .app. Sparkle's Downloader/Installer
-# are excluded — not ours.
+# Our embedded XPC executable inside the .app (audio capture is in-process since
+# #1543). Sparkle's Downloader/Installer are excluded — not ours.
 _APP_EXE_REL = "Contents/MacOS/EnviousWispr"
-_AUDIO_HELPER_REL = (
-    "Contents/XPCServices/EnviousWisprAudioService.xpc/Contents/MacOS/"
-    "EnviousWisprAudioService"
-)
 _ASR_HELPER_REL = (
     "Contents/XPCServices/EnviousWisprASRService.xpc/Contents/MacOS/"
     "EnviousWisprASRService"
@@ -705,7 +670,6 @@ def discover_bundle_executables(bundle_path) -> dict:
     bundle = Path(os.path.abspath(bundle_path))
     paths = {
         "app": bundle / _APP_EXE_REL,
-        "audio_helper": bundle / _AUDIO_HELPER_REL,
         "asr_helper": bundle / _ASR_HELPER_REL,
     }
     for label, p in paths.items():
@@ -917,85 +881,12 @@ def A3_asr_xpc_kill(**_) -> dict:
     return {"reply": reply, **terminated, **leak, **recovery}
 
 
-@scenario(
-    ScenarioMeta(
-        name="A4_audio_xpc_kill",
-        lane="A",
-        family="xpc",
-        backends=["both"],
-        runtime_budget_seconds=15.0,
-        founder_required=False,
-        negative_control="Remove audio-XPC-error handler in AudioCaptureProxy; pipeline gets stuck",
-        description="Audio capture XPC connection invalidated mid-stream while TTS audio is flowing — pipeline must reach a terminal state, no helper leak, next dictation must succeed",
-    )
-)
-def A4_audio_xpc_kill(**_) -> dict:
-    """User behavior: dictation in progress with audio flowing, the
-    audio-capture XPC connection drops (sandbox revoked, helper crash,
-    HAL reset). Pipeline must surface a terminal state, the audio helper
-    must respawn cleanly, and the next dictation must work end-to-end.
-    """
-    pre_helpers = list_xpc_service_pids()
-    if not _start_recording_locked():
-        return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
-    with _TTSAudio():
-        time.sleep(0.8)  # warm-up so capture buffers have started flowing
-        reply = force_audio_xpc_kill()
-        terminated = assert_terminated(timeout_s=5.0)
-    leak = assert_no_xpc_leak(pre_helpers)
-    recovery = _assert_dictation_recovers()
-    return {"reply": reply, **terminated, **leak, **recovery}
-
-
-@scenario(
-    ScenarioMeta(
-        name="A5_proxy_buffer_drop_watchdog",
-        lane="A",
-        family="proxy-watchdog",
-        backends=["both"],
-        runtime_budget_seconds=15.0,
-        founder_required=False,
-        negative_control="Remove the proxy-side stall watchdog (armCaptureStallWatchdog); buffer drops elapse without recovery",
-        description="Drop next 1000 buffers inside AudioCaptureProxy. Tests the PROXY watchdog firing on a buffer-arrival gap. Does NOT test real OS-level audio interruption recovery (those live in the service process).",
-    )
-)
-def A5_proxy_buffer_drop_watchdog(**_) -> dict:
-    """User behavior: NONE. This scenario does not correspond to a user-
-    triggerable flow. It tests an internal proxy-side defense.
-
-    Originally named A5_forced_stall and described as "audio interruption
-    recovery", which was a lie. The endpoint pokes the host-side
-    AudioCaptureProxy buffer queue, dropping the next N buffers before
-    they reach the app continuation. The PROXY's stall watchdog fires on
-    the resulting buffer-arrival gap. The actual audio-stack recovery
-    paths in the capture source's interruption handlers live in the
-    EnviousWisprAudioService process and are NOT exercised here. Verified
-    2026-05-02 (issue #553 close-out + Codex grounded review at
-    docs/audits/2026-05-02-v2-synthetic-viability-codex.txt) — on the
-    since-deleted AVAudioEngine backend, production Sentry showed zero
-    engine-configuration-change fires in 14d across BT/Zoom/Discord/Spotify
-    real-world testing.
-
-    For real OS-level audio interruption testing see
-    docs/LANE_B_AUDIO_TESTS.md (Bluetooth route flip, Zoom/Discord
-    coexistence, system input flip).
-
-    What this scenario VALIDATES:
-    - The proxy-side watchdog arms on recording start.
-    - The watchdog fires when buffer cadence breaks.
-    - The pipeline reaches a terminal state on watchdog fire.
-    - The next dictation cycle re-arms capture cleanly.
-    """
-    if not _start_recording_locked():
-        return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
-    with _TTSAudio():
-        time.sleep(0.5)  # warm-up: let buffer cadence establish
-        reply = force_proxy_buffer_drop(1000)
-        terminated = assert_terminated(timeout_s=12.0)
-    if "recording" in _active_state():
-        _stop_recording_locked()
-    recovery = _assert_dictation_recovers()
-    return {"reply": reply, **terminated, **recovery}
+# #1543: scenarios A4_audio_xpc_kill and A5_proxy_buffer_drop_watchdog were
+# removed with the audio-capture boundary — both tested the deleted host-side
+# proxy DEBUG commands. Real OS-level audio interruption testing (BT route flip,
+# Zoom/Discord coexistence) still lives in docs/LANE_B_AUDIO_TESTS.md; the
+# capture-stall watchdog is exercised in-process by the #1317 zero-fill
+# proof-bench scenarios below.
 
 
 _DEV_BUNDLE_ID = "com.enviouswispr.app.dev"
@@ -1326,57 +1217,9 @@ def A9_backend_switch_mid_record(**_) -> dict:
 APP_LOG_PATH = Path("~/Library/Logs/EnviousWispr/app.log").expanduser()
 
 
-@scenario(
-    ScenarioMeta(
-        name="A10_audio_start_wedge_retry",
-        lane="A",
-        family="xpc",
-        backends=["both"],
-        runtime_budget_seconds=20.0,
-        founder_required=False,
-        negative_control="Arm force_audio_wedge_start(2) instead of 1 (exhausts the single retry) — the press fails with outcome=exhausted instead of recovering",
-        description="Arm force_audio_wedge_start(1) while idle, then press record: the first start op wedges (watchdog-only shape — no transport error, no invalidation) and the bounded #1194 retry recovers on a fresh connection within the same press",
-    )
-)
-def A10_audio_start_wedge_retry(**_) -> dict:
-    """User behavior: the user presses record at the exact moment the audio
-    XPC line has silently died (idle-reap race, #1194) in the one shape that
-    produces NO error callback and NO invalidation — only the operation
-    watchdog notices. The press must still succeed: the proxy retires the
-    wedged line, reacquires, replays the prefix, and resends once.
-
-    Verdict source is app.log (`uat-verdicts-from-app-log`): the scenario
-    asserts the forced-wedge marker, the line-death transition, and
-    `start retry resolved ... outcome=recovered` all appeared during the
-    press, alongside the pipeline reaching a terminal state.
-    """
-    log_offset = APP_LOG_PATH.stat().st_size if APP_LOG_PATH.exists() else 0
-    reply = force_audio_wedge_start(1)
-    if not _start_recording_locked():
-        return {
-            "terminal": False,
-            "reason": "could not enter recording (retry did not save the press?)",
-            "state": query_state(),
-            "reply": reply,
-        }
-    with _TTSAudio():
-        time.sleep(1.5)
-    stopped = _stop_recording_locked()
-    terminated = assert_terminated(timeout_s=8.0)
-
-    tail = ""
-    if APP_LOG_PATH.exists():
-        with open(APP_LOG_PATH, "r", errors="replace") as f:
-            f.seek(log_offset)
-            tail = f.read()
-    return {
-        "reply": reply,
-        "stopped": stopped,
-        **terminated,
-        "forced_wedge_logged": "forced wedge (DEBUG)" in tail,
-        "line_death_logged": "line death" in tail and "cause=wedged" in tail,
-        "retry_recovered": "start retry resolved" in tail and "outcome=recovered" in tail,
-    }
+# #1543: scenario A10_audio_start_wedge_retry was removed with the audio-capture
+# boundary — it tested the deleted XPC line-death start-retry (#1194), which
+# cannot occur with capture in-process (no line to wedge).
 
 
 @scenario(

@@ -376,14 +376,12 @@ import Testing
       ])
   }
 
-  // #1174 A3 — matcher-set-adversarial: the `.audioInterrupted` capture gate
-  // flips on the cause. Only `.engineLost` (a lost dictation with no other owner)
-  // captures `.audioCaptureFailed`; the two already-owned causes
-  // (`.xpcConnectionLost`) must emit NO captureError, so
-  // A3 never double-counts a loss already owned by another emitter
-  // / `onXPCServiceError`. (`.maxDurationReached` was deleted by #1408 A3 — the
-  // cap routes as a normal stop and can no longer reach this gate at all.)
-  // Every case resets recording state.
+  // #1174 A3 — matcher-set-adversarial: at the `.audioInterrupted` gate both
+  // surviving causes are genuine unowned losses, so BOTH `.engineLost` and
+  // `.deviceRemoved` capture `.audioCaptureFailed`. (#1543 removed the
+  // XPC-connection cause, the only cause that used to be suppressed here;
+  // `.maxDurationReached` was deleted by #1408 A3 — the cap routes as a normal
+  // stop and can no longer reach this gate.) Every case resets recording state.
 
   @Test(".audioInterrupted(.engineLost) captures .audioCaptureFailed + resets state")
   func audioInterruptedEngineLostCaptures() {
@@ -399,25 +397,6 @@ import Testing
       recorder.recordingStates == [
         .init(active: false, backend: nil, isStreaming: nil)
       ])
-  }
-
-  @Test(".audioInterrupted suppresses the two already-owned causes (no double-count)")
-  func audioInterruptedSuppressesOwnedCauses() {
-    for cause: EngineInterruptionCause in [
-      .xpcConnectionLost
-    ] {
-      let recorder = Recorder()
-      let sink = makeSink(recorder: recorder)
-      sink.emit(.audioInterrupted(cause: cause))
-      #expect(
-        recorder.captureErrors.isEmpty,
-        "cause \(cause) must NOT emit a captureError (already owned / not a loss)")
-      #expect(
-        recorder.recordingStates == [
-          .init(active: false, backend: nil, isStreaming: nil)
-        ],
-        "cause \(cause) must still reset recording state")
-    }
   }
 
   @Test("exactly the two unowned-loss causes capture at the .audioInterrupted terminal")
@@ -484,22 +463,11 @@ import Testing
     #expect(recorder.captureErrors.count == 1, "the lost dictation is still a real loss")
   }
 
-  /// The one cause whose samples are gone never attempts salvage — and
-  /// `salvage_attempted` reads the SAME `hasRecoverableAudio` authority the
-  /// kernel's guard reads, never a second copy of that switch.
-  @Test("the unsalvageable cause reports salvage_attempted false")
-  func unsalvageableCauseReportsNoAttempt() {
-    let recorder = Recorder()
-    let telemetryState = KernelTelemetryState()
-    telemetryState.interruptionCause = .xpcConnectionLost
-    let sink = makeSink(recorder: recorder, telemetryState: telemetryState)
-
-    sink.emit(.audioInterrupted(cause: .xpcConnectionLost))
-
-    #expect(recorder.audioCaptureInterruptions.count == 1)
-    #expect(recorder.audioCaptureInterruptions[0].salvageAttempted == false)
-    #expect(recorder.audioCaptureInterruptions[0].salvageSucceeded == false)
-  }
+  // #1543: the former "unsalvageable cause reports salvage_attempted false"
+  // test is gone with the XPC-connection cause — in-process every interruption
+  // cause is recoverable, so there is no unsalvageable cause to exercise. The
+  // `salvage_attempted == true` path is covered by
+  // `salvagedCompletionEmitsCounterNotError` above.
 
   /// A session that was never interrupted must emit nothing. Otherwise the
   /// denominator counts every dictation and the salvage rate reads as ~100%.

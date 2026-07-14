@@ -4,10 +4,10 @@ import Testing
 @testable import EnviousWisprAudio
 
 // #1376 — locks the changed-only semantics of the `onRouteResolved` producer
-// (`CaptureRouteDecision.routeResolvedChanged`), the single authority both
-// `AudioCaptureManager` and `AudioCaptureProxy` fire through: first resolution
-// fires, an identical warm-reuse resolution is a no-op, and a reason change
-// re-fires. Pure predicate — no audio hardware, no timing.
+// (`CaptureRouteDecision.routeResolvedChanged`), the single authority
+// `AudioCaptureManager` fires through: first resolution fires, an identical
+// warm-reuse resolution is a no-op, and a reason change re-fires. Pure
+// predicate — no audio hardware, no timing.
 @Suite("onRouteResolved changed-only predicate — #1376")
 struct RouteResolvedProducerTests {
 

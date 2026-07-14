@@ -6,8 +6,9 @@ import Foundation
 ///
 /// Bridges the in-process ASR interface to XPC calls against `EnviousWisprASRService`.
 /// Model loading, inference, and memory all live in the service process.
-/// Crash recovery mirrors `AudioCaptureProxy` — same `OneShotContinuation`,
-/// `nonisolated static` handler factories, per-call error routing.
+/// Crash recovery uses the same shape the deleted audio-capture proxy used —
+/// a `OneShotContinuation`, `nonisolated static` handler factories, per-call
+/// error routing.
 @MainActor
 @Observable
 public final class ASRManagerProxy: ASRManagerInterface {
@@ -810,7 +811,8 @@ public final class ASRManagerProxy: ASRManagerInterface {
 
 // MARK: - Helpers
 
-/// Thread-safe one-shot continuation guard — duplicate of AudioCaptureProxy's version.
+/// Thread-safe one-shot continuation guard — an ASR-local copy of the guard the
+/// deleted audio-capture proxy also used.
 /// Duplicated per architecture rule: "duplication is allowed when it protects independence."
 /// `internal` (was private) since #1388: the resume-once contract test pins
 /// first-resume-wins directly (the cancel cause must beat the invalidation

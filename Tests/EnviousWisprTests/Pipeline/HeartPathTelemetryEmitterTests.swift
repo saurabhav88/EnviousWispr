@@ -95,10 +95,6 @@ struct HeartPathTelemetryEmitterTests {
       "capture.time_since_last_successful_recording_ms"
     ])
 
-  private static let xpcExtraKeys: Set<String> = [
-    "xpc.reply_stage", "xpc.error_domain", "xpc.error_code", "capture_session_id",
-  ]
-
   private static func stallContext(sessionID: UInt64 = 42) -> CaptureStallContext {
     CaptureStallContext(
       sessionID: sessionID,
@@ -112,16 +108,6 @@ struct HeartPathTelemetryEmitterTests {
       inputDeviceUIDPreferred: nil,
       inputDeviceUIDSystemDefault: "BuiltInMicrophoneDevice",
       failureMode: .noBuffers
-    )
-  }
-
-  private static func xpcContext(sessionID: UInt64 = 42) -> XPCReplyFailureContext {
-    XPCReplyFailureContext(
-      replyStage: "stopCapture",
-      errorDomain: "NSCocoaErrorDomain",
-      errorCode: 4099,
-      errorDescription: "interrupted",
-      sessionID: sessionID
     )
   }
 
@@ -188,24 +174,8 @@ struct HeartPathTelemetryEmitterTests {
     #expect(secondSession == 2)
   }
 
-  // MARK: - XPC reply
-
-  @Test("xpcReplyFailed always emits and pins the payload shape")
-  func xpcEmitsExpectedExtras() {
-    let recorder = Recorder()
-    let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
-
-    emitter.xpcReplyFailed(ctx: Self.xpcContext(sessionID: 12))
-
-    #expect(recorder.errors.count == 1)
-    let captured = recorder.errors[0]
-    #expect(captured.category == .xpcServiceError)
-    #expect(captured.stage == "audio")
-    #expect(captured.extra["xpc.reply_stage"] as? String == "stopCapture")
-    #expect(captured.extra["xpc.error_domain"] as? String == "NSCocoaErrorDomain")
-    #expect(captured.extra["xpc.error_code"] as? Int == 4099)
-    #expect(captured.extra["capture_session_id"] as? Int == 12)
-  }
+  // #1543: the `xpcReplyFailed` emit + its dedup path are gone with the audio
+  // boundary — the emitter no longer has that method.
 
   // MARK: - noAudioCaptured dedup paths
 
@@ -262,12 +232,12 @@ struct HeartPathTelemetryEmitterTests {
     let recorder = Recorder()
     let emitter = Self.makeEmitter(backend: .whisperKit, recorder: recorder)
 
-    emitter.xpcReplyFailed(ctx: Self.xpcContext(sessionID: 9))
+    _ = emitter.stallFired(ctx: Self.stallContext(sessionID: 9), isActivelyCapturing: true)
     emitter.noAudioCaptured(ctx: Self.noAudioContext(sessionID: 9))
 
     #expect(recorder.breadcrumbs.count == 1)
     #expect(recorder.breadcrumbs[0].message == "No audio captured (WhisperKit, deduped)")
-    #expect(recorder.breadcrumbs[0].data["deduped_from"] as? String == "xpc_reply_failed")
+    #expect(recorder.breadcrumbs[0].data["deduped_from"] as? String == "audio_capture_stalled")
   }
 
   @Test("noAudioCaptured re-arms after session-id change")
@@ -391,11 +361,10 @@ struct HeartPathTelemetryEmitterTests {
     let emitter = Self.makeEmitter(backend: .whisperKit, recorder: recorder)
 
     _ = emitter.stallFired(ctx: Self.stallContext(sessionID: 1), isActivelyCapturing: true)
-    emitter.xpcReplyFailed(ctx: Self.xpcContext(sessionID: 2))
     emitter.noAudioCaptured(ctx: Self.noAudioContext(sessionID: 4))
     _ = emitter.zombieZeroPeak(ctx: Self.zeroPeakContext(sessionID: 5))
 
-    #expect(recorder.errors.count == 4)
+    #expect(recorder.errors.count == 3)
 
     guard let stallErr = recorder.errors[0].error as? HeartPathError,
       case .audioCaptureStalled(let stallSession, _) = stallErr
@@ -405,18 +374,10 @@ struct HeartPathTelemetryEmitterTests {
     }
     #expect(stallSession == 1)
 
-    guard let xpcErr = recorder.errors[1].error as? HeartPathError,
-      case .xpcReplyFailed(let xpcCtx) = xpcErr
-    else {
-      Issue.record("expected .xpcReplyFailed, got \(recorder.errors[1].error)")
-      return
-    }
-    #expect(xpcCtx.sessionID == 2)
-
-    guard let noAudioErr = recorder.errors[2].error as? HeartPathError,
+    guard let noAudioErr = recorder.errors[1].error as? HeartPathError,
       case .noAudioCaptured(let naSession, let durationMs, let wasStreaming, let route) = noAudioErr
     else {
-      Issue.record("expected .noAudioCaptured, got \(recorder.errors[2].error)")
+      Issue.record("expected .noAudioCaptured, got \(recorder.errors[1].error)")
       return
     }
     #expect(naSession == 4)
@@ -424,10 +385,10 @@ struct HeartPathTelemetryEmitterTests {
     #expect(!wasStreaming)
     #expect(route == "built_in_mic")
 
-    guard let zombieErr = recorder.errors[3].error as? HeartPathError,
+    guard let zombieErr = recorder.errors[2].error as? HeartPathError,
       case .zombieEngineZeroPeak(let zSession, _, let zRoute, let sampleCount) = zombieErr
     else {
-      Issue.record("expected .zombieEngineZeroPeak, got \(recorder.errors[3].error)")
+      Issue.record("expected .zombieEngineZeroPeak, got \(recorder.errors[2].error)")
       return
     }
     #expect(zSession == 5)
@@ -450,21 +411,6 @@ struct HeartPathTelemetryEmitterTests {
     #expect(
       actualKeys == Self.stallExtraKeys,
       "stall extras key-set drift: \(actualKeys.symmetricDifference(Self.stallExtraKeys))")
-  }
-
-  /// Codex code-review gap #1 (xpc): exact key-set for the XPC event.
-  @Test("xpcReplyFailed extras key-set matches the xpc payload contract exactly")
-  func xpcReplyFailedExtrasKeySetExact() {
-    let recorder = Recorder()
-    let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
-
-    emitter.xpcReplyFailed(ctx: Self.xpcContext(sessionID: 12))
-
-    #expect(recorder.errors.count == 1)
-    let actualKeys = Set(recorder.errors[0].extra.keys)
-    #expect(
-      actualKeys == Self.xpcExtraKeys,
-      "xpc extras key-set drift: \(actualKeys.symmetricDifference(Self.xpcExtraKeys))")
   }
 
   /// Codex code-review gap #1 (noAudio fresh): exact key-set when no prior

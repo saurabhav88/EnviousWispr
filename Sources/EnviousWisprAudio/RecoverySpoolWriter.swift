@@ -4,9 +4,9 @@ import os
 
 // MARK: - Crash-recovery spool writer (#1063 PR0)
 //
-// Runs in the audio helper process. While recording, it encrypts each chunk of
-// captured samples and appends it to a single `.ewrec` file on a DEDICATED
-// background queue — never the heart-critical `xpcSendQueue`, never the
+// Runs in-process (on the capture manager) while recording: it encrypts each
+// chunk of captured samples and appends it to a single `.ewrec` file on a
+// DEDICATED background queue — never the MainActor sample-ingest path, never the
 // real-time audio thread. It is a strict LIMB: every failure path (open fails,
 // disk full, encryption error, queue backed up) drops recovery and leaves
 // capture / transcription byte-identical. The authoritative samples it is fed

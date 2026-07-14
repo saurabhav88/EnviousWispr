@@ -75,12 +75,27 @@ internal enum VADMonitorLoop {
         }
         maybeWarn(elapsed: elapsed)
 
-        let samples = sampleProvider()
-        let currentCount = samples.count
+        // Snapshot only the COUNT (an Int), never the whole array, across the
+        // chunk-processing awaits below. Binding `sampleProvider()`'s full array
+        // while `ingestSamples` appends would COW-copy the entire growing
+        // recording once per chunk — quadratic memory traffic that can stall a
+        // long dictation now that this is the production path (#1543 Codex r2
+        // P1). Each chunk is sliced fresh into its own small array; the slice
+        // happens MainActor-atomically (no await between the read and the copy),
+        // so the capture buffer keeps refcount 1 and appends never copy.
+        let currentCount = sampleProvider().count
 
         while processedSampleCount + chunkSize <= currentCount && !Task.isCancelled {
           let endIdx = processedSampleCount + chunkSize
-          let chunk = Array(samples[processedSampleCount..<endIdx])
+          // Re-check LIVE bounds before slicing (#1543 Codex r3 P1): a cancel or
+          // capture failure can run `stopCapture()` during the prior
+          // `processChunk` await, clearing `capturedSamples` so it is now shorter
+          // than the stale `currentCount`. Slicing `[processedSampleCount..<endIdx]`
+          // against the shrunk array would trap out-of-bounds. The count read and
+          // the slice are MainActor-atomic (no await between), so the length
+          // cannot change under us here.
+          guard isRecording(), sampleProvider().count >= endIdx else { break }
+          let chunk = Array(sampleProvider()[processedSampleCount..<endIdx])
 
           let shouldStop = await detector.processChunk(chunk)
 

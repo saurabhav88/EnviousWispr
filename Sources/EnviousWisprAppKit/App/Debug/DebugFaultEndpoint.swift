@@ -23,10 +23,10 @@
   ///   Every command must carry the matching token in its first line.
   ///   Token file is deleted on `stop()`.
   /// - Fixed command set (no arbitrary RPC, no method invocation, no shell escape):
-  ///   `force_proxy_buffer_drop(N)`, `force_audio_wedge_start(N)`,
-  ///   `force_cancel`, `force_xpc_kill`, `force_audio_xpc_kill`, `query_state`,
+  ///   `force_cancel`, `force_xpc_kill` (ASR helper), `query_state`,
   ///   `force_zero_fill(mode,N,trialID)`, `query_fault_status(trialID)` (#1317
-  ///   proof-bench; the last two drive the DEBUG all-zero injector across the helper).
+  ///   proof-bench; the last two drive the DEBUG all-zero injector directly on
+  ///   the in-process `AudioCaptureManager` — #1543).
   /// - Each command dispatches to `@MainActor` via `Task { @MainActor in ... }`
   ///   so command handling matches the actor isolation of the seams it drives.
   ///
@@ -42,9 +42,9 @@
   @MainActor
   final class DebugFaultEndpoint {
 
-    // MARK: - Dependencies (concrete proxy/pipeline types — DEBUG seams live here)
+    // MARK: - Dependencies (concrete manager/pipeline types — DEBUG seams live here)
 
-    private let audioProxy: AudioCaptureProxy?
+    private let audioCapture: AudioCaptureManager?
     private let asrProxy: ASRManagerProxy?
     private let kernelDriver: KernelDictationDriver
     private let whisperKitKernelDriver: KernelDictationDriver
@@ -58,19 +58,19 @@
     private let tokenPath: URL
     private let queue = DispatchQueue(label: "com.enviouswispr.debug.fault-endpoint")
 
-    /// Construct the endpoint. The audio/ASR proxy refs are optional so the
-    /// endpoint still functions in environments where the heart-path is
+    /// Construct the endpoint. The audio manager / ASR proxy refs are optional so
+    /// the endpoint still functions in environments where the heart-path is
     /// stubbed out (preview/test app builds); commands targeting absent
     /// dependencies reply `ERR no_dependency`.
     init(
-      audioProxy: AudioCaptureProxy?,
+      audioCapture: AudioCaptureManager?,
       asrProxy: ASRManagerProxy?,
       kernelDriver: KernelDictationDriver,
       whisperKitKernelDriver: KernelDictationDriver,
       activeBackend: @escaping () -> ASRBackendType,
       port: UInt16 = 8765
     ) {
-      self.audioProxy = audioProxy
+      self.audioCapture = audioCapture
       self.asrProxy = asrProxy
       self.kernelDriver = kernelDriver
       self.whisperKitKernelDriver = whisperKitKernelDriver
@@ -222,62 +222,35 @@
         asrProxy.forceConnectionTerminationNow()
         return "OK"
 
-      case "force_audio_xpc_kill":
-        guard let audioProxy else { return "ERR no_dependency" }
-        audioProxy.forceConnectionTerminationNow()
-        return "OK"
-
       case "query_state":
         let p = kernelDriver.state
         let w = whisperKitKernelDriver.state
         return "OK parakeet=\(p) whisperkit=\(w) backend=\(activeBackend())"
 
       default:
-        // force_proxy_buffer_drop(N) — drops the next N buffers inside
-        // `AudioCaptureProxy.audioBufferCaptured` before they reach the app
-        // continuation. Tests the PROXY-side stall watchdog (XPC-channel buffer
-        // drop), NOT real OS-level audio interruption recovery in the
-        // capture source's interruption handlers — those run in the
-        // service process and are not reachable from this host-process endpoint.
-        // For real audio-stack interruption testing see `docs/LANE_B_AUDIO_TESTS.md`.
-        if let n = parseIntCommand(cmd, prefix: "force_proxy_buffer_drop(") {
-          guard let audioProxy else { return "ERR no_dependency" }
-          audioProxy.forceStallRemainingBuffers = n
-          return "OK"
-        }
-        // force_audio_wedge_start(N) — #1194: treats the next N audio START
-        // operations as wedged inside `withAudioXPCOperationSignal` (no
-        // transport error, no invalidation — the watchdog-only wedge shape).
-        // Drives Live UAT scenario "forced start wedge with recovery".
-        if let n = parseIntCommand(cmd, prefix: "force_audio_wedge_start(") {
-          guard let audioProxy else { return "ERR no_dependency" }
-          audioProxy.forceWedgeNextStartOps = n
-          return "OK"
-        }
         // #1317 proof-bench: force_zero_fill(mode,N,trialID) — arm the DEBUG
-        // all-zero injector in the HELPER process (real service-side sample
-        // substitution, unlike the host-side force_proxy_buffer_drop). mode ∈
-        // {zero_from_start, zero_after_samples, zero_next_samples}; N is the LIVE
-        // sample threshold/budget (ignored for zero_from_start); trialID
-        // correlates the later query_fault_status.
+        // all-zero injector directly on the in-process `AudioCaptureManager`
+        // (#1543 — no XPC hop). mode ∈ {zero_from_start, zero_after_samples,
+        // zero_next_samples, disarmed}; N is the LIVE sample threshold/budget
+        // (ignored for zero_from_start); trialID correlates the later
+        // query_fault_status.
         if let arm = parseZeroFillArm(cmd) {
-          guard let audioProxy else { return "ERR no_dependency" }
-          let ok = await audioProxy.debugArmZeroFill(arm)
-          return ok ? "OK" : "ERR arm_failed"
+          guard let audioCapture else { return "ERR no_dependency" }
+          audioCapture.debugArmZeroFill(mode: arm.mode, n: arm.n, trialID: arm.trialID)
+          return "OK"
         }
-        // #1317 proof-bench: query_fault_status(trialID) — read the merged fault
-        // status (helper injector fields + proxy XPC generation). Fails CLOSED to
-        // ERR on any missing/malformed/absent-generation condition, and on a trial
-        // id mismatch. "armed" is never evidence of "hit".
+        // #1317 proof-bench: query_fault_status(trialID) — read the in-process
+        // fault status (injector fields + manager source-incarnation). Fails
+        // CLOSED to ERR on an absent manager or a trial-id mismatch. "armed" is
+        // never evidence of "hit".
         if let trialID = parseStringArgCommand(cmd, prefix: "query_fault_status(") {
-          guard let audioProxy else { return "ERR no_dependency" }
-          guard let status = await audioProxy.debugFaultStatus() else { return "ERR no_status" }
+          guard let audioCapture else { return "ERR no_dependency" }
+          let status = audioCapture.debugFaultStatusSnapshot()
           guard status.trialID == trialID else { return "ERR trial_mismatch" }
           return
             "OK armed=\(status.armed) hit=\(status.hit) trial=\(status.trialID) "
             + "mode=\(status.mode) zeroed=\(status.zeroedSampleCount) "
             + "source_incarnation=\(status.sourceIncarnation) "
-            + "xpc_generation=\(status.xpcGeneration) "
             + "capture_source=\(status.captureSourceType)"
         }
         return "ERR unknown_command"
@@ -308,13 +281,6 @@
       guard cmd.hasPrefix(prefix), cmd.hasSuffix(")") else { return nil }
       let inner = String(cmd.dropFirst(prefix.count).dropLast())
       return inner.isEmpty ? nil : inner
-    }
-
-    /// Parse `<prefix>N)` into N for the parameterized commands.
-    private func parseIntCommand(_ cmd: String, prefix: String) -> Int? {
-      guard cmd.hasPrefix(prefix), cmd.hasSuffix(")") else { return nil }
-      let inner = cmd.dropFirst(prefix.count).dropLast()
-      return Int(inner)
     }
 
     // MARK: - Token file management

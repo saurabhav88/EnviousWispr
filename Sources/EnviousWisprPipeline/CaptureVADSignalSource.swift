@@ -1,5 +1,6 @@
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
 // MARK: - CaptureVADSignalSource type — epic #827, PR-4 §3.5
@@ -48,6 +49,19 @@ package final class CaptureVADSignalSource: VADSignalSource {
   private var silenceDetector: SilenceDetector?
   private var detectorSilenceTimeout: TimeInterval?
   private var directDetectorPrepared = false
+
+  /// #1224 (ported in-process at the C1 XPC collapse, #1543): classifies the
+  /// bundled VAD model's health at most once per process and decides
+  /// notice-eligibility on every recording. The helper used to own this; with
+  /// capture in-process the pipeline's direct-mode VAD loop is the only place
+  /// the model is loaded.
+  private var vadReadinessTracker = VADModelReadinessTracker()
+
+  /// Typed readiness FACT, bound by the App shell (BIBLE §detectors-report-facts:
+  /// the source never carries the sentence). Fires when the bundled model is
+  /// broken, auto-stop is on, and a recording is live — the App authors the
+  /// user-facing "auto-stop unavailable" copy in the bound closure.
+  package var onAutoStopUnavailableNotice: (@MainActor () -> Void)?
 
   /// The session each emitted signal is stamped with. The seam is told the
   /// frozen session at session start (PR-1 §B.6 — VAD config is per-session);
@@ -165,58 +179,52 @@ package final class CaptureVADSignalSource: VADSignalSource {
     setSegmentsProvider { [] }
   }
 
-  /// Start direct-mode VAD monitoring and max-duration monitoring. In XPC mode
-  /// the service owns the detector and calls `onVADAutoStop`; this loop still
-  /// owns max-duration so the kernel receives the same stop signal in both
-  /// modes.
+  /// Start direct-mode VAD monitoring and max-duration monitoring. Capture is
+  /// always in-process (the separate capture helper was deleted at C1 #1543):
+  /// this loop owns the `SilenceDetector` and the max-duration stop.
   func startMonitoring(
     recordingStartTime: Date,
     isRecording: @escaping @MainActor () -> Bool
   ) {
     guard let audioCapture, let config = sessionConfig else { return }
-    let isXPCMode = audioCapture is AudioCaptureProxy
 
     monitorTask?.cancel()
     monitorTask = Task { @MainActor [weak self] in
       guard let self, let audioCapture = self.audioCapture else { return }
-      let detector: SilenceDetector?
 
-      if isXPCMode {
-        detector = nil
-      } else {
-        let vadConfig = SmoothedVADConfig.fromSensitivity(
-          config.vadSensitivity,
-          energyGate: config.vadEnergyGate
+      let vadConfig = SmoothedVADConfig.fromSensitivity(
+        config.vadSensitivity,
+        energyGate: config.vadEnergyGate
+      )
+      let directDetector =
+        self.silenceDetector
+        ?? SilenceDetector(
+          silenceTimeout: config.vadSilenceTimeout,
+          vadConfig: vadConfig
         )
-        let directDetector =
-          self.silenceDetector
-          ?? SilenceDetector(
-            silenceTimeout: config.vadSilenceTimeout,
-            vadConfig: vadConfig
-          )
-        self.silenceDetector = directDetector
-        self.detectorSilenceTimeout = config.vadSilenceTimeout
-        await directDetector.reset()
-        await directDetector.updateConfig(vadConfig)
-        if !(await directDetector.isReady) {
-          do {
-            try await directDetector.prepare()
-          } catch {
-            Task {
-              await AppLogger.shared.log(
-                "VAD preparation failed: \(error)",
-                level: .info, category: "VAD"
-              )
-            }
-            return
-          }
-        }
-        self.directDetectorPrepared = true
-        detector = directDetector
-      }
+      self.silenceDetector = directDetector
+      self.detectorSilenceTimeout = config.vadSilenceTimeout
+      await directDetector.reset()
+      await directDetector.updateConfig(vadConfig)
+
+      // #1224 (ported in-process at C1 #1543): classify the bundled model's
+      // health at most once per process, then check notice-eligibility on
+      // EVERY recording. The eligibility check MUST stay outside the classify
+      // branch, else the notice is lost when the model was classified while
+      // auto-stop was off and enabled later (VADModelReadinessTrackerTests).
+      await self.updateVADReadinessAndMaybeNotify(
+        detector: directDetector, config: config, isRecording: isRecording)
+
+      // Always run the monitor (#1543 Codex r2 P2). With a prepared detector it
+      // does silence auto-stop AND the graceful max-duration cap; with a broken
+      // model (nil detector) it still enforces the max-duration cap + the
+      // approaching-cap warning — only the silence-auto-stop limb is lost. The
+      // old XPC topology likewise ran a nil-detector host-side monitor.
+      let ready = await directDetector.isReady
+      if ready { self.directDetectorPrepared = true }
 
       await self.runMonitor(
-        detector: detector,
+        detector: ready ? directDetector : nil,
         config: config,
         recordingStartTime: recordingStartTime,
         audioCapture: audioCapture,
@@ -225,15 +233,71 @@ package final class CaptureVADSignalSource: VADSignalSource {
     }
   }
 
-  func finalizeAtStop(rawSampleCount: Int, xpcSegments: [SpeechSegment]) async {
+  /// Classify the bundled VAD model at most once per process, emit in-process
+  /// handled-error telemetry on failure (the app can reach PostHog +
+  /// SentryBreadcrumb; the deleted helper could not), then decide
+  /// notice-eligibility on EVERY call — the eligibility check outside the
+  /// classify branch is what closes the "classified while auto-stop off, never
+  /// told after turning it on" trap (#1224).
+  private func updateVADReadinessAndMaybeNotify(
+    detector: SilenceDetector,
+    config: DictationSessionConfig,
+    isRecording: @escaping @MainActor () -> Bool
+  ) async {
+    // Load the model into THIS detector instance whenever it isn't already
+    // loaded — NOT gated on the process-wide readiness tracker (#1543 Codex r2
+    // P1). A fresh instance is created every time the silence-timeout setting
+    // changes (`configureSession` discards the prior one), so gating on the
+    // once-per-process tracker would leave that new instance unprepared and
+    // silently disable auto-stop until relaunch. A model already classified
+    // broken will fail again, so skip the retry (and its duplicate telemetry);
+    // the notice-eligibility check below still runs every recording.
+    let alreadyBroken: Bool = {
+      if case .broken = vadReadinessTracker.readiness { return true } else { return false }
+    }()
+    if !(await detector.isReady), !alreadyBroken {
+      do {
+        try await detector.prepare()
+        vadReadinessTracker.classifyIfNeeded(failureReason: nil)
+      } catch {
+        let reason = String(reflecting: type(of: error))
+        vadReadinessTracker.classifyIfNeeded(failureReason: reason)
+        // Reached only when NOT already broken (guard above), so at most: once
+        // on the first unknown->broken classification, plus a per-occurrence
+        // transient failure of a fresh detector — both bounded. A permanently
+        // broken model skips this block after the first pass, so no per-recording
+        // telemetry spam.
+        SentryBreadcrumb.add(
+          stage: "vad", message: "vad#prepare_failed", level: .warning,
+          data: ["source": "bundle_missing", "reason": reason])
+        TelemetryService.shared.limbFailureObserved(
+          limb: "vad", operation: "prepare", result: "model_unavailable",
+          errorCategory: reason, durationMs: nil)
+      }
+    }
+
+    // Notice: auto-stop cannot run this recording. Two distinct causes (#1543
+    // Codex r4): a PERMANENTLY broken bundled model uses the #1224 once-ever
+    // one-shot (`shouldShowNotice`); a TRANSIENT per-detector prepare failure —
+    // a fresh instance (after a silence-timeout change) that failed to load even
+    // though the model classified `.ready` earlier — surfaces per affected
+    // recording and self-limits (a healthy instance next recording is ready).
+    guard config.vadAutoStop, isRecording() else { return }
+    let brokenNow: Bool = {
+      if case .broken = vadReadinessTracker.readiness { return true } else { return false }
+    }()
+    if brokenNow {
+      if vadReadinessTracker.shouldShowNotice(autoStopEnabled: true, recordingIsLive: true) {
+        onAutoStopUnavailableNotice?()
+      }
+    } else if !(await detector.isReady) {
+      onAutoStopUnavailableNotice?()
+    }
+  }
+
+  func finalizeAtStop(rawSampleCount: Int) async {
     monitorTask?.cancel()
     monitorTask = nil
-
-    if audioCapture is AudioCaptureProxy {
-      setSegmentsProvider { xpcSegments }
-      setEvidenceProvider { xpcSegments.isEmpty ? .confirmedNoSpeech : .voiced }
-      return
-    }
 
     guard let silenceDetector, directDetectorPrepared else {
       setSegmentsProvider { [] }

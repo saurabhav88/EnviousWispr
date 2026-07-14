@@ -117,14 +117,9 @@ public final class WisprBootstrapper {
     let vocabularyPackManager = VocabularyPackManager()
     let aiAvailability = AIAvailabilityCoordinator()
 
-    // XPC audio service — default ON. Audio capture runs in a separate XPC
-    // service process for crash isolation. Read directly from UserDefaults
-    // (the `object(forKey:) ?? true` pattern so existing installs with no key
-    // written get the new default). Escape hatch:
-    // `defaults write ... useXPCAudioService -bool false`.
-    let useXPC = UserDefaults.standard.object(forKey: "useXPCAudioService") as? Bool ?? true
-    let audioCapture: any AudioCaptureInterface =
-      useXPC ? AudioCaptureProxy() : AudioCaptureManager()
+    // Audio capture runs in-process (#1543, D-028 — the separate XPC audio
+    // helper was collapsed away). The ASR helper below stays isolated.
+    let audioCapture: any AudioCaptureInterface = AudioCaptureManager()
 
     // XPC ASR service — default ON. ASR inference runs in a separate XPC
     // service process for memory isolation. Escape hatch:
@@ -229,6 +224,14 @@ public final class WisprBootstrapper {
     // construction would silently overwrite the first driver's VAD callback.
     let vadSource = KernelDictationDriverFactory.makeSharedVADSignalSource(
       audioCapture: audioCapture)
+    // #1224 (#1543): the VAD source reports a typed readiness FACT when the
+    // bundled model can't load; the App shell authors the user-facing sentence
+    // via the existing in-panel notice (no-ops if no recording panel is
+    // showing). Same copy the deleted XPC path used.
+    vadSource.onAutoStopUnavailableNotice = { [weak recordingOverlay] in
+      recordingOverlay?.flashRecordingNotice(
+        "Auto-stop on silence is unavailable right now", dismissAfter: 4.0)
+    }
 
     // PR-4b.4 of #827: Parakeet recordings flow through the kernel via the
     // driver constructed by `KernelDictationDriverFactory`. The factory

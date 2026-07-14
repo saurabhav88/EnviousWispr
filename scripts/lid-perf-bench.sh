@@ -13,8 +13,8 @@ APP_BUNDLE_ID="com.enviouswispr.app.dev"
 DEV_APP_PATH="$ROOT_DIR/build/EnviousWispr Local.app"
 DEV_APP_BINARY="$DEV_APP_PATH/Contents/MacOS/EnviousWispr"
 # #913 PR4: the Xcode-built dev bundle names XPC dirs by product name, not bundle
-# id (the retired hand-rolled bundler used `com.enviouswispr.*.xpc`).
-DEV_AUDIO_SERVICE_BINARY="$DEV_APP_PATH/Contents/XPCServices/EnviousWisprAudioService.xpc/Contents/MacOS/EnviousWisprAudioService"
+# id (the retired hand-rolled bundler used `com.enviouswispr.*.xpc`). #1543:
+# audio capture is in-process now — only the ASR helper remains.
 DEV_ASR_SERVICE_BINARY="$DEV_APP_PATH/Contents/XPCServices/EnviousWisprASRService.xpc/Contents/MacOS/EnviousWisprASRService"
 LOG_PIPE="$RUN_DIR/lid-perf-signposts.pipe"
 TAIL_PID=""
@@ -54,8 +54,7 @@ enable_app_file_logging() {
     exit 2
   fi
 
-  if [[ ! -x "$DEV_APP_BINARY" || ! -x "$DEV_AUDIO_SERVICE_BINARY" ||
-    ! -x "$DEV_ASR_SERVICE_BINARY" ]]; then
+  if [[ ! -x "$DEV_APP_BINARY" || ! -x "$DEV_ASR_SERVICE_BINARY" ]]; then
     echo "dev app bundle executable(s) missing at $DEV_APP_PATH." >&2
     echo "Run scripts/build-dev-app.sh first, then rerun this script." >&2
     exit 2

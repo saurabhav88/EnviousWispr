@@ -102,7 +102,6 @@ scan_dir() {
 run_real_scan() {
   cd "$ROOT"
   local targets=(
-    "Sources/EnviousWisprAudioService"
     "Sources/EnviousWisprASRService"
   )
   local matches

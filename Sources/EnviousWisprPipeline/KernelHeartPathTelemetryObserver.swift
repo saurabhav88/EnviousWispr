@@ -12,15 +12,10 @@ import Foundation
 // the `.hidden` overlay, so a UI-keyed observer would miss them.
 //
 // This observer watches RAW `kernel.state` transitions, so no terminal is
-// missed. PR-4b.1: the observer no longer claims the shared
-// `AudioCaptureInterface` callback `onXPCReplyFailed`. It is single-owner; the
-// App-side routers stay as sole subscribers. The driver's
-// `HeartPathTelemetryTarget` conformance already forwards into the observer's
-// `handleXPCReplyFailed(_:)` method via `WedgeRecoveryRouter`'s
-// `resolveActiveTelemetryTarget()` (PR-4b.4 wires the App router's Parakeet
-// branch). The capture-stall signal — which the kernel DOES consume for
-// control flow — reaches the observer the same way, through the driver's
-// `HeartPathTelemetryTarget` conformance (PR-4 §3.9).
+// missed. The capture-stall signal — which the kernel DOES consume for control
+// flow — reaches the observer through the driver's `HeartPathTelemetryTarget`
+// conformance via `WedgeRecoveryRouter`'s `resolveActiveTelemetryTarget()`
+// (PR-4 §3.9).
 //
 // PR-4a ships this production-unwired: no App-layer caller constructs it. The
 // lifecycle-event sink is injected — PR-4b supplies the production sink
@@ -146,10 +141,6 @@ final class KernelHeartPathTelemetryObserver {
       captureRebuiltForFormat: stabilization.rebuiltForFormat
     )
     emitter.stallFired(ctx: enriched, isActivelyCapturing: audioCapture.isActivelyCapturing)
-  }
-
-  func handleXPCReplyFailed(_ ctx: XPCReplyFailureContext) {
-    emitter.xpcReplyFailed(ctx: ctx)
   }
 
   // MARK: Raw-state observation

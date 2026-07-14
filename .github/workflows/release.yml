@@ -997,7 +997,7 @@ jobs:
           # First-party dSYMs we triage crashes on. The archive also ships ~5 Sparkle
           # dSYMs (Sparkle.framework / Autoupdate / Updater.app / Installer.xpc / Downloader.xpc),
           # which are uploaded too but NOT gated on (that set drifts with Sparkle versions).
-          FIRST_PARTY=(EnviousWispr.app.dSYM EnviousWisprAudioService.xpc.dSYM EnviousWisprASRService.xpc.dSYM)
+          FIRST_PARTY=(EnviousWispr.app.dSYM EnviousWisprASRService.xpc.dSYM)
           missing=0
           for b in "${FIRST_PARTY[@]}"; do
             [ -d "$DSYM_DIR/$b" ] || { echo "::error::missing first-party dSYM: $b"; missing=1; }

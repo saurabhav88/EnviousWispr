@@ -7,7 +7,7 @@ import Foundation
 // streams captured samples to an encrypted, append-only file while recording,
 // and replays it on the next launch. These value types are the contract shared
 // across process and module boundaries:
-//   - the directive the host hands the audio helper at capture start (XPC),
+//   - the directive the recording kernel hands the capture manager at capture start,
 //   - the on-disk header,
 //   - the record-time settings snapshot recovery must replay under,
 //   - the decoded frame the store yields.
@@ -110,10 +110,11 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
   }
 }
 
-/// The limb configuration the host hands the audio helper at capture start.
-/// Crosses the XPC boundary as `Data` (an `@objc` protocol cannot take a Swift
-/// struct), so it is `Codable`. `enabled == false` (or a nil/garbage payload)
-/// means the helper behaves exactly as it does today — no spool, no key use.
+/// The limb configuration the recording kernel hands the capture manager at
+/// capture start, encoded as a `Codable` `Data` payload on the
+/// `beginCapturePhase(recoveryPayload:)` seam. `enabled == false` (or a
+/// nil/garbage payload) means capture behaves exactly as it does today — no
+/// spool, no key use.
 public struct RecoverySpoolDirective: Codable, Sendable, Equatable {
   public let enabled: Bool
   /// The durable session key shared by the spool and its History entry. A

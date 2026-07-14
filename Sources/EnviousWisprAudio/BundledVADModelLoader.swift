@@ -6,8 +6,8 @@ import Foundation
 /// network-capable default `VadManager` init.
 ///
 /// `EnviousWisprAudio` is a static framework linked into multiple executables
-/// (the audio XPC service, and the main app's direct-capture-mode fallback),
-/// each with its own `Bundle.main`. This loader takes the bundle explicitly
+/// (the main app for in-process capture, and the ASR service), each with its
+/// own `Bundle.main`. This loader takes the bundle explicitly
 /// rather than assuming `.main` internally, so it resolves correctly no
 /// matter which process is calling.
 enum BundledVADModelLoader {

@@ -8,8 +8,8 @@ import Testing
 // MARK: - RecordingSessionKernel — external entry methods (epic #827, PR-4b.1)
 //
 // PR-4b.1 removed the kernel's direct subscriptions to the shared
-// `AudioCaptureInterface` callbacks (`onEngineInterrupted`, `onCaptureStalled`,
-// `onXPCServiceError`). The App-side routers stay as sole subscribers; the
+// `AudioCaptureInterface` callbacks (`onEngineInterrupted`,
+// `onCaptureStalled`). The App-side routers stay as sole subscribers; the
 // driver (PR-4b.2) forwards their signals into the kernel's three new
 // internal entry methods. These tests pin the contract for each entry:
 //
@@ -210,23 +210,23 @@ import Testing
       // the stamped `lastAudioInterruptionCause` must be first-wins too. A second
       // callback arriving after the first latched the exit (state still
       // `.recording`) must NOT overwrite the cause the `.audioInterrupted` terminal
-      // will use — else an already-owned `.xpcConnectionLost` could be replaced by
-      // a stale `.engineLost` and falsely captured (or vice-versa).
+      // will use — else a verified `.deviceRemoved` could be replaced by a stale
+      // `.engineLost` and mislabel the loss (or vice-versa).
       let (_, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
       await startToRecording(wrapper)
-      // First (latching) interruption: an already-owned XPC break → must be the
-      // cause the terminal carries (so the sink suppresses it).
-      kernel.externalEngineInterrupted(.xpcConnectionLost)
-      // Second, in the post-latch / pre-transition window: a genuine engine loss.
+      // First (latching) interruption: a verified device removal → must be the
+      // cause the terminal carries.
+      kernel.externalEngineInterrupted(.deviceRemoved)
+      // Second, in the post-latch / pre-transition window: a generic engine loss.
       // Its exit is ignored; it must NOT overwrite the stamped cause.
       kernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
 
       #expect(kernel.state == .audioInterrupted)
       #expect(
-        kernel.lastAudioInterruptionCause == .xpcConnectionLost,
+        kernel.lastAudioInterruptionCause == .deviceRemoved,
         "the FIRST (latching) cause must survive; got \(String(describing: kernel.lastAudioInterruptionCause))"
       )
     }

@@ -1,7 +1,6 @@
 import ProjectDescription
 
 let appBundleId = "com.enviouswispr.app"
-let audioServiceBundleId = "com.enviouswispr.audioservice"
 let asrServiceBundleId = "com.enviouswispr.asrservice"
 
 let deploymentTargets: DeploymentTargets = .macOS("14.0")
@@ -140,13 +139,6 @@ let appSettings = targetSettings(
     "PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.app",
     "SU_FEED_URL": "https://enviouswispr.com/appcast.xml",
   ]
-)
-
-let audioServiceSettings = targetSettings(
-  debugExtra: ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.audioservice.dev"],
-  devExtra: devSigningSettings.merging(
-    ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.audioservice.dev"]) { _, new in new },
-  releaseExtra: ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.audioservice"]
 )
 
 let asrServiceSettings = targetSettings(
@@ -311,42 +303,7 @@ let project = Project(
         .package(product: "Sparkle"),
       ]),
 
-    // ---- XPC services ----
-    .target(
-      name: "EnviousWisprAudioService",
-      destinations: .macOS,
-      product: .xpc,
-      productName: "EnviousWisprAudioService",
-      bundleId: audioServiceBundleId,
-      deploymentTargets: deploymentTargets,
-      infoPlist: .file(path: "Sources/EnviousWisprAudioService/Resources/Info.plist"),
-      // #1224: Resources/ now holds the bundled VAD model — exclude it from
-      // the source glob like every other module's Resources/ (`firstPartyLibrary`
-      // helper above does the same), so Tuist doesn't sweep the compiled
-      // `.mlmodelc`'s internal files into the compile-sources phase.
-      sources: [
-        .glob(
-          "Sources/EnviousWisprAudioService/**",
-          excluding: ["Sources/EnviousWisprAudioService/Resources/**"])
-      ],
-      resources: [
-        .folderReference(
-          path:
-            "Sources/EnviousWisprAudioService/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc"
-        )
-      ],
-      entitlements: .file(
-        path: "Sources/EnviousWisprAudioService/Resources/EnviousWisprAudioService.entitlements"),
-      dependencies: [
-        .target(name: "EnviousWisprCore"),
-        .target(name: "EnviousWisprAudio"),
-        // Sentry-only crash-reporting bootstrap for this helper (#1174).
-        .target(name: "EnviousWisprObservabilityCore"),
-        // Transitive FluidAudio C-target modules (see Pipeline note above).
-        .package(product: "FluidAudio"),
-      ],
-      settings: audioServiceSettings
-    ),
+    // ---- XPC services (audio capture is in-process since #1543; ASR stays isolated) ----
     .target(
       name: "EnviousWisprASRService",
       destinations: .macOS,
@@ -408,26 +365,24 @@ let project = Project(
         // stays eg1-manifest.json). Same Bundle.main route.
         "Sources/EnviousWispr/Resources/eg1-delivery-manifest.json",
         "Sources/EnviousWispr/Resources/llama-server",
-        // #1224: same VAD asset as the audio XPC service, for
-        // CaptureVADSignalSource's direct-capture-mode fallback
-        // (useXPCAudioService=false), which runs in THIS process, not the
-        // XPC service's. The physical file lives once, under
-        // EnviousWisprAudioService/Resources/; both targets folder-reference
-        // the same path so Tuist embeds an independent copy into each bundle.
+        // #1224 (#1543): the bundled VAD model for `CaptureVADSignalSource`'s
+        // in-process VAD loop. Relocated into the app target's own resources
+        // when audio capture came in-process and the separate capture helper
+        // was deleted. Folder-referenced so Tuist embeds the `.mlmodelc` verbatim.
         .folderReference(
           path:
-            "Sources/EnviousWisprAudioService/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc"
+            "Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc"
         ),
       ],
       entitlements: .file(path: "Sources/EnviousWispr/Resources/EnviousWispr.entitlements"),
       // #919: the thin shell links ONLY the kit (the kit static-links the
       // engine modules + WhisperKit + FluidAudio). Sparkle stays a direct app
-      // dep so Tuist embeds Sparkle.framework into the .app; the two XPC
-      // services stay direct so they bundle into Contents/XPCServices.
+      // dep so Tuist embeds Sparkle.framework into the .app; the ASR XPC
+      // service stays direct so it bundles into Contents/XPCServices (#1543:
+      // the audio capture service was removed — capture is in-process).
       dependencies: [
         .target(name: "EnviousWisprAppKit"),
         .package(product: "Sparkle"),
-        .target(name: "EnviousWisprAudioService"),
         .target(name: "EnviousWisprASRService"),
       ],
       settings: appSettings

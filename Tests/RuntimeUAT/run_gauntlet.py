@@ -41,12 +41,13 @@ from faultInjection import (  # noqa: E402
 # #1317 deterministic dead-mic cells scored A/B in Phase 1.
 
 
+# #1543: A4_audio_xpc_kill and A5_proxy_buffer_drop_watchdog were removed with
+# the audio-capture boundary (both tested deleted host-side proxy DEBUG
+# commands); audio interruption is covered by the Lane B real-hardware matrix.
 PARAKEET_GAUNTLET = [
     "A1_rapid_stop_start",
     "A2_esc_cancel",
     "A3_asr_xpc_kill",
-    "A4_audio_xpc_kill",
-    "A5_proxy_buffer_drop_watchdog",
     "A6_settings_storm",
     "A7_app_quit",
     "A9_backend_switch_mid_record",
@@ -56,8 +57,6 @@ WHISPERKIT_GAUNTLET = [
     "A1_rapid_stop_start",
     "A2_esc_cancel",
     # A3 (ASR XPC kill) is Parakeet-only — WhisperKit ASR is in-process.
-    "A4_audio_xpc_kill",
-    "A5_proxy_buffer_drop_watchdog",
     "A6_settings_storm",
     "A7_app_quit",
     "A9_backend_switch_mid_record",
@@ -71,7 +70,12 @@ def health_check(backend_key: str) -> dict:
     Checks:
       1. Active backend's pipeline state is idle/complete/ready (NOT
          error — issue #555 means error states leave the overlay stuck).
-      2. XPC helper count is sane (1-3).
+      2. XPC helper count is sane for the backend. #1543 removed the audio
+         capture helper (capture is in-process), so the only service helper left
+         is the ASR one — and WhisperKit's ASR is in-process too. Parakeet
+         therefore expects the ASR helper present (1, up to 2 across a respawn);
+         WhisperKit expects zero service helpers (up to 1 tolerated if a
+         Parakeet-backed helper lingers from a prior scenario).
       3. A recovery dictation cycle reaches a non-error terminal state.
     """
     parsed = _parse_query_state(query_state())
@@ -79,7 +83,10 @@ def health_check(backend_key: str) -> dict:
     helpers = list_xpc_service_pids()
 
     state_ok = pipeline_state in {"idle", "complete", "ready"}
-    helpers_ok = 1 <= len(helpers) <= 3
+    if backend_key == "whisperkit":
+        helpers_ok = len(helpers) <= 1
+    else:
+        helpers_ok = 1 <= len(helpers) <= 2
 
     if not state_ok:
         return {

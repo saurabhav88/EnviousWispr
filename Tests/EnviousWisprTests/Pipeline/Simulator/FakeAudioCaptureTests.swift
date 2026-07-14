@@ -81,11 +81,10 @@ struct FakeAudioCaptureTests {
     #expect(interrupted == true)
   }
 
-  @Test("XPC-only telemetry callbacks stay nil on a direct source")
-  func xpcCallbacksStayNil() {
+  @Test("Telemetry callbacks start nil on a fresh source")
+  func telemetryCallbacksStartNil() {
     let capture = FakeAudioCapture()
-    #expect(capture.onXPCServiceError == nil)
-    #expect(capture.onXPCReplyFailed == nil)
+    #expect(capture.onCaptureStalled == nil)
     #expect(capture.onRouteResolved == nil)
   }
 

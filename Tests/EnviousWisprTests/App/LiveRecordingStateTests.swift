@@ -168,11 +168,7 @@ private final class SettableAudioCapture: AudioCaptureInterface {
   var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?
   var onMaxDurationReached: (() -> Void)?
-  var onVADModelUnavailable: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
-  var onXPCServiceError: ((XPCErrorContext) -> Void)?
-  var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
-  var onAudioStartRetryResolved: ((AudioStartRetryContext) -> Void)?
   var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
   var currentCaptureSessionID: UInt64 = 0
   var isActivelyCapturing: Bool = false
@@ -219,11 +215,7 @@ private final class ObservableAudioCapture: AudioCaptureInterface {
   var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
   var onVADAutoStop: (() -> Void)?
   var onMaxDurationReached: (() -> Void)?
-  var onVADModelUnavailable: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
-  var onXPCServiceError: ((XPCErrorContext) -> Void)?
-  var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
-  var onAudioStartRetryResolved: ((AudioStartRetryContext) -> Void)?
   var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
   var currentCaptureSessionID: UInt64 = 0
   var isActivelyCapturing: Bool = false

@@ -9,7 +9,7 @@ import Foundation
 /// Responsibilities:
 /// - **Arm** a recording: mint a durable per-recording id, generate + DURABLY
 ///   store the per-session key, snapshot record-time settings, and produce the
-///   opaque directive the audio helper writes the encrypted spool from.
+///   opaque directive the in-process capture manager writes the encrypted spool from.
 /// - **Clean up on success:** once a recording's transcript is durably saved,
 ///   delete that session's spool file + key.
 /// - **Clean up on a non-saved ending (PR2):** route the kernel's terminal

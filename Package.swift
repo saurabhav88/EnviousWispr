@@ -158,16 +158,6 @@ let package = Package(
       path: "Sources/EnviousWisprAppKit"
     ),
     .executableTarget(
-      name: "EnviousWisprAudioService",
-      dependencies: [
-        "EnviousWisprCore",
-        "EnviousWisprAudio",
-        "EnviousWisprObservabilityCore",
-      ],
-      path: "Sources/EnviousWisprAudioService",
-      exclude: ["Resources"]
-    ),
-    .executableTarget(
       name: "EnviousWisprASRService",
       dependencies: [
         "EnviousWisprCore",

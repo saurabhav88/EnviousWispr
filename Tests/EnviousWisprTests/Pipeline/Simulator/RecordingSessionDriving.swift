@@ -164,7 +164,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
     minimumRecordingTicks: Int = 0,
     // #1317: deterministic by default (`true`) — real scenarios exercising
     // the muted/unknown fail-closed path override this explicitly. Avoids
-    // every other test in the 38-scenario inventory depending on the test
+    // every other test in the 37-scenario inventory depending on the test
     // machine's real microphone/mute state via the kernel's production
     // default (real CoreAudio calls).
     zeroSignalDeviceEligible: @escaping @MainActor () -> Bool = { true }
@@ -202,7 +202,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
         case .clipboardOnly, .none: return .clipboardOnly
         }
       },
-      // PR-4.5 #4 (Codex r3): the simulator's 38-scenario inventory does not
+      // PR-4.5 #4 (Codex r3): the simulator's 37-scenario inventory does not
       // advance the FakeClock between start and stop, so a positive
       // minimum-recording threshold would discard most scenarios. The
       // dedicated #4 coverage lives in `ConductorParitySeamTests`.
