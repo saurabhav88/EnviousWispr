@@ -18,46 +18,54 @@ import Testing
 
   // MARK: RecordingSessionState -> PipelineState map (pure, total)
 
-  @Test("the state map is total and isActive holds for every active kernel state")
+  @Test(
+    "the state map is total: every in-flight state is active, every outcome maps to its surface")
   func stateMapIsTotal() {
-    func mapped(_ s: RecordingSessionState) -> PipelineState {
-      KernelDictationDriver.pipelineState(for: s, externalError: nil)
+    func mappedState(_ s: RecordingSessionState, phase: DeliveringPhase = .transcribing)
+      -> PipelineState
+    {
+      KernelDictationDriver.pipelineState(
+        for: s, outcome: nil, deliveringPhase: phase, externalError: nil)
     }
-    // Idle-class terminals collapse to idle (silent — no error surface).
-    #expect(mapped(.idle) == .idle)
-    #expect(mapped(.cancelled) == .idle)
-    #expect(mapped(.discarded) == .idle)
-    #expect(mapped(.noSpeech) == .idle)
-    // Active states — every one must report `isActive` so the backend-switch
-    // guard (`PipelineSettingsSync`, §3.13) sees the kernel session as active.
-    for s: RecordingSessionState in [
-      .preparing, .warmingUp, .recording, .stopping, .transcribing, .finalizing,
+    func mappedOutcome(_ o: RecordingOutcome) -> PipelineState {
+      KernelDictationDriver.pipelineState(for: .idle, outcome: o, externalError: nil)
+    }
+    // In-flight states (#1548 D1) — every active state must report `isActive` so
+    // the backend-switch guard (`PipelineSettingsSync`, §3.13) sees the kernel
+    // session as active.
+    for s: RecordingSessionState in [.arming, .live, .stopping, .delivering] {
+      #expect(mappedState(s).isActive, "\(s) must map to an active PipelineState")
+    }
+    #expect(mappedState(.idle) == .idle)
+    #expect(mappedState(.live) == .recording)
+    #expect(mappedState(.delivering, phase: .transcribing) == .transcribing)
+    #expect(mappedState(.delivering, phase: .finalizing(.transcribing)) == .polishing)
+    // Concluded outcomes — the ending category moved onto `recordingOutcome`,
+    // the state has returned to `.idle`. Idle-class endings collapse to idle
+    // (silent — no error surface).
+    #expect(mappedOutcome(.completed) == .complete)
+    #expect(mappedOutcome(.cancelled) == .idle)
+    #expect(mappedOutcome(.discarded(.tooShort)) == .idle)
+    #expect(mappedOutcome(.noSpeech(.vadGate)) == .idle)
+    // Error-surface endings.
+    for o: RecordingOutcome in [
+      .failed(.asrEmpty), .audioInterrupted(nil), .asrInterrupted(wasRecording: true),
+      .noTransport,
     ] {
-      #expect(mapped(s).isActive, "\(s) must map to an active PipelineState")
-    }
-    #expect(mapped(.recording) == .recording)
-    #expect(mapped(.completed) == .complete)
-    // Error-surface terminals.
-    if case .error = mapped(.failed(.asrEmpty)) {
-    } else {
-      Issue.record("failed should map to .error")
-    }
-    if case .error = mapped(.audioInterrupted) {
-    } else {
-      Issue.record("audioInterrupted should map to .error")
-    }
-    if case .error = mapped(.asrInterrupted) {
-    } else {
-      Issue.record("asrInterrupted should map to .error")
+      if case .error = mappedOutcome(o) {
+      } else {
+        Issue.record("\(o) should map to .error")
+      }
     }
   }
 
   @Test("an external error overrides the mapped state")
   func externalErrorOverridesState() {
     #expect(
-      KernelDictationDriver.pipelineState(for: .idle, externalError: "boom") == .error("boom"))
+      KernelDictationDriver.pipelineState(for: .idle, outcome: nil, externalError: "boom")
+        == .error("boom"))
     #expect(
-      KernelDictationDriver.pipelineState(for: .recording, externalError: "boom")
+      KernelDictationDriver.pipelineState(for: .live, outcome: nil, externalError: "boom")
         == .error("boom"))
   }
 
@@ -99,8 +107,8 @@ import Testing
   func toggleRecordingStarts() async throws {
     let h = makeDriver()
     try await h.driver.handle(event: .toggleRecording(.testDefault()))
-    await drainUntil { h.kernel.state == .recording }
-    #expect(h.kernel.state == .recording)
+    await drainUntil { h.kernel.state == .live }
+    #expect(h.kernel.state == .live)
     #expect(h.driver.state == .recording)
   }
 
@@ -110,7 +118,7 @@ import Testing
     #expect(h.driver.recordingElapsedSeconds == nil, "idle → nil, matching the kernel directly")
 
     try await h.driver.handle(event: .toggleRecording(.testDefault()))
-    await drainUntil { h.kernel.state == .recording }
+    await drainUntil { h.kernel.state == .live }
 
     #expect(h.driver.recordingElapsedSeconds != nil)
     #expect(h.driver.recordingElapsedSeconds == h.kernel.recordingElapsedSeconds)
@@ -120,10 +128,10 @@ import Testing
   func toggleRecordingWhileActiveStops() async throws {
     let h = makeDriver()
     try await h.driver.handle(event: .toggleRecording(.testDefault()))
-    await drainUntil { h.kernel.state == .recording }
+    await drainUntil { h.kernel.state == .live }
     try await h.driver.handle(event: .toggleRecording(.testDefault()))
-    await drainUntil { h.kernel.state.isTerminal }
-    #expect(h.kernel.state.isTerminal, "the second toggle drove the session to a terminal")
+    await drainUntil { h.kernel.recordingOutcome != nil }
+    #expect(h.kernel.recordingOutcome != nil, "the second toggle drove the session to a terminal")
   }
 
   // MARK: External-error surface
@@ -141,7 +149,7 @@ import Testing
     let h = makeDriver()
     h.driver.setExternalError("device unplugged")
     try await h.driver.handle(event: .toggleRecording(.testDefault()))
-    await drainUntil { h.kernel.state == .recording }
+    await drainUntil { h.kernel.state == .live }
     #expect(h.driver.state != .error("device unplugged"))
   }
 
@@ -183,9 +191,10 @@ import Testing
         NSError(
           domain: "test", code: 1,
           userInfo: [NSLocalizedDescriptionKey: "vram exhausted"]))
-      // Walk to .failed(.modelLoadFailed) through legal edges.
-      #expect(h.kernel.testForceTransition(to: .preparing))
-      #expect(h.kernel.testForceTransition(to: .failed(.modelLoadFailed)))
+      // Conclude on .failed(.modelLoadFailed) — the ending category is an
+      // outcome now, not an FSM state (#1548 D1).
+      #expect(h.kernel.testForceTransition(to: .arming))
+      h.kernel.testForceConclude(.failed(.modelLoadFailed))
       // Both the lifecycle-coordinator state read AND the visible overlay
       // must carry the enriched detail; an unenriched overlay was the bug
       // Codex flagged on the initial Div 4 patch.
@@ -206,10 +215,11 @@ import Testing
       h.driver.contextForTesting.config = DictationSessionConfig.testDefault()
       #expect(h.driver.contextForTesting.targetApp != nil)
       #expect(h.driver.contextForTesting.config != nil)
-      // Walk the kernel to a terminal — `idle → preparing → cancelled` is
-      // legal and reaches a terminal-or-idle bucket the observer will see.
-      #expect(h.kernel.testForceTransition(to: .preparing))
-      #expect(h.kernel.testForceTransition(to: .cancelled))
+      // Conclude the kernel — `idle → arming` then a `.cancelled` conclusion
+      // returns the FSM to `.idle` with the ending on `recordingOutcome`
+      // (#1548 D1), which the observer sees.
+      #expect(h.kernel.testForceTransition(to: .arming))
+      h.kernel.testForceConclude(.cancelled)
       // The observer hops to @MainActor via Task; drain until the cleanup
       // observes the terminal.
       await drainUntil { h.driver.contextForTesting.targetApp == nil }
@@ -240,8 +250,8 @@ import Testing
       // Force a terminal — the driver's observer-driven cleanup must stamp
       // the bundle id (or nil if the test process has none) into the
       // snapshot BEFORE nulling context.targetApp.
-      #expect(h.kernel.testForceTransition(to: .preparing))
-      #expect(h.kernel.testForceTransition(to: .cancelled))
+      #expect(h.kernel.testForceTransition(to: .arming))
+      h.kernel.testForceConclude(.cancelled)
       await drainUntil { h.driver.contextForTesting.targetApp == nil }
       #expect(h.driver.contextForTesting.targetApp == nil)
       // Regardless of whether `bundleIdentifier` returned nil or a real
@@ -261,11 +271,11 @@ import Testing
       // Walk to .finalizing — the safe-point window where the in-flight
       // session may still legitimately reach `.completed` and history +
       // completion telemetry must see the saved transcript.
-      #expect(h.kernel.testForceTransition(to: .preparing))
-      #expect(h.kernel.testForceTransition(to: .recording))
+      #expect(h.kernel.testForceTransition(to: .arming))
+      #expect(h.kernel.testForceTransition(to: .live))
       #expect(h.kernel.testForceTransition(to: .stopping))
-      #expect(h.kernel.testForceTransition(to: .transcribing))
-      #expect(h.kernel.testForceTransition(to: .finalizing))
+      #expect(h.kernel.testForceTransition(to: .delivering))
+      h.kernel.testSetDeliveringPhase(.finalizing(.transcribing))
       h.outcome.transcript = Transcript(text: "in-flight save")
       h.driver.reset()
       #expect(h.driver.currentTranscript?.text == "in-flight save")
@@ -306,11 +316,11 @@ import Testing
       // Mirror the transcript safe-point contract: a reset arriving during the
       // finalizing window must not erase the in-flight outcome before
       // `.completed` is observed for completion telemetry.
-      #expect(h.kernel.testForceTransition(to: .preparing))
-      #expect(h.kernel.testForceTransition(to: .recording))
+      #expect(h.kernel.testForceTransition(to: .arming))
+      #expect(h.kernel.testForceTransition(to: .live))
       #expect(h.kernel.testForceTransition(to: .stopping))
-      #expect(h.kernel.testForceTransition(to: .transcribing))
-      #expect(h.kernel.testForceTransition(to: .finalizing))
+      #expect(h.kernel.testForceTransition(to: .delivering))
+      h.kernel.testSetDeliveringPhase(.finalizing(.transcribing))
       h.outcome.polishError = "in-flight polish error"
       h.driver.reset()
       #expect(h.driver.lastPolishError == "in-flight polish error")
@@ -326,11 +336,11 @@ import Testing
       var pushed: [OverlayIntent] = []
       h.driver.onOverlayIntentChange = { pushed.append($0) }
       // Walk to the finalizing safe-point (sub-status defaults to .transcribing).
-      #expect(h.kernel.testForceTransition(to: .preparing))
-      #expect(h.kernel.testForceTransition(to: .recording))
+      #expect(h.kernel.testForceTransition(to: .arming))
+      #expect(h.kernel.testForceTransition(to: .live))
       #expect(h.kernel.testForceTransition(to: .stopping))
-      #expect(h.kernel.testForceTransition(to: .transcribing))
-      #expect(h.kernel.testForceTransition(to: .finalizing))
+      #expect(h.kernel.testForceTransition(to: .delivering))
+      h.kernel.testSetDeliveringPhase(.finalizing(.transcribing))
       // The polish step's onWillProcess equivalent — flip to .polishing.
       h.kernel.testSetFinalizingSubStatus(.polishing)
       await drainUntil { pushed.last == .processing(label: "Polishing...") }
@@ -361,28 +371,31 @@ import Testing
       var pushed: [OverlayIntent] = []
       h.driver.onOverlayIntentChange = { pushed.append($0) }
       // Session 1 → finalizing → polishing.
-      #expect(h.kernel.testForceTransition(to: .preparing))
-      #expect(h.kernel.testForceTransition(to: .recording))
+      #expect(h.kernel.testForceTransition(to: .arming))
+      #expect(h.kernel.testForceTransition(to: .live))
       #expect(h.kernel.testForceTransition(to: .stopping))
-      #expect(h.kernel.testForceTransition(to: .transcribing))
-      #expect(h.kernel.testForceTransition(to: .finalizing))
+      #expect(h.kernel.testForceTransition(to: .delivering))
+      h.kernel.testSetDeliveringPhase(.finalizing(.transcribing))
       h.kernel.testSetFinalizingSubStatus(.polishing)
       await drainUntil { pushed.last == .processing(label: "Polishing...") }
       let afterSession1 = pushed.count
       #expect(afterSession1 >= 1)
-      // End session 1 and reproduce the kill window: the sub-status resets to
-      // .transcribing while the kernel is NOT finalizing (terminal). If the
-      // re-arm sat behind the .finalizing guard, the observation would die here.
-      #expect(h.kernel.testForceTransition(to: .completed))
-      h.kernel.testSetFinalizingSubStatus(.transcribing)
+      // End session 1 and reproduce the kill window: the delivering phase
+      // resets to .transcribing while the kernel is NOT delivering (concluded +
+      // reset). If the re-arm sat behind the delivering guard, the observation
+      // would die here. `reset()` clears the outcome barrier so session 2 can
+      // start clean (#1548 D1 inter-session reset).
+      h.kernel.testForceConclude(.completed)
+      h.kernel.reset()
+      h.kernel.testSetDeliveringPhase(.transcribing)
       for _ in 0..<50 { await Task.yield() }
       // Session 2 → finalizing → polishing again. The push MUST fire a second
       // time, proving the observation re-armed across the reset.
-      #expect(h.kernel.testForceTransition(to: .preparing))
-      #expect(h.kernel.testForceTransition(to: .recording))
+      #expect(h.kernel.testForceTransition(to: .arming))
+      #expect(h.kernel.testForceTransition(to: .live))
       #expect(h.kernel.testForceTransition(to: .stopping))
-      #expect(h.kernel.testForceTransition(to: .transcribing))
-      #expect(h.kernel.testForceTransition(to: .finalizing))
+      #expect(h.kernel.testForceTransition(to: .delivering))
+      h.kernel.testSetDeliveringPhase(.finalizing(.transcribing))
       h.kernel.testSetFinalizingSubStatus(.polishing)
       await drainUntil {
         pushed.count > afterSession1 && pushed.last == .processing(label: "Polishing...")
@@ -400,7 +413,7 @@ import Testing
       // Warm the engine so `adapter.readiness == .ready` (no .warmingUp follows).
       try await h.adapter.warmUp()
       #expect(h.adapter.readiness == .ready)
-      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .arming))
       // Same intent the real `.recording` emits, so the overlay is created once
       // at press time and the real `.recording` dedups into it (UAT 2026-05-31:
       // `.hidden` here caused a tear-down/rebuild stutter; the label was a
@@ -408,23 +421,18 @@ import Testing
       #expect(h.driver.overlayIntent == .recording(audioLevel: 0))
     }
 
-    @Test("a COLD .preparing surfaces the cold-boot pill, not the bare wall (#879)")
+    @Test("a COLD arming surfaces the cold-boot pill, not the bare wall (#879)")
     func coldPreparingShowsCachingPill() {
       let h = makeDriver()
-      // Fresh adapter is `.notReady` — a real `.warmingUp` load will follow.
+      // Fresh adapter is `.notReady` — a real cold model load is running. #1548
+      // D1 folded the old `.preparing` + `.warmingUp` cold states into `.arming`;
+      // the cold-vs-warm pill choice is driven by adapter readiness, not by a
+      // distinct warming-up state (this test absorbed the old
+      // `warmingUpShowsCachingPill`, which is now identical to it).
       #expect(h.adapter.readiness == .notReady)
-      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .arming))
       // #879: the bare "Preparing dictation…" wall is unreachable on a cold
       // path; the honest cold-boot pill (engine-named) replaces it.
-      #expect(h.driver.overlayIntent == .cachingModel(engineLabel: "Parakeet v3"))
-    }
-
-    @Test(".warmingUp surfaces the cold-boot pill (a real cold load is running) (#879)")
-    func warmingUpShowsCachingPill() {
-      let h = makeDriver()
-      // .warmingUp is only reached on a cold load, so the cold-boot pill is honest.
-      #expect(h.kernel.testForceTransition(to: .preparing))
-      #expect(h.kernel.testForceTransition(to: .warmingUp))
       #expect(h.driver.overlayIntent == .cachingModel(engineLabel: "Parakeet v3"))
     }
   #endif

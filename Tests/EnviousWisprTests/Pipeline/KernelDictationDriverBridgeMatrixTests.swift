@@ -73,47 +73,59 @@ import Testing
       for _ in 0..<100 { await Task.yield() }
     }
 
-    /// Drive the kernel to the target state via a legal path. The
-    /// forbidden-transition guard rejects gross jumps (`.preparing → .completed`),
-    /// so this helper walks the FSM.
-    private func forceState(
-      _ kernel: RecordingSessionKernel, to target: RecordingSessionState
-    ) async {
-      let path: [RecordingSessionState]
-      switch target {
+    /// A kernel configuration the bridge matrix parks the fixture in. #1548 D1
+    /// collapsed the FSM to 5 states and moved the ending category onto
+    /// `recordingOutcome`; the two `delivering` sub-phases are kept distinct
+    /// because the driver's ASR-interruption routing branches on them
+    /// (`.transcribing` routes to the kernel, `.finalizing(_)` is the cancel /
+    /// ASR-interrupt safe point that takes the driver fallback).
+    private enum Placement: CustomStringConvertible {
+      case idle
+      case arming
+      case live
+      case stopping
+      case deliveringTranscribing
+      case deliveringFinalizing
+      /// A concluded session: `recordingOutcome` is set and the FSM is back at
+      /// `.idle`. Stands in for the old terminal states (`.completed`, …).
+      case concluded(RecordingOutcome)
+
+      var description: String {
+        switch self {
+        case .idle: return "idle"
+        case .arming: return "arming"
+        case .live: return "live"
+        case .stopping: return "stopping"
+        case .deliveringTranscribing: return "delivering(.transcribing)"
+        case .deliveringFinalizing: return "delivering(.finalizing)"
+        case .concluded(let o): return "concluded(\(o))"
+        }
+      }
+    }
+
+    /// Park the kernel in `placement`. The matrix asserts the driver's behavior
+    /// for a given kernel configuration, not the path taken to reach it, so the
+    /// test seams set the state / phase / outcome directly.
+    private func place(_ kernel: RecordingSessionKernel, in placement: Placement) async {
+      switch placement {
       case .idle:
-        path = []  // resting state — no transitions needed
-      case .preparing:
-        path = [.preparing]
-      case .warmingUp:
-        path = [.preparing, .warmingUp]
-      case .recording:
-        path = [.preparing, .recording]
+        break  // resting state — the fixture starts here
+      case .arming:
+        kernel.testForceState(.arming)
+      case .live:
+        kernel.testForceState(.live)
       case .stopping:
-        path = [.preparing, .recording, .stopping]
-      case .transcribing:
-        path = [.preparing, .recording, .stopping, .transcribing]
-      case .finalizing:
-        path = [.preparing, .recording, .stopping, .transcribing, .finalizing]
-      case .completed:
-        path = [.preparing, .recording, .stopping, .transcribing, .finalizing, .completed]
-      case .cancelled:
-        path = [.preparing, .cancelled]
-      case .discarded:
-        path = [.preparing, .discarded]
-      case .noSpeech:
-        path = [.preparing, .recording, .stopping, .transcribing, .noSpeech]
-      case .failed:
-        path = [.preparing, .failed(.asrEmpty)]
-      case .audioInterrupted:
-        path = [.preparing, .audioInterrupted]
-      case .asrInterrupted:
-        path = [.preparing, .asrInterrupted]
+        kernel.testForceState(.stopping)
+      case .deliveringTranscribing:
+        kernel.testForceState(.delivering)
+        kernel.testSetDeliveringPhase(.transcribing)
+      case .deliveringFinalizing:
+        kernel.testForceState(.delivering)
+        kernel.testSetDeliveringPhase(.finalizing(.transcribing))
+      case .concluded(let outcome):
+        kernel.testForceConclude(outcome)
       }
-      for step in path {
-        kernel.testForceTransition(to: step)
-        await drain()
-      }
+      await drain()
     }
 
     // MARK: Helper — assert PipelineState equality (custom because
@@ -139,46 +151,52 @@ import Testing
       // is covered by the inventory scenario tests + the live UAT at
       // PR-4b.4. The matrix freeze focuses on the no-op cases — the gap
       // Codex flagged.
-      for state: RecordingSessionState in [
-        .idle, .preparing, .warmingUp, .stopping, .transcribing, .finalizing,
+      for placement: Placement in [
+        .idle, .arming, .stopping, .deliveringTranscribing, .deliveringFinalizing,
       ] {
         let fx = makeFixture()
-        await forceState(fx.kernel, to: state)
+        await place(fx.kernel, in: placement)
         let priorState = fx.kernel.state
         await fx.driver.stopAndTranscribe()
         await drain()
         #expect(
           fx.kernel.state == priorState,
-          "stopAndTranscribe from \(state) must be a no-op; kernel changed to \(fx.kernel.state)")
+          "stopAndTranscribe from \(placement) must be a no-op; kernel changed to \(fx.kernel.state)"
+        )
       }
     }
 
     // MARK: 2. handleASRServiceInterruption matrix
 
-    @Test("handleASRServiceInterruption: .recording / .transcribing routes via kernel (matrix #2)")
+    @Test(
+      "handleASRServiceInterruption: .live / delivering(.transcribing) routes via kernel (matrix #2)"
+    )
     func asrInterruptionRecordingOrTranscribing() async {
-      // `.recording → .asrInterrupted` depends on the live recording-exit
+      // `.live → .asrInterrupted` depends on the live recording-exit
       // continuation that the real forward path creates — the forced-state
       // fixture has no continuation, so this matrix freeze covers only
-      // `.transcribing`, which routes through `finishTerminal` directly.
-      // Recording-positive coverage lives in the kernel's external-entry
-      // scenario tests (`RecordingSessionKernelExternalInterruptionTests`).
+      // `delivering(.transcribing)`, which concludes through `finishTerminal`
+      // directly. Recording-positive coverage lives in the kernel's
+      // external-entry scenario tests (`RecordingSessionKernelExternalInterruptionTests`).
       let fx = makeFixture()
-      await forceState(fx.kernel, to: .transcribing)
+      await place(fx.kernel, in: .deliveringTranscribing)
       fx.driver.handleASRServiceInterruption()
       await drain()
-      if case .asrInterrupted = fx.kernel.state {
+      if case .asrInterrupted = fx.kernel.recordingOutcome {
       } else {
         Issue.record(
-          "asrInterruption from .transcribing must reach .asrInterrupted; got \(fx.kernel.state)")
+          "asrInterruption from delivering(.transcribing) must conclude .asrInterrupted; got outcome \(String(describing: fx.kernel.recordingOutcome))"
+        )
       }
     }
 
-    @Test("handleASRServiceInterruption: L/S/F bridges to driver error (matrix #2)")
+    @Test(
+      "handleASRServiceInterruption: arming/stopping/delivering(.finalizing) bridges to driver error (matrix #2)"
+    )
     func asrInterruptionBridgesActiveNonRoutable() async {
-      for state: RecordingSessionState in [.preparing, .warmingUp, .stopping, .finalizing] {
+      for placement: Placement in [.arming, .stopping, .deliveringFinalizing] {
         let fx = makeFixture()
-        await forceState(fx.kernel, to: state)
+        await place(fx.kernel, in: placement)
         fx.driver.handleASRServiceInterruption()
         await drain()
         // The driver's setExternalError sets the .error state; the kernel
@@ -188,11 +206,11 @@ import Testing
       }
     }
 
-    @Test("handleASRServiceInterruption: idle/terminal is a no-op (matrix #2)")
+    @Test("handleASRServiceInterruption: idle/concluded is a no-op (matrix #2)")
     func asrInterruptionIdleOrTerminalIsNoOp() async {
-      for state: RecordingSessionState in [.idle, .completed] {
+      for placement: Placement in [.idle, .concluded(.completed)] {
         let fx = makeFixture()
-        await forceState(fx.kernel, to: state)
+        await place(fx.kernel, in: placement)
         let priorPipelineState = fx.driver.state
         fx.driver.handleASRServiceInterruption()
         await drain()
@@ -223,22 +241,22 @@ import Testing
     func engineInterruptionBridgesActiveNonRecording(
       cause: EngineInterruptionCause, expected: String
     ) async {
-      for state: RecordingSessionState in [
-        .preparing, .warmingUp, .stopping, .transcribing, .finalizing,
+      for placement: Placement in [
+        .arming, .stopping, .deliveringTranscribing, .deliveringFinalizing,
       ] {
         let fx = makeFixture()
-        await forceState(fx.kernel, to: state)
+        await place(fx.kernel, in: placement)
         fx.driver.handleEngineInterruption(cause)
         await drain()
         assertDriverIsError(fx.driver, contains: expected)
       }
     }
 
-    @Test("handleEngineInterruption: idle/terminal is a no-op (matrix #4)")
+    @Test("handleEngineInterruption: idle/concluded is a no-op (matrix #4)")
     func engineInterruptionIdleOrTerminalIsNoOp() async {
-      for state: RecordingSessionState in [.idle, .completed] {
+      for placement: Placement in [.idle, .concluded(.completed)] {
         let fx = makeFixture()
-        await forceState(fx.kernel, to: state)
+        await place(fx.kernel, in: placement)
         let priorPipelineState = fx.driver.state
         fx.driver.handleEngineInterruption(.engineLost)
         await drain()
@@ -257,7 +275,7 @@ import Testing
       // `.idle` without waiting on the full FSM. `.recording` reset is a
       // post-PR-4b.4 Live UAT scenario (the full cycle has to unwind).
       let fx = makeFixture()
-      await forceState(fx.kernel, to: .preparing)
+      await place(fx.kernel, in: .arming)
       // #881 TO-4: seed an external error so the driver's public state reports
       // .error(...) via the mapper short-circuit, then prove reset() clears it.
       // The old test ended in `_ = fx.driver.state  // no crash on read`, which
