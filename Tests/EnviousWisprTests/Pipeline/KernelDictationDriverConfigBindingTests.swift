@@ -87,85 +87,75 @@ import Testing
       // No equality on PolishInstructions to assert further.
     }
 
-    // MARK: 2. currentSessionConfig clears in each of the 8 idle/terminal states
+    // MARK: 2. currentSessionConfig clears on each ending outcome (#1548 D1)
+    // The ending category moved onto `recordingOutcome`; a conclusion returns
+    // the FSM to `.idle`, which is the "no in-flight session" state that clears
+    // the config. Each outcome is exercised.
 
-    @Test("currentSessionConfig clears when the kernel reaches .completed")
+    @Test("currentSessionConfig clears when the session concludes .completed")
     func clearsOnCompleted() async {
-      await assertClears(targetState: .completed)
+      await assertClears(outcome: .completed)
     }
 
-    @Test("currentSessionConfig clears when the kernel reaches .cancelled")
+    @Test("currentSessionConfig clears when the session concludes .cancelled")
     func clearsOnCancelled() async {
-      await assertClears(targetState: .cancelled)
+      await assertClears(outcome: .cancelled)
     }
 
-    @Test("currentSessionConfig clears when the kernel reaches .discarded")
+    @Test("currentSessionConfig clears when the session concludes .discarded")
     func clearsOnDiscarded() async {
-      await assertClears(targetState: .discarded)
+      await assertClears(outcome: .discarded(.tooShort))
     }
 
-    @Test("currentSessionConfig clears when the kernel reaches .noSpeech")
+    @Test("currentSessionConfig clears when the session concludes .noSpeech")
     func clearsOnNoSpeech() async {
-      await assertClears(targetState: .noSpeech)
+      await assertClears(outcome: .noSpeech(.vadGate))
     }
 
-    @Test("currentSessionConfig clears when the kernel reaches .failed")
+    @Test("currentSessionConfig clears when the session concludes .failed")
     func clearsOnFailed() async {
-      await assertClears(targetState: .failed(.asrEmpty))
+      await assertClears(outcome: .failed(.asrEmpty))
     }
 
-    @Test("currentSessionConfig clears when the kernel reaches .audioInterrupted")
+    @Test("currentSessionConfig clears when the session concludes .audioInterrupted")
     func clearsOnAudioInterrupted() async {
-      await assertClears(targetState: .audioInterrupted)
+      await assertClears(outcome: .audioInterrupted(nil))
     }
 
-    @Test("currentSessionConfig clears when the kernel reaches .asrInterrupted")
+    @Test("currentSessionConfig clears when the session concludes .asrInterrupted")
     func clearsOnASRInterrupted() async {
-      await assertClears(targetState: .asrInterrupted)
+      await assertClears(outcome: .asrInterrupted(wasRecording: true))
     }
 
-    private func assertClears(targetState: RecordingSessionState) async {
+    @Test("currentSessionConfig clears when the session concludes .noTransport")
+    func clearsOnNoTransport() async {
+      await assertClears(outcome: .noTransport)
+    }
+
+    private func assertClears(outcome: RecordingOutcome) async {
       let fx = makeFixture()
       fx.context.config = .testDefault()
-      // Drive the kernel from .idle through legal intermediates to the
-      // terminal under test. `.completed` and `.noSpeech` cannot be reached
-      // directly from `.preparing` (the forbidden-transition guard rejects),
-      // so this helper walks the legal forward path long enough that the
-      // target state is always reachable. The observer's state-change task
-      // is async, so drain the queue before reading.
-      for step in legalPath(to: targetState) {
-        fx.kernel.testForceTransition(to: step)
-        await drain()
-      }
+      // Arm a session, then conclude on the outcome under test. The conclusion
+      // returns the FSM to `.idle`; the driver's observer-driven cleanup fires
+      // `clearContextConfigIfTerminalOrIdle` there. The observer's state-change
+      // task is async, so drain the queue before reading.
+      fx.kernel.testForceState(.arming)
+      await drain()
+      fx.kernel.testForceConclude(outcome)
+      await drain()
       #expect(
         fx.driver.currentSessionConfig == nil,
-        "\(targetState) is a 'no in-flight session' state; context.config must clear")
-    }
-
-    /// Build a legal forward-path sequence ending in `target`. Mirrors the
-    /// `RecordingSessionState` transition graph documented at
-    /// `RecordingSessionKernel.swift:55-68`.
-    private func legalPath(to target: RecordingSessionState) -> [RecordingSessionState] {
-      switch target {
-      case .completed:
-        return [.preparing, .recording, .stopping, .transcribing, .finalizing, .completed]
-      case .noSpeech:
-        return [.preparing, .recording, .stopping, .transcribing, .noSpeech]
-      default:
-        return [.preparing, target]
-      }
+        "\(outcome) concluded the session; context.config must clear")
     }
 
     // MARK: 3. currentSessionConfig stays non-nil across active states
 
-    @Test("currentSessionConfig stays non-nil across the 6 active states")
+    @Test("currentSessionConfig stays non-nil across every active state")
     func staysNonNilWhileActive() async {
       let fx = makeFixture()
       fx.context.config = .testDefault()
-      for active: RecordingSessionState in [
-        .preparing, .warmingUp, .recording, .stopping, .transcribing, .finalizing,
-      ] {
-        fx.kernel.testForceTransition(to: active)
+      for active: RecordingSessionState in [.arming, .live, .stopping, .delivering] {
+        fx.kernel.testForceState(active)
         await drain()
         #expect(
           fx.driver.currentSessionConfig != nil,
@@ -175,20 +165,19 @@ import Testing
 
     // MARK: 4. BT-disconnect scenario — audioInterrupted clears context.config
 
-    @Test("BT-disconnect scenario: audioInterrupted clears context.config")
+    @Test("BT-disconnect scenario: an audio-interrupted conclusion clears context.config")
     func btDisconnectClearsConfig() async {
       let fx = makeFixture()
       fx.context.config = .testDefault()
-      fx.kernel.testForceTransition(to: .preparing)
-      await drain()
-      fx.kernel.testForceTransition(to: .recording)
+      fx.kernel.testForceState(.live)
       await drain()
       #expect(fx.driver.currentSessionConfig != nil)
-      fx.kernel.testForceTransition(to: .audioInterrupted)
+      fx.kernel.testForceConclude(.audioInterrupted(.deviceRemoved))
       await drain()
       #expect(
         fx.driver.currentSessionConfig == nil,
-        "audioInterrupted reached terminal; backend-switch guard must see nil")
+        "the audio-interrupted conclusion returned the FSM to idle; backend-switch guard must see nil"
+      )
     }
   }
 

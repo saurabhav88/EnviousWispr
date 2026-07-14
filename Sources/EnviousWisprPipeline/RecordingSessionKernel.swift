@@ -3529,5 +3529,14 @@ final class RecordingSessionKernel {
     {
       interruptedTerminalFloor(outcome)
     }
+
+    /// #1548 D1 test seam — surface `isLegalConclusion` against the kernel's
+    /// CURRENT `state` + `deliveringPhase` so a suite can walk the FSM to a state
+    /// and assert which outcomes may legally conclude from it (the safe-point
+    /// legality the old 14-state `isLegalTransition` terminal edges used to
+    /// carry, #1358). Mirrors how `finishTerminal` calls it.
+    func testIsLegalConclusion(_ outcome: RecordingOutcome) -> Bool {
+      isLegalConclusion(outcome: outcome, from: state, deliveringPhase: deliveringPhase)
+    }
   #endif
 }

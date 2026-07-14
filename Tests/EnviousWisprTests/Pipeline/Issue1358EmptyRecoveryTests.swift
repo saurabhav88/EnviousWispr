@@ -216,33 +216,32 @@ private final class SavedBox {
   struct Issue1358EmptyRecoveryFSMTests {
 
     @Test(
-      "finalizing legal terminal set is exactly {.completed, .failed, .noSpeech, .audioInterrupted}",
+      "the finalizing safe point admits exactly {.completed, .failed, .noSpeech, .audioInterrupted}",
       .bug(
         "https://github.com/saurabhav88/EnviousWispr/issues/1358",
-        "an illegal finalizing → noSpeech/audioInterrupted would silently wedge the session"
+        "an illegal finalizing → noSpeech/audioInterrupted conclusion would silently wedge the session"
       ))
     func finalizingAllowedTerminalSet() {
-      // The four legal terminals — each on a fresh kernel walked to finalizing
-      // (a successful transition leaves finalizing).
-      for terminal in [
-        RecordingSessionState.completed, .failed(.asrEmpty), .noSpeech, .audioInterrupted,
-      ] {
-        let kernel = freshKernelAtFinalizing()
-        #expect(
-          kernel.testForceTransition(to: terminal) == true,
-          "\(terminal) must be a legal terminal from finalizing")
-      }
-      // Every other target is rejected (the safe point holds). All false on one
-      // kernel since a rejected transition leaves it in finalizing.
+      // #1548 D1: the ending category moved onto `recordingOutcome`; the safe
+      // point's legality is now `isLegalConclusion` from `.delivering(.finalizing)`.
       let kernel = freshKernelAtFinalizing()
-      for forbidden in [
-        RecordingSessionState.idle, .preparing, .warmingUp, .recording, .stopping,
-        .transcribing, .finalizing, .cancelled, .discarded, .asrInterrupted,
+      // The four legal conclusions from the finalizing safe point.
+      for outcome: RecordingOutcome in [
+        .completed, .failed(.asrEmpty), .noSpeech(.asrEmptyNoSpeech), .audioInterrupted(nil),
       ] {
         #expect(
-          kernel.testForceTransition(to: forbidden) == false,
-          "\(forbidden) must be rejected from finalizing")
-        #expect(kernel.state == .finalizing, "a rejected transition leaves the safe point intact")
+          kernel.testIsLegalConclusion(outcome),
+          "\(outcome) must be a legal conclusion from the finalizing safe point")
+      }
+      // Every other outcome is refused — the safe point admits no cancel,
+      // discard, ASR-interrupt, or no-transport once a transcript is in hand.
+      for forbidden: RecordingOutcome in [
+        .cancelled, .discarded(.tooShort), .asrInterrupted(wasRecording: false),
+        .asrInterrupted(wasRecording: true), .noTransport,
+      ] {
+        #expect(
+          !kernel.testIsLegalConclusion(forbidden),
+          "\(forbidden) must be refused from the finalizing safe point")
       }
     }
 
@@ -254,12 +253,16 @@ private final class SavedBox {
       // #1408 crash-recovery spool is retained.
       let interrupted = freshKernelAtFinalizing()
       interrupted.testSetInterruptionCause(.engineLost)
-      #expect(interrupted.testInterruptedTerminalFloor(.noSpeech) == .audioInterrupted)
+      #expect(
+        interrupted.testInterruptedTerminalFloor(.noSpeech(.asrEmptyNoSpeech)).kind
+          == .audioInterrupted)
 
       // With no interruption, the clean cold-mic filler stays quiet no-speech.
       let clean = freshKernelAtFinalizing()
       clean.testSetInterruptionCause(nil)
-      #expect(clean.testInterruptedTerminalFloor(.noSpeech) == .noSpeech)
+      #expect(
+        clean.testInterruptedTerminalFloor(.noSpeech(.asrEmptyNoSpeech))
+          == .noSpeech(.asrEmptyNoSpeech))
     }
 
     // MARK: Diagnostic-archive relabel (code-diff r2)
@@ -302,12 +305,11 @@ private final class SavedBox {
         engine: engine, capture: FakeAudioCapture(), vad: FakeVADSignalSource(),
         clock: clock, paste: FakePasteTarget())
       let kernel = wrapper.testKernel
-      _ = kernel.testForceTransition(to: .preparing)
-      _ = kernel.testForceTransition(to: .warmingUp)
-      _ = kernel.testForceTransition(to: .recording)
+      _ = kernel.testForceTransition(to: .arming)
+      _ = kernel.testForceTransition(to: .live)
       _ = kernel.testForceTransition(to: .stopping)
-      _ = kernel.testForceTransition(to: .transcribing)
-      _ = kernel.testForceTransition(to: .finalizing)
+      _ = kernel.testForceTransition(to: .delivering)
+      kernel.testSetDeliveringPhase(.finalizing(.transcribing))
       return kernel
     }
   }

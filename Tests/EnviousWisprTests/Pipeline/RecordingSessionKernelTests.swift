@@ -93,26 +93,29 @@ import Testing
       let (_, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      // `idle → recording` skips `preparing` — forbidden (PR-1 §B.1.2).
-      let applied = kernel.testForceTransition(to: .recording)
+      // `idle → live` skips `arming` — forbidden (#1548 D1 legal table).
+      let applied = kernel.testForceTransition(to: .live)
 
       #expect(!applied)
       #expect(kernel.state == .idle)
       #expect(kernel.forbiddenTransitionRejected)
     }
 
-    @Test("a terminal → terminal transition is refused")
+    @Test("a forbidden transition after a conclusion is refused; the outcome holds")
     func terminalToTerminalRefused() async {
       let (_, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
       await apply(.start, to: wrapper)
-      await apply(.cancel, to: wrapper)  // → cancelled
-      #expect(kernel.state == .cancelled)
+      await apply(.cancel, to: wrapper)  // concludes .cancelled; the FSM returns to .idle
+      #expect(kernel.recordingOutcome == .cancelled)
 
-      let applied = kernel.testForceTransition(to: .completed)
+      // From the concluded `.idle`, only `idle → arming` is legal (#1548 D1); a
+      // jump to `.live` is refused and neither the state nor the outcome moves.
+      let applied = kernel.testForceTransition(to: .live)
       #expect(!applied)
-      #expect(kernel.state == .cancelled)
+      #expect(kernel.state == .idle)
+      #expect(kernel.recordingOutcome == .cancelled)
       #expect(kernel.forbiddenTransitionRejected)
     }
 
@@ -125,12 +128,12 @@ import Testing
 
       await apply(.start, to: wrapper)
       await apply(.cancel, to: wrapper)
-      #expect(kernel.state == .cancelled)
+      #expect(kernel.recordingOutcome == .cancelled)
 
       // Every further trigger except start / reset is ignored.
       await apply(.cancel, to: wrapper)
       await apply(.stop, to: wrapper)
-      #expect(kernel.state == .cancelled)
+      #expect(kernel.recordingOutcome == .cancelled)
     }
 
     // MARK: Invariant 5 — the safe point is inviolable
@@ -140,17 +143,19 @@ import Testing
       let (_, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      // Walk the FSM to `finalizing` through legal transitions.
-      kernel.testForceTransition(to: .preparing)
-      kernel.testForceTransition(to: .warmingUp)
-      kernel.testForceTransition(to: .recording)
+      // Walk the FSM to the finalizing safe point through legal transitions;
+      // the transcribe→finalize boundary is a `deliveringPhase` advance with no
+      // FSM transition (#1548 D1).
+      kernel.testForceTransition(to: .arming)
+      kernel.testForceTransition(to: .live)
       kernel.testForceTransition(to: .stopping)
-      kernel.testForceTransition(to: .transcribing)
-      kernel.testForceTransition(to: .finalizing)
-      #expect(kernel.state == .finalizing)
+      kernel.testForceTransition(to: .delivering)
+      kernel.testSetDeliveringPhase(.finalizing(.transcribing))
+      #expect(kernel.state == .delivering && kernel.deliveringPhase == .finalizing(.transcribing))
 
       kernel.cancel()
-      #expect(kernel.state == .finalizing)  // transcript in hand — cancel refused
+      // transcript in hand — cancel refused; the safe point holds.
+      #expect(kernel.state == .delivering && kernel.deliveringPhase == .finalizing(.transcribing))
     }
 
     // MARK: §3.1a — no active task references remain after a terminal state
@@ -162,7 +167,7 @@ import Testing
 
       await apply(.start, to: wrapper)
       await apply(.cancel, to: wrapper)
-      #expect(kernel.state == .cancelled)
+      #expect(kernel.recordingOutcome == .cancelled)
       #expect(kernel.testActiveTaskCount == 0)
     }
 
@@ -177,7 +182,7 @@ import Testing
       context.clock.advance(by: 4)
       await wrapper.drainReadyWork()
 
-      #expect(kernel.state == .failed(.modelWedged))
+      #expect(kernel.recordingOutcome == .failed(.modelWedged))
       // The wedged warm-up task ignored cooperative cancellation, yet the kernel
       // holds NO task reference — it cancelled and cleared the bag (§3.1a).
       #expect(kernel.testActiveTaskCount == 0)
@@ -193,7 +198,7 @@ import Testing
       await apply(.start, to: wrapper)
       await apply(.cancel, to: wrapper)  // recording → cancelled (an ordinary discard)
 
-      #expect(wrapper.testKernel.state == .cancelled)
+      #expect(wrapper.testKernel.recordingOutcome == .cancelled)
       #expect(context.engine.cancelCallCount >= 1, "ordinary discard must call cheap cancel()")
       #expect(
         context.engine.recoverFromWedgeCallCount == 0,
@@ -207,7 +212,7 @@ import Testing
       context.clock.advance(by: 4)  // let the wedge watcher fire
       await wrapper.drainReadyWork()
 
-      #expect(wrapper.testKernel.state == .failed(.modelWedged))
+      #expect(wrapper.testKernel.recordingOutcome == .failed(.modelWedged))
       #expect(
         context.engine.recoverFromWedgeCallCount == 1,
         "a genuine load wedge must invoke heavy recovery")
@@ -231,7 +236,7 @@ import Testing
       await wrapper.drainReadyWork()
       await apply(.stop, to: wrapper)
 
-      #expect(kernel.state == .completed)
+      #expect(kernel.recordingOutcome == .completed)
       #expect(kernel.deliveredTranscript == "raw asr text")
       #expect(kernel.pasteCount == 1)
     }
@@ -253,7 +258,7 @@ import Testing
       let kernel = wrapper.testKernel
 
       await apply(.start, to: wrapper)
-      #expect(kernel.state == .recording)
+      #expect(kernel.state == .live)
       #expect(kernel.recordingElapsedSeconds == 0)
     }
 
@@ -263,7 +268,7 @@ import Testing
       let kernel = wrapper.testKernel
 
       await apply(.start, to: wrapper)
-      #expect(kernel.state == .recording)
+      #expect(kernel.state == .live)
 
       context.clock.advance(by: 30)  // 30 ticks × 0.1s = 3.0s
       #expect(kernel.recordingElapsedSeconds == 3.0)
