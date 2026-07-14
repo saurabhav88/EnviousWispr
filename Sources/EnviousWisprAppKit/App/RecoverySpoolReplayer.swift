@@ -86,7 +86,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     self.currentVocabulary = currentVocabulary
   }
 
-  private enum RecoveryReplayError: Error {
+  enum RecoveryReplayError: Error {
     case abandonedAfterAttempt
     case failed(String)
   }
@@ -281,5 +281,37 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   private static func lockedLanguage(_ mode: LanguageMode?) -> String? {
     if case .locked(let code) = mode { return code }
     return nil
+  }
+}
+
+// MARK: - Sentry identity
+
+/// Pins each case's Sentry grouping key to its exact pre-migration string
+/// already observed in Sentry (#1525 PR C), mirroring `HeartPathError`'s
+/// shipped pattern.
+///
+/// The descriptors are NOT derived — they were MEASURED with this type still
+/// `private` (widened to `internal` in this same PR, only after measuring —
+/// widening first would have corrupted the baseline, see plan §2.5.4) and
+/// cross-checked against the live Sentry issue titles (ENVIOUSWISPR-2R/1Z/2N/
+/// 2M/20). A `private`-or-narrower type's bridged domain falls back to the
+/// bare simple type name (`SentryBreadcrumb.structuredDescriptor`'s
+/// `(unknown context at ...)` branch — proven by the shipped
+/// `SentryEventSanitizerTests.nestedPrivateErrorDescriptorNormalizes`
+/// fixture), never the module- or class-qualified name — so `internal`
+/// widening never changes what was already shipping.
+extension RecoverySpoolReplayer.RecoveryReplayError: StableSentryErrorIdentity {
+  var sentryFingerprintDescriptor: String {
+    switch self {
+    case .abandonedAfterAttempt: return "RecoveryReplayError#1"
+    case .failed: return "RecoveryReplayError#0"
+    }
+  }
+
+  var sentrySemanticID: String {
+    switch self {
+    case .abandonedAfterAttempt: return "recovery.replay_abandoned_after_attempt"
+    case .failed: return "recovery.replay_failed"
+    }
   }
 }

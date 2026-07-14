@@ -112,7 +112,7 @@ final class RecoveryCoordinator {
     self.resetEngine = resetEngine
   }
 
-  private enum RecoveryArmError: Error { case keyStoreFailed }
+  enum RecoveryArmError: Error { case keyStoreFailed }
 
   /// Build the recovery directive for a recording about to start, or nil when
   /// recovery is off / could not arm (capture is byte-identical either way).
@@ -378,4 +378,16 @@ final class RecoveryCoordinator {
     activeRecoveryID = nil
     TelemetryService.shared.recoveryCompleted(outcome: "discarded")
   }
+}
+
+// MARK: - Sentry identity
+
+/// Pins the single case's Sentry grouping key to the exact pre-migration
+/// string measured while the nested type remained genuinely `private`
+/// (#1525 PR C), mirroring `HeartPathError`'s shipped pattern. The
+/// pre-migration 90-day Sentry cross-check found no matching issue, so no
+/// live title was available as a second source for this case.
+extension RecoveryCoordinator.RecoveryArmError: StableSentryErrorIdentity {
+  var sentryFingerprintDescriptor: String { "RecoveryArmError#0" }
+  var sentrySemanticID: String { "recovery.arm_key_store_failed" }
 }
