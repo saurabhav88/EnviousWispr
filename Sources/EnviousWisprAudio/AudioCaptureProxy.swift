@@ -335,8 +335,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     currentAudioRoute = decision.reason.coarseAudioRouteLabel
     currentResolvedRoute = ResolvedRouteTransports.derive(
       decision: decision,
-      preferredInputDeviceIDOverride: preferredInputDeviceIDOverride,
-      selectedInputDeviceUID: selectedInputDeviceUID
+      preferredInputDeviceIDOverride: preferredInputDeviceIDOverride
     )
     guard CaptureRouteDecision.routeResolvedChanged(from: prior, to: decision) else { return }
     onRouteResolved?(decision, prior.map { $0.sourceType != decision.sourceType } ?? false)
@@ -365,11 +364,13 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     // specific attempt (including retries — this whole function re-runs on
     // each retry) and freeze the discriminator device against that SAME
     // snapshot, not a live re-read at some later point. This is the moment
-    // closest to the actual XPC device bind.
+    // closest to the actual XPC device bind. The discriminator resolves from
+    // the override only (mirrors HAL, #1533); the selected UID is still
+    // forwarded to the helper as remembered state.
     let preferredUID = preferredInputDeviceIDOverride
     let selectedUID = selectedInputDeviceUID
     effectiveDiscriminatorDeviceID = AudioDeviceEnumerator.resolveEffectiveInputDevice(
-      preferredOverride: preferredUID, selected: selectedUID)
+      preferredOverride: preferredUID)
     try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
       let guard_ = OneShotContinuation(cont)
       serviceProxy { proxy in

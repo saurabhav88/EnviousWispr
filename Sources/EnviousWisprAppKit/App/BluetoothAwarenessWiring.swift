@@ -23,15 +23,15 @@ extension BluetoothAwarenessPresenter {
         if overlay?.currentIntent == .bluetoothAwareness { overlay?.hide() }
       },
       effectiveInputIsBluetooth: { [weak settings] in
-        // Predict the CONFIGURED input via the settings precedence (override →
-        // selectedInputDeviceUID → CoreAudio default); a nonempty UID that no
-        // longer resolves fails CLOSED. The precedence is the pure, unit-tested
-        // `computeEffectiveInputIsBluetooth`; only the live resolvers live here
-        // (plan §3 — the capture router stays authoritative for the physical device).
+        // Predict the CONFIGURED input the way HAL binds it: explicit override,
+        // else the CoreAudio default input (selectedInputDeviceUID is never
+        // opened by HAL, so it is not consulted here). The precedence is the
+        // pure, unit-tested `computeEffectiveInputIsBluetooth`; only the live
+        // resolvers live here (plan §3 — the capture router stays authoritative
+        // for the physical device).
         guard let settings else { return false }
         return BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
           preferredOverride: settings.preferredInputDeviceIDOverride,
-          selectedUID: settings.selectedInputDeviceUID,
           defaultInputIsBluetooth: {
             guard let id = AudioDeviceEnumerator.defaultInputDeviceID() else { return nil }
             return AudioDeviceEnumerator.isBluetoothDevice(id)

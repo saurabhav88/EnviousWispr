@@ -41,7 +41,7 @@ struct ResolvedRouteTransportsGridTests {
   func totalOverGrid(source: CaptureSourceType, reason: CaptureRouteReason) {
     let r = ResolvedRouteTransports.derive(
       decision: makeDecision(source, reason),
-      preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "")
+      preferredInputDeviceIDOverride: "")
 
     #expect(r.routeReason == reason.rawValue)
 
@@ -61,7 +61,7 @@ struct ResolvedRouteTransportsGridTests {
   func explicitBTMicUsesUnifiedReason() {
     let r = ResolvedRouteTransports.derive(
       decision: makeDecision(.halDeviceInput, .btOutputUserSelectedDevice),
-      preferredInputDeviceIDOverride: "fake-bt-uid", selectedInputDeviceUID: "")
+      preferredInputDeviceIDOverride: "fake-bt-uid")
     #expect(r.inputSelectionMode == "explicit")
     #expect(r.routeReason == "btOutputUserSelectedDevice")
   }
@@ -70,7 +70,7 @@ struct ResolvedRouteTransportsGridTests {
   func boundHALTransportWins() {
     let r = ResolvedRouteTransports.derive(
       decision: makeDecision(.halDeviceInput, .btOutputAutoInput),
-      preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "",
+      preferredInputDeviceIDOverride: "",
       actualBoundTransport: "bluetooth")
     #expect(r.effective == "bluetooth")
     #expect(r.routeResolutionSource == "helper_reported")
@@ -80,33 +80,36 @@ struct ResolvedRouteTransportsGridTests {
   func wiredUnderBTOutput() {
     let r = ResolvedRouteTransports.derive(
       decision: makeDecision(.halDeviceInput, .btOutputUserSelectedDevice),
-      preferredInputDeviceIDOverride: "fake-wired-uid", selectedInputDeviceUID: "")
+      preferredInputDeviceIDOverride: "fake-wired-uid")
     #expect(r.inputSelectionMode == "explicit")
     #expect(r.routeReason == "btOutputUserSelectedDevice")
   }
 
-  @Test("selection mode follows the settings picker; a bare selectedInputDeviceUID stays Auto")
+  @Test("selection mode follows the settings picker; empty override stays Auto")
   func selectionModeFollowsPicker() {
-    // The mic picker binds to preferredInputDeviceIDOverride and the resolver
-    // uses ONLY that, so a bare selectedInputDeviceUID is Auto to the resolver
-    // — mode/selected must agree with route_reason, not claim explicit (#1387).
+    // The mic picker binds to preferredInputDeviceIDOverride and the resolver +
+    // derivation use ONLY that, so an empty override is Auto — mode/selected must
+    // agree with route_reason, not claim explicit (#1387).
     let r = ResolvedRouteTransports.derive(
       decision: makeDecision(.halDeviceInput, .noBTAutoInput),
-      preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "fake-uid")
+      preferredInputDeviceIDOverride: "")
     #expect(r.inputSelectionMode == "auto")
     #expect(r.selected == "unknown")
   }
 
-  @Test("bare selectedInputDeviceUID under BT output does NOT misreport explicit (cloud review P2)")
-  func bareSelectedUnderBTOutputStaysConsistentWithRouteReason() {
-    // The exact misclassification the cloud reviewer flagged: a stored device
-    // UID in selectedInputDeviceUID with an empty picker must not emit
-    // explicit/bluetooth while route_reason stays Auto. All three agree on Auto.
-    // #1529 — the fake default device is injected so `effective == "built_in"`
-    // holds regardless of which mic is actually live on this machine.
+  @Test(
+    "Auto derives effective from the DEFAULT input, never a remembered selection (cloud review P2, PR #1536)"
+  )
+  func autoEffectiveFromDefaultNotRememberedSelection() {
+    // HAL on Auto follows the system-default input and never opens
+    // selectedInputDeviceUID, so `effective` must come from the default device —
+    // not a remembered pick. Here the default resolves to built_in; the
+    // derivation cannot be misled by any remembered selection (it is no longer an
+    // input to `derive`). #1529 — the fake default device is injected so
+    // `effective == "built_in"` holds regardless of the live mic.
     let r = ResolvedRouteTransports.derive(
       decision: makeDecision(.halDeviceInput, .btOutputAutoInput),
-      preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "fake-bt-uid",
+      preferredInputDeviceIDOverride: "",
       defaultInputDeviceID: fakeDefaultInputDeviceID,
       defaultOutputDeviceID: fakeDefaultOutputDeviceID,
       transportLabelForDevice: fakeTransportLabelForDevice,
@@ -123,7 +126,7 @@ struct ResolvedRouteTransportsGridTests {
     // resolver saw the same value, so route_reason is a user-selected reason.
     let r = ResolvedRouteTransports.derive(
       decision: makeDecision(.halDeviceInput, .btOutputUserSelectedDevice),
-      preferredInputDeviceIDOverride: "fake-bt-uid", selectedInputDeviceUID: "")
+      preferredInputDeviceIDOverride: "fake-bt-uid")
     #expect(r.inputSelectionMode == "explicit")
   }
 
@@ -136,14 +139,14 @@ struct ResolvedRouteTransportsGridTests {
     // is deterministic instead of racing two independent live CoreAudio reads.
     let disconnected = ResolvedRouteTransports.derive(
       decision: makeDecision(.halDeviceInput, .noBTUserSelectedDevice),
-      preferredInputDeviceIDOverride: "fake-disconnected-uid", selectedInputDeviceUID: "",
+      preferredInputDeviceIDOverride: "fake-disconnected-uid",
       defaultInputDeviceID: fakeDefaultInputDeviceID,
       defaultOutputDeviceID: fakeDefaultOutputDeviceID,
       transportLabelForDevice: fakeTransportLabelForDevice,
       transportLabelForUID: fakeTransportLabelForUID)
     let auto = ResolvedRouteTransports.derive(
       decision: makeDecision(.halDeviceInput, .noBTAutoInput),
-      preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "",
+      preferredInputDeviceIDOverride: "",
       defaultInputDeviceID: fakeDefaultInputDeviceID,
       defaultOutputDeviceID: fakeDefaultOutputDeviceID,
       transportLabelForDevice: fakeTransportLabelForDevice,

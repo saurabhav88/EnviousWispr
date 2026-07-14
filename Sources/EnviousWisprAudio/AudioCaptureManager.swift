@@ -253,7 +253,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     ResolvedRouteTransports.derive(
       decision: decision,
       preferredInputDeviceIDOverride: preferredInputDeviceIDOverride,
-      selectedInputDeviceUID: selectedInputDeviceUID,
       actualBoundTransport: actualBoundTransport
     )
   }
@@ -284,7 +283,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // #1317 (cloud review P2, round 2): freeze the discriminator device NOW,
     // same synchronous turn `resolveSource()` reads the live UID properties.
     effectiveDiscriminatorDeviceID = AudioDeviceEnumerator.resolveEffectiveInputDevice(
-      preferredOverride: preferredInputDeviceIDOverride, selected: selectedInputDeviceUID)
+      preferredOverride: preferredInputDeviceIDOverride)
     // Re-evaluate route on every recording start — BT state may have changed.
     onLifecycleSignal?("manager_resolve_source_entered")
     let source = resolveSource()

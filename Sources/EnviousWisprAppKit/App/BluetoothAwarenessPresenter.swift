@@ -202,13 +202,16 @@ final class BluetoothAwarenessPresenter {
 
   // MARK: - Configured-input precedence (pure, testable)
 
-  /// Resolve whether the CONFIGURED input is Bluetooth using the settings-sync
-  /// precedence: `preferredInputDeviceIDOverride` first, `selectedInputDeviceUID`
-  /// second, the CoreAudio default only when both are empty (Codex r2/r3). A
-  /// nonempty UID that no longer resolves does NOT fail closed — it falls back to
-  /// the default input, mirroring the capture path's `resolvedDeviceID ??
-  /// defaultInputDeviceID()` so a disconnected pinned device still surfaces the
-  /// card when the real (default) input is Bluetooth (cloud review P2).
+  /// Resolve whether the CONFIGURED input is Bluetooth, mirroring the capture
+  /// path exactly: HAL binds the explicit `preferredInputDeviceIDOverride` when
+  /// set, otherwise follows the CoreAudio default input. It NEVER consults
+  /// `selectedInputDeviceUID` (only remembered settings state), so this
+  /// classification must not either — on Auto (empty override) the card has to
+  /// reflect the DEFAULT input HAL actually opens, or it can show/hide opposite
+  /// to the real route (cloud review P2, PR #1536). A nonempty override that no
+  /// longer resolves does NOT fail closed — it falls back to the default input,
+  /// mirroring HAL's own fallback so a disconnected pinned device still surfaces
+  /// the card when the real (default) input is Bluetooth.
   /// Pure over two injected resolvers so the precedence is unit-tested without
   /// real CoreAudio devices; the bootstrapper supplies the live `AudioDeviceEnumerator`
   /// resolvers.
@@ -217,22 +220,17 @@ final class BluetoothAwarenessPresenter {
   ///   - uidIsBluetooth: `nil` when the UID does not resolve (removed/unknown device).
   static func computeEffectiveInputIsBluetooth(
     preferredOverride: String,
-    selectedUID: String,
     defaultInputIsBluetooth: () -> Bool?,
     uidIsBluetooth: (String) -> Bool?
   ) -> Bool {
-    let effectiveUID = preferredOverride.isEmpty ? selectedUID : preferredOverride
-    if effectiveUID.isEmpty {
+    // Auto (empty override): capture follows the system-default input, so classify
+    // the default — never a remembered selected device HAL won't open.
+    guard !preferredOverride.isEmpty else {
       return defaultInputIsBluetooth() ?? false
     }
-    // A remembered UID that still resolves is authoritative. But one that no longer
-    // resolves is NOT fail-closed: the capture source follows the resolved device
-    // or falls back to the system-default input, so a disconnected pinned device
-    // actually records through the DEFAULT input. Mirror that — fall
-    // back to the default input's transport so a user whose stale UID resolves to a
-    // Bluetooth default still gets the card (cloud review P2). Otherwise a Bluetooth
-    // user would record through the cold Bluetooth mic and never be warned.
-    if let resolved = uidIsBluetooth(effectiveUID) {
+    // Explicit override: authoritative when it resolves; a stale/unresolvable
+    // override falls back to the default input, mirroring HAL's own fallback.
+    if let resolved = uidIsBluetooth(preferredOverride) {
       return resolved
     }
     return defaultInputIsBluetooth() ?? false

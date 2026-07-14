@@ -55,7 +55,6 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
   public static func derive(
     decision: CaptureRouteDecision,
     preferredInputDeviceIDOverride: String,
-    selectedInputDeviceUID: String,
     actualBoundTransport: String? = nil,
     defaultInputDeviceID: () -> AudioDeviceID? = AudioDeviceEnumerator.defaultInputDeviceID,
     defaultOutputDeviceID: () -> AudioDeviceID? = AudioDeviceEnumerator.defaultOutputDeviceID,
@@ -69,8 +68,7 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
     // derive from `preferredInputDeviceIDOverride` alone, keeping them
     // consistent with `route_reason` (a bare `selectedInputDeviceUID` under an
     // empty picker is Auto to the resolver, not an explicit pick — #1387 cloud
-    // review P2). `selectedInputDeviceUID` still feeds `effective` below because
-    // the HAL source opens it as a fallback.
+    // review P2).
     let selectionMode = preferredInputDeviceIDOverride.isEmpty ? "auto" : "explicit"
 
     let selected =
@@ -86,10 +84,15 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
         effective = actualBoundTransport
         usedActualBoundTransport = true
       } else {
-        let halUID =
-          preferredInputDeviceIDOverride.isEmpty
-          ? selectedInputDeviceUID : preferredInputDeviceIDOverride
-        if !halUID.isEmpty, let label = transportLabelForUID(halUID) {
+        // Mirror HAL's own device resolution exactly: it binds the explicit
+        // override when set, otherwise follows the live system-default input.
+        // It NEVER consults `selectedInputDeviceUID` (that is only remembered
+        // settings state), so `effective` must not either — deriving Auto from a
+        // remembered device the mic never opens corrupts route telemetry (cloud
+        // review P2, PR #1536).
+        if !preferredInputDeviceIDOverride.isEmpty,
+          let label = transportLabelForUID(preferredInputDeviceIDOverride)
+        {
           effective = label
         } else if let defaultID = defaultInputDeviceID() {
           effective = transportLabelForDevice(defaultID) ?? "unknown"

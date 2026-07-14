@@ -89,26 +89,26 @@ public enum AudioDeviceEnumerator {
 
   /// #1317 §3.0: resolves the ONE `AudioDeviceID` a capture session is
   /// actually using, for the all-zero harness-glitch discriminator's
-  /// device-alive + not-muted read. Same precedence `AudioCaptureManager`
-  /// already applies for effective-device comparison: the bound override
-  /// wins when set, else the user's selected UID, else the system default.
-  /// Returns nil when none resolves to a live device — callers must fail
-  /// closed on nil (§3.0: mute-unknown fails closed, never treated as
-  /// unmuted).
+  /// device-alive + not-muted read. Mirrors HAL's own device resolution
+  /// exactly (#1533): the explicit override wins when set, otherwise the
+  /// system default. `selectedInputDeviceUID` is NOT consulted — HAL never
+  /// opens it, so classifying it would check a different microphone than the
+  /// one actually recording on Auto. Returns nil when the override does not
+  /// resolve to a live device — callers must fail closed on nil (§3.0:
+  /// mute-unknown fails closed, never treated as unmuted).
   ///
   /// An explicit UID that fails to resolve does NOT fall back to the system
   /// default (Codex code-diff review): a vanished explicitly-selected device
   /// is a hardware-removal case, out of #1317's scope, and substituting an
   /// unrelated device's alive/mute state would misclassify that removal as
-  /// the software harness glitch. Only the ABSENCE of an explicit UID (the
-  /// user is on system-default / "Auto") falls through to the default.
+  /// the software harness glitch. Only the ABSENCE of an explicit override
+  /// (the user is on system-default / "Auto") falls through to the default.
   public static func resolveEffectiveInputDevice(
-    preferredOverride: String, selected: String,
+    preferredOverride: String,
     defaultInputDeviceIDProvider: () -> AudioDeviceID? = AudioDeviceEnumerator.defaultInputDeviceID
   ) -> AudioDeviceID? {
-    let uid = !preferredOverride.isEmpty ? preferredOverride : selected
-    guard !uid.isEmpty else { return defaultInputDeviceIDProvider() }
-    return deviceID(forUID: uid)
+    guard !preferredOverride.isEmpty else { return defaultInputDeviceIDProvider() }
+    return deviceID(forUID: preferredOverride)
   }
 
   /// Returns the UID of the current system-default input device, or nil if
