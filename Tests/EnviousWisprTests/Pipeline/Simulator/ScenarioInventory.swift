@@ -337,11 +337,15 @@ enum ScenarioInventory {
       expected: ExpectedOutcome(
         terminalState: .failed(.captureStartFailed), pasteCount: 0, pasteOutcome: .none,
         transcript: .none, userVisibleError: .recoverableError)),
+    // #1548 D1: a stall BEFORE the first buffer is the no-buffer deadline — the
+    // session never proved transport, so it concludes `.noTransport` (projected
+    // to `.failed(.noAudioCaptured)`), not the live `.captureStall` exit. The
+    // stall-AFTER-a-buffer case (genuine `.captureStalled`) is C4.
     Scenario(
-      id: "C3", name: "capture stream stalls before first buffer",
+      id: "C3", name: "capture stream stalls before first buffer (no transport)",
       steps: [.trigger(.start), .capture(.stall), .trigger(.stop)],
       expected: ExpectedOutcome(
-        terminalState: .failed(.captureStalled), pasteCount: 0, pasteOutcome: .none,
+        terminalState: .failed(.noAudioCaptured), pasteCount: 0, pasteOutcome: .none,
         transcript: .none, userVisibleError: .recoverableError)),
     Scenario(
       id: "C4", name: "capture stalls after speech evidence",
@@ -368,17 +372,21 @@ enum ScenarioInventory {
       expected: ExpectedOutcome(
         terminalState: .asrInterrupted, pasteCount: 0, pasteOutcome: .none,
         transcript: .none, userVisibleError: .recoverableError)),
-    // #1408 THE FLOOR: a device that dies before any audio arrives would fall
-    // through to the minimum-recording gate and reach `.discarded`, whose
-    // terminal kind DELETES the crash-recovery spool. The floor maps it back to
-    // `.audioInterrupted`, which retains it. C5 cannot cover this — it delivers a
-    // buffer, and the inventory zeroes the minimum-recording tick threshold.
+    // #1548 D1: a device that dies BEFORE any audio arrives never proved
+    // transport. The engine-interruption signal is a no-op while Arming (it only
+    // acts from `.live`), so the session concludes via the no-buffer deadline as
+    // `.noTransport` (projected to `.failed(.noAudioCaptured)`). That terminal is
+    // a FAILURE, not a discard, so the crash-recovery spool is still retained —
+    // the #1408 data-loss guarantee holds through no-transport instead of the old
+    // audio-interrupted floor (there is no captured audio to salvage here). The
+    // salvage FLOOR for a device that dies mid-recording WITH audio is C5 + the
+    // salvage-suite floor tests, which deliver a buffer and reach `.live` first.
     Scenario(
-      id: "C8", name: "device dies before any audio arrives (floored, spool retained)",
-      steps: [.trigger(.start), .capture(.interrupt)],
+      id: "C8", name: "device dies before any audio arrives (no transport, spool retained)",
+      steps: [.trigger(.start), .capture(.interrupt), .capture(.stall)],
       expected: ExpectedOutcome(
-        terminalState: .audioInterrupted, pasteCount: 0, pasteOutcome: .none,
-        transcript: .none, userVisibleError: .interruption)),
+        terminalState: .failed(.noAudioCaptured), pasteCount: 0, pasteOutcome: .none,
+        transcript: .none, userVisibleError: .recoverableError)),
   ]
 
   // MARK: Limb-side (L1–L6)

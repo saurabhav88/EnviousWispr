@@ -106,8 +106,7 @@ import Testing
   @Test("handle(.toggleRecording) from idle starts a kernel session")
   func toggleRecordingStarts() async throws {
     let h = makeDriver()
-    try await h.driver.handle(event: .toggleRecording(.testDefault()))
-    await drainUntil { h.kernel.state == .live }
+    try await startDriverToLive(h)
     #expect(h.kernel.state == .live)
     #expect(h.driver.state == .recording)
   }
@@ -117,8 +116,7 @@ import Testing
     let h = makeDriver()
     #expect(h.driver.recordingElapsedSeconds == nil, "idle → nil, matching the kernel directly")
 
-    try await h.driver.handle(event: .toggleRecording(.testDefault()))
-    await drainUntil { h.kernel.state == .live }
+    try await startDriverToLive(h)
 
     #expect(h.driver.recordingElapsedSeconds != nil)
     #expect(h.driver.recordingElapsedSeconds == h.kernel.recordingElapsedSeconds)
@@ -127,8 +125,7 @@ import Testing
   @Test("handle(.toggleRecording) while recording requests a stop")
   func toggleRecordingWhileActiveStops() async throws {
     let h = makeDriver()
-    try await h.driver.handle(event: .toggleRecording(.testDefault()))
-    await drainUntil { h.kernel.state == .live }
+    try await startDriverToLive(h)
     try await h.driver.handle(event: .toggleRecording(.testDefault()))
     await drainUntil { h.kernel.recordingOutcome != nil }
     #expect(h.kernel.recordingOutcome != nil, "the second toggle drove the session to a terminal")
@@ -148,8 +145,7 @@ import Testing
   func startClearsExternalError() async throws {
     let h = makeDriver()
     h.driver.setExternalError("device unplugged")
-    try await h.driver.handle(event: .toggleRecording(.testDefault()))
-    await drainUntil { h.kernel.state == .live }
+    try await startDriverToLive(h)
     #expect(h.driver.state != .error("device unplugged"))
   }
 
@@ -406,18 +402,29 @@ import Testing
     }
 
     @Test(
-      "a WARM .preparing projects straight to the recording pill — no phantom 'preparing' flash, no rebuild stutter"
+      "a WARM press stays hidden during Arming, then shows the recording pill once audio lands"
     )
     func warmPreparingProjectsToRecordingPill() async throws {
       let h = makeDriver()
-      // Warm the engine so `adapter.readiness == .ready` (no .warmingUp follows).
+      // Warm the engine so `adapter.readiness == .ready` (a genuine cold load
+      // would surface the caching pill instead).
       try await h.adapter.warmUp()
       #expect(h.adapter.readiness == .ready)
-      #expect(h.kernel.testForceTransition(to: .arming))
-      // Same intent the real `.recording` emits, so the overlay is created once
-      // at press time and the real `.recording` dedups into it (UAT 2026-05-31:
-      // `.hidden` here caused a tear-down/rebuild stutter; the label was a
-      // phantom flash). No "Preparing dictation..." label on a warm press.
+      // #1548 D1 (founder 2026-07-14): the pill does NOT show early on a warm
+      // press. Arming stays HIDDEN — we do not claim "recording" until transport
+      // is proven. The first buffer lands within ~100 ms on the built-in mic
+      // (imperceptible), so there is no phantom "Preparing..." flash and no
+      // premature pill. Showing it early would defeat the whole transport gate.
+      try await h.driver.handle(event: .toggleRecording(.testDefault()))
+      await drainUntil { h.kernel.state == .arming }
+      #expect(h.kernel.state == .arming)
+      #expect(h.driver.overlayIntent == .hidden)
+      // The recording pill appears the instant the first buffer commits Live.
+      for _ in 0..<2000 where h.kernel.state != .live {
+        h.capture.deliverBuffer()
+        await Task.yield()
+      }
+      #expect(h.kernel.state == .live)
       #expect(h.driver.overlayIntent == .recording(audioLevel: 0))
     }
 
@@ -613,6 +620,24 @@ import Testing
     let outcome: KernelFinalizationOutcome
     let adapter: FakeEngine
     let clock: FakeClock
+    /// The kernel's capture — deliver the first buffer through it to drive
+    /// Arming → Live under the #1548 D1 transport gate.
+    let capture: FakeAudioCapture
+  }
+
+  /// Start a session via the driver and drive it to `.live`. #1548 D1: reaching
+  /// `.live` requires the first converted buffer (transport gate). The buffer
+  /// only commits once the adapter session is OPEN (`beginSession` ran), so warm
+  /// the engine first (a warm press opens the session immediately) and deliver
+  /// the buffer with a small retry so it cannot race `beginSession`'s wiring.
+  private func startDriverToLive(_ h: Harness) async throws {
+    try await h.adapter.warmUp()
+    try await h.driver.handle(event: .toggleRecording(.testDefault()))
+    for _ in 0..<2000 {
+      if h.kernel.state == .live { return }
+      h.capture.deliverBuffer()
+      await Task.yield()
+    }
   }
 
   private func makeDriver(
@@ -622,9 +647,10 @@ import Testing
     let clock = FakeClock()
     let adapter = FakeEngine(
       behavior: behavior, clock: clock, loadProgressAbsent: loadProgressAbsent)
+    let capture = FakeAudioCapture()
     let kernel = RecordingSessionKernel(
       adapter: adapter,
-      audioCapture: FakeAudioCapture(),
+      audioCapture: capture,
       vad: FakeVADSignalSource(),
       currentTick: { 0 },
       sleepTicks: { _ in },
@@ -649,7 +675,9 @@ import Testing
       kernel: kernel, observer: observer, outcome: outcome,
       context: KernelSessionContext(), steps: steps, adapter: adapter)
     driver.start()
-    return Harness(driver: driver, kernel: kernel, outcome: outcome, adapter: adapter, clock: clock)
+    return Harness(
+      driver: driver, kernel: kernel, outcome: outcome, adapter: adapter, clock: clock,
+      capture: capture)
   }
 
   private func drainUntil(_ condition: @MainActor () -> Bool) async {

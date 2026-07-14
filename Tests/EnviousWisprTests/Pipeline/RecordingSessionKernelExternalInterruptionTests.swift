@@ -33,9 +33,11 @@ import Testing
   @Suite("RecordingSessionKernel — external entry methods (PR-4b.1)")
   struct RecordingSessionKernelExternalInterruptionTests {
 
-    private func makeWrapper() -> (SimulatorContext, KernelRecordingSession) {
+    private func makeWrapper(
+      behavior: FakeEngineBehavior = .batchSuccess(text: "hello")
+    ) -> (SimulatorContext, KernelRecordingSession) {
       let clock = FakeClock()
-      let engine = FakeEngine(behavior: .batchSuccess(text: "hello"), clock: clock)
+      let engine = FakeEngine(behavior: behavior, clock: clock)
       let capture = FakeAudioCapture()
       let vad = FakeVADSignalSource()
       let paste = FakePasteTarget()
@@ -59,9 +61,13 @@ import Testing
 
     // MARK: 1. Routing — each entry produces the right terminal
 
-    @Test("externalEngineInterrupted routes to the audio-interrupted terminal")
+    @Test("externalEngineInterrupted floors an empty salvage to the audio-interrupted terminal")
     func engineInterruptedRoutes() async {
-      let (context, wrapper) = makeWrapper()
+      // #1548 D1: reaching `.live` requires a buffer, so an interrupt from `.live`
+      // enters the #1408 salvage. Use a NON-salvageable engine so the empty
+      // decode floors to `.audioInterrupted` — proving the routing, not salvage
+      // (salvage-completes has its own coverage in the salvage suite).
+      let (context, wrapper) = makeWrapper(behavior: .empty(hadSpeechEvidence: false))
       let kernel = wrapper.testKernel
 
       await startToRecording(context)
@@ -70,7 +76,7 @@ import Testing
       kernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
 
-      #expect(kernel.recordingOutcome.kind == .audioInterrupted)
+      #expect(kernel.recordingOutcome == .audioInterrupted(.engineLost))
     }
 
     @Test("externalASRInterrupted routes to the ASR-interrupted terminal")
@@ -124,14 +130,14 @@ import Testing
 
     @Test("a second externalEngineInterrupted after the first reached terminal is a no-op")
     func engineInterruptedIdempotent() async {
-      let (context, wrapper) = makeWrapper()
+      let (context, wrapper) = makeWrapper(behavior: .empty(hadSpeechEvidence: false))
       let kernel = wrapper.testKernel
 
       await startToRecording(context)
       kernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
       let firstOutcome = kernel.recordingOutcome
-      #expect(firstOutcome.kind == .audioInterrupted)
+      #expect(firstOutcome == .audioInterrupted(.engineLost))
 
       kernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
@@ -208,26 +214,21 @@ import Testing
 
     // MARK: 5. Double-fire — one entry wins, the other no-ops
 
-    @Test("an engine interruption followed by an ASR interruption lands a single terminal")
+    @Test("an engine interruption followed by an ASR interruption preserves the FIRST exit")
     func doubleFireOneWins() async {
-      let (context, wrapper) = makeWrapper()
+      let (context, wrapper) = makeWrapper(behavior: .empty(hadSpeechEvidence: false))
       let kernel = wrapper.testKernel
 
       await startToRecording(context)
+      // The engine interruption synchronously latches the first recording-exit
+      // (`recordingExitLatched`); the ASR interruption's exit is then rejected.
+      // With a non-salvageable engine the empty salvage floors to
+      // `.audioInterrupted(.engineLost)` — the FIRST exit, deterministically.
       kernel.externalEngineInterrupted(.engineLost)
-      // Second call lands BEFORE the first has settled — the FSM is still in
-      // `.recording` so the guard does not bite yet. The forward path picks
-      // up one exit signal; the second is overwritten in `pendingRecordingExit`
-      // OR silently discarded if a continuation already absorbed the first.
-      // After draining, exactly ONE terminal must hold.
       kernel.externalASRInterrupted()
       await wrapper.drainReadyWork()
 
-      #expect(kernel.recordingOutcome != nil)
-      #expect(
-        kernel.recordingOutcome.kind == .audioInterrupted
-          || kernel.recordingOutcome.kind == .asrInterrupted,
-        "exactly one of the two interruption terminals must win")
+      #expect(kernel.recordingOutcome == .audioInterrupted(.engineLost))
     }
 
     @Test("a second engine interruption in the post-latch window preserves the FIRST cause")
@@ -238,7 +239,7 @@ import Testing
       // `.recording`) must NOT overwrite the cause the `.audioInterrupted` terminal
       // will use — else a verified `.deviceRemoved` could be replaced by a stale
       // `.engineLost` and mislabel the loss (or vice-versa).
-      let (context, wrapper) = makeWrapper()
+      let (context, wrapper) = makeWrapper(behavior: .empty(hadSpeechEvidence: false))
       let kernel = wrapper.testKernel
 
       await startToRecording(context)
@@ -250,7 +251,7 @@ import Testing
       kernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
 
-      #expect(kernel.recordingOutcome.kind == .audioInterrupted)
+      #expect(kernel.recordingOutcome == .audioInterrupted(.deviceRemoved))
       #expect(
         kernel.lastAudioInterruptionCause == .deviceRemoved,
         "the FIRST (latching) cause must survive; got \(String(describing: kernel.lastAudioInterruptionCause))"

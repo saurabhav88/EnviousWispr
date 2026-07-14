@@ -34,6 +34,10 @@ import Testing
   /// wedged rather than reporting a bare state mismatch.
   struct FlooredSite: Sendable, CustomStringConvertible {
     let name: String
+    // #1548 D1: every floored site now delivers ≥1 buffer to reach `.live`
+    // (the transport gate); the sub-minimum-discard site uses the tick-based
+    // gate instead of the retired zero-buffer arm.
+    let minimumRecordingTicks: Int
     let buffers: Int
     let amplitude: Float
     let deadAirVAD: Bool
@@ -109,16 +113,22 @@ import Testing
     /// would reach `.discarded`, whose terminal kind is `.discard` — "delete the
     /// spool now" — destroying the only surviving copy of a recording the user
     /// never chose to throw away.
+    // The PAIR that proves the floor (#1548 D1): identical sub-minimum setup —
+    // one real buffer (so the session reaches `.live` under the transport gate)
+    // but below the tick-based minimum-recording gate (the clock never advances)
+    // — different exit. A too-short USER stop still discards; a too-short
+    // INTERRUPTED recording floors to `.audioInterrupted` (spool retained). The
+    // old zero-buffer arm is unreachable now: with no buffer the session never
+    // reaches `.live`, so it cannot be interrupted mid-recording at all.
     @Test("a sub-minimum USER stop still discards (the floor is inert outside salvage)")
     func subMinimumUserStopStillDiscards() async {
-      let (context, wrapper) = makeWrapper()
-      await context.sut.apply(.start)
-      await context.sut.drainReadyWork()
+      let (context, wrapper) = makeWrapper(minimumRecordingTicks: 5)
+      await startRecording(context, buffers: 1)
 
       await context.sut.apply(.stop)
       await context.sut.drainReadyWork()
 
-      #expect(wrapper.testKernel.recordingOutcome.kind == .discarded)
+      #expect(wrapper.testKernel.recordingOutcome == .discarded(.tooShort))
       #expect(
         KernelDictationDriver.endedWithoutSaveKind(for: .discarded(.tooShort)) == .discard,
         "an ordinary too-short tap is still safe to delete")
@@ -126,18 +136,17 @@ import Testing
 
     @Test("a sub-minimum INTERRUPTED recording floors to .audioInterrupted, not .discarded")
     func subMinimumInterruptedFloorsRatherThanDiscards() async {
-      let (_, wrapper) = makeWrapper()
-      await wrapper.apply(.start)
-      await wrapper.drainReadyWork()
+      let (context, wrapper) = makeWrapper(minimumRecordingTicks: 5)
+      await startRecording(context, buffers: 1)
 
-      // No buffers delivered — `bufferCountThisSession == 0` trips the same
-      // minimum-recording gate the user-stop test above lands on.
+      // The clock never advances, so the elapsed window is below the minimum —
+      // the same sub-minimum gate the user-stop pair lands on, but interrupted.
       wrapper.testKernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
 
-      #expect(wrapper.testKernel.recordingOutcome.kind == .audioInterrupted)
+      #expect(wrapper.testKernel.recordingOutcome == .audioInterrupted(.engineLost))
       #expect(
-        KernelDictationDriver.endedWithoutSaveKind(for: .audioInterrupted(nil)) == .failure,
+        KernelDictationDriver.endedWithoutSaveKind(for: .audioInterrupted(.engineLost)) == .failure,
         "the floor must convert the spool-deleting terminal into a spool-retaining one")
     }
 
@@ -209,12 +218,17 @@ import Testing
     @Test(
       "every floored terminal site actually terminates (no illegal-transition wedge)",
       arguments: [
-        // (engine behavior, vad evidence, buffers, amplitude) -> each floored site
-        FlooredSite(name: "sub-minimum discard", buffers: 0, amplitude: 0.1, deadAirVAD: false),
-        FlooredSite(name: "VAD-gate no-speech", buffers: 1, amplitude: 0.001, deadAirVAD: true),
+        // Each floored site delivers ≥1 buffer to reach `.live` (#1548 D1); the
+        // sub-minimum-discard site trips the tick-based gate (clock never advances).
+        FlooredSite(
+          name: "sub-minimum discard", minimumRecordingTicks: 5, buffers: 1, amplitude: 0.1,
+          deadAirVAD: false),
+        FlooredSite(
+          name: "VAD-gate no-speech", minimumRecordingTicks: 0, buffers: 1, amplitude: 0.001,
+          deadAirVAD: true),
       ])
     func everyFlooredSiteTerminates(site: FlooredSite) async {
-      let (context, wrapper) = makeWrapper()
+      let (context, wrapper) = makeWrapper(minimumRecordingTicks: site.minimumRecordingTicks)
       if site.deadAirVAD { context.vad.evidence = .confirmedNoSpeech }
       await startRecording(context, buffers: site.buffers, amplitude: site.amplitude)
 
@@ -231,8 +245,11 @@ import Testing
     /// salvageable interruption terminates in exactly one of two states. There is
     /// no third outcome, and neither outcome deletes a spool today's code retains.
     @Test(
-      "invariant: a salvageable interruption ends .completed or .audioInterrupted, never a third state",
-      arguments: EngineInterruptionCause.allCases.filter(\.hasRecoverableAudio), [0, 1, 3])
+      "invariant: a live salvageable interruption ends .completed or .audioInterrupted, never a third state",
+      // #1548 D1: a genuine interruption is only reachable from `.live`, which
+      // requires ≥1 buffer — the old zero-buffer case is dropped (a zero-buffer
+      // session concludes via the no-transport deadline, not an interruption).
+      arguments: EngineInterruptionCause.allCases.filter(\.hasRecoverableAudio), [1, 3])
     func salvageTerminatesInExactlyTwoStates(
       cause: EngineInterruptionCause, bufferCount: Int
     ) async {

@@ -93,18 +93,23 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.capture.rebuildEngineCallCount == 1)
   }
 
-  @Test("reactive noBuffers is UNCHANGED — still the existing captureStall terminal, NO rebuild")
-  func reactiveNoBuffersUnaffected() async {
+  @Test("reactive noBuffers while Arming concludes noTransport (not captureStall), NO rebuild")
+  func reactiveNoBuffersDuringArmingConcludesNoTransport() async {
+    // #1548 D1: a `.noBuffers` stall BEFORE any buffer (still Arming) is the
+    // no-buffer deadline → `.noTransport`, not the live `.captureStall` exit.
+    // (The live capture-stall path — noBuffers WHILE `.live` → `.captureStalled`
+    // — is covered by `captureStalledRoutes` in the external-entry suite.)
     let ctx = makeContext()
     await startToRecording(ctx)
+    #expect(ctx.wrapper.testKernel.state == .arming)
 
     ctx.wrapper.testKernel.externalCaptureStalled(stallContext(ctx, failureMode: .noBuffers))
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.captureStalled))
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .noTransport)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
-    // An ordinary capture stall is NOT the mic-harness glitch — the stall
-    // watchdog owns it, and PR3 must never reset the engine for it.
+    // The no-transport deadline is NOT the mic-harness glitch — it never enters
+    // the zero-signal recovery / engine-rebuild path.
     #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
@@ -396,9 +401,9 @@ struct ZeroSignalRecoveryTests {
       ctx.vad.evidence = .confirmedNoSpeech
 
       // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
-    // otherwise the stop aborts a still-Arming session.
-    await ctx.wrapper.drainReadyWork()
-    await ctx.wrapper.apply(.stop)
+      // otherwise the stop aborts a still-Arming session.
+      await ctx.wrapper.drainReadyWork()
+      await ctx.wrapper.apply(.stop)
       await ctx.wrapper.drainReadyWork()
 
       #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
