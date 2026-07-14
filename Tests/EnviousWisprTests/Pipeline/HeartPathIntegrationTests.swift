@@ -477,6 +477,11 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
     isCapturing = true
     isActivelyCapturing = true
     capturedSamples = loadedSamples
+    // #1548 D1: prove transport. The kernel wires `onBufferCaptured` BEFORE this
+    // call and gates Arming → Live on the FIRST converted buffer, so deliver one
+    // here (mirroring the real capture's first buffer) or the session never
+    // leaves Arming.
+    if let buffer = TransportGateTestBuffer.makeFirstBuffer() { onBufferCaptured?(buffer) }
     return AsyncStream { continuation in
       continuation.finish()
     }

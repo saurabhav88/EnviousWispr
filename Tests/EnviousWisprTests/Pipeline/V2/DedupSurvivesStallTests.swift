@@ -160,6 +160,10 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
     isCapturing = true
     isActivelyCapturing = true
     currentCaptureSessionID += 1
+    // #1548 D1: prove transport so the session reaches `.live` (Arming → Live
+    // gates on the first converted buffer; the kernel wires `onBufferCaptured`
+    // before this call). Then the stream parks, holding state at `.recording`.
+    if let buffer = TransportGateTestBuffer.makeFirstBuffer() { onBufferCaptured?(buffer) }
     return AsyncStream { cont in
       self.continuation = cont
       // Intentionally never yield, never finish.

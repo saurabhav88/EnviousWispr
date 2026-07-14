@@ -286,7 +286,9 @@ private final class NoOpAudioCapture: AudioCaptureInterface {
 
   func startEnginePhase() async throws {}
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
-    AsyncStream { $0.finish() }
+    // #1548 D1: prove transport so the session reaches `.recording`.
+    if let buffer = TransportGateTestBuffer.makeFirstBuffer() { onBufferCaptured?(buffer) }
+    return AsyncStream { $0.finish() }
   }
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
     AsyncStream { $0.finish() }
