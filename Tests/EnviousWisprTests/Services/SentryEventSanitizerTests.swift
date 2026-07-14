@@ -39,11 +39,13 @@ private enum FileScopeFixtureError: Error {
   case boom
 }
 
-/// Wrapper exposing a `private`-nested fixture reproducing the shape of
-/// `RecoveryReplayError` / `RecoveryArmError` / `NilCollaboratorError` (all
-/// `private` nested inside their owning type). The real types are `private`
-/// in other modules and unreachable from this test file (#1229) — this
-/// fixture exercises the identical `(unknown context at $ptr)` branch.
+/// Wrapper exposing a `private`-nested fixture that reproduces
+/// `RecoveryReplayError` / `RecoveryArmError`'s pre-#1525-PR-C shape (both
+/// were `private` nested inside their owning type; PR C later widened them
+/// to `internal` so their pins can be tested directly, `RecoverySentryIdentityTests.swift`)
+/// and `NilCollaboratorError`'s current shape (still `private`, unmigrated).
+/// This fixture continues to cover the generic `(unknown context at $ptr)`
+/// normalization branch (#1229).
 private struct NestedFixtureWrapper {
   private enum NestedFixtureError: Error {
     case boom
