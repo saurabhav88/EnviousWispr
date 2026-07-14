@@ -121,7 +121,7 @@ struct HeartPathTelemetryWiringTests {
       armedAtUptimeNs: 1_000,
       firedAtUptimeNs: 2_000,
       route: "built_in_mic",
-      sourceType: "av_audio_engine",
+      sourceType: "hal_device_input",
       engineStartedSuccessfully: true,
       tapInstalled: true,
       formatMismatchObserved: false,
@@ -283,8 +283,7 @@ private final class NoOpAudioCapture: AudioCaptureInterface {
   var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
   var currentCaptureSessionID: UInt64 = 0
   var isActivelyCapturing: Bool = false
-  var captureSourceType: String = "av_audio_engine"
-  var noiseSuppressionEnabled: Bool = false
+  var captureSourceType: String = "hal_device_input"
   var selectedInputDeviceUID: String = ""
   var preferredInputDeviceIDOverride: String = ""
   var warmEnginePolicy: WarmEnginePolicy = .off
@@ -298,7 +297,6 @@ private final class NoOpAudioCapture: AudioCaptureInterface {
   }
   func stopCapture() async -> CaptureResult { CaptureResult(samples: []) }
   func rebuildEngine() {}
-  func buildEngine(noiseSuppression: Bool) {}
   func preWarm() async throws {}
   func abortPreWarm() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {

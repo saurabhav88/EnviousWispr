@@ -182,12 +182,12 @@ def force_proxy_buffer_drop(n: int) -> str:
 
     Tests the PROXY-side stall watchdog (drops buffers before they reach the
     app continuation, watchdog fires on the gap). Does NOT exercise the real
-    audio-stack interruption recovery path in AVAudioEngineSource or
-    the capture sources — those handlers live in the service process and
-    are not reachable from this host-side endpoint.
+    audio-stack interruption recovery path in the capture source — those
+    handlers live in the service process and are not reachable from this
+    host-side endpoint.
 
-    For real audio-stack interruption testing (BT codec switch, Zoom mic-grab,
-    AVAudioEngineConfigurationChange) see docs/LANE_B_AUDIO_TESTS.md.
+    For real audio-stack interruption testing (BT codec switch, Zoom mic-grab)
+    see docs/LANE_B_AUDIO_TESTS.md.
     """
     return send(f"force_proxy_buffer_drop({n})")
 
@@ -968,13 +968,13 @@ def A5_proxy_buffer_drop_watchdog(**_) -> dict:
     AudioCaptureProxy buffer queue, dropping the next N buffers before
     they reach the app continuation. The PROXY's stall watchdog fires on
     the resulting buffer-arrival gap. The actual audio-stack recovery
-    paths in AVAudioEngineSource.handleEngineConfigurationChange() and
-    capture-source interruption handlers live in the
+    paths in the capture source's interruption handlers live in the
     EnviousWisprAudioService process and are NOT exercised here. Verified
     2026-05-02 (issue #553 close-out + Codex grounded review at
-    docs/audits/2026-05-02-v2-synthetic-viability-codex.txt) — production
-    Sentry shows zero AVAudioEngineConfigurationChange fires in 14d
-    across BT/Zoom/Discord/Spotify real-world testing.
+    docs/audits/2026-05-02-v2-synthetic-viability-codex.txt) — on the
+    since-deleted AVAudioEngine backend, production Sentry showed zero
+    engine-configuration-change fires in 14d across BT/Zoom/Discord/Spotify
+    real-world testing.
 
     For real OS-level audio interruption testing see
     docs/LANE_B_AUDIO_TESTS.md (Bluetooth route flip, Zoom/Discord

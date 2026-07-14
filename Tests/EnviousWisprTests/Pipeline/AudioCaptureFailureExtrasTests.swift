@@ -16,15 +16,15 @@ struct AudioCaptureFailureExtrasTests {
 
     let extras = AudioCaptureFailureExtras.build(
       error: AudioError.formatCreationFailed(
-        source: "AVAudioEngineSource.startCapture.missing_forwarder"),
+        source: "HALDeviceInputSource.startCapture.missing_forwarder"),
       audioCapture: capture,
       failureMode: "thrown_start"
     )
 
     #expect(
       extras["capture.error_source"] as? String
-        == "AVAudioEngineSource.startCapture.missing_forwarder")
-    #expect(extras["capture.source_type"] as? String == "av_audio_engine")
+        == "HALDeviceInputSource.startCapture.missing_forwarder")
+    #expect(extras["capture.source_type"] as? String == "hal_device_input")
     #expect(extras["capture.failure_mode"] as? String == "thrown_start")
     #expect(extras["capture_session_id"] as? Int == 42)
     #expect(extras["capture.input_device_uid_preferred"] as? String == "preferred-mic")
@@ -74,8 +74,7 @@ private final class ExtrasAudioCapture: AudioCaptureInterface {
   var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
   var currentCaptureSessionID: UInt64 = 0
   var isActivelyCapturing: Bool = false
-  var captureSourceType: String = "av_audio_engine"
-  var noiseSuppressionEnabled: Bool = false
+  var captureSourceType: String = "hal_device_input"
   var selectedInputDeviceUID: String = ""
   var preferredInputDeviceIDOverride: String = ""
   var warmEnginePolicy: WarmEnginePolicy = .off
@@ -89,7 +88,6 @@ private final class ExtrasAudioCapture: AudioCaptureInterface {
   }
   func stopCapture() async -> CaptureResult { CaptureResult(samples: []) }
   func rebuildEngine() {}
-  func buildEngine(noiseSuppression: Bool) {}
   func preWarm() async throws {}
   func abortPreWarm() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {

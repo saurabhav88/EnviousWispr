@@ -176,8 +176,7 @@ private final class SettableAudioCapture: AudioCaptureInterface {
   var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
   var currentCaptureSessionID: UInt64 = 0
   var isActivelyCapturing: Bool = false
-  var captureSourceType: String = "av_audio_engine"
-  var noiseSuppressionEnabled: Bool = false
+  var captureSourceType: String = "hal_device_input"
   var selectedInputDeviceUID: String = ""
   var preferredInputDeviceIDOverride: String = ""
   var warmEnginePolicy: WarmEnginePolicy = .off
@@ -191,7 +190,6 @@ private final class SettableAudioCapture: AudioCaptureInterface {
   }
   func stopCapture() async -> CaptureResult { CaptureResult(samples: []) }
   func rebuildEngine() {}
-  func buildEngine(noiseSuppression: Bool) {}
   func preWarm() async throws {}
   func abortPreWarm() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {
@@ -229,8 +227,7 @@ private final class ObservableAudioCapture: AudioCaptureInterface {
   var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
   var currentCaptureSessionID: UInt64 = 0
   var isActivelyCapturing: Bool = false
-  var captureSourceType: String = "av_audio_engine"
-  var noiseSuppressionEnabled: Bool = false
+  var captureSourceType: String = "hal_device_input"
   var selectedInputDeviceUID: String = ""
   var preferredInputDeviceIDOverride: String = ""
   var warmEnginePolicy: WarmEnginePolicy = .off
@@ -244,7 +241,6 @@ private final class ObservableAudioCapture: AudioCaptureInterface {
   }
   func stopCapture() async -> CaptureResult { CaptureResult(samples: []) }
   func rebuildEngine() {}
-  func buildEngine(noiseSuppression: Bool) {}
   func preWarm() async throws {}
   func abortPreWarm() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {

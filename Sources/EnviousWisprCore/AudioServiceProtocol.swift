@@ -6,7 +6,7 @@ import Foundation
 /// Audio samples cross as Data (raw Float32 bytes). The proxy converts Data↔[Float] at the boundary.
 ///
 /// Methods are split into two categories:
-/// - **Configuration** (buildEngine, set*): state setters, replayed by proxy after crash reinit.
+/// - **Configuration** (set*): state setters, replayed by proxy after crash reinit.
 /// - **Lifecycle** (start*, beginCapture, stopCapture, etc.): control flow, require config first.
 @objc public protocol AudioServiceProtocol {
   // MARK: - Diagnostics (Steps 1-2)
@@ -18,13 +18,6 @@ import Foundation
   func checkMicPermission(reply: @escaping (Int, String) -> Void)
 
   // MARK: - Configuration (Step 3)
-
-  /// Build/rebuild the audio engine with noise suppression configuration.
-  /// Replayed by the proxy after service crash via resendConfigIfNeeded().
-  func buildEngine(noiseSuppression: Bool)
-
-  /// Update noise suppression setting on the existing engine.
-  func setNoiseSuppressionEnabled(_ enabled: Bool)
 
   /// Set the preferred input device UID (user's explicit choice). Empty = auto.
   func setPreferredInputDeviceUID(_ uid: String)
@@ -38,7 +31,7 @@ import Foundation
 
   // MARK: - Lifecycle (Step 3)
 
-  /// Phase 1: start the audio engine, trigger BT codec switch, register config-change observer.
+  /// Phase 1: prepare the capture source (open the device, trigger BT codec switch).
   /// Device UIDs are passed inline so the proxy doesn't need separate setter replay before this call.
   func startEnginePhase(
     operationID: String, preferredDeviceUID: String, selectedDeviceUID: String,
@@ -66,7 +59,7 @@ import Foundation
   /// Cancel a pre-warmed engine that never began capture.
   func abortPreWarm()
 
-  /// Replace the audio engine with a fresh instance (lighter than buildEngine).
+  /// Replace the active capture source with a fresh instance.
   func rebuildEngine()
 
   // MARK: - VAD (Step 5)

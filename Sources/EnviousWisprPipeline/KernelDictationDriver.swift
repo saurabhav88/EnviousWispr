@@ -668,19 +668,16 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   // MARK: PR-4b.2 — direct methods + property (mirror old Parakeet pipeline App surface)
 
   /// Async cancel request. Wraps `kernel.cancel()` for App callers
-  /// (`PipelineSettingsSync.swift:195`, `RecordingFinalizer.swift:95`) that
-  /// `async`-call `pipeline.cancelRecording()`. Awaits the kernel reaching a
-  /// terminal state before returning — `PipelineSettingsSync` relies on this
-  /// to fully tear down capture before `buildEngine(...)` for a
-  /// noise-suppression rebuild (Codex review #11 r5). `kernel.cancel()` on
-  /// its own is fire-and-latch: it triggers the recording-exit path or sets
+  /// (`RecordingFinalizer.swift`) that `async`-call `pipeline.cancelRecording()`.
+  /// Awaits the kernel reaching a terminal state before returning — callers rely
+  /// on this to fully tear down capture before starting again. `kernel.cancel()`
+  /// on its own is fire-and-latch: it triggers the recording-exit path or sets
   /// `cancelRequested`, but the actual transition to `.cancelled` /
   /// `.discarded` happens on the forward path's next yield.
   /// `disposition` (#1063 PR2) attributes a `.cancelled` terminal for crash
   /// recovery: `.discard` (genuine USER cancel — delete the spool) vs the
-  /// default `.failure` (a system cancel like the noise-suppression rebuild —
-  /// RETAIN recoverable audio). The user-cancel path passes `.discard`; the
-  /// settings-rebuild caller uses the retain default.
+  /// default `.failure` (a system cancel — RETAIN recoverable audio). The
+  /// user-cancel path passes `.discard`; system cancels use the retain default.
   public func cancelRecording(disposition: RecordingTerminalKind = .failure) async {
     pendingCancelDisposition = disposition
     kernel.cancel()

@@ -89,7 +89,7 @@ struct HALFormatStabilizationTests {
     #expect(stabilized)
   }
 
-  // MARK: - #1445 validity guard (parity with AVAudioEngineSource.isUsableFormat)
+  // MARK: - #1445 validity guard (shared rate clause with isUsableFormat)
 
   @Test("isUsableRate rejects nil, zero, negative, and NaN; accepts positive (#1445)")
   func isUsableRatePredicate() {

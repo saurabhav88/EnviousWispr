@@ -40,7 +40,7 @@ struct SentryAudioExtrasRouteTests {
   @Test("absent route params omit every capture.* route key")
   func routeKeysOmitted() {
     let extras = SentryAudioExtras.buildCaptureExtras(
-      route: "built_in_mic", sourceType: "av_audio_engine", sessionID: 2,
+      route: "built_in_mic", sourceType: "hal_device_input", sessionID: 2,
       isActivelyCapturing: false, inputDeviceUIDPreferred: nil,
       inputDeviceUIDSystemDefault: nil, failureMode: "stalled")
 
@@ -54,13 +54,15 @@ struct SentryAudioExtrasRouteTests {
     #expect(extras["capture.route"] as? String == "built_in_mic")
   }
 
-  @Test("a fallback rung's route_fallback_reason is emitted when supplied")
+  @Test("a supplied route_fallback_reason is emitted (builder passthrough)")
   func fallbackReasonPresent() {
+    // The builder still forwards an explicit fallback reason; no live producer
+    // supplies one after the single-backend cutover, so this locks the plumbing.
     let extras = SentryAudioExtras.buildCaptureExtras(
-      route: "failed", sourceType: "av_audio_engine", sessionID: 3,
+      route: "built_in_mic", sourceType: "hal_device_input", sessionID: 3,
       isActivelyCapturing: false, inputDeviceUIDPreferred: nil,
       inputDeviceUIDSystemDefault: nil, failureMode: "no_audio_captured",
-      routeReason: "failedNoFallback", routeFallbackReason: "failedNoFallback")
-    #expect(extras["capture.route_fallback_reason"] as? String == "failedNoFallback")
+      routeReason: "noBTAutoInput", routeFallbackReason: "backend_fallback")
+    #expect(extras["capture.route_fallback_reason"] as? String == "backend_fallback")
   }
 }

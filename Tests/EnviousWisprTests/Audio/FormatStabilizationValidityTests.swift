@@ -17,34 +17,34 @@ import Testing
 @Suite struct FormatStabilizationValidityTests {
 
   @Test func aFullyValidFormatIsUsable() {
-    #expect(AVAudioEngineSource.isUsableFormat(sampleRate: 44100, channelCount: 1))
-    #expect(AVAudioEngineSource.isUsableFormat(sampleRate: 48000, channelCount: 2))
-    #expect(AVAudioEngineSource.isUsableFormat(sampleRate: 16000, channelCount: 1))
+    #expect(HALDeviceInputSource.isUsableFormat(sampleRate: 44100, channelCount: 1))
+    #expect(HALDeviceInputSource.isUsableFormat(sampleRate: 48000, channelCount: 2))
+    #expect(HALDeviceInputSource.isUsableFormat(sampleRate: 16000, channelCount: 1))
   }
 
   /// The exact transient Codex flagged: a device mid-transition reporting 0 Hz.
   @Test func aZeroSampleRateIsNotUsable() {
-    #expect(!AVAudioEngineSource.isUsableFormat(sampleRate: 0, channelCount: 1))
+    #expect(!HALDeviceInputSource.isUsableFormat(sampleRate: 0, channelCount: 1))
   }
 
   /// The sibling transient: rate settles before the channel count does.
   @Test func aZeroChannelCountIsNotUsable() {
-    #expect(!AVAudioEngineSource.isUsableFormat(sampleRate: 44100, channelCount: 0))
+    #expect(!HALDeviceInputSource.isUsableFormat(sampleRate: 44100, channelCount: 0))
   }
 
   @Test func bothZeroIsNotUsable() {
-    #expect(!AVAudioEngineSource.isUsableFormat(sampleRate: 0, channelCount: 0))
+    #expect(!HALDeviceInputSource.isUsableFormat(sampleRate: 0, channelCount: 0))
   }
 
   /// A negative rate is not a rate. Guards against a `!= 0` rewrite.
   @Test func aNegativeSampleRateIsNotUsable() {
-    #expect(!AVAudioEngineSource.isUsableFormat(sampleRate: -44100, channelCount: 1))
+    #expect(!HALDeviceInputSource.isUsableFormat(sampleRate: -44100, channelCount: 1))
   }
 
   /// Boundary: the smallest positive values either side of the threshold.
   @Test func theUsabilityBoundaryIsStrictlyGreaterThanZero() {
-    #expect(AVAudioEngineSource.isUsableFormat(sampleRate: 0.001, channelCount: 1))
-    #expect(!AVAudioEngineSource.isUsableFormat(sampleRate: 0, channelCount: 1))
+    #expect(HALDeviceInputSource.isUsableFormat(sampleRate: 0.001, channelCount: 1))
+    #expect(!HALDeviceInputSource.isUsableFormat(sampleRate: 0, channelCount: 1))
   }
 
   /// Two *invalid* reads agreeing must not read as settled. This is the whole
@@ -55,7 +55,7 @@ import Testing
     let agree = previous == current
     let settled =
       agree
-      && AVAudioEngineSource.isUsableFormat(
+      && HALDeviceInputSource.isUsableFormat(
         sampleRate: current.rate, channelCount: current.channels)
     #expect(agree, "Fixture must model two agreeing reads for this test to mean anything.")
     #expect(!settled, "Two agreeing invalid reads were treated as a settled format.")

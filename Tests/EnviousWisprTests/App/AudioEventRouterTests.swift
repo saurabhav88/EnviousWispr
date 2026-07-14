@@ -12,10 +12,9 @@ import Testing
 
 /// PR8 of #763 — unit tests for `AudioEventRouter`.
 ///
-/// Verifies callback installation on construction and that the route-change
-/// observer invokes `captureTelemetry.incrementConfigChange()`. End-to-end
-/// pipeline-state-flip routing under engine-interruption is covered by Live
-/// UAT; here we lock the shape and the most catchable regressions.
+/// Verifies callback installation on construction. End-to-end pipeline-state-flip
+/// routing under engine-interruption is covered by Live UAT; here we lock the
+/// shape and the most catchable regressions.
 @MainActor
 @Suite("AudioEventRouter")
 struct AudioEventRouterTests {
@@ -29,7 +28,6 @@ struct AudioEventRouterTests {
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
-    let telemetry = CaptureTelemetryState()
 
     #expect(audio.onEngineInterrupted == nil)
     #expect(audio.onXPCServiceError == nil)
@@ -45,7 +43,6 @@ struct AudioEventRouterTests {
       audioCapture: audio,
       kernelDriver: parakeet,
       whisperKitKernelDriver: whisperKit,
-      captureTelemetry: telemetry,
       recordingOverlay: RecordingOverlayPanel(),
       resolveActiveCaptureBackend: { nil }
     )
@@ -66,7 +63,6 @@ struct AudioEventRouterTests {
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
-    let telemetry = CaptureTelemetryState()
     var existingOwnerCallCount = 0
     audio.onVADAutoStop = { existingOwnerCallCount += 1 }
 
@@ -74,7 +70,6 @@ struct AudioEventRouterTests {
       audioCapture: audio,
       kernelDriver: parakeet,
       whisperKitKernelDriver: whisperKit,
-      captureTelemetry: telemetry,
       recordingOverlay: RecordingOverlayPanel(),
       resolveActiveCaptureBackend: { nil }
     )
@@ -133,7 +128,6 @@ struct AudioEventRouterTests {
       audioCapture: audio,
       kernelDriver: driver,
       whisperKitKernelDriver: whisperKit,
-      captureTelemetry: CaptureTelemetryState(),
       recordingOverlay: RecordingOverlayPanel(),
       resolveActiveCaptureBackend: { .parakeet }
     )
@@ -179,37 +173,6 @@ struct AudioEventRouterTests {
     withExtendedLifetime(router) {}
   }
 
-  @Test("AVAudioEngineConfigurationChange observer increments the config-change counter")
-  func routeChangeObserverIncrementsTelemetry() async {
-    let audio = RouterTestAudioCapture()
-    let asr = RouterTestASRManager()
-    let store = DictationRuntimeFixtures.tempStore()
-    let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
-      audioCapture: audio, asrManager: asr, store: store)
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
-      audioCapture: audio, store: store)
-    let telemetry = CaptureTelemetryState()
-
-    let router = AudioEventRouter(
-      audioCapture: audio,
-      kernelDriver: parakeet,
-      whisperKitKernelDriver: whisperKit,
-      captureTelemetry: telemetry,
-      recordingOverlay: RecordingOverlayPanel(),
-      resolveActiveCaptureBackend: { nil }
-    )
-
-    let baseline = telemetry.configurationChangeCount
-    NotificationCenter.default.post(
-      name: .AVAudioEngineConfigurationChange, object: nil)
-    // The observer hops to @MainActor via Task — yield so the hop runs.
-    await Task.yield()
-    await Task.yield()
-
-    #expect(telemetry.configurationChangeCount == baseline + 1)
-    withExtendedLifetime(router) {}
-  }
-
   @Test("resolveActiveCaptureBackend closure is invoked on engine interruption")
   func engineInterruptionCallsResolver() {
     let audio = RouterTestAudioCapture()
@@ -219,14 +182,12 @@ struct AudioEventRouterTests {
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
-    let telemetry = CaptureTelemetryState()
 
     var resolverCallCount = 0
     let router = AudioEventRouter(
       audioCapture: audio,
       kernelDriver: parakeet,
       whisperKitKernelDriver: whisperKit,
-      captureTelemetry: telemetry,
       recordingOverlay: RecordingOverlayPanel(),
       resolveActiveCaptureBackend: {
         resolverCallCount += 1

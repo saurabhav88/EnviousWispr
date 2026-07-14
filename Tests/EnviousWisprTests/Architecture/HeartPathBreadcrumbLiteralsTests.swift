@@ -23,9 +23,14 @@ import Testing
   /// router source files. These are the Sentry breadcrumb messages,
   /// error-type spellings, category strings, and extras-dict keys consumed
   /// by Sentry triage queries. Drift here breaks PostHog/Sentry dashboards.
+  // NOTE (#1533): the `"Audio route changed"` breadcrumb + its `"audio_route"`
+  // extra were removed with the `AVAudioEngineConfigurationChange` observer — its
+  // notification could not fire after the engine backend was deleted (and in
+  // practice never fired in production, per the 2026-05-02 finding). Route-change
+  // evidence survives via `AudioSystemEventReporter`'s CoreAudio listeners, not
+  // this router breadcrumb.
   private static let requiredLiterals: [String] = [
     "\"Audio XPC interrupted\"",
-    "\"Audio route changed\"",
     ".audioXPCInterrupted",
     ".xpcServiceError",
     "\"xpc.handler\"",
@@ -36,7 +41,6 @@ import Testing
     "\"audio.recording_duration_ms\"",
     "\"parakeet_state\"",
     "\"whisperkit_state\"",
-    "\"audio_route\"",
     "[AudioEventRouter] Audio onEngineInterrupted",
     "[ASREventRouter] ASR onServiceInterrupted",
   ]

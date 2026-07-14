@@ -68,6 +68,8 @@ struct SettingsDefaultsRoutingTests {
     #expect(!keys.contains("useXPCAudioService"))
     #expect(!keys.contains("useXPCASRService"))
     #expect(!keys.contains("accessibilityWarningDismissed"))
+    // Removed setting (#734/#1533): the legacy `noiseSuppression` key is
+    // migration-stripped on load, never part of the unified set.
     #expect(!keys.contains("noiseSuppression"))
     #expect(!keys.contains("sessionLanguagePriors"))
   }

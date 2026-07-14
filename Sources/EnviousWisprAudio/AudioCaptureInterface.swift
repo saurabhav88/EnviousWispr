@@ -42,8 +42,8 @@ public protocol AudioCaptureInterface: AnyObject {
   var onVADModelUnavailable: (() -> Void)? { get set }
 
   // Telemetry callbacks (round-4 additions for #285 heart-path Sentry coverage).
-  // Producers: source backends (`AVAudioEngineSource`, `HALDeviceInputSource`,
-  //            `AudioCaptureProxy`). Consumers: pipeline layer + the former root state.
+  // Producers: source backends (`HALDeviceInputSource`, `AudioCaptureProxy`).
+  //            Consumers: pipeline layer + the former root state.
   // All callbacks fire on the MainActor. Conformers that don't produce a given
   // signal leave the closure nil (e.g. direct sources leave XPC callbacks nil).
 
@@ -53,7 +53,6 @@ public protocol AudioCaptureInterface: AnyObject {
   /// subsequent `stopCapture` for that session. Telemetry-only: consumers
   /// must not treat this as a control-flow signal.
   var onCaptureStalled: ((CaptureStallContext) -> Void)? { get set }
-
 
   /// Fires from the proxy's XPC interruption / invalidation handlers.
   /// Direct sources have no XPC layer and leave nil. Consumer emits
@@ -94,10 +93,9 @@ public protocol AudioCaptureInterface: AnyObject {
   var isActivelyCapturing: Bool { get }
 
   /// Low-cardinality string identifying the concrete capture backend driving
-  /// the current session. Values: `"av_audio_engine"`, `"hal_device_input"`,
-  /// `"xpc_proxy"`. Used by pipeline-layer Sentry extras so device-pinned
-  /// sessions are not mislabeled as AVAudioEngine. Delegates to the active
-  /// source in direct mode; constant for the proxy.
+  /// the current session. Values: `"hal_device_input"`, `"xpc_proxy"`. Used by
+  /// pipeline-layer Sentry extras. Delegates to the active source in direct
+  /// mode; constant for the proxy.
   var captureSourceType: String { get }
 
   /// #1317 (cloud review P2, PR #1512, round 2): input device resolved and
@@ -125,7 +123,6 @@ public protocol AudioCaptureInterface: AnyObject {
   var zeroSignalDiscriminatorSawIneligible: Bool { get }
 
   // Configuration properties (read-write)
-  var noiseSuppressionEnabled: Bool { get set }
   var selectedInputDeviceUID: String { get set }
   var preferredInputDeviceIDOverride: String { get set }
   var warmEnginePolicy: WarmEnginePolicy { get set }
@@ -140,7 +137,6 @@ public protocol AudioCaptureInterface: AnyObject {
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer>  // periphery:ignore - convenience method combining engine + capture phases
   func stopCapture() async -> CaptureResult
   func rebuildEngine()
-  func buildEngine(noiseSuppression: Bool)
   func preWarm() async throws
   func abortPreWarm()
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool

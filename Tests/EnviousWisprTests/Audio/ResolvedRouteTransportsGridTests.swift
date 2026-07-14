@@ -16,9 +16,7 @@ struct ResolvedRouteTransportsGridTests {
   private func makeDecision(
     _ source: CaptureSourceType, _ reason: CaptureRouteReason
   ) -> CaptureRouteDecision {
-    CaptureRouteDecision(
-      sourceType: source, reason: reason, rationale: "test",
-      vpAvailable: false, fallbackAllowed: false)
+    CaptureRouteDecision(sourceType: source, reason: reason, rationale: "test")
   }
 
   // #1529 — a fixed fake default device, injected via `derive`'s device-lookup
@@ -35,11 +33,10 @@ struct ResolvedRouteTransportsGridTests {
 
   @Test(
     "derive is total over the sourceType × reason grid",
-    arguments: [CaptureSourceType.audioEngine, .halDeviceInput],
+    arguments: [CaptureSourceType.halDeviceInput],
     [
       CaptureRouteReason.btOutputAutoInput, .btOutputUserSelectedDevice, .noBTAutoInput,
-      .noBTUserSelectedDevice, .forcedEngine, .forcedHALDeviceInput,
-      .fallbackToEngine, .failedNoFallback,
+      .noBTUserSelectedDevice,
     ])
   func totalOverGrid(source: CaptureSourceType, reason: CaptureRouteReason) {
     let r = ResolvedRouteTransports.derive(
@@ -48,9 +45,8 @@ struct ResolvedRouteTransportsGridTests {
 
     #expect(r.routeReason == reason.rawValue)
 
-    let isFallbackRung = (reason == .fallbackToEngine || reason == .failedNoFallback)
-    #expect((r.routeFallbackReason != nil) == isFallbackRung)
-    if isFallbackRung { #expect(r.routeFallbackReason == reason.rawValue) }
+    // No surviving reason is a backend-level fallback rung, so this is always nil.
+    #expect(r.routeFallbackReason == nil)
 
     // Empty UIDs → Auto; no user-selected transport.
     #expect(r.inputSelectionMode == "auto")
@@ -95,7 +91,7 @@ struct ResolvedRouteTransportsGridTests {
     // uses ONLY that, so a bare selectedInputDeviceUID is Auto to the resolver
     // — mode/selected must agree with route_reason, not claim explicit (#1387).
     let r = ResolvedRouteTransports.derive(
-      decision: makeDecision(.audioEngine, .noBTAutoInput),
+      decision: makeDecision(.halDeviceInput, .noBTAutoInput),
       preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "fake-uid")
     #expect(r.inputSelectionMode == "auto")
     #expect(r.selected == "unknown")
@@ -131,22 +127,22 @@ struct ResolvedRouteTransportsGridTests {
     #expect(r.inputSelectionMode == "explicit")
   }
 
-  @Test("a disconnected pinned device falls effective back to the default input (engine parity)")
+  @Test("a disconnected pinned device falls effective back to the default input")
   func disconnectedPinFallsBackToDefault() {
-    // AVAudioEngineSource resolves a missing pinned UID to nil and captures from
-    // the system-default input (`resolvedDeviceID ?? defaultInputDeviceID()`),
-    // so the effective transport must match Auto, NOT report "unknown".
+    // The HAL source resolves a missing pinned UID to nil and captures from
+    // the system-default input, so the effective transport must match Auto, NOT
+    // report "unknown".
     // #1529 — both calls inject the SAME fake default device so the comparison
     // is deterministic instead of racing two independent live CoreAudio reads.
     let disconnected = ResolvedRouteTransports.derive(
-      decision: makeDecision(.audioEngine, .noBTUserSelectedDevice),
+      decision: makeDecision(.halDeviceInput, .noBTUserSelectedDevice),
       preferredInputDeviceIDOverride: "fake-disconnected-uid", selectedInputDeviceUID: "",
       defaultInputDeviceID: fakeDefaultInputDeviceID,
       defaultOutputDeviceID: fakeDefaultOutputDeviceID,
       transportLabelForDevice: fakeTransportLabelForDevice,
       transportLabelForUID: fakeTransportLabelForUID)
     let auto = ResolvedRouteTransports.derive(
-      decision: makeDecision(.audioEngine, .noBTAutoInput),
+      decision: makeDecision(.halDeviceInput, .noBTAutoInput),
       preferredInputDeviceIDOverride: "", selectedInputDeviceUID: "",
       defaultInputDeviceID: fakeDefaultInputDeviceID,
       defaultOutputDeviceID: fakeDefaultOutputDeviceID,

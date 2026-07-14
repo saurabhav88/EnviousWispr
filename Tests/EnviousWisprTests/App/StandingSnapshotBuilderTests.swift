@@ -56,7 +56,6 @@ import Testing
       #expect(event.stringProps["recording_mode"] == settings.recordingMode.rawValue)
       #expect(event.boolProps["filler_removal"] == settings.fillerRemovalEnabled)
       #expect(event.intProps["custom_words_count"] == customWords.customWords.count)
-      #expect(event.boolProps["noise_suppression"] == settings.noiseSuppression)
       // has_api_keys depends on the machine's Keychain/file backend, so assert
       // presence (not a fixed truth value) to stay deterministic across runs.
       #expect(event.boolProps["has_api_keys"] != nil)

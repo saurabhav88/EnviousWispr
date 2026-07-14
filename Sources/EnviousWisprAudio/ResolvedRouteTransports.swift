@@ -16,8 +16,9 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
   public let effective: String
   /// `CaptureRouteReason.rawValue` — the machine-readable route reason.
   public let routeReason: String
-  /// Present iff `routeReason` is a fallback rung (`fallbackToEngine` /
-  /// `failedNoFallback`); absent otherwise. The presence IS the signal.
+  /// Reserved for a backend-level fallback rung. With a single capture backend
+  /// there is no backend to fall back to, so this is always absent today; the
+  /// key stays so telemetry consumers keep a stable shape.
   public let routeFallbackReason: String?
   /// `explicit` when the user pinned a device, `auto` when on system-default,
   /// `unknown` reserved. Separates explicit user picks from Auto's system-default
@@ -69,7 +70,7 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
     // consistent with `route_reason` (a bare `selectedInputDeviceUID` under an
     // empty picker is Auto to the resolver, not an explicit pick — #1387 cloud
     // review P2). `selectedInputDeviceUID` still feeds `effective` below because
-    // the engine opens it as a fallback.
+    // the HAL source opens it as a fallback.
     let selectionMode = preferredInputDeviceIDOverride.isEmpty ? "auto" : "explicit"
 
     let selected =
@@ -80,23 +81,6 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
     let effective: String
     let usedActualBoundTransport: Bool
     switch decision.sourceType {
-    case .audioEngine:
-      // Mirror AVAudioEngineSource's device resolution exactly: the preferred
-      // override, else the stored selection, else the system-default input
-      // (`AVAudioEngineSource.swift:227-243` — `resolvedDeviceID ??
-      // defaultInputDeviceID()`). A pinned-but-disconnected UID therefore
-      // reports the default input transport the engine actually opens.
-      let engineUID =
-        preferredInputDeviceIDOverride.isEmpty
-        ? selectedInputDeviceUID : preferredInputDeviceIDOverride
-      if !engineUID.isEmpty, let label = transportLabelForUID(engineUID) {
-        effective = label
-      } else if let defaultID = defaultInputDeviceID() {
-        effective = transportLabelForDevice(defaultID) ?? "unknown"
-      } else {
-        effective = "unknown"
-      }
-      usedActualBoundTransport = false
     case .halDeviceInput:
       if let actualBoundTransport {
         effective = actualBoundTransport
@@ -116,9 +100,9 @@ public struct ResolvedRouteTransports: Sendable, Equatable {
       }
     }
 
-    let fallbackReason: String? =
-      (decision.reason == .fallbackToEngine || decision.reason == .failedNoFallback)
-      ? decision.reason.rawValue : nil
+    // No surviving route reason is a backend-level fallback rung (there is one
+    // capture backend), so the fallback reason is always absent.
+    let fallbackReason: String? = nil
 
     let outputTransport =
       defaultOutputDeviceID()

@@ -455,7 +455,6 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
   var currentCaptureSessionID: UInt64 = 0
   var isActivelyCapturing: Bool = false
   var captureSourceType: String = "fixture_mock"
-  var noiseSuppressionEnabled: Bool = false
   var selectedInputDeviceUID: String = ""
   var preferredInputDeviceIDOverride: String = ""
   var warmEnginePolicy: WarmEnginePolicy = .off
@@ -503,7 +502,6 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
   }
 
   func rebuildEngine() {}
-  func buildEngine(noiseSuppression: Bool) {}
 
   func preWarm() async throws {}
 

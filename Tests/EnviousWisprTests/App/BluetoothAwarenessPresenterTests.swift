@@ -344,7 +344,7 @@ private func emitEquals(
 
   @Test func effectiveInput_unresolvableUid_fallsBackToDefaultBluetooth() {
     // Cloud review P2: a disconnected pinned device records through the DEFAULT
-    // input (AVAudioEngineSource `resolvedDeviceID ?? defaultInputDeviceID()`), so a
+    // input (the HAL source resolves a missing UID to the system default), so a
     // stale UID with a Bluetooth default must show the card, not fail closed.
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "ghost-device",

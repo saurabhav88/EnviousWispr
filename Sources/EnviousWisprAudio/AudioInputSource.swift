@@ -3,8 +3,8 @@ import EnviousWisprCore
 
 /// Internal abstraction over audio capture sources.
 ///
-/// Two conformers:
-/// - `AVAudioEngineSource`: existing AVAudioEngine tap path (supports voice processing)
+/// One conformer:
+/// - `HALDeviceInputSource`: low-level HAL AUHAL device input, the sole backend.
 ///
 /// `AudioCaptureManager` picks the source via `CaptureRouteResolver` and delegates
 /// all hardware interaction to it. The manager owns app-facing state (capturedSamples,
@@ -28,16 +28,14 @@ protocol AudioInputSource: AnyObject {
   /// Source must cancel any pending watchdog on `stop()` / `deactivateCapture()`.
   var onCaptureStalled: ((CaptureStallContext) -> Void)? { get set }
 
-
   /// Monotonic capture-session id. Increments inside `startCapture`.
   /// Zero if no session has started. Used for watchdog generation check +
   /// dedup correlation at the pipeline layer.
   var captureGeneration: UInt64 { get }
 
   /// Low-cardinality tag naming the concrete capture backend
-  /// (`"av_audio_engine"` vs `"hal_device_input"`). Surfaced via
-  /// `AudioCaptureManager.captureSourceType` so pipeline Sentry extras
-  /// distinguish device-pinned from AVAudioEngine paths.
+  /// (`"hal_device_input"`). Surfaced via `AudioCaptureManager.captureSourceType`
+  /// for pipeline Sentry extras.
   var captureSourceType: String { get }
 
   // Lifecycle (mirrors AudioCaptureManager's two-phase start)

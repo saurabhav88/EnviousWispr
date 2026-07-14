@@ -72,7 +72,7 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   /// input stream at prepare time (#1523 — fleet-visibility for the multi-channel
   /// down-mix. AUHAL always takes channel 0; this records how many channels the
   /// device exposed so a >1-channel population is measurable). Nil when the
-  /// source doesn't read a channel count (the AVAudioEngine backend leaves it nil).
+  /// source doesn't read a channel count (e.g. proxy-origin stalls).
   public let nativeChannelCount: Int?
 
   public init(

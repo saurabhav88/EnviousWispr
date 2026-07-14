@@ -162,18 +162,6 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
 
   // MARK: - Configuration
 
-  func buildEngine(noiseSuppression: Bool) {
-    Task { @MainActor in
-      captureManager.buildEngine(noiseSuppression: noiseSuppression)
-    }
-  }
-
-  func setNoiseSuppressionEnabled(_ enabled: Bool) {
-    Task { @MainActor in
-      captureManager.noiseSuppressionEnabled = enabled
-    }
-  }
-
   func setPreferredInputDeviceUID(_ uid: String) {
     Task { @MainActor in
       captureManager.preferredInputDeviceIDOverride = uid

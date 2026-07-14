@@ -1125,7 +1125,7 @@ public final class TelemetryService {
   public func settingsSnapshot(
     asrBackend: String, llmProvider: String, recordingMode: String,
     fillerRemoval: Bool, customWordsCount: Int,
-    hasApiKeys: Bool, noiseSuppression: Bool,
+    hasApiKeys: Bool,
     microphoneStatus: String, accessibilityStatus: String,
     accessibilityWarningDismissed: Bool,
     config: [String: String] = [:]
@@ -1147,7 +1147,6 @@ public final class TelemetryService {
           boolProps: [
             "filler_removal": fillerRemoval,
             "has_api_keys": hasApiKeys,
-            "noise_suppression": noiseSuppression,
             "accessibility_warning_dismissed": accessibilityWarningDismissed,
           ]))
     #endif
@@ -1158,7 +1157,6 @@ public final class TelemetryService {
       "filler_removal": fillerRemoval,
       "custom_words_count": customWordsCount,
       "has_api_keys": hasApiKeys,
-      "noise_suppression": noiseSuppression,
       "microphone_status": microphoneStatus,
       "accessibility_status": accessibilityStatus,
       "accessibility_warning_dismissed": accessibilityWarningDismissed,

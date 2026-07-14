@@ -226,9 +226,9 @@ final class BluetoothAwarenessPresenter {
       return defaultInputIsBluetooth() ?? false
     }
     // A remembered UID that still resolves is authoritative. But one that no longer
-    // resolves is NOT fail-closed: the capture path binds `resolvedDeviceID ??
-    // defaultInputDeviceID()` (AVAudioEngineSource.swift:289), so a disconnected
-    // pinned device actually records through the DEFAULT input. Mirror that — fall
+    // resolves is NOT fail-closed: the capture source follows the resolved device
+    // or falls back to the system-default input, so a disconnected pinned device
+    // actually records through the DEFAULT input. Mirror that — fall
     // back to the default input's transport so a user whose stale UID resolves to a
     // Bluetooth default still gets the card (cloud review P2). Otherwise a Bluetooth
     // user would record through the cold Bluetooth mic and never be warned.

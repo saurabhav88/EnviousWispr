@@ -52,16 +52,6 @@ struct CaptureTelemetryStateTests {
     #expect((ms ?? -1) >= 0)
   }
 
-  @Test("incrementConfigChange is monotonic")
-  func configChangeMonotonic() {
-    let state = CaptureTelemetryState()
-    #expect(state.configurationChangeCount == 0)
-    state.incrementConfigChange()
-    state.incrementConfigChange()
-    state.incrementConfigChange()
-    #expect(state.configurationChangeCount == 3)
-  }
-
   // MARK: - Injected-clock boundary tests (#784 PR1, 2026-05-18)
   //
   // `shouldEmitZombie` returns true iff `currentInstant() - last >= window`.

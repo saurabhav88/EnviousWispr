@@ -620,7 +620,6 @@ public final class WisprBootstrapper {
       asrManager: asrManager,
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
-      captureTelemetry: captureTelemetry,
       settings: settings,
       permissions: permissions,
       recordingOverlay: recordingOverlay,

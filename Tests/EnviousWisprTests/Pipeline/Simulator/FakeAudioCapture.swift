@@ -88,7 +88,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
   var currentResolvedRoute: ResolvedRouteTransports? { nil }
   private(set) var currentCaptureSessionID: UInt64 = 0
   var isActivelyCapturing: Bool { isCapturing }
-  var captureSourceType: String { "av_audio_engine" }
+  var captureSourceType: String { "hal_device_input" }
 
   // MARK: AudioCaptureInterface — callbacks
 
@@ -106,7 +106,6 @@ final class FakeAudioCapture: AudioCaptureInterface {
 
   // MARK: AudioCaptureInterface — configuration (inert storage)
 
-  var noiseSuppressionEnabled = false
   var selectedInputDeviceUID = ""
   var preferredInputDeviceIDOverride = ""
   var warmEnginePolicy: WarmEnginePolicy = .off
@@ -152,10 +151,6 @@ final class FakeAudioCapture: AudioCaptureInterface {
   }
 
   func rebuildEngine() { rebuildEngineCallCount += 1 }
-
-  func buildEngine(noiseSuppression: Bool) {
-    noiseSuppressionEnabled = noiseSuppression
-  }
 
   func preWarm() async throws {
     preWarmCallCount += 1

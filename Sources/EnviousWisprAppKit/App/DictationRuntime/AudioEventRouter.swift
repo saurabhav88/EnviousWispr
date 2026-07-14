@@ -1,4 +1,3 @@
-import AVFAudio
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprPipeline
@@ -6,8 +5,8 @@ import EnviousWisprServices
 import Foundation
 
 /// PR8 of #763 — routes audio engine + route-change events to the active pipeline;
-/// installs two callbacks on `audioCapture` and one
-/// `AVAudioEngineConfigurationChange` observer at construction time.
+/// installs the interruption/error/VAD callbacks on `audioCapture` at
+/// construction time.
 ///
 /// Lifetime: held by `DictationRuntime`, which is `@State` on
 /// `EnviousWisprApp`, so the router lives for the app's lifetime. No `deinit`
@@ -19,7 +18,6 @@ final class AudioEventRouter {
   let audioCapture: any AudioCaptureInterface
   let kernelDriver: KernelDictationDriver
   let whisperKitKernelDriver: KernelDictationDriver
-  let captureTelemetry: CaptureTelemetryState
   let recordingOverlay: RecordingOverlayPanel
 
   let resolveActiveCaptureBackend:
@@ -29,7 +27,6 @@ final class AudioEventRouter {
     audioCapture: any AudioCaptureInterface,
     kernelDriver: KernelDictationDriver,
     whisperKitKernelDriver: KernelDictationDriver,
-    captureTelemetry: CaptureTelemetryState,
     recordingOverlay: RecordingOverlayPanel,
     resolveActiveCaptureBackend: @escaping @MainActor () -> DictationLifecycleCoordinator
       .LastCapturingBackend?
@@ -37,25 +34,8 @@ final class AudioEventRouter {
     self.audioCapture = audioCapture
     self.kernelDriver = kernelDriver
     self.whisperKitKernelDriver = whisperKitKernelDriver
-    self.captureTelemetry = captureTelemetry
     self.recordingOverlay = recordingOverlay
     self.resolveActiveCaptureBackend = resolveActiveCaptureBackend
-
-    NotificationCenter.default.addObserver(
-      forName: .AVAudioEngineConfigurationChange, object: nil, queue: nil
-    ) { [weak self] _ in
-      Task { @MainActor in
-        guard let self else { return }
-        self.captureTelemetry.incrementConfigChange()
-        let route = self.audioCapture.currentAudioRoute
-        SentryBreadcrumb.add(
-          stage: "audio", message: "Audio route changed", level: .warning,
-          data: [
-            "audio_route": route
-          ])
-        SentryBreadcrumb.updateAudioRoute(route)
-      }
-    }
 
     audioCapture.onEngineInterrupted = { [weak self] cause in
       guard let self else { return }

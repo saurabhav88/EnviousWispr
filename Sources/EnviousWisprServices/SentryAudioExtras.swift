@@ -22,7 +22,6 @@ public enum SentryAudioExtras {
     stallContext: CaptureStallContext? = nil,
     polishModelSwapMs: Int? = nil,
     timeSinceLastSuccessfulRecordingMs: Int? = nil,
-    configChangeCountSinceLaunch: Int? = nil,
     selectedTransport: String? = nil,
     effectiveTransport: String? = nil,
     routeReason: String? = nil,
@@ -82,10 +81,6 @@ public enum SentryAudioExtras {
 
     if let ms = timeSinceLastSuccessfulRecordingMs {
       extras["capture.time_since_last_successful_recording_ms"] = ms
-    }
-
-    if let count = configChangeCountSinceLaunch {
-      extras["capture.config_change_count_since_launch"] = count
     }
 
     // #1376: effective-device route context on capture-error events. Absent

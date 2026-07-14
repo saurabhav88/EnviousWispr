@@ -248,7 +248,7 @@ import Testing
         armedAtUptimeNs: 0,
         firedAtUptimeNs: 0,
         route: "fake-cross-domain",
-        sourceType: "av_audio_engine",
+        sourceType: "hal_device_input",
         engineStartedSuccessfully: true,
         tapInstalled: true,
         formatMismatchObserved: false,

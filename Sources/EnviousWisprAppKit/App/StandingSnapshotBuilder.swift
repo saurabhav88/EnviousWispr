@@ -46,7 +46,6 @@ struct StandingSnapshotBuilder {
       fillerRemoval: s.fillerRemovalEnabled,
       customWordsCount: customWordsCoordinator.customWords.count,
       hasApiKeys: hasKeys,
-      noiseSuppression: s.noiseSuppression,
       // Phase 3 (#1172): point-in-time microphone / Accessibility posture. A mic
       // change is only observable across launches (macOS hides an out-of-process
       // mic toggle from a running app), so the launch snapshot is the one place
