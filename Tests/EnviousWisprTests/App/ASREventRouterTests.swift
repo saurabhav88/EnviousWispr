@@ -100,11 +100,11 @@ struct ASREventRouterTests {
       // `.polishing` for that state, which is the safe-point window the
       // router must NOT interrupt on ASR XPC crash.
       let kernel = driver.kernelForTesting
-      #expect(kernel.testForceTransition(to: .preparing))
-      #expect(kernel.testForceTransition(to: .recording))
+      #expect(kernel.testForceTransition(to: .arming))
+      #expect(kernel.testForceTransition(to: .live))
       #expect(kernel.testForceTransition(to: .stopping))
-      #expect(kernel.testForceTransition(to: .transcribing))
-      #expect(kernel.testForceTransition(to: .finalizing))
+      #expect(kernel.testForceTransition(to: .delivering))
+      kernel.testSetDeliveringPhase(.finalizing(.transcribing))
       #expect(driver.state == .polishing)
       asr.onServiceInterrupted?()
       await Task.yield()
@@ -145,11 +145,11 @@ struct ASREventRouterTests {
       )
 
       let kernel = whisperKit.kernelForTesting
-      #expect(kernel.testForceTransition(to: .preparing))
-      #expect(kernel.testForceTransition(to: .recording))
+      #expect(kernel.testForceTransition(to: .arming))
+      #expect(kernel.testForceTransition(to: .live))
       #expect(kernel.testForceTransition(to: .stopping))
-      #expect(kernel.testForceTransition(to: .transcribing))
-      #expect(kernel.testForceTransition(to: .finalizing))
+      #expect(kernel.testForceTransition(to: .delivering))
+      kernel.testSetDeliveringPhase(.finalizing(.transcribing))
       #expect(whisperKit.state == .polishing)
       asr.onServiceInterrupted?()
       await Task.yield()
@@ -199,8 +199,8 @@ struct ASREventRouterTests {
         asrManager: asr, kernelDriver: parakeet, whisperKitKernelDriver: whisperKit)
 
       let kernel = parakeet.kernelForTesting
-      #expect(kernel.testForceTransition(to: .preparing))
-      #expect(kernel.testForceTransition(to: .recording))
+      #expect(kernel.testForceTransition(to: .arming))
+      #expect(kernel.testForceTransition(to: .live))
       #expect(parakeet.state == .recording)
       asr.onServiceInterrupted?()
       await Task.yield()

@@ -59,12 +59,12 @@ import Testing
       let kernel = wrapper.testKernel
 
       await startToRecording(wrapper)
-      #expect(kernel.state == .recording)
+      #expect(kernel.state == .live)
 
       kernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
 
-      #expect(kernel.state == .audioInterrupted)
+      #expect(kernel.recordingOutcome.kind == .audioInterrupted)
     }
 
     @Test("externalASRInterrupted routes to the ASR-interrupted terminal")
@@ -73,12 +73,31 @@ import Testing
       let kernel = wrapper.testKernel
 
       await startToRecording(wrapper)
-      #expect(kernel.state == .recording)
+      #expect(kernel.state == .live)
 
       kernel.externalASRInterrupted()
       await wrapper.drainReadyWork()
 
-      #expect(kernel.state == .asrInterrupted)
+      // From `.live` the outcome carries `wasRecording: true` — pin the payload,
+      // not just the category, so the kernel can't silently drop/invert it
+      // (#1548 D1; the observer-side pass-through is proven separately).
+      #expect(kernel.recordingOutcome == .asrInterrupted(wasRecording: true))
+    }
+
+    @Test("externalASRInterrupted while delivering(.transcribing) records wasRecording false")
+    func asrInterruptedWhileTranscribingCarriesFalse() {
+      let (_, wrapper) = makeWrapper()
+      let kernel = wrapper.testKernel
+
+      // The ASR-service crash arriving during the transcribe phase (not `.live`)
+      // must stamp `wasRecording: false`, the distinction `isLegalConclusion`
+      // enforces per state.
+      kernel.testForceState(.delivering)
+      kernel.testSetDeliveringPhase(.transcribing)
+
+      kernel.externalASRInterrupted()
+
+      #expect(kernel.recordingOutcome == .asrInterrupted(wasRecording: false))
     }
 
     @Test("externalCaptureStalled routes to the capture-stalled failed terminal")
@@ -87,12 +106,12 @@ import Testing
       let kernel = wrapper.testKernel
 
       await startToRecording(wrapper)
-      #expect(kernel.state == .recording)
+      #expect(kernel.state == .live)
 
       kernel.externalCaptureStalled(context.capture.makeStallContext())
       await wrapper.drainReadyWork()
 
-      #expect(kernel.state == .failed(.captureStalled))
+      #expect(kernel.recordingOutcome == .failed(.captureStalled))
     }
 
     // MARK: 2. Idempotency — a second call after terminal no-ops
@@ -105,12 +124,12 @@ import Testing
       await startToRecording(wrapper)
       kernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
-      let firstTerminal = kernel.state
-      #expect(firstTerminal == .audioInterrupted)
+      let firstOutcome = kernel.recordingOutcome
+      #expect(firstOutcome.kind == .audioInterrupted)
 
       kernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
-      #expect(kernel.state == firstTerminal)
+      #expect(kernel.recordingOutcome == firstOutcome)
     }
 
     @Test("a second externalASRInterrupted after the first reached terminal is a no-op")
@@ -121,12 +140,12 @@ import Testing
       await startToRecording(wrapper)
       kernel.externalASRInterrupted()
       await wrapper.drainReadyWork()
-      let firstTerminal = kernel.state
-      #expect(firstTerminal == .asrInterrupted)
+      let firstOutcome = kernel.recordingOutcome
+      #expect(firstOutcome.kind == .asrInterrupted)
 
       kernel.externalASRInterrupted()
       await wrapper.drainReadyWork()
-      #expect(kernel.state == firstTerminal)
+      #expect(kernel.recordingOutcome == firstOutcome)
     }
 
     @Test("a second externalCaptureStalled after the first reached terminal is a no-op")
@@ -137,12 +156,12 @@ import Testing
       await startToRecording(wrapper)
       kernel.externalCaptureStalled(context.capture.makeStallContext())
       await wrapper.drainReadyWork()
-      let firstTerminal = kernel.state
-      #expect(firstTerminal == .failed(.captureStalled))
+      let firstOutcome = kernel.recordingOutcome
+      #expect(firstOutcome == .failed(.captureStalled))
 
       kernel.externalCaptureStalled(context.capture.makeStallContext())
       await wrapper.drainReadyWork()
-      #expect(kernel.state == firstTerminal)
+      #expect(kernel.recordingOutcome == firstOutcome)
     }
 
     // MARK: 3. Idle no-op — non-terminal but non-recording
@@ -171,14 +190,14 @@ import Testing
       await startToRecording(wrapper)
       await wrapper.apply(.cancel)  // → cancelled
       await wrapper.drainReadyWork()
-      #expect(kernel.state == .cancelled)
+      #expect(kernel.recordingOutcome == .cancelled)
 
       kernel.externalEngineInterrupted(.engineLost)
       kernel.externalASRInterrupted()
       kernel.externalCaptureStalled(context.capture.makeStallContext())
       await wrapper.drainReadyWork()
 
-      #expect(kernel.state == .cancelled)
+      #expect(kernel.recordingOutcome == .cancelled)
     }
 
     // MARK: 5. Double-fire — one entry wins, the other no-ops
@@ -198,9 +217,10 @@ import Testing
       kernel.externalASRInterrupted()
       await wrapper.drainReadyWork()
 
-      #expect(kernel.state.isTerminal)
+      #expect(kernel.recordingOutcome != nil)
       #expect(
-        kernel.state == .audioInterrupted || kernel.state == .asrInterrupted,
+        kernel.recordingOutcome.kind == .audioInterrupted
+          || kernel.recordingOutcome.kind == .asrInterrupted,
         "exactly one of the two interruption terminals must win")
     }
 
@@ -224,7 +244,7 @@ import Testing
       kernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
 
-      #expect(kernel.state == .audioInterrupted)
+      #expect(kernel.recordingOutcome.kind == .audioInterrupted)
       #expect(
         kernel.lastAudioInterruptionCause == .deviceRemoved,
         "the FIRST (latching) cause must survive; got \(String(describing: kernel.lastAudioInterruptionCause))"
@@ -258,7 +278,7 @@ import Testing
       kernel.externalCaptureStalled(crossDomain)
       await wrapper.drainReadyWork()
 
-      #expect(kernel.state == .failed(.captureStalled))
+      #expect(kernel.recordingOutcome == .failed(.captureStalled))
     }
   }
 

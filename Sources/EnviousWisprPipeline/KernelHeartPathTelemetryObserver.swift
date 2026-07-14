@@ -178,12 +178,13 @@ final class KernelHeartPathTelemetryObserver {
     }
   }
 
-  /// Emit the lifecycle event for the observation DELTA since the last fire
-  /// (#1548 D1). The ending category now lives on `recordingOutcome` (not an
-  /// FSM terminal state), and the transcribe/finalize boundary is a
+  /// Emit every lifecycle event implied by the observation DELTA since the last
+  /// fire (#1548 D1). The ending category now lives on `recordingOutcome` (not
+  /// an FSM terminal state), and the transcribe/finalize boundary is a
   /// `deliveringPhase` change with no state transition, so both are detected by
-  /// comparing against the last-observed tuple. At most one event per fire;
-  /// real transitions are separated by suspension points so nothing is missed.
+  /// comparing against the last-observed tuple. `withObservationTracking` is NOT
+  /// a lossless queue, so one fire may carry MORE THAN ONE tuple change; the
+  /// pure `deltaEvents` returns every applicable event this fire.
   private func handleObservationChange() {
     let state = kernel.state
     let outcome = kernel.recordingOutcome
@@ -201,11 +202,40 @@ final class KernelHeartPathTelemetryObserver {
     lastObservedDidLoadModel = didLoadModel
     lastObservedDeliveringPhase = phase
 
-    // `withObservationTracking` is NOT a lossless event queue — two tracked
-    // properties can mutate before the re-arm task runs, coalescing into ONE
-    // fire (e.g. idle→arming then didLoadModel=true; or entry into Delivering
-    // then the phase advance). So emit EVERY applicable event this fire — never
-    // just the first-by-priority — in logical order (impl-design consult, Dec 3).
+    let events = Self.deltaEvents(
+      prevState: prevState,
+      state: state,
+      prevOutcome: prevOutcome,
+      outcome: outcome,
+      prevDidLoadModel: prevDidLoadModel,
+      didLoadModel: didLoadModel,
+      prevPhase: prevPhase,
+      phase: phase,
+      isStreaming: kernel.isStreamingSession)
+
+    for event in events {
+      emitLifecycleEvent(event)
+    }
+  }
+
+  /// Pure interpretation of one observed lifecycle-tuple delta (#1548 D1).
+  /// Returns EVERY applicable event in lifecycle order, because two tracked
+  /// mutations can coalesce into one `withObservationTracking` fire (e.g.
+  /// idle→arming then didLoadModel=true; or entry into Delivering then the
+  /// phase advance) — never just the first-by-priority (impl-design consult,
+  /// Dec 3). Extracted as a functional core so every gate + the coalesced case
+  /// unit-tests directly without driving the observer.
+  static func deltaEvents(
+    prevState: RecordingSessionState,
+    state: RecordingSessionState,
+    prevOutcome: RecordingOutcome?,
+    outcome: RecordingOutcome?,
+    prevDidLoadModel: Bool,
+    didLoadModel: Bool,
+    prevPhase: DeliveringPhase,
+    phase: DeliveringPhase,
+    isStreaming: Bool
+  ) -> [KernelLifecycleEvent] {
     var events: [KernelLifecycleEvent] = []
 
     if prevState == .idle, state == .arming {
@@ -221,7 +251,7 @@ final class KernelHeartPathTelemetryObserver {
 
     if prevState == .arming, state == .live {
       // Transport proven — the recording pill shows (was `→ .recording`).
-      events.append(.recordingCommitted(isStreaming: kernel.isStreamingSession))
+      events.append(.recordingCommitted(isStreaming: isStreaming))
     }
 
     if prevState == .stopping, state == .delivering {
@@ -238,16 +268,13 @@ final class KernelHeartPathTelemetryObserver {
     }
 
     if prevOutcome == nil, let outcome,
-      let event = Self.terminalEvent(
-        for: outcome, isStreaming: kernel.isStreamingSession)
+      let event = terminalEvent(for: outcome, isStreaming: isStreaming)
     {
       // Conclusion — the ending event (the paired `→ .idle` has none).
       events.append(event)
     }
 
-    for event in events {
-      emitLifecycleEvent(event)
-    }
+    return events
   }
 
   /// Map a concluded session's `RecordingOutcome` to its terminal lifecycle

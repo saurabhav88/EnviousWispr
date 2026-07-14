@@ -61,7 +61,7 @@ struct KernelSalvageRetryTests {
     await runToTerminal(ctx)
     let kernel = ctx.wrapper.testKernel
 
-    #expect(kernel.state == .completed)
+    #expect(kernel.recordingOutcome == .completed)
     #expect(kernel.deliveredTranscript == "salvaged text")
     #expect(kernel.pasteCount == 1)
     // Exactly one retry fired (one candidate from this shape): primary + 1.
@@ -84,7 +84,7 @@ struct KernelSalvageRetryTests {
     await runToTerminal(ctx)
     let kernel = ctx.wrapper.testKernel
 
-    #expect(kernel.state == .failed(.asrEmpty))
+    #expect(kernel.recordingOutcome == .failed(.asrEmpty))
     #expect(kernel.deliveredTranscript == nil)
     #expect(kernel.pasteCount == 0)
     #expect(kernel.lastSalvagedLeadTrimMs == nil)
@@ -102,7 +102,7 @@ struct KernelSalvageRetryTests {
 
     // The primary decode classified the session as empty; a retry-path error
     // must not surface as `.asrFailed`.
-    #expect(kernel.state == .failed(.asrEmpty))
+    #expect(kernel.recordingOutcome == .failed(.asrEmpty))
     #expect(ctx.engine.finalizeCallCount == 2)
     #expect(kernel.lastSalvagedLeadTrimMs == nil)
   }
@@ -120,7 +120,7 @@ struct KernelSalvageRetryTests {
     await ctx.wrapper.drainReadyWork()
     let kernel = ctx.wrapper.testKernel
 
-    #expect(kernel.state == .failed(.asrEmpty))
+    #expect(kernel.recordingOutcome == .failed(.asrEmpty))
     // Exactly the primary decode — the ladder never dispatched.
     #expect(ctx.engine.finalizeCallCount == 1)
   }
@@ -134,7 +134,7 @@ struct KernelSalvageRetryTests {
     await runToTerminal(ctx)
     let kernel = ctx.wrapper.testKernel
 
-    #expect(kernel.state == .completed)
+    #expect(kernel.recordingOutcome == .completed)
     #expect(kernel.deliveredTranscript == "normal text")
     #expect(ctx.engine.finalizeCallCount == 1)
     #expect(kernel.lastSalvagedLeadTrimMs == nil)
@@ -154,7 +154,7 @@ struct KernelSalvageRetryTests {
     await ctx.wrapper.drainReadyWork()
     let kernel = ctx.wrapper.testKernel
 
-    #expect(kernel.state == .noSpeech)
+    #expect(kernel.recordingOutcome.kind == .noSpeech)
     #expect(ctx.engine.finalizeCallCount == 1)
     #expect(kernel.lastSalvagedLeadTrimMs == nil)
   }
@@ -178,7 +178,7 @@ struct KernelSalvageRetryTests {
     await ctx.wrapper.drainReadyWork()
     let kernel = ctx.wrapper.testKernel
 
-    #expect(kernel.state == .completed)
+    #expect(kernel.recordingOutcome == .completed)
     #expect(kernel.deliveredTranscript == "second take")
     #expect(kernel.lastSalvagedLeadTrimMs == nil)
   }

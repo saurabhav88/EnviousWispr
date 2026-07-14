@@ -93,13 +93,13 @@ struct KernelFormatStabilizationRebuildTests {
 
     await wrapper.apply(.start)  // spawns the forward path (synchronous)
     await capture.awaitStabilizationGateReached()  // forward path parked at the re-verify
-    #expect(wrapper.testKernel.state == .warmingUp)  // not yet .recording
+    #expect(wrapper.testKernel.state == .arming)  // not yet .live
 
     wrapper.testKernel.cancel()  // cancelRequested latched pre-recording
     capture.releaseStabilizationGate()
     await wrapper.drainReadyWork()
 
-    #expect(wrapper.testKernel.state == .cancelled)
+    #expect(wrapper.testKernel.recordingOutcome == .cancelled)
     #expect(capture.rebuildEngineCallCount == 1)  // rebuild had already happened
     #expect(capture.stabilizationCallCount == 2)  // the re-verify ran to completion
     #expect(capture.beginCapturePhaseCallCount == 0)  // the cancel latch stopped capture

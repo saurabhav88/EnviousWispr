@@ -22,104 +22,129 @@ import Testing
   @MainActor
   @Suite struct KernelHeartPathTelemetryObserverTests {
 
-    // MARK: lifecycleEvent map — pure
+    // MARK: terminalEvent map — pure (ending category → lifecycle event)
 
-    @Test("every terminal state maps to a lifecycle event, including .hidden-overlay terminals")
-    func everyTerminalMapsToAnEvent() {
+    @Test("every recording outcome maps to its lifecycle event, including .hidden-overlay endings")
+    func everyOutcomeMapsToAnEvent() {
       // completed / cancelled / discarded / noSpeech all render a `.hidden`
-      // overlay — a UI-keyed observer would miss them. The observer keys on raw
-      // state, so each still produces an event.
-      #expect(event(.completed) == .pipelineCompleted)
-      #expect(event(.cancelled) == .cancelled)
-      #expect(event(.noSpeech) == .noSpeech(.vadGate))
+      // overlay — a UI-keyed observer would miss them. The observer keys on the
+      // concluded `RecordingOutcome`, so each still produces an event (#1548 D1).
+      #expect(terminalEvent(.completed) == .pipelineCompleted)
+      #expect(terminalEvent(.cancelled) == .cancelled)
+      #expect(terminalEvent(.noSpeech(.vadGate)) == .noSpeech(.vadGate))
       // #1174 A3 — absent cause defaults defensively to `.engineLost` (capture).
-      #expect(event(.audioInterrupted) == .audioInterrupted(cause: .engineLost))
+      #expect(terminalEvent(.audioInterrupted(nil)) == .audioInterrupted(cause: .engineLost))
       // The stamped cause threads through unchanged (here a verified device loss).
       #expect(
-        event(.audioInterrupted, lastAudioInterruptionCause: .deviceRemoved)
+        terminalEvent(.audioInterrupted(.deviceRemoved))
           == .audioInterrupted(cause: .deviceRemoved))
-      // Default priorState `.idle` → wasRecording == false (the non-recording
-      // path); the routing test below covers the `.recording` → true case
-      // and the `.transcribing` → false case.
-      #expect(event(.asrInterrupted) == .asrInterrupted(wasRecording: false))
-      #expect(event(.failed(.asrEmpty)) == .failed(.asrEmpty))
+      // The `wasRecording` flag rides on the outcome now (set by the kernel from
+      // `.live` vs `.delivering(.transcribing)`); the observer preserves it.
+      #expect(
+        terminalEvent(.asrInterrupted(wasRecording: true)) == .asrInterrupted(wasRecording: true))
+      #expect(
+        terminalEvent(.asrInterrupted(wasRecording: false)) == .asrInterrupted(wasRecording: false))
+      #expect(terminalEvent(.failed(.asrEmpty)) == .failed(.asrEmpty))
       // PR-4b.2 r10 — observer routes the two rich-emitter-owned failures into
       // the sink. The sink will skip these (negative coverage in
       // `KernelLifecycleTelemetrySinkTests`), but the observer MUST still
       // map them so the case is reachable rather than silently dropped.
-      #expect(event(.failed(.captureStalled)) == .failed(.captureStalled))
-      #expect(event(.failed(.noAudioCaptured)) == .failed(.noAudioCaptured))
+      #expect(terminalEvent(.failed(.captureStalled)) == .failed(.captureStalled))
+      #expect(terminalEvent(.failed(.noAudioCaptured)) == .failed(.noAudioCaptured))
+      // #1548 D1: the no-transport ending projects onto the existing
+      // `.failed(.noAudioCaptured)` telemetry (locked projection — no new identity).
+      #expect(terminalEvent(.noTransport) == .failed(.noAudioCaptured))
     }
 
     @Test("the discarded event carries the abort reason")
     func discardedCarriesReason() {
-      #expect(event(.discarded, discardReason: .tooShort) == .discarded(.tooShort))
+      #expect(terminalEvent(.discarded(.tooShort)) == .discarded(.tooShort))
       #expect(
-        event(.discarded, discardReason: .releasedBeforeRecording)
+        terminalEvent(.discarded(.releasedBeforeRecording))
           == .discarded(.releasedBeforeRecording))
     }
 
-    @Test(".asrInterrupted carries was_recording derived from priorState (matrix #3)")
-    func asrInterruptedCarriesWasRecording() {
+    @Test(".asrInterrupted preserves the was_recording flag the outcome carries (matrix #3)")
+    func asrInterruptedPreservesWasRecording() {
+      // The kernel derives the flag from `.live` (true) vs `.delivering(.transcribing)`
+      // (false) and `isLegalConclusion` rejects a mismatched flag; the OBSERVER's
+      // only job is a lossless pass-through, which is what this pins. The
+      // where-the-flag-comes-from coverage lives in the kernel external-entry tests.
       #expect(
-        event(.asrInterrupted, priorState: .recording) == .asrInterrupted(wasRecording: true))
+        terminalEvent(.asrInterrupted(wasRecording: true)) == .asrInterrupted(wasRecording: true))
       #expect(
-        event(.asrInterrupted, priorState: .transcribing)
-          == .asrInterrupted(wasRecording: false))
+        terminalEvent(.asrInterrupted(wasRecording: false)) == .asrInterrupted(wasRecording: false))
     }
 
     @Test("the noSpeech event carries the source (r7)")
     func noSpeechCarriesSource() {
-      #expect(event(.noSpeech, lastNoSpeechSource: .vadGate) == .noSpeech(.vadGate))
+      #expect(terminalEvent(.noSpeech(.vadGate)) == .noSpeech(.vadGate))
+      #expect(terminalEvent(.noSpeech(.asrEmptyNoSpeech)) == .noSpeech(.asrEmptyNoSpeech))
+    }
+
+    // MARK: deltaEvents map — pure (in-flight tuple delta → lifecycle events)
+
+    @Test("model loading fires only on a false→true load flag while arming (r6/r7)")
+    func modelLoadingGateUsesTupleDelta() {
+      // r7 OQ-3 resolution — the observer reads the kernel-stamped flag, not
+      // adapter readiness. The old `.warmingUp` state folded into `.arming`
+      // (#1548 D1); the gate is now a `didLoadModelThisSession` delta while
+      // Arming.
       #expect(
-        event(.noSpeech, lastNoSpeechSource: .asrEmptyNoSpeech)
-          == .noSpeech(.asrEmptyNoSpeech))
+        deltaEvents(prevState: .arming, state: .arming, didLoadModel: true) == [.modelLoading])
+      #expect(deltaEvents(prevState: .arming, state: .arming).isEmpty)
+      // Not while arming → no model-loading breadcrumb.
+      #expect(deltaEvents(prevState: .idle, state: .live, didLoadModel: true).isEmpty)
+      // One coalesced fire can carry BOTH session-startup and model-loading
+      // (idle→arming then didLoadModel=true before the re-arm ran).
+      #expect(
+        deltaEvents(prevState: .idle, state: .arming, didLoadModel: true)
+          == [.pipelineStartingUp, .modelLoading])
     }
 
-    @Test("warmingUp emits .modelLoading only when a model load actually started (r6/r7)")
-    func warmingUpGatedByDidLoadModel() {
-      // r7 OQ-3 resolution — observer reads kernel-stamped flag, not adapter
-      // readiness post-transition.
-      #expect(event(.warmingUp, didLoadModelThisSession: true) == .modelLoading)
-      #expect(event(.warmingUp, didLoadModelThisSession: false) == nil)
+    @Test("asrCompleted fires only on transcribing→finalizing while delivering (r6)")
+    func asrCompletedGateUsesTupleDelta() {
+      // Old TP:922 fired inside the transcript branch. The kernel advances
+      // `deliveringPhase` .transcribing → .finalizing(_) ONLY after ASR returned
+      // non-empty text — the no-speech / asrEmpty arms conclude straight to an
+      // outcome — so that phase advance is the structural "ASR returned text"
+      // signal (a phase change with NO FSM transition, #1548 D1).
+      #expect(
+        deltaEvents(
+          prevState: .delivering, state: .delivering,
+          prevPhase: .transcribing, phase: .finalizing(.transcribing)) == [.asrCompleted])
+      // The .finalizing(.transcribing) → .finalizing(.polishing) advance is NOT
+      // the ASR-completed signal — it must stay silent.
+      #expect(
+        deltaEvents(
+          prevState: .delivering, state: .delivering,
+          prevPhase: .finalizing(.transcribing), phase: .finalizing(.polishing)
+        ).isEmpty)
     }
 
-    @Test("stopping no longer maps to .recordingStopped in the observer")
+    @Test("stopping no longer emits .recordingStopped in the observer")
     func stoppingDoesNotEmitRecordingStoppedFromObserver() {
       // Fixer item #4 moved recording-stopped emission to the kernel callback
-      // carrying stopCapture()'s exact sample count; the observer path is nil.
-      #expect(event(.stopping) == nil)
+      // carrying stopCapture()'s exact sample count; the observer path is empty.
+      #expect(deltaEvents(prevState: .live, state: .stopping).isEmpty)
     }
 
-    @Test("finalizing emits .asrCompleted only when entered from .transcribing (r6)")
-    func finalizingGatedByPriorState() {
-      // Old TP:922 fired inside the transcript branch. The kernel reaches
-      // `.finalizing` ONLY from `.transcribing` via `runFinalizing(asrText:)`
-      // — the no-speech / asrEmpty arms jump straight to terminal — so
-      // `priorState == .transcribing` is the structural "ASR returned text"
-      // signal. Codex review #11 caught that the previous implementation
-      // gated on `kernel.deliveredTranscript`, which is set INSIDE
-      // `runFinalizing` AFTER the transition; reading it at mapping time
-      // would always be nil.
-      #expect(event(.finalizing, priorState: .transcribing) == .asrCompleted)
-      // Defensive contra-condition: a `.finalizing` arrival from any other
-      // prior state is structurally impossible (the FSM doesn't allow it),
-      // but if it somehow happened the breadcrumb must NOT fire.
-      #expect(event(.finalizing, priorState: .recording) == nil)
-      #expect(event(.finalizing, priorState: .preparing) == nil)
+    @Test("a non-triggering delta emits nothing")
+    func nonEventDeltaIsEmpty() {
+      // The resting delta and a same-state / same-phase re-fire produce no event.
+      #expect(deltaEvents(prevState: .idle, state: .idle).isEmpty)
+      #expect(
+        deltaEvents(
+          prevState: .delivering, state: .delivering, prevPhase: .transcribing, phase: .transcribing
+        )
+        .isEmpty)
     }
 
-    @Test("non-event states map to nil under default conditions")
-    func nonEventStatesMapToNil() {
-      // `.warmingUp` / `.stopping` / `.finalizing` now have conditional event
-      // mappings (covered above); under default conditions warmingUp +
-      // finalizing still return nil. Only `.idle` is unconditionally nil.
-      // PR-5 Rung 5 Pass 2 #1: `.preparing` now emits `.pipelineStartingUp`
-      // (startup breadcrumb parity with OLD `WhisperKitPipeline.swift:438`).
-      #expect(event(.idle) == nil)
-      #expect(event(.preparing) == .pipelineStartingUp)
-      #expect(event(.warmingUp) == nil)
-      #expect(event(.finalizing) == nil)
+    @Test("a session start (idle→arming) emits the startup breadcrumb")
+    func pipelineStartingUpOnArm() {
+      // PR-5 Rung 5 Pass 2 #1: the head of every session emits
+      // `.pipelineStartingUp` (parity with OLD `WhisperKitPipeline.swift:438`).
+      #expect(deltaEvents(prevState: .idle, state: .arming) == [.pipelineStartingUp])
     }
 
     // MARK: Raw-state observation wiring
@@ -131,18 +156,20 @@ import Testing
       let observer = makeObserver(kernel: kernel, recorder: recorder)
       observer.observeKernelState()
 
-      // Force a legal happy-path sequence — the observer keys on raw `state`.
-      kernel.testForceTransition(to: .preparing)
+      // Force a legal happy-path sequence — the observer keys on the raw
+      // lifecycle tuple (#1548 D1). The transcribe→finalize boundary is a
+      // `deliveringPhase` advance with no FSM transition.
+      kernel.testForceTransition(to: .arming)
       await drain()
-      kernel.testForceTransition(to: .recording)
+      kernel.testForceTransition(to: .live)
       await drain()
       kernel.testForceTransition(to: .stopping)
       await drain()
-      kernel.testForceTransition(to: .transcribing)
+      kernel.testForceTransition(to: .delivering)
       await drain()
-      kernel.testForceTransition(to: .finalizing)
+      kernel.testSetDeliveringPhase(.finalizing(.transcribing))
       await drain()
-      kernel.testForceTransition(to: .completed)
+      kernel.testForceConclude(.completed)
       await drain()
 
       // `.stopping` no longer emits via the observer. The kernel-parity-hardening
@@ -176,14 +203,35 @@ import Testing
       let observer = makeObserver(kernel: kernel, recorder: recorder)
       observer.observeKernelState()
 
-      kernel.testForceTransition(to: .preparing)
+      kernel.testForceTransition(to: .arming)
       await drain()
-      kernel.testForceTransition(to: .cancelled)
+      kernel.testForceConclude(.cancelled)
       await drain()
 
-      // PR-5 Rung 5 Pass 2 #1: `.preparing` emits `.pipelineStartingUp`
-      // before the cancelled terminal.
+      // PR-5 Rung 5 Pass 2 #1: the idle→arming start emits `.pipelineStartingUp`
+      // before the cancelled conclusion.
       #expect(recorder.events == [.pipelineStartingUp, .cancelled])
+    }
+
+    @Test("one coalesced observation emits every applicable event in order (#1548 D1, Dec 3)")
+    func coalescedStateAndPhaseChangeEmitsBothEvents() async {
+      let recorder = EventRecorder()
+      let kernel = makeKernel()
+
+      // Stage the observer's previous tuple at `.stopping`.
+      kernel.testForceState(.stopping)
+
+      let observer = makeObserver(kernel: kernel, recorder: recorder)
+      observer.observeKernelState()
+
+      // Do NOT drain between these two tracked mutations: the first schedules
+      // the observation task, the second lands before it runs, so ONE fire sees
+      // both deltas. A first-by-priority handler would drop `.asrCompleted`.
+      kernel.testForceState(.delivering)
+      kernel.testSetDeliveringPhase(.finalizing(.transcribing))
+      await drain()
+
+      #expect(recorder.events == [.transcriptionStarted, .asrCompleted])
     }
 
     // MARK: onCaptureStalled fan-out
@@ -219,23 +267,37 @@ import Testing
 
     // MARK: Helpers
 
-    private func event(
-      _ state: RecordingSessionState,
-      priorState: RecordingSessionState = .idle,
-      discardReason: DiscardReason? = nil,
-      didLoadModelThisSession: Bool = false,
-      lastNoSpeechSource: NoSpeechSource? = nil,
-      lastAudioInterruptionCause: EngineInterruptionCause? = nil,
-      isStreamingSession: Bool = false
+    /// The pure ending-category → lifecycle-event map (#1548 D1).
+    private func terminalEvent(
+      _ outcome: RecordingOutcome,
+      isStreaming: Bool = false
     ) -> KernelLifecycleEvent? {
-      KernelHeartPathTelemetryObserver.lifecycleEvent(
-        for: state,
-        priorState: priorState,
-        discardReason: discardReason,
-        didLoadModelThisSession: didLoadModelThisSession,
-        lastNoSpeechSource: lastNoSpeechSource,
-        lastAudioInterruptionCause: lastAudioInterruptionCause,
-        isStreamingSession: isStreamingSession)
+      KernelHeartPathTelemetryObserver.terminalEvent(for: outcome, isStreaming: isStreaming)
+    }
+
+    /// The pure in-flight tuple-delta → lifecycle-events map (#1548 D1). Every
+    /// argument defaults to a no-op so each test names only the axes it drives.
+    private func deltaEvents(
+      prevState: RecordingSessionState,
+      state: RecordingSessionState,
+      prevOutcome: RecordingOutcome? = nil,
+      outcome: RecordingOutcome? = nil,
+      prevDidLoadModel: Bool = false,
+      didLoadModel: Bool = false,
+      prevPhase: DeliveringPhase = .transcribing,
+      phase: DeliveringPhase = .transcribing,
+      isStreaming: Bool = false
+    ) -> [KernelLifecycleEvent] {
+      KernelHeartPathTelemetryObserver.deltaEvents(
+        prevState: prevState,
+        state: state,
+        prevOutcome: prevOutcome,
+        outcome: outcome,
+        prevDidLoadModel: prevDidLoadModel,
+        didLoadModel: didLoadModel,
+        prevPhase: prevPhase,
+        phase: phase,
+        isStreaming: isStreaming)
     }
 
     private func makeKernel() -> RecordingSessionKernel {

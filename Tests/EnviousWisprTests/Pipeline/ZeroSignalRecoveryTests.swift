@@ -86,7 +86,7 @@ struct ZeroSignalRecoveryTests {
       stallContext(ctx, failureMode: .allZeroFromStart))
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .failed(.zeroSignal))
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .allZeroFromStart)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == nil)
     // PR3: the poisoned capture pipeline is reset exactly once.
@@ -101,7 +101,7 @@ struct ZeroSignalRecoveryTests {
     ctx.wrapper.testKernel.externalCaptureStalled(stallContext(ctx, failureMode: .noBuffers))
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .failed(.captureStalled))
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.captureStalled))
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
     // An ordinary capture stall is NOT the mic-harness glitch — the stall
     // watchdog owns it, and PR3 must never reset the engine for it.
@@ -122,7 +122,7 @@ struct ZeroSignalRecoveryTests {
       stallContext(ctx, failureMode: .becameZeroMidCapture))
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .completed)
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
     // PR3: the mic is reset AND the user still keeps the words they said.
@@ -141,7 +141,7 @@ struct ZeroSignalRecoveryTests {
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .failed(.zeroSignal))
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .allZeroFromStart)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.count == 1)
     #expect(
@@ -162,7 +162,7 @@ struct ZeroSignalRecoveryTests {
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .completed)
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.count == 1)
@@ -192,7 +192,7 @@ struct ZeroSignalRecoveryTests {
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .completed)
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
   }
@@ -211,7 +211,7 @@ struct ZeroSignalRecoveryTests {
       stallContext(ctx, failureMode: .becameZeroMidCapture))
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .completed)
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
     // The reactive win must still suppress STOP-time re-classification (§3.6 N4).
@@ -235,7 +235,7 @@ struct ZeroSignalRecoveryTests {
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .completed)
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
   }
 
@@ -253,7 +253,7 @@ struct ZeroSignalRecoveryTests {
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .noSpeech)
+    #expect(ctx.wrapper.testKernel.recordingOutcome.kind == .noSpeech)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
     // A genuinely MUTED mic is a hardware state, not a harness glitch. Resetting
@@ -274,7 +274,7 @@ struct ZeroSignalRecoveryTests {
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .noSpeech)
+    #expect(ctx.wrapper.testKernel.recordingOutcome.kind == .noSpeech)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
     // The false-alarm guard that matters most: a healthy mic in a silent room
@@ -300,7 +300,7 @@ struct ZeroSignalRecoveryTests {
       stallContext(ctx, failureMode: .allZeroFromStart))
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .failed(.zeroSignal))
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
     // STOP-time telemetry never fires for a reactive win — the reactive
     // path's own event rides the WedgeRecoveryRouter funnel instead (§3.6).
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
@@ -329,7 +329,7 @@ struct ZeroSignalRecoveryTests {
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .discarded)
+    #expect(ctx.wrapper.testKernel.recordingOutcome.kind == .discarded)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
     #expect(ctx.capture.rebuildEngineCallCount == 0)
@@ -356,7 +356,7 @@ struct ZeroSignalRecoveryTests {
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .failed(.zeroSignal))
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
     #expect(ctx.capture.rebuildEngineCallCount == 2)  // 1 format + 1 zero-signal
   }
 
@@ -374,7 +374,7 @@ struct ZeroSignalRecoveryTests {
       await ctx.wrapper.apply(.stop)
       await ctx.wrapper.drainReadyWork()
 
-      #expect(ctx.wrapper.testKernel.state == .failed(.zeroSignal))
+      #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
       // Best-effort convergence (§3.3): the rebuild is fire-and-forget, so a
       // still-poisoned source on the next press must re-fire recovery rather
       // than silently hand the user another dead take.
