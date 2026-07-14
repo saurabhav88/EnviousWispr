@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// Canonical constants for the on-device output-safety classifier (#832/#913 PR8).
@@ -103,4 +104,36 @@ public enum OutputClassifierError: Error, Sendable, CustomStringConvertible {
     }
   }
   public var description: String { "OutputClassifier disabled: \(reason.rawValue)" }
+}
+
+// MARK: - Sentry identity
+
+/// Pins the case's Sentry grouping key to the exact string it has been
+/// sending in production, so the identity survives any future add/remove of
+/// a case (#1525 PR D; mirrors `HeartPathError`/`ModelLoadWatchdog.WedgeError`).
+///
+/// The descriptor below is NOT derived — it was MEASURED against shipping
+/// code and cross-checked against the live Sentry issue titles
+/// (`docs/audits/2026-07-14-1525-pr-d-preflight.md`). Only one case exists
+/// today, so the associated `OutputClassifierDisabledReason` never enters
+/// this descriptor — it splits Sentry issues only via `fingerprintDetail`
+/// (the reason's raw value), passed separately at the capture site.
+///
+/// NEVER change this shipped `sentryFingerprintDescriptor`: it would split
+/// this error's 3 existing production Sentry issues in two. A NEW case gets
+/// a fresh unused string, never `#0`. The switch is exhaustive, so a new case
+/// cannot compile until it declares an identity — the same guardrail
+/// `HeartPathError` uses.
+extension OutputClassifierError: StableSentryErrorIdentity {
+  public var sentryFingerprintDescriptor: String {
+    switch self {
+    case .disabled: return "EnviousWisprLLM.OutputClassifierError#0"
+    }
+  }
+
+  public var sentrySemanticID: String {
+    switch self {
+    case .disabled: return "outputclassifier.disabled"
+    }
+  }
 }
