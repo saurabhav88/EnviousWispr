@@ -98,6 +98,29 @@ The exact target-coverage assertion stopped the process immediately after adapte
 
 Decision: this is compatibility failure evidence, not model-quality evidence. Do not weaken the 248-module contract and do not retry. Any next attempt needs a separately reviewed plan that proves how GDN modules will be targeted in the installed stack, followed by fresh authorization for a new invocation.
 
+## Exact installed-stack source audit and future GDN injection
+
+Status: local source and synthetic-contract proof only. No AlienSV command, GPU use, model load, adapter creation, or optimizer step occurred in this follow-up.
+
+The historical WSL receipt identified Transformers 5.5.0, PEFT 0.19.1, and Unsloth 2026.6.9. Their exact published wheels were downloaded without installation and inspected locally. SHA-256 receipts:
+
+| Wheel | SHA-256 |
+|---|---|
+| `transformers-5.5.0-py3-none-any.whl` | `821a9ff0961abbb29eb1eb686d78df1c85929fdf213a3fe49dc6bd94f9efa944` |
+| `peft-0.19.1-py3-none-any.whl` | `2113f72a81621b5913ef28f9022204c742df111890c5f49d812716a4a301e356` |
+| `unsloth-2026.6.9-py3-none-any.whl` | `e36f1960cde6cdba5105350d37908926254626bd82c09b840a42df2dd0b135f8` |
+
+The audited source establishes four facts:
+
+1. Transformers 5.5.0 implements every required GDN projection, `in_proj_a`, `in_proj_b`, `in_proj_qkv`, `in_proj_z`, and `out_proj`, as `torch.nn.Linear`. They are valid PEFT LoRA module targets. Source: [Transformers Qwen3.5 implementation](https://github.com/huggingface/transformers/blob/v5.5.0/src/transformers/models/qwen3_5/modeling_qwen3_5.py).
+2. Unsloth 2026.6.9 replaces `target_modules=None` with its automatic regex selector. When an explicit list is supplied while any `finetune_vision_layers`, `finetune_language_layers`, `finetune_attention_modules`, or `finetune_mlp_modules` filter is false, Unsloth also rewrites that list through the selector. This explains why simply adding the GDN names while keeping `finetune_vision_layers=False` is not a safe fix.
+3. With an explicit target list and all four broad selectors left open, Unsloth passes the list to PEFT's `LoraConfig`. The broad selectors no longer decide placement; the exact full paths do. PEFT 0.19.1 supports explicit full module names. Source: [PEFT v0.19.1 target matching](https://github.com/huggingface/peft/blob/v0.19.1/src/peft/tuners/tuners_utils.py).
+4. PEFT may internally shorten a large exact list when it can prove shorter suffixes do not match other modules. Therefore the request list alone is not proof. The existing post-injection gate remains mandatory: normalized adapter paths must equal the exact 248-name set, vision/MTP matches must be zero, and trainable parameters must equal 32,464,896 before trainer construction.
+
+The future preflight now uses `unsloth_explicit_full_paths_v1`: derive and verify all 248 base paths, persist the exact request hash and selector settings, pass those 248 paths explicitly with all four selector flags true and `target_parameters=[]`, then persist the returned adapter inventory and enforce exact path plus parameter equality. Injection exceptions are hashed into a terminal non-success receipt. The audited Transformers, PEFT, and Unsloth versions are exact fail-closed requirements.
+
+The historical receipt did not capture the exact installed `unsloth_zoo` version. Unsloth 2026.6.9 declares `unsloth_zoo>=2026.6.7`; the new manifest records the observed version for future receipts. The critical automatic target selector from `unsloth_zoo` is deliberately bypassed by the exact-list path, but the first future authorized runtime attempt must still preserve that observed dependency version in its receipt. This source audit proves that the pinned API path can express all 248 targets. It is not a substitute for a separately authorized real 248/248 adapter-injection receipt.
+
 ## Post-run contract hardening
 
 The historical receipt above is unchanged: commit `79f3c9554037868326ab33b47f9e7de8ea724d3c` ran once with the documented prompt hash and stopped at 0 optimizer steps. A later full-branch review found that the trainer recorded that prompt hash but did not yet enforce it. Beginning with commit `538342d48ee85a933f03b8fe4a5c481ef6f51eda`, the tracked future preflight contract enforces the same exact hash and rejects any mismatch before base-artifact validation or model import/load. This hardening did not trigger another GPU invocation and does not turn the historical compatibility failure into quality evidence.

@@ -83,6 +83,15 @@ def qwen35_partial_target_fixture() -> list[str]:
     ]
 
 
+def audited_distribution_version(package: str) -> str:
+    return {
+        "peft": "0.19.1",
+        "transformers": "5.5.0",
+        "unsloth": "2026.6.9",
+        "unsloth_zoo": "2026.6.7",
+    }.get(package, "synthetic-test-version")
+
+
 def write_qwen35_base_with_actual_hashes(root: Path) -> tuple[Path, dict[str, str]]:
     base_path = root / "Qwen3.5-4B"
     metadata_path = base_path / ".cache" / "huggingface" / "download"
@@ -162,6 +171,20 @@ class TrainingModeTests(unittest.TestCase):
             trainer.QWEN35_PREFLIGHT_CONTRACT, {"warmup_ratio": 0.05}
         ), self.assertRaisesRegex(ValueError, "zero warmup"):
             trainer.qwen35_preflight_first_step_learning_rate(5e-5)
+
+    def test_qwen35_stack_contract_is_exact_and_fails_closed_on_drift(self) -> None:
+        observed = {
+            **trainer.QWEN35_AUDITED_STACK_VERSIONS,
+            "unsloth_zoo": "2026.6.7",
+        }
+        receipt = trainer.validate_qwen35_training_stack(observed)
+        self.assertEqual(receipt["status"], "passed")
+        self.assertEqual(receipt["mismatches"], {})
+
+        drifted = dict(observed)
+        drifted["peft"] = "0.20.0"
+        with self.assertRaisesRegex(RuntimeError, "audited training stack drifted"):
+            trainer.validate_qwen35_training_stack(drifted)
 
 
 class TrainingInputSnapshotTests(unittest.TestCase):
@@ -362,6 +385,61 @@ class Qwen35TargetTests(unittest.TestCase):
                     rank=16,
                 )
 
+    def test_exact_injection_kwargs_preserve_all_248_paths_and_bypass_selector(self) -> None:
+        expected = qwen35_base_target_fixture()
+        kwargs = trainer.qwen35_exact_injection_kwargs(
+            expected_module_names=expected,
+            rank=16,
+            alpha=32,
+            seed=1265,
+        )
+
+        self.assertEqual(kwargs["target_modules"], expected)
+        self.assertEqual(len(kwargs["target_modules"]), 248)
+        self.assertEqual(kwargs["target_parameters"], [])
+        for selector in (
+            "finetune_vision_layers",
+            "finetune_language_layers",
+            "finetune_attention_modules",
+            "finetune_mlp_modules",
+        ):
+            self.assertIs(kwargs[selector], True)
+
+    def test_exact_injection_rejects_missing_extra_duplicate_and_wrong_parent_pre_call(
+        self,
+    ) -> None:
+        expected = qwen35_base_target_fixture()
+        wrong_parent = list(expected)
+        mlp_index = next(index for index, name in enumerate(expected) if ".mlp." in name)
+        wrong_parent[mlp_index] = wrong_parent[mlp_index].replace(
+            ".mlp.", ".fake_parent."
+        )
+        cases = {
+            "missing": expected[:-1],
+            "extra": expected + ["model.layers.32.mlp.gate_proj"],
+            "duplicate": expected + [expected[0]],
+            "wrong_parent": wrong_parent,
+        }
+        for case, module_names in cases.items():
+            with self.subTest(case=case), self.assertRaisesRegex(
+                RuntimeError, "exact injection target contract drifted"
+            ):
+                trainer.qwen35_exact_injection_kwargs(
+                    expected_module_names=module_names,
+                    rank=16,
+                    alpha=32,
+                    seed=1265,
+                )
+
+    def test_trainable_parameter_coverage_mismatch_is_rejected(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "trainable parameter count drifted"):
+            trainer.validate_qwen35_adapter_receipt(
+                qwen35_language_target_fixture(),
+                qwen35_base_target_fixture(),
+                trainer.QWEN35_R16_TRAINABLE_PARAMETERS - 1,
+                rank=16,
+            )
+
     def test_vision_and_mtp_targets_are_refused_even_with_same_suffix_counts(self) -> None:
         names = qwen35_language_target_fixture()
         q_proj_index = next(index for index, name in enumerate(names) if name.endswith("q_proj"))
@@ -383,6 +461,94 @@ class Qwen35TargetTests(unittest.TestCase):
 
 
 class Qwen35AdapterEvidenceTests(unittest.TestCase):
+    def test_exact_injection_lifecycle_reaches_validated_before_training(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "training-manifest.json"
+            manifest: dict[str, object] = {"status": "base_targets_verified"}
+            injected_model = SimpleNamespace(name="synthetic-injected-model")
+            fast_model = SimpleNamespace(
+                get_peft_model=mock.Mock(return_value=injected_model)
+            )
+
+            returned = trainer.inject_qwen35_exact_adapter_with_receipt(
+                fast_model=fast_model,
+                model=SimpleNamespace(name="synthetic-base-model"),
+                expected_module_names=qwen35_base_target_fixture(),
+                rank=16,
+                alpha=32,
+                seed=1265,
+                manifest_path=manifest_path,
+                manifest=manifest,
+            )
+
+            self.assertIs(returned, injected_model)
+            call_kwargs = fast_model.get_peft_model.call_args.kwargs
+            self.assertEqual(call_kwargs["target_modules"], qwen35_base_target_fixture())
+            self.assertEqual(len(call_kwargs["target_modules"]), 248)
+            self.assertEqual(call_kwargs["target_parameters"], [])
+            self.assertTrue(call_kwargs["finetune_vision_layers"])
+            returned_receipt = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                returned_receipt["status"],
+                "adapter_injection_returned_validation_pending",
+            )
+            self.assertEqual(
+                returned_receipt["adapter_injection_receipt"]["status"],
+                "returned_pending_exact_validation",
+            )
+
+            trainer.persist_qwen35_adapter_receipt_before_validation(
+                manifest_path=manifest_path,
+                manifest=manifest,
+                receipt={"matched_module_count": 248},
+                lora_module_names=qwen35_language_target_fixture(),
+                expected_module_names=qwen35_base_target_fixture(),
+                trainable_parameters=trainer.QWEN35_R16_TRAINABLE_PARAMETERS,
+                rank=16,
+            )
+            validated_receipt = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                validated_receipt["status"], "adapter_validation_passed_not_trained"
+            )
+            self.assertEqual(
+                validated_receipt["adapter_injection_receipt"]["status"],
+                "validated_complete_pre_training",
+            )
+
+    def test_exact_injection_failure_is_hashed_and_stops_unvalidated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "training-manifest.json"
+            manifest: dict[str, object] = {"status": "base_targets_verified"}
+            private_error = "PRIVATE_SYNTHETIC_SENTINEL /private/model/path"
+            fast_model = SimpleNamespace(
+                get_peft_model=mock.Mock(side_effect=RuntimeError(private_error))
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "PRIVATE_SYNTHETIC_SENTINEL"):
+                trainer.inject_qwen35_exact_adapter_with_receipt(
+                    fast_model=fast_model,
+                    model=SimpleNamespace(name="synthetic-base-model"),
+                    expected_module_names=qwen35_base_target_fixture(),
+                    rank=16,
+                    alpha=32,
+                    seed=1265,
+                    manifest_path=manifest_path,
+                    manifest=manifest,
+                )
+
+            manifest_text = manifest_path.read_text(encoding="utf-8")
+            on_disk = json.loads(manifest_text)
+            self.assertEqual(on_disk["status"], "blocked_adapter_injection_failed")
+            self.assertEqual(
+                on_disk["adapter_injection_receipt"]["status"], "failed"
+            )
+            self.assertEqual(
+                on_disk["adapter_injection_receipt"]["error_message_sha256"],
+                hashlib.sha256(private_error.encode("utf-8")).hexdigest(),
+            )
+            self.assertNotIn(private_error, manifest_text)
+            self.assertNotIn("PRIVATE_SYNTHETIC_SENTINEL", manifest_text)
+
     def test_loader_time_artifact_mutation_fails_before_adapter_with_receipt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -458,7 +624,11 @@ class Qwen35AdapterEvidenceTests(unittest.TestCase):
                         "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
                     },
                 ),
-                mock.patch.object(trainer, "distribution_version", return_value="5.5.0"),
+                mock.patch.object(
+                    trainer,
+                    "distribution_version",
+                    side_effect=audited_distribution_version,
+                ),
                 mock.patch.dict(
                     sys.modules,
                     {
@@ -615,7 +785,11 @@ class Qwen35AdapterEvidenceTests(unittest.TestCase):
                     "validate_qwen35_base_artifacts",
                     return_value={"revision": trainer.QWEN35_PREFLIGHT_CONTRACT["base_revision"]},
                 ),
-                mock.patch.object(trainer, "distribution_version", return_value="5.5.0"),
+                mock.patch.object(
+                    trainer,
+                    "distribution_version",
+                    side_effect=audited_distribution_version,
+                ),
                 mock.patch.object(trainer, "write_json", side_effect=recording_write),
                 mock.patch.dict(
                     sys.modules,

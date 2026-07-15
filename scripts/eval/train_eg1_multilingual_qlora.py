@@ -38,6 +38,12 @@ QWEN35_LINEAR_ATTENTION_TARGET_SUFFIXES = (
     "out_proj",
 )
 QWEN35_ALLOWED_PEFT_PREFIXES = ("base_model.model.",)
+QWEN35_EXACT_INJECTION_METHOD = "unsloth_explicit_full_paths_v1"
+QWEN35_AUDITED_STACK_VERSIONS = {
+    "peft": "0.19.1",
+    "transformers": "5.5.0",
+    "unsloth": "2026.6.9",
+}
 QWEN35_EXPECTED_TARGET_SUFFIX_COUNTS = {
     "down_proj": 32,
     "gate_proj": 32,
@@ -85,6 +91,8 @@ QWEN35_PREFLIGHT_CONTRACT: dict[str, Any] = {
     "target_module_set_sha256": (
         "707ca9ad5e438a00d45d0625b82467881ba356ef73f1319b21baa5ddcbb9ace3"
     ),
+    "adapter_injection_method": QWEN35_EXACT_INJECTION_METHOD,
+    "audited_stack_versions": QWEN35_AUDITED_STACK_VERSIONS,
     "rank_16_trainable_parameters": QWEN35_R16_TRAINABLE_PARAMETERS,
 }
 
@@ -217,6 +225,36 @@ def qwen35_preflight_first_step_learning_rate(learning_rate: float) -> float:
     if not math.isfinite(learning_rate) or learning_rate <= 0:
         raise ValueError("Qwen3.5 preflight learning rate must be finite and positive")
     return learning_rate
+
+
+def qwen35_training_stack_receipt(
+    package_versions: dict[str, str],
+) -> dict[str, Any]:
+    required = dict(QWEN35_AUDITED_STACK_VERSIONS)
+    observed = {
+        package: package_versions.get(package, "missing") for package in sorted(required)
+    }
+    mismatches = {
+        package: {"expected": required[package], "observed": observed[package]}
+        for package in sorted(required)
+        if observed[package] != required[package]
+    }
+    return {
+        "status": "passed" if not mismatches else "failed",
+        "required_versions": required,
+        "observed_versions": observed,
+        "mismatches": mismatches,
+    }
+
+
+def validate_qwen35_training_stack(package_versions: dict[str, str]) -> dict[str, Any]:
+    receipt = qwen35_training_stack_receipt(package_versions)
+    if receipt["mismatches"]:
+        raise RuntimeError(
+            "Qwen3.5 audited training stack drifted: "
+            f"{sorted(receipt['mismatches'])}"
+        )
+    return receipt
 
 
 def local_hugging_face_revision(base_path: Path, artifact_name: str) -> str | None:
@@ -508,6 +546,122 @@ def qwen35_forbidden_target_names(module_names: list[str]) -> list[str]:
     return forbidden
 
 
+def qwen35_exact_injection_kwargs(
+    *,
+    expected_module_names: list[str],
+    rank: int,
+    alpha: int,
+    seed: int,
+) -> dict[str, Any]:
+    ordered_targets = sorted(expected_module_names)
+    duplicates = qwen35_duplicate_module_names(ordered_targets)
+    expected_count = sum(QWEN35_EXPECTED_TARGET_SUFFIX_COUNTS.values())
+    expected_hash = str(QWEN35_PREFLIGHT_CONTRACT["target_module_set_sha256"])
+    actual_hash = qwen35_module_set_sha256(ordered_targets)
+    actual_suffix_counts = qwen35_target_suffix_counts(ordered_targets)
+    forbidden = qwen35_forbidden_target_names(ordered_targets)
+    if (
+        len(ordered_targets) != expected_count
+        or duplicates
+        or actual_hash != expected_hash
+        or actual_suffix_counts != QWEN35_EXPECTED_TARGET_SUFFIX_COUNTS
+        or forbidden
+    ):
+        raise RuntimeError(
+            "Qwen3.5 exact injection target contract drifted before Unsloth: "
+            f"expected_count={expected_count}, actual_count={len(ordered_targets)}, "
+            f"expected_hash={expected_hash}, actual_hash={actual_hash}, "
+            f"duplicates={len(duplicates)}, forbidden={len(forbidden)}"
+        )
+    if rank <= 0 or alpha <= 0:
+        raise ValueError("Qwen3.5 LoRA rank and alpha must be positive")
+    return {
+        "r": rank,
+        "lora_alpha": alpha,
+        "lora_dropout": 0,
+        "bias": "none",
+        "target_modules": ordered_targets,
+        # With any filter set false, Unsloth 2026.6.9 rewrites an explicit
+        # list through its regex selector. Keeping all selectors open makes
+        # PEFT's explicit full paths the sole placement authority.
+        "finetune_vision_layers": True,
+        "finetune_language_layers": True,
+        "finetune_attention_modules": True,
+        "finetune_mlp_modules": True,
+        "target_parameters": [],
+        "use_gradient_checkpointing": "unsloth",
+        "random_state": seed,
+    }
+
+
+def inject_qwen35_exact_adapter_with_receipt(
+    *,
+    fast_model: Any,
+    model: Any,
+    expected_module_names: list[str],
+    rank: int,
+    alpha: int,
+    seed: int,
+    manifest_path: Path,
+    manifest: dict[str, Any],
+) -> Any:
+    injection_kwargs = qwen35_exact_injection_kwargs(
+        expected_module_names=expected_module_names,
+        rank=rank,
+        alpha=alpha,
+        seed=seed,
+    )
+    target_names = list(injection_kwargs["target_modules"])
+    selector_flags = {
+        key: injection_kwargs[key]
+        for key in (
+            "finetune_vision_layers",
+            "finetune_language_layers",
+            "finetune_attention_modules",
+            "finetune_mlp_modules",
+        )
+    }
+    manifest["status"] = "adapter_injection_in_progress_not_validated"
+    manifest["adapter_injection_receipt"] = {
+        "status": "requested_not_validated",
+        "method": QWEN35_EXACT_INJECTION_METHOD,
+        "target_module_count": len(target_names),
+        "target_module_set_sha256": qwen35_module_set_sha256(target_names),
+        "target_suffix_counts": qwen35_target_suffix_counts(target_names),
+        "selector_flags": selector_flags,
+        "target_parameters": [],
+        "requested_at_epoch": time.time(),
+    }
+    write_json(manifest_path, manifest)
+
+    try:
+        injected_model = fast_model.get_peft_model(model, **injection_kwargs)
+    except BaseException as error:
+        manifest["status"] = "blocked_adapter_injection_failed"
+        manifest["adapter_injection_receipt"].update(
+            {
+                "status": "failed",
+                "error_type": type(error).__name__,
+                "error_message_sha256": hashlib.sha256(
+                    str(error).encode("utf-8")
+                ).hexdigest(),
+                "failed_at_epoch": time.time(),
+            }
+        )
+        write_json(manifest_path, manifest)
+        raise
+
+    manifest["status"] = "adapter_injection_returned_validation_pending"
+    manifest["adapter_injection_receipt"].update(
+        {
+            "status": "returned_pending_exact_validation",
+            "returned_at_epoch": time.time(),
+        }
+    )
+    write_json(manifest_path, manifest)
+    return injected_model
+
+
 def expected_qwen35_trainable_parameters(rank: int) -> int:
     if rank <= 0:
         raise ValueError("LoRA rank must be positive")
@@ -754,12 +908,22 @@ def persist_qwen35_adapter_receipt_before_validation(
     except RuntimeError as error:
         manifest["status"] = "blocked_adapter_validation_failed"
         receipt["validation_status"] = "failed"
-        receipt["validation_error"] = str(error)
+        receipt["validation_error_type"] = type(error).__name__
+        receipt["validation_error_message_sha256"] = hashlib.sha256(
+            str(error).encode("utf-8")
+        ).hexdigest()
+        injection_receipt = manifest.get("adapter_injection_receipt")
+        if isinstance(injection_receipt, dict):
+            injection_receipt["status"] = "returned_adapter_validation_failed"
         write_json(manifest_path, manifest)
         raise
 
     manifest["status"] = "adapter_validation_passed_not_trained"
     receipt["validation_status"] = "passed"
+    injection_receipt = manifest.get("adapter_injection_receipt")
+    if isinstance(injection_receipt, dict):
+        injection_receipt["status"] = "validated_complete_pre_training"
+        injection_receipt["validated_at_epoch"] = time.time()
     write_json(manifest_path, manifest)
 
 
@@ -1036,12 +1200,16 @@ def main() -> None:
             "transformers",
             "trl",
             "unsloth",
+            "unsloth_zoo",
         )
     }
-    if family == QWEN35_FAMILY and int(
-        manifest["package_versions"]["transformers"].split(".", 1)[0]
-    ) < 5:
-        raise RuntimeError("Qwen3.5 requires Transformers v5 or newer")
+    if family == QWEN35_FAMILY:
+        stack_receipt = qwen35_training_stack_receipt(manifest["package_versions"])
+        manifest["training_stack_receipt"] = stack_receipt
+        if stack_receipt["status"] != "passed":
+            manifest["status"] = "blocked_audited_training_stack_drift"
+            write_json(output_dir / "training-manifest.json", manifest)
+            validate_qwen35_training_stack(manifest["package_versions"])
     write_json(output_dir / "training-manifest.json", manifest)
 
     from unsloth import FastLanguageModel
@@ -1108,19 +1276,15 @@ def main() -> None:
             ),
         }
         write_json(output_dir / "training-manifest.json", manifest)
-        model = FastModel.get_peft_model(
-            model,
-            r=args.rank,
-            lora_alpha=args.alpha,
-            lora_dropout=0,
-            bias="none",
-            target_modules=None,
-            finetune_vision_layers=False,
-            finetune_language_layers=True,
-            finetune_attention_modules=True,
-            finetune_mlp_modules=True,
-            use_gradient_checkpointing="unsloth",
-            random_state=args.seed,
+        model = inject_qwen35_exact_adapter_with_receipt(
+            fast_model=FastModel,
+            model=model,
+            expected_module_names=expected_qwen35_target_names,
+            rank=args.rank,
+            alpha=args.alpha,
+            seed=args.seed,
+            manifest_path=output_dir / "training-manifest.json",
+            manifest=manifest,
         )
     else:
         # Preserve the original Gemma/older-Qwen QLoRA behavior byte-for-byte in
