@@ -79,7 +79,7 @@ Status: stopped fail-closed before training; no retry authorized
 
 Committed trainer: `79f3c9554037868326ab33b47f9e7de8ea724d3c`. Its final named committed-diff review found no actionable defects before remote use. AlienSV then ran exactly one foreground invocation in the documented WSL exception environment: Python 3.12.3, PyTorch 2.10.0+cu128, Transformers 5.5.0, PEFT 0.19.1, TRL 0.24.0, Unsloth 2026.6.9, bitsandbytes 0.49.2, and datasets 4.3.0. CUDA and BF16 were available on the RTX 4090.
 
-Before model load, the script verified the pinned base revision `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`, all seven config/tokenizer/template/index/shard hashes listed above, the exact two-shard index inventory, the fixed private four-row SHA-256 `0584d6d796ad2fe0e1f551c20fb175487e13a2440effdb71bae0acd69e057bb3`, and prompt SHA-256 `7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62`.
+Before model load, the script verified the pinned base revision `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`, all seven config/tokenizer/template/index/shard hashes listed above, the exact two-shard index inventory, and the fixed private four-row SHA-256 `0584d6d796ad2fe0e1f551c20fb175487e13a2440effdb71bae0acd69e057bb3`. It separately calculated and recorded observed prompt SHA-256 `7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62`; historical commit `79f3c955` did not enforce prompt identity.
 
 The live Unsloth selector attached adapters to only 128 of the required 248 language modules:
 
@@ -100,4 +100,4 @@ Decision: this is compatibility failure evidence, not model-quality evidence. Do
 
 ## Post-run contract hardening
 
-The historical receipt above is unchanged: commit `79f3c9554037868326ab33b47f9e7de8ea724d3c` ran once with the documented prompt hash and stopped at 0 optimizer steps. A later full-branch review found that the trainer recorded that prompt hash but did not yet enforce it. The tracked future preflight contract now pins the same exact hash and rejects any mismatch before base-artifact validation or model import/load. This hardening did not trigger another GPU invocation and does not turn the historical compatibility failure into quality evidence.
+The historical receipt above is unchanged: commit `79f3c9554037868326ab33b47f9e7de8ea724d3c` ran once with the documented prompt hash and stopped at 0 optimizer steps. A later full-branch review found that the trainer recorded that prompt hash but did not yet enforce it. Beginning with commit `538342d48ee85a933f03b8fe4a5c481ef6f51eda`, the tracked future preflight contract enforces the same exact hash and rejects any mismatch before base-artifact validation or model import/load. This hardening did not trigger another GPU invocation and does not turn the historical compatibility failure into quality evidence.
