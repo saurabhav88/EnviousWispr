@@ -59,6 +59,11 @@ final class FakeAudioCapture: AudioCaptureInterface {
   var stabilizationResults: [Bool] = []
   private(set) var stabilizationCallCount = 0
   private(set) var rebuildEngineCallCount = 0
+  // Heartpath 5b (#1520): record signal-only source retirements + the session ids
+  // they targeted, so the kernel test can assert the retire fired (and NOT the old
+  // eligibility-gated rebuild) on an ineligible zero-signal take.
+  private(set) var retireCapturingSourceCallCount = 0
+  private(set) var retiredCaptureSessionIDs: [UInt64] = []
   private(set) var startEnginePhaseCallCount = 0
 
   /// When set, the Nth (1-based) `waitForFormatStabilization` call parks on a
@@ -146,6 +151,11 @@ final class FakeAudioCapture: AudioCaptureInterface {
   }
 
   func rebuildEngine() { rebuildEngineCallCount += 1 }
+
+  func retireCapturingSource(sessionID: UInt64) {
+    retireCapturingSourceCallCount += 1
+    retiredCaptureSessionIDs.append(sessionID)
+  }
 
   func preWarm() async throws {
     preWarmCallCount += 1

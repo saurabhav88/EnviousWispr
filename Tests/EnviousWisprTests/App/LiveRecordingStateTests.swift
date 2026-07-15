@@ -186,6 +186,7 @@ private final class SettableAudioCapture: AudioCaptureInterface {
   }
   func stopCapture() async -> CaptureResult { CaptureResult(samples: []) }
   func rebuildEngine() {}
+  func retireCapturingSource(sessionID: UInt64) {}
   func preWarm() async throws {}
   func abortPreWarm() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {
@@ -233,6 +234,7 @@ private final class ObservableAudioCapture: AudioCaptureInterface {
   }
   func stopCapture() async -> CaptureResult { CaptureResult(samples: []) }
   func rebuildEngine() {}
+  func retireCapturingSource(sessionID: UInt64) {}
   func preWarm() async throws {}
   func abortPreWarm() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {

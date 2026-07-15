@@ -70,7 +70,7 @@ struct ZeroSignalRecoveryTests {
 
   // MARK: - Reactive exit: allZeroFromStart
 
-  @Test("reactive allZeroFromStart → the honest zero-signal terminal, no salvage, ONE rebuild")
+  @Test("reactive allZeroFromStart → the honest zero-signal terminal, no salvage, ONE retire")
   func reactiveAllZeroFromStartFinishesHonestly() async {
     let ctx = makeContext()
     await startToRecording(ctx)
@@ -89,8 +89,10 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .allZeroFromStart)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == nil)
-    // PR3: the poisoned capture pipeline is reset exactly once.
-    #expect(ctx.capture.rebuildEngineCallCount == 1)
+    // Heartpath 5b: the poisoned source is RETIRED exactly once (fenced signal-only
+    // path); the old eligibility-gated rebuild route is gone.
+    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
+    #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
   @Test(
@@ -226,8 +228,9 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
-    // PR3: the mic is reset AND the user still keeps the words they said.
-    #expect(ctx.capture.rebuildEngineCallCount == 1)
+    // Heartpath 5b: the mic is RETIRED AND the user still keeps the words they said.
+    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
+    #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
   // MARK: - STOP-win: the detector never fired, classify at stop
@@ -250,8 +253,9 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.count == 1)
     #expect(
       ctx.wrapper.stopTimeZeroSignalTelemetryFired.first?.failureMode == .allZeroFromStart)
-    // PR3: the STOP-time backstop reaches the same single rebuild site.
-    #expect(ctx.capture.rebuildEngineCallCount == 1)
+    // Heartpath 5b: the STOP-time backstop retires the source once, no rebuild.
+    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
+    #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
   @Test("STOP-win: meaningful prefix then zero suffix at stop salvages and completes")
@@ -273,7 +277,8 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.count == 1)
-    #expect(ctx.capture.rebuildEngineCallCount == 1)
+    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
+    #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
   // MARK: - Fast-follow: the zero-suffix trim (#1317, cloud review + live UAT repro)
@@ -372,8 +377,13 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.recordingOutcome.kind == .noSpeech)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
-    // A genuinely MUTED mic is a hardware state, not a harness glitch. Resetting
-    // the engine would not unmute it — fail closed, never rebuild (§3.0).
+    // Heartpath 5b (#1520): the terminal stays honest `.noSpeech` (we never accuse
+    // the mic for a quiet/muted user), but we DO retire the source — a muted mic and
+    // a dead Bluetooth link are indistinguishable, and retiring is a cheap
+    // one-cold-reopen swap that rescues the dead-link-misreported-as-muted case. The
+    // OLD eligibility-gated rebuild never fired here — the #1520 propagation gap.
+    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
+    #expect(ctx.capture.retiredCaptureSessionIDs == [ctx.capture.currentCaptureSessionID])
     #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
@@ -397,7 +407,8 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
     // The false-alarm guard that matters most: a healthy mic in a silent room
-    // must never trigger a capture-pipeline reset.
+    // (tiny non-zero noise, never exact zero) must never be retired or rebuilt.
+    #expect(ctx.capture.retireCapturingSourceCallCount == 0)
     #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
@@ -423,9 +434,10 @@ struct ZeroSignalRecoveryTests {
     // STOP-time telemetry never fires for a reactive win — the reactive
     // path's own event rides the WedgeRecoveryRouter funnel instead (§3.6).
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
-    // Both confirmation routes converge on ONE site, so a session confirmed by
-    // BOTH (had the guard been missing) still rebuilds exactly once.
-    #expect(ctx.capture.rebuildEngineCallCount == 1)
+    // Both confirmation routes converge on ONE retire, so a session confirmed by
+    // BOTH (had the guard been missing) still retires exactly once, no rebuild.
+    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
+    #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
   // MARK: - PR3: the discard gates keep precedence over recovery
@@ -454,21 +466,23 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.recordingOutcome.kind == .discarded)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
+    // Discarded as too-short BEFORE the zero-signal region — never retired.
+    #expect(ctx.capture.retireCapturingSourceCallCount == 0)
     #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
   // MARK: - PR3: the zero-signal rebuild is independent of the format rebuild
 
   @Test(
-    "a session that ALSO rebuilt for an unstable format still issues exactly one zero-signal rebuild"
+    "a session that ALSO rebuilt for an unstable format still issues exactly one zero-signal retire"
   )
   func formatRebuildAndZeroSignalRebuildAreIndependent() async {
-    // Two different failures at two different lifecycle phases: the capture
-    // START phase rebuilds once for a format that never stabilised
-    // (RecordingSessionKernel:966), and the POST-STOP phase rebuilds once more
-    // because the harness then delivered dead audio. The PR3 invariant is
-    // exactly one ZERO-SIGNAL rebuild — not one rebuild of every kind per
-    // session — so the correct total here is 2.
+    // Two different failures at two different lifecycle phases, now via two
+    // DIFFERENT methods: the capture START phase REBUILDS once for a format that
+    // never stabilised (RecordingSessionKernel:966), and the POST-STOP phase
+    // RETIRES the source once because the harness then delivered dead audio.
+    // Heartpath 5b makes them even more clearly independent — different call sites,
+    // different methods.
     let ctx = makeContext()
     ctx.capture.stabilizationResults = [false, true]
     await startToRecording(ctx)
@@ -482,7 +496,8 @@ struct ZeroSignalRecoveryTests {
     await ctx.wrapper.drainReadyWork()
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
-    #expect(ctx.capture.rebuildEngineCallCount == 2)  // 1 format + 1 zero-signal
+    #expect(ctx.capture.rebuildEngineCallCount == 1)  // format-stabilization only
+    #expect(ctx.capture.retireCapturingSourceCallCount == 1)  // zero-signal
   }
 
   // MARK: - PR3: a poisoned source is never silently reused across presses
@@ -503,10 +518,11 @@ struct ZeroSignalRecoveryTests {
       await ctx.wrapper.drainReadyWork()
 
       #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
-      // Best-effort convergence (§3.3): the rebuild is fire-and-forget, so a
+      // Best-effort convergence (§3.3): the retire is fire-and-forget, so a
       // still-poisoned source on the next press must re-fire recovery rather
       // than silently hand the user another dead take.
-      #expect(ctx.capture.rebuildEngineCallCount == press)
+      #expect(ctx.capture.retireCapturingSourceCallCount == press)
+      #expect(ctx.capture.rebuildEngineCallCount == 0)
 
       await ctx.wrapper.apply(.reset)
       await ctx.wrapper.drainReadyWork()

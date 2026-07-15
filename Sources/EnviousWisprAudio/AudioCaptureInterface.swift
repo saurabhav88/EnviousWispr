@@ -114,6 +114,14 @@ public protocol AudioCaptureInterface: AnyObject {
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer>  // periphery:ignore - convenience method combining engine + capture phases
   func stopCapture() async -> CaptureResult
   func rebuildEngine()
+  /// Retire (tear down) the source that captured the session identified by
+  /// `sessionID`, so the next press opens a fresh one. Fenced + idempotent: a
+  /// no-op unless `sessionID` is still the current capture session AND the
+  /// retained source that captured it is still the running active source
+  /// (#1520 / heartpath 5b — a completed zero-signal take must not hand a dead
+  /// Bluetooth link to later takes, and a stale finish must never tear down a
+  /// newer take's source).
+  func retireCapturingSource(sessionID: UInt64)
   func preWarm() async throws
   func abortPreWarm()
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool

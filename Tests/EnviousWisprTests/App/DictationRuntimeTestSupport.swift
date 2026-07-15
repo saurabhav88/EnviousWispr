@@ -49,6 +49,7 @@ final class RouterTestAudioCapture: AudioCaptureInterface {
   }
   func stopCapture() async -> CaptureResult { CaptureResult(samples: []) }
   func rebuildEngine() {}
+  func retireCapturingSource(sessionID: UInt64) {}
   func preWarm() async throws {
     if let preWarmError { throw preWarmError }
   }

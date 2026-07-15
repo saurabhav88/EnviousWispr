@@ -200,6 +200,7 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
     return CaptureResult(samples: [])
   }
   func rebuildEngine() {}
+  func retireCapturingSource(sessionID: UInt64) {}
   func preWarm() async throws {}
   func abortPreWarm() {
     continuation?.finish()
