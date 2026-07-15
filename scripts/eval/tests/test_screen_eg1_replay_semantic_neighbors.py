@@ -27,7 +27,9 @@ SPEC = importlib.util.spec_from_file_location(
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
-PRODUCTION_FULL_RECEIPT_SHA256 = "0" * 64
+PRODUCTION_FULL_RECEIPT_SHA256 = (
+    "eb8317f131b2d9ab3ed4e5c5ae0a230c3deec149fd892b758a2ff7964513a2c5"
+)
 
 
 def encode_rows(rows: list[dict[str, object]]) -> bytes:
