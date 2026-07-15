@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -214,13 +215,14 @@ class ResponseMaskTests(unittest.TestCase):
 
 
 class PreflightSafetyTests(unittest.TestCase):
-    def test_preflight_accepts_only_bounded_private_shape(self) -> None:
+    def test_preflight_accepts_bounded_private_shape_and_pinned_prompt(self) -> None:
         trainer.validate_preflight_request(
             family=trainer.QWEN35_FAMILY,
             enabled=True,
             rows=private_preflight_rows(),
             skip_merge=True,
             data_sha256=trainer.QWEN35_PREFLIGHT_CONTRACT["data_sha256"],
+            prompt_sha256=trainer.QWEN35_PREFLIGHT_CONTRACT["prompt_sha256"],
             rank=16,
         )
 
@@ -231,6 +233,7 @@ class PreflightSafetyTests(unittest.TestCase):
             {"rows": private_preflight_rows(1)},
             {"skip_merge": False},
             {"data_sha256": "c" * 64},
+            {"prompt_sha256": "d" * 64},
             {"rank": 8},
         )
         defaults = {
@@ -239,6 +242,7 @@ class PreflightSafetyTests(unittest.TestCase):
             "rows": private_preflight_rows(),
             "skip_merge": True,
             "data_sha256": trainer.QWEN35_PREFLIGHT_CONTRACT["data_sha256"],
+            "prompt_sha256": trainer.QWEN35_PREFLIGHT_CONTRACT["prompt_sha256"],
             "rank": 16,
         }
         for case in cases:
@@ -259,8 +263,58 @@ class PreflightSafetyTests(unittest.TestCase):
                     rows=rows,
                     skip_merge=True,
                     data_sha256=trainer.QWEN35_PREFLIGHT_CONTRACT["data_sha256"],
+                    prompt_sha256=trainer.QWEN35_PREFLIGHT_CONTRACT["prompt_sha256"],
                     rank=16,
                 )
+
+    def test_prompt_mismatch_stops_before_base_validation_or_model_load(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base_path = root / "Qwen3.5-4B"
+            base_path.mkdir()
+            (base_path / "config.json").write_text(
+                json.dumps(
+                    {
+                        "model_type": "qwen3_5",
+                        "architectures": ["Qwen3_5ForConditionalGeneration"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            data_path = root / "private.jsonl"
+            prompt_path = root / "prompt.txt"
+            data_path.write_text("placeholder\n", encoding="utf-8")
+            prompt_path.write_text("wrong prompt\n", encoding="utf-8")
+            args = SimpleNamespace(
+                base=str(base_path),
+                data=str(data_path),
+                prompt=str(prompt_path),
+                tag="prompt-mismatch-must-not-load",
+                output_root=str(root / "out"),
+                training_mode="auto",
+                preflight_only=True,
+                skip_merge=True,
+                rank=16,
+            )
+
+            def fixed_hash(path: Path) -> str:
+                if path.name == data_path.name:
+                    return str(trainer.QWEN35_PREFLIGHT_CONTRACT["data_sha256"])
+                if path.name == prompt_path.name:
+                    return "d" * 64
+                raise AssertionError(f"Unexpected hash read before prompt rejection: {path}")
+
+            with (
+                mock.patch.object(trainer, "parse_args", return_value=args),
+                mock.patch.object(trainer, "read_rows", return_value=private_preflight_rows()),
+                mock.patch.object(trainer, "sha256", side_effect=fixed_hash),
+                mock.patch.object(trainer, "validate_qwen35_base_artifacts") as base_validator,
+                self.assertRaisesRegex(SystemExit, "prompt SHA-256 mismatch"),
+            ):
+                trainer.main()
+
+            base_validator.assert_not_called()
+            self.assertFalse((root / "out" / args.tag).exists())
 
 
 if __name__ == "__main__":

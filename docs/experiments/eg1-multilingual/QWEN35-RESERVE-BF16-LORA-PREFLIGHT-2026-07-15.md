@@ -62,7 +62,7 @@ The existing WSL environment has the complete current trainer stack: Python 3.12
 Qwen3.5 currently refuses every launch that omits `--preflight-only`; a future full training run needs a separately reviewed change. The script owns one fixed preflight contract, so callers cannot substitute expected hashes or revisions on the command line. The preflight flag means exactly `max_steps=1` and writes `compatibility_preflight_not_quality_evidence` into the manifest. It refuses to start unless all of these are true:
 
 1. The input contains two to four new private synthetic non-benchmark rows. Every row has only `input`, `output`, and the exact private-preflight provenance marker; unchanged benchmark/D1 schemas are rejected.
-2. `--skip-merge` is supplied, and the data matches the script-owned private-data SHA-256 `0584d6d796ad2fe0e1f551c20fb175487e13a2440effdb71bae0acd69e057bb3`.
+2. `--skip-merge` is supplied, the data matches the script-owned private-data SHA-256 `0584d6d796ad2fe0e1f551c20fb175487e13a2440effdb71bae0acd69e057bb3`, and the prompt matches script-owned SHA-256 `7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62`.
 3. Every config, tokenizer, chat-template, index, and weight-shard hash matches the script-owned contract; each Hugging Face metadata file has the pinned revision; and the index names exactly the two pinned shards.
 4. Qwen3.5 resolves to BF16 LoRA, never QLoRA or full fine-tuning.
 5. The actual adapter has the exact 248-module suffix distribution above, zero vision/MTP matches, and 32,464,896 trainable parameters at rank 16.
@@ -97,3 +97,7 @@ The live Unsloth selector attached adapters to only 128 of the required 248 lang
 The exact target-coverage assertion stopped the process immediately after adapter attachment. It did not reach response masking, trainer construction, or `trainer.train()`. Completed optimizer steps: `0`. No adapter, checkpoint, merged model, D1 output, or quality score was created. The sanitized starting-manifest SHA-256 is `d615f2d852c9aaacf7f3d2b1e1b2b0159c6752638699dbd3de4c511c82666737`. GPU state returned to 0% utilization with 22,886 MiB free.
 
 Decision: this is compatibility failure evidence, not model-quality evidence. Do not weaken the 248-module contract and do not retry. Any next attempt needs a separately reviewed plan that proves how GDN modules will be targeted in the installed stack, followed by fresh authorization for a new invocation.
+
+## Post-run contract hardening
+
+The historical receipt above is unchanged: commit `79f3c9554037868326ab33b47f9e7de8ea724d3c` ran once with the documented prompt hash and stopped at 0 optimizer steps. A later full-branch review found that the trainer recorded that prompt hash but did not yet enforce it. The tracked future preflight contract now pins the same exact hash and rejects any mismatch before base-artifact validation or model import/load. This hardening did not trigger another GPU invocation and does not turn the historical compatibility failure into quality evidence.

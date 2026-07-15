@@ -45,6 +45,7 @@ QWEN35_PREFLIGHT_CONTRACT: dict[str, Any] = {
     "schema_version": "qwen35_compatibility_preflight_v1",
     "base_revision": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
     "data_sha256": "0584d6d796ad2fe0e1f551c20fb175487e13a2440effdb71bae0acd69e057bb3",
+    "prompt_sha256": "7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62",
     "row_provenance": PREFLIGHT_ROW_PROVENANCE,
     "artifact_sha256": {
         "chat_template.jinja": "a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715",
@@ -131,6 +132,7 @@ def validate_preflight_request(
     rows: list[dict[str, Any]],
     skip_merge: bool,
     data_sha256: str,
+    prompt_sha256: str | None,
     rank: int,
 ) -> None:
     if family == QWEN35_FAMILY and not enabled:
@@ -151,6 +153,12 @@ def validate_preflight_request(
     if data_sha256 != expected_data_sha256:
         raise ValueError(
             f"Preflight data SHA-256 mismatch: expected {expected_data_sha256}, got {data_sha256}"
+        )
+    expected_prompt_sha256 = str(QWEN35_PREFLIGHT_CONTRACT["prompt_sha256"])
+    if prompt_sha256 != expected_prompt_sha256:
+        raise ValueError(
+            "Preflight prompt SHA-256 mismatch: "
+            f"expected {expected_prompt_sha256}, got {prompt_sha256 or 'no prompt hash'}"
         )
     allowed_keys = {"input", "output", "preflight_provenance"}
     for index, row in enumerate(rows):
@@ -358,6 +366,7 @@ def main() -> None:
 
     rows = read_rows(data_path)
     data_sha256 = sha256(data_path)
+    prompt_sha256 = sha256(prompt_path) if args.preflight_only else None
     try:
         validate_preflight_request(
             family=family,
@@ -365,6 +374,7 @@ def main() -> None:
             rows=rows,
             skip_merge=args.skip_merge,
             data_sha256=data_sha256,
+            prompt_sha256=prompt_sha256,
             rank=args.rank,
         )
     except ValueError as error:
@@ -383,6 +393,8 @@ def main() -> None:
         raise SystemExit("Refusing Qwen3.5 run with UNSLOTH_ENABLE_FULL_FINETUNING=1")
 
     system_prompt = read_prompt(prompt_path)
+    if prompt_sha256 is None:
+        prompt_sha256 = sha256(prompt_path)
     lora_dropout = 0 if family == QWEN35_FAMILY else 0.05
     output_dir.mkdir(parents=True)
     manifest: dict[str, Any] = {
@@ -404,7 +416,7 @@ def main() -> None:
         "data_sha256": data_sha256,
         "row_count": len(rows),
         "prompt_path": str(prompt_path),
-        "prompt_sha256": sha256(prompt_path),
+        "prompt_sha256": prompt_sha256,
         "system_prompt": system_prompt,
         "hyperparameters": {
             "learning_rate": args.lr,
