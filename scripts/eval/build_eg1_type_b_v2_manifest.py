@@ -9,7 +9,9 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
+import subprocess
 from typing import Any
 
 
@@ -45,6 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out-bundle", required=True, type=Path)
     parser.add_argument("--seed", type=int, default=1265)
+    parser.add_argument("--expected-git-head", required=True)
     return parser.parse_args()
 
 
@@ -55,6 +58,35 @@ def sha256_bytes(value: bytes) -> str:
 def read_once(path: Path) -> tuple[bytes, str]:
     value = path.read_bytes()
     return value, sha256_bytes(value)
+
+
+def git_output(*arguments: str) -> bytes:
+    try:
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=REPO_ROOT,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ).stdout
+    except subprocess.CalledProcessError as error:
+        raise ValueError(f"cannot verify Git state: {' '.join(arguments)}") from error
+
+
+def validate_git_state(expected_head: str) -> str:
+    if not re.fullmatch(r"[0-9a-f]{40}", expected_head):
+        raise ValueError("expected Git HEAD must be a lowercase 40-character SHA-1")
+    actual_head = git_output("rev-parse", "HEAD").decode().strip()
+    if actual_head != expected_head:
+        raise ValueError("Git HEAD differs from the predeclared commit")
+    if git_output("status", "--porcelain", "--untracked-files=no"):
+        raise ValueError("tracked worktree must be clean before slot publication")
+    for path in (SCRIPT_PATH, ALLOCATION_CONTRACT):
+        relative = str(path.relative_to(REPO_ROOT))
+        committed_bytes = git_output("show", f"{actual_head}:{relative}")
+        if sha256_bytes(committed_bytes) != read_once(path)[1]:
+            raise ValueError(f"committed bytes differ from live file: {relative}")
+    return actual_head
 
 
 def rows_from_bytes(value: bytes, label: str) -> list[dict[str, Any]]:
@@ -133,6 +165,7 @@ def main() -> int:
     if not output.parent.is_dir():
         raise SystemExit("--out-bundle parent directory must already exist")
 
+    execution_git_head = validate_git_state(args.expected_git_head)
     contract_bytes, contract_sha = read_once(ALLOCATION_CONTRACT)
     contract = json.loads(contract_bytes)
     if not isinstance(contract, dict):
@@ -366,6 +399,7 @@ def main() -> int:
         "fresh_authorship_total": FRESH_AUTHORSHIP_TOTAL,
         "all_slot_records": ALL_SLOT_RECORDS,
         "candidate_model_output_seen": False,
+        "execution_git_head": execution_git_head,
         "allocation_contract": {
             "path": str(ALLOCATION_CONTRACT.relative_to(REPO_ROOT)),
             "sha256": contract_sha,
@@ -418,6 +452,8 @@ def main() -> int:
             raise RuntimeError("allocation contract changed during manifest publication")
         if read_once(SCRIPT_PATH)[1] != builder_sha:
             raise RuntimeError("builder changed during manifest publication")
+        if validate_git_state(args.expected_git_head) != execution_git_head:
+            raise RuntimeError("Git state changed during manifest publication")
         for path in SOURCE_PATHS:
             expected_sha = source_hashes[str(path.relative_to(REPO_ROOT))]
             if read_once(path)[1] != expected_sha:

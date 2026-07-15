@@ -23,12 +23,27 @@ class BuildTypeBV2ManifestTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.bundle = self.root / "bundle"
+        self.expected_head = "a" * 40
+        self.real_validate_git_state = MODULE.validate_git_state
+        self.git_state_patcher = mock.patch.object(
+            MODULE, "validate_git_state", return_value=self.expected_head
+        )
+        self.validate_git_state = self.git_state_patcher.start()
 
     def tearDown(self) -> None:
+        self.git_state_patcher.stop()
         self.temp.cleanup()
 
     def arguments(self) -> list[str]:
-        return [str(MODULE_PATH), "--out-bundle", str(self.bundle), "--seed", "1265"]
+        return [
+            str(MODULE_PATH),
+            "--out-bundle",
+            str(self.bundle),
+            "--seed",
+            "1265",
+            "--expected-git-head",
+            self.expected_head,
+        ]
 
     def test_builds_exact_balanced_1890_slot_manifest(self) -> None:
         with mock.patch.object(sys, "argv", self.arguments()):
@@ -51,6 +66,8 @@ class BuildTypeBV2ManifestTests(unittest.TestCase):
         self.assertEqual(receipt["replacement_reserves"], 23)
         self.assertEqual(receipt["fresh_authorship_total"], 1890)
         self.assertEqual(receipt["all_slot_records"], 1913)
+        self.assertEqual(receipt["execution_git_head"], self.expected_head)
+        self.assertEqual(self.validate_git_state.call_count, 2)
         self.assertEqual(
             receipt["manifest"]["distributions"]["category"],
             {
@@ -154,6 +171,8 @@ class BuildTypeBV2ManifestTests(unittest.TestCase):
             str(second),
             "--seed",
             "1265",
+            "--expected-git-head",
+            self.expected_head,
         ]
         with mock.patch.object(sys, "argv", arguments):
             self.assertEqual(MODULE.main(), 0)
@@ -167,11 +186,42 @@ class BuildTypeBV2ManifestTests(unittest.TestCase):
             str(self.bundle),
             "--seed",
             "1266",
+            "--expected-git-head",
+            self.expected_head,
         ]
         with mock.patch.object(sys, "argv", arguments):
             with self.assertRaisesRegex(ValueError, "seed differs"):
                 MODULE.main()
         self.assertFalse(self.bundle.exists())
+
+    def test_git_binding_rejects_dirty_tracked_state(self) -> None:
+        with mock.patch.object(
+            MODULE,
+            "git_output",
+            side_effect=[
+                (self.expected_head + "\n").encode(),
+                b" M scripts/eval/build_eg1_type_b_v2_manifest.py\n",
+            ],
+        ):
+            with self.assertRaisesRegex(ValueError, "tracked worktree must be clean"):
+                self.real_validate_git_state(self.expected_head)
+
+    def test_git_binding_rejects_live_bytes_not_in_commit(self) -> None:
+        with mock.patch.object(
+            MODULE,
+            "git_output",
+            side_effect=[
+                (self.expected_head + "\n").encode(),
+                b"",
+                b"different committed builder bytes",
+            ],
+        ):
+            with self.assertRaisesRegex(ValueError, "committed bytes differ"):
+                self.real_validate_git_state(self.expected_head)
+
+    def test_git_binding_rejects_malformed_expected_head(self) -> None:
+        with self.assertRaisesRegex(ValueError, "lowercase 40-character SHA-1"):
+            self.real_validate_git_state("HEAD")
 
     def test_rejects_source_drift_before_publication(self) -> None:
         original_read = MODULE.read_once
