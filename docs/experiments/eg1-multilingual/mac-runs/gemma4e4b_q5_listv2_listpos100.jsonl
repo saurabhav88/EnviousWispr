@@ -1,0 +1,100 @@
+{"id": "LF-001", "candidate": "Patient complains of:\n- headache\n- nausea\n- fatigue", "latencyMs": 482, "attempts": 1}
+{"id": "LF-002", "candidate": "I looked at three places today. They were all pretty nice. I really liked the one on Elm Street, the loft downtown, and the townhouse near the park. I am going to apply for the loft. Fingers crossed.", "latencyMs": 1194, "attempts": 1}
+{"id": "LF-003", "candidate": "Pantry restock:\n* Oats\n* Pasta\n* Lentils\n* Olive oil\n* Crackers\n* Tea\n* Peanut butter", "latencyMs": 821, "attempts": 1}
+{"id": "LF-004", "candidate": "We sell food for:\n* dogs\n* cats\n* birds\n* fish\n* reptiles\n* hamsters\n* rabbits\n\nAsk an associate for help.", "latencyMs": 914, "attempts": 1}
+{"id": "LF-005", "candidate": "We are considering:\n* Paris\n* London\n* Rome\n* Berlin\n* Amsterdam\n* Madrid\n* Lisbon", "latencyMs": 707, "attempts": 1}
+{"id": "LF-006", "candidate": "Saturday is getting close, and I do not want to cook all day. Prep:\n* hummus\n* roasted carrots\n* pasta salad\n* lemon cake\n* iced tea\n\nSet the table before guests arrive.", "latencyMs": 1171, "attempts": 1}
+{"id": "LF-007", "candidate": "The QBR deck is too thin, and leadership will ask for details:\n* pipeline numbers\n* churn drivers\n* expansion wins\n* product adoption\n* support trends\n* hiring gaps\n* next quarter bets\n\nRehearse on Monday.", "latencyMs": 1330, "attempts": 1}
+{"id": "LF-008", "candidate": "Your current diet is okay, but we can improve it. You should add more spinach, kale, broccoli, carrots, and bell peppers to your meals. These vegetables are packed with vitamins. Try roasting them for better flavor.", "latencyMs": 11027, "attempts": 1}
+{"id": "LF-009", "candidate": "Keep the party simple. Order pizza. Pick up cupcakes. Charge the camera. The kids will be happy.", "latencyMs": 649, "attempts": 1}
+{"id": "LF-010", "candidate": "The migration window is approved, but we only get two hours beforehand. Confirm:\n* backups\n* feature flags\n* traffic drain\n* monitoring alerts\n* rollback owner\n* customer notice\n\nPlease update the runbook today. Nobody should improvise.", "latencyMs": 1351, "attempts": 1}
+{"id": "LF-011", "candidate": "Website fixes:\n* mobile menu\n* contact form\n* image compression", "latencyMs": 496, "attempts": 1}
+{"id": "LF-012", "candidate": "Weather looks clear. Pack:\n* tent\n* stakes\n* sleeping bags\n* lantern\n* matches\n* cookware\n* coffee\n* trash bags\n\nLeave before noon.", "latencyMs": 981, "attempts": 1}
+{"id": "LF-013", "candidate": "Metrics\nRoadmap\nQA", "latencyMs": 298, "attempts": 1}
+{"id": "LF-014", "candidate": "While we are away, please:\n* Feed the cats\n* Scoop litter\n* Water plants\n* Bring in mail\n* Text photos\n\nWe really appreciate it.", "latencyMs": 972, "attempts": 1}
+{"id": "LF-015", "candidate": "First, combine the wet ingredients:\n* water\n* oil\n* milk\nStir until smooth.", "latencyMs": 646, "attempts": 1}
+{"id": "LF-016", "candidate": "For the shoot I am bringing:\n* my camera\n* three lenses\n* a tripod\n* a reflector\n* extra batteries\n\nThe lighting should be perfect.", "latencyMs": 947, "attempts": 1}
+{"id": "LF-017", "candidate": "Welcome to the company. We are thrilled to have you. Your first tasks are to:\n* set up your laptop\n* read the handbook\n* meet with your manager\n\nHR will be available if you have questions. Good luck on your first day.", "latencyMs": 1353, "attempts": 1}
+{"id": "LF-018", "candidate": "Ladies and gentlemen, prepare to be amazed. Watch closely as I pull these items from the hat:\n* a rabbit\n* a dove\n* a bouquet\n* a scarf\n* a deck of cards\n* a coin\n* a wand\n\nGive a round of applause. Thank you for coming.", "latencyMs": 1580, "attempts": 1}
+{"id": "LF-019", "candidate": "After lunch I need to:\n* review the contract\n* pay the card\n* submit expenses", "latencyMs": 603, "attempts": 1}
+{"id": "LF-020", "candidate": "For the picnic buy:\n* baguettes\n* brie\n* grapes\n* olives\n* lemonade\n* cookies\n* paper towels", "latencyMs": 781, "attempts": 1}
+{"id": "LF-021", "candidate": "Study topics:\n* Photosynthesis\n* Mitosis\n* Ecosystems", "latencyMs": 496, "attempts": 1}
+{"id": "LF-022", "candidate": "My weekend consists of:\n* mowing the lawn\n* washing the car\n* walking the dog\n* doing laundry\n* getting groceries", "latencyMs": 783, "attempts": 1}
+{"id": "LF-023", "candidate": "Today we visited:\n* the museum\n* the park\n* the old castle", "latencyMs": 543, "attempts": 1}
+{"id": "LF-024", "candidate": "We got the keys this afternoon. The place is dusty but exciting. Tomorrow bring:\n* mop\n* paper towels\n* trash bags\n* light bulbs\n* shower liner\n\nI will order pizza after the first load.", "latencyMs": 1220, "attempts": 1}
+{"id": "LF-025", "candidate": "Getting lost in the woods is dangerous. You must remain calm. Your priorities are:\n* finding water\n* building a shelter\n* starting a fire\n* signaling for help\n* foraging for food\n* staying warm\n* avoiding predators\n\nRemember these steps to stay alive. Do not panic.", "latencyMs": 1552, "attempts": 1}
+{"id": "LF-026", "candidate": "- flour\n- sugar\n- eggs\n- butter\n- vanilla extract", "latencyMs": 496, "attempts": 1}
+{"id": "LF-027", "candidate": "For the mockups, please update:\n* the header\n* the pricing card\n* the footer", "latencyMs": 624, "attempts": 1}
+{"id": "LF-028", "candidate": "For the proposal include:\n* the scope\n* the milestones\n* the payment terms", "latencyMs": 558, "attempts": 1}
+{"id": "LF-029", "candidate": "- canvas\n- brushes\n- acrylics\n- easel\n- palette", "latencyMs": 495, "attempts": 1}
+{"id": "LF-030", "candidate": "- tent\n- sleeping bag\n- flashlight\n- matches\n- bug spray", "latencyMs": 520, "attempts": 1}
+{"id": "LF-031", "candidate": "Podcast topics:\n* Remote work\n* Burnout\n* Manager training\n* Hiring loops\n* Team rituals", "latencyMs": 665, "attempts": 1}
+{"id": "LF-032", "candidate": "For the road trip pack:\n* blankets\n* podcasts\n* snacks\n* a tire gauge\n* phone mounts", "latencyMs": 694, "attempts": 1}
+{"id": "LF-033", "candidate": "The lineup includes:\n* Radiohead\n* The Killers\n* Coldplay\n* Muse\n* Arctic Monkeys\n\nTickets go on sale Friday.", "latencyMs": 830, "attempts": 1}
+{"id": "LF-034", "candidate": "Onboarding checklist:\n* Welcome email\n* Profile setup\n* Tutorial video\n* Sample project\n* Follow-up survey", "latencyMs": 735, "attempts": 1}
+{"id": "LF-035", "candidate": "The cabin is booked and the forecast looks warm. Let's pack:\n* swimsuits\n* hiking shoes\n* bug spray\n* board games\n* pancake mix\n* coffee filters\n* first aid kit\n\nI will handle directions tomorrow.", "latencyMs": 1334, "attempts": 1}
+{"id": "LF-036", "candidate": "We need to add:\n* dark mode\n* offline support\n* push notifications\n* tablet layout\n* localization", "latencyMs": 696, "attempts": 1}
+{"id": "LF-037", "candidate": "- pens\n- paper\n- paperclips", "latencyMs": 366, "attempts": 1}
+{"id": "LF-038", "candidate": "The memo went out to:\n* Sales\n* Marketing\n* Product\n* Engineering\n* Design\n* HR\n* Legal", "latencyMs": 759, "attempts": 1}
+{"id": "LF-039", "candidate": "Good progress today. Next, we need to test:\n* login\n* reset password\n* account deletion\n\nI can help after lunch.", "latencyMs": 838, "attempts": 1}
+{"id": "LF-040", "candidate": "- hammer\n- nails\n- wood glue", "latencyMs": 361, "attempts": 1}
+{"id": "LF-041", "candidate": "Flight is early tomorrow. Remember:\n* passport\n* headphones\n* neck pillow\n\nCheck in before bed.", "latencyMs": 670, "attempts": 1}
+{"id": "LF-042", "candidate": "We are planning a maintenance window tonight. Expect some downtime. We will be:\n* upgrading the OS\n* patching the database\n* rotating keys\n* updating SSL certificates\n* restarting the load balancers\n\nSystems should be back online by 3 am. Let support know if issues persist.", "latencyMs": 1532, "attempts": 1}
+{"id": "LF-043", "candidate": "- React\n- Node\n- Postgres\n- Redis\n- Docker", "latencyMs": 470, "attempts": 1}
+{"id": "LF-044", "candidate": "Errands:\n- dry cleaning\n- pharmacy\n- post office", "latencyMs": 475, "attempts": 1}
+{"id": "LF-045", "candidate": "The inner and outer planets are:\n- Mercury\n- Venus\n- Earth\n- Mars\n- Jupiter\n- Saturn\n- Uranus\n\nPluto is no longer included.", "latencyMs": 996, "attempts": 1}
+{"id": "LF-046", "candidate": "Tomorrow's clinic is fully booked, so the opening checklist matters. Verify:\n* vaccine fridge\n* exam rooms\n* consent forms\n* interpreter schedule\n* masks\n* labels\n* emergency kit\n\nPost updates before doors open.", "latencyMs": 1288, "attempts": 1}
+{"id": "LF-047", "candidate": "Apples, bananas, and pears", "latencyMs": 317, "attempts": 1}
+{"id": "LF-048", "candidate": "We will be testing:\n* endurance\n* strength\n* flexibility\n* balance\n* agility\n\nLet's get started.", "latencyMs": 760, "attempts": 1}
+{"id": "LF-049", "candidate": "Good morning class. Take your seats please. For homework tonight, you must read chapter four, answer the questions, and write a short essay. It is due on Friday. No late assignments will be accepted.", "latencyMs": 1127, "attempts": 1}
+{"id": "LF-050", "candidate": "In the menu you will find:\n* profile\n* notifications\n* privacy\n* security\n* billing\n* preferences\n* help", "latencyMs": 780, "attempts": 1}
+{"id": "LF-051", "candidate": "Before winter hits, schedule:\n* Furnace service\n* Clean gutters\n* Seal windows\n* Test smoke alarms\n* Drain hoses\n\nPut reminders on the calendar.", "latencyMs": 950, "attempts": 1}
+{"id": "LF-052", "candidate": "- hardware store\n- screws\n- sandpaper\n- paint brushes", "latencyMs": 452, "attempts": 1}
+{"id": "LF-053", "candidate": "Red, blue, and green.", "latencyMs": 321, "attempts": 1}
+{"id": "LF-054", "candidate": "Tomorrow:\n- fractions\n- decimals\n- word problems\n- practice quiz\n- review game", "latencyMs": 609, "attempts": 1}
+{"id": "LF-055", "candidate": "Please schedule:\n* the interview\n* the team lunch\n* the dentist\n* the oil change\n* the tax call", "latencyMs": 737, "attempts": 1}
+{"id": "LF-056", "candidate": "Your test results came back. Everything looks relatively normal. I just want you to:\n* lower your sodium intake\n* exercise more\n* get better sleep\n\nLet's schedule a follow up in three months. Have a good day.", "latencyMs": 1288, "attempts": 1}
+{"id": "LF-057", "candidate": "Wake up\nBrush teeth\nShower\nEat breakfast\nCommute\nWork\nExercise", "latencyMs": 543, "attempts": 1}
+{"id": "LF-058", "candidate": "Our summer collection features:\n* shirts\n* shorts\n* dresses\n* skirts\n* swimwear\n* sandals\n* sunglasses\n\nCome check it out.", "latencyMs": 872, "attempts": 1}
+{"id": "LF-059", "candidate": "The meeting will cover:\n* Q1 results\n* Q2 planning\n* hiring updates\n* marketing spend\n* engineering goals", "latencyMs": 760, "attempts": 1}
+{"id": "LF-060", "candidate": "The game features:\n* an open world\n* crafting\n* skill trees\n* base building\n* multiplayer co-op\n\nIt releases next Tuesday.", "latencyMs": 906, "attempts": 1}
+{"id": "LF-061", "candidate": "Planning starts Monday. Collect:\n* revenue forecast\n* hiring plan\n* churn analysis\n* product bets\n* marketing calendar\n* risk register\n* budget asks\n\nShare the doc tonight.", "latencyMs": 1083, "attempts": 1}
+{"id": "LF-062", "candidate": "For the kitchen quote, please break out:\n* cabinets\n* counters\n* sink\n* faucet\n* tile\n* lighting\n* labor", "latencyMs": 825, "attempts": 1}
+{"id": "LF-063", "candidate": "Our board packet is going out Wednesday, and I want it complete. Include:\n*   agenda\n*   minutes\n*   treasurer report\n*   grant update\n*   volunteer numbers\n*   facilities plan\n*   vote summary\n\nSend me edits by noon.", "latencyMs": 12792, "attempts": 1}
+{"id": "LF-064", "candidate": "The orchestra is composed of:\n- strings\n- woodwinds\n- brass\n- percussion\n- keyboards\n- harp\n- choir\n\nIt was a beautiful performance.", "latencyMs": 984, "attempts": 1}
+{"id": "LF-065", "candidate": "Mexico packing:\n- passport\n- swimsuit\n- sandals\n- sunscreen\n- sunglasses", "latencyMs": 566, "attempts": 1}
+{"id": "LF-066", "candidate": "Gift ideas:\n* scarf\n* cookbook\n* concert tickets", "latencyMs": 450, "attempts": 1}
+{"id": "LF-067", "candidate": "The client sounded unsure. Follow up on:\n* pricing\n* timeline\n* support options\n\nKeep the note friendly.", "latencyMs": 717, "attempts": 1}
+{"id": "LF-068", "candidate": "I am running late because I have to:\n* get gas\n* drop off a package\n* grab coffee\n\nSee you in twenty minutes.", "latencyMs": 859, "attempts": 1}
+{"id": "LF-069", "candidate": "- school bag\n- laptop\n- charger\n- notebook\n- calculator\n- water bottle\n- keys\n- headphones", "latencyMs": 724, "attempts": 1}
+{"id": "LF-070", "candidate": "Moving day tasks:\n* Pick up the truck\n* Pack dishes\n* Label boxes\n* Take down curtains\n* Defrost freezer\n* Forward mail\n* Tip movers", "latencyMs": 995, "attempts": 1}
+{"id": "LF-071", "candidate": "Remind me tomorrow to:\n* call mom\n* renew the permit\n* book the dentist", "latencyMs": 604, "attempts": 1}
+{"id": "LF-072", "candidate": "Hey, it is me calling about the party tomorrow. I need you to bring:\n* ice\n* cups\n* napkins\nDo not forget the decorations either. Call me back when you get this. Bye.", "latencyMs": 1174, "attempts": 1}
+{"id": "LF-073", "candidate": "Ask the doctor about:\n* Sleep\n* Headaches\n* The new prescription", "latencyMs": 543, "attempts": 1}
+{"id": "LF-074", "candidate": "Agenda:\n- hiring\n- budget\n- roadmap", "latencyMs": 412, "attempts": 1}
+{"id": "LF-075", "candidate": "In settings, you can:\n* Reset your password\n* Update your email\n* Delete your account", "latencyMs": 626, "attempts": 1}
+{"id": "LF-076", "candidate": "- bleach\n- sponge\n- window cleaner\n- mop\n- bucket", "latencyMs": 497, "attempts": 1}
+{"id": "LF-077", "candidate": "Open house prep:\n* Sweep the porch\n* Unlock the side gate\n* Turn on lights\n* Set out flyers\n* Chill water", "latencyMs": 838, "attempts": 1}
+{"id": "LF-078", "candidate": "The big day is approaching fast. We still have a lot to do. We need to:\n* finalize the guest list\n* pick the flowers\n* hire a dj\n* choose the menu\n* write our vows\n\nI am feeling a bit stressed. We can get through this together.", "latencyMs": 1542, "attempts": 1}
+{"id": "LF-079", "candidate": "Here are the action items for today:\n* Review the budget\n* Draft the press release\n* Email the client\n\nLet me know when these are done.", "latencyMs": 929, "attempts": 1}
+{"id": "LF-080", "candidate": "Cleaning list:\n- kitchen counters\n- bathroom mirror\n- laundry\n- floors\n- trash", "latencyMs": 610, "attempts": 1}
+{"id": "LF-081", "candidate": "The rental agreement covers:\n* theft\n* liability\n* collision\n* roadside assistance\n* glass damage\n\nPlease sign at the bottom.", "latencyMs": 807, "attempts": 1}
+{"id": "LF-082", "candidate": "For taco night we still need:\n* shells\n* lettuce\n* tomatoes\n* sour cream\n* hot sauce", "latencyMs": 694, "attempts": 1}
+{"id": "LF-083", "candidate": "The charity gala was a huge success. We raised a lot of money. The funds will go toward:\n* housing\n* education\n* healthcare\n* clean water\n* food security for the community\n\nWe are so grateful for your donations. See you next year.", "latencyMs": 1428, "attempts": 1}
+{"id": "LF-084", "candidate": "Launch assets include:\n* blog post\n* press release\n* social copy\n* screenshots\n* customer quotes\n* email banner\n* sales one pager", "latencyMs": 874, "attempts": 1}
+{"id": "LF-085", "candidate": "The kickoff was useful and everyone seemed aligned. Our decisions today were:\n* weekly syncs\n* shared dashboard\n* single owner per workstream\n\nI will publish minutes later. Please correct anything I missed.", "latencyMs": 1155, "attempts": 1}
+{"id": "LF-086", "candidate": "Make sure to:\n* Call Mom\n* Text Dave\n* Email the landlord", "latencyMs": 543, "attempts": 1}
+{"id": "LF-087", "candidate": "We need to make progress this weekend. Compare florists, choose linens, confirm music, review vows, and finalize seating. Then we can relax.", "latencyMs": 862, "attempts": 1}
+{"id": "LF-088", "candidate": "The release is close. Remaining items are:\n* docs\n* screenshots\n* rollback plan\n\nI will check again tonight.", "latencyMs": 739, "attempts": 1}
+{"id": "LF-089", "candidate": "Good afternoon class. Today we are covering ancient civilizations. Please take notes. We will discuss:\n* Mesopotamia\n* Egypt\n* The Indus Valley\n* China\n* Greece\n* Rome\n* Mesoamerica\n\nThis material will be on the midterm test. Study your textbooks tonight.", "latencyMs": 1495, "attempts": 1}
+{"id": "LF-090", "candidate": "We are currently out of stock on:\n* Laptops\n* Monitors\n* Keyboards\n* Mice\n* Docking stations\n\nPlease order more ASAP.", "latencyMs": 897, "attempts": 1}
+{"id": "LF-091", "candidate": "The house feels chaotic. Start with:\n* dishes\n* mail\n* laundry\nDo not overthink it.", "latencyMs": 695, "attempts": 1}
+{"id": "LF-092", "candidate": "I looked over the draft this morning. Overall, it is in good shape. Please tighten the intro, the metrics section, and the conclusion. I left comments in the doc. Send me the next version when ready.", "latencyMs": 1175, "attempts": 1}
+{"id": "LF-093", "candidate": "Flight\nHotel\nRental car", "latencyMs": 297, "attempts": 1}
+{"id": "LF-094", "candidate": "Our main priorities are:\n* growth\n* retention\n* monetization\n* compliance\n* security", "latencyMs": 611, "attempts": 1}
+{"id": "LF-095", "candidate": "- North America\n- South America\n- Europe\n- Asia\n- Africa\n- Australia\n- Antarctica", "latencyMs": 655, "attempts": 1}
+{"id": "LF-096", "candidate": "No running, jumping, or diving in the pool area. Thank you for your cooperation.", "latencyMs": 560, "attempts": 1}
+{"id": "LF-097", "candidate": "The review conversation went better than expected. She asked for clearer examples. Note strengths in:\n* collaboration\n* ownership\n* customer empathy\n* writing\n* follow through\n\nUse these in the summary. Keep the tone specific.", "latencyMs": 1246, "attempts": 1}
+{"id": "LF-098", "candidate": "Our booth setup window is short and the venue is strict. Make sure we have:\n*   Banners\n*   Demo laptop\n*   Scanner\n*   Swag\n*   Backup hotspot\n\nSecurity closes the dock at five. Call me if there is a problem.", "latencyMs": 11616, "attempts": 1}
+{"id": "LF-099", "candidate": "The cleaners come Friday morning. We should make it easier for them tonight. Move the bikes, clear the counters, and put away shoes. I can handle the garage tomorrow. Thanks.", "latencyMs": 1027, "attempts": 1}
+{"id": "LF-100", "candidate": "Thanks again for helping tonight. Bedtime is usually around eight. Please give Mia pajamas, story, and water by the bed. The monitor is on the dresser. Call if anything feels off.", "latencyMs": 1064, "attempts": 1}

@@ -761,3 +761,98 @@ Independent scoring of the 100 positive cases then confirmed the structural sign
 | Gemma + list-v2 | 90/100 | 96/100 | 100/100 | 90/100 |
 
 Paired strict results were 15 wins/1 loss/84 ties for current+v2 and 30 wins/1 loss/69 ties for Gemma+v2. Exploratory exact McNemar p-values were 0.00052 and 0.000000030 respectively. These are strong development signals, not held-out proof. Gemma+v2 reached 25/25 strict in the former bucket-2 weakness, but created one damaging positive-list segmentation error at `LF-046`. Current+v2 created three damaging positive-list regressions and reproduced both known unsafe gold references. This makes Gemma+v2 the safer prompt candidate.
+
+### EVAL-006 - Two-item semantic reconciliation
+
+Timestamp: 2026-07-15 03:10 EDT
+
+Status: independent development score complete
+
+The 20-case two-item set explains why raw list markup cannot be the release metric. List-v2 greatly improved activation, especially scoped lists, but often left the spoken formatting command as an unwanted header.
+
+| Configuration | List behavior | Meaning safe | Cleanup | Grammar | Damaging | Strict |
+|---|---:|---:|---:|---:|---:|---:|
+| Current + shipped prompt | 11/20 | 20/20 | 1/20 | 16/20 | 0 | 1/20 |
+| Current + list-v2 | 19/20 | 15/20 | 9/20 | 18/20 | 5 | 4/20 |
+| Gemma + shipped prompt | 8/20 | 18/20 | 5/20 | 19/20 | 2 | 3/20 |
+| Gemma + list-v2 | 15/20 | 20/20 | 4/20 | 18/20 | 0 | 4/20 |
+
+Current+v2 is unsafe here: five explicit-list cases lost important project, report, endpoint, patient/discharge, or vendor-review scope. Gemma+v2 introduced no meaning damage and fixed its two shipped-prompt meaning failures, but only 4/20 outputs removed all audited spoken formatting/filler phrases. Scoped behavior moved from 0/10 to 9/10 for Gemma; this is the most useful direction signal.
+
+Decision: prompt engineering proves the model can activate lists, but prompt text alone does not reliably remove spoken list commands. A future universal training recipe should teach the list boundary and command-removal behavior directly while retaining the list-v2 policy at inference/training parity. No second ad hoc prompt was invented from these 20 development outputs.
+
+### RUNTIME-001 - Gemma universal Q5 artifact and bundled-Mac smoke
+
+Timestamp: 2026-07-15 03:10 EDT
+
+Status: exact runtime loads; full quantized benchmark running
+
+The Gemma multilingual smoke merged checkpoint was converted with the current AlienSV llama.cpp tools and quantized directly from F16 to Q5_K_M.
+
+- F16 GGUF: 15,053,095,232 bytes.
+- Q5_K_M GGUF: 5,762,912,576 bytes (5.37 GiB).
+- Q5 SHA-256: `973a9b0ccf708e538f435c5c34b647a236692f0f2d774527a360e6798b20c440`.
+- Current EG-1 Q5: 2,889,511,680 bytes (2.69 GiB).
+- Size cost: +2,873,400,896 bytes, almost exactly 2x current EG-1, but still one universal offline model rather than multiple language models.
+
+The file was copied to the M4 Pro and hash-matched. The exact app-bundled `llama-server` (`fdb1db8`) successfully loaded it with the shipped flags: context 16,384, flash attention on, Q8 K/V cache. Warm-cache server readiness was about 2.1 seconds. After three probes, RSS was 5,984,640 KiB (about 5.71 GiB), versus the documented current-EG-1 4.1 GB RSS. Probe latency was 1,189 ms first request, then 645 ms and 512 ms warm. The restraint probe remained prose.
+
+This passes binary compatibility but not yet the Mac release gate. The exact quantized artifact is now running all 292 list, restraint, two-item, multilingual, and Russian development cases through the local OpenAI-compatible server. Cold-disk startup, sustained power/thermals, frozen quality, and supported-Mac memory ceiling remain pending.
+
+### EVAL-007 - List-v2 multilingual and restraint reconciliation
+
+Timestamp: 2026-07-15 03:16 EDT
+
+Status: prompt-only lane rejected; prompt-aligned training started
+
+Independent development scoring confirmed that the list-v2 prompt is not a safe drop-in replacement for weights trained against the shipped prompt.
+
+On the 16 Russian development cases, strict green changed from 9/16 to 6/16 for current EG-1 and from 14/16 to 12/16 for Gemma. Both list-v2 arms changed a requested numbered list into bullets and falsely listed ordinary prose. Damaging cases rose from 4 to 6 for current and from 1 to 2 for Gemma.
+
+On the 56-case multilingual probe, current moved from 30 to 31 strict with four paired wins and three losses; Gemma remained 32 strict with four wins and four losses. The latest independent scorer is intentionally stricter than the earlier baseline and corrected two old false passes: Portuguese deadline loss and retained Chinese filler. The list-v2 prompt therefore changes individual outcomes but does not establish a core multilingual-quality gain.
+
+On the 100 restraint traps, using the corpus's predeclared prose target:
+
+| Configuration | Restraint | Meaning | Clean | Strict |
+|---|---:|---:|---:|---:|
+| Current + shipped prompt | 100/100 | 99/100 | 99/100 | 98/100 |
+| Current + list-v2 | 97/100 | 98/100 | 97/100 | 95/100 |
+| Gemma + shipped prompt | 100/100 | 100/100 | 98/100 | 98/100 |
+| Gemma + list-v2 | 99/100 | 100/100 | 98/100 | 97/100 |
+
+Every changed paired strict outcome favored the shipped prompt: current had three losses and no wins; Gemma had one loss and no wins. `LFT-040` is an ambiguous three-action boundary case and should be replaced before freezing, but it was not relabeled after seeing results. Even if accepted as a valid list, current retains two strict losses and Gemma merely ties its shipped prompt. Current's `LFT-039` regression is meaning-damaging because it separates “picked up” from “dinner.”
+
+Decision: list-v2 remains useful evidence that list activation is controllable, but prompt-only release is rejected. The next experiment must train and infer against the same prompt contract rather than treating the prompt as a free runtime patch.
+
+### TRAIN-004 - Prompt-aligned universal Gemma experiment
+
+Timestamp: 2026-07-15 03:16 EDT
+
+Status: running on AlienSV RTX 4090
+
+Started `gemma4e4b_multilingual_listv2_aligned_v1` from the clean Gemma base with the same 5,836-row low-dose multilingual corpus and the same predeclared QLoRA hyperparameters as `TRAIN-003`, changing only the training prompt from shipped to list-v2. The intended inference prompt is also list-v2. This is a controlled prompt-contract experiment, not another hand-edited prompt variant.
+
+The run preserves the hard deployment gate: it tests one universal offline model. It does not create or propose a separate full-size model per language. A launch wrapper refuses to overwrite an existing output directory, and the live RTX 4090 job was confirmed after model loading and tokenization began.
+
+### RUNTIME-002 - Exact-Mac Q5 development run completed
+
+Timestamp: 2026-07-15 03:22 EDT
+
+Status: Q5 candidate rejected; Q6 experiment running
+
+The exact bundled Mac runtime completed all 292 predeclared development cases with zero valid-run API errors: 100 positive lists, 100 restraint traps, 20 audited two-item cases, 56 multilingual cases, and 16 Russian cases. An earlier launch used the runner's default local key instead of the server's explicit test key and produced only unauthorized responses; that invalid attempt was stopped and overwritten. The valid run set `OPENAI_API_KEY=eg1-test-token`, matching the local server, and every final file has the expected row count with no error field.
+
+Paired output comparison against the AlienSV BF16/Hugging Face run found material runtime-artifact drift:
+
+| Suite | Exact matches | Changed | List-structure changes |
+|---|---:|---:|---:|
+| Positive lists | 66/100 | 34 | 9 |
+| Restraint traps | 98/100 | 2 | 0 |
+| Two-item v1a | 5/10 | 5 | 1 |
+| Two-item v1b | 8/10 | 2 | 0 |
+| Multilingual 56 | 33/56 | 23 | 1 |
+| Russian 16 | 14/16 | 2 | 0 |
+
+Many changed rows are harmless capitalization or bullet-marker differences, but at least one is a hard meaning failure: Russian `ru-dev-011` changed invoice code `АВ-204` to `АВ-24`, where the BF16/HF candidate preserved it. Q5 also removed list structure from several positive cases that BF16 formatted correctly. The independent semantic rescore is still running, so these are not yet final aggregate quality numbers.
+
+Decision: the 5.37 GiB Q5 artifact is not a release candidate. This does not yet reject the one-model Gemma architecture because the founder explicitly allows a larger single model. A Q6_K artifact is being produced from the same F16 GGUF to test whether the failure is quantization-sensitive. Model size remains weighted after the hard single-model gate; quality and zero damaging regressions come first.

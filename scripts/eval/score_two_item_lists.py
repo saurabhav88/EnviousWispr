@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--corpus", nargs="+", required=True)
     parser.add_argument("--candidates", nargs="+", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--model-id", help="Force multiple candidate shards into one model group")
     return parser.parse_args()
 
 
@@ -83,7 +84,7 @@ def main() -> None:
         rows = read_jsonl(path)
         if not rows:
             raise SystemExit(f"Empty candidate file: {path}")
-        model_id = str(rows[0].get("model_id", path.stem))
+        model_id = args.model_id or str(rows[0].get("model_id", path.stem))
         grouped_rows[model_id].extend(rows)
         grouped_paths[model_id].append(str(path))
 
