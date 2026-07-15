@@ -175,6 +175,14 @@ class NovelEnglishListScorerTests(unittest.TestCase):
         self.assertFalse(result["structure_ok"])
         self.assertFalse(result["strict"])
 
+    def test_trailing_header_fails_primary_structure_gate(self) -> None:
+        outputs = dict(self.good_outputs)
+        outputs["p1"] = "- archive logs\n- rotate keys\nFor Maya by Friday:"
+        result = self.case(self.report(outputs), "p1")
+        self.assertFalse(result["header_ok"])
+        self.assertFalse(result["structure_ok"])
+        self.assertFalse(result["strict"])
+
     def test_compound_split_fails_atomicity(self) -> None:
         outputs = dict(self.good_outputs)
         outputs["p2"] = "Before filing:\n1. sign the affidavit\n2. date the affidavit\n3. notify the clerk"

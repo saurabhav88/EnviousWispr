@@ -227,7 +227,7 @@ def line_structure(output: str) -> dict[str, Any]:
             numbered.append((int(number.group(1)), number.group(2)))
         else:
             prose.append(line)
-    return {"bullets": bullets, "numbered": numbered, "prose": prose}
+    return {"lines": lines, "bullets": bullets, "numbered": numbered, "prose": prose}
 
 
 def preserved_spans(case: dict[str, Any], output: str) -> dict[str, Any]:
@@ -254,8 +254,10 @@ def score_positive(case: dict[str, Any], output: str) -> dict[str, Any]:
     numbering_ok = expected != "numbered" or [number for number, _ in structure["numbered"]] == list(
         range(1, len(structure["numbered"]) + 1)
     )
-    header_ok = len(structure["prose"]) <= 1 and (
-        not structure["prose"] or structure["prose"][0].endswith(":")
+    header_ok = not structure["prose"] or (
+        len(structure["prose"]) == 1
+        and structure["lines"][0] == structure["prose"][0]
+        and structure["prose"][0].endswith(":")
     )
     intended_count = len(desired_lines) == case["item_count"]
     structure_ok = intended_count and wrong_marker_count == 0 and numbering_ok and header_ok
