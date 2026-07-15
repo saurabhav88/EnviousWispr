@@ -569,3 +569,42 @@ Status: interpretation guardrail
 The 5,836-row smoke corpus is multilingual-augmented, not truly language-balanced. It contains the original 5,656 mostly English rows, 20 new English list rows, and only 40 rows each for German, French, Spanish, and Russian. Non-English additions are 160/5,836 (2.74%), or 0.69% per added language.
 
 This is deliberate for the cheapest direction test and is consistent with research showing that small multilingual instruction sets can sometimes improve language agreement. It cannot estimate the ceiling of a genuinely balanced corpus with thousands or hundreds of thousands of native-reviewed multilingual examples. A null result would reject this low-dose recipe, not the broader one-model multilingual architecture.
+
+### TRAIN-002 - Qwen multilingual-augmented smoke candidate
+
+Timestamp: 2026-07-15 02:08 EDT
+
+Status: training complete; Russian development result is a tie, not a win
+
+Valid run: `qwen4b_multilingual_smoke_v1r2` on AlienSV RTX 4090.
+
+- Clean base: Qwen3-4B-Instruct-2507.
+- Data: 5,836 rows, SHA-256 `31a610847b412868580fc95b1fdb5b4b50900bfc61e07a94e2009ebcccd0a0d2`.
+- QLoRA: rank 16, alpha 32, 33,030,144 trainable parameters, two epochs, 730 steps, effective batch 16, seed 1265, response-only loss.
+- Training time: 989.188 seconds (16.49 minutes); trainer runtime 1,005.494 seconds.
+- Final aggregate training loss: 0.114771.
+- Adapter directory: 143,625,108 bytes (about 137 MiB including tokenizer/config files).
+- Merged FP16 directory: 8,056,450,299 bytes.
+
+Untouched Russian development evaluation: shipped prompt, pristine base tokenizer, greedy decoding, 16 cases. Frozen rows were not run.
+
+- Deterministic strict pass: 7/16, 43.8%, Wilson 95% CI 23.1%-66.8%.
+- Current EG-1 shipped baseline on the same gate: 7/16. This smoke candidate tied; it did not establish improvement.
+- Clear changes versus current EG-1: corrected the imperative in case 1, improved prose punctuation in case 10, used Russian quotes in case 11, and correctly resolved the filler/correction in case 15.
+- Serious regression: case 12 changed 1.6 and 1.8 million to 0.6 and 0.8 million. This is damaging numerical drift.
+- Other outputs were byte-identical in 11/16 cases.
+
+Decision: this low-dose Qwen recipe is not a finalist on deterministic evidence. An independent semantic review is still running. Do not open frozen data. Continue with the predeclared same-data Gemma base comparison, then decide whether the next Qwen experiment needs materially more multilingual weight rather than prompt changes.
+
+Independent model-assisted review completed after the deterministic score:
+
+| Metric | Current EG-1 | Qwen multilingual smoke |
+|---|---:|---:|
+| Same language | 16/16 | 16/16 |
+| Meaning safe | 12/16 | 12/16 |
+| Cleanup complete | 9/16 | 9/16 |
+| Grammar correct | 13/16 | 14/16 |
+| Damaging cases | 4/16 | 4/16 |
+| Strict all gates | 9/16 | 9/16 |
+
+Paired strict wins/losses/ties were 0/0/16. The candidate fixed current EG-1's case-15 corruption but introduced the case-12 numerical corruption; both retained the appointment conflict, broken five-application agreement, and PR 184 to PR 84 error. Independent conclusion matches the deterministic decision: trade, not improvement. This review is model-assisted rather than native-speaker proof.

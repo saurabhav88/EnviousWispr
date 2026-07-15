@@ -108,7 +108,7 @@ def main() -> None:
     with corpus_path.open(encoding="utf-8") as handle:
         for line in handle:
             row = json.loads(line)
-            if row.get("split") != args.split:
+            if args.split != "all" and row.get("split") != args.split:
                 continue
             if selected_languages and row.get("lang") not in selected_languages:
                 continue
