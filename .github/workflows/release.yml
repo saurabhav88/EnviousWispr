@@ -698,19 +698,24 @@ jobs:
         needs.build-release-artifacts.result == 'skipped'
       )
     runs-on: ubuntu-latest   # #1117: Linux-eligible limb
-    # #1019: bumped 10→20 to accommodate the wait-for-Pages-deploy poll before
-    # the edge purge + verify (the deploy + edge refresh can take several min).
-    timeout-minutes: 20
+    # #1217: the exact Pages run may wait behind one serialized 10-minute deploy,
+    # then use its own 10-minute budget. The delivery owner has a 25-minute
+    # elapsed deadline; ten extra minutes cover checkout, purge, and verify.
+    timeout-minutes: 35
     permissions:
       contents: read   # checkout + cross-run download (push/PR use the App token) (#1087)
-      actions: read
+      # #1217: appcast-only can dispatch one fresh current-main website deploy
+      # when the original exact push run failed or was cancelled.
+      actions: write
+    outputs:
+      delivery-result: ${{ steps.classify-appcast.outputs.state }}
     steps:
       - name: Verify Linux tooling
         run: |
           set -euo pipefail
           # #1117: this job moved to ubuntu-latest. Assert its tools rather than
           # rely on image assumptions; install libxml2-utils if xmllint is absent.
-          for tool in git python3 curl; do
+          for tool in git python3 curl gh jq sha256sum timeout shellcheck; do
             command -v "$tool" >/dev/null || { echo "::error::required tool '$tool' missing on runner"; exit 1; }
             echo "  $tool: $($tool --version 2>&1 | head -n1)"
           done
@@ -721,19 +726,20 @@ jobs:
           echo "  xmllint: $(xmllint --version 2>&1 | head -n1)"
 
       - name: Checkout main
+        if: inputs.dry_run != true
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: main
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Download release artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: Checkout rehearsal ref
+        if: inputs.dry_run == true
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          name: release-artifacts-${{ needs.preflight.outputs.version }}
-          path: build/
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ needs.preflight.outputs.source-run-id }}
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Check if appcast entry exists
         id: check-appcast
@@ -743,11 +749,30 @@ jobs:
           APPCAST="website/public/appcast.xml"
           if [ -f "$APPCAST" ] && grep -qF "<sparkle:version>${VERSION}</sparkle:version>" "$APPCAST"; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "==> Appcast entry for v${VERSION} already present — skipping"
+            echo "==> Appcast entry for v${VERSION} already present — delivery recovery will still run"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
             echo "==> No appcast entry for v${VERSION} — will inject"
           fi
+
+      - name: DRY RUN — validate appcast delivery owner
+        if: inputs.dry_run == true
+        run: |
+          set -euo pipefail
+          shellcheck scripts/ci/appcast-delivery.sh
+          scripts/ci/appcast-delivery.sh --self-test
+
+      # Existing-entry appcast-only recovery does not need the old build artifact.
+      # This keeps recovery useful after artifact retention expires. A missing entry
+      # still needs the signed Sparkle fragment from the source release run.
+      - name: Download release artifacts
+        if: steps.check-appcast.outputs.exists == 'false'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-artifacts-${{ needs.preflight.outputs.version }}
+          path: build/
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ needs.preflight.outputs.source-run-id }}
 
       - name: Inject appcast entry
         if: steps.check-appcast.outputs.exists == 'false'
@@ -833,71 +858,37 @@ jobs:
             git push origin main
             echo "==> Appcast pushed to main"
           fi
+          echo "commit-sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # ----------------------------------------------------------------------
-      # #1019 C2 — instantly-fresh feed at the edge.
-      # The appcast push above triggers deploy-blog.yml (paths: website/**) →
-      # Cloudflare Pages redeploy. Cloudflare's edge was observed serving the
-      # stale appcast well past its TTL (#948), so after the deploy is live we
-      # purge the edge for appcast.xml and verify the canonical URL serves the
-      # new version. All three steps are limbs (continue-on-error): on failure
-      # the release still ships and the feed self-refreshes at max-age=60.
+      # #1217 — exact appcast delivery proof.
+      # Wait for the deploy-blog push run for the exact appcast revision, require
+      # success, validate Cloudflare accepted the purge, then require the complete
+      # canonical feed to match the committed file. Existing entries take the same
+      # path, which makes appcast-only a real stale-edge recovery mode.
       # ----------------------------------------------------------------------
-      - name: Wait for Cloudflare Pages deploy of new appcast
-        id: wait-pages
-        if: steps.check-appcast.outputs.exists == 'false' && steps.push-appcast.outcome == 'success'
+      - name: Deliver appcast to public feed
+        id: deliver-appcast
+        if: >
+          inputs.dry_run != true &&
+          (
+            steps.check-appcast.outputs.exists == 'true' ||
+            steps.push-appcast.outcome == 'success'
+          )
         continue-on-error: true
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
-        run: |
-          # Cache-bypassing poll: a unique query string misses the Cloudflare
-          # edge cache and hits the Pages origin, so this observes the deploy
-          # going live (independent of the edge cache state).
-          URL="https://enviouswispr.com/appcast.xml?cb=${{ github.run_id }}-${{ github.run_attempt }}"
-          for i in $(seq 1 30); do
-            if curl -fsS "$URL" | grep -qF "<sparkle:version>${VERSION}</sparkle:version>"; then
-              echo "==> Pages origin live with v${VERSION} (attempt ${i})"
-              exit 0
-            fi
-            sleep 15
-          done
-          echo "::warning::Pages deploy did not surface v${VERSION} within ~7.5m; edge self-refreshes at max-age=60."
-          exit 1
-
-      - name: Purge Cloudflare edge cache for appcast
-        id: purge-edge
-        if: steps.check-appcast.outputs.exists == 'false' && steps.push-appcast.outcome == 'success' && steps.wait-pages.outcome == 'success' && inputs.dry_run != true
-        continue-on-error: true
-        env:
+          APPCAST_COMMIT: ${{ steps.push-appcast.outputs.commit-sha }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           CF_PURGE_TOKEN: ${{ secrets.CLOUDFLARE_PURGE_TOKEN }}
         run: |
-          # Scoped cache-purge token (single zone: enviouswispr.com). Bearer auth.
-          curl -fsS -X POST \
-            "https://api.cloudflare.com/client/v4/zones/b4416a0f0ebd699e96969a331c7ad7ff/purge_cache" \
-            -H "Authorization: Bearer ${CF_PURGE_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data '{"files":["https://enviouswispr.com/appcast.xml"]}'
-          echo ""
-          echo "==> Requested edge purge for appcast.xml"
-
-      - name: Verify canonical appcast serves new version
-        if: steps.check-appcast.outputs.exists == 'false' && steps.push-appcast.outcome == 'success' && steps.wait-pages.outcome == 'success'
-        continue-on-error: true
-        env:
-          VERSION: ${{ needs.preflight.outputs.version }}
-        run: |
-          # The canonical (cacheable) URL must serve the new version after purge.
-          for i in $(seq 1 6); do
-            if curl -fsS "https://enviouswispr.com/appcast.xml" | grep -qF "<sparkle:version>${VERSION}</sparkle:version>"; then
-              echo "==> Canonical appcast.xml now serves v${VERSION} (attempt ${i})"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::warning::Canonical appcast.xml still stale after purge; edge self-refreshes at max-age=60."
-          # Surface as a failed-but-nonblocking limb (continue-on-error) so a
-          # stale-after-purge is visible in the run, not a silent green.
-          exit 1
+          set -euo pipefail
+          args=(deliver --version "$VERSION")
+          if [[ -n "$APPCAST_COMMIT" ]]; then
+            args+=(--commit "$APPCAST_COMMIT")
+          fi
+          scripts/ci/appcast-delivery.sh "${args[@]}"
 
       - name: Fallback — open appcast PR
         id: fallback-pr
@@ -918,6 +909,7 @@ jobs:
 
       - name: Report appcast failure
         if: >
+          always() &&
           steps.check-appcast.outputs.exists == 'false' &&
           steps.push-appcast.outcome == 'failure' &&
           steps.fallback-pr.outcome == 'failure'
@@ -925,6 +917,22 @@ jobs:
           echo "::error::Both direct push and PR fallback failed for appcast. Manual intervention required."
           echo "::error::Run: gh workflow run release.yml -f mode=appcast-only -f tag=${{ needs.preflight.outputs.tag }} -f source_run_id=${{ needs.preflight.outputs.source-run-id }}"
           exit 1
+
+      - name: Classify appcast outcome
+        id: classify-appcast
+        if: always() && !cancelled()
+        env:
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          DELIVERY_OUTCOME: ${{ steps.deliver-appcast.outcome }}
+          FALLBACK_OUTCOME: ${{ steps.fallback-pr.outcome }}
+        run: |
+          set -euo pipefail
+          STATE="$(scripts/ci/appcast-delivery.sh classify \
+            --dry-run "$DRY_RUN" \
+            --delivery-outcome "$DELIVERY_OUTCOME" \
+            --fallback-outcome "$FALLBACK_OUTCOME")"
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
+          echo "==> Appcast publication state: $STATE"
 
   # ==========================================================================
   # LIMB Job D — Upload Sentry dSYMs
@@ -1180,7 +1188,8 @@ jobs:
           MODE: ${{ inputs.mode || 'full' }}
           BUILD_RESULT: ${{ needs.build-release-artifacts.result }}
           RELEASE_RESULT: ${{ needs.publish-github-release.result }}
-          APPCAST_RESULT: ${{ needs.publish-appcast.result }}
+          APPCAST_JOB_RESULT: ${{ needs.publish-appcast.result }}
+          APPCAST_DELIVERY_RESULT: ${{ needs.publish-appcast.outputs.delivery-result }}
           SENTRY_RESULT: ${{ needs.upload-sentry-dsyms.result }}
           CASK_RESULT: ${{ needs.bump-homebrew-cask.result }}
           DRY_RUN: ${{ inputs.dry_run }}
@@ -1202,22 +1211,42 @@ jobs:
 
           status_emoji() {
             case "$1" in
-              success) echo "✅" ;;
-              skipped) echo "⏭️" ;;
+              success|delivered) echo "✅" ;;
+              skipped|dry-run) echo "⏭️" ;;
               *)       echo "❌" ;;
             esac
           }
 
+          # `publish-appcast` is intentionally skipped for release-only,
+          # sentry-only, and build-only modes. Every other empty/unknown output
+          # fails closed: the job ended before it could prove public delivery.
+          if [[ "$APPCAST_JOB_RESULT" == "skipped" ]]; then
+            APPCAST_STATE="skipped"
+          elif [[ "$APPCAST_JOB_RESULT" != "success" ]]; then
+            APPCAST_STATE="failed"
+            echo "::warning::Appcast job ended ${APPCAST_JOB_RESULT}; treating delivery as failed."
+          else
+            case "$APPCAST_DELIVERY_RESULT" in
+              dry-run|delivered|pending-pr|failed)
+                APPCAST_STATE="$APPCAST_DELIVERY_RESULT"
+                ;;
+              *)
+                APPCAST_STATE="failed"
+                echo "::warning::Appcast job produced no recognized delivery result; treating delivery as failed."
+                ;;
+            esac
+          fi
+
           BUILD_STATUS=$(status_emoji "$BUILD_RESULT")
           RELEASE_STATUS=$(status_emoji "$RELEASE_RESULT")
-          APPCAST_STATUS=$(status_emoji "$APPCAST_RESULT")
+          APPCAST_STATUS=$(status_emoji "$APPCAST_STATE")
           SENTRY_STATUS=$(status_emoji "$SENTRY_RESULT")
           CASK_STATUS=$(status_emoji "$CASK_RESULT")
 
           # Determine if manual follow-up is needed
           NEEDS_FOLLOWUP="No"
           FOLLOWUP_ITEMS=""
-          if [[ "$APPCAST_RESULT" != "success" && "$APPCAST_RESULT" != "skipped" ]]; then
+          if [[ "$APPCAST_STATE" == "failed" || "$APPCAST_STATE" == "pending-pr" ]]; then
             NEEDS_FOLLOWUP="Yes"
             FOLLOWUP_ITEMS="${FOLLOWUP_ITEMS}\n- Appcast: \`gh workflow run release.yml -f mode=appcast-only -f tag=${TAG} -f source_run_id=${SOURCE_RUN}\`"
           fi
@@ -1237,7 +1266,7 @@ jobs:
           |---|---|---|
           | Build/Package | ${BUILD_STATUS} \`${BUILD_RESULT}\` | **HEART** |
           | GitHub Release | ${RELEASE_STATUS} \`${RELEASE_RESULT}\` | **HEART** |
-          | Appcast | ${APPCAST_STATUS} \`${APPCAST_RESULT}\` | limb |
+          | Appcast | ${APPCAST_STATUS} \`${APPCAST_STATE}\` | limb |
           | Sentry dSYMs | ${SENTRY_STATUS} \`${SENTRY_RESULT}\` | limb |
           | Homebrew cask | ${CASK_STATUS} \`${CASK_RESULT}\` | limb |
 
