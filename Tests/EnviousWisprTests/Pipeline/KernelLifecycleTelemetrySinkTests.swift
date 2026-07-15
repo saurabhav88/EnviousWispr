@@ -64,6 +64,7 @@ import Testing
     var modelLoadWedgedBackends: [String] = []
     var captureErrors: [CaptureErrorCall] = []
     var audioCaptureInterruptions: [AudioCaptureInterruptedCall] = []
+    var deadMicRecoveries: [DeadMicRecoveryOutcome] = []
   }
 
   // MARK: - Sink construction with recorder seams
@@ -110,7 +111,8 @@ import Testing
           Recorder.AudioCaptureInterruptedCall(
             cause: cause, salvageAttempted: attempted, salvageSucceeded: succeeded,
             terminalState: terminal, backend: backend))
-      })
+      },
+      deadMicRecovered: { recorder.deadMicRecoveries.append($0) })
   }
 
   // MARK: - Per-event byte-identical event identity
@@ -374,6 +376,60 @@ import Testing
           stage: "pipeline", message: "Pipeline complete",
           dataKeys: ["asr_s", "backend", "e2e_s", "paste_tier", "polish_s"])
       ])
+  }
+
+  // MARK: - Heartpath 5b (#1520): dead-mic recovery forwarding
+
+  @Test(".pipelineCompleted forwards a pending dead-mic recovery outcome")
+  func pipelineCompletedForwardsDeadMicRecovery() {
+    let recorder = Recorder()
+    let captureTelemetry = CaptureTelemetryState()
+    // Arm a watch as if an EARLIER session (5) retired a dead source; the sink's
+    // FakeAudioCapture reports currentCaptureSessionID 0, a different (later)
+    // session, so this completion resolves it.
+    captureTelemetry.armDeadMicWatch(
+      DeadMicRetireWatch(shape: "all_zero_from_start", transport: "bluetooth"), sessionID: 5)
+    let sink = makeSink(recorder: recorder, captureTelemetry: captureTelemetry)
+
+    sink.emit(.pipelineCompleted)
+
+    #expect(recorder.deadMicRecoveries.count == 1)
+    #expect(recorder.deadMicRecoveries.first?.recovered == true)
+    #expect(recorder.deadMicRecoveries.first?.resolution == "later_success")
+  }
+
+  @Test(".pipelineCompleted does NOT resolve a watch armed by the SAME session (#1520 P1)")
+  func sameSessionCompletionDoesNotResolveDeadMicWatch() {
+    let recorder = Recorder()
+    let captureTelemetry = CaptureTelemetryState()
+    // Arm with the SAME session id the sink's FakeAudioCapture reports (0) — the
+    // becameZeroMidCapture take that armed at stop and now self-completes. It
+    // must not fake its own recovery.
+    captureTelemetry.armDeadMicWatch(
+      DeadMicRetireWatch(shape: "became_zero_mid_capture", transport: "bluetooth"), sessionID: 0)
+    let sink = makeSink(recorder: recorder, captureTelemetry: captureTelemetry)
+
+    sink.emit(.pipelineCompleted)
+
+    #expect(recorder.deadMicRecoveries.isEmpty)
+  }
+
+  @Test(".pipelineCompleted with a degraded save does NOT resolve the dead-mic watch")
+  func degradedSaveDoesNotResolveDeadMicWatch() {
+    let recorder = Recorder()
+    let telemetryState = KernelTelemetryState()
+    telemetryState.historySaveFailed = true  // degraded completion, no durable success
+    let captureTelemetry = CaptureTelemetryState()
+    captureTelemetry.armDeadMicWatch(
+      DeadMicRetireWatch(shape: "all_zero_from_start", transport: "bluetooth"), sessionID: 5)
+    let sink = makeSink(
+      recorder: recorder, telemetryState: telemetryState, captureTelemetry: captureTelemetry)
+
+    sink.emit(.pipelineCompleted)
+
+    // A degraded save is not a durable success, so it must not be counted as a
+    // recovery — the watch stays pending.
+    #expect(recorder.deadMicRecoveries.isEmpty)
   }
 
   // #1174 A3 — matcher-set-adversarial: at the `.audioInterrupted` gate both

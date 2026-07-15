@@ -226,6 +226,68 @@ final class HeartPathTelemetryEmitter {
     return true
   }
 
+  /// Heartpath 5b (#1520): a zero-signal take invoked the retire primitive.
+  /// Fans out to a content-free Sentry breadcrumb (context on a LATER Sentry
+  /// event — creates no new issue/alert) AND the countable PostHog event.
+  /// `ms_since_last_good` is filled here from the shared `captureTelemetry`.
+  func deadMicRetireAttempted(ctx: DeadMicRetireAttemptContext) {
+    // Compute once so the breadcrumb and the PostHog event carry an identical
+    // payload — the breadcrumb is the forensic trail beside a LATER Sentry
+    // incident, so it must not omit fields PostHog gets (optional keys omitted
+    // when absent, matching the optional-extras pattern).
+    let msSinceLastGood = captureTelemetry.timeSinceLastSuccessfulRecordingMs()
+    var breadcrumb: [String: Any] = [
+      "transport": ctx.transport,
+      "failure_shape": ctx.failureShape,
+      "retire_action": ctx.retireAction,
+      "health_guess_refused": ctx.healthGuessRefused,
+      "warm_policy": ctx.warmPolicy,
+    ]
+    if let selectedTransport = ctx.selectedTransport {
+      breadcrumb["selected_transport"] = selectedTransport
+    }
+    if let routeFallbackReason = ctx.routeFallbackReason {
+      breadcrumb["route_fallback_reason"] = routeFallbackReason
+    }
+    if let msSinceLastGood { breadcrumb["ms_since_last_good"] = msSinceLastGood }
+    addBreadcrumb("recording", "Dead mic retire attempted", breadcrumb)
+    TelemetryService.shared.deadMicRetireAttempted(
+      transport: ctx.transport,
+      selectedTransport: ctx.selectedTransport,
+      failureShape: ctx.failureShape,
+      healthGuessRefused: ctx.healthGuessRefused,
+      warmPolicy: ctx.warmPolicy,
+      retireAction: ctx.retireAction,
+      msSinceLastGood: msSinceLastGood,
+      routeFallbackReason: ctx.routeFallbackReason)
+  }
+
+  /// Heartpath 5b (#1520): a pending dead-mic watch resolved (a later take
+  /// recovered, or retired again). Same content-free breadcrumb + PostHog
+  /// fan-out. The outcome value is produced by `CaptureTelemetryState`.
+  func deadMicRecovered(outcome: DeadMicRecoveryOutcome) {
+    addBreadcrumb(
+      "recording",
+      "Dead mic recovery observed",
+      [
+        "recovered": outcome.recovered,
+        "resolution": outcome.resolution,
+        "retire_shape": outcome.retireShape,
+        "retire_transport": outcome.retireTransport,
+        "recovery_transport": outcome.recoveryTransport,
+        "transport_changed": outcome.transportChanged,
+        "gap_ms": outcome.gapMs,
+      ])
+    TelemetryService.shared.deadMicRecovery(
+      recovered: outcome.recovered,
+      resolution: outcome.resolution,
+      retireShape: outcome.retireShape,
+      retireTransport: outcome.retireTransport,
+      recoveryTransport: outcome.recoveryTransport,
+      transportChanged: outcome.transportChanged,
+      gapMs: outcome.gapMs)
+  }
+
   // MARK: - Private
 
   /// Per-backend breadcrumb message text. Preserves the historical asymmetry

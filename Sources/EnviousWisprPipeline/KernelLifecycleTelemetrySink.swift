@@ -103,6 +103,11 @@ final class KernelLifecycleTelemetrySink {
   /// injection.
   private let noAudioCapturedRich: NoAudioCapturedSink?
   private let audioCaptureInterrupted: AudioCaptureInterruptedSink
+  /// Heartpath 5b (#1520): emit `audio.dead_mic_recovery` when a durable success
+  /// resolves a pending dead-mic watch (audio flowed again on a later take).
+  /// No-op default so direct sink tests stay source-compatible; the factory
+  /// wires it to the same emitter method the kernel's later-retire path uses.
+  private let deadMicRecovered: @MainActor (DeadMicRecoveryOutcome) -> Void
 
   init(
     backend: ASRBackendType,
@@ -150,7 +155,8 @@ final class KernelLifecycleTelemetrySink {
       TelemetryService.shared.audioCaptureInterrupted(
         cause: cause, salvageAttempted: attempted, salvageSucceeded: succeeded,
         terminalState: terminal, backend: backend, recordingDurationMs: durationMs)
-    }
+    },
+    deadMicRecovered: @escaping @MainActor (DeadMicRecoveryOutcome) -> Void = { _ in }
   ) {
     self.backend = backend
     self.audioCapture = audioCapture
@@ -168,6 +174,7 @@ final class KernelLifecycleTelemetrySink {
     self.captureErrorWithSnapshot = captureErrorWithSnapshot
     self.noAudioCapturedRich = noAudioCapturedRich
     self.audioCaptureInterrupted = audioCaptureInterrupted
+    self.deadMicRecovered = deadMicRecovered
   }
 
   /// Switch over the 12-case lifecycle vocabulary and emit each PR-1 §B.7.2
@@ -248,7 +255,12 @@ final class KernelLifecycleTelemetrySink {
       // ran) must NOT stamp the "transcript durably saved" success marker — gate
       // on the save outcome mirrored on the telemetry side-channel.
       if !telemetryState.historySaveFailed {
-        captureTelemetry.recordSuccessfulRecording()
+        if let recovery = captureTelemetry.recordSuccessfulRecording(
+          recoveryTransport: audioCapture.currentResolvedRoute?.effective ?? "unknown",
+          sessionID: audioCapture.currentCaptureSessionID)
+        {
+          deadMicRecovered(recovery)
+        }
       }
 
     case .failed(let reason):

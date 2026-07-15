@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
 // MARK: - RecordingSessionKernel (epic #827, PR-3; built from PR-1 §B spec)
@@ -233,6 +234,19 @@ final class RecordingSessionKernel {
   // MARK: Telemetry fan-out
 
   private let zombieZeroPeakTelemetry: @MainActor (ZeroPeakContext) -> Void
+  /// Heartpath 5b (#1520): the shared app-level capture-telemetry state. The
+  /// kernel arms the dead-mic recovery watch here on a real retire; the
+  /// lifecycle sink resolves it on a later success. MUST be the same instance
+  /// the lifecycle sink holds or the watch cannot correlate across takes.
+  private let captureTelemetry: CaptureTelemetryState
+  /// Heartpath 5b (#1520): emit `audio.dead_mic_retire_attempted`. Injected
+  /// closure (not a direct emitter dependency), wired by the factory to
+  /// `HeartPathTelemetryEmitter.deadMicRetireAttempted`.
+  private let deadMicRetireAttemptTelemetry: @MainActor (DeadMicRetireAttemptContext) -> Void
+  /// Heartpath 5b (#1520): emit `audio.dead_mic_recovery` for a later-retire
+  /// resolution produced at the retire site. Wired to the SAME emitter method
+  /// the lifecycle sink's later-success resolution uses.
+  private let deadMicRecoveryTelemetry: @MainActor (DeadMicRecoveryOutcome) -> Void
   /// #1317 §3.6 N4: STOP-time zero-signal classification runs INSIDE the
   /// kernel after `stopCapture()` and does not traverse the reactive
   /// `WedgeRecoveryRouter` funnel that the app-side detector's event rides —
@@ -639,6 +653,11 @@ final class RecordingSessionKernel {
     wedgeStallTicks: Int = 2,
     minimumRecordingTicks: Int = 5,
     zombieZeroPeakTelemetry: @escaping @MainActor (ZeroPeakContext) -> Void = { _ in },
+    captureTelemetry: CaptureTelemetryState? = nil,
+    deadMicRetireAttemptTelemetry: @escaping @MainActor (DeadMicRetireAttemptContext) -> Void = {
+      _ in
+    },
+    deadMicRecoveryTelemetry: @escaping @MainActor (DeadMicRecoveryOutcome) -> Void = { _ in },
     stopTimeZeroSignalTelemetry: @escaping @MainActor (CaptureStallContext) -> Void = { _ in },
     // #1317 (cloud review P2 round 2, PR #1512): nil default resolves inside
     // `init` against the `audioCapture` PARAMETER's own
@@ -665,6 +684,9 @@ final class RecordingSessionKernel {
     self.wedgeStallTicks = wedgeStallTicks
     self.minimumRecordingTicks = minimumRecordingTicks
     self.zombieZeroPeakTelemetry = zombieZeroPeakTelemetry
+    self.captureTelemetry = captureTelemetry ?? CaptureTelemetryState()
+    self.deadMicRetireAttemptTelemetry = deadMicRetireAttemptTelemetry
+    self.deadMicRecoveryTelemetry = deadMicRecoveryTelemetry
     self.stopTimeZeroSignalTelemetry = stopTimeZeroSignalTelemetry
     // #1317 (cloud review P2 round 2, PR #1512): the default reads
     // `audioCapture.zeroSignalDiscriminatorDeviceID` — the device the
@@ -1261,6 +1283,10 @@ final class RecordingSessionKernel {
     captureLifecycle = .stopped
     resourcesReleased = true
     guard recordingOutcome == nil else { return }
+    // Heartpath 5b (#1520): capture the session-ownership token NOW, while THIS
+    // take's source is still current, so a stale finish after the awaits below
+    // can only retire the source it actually captured, never a newer take's.
+    let capturedCaptureSessionID = audioCapture.currentCaptureSessionID
     // #1434: stamp the ONE capture-health record NOW — before the too-short /
     // no-audio / dead-air early terminals below — so no-audio, asrEmpty, and
     // completed all read the same record (Codex r2 ordering contract).
@@ -1283,6 +1309,12 @@ final class RecordingSessionKernel {
     await (vad as? CaptureVADSignalSource)?.finalizeAtStop(
       rawSampleCount: captureResult.samples.count
     )
+    // Heartpath 5b (#1520): a cancel during `.stopping` concludes the session
+    // WITHOUT minting a new kernel session id, so `isCurrent(sid)` alone is
+    // insufficient after this await — `recordingOutcome == nil` is the load-bearing
+    // half against a sessionless prewarm installing a source while this
+    // continuation unwinds.
+    guard isCurrent(sid), recordingOutcome == nil else { return }
     let rawPeakAudioLevel = peakAudioLevel(in: captureResult.samples)
 
     // Minimum-recording-duration discard (PR-4.5 #4) — parity with old
@@ -1341,6 +1373,13 @@ final class RecordingSessionKernel {
       return
     }
 
+    // Heartpath 5b (#1520): the pure sample fact (sample-shape-only, device-
+    // independent), computed ONCE below both early terminals. It drives TWO
+    // independent decisions: the eligibility-gated stamp just below (terminal +
+    // telemetry + salvage, unchanged) AND the signal-only source retire further
+    // down (independent of eligibility — the #1520 gap).
+    let signalZeroMode = Self.classifyZeroSignalAtStop(captureResult.samples)
+
     // #1317 §3.6 STOP-win row: only when the reactive detector never fired
     // for this session (raced by STOP, or the capture was too short to reach
     // its own confidence threshold). MUST run before the no-speech gate
@@ -1352,7 +1391,7 @@ final class RecordingSessionKernel {
     // a selected non-default mic that's genuinely muted while the system
     // default happens to be alive+unmuted).
     if telemetryState.zeroSignalFailureMode == nil,
-      let mode = Self.classifyZeroSignalAtStop(captureResult.samples),
+      let mode = signalZeroMode,
       zeroSignalDeviceEligible()
     {
       telemetryState.zeroSignalFailureMode = mode
@@ -1385,34 +1424,10 @@ final class RecordingSessionKernel {
         ))
     }
 
-    // #1317 PR3 — THE single zero-signal recovery site (plan §3.3).
-    //
-    // Every confirmed zero-signal session converges here, and only here:
-    //   * reactive `.allZeroFromStart`   — stamped at the exit switch (:1149)
-    //   * reactive `.becameZeroMidCapture` — stamped at the exit switch
-    //   * STOP-time backstop (either mode) — stamped immediately above
-    // so exactly ONE `rebuildEngine()` request is issued per zero-signal
-    // session. No terminal handler, driver, router, or the `finishTerminal`
-    // cleanup Task may rebuild for zero-signal.
-    //
-    // Placement is load-bearing on BOTH sides:
-    //   * AFTER `stopCapture()` (:1204) — the capture layer deactivates the
-    //     source before its stop reply returns (`AudioCaptureManager:411`), so
-    //     the rebuild cannot race a still-live capture callback.
-    //   * AFTER the too-short / no-audio gates (:1260, :1279) — capture
-    //     samples include PRE-ROLL, so a sub-500ms visible tap can still carry
-    //     >= 16000 samples and reach the detector's threshold. Rebuilding (or
-    //     terminating as zero-signal) above those gates would hijack sessions
-    //     that correctly discard as `.tooShort` today, and would break the
-    //     founder-locked rule that very short dead taps keep today's behaviour.
-    //
-    // `rebuildEngine()` is requested BEFORE `finishTerminal` — which drains the task bag and
-    // flips the UI — to give the request the earliest possible ordering and keep
-    // the next-press race window as small as the synchronous interface allows.
-    // Exhaustive on purpose (no `default`): a future failure mode must make a
-    // deliberate choice here rather than silently inheriting engine recovery.
-    // `.noBuffers` is the ordinary capture stall — the stall watchdog owns it,
-    // and it is never even stamped (:1154). `nil` is the healthy session.
+    // Map the eligibility-gated stamp ONCE — it drives both the retire's stamp arm
+    // and the terminal below. `.noBuffers` is the ordinary capture stall (owned by
+    // the stall watchdog, never stamped); `nil` is the healthy session. Exhaustive
+    // on purpose (no `default`): a future failure mode must make a deliberate choice.
     let zeroSignalRecoveryMode: CaptureStallFailureMode?
     switch telemetryState.zeroSignalFailureMode {
     case .allZeroFromStart: zeroSignalRecoveryMode = .allZeroFromStart
@@ -1420,20 +1435,65 @@ final class RecordingSessionKernel {
     case .noBuffers, nil: zeroSignalRecoveryMode = nil
     }
 
-    if let zeroSignalRecoveryMode {
-      audioCapture.rebuildEngine()  // ← THE single zero-signal rebuild site.
-      log("zero-signal recovery: rebuild requested (\(zeroSignalRecoveryMode.rawValue))")
-      if zeroSignalRecoveryMode == .allZeroFromStart {
-        // Nothing to salvage — take the honest terminal now, still ahead of the
-        // VAD no-speech gate below, which would otherwise report an exact-zero
-        // capture as ordinary quiet-room silence (§3.6 N1).
-        finishTerminal(.failed(.zeroSignal), sid: sid)
-        return
+    // Heartpath 5b (#1520): retire the source when THIS take was zero-signal by
+    // EITHER confirmation route — the stop-time signal fact (`signalZeroMode`, which
+    // fires even when the device-eligibility guess refused, closing the #1520 gap)
+    // OR the reactive detector's eligibility-gated stamp (which can confirm a
+    // mid-capture zero run whose shape the stop-time samples no longer show — e.g. a
+    // real-speech prefix whose zero suffix was already drained). Fenced + idempotent
+    // in the manager, which logs truthfully; `capturedCaptureSessionID` (snapshotted
+    // before the post-stop awaits) pins it to this take so a stale finish can never
+    // retire a newer take's source.
+    if let shapeMode = signalZeroMode ?? zeroSignalRecoveryMode {
+      let retireResult = audioCapture.retireCapturingSource(sessionID: capturedCaptureSessionID)
+      // Route from THIS take's frozen snapshot (`lastResolvedRoute`, set at
+      // go-live after all start retries), NOT a live `currentResolvedRoute` read:
+      // in the fenced `.staleSession` / `.sourceReplaced` races a live read would
+      // describe a NEWER source and misattribute the failed take's transport.
+      let takeRoute = lastResolvedRoute
+      let effectiveTransport = takeRoute?.effective ?? "unknown"
+      // The retire ran on the sample fact alone (no eligibility-gated stamp) —
+      // the #1520 signature. Derived from the already-computed stamp outcome,
+      // never a re-call of `zeroSignalDeviceEligible()` (which reads a
+      // possibly-changed live mute state).
+      let healthGuessRefused = signalZeroMode != nil && zeroSignalRecoveryMode == nil
+      deadMicRetireAttemptTelemetry(
+        DeadMicRetireAttemptContext(
+          transport: effectiveTransport,
+          selectedTransport: takeRoute?.selected,
+          failureShape: shapeMode.rawValue,
+          healthGuessRefused: healthGuessRefused,
+          warmPolicy: audioCapture.warmEnginePolicy.rawValue,
+          retireAction: retireResult.rawValue,
+          routeFallbackReason: takeRoute?.routeFallbackReason))
+      // Arm the recovery watch ONLY when teardown actually ran — a fenced no-op
+      // can never be credited a later recovery. A watch already pending means the
+      // previous retire's later take also retired: emit that as recovered=false.
+      if retireResult == .retired {
+        if let priorOutcome = captureTelemetry.armDeadMicWatch(
+          DeadMicRetireWatch(shape: shapeMode.rawValue, transport: effectiveTransport),
+          sessionID: capturedCaptureSessionID)
+        {
+          deadMicRecoveryTelemetry(priorOutcome)
+        }
       }
-      // `.becameZeroMidCapture`: fall through. The mic died mid-take, but the
-      // non-zero prefix is trimmed just below and still transcribed and pasted,
-      // so the user keeps the words they actually said (§3.4).
     }
+
+    // #1317 / heartpath 5b — the eligibility-gated TERMINAL (unchanged): only an
+    // ELIGIBLE `.allZeroFromStart` takes the honest `.zeroSignal` terminal — ahead of
+    // the VAD no-speech gate that would otherwise report an exact-zero capture as
+    // quiet-room silence (§3.6 N1); an ineligible/quiet all-zero falls through and
+    // stays `.noSpeech`. Placement stays below the too-short / no-audio gates:
+    // capture samples include PRE-ROLL, so a sub-500ms visible tap can still carry
+    // >= 16000 samples; terminating as zero-signal above them would hijack sessions
+    // that correctly discard as `.tooShort` today.
+
+    if zeroSignalRecoveryMode == .allZeroFromStart {
+      finishTerminal(.failed(.zeroSignal), sid: sid)
+      return
+    }
+    // `.becameZeroMidCapture` / `nil`: fall through. On mid-capture the non-zero
+    // prefix is trimmed just below and still transcribed and pasted (§3.4).
 
     // #1317 fast-follow (cloud review PR #1512 + live UAT repro): trim the
     // confirmed trailing zero suffix out of the salvaged capture ONCE, here —

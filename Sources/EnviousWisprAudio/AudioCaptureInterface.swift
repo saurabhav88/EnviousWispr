@@ -114,6 +114,15 @@ public protocol AudioCaptureInterface: AnyObject {
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer>  // periphery:ignore - convenience method combining engine + capture phases
   func stopCapture() async -> CaptureResult
   func rebuildEngine()
+  /// Retire (tear down) the source that captured the session identified by
+  /// `sessionID`, so the next press opens a fresh one. Fenced + idempotent: a
+  /// no-op unless `sessionID` is still the current capture session AND the
+  /// retained source that captured it is still the running active source
+  /// (#1520 / heartpath 5b — a completed zero-signal take must not hand a dead
+  /// Bluetooth link to later takes, and a stale finish must never tear down a
+  /// newer take's source).
+  @discardableResult
+  func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult
   func preWarm() async throws
   func abortPreWarm()
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool
@@ -147,4 +156,19 @@ extension AudioCaptureInterface {
   /// latch. `AudioCaptureManager` overrides it with its own session-scoped
   /// latch (ported in-process at #1543).
   public var zeroSignalDiscriminatorSawIneligible: Bool { false }
+}
+
+/// Heartpath 5b (#1520): the observational outcome of `retireCapturingSource`.
+/// Only `.retired` means a source was actually torn down; the other five are
+/// fenced no-ops (the take was still zero-signal, but the retained source was
+/// no longer the running active source to retire). The kernel emits this as the
+/// `retire_action` telemetry property and arms the recovery watch ONLY on
+/// `.retired`, so a no-op is never credited with a later recovery.
+public enum ZeroSignalRetireResult: String, Sendable, Equatable {
+  case retired
+  case staleSession = "stale_session"
+  case capturedSourceGone = "captured_source_gone"
+  case activeSourceGone = "active_source_gone"
+  case sourceReplaced = "source_replaced"
+  case sourceNotRunning = "source_not_running"
 }

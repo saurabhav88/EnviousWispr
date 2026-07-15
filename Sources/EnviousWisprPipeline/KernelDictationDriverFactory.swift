@@ -407,6 +407,17 @@ public enum KernelDictationDriverFactory {
       zombieZeroPeakTelemetry: { ctx in
         emitter.zombieZeroPeak(ctx: ctx)
       },
+      // Heartpath 5b (#1520): the SAME shared capture-telemetry state the
+      // lifecycle sink holds — the kernel arms the dead-mic recovery watch on a
+      // real retire, the sink resolves it on a later success. Both dead-mic
+      // closures route to the same emitter method the sink uses.
+      captureTelemetry: captureTelemetry,
+      deadMicRetireAttemptTelemetry: { ctx in
+        emitter.deadMicRetireAttempted(ctx: ctx)
+      },
+      deadMicRecoveryTelemetry: { outcome in
+        emitter.deadMicRecovered(outcome: outcome)
+      },
       // #1317 §3.6 N4: the kernel's STOP-time classification does not
       // traverse the reactive WedgeRecoveryRouter funnel, so it submits its
       // own event through this closure — wired to the SAME emitter authority
@@ -458,7 +469,10 @@ public enum KernelDictationDriverFactory {
       // the emitter so the rich payload (sourceType, isActivelyCapturing,
       // device IDs) AND the stall/XPC-failure dedup contract reach Sentry —
       // both were lost when the sink shipped the basic-error fallback.
-      noAudioCapturedRich: { [emitter] ctx in emitter.noAudioCaptured(ctx: ctx) }
+      noAudioCapturedRich: { [emitter] ctx in emitter.noAudioCaptured(ctx: ctx) },
+      // Heartpath 5b (#1520): later-success recovery resolution → same emitter
+      // method the kernel's later-retire resolution uses.
+      deadMicRecovered: { [emitter] outcome in emitter.deadMicRecovered(outcome: outcome) }
     )
     telemetryRelay.recordingStopped = { [lifecycleSink] sampleCount in
       lifecycleSink.emitRecordingStopped(sampleCount: sampleCount)
