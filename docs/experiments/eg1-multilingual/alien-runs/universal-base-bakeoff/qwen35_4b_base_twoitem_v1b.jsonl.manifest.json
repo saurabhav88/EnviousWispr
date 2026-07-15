@@ -1,0 +1,30 @@
+{
+  "run_id": "base-bakeoff-qwen35_4b_base-twoitem_v1b",
+  "started_at_epoch": 1784102464.6495721,
+  "host": "AlienSV",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "git_head": null,
+  "model_id": "qwen35_4b_base",
+  "model_path": "/home/saura/tuning/models/Qwen3.5-4B",
+  "tokenizer_path": "/home/saura/tuning/models/Qwen3.5-4B",
+  "tokenizer_hashes": {
+    "tokenizer.json": "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42",
+    "tokenizer_config.json": "316230d6a809701f4db5ea8f8fc862bc3a6f3229c937c174e674ff3ca0a64ac8"
+  },
+  "corpus_path": "/mnt/c/Users/saura/eg1-overnight/eg1_two_item_list_en_dev_v1b.jsonl",
+  "corpus_sha256": "e3dd85fe360acd79060ec6de20392a504b18623e6ca47caaca1c980492fdd000",
+  "prompt_path": "/mnt/c/Users/saura/eg1-overnight/eg1-list-aware-v2.txt",
+  "prompt_sha256": "aaedd651c23e8be935d077a2409380abd7803474c0cbce415ab416f038af7c75",
+  "split": "dev",
+  "languages": "all",
+  "case_count": 10,
+  "batch_size": 8,
+  "max_new_tokens": 256,
+  "seed": 1265,
+  "include_language_label": false,
+  "enable_thinking": false,
+  "torch_version": "2.10.0+cu128",
+  "cuda_device": "NVIDIA GeForce RTX 4090",
+  "elapsed_seconds": 3.915,
+  "completed_at_epoch": 1784102468.5753057
+}

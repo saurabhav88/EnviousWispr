@@ -905,3 +905,99 @@ Q8_0 was then produced as the one allowed higher-precision diagnostic smoke rath
 The diagnostic probe was predeclared from Q5/Q6 failures and is not an independent benchmark. Q8 repaired the Russian invoice identifier and several multilingual failures, proving that precision is a real quality variable. It still dropped the endpoint/requirements scope in `en-two-item-dev-v1b-005` and flattened several requested English lists. Under the one-smoke/one-full hard-stop rule, Q8 was not promoted to another full run because the smoke still contained meaning damage.
 
 Decision: Q5, Q6, and Q8 are all still one universal offline model and therefore pass the architecture/download gate. None of these old-prompt-trained artifacts passes the quality gate. The prompt-aligned universal training run remains the next controlled candidate; if its BF16 result is promising, its exact Mac artifact should start at Q8 for safety and then test whether a smaller quantization is non-inferior.
+
+### TRAIN-005 - Prompt-aligned universal Gemma completed
+
+Timestamp: 2026-07-15 03:57 EDT
+
+Status: training complete; checkpoint rejected after development evaluation
+
+Valid run: `gemma4e4b_multilingual_listv2_aligned_v1` on AlienSV RTX 4090. The run started from the clean Gemma 4 E4B base and reused the exact 5,836-row low-dose multilingual corpus and predeclared hyperparameters from `TRAIN-003`. The controlled change was training/inference prompt parity: both used list-v2.
+
+- Data SHA-256: `31a610847b412868580fc95b1fdb5b4b50900bfc61e07a94e2009ebcccd0a0d2`.
+- Prompt SHA-256: `aaedd651c23e8be935d077a2409380abd7803474c0cbce415ab416f038af7c75`.
+- QLoRA: rank 16, alpha 32, two epochs, 730 steps, effective batch 16, seed 1265, response-only loss.
+- Training elapsed: 1,504.982 seconds (25.08 minutes); trainer runtime 1,530.315 seconds.
+- Final aggregate training loss: 0.0217933.
+- Adapter directory: 179,089,899 bytes (about 171 MiB including tokenizer/config files).
+- Merged FP16 directory: 16,024,814,477 bytes.
+
+The full training manifest is preserved at `docs/experiments/eg1-multilingual/alien-runs/aligned-runs/training-manifest.json` with SHA-256 `cb4a76949f748d09a3d24772242692ae23a7e45e21fc0e4c3bc5b52eb286430a`.
+
+This experiment passes the founder's deployment-shape gate because it remains one universal offline model. Its adapter size also confirms that the fallback architecture remains plausible: one shared base plus roughly 171 MiB for this rank-16 adapter, not another full multi-gigabyte model.
+
+### EVAL-008 - Prompt-aligned Gemma development rejection
+
+Timestamp: 2026-07-15 03:57 EDT
+
+Status: checkpoint rejected; no quantization, exact-Mac, or frozen run
+
+The prompt-aligned candidate completed error-free BF16 runs on the 20 audited English two-item cases, 16 Russian development cases, 56 multilingual probes, and the older 100-positive/100-restraint list corpora. The larger remainder run had already started and completed while independent adjudication of the smoke was still in flight. Once the independent result arrived, the hard-stop rule was applied and the checkpoint was not promoted to Mac or frozen evaluation.
+
+English two-item independent score:
+
+| Model | List behavior | Meaning safe | Cleanup | Grammar | Damaging | Strict |
+|---|---:|---:|---:|---:|---:|---:|
+| Previous Gemma + list-v2 | 15/20 | 20/20 | 4/20 | 18/20 | 0 | 4/20 |
+| Current EG-1 + list-v2 | 19/20 | 15/20 | 9/20 | 18/20 | 5 | 4/20 |
+| Prompt-aligned Gemma + list-v2 | 12/20 | 19/20 | 5/20 | 19/20 | 1 | 4/20 |
+
+Aligned versus previous Gemma was 2 strict wins, 2 losses, and 16 ties; exact McNemar p=1.0. Aligned versus current EG-1 was 4 wins, 4 losses, and 12 ties; p=1.0. The new damaging failure was `en-two-item-dev-v1b-007`, where the model removed the required same-day word `today` from medical discharge instructions. It repaired `v1b-005` scope loss but over-applied numbering in other cases and did not improve strict quality.
+
+Russian independent score:
+
+| Model | Meaning safe | Cleanup | Grammar | Damaging | Strict |
+|---|---:|---:|---:|---:|---:|
+| Previous Gemma + list-v2 | 15/16 | 12/16 | 15/16 | 2 | 12/16 |
+| Current EG-1 + list-v2 | 11/16 | 8/16 | 12/16 | 6 | 6/16 |
+| Prompt-aligned Gemma + list-v2 | 15/16 | 14/16 | 15/16 | 1 | 14/16 |
+
+Aligned versus current EG-1 was 8 strict wins, 0 losses, and 8 ties; exploratory exact McNemar p=0.0078. It correctly preserved `АВ-204`, respected the requested numbered list, and kept ordinary prose out of a false list. Remaining failures included malformed `пять новых заявок` meaning and retained filler. This is a strong Russian development signal but cannot override the new English medical damage or establish release quality.
+
+Decision: keep the Russian training signal, reject this exact universal checkpoint, and change the multilingual/list data mix before another controlled run. A universal multilingual model remains the preferred architecture; the result rejects this recipe, not the one-model product requirement.
+
+### BENCH-004 - Old list headline contaminated; fresh overflow check launched
+
+Timestamp: 2026-07-15 03:57 EDT
+
+Status: mechanical score complete; independent semantic audit running
+
+An exact-overlap audit found that the older English list benchmark was not genuinely held out:
+
+- positive list corpus: 80/100 inputs exactly present in training;
+- restraint corpus: 80/100 inputs exactly present in training.
+
+Those earlier 100-case results are now downgraded to contaminated development evidence and must not decide model or prompt selection.
+
+Two fresh 100-row overflow corpora were created from different inputs, with zero exact input overlap against all 5,836 training rows: one positive-list set and one prose-restraint set. A deeper provenance audit then found only 72 unique origin families per set and 57/72 origin IDs present in training. The rows are therefore paraphrase-robustness checks, not clean held-out generalization. They are also generated/not native-reviewed, so they cannot be frozen or release evidence. A genuinely new model-blind scenario corpus is still required.
+
+Mechanical list-line scoring across four valid single-universal-model configurations:
+
+| Configuration | Positive activation | Intended line count | False lists |
+|---|---:|---:|---:|
+| Current EG-1 + shipped prompt | 63/100 | 59/100 | 0/100 |
+| Current EG-1 + list-v2 | 83/100 | 77/100 | 3/100 |
+| Previous Gemma + list-v2 | 87/100 | 82/100 | 1/100 |
+| Prompt-aligned Gemma + list-v2 | 67/100 | 63/100 | 0/100 |
+
+The prompt-aligned training recipe regressed paraphrased list activation, corroborating the two-item result. Previous Gemma + list-v2 has the strongest mechanical shape score, but no configuration is promoted until an independent reviewer checks meaning, cleanup, grammar, damage, paired outcomes, and corpus-gold quality. Even a clean semantic result here cannot prove held-out quality because of the origin-family exposure. Raw scores are preserved at `docs/experiments/eg1-multilingual/alien-runs/overflow-runs/STRUCTURE-SCORES.json` with SHA-256 `5ce3f0fc63e8882333054fbc37fe4b0caab6c9f715536963faaba1b93424cfda`.
+
+### BASE-RUN-004 - Universal clean-base bakeoff
+
+Timestamp: 2026-07-15 04:04 EDT
+
+Status: GPU inference and mechanical scoring complete; semantic scoring pending
+
+AlienSV ran untouched Qwen3-4B-Instruct-2507, Qwen3.5-4B with thinking disabled, and Gemma 4 E4B through the same model-blind development suites. The 56 multilingual cases used strict-v1; the 20 audited two-item cases and 200 overflow paraphrase cases used list-v2. All 828 generations completed without an inference error. Each candidate is a valid one-universal-model architecture.
+
+Mechanical list results:
+
+| Untouched base | Overflow activation | Intended line count | False lists | Two-item mechanical strict |
+|---|---:|---:|---:|---:|
+| Qwen3 4B | 1/100 | 1/100 | 0/100 | 2/20 |
+| Qwen3.5 4B | 0/100 | 0/100 | 0/100 | 1/20 |
+| Gemma 4 E4B | 0/100 | 0/100 | 0/100 | 1/20 |
+
+The clean bases generally returned inline prose despite the explicit list-v2 instruction. This is strong task-specific evidence that prompt wording alone is insufficient for reliable list formatting and that supervised list examples materially teach the behavior. The conclusion is limited to these prompts and development corpora; the overflow scenario-family contamination still applies.
+
+The clean-base choice must therefore be judged mainly on language/meaning safety and tunability, then paired with a stronger, genuinely held-out list-training experiment. Independent semantic scoring of the 56 multilingual and 20 two-item outputs is pending before the base ranking changes.

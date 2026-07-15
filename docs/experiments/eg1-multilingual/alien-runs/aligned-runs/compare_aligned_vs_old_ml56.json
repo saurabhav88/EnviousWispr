@@ -1,0 +1,106 @@
+{
+  "baseline": [
+    "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_ml56.jsonl"
+  ],
+  "candidate": [
+    "docs/experiments/eg1-multilingual/alien-runs/aligned-runs/gemma4e4b_multilingual_listv2_aligned_v1_ml56.jsonl"
+  ],
+  "rows": 56,
+  "exact_matches": 43,
+  "canonical_matches": 43,
+  "changed": 13,
+  "list_structure_changes": 1,
+  "changed_rows": [
+    {
+      "id": "ml-es-0",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 0,
+      "baseline": "Hola Juan, ¿podrías por favor comprar:\n* Leche\n* Pan\n* Huevos\nen el supermercado? Gracias.",
+      "candidate": "Hola Juan, ¿podrías por favor comprar leche, pan y huevos en el supermercado? Gracias."
+    },
+    {
+      "id": "ml-es-7",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Podrías por favor cerrar la ventana antes de salir, está haciendo mucho frío.",
+      "candidate": "¿Podrías por favor cerrar la ventana antes de salir? Está haciendo mucho frío."
+    },
+    {
+      "id": "ml-fr-6",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "On se retrouve à quelle heure à la gare demain matin ? On avait dit 7h30, non, ou plutôt 8h ? Je ne suis plus sûr.",
+      "candidate": "On se retrouve à quelle heure à la gare demain matin ? On avait dit 7h30, non, ou plutôt 8h, je ne suis plus sûr."
+    },
+    {
+      "id": "ml-de-1",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Also, ich wollte nur kurz Bescheid geben, dass ich heute Abend nicht kommen kann. Sorry.",
+      "candidate": "Auch ich wollte nur kurz Bescheid geben, dass ich heute Abend nicht kommen kann. Sorry."
+    },
+    {
+      "id": "ml-de-6",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Ich muss noch das Formular ausfüllen und dann abschicken, das ist wichtig.",
+      "candidate": "Ich muss noch das Formular ausfüllen und dann abschicken. Das ist wichtig."
+    },
+    {
+      "id": "ml-pt-2",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "O professor de matemática, então, ele passou a lição de casa para entregar na terça-feira que vem.",
+      "candidate": "O professor de matemática então, ele passou a lição de casa para entregar na terça-feira que vem."
+    },
+    {
+      "id": "ml-hi-0",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "आज मीटिंग का टाइम क्या है? मतलब वो ग्यारह बजे वाला है या बारह बजे वाला है?",
+      "candidate": "आज मीटिंग का टाइम क्या है? वो ग्यारह बजे वाला है या बारह बजे वाला है?"
+    },
+    {
+      "id": "ml-ja-0",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "来週の会議の資料なんですけど、あれですね。ちょっと待ってください。木曜日までに送ってもらえますか。",
+      "candidate": "来週の会議の資料なんですけど、ちょっと待ってください。木曜日までに送ってもらえますか。"
+    },
+    {
+      "id": "ml-ja-3",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "なんかあのー、この前の打ち合わせで話した件なんですけど、その後どうなりましたか?",
+      "candidate": "あの、この前の打ち合わせで話した件なんですけど、その後どうなりましたか?"
+    },
+    {
+      "id": "ml-ja-6",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "次回のミーティングの日程なんですけど、金曜日でいいですか、それとも水曜日に変更しますか?",
+      "candidate": "次回のミーティングの日程ですが、金曜日でよろしいでしょうか、それとも水曜日に変更しますか。"
+    },
+    {
+      "id": "ml-ja-7",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "あの、先週頼んだあの書類なんですけど、もう完成してますか、それともまだ時間かかりますか?",
+      "candidate": "あの、先週頼んだあの書類なんですけど、もう完成してますか、それともまだ時間かかりますか。"
+    },
+    {
+      "id": "ml-zh-0",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "王总，那个我今天下午的会议可能需要稍微调整一下时间，就是我想把会议改到三点半，你看方便吗？",
+      "candidate": "王总，我今天下午的会议可能需要稍微调整一下时间，我想把会议改到三点半，你看方便吗？"
+    },
+    {
+      "id": "ml-zh-1",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "小李，你帮我查一下那个就是上周发给客户的那个就是项目进度报告最新的版本，你发给我一下，谢谢。",
+      "candidate": "小李，你帮我查一下那个上周发给客户的那个项目进度报告最新的版本，发给我一下，谢谢。"
+    }
+  ]
+}

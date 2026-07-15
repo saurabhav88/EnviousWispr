@@ -1,0 +1,419 @@
+{
+  "case_count": 20,
+  "models": {
+    "gemma4e4b_multilingual_listv2_aligned_v1": {
+      "candidate_paths": [
+        "docs/experiments/eg1-multilingual/alien-runs/aligned-runs/gemma4e4b_multilingual_listv2_aligned_v1_twoitem_v1a.jsonl",
+        "docs/experiments/eg1-multilingual/alien-runs/aligned-runs/gemma4e4b_multilingual_listv2_aligned_v1_twoitem_v1b.jsonl"
+      ],
+      "strict": 1,
+      "total": 20,
+      "strict_rate": 0.05,
+      "wilson_95": [
+        0.008881448800795402,
+        0.23613119344674205
+      ],
+      "structure_ok": 12,
+      "required_ok": 2,
+      "forbidden_ok": 5,
+      "breakdown": {
+        "domain:legal_financial": {
+          "total": 4,
+          "strict": 0
+        },
+        "domain:medical": {
+          "total": 4,
+          "strict": 0
+        },
+        "domain:personal_home": {
+          "total": 4,
+          "strict": 0
+        },
+        "domain:technical_product": {
+          "total": 4,
+          "strict": 0
+        },
+        "domain:work_admin": {
+          "total": 4,
+          "strict": 1
+        },
+        "list_type:explicit": {
+          "total": 10,
+          "strict": 1
+        },
+        "list_type:scoped_implicit": {
+          "total": 10,
+          "strict": 0
+        }
+      },
+      "failures": [
+        {
+          "id": "en-two-item-dev-v1a-001",
+          "domain": "work_admin",
+          "list_type": "explicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "Okay, so I need to create a bullet list here.",
+            "First goal is increase Q3 pipeline by 40%.",
+            "Second goal is hire two senior developers by end of August."
+          ],
+          "absent_required": [
+            "40%",
+            "end of August"
+          ],
+          "present_forbidden": [
+            "okay",
+            "create a bullet list"
+          ],
+          "strict": false,
+          "output": "Okay, so I need to create a bullet list here.\nFirst goal is increase Q3 pipeline by 40%.\nSecond goal is hire two senior developers by end of August."
+        },
+        {
+          "id": "en-two-item-dev-v1a-002",
+          "domain": "work_admin",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "The product launch for the Jakarta client needs two things done:"
+          ],
+          "absent_required": [
+            "Fix API response timeout",
+            "Finalize brand asset pack"
+          ],
+          "present_forbidden": [
+            "needs two things done"
+          ],
+          "strict": false,
+          "output": "The product launch for the Jakarta client needs two things done:\n- Fix the API response timeout issue that's been blocking QA\n- Finalize the brand asset pack with the new logo variants we discussed"
+        },
+        {
+          "id": "en-two-item-dev-v1a-003",
+          "domain": "personal_home",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "Let me make a list of the errands I need to do this weekend:"
+          ],
+          "absent_required": [
+            "Weekend errands",
+            "did not show up"
+          ],
+          "present_forbidden": [
+            "let me make a list"
+          ],
+          "strict": false,
+          "output": "Let me make a list of the errands I need to do this weekend:\n- Pick up dry cleaning from Chen's by Saturday noon\n- Reschedule the plumber visit because he never showed up last Tuesday"
+        },
+        {
+          "id": "en-two-item-dev-v1a-004",
+          "domain": "personal_home",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "For the kitchen remodel that's happening in September, we need to select the subway tile backsplash color, probably the soft gray one, and also lock in the contractor for the countertop installation by next Friday."
+          ],
+          "absent_required": [
+            "next Friday"
+          ],
+          "present_forbidden": [
+            "also"
+          ],
+          "strict": false,
+          "output": "For the kitchen remodel that's happening in September, we need to select the subway tile backsplash color, probably the soft gray one, and also lock in the contractor for the countertop installation by next Friday."
+        },
+        {
+          "id": "en-two-item-dev-v1a-005",
+          "domain": "technical_product",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "Critical issues before release:"
+          ],
+          "absent_required": [
+            "Critical pre-release issues",
+            "UI rendering issue"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "Critical issues before release:\n* Memory leak in the WebSocket handler on line 247\n* UI doesn't render correctly on mobile Safari below iOS 15.3"
+        },
+        {
+          "id": "en-two-item-dev-v1a-006",
+          "domain": "technical_product",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "By the time we ship version 2.4 next month, we have to migrate from Stripe's deprecated payment API to the new Connect platform, and we also need to rewrite the batch processing cron to use Celery instead of the custom scheduler we built in 2021."
+          ],
+          "absent_required": [
+            "Migrate from Stripe's deprecated payment API to the Connect platform",
+            "use Celery instead of the custom scheduler we built in 2021"
+          ],
+          "present_forbidden": [
+            "also"
+          ],
+          "strict": false,
+          "output": "By the time we ship version 2.4 next month, we have to migrate from Stripe's deprecated payment API to the new Connect platform, and we also need to rewrite the batch processing cron to use Celery instead of the custom scheduler we built in 2021."
+        },
+        {
+          "id": "en-two-item-dev-v1a-007",
+          "domain": "medical",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "Please create a list format for patient Marcus Chen with these prescriptions:"
+          ],
+          "absent_required": [
+            "500 mg extended release",
+            "10 mg tablets",
+            "expiring in November"
+          ],
+          "present_forbidden": [
+            "please create a list format"
+          ],
+          "strict": false,
+          "output": "Please create a list format for patient Marcus Chen with these prescriptions:\n- New prescription: Metformin 500 milligrams extended release twice daily with food\n- Refill: Lisinopril 10 milligram tablets that expire in November"
+        },
+        {
+          "id": "en-two-item-dev-v1a-008",
+          "domain": "medical",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "Okay, so after Dr. Morrison performs the ACL reconstruction on patient Jennifer Vasquez on July 23rd, the post-op care involves monitoring for infection and swelling, and scheduling PT physical therapy sessions starting two weeks post-op."
+          ],
+          "absent_required": [
+            "Post-op care for Jennifer Vasquez",
+            "ACL reconstruction by Dr. Morrison",
+            "July 23",
+            "Monitor for infection and swelling",
+            "Schedule PT sessions starting two weeks post-op"
+          ],
+          "present_forbidden": [
+            "okay",
+            "the post-op care involves"
+          ],
+          "strict": false,
+          "output": "Okay, so after Dr. Morrison performs the ACL reconstruction on patient Jennifer Vasquez on July 23rd, the post-op care involves monitoring for infection and swelling, and scheduling PT physical therapy sessions starting two weeks post-op."
+        },
+        {
+          "id": "en-two-item-dev-v1a-009",
+          "domain": "legal_financial",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "Henderson Estate Final Disposition:"
+          ],
+          "absent_required": [
+            "Distribute the primary residence at 1540 Oak Hill Drive to beneficiary Robert Henderson",
+            "Allocate the investment portfolio of approximately $625,000 to the education trust as specified in the will"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "Henderson Estate Final Disposition:\n- Distribute the primary residence at 1540 Oak Hill Drive to beneficiary Robert Henderson.\n- Allocate the investment portfolio of approximately $625,000 to the education trust as specified in the will."
+        },
+        {
+          "id": "en-two-item-dev-v1a-010",
+          "domain": "legal_financial",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "For the Form 990 filing due October 15th this year, we need to reconcile the donor contribution ledger against the bank statements from the full fiscal year, and also verify that all restricted fund expenditures align with donor intent per the grant agreements."
+          ],
+          "absent_required": [
+            "October 15 this year",
+            "Reconcile the donor contribution ledger against bank statements for the full fiscal year",
+            "Verify all restricted fund expenditures align with donor intent per the grant agreements"
+          ],
+          "present_forbidden": [
+            "also"
+          ],
+          "strict": false,
+          "output": "For the Form 990 filing due October 15th this year, we need to reconcile the donor contribution ledger against the bank statements from the full fiscal year, and also verify that all restricted fund expenditures align with donor intent per the grant agreements."
+        },
+        {
+          "id": "en-two-item-dev-v1b-002",
+          "domain": "work_admin",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "For my one-on-one with Priya tomorrow at 2 PM, I need to prepare two things:",
+            "1. Discuss her career development plan in the UX strategy track.",
+            "2. Review the Q3 OKR alignment."
+          ],
+          "absent_required": [
+            "Discuss career development plan",
+            "Review Q3 OKR alignment"
+          ],
+          "present_forbidden": [
+            "I need to prepare two things"
+          ],
+          "strict": false,
+          "output": "For my one-on-one with Priya tomorrow at 2 PM, I need to prepare two things:\n1. Discuss her career development plan in the UX strategy track.\n2. Review the Q3 OKR alignment."
+        },
+        {
+          "id": "en-two-item-dev-v1b-003",
+          "domain": "personal_home",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "Make a quick list:"
+          ],
+          "absent_required": [],
+          "present_forbidden": [
+            "make a quick list"
+          ],
+          "strict": false,
+          "output": "Make a quick list:\n- Water the basil on Tuesday\n- Put the blue recycling bin out Wednesday night"
+        },
+        {
+          "id": "en-two-item-dev-v1b-004",
+          "domain": "personal_home",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "For Nora's birthday party this Sunday, we need to reserve the park picnic shelter by Friday and order nut-free cupcakes for eighteen children."
+          ],
+          "absent_required": [
+            "18 children"
+          ],
+          "present_forbidden": [
+            "we need to"
+          ],
+          "strict": false,
+          "output": "For Nora's birthday party this Sunday, we need to reserve the park picnic shelter by Friday and order nut-free cupcakes for eighteen children."
+        },
+        {
+          "id": "en-two-item-dev-v1b-005",
+          "domain": "technical_product",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "Critical requirements for the new user auth endpoint:"
+          ],
+          "absent_required": [
+            "new user authentication endpoint",
+            "token format validation"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "Critical requirements for the new user auth endpoint:\n- Request rate limiting of 300 calls per minute\n- Validation for OAuth 2.0 token format"
+        },
+        {
+          "id": "en-two-item-dev-v1b-006",
+          "domain": "technical_product",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "For the PostgreSQL to Cloud SQL migration completing by end of month, we have two things to do:",
+            "1. Schema validation against current production",
+            "2. Data integrity checks for all customer records before we flip the switch"
+          ],
+          "absent_required": [
+            "before cutover"
+          ],
+          "present_forbidden": [
+            "we have two things to do"
+          ],
+          "strict": false,
+          "output": "For the PostgreSQL to Cloud SQL migration completing by end of month, we have two things to do:\n1. Schema validation against current production\n2. Data integrity checks for all customer records before we flip the switch"
+        },
+        {
+          "id": "en-two-item-dev-v1b-007",
+          "domain": "medical",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "Discharge instructions for Margaret Chen:"
+          ],
+          "absent_required": [
+            "today",
+            "Take prescribed antibiotics",
+            "6 hours",
+            "10 days",
+            "full course",
+            "3 weeks"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "Discharge instructions for Margaret Chen:\n* Take the prescribed antibiotics every six hours for ten days. Complete the full course.\n* Follow up with cardiology in three weeks."
+        },
+        {
+          "id": "en-two-item-dev-v1b-008",
+          "domain": "medical",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "For Dr. Patel's follow-up plan for patient James Rodriguez after the blood work, we need to:"
+          ],
+          "absent_required": [
+            "Dr. Patel",
+            "after blood work"
+          ],
+          "present_forbidden": [
+            "we need to"
+          ],
+          "strict": false,
+          "output": "For Dr. Patel's follow-up plan for patient James Rodriguez after the blood work, we need to:\n- Repeat the fasting glucose next Monday\n- Schedule an endocrinology consult within two weeks"
+        },
+        {
+          "id": "en-two-item-dev-v1b-009",
+          "domain": "legal_financial",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "I need a bullet list of the two items for the vendor agreement review:"
+          ],
+          "absent_required": [
+            "Verify indemnification clause",
+            "Verify non-compete duration",
+            "18 months",
+            "tech sector"
+          ],
+          "present_forbidden": [
+            "I need a bullet list"
+          ],
+          "strict": false,
+          "output": "I need a bullet list of the two items for the vendor agreement review:\n* Check the indemnification clause for mutual liability protection.\n* Verify that the non-compete duration does not exceed eighteen months in the tech sector."
+        },
+        {
+          "id": "en-two-item-dev-v1b-010",
+          "domain": "legal_financial",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "For the will revision that Sarah Martinez is executing, we need to document two critical items:"
+          ],
+          "absent_required": [
+            "David Martinez",
+            "Sophie"
+          ],
+          "present_forbidden": [
+            "we need to document"
+          ],
+          "strict": false,
+          "output": "For the will revision that Sarah Martinez is executing, we need to document two critical items:\n* The executor is her brother David Martinez.\n* We need to update the trust beneficiary list to include her two nieces, Elena and Sophie."
+        }
+      ]
+    }
+  }
+}

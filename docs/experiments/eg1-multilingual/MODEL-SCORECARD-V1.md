@@ -41,12 +41,13 @@ Quality and safety therefore control 65 points. Deployment cost controls 25 poin
 |---|---|---:|---:|---|
 | Current EG-1 / Qwen3-4B | Russian shipped prompt: independent strict 8/16 when list-command leakage fails cleanup | Q5 2.69 GiB | 126.1 MiB | Baseline |
 | Qwen multilingual low-dose smoke | Russian independent strict 9/16; trades one damaging case for another | Custom GGUF not built | about 137 MiB including metadata | Reject low-dose recipe as finalist |
-| Gemma multilingual low-dose smoke + list-v2 | Russian shipped-prompt independent strict 14/16 vs current 8/16; 56-case meaning damage 2 vs current 8; English positive lists 90/100 strict vs current shipped 71/100; one observed false-list trap pending independent adjudication | Custom Q5 conversion running; registry Q4 4.97 GiB reference | about 171 MiB including metadata | Universal-model discovery finalist; frozen/Mac gates pending |
+| Gemma multilingual low-dose smoke + list-v2 | Russian shipped-prompt independent strict 14/16 vs current 8/16; 56-case meaning damage 2 vs current 8; fresh list shape 82/100 intended count with 1/100 false lists, semantic audit pending | Q5 5.37 GiB; Q6 5.79 GiB; Q8 7.48 GiB | about 171 MiB including metadata | Reject exact checkpoint: Q5/Q6/Q8 all showed development meaning or scope damage |
+| Prompt-aligned Gemma multilingual smoke + list-v2 | Russian strict 14/16 vs current list-v2 6/16, but English two-item strict stayed 4/20 and introduced one medical timing loss; fresh list shape regressed to 63/100 intended count | Not converted after BF16 hard stop | about 171 MiB including metadata | Reject exact recipe; keep Russian training signal |
 | Untouched Gemma 4 E4B | Russian strict prompt: strong grammar and lower observed damage | Registry Q4 4.97 GiB | none | Base reference |
 | Historical English-tuned Gemma 4 E4B | Russian independent strict 12/16; learned lists but retained filler/number failures | Custom GGUF not built | about 140 MiB | Evidence for multilingual Gemma experiment |
 | Untouched Qwen3.5-4B | Russian strict prompt: independent strict 6/16 | Registry Q5 2.93 GiB | none | Hard-stopped first lane |
 | Ministral 3 3B | Not yet run task-specific benchmark | Registry Q5 2.30 GiB | none | Research backlog |
 
-The size column can change rank, but it cannot rescue unsafe or low-quality output. Conversely, a single 5 GiB universal model can beat a 2.69 GiB model if the measured quality gain is large enough and Mac runtime remains acceptable.
+The size column can change rank, but it cannot rescue unsafe or low-quality output. Conversely, one 5-8 GiB universal model can beat a 2.69 GiB model if the measured quality gain is large enough and Mac runtime remains acceptable. A user downloading multiple full models remains disqualified before this table is scored.
 
 All current percentages are discovery results with wide intervals. Final rows require the sealed benchmark, exact custom quantization, and exact shipped Mac measurements.
