@@ -1435,3 +1435,13 @@ The independent scorer audit opened no corpus rows or model outputs. It found th
 The scorer now requires a nonempty, error-free inference before any success metric can pass. It records inference failures, explicit candidate errors, and empty outputs separately and excludes inference failures from damage proxies. Atomicity requires both each audited item to appear on exactly one line and each list line to contain exactly one audited item. Zero-row slices report `rate: null` and `wilson_95: null`. Positive-list strict success, restraint false-list rate, and restraint strict success are explicitly co-primary; the combined paired comparison is labeled diagnostic-only and cannot become a headline percentage. Existing scorer outputs cannot be overwritten.
 
 Focused scorer tests pass 14/14 and the full evaluation suite passes 79/79. Independent re-review reproduced the three fixed edge cases, rechecked Wilson math and exact two-sided McNemar, and found no remaining code issue.
+
+### STAT-LOCK-001 - English list pilot decision rule
+
+Timestamp: 2026-07-15 08:07 EDT
+
+Status: predeclared before prompt-arm output
+
+The 75+75 development pilot is intentionally underpowered for a five-point lift and cannot prove the 2.5% release false-list ceiling. The decision contract now requires at least eight net positive-list strict wins plus exact paired `p < 0.05`, zero new restraint false-list regressions, no increase in audited item/scope loss, zero new arm-blind semantic meaning damage, and zero inference failures. Positive and restraint remain co-primary; no combined headline is allowed. Passing only advances a prompt to a larger native-reviewed/frozen evaluation.
+
+The contract binds the sealed selection, corrected scorer, and canonical power implementation by SHA-256. It records representative Wilson intervals and exact paired power before outputs exist. The full contract is `docs/experiments/eg1-multilingual/ENGLISH-LIST-PILOT75-DECISION-CONTRACT-V1.md`.
