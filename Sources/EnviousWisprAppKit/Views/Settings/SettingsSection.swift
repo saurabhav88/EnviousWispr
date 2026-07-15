@@ -27,6 +27,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   case clipboard
   case permissions
   case checkForUpdates
+  case openSourceLicenses
   #if DEBUG
     case diagnostics
   #endif
@@ -46,6 +47,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .clipboard: return "Clipboard"
     case .permissions: return "Permissions"
     case .checkForUpdates: return "Check for Updates"
+    case .openSourceLicenses: return "Open Source Licenses"
     #if DEBUG
       case .diagnostics: return "Diagnostics"
     #endif
@@ -65,6 +67,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .clipboard: return "clipboard"
     case .permissions: return "lock.shield"
     case .checkForUpdates: return "arrow.triangle.2.circlepath"
+    case .openSourceLicenses: return "doc.text.magnifyingglass"
     #if DEBUG
       case .diagnostics: return "ladybug"
     #endif
@@ -86,6 +89,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .clipboard: return "How your transcript reaches the clipboard and the app you're in."
     case .permissions: return "The microphone and accessibility access EnviousWispr needs."
     case .checkForUpdates: return ""
+    case .openSourceLicenses:
+      return "EnviousWispr is GPLv3 open source. The license and third-party notices."
     #if DEBUG
       case .diagnostics: return "Logs, benchmarks, and debug tools."
     #endif
@@ -98,7 +103,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .speechEngine, .audio, .shortcuts: return .record
     case .aiPolish, .wordCorrection: return .process
     case .clipboard: return .output
-    case .permissions, .checkForUpdates: return .system
+    case .permissions, .checkForUpdates, .openSourceLicenses: return .system
     #if DEBUG
       case .diagnostics: return .system
     #endif

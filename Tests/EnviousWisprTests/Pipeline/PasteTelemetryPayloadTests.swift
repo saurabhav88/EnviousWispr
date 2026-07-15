@@ -206,6 +206,27 @@ struct PasteTelemetryPayloadTests {
     )
   }
 
+  @Test("menu probe outcomes map to stable focus-class labels")
+  func menuProbeOutcomesMapToStableLabels() {
+    #expect(
+      PasteCascadeExecutor.MenuPasteProbe.targetEnabled.focusClassLabel
+        == "non_text_with_paste_target")
+    #expect(PasteCascadeExecutor.MenuPasteProbe.noTarget.focusClassLabel == "no_paste_target")
+    #expect(
+      PasteCascadeExecutor.MenuPasteProbe.unreadable.focusClassLabel
+        == "non_text_menu_unreadable")
+  }
+
+  @Test("unreadable menu probe keeps full alerting (#1435)")
+  func unreadableMenuProbeKeepsAlerting() {
+    let focusClass = PasteCascadeExecutor.MenuPasteProbe.unreadable.focusClassLabel
+    #expect(
+      PasteCascadeExecutor.isExpectedNonTextRefusal(
+        focus: .nonText, roleSource: "captured_target", focusClass: focusClass
+      ) == false
+    )
+  }
+
   @Test("unrecognized focusClass string fails closed to full alerting")
   func unrecognizedFocusClassFailsClosed() {
     // Guards the same fail-closed invariant for the focusClass corroboration:

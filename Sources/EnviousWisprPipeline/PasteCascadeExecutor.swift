@@ -270,30 +270,43 @@ internal final class PasteCascadeExecutor {
         let snapshot: ClipboardSnapshot? =
           request.restoreClipboardAfterPaste ? PasteService.saveClipboard() : nil
         let changeCount = PasteService.copyToClipboardReturningChangeCount(request.text)
-        if let menuItem = PasteService.findPasteMenuItem(pid: app.processIdentifier),
-          PasteService.isMenuItemEnabled(menuItem)
-        {
-          // Scenario B: a real paste target. Enabled item found.
-          menuProbe = .targetEnabled
-          tiersAttempted.append(.menuPaste)
-          if PasteService.pressMenuItem(menuItem) {
-            tier = .menuPaste
-            // Restore the user's prior clipboard after the paste lands.
-            if let snapshot {
-              try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
-              PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCount)
+        switch PasteService.findPasteMenuItem(pid: app.processIdentifier) {
+        case .found(let menuItem):
+          switch PasteService.isMenuItemEnabled(menuItem) {
+          case .enabled:
+            // Scenario B: a real paste target. Enabled item found.
+            menuProbe = .targetEnabled
+            tiersAttempted.append(.menuPaste)
+            if PasteService.pressMenuItem(menuItem) {
+              tier = .menuPaste
+              // Restore the user's prior clipboard after the paste lands.
+              if let snapshot {
+                try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
+                PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCount)
+              }
+            } else {
+              // Enabled but AXPress failed. Leave request.text on the clipboard
+              // (do NOT restore) so the user's manual Cmd+V still works.
+              tierFailures["menu_paste"] = "press_failed"
+              emitTierFailureBreadcrumb(
+                stage: "menu_paste", reason: "press_failed", bundleId: bundleId)
             }
-          } else {
-            // Enabled but AXPress failed. Leave request.text on the clipboard
-            // (do NOT restore) so the user's manual Cmd+V still works.
-            tierFailures["menu_paste"] = "press_failed"
-            emitTierFailureBreadcrumb(
-              stage: "menu_paste", reason: "press_failed", bundleId: bundleId)
+          case .disabled:
+            // Scenario A: item found but disabled. Leave request.text on the
+            // clipboard; Tier 3 overlay follows.
+            menuProbe = .noTarget
+          case .unreadable:
+            // Enabled-state AX read failed — unknown, not a confirmed refusal.
+            menuProbe = .unreadable
           }
-        } else {
-          // Scenario A (or item disabled/absent): no paste target. Leave
-          // request.text on the clipboard; Tier 3 overlay follows.
+        case .confirmedAbsent:
+          // Scenario A: no paste target. Leave request.text on the clipboard;
+          // Tier 3 overlay follows.
           menuProbe = .noTarget
+        case .unreadable:
+          // Menu bar (or traversal) AX read failed — unknown, not a confirmed
+          // refusal (#1435).
+          menuProbe = .unreadable
         }
       } else {
         // Activation timed out for .nonText: do NOT route to the English-only
@@ -360,13 +373,18 @@ internal final class PasteCascadeExecutor {
   enum MenuPasteProbe {
     /// An enabled Edit > Paste item was found (Scenario B — real paste target).
     case targetEnabled
-    /// The item was absent or disabled (Scenario A — no paste target).
+    /// The item was confirmed absent or confirmed disabled (Scenario A — no
+    /// paste target).
     case noTarget
+    /// An AX read failed somewhere in the probe (menu bar, traversal, or
+    /// enabled-state) — unknown, NOT a confirmed refusal (#1435).
+    case unreadable
 
     var focusClassLabel: String {
       switch self {
       case .targetEnabled: return "non_text_with_paste_target"
       case .noTarget: return "no_paste_target"
+      case .unreadable: return "non_text_menu_unreadable"
       }
     }
   }
