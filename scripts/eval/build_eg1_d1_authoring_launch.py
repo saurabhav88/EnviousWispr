@@ -497,7 +497,20 @@ def snapshot_inputs(
         roster_path,
     ]
     if shared_registry_path:
-        paths.append(shared_registry_path)
+        seal_receipt_path = shared_registry_path.parent / "receipt.json"
+        if (
+            shared_registry_path.name != "shared-concept-registry.json"
+            or shared_registry_path.is_symlink()
+            or seal_receipt_path.is_symlink()
+            or not shared_registry_path.is_file()
+            or not seal_receipt_path.is_file()
+            or {path.name for path in shared_registry_path.parent.iterdir()}
+            != {"shared-concept-registry.json", "receipt.json"}
+        ):
+            raise ValidationFailure(
+                "shared-concept registry is not inside its exact sealed two-file bundle"
+            )
+        paths.extend((shared_registry_path, seal_receipt_path))
     blobs: dict[Path, bytes] = {}
     snapshots: dict[Path, str] = {}
     for path in paths:
@@ -545,16 +558,32 @@ def verify_packet_set(
         if shared_registry_path
         else None
     )
+    shared_seal_receipt_path = (
+        shared_registry_path.parent / "receipt.json"
+        if shared_registry_path
+        else None
+    )
+    shared_seal_receipt = (
+        parse_object(blobs[shared_seal_receipt_path], "shared-concept seal receipt")
+        if shared_seal_receipt_path
+        else None
+    )
     expected_receipt = d1.build_authoring_packet_receipt(
         contract_path=contract_path,
         contract=contract,
         slots=slots,
         shared_registry_path=shared_registry_path,
         shared_registry=shared_registry,
+        shared_seal_receipt=shared_seal_receipt,
         contract_sha256=snapshots[contract_path],
         builder_sha256=snapshots[D1_BUILDER_PATH],
         shared_registry_sha256=(
             snapshots[shared_registry_path] if shared_registry_path else None
+        ),
+        shared_seal_receipt_sha256=(
+            snapshots[shared_seal_receipt_path]
+            if shared_seal_receipt_path
+            else None
         ),
     )
     actual_receipt = parse_object(blobs[packet_receipt_path], "packet receipt")
@@ -657,6 +686,11 @@ def build_launch_bundle(
             "shared_concept_status": shared_status,
             "shared_concept_registry_sha256": (
                 snapshots[shared_registry_path] if shared_registry_path else None
+            ),
+            "shared_concept_seal_receipt_sha256": (
+                snapshots[shared_registry_path.parent / "receipt.json"]
+                if shared_registry_path
+                else None
             ),
         },
         "counts": {

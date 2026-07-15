@@ -23,7 +23,8 @@ import build_eg1_multilingual_d1 as d1  # noqa: E402
 from test_build_eg1_multilingual_d1 import (  # noqa: E402
     CONTRACT_PATH,
     make_rows,
-    make_shared_concept_registry,
+    trusted_shared_concept_history,
+    write_shared_concept_seal,
     write_launch_bundle,
     write_json,
     write_jsonl,
@@ -39,17 +40,19 @@ class D1AuthoringPacketTests(unittest.TestCase):
     def prepare(
         self, root: Path, *, bind_shared_concepts: bool = True
     ) -> tuple[Path, Path | None, dict[str, Path]]:
-        shared_path = root / "shared-concepts.json"
         if bind_shared_concepts:
-            write_json(shared_path, make_shared_concept_registry(self.slots))
+            shared_path = write_shared_concept_seal(
+                root / "shared-seal", self.slots
+            )
         else:
             shared_path = None
         packet_dir = root / "packets"
-        d1.write_authoring_packets(
-            contract_path=CONTRACT_PATH,
-            output_dir=packet_dir,
-            shared_registry_path=shared_path,
-        )
+        with trusted_shared_concept_history():
+            d1.write_authoring_packets(
+                contract_path=CONTRACT_PATH,
+                output_dir=packet_dir,
+                shared_registry_path=shared_path,
+            )
         if shared_path:
             write_launch_bundle(
                 root,
@@ -72,16 +75,17 @@ class D1AuthoringPacketTests(unittest.TestCase):
         shared_path: Path | None,
         completed: dict[str, Path],
     ) -> dict[str, object]:
-        return d1.merge_authoring_packets(
-            contract_path=CONTRACT_PATH,
-            packet_receipt_path=packet_dir / "authoring-packet-receipt.json",
-            completed_packets=completed,
-            shared_registry_path=shared_path,
-            launch_assignments_path=root / "authoring-launch" / "assignments.jsonl",
-            launch_receipt_path=root / "authoring-launch" / "receipt.json",
-            output_path=root / "merged.jsonl",
-            merge_receipt_path=root / "merge-receipt.json",
-        )
+        with trusted_shared_concept_history():
+            return d1.merge_authoring_packets(
+                contract_path=CONTRACT_PATH,
+                packet_receipt_path=packet_dir / "authoring-packet-receipt.json",
+                completed_packets=completed,
+                shared_registry_path=shared_path,
+                launch_assignments_path=root / "authoring-launch" / "assignments.jsonl",
+                launch_receipt_path=root / "authoring-launch" / "receipt.json",
+                output_path=root / "merged.jsonl",
+                merge_receipt_path=root / "merge-receipt.json",
+            )
 
     def test_writes_five_hashed_400_row_packets_and_merges_once(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -197,7 +201,7 @@ class D1AuthoringPacketTests(unittest.TestCase):
             receipt = d1.read_json(packet_dir / "authoring-packet-receipt.json")
             self.assertEqual(receipt["shared_concept_authoring"]["status"], "blocked")
             with self.assertRaisesRegex(
-                d1.ValidationFailure, "shared-concept authoring is blocked"
+                d1.ValidationFailure, "sealed shared-concept bundle is required"
             ):
                 self.merge(root, packet_dir, shared_path, completed)
 

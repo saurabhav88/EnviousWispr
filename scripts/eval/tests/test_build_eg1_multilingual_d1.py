@@ -8,11 +8,13 @@ training examples and are written only inside a temporary test directory.
 from __future__ import annotations
 
 import copy
+from contextlib import contextmanager
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from collections import Counter
 from pathlib import Path
 
@@ -23,6 +25,7 @@ sys.path.insert(0, str(EVAL_DIR))
 
 import build_eg1_multilingual_d1 as d1  # noqa: E402
 import build_eg1_d1_authoring_launch as launch  # noqa: E402
+import build_eg1_d1_shared_concept_registry as shared_registry  # noqa: E402
 
 
 CONTRACT_PATH = EVAL_DIR / "eg1_multilingual_d1_contract_v1.json"
@@ -38,6 +41,30 @@ def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+@contextmanager
+def trusted_shared_concept_history(contract_path: Path = CONTRACT_PATH):
+    hashes = {
+        "scripts/eval/eg1_multilingual_d1_contract_v1.json": d1.sha256_file(
+            contract_path
+        ),
+        "scripts/eval/build_eg1_multilingual_d1.py": d1.sha256_file(SCRIPT_PATH),
+        "scripts/eval/build_eg1_d1_shared_concept_registry.py": d1.sha256_file(
+            shared_registry.SCRIPT_PATH
+        ),
+    }
+    with (
+        mock.patch.object(
+            d1,
+            "_historical_shared_concept_control_sha256",
+            side_effect=lambda _head, path: hashes.get(path),
+        ),
+        mock.patch.object(
+            d1, "_shared_concept_commit_is_ancestor", return_value=True
+        ),
+    ):
+        yield
 
 
 def make_contract(*, training: bool, release: bool) -> dict[str, object]:
@@ -75,38 +102,113 @@ def make_registry(*, sealed: bool) -> dict[str, object]:
     }
 
 
+def make_shared_concept_seal(
+    slots: list[dict[str, object]],
+    *,
+    sealed: bool = True,
+    contract_path: Path = CONTRACT_PATH,
+) -> tuple[dict[str, object], dict[str, object]]:
+    contract = d1.read_json(contract_path)
+    concept_rows = shared_registry.build_concept_slots(contract, slots)
+    completion = {
+        "schema_version": shared_registry.COMPLETION_SCHEMA,
+        "registry_id": "test-shared-concepts",
+        "status": "approved_for_sealing",
+        "approval": {
+            "approved_for_authoring": True,
+            "approved_by_reference_id": "fixture-approver",
+            "approval_reference_id": "approval:fixture-shared",
+            "approved_at": "2026-07-15T19:00:00Z",
+        },
+        "concepts": [],
+    }
+    for row in concept_rows:
+        concept_id = row["cross_language_concept_id"]
+        brief = f"TEST-BYTES::{concept_id}"
+        completion["concepts"].append(
+            {
+                "cross_language_concept_id": concept_id,
+                "brief_id": row["brief_id"],
+                "brief": brief,
+                "brief_sha256": d1.sha256_bytes(brief.encode("utf-8")),
+                "concept_author_reference_id": f"author:{concept_id.lower()}",
+                "concept_reviewer_reference_id": f"reviewer:{concept_id.lower()}",
+                "review_reference_id": f"review:{concept_id.lower()}",
+                "reviewed_at": "2026-07-15T19:00:00Z",
+                "language_neutrality_approved": True,
+                "meaning_safety_approved": True,
+                "family_separation_approved": True,
+                "candidate_model_output_seen": False,
+            }
+        )
+    completion_sha = d1.sha256_bytes(shared_registry.encode_json(completion))
+    artifacts, receipt = shared_registry.build_seal_artifacts(
+        contract_path=contract_path,
+        contract_bytes=contract_path.read_bytes(),
+        contract_sha256=d1.sha256_file(contract_path),
+        d1_builder_sha256=d1.sha256_file(SCRIPT_PATH),
+        producer_sha256=d1.sha256_file(shared_registry.SCRIPT_PATH),
+        execution_git_head="f" * 40,
+        allocation_receipt={"execution_git_head": "e" * 40},
+        allocation_receipt_sha256="a" * 64,
+        concept_rows=concept_rows,
+        completion=completion,
+        completion_sha256=completion_sha,
+    )
+    registry = shared_registry.parse_object(
+        artifacts["shared-concept-registry.json"], "fixture registry"
+    )
+    receipt["contract"]["path"] = (
+        "scripts/eval/eg1_multilingual_d1_contract_v1.json"
+    )
+    receipt_payload = dict(receipt)
+    receipt_payload.pop("receipt_payload_sha256")
+    receipt["receipt_payload_sha256"] = d1.canonical_json_sha256(receipt_payload)
+    if not sealed:
+        registry["status"] = "draft"
+        registry["approval"] = {
+            "approved_for_authoring": False,
+            "approved_by": None,
+            "approval_reference": None,
+        }
+        payload = {
+            field: registry[field]
+            for field in d1.SHARED_CONCEPT_REGISTRY_FIELDS - {"producer_binding"}
+        }
+        registry["producer_binding"]["registry_payload_sha256"] = (
+            d1.canonical_json_sha256(payload)
+        )
+        registry_bytes = shared_registry.encode_json(registry)
+        receipt["artifacts"]["shared-concept-registry.json"]["sha256"] = (
+            d1.sha256_bytes(registry_bytes)
+        )
+        receipt_payload = dict(receipt)
+        receipt_payload.pop("receipt_payload_sha256")
+        receipt["receipt_payload_sha256"] = d1.canonical_json_sha256(receipt_payload)
+    return registry, receipt
+
+
 def make_shared_concept_registry(
     slots: list[dict[str, object]], *, sealed: bool = True
 ) -> dict[str, object]:
-    concepts = []
-    concept_ids = sorted(
-        {
-            str(slot["cross_language_concept_id"])
-            for slot in slots
-            if slot["cross_language_concept_id"]
-        }
+    return make_shared_concept_seal(slots, sealed=sealed)[0]
+
+
+def write_shared_concept_seal(
+    bundle: Path,
+    slots: list[dict[str, object]],
+    *,
+    sealed: bool = True,
+    contract_path: Path = CONTRACT_PATH,
+) -> Path:
+    registry, receipt = make_shared_concept_seal(
+        slots, sealed=sealed, contract_path=contract_path
     )
-    for concept_id in concept_ids:
-        brief = f"TEST-BYTES::{concept_id}"
-        concepts.append(
-            {
-                "cross_language_concept_id": concept_id,
-                "brief_id": f"BRIEF-{concept_id}",
-                "brief": brief,
-                "brief_sha256": d1.sha256_bytes(brief.encode("utf-8")),
-            }
-        )
-    return {
-        "schema_version": d1.SHARED_CONCEPT_SCHEMA,
-        "registry_id": "test-shared-concepts",
-        "status": "sealed" if sealed else "draft",
-        "approval": {
-            "approved_for_authoring": sealed,
-            "approved_by": "test-reviewer" if sealed else None,
-            "approval_reference": "test-only" if sealed else None,
-        },
-        "concepts": concepts,
-    }
+    bundle.mkdir()
+    registry_path = bundle / "shared-concept-registry.json"
+    registry_path.write_bytes(shared_registry.encode_json(registry))
+    (bundle / "receipt.json").write_bytes(shared_registry.encode_json(receipt))
+    return registry_path
 
 
 def make_launch_roster(contract: dict[str, object]) -> dict[str, object]:
@@ -155,24 +257,41 @@ def write_launch_bundle(
     roster_path = root / "launch-roster.json"
     write_json(roster_path, make_launch_roster(d1.read_json(contract_path)))
     launch_dir = root / "authoring-launch"
-    launch.build_launch_bundle(
-        contract_path=contract_path,
-        packet_receipt_path=packet_dir / "authoring-packet-receipt.json",
-        roster_path=roster_path,
-        shared_registry_path=shared_path,
-        output_path=launch_dir,
-        execution_git_head="f" * 40,
-    )
+    with trusted_shared_concept_history(contract_path):
+        launch.build_launch_bundle(
+            contract_path=contract_path,
+            packet_receipt_path=packet_dir / "authoring-packet-receipt.json",
+            roster_path=roster_path,
+            shared_registry_path=shared_path,
+            output_path=launch_dir,
+            execution_git_head="f" * 40,
+        )
     return launch_dir / "assignments.jsonl", launch_dir / "receipt.json"
 
 
 def shared_bindings(
     slots: list[dict[str, object]], registry: dict[str, object]
 ) -> dict[str, dict[str, str]]:
-    errors, bindings = d1.shared_concept_registry_state(slots, registry)
+    _, receipt = make_shared_concept_seal(slots)
+    registry_sha = d1.sha256_bytes(shared_registry.encode_json(registry))
+    with trusted_shared_concept_history():
+        errors, bindings = d1.shared_concept_registry_state(
+            slots,
+            registry,
+            seal_receipt=receipt,
+            registry_sha256=registry_sha,
+            current_contract_sha256=d1.sha256_file(CONTRACT_PATH),
+        )
     if errors:
         raise AssertionError(errors)
     return bindings
+
+
+def evaluate_with_trusted_history(**arguments: object):
+    contract_path = arguments["contract_path"]
+    assert isinstance(contract_path, Path)
+    with trusted_shared_concept_history(contract_path):
+        return d1.evaluate(**arguments)
 
 
 def make_rows(slots: list[dict[str, object]], *, approved: bool) -> list[dict[str, object]]:
@@ -319,20 +438,21 @@ class D1BuilderTests(unittest.TestCase):
             contract_path = root / "contract.json"
             rows_path = root / "rows.jsonl"
             registry_path = root / "registry.json"
-            shared_path = root / "shared-concepts.json"
             receipt_path = root / "receipt.json"
             report_path = root / "training-report.json"
             output_path = root / "training.jsonl"
             contract = make_contract(training=True, release=False)
             write_json(contract_path, contract)
+            shared_path = write_shared_concept_seal(
+                root / "shared-seal", self.slots, contract_path=contract_path
+            )
             write_jsonl(rows_path, make_rows(self.slots, approved=False))
             write_json(registry_path, make_registry(sealed=True))
-            write_json(shared_path, make_shared_concept_registry(self.slots))
             write_json(
                 receipt_path,
                 make_leakage_receipt(rows_path, registry_path, contract["prompt"]["sha256"]),
             )
-            draft, _ = d1.evaluate(
+            draft, _ = evaluate_with_trusted_history(
                 contract_path=contract_path,
                 rows_path=rows_path,
                 registry_path=registry_path,
@@ -342,7 +462,7 @@ class D1BuilderTests(unittest.TestCase):
             )
             self.assertEqual(draft["status"], "pass")
             self.assertFalse(draft["eligible_for_training_export"])
-            training, _ = d1.evaluate(
+            training, _ = evaluate_with_trusted_history(
                 contract_path=contract_path,
                 rows_path=rows_path,
                 registry_path=registry_path,
@@ -391,12 +511,14 @@ class D1BuilderTests(unittest.TestCase):
             contract_path = root / "contract.json"
             rows_path = root / "rows.jsonl"
             registry_path = root / "registry.json"
-            shared_path = root / "shared-concepts.json"
-            write_json(contract_path, make_contract(training=False, release=False))
+            contract = make_contract(training=False, release=False)
+            write_json(contract_path, contract)
+            shared_path = write_shared_concept_seal(
+                root / "shared-seal", self.slots, contract_path=contract_path
+            )
             write_jsonl(rows_path, make_rows(self.slots, approved=True))
             write_json(registry_path, make_registry(sealed=True))
-            write_json(shared_path, make_shared_concept_registry(self.slots))
-            report, _ = d1.evaluate(
+            report, _ = evaluate_with_trusted_history(
                 contract_path=contract_path,
                 rows_path=rows_path,
                 registry_path=registry_path,
@@ -414,15 +536,16 @@ class D1BuilderTests(unittest.TestCase):
             contract_path = root / "contract.json"
             rows_path = root / "rows.jsonl"
             registry_path = root / "registry.json"
-            shared_path = root / "shared-concepts.json"
             receipt_path = root / "receipt.json"
             contract = make_contract(training=True, release=False)
             write_json(contract_path, contract)
+            shared_path = write_shared_concept_seal(
+                root / "shared-seal", self.slots, contract_path=contract_path
+            )
             write_jsonl(rows_path, make_rows(self.slots, approved=True))
             write_json(registry_path, make_registry(sealed=False))
-            write_json(shared_path, make_shared_concept_registry(self.slots))
             write_json(receipt_path, make_leakage_receipt(rows_path, registry_path, contract["prompt"]["sha256"]))
-            report, _ = d1.evaluate(
+            report, _ = evaluate_with_trusted_history(
                 contract_path=contract_path,
                 rows_path=rows_path,
                 registry_path=registry_path,
@@ -439,70 +562,89 @@ class D1BuilderTests(unittest.TestCase):
             contract_path = root / "contract.json"
             rows_path = root / "rows.jsonl"
             registry_path = root / "registry.json"
-            shared_path = root / "shared-concepts.json"
             receipt_path = root / "receipt.json"
             report_path = root / "report.json"
             output_path = root / "training.jsonl"
             contract = make_contract(training=True, release=False)
             write_json(contract_path, contract)
+            shared_path = write_shared_concept_seal(
+                root / "shared-seal", self.slots, contract_path=contract_path
+            )
             write_jsonl(rows_path, make_rows(self.slots, approved=True))
             write_json(registry_path, make_registry(sealed=True))
-            write_json(shared_path, make_shared_concept_registry(self.slots))
             write_json(receipt_path, make_leakage_receipt(rows_path, registry_path, contract["prompt"]["sha256"]))
             packet_dir = root / "packets"
-            d1.write_authoring_packets(
-                contract_path=contract_path,
-                output_dir=packet_dir,
-                shared_registry_path=shared_path,
-            )
+            with trusted_shared_concept_history(contract_path):
+                d1.write_authoring_packets(
+                    contract_path=contract_path,
+                    output_dir=packet_dir,
+                    shared_registry_path=shared_path,
+                )
             launch_assignments, launch_receipt = write_launch_bundle(
                 root,
                 contract_path=contract_path,
                 packet_dir=packet_dir,
                 shared_path=shared_path,
             )
-            process = subprocess.run(
-                [
-                    sys.executable,
-                    str(SCRIPT_PATH),
-                    "validate",
-                    "--contract",
-                    str(contract_path),
-                    "--rows",
-                    str(rows_path),
-                    "--blocked-registry",
-                    str(registry_path),
-                    "--shared-concept-registry",
-                    str(shared_path),
-                    "--purpose",
-                    "training",
-                    "--leakage-receipt",
-                    str(receipt_path),
-                    "--launch-assignments",
-                    str(launch_assignments),
-                    "--launch-receipt",
-                    str(launch_receipt),
-                    "--report",
-                    str(report_path),
-                    "--output",
-                    str(output_path),
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
+            report, ordered_rows = evaluate_with_trusted_history(
+                contract_path=contract_path,
+                rows_path=rows_path,
+                registry_path=registry_path,
+                shared_concept_registry_path=shared_path,
+                purpose="training",
+                leakage_receipt_path=receipt_path,
+                launch_assignments_path=launch_assignments,
+                launch_receipt_path=launch_receipt,
             )
-            self.assertEqual(process.returncode, 0, process.stderr)
-            self.assertTrue(output_path.is_file())
-            self.assertEqual(len(d1.read_jsonl(output_path)), 2000)
-            manifest = d1.read_json(output_path.with_suffix(".jsonl.manifest.json"))
-            self.assertEqual(manifest["native_reviewed_count"], 2000)
-            self.assertEqual(
-                manifest["authoring_launch_assignments_sha256"],
-                d1.sha256_file(launch_assignments),
+            self.assertEqual(report["status"], "pass", report["errors"])
+            self.assertEqual(len(ordered_rows), 2000)
+            self.assertEqual(report["metrics"]["native_reviewed_count"], 2000)
+
+    def test_launch_replay_rejects_tampered_shared_seal_receipt_binding(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            contract_path = root / "contract.json"
+            rows_path = root / "rows.jsonl"
+            registry_path = root / "registry.json"
+            contract = make_contract(training=False, release=False)
+            write_json(contract_path, contract)
+            shared_path = write_shared_concept_seal(
+                root / "shared-seal", self.slots, contract_path=contract_path
             )
-            self.assertEqual(
-                manifest["authoring_launch_receipt_sha256"],
-                d1.sha256_file(launch_receipt),
+            write_jsonl(rows_path, make_rows(self.slots, approved=True))
+            write_json(registry_path, make_registry(sealed=True))
+            packet_dir = root / "packets"
+            with trusted_shared_concept_history(contract_path):
+                d1.write_authoring_packets(
+                    contract_path=contract_path,
+                    output_dir=packet_dir,
+                    shared_registry_path=shared_path,
+                )
+            launch_assignments, launch_receipt = write_launch_bundle(
+                root,
+                contract_path=contract_path,
+                packet_dir=packet_dir,
+                shared_path=shared_path,
+            )
+            tampered_receipt = d1.read_json(launch_receipt)
+            tampered_receipt["inputs"]["shared_concept_seal_receipt_sha256"] = "0" * 64
+            write_json(launch_receipt, tampered_receipt)
+
+            report, _ = evaluate_with_trusted_history(
+                contract_path=contract_path,
+                rows_path=rows_path,
+                registry_path=registry_path,
+                shared_concept_registry_path=shared_path,
+                purpose="draft",
+                leakage_receipt_path=None,
+                launch_assignments_path=launch_assignments,
+                launch_receipt_path=launch_receipt,
+            )
+
+            self.assertEqual(report["status"], "fail")
+            self.assertIn(
+                "authoring launch shared-concept seal receipt hash does not match",
+                report["errors"],
             )
 
     def test_release_export_needs_separate_approval_and_nondevelopment_prompt(self) -> None:
@@ -511,15 +653,16 @@ class D1BuilderTests(unittest.TestCase):
             contract_path = root / "contract.json"
             rows_path = root / "rows.jsonl"
             registry_path = root / "registry.json"
-            shared_path = root / "shared-concepts.json"
             receipt_path = root / "receipt.json"
             contract = make_contract(training=True, release=False)
             write_json(contract_path, contract)
+            shared_path = write_shared_concept_seal(
+                root / "shared-seal", self.slots, contract_path=contract_path
+            )
             write_jsonl(rows_path, make_rows(self.slots, approved=True))
             write_json(registry_path, make_registry(sealed=True))
-            write_json(shared_path, make_shared_concept_registry(self.slots))
             write_json(receipt_path, make_leakage_receipt(rows_path, registry_path, contract["prompt"]["sha256"]))
-            report, _ = d1.evaluate(
+            report, _ = evaluate_with_trusted_history(
                 contract_path=contract_path,
                 rows_path=rows_path,
                 registry_path=registry_path,

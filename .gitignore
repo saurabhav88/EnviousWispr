@@ -166,6 +166,7 @@ scripts/eval/*
 !scripts/eval/chunk_size_benchmark.py
 !scripts/eval/overpolish-eval.py
 !scripts/eval/screen_eg1_replay_semantic_neighbors.py
+!scripts/eval/build_eg1_d1_shared_concept_registry.py
 !scripts/eval/golden_judge_scores.json
 !scripts/eval/contracts/
 !scripts/eval/contracts/eg1_replay_semantic_screen_v1.json
@@ -180,6 +181,7 @@ scripts/eval/corpus/*
 !scripts/eval/apple_runner/**
 !scripts/eval/tests/
 !scripts/eval/tests/**
+!scripts/eval/tests/test_build_eg1_d1_shared_concept_registry.py
 scripts/eval/tests/__pycache__/
 scripts/eval/apple_runner/.build/
 scripts/eval/apple_runner/Package.resolved

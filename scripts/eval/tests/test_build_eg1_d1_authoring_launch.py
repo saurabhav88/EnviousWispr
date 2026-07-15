@@ -22,7 +22,8 @@ sys.path.insert(0, str(TESTS_DIR))
 import build_eg1_multilingual_d1 as d1  # noqa: E402
 from test_build_eg1_multilingual_d1 import (  # noqa: E402
     CONTRACT_PATH,
-    make_shared_concept_registry,
+    trusted_shared_concept_history,
+    write_shared_concept_seal,
     write_json,
 )
 
@@ -103,16 +104,17 @@ class D1AuthoringLaunchTests(unittest.TestCase):
         roster: dict[str, object] | None = None,
         shared: bool = False,
     ) -> tuple[Path, Path, Path | None, Path]:
-        shared_path = root / "shared-concepts.json" if shared else None
-        if shared_path:
+        shared_path = None
+        if shared:
             slots = d1.build_slots(d1.read_json(CONTRACT_PATH))
-            write_json(shared_path, make_shared_concept_registry(slots))
+            shared_path = write_shared_concept_seal(root / "shared-seal", slots)
         packet_dir = root / "packets"
-        d1.write_authoring_packets(
-            contract_path=CONTRACT_PATH,
-            output_dir=packet_dir,
-            shared_registry_path=shared_path,
-        )
+        with trusted_shared_concept_history():
+            d1.write_authoring_packets(
+                contract_path=CONTRACT_PATH,
+                output_dir=packet_dir,
+                shared_registry_path=shared_path,
+            )
         roster_path = root / "roster.json"
         write_json(roster_path, roster or make_roster())
         return packet_dir / "authoring-packet-receipt.json", roster_path, shared_path, root / "launch"
@@ -127,14 +129,15 @@ class D1AuthoringLaunchTests(unittest.TestCase):
         packet_receipt, roster_path, shared_path, output = self.prepare(
             root, roster=roster, shared=shared
         )
-        receipt = launch.build_launch_bundle(
-            contract_path=CONTRACT_PATH,
-            packet_receipt_path=packet_receipt,
-            roster_path=roster_path,
-            shared_registry_path=shared_path,
-            output_path=output,
-            execution_git_head="f" * 40,
-        )
+        with trusted_shared_concept_history():
+            receipt = launch.build_launch_bundle(
+                contract_path=CONTRACT_PATH,
+                packet_receipt_path=packet_receipt,
+                roster_path=roster_path,
+                shared_registry_path=shared_path,
+                output_path=output,
+                execution_git_head="f" * 40,
+            )
         return receipt, d1.read_jsonl(output / "assignments.jsonl")
 
     def test_launches_only_1600_native_original_rows_before_shared_briefs(self) -> None:
@@ -307,20 +310,20 @@ class D1AuthoringLaunchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             packet_receipt, roster_path, _, output = self.prepare(root)
-            shared_path = root / "shared-concepts-late.json"
             slots = d1.build_slots(d1.read_json(CONTRACT_PATH))
-            write_json(shared_path, make_shared_concept_registry(slots))
+            shared_path = write_shared_concept_seal(root / "shared-seal-late", slots)
             with self.assertRaisesRegex(
                 launch.ValidationFailure, "packet receipt does not match"
             ):
-                launch.build_launch_bundle(
-                    contract_path=CONTRACT_PATH,
-                    packet_receipt_path=packet_receipt,
-                    roster_path=roster_path,
-                    shared_registry_path=shared_path,
-                    output_path=output,
-                    execution_git_head="f" * 40,
-                )
+                with trusted_shared_concept_history():
+                    launch.build_launch_bundle(
+                        contract_path=CONTRACT_PATH,
+                        packet_receipt_path=packet_receipt,
+                        roster_path=roster_path,
+                        shared_registry_path=shared_path,
+                        output_path=output,
+                        execution_git_head="f" * 40,
+                    )
             self.assertFalse(output.exists())
 
     def test_input_change_after_validation_is_rejected_before_publication(self) -> None:

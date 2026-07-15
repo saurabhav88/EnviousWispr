@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unicodedata
@@ -27,6 +28,10 @@ CONTRACT_SCHEMA = "eg1-multilingual-d1-contract-v1"
 REGISTRY_SCHEMA = "eg1-d1-blocked-family-registry-v1"
 LEAKAGE_SCHEMA = "eg1-d1-leakage-receipt-v1"
 SHARED_CONCEPT_SCHEMA = "eg1-d1-shared-concept-registry-v1"
+SHARED_CONCEPT_PRODUCER_BINDING_SCHEMA = (
+    "eg1-d1-shared-concept-producer-binding-v1"
+)
+SHARED_CONCEPT_SEAL_RECEIPT_SCHEMA = "eg1-d1-shared-concept-seal-receipt-v1"
 PACKET_RECEIPT_SCHEMA = "eg1-d1-authoring-packet-receipt-v1"
 MERGE_RECEIPT_SCHEMA = "eg1-d1-authoring-merge-receipt-v1"
 LAUNCH_ASSIGNMENT_SCHEMA = "eg1-d1-authoring-assignment-v1"
@@ -98,6 +103,66 @@ SHARED_CONCEPT_ROW_FIELDS = (
     "shared_concept_brief_id",
     "shared_concept_brief_sha256",
 )
+SHARED_CONCEPT_REGISTRY_FIELDS = {
+    "schema_version",
+    "registry_id",
+    "status",
+    "approval",
+    "concepts",
+    "producer_binding",
+}
+SHARED_CONCEPT_APPROVAL_FIELDS = {
+    "approved_for_authoring",
+    "approved_by",
+    "approval_reference",
+}
+SHARED_CONCEPT_ENTRY_FIELDS = {
+    "cross_language_concept_id",
+    "brief_id",
+    "brief",
+    "brief_sha256",
+}
+SHARED_CONCEPT_PRODUCER_FIELDS = {
+    "schema_version",
+    "status",
+    "execution_git_head",
+    "private_completion_sha256",
+    "allocation_receipt_sha256",
+    "contract_sha256",
+    "d1_builder_sha256",
+    "registry_builder_sha256",
+    "slot_set_sha256",
+    "registry_payload_sha256",
+    "concept_count",
+    "shared_row_count",
+    "language_rows",
+    "independent_concept_reviews",
+    "language_neutrality_approvals",
+    "meaning_safety_approvals",
+    "family_separation_approvals",
+    "candidate_model_output_seen",
+    "publication",
+}
+SHARED_CONCEPT_SEAL_RECEIPT_FIELDS = {
+    "schema_version",
+    "status",
+    "execution_git_head",
+    "contract",
+    "d1_builder",
+    "producer",
+    "inputs",
+    "counts",
+    "gates",
+    "privacy",
+    "artifacts",
+    "publication",
+    "receipt_payload_sha256",
+}
+SCRIPT_PATH = Path(__file__).resolve()
+REPO_ROOT = SCRIPT_PATH.parents[2]
+SHARED_CONCEPT_PRODUCER_PATH = SCRIPT_PATH.with_name(
+    "build_eg1_d1_shared_concept_registry.py"
+)
 
 
 class ValidationFailure(Exception):
@@ -161,6 +226,32 @@ def read_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValidationFailure(f"{path}: expected a JSON object")
     return value
+
+
+def read_shared_concept_seal_bundle(
+    registry_path: Path,
+) -> tuple[dict[str, Any], dict[str, Any], str, str]:
+    seal_receipt_path = registry_path.parent / "receipt.json"
+    if (
+        registry_path.name != "shared-concept-registry.json"
+        or registry_path.is_symlink()
+        or seal_receipt_path.is_symlink()
+        or not registry_path.is_file()
+        or not seal_receipt_path.is_file()
+        or {path.name for path in registry_path.parent.iterdir()}
+        != {"shared-concept-registry.json", "receipt.json"}
+    ):
+        raise ValidationFailure(
+            "shared-concept registry is not inside its exact sealed two-file bundle"
+        )
+    registry = read_json(registry_path)
+    seal_receipt = read_json(seal_receipt_path)
+    return (
+        registry,
+        seal_receipt,
+        sha256_file(registry_path),
+        sha256_file(seal_receipt_path),
+    )
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -548,8 +639,193 @@ def shared_concept_ids(slots: list[dict[str, Any]]) -> list[str]:
     )
 
 
+def _historical_shared_concept_control_sha256(
+    execution_head: str, relative_path: str
+) -> str | None:
+    if Path(relative_path).is_absolute() or ".." in Path(relative_path).parts:
+        return None
+    try:
+        value = subprocess.run(
+            ["git", "show", f"{execution_head}:{relative_path}"],
+            cwd=REPO_ROOT,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return sha256_bytes(value)
+
+
+def _shared_concept_commit_is_ancestor(
+    ancestor_head: str, descendant_head: str = "HEAD"
+) -> bool:
+    return (
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", ancestor_head, descendant_head],
+            cwd=REPO_ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode
+        == 0
+    )
+
+
+def _shared_concept_seal_receipt_errors(
+    *,
+    slots: list[dict[str, Any]],
+    registry: dict[str, Any],
+    seal_receipt: dict[str, Any] | None,
+    registry_sha256: str | None,
+    current_contract_sha256: str | None,
+) -> list[str]:
+    if seal_receipt is None:
+        return ["authenticated shared-concept seal receipt is missing"]
+    if set(seal_receipt) != SHARED_CONCEPT_SEAL_RECEIPT_FIELDS:
+        return ["shared-concept seal receipt schema changed"]
+    payload = dict(seal_receipt)
+    receipt_payload_sha256 = payload.pop("receipt_payload_sha256", None)
+    errors: list[str] = []
+    if receipt_payload_sha256 != canonical_json_sha256(payload):
+        errors.append("shared-concept seal receipt payload binding is invalid")
+    if (
+        seal_receipt.get("schema_version") != SHARED_CONCEPT_SEAL_RECEIPT_SCHEMA
+        or seal_receipt.get("status")
+        != "shared_concepts_sealed_authoring_unblocked_training_still_blocked"
+        or seal_receipt.get("publication")
+        != "exclusive_private_bundle_receipt_last"
+    ):
+        errors.append("shared-concept seal receipt status changed")
+
+    producer_binding = registry.get("producer_binding")
+    if not isinstance(producer_binding, dict):
+        return errors + ["shared-concept producer binding is missing"]
+    execution_head = seal_receipt.get("execution_git_head")
+    if (
+        not isinstance(execution_head, str)
+        or re.fullmatch(r"[0-9a-f]{40}", execution_head) is None
+        or producer_binding.get("execution_git_head") != execution_head
+    ):
+        errors.append("shared-concept seal producing commit binding is invalid")
+
+    expected_paths = {
+        "contract": "scripts/eval/eg1_multilingual_d1_contract_v1.json",
+        "d1_builder": "scripts/eval/build_eg1_multilingual_d1.py",
+        "producer": "scripts/eval/build_eg1_d1_shared_concept_registry.py",
+    }
+    producer_fields = {
+        "contract": "contract_sha256",
+        "d1_builder": "d1_builder_sha256",
+        "producer": "registry_builder_sha256",
+    }
+    for role, expected_path in expected_paths.items():
+        record = seal_receipt.get(role)
+        if (
+            not isinstance(record, dict)
+            or set(record) != {"path", "sha256"}
+            or record.get("path") != expected_path
+            or not isinstance(record.get("sha256"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", record["sha256"]) is None
+            or producer_binding.get(producer_fields[role]) != record.get("sha256")
+        ):
+            errors.append(f"shared-concept seal {role} binding is invalid")
+            continue
+        if (
+            not isinstance(execution_head, str)
+            or _historical_shared_concept_control_sha256(
+                execution_head, expected_path
+            )
+            != record["sha256"]
+        ):
+            errors.append(f"shared-concept historical {role} binding is invalid")
+    if (
+        current_contract_sha256 is None
+        or seal_receipt.get("contract", {}).get("sha256")
+        != current_contract_sha256
+    ):
+        errors.append("current D1 contract differs from shared-concept seal")
+    if isinstance(execution_head, str):
+        if not _shared_concept_commit_is_ancestor(execution_head):
+            errors.append("shared-concept seal commit is not in current history")
+
+    inputs = seal_receipt.get("inputs")
+    if (
+        not isinstance(inputs, dict)
+        or set(inputs)
+        != {
+            "allocation_receipt_sha256",
+            "allocation_execution_git_head",
+            "private_completion_sha256",
+        }
+        or inputs.get("allocation_receipt_sha256")
+        != producer_binding.get("allocation_receipt_sha256")
+        or inputs.get("private_completion_sha256")
+        != producer_binding.get("private_completion_sha256")
+        or not isinstance(inputs.get("allocation_execution_git_head"), str)
+        or re.fullmatch(r"[0-9a-f]{40}", inputs["allocation_execution_git_head"])
+        is None
+    ):
+        errors.append("shared-concept seal input binding is invalid")
+    elif isinstance(execution_head, str) and not _shared_concept_commit_is_ancestor(
+        inputs["allocation_execution_git_head"], execution_head
+    ):
+        errors.append(
+            "shared-concept allocation commit is not an ancestor of the seal commit"
+        )
+
+    language_rows = Counter(
+        slot["language"]
+        for slot in slots
+        if slot["origin_mode"] == "shared_concept_independent_rewrite"
+    )
+    expected_count = len(shared_concept_ids(slots))
+    if seal_receipt.get("counts") != {
+        "concepts": expected_count,
+        "shared_rows": sum(language_rows.values()),
+        "language_rows": dict(sorted(language_rows.items())),
+        "independent_concept_reviews": expected_count,
+    }:
+        errors.append("shared-concept seal coverage differs from D1 allocation")
+    if seal_receipt.get("gates") != {
+        "all_concepts_language_neutrality_approved": True,
+        "all_concepts_meaning_safety_approved": True,
+        "all_concepts_family_separation_approved": True,
+        "all_concept_reviews_independent": True,
+        "candidate_model_output_seen": False,
+        "native_row_reviews_complete": False,
+        "training_eligible": False,
+        "release_eligible": False,
+    }:
+        errors.append("shared-concept seal gates changed")
+    if seal_receipt.get("privacy") != {
+        "bundle_must_remain_untracked": True,
+        "private_completion_published": False,
+        "raw_names_emails_or_contact_details_allowed": False,
+        "opaque_reference_ids_required": True,
+    }:
+        errors.append("shared-concept seal privacy contract changed")
+    artifacts = seal_receipt.get("artifacts")
+    if (
+        registry_sha256 is None
+        or artifacts
+        != {
+            "shared-concept-registry.json": {
+                "sha256": registry_sha256,
+                "row_count": expected_count,
+            }
+        }
+    ):
+        errors.append("shared-concept seal does not bind the exact registry bytes")
+    return errors
+
+
 def shared_concept_registry_state(
-    slots: list[dict[str, Any]], registry: dict[str, Any] | None
+    slots: list[dict[str, Any]],
+    registry: dict[str, Any] | None,
+    *,
+    seal_receipt: dict[str, Any] | None = None,
+    registry_sha256: str | None = None,
+    current_contract_sha256: str | None = None,
 ) -> tuple[list[str], dict[str, dict[str, str]]]:
     expected_ids = set(shared_concept_ids(slots))
     if registry is None:
@@ -557,6 +833,8 @@ def shared_concept_registry_state(
     errors: list[str] = []
     if registry.get("schema_version") != SHARED_CONCEPT_SCHEMA:
         return ["shared-concept registry has unsupported schema"], {}
+    if set(registry) != SHARED_CONCEPT_REGISTRY_FIELDS:
+        errors.append("shared-concept registry top-level schema changed")
     registry_id = registry.get("registry_id")
     if (
         not isinstance(registry_id, str)
@@ -567,7 +845,11 @@ def shared_concept_registry_state(
     if registry.get("status") != "sealed":
         errors.append("shared-concept registry status is not sealed")
     approval = registry.get("approval")
-    if not isinstance(approval, dict) or approval.get("approved_for_authoring") is not True:
+    if (
+        not isinstance(approval, dict)
+        or set(approval) != SHARED_CONCEPT_APPROVAL_FIELDS
+        or approval.get("approved_for_authoring") is not True
+    ):
         errors.append("shared-concept registry is not approved for authoring")
     elif any(
         not isinstance(approval.get(field), str) or not approval[field].strip()
@@ -584,6 +866,8 @@ def shared_concept_registry_state(
         if not isinstance(concept, dict):
             errors.append(f"shared-concept registry row {index} must be an object")
             continue
+        if set(concept) != SHARED_CONCEPT_ENTRY_FIELDS:
+            errors.append(f"shared-concept registry row {index} schema changed")
         concept_id = concept.get("cross_language_concept_id")
         if not isinstance(concept_id, str) or not concept_id.strip():
             errors.append(f"shared-concept registry row {index} lacks a concept ID")
@@ -630,6 +914,73 @@ def shared_concept_registry_state(
         errors.append(
             f"shared-concept registry expected {len(expected_ids)} rows, got {len(concepts)}"
         )
+
+    producer = registry.get("producer_binding")
+    if not isinstance(producer, dict) or set(producer) != SHARED_CONCEPT_PRODUCER_FIELDS:
+        errors.append("shared-concept producer binding schema changed")
+    else:
+        sha_fields = (
+            "private_completion_sha256",
+            "allocation_receipt_sha256",
+            "contract_sha256",
+            "d1_builder_sha256",
+            "registry_builder_sha256",
+            "slot_set_sha256",
+            "registry_payload_sha256",
+        )
+        if (
+            producer.get("schema_version")
+            != SHARED_CONCEPT_PRODUCER_BINDING_SCHEMA
+            or producer.get("status")
+            != "producer_validated_private_completion"
+            or not isinstance(producer.get("execution_git_head"), str)
+            or re.fullmatch(r"[0-9a-f]{40}", producer["execution_git_head"])
+            is None
+            or any(
+                not isinstance(producer.get(field), str)
+                or re.fullmatch(r"[0-9a-f]{64}", producer[field]) is None
+                for field in sha_fields
+            )
+            or producer.get("candidate_model_output_seen") is not False
+            or producer.get("publication")
+            != "exclusive_private_bundle_receipt_last"
+        ):
+            errors.append("shared-concept producer binding is malformed")
+        language_rows = Counter(
+            slot["language"]
+            for slot in slots
+            if slot["origin_mode"] == "shared_concept_independent_rewrite"
+        )
+        expected_counts = len(expected_ids)
+        if (
+            producer.get("concept_count") != expected_counts
+            or producer.get("shared_row_count") != sum(language_rows.values())
+            or producer.get("language_rows") != dict(sorted(language_rows.items()))
+            or producer.get("independent_concept_reviews") != expected_counts
+            or producer.get("language_neutrality_approvals") != expected_counts
+            or producer.get("meaning_safety_approvals") != expected_counts
+            or producer.get("family_separation_approvals") != expected_counts
+        ):
+            errors.append("shared-concept producer coverage differs from D1 allocation")
+        if producer.get("slot_set_sha256") != slot_identity_sha256(slots):
+            errors.append("shared-concept producer slot identity differs from D1 allocation")
+        registry_payload = {
+            field: registry.get(field)
+            for field in SHARED_CONCEPT_REGISTRY_FIELDS - {"producer_binding"}
+        }
+        if producer.get("registry_payload_sha256") != canonical_json_sha256(
+            registry_payload
+        ):
+            errors.append("shared-concept registry payload binding is invalid")
+    errors.extend(
+        _shared_concept_seal_receipt_errors(
+            slots=slots,
+            registry=registry,
+            seal_receipt=seal_receipt,
+            registry_sha256=registry_sha256,
+            current_contract_sha256=current_contract_sha256,
+        )
+    )
     return sorted(set(errors)), bindings
 
 
@@ -648,13 +999,23 @@ def build_authoring_packet_receipt(
     slots: list[dict[str, Any]],
     shared_registry_path: Path | None,
     shared_registry: dict[str, Any] | None,
+    shared_seal_receipt: dict[str, Any] | None = None,
     contract_sha256: str | None = None,
     builder_sha256: str | None = None,
     shared_registry_sha256: str | None = None,
+    shared_seal_receipt_sha256: str | None = None,
 ) -> dict[str, Any]:
-    if (shared_registry_path is None) != (shared_registry is None):
+    if len(
+        {
+            shared_registry_path is None,
+            shared_registry is None,
+            shared_seal_receipt is None,
+            shared_registry_sha256 is None,
+            shared_seal_receipt_sha256 is None,
+        }
+    ) != 1:
         raise ValidationFailure(
-            "shared-concept registry path and parsed content must be supplied together"
+            "shared-concept registry and authenticated seal receipt must be supplied together"
         )
     languages = contract.get("languages")
     if (
@@ -671,7 +1032,18 @@ def build_authoring_packet_receipt(
     if contract.get("total_rows") != 2000 or contract.get("language_rows") != 400:
         raise ValidationFailure("D1 packet workflow requires 2,000 rows and 400 per language")
 
-    shared_errors, bindings = shared_concept_registry_state(slots, shared_registry)
+    active_contract_sha256 = (
+        contract_sha256
+        if contract_sha256 is not None
+        else sha256_file(contract_path)
+    )
+    shared_errors, bindings = shared_concept_registry_state(
+        slots,
+        shared_registry,
+        seal_receipt=shared_seal_receipt,
+        registry_sha256=shared_registry_sha256,
+        current_contract_sha256=active_contract_sha256,
+    )
     if shared_registry is None:
         shared_receipt: dict[str, Any] = {
             "status": "blocked",
@@ -693,6 +1065,7 @@ def build_authoring_packet_receipt(
                 if shared_registry_sha256 is not None
                 else sha256_file(shared_registry_path)
             ),
+            "seal_receipt_sha256": shared_seal_receipt_sha256,
             "concept_count": len(bindings),
             "bindings_sha256": canonical_json_sha256(binding_rows),
         }
@@ -716,9 +1089,7 @@ def build_authoring_packet_receipt(
     payload = {
         "schema_version": PACKET_RECEIPT_SCHEMA,
         "contract_sha256": (
-            contract_sha256
-            if contract_sha256 is not None
-            else sha256_file(contract_path)
+            active_contract_sha256
         ),
         "builder_sha256": (
             builder_sha256
@@ -748,13 +1119,27 @@ def write_authoring_packets(
     plan_errors = verify_plan(contract, slots)
     if plan_errors:
         raise ValidationFailure("; ".join(plan_errors))
-    shared_registry = read_json(shared_registry_path) if shared_registry_path else None
+    if shared_registry_path:
+        (
+            shared_registry,
+            shared_seal_receipt,
+            shared_registry_sha256,
+            shared_seal_receipt_sha256,
+        ) = read_shared_concept_seal_bundle(shared_registry_path)
+    else:
+        shared_registry = None
+        shared_seal_receipt = None
+        shared_registry_sha256 = None
+        shared_seal_receipt_sha256 = None
     receipt = build_authoring_packet_receipt(
         contract_path=contract_path,
         contract=contract,
         slots=slots,
         shared_registry_path=shared_registry_path,
         shared_registry=shared_registry,
+        shared_seal_receipt=shared_seal_receipt,
+        shared_registry_sha256=shared_registry_sha256,
+        shared_seal_receipt_sha256=shared_seal_receipt_sha256,
     )
 
     output_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -801,6 +1186,7 @@ def authoring_launch_state(
     receipt_path: Path,
     packet_receipt_sha256: str | None = None,
     shared_registry_sha256: str | None = None,
+    shared_seal_receipt_sha256: str | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
     errors: list[str] = []
     assignments, assignment_sha = read_jsonl_snapshot(assignments_path)
@@ -837,6 +1223,10 @@ def authoring_launch_state(
         "shared_concept_registry_sha256"
     ) != shared_registry_sha256:
         errors.append("authoring launch shared-concept registry hash does not match")
+    if shared_seal_receipt_sha256 is not None and inputs.get(
+        "shared_concept_seal_receipt_sha256"
+    ) != shared_seal_receipt_sha256:
+        errors.append("authoring launch shared-concept seal receipt hash does not match")
     artifacts = receipt.get("artifacts")
     artifact = (
         artifacts.get("assignments.jsonl") if isinstance(artifacts, dict) else None
@@ -1012,13 +1402,23 @@ def merge_authoring_packets(
     plan_errors = verify_plan(contract, slots)
     if plan_errors:
         raise ValidationFailure("; ".join(plan_errors))
-    shared_registry = read_json(shared_registry_path) if shared_registry_path else None
+    if shared_registry_path is None:
+        raise ValidationFailure("sealed shared-concept bundle is required")
+    (
+        shared_registry,
+        shared_seal_receipt,
+        shared_registry_sha,
+        shared_seal_receipt_sha,
+    ) = read_shared_concept_seal_bundle(shared_registry_path)
     expected_packet_receipt = build_authoring_packet_receipt(
         contract_path=contract_path,
         contract=contract,
         slots=slots,
         shared_registry_path=shared_registry_path,
         shared_registry=shared_registry,
+        shared_seal_receipt=shared_seal_receipt,
+        shared_registry_sha256=shared_registry_sha,
+        shared_seal_receipt_sha256=shared_seal_receipt_sha,
     )
     actual_packet_receipt = read_json(packet_receipt_path)
     if actual_packet_receipt != expected_packet_receipt:
@@ -1030,7 +1430,13 @@ def merge_authoring_packets(
         raise ValidationFailure(
             "shared-concept authoring is blocked until a sealed registry is bound"
         )
-    shared_errors, bindings = shared_concept_registry_state(slots, shared_registry)
+    shared_errors, bindings = shared_concept_registry_state(
+        slots,
+        shared_registry,
+        seal_receipt=shared_seal_receipt,
+        registry_sha256=shared_registry_sha,
+        current_contract_sha256=sha256_file(contract_path),
+    )
     if shared_errors:
         raise ValidationFailure("; ".join(shared_errors))
 
@@ -1111,7 +1517,6 @@ def merge_authoring_packets(
         )
     ordered_rows = [actual_by_id[slot["family_id"]] for slot in slots]
     packet_receipt_sha = sha256_file(packet_receipt_path)
-    shared_registry_sha = sha256_file(shared_registry_path)
     launch_errors, launch_summary = authoring_launch_state(
         contract_path=contract_path,
         slots=slots,
@@ -1120,6 +1525,7 @@ def merge_authoring_packets(
         receipt_path=launch_receipt_path,
         packet_receipt_sha256=packet_receipt_sha,
         shared_registry_sha256=shared_registry_sha,
+        shared_seal_receipt_sha256=shared_seal_receipt_sha,
     )
     if launch_errors:
         raise ValidationFailure("; ".join(launch_errors))
@@ -1130,6 +1536,7 @@ def merge_authoring_packets(
         "builder_sha256": sha256_file(Path(__file__).resolve()),
         "authoring_packet_receipt_sha256": packet_receipt_sha,
         "shared_concept_registry_sha256": shared_registry_sha,
+        "shared_concept_seal_receipt_sha256": shared_seal_receipt_sha,
         "authoring_launch_assignments_sha256": launch_summary["assignments_sha256"],
         "authoring_launch_receipt_sha256": launch_summary["receipt_sha256"],
         "completed_packets": completed_receipts,
@@ -1576,16 +1983,29 @@ def evaluate(
     contract = read_json(contract_path)
     rows = read_jsonl(rows_path)
     registry = read_json(registry_path)
-    shared_concept_registry = (
-        read_json(shared_concept_registry_path) if shared_concept_registry_path else None
-    )
+    if shared_concept_registry_path:
+        (
+            shared_concept_registry,
+            shared_seal_receipt,
+            shared_registry_sha,
+            shared_seal_receipt_sha,
+        ) = read_shared_concept_seal_bundle(shared_concept_registry_path)
+    else:
+        shared_concept_registry = None
+        shared_seal_receipt = None
+        shared_registry_sha = None
+        shared_seal_receipt_sha = None
     receipt = read_json(leakage_receipt_path) if leakage_receipt_path else None
     slots = build_slots(contract)
     errors = verify_plan(contract, slots)
     registry_errors, registry_blockers = registry_state(contract, registry)
     errors.extend(registry_errors)
     shared_errors, shared_bindings = shared_concept_registry_state(
-        slots, shared_concept_registry
+        slots,
+        shared_concept_registry,
+        seal_receipt=shared_seal_receipt,
+        registry_sha256=shared_registry_sha,
+        current_contract_sha256=sha256_file(contract_path),
     )
     errors.extend(shared_errors)
     row_errors, row_blockers, metrics = validate_candidate_rows(
@@ -1603,10 +2023,9 @@ def evaluate(
             assignments_path=launch_assignments_path,
             receipt_path=launch_receipt_path,
             shared_registry_sha256=(
-                sha256_file(shared_concept_registry_path)
-                if shared_concept_registry_path
-                else None
+                shared_registry_sha
             ),
+            shared_seal_receipt_sha256=shared_seal_receipt_sha,
         )
         errors.extend(launch_errors)
     prompt, prompt_blockers = prompt_state(contract_path, contract)
@@ -1672,10 +2091,9 @@ def evaluate(
                 else None
             ),
             "sha256": (
-                sha256_file(shared_concept_registry_path)
-                if shared_concept_registry_path
-                else None
+                shared_registry_sha
             ),
+            "seal_receipt_sha256": shared_seal_receipt_sha,
             "status": (
                 shared_concept_registry.get("status")
                 if shared_concept_registry
