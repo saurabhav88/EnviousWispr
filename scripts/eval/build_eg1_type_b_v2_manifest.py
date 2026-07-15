@@ -15,43 +15,25 @@ from typing import Any
 
 SCRIPT_PATH = Path(__file__).resolve()
 REPO_ROOT = SCRIPT_PATH.parents[2]
+ALLOCATION_CONTRACT = (
+    REPO_ROOT
+    / "scripts"
+    / "eval"
+    / "contracts"
+    / "eg1_type_b_v2_allocation_v1.json"
+)
 APPROVED = REPO_ROOT / "scripts/eval/corpus/type_b_approved_1890.jsonl"
 OVERFLOW = REPO_ROOT / "scripts/eval/corpus/type_b_overflow_900.jsonl"
 ALL_TYPE_B = REPO_ROOT / "scripts/eval/corpus/type_b_all_v1.jsonl"
 TRAINING = REPO_ROOT / "scripts/eval/runs/bakeoff-1265/train_sft_v2.jsonl"
-SOURCE_HASHES = {
-    APPROVED: "27993adc574242e6bf2aef7430dbc2c6776ebbb6dd547d61f561d4e693d22a6b",
-    OVERFLOW: "1267e5c8ccf84ea745bd2b1bcdcac9d912b8dadb8c14ef76515eee24139759fa",
-    ALL_TYPE_B: "eb83421b84cd728f8aac96054b4d3518661a40e0c0a33961e3d14b07b118da4d",
-    TRAINING: "5afc6b9435c7bef08df17ba3c4edcb889b8329cd7c1520c49d681999a666f568",
-}
-PROVISIONAL_APPROVED_IDS = (
-    "SCT-003",
-    "ME-001",
-    "TC-001",
-    "TC-015",
-    "TC-020",
-    "TC-029",
-    "TC-043",
-    "TC-057",
-    "TC-071",
-    "TC-085",
-    "TC-099",
-    "TC-113",
-    "TC-127",
-    "TC-141",
-    "TC-155",
-    "TC-169",
-    "TC-183",
-    "TC-211",
-    "TC-225",
-    "TC-239",
-    "TC-253",
-    "TC-267",
-)
-PROVISIONAL_OVERFLOW_IDS = ("SCT-OF-003",)
+SOURCE_PATHS = (APPROVED, OVERFLOW, ALL_TYPE_B, TRAINING)
+SCHEMA_VERSION = "eg1-type-b-v2-allocation-v1"
 TARGET_TOTAL = 1890
 FRESH_TOTAL = 1867
+PROVISIONAL_TOTAL = 23
+RESERVE_TOTAL = 23
+FRESH_AUTHORSHIP_TOTAL = 1890
+ALL_SLOT_RECORDS = 1913
 TRAP_CATEGORIES = {
     "self_correction_trap",
     "list_format_trap",
@@ -98,9 +80,33 @@ def distributions(rows: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
     }
 
 
-def family_id(seed: int, category: str, length_bucket: int, index: int) -> str:
+def joint_cells(rows: list[dict[str, Any]]) -> dict[str, int]:
+    return dict(
+        sorted(
+            (
+                f"{category}|{length_bucket}",
+                count,
+            )
+            for (category, length_bucket), count in Counter(
+                (str(row["category"]), int(row["length_bucket"])) for row in rows
+            ).items()
+        )
+    )
+
+
+def trap_count(rows: list[dict[str, Any]]) -> int:
+    count = 0
+    for row in rows:
+        value = row.get("trap")
+        count += value if isinstance(value, bool) else row["category"] in TRAP_CATEGORIES
+    return count
+
+
+def family_id(
+    seed: int, namespace: str, category: str, length_bucket: int, index: int
+) -> str:
     digest = hashlib.sha256(
-        f"type-b-v2|{seed}|{category}|{length_bucket}|{index}".encode()
+        f"type-b-v2|{seed}|{namespace}|{category}|{length_bucket}|{index}".encode()
     ).hexdigest()[:20]
     return f"tb2fam-{digest}"
 
@@ -127,9 +133,55 @@ def main() -> int:
     if not output.parent.is_dir():
         raise SystemExit("--out-bundle parent directory must already exist")
 
+    contract_bytes, contract_sha = read_once(ALLOCATION_CONTRACT)
+    contract = json.loads(contract_bytes)
+    if not isinstance(contract, dict):
+        raise ValueError("allocation contract must be an object")
+    if contract.get("schema_version") != SCHEMA_VERSION:
+        raise ValueError("allocation contract schema changed")
+    if contract.get("seed") != args.seed:
+        raise ValueError("seed differs from the sealed allocation contract")
+    expected_counts = {
+        "final_benchmark": TARGET_TOTAL,
+        "provisional_legacy": PROVISIONAL_TOTAL,
+        "fresh_primary": FRESH_TOTAL,
+        "replacement_reserve": RESERVE_TOTAL,
+        "fresh_authorship_total": FRESH_AUTHORSHIP_TOTAL,
+        "all_slot_records": ALL_SLOT_RECORDS,
+    }
+    if contract.get("counts") != expected_counts:
+        raise ValueError("allocation contract counts changed")
+    expected_traps = {
+        "final_benchmark": 300,
+        "provisional_legacy": 2,
+        "fresh_primary": 298,
+        "replacement_reserve": 2,
+    }
+    if contract.get("trap_counts") != expected_traps:
+        raise ValueError("allocation contract trap counts changed")
+    source_hashes = contract.get("source_sha256")
+    expected_source_names = {str(path.relative_to(REPO_ROOT)) for path in SOURCE_PATHS}
+    if not isinstance(source_hashes, dict) or set(source_hashes) != expected_source_names:
+        raise ValueError("allocation contract source inventory changed")
+    provisional_ids = contract.get("provisional_case_ids")
+    if (
+        not isinstance(provisional_ids, list)
+        or len(provisional_ids) != PROVISIONAL_TOTAL
+        or len(set(provisional_ids)) != PROVISIONAL_TOTAL
+        or not all(isinstance(value, str) and value for value in provisional_ids)
+    ):
+        raise ValueError("allocation contract provisional IDs are invalid")
+    final_joint_cells = contract.get("final_joint_cells")
+    provisional_joint_cells = contract.get("provisional_joint_cells")
+    if not isinstance(final_joint_cells, dict) or not isinstance(
+        provisional_joint_cells, dict
+    ):
+        raise ValueError("allocation contract joint cells are invalid")
+
     source_bytes: dict[Path, bytes] = {}
     source_receipts: list[dict[str, Any]] = []
-    for path, expected_sha in SOURCE_HASHES.items():
+    for path in SOURCE_PATHS:
+        expected_sha = source_hashes[str(path.relative_to(REPO_ROOT))]
         value, actual_sha = read_once(path)
         if actual_sha != expected_sha:
             raise ValueError(f"source changed: {path.relative_to(REPO_ROOT)}")
@@ -149,14 +201,22 @@ def main() -> int:
         raise ValueError("Type B source row count changed")
     approved_by_id = {row["id"]: row for row in approved}
     overflow_by_id = {row["id"]: row for row in overflow}
-    if set(PROVISIONAL_APPROVED_IDS) - set(approved_by_id):
-        raise ValueError("a provisional approved ID is missing")
-    if set(PROVISIONAL_OVERFLOW_IDS) - set(overflow_by_id):
-        raise ValueError("a provisional overflow ID is missing")
+    retained_source_rows: list[dict[str, Any]] = []
+    for case_id in provisional_ids:
+        matches = [
+            source[case_id]
+            for source in (approved_by_id, overflow_by_id)
+            if case_id in source
+        ]
+        if len(matches) != 1:
+            raise ValueError(f"provisional ID must resolve exactly once: {case_id}")
+        retained_source_rows.append(matches[0])
 
     target_cells = Counter(
         (row["category"], int(row["length_bucket"])) for row in approved
     )
+    if joint_cells(approved) != final_joint_cells:
+        raise ValueError("approved source differs from sealed joint-cell allocation")
     target_category_metadata: dict[str, tuple[str, str]] = {}
     for row in approved:
         metadata = (row["tier"], row["subset"])
@@ -164,8 +224,8 @@ def main() -> int:
         if prior != metadata:
             raise ValueError(f"category metadata is inconsistent: {row['category']}")
 
-    retained_source_rows = [approved_by_id[value] for value in PROVISIONAL_APPROVED_IDS]
-    retained_source_rows.extend(overflow_by_id[value] for value in PROVISIONAL_OVERFLOW_IDS)
+    if joint_cells(retained_source_rows) != provisional_joint_cells:
+        raise ValueError("provisional sources differ from sealed joint-cell allocation")
     retained_cells = Counter(
         (row["category"], int(row["length_bucket"])) for row in retained_source_rows
     )
@@ -207,7 +267,7 @@ def main() -> int:
                 {
                     "slot_id": f"tb2-fresh-{global_index + 1:04d}",
                     "semantic_family_id": family_id(
-                        args.seed, category, length_bucket, cell_index
+                        args.seed, "primary", category, length_bucket, cell_index
                     ),
                     "source": "fresh_model_blind_required",
                     "source_case_id": None,
@@ -240,20 +300,102 @@ def main() -> int:
     ]
     if distributions(manifest) != distributions(target_distribution_rows):
         raise ValueError("replacement manifest does not preserve Type B balance")
+    if joint_cells(manifest) != final_joint_cells:
+        raise ValueError("replacement manifest does not preserve sealed joint cells")
+    fresh_rows = [
+        row for row in manifest if row["source"] == "fresh_model_blind_required"
+    ]
+    fresh_joint_cells = joint_cells(fresh_rows)
+    if (
+        len(fresh_rows) != FRESH_TOTAL
+        or trap_count(fresh_rows) != expected_traps["fresh_primary"]
+    ):
+        raise ValueError("fresh primary allocation is invalid")
+
+    reserves: list[dict[str, Any]] = []
+    for index, source_row in enumerate(retained_source_rows, 1):
+        category = str(source_row["category"])
+        length_bucket = int(source_row["length_bucket"])
+        tier, subset = target_category_metadata[category]
+        reserves.append(
+            {
+                "slot_id": f"tb2-reserve-{index:04d}",
+                "semantic_family_id": family_id(
+                    args.seed, "reserve", category, length_bucket, index - 1
+                ),
+                "source": "fresh_replacement_reserve_model_blind_required",
+                "source_case_id": None,
+                "reserved_for_source_case_id": source_row["id"],
+                "category": category,
+                "length_bucket": length_bucket,
+                "tier": tier,
+                "subset": subset,
+                "trap": category in TRAP_CATEGORIES,
+                "author_lane": f"author-{((index - 1) % 4) + 1}",
+                "reviewer_lane": f"reviewer-{(index % 4) + 1}",
+                "text_authored": False,
+                "benchmark_eligible": False,
+                "training_eligible": False,
+                "candidate_model_output_seen": False,
+            }
+        )
+    if len(reserves) != RESERVE_TOTAL:
+        raise ValueError("replacement reserve allocation is invalid")
+    if joint_cells(reserves) != provisional_joint_cells:
+        raise ValueError("replacement reserves are not same-cell matched")
+    if trap_count(reserves) != expected_traps["replacement_reserve"]:
+        raise ValueError("replacement reserve trap count is invalid")
+    all_family_ids = {
+        row["semantic_family_id"] for row in [*manifest, *reserves]
+    }
+    if len(all_family_ids) != ALL_SLOT_RECORDS:
+        raise ValueError("primary and reserve semantic family IDs are not globally unique")
 
     manifest_bytes = encode_jsonl(manifest)
     manifest_sha = sha256_bytes(manifest_bytes)
+    reserve_bytes = encode_jsonl(reserves)
+    reserve_sha = sha256_bytes(reserve_bytes)
+    _, builder_sha = read_once(SCRIPT_PATH)
     receipt = {
         "status": "type_b_v2_slots_sealed_text_generation_blocked",
         "seed": args.seed,
         "target_total": TARGET_TOTAL,
         "provisional_retained": len(retained_source_rows),
         "fresh_required": FRESH_TOTAL,
+        "replacement_reserves": RESERVE_TOTAL,
+        "fresh_authorship_total": FRESH_AUTHORSHIP_TOTAL,
+        "all_slot_records": ALL_SLOT_RECORDS,
         "candidate_model_output_seen": False,
+        "allocation_contract": {
+            "path": str(ALLOCATION_CONTRACT.relative_to(REPO_ROOT)),
+            "sha256": contract_sha,
+            "schema_version": SCHEMA_VERSION,
+        },
+        "builder": {
+            "path": str(SCRIPT_PATH.relative_to(REPO_ROOT)),
+            "sha256": builder_sha,
+        },
         "manifest": {
             "path": "manifest.jsonl",
             "sha256": manifest_sha,
             "distributions": distributions(manifest),
+        },
+        "replacement_reserve_manifest": {
+            "path": "replacement_reserves.jsonl",
+            "sha256": reserve_sha,
+            "distributions": distributions(reserves),
+        },
+        "joint_cells": {
+            "final_benchmark": joint_cells(manifest),
+            "provisional_legacy": joint_cells(retained_source_rows),
+            "fresh_primary": fresh_joint_cells,
+            "replacement_reserve": joint_cells(reserves),
+        },
+        "trap_counts": {
+            "final_benchmark": trap_count(manifest),
+            "provisional_legacy": trap_count(retained_source_rows),
+            "fresh_primary": trap_count(fresh_rows),
+            "replacement_reserve": trap_count(reserves),
         },
         "sources": source_receipts,
         "eligibility_gate": {
@@ -271,7 +413,13 @@ def main() -> int:
         output.mkdir()
         created = True
         write_exclusive(output / "manifest.jsonl", manifest_bytes)
-        for path, expected_sha in SOURCE_HASHES.items():
+        write_exclusive(output / "replacement_reserves.jsonl", reserve_bytes)
+        if read_once(ALLOCATION_CONTRACT)[1] != contract_sha:
+            raise RuntimeError("allocation contract changed during manifest publication")
+        if read_once(SCRIPT_PATH)[1] != builder_sha:
+            raise RuntimeError("builder changed during manifest publication")
+        for path in SOURCE_PATHS:
+            expected_sha = source_hashes[str(path.relative_to(REPO_ROOT))]
             if read_once(path)[1] != expected_sha:
                 raise RuntimeError(f"source changed during manifest publication: {path}")
         write_exclusive(output / "receipt.json", receipt_bytes)
@@ -279,7 +427,15 @@ def main() -> int:
         if created:
             shutil.rmtree(output)
         raise
-    print(json.dumps({"slots": len(manifest), "fresh_required": FRESH_TOTAL}))
+    print(
+        json.dumps(
+            {
+                "slots": len(manifest),
+                "fresh_required": FRESH_TOTAL,
+                "replacement_reserves": len(reserves),
+            }
+        )
+    )
     return 0
 
 

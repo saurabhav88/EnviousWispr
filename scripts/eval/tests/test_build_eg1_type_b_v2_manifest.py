@@ -35,13 +35,22 @@ class BuildTypeBV2ManifestTests(unittest.TestCase):
             self.assertEqual(MODULE.main(), 0)
         receipt = json.loads((self.bundle / "receipt.json").read_text(encoding="utf-8"))
         manifest_bytes = (self.bundle / "manifest.jsonl").read_bytes()
+        reserve_bytes = (self.bundle / "replacement_reserves.jsonl").read_bytes()
         rows = [
             json.loads(line)
             for line in manifest_bytes.decode("utf-8").splitlines()
         ]
+        reserves = [
+            json.loads(line)
+            for line in reserve_bytes.decode("utf-8").splitlines()
+        ]
         self.assertEqual(len(rows), 1890)
+        self.assertEqual(len(reserves), 23)
         self.assertEqual(receipt["fresh_required"], 1867)
         self.assertEqual(receipt["provisional_retained"], 23)
+        self.assertEqual(receipt["replacement_reserves"], 23)
+        self.assertEqual(receipt["fresh_authorship_total"], 1890)
+        self.assertEqual(receipt["all_slot_records"], 1913)
         self.assertEqual(
             receipt["manifest"]["distributions"]["category"],
             {
@@ -100,9 +109,107 @@ class BuildTypeBV2ManifestTests(unittest.TestCase):
         self.assertEqual(
             receipt["manifest"]["sha256"], hashlib.sha256(manifest_bytes).hexdigest()
         )
+        self.assertEqual(
+            receipt["replacement_reserve_manifest"]["sha256"],
+            hashlib.sha256(reserve_bytes).hexdigest(),
+        )
+        self.assertEqual(
+            receipt["allocation_contract"]["sha256"],
+            hashlib.sha256(MODULE.ALLOCATION_CONTRACT.read_bytes()).hexdigest(),
+        )
+        self.assertEqual(
+            receipt["builder"]["sha256"], hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest()
+        )
+        self.assertEqual(
+            receipt["joint_cells"]["provisional_legacy"],
+            receipt["joint_cells"]["replacement_reserve"],
+        )
+        self.assertEqual(
+            receipt["trap_counts"],
+            {
+                "final_benchmark": 300,
+                "fresh_primary": 298,
+                "provisional_legacy": 2,
+                "replacement_reserve": 2,
+            },
+        )
         self.assertEqual(len({row["semantic_family_id"] for row in rows}), 1890)
+        self.assertEqual(
+            len({row["semantic_family_id"] for row in [*rows, *reserves]}), 1913
+        )
         self.assertTrue(all(row["candidate_model_output_seen"] is False for row in rows))
+        self.assertTrue(
+            all(row["candidate_model_output_seen"] is False for row in reserves)
+        )
         self.assertTrue(all(row["training_eligible"] is False for row in rows))
+        self.assertTrue(all(row["training_eligible"] is False for row in reserves))
+
+    def test_is_byte_deterministic_for_the_sealed_seed(self) -> None:
+        with mock.patch.object(sys, "argv", self.arguments()):
+            self.assertEqual(MODULE.main(), 0)
+        second = self.root / "second"
+        arguments = [
+            str(MODULE_PATH),
+            "--out-bundle",
+            str(second),
+            "--seed",
+            "1265",
+        ]
+        with mock.patch.object(sys, "argv", arguments):
+            self.assertEqual(MODULE.main(), 0)
+        for name in ("manifest.jsonl", "replacement_reserves.jsonl", "receipt.json"):
+            self.assertEqual((self.bundle / name).read_bytes(), (second / name).read_bytes())
+
+    def test_rejects_seed_drift_from_allocation_contract(self) -> None:
+        arguments = [
+            str(MODULE_PATH),
+            "--out-bundle",
+            str(self.bundle),
+            "--seed",
+            "1266",
+        ]
+        with mock.patch.object(sys, "argv", arguments):
+            with self.assertRaisesRegex(ValueError, "seed differs"):
+                MODULE.main()
+        self.assertFalse(self.bundle.exists())
+
+    def test_rejects_source_drift_before_publication(self) -> None:
+        original_read = MODULE.read_once
+
+        def drift(path: Path) -> tuple[bytes, str]:
+            value, digest = original_read(path)
+            if path == MODULE.APPROVED:
+                value += b"\n"
+                digest = hashlib.sha256(value).hexdigest()
+            return value, digest
+
+        with (
+            mock.patch.object(sys, "argv", self.arguments()),
+            mock.patch.object(MODULE, "read_once", side_effect=drift),
+        ):
+            with self.assertRaisesRegex(ValueError, "source changed"):
+                MODULE.main()
+        self.assertFalse(self.bundle.exists())
+
+    def test_rejects_allocation_contract_drift(self) -> None:
+        original_read = MODULE.read_once
+
+        def drift(path: Path) -> tuple[bytes, str]:
+            value, digest = original_read(path)
+            if path == MODULE.ALLOCATION_CONTRACT:
+                contract = json.loads(value)
+                contract["counts"]["fresh_primary"] = 1866
+                value = (json.dumps(contract) + "\n").encode()
+                digest = hashlib.sha256(value).hexdigest()
+            return value, digest
+
+        with (
+            mock.patch.object(sys, "argv", self.arguments()),
+            mock.patch.object(MODULE, "read_once", side_effect=drift),
+        ):
+            with self.assertRaisesRegex(ValueError, "contract counts changed"):
+                MODULE.main()
+        self.assertFalse(self.bundle.exists())
 
     def test_receipt_write_failure_removes_partial_bundle(self) -> None:
         original_write = MODULE.write_exclusive
