@@ -1209,7 +1209,9 @@ class BuildTypeBV2BlockedRegistryTests(unittest.TestCase):
 
 
 class CleanArchiveEvalDiscoveryTests(unittest.TestCase):
-    def test_clean_archive_eval_discovery_has_only_private_integration_skip(self) -> None:
+    def test_clean_archive_eval_discovery_has_only_explicit_private_integration_skips(
+        self,
+    ) -> None:
         if os.environ.get(CLEAN_ARCHIVE_CHILD) == "1":
             return
         with tempfile.TemporaryDirectory() as tmp:
@@ -1272,10 +1274,17 @@ class CleanArchiveEvalDiscoveryTests(unittest.TestCase):
             )
             output = result.stdout + result.stderr
             self.assertEqual(result.returncode, 0, output)
-            self.assertIn("OK (skipped=1)", output)
+            self.assertIn("OK (skipped=2)", output)
             self.assertEqual(
                 output.count(
                     "requires all four ignored real-private Type B source files"
+                ),
+                1,
+                output,
+            )
+            self.assertEqual(
+                output.count(
+                    "set EG1_REPLAY_PRIVATE_INTEGRATION=1 for the local private-artifact gate"
                 ),
                 1,
                 output,
