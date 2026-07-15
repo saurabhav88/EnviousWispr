@@ -101,3 +101,5 @@ Decision: this is compatibility failure evidence, not model-quality evidence. Do
 ## Post-run contract hardening
 
 The historical receipt above is unchanged: commit `79f3c9554037868326ab33b47f9e7de8ea724d3c` ran once with the documented prompt hash and stopped at 0 optimizer steps. A later full-branch review found that the trainer recorded that prompt hash but did not yet enforce it. Beginning with commit `538342d48ee85a933f03b8fe4a5c481ef6f51eda`, the tracked future preflight contract enforces the same exact hash and rejects any mismatch before base-artifact validation or model import/load. This hardening did not trigger another GPU invocation and does not turn the historical compatibility failure into quality evidence.
+
+A later tracked revision also atomically writes the populated adapter names, suffix counts, and parameter counts with status `adapter_validation_pending_not_complete` before enforcing target assertions. A mismatch is then atomically marked `blocked_adapter_validation_failed`. The old manifest hash above remains unchanged and did not contain these adapter diagnostics. This is future evidence hardening only; no remote retry occurred.

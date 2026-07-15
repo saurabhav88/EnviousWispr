@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest import mock
 
 
@@ -47,6 +47,15 @@ def private_preflight_rows(count: int = 4) -> list[dict[str, str]]:
             "preflight_provenance": trainer.QWEN35_PREFLIGHT_CONTRACT["row_provenance"],
         }
         for index in range(count)
+    ]
+
+
+def qwen35_partial_target_fixture() -> list[str]:
+    gdn_suffixes = {"in_proj_a", "in_proj_b", "in_proj_qkv", "in_proj_z", "out_proj"}
+    return [
+        name
+        for name in qwen35_language_target_fixture()
+        if name.rsplit(".", 1)[-1] not in gdn_suffixes
     ]
 
 
@@ -114,6 +123,212 @@ class Qwen35TargetTests(unittest.TestCase):
                     trainer.QWEN35_PREFLIGHT_CONTRACT["rank_16_trainable_parameters"],
                     rank=16,
                 )
+
+
+class Qwen35AdapterEvidenceTests(unittest.TestCase):
+    def test_128_of_248_mismatch_persists_blocked_receipt_before_trainer(self) -> None:
+        class FakeModel:
+            def __init__(self) -> None:
+                self.save_pretrained = mock.Mock(name="save_pretrained")
+                self.save_pretrained_merged = mock.Mock(name="save_pretrained_merged")
+
+            def named_modules(self) -> list[tuple[str, SimpleNamespace]]:
+                return [
+                    (name, SimpleNamespace(lora_A=object()))
+                    for name in qwen35_partial_target_fixture()
+                ]
+
+            def parameters(self) -> list[SimpleNamespace]:
+                return [
+                    SimpleNamespace(requires_grad=True, numel=lambda: 123_456),
+                    SimpleNamespace(requires_grad=False, numel=lambda: 654_321),
+                ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base_path = root / "Qwen3.5-4B"
+            base_path.mkdir()
+            (base_path / "config.json").write_text(
+                json.dumps(
+                    {
+                        "model_type": "qwen3_5",
+                        "architectures": ["Qwen3_5ForConditionalGeneration"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            data_path = root / "private.jsonl"
+            data_path.write_text(
+                "".join(json.dumps(row) + "\n" for row in private_preflight_rows()),
+                encoding="utf-8",
+            )
+            prompt_path = root / "prompt.txt"
+            prompt_path.write_text("Pinned synthetic preflight prompt.\n", encoding="utf-8")
+            output_root = root / "out"
+            tag = "synthetic-128-of-248"
+            manifest_path = output_root / tag / "training-manifest.json"
+            args = SimpleNamespace(
+                base=str(base_path),
+                data=str(data_path),
+                prompt=str(prompt_path),
+                tag=tag,
+                output_root=str(output_root),
+                lr=5e-5,
+                epochs=2.0,
+                rank=16,
+                alpha=32,
+                micro_batch=1,
+                gradient_accumulation=1,
+                max_seq=512,
+                seed=1265,
+                training_mode="auto",
+                preflight_only=True,
+                skip_merge=True,
+            )
+
+            fake_model = FakeModel()
+            fake_tokenizer = SimpleNamespace(save_pretrained=mock.Mock(name="tokenizer_save"))
+            fast_model = SimpleNamespace(
+                from_pretrained=mock.Mock(return_value=(fake_model, fake_tokenizer)),
+                get_peft_model=mock.Mock(return_value=fake_model),
+            )
+            unsloth = ModuleType("unsloth")
+            unsloth.FastLanguageModel = SimpleNamespace()
+            unsloth.FastModel = fast_model
+            chat_templates = ModuleType("unsloth.chat_templates")
+            chat_templates.train_on_responses_only = mock.Mock()
+            torch = ModuleType("torch")
+            torch.__version__ = "2.10.0+cu128"
+            torch.manual_seed = mock.Mock()
+            torch.cuda = SimpleNamespace(
+                is_available=lambda: True,
+                is_bf16_supported=lambda: True,
+                get_device_name=lambda _index: "Synthetic RTX 4090",
+            )
+            datasets = ModuleType("datasets")
+            datasets.Dataset = SimpleNamespace()
+            trl = ModuleType("trl")
+            trl.SFTConfig = SimpleNamespace()
+            trl.SFTTrainer = mock.Mock(name="SFTTrainer")
+
+            def fixed_hash(path: Path) -> str:
+                if path.name == data_path.name:
+                    return str(trainer.QWEN35_PREFLIGHT_CONTRACT["data_sha256"])
+                if path.name == prompt_path.name:
+                    return str(trainer.QWEN35_PREFLIGHT_CONTRACT["prompt_sha256"])
+                if path.name == "config.json":
+                    return str(
+                        trainer.QWEN35_PREFLIGHT_CONTRACT["artifact_sha256"]["config.json"]
+                    )
+                raise AssertionError(f"Unexpected hash read: {path}")
+
+            real_write_json = trainer.write_json
+            manifest_snapshots: list[dict[str, object]] = []
+
+            def recording_write(path: Path, value: object) -> None:
+                manifest_snapshots.append(json.loads(json.dumps(value)))
+                real_write_json(path, value)
+
+            with (
+                mock.patch.object(trainer, "parse_args", return_value=args),
+                mock.patch.object(trainer, "sha256", side_effect=fixed_hash),
+                mock.patch.object(
+                    trainer,
+                    "validate_qwen35_base_artifacts",
+                    return_value={"revision": trainer.QWEN35_PREFLIGHT_CONTRACT["base_revision"]},
+                ),
+                mock.patch.object(trainer, "distribution_version", return_value="5.5.0"),
+                mock.patch.object(trainer, "write_json", side_effect=recording_write),
+                mock.patch.dict(
+                    sys.modules,
+                    {
+                        "unsloth": unsloth,
+                        "unsloth.chat_templates": chat_templates,
+                        "torch": torch,
+                        "datasets": datasets,
+                        "trl": trl,
+                    },
+                ),
+                self.assertRaisesRegex(RuntimeError, "target coverage drifted"),
+            ):
+                trainer.main()
+
+            pending = next(
+                snapshot
+                for snapshot in manifest_snapshots
+                if snapshot["status"] == "adapter_validation_pending_not_complete"
+            )
+            pending_receipt = pending["adapter_receipt"]
+            self.assertEqual(pending_receipt["matched_module_count"], 128)
+            self.assertEqual(
+                sum(pending["preflight_contract"]["target_suffix_counts"].values()),
+                248,
+            )
+            self.assertEqual(len(pending_receipt["matched_module_names"]), 128)
+            self.assertEqual(
+                pending_receipt["target_suffix_counts"],
+                {
+                    "down_proj": 32,
+                    "gate_proj": 32,
+                    "k_proj": 8,
+                    "o_proj": 8,
+                    "q_proj": 8,
+                    "up_proj": 32,
+                    "v_proj": 8,
+                },
+            )
+            self.assertEqual(pending_receipt["trainable_parameter_count"], 123_456)
+            self.assertEqual(pending_receipt["total_parameter_count"], 777_777)
+            self.assertEqual(pending_receipt["validation_status"], "pending")
+
+            on_disk = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(on_disk["status"], "blocked_adapter_validation_failed")
+            self.assertEqual(
+                on_disk["adapter_receipt"]["matched_module_names"],
+                pending_receipt["matched_module_names"],
+            )
+            self.assertEqual(on_disk["adapter_receipt"]["validation_status"], "failed")
+            self.assertNotEqual(on_disk["status"], "complete")
+            trl.SFTTrainer.assert_not_called()
+            fake_model.save_pretrained.assert_not_called()
+            fake_model.save_pretrained_merged.assert_not_called()
+            fake_tokenizer.save_pretrained.assert_not_called()
+            self.assertFalse((output_root / tag / "adapter").exists())
+            self.assertFalse((output_root / tag / "merged16").exists())
+
+    def test_adapter_receipt_write_failure_stops_before_validation(self) -> None:
+        manifest: dict[str, object] = {"status": "starting"}
+        receipt: dict[str, object] = {"matched_module_count": 128}
+        with (
+            mock.patch.object(trainer, "write_json", side_effect=OSError("synthetic write failure")),
+            mock.patch.object(trainer, "validate_qwen35_adapter_receipt") as validator,
+            self.assertRaisesRegex(OSError, "synthetic write failure"),
+        ):
+            trainer.persist_qwen35_adapter_receipt_before_validation(
+                manifest_path=Path("unused.json"),
+                manifest=manifest,
+                receipt=receipt,
+                lora_module_names=qwen35_partial_target_fixture(),
+                trainable_parameters=123_456,
+                rank=16,
+            )
+
+        validator.assert_not_called()
+
+    def test_atomic_manifest_write_preserves_previous_receipt_on_replace_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "training-manifest.json"
+            path.write_text('{"status":"previous"}\n', encoding="utf-8")
+
+            with (
+                mock.patch.object(trainer.os, "replace", side_effect=OSError("replace failed")),
+                self.assertRaisesRegex(OSError, "replace failed"),
+            ):
+                trainer.write_json(path, {"status": "new"})
+
+            self.assertEqual(path.read_text(encoding="utf-8"), '{"status":"previous"}\n')
+            self.assertEqual(list(root.glob(f".{path.name}.*")), [])
 
 
 class Qwen35ArtifactContractTests(unittest.TestCase):

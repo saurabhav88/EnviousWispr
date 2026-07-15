@@ -13,6 +13,7 @@ import inspect
 import json
 import os
 import platform
+import tempfile
 import time
 from importlib.metadata import version as distribution_version
 from pathlib import Path
@@ -335,7 +336,64 @@ def read_rows(path: Path) -> list[dict[str, Any]]:
 
 
 def write_json(path: Path, value: Any) -> None:
-    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        os.replace(temporary_name, path)
+    except BaseException:
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def adapter_receipt(
+    model: Any, lora_module_names: list[str], trainable_parameters: int
+) -> dict[str, Any]:
+    return {
+        "matched_module_count": len(lora_module_names),
+        "matched_module_names": lora_module_names,
+        "target_suffix_counts": qwen35_target_suffix_counts(lora_module_names),
+        "forbidden_vision_mtp_matches": qwen35_forbidden_target_names(lora_module_names),
+        "trainable_parameter_count": trainable_parameters,
+        "total_parameter_count": sum(parameter.numel() for parameter in model.parameters()),
+    }
+
+
+def persist_qwen35_adapter_receipt_before_validation(
+    *,
+    manifest_path: Path,
+    manifest: dict[str, Any],
+    receipt: dict[str, Any],
+    lora_module_names: list[str],
+    trainable_parameters: int,
+    rank: int,
+) -> None:
+    manifest["status"] = "adapter_validation_pending_not_complete"
+    receipt["validation_status"] = "pending"
+    manifest["adapter_receipt"] = receipt
+    write_json(manifest_path, manifest)
+
+    try:
+        validate_qwen35_adapter_receipt(
+            lora_module_names, trainable_parameters, rank
+        )
+    except RuntimeError as error:
+        manifest["status"] = "blocked_adapter_validation_failed"
+        receipt["validation_status"] = "failed"
+        receipt["validation_error"] = str(error)
+        write_json(manifest_path, manifest)
+        raise
+
+    manifest["status"] = "adapter_validation_passed_not_trained"
+    receipt["validation_status"] = "passed"
+    write_json(manifest_path, manifest)
 
 
 def sft_config(SFTConfig: Any, **kwargs: Any) -> Any:
@@ -538,17 +596,19 @@ def main() -> None:
     trainable_parameters = sum(
         parameter.numel() for parameter in model.parameters() if parameter.requires_grad
     )
-    manifest["adapter_receipt"] = {
-        "matched_module_count": len(lora_module_names),
-        "matched_module_names": lora_module_names,
-        "target_suffix_counts": qwen35_target_suffix_counts(lora_module_names),
-        "forbidden_vision_mtp_matches": qwen35_forbidden_target_names(lora_module_names),
-        "trainable_parameter_count": trainable_parameters,
-        "total_parameter_count": sum(parameter.numel() for parameter in model.parameters()),
-    }
+    receipt = adapter_receipt(model, lora_module_names, trainable_parameters)
     if family == QWEN35_FAMILY:
-        validate_qwen35_adapter_receipt(lora_module_names, trainable_parameters, args.rank)
-    write_json(output_dir / "training-manifest.json", manifest)
+        persist_qwen35_adapter_receipt_before_validation(
+            manifest_path=output_dir / "training-manifest.json",
+            manifest=manifest,
+            receipt=receipt,
+            lora_module_names=lora_module_names,
+            trainable_parameters=trainable_parameters,
+            rank=args.rank,
+        )
+    else:
+        manifest["adapter_receipt"] = receipt
+        write_json(output_dir / "training-manifest.json", manifest)
 
     def to_text(row: dict[str, Any]) -> dict[str, str]:
         messages = [
