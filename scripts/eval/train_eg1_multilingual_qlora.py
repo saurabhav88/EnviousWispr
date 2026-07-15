@@ -214,8 +214,8 @@ def qwen35_preflight_first_step_learning_rate(learning_rate: float) -> float:
         raise ValueError(
             "Qwen3.5 preflight scheduler contract requires one cosine step with zero warmup"
         )
-    if learning_rate <= 0:
-        raise ValueError("Qwen3.5 preflight learning rate must be positive")
+    if not math.isfinite(learning_rate) or learning_rate <= 0:
+        raise ValueError("Qwen3.5 preflight learning rate must be finite and positive")
     return learning_rate
 
 
@@ -570,6 +570,13 @@ def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def canonical_json_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return sha256_bytes(encoded)
+
+
 def read_once(path: Path, label: str) -> tuple[bytes, str]:
     try:
         value = path.read_bytes()
@@ -657,6 +664,51 @@ def write_json(path: Path, value: Any) -> None:
         except FileNotFoundError:
             pass
         raise
+
+
+def revalidate_qwen35_artifacts_after_model_load(
+    *,
+    base_path: Path,
+    startup_receipt: dict[str, Any],
+    manifest_path: Path,
+    manifest: dict[str, Any],
+) -> None:
+    startup_receipt_sha256 = canonical_json_sha256(startup_receipt)
+    post_load_receipt_sha256: str | None = None
+    try:
+        post_load_receipt = validate_qwen35_base_artifacts(base_path)
+        post_load_receipt_sha256 = canonical_json_sha256(post_load_receipt)
+        if post_load_receipt != startup_receipt:
+            raise RuntimeError(
+                "Post-load Qwen3.5 artifact receipt differs from the startup receipt"
+            )
+    except Exception as error:
+        manifest["status"] = "blocked_post_load_artifact_revalidation_failed"
+        failure_receipt: dict[str, Any] = {
+            "status": "failed",
+            "phase": "post_model_load_pre_adapter_injection",
+            "startup_receipt_sha256": startup_receipt_sha256,
+            "error_type": type(error).__name__,
+            "error_message_sha256": hashlib.sha256(
+                str(error).encode("utf-8")
+            ).hexdigest(),
+            "failed_at_epoch": time.time(),
+        }
+        if post_load_receipt_sha256 is not None:
+            failure_receipt["post_load_receipt_sha256"] = post_load_receipt_sha256
+        manifest["post_load_artifact_revalidation_receipt"] = failure_receipt
+        write_json(manifest_path, manifest)
+        raise
+
+    manifest["status"] = "base_artifacts_revalidated_after_load_not_injected"
+    manifest["post_load_artifact_revalidation_receipt"] = {
+        "status": "passed_pre_adapter_injection",
+        "phase": "post_model_load_pre_adapter_injection",
+        "startup_receipt_sha256": startup_receipt_sha256,
+        "post_load_receipt_sha256": post_load_receipt_sha256,
+        "revalidated_at_epoch": time.time(),
+    }
+    write_json(manifest_path, manifest)
 
 
 def adapter_receipt(
@@ -1020,6 +1072,14 @@ def main() -> None:
             full_finetuning=False,
             use_gradient_checkpointing="unsloth",
             text_only=True,
+        )
+        if base_artifact_receipt is None:
+            raise RuntimeError("Qwen3.5 base artifact startup receipt is missing")
+        revalidate_qwen35_artifacts_after_model_load(
+            base_path=base_path,
+            startup_receipt=base_artifact_receipt,
+            manifest_path=output_dir / "training-manifest.json",
+            manifest=manifest,
         )
         try:
             expected_qwen35_target_names = derive_qwen35_expected_targets_before_peft(

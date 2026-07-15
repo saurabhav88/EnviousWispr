@@ -83,6 +83,42 @@ def qwen35_partial_target_fixture() -> list[str]:
     ]
 
 
+def write_qwen35_base_with_actual_hashes(root: Path) -> tuple[Path, dict[str, str]]:
+    base_path = root / "Qwen3.5-4B"
+    metadata_path = base_path / ".cache" / "huggingface" / "download"
+    metadata_path.mkdir(parents=True)
+    weight_shards = list(trainer.QWEN35_PREFLIGHT_CONTRACT["weight_shards"])
+    for artifact_name in trainer.QWEN35_PREFLIGHT_CONTRACT["artifact_sha256"]:
+        artifact_path = base_path / artifact_name
+        if artifact_name == "config.json":
+            artifact_path.write_text(
+                json.dumps(qwen35_config_fixture()), encoding="utf-8"
+            )
+        elif artifact_name == "model.safetensors.index.json":
+            artifact_path.write_text(
+                json.dumps(
+                    {
+                        "weight_map": {
+                            f"model.synthetic_{index}.weight": shard
+                            for index, shard in enumerate(weight_shards)
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+        else:
+            artifact_path.write_bytes(f"synthetic:{artifact_name}".encode("utf-8"))
+        (metadata_path / f"{artifact_name}.metadata").write_text(
+            f"{trainer.QWEN35_PREFLIGHT_CONTRACT['base_revision']}\n",
+            encoding="utf-8",
+        )
+    artifact_hashes = {
+        artifact_name: hashlib.sha256((base_path / artifact_name).read_bytes()).hexdigest()
+        for artifact_name in trainer.QWEN35_PREFLIGHT_CONTRACT["artifact_sha256"]
+    }
+    return base_path, artifact_hashes
+
+
 class TrainingModeTests(unittest.TestCase):
     def test_model_family_uses_config_not_directory_name(self) -> None:
         self.assertEqual(
@@ -347,6 +383,113 @@ class Qwen35TargetTests(unittest.TestCase):
 
 
 class Qwen35AdapterEvidenceTests(unittest.TestCase):
+    def test_loader_time_artifact_mutation_fails_before_adapter_with_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base_path, artifact_hashes = write_qwen35_base_with_actual_hashes(root)
+            data_path = root / "private.jsonl"
+            data_bytes = "".join(
+                json.dumps(row) + "\n" for row in private_preflight_rows()
+            ).encode("utf-8")
+            data_path.write_bytes(data_bytes)
+            prompt_path = root / "prompt.txt"
+            prompt_bytes = b"Pinned synthetic preflight prompt.\n"
+            prompt_path.write_bytes(prompt_bytes)
+            output_root = root / "out"
+            tag = "loader-mutation"
+            manifest_path = output_root / tag / "training-manifest.json"
+            args = SimpleNamespace(
+                base=str(base_path),
+                data=str(data_path),
+                prompt=str(prompt_path),
+                tag=tag,
+                output_root=str(output_root),
+                lr=5e-5,
+                epochs=2.0,
+                rank=16,
+                alpha=32,
+                micro_batch=1,
+                gradient_accumulation=1,
+                max_seq=512,
+                seed=1265,
+                training_mode="auto",
+                preflight_only=True,
+                skip_merge=True,
+            )
+
+            mutated_shard = base_path / str(
+                trainer.QWEN35_PREFLIGHT_CONTRACT["weight_shards"][0]
+            )
+
+            def load_then_mutate(**_kwargs: object) -> tuple[SimpleNamespace, SimpleNamespace]:
+                mutated_shard.write_bytes(b"loader-time mutation")
+                return SimpleNamespace(), SimpleNamespace()
+
+            fast_model = SimpleNamespace(
+                from_pretrained=mock.Mock(side_effect=load_then_mutate),
+                get_peft_model=mock.Mock(name="get_peft_model"),
+            )
+            unsloth = ModuleType("unsloth")
+            unsloth.FastLanguageModel = SimpleNamespace()
+            unsloth.FastModel = fast_model
+            chat_templates = ModuleType("unsloth.chat_templates")
+            chat_templates.train_on_responses_only = mock.Mock()
+            torch = ModuleType("torch")
+            torch.__version__ = "2.10.0+cu128"
+            torch.manual_seed = mock.Mock()
+            torch.cuda = SimpleNamespace(
+                is_available=lambda: True,
+                is_bf16_supported=lambda: True,
+                get_device_name=lambda _index: "Synthetic RTX 4090",
+            )
+            datasets = ModuleType("datasets")
+            datasets.Dataset = SimpleNamespace()
+            trl = ModuleType("trl")
+            trl.SFTConfig = SimpleNamespace()
+            trl.SFTTrainer = mock.Mock(name="SFTTrainer")
+
+            with (
+                mock.patch.object(trainer, "parse_args", return_value=args),
+                mock.patch.dict(
+                    trainer.QWEN35_PREFLIGHT_CONTRACT,
+                    {
+                        "artifact_sha256": artifact_hashes,
+                        "data_sha256": hashlib.sha256(data_bytes).hexdigest(),
+                        "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
+                    },
+                ),
+                mock.patch.object(trainer, "distribution_version", return_value="5.5.0"),
+                mock.patch.dict(
+                    sys.modules,
+                    {
+                        "unsloth": unsloth,
+                        "unsloth.chat_templates": chat_templates,
+                        "torch": torch,
+                        "datasets": datasets,
+                        "trl": trl,
+                    },
+                ),
+                self.assertRaisesRegex(ValueError, "artifact hash mismatch"),
+            ):
+                trainer.main()
+
+            on_disk = json.loads(manifest_path.read_text(encoding="utf-8"))
+            receipt = on_disk["post_load_artifact_revalidation_receipt"]
+            self.assertEqual(
+                on_disk["status"], "blocked_post_load_artifact_revalidation_failed"
+            )
+            self.assertEqual(receipt["status"], "failed")
+            self.assertEqual(receipt["phase"], "post_model_load_pre_adapter_injection")
+            self.assertEqual(receipt["error_type"], "ValueError")
+            self.assertIn("startup_receipt_sha256", receipt)
+            self.assertIn("error_message_sha256", receipt)
+            self.assertNotIn("error_message", receipt)
+            fast_model.from_pretrained.assert_called_once()
+            fast_model.get_peft_model.assert_not_called()
+            trl.SFTTrainer.assert_not_called()
+            self.assertFalse((output_root / tag / "adapter").exists())
+            self.assertFalse((output_root / tag / "merged16").exists())
+
     def test_128_of_248_mismatch_persists_blocked_receipt_before_trainer(self) -> None:
         class FakeBaseModel:
             def named_modules(self) -> list[tuple[str, object]]:
@@ -1060,6 +1203,54 @@ class PreflightSafetyTests(unittest.TestCase):
         for case in cases:
             with self.subTest(case=case), self.assertRaises(ValueError):
                 trainer.validate_preflight_request(**(defaults | case))
+
+    def test_nonfinite_learning_rate_stops_before_output_or_model_validation(self) -> None:
+        for learning_rate in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(learning_rate=learning_rate), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                base_path = root / "Qwen3.5-4B"
+                base_path.mkdir()
+                (base_path / "config.json").write_text(
+                    json.dumps(qwen35_config_fixture()), encoding="utf-8"
+                )
+                data_path = root / "private.jsonl"
+                prompt_path = root / "prompt.txt"
+                data_path.write_text("placeholder\n", encoding="utf-8")
+                prompt_path.write_text("placeholder\n", encoding="utf-8")
+                args = SimpleNamespace(
+                    base=str(base_path),
+                    data=str(data_path),
+                    prompt=str(prompt_path),
+                    tag="nonfinite-learning-rate",
+                    output_root=str(root / "out"),
+                    training_mode="auto",
+                    preflight_only=True,
+                    skip_merge=True,
+                    rank=16,
+                    lr=learning_rate,
+                )
+
+                with (
+                    mock.patch.object(trainer, "parse_args", return_value=args),
+                    mock.patch.object(
+                        trainer,
+                        "capture_training_inputs",
+                        return_value=(
+                            private_preflight_rows(),
+                            "Pinned synthetic preflight prompt.",
+                            trainer.QWEN35_PREFLIGHT_CONTRACT["data_sha256"],
+                            trainer.QWEN35_PREFLIGHT_CONTRACT["prompt_sha256"],
+                        ),
+                    ),
+                    mock.patch.object(
+                        trainer, "validate_qwen35_base_artifacts"
+                    ) as base_validator,
+                    self.assertRaisesRegex(SystemExit, "finite and positive"),
+                ):
+                    trainer.main()
+
+                base_validator.assert_not_called()
+                self.assertFalse((root / "out" / args.tag).exists())
 
     def test_preflight_rejects_benchmark_schema_and_missing_provenance(self) -> None:
         for mutation in (
