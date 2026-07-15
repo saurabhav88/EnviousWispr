@@ -1703,3 +1703,5 @@ The live Unsloth selector attached rank-16 LoRA to 128/248 required language mod
 Decision: this is a real compatibility blocker in the installed selector, not Qwen3.5 quality evidence. Do not weaken the target contract or retry. A future attempt requires a separately reviewed way to target the GDN modules and fresh run authorization.
 
 Future-run evidence hardening now atomically persists the actual adapter module names, suffix counts, and parameter counts under an explicit non-complete status before target validation, then records a blocked status on mismatch. The historical manifest remained unchanged and did not contain those adapter diagnostics. No remote retry was performed.
+
+The future Qwen one-step contract now also pins cosine scheduling, zero warmup, and a positive learning rate so its only optimizer step cannot be a zero-learning-rate warmup step. Historical Gemma and older-Qwen training retains its 5% warmup. The failed remote run never reached optimization, remains unchanged, and was not retried.

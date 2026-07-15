@@ -90,6 +90,19 @@ class TrainingModeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "only for Qwen3.5"):
             trainer.resolve_training_mode("gemma", trainer.BF16_LORA_MODE)
 
+    def test_preflight_first_step_lr_is_positive_and_legacy_warmup_is_unchanged(self) -> None:
+        self.assertEqual(
+            trainer.effective_warmup_ratio(trainer.QWEN35_FAMILY, True),
+            0.0,
+        )
+        self.assertEqual(trainer.effective_warmup_ratio("gemma", False), 0.05)
+        self.assertEqual(trainer.effective_warmup_ratio("other", False), 0.05)
+        self.assertGreater(trainer.qwen35_preflight_first_step_learning_rate(5e-5), 0)
+        with mock.patch.dict(
+            trainer.QWEN35_PREFLIGHT_CONTRACT, {"warmup_ratio": 0.05}
+        ), self.assertRaisesRegex(ValueError, "zero warmup"):
+            trainer.qwen35_preflight_first_step_learning_rate(5e-5)
+
 
 class Qwen35TargetTests(unittest.TestCase):
     def test_verified_hybrid_target_coverage_and_trainable_count(self) -> None:
@@ -259,6 +272,9 @@ class Qwen35AdapterEvidenceTests(unittest.TestCase):
                 if snapshot["status"] == "adapter_validation_pending_not_complete"
             )
             pending_receipt = pending["adapter_receipt"]
+            self.assertEqual(pending["hyperparameters"]["scheduler"], "cosine")
+            self.assertEqual(pending["hyperparameters"]["warmup_ratio"], 0.0)
+            self.assertEqual(pending["hyperparameters"]["max_steps"], 1)
             self.assertEqual(pending_receipt["matched_module_count"], 128)
             self.assertEqual(
                 sum(pending["preflight_contract"]["target_suffix_counts"].values()),
@@ -439,6 +455,7 @@ class PreflightSafetyTests(unittest.TestCase):
             data_sha256=trainer.QWEN35_PREFLIGHT_CONTRACT["data_sha256"],
             prompt_sha256=trainer.QWEN35_PREFLIGHT_CONTRACT["prompt_sha256"],
             rank=16,
+            learning_rate=5e-5,
         )
 
     def test_preflight_refuses_unsafe_flags(self) -> None:
@@ -450,6 +467,7 @@ class PreflightSafetyTests(unittest.TestCase):
             {"data_sha256": "c" * 64},
             {"prompt_sha256": "d" * 64},
             {"rank": 8},
+            {"learning_rate": 0.0},
         )
         defaults = {
             "family": trainer.QWEN35_FAMILY,
@@ -459,6 +477,7 @@ class PreflightSafetyTests(unittest.TestCase):
             "data_sha256": trainer.QWEN35_PREFLIGHT_CONTRACT["data_sha256"],
             "prompt_sha256": trainer.QWEN35_PREFLIGHT_CONTRACT["prompt_sha256"],
             "rank": 16,
+            "learning_rate": 5e-5,
         }
         for case in cases:
             with self.subTest(case=case), self.assertRaises(ValueError):
@@ -480,6 +499,7 @@ class PreflightSafetyTests(unittest.TestCase):
                     data_sha256=trainer.QWEN35_PREFLIGHT_CONTRACT["data_sha256"],
                     prompt_sha256=trainer.QWEN35_PREFLIGHT_CONTRACT["prompt_sha256"],
                     rank=16,
+                    learning_rate=5e-5,
                 )
 
     def test_prompt_mismatch_stops_before_base_validation_or_model_load(self) -> None:
@@ -510,6 +530,7 @@ class PreflightSafetyTests(unittest.TestCase):
                 preflight_only=True,
                 skip_merge=True,
                 rank=16,
+                lr=5e-5,
             )
 
             def fixed_hash(path: Path) -> str:

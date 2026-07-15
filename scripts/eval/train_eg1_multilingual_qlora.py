@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import inspect
 import json
+import math
 import os
 import platform
 import tempfile
@@ -47,6 +48,9 @@ QWEN35_PREFLIGHT_CONTRACT: dict[str, Any] = {
     "base_revision": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
     "data_sha256": "0584d6d796ad2fe0e1f551c20fb175487e13a2440effdb71bae0acd69e057bb3",
     "prompt_sha256": "7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62",
+    "max_steps": 1,
+    "scheduler": "cosine",
+    "warmup_ratio": 0.0,
     "row_provenance": PREFLIGHT_ROW_PROVENANCE,
     "artifact_sha256": {
         "chat_template.jinja": "a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715",
@@ -135,6 +139,7 @@ def validate_preflight_request(
     data_sha256: str,
     prompt_sha256: str | None,
     rank: int,
+    learning_rate: float,
 ) -> None:
     if family == QWEN35_FAMILY and not enabled:
         raise ValueError(
@@ -150,6 +155,7 @@ def validate_preflight_request(
         raise ValueError("--preflight-only requires --skip-merge")
     if rank != 16:
         raise ValueError("--preflight-only requires the script-owned rank-16 contract")
+    qwen35_preflight_first_step_learning_rate(learning_rate)
     expected_data_sha256 = str(QWEN35_PREFLIGHT_CONTRACT["data_sha256"])
     if data_sha256 != expected_data_sha256:
         raise ValueError(
@@ -178,6 +184,26 @@ def validate_preflight_request(
     outputs = [row["output"].strip().casefold() for row in rows]
     if len(set(inputs)) != len(inputs) or len(set(outputs)) != len(outputs):
         raise ValueError("Preflight rows must have unique inputs and outputs")
+
+
+def effective_warmup_ratio(family: str, preflight_only: bool) -> float:
+    if family == QWEN35_FAMILY and preflight_only:
+        return float(QWEN35_PREFLIGHT_CONTRACT["warmup_ratio"])
+    return 0.05
+
+
+def qwen35_preflight_first_step_learning_rate(learning_rate: float) -> float:
+    max_steps = int(QWEN35_PREFLIGHT_CONTRACT["max_steps"])
+    scheduler = str(QWEN35_PREFLIGHT_CONTRACT["scheduler"])
+    warmup_ratio = float(QWEN35_PREFLIGHT_CONTRACT["warmup_ratio"])
+    warmup_steps = math.ceil(max_steps * warmup_ratio)
+    if max_steps != 1 or scheduler != "cosine" or warmup_steps != 0:
+        raise ValueError(
+            "Qwen3.5 preflight scheduler contract requires one cosine step with zero warmup"
+        )
+    if learning_rate <= 0:
+        raise ValueError("Qwen3.5 preflight learning rate must be positive")
+    return learning_rate
 
 
 def local_hugging_face_revision(base_path: Path, artifact_name: str) -> str | None:
@@ -434,6 +460,7 @@ def main() -> None:
             data_sha256=data_sha256,
             prompt_sha256=prompt_sha256,
             rank=args.rank,
+            learning_rate=args.lr,
         )
     except ValueError as error:
         raise SystemExit(str(error)) from error
@@ -454,6 +481,12 @@ def main() -> None:
     if prompt_sha256 is None:
         prompt_sha256 = sha256(prompt_path)
     lora_dropout = 0 if family == QWEN35_FAMILY else 0.05
+    warmup_ratio = effective_warmup_ratio(family, args.preflight_only)
+    scheduler = (
+        str(QWEN35_PREFLIGHT_CONTRACT["scheduler"])
+        if args.preflight_only
+        else "cosine"
+    )
     output_dir.mkdir(parents=True)
     manifest: dict[str, Any] = {
         "status": "starting",
@@ -489,10 +522,14 @@ def main() -> None:
             "seed": args.seed,
             "training_mode": training_mode,
             "preflight_only": args.preflight_only,
-            "max_steps": 1 if args.preflight_only else None,
+            "max_steps": (
+                int(QWEN35_PREFLIGHT_CONTRACT["max_steps"])
+                if args.preflight_only
+                else None
+            ),
             "optimizer": "adamw_8bit",
-            "scheduler": "cosine",
-            "warmup_ratio": 0.05,
+            "scheduler": scheduler,
+            "warmup_ratio": warmup_ratio,
             "weight_decay": 0.01,
             "response_only_loss": True,
             "bf16": True,
@@ -652,10 +689,14 @@ def main() -> None:
             per_device_train_batch_size=args.micro_batch,
             gradient_accumulation_steps=args.gradient_accumulation,
             num_train_epochs=args.epochs,
-            max_steps=1 if args.preflight_only else -1,
+            max_steps=(
+                int(QWEN35_PREFLIGHT_CONTRACT["max_steps"])
+                if args.preflight_only
+                else -1
+            ),
             learning_rate=args.lr,
-            warmup_ratio=0.05,
-            lr_scheduler_type="cosine",
+            warmup_ratio=warmup_ratio,
+            lr_scheduler_type=scheduler,
             logging_steps=1 if args.preflight_only else 10,
             optim="adamw_8bit",
             weight_decay=0.01,
