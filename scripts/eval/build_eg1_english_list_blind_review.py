@@ -17,6 +17,7 @@ from typing import Any
 from eg1_english_list_contract import (
     load_contract,
     require_binding,
+    validate_noncertifying_ab_runtime_receipt,
     validate_binding_commit,
 )
 
@@ -229,18 +230,7 @@ def load_bound_ab(
     require_sha(ab_sha, args.expected_ab_receipt_sha256, "A/B receipt")
     sources.append((ab_receipt_path, ab_sha, "A/B receipt"))
     ab = parse_json(ab_bytes, "A/B receipt")
-    scope = ab.get("scope")
-    if ab.get("status") != "connector_wire_exact_ab_complete_semantic_review_pending":
-        raise ValueError("A/B receipt is not healthy and reviewable")
-    if (
-        not isinstance(scope, dict)
-        or scope.get("arm_order") != list(ARMS)
-        or scope.get("same_server_identity_before_and_after_each_arm") is not True
-        or scope.get("both_arms_zero_errors_and_empty_outputs") is not True
-        or scope.get("connector_wire_exact") is not True
-        or scope.get("paste_equivalent") is not False
-    ):
-        raise ValueError("A/B runtime scope is invalid")
+    validate_noncertifying_ab_runtime_receipt(ab)
 
     outputs: dict[str, dict[str, str]] = {}
     for arm in ARMS:

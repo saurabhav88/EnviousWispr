@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -178,6 +179,96 @@ class EG1LocalAppEvalTests(unittest.TestCase):
         self.assertEqual(build.call_count, 1)
         handler = build.call_args.args[0]
         self.assertEqual(handler.proxies, {})
+
+    def test_standalone_main_pins_python_and_swift_but_marks_noncertifying(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            prompts = root / "prompts.jsonl"
+            output = root / "output.jsonl"
+            prompts.write_text("{}\n", encoding="utf-8")
+            server = MODULE.LocalServer(
+                pid=10,
+                parent_pid=9,
+                app_bundle=(root / "EnviousWispr.app").resolve(),
+                host="127.0.0.1",
+                port=50340,
+                credential="private-value-that-must-never-be-printed",
+            )
+            swift_environment = {
+                "HOME": "/tmp",
+                "LANG": "C",
+                "LC_ALL": "C",
+                "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                "TMPDIR": "/tmp",
+            }
+            swift_arguments = [
+                "--eg1-swift-launcher",
+                "/locked/swift",
+                "--eg1-swift-launcher-path-sha256",
+                "c" * 64,
+                "--eg1-swift-executable",
+                "/locked/swift-target",
+                "--eg1-swift-executable-path-sha256",
+                "d" * 64,
+                "--eg1-swift-executable-sha256",
+                "a" * 64,
+                "--eg1-swift-developer-dir",
+                "none",
+                "--eg1-swift-environment-sha256",
+                "b" * 64,
+            ]
+            completed = subprocess.CompletedProcess([], 0)
+            observed_environment: dict[str, str] = {}
+
+            def run_child(command: list[str], **kwargs: object):
+                observed_environment.update(kwargs["env"])
+                return completed
+
+            arguments = [
+                "eg1_local_app_eval.py",
+                "--prompts",
+                str(prompts),
+                "--out",
+                str(output),
+                "--app-bundle",
+                str(server.app_bundle),
+            ]
+            with (
+                mock.patch.object(MODULE, "discover_server", return_value=server),
+                mock.patch.object(MODULE, "verify_ready"),
+                mock.patch.object(
+                    MODULE,
+                    "standalone_swift_runtime_contract",
+                    return_value=(swift_arguments, swift_environment),
+                ),
+                mock.patch.object(MODULE.subprocess, "run", side_effect=run_child) as run,
+                mock.patch.object(sys, "argv", arguments),
+                mock.patch("builtins.print") as printed,
+            ):
+                self.assertEqual(MODULE.main(), 0)
+
+            command = run.call_args.args[0]
+            self.assertEqual(command[1:4], ["-I", "-E", "-s"])
+            self.assertEqual(
+                run.call_args.kwargs["executable"],
+                str(Path(sys.executable).resolve(strict=True)),
+            )
+            self.assertEqual(
+                command[
+                    command.index("--eg1-swift-executable-sha256") + 1
+                ],
+                "a" * 64,
+            )
+            expected_environment = MODULE.runner_environment(server.credential)
+            expected_environment.update(swift_environment)
+            self.assertEqual(observed_environment, expected_environment)
+            self.assertTrue(
+                any(
+                    "standalone_noncertifying" in str(call.args[0])
+                    for call in printed.call_args_list
+                    if call.args
+                )
+            )
 
 
 if __name__ == "__main__":

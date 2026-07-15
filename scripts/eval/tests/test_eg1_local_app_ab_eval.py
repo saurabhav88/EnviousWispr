@@ -214,7 +214,12 @@ class LocalAppABEvalTests(unittest.TestCase):
             ),
         )
 
-        def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        observed: dict[str, object] = {}
+
+        def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            observed["command"] = list(command)
+            observed["environment"] = dict(kwargs["env"])
+            observed["executable"] = kwargs["executable"]
             out_path = Path(command[command.index("--out") + 1])
             prompts = MODULE.parse_jsonl(
                 (self.render / "baseline.jsonl").read_bytes(), "prompts"
@@ -228,6 +233,33 @@ class LocalAppABEvalTests(unittest.TestCase):
             )
             return subprocess.CompletedProcess(command, 0, "", "")
 
+        swift_arguments = (
+            "--eg1-swift-launcher",
+            "/locked/swift",
+            "--eg1-swift-launcher-path-sha256",
+            "a" * 64,
+            "--eg1-swift-executable",
+            "/locked/swift-target",
+            "--eg1-swift-executable-path-sha256",
+            "b" * 64,
+            "--eg1-swift-executable-sha256",
+            "c" * 64,
+            "--eg1-swift-developer-dir",
+            "/locked/developer",
+            "--eg1-swift-environment-sha256",
+            "d" * 64,
+        )
+        swift_environment = {
+            "HOME": "/tmp",
+            "LANG": "C",
+            "LC_ALL": "C",
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "TMPDIR": "/tmp",
+            "DEVELOPER_DIR": "/locked/developer",
+        }
+        python_launcher = Path(sys.executable).absolute()
+        python_executable = python_launcher.resolve(strict=True)
+
         with (
             mock.patch.object(MODULE, "recheck_server") as recheck,
             mock.patch.object(MODULE.subprocess, "run", side_effect=fake_run),
@@ -238,11 +270,25 @@ class LocalAppABEvalTests(unittest.TestCase):
                 output,
                 server,
                 app,
+                swift_arguments,
+                swift_environment,
+                python_launcher,
+                python_executable,
             )
         self.assertEqual(returncode, 0)
         self.assertEqual(result["row_count"], 150)
         self.assertEqual(recheck.call_count, 2)
         recheck.assert_has_calls([mock.call(server, app), mock.call(server, app)])
+        command = observed["command"]
+        self.assertEqual(command[1:4], ["-I", "-E", "-s"])
+        self.assertEqual(
+            command[command.index("--eg1-swift-executable-sha256") + 1],
+            "c" * 64,
+        )
+        expected_environment = MODULE.runner_environment(server.credential)
+        expected_environment.update(swift_environment)
+        self.assertEqual(observed["environment"], expected_environment)
+        self.assertEqual(observed["executable"], str(python_executable))
 
     def test_partial_receipt_write_removes_complete_ab_bundle(self) -> None:
         source = self.root / "publish-source"
@@ -294,6 +340,10 @@ class LocalAppABEvalTests(unittest.TestCase):
             output_path: Path,
             _server: MODULE.LocalServer,
             _app: Path,
+            _swift_arguments: tuple[str, ...],
+            _swift_environment: dict[str, str],
+            _python_launcher: Path,
+            _python_executable: Path,
         ) -> tuple[int, dict[str, object]]:
             prompts = MODULE.parse_jsonl(prompt_path.read_bytes(), f"{arm} prompts")
             rows = [{"id": row["id"], "candidate": f"{arm} answer"} for row in prompts]
@@ -325,6 +375,10 @@ class LocalAppABEvalTests(unittest.TestCase):
             "--expected-git-head",
             "a" * 40,
         ]
+        swift_arguments, swift_environment = (
+            MODULE.standalone_swift_runtime_contract()
+        )
+        python_paths = MODULE.standalone_python_runtime_paths()
         with (
             mock.patch.object(sys, "argv", arguments),
             mock.patch.object(MODULE, "CANONICAL_DECISION_CONTRACT", self.contract),
@@ -336,8 +390,21 @@ class LocalAppABEvalTests(unittest.TestCase):
             mock.patch.object(MODULE, "verify_ready"),
             mock.patch.object(MODULE, "recheck_server"),
             mock.patch.object(MODULE, "run_arm", side_effect=fake_run_arm),
+            mock.patch.object(
+                MODULE,
+                "standalone_swift_runtime_contract",
+                return_value=(swift_arguments, swift_environment),
+            ) as swift_contract,
+            mock.patch.object(
+                MODULE,
+                "standalone_python_runtime_paths",
+                return_value=python_paths,
+            ) as python_contract,
         ):
             self.assertEqual(MODULE.main(), 0)
+
+        swift_contract.assert_called_once_with()
+        python_contract.assert_called_once_with()
 
         receipt_text = (output / "receipt.json").read_text(encoding="utf-8")
         receipt = json.loads(receipt_text)
@@ -346,10 +413,35 @@ class LocalAppABEvalTests(unittest.TestCase):
         )
         self.assertEqual(receipt["scope"]["arm_order"], ["baseline", "candidate"])
         self.assertFalse(receipt["scope"]["paste_equivalent"])
+        self.assertFalse(receipt["scope"]["certifying_finalist_gate_evidence"])
+        self.assertEqual(
+            receipt["scope"]["runtime_binding"],
+            "standalone_noncertifying_discovered_once_for_both_arms",
+        )
         self.assertEqual(
             receipt["runtime"]["model_artifact"]["manifest_sha256"],
             receipt["provenance"]["bindings"]["delivery_manifest_sha256"],
         )
+        process_identity = receipt["runtime"]["evaluation_process"]
+        self.assertEqual(process_identity["status"], "standalone_noncertifying")
+        swift_options = dict(zip(swift_arguments[::2], swift_arguments[1::2]))
+        self.assertEqual(
+            process_identity["swift"]["environment_sha256"],
+            swift_options["--eg1-swift-environment-sha256"],
+        )
+        self.assertEqual(
+            process_identity["swift"]["executable_sha256"],
+            swift_options["--eg1-swift-executable-sha256"],
+        )
+        self.assertEqual(
+            process_identity["python"]["launcher_path_sha256"],
+            hashlib.sha256(str(python_paths[0]).encode("utf-8")).hexdigest(),
+        )
+        self.assertEqual(
+            process_identity["python"]["executable_sha256"], sha(python_paths[1])
+        )
+        self.assertNotIn(swift_options["--eg1-swift-launcher"], receipt_text)
+        self.assertNotIn(str(python_paths[0]), receipt_text)
         self.assertNotIn("z" * 32, receipt_text)
 
     def test_main_rejects_live_manifest_mismatch_before_running_an_arm(self) -> None:

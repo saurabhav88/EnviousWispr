@@ -165,6 +165,9 @@ scripts/eval/*
 !scripts/eval/acceptance_gate.py
 !scripts/eval/chunk_size_benchmark.py
 !scripts/eval/overpolish-eval.py
+!scripts/eval/eg1_exact_mac_finalist_gate.py
+!scripts/eval/eg1_exact_mac_receipt_producer.py
+!scripts/eval/eg1_swift_string_count_oracle.swift
 !scripts/eval/screen_eg1_replay_semantic_neighbors.py
 !scripts/eval/build_eg1_d1_shared_concept_registry.py
 !scripts/eval/golden_judge_scores.json

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Run two sealed EG-1 prompt arms through one verified app-owned server."""
+"""Run two sealed EG-1 prompt arms through one verified app-owned server.
+
+This standalone A/B path pins the runtimes it discovers once for both arms, but
+it is non-certifying and does not claim the exact-Mac finalist gate's prior lock.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +24,8 @@ from eg1_local_app_eval import (
     ModelArtifactIdentity,
     discover_server,
     runner_environment,
+    standalone_python_runtime_paths,
+    standalone_swift_runtime_contract,
     verify_ready,
 )
 from eg1_english_list_contract import (
@@ -45,6 +51,15 @@ CANONICAL_DECISION_CONTRACT = (
 )
 EXPECTED_ARMS = ("baseline", "candidate")
 EXPECTED_CASES = 150
+SWIFT_RUNTIME_ARGUMENTS = {
+    "--eg1-swift-launcher",
+    "--eg1-swift-launcher-path-sha256",
+    "--eg1-swift-executable",
+    "--eg1-swift-executable-path-sha256",
+    "--eg1-swift-executable-sha256",
+    "--eg1-swift-developer-dir",
+    "--eg1-swift-environment-sha256",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -80,6 +95,117 @@ def require_hash(actual: str, expected: str, label: str) -> None:
         raise ValueError(f"expected {label} SHA-256 is invalid")
     if actual != expected:
         raise ValueError(f"{label} SHA-256 differs from the predeclared value")
+
+
+def standalone_runtime_identity(
+    swift_arguments: tuple[str, ...],
+    swift_environment: dict[str, str],
+    python_launcher: Path,
+    python_executable: Path,
+) -> dict[str, Any]:
+    """Describe and revalidate the discovered, explicitly non-certifying runtimes."""
+
+    if len(swift_arguments) % 2:
+        raise ValueError("standalone Swift runtime arguments are malformed")
+    options = dict(zip(swift_arguments[::2], swift_arguments[1::2], strict=True))
+    if len(options) * 2 != len(swift_arguments) or set(options) != SWIFT_RUNTIME_ARGUMENTS:
+        raise ValueError("standalone Swift runtime arguments are incomplete")
+    swift_launcher = Path(options["--eg1-swift-launcher"])
+    swift_executable = Path(options["--eg1-swift-executable"])
+    try:
+        resolved_swift_executable = swift_executable.resolve(strict=True)
+        resolved_swift_launcher = swift_launcher.resolve(strict=True)
+        resolved_python_launcher = python_launcher.resolve(strict=True)
+        resolved_python_executable = python_executable.resolve(strict=True)
+    except OSError as error:
+        raise ValueError("standalone evaluation runtime is unavailable") from error
+    if (
+        not swift_launcher.is_absolute()
+        or not swift_launcher.is_file()
+        or str(resolved_swift_executable) != options["--eg1-swift-executable"]
+        or resolved_swift_launcher != resolved_swift_executable
+        or not python_launcher.is_absolute()
+        or not python_launcher.is_file()
+        or resolved_python_launcher != resolved_python_executable
+        or resolved_python_executable != python_executable
+    ):
+        raise ValueError("standalone evaluation runtime paths are invalid")
+
+    swift_launcher_path_sha = sha256_bytes(str(swift_launcher).encode("utf-8"))
+    swift_executable_path_sha = sha256_bytes(
+        str(resolved_swift_executable).encode("utf-8")
+    )
+    swift_executable_sha = read_once(
+        resolved_swift_executable, "standalone Swift executable"
+    )[1]
+    swift_launcher_sha = swift_executable_sha
+    require_hash(
+        swift_launcher_path_sha,
+        options["--eg1-swift-launcher-path-sha256"],
+        "standalone Swift launcher path",
+    )
+    require_hash(
+        swift_executable_path_sha,
+        options["--eg1-swift-executable-path-sha256"],
+        "standalone Swift executable path",
+    )
+    require_hash(
+        swift_executable_sha,
+        options["--eg1-swift-executable-sha256"],
+        "standalone Swift executable",
+    )
+    swift_environment_sha = sha256_bytes(
+        json.dumps(
+            swift_environment,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    require_hash(
+        swift_environment_sha,
+        options["--eg1-swift-environment-sha256"],
+        "standalone Swift environment",
+    )
+    developer_dir = options["--eg1-swift-developer-dir"]
+    if (developer_dir == "none" and "DEVELOPER_DIR" in swift_environment) or (
+        developer_dir != "none"
+        and swift_environment.get("DEVELOPER_DIR") != developer_dir
+    ):
+        raise ValueError("standalone Swift DEVELOPER_DIR differs from its contract")
+    if developer_dir != "none":
+        try:
+            developer_path = Path(developer_dir).resolve(strict=True)
+        except OSError as error:
+            raise ValueError("standalone Swift DEVELOPER_DIR is unavailable") from error
+        if str(developer_path) != developer_dir or not developer_path.is_dir():
+            raise ValueError("standalone Swift DEVELOPER_DIR is invalid")
+
+    python_executable_sha = read_once(
+        resolved_python_executable, "standalone Python executable"
+    )[1]
+    python_launcher_sha = python_executable_sha
+    return {
+        "status": "standalone_noncertifying",
+        "swift": {
+            "launcher_path_sha256": swift_launcher_path_sha,
+            "launcher_sha256": swift_launcher_sha,
+            "executable_path_sha256": swift_executable_path_sha,
+            "executable_sha256": swift_executable_sha,
+            "environment_sha256": swift_environment_sha,
+            "developer_dir_sha256": sha256_bytes(developer_dir.encode("utf-8")),
+        },
+        "python": {
+            "launcher_path_sha256": sha256_bytes(
+                str(python_launcher).encode("utf-8")
+            ),
+            "launcher_sha256": python_launcher_sha,
+            "executable_path_sha256": sha256_bytes(
+                str(resolved_python_executable).encode("utf-8")
+            ),
+            "executable_sha256": python_executable_sha,
+        },
+    }
 
 
 def git_head() -> str:
@@ -271,10 +397,15 @@ def run_arm(
     output_path: Path,
     server: LocalServer,
     app_bundle: Path,
+    swift_arguments: tuple[str, ...],
+    swift_environment: dict[str, str],
+    python_launcher: Path,
+    python_executable: Path,
 ) -> tuple[int, dict[str, Any]]:
     recheck_server(server, app_bundle)
     command = [
-        sys.executable,
+        str(python_launcher),
+        "-I",
         "-E",
         "-s",
         str(RUNNER),
@@ -291,12 +422,15 @@ def run_arm(
         "--endpoint",
         server.endpoint,
         "--eg1-shipped-request",
+        *swift_arguments,
     ]
     environment = runner_environment(server.credential)
+    environment.update(swift_environment)
     try:
         completed = subprocess.run(
             command,
             check=False,
+            executable=str(python_executable),
             env=environment,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -427,6 +561,15 @@ def main() -> int:
         "delivery_manifest_sha256",
         server.model_artifact.manifest_sha256,
     )
+    swift_argument_list, swift_environment = standalone_swift_runtime_contract()
+    swift_arguments = tuple(swift_argument_list)
+    python_launcher, python_executable = standalone_python_runtime_paths()
+    evaluation_runtime_identity = standalone_runtime_identity(
+        swift_arguments,
+        swift_environment,
+        python_launcher,
+        python_executable,
+    )
     temp = Path(tempfile.mkdtemp(prefix=".eg1-mac-ab-", dir=output.parent))
     try:
         prompt_snapshots: dict[str, Path] = {}
@@ -452,6 +595,10 @@ def main() -> int:
                 temp / f"{arm}.jsonl",
                 server,
                 args.app_bundle,
+                swift_arguments,
+                swift_environment,
+                python_launcher,
+                python_executable,
             )
             returncodes[arm] = returncode
             arm_receipts[arm] = arm_receipt
@@ -471,6 +618,13 @@ def main() -> int:
         require_git_state(args.expected_git_head)
         if validate_binding_commit(bindings, args.decision_contract, REPO_ROOT) != head:
             raise RuntimeError("decision-contract binding commit changed during the A/B run")
+        if standalone_runtime_identity(
+            swift_arguments,
+            swift_environment,
+            python_launcher,
+            python_executable,
+        ) != evaluation_runtime_identity:
+            raise RuntimeError("standalone evaluation runtime changed during the A/B run")
 
         healthy = all(returncodes[arm] == 0 for arm in EXPECTED_ARMS) and all(
             arm_receipts[arm]["inference_error_count"] == 0
@@ -485,6 +639,10 @@ def main() -> int:
             ),
             "scope": {
                 "connector_wire_exact": True,
+                "certifying_finalist_gate_evidence": False,
+                "runtime_binding": (
+                    "standalone_noncertifying_discovered_once_for_both_arms"
+                ),
                 "paste_equivalent": False,
                 "model_id": "eg-1",
                 "arm_order": list(EXPECTED_ARMS),
@@ -499,6 +657,7 @@ def main() -> int:
                 "credential_present": True,
                 "credential_recorded": False,
                 "model_artifact": server.model_artifact.public_receipt(),
+                "evaluation_process": evaluation_runtime_identity,
             },
             "provenance": {
                 "git_head": head,

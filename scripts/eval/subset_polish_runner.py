@@ -9,11 +9,25 @@ Usage (keys bridged via get-key launch):
   get-key launch gemini-api-key GEMINI_API_KEY -- \
     python3 subset_polish_runner.py --prompts <f> --provider gemini --model gemini-2.5-flash --out <c>
 """
-import http.client, json, urllib.request, urllib.error, time, os, argparse
+import http.client, json, urllib.request, urllib.error, time, os, argparse, hashlib
 from concurrent.futures import ThreadPoolExecutor
+import importlib.util
+from pathlib import Path
 from urllib.parse import urlsplit
 
-from eg1_shipped_request import build_request_body, parse_success
+
+_SHIPPED_REQUEST_PATH = Path(__file__).resolve().with_name("eg1_shipped_request.py")
+if not _SHIPPED_REQUEST_PATH.is_file() or _SHIPPED_REQUEST_PATH.is_symlink():
+    raise SystemExit("exact shipped-request sibling is unavailable")
+_SHIPPED_SPEC = importlib.util.spec_from_file_location(
+    "_subset_polish_runner_shipped_request", _SHIPPED_REQUEST_PATH
+)
+if _SHIPPED_SPEC is None or _SHIPPED_SPEC.loader is None:
+    raise SystemExit("cannot load exact shipped-request sibling")
+_SHIPPED_MODULE = importlib.util.module_from_spec(_SHIPPED_SPEC)
+_SHIPPED_SPEC.loader.exec_module(_SHIPPED_MODULE)
+build_request_body = _SHIPPED_MODULE.build_request_body
+parse_success = _SHIPPED_MODULE.parse_success
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--prompts", required=True)
@@ -40,6 +54,13 @@ ap.add_argument(
         "output-cleanup rules. Restricted to the local OpenAI-compatible endpoint."
     ),
 )
+ap.add_argument("--eg1-swift-launcher")
+ap.add_argument("--eg1-swift-launcher-path-sha256")
+ap.add_argument("--eg1-swift-executable")
+ap.add_argument("--eg1-swift-executable-path-sha256")
+ap.add_argument("--eg1-swift-executable-sha256")
+ap.add_argument("--eg1-swift-developer-dir")
+ap.add_argument("--eg1-swift-environment-sha256")
 ap.add_argument(
     "--lora-json",
     default="",
@@ -49,6 +70,83 @@ ap.add_argument(
     ),
 )
 args = ap.parse_args()
+
+
+def configure_exact_swift_runtime():
+    values = (
+        args.eg1_swift_launcher,
+        args.eg1_swift_launcher_path_sha256,
+        args.eg1_swift_executable,
+        args.eg1_swift_executable_path_sha256,
+        args.eg1_swift_executable_sha256,
+        args.eg1_swift_developer_dir,
+        args.eg1_swift_environment_sha256,
+    )
+    if not args.eg1_shipped_request:
+        if any(value is not None for value in values):
+            raise SystemExit("EG-1 Swift runtime arguments require exact shipped mode")
+        return
+    if any(not value for value in values):
+        raise SystemExit("exact shipped mode requires a pinned Swift runtime contract")
+
+    swift_environment = {
+        "HOME": "/tmp",
+        "LANG": "C",
+        "LC_ALL": "C",
+        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        "TMPDIR": "/tmp",
+    }
+    developer_dir = args.eg1_swift_developer_dir
+    if developer_dir != "none":
+        try:
+            developer_path = Path(developer_dir).resolve(strict=True)
+        except OSError as error:
+            raise SystemExit("pinned Swift DEVELOPER_DIR is unavailable") from error
+        if str(developer_path) != developer_dir or not developer_path.is_dir():
+            raise SystemExit("pinned Swift DEVELOPER_DIR is invalid")
+        swift_environment["DEVELOPER_DIR"] = developer_dir
+
+    observed_environment = {
+        key: os.environ.get(key) for key in swift_environment
+    }
+    if observed_environment != swift_environment or (
+        developer_dir == "none" and "DEVELOPER_DIR" in os.environ
+    ):
+        raise SystemExit("exact shipped mode Swift environment differs from the pin")
+    environment_sha = hashlib.sha256(
+        json.dumps(
+            swift_environment,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    if environment_sha != args.eg1_swift_environment_sha256:
+        raise SystemExit("exact shipped mode Swift environment hash differs from the pin")
+    try:
+        swift_launcher = Path(args.eg1_swift_launcher)
+        swift_executable = Path(args.eg1_swift_executable).resolve(strict=True)
+        if (
+            not swift_launcher.is_absolute()
+            or str(swift_launcher) != args.eg1_swift_launcher
+            or str(swift_executable) != args.eg1_swift_executable
+            or hashlib.sha256(str(swift_launcher).encode("utf-8")).hexdigest()
+            != args.eg1_swift_launcher_path_sha256
+            or hashlib.sha256(str(swift_executable).encode("utf-8")).hexdigest()
+            != args.eg1_swift_executable_path_sha256
+        ):
+            raise ValueError("pinned Swift runtime path identity differs")
+        _SHIPPED_MODULE.configure_swift_count_executable(
+            swift_launcher,
+            swift_executable,
+            args.eg1_swift_executable_sha256,
+            swift_environment,
+        )
+    except (OSError, ValueError) as error:
+        raise SystemExit("exact shipped mode Swift runtime differs from the pin") from error
+
+
+configure_exact_swift_runtime()
 
 endpoint_parts = urlsplit(args.endpoint)
 is_local_openai_endpoint = (

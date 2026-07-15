@@ -112,11 +112,35 @@ class ScoreEnglishListABTests(unittest.TestCase):
         receipt = {
             "status": "connector_wire_exact_ab_complete_semantic_review_pending",
             "scope": {
+                "connector_wire_exact": True,
+                "certifying_finalist_gate_evidence": False,
+                "runtime_binding": (
+                    "standalone_noncertifying_discovered_once_for_both_arms"
+                ),
+                "paste_equivalent": False,
+                "model_id": "eg-1",
                 "arm_order": ["baseline", "candidate"],
                 "same_server_identity_before_and_after_each_arm": True,
                 "both_arms_zero_errors_and_empty_outputs": True,
-                "connector_wire_exact": True,
-                "paste_equivalent": False,
+            },
+            "runtime": {
+                "evaluation_process": {
+                    "status": "standalone_noncertifying",
+                    "swift": {
+                        "launcher_path_sha256": "1" * 64,
+                        "launcher_sha256": "2" * 64,
+                        "executable_path_sha256": "3" * 64,
+                        "executable_sha256": "4" * 64,
+                        "environment_sha256": "5" * 64,
+                        "developer_dir_sha256": "6" * 64,
+                    },
+                    "python": {
+                        "launcher_path_sha256": "7" * 64,
+                        "launcher_sha256": "8" * 64,
+                        "executable_path_sha256": "9" * 64,
+                        "executable_sha256": "a" * 64,
+                    },
+                }
             },
             "provenance": {
                 "git_head": "b" * 40,
@@ -176,6 +200,28 @@ class ScoreEnglishListABTests(unittest.TestCase):
         receipt_path.write_text(json.dumps(receipt) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "bindings differ"):
             self._load()
+
+    def test_load_bound_inputs_rejects_missing_or_tampered_runtime_proof(self) -> None:
+        def remove_runtime_binding(receipt: dict[str, object]) -> None:
+            del receipt["scope"]["runtime_binding"]  # type: ignore[index]
+
+        def tamper_swift_developer_dir_hash(receipt: dict[str, object]) -> None:
+            receipt["runtime"]["evaluation_process"]["swift"][  # type: ignore[index]
+                "developer_dir_sha256"
+            ] = "z" * 64
+
+        for label, mutate in (
+            ("missing runtime binding", remove_runtime_binding),
+            ("tampered Swift DEVELOPER_DIR hash", tamper_swift_developer_dir_hash),
+        ):
+            with self.subTest(label=label):
+                self._write_ab_receipt()
+                receipt_path = self.bundle / "receipt.json"
+                receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+                mutate(receipt)
+                receipt_path.write_text(json.dumps(receipt) + "\n", encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "runtime.*invalid"):
+                    self._load()
 
     def test_atomic_publish_failure_leaves_no_final_file(self) -> None:
         destination = self.root / "report.json"

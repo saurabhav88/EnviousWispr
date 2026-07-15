@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Run exact EG-1 evaluation without printing the app's local credential.
+"""Run a standalone, non-certifying exact EG-1 evaluation locally.
 
 The EnviousWispr app chooses a loopback port and bearer credential at launch.
 This wrapper discovers both inside the process, validates that the server belongs
 to an EnviousWispr app bundle, and passes the credential to the existing runner
-only through its child environment.
+only through its child environment. It pins the runtime it discovers for that
+child, but it does not create finalist-gate evidence or claim a prior runtime lock.
 """
 
 from __future__ import annotations
@@ -30,6 +31,11 @@ SHIPPED_RUNTIME_FLAGS = {
     "--cache-type-k": "q8_0",
     "--cache-type-v": "q8_0",
 }
+_DISCOVERY_TOOL_DEFAULTS = {
+    "pgrep": Path("/usr/bin/pgrep"),
+    "ps": Path("/bin/ps"),
+}
+_DISCOVERY_TOOL_BINDINGS: dict[str, dict[str, str]] | None = None
 
 
 class LocalServerDiscoveryError(RuntimeError):
@@ -87,10 +93,85 @@ class LocalServer:
         )
 
 
+def _file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def configure_external_tools(bindings: dict[str, dict[str, str]]) -> None:
+    """Bind process discovery to the gate's lock-pinned executable identities."""
+
+    global _DISCOVERY_TOOL_BINDINGS
+    if set(bindings) != set(_DISCOVERY_TOOL_DEFAULTS):
+        raise LocalServerDiscoveryError("process discovery tool binding is incomplete")
+    validated: dict[str, dict[str, str]] = {}
+    for name, record in bindings.items():
+        if set(record) != {"path", "canonical_path_sha256", "executable_sha256"}:
+            raise LocalServerDiscoveryError("process discovery tool binding is invalid")
+        path = Path(record["path"])
+        try:
+            canonical = path.resolve(strict=True)
+        except OSError as error:
+            raise LocalServerDiscoveryError(
+                "process discovery tool binding is unavailable"
+            ) from error
+        if (
+            not path.is_absolute()
+            or canonical != path
+            or not canonical.is_file()
+            or canonical.is_symlink()
+            or not os.access(canonical, os.X_OK)
+            or hashlib.sha256(str(canonical).encode("utf-8")).hexdigest()
+            != record["canonical_path_sha256"]
+            or _file_sha256(canonical) != record["executable_sha256"]
+        ):
+            raise LocalServerDiscoveryError("process discovery tool binding has drifted")
+        validated[name] = dict(record)
+    _DISCOVERY_TOOL_BINDINGS = validated
+
+
+def _pinned_discovery_tool(name: str) -> Path:
+    record = (
+        _DISCOVERY_TOOL_BINDINGS.get(name)
+        if _DISCOVERY_TOOL_BINDINGS is not None
+        else None
+    )
+    candidate = (
+        Path(record["path"]) if record is not None else _DISCOVERY_TOOL_DEFAULTS[name]
+    )
+    try:
+        canonical = candidate.resolve(strict=True)
+    except OSError as error:
+        raise LocalServerDiscoveryError("process discovery tool is unavailable") from error
+    expected_path_sha = (
+        record["canonical_path_sha256"]
+        if record is not None
+        else hashlib.sha256(str(canonical).encode("utf-8")).hexdigest()
+    )
+    expected_file_sha = (
+        record["executable_sha256"] if record is not None else _file_sha256(canonical)
+    )
+    if (
+        not canonical.is_file()
+        or canonical.is_symlink()
+        or not os.access(canonical, os.X_OK)
+        or hashlib.sha256(str(canonical).encode("utf-8")).hexdigest()
+        != expected_path_sha
+        or _file_sha256(canonical) != expected_file_sha
+    ):
+        raise LocalServerDiscoveryError("process discovery tool has drifted")
+    return canonical
+
+
 def _run_text(command: list[str]) -> str:
+    tool = _pinned_discovery_tool(command[0])
     completed = subprocess.run(
-        command,
+        [str(tool), *command[1:]],
         check=False,
+        env={
+            "LANG": "C",
+            "LC_ALL": "C",
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        },
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,
@@ -365,6 +446,90 @@ def runner_environment(credential: str) -> dict[str, str]:
     }
 
 
+def standalone_swift_runtime_contract() -> tuple[list[str], dict[str, str]]:
+    """Pin one discovered Swift runtime for non-certifying standalone execution."""
+
+    environment = {
+        "HOME": "/tmp",
+        "LANG": "C",
+        "LC_ALL": "C",
+        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        "TMPDIR": "/tmp",
+    }
+    developer_dir = os.environ.get("DEVELOPER_DIR")
+    if developer_dir:
+        try:
+            canonical_developer_dir = Path(developer_dir).resolve(strict=True)
+        except OSError as error:
+            raise LocalServerDiscoveryError(
+                "standalone Swift DEVELOPER_DIR is unavailable"
+            ) from error
+        if not canonical_developer_dir.is_dir():
+            raise LocalServerDiscoveryError(
+                "standalone Swift DEVELOPER_DIR is invalid"
+            )
+        environment["DEVELOPER_DIR"] = str(canonical_developer_dir)
+    try:
+        xcrun = Path("/usr/bin/xcrun").resolve(strict=True)
+        launcher = Path(
+            subprocess.check_output(
+                [str(xcrun), "--find", "swift"],
+                env=environment,
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+        ).absolute()
+        executable = launcher.resolve(strict=True)
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise LocalServerDiscoveryError(
+            "standalone Swift runtime is unavailable"
+        ) from error
+    if not launcher.is_file() or not executable.is_file():
+        raise LocalServerDiscoveryError("standalone Swift runtime is invalid")
+    environment_sha = hashlib.sha256(
+        json.dumps(
+            environment,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    return (
+        [
+            "--eg1-swift-launcher",
+            str(launcher),
+            "--eg1-swift-launcher-path-sha256",
+            hashlib.sha256(str(launcher).encode("utf-8")).hexdigest(),
+            "--eg1-swift-executable",
+            str(executable),
+            "--eg1-swift-executable-path-sha256",
+            hashlib.sha256(str(executable).encode("utf-8")).hexdigest(),
+            "--eg1-swift-executable-sha256",
+            _file_sha256(executable),
+            "--eg1-swift-developer-dir",
+            environment.get("DEVELOPER_DIR", "none"),
+            "--eg1-swift-environment-sha256",
+            environment_sha,
+        ],
+        environment,
+    )
+
+
+def standalone_python_runtime_paths() -> tuple[Path, Path]:
+    """Pin the current Python launcher and target for non-certifying execution."""
+
+    launcher = Path(sys.executable).absolute()
+    try:
+        executable = launcher.resolve(strict=True)
+    except OSError as error:
+        raise LocalServerDiscoveryError(
+            "standalone Python runtime is unavailable"
+        ) from error
+    if not launcher.is_file() or not executable.is_file():
+        raise LocalServerDiscoveryError("standalone Python runtime is invalid")
+    return launcher, executable
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--prompts")
@@ -394,13 +559,24 @@ def main() -> int:
         print(f"EG-1 local preflight failed: {error}", file=sys.stderr)
         return 2
 
-    print(server.public_summary(), flush=True)
+    print(
+        f"{server.public_summary()} evidence_status=standalone_noncertifying",
+        flush=True,
+    )
     if args.preflight_only:
         return 0
 
+    try:
+        swift_arguments, swift_environment = standalone_swift_runtime_contract()
+        python_launcher, python_executable = standalone_python_runtime_paths()
+    except LocalServerDiscoveryError as error:
+        print(f"EG-1 local runner setup failed: {error}", file=sys.stderr)
+        return 2
     environment = runner_environment(server.credential)
+    environment.update(swift_environment)
     command = [
-        sys.executable,
+        str(python_launcher),
+        "-I",
         "-E",
         "-s",
         str(RUNNER),
@@ -417,9 +593,15 @@ def main() -> int:
         "--endpoint",
         server.endpoint,
         "--eg1-shipped-request",
+        *swift_arguments,
     ]
     try:
-        completed = subprocess.run(command, check=False, env=environment)
+        completed = subprocess.run(
+            command,
+            executable=str(python_executable),
+            check=False,
+            env=environment,
+        )
     finally:
         environment.pop("OPENAI_API_KEY", None)
     return completed.returncode

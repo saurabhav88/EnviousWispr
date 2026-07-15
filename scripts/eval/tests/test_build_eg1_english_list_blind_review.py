@@ -126,11 +126,35 @@ class BuildBlindReviewTests(unittest.TestCase):
         receipt = {
             "status": "connector_wire_exact_ab_complete_semantic_review_pending",
             "scope": {
+                "connector_wire_exact": True,
+                "certifying_finalist_gate_evidence": False,
+                "runtime_binding": (
+                    "standalone_noncertifying_discovered_once_for_both_arms"
+                ),
+                "paste_equivalent": False,
+                "model_id": "eg-1",
                 "arm_order": ["baseline", "candidate"],
                 "same_server_identity_before_and_after_each_arm": True,
                 "both_arms_zero_errors_and_empty_outputs": True,
-                "connector_wire_exact": True,
-                "paste_equivalent": False,
+            },
+            "runtime": {
+                "evaluation_process": {
+                    "status": "standalone_noncertifying",
+                    "swift": {
+                        "launcher_path_sha256": "1" * 64,
+                        "launcher_sha256": "2" * 64,
+                        "executable_path_sha256": "3" * 64,
+                        "executable_sha256": "4" * 64,
+                        "environment_sha256": "5" * 64,
+                        "developer_dir_sha256": "6" * 64,
+                    },
+                    "python": {
+                        "launcher_path_sha256": "7" * 64,
+                        "launcher_sha256": "8" * 64,
+                        "executable_path_sha256": "9" * 64,
+                        "executable_sha256": "a" * 64,
+                    },
+                }
             },
             "provenance": {
                 "git_head": self.execution_head,
@@ -309,6 +333,31 @@ class BuildBlindReviewTests(unittest.TestCase):
                 MODULE.main()
         self.assertFalse(self.mapping.exists())
         self.assertFalse(self.packet.exists())
+
+    def test_rejects_missing_or_tampered_noncertifying_runtime_proof(self) -> None:
+        def remove_evaluation_process(receipt: dict[str, object]) -> None:
+            del receipt["runtime"]["evaluation_process"]  # type: ignore[index]
+
+        def tamper_python_executable_hash(receipt: dict[str, object]) -> None:
+            receipt["runtime"]["evaluation_process"]["python"][  # type: ignore[index]
+                "executable_sha256"
+            ] = "A" * 64
+
+        for label, mutate in (
+            ("missing evaluation process", remove_evaluation_process),
+            ("tampered Python executable hash", tamper_python_executable_hash),
+        ):
+            with self.subTest(label=label):
+                self._write_ab_receipt()
+                receipt_path = self.ab / "receipt.json"
+                receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+                mutate(receipt)
+                receipt_path.write_text(json.dumps(receipt) + "\n", encoding="utf-8")
+                with mock.patch.object(sys, "argv", self._arguments()):
+                    with self.assertRaisesRegex(ValueError, "runtime identity is invalid"):
+                        MODULE.main()
+                self.assertFalse(self.mapping.exists())
+                self.assertFalse(self.packet.exists())
 
     def test_refuses_existing_packet_without_touching_it(self) -> None:
         self.packet.mkdir()

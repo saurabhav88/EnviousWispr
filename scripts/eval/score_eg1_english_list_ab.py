@@ -16,6 +16,7 @@ import score_eg1_english_list_novel as deterministic
 from eg1_english_list_contract import (
     load_contract,
     require_binding,
+    validate_noncertifying_ab_runtime_receipt,
     validate_binding_commit,
 )
 
@@ -124,18 +125,7 @@ def load_bound_inputs(
     ab_bytes, ab_sha = read_once(ab_receipt_path, "A/B receipt")
     require_sha(ab_sha, expected_ab_receipt_sha, "A/B receipt")
     ab = parse_json(ab_bytes, "A/B receipt")
-    if ab.get("status") != "connector_wire_exact_ab_complete_semantic_review_pending":
-        raise ValueError("A/B receipt is not healthy and scoreable")
-    scope = ab.get("scope")
-    if (
-        not isinstance(scope, dict)
-        or scope.get("arm_order") != list(EXPECTED_ARMS)
-        or scope.get("same_server_identity_before_and_after_each_arm") is not True
-        or scope.get("both_arms_zero_errors_and_empty_outputs") is not True
-        or scope.get("connector_wire_exact") is not True
-        or scope.get("paste_equivalent") is not False
-    ):
-        raise ValueError("A/B runtime scope is invalid")
+    validate_noncertifying_ab_runtime_receipt(ab)
 
     try:
         provenance = ab["provenance"]

@@ -36,6 +36,33 @@ REQUIRED_BINDINGS = (
 )
 SHA256_KEYS = tuple(key for key in REQUIRED_BINDINGS if key.endswith("_sha256"))
 SHA1_KEYS = ("code_anchor_git_sha1",)
+NONCERTIFYING_AB_STATUS = (
+    "connector_wire_exact_ab_complete_semantic_review_pending"
+)
+NONCERTIFYING_AB_SCOPE_KEYS = {
+    "connector_wire_exact",
+    "certifying_finalist_gate_evidence",
+    "runtime_binding",
+    "paste_equivalent",
+    "model_id",
+    "arm_order",
+    "same_server_identity_before_and_after_each_arm",
+    "both_arms_zero_errors_and_empty_outputs",
+}
+NONCERTIFYING_SWIFT_IDENTITY_KEYS = {
+    "launcher_path_sha256",
+    "launcher_sha256",
+    "executable_path_sha256",
+    "executable_sha256",
+    "environment_sha256",
+    "developer_dir_sha256",
+}
+NONCERTIFYING_PYTHON_IDENTITY_KEYS = {
+    "launcher_path_sha256",
+    "launcher_sha256",
+    "executable_path_sha256",
+    "executable_sha256",
+}
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -83,6 +110,52 @@ def require_binding(bindings: dict[str, str], key: str, actual: str) -> None:
         raise ValueError(f"decision contract is missing {key}")
     if bindings[key] != actual:
         raise ValueError(f"actual {key} differs from the executable decision contract")
+
+
+def validate_noncertifying_ab_runtime_receipt(receipt: dict[str, Any]) -> None:
+    """Fail closed unless both downstream consumers see the full runtime proof."""
+
+    if receipt.get("status") != NONCERTIFYING_AB_STATUS:
+        raise ValueError("A/B receipt is not healthy and consumable")
+    scope = receipt.get("scope")
+    if (
+        not isinstance(scope, dict)
+        or set(scope) != NONCERTIFYING_AB_SCOPE_KEYS
+        or scope.get("connector_wire_exact") is not True
+        or scope.get("certifying_finalist_gate_evidence") is not False
+        or scope.get("runtime_binding")
+        != "standalone_noncertifying_discovered_once_for_both_arms"
+        or scope.get("paste_equivalent") is not False
+        or scope.get("model_id") != "eg-1"
+        or scope.get("arm_order") != ["baseline", "candidate"]
+        or scope.get("same_server_identity_before_and_after_each_arm") is not True
+        or scope.get("both_arms_zero_errors_and_empty_outputs") is not True
+    ):
+        raise ValueError("A/B runtime scope is invalid")
+
+    runtime = receipt.get("runtime")
+    evaluation_process = (
+        runtime.get("evaluation_process") if isinstance(runtime, dict) else None
+    )
+    if (
+        not isinstance(evaluation_process, dict)
+        or set(evaluation_process) != {"status", "swift", "python"}
+        or evaluation_process.get("status") != "standalone_noncertifying"
+    ):
+        raise ValueError("A/B noncertifying runtime identity is invalid")
+    swift = evaluation_process.get("swift")
+    python = evaluation_process.get("python")
+    if (
+        not isinstance(swift, dict)
+        or set(swift) != NONCERTIFYING_SWIFT_IDENTITY_KEYS
+        or not isinstance(python, dict)
+        or set(python) != NONCERTIFYING_PYTHON_IDENTITY_KEYS
+        or any(
+            type(value) is not str or not re.fullmatch(r"[0-9a-f]{64}", value)
+            for value in (*swift.values(), *python.values())
+        )
+    ):
+        raise ValueError("A/B noncertifying runtime identity is invalid")
 
 
 def current_git_head(repo_root: Path) -> str:
