@@ -1369,3 +1369,22 @@ The semantic/exact-span difference on English is itself useful: Phi often preser
 The generic runner now preserves the publisher's configured EOS value or list and falls back to tokenizer EOS only when the model declares none. Three focused contract tests and the full 68-test evaluation suite pass. An isolated AlienSV smoke with the fixed shared runner recorded `[200020, 199999]`, completed 5/5 clean, and matched the compatibility-wrapper output strings 5/5, so the 92-case outputs did not need rerunning.
 
 Decision: stop after one corrected smoke and one full development benchmark. Do not tune, quantize, or move Phi-4-mini to the exact-Mac lane. This rejects Phi on current task evidence, not the one-universal-model architecture. No frozen outputs were opened. After CRLF-to-LF repository normalization, the control receipt SHA-256 is `2b6ea573c22527d821e1b9ff254723e9d68d9a69d8f9eb7e83354a205528aa47` and the independent review SHA-256 is `d077485634a4b71374281f5a610dbe600bb0aefbc7550c3dc6f8b5380f65d720`.
+
+### BASE-RUN-008 - Untouched EuroLLM-9B universal control
+
+Timestamp: 2026-07-15 07:26 EDT
+
+Status: rejected at smoke; fail-closed stop applied
+
+The official [EuroLLM-9B-Instruct-2512 model](https://huggingface.co/utter-project/EuroLLM-9B-Instruct-2512) is Apache-2.0 licensed and covers 35 languages, including English, German, French, Spanish, and Russian. It was tested only as one universal offline model. It never represented or justified a separate full model per language.
+
+The pinned publisher revision is `1acaaeb8d9e8d9b5e3bf0240aacd32fc11ee4213`. AlienSV independently rehashed all 29 snapshot files: 18,322,965,727 bytes total and 18,304,683,360 bytes of BF16 weights, with no missing or undeclared files. The shared runner and generation-contract hashes matched the committed copies, and the publisher EOS token `4` was preserved.
+
+The untouched five-case Spanish smoke produced five unique, nonempty outputs and retained Spanish on all five. However, 2/5 outputs leaked `<CLEANED_TEXT>` and/or `<TRANSCRIPT>` wrappers. One of those repeated the complete transcript framing instead of returning only polished text. The predeclared fail-closed smoke rule therefore prohibited the multilingual 56, Russian 16, English two-item 20, scoring, tuning, quantization, and exact-Mac lanes. This rejects EuroLLM-9B on raw-output safety, not the founder's one-universal-model architecture.
+
+All artifacts are LF-normalized. SHA-256 receipts:
+
+- control receipt: `651d8bcdd9245ad6659cfef6212998674f731348c41a16313e3b51074dcaa333`
+- official snapshot manifest: `dde616e0bf218d5ec2b57808748527446283d7c208b5bf2b2912043ca38241de`
+- raw smoke outputs: `04ba18bb0aa00ecb28c2de8d72b28648b31c361df0102a93d0d2efb8a9ff4dbc`
+- smoke run manifest: `1802c555586640ad1b7ced391d8f094701c924769b892ef2d0ef0264a7035a0c`
