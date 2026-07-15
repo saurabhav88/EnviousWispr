@@ -19,7 +19,7 @@ struct PipelineStateTests {
 
   @Test("error is not active")
   func errorIsNotActive() {
-    #expect(!PipelineState.error("something broke").isActive)
+    #expect(!PipelineState.error(.modelWedged).isActive)
   }
 
   @Test(
@@ -36,8 +36,8 @@ struct PipelineStateTests {
 
   @Test("equality for error states")
   func errorEquality() {
-    #expect(PipelineState.error("a") == PipelineState.error("a"))
-    #expect(PipelineState.error("a") != PipelineState.error("b"))
+    #expect(PipelineState.error(.modelWedged) == PipelineState.error(.modelWedged))
+    #expect(PipelineState.error(.modelWedged) != PipelineState.error(.asrFailed))
   }
 
   @Test("equality for non-error states")

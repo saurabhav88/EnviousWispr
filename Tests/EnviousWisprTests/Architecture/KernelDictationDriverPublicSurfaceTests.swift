@@ -58,7 +58,7 @@ import Testing
     _ = driver.currentSessionConfig
     driver.onStateChange = { _ in }
     driver.onOverlayIntentChange = { _ in }  // #930 — App-consumed overlay channel
-    driver.setExternalError("probe")
+    driver.setTerminalReason(.modelWedged)
     driver.handleEngineInterruption(.engineLost)
     driver.handleASRServiceInterruption()
     driver.reset()

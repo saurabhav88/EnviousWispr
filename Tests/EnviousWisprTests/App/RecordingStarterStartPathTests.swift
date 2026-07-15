@@ -184,7 +184,7 @@ import Testing
 
     await fx.starter.start()
 
-    #expect(fx.kernelDriver.state == .error("No microphone found. Please connect a microphone."))
+    #expect(fx.kernelDriver.state == .error(.noMicrophoneFound))
   }
 
   @Test("XPC-sanitized no-microphone prewarm error surfaces distinct copy")
@@ -197,7 +197,7 @@ import Testing
 
     await fx.starter.start()
 
-    #expect(fx.kernelDriver.state == .error("No microphone found. Please connect a microphone."))
+    #expect(fx.kernelDriver.state == .error(.noMicrophoneFound))
   }
 
   /// The old `toggleAndStartBothRefreshAccessibilityStatus` had ZERO `#expect` —

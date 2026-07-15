@@ -39,13 +39,13 @@ struct LiveRecordingStateTests {
     // The prior test left both drivers .idle, so it stayed green even if the
     // router ignored activeBackendType, inverted the condition, or read the
     // wrong driver in the WhisperKit arm.
-    state.whisperKitKernelDriver.setExternalError("wk-marker")
+    state.whisperKitKernelDriver.setTerminalReason(.deviceRemoved)
     // Parakeet arm → reads the (error-free) parakeet driver → .idle.
     state.asrManager.setInitialBackendType(.parakeet)
     #expect(state.pipelineState == .idle)
-    // WhisperKit arm → reads the WhisperKit driver → .error("wk-marker").
+    // WhisperKit arm → reads the WhisperKit driver → .error(.deviceRemoved).
     state.asrManager.setInitialBackendType(.whisperKit)
-    #expect(state.pipelineState == .error("wk-marker"))
+    #expect(state.pipelineState == .error(.deviceRemoved))
   }
 
   @Test(

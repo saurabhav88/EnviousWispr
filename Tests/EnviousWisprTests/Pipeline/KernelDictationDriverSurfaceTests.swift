@@ -45,7 +45,7 @@ import Testing
     @Test("cancelRecording() drives the kernel cancel path")
     func cancelRecordingForwardsToKernel() async {
       let driver = makeDriver()
-      driver.setExternalError("boom")  // parks kernel + flips external error
+      driver.setTerminalReason(.modelWedged)  // parks kernel + flips external error
       await driver.cancelRecording()
       // After cancel, the kernel is idle or terminal. external error stays
       // (only reset/start clears); the surface signal is "no exception, no
@@ -58,10 +58,10 @@ import Testing
     @Test("reset() clears the external-error surface")
     func resetClearsExternalError() {
       let driver = makeDriver()
-      driver.setExternalError("boom")
+      driver.setTerminalReason(.modelWedged)
       if case .error = driver.state {
       } else {
-        Issue.record("setExternalError should park driver in .error")
+        Issue.record("setTerminalReason should park driver in .error")
       }
       driver.reset()
       // The state mapper returns .idle from the kernel's resting state once

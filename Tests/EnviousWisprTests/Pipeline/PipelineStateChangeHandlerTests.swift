@@ -259,8 +259,8 @@ struct PipelineStateChangeHandlerTests {
     let handler = Self.makeHandler(overlay: spy, callbacks: calls)
 
     handler.handle(
-      to: PipelineState.error("mic_disconnected"),
-      pipelineOverlayIntent: .error(message: "mic_disconnected"),
+      to: PipelineState.error(.deviceRemoved),
+      pipelineOverlayIntent: .error(reason: .deviceRemoved),
       lastPolishError: nil,
       currentTranscript: nil,
       historySaved: true,
@@ -269,8 +269,8 @@ struct PipelineStateChangeHandlerTests {
 
     #expect(calls.cancelWarningCount == 1)
     #expect(
-      spy.calls == [OverlaySpy.Call(intent: .error(message: "mic_disconnected"))])
-    #expect(calls.failedCalls == ["mic_disconnected"])
+      spy.calls == [OverlaySpy.Call(intent: .error(reason: .deviceRemoved))])
+    #expect(calls.failedCalls == [TerminalNoticeReason.deviceRemoved.rawValue])
     #expect(calls.appendedCalls.count == 0)
     #expect(calls.completedCalls.isEmpty)
   }

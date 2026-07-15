@@ -96,7 +96,7 @@ struct ASREventRouterTests {
 
       // Walk the kernel FSM through the legal edges so it lands in
       // `.finalizing`; the public mapping at
-      // KernelDictationDriver.pipelineState(for:externalError:) returns
+      // KernelDictationDriver.pipelineState(for:externalReason:) returns
       // `.polishing` for that state, which is the safe-point window the
       // router must NOT interrupt on ASR XPC crash.
       let kernel = driver.kernelForTesting

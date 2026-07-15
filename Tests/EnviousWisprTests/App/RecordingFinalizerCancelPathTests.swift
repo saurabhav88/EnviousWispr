@@ -183,21 +183,21 @@ import Testing
     // and reset-neither regressions alike.
     do {  // Parakeet active.
       let fx = Self.makeFixture()
-      fx.kernelDriver.setExternalError("parakeet-err")
-      fx.whisperKitKernelDriver.setExternalError("whisperkit-err")
+      fx.kernelDriver.setTerminalReason(.modelWedged)
+      fx.whisperKitKernelDriver.setTerminalReason(.asrFailed)
       fx.asr.activeBackendType = .parakeet
       fx.finalizer.resetActive()
       #expect(fx.kernelDriver.state == .idle)
-      #expect(fx.whisperKitKernelDriver.state == .error("whisperkit-err"))
+      #expect(fx.whisperKitKernelDriver.state == .error(.asrFailed))
     }
     do {  // WhisperKit active.
       let fx = Self.makeFixture()
-      fx.kernelDriver.setExternalError("parakeet-err")
-      fx.whisperKitKernelDriver.setExternalError("whisperkit-err")
+      fx.kernelDriver.setTerminalReason(.modelWedged)
+      fx.whisperKitKernelDriver.setTerminalReason(.asrFailed)
       fx.asr.activeBackendType = .whisperKit
       fx.finalizer.resetActive()
       #expect(fx.whisperKitKernelDriver.state == .idle)
-      #expect(fx.kernelDriver.state == .error("parakeet-err"))
+      #expect(fx.kernelDriver.state == .error(.modelWedged))
     }
   }
 }

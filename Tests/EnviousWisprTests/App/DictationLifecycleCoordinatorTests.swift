@@ -128,7 +128,7 @@ import Testing
   @Test func parakeetTerminalStatesClearRecordingLock() {
     let fx = Self.makeCoordinator()
     fx.coordinator.install()
-    for terminal in [PipelineState.idle, .complete, .error("boom")] {
+    for terminal in [PipelineState.idle, .complete, .error(.modelWedged)] {
       fx.recordingLocked.isLocked = true
       fx.kernelDriver.onStateChange?(terminal)
       #expect(
@@ -140,7 +140,7 @@ import Testing
   @Test func whisperKitTerminalStatesClearRecordingLock() {
     let fx = Self.makeCoordinator()
     fx.coordinator.install()
-    for terminal in [PipelineState.idle, .complete, .error("boom")] {
+    for terminal in [PipelineState.idle, .complete, .error(.modelWedged)] {
       fx.recordingLocked.isLocked = true
       fx.whisperKitKernelDriver.onStateChange?(terminal)
       #expect(

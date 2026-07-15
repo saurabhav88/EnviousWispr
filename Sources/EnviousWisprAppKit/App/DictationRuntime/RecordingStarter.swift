@@ -252,10 +252,8 @@ final class RecordingStarter {
       let noMic =
         nsError.domain == AudioError.errorDomain
         && nsError.code == AudioError.noBuiltInMicrophoneFound.errorCode
-      active.setExternalError(
-        noMic
-          ? "No microphone found. Please connect a microphone."
-          : "Microphone unavailable — try again.")
+      // #1558: emit a TYPED reason; the presenter authors the sentence.
+      active.setTerminalReason(noMic ? .noMicrophoneFound : .micWouldNotOpen)
       return
     }
     guard !Task.isCancelled else {
@@ -326,8 +324,8 @@ final class RecordingStarter {
     } catch {
       heartControlRecovery.recover(
         error: error, op: "toggle-from-prewarm",
-        message: ModelLoadWatchdog.userMessage,
-        setExternalError: active.setExternalError)
+        reason: .modelWedged,
+        setTerminalReason: active.setTerminalReason)
       return
     }
     let totalMs = Self.elapsedMs(since: pttStart)
@@ -360,7 +358,7 @@ final class RecordingStarter {
       )
       recordingOverlay.show(intent: .hidden)
       recordingLockedAccess.set(false)
-      active.setExternalError(ModelLoadWatchdog.userMessage)
+      active.setTerminalReason(.modelWedged)
       return
     }
     if !pipelineActive && !pipelineInError && userStoppedDuringStart {
@@ -468,8 +466,8 @@ final class RecordingStarter {
     } catch {
       heartControlRecovery.recover(
         error: error, op: "toggle",
-        message: ModelLoadWatchdog.userMessage,
-        setExternalError: active.setExternalError)
+        reason: .modelWedged,
+        setTerminalReason: active.setTerminalReason)
     }
   }
 
