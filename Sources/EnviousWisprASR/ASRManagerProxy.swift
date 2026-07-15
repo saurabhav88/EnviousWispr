@@ -858,3 +858,22 @@ package enum XPCASRTransportError: LocalizedError {
     }
   }
 }
+
+/// #1525 PR G. Pins the single case's exact measured current wire identity
+/// (`docs/audits/2026-07-14-1525-pr-g-preflight.md` §1). `package` matches
+/// this type's own package visibility (mirrors `KeyStoreError`'s PR-F
+/// pattern — a bare `var` would default to `internal` and fail to compile
+/// against a `package` enclosing type). NEVER change this string once shipped.
+extension XPCASRTransportError: StableSentryErrorIdentity {
+  package var sentryFingerprintDescriptor: String {
+    switch self {
+    case .serviceUnreachable: return "EnviousWisprASR.XPCASRTransportError#0"
+    }
+  }
+
+  package var sentrySemanticID: String {
+    switch self {
+    case .serviceUnreachable: return "xpc.asr_service_unreachable"
+    }
+  }
+}
