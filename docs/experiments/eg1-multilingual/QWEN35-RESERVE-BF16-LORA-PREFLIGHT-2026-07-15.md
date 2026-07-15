@@ -38,7 +38,7 @@ The local base is the official [Qwen/Qwen3.5-4B](https://huggingface.co/Qwen/Qwe
 | MTP parameters | 120,599,552 |
 | total parameters | 4,659,865,088 |
 
-Architecture inspection found 32 language layers: 24 GDN linear-attention layers and 8 full-attention layers. The current Unsloth selector, with vision off and language attention/MLP on, produced this exact rank-16 target contract:
+Architecture inspection found 32 language layers: 24 GDN linear-attention layers and 8 full-attention layers. The required text-only rank-16 adapter contract is:
 
 | Target family | Modules |
 |---|---:|
@@ -70,3 +70,30 @@ Qwen3.5 currently refuses every launch that omits `--preflight-only`; a future f
 7. CUDA BF16 support is present and the trainer completes exactly one step.
 
 The manifest records every matched module name, target counts, trainable/total parameters, response-label counts, completed steps, timings, and peak CUDA memory. No benchmark corpus, quality score, D1 export, merged model, or release decision belongs in this lane.
+
+## One-step execution receipt
+
+Timestamp: 2026-07-15 13:56 EDT
+
+Status: stopped fail-closed before training; no retry authorized
+
+Committed trainer: `79f3c9554037868326ab33b47f9e7de8ea724d3c`. Its final named committed-diff review found no actionable defects before remote use. AlienSV then ran exactly one foreground invocation in the documented WSL exception environment: Python 3.12.3, PyTorch 2.10.0+cu128, Transformers 5.5.0, PEFT 0.19.1, TRL 0.24.0, Unsloth 2026.6.9, bitsandbytes 0.49.2, and datasets 4.3.0. CUDA and BF16 were available on the RTX 4090.
+
+Before model load, the script verified the pinned base revision `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`, all seven config/tokenizer/template/index/shard hashes listed above, the exact two-shard index inventory, the fixed private four-row SHA-256 `0584d6d796ad2fe0e1f551c20fb175487e13a2440effdb71bae0acd69e057bb3`, and prompt SHA-256 `7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62`.
+
+The live Unsloth selector attached adapters to only 128 of the required 248 language modules:
+
+| Live target family | Present | Required | Missing |
+|---|---:|---:|---:|
+| MLP `gate_proj`, `up_proj`, `down_proj` | 32 each | 32 each | 0 |
+| full attention `q_proj`, `k_proj`, `v_proj`, `o_proj` | 8 each | 8 each | 0 |
+| GDN `in_proj_a` | 0 | 24 | 24 |
+| GDN `in_proj_b` | 0 | 24 | 24 |
+| GDN `in_proj_qkv` | 0 | 24 | 24 |
+| GDN `in_proj_z` | 0 | 24 | 24 |
+| GDN `out_proj` | 0 | 24 | 24 |
+| Total | 128 | 248 | 120 |
+
+The exact target-coverage assertion stopped the process immediately after adapter attachment. It did not reach response masking, trainer construction, or `trainer.train()`. Completed optimizer steps: `0`. No adapter, checkpoint, merged model, D1 output, or quality score was created. The sanitized starting-manifest SHA-256 is `d615f2d852c9aaacf7f3d2b1e1b2b0159c6752638699dbd3de4c511c82666737`. GPU state returned to 0% utilization with 22,886 MiB free.
+
+Decision: this is compatibility failure evidence, not model-quality evidence. Do not weaken the 248-module contract and do not retry. Any next attempt needs a separately reviewed plan that proves how GDN modules will be targeted in the installed stack, followed by fresh authorization for a new invocation.
