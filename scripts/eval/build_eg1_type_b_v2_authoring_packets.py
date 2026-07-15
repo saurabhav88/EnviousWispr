@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter, deque
+from collections import Counter
 import hashlib
 import json
 import os
@@ -777,23 +777,61 @@ def packet_sizes(total: int, minimum: int, maximum: int, preferred: int) -> list
     )
 
 
-def mixed_order(assignments: list[dict[str, Any]], seed: int) -> list[dict[str, Any]]:
-    queues: dict[str, deque[dict[str, Any]]] = {}
-    for category in sorted({row["category"] for row in assignments}):
-        members = [row for row in assignments if row["category"] == category]
-        members.sort(key=lambda row: sha256_bytes(f"{seed}|{row['assignment_fingerprint']}".encode()))
-        queues[category] = deque(members)
-    ordered: list[dict[str, Any]] = []
-    category_order = sorted(queues, key=lambda category: sha256_bytes(f"{seed}|{category}".encode()))
-    cursor = 0
-    while queues:
-        category_order = [category for category in category_order if category in queues]
-        category = category_order[cursor % len(category_order)]
-        ordered.append(queues[category].popleft())
-        if not queues[category]:
-            del queues[category]
-        cursor += 1
-    return ordered
+def distribute_mixed_packets(
+    assignments: list[dict[str, Any]], sizes: list[int], seed: int
+) -> list[list[dict[str, Any]]]:
+    if sum(sizes) != len(assignments):
+        raise ValidationFailure("packet capacities do not match active assignments")
+    members_by_category: dict[str, list[dict[str, Any]]] = {}
+    for row in assignments:
+        members_by_category.setdefault(row["category"], []).append(row)
+    for members in members_by_category.values():
+        members.sort(
+            key=lambda row: sha256_bytes(
+                f"{seed}|member|{row['assignment_fingerprint']}".encode()
+            )
+        )
+    category_order = sorted(
+        members_by_category,
+        key=lambda category: (
+            -len(members_by_category[category]),
+            sha256_bytes(f"{seed}|category|{category}".encode()),
+        ),
+    )
+    packets: list[list[dict[str, Any]]] = [[] for _ in sizes]
+    category_counts: list[Counter[str]] = [Counter() for _ in sizes]
+    for category in category_order:
+        packet_ties = {
+            index: sha256_bytes(f"{seed}|{category}|packet|{index}".encode())
+            for index in range(len(packets))
+        }
+        for member in members_by_category[category]:
+            candidates = [
+                index
+                for index, packet in enumerate(packets)
+                if len(packet) < sizes[index]
+            ]
+            if not candidates:
+                raise ValidationFailure("packet capacity exhausted before assignment")
+            destination = min(
+                candidates,
+                key=lambda index: (
+                    category_counts[index][category],
+                    len(packets[index]) / sizes[index],
+                    packet_ties[index],
+                ),
+            )
+            packets[destination].append(member)
+            category_counts[destination][category] += 1
+    if any(len(packet) != sizes[index] for index, packet in enumerate(packets)):
+        raise ValidationFailure("packet assignment did not fill every sealed capacity")
+    for index, packet in enumerate(packets):
+        packet.sort(
+            key=lambda row: sha256_bytes(
+                f"{seed}|packet-order|{index}|{row['assignment_fingerprint']}".encode()
+            )
+        )
+    return packets
 
 
 def build_outputs(
@@ -845,19 +883,19 @@ def build_outputs(
         raise ValidationFailure("final assignment or reserve custody total changed")
     if len({row["assignment_fingerprint"] for row in assignments}) != len(assignments):
         raise ValidationFailure("assignment fingerprints are not unique")
-    ordered = mixed_order(active, int(contract["seed"]))
     packet_contract = contract["packet_contract"]
     sizes = packet_sizes(
-        len(ordered),
+        len(active),
         packet_contract["minimum_slots"],
         packet_contract["maximum_slots"],
         packet_contract["expected_slots_per_packet"],
     )
+    packet_members = distribute_mixed_packets(
+        active, sizes, int(contract["seed"])
+    )
     packets: list[dict[str, Any]] = []
-    offset = 0
-    for index, size in enumerate(sizes, 1):
-        members = ordered[offset : offset + size]
-        offset += size
+    for index, members in enumerate(packet_members, 1):
+        size = len(members)
         category_counts = dict(sorted(Counter(row["category"] for row in members).items()))
         if len(category_counts) < packet_contract["mixed_category_minimum"]:
             raise ValidationFailure("deterministic packet is not category-mixed")
@@ -877,7 +915,7 @@ def build_outputs(
                 "merge_eligible": False,
             }
         )
-    if offset != len(ordered) or sum(row["slot_count"] for row in packets) != len(active):
+    if sum(row["slot_count"] for row in packets) != len(active):
         raise ValidationFailure("packet membership does not cover active assignments exactly once")
     requirements = {
         "schema_version": "eg1-type-b-v2-merge-gate-requirements-v1",

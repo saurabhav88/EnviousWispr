@@ -414,12 +414,17 @@ class TypeBAuthoringWorkflowTests(unittest.TestCase):
         categories = [f"synthetic-category-{index:02d}" for index in range(17)]
         manifest: list[dict] = []
         for index in range(1867):
+            category = (
+                categories[0]
+                if index < 292
+                else categories[1 + ((index - 292) % (len(categories) - 1))]
+            )
             manifest.append(
                 SyntheticInputs.row(
                     slot=f"fresh-{index:04d}",
                     family=f"fresh-family-{index:04d}",
                     source="fresh_model_blind_required",
-                    category=categories[index % len(categories)],
+                    category=category,
                     source_case=None,
                     authored=False,
                 )
@@ -433,7 +438,7 @@ class TypeBAuthoringWorkflowTests(unittest.TestCase):
                     slot=f"provisional-{index:02d}",
                     family=f"provisional-family-{index:02d}",
                     source="provisional_retained_requires_blind_family_review",
-                    category=categories[index % len(categories)],
+                    category=categories[1 + (index % (len(categories) - 1))],
                     source_case=source_case,
                     authored=True,
                 )
@@ -442,7 +447,7 @@ class TypeBAuthoringWorkflowTests(unittest.TestCase):
                 slot=f"reserve-{index:02d}",
                 family=f"reserve-family-{index:02d}",
                 source="fresh_replacement_reserve_model_blind_required",
-                category=categories[index % len(categories)],
+                category=categories[1 + (index % (len(categories) - 1))],
                 source_case=None,
                 authored=False,
             )
@@ -462,6 +467,13 @@ class TypeBAuthoringWorkflowTests(unittest.TestCase):
         self.assertEqual(len(packets), 126)
         self.assertEqual({packet["slot_count"] for packet in packets}, {15})
         self.assertTrue(all(len(packet["category_counts"]) >= 2 for packet in packets))
+        self.assertLessEqual(
+            max(
+                packet["category_counts"].get(categories[0], 0)
+                for packet in packets
+            ),
+            3,
+        )
         self.assertEqual(
             sum(packet["slot_count"] for packet in packets),
             1890,
