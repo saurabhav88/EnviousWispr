@@ -1,7 +1,7 @@
 {
   "schema_version": "eg1-type-b-v2-authoring-workflow-contract-v1",
   "workflow_id": "eg1-type-b-v2-authoring-workflow-2026-07-15",
-  "status": "pending_clean_blocked_registry_receipt_authorship_blocked",
+  "status": "sealed_registry_bound_metadata_only_authorship_blocked",
   "seed": 1265,
   "production_inputs": {
     "allocation": {
@@ -22,10 +22,10 @@
       }
     },
     "blocked_registry": {
-      "status": "pending_final_clean_receipt",
+      "status": "sealed_final_clean_receipt",
       "receipt_schema": "eg1-type-b-v2-blocked-registry-receipt-v1",
-      "receipt_sha256": null,
-      "execution_git_head": null,
+      "receipt_sha256": "c671ae640c0d78d4e5443f93f8a0a3fc413c2eca3e04ddf95e6a76dff87ab12c",
+      "execution_git_head": "4c2746024a0b94fb929201fa0134468ac8dd4c92",
       "registry_id": "eg1-type-b-v2-blocked-registry-2026-07-15",
       "allocation_contract_sha256": "1f683a8e9448fb73a5e763d3342a7cdb9cde452d3be9d7d586b8a372924b67c2",
       "allocator_builder_sha256": "f4e4cee02ff38bf0b6ba5473f308b17aa087dd98ca8b05819fcb6aee7e4b6cd0",
@@ -45,28 +45,28 @@
         "name": "blocked_family_registry.jsonl",
         "schema_version": "eg1-type-b-v2-blocked-family-v1",
         "validator_source_role": "blocked_family_registry",
-        "sha256": null,
+        "sha256": "117e54b76051ec9f75a25ecdb9c1b673e64093a1c1f9e31a02de42eaced1a851",
         "row_count": 7198
       },
       "text_hash_artifact": {
         "name": "blocked_text_hashes.jsonl",
         "schema_version": "eg1-type-b-v2-blocked-text-hash-v1",
         "validator_source_role": "blocked_text_hash_registry",
-        "sha256": null,
+        "sha256": "1a4f5f4a45b9d1590ce9a4453023c0a9a18b5976e72adf4a047e8cb5bffdd38e",
         "row_count": 13733
       },
       "source_coverage_artifact": {
         "name": "source_coverage.jsonl",
         "schema_version": "eg1-type-b-v2-source-coverage-v1",
         "validator_source_role": null,
-        "sha256": null,
+        "sha256": "aa11ac5ab73825fb218e08b574ad86cbfe8e23e7fc65cc40f0f3b32fa002da95",
         "row_count": 11236
       },
       "provisional_decisions_artifact": {
         "name": "provisional_decisions.jsonl",
         "schema_version": "eg1-type-b-v2-provisional-decision-v1",
         "validator_source_role": null,
-        "sha256": null,
+        "sha256": "778e220c434a532d997c61caf04bc1cd5e44c08befb45f5c16b7586b760ed5ad",
         "row_count": 23
       },
       "decision_summary": {
