@@ -820,6 +820,62 @@ class BuildTypeBV2BlockedRegistryTests(unittest.TestCase):
                 with self.assertRaises(BENCHMARK.BenchmarkValidationError):
                     self.validate_bundle()
 
+    def test_benchmark_rejects_tampered_per_source_coverage_counts(self) -> None:
+        self.build()
+        receipt_path = self.bundle / "receipt.json"
+        original = json.loads(receipt_path.read_text())
+        count_fields = (
+            "blocked_family_count",
+            "unique_normalized_input_hashes",
+            "unique_normalized_output_hashes",
+            "normalized_empty_input_rows",
+            "normalized_empty_output_rows",
+        )
+        for count_field in count_fields:
+            with self.subTest(count_field=count_field):
+                receipt = json.loads(json.dumps(original))
+                source = next(
+                    source
+                    for source in receipt["sources"]
+                    if source[count_field] > 0
+                )
+                source[count_field] -= 1
+                receipt_path.write_text(
+                    json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                with self.assertRaises(BENCHMARK.BenchmarkValidationError) as raised:
+                    self.validate_bundle()
+                self.assertIn("differs from source coverage", str(raised.exception))
+
+    def test_benchmark_rejects_boolean_per_source_coverage_counts(self) -> None:
+        self.build()
+        receipt_path = self.bundle / "receipt.json"
+        original = json.loads(receipt_path.read_text())
+        for numeric_value in (0, 1):
+            with self.subTest(numeric_value=numeric_value):
+                receipt = json.loads(json.dumps(original))
+                source, count_field = next(
+                    (source, count_field)
+                    for source in receipt["sources"]
+                    for count_field in (
+                        "blocked_family_count",
+                        "unique_normalized_input_hashes",
+                        "unique_normalized_output_hashes",
+                        "normalized_empty_input_rows",
+                        "normalized_empty_output_rows",
+                    )
+                    if source[count_field] == numeric_value
+                )
+                source[count_field] = bool(numeric_value)
+                receipt_path.write_text(
+                    json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                with self.assertRaises(BENCHMARK.BenchmarkValidationError) as raised:
+                    self.validate_bundle()
+                self.assertIn("differs from source coverage", str(raised.exception))
+
     def test_benchmark_rejects_source_drift_and_zero_family_records(self) -> None:
         for mutation in ("drift", "zero"):
             with self.subTest(mutation=mutation):

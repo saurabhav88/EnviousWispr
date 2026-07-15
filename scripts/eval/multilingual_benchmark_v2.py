@@ -1730,7 +1730,7 @@ def exact_leakage_errors(
                 has_normalized_hash = (
                     "normalized_text_sha256" in record or "field_kind" in record
                 )
-                if has_normalized_hash:
+                if source.role == "blocked_text_hash_registry" and has_normalized_hash:
                     digest = record.get("normalized_text_sha256")
                     field_kind = record.get("field_kind")
                     if (
@@ -2059,6 +2059,7 @@ def validate_blocked_registry_receipt(
     ):
         errors.append("blocked-registry receipt artifact inventory is invalid")
         artifacts = {}
+    live_artifacts: dict[str, list[Any]] = {}
     for artifact_name, expected in BLOCKED_REGISTRY_ARTIFACTS.items():
         artifact = artifacts.get(artifact_name)
         if not isinstance(artifact, dict) or set(artifact) != {
@@ -2106,6 +2107,14 @@ def validate_blocked_registry_receipt(
             errors.append(
                 f"blocked-registry artifact {artifact_name} has invalid live row count"
             )
+        live_artifacts[artifact_name] = live_artifact_rows
+
+    coverage_by_source: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in live_artifacts.get("source_coverage.jsonl", []):
+        if not isinstance(row, dict) or not _nonempty_string(row.get("source_name")):
+            errors.append("blocked-registry source coverage row is invalid")
+            continue
+        coverage_by_source[row["source_name"]].append(row)
 
     contract_sources = contract.get("sources")
     receipt_sources = receipt.get("sources")
@@ -2157,19 +2166,53 @@ def validate_blocked_registry_receipt(
         }
         if {field: source_receipt.get(field) for field in expected_core} != expected_core:
             errors.append(f"blocked-registry receipt source {name} provenance mismatch")
-        if source_receipt.get("unique_row_ids") != expected_source.get("row_count"):
+        coverage_rows = coverage_by_source.get(name, [])
+        empty_digest = sha256_bytes(b"")
+        expected_coverage = {
+            "unique_row_ids": len(
+                {
+                    row.get("source_row_id_sha256")
+                    for row in coverage_rows
+                    if _nonempty_string(row.get("source_row_id_sha256"))
+                }
+            ),
+            "blocked_family_count": len(
+                {
+                    row.get("blocked_family_id")
+                    for row in coverage_rows
+                    if _nonempty_string(row.get("blocked_family_id"))
+                }
+            ),
+            "unique_normalized_input_hashes": len(
+                {
+                    row.get("normalized_input_sha256")
+                    for row in coverage_rows
+                    if _nonempty_string(row.get("normalized_input_sha256"))
+                }
+            ),
+            "unique_normalized_output_hashes": len(
+                {
+                    row.get("normalized_output_sha256")
+                    for row in coverage_rows
+                    if _nonempty_string(row.get("normalized_output_sha256"))
+                }
+            ),
+            "normalized_empty_input_rows": sum(
+                row.get("normalized_input_sha256") == empty_digest
+                for row in coverage_rows
+            ),
+            "normalized_empty_output_rows": sum(
+                row.get("normalized_output_sha256") == empty_digest
+                for row in coverage_rows
+            ),
+        }
+        if len(coverage_rows) != expected_source.get("row_count"):
             errors.append(f"blocked-registry receipt source {name} row coverage mismatch")
-        for count_field in (
-            "blocked_family_count",
-            "unique_normalized_input_hashes",
-            "unique_normalized_output_hashes",
-            "normalized_empty_input_rows",
-            "normalized_empty_output_rows",
-        ):
-            value = source_receipt.get(count_field)
-            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        for count_field, expected_value in expected_coverage.items():
+            observed_value = source_receipt.get(count_field)
+            if type(observed_value) is not int or observed_value != expected_value:
                 errors.append(
-                    f"blocked-registry receipt source {name} {count_field} is invalid"
+                    f"blocked-registry receipt source {name} {count_field} differs from source coverage"
                 )
         source_path = _repo_path(expected_source.get("path"))
         if source_path is None or not source_path.is_file():

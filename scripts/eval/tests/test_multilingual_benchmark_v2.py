@@ -1014,6 +1014,60 @@ class MultilingualBenchmarkV2Tests(unittest.TestCase):
             errors = benchmark.exact_leakage_errors([row], [source])
         self.assertTrue(any("malformed normalized text hash" in error for error in errors))
 
+    def test_non_hash_source_may_use_field_kind_metadata(self) -> None:
+        row = synthetic_row("FIELD-KIND-METADATA-001")
+        with tempfile.TemporaryDirectory() as tmp:
+            source_path = Path(tmp) / "training.jsonl"
+            source_path.write_text(
+                json.dumps(
+                    {
+                        "field_kind": "metadata-label",
+                        "input": "unrelated synthetic training source",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            source = benchmark.LeakageSource(
+                "training",
+                "synthetic-training",
+                source_path,
+                benchmark.sha256_file(source_path),
+            )
+            errors = benchmark.exact_leakage_errors([row], [source])
+        self.assertEqual(errors, [])
+
+    def test_wrapped_hash_registry_consumes_nested_records_only(self) -> None:
+        row = synthetic_row("WRAPPED-HASH-REGISTRY-001")
+        normalized_hash = benchmark.sha256_bytes(
+            benchmark.normalize_text(row["asr_input"]).encode("utf-8")
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            source_path = Path(tmp) / "wrapped-blocked-hashes.json"
+            source_path.write_text(
+                json.dumps(
+                    {
+                        "records": [
+                            {
+                                "field_kind": "input",
+                                "normalized_text_sha256": normalized_hash,
+                            }
+                        ]
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            source = benchmark.LeakageSource(
+                "blocked_text_hash_registry",
+                "synthetic-wrapped-hashes",
+                source_path,
+                benchmark.sha256_file(source_path),
+            )
+            errors = benchmark.exact_leakage_errors([row], [source])
+        self.assertTrue(any("input exact-hash-leaks" in error for error in errors))
+        self.assertFalse(any("malformed normalized text hash" in error for error in errors))
+
     def test_leakage_receipt_is_bound_to_all_sources_and_methods(self) -> None:
         row = synthetic_row("RECEIPT-001")
         with tempfile.TemporaryDirectory() as tmp:
