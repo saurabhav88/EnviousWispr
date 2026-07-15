@@ -22,6 +22,7 @@ REPO_ROOT = EVAL_DIR.parents[1]
 sys.path.insert(0, str(EVAL_DIR))
 
 import build_eg1_multilingual_d1 as d1  # noqa: E402
+import build_eg1_d1_authoring_launch as launch  # noqa: E402
 
 
 CONTRACT_PATH = EVAL_DIR / "eg1_multilingual_d1_contract_v1.json"
@@ -108,6 +109,63 @@ def make_shared_concept_registry(
     }
 
 
+def make_launch_roster(contract: dict[str, object]) -> dict[str, object]:
+    participants: list[dict[str, object]] = []
+    for language in contract["languages"]:
+        participants.extend(
+            [
+                {
+                    "participant_id": f"fixture-{language}-author",
+                    "participant_type": "human_native",
+                    "languages": [language],
+                    "roles": ["author"],
+                    "availability_status": "confirmed",
+                    "identity_reference_id": f"identity:{language}:author",
+                    "consent_reference_id": f"consent:{language}:author",
+                },
+                {
+                    "participant_id": f"fixture-{language}-reviewer",
+                    "participant_type": "human_native",
+                    "languages": [language],
+                    "roles": ["native_reviewer"],
+                    "availability_status": "confirmed",
+                    "identity_reference_id": f"identity:{language}:reviewer",
+                    "consent_reference_id": f"consent:{language}:reviewer",
+                },
+            ]
+        )
+    return {
+        "schema_version": launch.ROSTER_SCHEMA,
+        "roster_id": "fixture-private-roster",
+        "status": "approved_for_assignment",
+        "approved_by_id": "fixture-approver",
+        "approved_at": "2026-07-15T19:00:00Z",
+        "approval_reference_id": "approval:fixture",
+        "participants": participants,
+    }
+
+
+def write_launch_bundle(
+    root: Path,
+    *,
+    contract_path: Path,
+    packet_dir: Path,
+    shared_path: Path,
+) -> tuple[Path, Path]:
+    roster_path = root / "launch-roster.json"
+    write_json(roster_path, make_launch_roster(d1.read_json(contract_path)))
+    launch_dir = root / "authoring-launch"
+    launch.build_launch_bundle(
+        contract_path=contract_path,
+        packet_receipt_path=packet_dir / "authoring-packet-receipt.json",
+        roster_path=roster_path,
+        shared_registry_path=shared_path,
+        output_path=launch_dir,
+        execution_git_head="f" * 40,
+    )
+    return launch_dir / "assignments.jsonl", launch_dir / "receipt.json"
+
+
 def shared_bindings(
     slots: list[dict[str, object]], registry: dict[str, object]
 ) -> dict[str, dict[str, str]]:
@@ -150,7 +208,7 @@ def make_rows(slots: list[dict[str, object]], *, approved: bool) -> list[dict[st
                 "authoring_template_id": f"TEMPLATE-{family_id}",
                 "source_provenance": {
                     "source_id": f"SOURCE-{family_id}",
-                    "author_id": f"AUTHOR-{language}",
+                    "author_id": f"fixture-{language}-author",
                     "author_type": "human_native",
                     "author_language": language,
                     "origin_mode": slot["origin_mode"],
@@ -169,7 +227,7 @@ def make_rows(slots: list[dict[str, object]], *, approved: bool) -> list[dict[st
                 "native_reviewed": approved,
                 "native_review": {
                     "status": "approved" if approved else "pending",
-                    "reviewer_id": f"REVIEWER-{language}" if approved else None,
+                    "reviewer_id": f"fixture-{language}-reviewer" if approved else None,
                     "reviewer_type": "human_native" if approved else None,
                     "reviewer_language": language if approved else None,
                     "reviewed_at": "2026-07-15T05:00:00Z" if approved else None,
@@ -294,6 +352,10 @@ class D1BuilderTests(unittest.TestCase):
             )
             self.assertEqual(training["status"], "fail")
             self.assertTrue(any("native review" in item for item in training["promotion_blockers"]))
+            self.assertIn(
+                "approved authoring launch assignment binding is missing",
+                training["promotion_blockers"],
+            )
             process = subprocess.run(
                 [
                     sys.executable,
@@ -387,6 +449,18 @@ class D1BuilderTests(unittest.TestCase):
             write_json(registry_path, make_registry(sealed=True))
             write_json(shared_path, make_shared_concept_registry(self.slots))
             write_json(receipt_path, make_leakage_receipt(rows_path, registry_path, contract["prompt"]["sha256"]))
+            packet_dir = root / "packets"
+            d1.write_authoring_packets(
+                contract_path=contract_path,
+                output_dir=packet_dir,
+                shared_registry_path=shared_path,
+            )
+            launch_assignments, launch_receipt = write_launch_bundle(
+                root,
+                contract_path=contract_path,
+                packet_dir=packet_dir,
+                shared_path=shared_path,
+            )
             process = subprocess.run(
                 [
                     sys.executable,
@@ -404,6 +478,10 @@ class D1BuilderTests(unittest.TestCase):
                     "training",
                     "--leakage-receipt",
                     str(receipt_path),
+                    "--launch-assignments",
+                    str(launch_assignments),
+                    "--launch-receipt",
+                    str(launch_receipt),
                     "--report",
                     str(report_path),
                     "--output",
@@ -418,6 +496,14 @@ class D1BuilderTests(unittest.TestCase):
             self.assertEqual(len(d1.read_jsonl(output_path)), 2000)
             manifest = d1.read_json(output_path.with_suffix(".jsonl.manifest.json"))
             self.assertEqual(manifest["native_reviewed_count"], 2000)
+            self.assertEqual(
+                manifest["authoring_launch_assignments_sha256"],
+                d1.sha256_file(launch_assignments),
+            )
+            self.assertEqual(
+                manifest["authoring_launch_receipt_sha256"],
+                d1.sha256_file(launch_receipt),
+            )
 
     def test_release_export_needs_separate_approval_and_nondevelopment_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
