@@ -117,6 +117,7 @@ Each JSONL row contains:
 - explicit entity, number, timing, and attribution preservation arrays, including empty arrays when no named value exists;
 - one formatting contract with expected list type, item count, and shared scope;
 - source provenance;
+- an independent blocked-family clearance for every pinned family registry, bound to the registry SHA-256 and the candidate `semantic_family_id`;
 - a native author attestation;
 - an independent native validator record or `null` while a development draft is still being prepared.
 
@@ -144,13 +145,20 @@ Every `contrast_set_id` contains exactly two separately authored semantic famili
 
 ## 6. Leakage screening and sealing
 
-The final validator consumes three pinned source roles:
+The final validator consumes four pinned source roles:
 
 - `training`: every replay, new training row, and training-family registry;
 - `prior_eval`: old list sets, overflow origins, multilingual probes, Russian discovery sets, and any earlier benchmark;
-- `blocked_family_registry`: family IDs that can never enter V2.
+- `blocked_family_registry`: blocked source-family IDs that can never enter V2;
+- `blocked_text_hash_registry`: normalized source-text hashes that can never enter V2.
 
 Each source is passed as `ROLE:NAME=PATH`. The validator computes the source SHA-256 and directly fails on normalized input, normalized gold, or family-ID collisions. Exact normalization is Unicode-aware and collapses punctuation or symbol runs to spaces, so punctuation-only rewrites do not evade the exact screen.
+
+Old sources without shared semantic IDs use opaque family proxies. A new preassigned family ID cannot prove that it is unrelated merely by using a different namespace. Every candidate therefore needs an independent `provenance.blocked_family_clearances` record bound to its own semantic family ID and the exact blocked-family registry SHA-256. Missing, stale, self-reviewed, duplicated, or non-cleared evidence fails closed. Family records and normalized text hashes have distinct mandatory roles so a hash-only file cannot masquerade as family coverage.
+
+Frozen sealing also requires the receipt-last Type B registry bundle. The validator reads the registry contract, registry builder, allocation contract, and allocator directly from the receipt's producing Git commit. It authenticates their exact bytes, parses the two committed contracts, and checks the receipt, nested allocator binding, source inventory, and all four contract-pinned artifacts against that producing state. It requires exactly one live family artifact and exactly one live text-hash artifact from the bundle. The live private sources and all four live bundle artifacts must still match the hashes pinned by the producing contract. Missing, swapped, duplicated, edited, stale, empty, or coherently replaced artifacts fail closed. A receipt remains valid after later commits or checkouts even when any of the four current control files changes; a missing, incomplete, or mismatched producing commit fails. The benchmark manifest records the exact blocked-registry receipt SHA-256, and the rating gate reopens the same bundle and rechecks that binding.
+
+The committed test suite has two explicit tiers. Default CI/discovery tests generate safe invented sources and temporary contracts, controls, and Git history; they exercise publication, tampering, producing-commit ancestry, roles, receipts, cleanup, and failure handling without any ignored corpus. One `skipUnless`-gated real-private integration test runs only when all four ignored sources are present and owns the exact 11,236-source-row, 7,198-family, 13,733-text-hash, 23-decision, receipt-hash, and zero-verbatim-intersection proof. A clean Git archive must pass evaluator discovery with that integration test as its only skip. Synthetic test data does not change the production allocator bytes or receipt lineage.
 
 Fuzzy screening is performed by the approved leakage scanner before sealing. Its receipt must be bound to the benchmark's canonical content SHA-256 and every source SHA-256. For each source, the receipt must contain passing results for:
 
@@ -183,12 +191,14 @@ python3 scripts/eval/multilingual_benchmark_v2.py validate \
   --development-comparison-manifest /absolute/path/to/development-comparison-v1.json \
   --leakage-source training:eg1-training=/absolute/path/to/training.jsonl \
   --leakage-source prior_eval:all-prior-evals=/absolute/path/to/prior-evals.jsonl \
-  --leakage-source blocked_family_registry:blocked-v2=/absolute/path/to/blocked-families.jsonl \
+  --leakage-source blocked_family_registry:blocked-v2=/absolute/path/to/type-b-v2-registry/blocked_family_registry.jsonl \
+  --leakage-source blocked_text_hash_registry:blocked-v2-text=/absolute/path/to/type-b-v2-registry/blocked_text_hashes.jsonl \
   --leakage-receipt /absolute/path/to/leakage-receipt-v1.json \
+  --blocked-registry-receipt /absolute/path/to/type-b-v2-registry/receipt.json \
   --manifest-out /absolute/path/to/corpus-v2.manifest.json
 ```
 
-The manifest has no clock field or absolute input paths. It deterministically records schema hashes, raw source hash, order-independent benchmark content hash, per-row hashes, family-assignment hash, the sealed power-plan/development-receipt hashes, the locked current/finalist comparison hashes, leakage-source hashes, and all split/language/domain/behavior/behavior-domain/difficulty/safety/list counts. Sealing fails unless the actual 800-row development corpus is balanced and matches its recomputed manifest, the aggregate discordance receipt binds to that manifest and the exact comparison manifest, and the power plan exactly recomputes to the same frozen cell count. The same files and validator version produce the same manifest bytes.
+The manifest has no clock field or absolute input paths. It deterministically records schema hashes, raw source hash, order-independent benchmark content hash, per-row hashes, family-assignment hash, the sealed power-plan/development-receipt hashes, the locked current/finalist comparison hashes, leakage-source hashes, both leakage-receipt hashes, and all split/language/domain/behavior/behavior-domain/difficulty/safety/list counts. Sealing fails unless the actual 800-row development corpus is balanced and matches its recomputed manifest, the aggregate discordance receipt binds to that manifest and the exact comparison manifest, and the power plan exactly recomputes to the same frozen cell count. The same files and validator version produce the same manifest bytes.
 
 ## 7. Blinded native rating contract
 
@@ -215,7 +225,7 @@ Agreement is computed on the two initial, pre-adjudication ratings. Report raw a
 
 LLM judges and subagents may triage or audit. Only blinded native ratings can authorize multilingual release quality.
 
-The global workflow is mechanically checked by `validate-ratings`. It recomputes every corpus-derived benchmark-manifest field, requires the sealed leakage receipt and source-role inventory, and takes a predeclared list of opaque model labels. It fails unless every frozen case and model has exactly two distinct native initial reviewers, every axis or S0-S4 disagreement has exactly one third reviewer, the adjudicator is different from both initial reviewers, and the global, per-reviewer, and per-language-model repeat minimums pass. Candidate text is not part of the rating file or validator input.
+The global workflow is mechanically checked by `validate-ratings`. It recomputes every corpus-derived benchmark-manifest field, requires the sealed leakage receipt, authenticated blocked-registry receipt, and exact four-role source inventory, and takes a predeclared list of opaque model labels. It fails unless every frozen case and model has exactly two distinct native initial reviewers, every axis or S0-S4 disagreement has exactly one third reviewer, the adjudicator is different from both initial reviewers, and the global, per-reviewer, and per-language-model repeat minimums pass. Candidate text is not part of the rating file or validator input.
 
 ```bash
 python3 scripts/eval/multilingual_benchmark_v2.py validate-ratings \
@@ -231,6 +241,12 @@ python3 scripts/eval/multilingual_benchmark_v2.py validate-ratings \
   --generation-receipt /absolute/path/to/frozen-generation-M2.json \
   --expected-model-label M1 \
   --expected-model-label M2 \
+  --leakage-source training:eg1-training=/absolute/path/to/training.jsonl \
+  --leakage-source prior_eval:all-prior-evals=/absolute/path/to/prior-evals.jsonl \
+  --leakage-source blocked_family_registry:blocked-v2=/absolute/path/to/type-b-v2-registry/blocked_family_registry.jsonl \
+  --leakage-source blocked_text_hash_registry:blocked-v2-text=/absolute/path/to/type-b-v2-registry/blocked_text_hashes.jsonl \
+  --leakage-receipt /absolute/path/to/leakage-receipt-v1.json \
+  --blocked-registry-receipt /absolute/path/to/type-b-v2-registry/receipt.json \
   --manifest-out /absolute/path/to/blinded-native-ratings.manifest.json
 ```
 

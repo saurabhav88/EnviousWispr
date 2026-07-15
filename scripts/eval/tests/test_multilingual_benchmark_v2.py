@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 EVAL_DIR = Path(__file__).resolve().parents[1]
@@ -93,6 +94,118 @@ def synthetic_row(
             "independent_native_validator": validator,
         },
     }
+
+
+def write_synthetic_leakage_evidence(
+    root: Path, row: dict
+) -> tuple[
+    list[benchmark.LeakageSource],
+    list[str],
+    Path,
+    Path,
+]:
+    family_path = root / "blocked-families.jsonl"
+    family_path.write_text(
+        json.dumps({"semantic_family_id": "unrelated-blocked-family"}) + "\n",
+        encoding="utf-8",
+    )
+    text_hash_path = root / "blocked-text-hashes.jsonl"
+    text_hash_path.write_text(
+        json.dumps(
+            {
+                "field_kind": "input",
+                "normalized_text_sha256": benchmark.sha256_bytes(
+                    b"unrelated synthetic blocked text"
+                ),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    paths = {
+        "training": root / "training.jsonl",
+        "prior_eval": root / "prior-eval.jsonl",
+        "blocked_family_registry": family_path,
+        "blocked_text_hash_registry": text_hash_path,
+    }
+    paths["training"].write_text(
+        json.dumps({"input": "unrelated synthetic training source"}) + "\n",
+        encoding="utf-8",
+    )
+    paths["prior_eval"].write_text(
+        json.dumps({"input": "unrelated synthetic prior source"}) + "\n",
+        encoding="utf-8",
+    )
+    sources = [
+        benchmark.LeakageSource(
+            role,
+            role,
+            paths[role],
+            benchmark.sha256_file(paths[role]),
+        )
+        for role in benchmark.LEAKAGE_ROLES
+    ]
+    source_specs = [
+        f"{source.role}:{source.name}={source.path}" for source in sources
+    ]
+    family_source = next(
+        source for source in sources if source.role == "blocked_family_registry"
+    )
+    row["provenance"]["blocked_family_clearances"] = [
+        {
+            "registry_sha256": family_source.sha256,
+            "candidate_semantic_family_id": row["semantic_family_id"],
+            "reviewer_id": "family-reviewer",
+            "independent_of_author": True,
+            "status": "cleared",
+            "reviewed_on": "2026-07-15",
+        }
+    ]
+    blocked_receipt_path = root / "blocked-registry-receipt.json"
+    blocked_receipt_path.write_text(
+        json.dumps({"synthetic_receipt_for_manifest_hash_test": True}) + "\n",
+        encoding="utf-8",
+    )
+    methods = {
+        "exact_normalized": {"status": "pass", "violations": 0},
+        "token_ngram_jaccard": {
+            "status": "pass",
+            "violations": 0,
+            "threshold": 0.8,
+            "max_observed": 0.2,
+        },
+        "character_ngram_jaccard": {
+            "status": "pass",
+            "violations": 0,
+            "threshold": 0.85,
+            "max_observed": 0.3,
+        },
+        "embedding_cosine": {
+            "status": "pass",
+            "violations": 0,
+            "threshold": 0.9,
+            "max_observed": 0.4,
+        },
+    }
+    leakage_receipt = {
+        "schema_version": "eg1-multilingual-leakage-receipt-v1",
+        "benchmark_content_sha256": benchmark.benchmark_content_sha256([row]),
+        "screening_policy_id": "synthetic-policy-v1",
+        "sources": [
+            {
+                "role": source.role,
+                "name": source.name,
+                "sha256": source.sha256,
+                "methods": methods,
+            }
+            for source in sources
+        ],
+    }
+    leakage_receipt_path = root / "leakage-receipt.json"
+    leakage_receipt_path.write_text(
+        json.dumps(leakage_receipt, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return sources, source_specs, leakage_receipt_path, blocked_receipt_path
 
 
 def synthetic_release_corpus(
@@ -346,6 +459,27 @@ class MultilingualBenchmarkV2Tests(unittest.TestCase):
         with self.assertRaises(benchmark.BenchmarkValidationError) as raised:
             benchmark.validate_rows([row])
         self.assertIn("must be different people", str(raised.exception))
+
+    def test_blocked_family_clearance_is_schema_validated(self) -> None:
+        row = synthetic_row("FAMILY-CLEAR-001")
+        row["provenance"]["blocked_family_clearances"] = [
+            {
+                "registry_sha256": "a" * 64,
+                "candidate_semantic_family_id": row["semantic_family_id"],
+                "reviewer_id": "family-reviewer",
+                "independent_of_author": True,
+                "status": "cleared",
+                "reviewed_on": "2026-07-15",
+            }
+        ]
+        benchmark.validate_rows([row])
+
+        row["provenance"]["blocked_family_clearances"][0][
+            "candidate_semantic_family_id"
+        ] = "different-family"
+        with self.assertRaises(benchmark.BenchmarkValidationError) as raised:
+            benchmark.validate_rows([row])
+        self.assertIn("must bind to semantic_family_id", str(raised.exception))
 
     def test_semantic_family_cannot_cross_development_and_frozen(self) -> None:
         development = synthetic_row("FAM-DEV", family_id="shared-family")
@@ -790,8 +924,95 @@ class MultilingualBenchmarkV2Tests(unittest.TestCase):
                 source_path,
                 benchmark.sha256_file(source_path),
             )
+            row["provenance"]["blocked_family_clearances"] = [
+                {
+                    "registry_sha256": source.sha256,
+                    "candidate_semantic_family_id": row["semantic_family_id"],
+                    "reviewer_id": "family-reviewer",
+                    "independent_of_author": True,
+                    "status": "cleared",
+                    "reviewed_on": "2026-07-15",
+                }
+            ]
             errors = benchmark.exact_leakage_errors([row], [source])
         self.assertTrue(any("blocked by blocked_family_registry" in error for error in errors))
+
+    def test_blocked_family_registry_requires_bound_independent_clearance(self) -> None:
+        row = synthetic_row("BLOCK-CLEAR-001", family_id="fresh-family")
+        with tempfile.TemporaryDirectory() as tmp:
+            source_path = Path(tmp) / "blocked.json"
+            source_path.write_text(json.dumps(["old-family"]), encoding="utf-8")
+            source = benchmark.LeakageSource(
+                "blocked_family_registry",
+                "synthetic",
+                source_path,
+                benchmark.sha256_file(source_path),
+            )
+            missing = benchmark.exact_leakage_errors([row], [source])
+            row["provenance"]["blocked_family_clearances"] = [
+                {
+                    "registry_sha256": source.sha256,
+                    "candidate_semantic_family_id": row["semantic_family_id"],
+                    "reviewer_id": "family-reviewer",
+                    "independent_of_author": True,
+                    "status": "cleared",
+                    "reviewed_on": "2026-07-15",
+                }
+            ]
+            cleared = benchmark.exact_leakage_errors([row], [source])
+        self.assertTrue(
+            any("missing valid blocked-family clearance" in error for error in missing)
+        )
+        self.assertEqual(cleared, [])
+
+    def test_exact_leakage_screen_consumes_normalized_text_hashes(self) -> None:
+        row = synthetic_row("HASH-LEAK-001")
+        normalized_hash = benchmark.sha256_bytes(
+            benchmark.normalize_text(row["asr_input"]).encode("utf-8")
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            source_path = Path(tmp) / "blocked-hashes.jsonl"
+            source_path.write_text(
+                json.dumps(
+                    {
+                        "field_kind": "output",
+                        "normalized_text_sha256": normalized_hash,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            source = benchmark.LeakageSource(
+                "blocked_text_hash_registry",
+                "synthetic-hashes",
+                source_path,
+                benchmark.sha256_file(source_path),
+            )
+            errors = benchmark.exact_leakage_errors([row], [source])
+        self.assertTrue(any("input exact-hash-leaks" in error for error in errors))
+
+    def test_exact_leakage_screen_rejects_malformed_text_hash_record(self) -> None:
+        row = synthetic_row("HASH-MALFORMED-001")
+        with tempfile.TemporaryDirectory() as tmp:
+            source_path = Path(tmp) / "blocked-hashes.jsonl"
+            source_path.write_text(
+                json.dumps(
+                    {
+                        "field_kind": "input",
+                        "normalized_text_sha256": "not-a-sha256",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            source = benchmark.LeakageSource(
+                "blocked_text_hash_registry",
+                "synthetic-malformed-hashes",
+                source_path,
+                benchmark.sha256_file(source_path),
+            )
+            errors = benchmark.exact_leakage_errors([row], [source])
+        self.assertTrue(any("malformed normalized text hash" in error for error in errors))
 
     def test_leakage_receipt_is_bound_to_all_sources_and_methods(self) -> None:
         row = synthetic_row("RECEIPT-001")
@@ -854,86 +1075,106 @@ class MultilingualBenchmarkV2Tests(unittest.TestCase):
         row = synthetic_row("RATING-LEAK-001")
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            source_specs: list[str] = []
-            sources: list[benchmark.LeakageSource] = []
-            receipt_entries: list[dict] = []
-            methods = {
-                "exact_normalized": {"status": "pass", "violations": 0},
-                "token_ngram_jaccard": {
-                    "status": "pass",
-                    "violations": 0,
-                    "threshold": 0.8,
-                    "max_observed": 0.2,
-                },
-                "character_ngram_jaccard": {
-                    "status": "pass",
-                    "violations": 0,
-                    "threshold": 0.85,
-                    "max_observed": 0.3,
-                },
-                "embedding_cosine": {
-                    "status": "pass",
-                    "violations": 0,
-                    "threshold": 0.9,
-                    "max_observed": 0.4,
-                },
-            }
-            for role in benchmark.LEAKAGE_ROLES:
-                source_path = root / f"{role}.jsonl"
-                source_path.write_text(
-                    json.dumps({"family_id": f"unrelated-{role}"}) + "\n",
-                    encoding="utf-8",
-                )
-                source = benchmark.LeakageSource(
-                    role, role, source_path, benchmark.sha256_file(source_path)
-                )
-                sources.append(source)
-                source_specs.append(f"{role}:{role}={source_path}")
-                receipt_entries.append(
-                    {
-                        "role": role,
-                        "name": role,
-                        "sha256": source.sha256,
-                        "methods": methods,
-                    }
-                )
-            receipt_path = root / "receipt.json"
-            receipt_path.write_text(
-                json.dumps(
-                    {
-                        "schema_version": "eg1-multilingual-leakage-receipt-v1",
-                        "benchmark_content_sha256": benchmark.benchmark_content_sha256([row]),
-                        "screening_policy_id": "synthetic-policy-v1",
-                        "sources": receipt_entries,
-                    }
-                ),
-                encoding="utf-8",
-            )
+            (
+                sources,
+                source_specs,
+                receipt_path,
+                blocked_receipt_path,
+            ) = write_synthetic_leakage_evidence(root, row)
             manifest = {
-                "leakage_sources": [
-                    {"role": source.role, "name": source.name, "sha256": source.sha256}
-                    for source in sources
-                ],
+                "leakage_sources": sorted(
+                    [
+                        {
+                            "role": source.role,
+                            "name": source.name,
+                            "sha256": source.sha256,
+                        }
+                        for source in sources
+                    ],
+                    key=lambda source: (source["role"], source["name"]),
+                ),
                 "leakage_receipt_sha256": benchmark.sha256_file(receipt_path),
+                "blocked_registry_receipt_sha256": benchmark.sha256_file(
+                    blocked_receipt_path
+                ),
             }
-            benchmark.validate_live_leakage_evidence_for_ratings(
-                manifest,
-                rows=[row],
-                source_specs=source_specs,
-                receipt_path=receipt_path,
-            )
-
-            sources[0].path.write_text(
-                json.dumps({"input": row["asr_input"]}) + "\n", encoding="utf-8"
-            )
-            with self.assertRaises(benchmark.BenchmarkValidationError) as raised:
+            with mock.patch.object(
+                benchmark, "validate_blocked_registry_receipt", return_value={}
+            ):
                 benchmark.validate_live_leakage_evidence_for_ratings(
                     manifest,
                     rows=[row],
                     source_specs=source_specs,
                     receipt_path=receipt_path,
+                    blocked_registry_receipt_path=blocked_receipt_path,
+                )
+
+            sources[0].path.write_text(
+                json.dumps({"input": row["asr_input"]}) + "\n", encoding="utf-8"
+            )
+            with (
+                mock.patch.object(
+                    benchmark, "validate_blocked_registry_receipt", return_value={}
+                ),
+                self.assertRaises(benchmark.BenchmarkValidationError) as raised,
+            ):
+                benchmark.validate_live_leakage_evidence_for_ratings(
+                    manifest,
+                    rows=[row],
+                    source_specs=source_specs,
+                    receipt_path=receipt_path,
+                    blocked_registry_receipt_path=blocked_receipt_path,
                 )
             self.assertIn("exact-leaks", str(raised.exception))
+
+    def test_rating_gate_rejects_stale_blocked_registry_receipt(self) -> None:
+        row = synthetic_row("RATING-BLOCKED-RECEIPT-001")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (
+                sources,
+                source_specs,
+                receipt_path,
+                blocked_receipt_path,
+            ) = write_synthetic_leakage_evidence(root, row)
+            manifest = {
+                "leakage_sources": sorted(
+                    [
+                        {
+                            "role": source.role,
+                            "name": source.name,
+                            "sha256": source.sha256,
+                        }
+                        for source in sources
+                    ],
+                    key=lambda source: (source["role"], source["name"]),
+                ),
+                "leakage_receipt_sha256": benchmark.sha256_file(receipt_path),
+                "blocked_registry_receipt_sha256": benchmark.sha256_file(
+                    blocked_receipt_path
+                ),
+            }
+            blocked_receipt_path.write_text(
+                blocked_receipt_path.read_text(encoding="utf-8") + "\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(
+                    benchmark, "validate_blocked_registry_receipt", return_value={}
+                ),
+                self.assertRaises(benchmark.BenchmarkValidationError) as raised,
+            ):
+                benchmark.validate_live_leakage_evidence_for_ratings(
+                    manifest,
+                    rows=[row],
+                    source_specs=source_specs,
+                    receipt_path=receipt_path,
+                    blocked_registry_receipt_path=blocked_receipt_path,
+                )
+            self.assertIn(
+                "blocked-registry receipt does not match sealed benchmark manifest",
+                str(raised.exception),
+            )
 
     def test_schema_files_are_valid_json_and_pin_all_scoring_axes(self) -> None:
         corpus_schema = json.loads(
@@ -1107,6 +1348,8 @@ class MultilingualBenchmarkV2Tests(unittest.TestCase):
                 )
             receipt_path = root / "receipt.json"
             receipt_path.write_text("{}\n", encoding="utf-8")
+            blocked_receipt_path = root / "blocked-registry-receipt.json"
+            blocked_receipt_path.write_text("{}\n", encoding="utf-8")
             (
                 discordance_receipt_path,
                 development_corpus_path,
@@ -1133,6 +1376,7 @@ class MultilingualBenchmarkV2Tests(unittest.TestCase):
                 sources=sources,
                 receipt_path=receipt_path,
                 release_profile=True,
+                blocked_registry_receipt_path=blocked_receipt_path,
                 power_plan_path=power_plan_path,
                 discordance_receipt_path=discordance_receipt_path,
                 development_corpus_path=development_corpus_path,

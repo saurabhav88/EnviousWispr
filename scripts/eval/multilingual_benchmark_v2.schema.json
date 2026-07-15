@@ -173,6 +173,14 @@
               "type": "null"
             }
           ]
+        },
+        "blocked_family_clearances": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/blocked_family_clearance"
+          }
         }
       }
     }
@@ -253,6 +261,40 @@
         },
         "independent_of_author": {
           "const": true
+        }
+      }
+    },
+    "blocked_family_clearance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "registry_sha256",
+        "candidate_semantic_family_id",
+        "reviewer_id",
+        "independent_of_author",
+        "status",
+        "reviewed_on"
+      ],
+      "properties": {
+        "registry_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "candidate_semantic_family_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "reviewer_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "independent_of_author": {
+          "const": true
+        },
+        "status": {
+          "const": "cleared"
+        },
+        "reviewed_on": {
+          "type": "string",
+          "format": "date"
         }
       }
     }

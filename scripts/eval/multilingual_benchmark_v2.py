@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 import re
+import subprocess
 import sys
 import unicodedata
 from collections import Counter, defaultdict
@@ -20,9 +21,11 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 
+SCRIPT_PATH = Path(__file__).resolve()
+REPO_ROOT = SCRIPT_PATH.parents[2]
 SCHEMA_VERSION = "eg1-multilingual-benchmark-v2"
 RATING_SCHEMA_VERSION = "eg1-multilingual-benchmark-v2-rating"
-VALIDATOR_VERSION = "1.3.0"
+VALIDATOR_VERSION = "1.5.0"
 LANGUAGES = ("en", "de", "fr", "es", "ru")
 SPLITS = ("development", "frozen")
 DOMAINS = (
@@ -59,7 +62,12 @@ LIST_CONTRACTS = (
     "restrain_prose",
 )
 SOURCE_TYPES = ("native_original", "shared_concept_local_rewrite")
-LEAKAGE_ROLES = ("training", "prior_eval", "blocked_family_registry")
+LEAKAGE_ROLES = (
+    "training",
+    "prior_eval",
+    "blocked_family_registry",
+    "blocked_text_hash_registry",
+)
 REQUIRED_FROZEN_LEAKAGE_ROLES = frozenset(LEAKAGE_ROLES)
 REQUIRED_SCREEN_METHODS = (
     "exact_normalized",
@@ -130,6 +138,98 @@ RELEASE_COUNTS = release_counts(DEFAULT_FROZEN_CASES_PER_CELL)
 
 IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+BLOCKED_FAMILY_CLEARANCE_FIELDS = {
+    "registry_sha256",
+    "candidate_semantic_family_id",
+    "reviewer_id",
+    "independent_of_author",
+    "status",
+    "reviewed_on",
+}
+BLOCKED_REGISTRY_RECEIPT_FIELDS = {
+    "schema_version",
+    "status",
+    "registry_id",
+    "normalization_policy_id",
+    "execution_git_head",
+    "contract",
+    "builder",
+    "allocator",
+    "counts",
+    "sources",
+    "artifacts",
+    "decision_summary",
+    "candidate_clearance_contract",
+    "privacy",
+    "authorship_gate",
+    "publication",
+}
+BLOCKED_REGISTRY_ARTIFACTS = {
+    "blocked_family_registry.jsonl": {
+        "role": "blocked_family_registry",
+        "row_count": 7198,
+    },
+    "blocked_text_hashes.jsonl": {
+        "role": "blocked_text_hash_registry",
+        "row_count": 13733,
+    },
+    "source_coverage.jsonl": {
+        "role": None,
+        "row_count": 11236,
+    },
+    "provisional_decisions.jsonl": {
+        "role": None,
+        "row_count": 23,
+    },
+}
+BLOCKED_REGISTRY_COUNTS = {
+    "sources": 4,
+    "source_rows": 11236,
+    "blocked_families": 7198,
+    "normalized_input_hashes": 6872,
+    "normalized_output_hashes": 6861,
+    "normalized_empty_input_rows": 1,
+    "normalized_empty_output_rows": 1,
+    "provisional_decisions": 23,
+    "replace": 23,
+    "retain": 0,
+}
+BLOCKED_REGISTRY_CONTRACT_FIELDS = {
+    "schema_version",
+    "registry_id",
+    "status",
+    "normalization_policy_id",
+    "allocator",
+    "counts",
+    "sources",
+    "expected_validator_artifacts",
+    "candidate_clearance_contract",
+    "decision_policy",
+    "publication",
+}
+BLOCKED_REGISTRY_SOURCE_RECEIPT_FIELDS = {
+    "role",
+    "name",
+    "path",
+    "sha256",
+    "expected_sha256",
+    "row_count",
+    "unique_row_ids",
+    "blocked_family_count",
+    "unique_normalized_input_hashes",
+    "unique_normalized_output_hashes",
+    "normalized_empty_input_rows",
+    "normalized_empty_output_rows",
+}
+BLOCKED_REGISTRY_CANDIDATE_CLEARANCE_CONTRACT = {
+    "provenance_field": "blocked_family_clearances",
+    "registry_artifact": "blocked_family_registry.jsonl",
+    "registry_binding_field": "registry_sha256",
+    "candidate_binding_field": "candidate_semantic_family_id",
+    "required_status": "cleared",
+    "independent_review_required": True,
+}
 
 
 def _binomial_pmf(successes: int, trials: int, probability: float) -> float:
@@ -267,6 +367,16 @@ def _read_json_object(path: Path, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise BenchmarkValidationError([f"{label} must be a JSON object"])
     return value
+
+
+def _parse_json_object_bytes(value: bytes, label: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(value)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BenchmarkValidationError([f"invalid {label}: {exc}"]) from exc
+    if not isinstance(parsed, dict):
+        raise BenchmarkValidationError([f"{label} must be a JSON object"])
+    return parsed
 
 
 def _validate_development_corpus_and_manifest(
@@ -725,6 +835,71 @@ def _validate_review_record(
         )
 
 
+def _valid_review_date(value: Any) -> bool:
+    if not isinstance(value, str) or not DATE_RE.fullmatch(value):
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _validate_blocked_family_clearances(
+    value: Any,
+    *,
+    case_id: str,
+    family_id: Any,
+    author_id: Any,
+    errors: list[str],
+) -> None:
+    field = "provenance.blocked_family_clearances"
+    if not isinstance(value, list):
+        errors.append(f"{case_id}: {field} must be an array")
+        return
+    if not value:
+        errors.append(f"{case_id}: {field} must not be empty when present")
+        return
+    seen_registries: set[str] = set()
+    for index, clearance in enumerate(value, 1):
+        label = f"{field}[{index}]"
+        if not isinstance(clearance, dict):
+            errors.append(f"{case_id}: {label} must be an object")
+            continue
+        missing = sorted(BLOCKED_FAMILY_CLEARANCE_FIELDS - set(clearance))
+        unknown = sorted(set(clearance) - BLOCKED_FAMILY_CLEARANCE_FIELDS)
+        if missing:
+            errors.append(f"{case_id}: {label} missing {missing}")
+        if unknown:
+            errors.append(f"{case_id}: {label} has unknown fields {unknown}")
+        registry_sha = clearance.get("registry_sha256")
+        if not isinstance(registry_sha, str) or not SHA256_RE.fullmatch(registry_sha):
+            errors.append(
+                f"{case_id}: {label}.registry_sha256 must be lowercase SHA-256"
+            )
+        elif registry_sha in seen_registries:
+            errors.append(f"{case_id}: {field} contains duplicate registry SHA-256")
+        else:
+            seen_registries.add(registry_sha)
+        if clearance.get("candidate_semantic_family_id") != family_id:
+            errors.append(f"{case_id}: {label} must bind to semantic_family_id")
+        reviewer_id = clearance.get("reviewer_id")
+        if not _nonempty_string(reviewer_id) or not IDENTIFIER_RE.fullmatch(reviewer_id):
+            errors.append(
+                f"{case_id}: {label}.reviewer_id must be a stable identifier"
+            )
+        elif reviewer_id == author_id:
+            errors.append(f"{case_id}: {label}.reviewer_id must differ from native author")
+        if clearance.get("independent_of_author") is not True:
+            errors.append(f"{case_id}: {label}.independent_of_author must be true")
+        if clearance.get("status") != "cleared":
+            errors.append(f"{case_id}: {label}.status must be cleared")
+        if not _valid_review_date(clearance.get("reviewed_on")):
+            errors.append(
+                f"{case_id}: {label}.reviewed_on must be a real YYYY-MM-DD date"
+            )
+
+
 def validate_rows(
     rows: Sequence[dict[str, Any]],
     *,
@@ -764,11 +939,14 @@ def validate_rows(
         "formatting",
     }
     formatting_fields = {"list_contract", "expected_item_count", "shared_scope"}
-    provenance_fields = {
+    required_provenance_fields = {
         "source_type",
         "source_ref",
         "native_author",
         "independent_native_validator",
+    }
+    allowed_provenance_fields = required_provenance_fields | {
+        "blocked_family_clearances"
     }
 
     for row_number, row in enumerate(rows, start=1):
@@ -888,8 +1066,8 @@ def validate_rows(
             errors.append(f"{case_id}: provenance must be an object")
             provenance = {}
         else:
-            missing = sorted(provenance_fields - set(provenance))
-            unknown = sorted(set(provenance) - provenance_fields)
+            missing = sorted(required_provenance_fields - set(provenance))
+            unknown = sorted(set(provenance) - allowed_provenance_fields)
             if missing:
                 errors.append(f"{case_id}: provenance missing {missing}")
             if unknown:
@@ -926,6 +1104,17 @@ def validate_rows(
                     errors.append(
                         f"{case_id}: native author and validator must be different people"
                     )
+
+        if "blocked_family_clearances" in provenance:
+            _validate_blocked_family_clearances(
+                provenance["blocked_family_clearances"],
+                case_id=case_id,
+                family_id=row.get("semantic_family_id"),
+                author_id=(
+                    author.get("reviewer_id") if isinstance(author, dict) else None
+                ),
+                errors=errors,
+            )
 
         family_id = row.get("semantic_family_id")
         if _nonempty_string(family_id) and split in SPLITS:
@@ -1458,11 +1647,59 @@ def _walk_source_values(
         yield {"semantic_family_id": value}
 
 
+def _has_valid_blocked_family_clearance(
+    row: dict[str, Any], source: LeakageSource
+) -> bool:
+    provenance = row.get("provenance")
+    clearances = (
+        provenance.get("blocked_family_clearances")
+        if isinstance(provenance, dict)
+        else None
+    )
+    if not isinstance(clearances, list):
+        return False
+    matching = [
+        clearance
+        for clearance in clearances
+        if isinstance(clearance, dict)
+        and clearance.get("registry_sha256") == source.sha256
+    ]
+    if len(matching) != 1:
+        return False
+    clearance = matching[0]
+    author = provenance.get("native_author")
+    author_id = author.get("reviewer_id") if isinstance(author, dict) else None
+    reviewer_id = clearance.get("reviewer_id")
+    return (
+        set(clearance) == BLOCKED_FAMILY_CLEARANCE_FIELDS
+        and clearance.get("candidate_semantic_family_id")
+        == row.get("semantic_family_id")
+        and _nonempty_string(reviewer_id)
+        and bool(IDENTIFIER_RE.fullmatch(reviewer_id))
+        and reviewer_id != author_id
+        and clearance.get("independent_of_author") is True
+        and clearance.get("status") == "cleared"
+        and _valid_review_date(clearance.get("reviewed_on"))
+    )
+
+
 def exact_leakage_errors(
     rows: Sequence[dict[str, Any]], sources: Sequence[LeakageSource]
 ) -> list[str]:
-    candidate_inputs = {normalize_text(row["asr_input"]): row["case_id"] for row in rows}
-    candidate_outputs = {normalize_text(row["gold_output"]): row["case_id"] for row in rows}
+    candidate_inputs = {
+        normalize_text(row["asr_input"]): row["case_id"] for row in rows
+    }
+    candidate_outputs = {
+        normalize_text(row["gold_output"]): row["case_id"] for row in rows
+    }
+    candidate_input_hashes = {
+        sha256_bytes(value.encode("utf-8")): case_id
+        for value, case_id in candidate_inputs.items()
+    }
+    candidate_output_hashes = {
+        sha256_bytes(value.encode("utf-8")): case_id
+        for value, case_id in candidate_outputs.items()
+    }
     candidate_families = {row["semantic_family_id"]: row["case_id"] for row in rows}
     text_fields = ("asr_input", "input", "gold_output", "output", "expected_output")
     family_fields = ("semantic_family_id", "family_id", "origin_family_id")
@@ -1470,6 +1707,8 @@ def exact_leakage_errors(
     for source in sources:
         values = _read_json_or_jsonl(source.path)
         extractable_values = 0
+        extractable_families = 0
+        extractable_hashes = 0
         for value in values:
             for record in _walk_source_values(
                 value, allow_string_family=source.role == "blocked_family_registry"
@@ -1488,17 +1727,58 @@ def exact_leakage_errors(
                         errors.append(
                             f"{candidate_outputs[normalized]}: gold exact-leaks from {source.role}:{source.name} field {field}"
                         )
+                has_normalized_hash = (
+                    "normalized_text_sha256" in record or "field_kind" in record
+                )
+                if has_normalized_hash:
+                    digest = record.get("normalized_text_sha256")
+                    field_kind = record.get("field_kind")
+                    if (
+                        not isinstance(digest, str)
+                        or not SHA256_RE.fullmatch(digest)
+                        or field_kind not in {"input", "output"}
+                    ):
+                        errors.append(
+                            f"leakage source {source.role}:{source.name} has malformed normalized text hash"
+                        )
+                    else:
+                        extractable_values += 1
+                        extractable_hashes += 1
+                        if digest in candidate_input_hashes:
+                            errors.append(
+                                f"{candidate_input_hashes[digest]}: input exact-hash-leaks from {source.role}:{source.name} field {field_kind}"
+                            )
+                        if digest in candidate_output_hashes:
+                            errors.append(
+                                f"{candidate_output_hashes[digest]}: gold exact-hash-leaks from {source.role}:{source.name} field {field_kind}"
+                            )
                 for field in family_fields:
                     family_id = record.get(field)
                     if _nonempty_string(family_id):
                         extractable_values += 1
+                        extractable_families += 1
                     if family_id in candidate_families:
                         errors.append(
                             f"{candidate_families[family_id]}: family {family_id} blocked by {source.role}:{source.name}"
                         )
+        if source.role == "blocked_family_registry":
+            if not extractable_families:
+                errors.append(
+                    f"leakage source {source.role}:{source.name} has no family records"
+                )
+            else:
+                for row in rows:
+                    if not _has_valid_blocked_family_clearance(row, source):
+                        errors.append(
+                            f"{row['case_id']}: missing valid blocked-family clearance for {source.role}:{source.name} SHA-256 {source.sha256}"
+                        )
+        if source.role == "blocked_text_hash_registry" and not extractable_hashes:
+            errors.append(
+                f"leakage source {source.role}:{source.name} has no normalized hash records"
+            )
         if extractable_values == 0:
             errors.append(
-                f"leakage source {source.role}:{source.name} has no recognized text or family fields"
+                f"leakage source {source.role}:{source.name} has no recognized text, hash, or family fields"
             )
     return sorted(set(errors))
 
@@ -1581,6 +1861,422 @@ def validate_leakage_receipt(
     return receipt
 
 
+def _git_committed_file_bytes(
+    execution_head: str, relative_path: str
+) -> bytes | None:
+    try:
+        result = subprocess.run(
+            ["git", "show", f"{execution_head}:{relative_path}"],
+            cwd=REPO_ROOT,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return result.stdout
+
+
+def _repo_path(relative_path: Any) -> Path | None:
+    if not isinstance(relative_path, str) or not relative_path:
+        return None
+    candidate = (REPO_ROOT / relative_path).resolve()
+    try:
+        candidate.relative_to(REPO_ROOT.resolve())
+    except ValueError:
+        return None
+    return candidate
+
+
+def validate_blocked_registry_receipt(
+    receipt_path: Path,
+    *,
+    sources: Sequence[LeakageSource],
+) -> dict[str, Any]:
+    """Authenticate the sealed Type B registry and its two distinct source roles."""
+    receipt = _read_json_object(receipt_path, "blocked-registry receipt")
+    errors: list[str] = []
+    if set(receipt) != BLOCKED_REGISTRY_RECEIPT_FIELDS:
+        errors.append("blocked-registry receipt top-level schema is invalid")
+    if receipt.get("schema_version") != "eg1-type-b-v2-blocked-registry-receipt-v1":
+        errors.append("blocked-registry receipt schema_version is invalid")
+    if receipt.get("status") != (
+        "sources_sealed_all_provisional_replaced_authorship_blocked"
+    ):
+        errors.append("blocked-registry receipt status is invalid")
+    if receipt.get("registry_id") != "eg1-type-b-v2-blocked-registry-2026-07-15":
+        errors.append("blocked-registry receipt registry_id is invalid")
+    if receipt.get("normalization_policy_id") != (
+        "nfkc-casefold-alnum-whitespace-v1"
+    ):
+        errors.append("blocked-registry receipt normalization policy is invalid")
+    if receipt.get("publication") != "exclusive_bundle_receipt_last":
+        errors.append("blocked-registry receipt publication status is invalid")
+    if receipt.get("counts") != BLOCKED_REGISTRY_COUNTS:
+        errors.append("blocked-registry receipt aggregate counts are invalid")
+    if (
+        receipt.get("candidate_clearance_contract")
+        != BLOCKED_REGISTRY_CANDIDATE_CLEARANCE_CONTRACT
+    ):
+        errors.append("blocked-registry candidate clearance contract is invalid")
+    if receipt.get("decision_summary") != {
+        "reason_code": "semantic_family_clearance_not_proven",
+        "replace": 23,
+        "retain": 0,
+        "same_cell_reserves_bound": 23,
+    }:
+        errors.append("blocked-registry receipt decision summary is invalid")
+    if receipt.get("privacy") != {
+        "private_source_text_published": False,
+        "private_source_row_ids_published_raw": False,
+        "safe_provisional_case_ids_published": True,
+        "other_source_row_ids_published_raw": False,
+        "metadata_only": True,
+    }:
+        errors.append("blocked-registry receipt privacy contract is invalid")
+    if receipt.get("authorship_gate") != {
+        "candidate_model_output_seen": False,
+        "fresh_benchmark_prose_authored": False,
+        "fresh_authorship_authorized": False,
+        "fresh_slots_required": 1890,
+    }:
+        errors.append("blocked-registry receipt authorship gate is invalid")
+
+    execution_head = receipt.get("execution_git_head")
+    if not isinstance(execution_head, str) or not re.fullmatch(
+        r"[0-9a-f]{40}", execution_head
+    ):
+        errors.append("blocked-registry receipt execution_git_head is invalid")
+        execution_head = ""
+
+    contract_relative = "scripts/eval/contracts/eg1_type_b_v2_blocked_registry_v1.json"
+    builder_relative = "scripts/eval/build_eg1_type_b_v2_blocked_registry.py"
+    allocation_relative = "scripts/eval/contracts/eg1_type_b_v2_allocation_v1.json"
+    allocator_relative = "scripts/eval/build_eg1_type_b_v2_manifest.py"
+    committed_controls: dict[str, bytes | None] = {}
+    for relative_path in (
+        contract_relative,
+        builder_relative,
+        allocation_relative,
+        allocator_relative,
+    ):
+        value = (
+            _git_committed_file_bytes(execution_head, relative_path)
+            if execution_head
+            else None
+        )
+        committed_controls[relative_path] = value
+        if value is None:
+            errors.append(
+                f"blocked-registry execution commit does not contain {relative_path}"
+            )
+
+    contract_bytes = committed_controls[contract_relative]
+    contract_sha = sha256_bytes(contract_bytes) if contract_bytes is not None else None
+    try:
+        contract = (
+            _parse_json_object_bytes(
+                contract_bytes, "blocked-registry producing contract"
+            )
+            if contract_bytes is not None
+            else {}
+        )
+    except BenchmarkValidationError as exc:
+        errors.extend(exc.errors)
+        contract = {}
+    expected_contract_receipt = {
+        "path": contract_relative,
+        "sha256": contract_sha,
+        "schema_version": "eg1-type-b-v2-blocked-registry-contract-v1",
+    }
+    if receipt.get("contract") != expected_contract_receipt:
+        errors.append("blocked-registry receipt contract binding is invalid")
+    if set(contract) != BLOCKED_REGISTRY_CONTRACT_FIELDS:
+        errors.append("blocked-registry tracked contract schema is invalid")
+    if contract.get("schema_version") != expected_contract_receipt["schema_version"]:
+        errors.append("blocked-registry tracked contract schema_version is invalid")
+    for field in ("registry_id", "normalization_policy_id", "counts"):
+        if contract.get(field) != receipt.get(field):
+            errors.append(f"blocked-registry tracked contract {field} mismatch")
+    if contract.get("status") != "sealed":
+        errors.append("blocked-registry tracked contract status is invalid")
+    if (
+        contract.get("candidate_clearance_contract")
+        != BLOCKED_REGISTRY_CANDIDATE_CLEARANCE_CONTRACT
+    ):
+        errors.append("blocked-registry tracked clearance contract is invalid")
+
+    builder_bytes = committed_controls[builder_relative]
+    builder_sha = sha256_bytes(builder_bytes) if builder_bytes is not None else None
+    if receipt.get("builder") != {
+        "path": builder_relative,
+        "sha256": builder_sha,
+    }:
+        errors.append("blocked-registry receipt builder binding is invalid")
+
+    allocation_bytes = committed_controls[allocation_relative]
+    allocation_sha = (
+        sha256_bytes(allocation_bytes) if allocation_bytes is not None else None
+    )
+    try:
+        allocation_contract = (
+            _parse_json_object_bytes(
+                allocation_bytes, "Type B producing allocation contract"
+            )
+            if allocation_bytes is not None
+            else {}
+        )
+    except BenchmarkValidationError as exc:
+        errors.extend(exc.errors)
+        allocation_contract = {}
+    if allocation_contract.get("schema_version") != "eg1-type-b-v2-allocation-v1":
+        errors.append("blocked-registry producing allocation contract is invalid")
+    allocator_bytes = committed_controls[allocator_relative]
+    allocator_sha = (
+        sha256_bytes(allocator_bytes) if allocator_bytes is not None else None
+    )
+    expected_allocator = {
+        "allocation_contract_path": allocation_relative,
+        "allocation_contract_sha256": allocation_sha,
+        "builder_path": allocator_relative,
+        "builder_sha256": allocator_sha,
+    }
+    if receipt.get("allocator") != expected_allocator:
+        errors.append("blocked-registry receipt allocator binding is invalid")
+    if contract.get("allocator") != expected_allocator:
+        errors.append("blocked-registry tracked allocator binding is invalid")
+
+    contract_artifacts = contract.get("expected_validator_artifacts")
+    if not isinstance(contract_artifacts, dict) or set(contract_artifacts) != set(
+        BLOCKED_REGISTRY_ARTIFACTS
+    ):
+        errors.append("blocked-registry tracked artifact contract is invalid")
+        contract_artifacts = {}
+
+    artifacts = receipt.get("artifacts")
+    if not isinstance(artifacts, dict) or set(artifacts) != set(
+        BLOCKED_REGISTRY_ARTIFACTS
+    ):
+        errors.append("blocked-registry receipt artifact inventory is invalid")
+        artifacts = {}
+    for artifact_name, expected in BLOCKED_REGISTRY_ARTIFACTS.items():
+        artifact = artifacts.get(artifact_name)
+        if not isinstance(artifact, dict) or set(artifact) != {
+            "sha256",
+            "row_count",
+            "validator_source_role",
+        }:
+            errors.append(
+                f"blocked-registry receipt artifact {artifact_name} schema is invalid"
+            )
+            continue
+        if artifact.get("row_count") != expected["row_count"]:
+            errors.append(
+                f"blocked-registry receipt artifact {artifact_name} row count is invalid"
+            )
+        if artifact.get("validator_source_role") != expected["role"]:
+            errors.append(
+                f"blocked-registry receipt artifact {artifact_name} role is invalid"
+            )
+        digest = artifact.get("sha256")
+        if not isinstance(digest, str) or not SHA256_RE.fullmatch(digest):
+            errors.append(
+                f"blocked-registry receipt artifact {artifact_name} SHA-256 is invalid"
+            )
+        if artifact_name in contract_artifacts and artifact != contract_artifacts.get(
+            artifact_name
+        ):
+            errors.append(
+                f"blocked-registry receipt artifact {artifact_name} differs from tracked contract"
+            )
+        artifact_path = receipt_path.parent / artifact_name
+        if not artifact_path.is_file():
+            errors.append(f"missing blocked-registry artifact: {artifact_path}")
+            continue
+        if sha256_file(artifact_path) != digest:
+            errors.append(
+                f"blocked-registry artifact {artifact_name} differs from receipt"
+            )
+        try:
+            live_artifact_rows = _read_json_or_jsonl(artifact_path)
+        except BenchmarkValidationError as exc:
+            errors.extend(exc.errors)
+            continue
+        if len(live_artifact_rows) != expected["row_count"]:
+            errors.append(
+                f"blocked-registry artifact {artifact_name} has invalid live row count"
+            )
+
+    contract_sources = contract.get("sources")
+    receipt_sources = receipt.get("sources")
+    if not isinstance(contract_sources, list) or len(contract_sources) != 4:
+        errors.append("blocked-registry tracked source inventory is invalid")
+        contract_sources = []
+    if not isinstance(receipt_sources, list) or len(receipt_sources) != 4:
+        errors.append("blocked-registry receipt source inventory is invalid")
+        receipt_sources = []
+    contract_sources_by_name = {
+        value.get("name"): value
+        for value in contract_sources
+        if isinstance(value, dict) and _nonempty_string(value.get("name"))
+    }
+    producing_source_hashes = {
+        value.get("path"): value.get("sha256")
+        for value in contract_sources
+        if isinstance(value, dict)
+        and _nonempty_string(value.get("path"))
+        and isinstance(value.get("sha256"), str)
+    }
+    if allocation_contract.get("source_sha256") != producing_source_hashes:
+        errors.append(
+            "blocked-registry producing allocation source inventory differs from contract"
+        )
+    receipt_source_names: list[str] = []
+    for source_receipt in receipt_sources:
+        if not isinstance(source_receipt, dict) or set(source_receipt) != (
+            BLOCKED_REGISTRY_SOURCE_RECEIPT_FIELDS
+        ):
+            errors.append("blocked-registry receipt source schema is invalid")
+            continue
+        name = source_receipt.get("name")
+        if not _nonempty_string(name):
+            errors.append("blocked-registry receipt source name is invalid")
+            continue
+        receipt_source_names.append(name)
+        expected_source = contract_sources_by_name.get(name)
+        if expected_source is None:
+            errors.append(f"blocked-registry receipt contains unknown source {name}")
+            continue
+        expected_core = {
+            "role": expected_source.get("role"),
+            "name": expected_source.get("name"),
+            "path": expected_source.get("path"),
+            "sha256": expected_source.get("sha256"),
+            "expected_sha256": expected_source.get("sha256"),
+            "row_count": expected_source.get("row_count"),
+        }
+        if {field: source_receipt.get(field) for field in expected_core} != expected_core:
+            errors.append(f"blocked-registry receipt source {name} provenance mismatch")
+        if source_receipt.get("unique_row_ids") != expected_source.get("row_count"):
+            errors.append(f"blocked-registry receipt source {name} row coverage mismatch")
+        for count_field in (
+            "blocked_family_count",
+            "unique_normalized_input_hashes",
+            "unique_normalized_output_hashes",
+            "normalized_empty_input_rows",
+            "normalized_empty_output_rows",
+        ):
+            value = source_receipt.get(count_field)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                errors.append(
+                    f"blocked-registry receipt source {name} {count_field} is invalid"
+                )
+        source_path = _repo_path(expected_source.get("path"))
+        if source_path is None or not source_path.is_file():
+            errors.append(f"blocked-registry source {name} path is invalid")
+        else:
+            if sha256_file(source_path) != expected_source.get("sha256"):
+                errors.append(f"blocked-registry source {name} differs from contract")
+            try:
+                source_rows = _read_json_or_jsonl(source_path)
+            except BenchmarkValidationError as exc:
+                errors.extend(exc.errors)
+            else:
+                if len(source_rows) != expected_source.get("row_count"):
+                    errors.append(f"blocked-registry source {name} row count drifted")
+    if set(receipt_source_names) != set(contract_sources_by_name) or len(
+        receipt_source_names
+    ) != len(set(receipt_source_names)):
+        errors.append("blocked-registry receipt source inventory differs from contract")
+    if receipt_sources:
+        for field, aggregate_field in (
+            ("normalized_empty_input_rows", "normalized_empty_input_rows"),
+            ("normalized_empty_output_rows", "normalized_empty_output_rows"),
+        ):
+            values = [
+                value.get(field)
+                for value in receipt_sources
+                if isinstance(value, dict) and isinstance(value.get(field), int)
+            ]
+            if len(values) != 4 or sum(values) != BLOCKED_REGISTRY_COUNTS[aggregate_field]:
+                errors.append(
+                    f"blocked-registry receipt source {field} totals are invalid"
+                )
+
+    role_sources: dict[str, list[LeakageSource]] = {
+        role: [source for source in sources if source.role == role]
+        for role in ("blocked_family_registry", "blocked_text_hash_registry")
+    }
+    for role, matching in role_sources.items():
+        if len(matching) != 1:
+            errors.append(
+                f"blocked-registry validation requires exactly one {role} source"
+            )
+
+    live_records: dict[str, list[Any]] = {}
+    for artifact_name, expected in BLOCKED_REGISTRY_ARTIFACTS.items():
+        role = expected["role"]
+        if role is None or len(role_sources[role]) != 1:
+            continue
+        source = role_sources[role][0]
+        artifact = artifacts.get(artifact_name)
+        expected_path = (receipt_path.parent / artifact_name).resolve()
+        if source.path.resolve() != expected_path:
+            errors.append(f"live {role} source is not the sealed bundle artifact")
+        if isinstance(artifact, dict) and artifact.get("sha256") != source.sha256:
+            errors.append(f"live {role} source does not match blocked-registry receipt")
+        try:
+            records = _read_json_or_jsonl(source.path)
+        except BenchmarkValidationError as exc:
+            errors.extend(exc.errors)
+            records = []
+        live_records[role] = records
+        if len(records) != expected["row_count"]:
+            errors.append(
+                f"live {role} source row count is {len(records)}, expected {expected['row_count']}"
+            )
+
+    family_records = live_records.get("blocked_family_registry", [])
+    family_ids = [
+        record.get("semantic_family_id") if isinstance(record, dict) else None
+        for record in family_records
+    ]
+    if family_records and (
+        not all(_nonempty_string(value) for value in family_ids)
+        or len(set(family_ids)) != len(family_ids)
+    ):
+        errors.append(
+            "live blocked_family_registry must contain unique extractable family records"
+        )
+    if not family_records:
+        errors.append("live blocked_family_registry contains zero family records")
+
+    hash_records = live_records.get("blocked_text_hash_registry", [])
+    hash_keys: list[tuple[Any, Any]] = []
+    for record in hash_records:
+        if not isinstance(record, dict):
+            errors.append("live blocked_text_hash_registry contains a non-object record")
+            continue
+        digest = record.get("normalized_text_sha256")
+        field_kind = record.get("field_kind")
+        if (
+            not isinstance(digest, str)
+            or not SHA256_RE.fullmatch(digest)
+            or field_kind not in {"input", "output"}
+        ):
+            errors.append("live blocked_text_hash_registry contains a malformed hash record")
+            continue
+        hash_keys.append((field_kind, digest))
+    if hash_records and len(set(hash_keys)) != len(hash_records):
+        errors.append("live blocked_text_hash_registry contains duplicate hash records")
+    if not hash_records:
+        errors.append("live blocked_text_hash_registry contains zero hash records")
+
+    if errors:
+        raise BenchmarkValidationError(errors)
+    return receipt
+
+
 def _nested_counts(rows: Sequence[dict[str, Any]], fields: Sequence[str]) -> dict[str, Any]:
     root: dict[str, Any] = {}
     counter = Counter(tuple(row[field] for field in fields) for row in rows)
@@ -1599,6 +2295,7 @@ def build_manifest(
     sources: Sequence[LeakageSource],
     receipt_path: Path | None,
     release_profile: bool,
+    blocked_registry_receipt_path: Path | None = None,
     frozen_cases_per_cell: int = DEFAULT_FROZEN_CASES_PER_CELL,
     power_plan_path: Path | None = None,
     discordance_receipt_path: Path | None = None,
@@ -1689,6 +2386,11 @@ def build_manifest(
             for source in sources
         ],
         "leakage_receipt_sha256": sha256_file(receipt_path) if receipt_path else None,
+        "blocked_registry_receipt_sha256": (
+            sha256_file(blocked_registry_receipt_path)
+            if blocked_registry_receipt_path
+            else None
+        ),
     }
 
 
@@ -1745,6 +2447,7 @@ def validate_benchmark_manifest_for_ratings(
         "counts",
         "leakage_sources",
         "leakage_receipt_sha256",
+        "blocked_registry_receipt_sha256",
     }
     missing_fields = sorted(expected_manifest_fields - set(manifest))
     unknown_fields = sorted(set(manifest) - expected_manifest_fields)
@@ -1782,6 +2485,13 @@ def validate_benchmark_manifest_for_ratings(
     receipt_sha = manifest.get("leakage_receipt_sha256")
     if not isinstance(receipt_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", receipt_sha):
         errors.append("rating workflow requires a benchmark with a leakage receipt")
+    blocked_receipt_sha = manifest.get("blocked_registry_receipt_sha256")
+    if not isinstance(blocked_receipt_sha, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", blocked_receipt_sha
+    ):
+        errors.append(
+            "rating workflow requires a benchmark with a blocked-registry receipt"
+        )
     power_plan_sha = manifest.get("power_plan_sha256")
     if not isinstance(power_plan_sha, str) or not re.fullmatch(
         r"[0-9a-f]{64}", power_plan_sha
@@ -1813,7 +2523,7 @@ def validate_benchmark_manifest_for_ratings(
         if comparison_binding.get(field) != manifest.get(field):
             errors.append(f"benchmark manifest comparison_binding {field} mismatch")
     sources = manifest.get("leakage_sources")
-    roles: set[str] = set()
+    role_counts: Counter[str] = Counter()
     if not isinstance(sources, list):
         errors.append("benchmark manifest leakage_sources must be an array")
         sources = []
@@ -1827,14 +2537,19 @@ def validate_benchmark_manifest_for_ratings(
         if role not in LEAKAGE_ROLES:
             errors.append(f"benchmark manifest leakage source {index} has invalid role")
         else:
-            roles.add(role)
+            role_counts[role] += 1
         if not _nonempty_string(name) or not IDENTIFIER_RE.fullmatch(name):
             errors.append(f"benchmark manifest leakage source {index} has invalid name")
         if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha):
             errors.append(f"benchmark manifest leakage source {index} has invalid sha256")
-    missing_roles = sorted(REQUIRED_FROZEN_LEAKAGE_ROLES - roles)
+    missing_roles = sorted(REQUIRED_FROZEN_LEAKAGE_ROLES - set(role_counts))
     if missing_roles:
         errors.append(f"benchmark manifest missing leakage source roles {missing_roles}")
+    for role in ("blocked_family_registry", "blocked_text_hash_registry"):
+        if role_counts[role] != 1:
+            errors.append(
+                f"benchmark manifest requires exactly one leakage source role {role}"
+            )
     if errors:
         raise BenchmarkValidationError(errors)
     return manifest
@@ -1846,9 +2561,18 @@ def validate_live_leakage_evidence_for_ratings(
     rows: Sequence[dict[str, Any]],
     source_specs: Sequence[str],
     receipt_path: Path,
+    blocked_registry_receipt_path: Path,
 ) -> None:
     """Re-run and bind leakage checks at the final rating gate."""
     sources = parse_leakage_sources(source_specs)
+    if not blocked_registry_receipt_path.is_file():
+        raise BenchmarkValidationError(
+            [f"missing blocked-registry receipt: {blocked_registry_receipt_path}"]
+        )
+    validate_blocked_registry_receipt(
+        blocked_registry_receipt_path,
+        sources=sources,
+    )
     errors = exact_leakage_errors(rows, sources)
     if errors:
         raise BenchmarkValidationError(errors)
@@ -1856,10 +2580,13 @@ def validate_live_leakage_evidence_for_ratings(
         raise BenchmarkValidationError([f"missing leakage receipt: {receipt_path}"])
     validate_leakage_receipt(receipt_path, rows=rows, sources=sources)
 
-    current_inventory = [
-        {"role": source.role, "name": source.name, "sha256": source.sha256}
-        for source in sources
-    ]
+    current_inventory = sorted(
+        [
+            {"role": source.role, "name": source.name, "sha256": source.sha256}
+            for source in sources
+        ],
+        key=lambda source: (source["role"], source["name"]),
+    )
     sealed_inventory = manifest.get("leakage_sources")
     if isinstance(sealed_inventory, list):
         sealed_inventory = sorted(
@@ -1874,6 +2601,12 @@ def validate_live_leakage_evidence_for_ratings(
     if sha256_file(receipt_path) != manifest.get("leakage_receipt_sha256"):
         evidence_errors.append(
             "live leakage receipt does not match sealed benchmark manifest"
+        )
+    if sha256_file(blocked_registry_receipt_path) != manifest.get(
+        "blocked_registry_receipt_sha256"
+    ):
+        evidence_errors.append(
+            "live blocked-registry receipt does not match sealed benchmark manifest"
         )
     if evidence_errors:
         raise BenchmarkValidationError(evidence_errors)
@@ -2121,13 +2854,15 @@ def validate_command(args: argparse.Namespace) -> int:
             development_comparison_manifest_path=development_comparison_manifest_path,
         )
     sources = parse_leakage_sources(args.leakage_source)
-    exact_errors = exact_leakage_errors(rows, sources)
-    if exact_errors:
-        raise BenchmarkValidationError(exact_errors)
-
     has_frozen = any(row["split"] == "frozen" for row in rows)
     receipt_path = args.leakage_receipt.expanduser().resolve() if args.leakage_receipt else None
-    if has_frozen:
+    blocked_registry_receipt_path = (
+        args.blocked_registry_receipt.expanduser().resolve()
+        if args.blocked_registry_receipt
+        else None
+    )
+    requires_release_evidence = has_frozen or args.release_profile
+    if requires_release_evidence:
         roles = {source.role for source in sources}
         missing_roles = sorted(REQUIRED_FROZEN_LEAKAGE_ROLES - roles)
         errors: list[str] = []
@@ -2135,8 +2870,22 @@ def validate_command(args: argparse.Namespace) -> int:
             errors.append(f"frozen corpus missing leakage source roles {missing_roles}")
         if receipt_path is None:
             errors.append("frozen corpus requires a leakage screening receipt")
+        if blocked_registry_receipt_path is None:
+            errors.append("frozen corpus requires a blocked-registry receipt")
         if errors:
             raise BenchmarkValidationError(errors)
+    if blocked_registry_receipt_path is not None:
+        if not blocked_registry_receipt_path.is_file():
+            raise BenchmarkValidationError(
+                [f"missing blocked-registry receipt: {blocked_registry_receipt_path}"]
+            )
+        validate_blocked_registry_receipt(
+            blocked_registry_receipt_path,
+            sources=sources,
+        )
+    exact_errors = exact_leakage_errors(rows, sources)
+    if exact_errors:
+        raise BenchmarkValidationError(exact_errors)
     if receipt_path is not None:
         if not receipt_path.is_file():
             raise BenchmarkValidationError([f"missing leakage receipt: {receipt_path}"])
@@ -2148,6 +2897,7 @@ def validate_command(args: argparse.Namespace) -> int:
         sources=sources,
         receipt_path=receipt_path,
         release_profile=args.release_profile,
+        blocked_registry_receipt_path=blocked_registry_receipt_path,
         frozen_cases_per_cell=args.frozen_cases_per_cell,
         power_plan_path=power_plan_path,
         discordance_receipt_path=discordance_receipt_path,
@@ -2211,6 +2961,9 @@ def validate_ratings_command(args: argparse.Namespace) -> int:
         rows=rows,
         source_specs=args.leakage_source,
         receipt_path=args.leakage_receipt.expanduser().resolve(),
+        blocked_registry_receipt_path=(
+            args.blocked_registry_receipt.expanduser().resolve()
+        ),
     )
     power_plan_path = args.power_plan.expanduser().resolve()
     discordance_receipt_path = args.development_discordance_receipt.expanduser().resolve()
@@ -2327,9 +3080,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="ROLE:NAME=PATH",
-        help="screen against a pinned training, prior-eval, or blocked-family input",
+        help="screen against a pinned training, prior-eval, family, or text-hash input",
     )
     validate_parser.add_argument("--leakage-receipt", type=Path)
+    validate_parser.add_argument("--blocked-registry-receipt", type=Path)
     validate_parser.add_argument("--manifest-out", type=Path)
     validate_parser.set_defaults(func=validate_command)
 
@@ -2402,6 +3156,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="re-screen against each source sealed into the benchmark manifest",
     )
     ratings_parser.add_argument("--leakage-receipt", type=Path, required=True)
+    ratings_parser.add_argument(
+        "--blocked-registry-receipt", type=Path, required=True
+    )
     ratings_parser.add_argument("--manifest-out", type=Path)
     ratings_parser.set_defaults(func=validate_ratings_command)
     return parser

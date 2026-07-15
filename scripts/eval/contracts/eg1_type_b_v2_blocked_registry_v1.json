@@ -1,0 +1,244 @@
+{
+  "schema_version": "eg1-type-b-v2-blocked-registry-contract-v1",
+  "registry_id": "eg1-type-b-v2-blocked-registry-2026-07-15",
+  "status": "sealed",
+  "normalization_policy_id": "nfkc-casefold-alnum-whitespace-v1",
+  "allocator": {
+    "allocation_contract_path": "scripts/eval/contracts/eg1_type_b_v2_allocation_v1.json",
+    "allocation_contract_sha256": "1f683a8e9448fb73a5e763d3342a7cdb9cde452d3be9d7d586b8a372924b67c2",
+    "builder_path": "scripts/eval/build_eg1_type_b_v2_manifest.py",
+    "builder_sha256": "f4e4cee02ff38bf0b6ba5473f308b17aa087dd98ca8b05819fcb6aee7e4b6cd0"
+  },
+  "counts": {
+    "sources": 4,
+    "source_rows": 11236,
+    "blocked_families": 7198,
+    "normalized_input_hashes": 6872,
+    "normalized_output_hashes": 6861,
+    "normalized_empty_input_rows": 1,
+    "normalized_empty_output_rows": 1,
+    "provisional_decisions": 23,
+    "replace": 23,
+    "retain": 0
+  },
+  "sources": [
+    {
+      "role": "prior_benchmark",
+      "name": "type_b_approved_1890",
+      "path": "scripts/eval/corpus/type_b_approved_1890.jsonl",
+      "sha256": "27993adc574242e6bf2aef7430dbc2c6776ebbb6dd547d61f561d4e693d22a6b",
+      "row_count": 1890,
+      "field_presence_counts": {
+        "asr_input": 1890,
+        "bait_type": 100,
+        "behaviors": 292,
+        "category": 1890,
+        "context": 1890,
+        "correction_depth": 100,
+        "correction_target": 100,
+        "emoji_pattern": 100,
+        "entity_type": 100,
+        "error_type": 100,
+        "expected_output": 1890,
+        "filler_type": 100,
+        "gold_behavior": 1598,
+        "homophone_pair": 100,
+        "id": 1890,
+        "instruction_strength": 100,
+        "item_count": 100,
+        "length_bucket": 1890,
+        "notes": 1890,
+        "num_topics": 100,
+        "opener_type": 100,
+        "origin": 1890,
+        "punct_type": 100,
+        "restart_style": 100,
+        "restraint_type": 98,
+        "source": 1890,
+        "subset": 1890,
+        "tier": 1890,
+        "trap_type": 300
+      },
+      "id_field": "id",
+      "input_field": "asr_input",
+      "output_field": "expected_output",
+      "family_basis": "origin_proxy",
+      "family_field": "origin"
+    },
+    {
+      "role": "legacy_benchmark",
+      "name": "type_b_overflow_900",
+      "path": "scripts/eval/corpus/type_b_overflow_900.jsonl",
+      "sha256": "1267e5c8ccf84ea745bd2b1bcdcac9d912b8dadb8c14ef76515eee24139759fa",
+      "row_count": 900,
+      "field_presence_counts": {
+        "asr_input": 900,
+        "category": 900,
+        "context": 900,
+        "correction_depth": 100,
+        "correction_target": 100,
+        "error_type": 100,
+        "expected_output": 900,
+        "filler_type": 100,
+        "gold_behavior": 900,
+        "id": 900,
+        "instruction_strength": 100,
+        "item_count": 100,
+        "length_bucket": 900,
+        "notes": 900,
+        "num_topics": 100,
+        "origin": 900,
+        "restart_style": 100,
+        "source": 900,
+        "subset": 900,
+        "tier": 900,
+        "trap_type": 300
+      },
+      "id_field": "id",
+      "input_field": "asr_input",
+      "output_field": "expected_output",
+      "family_basis": "origin_proxy",
+      "family_field": "origin"
+    },
+    {
+      "role": "legacy_benchmark",
+      "name": "type_b_all_v1",
+      "path": "scripts/eval/corpus/type_b_all_v1.jsonl",
+      "sha256": "eb83421b84cd728f8aac96054b4d3518661a40e0c0a33961e3d14b07b118da4d",
+      "row_count": 2790,
+      "field_presence_counts": {
+        "asr_input": 2790,
+        "bait_type": 100,
+        "behaviors": 292,
+        "category": 2790,
+        "context": 2790,
+        "correction_depth": 200,
+        "correction_target": 200,
+        "emoji_pattern": 100,
+        "entity_type": 100,
+        "error_type": 200,
+        "expected_output": 2790,
+        "filler_type": 200,
+        "gold_behavior": 2498,
+        "homophone_pair": 100,
+        "id": 2790,
+        "instruction_strength": 200,
+        "item_count": 200,
+        "length_bucket": 2790,
+        "notes": 2790,
+        "num_topics": 200,
+        "opener_type": 100,
+        "origin": 2790,
+        "punct_type": 100,
+        "restart_style": 200,
+        "restraint_type": 98,
+        "source": 2790,
+        "subset": 2790,
+        "tier": 2790,
+        "trap_type": 600
+      },
+      "id_field": "id",
+      "input_field": "asr_input",
+      "output_field": "expected_output",
+      "family_basis": "origin_proxy",
+      "family_field": "origin"
+    },
+    {
+      "role": "training",
+      "name": "shipping_sft_v2",
+      "path": "scripts/eval/runs/bakeoff-1265/train_sft_v2.jsonl",
+      "sha256": "5afc6b9435c7bef08df17ba3c4edcb889b8329cd7c1520c49d681999a666f568",
+      "row_count": 5656,
+      "field_presence_counts": {
+        "id": 5656,
+        "input": 5656,
+        "output": 5656,
+        "source": 5656
+      },
+      "id_field": "id",
+      "input_field": "input",
+      "output_field": "output",
+      "family_basis": "row_proxy_only",
+      "family_field": null
+    }
+  ],
+  "expected_validator_artifacts": {
+    "blocked_family_registry.jsonl": {
+      "sha256": "117e54b76051ec9f75a25ecdb9c1b673e64093a1c1f9e31a02de42eaced1a851",
+      "row_count": 7198,
+      "validator_source_role": "blocked_family_registry"
+    },
+    "blocked_text_hashes.jsonl": {
+      "sha256": "1a4f5f4a45b9d1590ce9a4453023c0a9a18b5976e72adf4a047e8cb5bffdd38e",
+      "row_count": 13733,
+      "validator_source_role": "blocked_text_hash_registry"
+    },
+    "source_coverage.jsonl": {
+      "sha256": "aa11ac5ab73825fb218e08b574ad86cbfe8e23e7fc65cc40f0f3b32fa002da95",
+      "row_count": 11236,
+      "validator_source_role": null
+    },
+    "provisional_decisions.jsonl": {
+      "sha256": "778e220c434a532d997c61caf04bc1cd5e44c08befb45f5c16b7586b760ed5ad",
+      "row_count": 23,
+      "validator_source_role": null
+    }
+  },
+  "candidate_clearance_contract": {
+    "provenance_field": "blocked_family_clearances",
+    "registry_artifact": "blocked_family_registry.jsonl",
+    "registry_binding_field": "registry_sha256",
+    "candidate_binding_field": "candidate_semantic_family_id",
+    "required_status": "cleared",
+    "independent_review_required": true
+  },
+  "decision_policy": {
+    "allowed_decisions": [
+      "replace"
+    ],
+    "required_reason_code": "semantic_family_clearance_not_proven",
+    "candidate_model_output_seen": false,
+    "fresh_benchmark_prose_authored": false,
+    "decisions": [
+      {"source_case_id": "SCT-003", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0001"},
+      {"source_case_id": "ME-001", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0002"},
+      {"source_case_id": "TC-001", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0003"},
+      {"source_case_id": "TC-015", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0004"},
+      {"source_case_id": "TC-020", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0005"},
+      {"source_case_id": "TC-029", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0006"},
+      {"source_case_id": "TC-043", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0007"},
+      {"source_case_id": "TC-057", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0008"},
+      {"source_case_id": "TC-071", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0009"},
+      {"source_case_id": "TC-085", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0010"},
+      {"source_case_id": "TC-099", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0011"},
+      {"source_case_id": "TC-113", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0012"},
+      {"source_case_id": "TC-127", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0013"},
+      {"source_case_id": "TC-141", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0014"},
+      {"source_case_id": "TC-155", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0015"},
+      {"source_case_id": "TC-169", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0016"},
+      {"source_case_id": "TC-183", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0017"},
+      {"source_case_id": "TC-211", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0018"},
+      {"source_case_id": "TC-225", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0019"},
+      {"source_case_id": "TC-239", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0020"},
+      {"source_case_id": "TC-253", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0021"},
+      {"source_case_id": "TC-267", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0022"},
+      {"source_case_id": "SCT-OF-003", "decision": "replace", "reason_code": "semantic_family_clearance_not_proven", "replacement_reserve_slot_id": "tb2-reserve-0023"}
+    ]
+  },
+  "publication": {
+    "artifact_names": [
+      "blocked_family_registry.jsonl",
+      "blocked_text_hashes.jsonl",
+      "source_coverage.jsonl",
+      "provisional_decisions.jsonl",
+      "receipt.json"
+    ],
+    "validator_source_roles": {
+      "blocked_family_registry.jsonl": "blocked_family_registry",
+      "blocked_text_hashes.jsonl": "blocked_text_hash_registry"
+    },
+    "exclusive_bundle": true,
+    "receipt_last": true,
+    "private_text_allowed": false
+  }
+}
