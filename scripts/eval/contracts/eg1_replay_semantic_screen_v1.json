@@ -4,7 +4,7 @@
   "tool_bindings": {
     "screening_builder": {
       "path": "scripts/eval/screen_eg1_replay_semantic_neighbors.py",
-      "sha256": "f41298f6915233922da2dedbcbbcd09a556aaefe4f00b9f777a46da52811b484"
+      "sha256": "094cab008f265484da7fb38d92e0148f063cc02941a616d4c88f39284f8cddd9"
     },
     "inventory_builder": {
       "path": "scripts/eval/build_eg1_replay_inventory.py",

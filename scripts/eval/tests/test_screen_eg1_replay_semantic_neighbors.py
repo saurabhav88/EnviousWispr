@@ -495,6 +495,28 @@ class SemanticScreenFixture(unittest.TestCase):
         extra.unlink()
         self._validate(output)
 
+    def test_validator_authenticates_old_bundle_after_live_controls_advance(self) -> None:
+        output, _ = self._build()
+        self.builder.write_bytes(self.builder.read_bytes() + b"\n# later validator\n")
+        contract = json.loads(self.contract.read_text(encoding="utf-8"))
+        contract["tool_bindings"]["screening_builder"]["sha256"] = (
+            MODULE.sha256_bytes(self.builder.read_bytes())
+        )
+        self.contract.write_text(
+            json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        subprocess.run(
+            ["git", "add", str(self.builder), str(self.contract)],
+            cwd=self.root,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "advance live controls"],
+            cwd=self.root,
+            check=True,
+        )
+        self._validate(output)
+
     def test_cli_error_is_generic_and_does_not_echo_source_content(self) -> None:
         sentinel = "synthetic-secret-cli-sentinel"
         original = self.replay_path.read_bytes()

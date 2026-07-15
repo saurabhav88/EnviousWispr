@@ -280,15 +280,21 @@ def validate_contract(contract: dict[str, Any]) -> None:
         raise ValueError("semantic-screen runtime versions are invalid")
 
 
-def validate_tool_bindings(
-    contract: dict[str, Any], repo_root: Path, script_path: Path
-) -> dict[str, dict[str, str]]:
-    bindings = contract.get("tool_bindings")
-    expected_paths = {
+def expected_tool_binding_paths(
+    repo_root: Path, script_path: Path
+) -> dict[str, str]:
+    return {
         "screening_builder": relative_repo_path(script_path, repo_root),
         "inventory_builder": "scripts/eval/build_eg1_replay_inventory.py",
         "inventory_normalizer": "scripts/eval/eg1_replay_normalizer_v1.py",
     }
+
+
+def validate_tool_bindings(
+    contract: dict[str, Any], repo_root: Path, script_path: Path
+) -> dict[str, dict[str, str]]:
+    bindings = contract.get("tool_bindings")
+    expected_paths = expected_tool_binding_paths(repo_root, script_path)
     if not isinstance(bindings, dict) or set(bindings) != set(expected_paths):
         raise ValueError("semantic-screen tool inventory changed")
     result: dict[str, dict[str, str]] = {}
@@ -303,6 +309,33 @@ def validate_tool_bindings(
         if binding.get("sha256") != actual_sha:
             raise ValueError(f"semantic-screen {name} hash changed")
         result[name] = {"path": relative_path, "sha256": actual_sha}
+    return result
+
+
+def validate_producing_tool_bindings(
+    contract: dict[str, Any],
+    repo_root: Path,
+    script_path: Path,
+    execution_head: str,
+) -> dict[str, dict[str, str]]:
+    bindings = contract.get("tool_bindings")
+    expected_paths = expected_tool_binding_paths(repo_root, script_path)
+    if not isinstance(bindings, dict) or set(bindings) != set(expected_paths):
+        raise ValueError("semantic-screen producing tool inventory changed")
+    result: dict[str, dict[str, str]] = {}
+    for name, relative_path in expected_paths.items():
+        binding = bindings.get(name)
+        if not isinstance(binding, dict) or set(binding) != {"path", "sha256"}:
+            raise ValueError("semantic-screen producing tool binding schema changed")
+        if binding.get("path") != relative_path:
+            raise ValueError(f"semantic-screen producing {name} path changed")
+        expected_sha = require_hash(
+            binding.get("sha256"), f"semantic-screen producing {name} hash"
+        )
+        committed = git_committed_bytes(repo_root, execution_head, relative_path)
+        if committed is None or sha256_bytes(committed) != expected_sha:
+            raise ValueError("semantic-screen producing control binding is invalid")
+        result[name] = {"path": relative_path, "sha256": expected_sha}
     return result
 
 
@@ -1035,46 +1068,6 @@ def validate_published_bundle(
     inventory_bundle = inventory_bundle.resolve()
     model_dir = model_dir.resolve()
     bundle = bundle.resolve()
-    contract_bytes, contract_sha = read_once(contract_path)
-    contract = parse_object_bytes(contract_bytes, "semantic-screen contract")
-    validate_contract(contract)
-    tool_receipts = validate_tool_bindings(contract, repo_root, script_path)
-    inventory_rows, coordinator_receipt, _ = validate_inventory_bundle(
-        contract, inventory_bundle, repo_root
-    )
-    model_receipt = validate_model_tree(contract, model_dir)
-    sources = contract.get("sources")
-    if not isinstance(sources, dict) or set(sources) != {
-        "replay_training_original",
-        "historical_type_b_all",
-    }:
-        raise ValueError("semantic-screen source inventory changed")
-    replay_rows, _, replay_receipt = load_source(
-        repo_root, sources["replay_training_original"], "replay source"
-    )
-    reference_rows, _, reference_receipt = load_source(
-        repo_root, sources["historical_type_b_all"], "reference source"
-    )
-    coordinator_sources = {
-        row.get("role"): row for row in coordinator_receipt.get("sources", [])
-    }
-    for role, source_receipt in (
-        ("replay_training_original", replay_receipt),
-        ("historical_type_b_all", reference_receipt),
-    ):
-        coordinator = coordinator_sources.get(role)
-        if not isinstance(coordinator, dict) or {
-            key: coordinator.get(key) for key in ("path", "sha256", "row_count")
-        } != {key: source_receipt[key] for key in ("path", "sha256", "row_count")}:
-            raise ValueError(f"{role} differs from the coordinator receipt")
-    candidates = bind_inventory_to_sources(inventory_rows, replay_rows)
-    expected_counts = contract["expected_counts"]
-    if (
-        len(inventory_rows) != expected_counts["inventory_rows"]
-        or len(candidates) != expected_counts["candidate_only_rows"]
-        or len(reference_rows) != expected_counts["reference_rows"]
-    ):
-        raise ValueError("semantic-screen source counts differ from contract")
     receipt_path = bundle / RECEIPT_FILENAME
     queue_path = bundle / QUEUE_FILENAME
     try:
@@ -1121,29 +1114,70 @@ def validate_published_bundle(
     execution_head = receipt.get("execution_git_head")
     if not isinstance(execution_head, str) or not SHA1_RE.fullmatch(execution_head):
         raise ValueError("semantic-screen receipt producing commit is invalid")
-    if receipt.get("contract") != {
-        "path": relative_repo_path(contract_path, repo_root),
-        "sha256": contract_sha,
-    }:
+    contract_relative = relative_repo_path(contract_path, repo_root)
+    contract_record = receipt.get("contract")
+    if (
+        not isinstance(contract_record, dict)
+        or set(contract_record) != {"path", "sha256"}
+        or contract_record.get("path") != contract_relative
+    ):
         raise ValueError("semantic-screen receipt contract binding changed")
+    contract_sha = require_hash(
+        contract_record.get("sha256"), "semantic-screen producing contract hash"
+    )
     committed_contract = git_committed_bytes(
-        repo_root, execution_head, relative_repo_path(contract_path, repo_root)
+        repo_root, execution_head, contract_relative
     )
     if committed_contract is None or sha256_bytes(committed_contract) != contract_sha:
         raise ValueError("semantic-screen producing contract binding is invalid")
+    contract = parse_object_bytes(committed_contract, "producing semantic-screen contract")
+    validate_contract(contract)
+    tool_receipts = validate_producing_tool_bindings(
+        contract, repo_root, script_path, execution_head
+    )
     if receipt.get("tool_bindings") != tool_receipts:
         raise ValueError("semantic-screen receipt tool inventory changed")
-    for binding in receipt["tool_bindings"].values():
-        if not isinstance(binding, dict):
-            raise ValueError("semantic-screen receipt tool binding is invalid")
-        committed = git_committed_bytes(repo_root, execution_head, binding.get("path", ""))
-        if committed is None or sha256_bytes(committed) != binding.get("sha256"):
-            raise ValueError("semantic-screen producing control binding is invalid")
     payload_hash = receipt.get("receipt_payload_sha256")
     payload = dict(receipt)
     payload.pop("receipt_payload_sha256", None)
     if payload_hash != sha256_bytes(canonical_json(payload)):
         raise ValueError("semantic-screen receipt payload binding is invalid")
+    inventory_rows, coordinator_receipt, _ = validate_inventory_bundle(
+        contract, inventory_bundle, repo_root
+    )
+    model_receipt = validate_model_tree(contract, model_dir)
+    sources = contract.get("sources")
+    if not isinstance(sources, dict) or set(sources) != {
+        "replay_training_original",
+        "historical_type_b_all",
+    }:
+        raise ValueError("semantic-screen source inventory changed")
+    replay_rows, _, replay_receipt = load_source(
+        repo_root, sources["replay_training_original"], "replay source"
+    )
+    reference_rows, _, reference_receipt = load_source(
+        repo_root, sources["historical_type_b_all"], "reference source"
+    )
+    coordinator_sources = {
+        row.get("role"): row for row in coordinator_receipt.get("sources", [])
+    }
+    for role, source_receipt in (
+        ("replay_training_original", replay_receipt),
+        ("historical_type_b_all", reference_receipt),
+    ):
+        coordinator = coordinator_sources.get(role)
+        if not isinstance(coordinator, dict) or {
+            key: coordinator.get(key) for key in ("path", "sha256", "row_count")
+        } != {key: source_receipt[key] for key in ("path", "sha256", "row_count")}:
+            raise ValueError(f"{role} differs from the coordinator receipt")
+    candidates = bind_inventory_to_sources(inventory_rows, replay_rows)
+    expected_counts = contract["expected_counts"]
+    if (
+        len(inventory_rows) != expected_counts["inventory_rows"]
+        or len(candidates) != expected_counts["candidate_only_rows"]
+        or len(reference_rows) != expected_counts["reference_rows"]
+    ):
+        raise ValueError("semantic-screen source counts differ from contract")
     rows = rows_from_bytes(queue_bytes, "semantic-review queue")
     run_scope = receipt.get("run_scope")
     if not isinstance(run_scope, dict) or set(run_scope) != {
