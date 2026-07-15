@@ -155,11 +155,6 @@ public final class TelemetryService {
       salvagedLeadTrimMs: salvagedLeadTrimMs,
       interruptedBy: interruptedBy
     )
-    if let e2e = m?.e2eSeconds {
-      metricPipelineE2E(
-        seconds: e2e, inputMode: inputMode, asrBackend: t.backendType.rawValue,
-        llmProvider: t.llmProvider, result: "success")
-    }
     if let asrLat = m?.asrLatencySeconds {
       asrCompleted(
         backend: t.backendType.rawValue, result: "success", coldStart: m?.coldStart ?? false,
@@ -1451,22 +1446,6 @@ public final class TelemetryService {
       if let ms = result.durationMs { props["gate_\(key)_ms"] = ms }
     }
     PostHogSDK.shared.capture("ai_diagnostics.run_completed", properties: props)
-  }
-
-  // MARK: - Metrics
-
-  public func metricPipelineE2E(
-    seconds: Double, inputMode: String, asrBackend: String,
-    llmProvider: String?, result: String
-  ) {
-    var props: [String: Any] = [
-      "input_mode": inputMode,
-      "asr_backend": asrBackend,
-      "result": result,
-      "$value": seconds,
-    ]
-    if let p = llmProvider { props["llm_provider"] = p }
-    PostHogSDK.shared.capture("metric.pipeline.e2e_seconds", properties: props)
   }
 
   // MARK: - Multilingual v1 (language detection lifecycle)
