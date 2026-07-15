@@ -23,25 +23,41 @@ Model size is a ranking factor only after the architecture and quality gates pas
 
 1. Assign semantic-family IDs before writing, localization, or paraphrasing.
 2. Allocate whole families to `development` or `frozen` before authoring rows.
-3. Author and validate the five-language matrix without seeing candidate outputs.
-4. Pin all leakage inputs and complete exact, token n-gram, character n-gram, and embedding screening.
-5. Validate, hash, and seal the frozen corpus before candidate selection.
-6. Tune prompts, weights, data mixture, quantization, and decoding on development only.
-7. Run frozen once on current EG-1 and one predeclared finalist.
-8. Judge the exact quantized GGUF through the bundled Mac runtime.
+3. Author and validate the development matrix without seeing candidate outputs.
+4. Tune prompts, weights, data mixture, quantization, and decoding on development only. Select and lock one exact finalist artifact and evaluation configuration.
+5. A separate custodian compares current EG-1 with that exact finalist on development. The power lane receives only `pair_count` and `discordant_count` per language, never case IDs, arm direction, pass rates, or case-level outcomes.
+6. Bind the aggregate receipt to the validated 800-row development corpus, its recomputed manifest, and an exact comparison manifest containing the current/finalist artifact and evaluation-configuration hashes.
+7. Run the paired-power plan, declare the frozen rows per behavior-domain cell, and never reduce or resize it after frozen outputs are seen.
+8. Author the frozen allocation without case-level development results, pin all leakage inputs, and complete exact, token n-gram, character n-gram, and embedding screening.
+9. Validate, hash, and seal the frozen corpus before the finalist is run on it.
+10. Run frozen once on current EG-1 and the one locked finalist. Generation receipts must match the locked artifact/configuration pairs before ratings can validate.
+11. Judge the exact quantized GGUF through the bundled Mac runtime.
 
 The frozen corpus cannot be used to choose between several finalists. A second finalist requires a newly authored and newly sealed frozen version.
 
-## 3. Corpus size and strata
+## 3. Corpus size, power, and strata
 
-The release profile contains 2,400 rows.
+The minimum release profile contains 2,400 rows. Development remains fixed at 160 rows per language. Frozen begins at 320 per language but expands in balanced 80-row increments when the predeclared paired-power plan requires it.
 
 | Split | Per language | Five languages | Per behavior and language | Per domain and language |
 |---|---:|---:|---:|---:|
 | Development | 160 | 800 | 10 | 32 |
-| Frozen | 320 | 1,600 | 20 | 64 |
+| Frozen | minimum 320 | minimum 1,600 | minimum 20 | minimum 64 |
 
-The marginals are not enough. Within every language, each behavior x domain cell contains exactly two development rows and four frozen rows. This prevents one behavior from being tested mostly in an easy domain while another absorbs the high-risk domains.
+The marginals are not enough. Within every language, each behavior x domain cell contains exactly two development rows and a predeclared common frozen count `k`, where `k >= 4`. Frozen size per language is therefore `16 behaviors x 5 domains x k`, always a multiple of 80. This prevents one behavior from being tested mostly in an easy domain while another absorbs the high-risk domains.
+
+The default 320 is an estimation minimum, not an automatic paired-power claim. The planner computes unconditional power for the two-sided exact conditional McNemar/binomial test, using a five-point minimum detectable net improvement, 80% power, and worst-case `0.05 / 5 = 0.01` per-language alpha before Holm correction. It sizes from the largest simultaneous 95% Bonferroni-Wilson upper endpoint across the five language-specific development discordance rates, not the raw point estimate. With 16/160 discordant pairs in every language, the raw 10% becomes a 16.89% sizing rate and selects 880 frozen rows per language. These values are computed before frozen sealing, not selected after a favorable result.
+
+```bash
+python3 scripts/eval/multilingual_benchmark_v2.py power-plan \
+  --development-discordance-receipt /absolute/path/to/development-discordance-v1.json \
+  --development-corpus /absolute/path/to/development-corpus-v2.jsonl \
+  --development-benchmark-manifest /absolute/path/to/development-corpus-v2.manifest.json \
+  --development-comparison-manifest /absolute/path/to/development-comparison-v1.json \
+  --out /absolute/path/to/frozen-power-plan-v2.json
+```
+
+The selected `frozen_cases_per_cell` is then passed to both `content-hash` and `validate`. The deterministic benchmark manifest records it. Frozen case count may never change after either candidate has generated frozen output.
 
 Languages are English, German, French, Spanish, and Russian. Every language and split contains all five domains:
 
@@ -72,7 +88,7 @@ The 16 behavior strata are the V1 matrix:
 15. quoted or high-risk instruction restraint;
 16. clean or minimal-edit restraint.
 
-The four positive-list behaviors produce 40 development and 80 frozen list-activation rows per language. The four restraint behaviors produce a matched 40 development and 80 frozen restraint rows per language. Core polish, positive lists, and restraint remain separate scoreboards.
+The four positive-list behaviors produce 40 development and `20 x k` frozen list-activation rows per language. The four restraint behaviors produce a matched 40 development and `20 x k` frozen restraint rows per language. At the minimum `k=4`, those frozen slices contain 80 rows each. Core polish, positive lists, and restraint remain separate scoreboards.
 
 At least 80% of each language and split must be native-original. Shared concepts are capped at 20% and must be independently rewritten into natural local speech, not translated from a shared template.
 
@@ -150,7 +166,8 @@ Order of operations:
 ```bash
 python3 scripts/eval/multilingual_benchmark_v2.py content-hash \
   --corpus /absolute/path/to/corpus-v2.jsonl \
-  --release-profile
+  --release-profile \
+  --frozen-cases-per-cell 11
 
 # Run the approved exact, fuzzy, and embedding scanner with predeclared thresholds.
 # Its output is leakage-receipt-v1.json, bound to the content hash above.
@@ -158,6 +175,12 @@ python3 scripts/eval/multilingual_benchmark_v2.py content-hash \
 python3 scripts/eval/multilingual_benchmark_v2.py validate \
   --corpus /absolute/path/to/corpus-v2.jsonl \
   --release-profile \
+  --frozen-cases-per-cell 11 \
+  --power-plan /absolute/path/to/frozen-power-plan-v2.json \
+  --development-discordance-receipt /absolute/path/to/development-discordance-v1.json \
+  --development-corpus /absolute/path/to/development-corpus-v2.jsonl \
+  --development-benchmark-manifest /absolute/path/to/development-corpus-v2.manifest.json \
+  --development-comparison-manifest /absolute/path/to/development-comparison-v1.json \
   --leakage-source training:eg1-training=/absolute/path/to/training.jsonl \
   --leakage-source prior_eval:all-prior-evals=/absolute/path/to/prior-evals.jsonl \
   --leakage-source blocked_family_registry:blocked-v2=/absolute/path/to/blocked-families.jsonl \
@@ -165,7 +188,7 @@ python3 scripts/eval/multilingual_benchmark_v2.py validate \
   --manifest-out /absolute/path/to/corpus-v2.manifest.json
 ```
 
-The manifest has no clock field or absolute input paths. It deterministically records schema hashes, raw source hash, order-independent benchmark content hash, per-row hashes, family-assignment hash, source hashes, and all split/language/domain/behavior/behavior-domain/difficulty/safety/list counts. The same files and validator version produce the same manifest bytes.
+The manifest has no clock field or absolute input paths. It deterministically records schema hashes, raw source hash, order-independent benchmark content hash, per-row hashes, family-assignment hash, the sealed power-plan/development-receipt hashes, the locked current/finalist comparison hashes, leakage-source hashes, and all split/language/domain/behavior/behavior-domain/difficulty/safety/list counts. Sealing fails unless the actual 800-row development corpus is balanced and matches its recomputed manifest, the aggregate discordance receipt binds to that manifest and the exact comparison manifest, and the power plan exactly recomputes to the same frozen cell count. The same files and validator version produce the same manifest bytes.
 
 ## 7. Blinded native rating contract
 
@@ -199,12 +222,19 @@ python3 scripts/eval/multilingual_benchmark_v2.py validate-ratings \
   --corpus /absolute/path/to/corpus-v2.jsonl \
   --benchmark-manifest /absolute/path/to/corpus-v2.manifest.json \
   --ratings /absolute/path/to/blinded-native-ratings.jsonl \
+  --power-plan /absolute/path/to/frozen-power-plan-v2.json \
+  --development-discordance-receipt /absolute/path/to/development-discordance-v1.json \
+  --development-corpus /absolute/path/to/development-corpus-v2.jsonl \
+  --development-benchmark-manifest /absolute/path/to/development-corpus-v2.manifest.json \
+  --development-comparison-manifest /absolute/path/to/development-comparison-v1.json \
+  --generation-receipt /absolute/path/to/frozen-generation-M1.json \
+  --generation-receipt /absolute/path/to/frozen-generation-M2.json \
   --expected-model-label M1 \
   --expected-model-label M2 \
   --manifest-out /absolute/path/to/blinded-native-ratings.manifest.json
 ```
 
-The rating manifest pins the rating schema hash, benchmark content hash, exact benchmark-manifest SHA-256, raw rating-file hash, order-independent rating content hash, per-rating hashes, expected labels, review-round counts, and stratified repeat-coverage counts.
+The rating manifest pins the rating schema hash, benchmark content hash, exact benchmark-manifest SHA-256, raw rating-file hash, order-independent rating content hash, per-rating hashes, expected labels, review-round counts, stratified repeat-coverage counts, and the two generation receipts. The validator checks receipt consistency: each receipt must declare one locked artifact/configuration pair, the sealed benchmark-manifest hash, the frozen case count, zero generation errors, and the output hash. It does not receive and hash the model, evaluation-configuration, or generation-output files themselves. Those receipts must therefore be emitted by a trusted generation harness or independent custodian; a hand-written receipt is not provenance proof.
 
 ## 8. Metrics and uncertainty
 
@@ -228,25 +258,27 @@ Candidate comparison uses paired case outcomes:
 - Holm-Bonferroni correction across the five primary language comparisons;
 - Benjamini-Hochberg 5% false-discovery control for secondary category analyses.
 
+Frozen sample size is chosen from aggregate arm-blinded development discordance for the exact locked finalist before frozen sealing. The default 320 per language is expanded when unconditional power for the two-sided exact conditional McNemar test is below 80% for a five-point net improvement at the worst-case corrected alpha. Sample size can never be changed after frozen model outputs exist.
+
 Three-seed development finalists report every seed, mean, and range. A damaging seed is never averaged away.
 
 ## 9. Proposed release gates
 
 These remain proposed until founder and CTO approval.
 
-For every language claimed as supported:
+Let `N` be the predeclared frozen rows per language and `L` be the positive-list or restraint rows per language. At `k=4`, `N=320` and `L=80`. For every language claimed as supported:
 
-- strict green at least 285/320, with Wilson lower bound above 85%;
-- same-language retention at least 317/320;
-- meaning preservation at least 317/320;
-- positive lists at least 72/80;
-- false lists at most 2/80 per language;
+- strict green at least 89.0625% of `N`, rounded up, with Wilson lower bound above 85%;
+- same-language retention at least 99.0625% of `N`, rounded up;
+- meaning preservation at least 99.0625% of `N`, rounded up;
+- positive lists at least 90% of `L`, rounded up;
+- false lists at most 2.5% of `L`, rounded down;
 - zero S4 damage.
 
 Across all five languages:
 
-- false lists at most 10/400;
-- zero S4 damage across all 1,600 frozen cases.
+- false lists at most 2.5% of the pooled restraint slice, rounded down;
+- zero S4 damage across every frozen case.
 
 Candidate comparison gates:
 

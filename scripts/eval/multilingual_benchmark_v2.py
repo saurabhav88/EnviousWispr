@@ -22,7 +22,7 @@ from typing import Any, Iterable, Sequence
 
 SCHEMA_VERSION = "eg1-multilingual-benchmark-v2"
 RATING_SCHEMA_VERSION = "eg1-multilingual-benchmark-v2-rating"
-VALIDATOR_VERSION = "1.2.0"
+VALIDATOR_VERSION = "1.3.0"
 LANGUAGES = ("en", "de", "fr", "es", "ru")
 SPLITS = ("development", "frozen")
 DOMAINS = (
@@ -93,13 +93,482 @@ EXPECTED_LIST_CONTRACT = {
     **{behavior: "restrain_prose" for behavior in BEHAVIORS[12:]},
 }
 
-RELEASE_COUNTS = {
-    "development": {"per_language": 160, "per_behavior": 10, "per_domain": 32},
-    "frozen": {"per_language": 320, "per_behavior": 20, "per_domain": 64},
-}
+DEVELOPMENT_CASES_PER_CELL = 2
+MIN_FROZEN_CASES_PER_CELL = 4
+DEFAULT_FROZEN_CASES_PER_CELL = 4
+RELEASE_NET_IMPROVEMENT = 0.05
+RELEASE_TARGET_POWER = 0.80
+RELEASE_FAMILYWISE_ALPHA = 0.05
+RELEASE_PRIMARY_LANGUAGE_COMPARISONS = 5
+COMPARISON_BINDING_FIELDS = (
+    "development_corpus_sha256",
+    "development_benchmark_manifest_sha256",
+    "development_comparison_manifest_sha256",
+    "baseline_artifact_sha256",
+    "baseline_evaluation_config_sha256",
+    "finalist_artifact_sha256",
+    "finalist_evaluation_config_sha256",
+)
+
+
+def release_counts(frozen_cases_per_cell: int) -> dict[str, dict[str, int]]:
+    return {
+        "development": {
+            "per_language": len(BEHAVIORS) * len(DOMAINS) * DEVELOPMENT_CASES_PER_CELL,
+            "per_behavior": len(DOMAINS) * DEVELOPMENT_CASES_PER_CELL,
+            "per_domain": len(BEHAVIORS) * DEVELOPMENT_CASES_PER_CELL,
+        },
+        "frozen": {
+            "per_language": len(BEHAVIORS) * len(DOMAINS) * frozen_cases_per_cell,
+            "per_behavior": len(DOMAINS) * frozen_cases_per_cell,
+            "per_domain": len(BEHAVIORS) * frozen_cases_per_cell,
+        },
+    }
+
+
+RELEASE_COUNTS = release_counts(DEFAULT_FROZEN_CASES_PER_CELL)
 
 IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _binomial_pmf(successes: int, trials: int, probability: float) -> float:
+    if probability == 0:
+        return 1.0 if successes == 0 else 0.0
+    if probability == 1:
+        return 1.0 if successes == trials else 0.0
+    return math.exp(
+        math.lgamma(trials + 1)
+        - math.lgamma(successes + 1)
+        - math.lgamma(trials - successes + 1)
+        + successes * math.log(probability)
+        + (trials - successes) * math.log1p(-probability)
+    )
+
+
+def _exact_two_sided_binomial_p(successes: int, trials: int) -> float:
+    lower = min(successes, trials - successes)
+    tail = sum(math.comb(trials, index) for index in range(lower + 1)) / (2**trials)
+    return min(1.0, 2.0 * tail)
+
+
+def exact_mcnemar_power(
+    cases_per_language: int,
+    discordance_rate: float,
+    net_improvement: float,
+    alpha: float,
+) -> float:
+    """Unconditional power for the two-sided exact conditional McNemar test.
+
+    `net_improvement` is candidate-only pass probability minus baseline-only
+    pass probability. Discordance and the target difference are estimated on
+    model-blind development cases before frozen size is sealed.
+    """
+
+    if cases_per_language < 1:
+        raise ValueError("cases_per_language must be positive")
+    if not 0 < alpha < 1:
+        raise ValueError("alpha must be between zero and one")
+    if not 0 < discordance_rate <= 1:
+        raise ValueError("discordance_rate must be in (0, 1]")
+    if not 0 < net_improvement <= discordance_rate:
+        raise ValueError("net_improvement must be in (0, discordance_rate]")
+
+    candidate_only = (discordance_rate + net_improvement) / 2
+    conditional_candidate_win = candidate_only / discordance_rate
+    power = 0.0
+    for discordant in range(cases_per_language + 1):
+        discordant_probability = _binomial_pmf(
+            discordant, cases_per_language, discordance_rate
+        )
+        if discordant_probability < 1e-16:
+            continue
+        conditional_rejection = sum(
+            _binomial_pmf(candidate_wins, discordant, conditional_candidate_win)
+            for candidate_wins in range(discordant + 1)
+            if _exact_two_sided_binomial_p(candidate_wins, discordant) <= alpha
+        )
+        power += discordant_probability * conditional_rejection
+    return power
+
+
+def frozen_power_plan(
+    *,
+    discordance_rate: float,
+    net_improvement: float,
+    target_power: float,
+    familywise_alpha: float,
+    primary_language_comparisons: int,
+    maximum_cases_per_cell: int,
+) -> dict[str, Any]:
+    if not 0 < target_power < 1:
+        raise ValueError("target_power must be between zero and one")
+    if not 0 < familywise_alpha < 1:
+        raise ValueError("familywise_alpha must be between zero and one")
+    if primary_language_comparisons < 1:
+        raise ValueError("primary_language_comparisons must be positive")
+    if maximum_cases_per_cell < MIN_FROZEN_CASES_PER_CELL:
+        raise ValueError(
+            f"maximum_cases_per_cell must be at least {MIN_FROZEN_CASES_PER_CELL}"
+        )
+    corrected_alpha = familywise_alpha / primary_language_comparisons
+    evaluated: list[dict[str, Any]] = []
+    for cases_per_cell in range(MIN_FROZEN_CASES_PER_CELL, maximum_cases_per_cell + 1):
+        cases_per_language = len(BEHAVIORS) * len(DOMAINS) * cases_per_cell
+        power = exact_mcnemar_power(
+            cases_per_language,
+            discordance_rate,
+            net_improvement,
+            corrected_alpha,
+        )
+        evaluated.append(
+            {
+                "frozen_cases_per_cell": cases_per_cell,
+                "frozen_cases_per_language": cases_per_language,
+                "exact_power": round(power, 6),
+            }
+        )
+        if power >= target_power:
+            return {
+                "status": "sized",
+                "method": "unconditional_power_two_sided_exact_conditional_mcnemar",
+                "planning_discordance_rate": discordance_rate,
+                "minimum_detectable_net_improvement": net_improvement,
+                "target_power": target_power,
+                "familywise_alpha": familywise_alpha,
+                "primary_language_comparisons": primary_language_comparisons,
+                "per_comparison_alpha_worst_case": corrected_alpha,
+                "selected": evaluated[-1],
+                "evaluated": evaluated,
+            }
+    raise ValueError(
+        "target power was not reached; increase maximum_cases_per_cell before frozen sealing"
+    )
+
+
+def _wilson_upper(successes: int, total: int) -> float:
+    # One-sided 99% endpoint: Bonferroni 0.05 / 5 gives simultaneous 95%
+    # coverage across the five language-specific discordance nuisance rates.
+    z = 2.3263478740408408
+    rate = successes / total
+    denominator = 1 + z * z / total
+    center = (rate + z * z / (2 * total)) / denominator
+    margin = z * math.sqrt(
+        (rate * (1 - rate) + z * z / (4 * total)) / total
+    ) / denominator
+    return center + margin
+
+
+def _read_json_object(path: Path, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise BenchmarkValidationError([f"invalid {label} {path}: {exc}"]) from exc
+    if not isinstance(value, dict):
+        raise BenchmarkValidationError([f"{label} must be a JSON object"])
+    return value
+
+
+def _validate_development_corpus_and_manifest(
+    corpus_path: Path, manifest_path: Path
+) -> None:
+    rows = read_benchmark(corpus_path)
+    validate_rows(rows)
+    errors: list[str] = []
+    if any(row.get("split") != "development" for row in rows):
+        errors.append("development power corpus may contain only development rows")
+    target = RELEASE_COUNTS["development"]
+    counts = Counter(row.get("language") for row in rows)
+    behavior_domain_counts = Counter(
+        (row.get("language"), row.get("behavior"), row.get("domain")) for row in rows
+    )
+    source_counts = Counter(
+        (
+            row.get("language"),
+            row.get("provenance", {}).get("source_type")
+            if isinstance(row.get("provenance"), dict)
+            else None,
+        )
+        for row in rows
+    )
+    for language in LANGUAGES:
+        if counts[language] != target["per_language"]:
+            errors.append(
+                f"development power corpus {language} has {counts[language]} rows, "
+                f"expected {target['per_language']}"
+            )
+        for behavior in BEHAVIORS:
+            for domain in DOMAINS:
+                actual = behavior_domain_counts[(language, behavior, domain)]
+                if actual != DEVELOPMENT_CASES_PER_CELL:
+                    errors.append(
+                        f"development power corpus {language}/{behavior}/{domain} has "
+                        f"{actual}, expected {DEVELOPMENT_CASES_PER_CELL}"
+                    )
+        native_original = source_counts[(language, "native_original")]
+        if native_original < math.ceil(target["per_language"] * 0.8):
+            errors.append(
+                f"development power corpus {language} has {native_original} native-original rows"
+            )
+    expected_total = target["per_language"] * len(LANGUAGES)
+    if len(rows) != expected_total:
+        errors.append(
+            f"development power corpus has {len(rows)} rows, expected {expected_total}"
+        )
+
+    manifest = _read_json_object(manifest_path, "development benchmark manifest")
+    expected_manifest = build_manifest(
+        rows=rows,
+        corpus_path=corpus_path,
+        sources=[],
+        receipt_path=None,
+        release_profile=False,
+    )
+    if set(manifest) != set(expected_manifest):
+        errors.append("development benchmark manifest field set is invalid")
+    corpus_derived_fields = (
+        "schema_version",
+        "validator_version",
+        "benchmark_schema_sha256",
+        "rating_schema_sha256",
+        "corpus_source_sha256",
+        "benchmark_content_sha256",
+        "release_profile_enforced",
+        "release_profile_parameters",
+        "power_plan_sha256",
+        "development_discordance_receipt_sha256",
+        "development_corpus_sha256",
+        "development_benchmark_manifest_sha256",
+        "development_comparison_manifest_sha256",
+        "comparison_binding",
+        "row_count",
+        "family_count",
+        "family_assignment_sha256",
+        "row_hashes",
+        "counts",
+    )
+    for field in corpus_derived_fields:
+        if manifest.get(field) != expected_manifest[field]:
+            errors.append(f"development benchmark manifest {field} is invalid")
+    if errors:
+        raise BenchmarkValidationError(errors)
+
+
+def _development_discordance_summary(
+    *,
+    discordance_receipt_path: Path,
+    development_corpus_path: Path,
+    development_benchmark_manifest_path: Path,
+    development_comparison_manifest_path: Path,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    _validate_development_corpus_and_manifest(
+        development_corpus_path, development_benchmark_manifest_path
+    )
+    comparison = _read_json_object(
+        development_comparison_manifest_path, "development comparison manifest"
+    )
+    expected_comparison_fields = {
+        "schema_version",
+        "baseline_artifact_sha256",
+        "baseline_evaluation_config_sha256",
+        "finalist_artifact_sha256",
+        "finalist_evaluation_config_sha256",
+    }
+    errors: list[str] = []
+    if set(comparison) != expected_comparison_fields:
+        errors.append(
+            "development comparison manifest must contain exactly "
+            f"{sorted(expected_comparison_fields)}"
+        )
+    if comparison.get("schema_version") != "eg1-multilingual-development-comparison-v1":
+        errors.append("development comparison manifest schema_version is invalid")
+    for field in expected_comparison_fields - {"schema_version"}:
+        value = comparison.get(field)
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+            errors.append(f"development comparison manifest {field} is invalid")
+
+    receipt = _read_json_object(discordance_receipt_path, "development discordance receipt")
+    expected_receipt_fields = {
+        "schema_version",
+        "custodian_id",
+        "arm_blinded",
+        "case_level_outcomes_withheld",
+        "development_benchmark_manifest_sha256",
+        "development_comparison_manifest_sha256",
+        "per_language",
+    }
+    if set(receipt) != expected_receipt_fields:
+        errors.append(
+            f"development discordance receipt must contain exactly {sorted(expected_receipt_fields)}"
+        )
+    if receipt.get("schema_version") != "eg1-multilingual-development-discordance-v1":
+        errors.append("development discordance receipt schema_version is invalid")
+    if not isinstance(receipt.get("custodian_id"), str) or not receipt["custodian_id"].strip():
+        errors.append("development discordance receipt custodian_id is invalid")
+    if receipt.get("arm_blinded") is not True:
+        errors.append("development discordance receipt must be arm_blinded")
+    if receipt.get("case_level_outcomes_withheld") is not True:
+        errors.append("development discordance receipt must withhold case-level outcomes")
+    benchmark_manifest_sha = sha256_file(development_benchmark_manifest_path)
+    comparison_manifest_sha = sha256_file(development_comparison_manifest_path)
+    if receipt.get("development_benchmark_manifest_sha256") != benchmark_manifest_sha:
+        errors.append("development discordance receipt benchmark-manifest hash mismatch")
+    if receipt.get("development_comparison_manifest_sha256") != comparison_manifest_sha:
+        errors.append("development discordance receipt comparison-manifest hash mismatch")
+
+    per_language = receipt.get("per_language")
+    if not isinstance(per_language, dict) or set(per_language) != set(LANGUAGES):
+        errors.append(
+            f"development discordance receipt per_language must contain exactly {list(LANGUAGES)}"
+        )
+        per_language = {}
+    expected_pairs = RELEASE_COUNTS["development"]["per_language"]
+    totals: dict[str, int] = {}
+    discordant: dict[str, int] = {}
+    for language in LANGUAGES:
+        values = per_language.get(language)
+        if not isinstance(values, dict) or set(values) != {"pair_count", "discordant_count"}:
+            errors.append(f"development discordance receipt {language} counts are malformed")
+            continue
+        pair_count = values.get("pair_count")
+        discordant_count = values.get("discordant_count")
+        if type(pair_count) is not int or pair_count != expected_pairs:
+            errors.append(
+                f"development discordance receipt {language} pair_count must equal {expected_pairs}"
+            )
+            continue
+        if (
+            type(discordant_count) is not int
+            or discordant_count < 0
+            or discordant_count > pair_count
+        ):
+            errors.append(
+                f"development discordance receipt {language} discordant_count is invalid"
+            )
+            continue
+        totals[language] = pair_count
+        discordant[language] = discordant_count
+    if errors:
+        raise BenchmarkValidationError(errors)
+
+    rates = {language: discordant[language] / totals[language] for language in LANGUAGES}
+    upper_bounds = {
+        language: _wilson_upper(discordant[language], totals[language])
+        for language in LANGUAGES
+    }
+    summary = {
+        "development_discordance_receipt_sha256": sha256_file(discordance_receipt_path),
+        "development_case_count_by_language": dict(sorted(totals.items())),
+        "observed_discordance_count_by_language": dict(sorted(discordant.items())),
+        "observed_discordance_rate_by_language": dict(sorted(rates.items())),
+        "discordance_simultaneous_95_upper_by_language": dict(
+            sorted(upper_bounds.items())
+        ),
+        "sizing_discordance_rate": max(
+            RELEASE_NET_IMPROVEMENT, max(upper_bounds.values())
+        ),
+        "custodian_id": receipt["custodian_id"],
+    }
+    binding = {
+        "development_corpus_sha256": sha256_file(development_corpus_path),
+        "development_benchmark_manifest_sha256": benchmark_manifest_sha,
+        "development_comparison_manifest_sha256": comparison_manifest_sha,
+        "baseline_artifact_sha256": comparison["baseline_artifact_sha256"],
+        "baseline_evaluation_config_sha256": comparison[
+            "baseline_evaluation_config_sha256"
+        ],
+        "finalist_artifact_sha256": comparison["finalist_artifact_sha256"],
+        "finalist_evaluation_config_sha256": comparison[
+            "finalist_evaluation_config_sha256"
+        ],
+    }
+    return summary, binding
+
+
+def release_power_plan(
+    *,
+    discordance_receipt_path: Path,
+    development_corpus_path: Path,
+    development_benchmark_manifest_path: Path,
+    development_comparison_manifest_path: Path,
+    maximum_cases_per_cell: int,
+) -> dict[str, Any]:
+    discordance_summary, comparison_binding = _development_discordance_summary(
+        discordance_receipt_path=discordance_receipt_path,
+        development_corpus_path=development_corpus_path,
+        development_benchmark_manifest_path=development_benchmark_manifest_path,
+        development_comparison_manifest_path=development_comparison_manifest_path,
+    )
+    plan = frozen_power_plan(
+        discordance_rate=discordance_summary["sizing_discordance_rate"],
+        net_improvement=RELEASE_NET_IMPROVEMENT,
+        target_power=RELEASE_TARGET_POWER,
+        familywise_alpha=RELEASE_FAMILYWISE_ALPHA,
+        primary_language_comparisons=RELEASE_PRIMARY_LANGUAGE_COMPARISONS,
+        maximum_cases_per_cell=maximum_cases_per_cell,
+    )
+    return {
+        **plan,
+        "discordance_sizing_method": (
+            "maximum_per_language_bonferroni_wilson_simultaneous_95_upper"
+        ),
+        **discordance_summary,
+        "comparison_binding": dict(sorted(comparison_binding.items())),
+    }
+
+
+def validate_power_plan(
+    path: Path,
+    *,
+    frozen_cases_per_cell: int,
+    discordance_receipt_path: Path,
+    development_corpus_path: Path,
+    development_benchmark_manifest_path: Path,
+    development_comparison_manifest_path: Path,
+) -> dict[str, Any]:
+    try:
+        plan = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise BenchmarkValidationError([f"invalid power plan {path}: {exc}"]) from exc
+    if not isinstance(plan, dict):
+        raise BenchmarkValidationError(["power plan must be a JSON object"])
+    selected = plan.get("selected")
+    if not isinstance(selected, dict):
+        raise BenchmarkValidationError(["power plan selected result is missing"])
+    selected_cases_per_cell = selected.get("frozen_cases_per_cell")
+    if selected_cases_per_cell != frozen_cases_per_cell:
+        raise BenchmarkValidationError(
+            [
+                "power plan frozen_cases_per_cell mismatch: "
+                f"selected {selected_cases_per_cell}, requested {frozen_cases_per_cell}"
+            ]
+        )
+    policy = {
+        "minimum_detectable_net_improvement": RELEASE_NET_IMPROVEMENT,
+        "target_power": RELEASE_TARGET_POWER,
+        "familywise_alpha": RELEASE_FAMILYWISE_ALPHA,
+        "primary_language_comparisons": RELEASE_PRIMARY_LANGUAGE_COMPARISONS,
+    }
+    for field, expected in policy.items():
+        if plan.get(field) != expected:
+            raise BenchmarkValidationError(
+                [f"power plan {field} must equal release policy {expected}"]
+            )
+    try:
+        recomputed = release_power_plan(
+            discordance_receipt_path=discordance_receipt_path,
+            development_corpus_path=development_corpus_path,
+            development_benchmark_manifest_path=development_benchmark_manifest_path,
+            development_comparison_manifest_path=development_comparison_manifest_path,
+            maximum_cases_per_cell=selected_cases_per_cell,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise BenchmarkValidationError([f"power plan cannot be recomputed: {exc}"]) from exc
+    if plan != recomputed:
+        raise BenchmarkValidationError(
+            ["power plan does not exactly match the deterministic recomputation"]
+        )
+    return plan
 
 
 class BenchmarkValidationError(ValueError):
@@ -248,7 +717,12 @@ def _validate_review_record(
         )
 
 
-def validate_rows(rows: Sequence[dict[str, Any]], *, release_profile: bool = False) -> None:
+def validate_rows(
+    rows: Sequence[dict[str, Any]],
+    *,
+    release_profile: bool = False,
+    frozen_cases_per_cell: int = DEFAULT_FROZEN_CASES_PER_CELL,
+) -> None:
     errors: list[str] = []
     seen_case_ids: set[str] = set()
     family_splits: dict[str, set[str]] = defaultdict(set)
@@ -500,13 +974,25 @@ def validate_rows(rows: Sequence[dict[str, Any]], *, release_profile: bool = Fal
             )
 
     if release_profile:
-        errors.extend(_release_profile_errors(rows))
+        errors.extend(_release_profile_errors(rows, frozen_cases_per_cell))
     if errors:
         raise BenchmarkValidationError(errors)
 
 
-def _release_profile_errors(rows: Sequence[dict[str, Any]]) -> list[str]:
+def _release_profile_errors(
+    rows: Sequence[dict[str, Any]], frozen_cases_per_cell: int
+) -> list[str]:
     errors: list[str] = []
+    if (
+        not isinstance(frozen_cases_per_cell, int)
+        or isinstance(frozen_cases_per_cell, bool)
+        or frozen_cases_per_cell < MIN_FROZEN_CASES_PER_CELL
+    ):
+        return [
+            "release profile: frozen_cases_per_cell must be an integer "
+            f"at least {MIN_FROZEN_CASES_PER_CELL}"
+        ]
+    release_profile_counts = release_counts(frozen_cases_per_cell)
     counts = Counter((row.get("split"), row.get("language")) for row in rows)
     behavior_counts = Counter(
         (row.get("split"), row.get("language"), row.get("behavior")) for row in rows
@@ -536,7 +1022,7 @@ def _release_profile_errors(rows: Sequence[dict[str, Any]]) -> list[str]:
         safety_seen[key].add(row.get("safety_risk"))
 
     for split in SPLITS:
-        target = RELEASE_COUNTS[split]
+        target = release_profile_counts[split]
         for language in LANGUAGES:
             key = (split, language)
             if counts[key] != target["per_language"]:
@@ -582,7 +1068,8 @@ def _release_profile_errors(rows: Sequence[dict[str, Any]]) -> list[str]:
                     f"release profile: {split}/{language} missing safety strata {missing_safety}"
                 )
     expected_total = sum(
-        RELEASE_COUNTS[split]["per_language"] * len(LANGUAGES) for split in SPLITS
+        release_profile_counts[split]["per_language"] * len(LANGUAGES)
+        for split in SPLITS
     )
     if len(rows) != expected_total:
         errors.append(f"release profile: corpus has {len(rows)} rows, expected {expected_total}")
@@ -1104,6 +1591,12 @@ def build_manifest(
     sources: Sequence[LeakageSource],
     receipt_path: Path | None,
     release_profile: bool,
+    frozen_cases_per_cell: int = DEFAULT_FROZEN_CASES_PER_CELL,
+    power_plan_path: Path | None = None,
+    discordance_receipt_path: Path | None = None,
+    development_corpus_path: Path | None = None,
+    development_benchmark_manifest_path: Path | None = None,
+    development_comparison_manifest_path: Path | None = None,
 ) -> dict[str, Any]:
     script_dir = Path(__file__).resolve().parent
     schema_path = script_dir / "multilingual_benchmark_v2.schema.json"
@@ -1123,6 +1616,9 @@ def build_manifest(
         )
         for row in rows
     )
+    power_plan = (
+        _read_json_object(power_plan_path, "power plan") if power_plan_path else {}
+    )
     return {
         "schema_version": "eg1-multilingual-benchmark-manifest-v2",
         "validator_version": VALIDATOR_VERSION,
@@ -1131,6 +1627,38 @@ def build_manifest(
         "corpus_source_sha256": sha256_file(corpus_path),
         "benchmark_content_sha256": benchmark_content_sha256(rows),
         "release_profile_enforced": release_profile,
+        "release_profile_parameters": (
+            {
+                "development_cases_per_cell": DEVELOPMENT_CASES_PER_CELL,
+                "frozen_cases_per_cell": frozen_cases_per_cell,
+                "development_cases_per_language": release_counts(frozen_cases_per_cell)[
+                    "development"
+                ]["per_language"],
+                "frozen_cases_per_language": release_counts(frozen_cases_per_cell)["frozen"][
+                    "per_language"
+                ],
+            }
+            if release_profile
+            else None
+        ),
+        "power_plan_sha256": sha256_file(power_plan_path) if power_plan_path else None,
+        "development_discordance_receipt_sha256": (
+            sha256_file(discordance_receipt_path) if discordance_receipt_path else None
+        ),
+        "development_corpus_sha256": (
+            sha256_file(development_corpus_path) if development_corpus_path else None
+        ),
+        "development_benchmark_manifest_sha256": (
+            sha256_file(development_benchmark_manifest_path)
+            if development_benchmark_manifest_path
+            else None
+        ),
+        "development_comparison_manifest_sha256": (
+            sha256_file(development_comparison_manifest_path)
+            if development_comparison_manifest_path
+            else None
+        ),
+        "comparison_binding": power_plan.get("comparison_binding"),
         "row_count": len(rows),
         "family_count": len(family_assignments),
         "family_assignment_sha256": sha256_bytes(
@@ -1162,11 +1690,31 @@ def validate_benchmark_manifest_for_ratings(
     rows: Sequence[dict[str, Any]],
     corpus_path: Path,
 ) -> dict[str, Any]:
-    validate_rows(rows, release_profile=True)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):
         raise BenchmarkValidationError(["benchmark manifest must be an object"])
     errors: list[str] = []
+    release_parameters = manifest.get("release_profile_parameters")
+    frozen_cases_per_cell = (
+        release_parameters.get("frozen_cases_per_cell")
+        if isinstance(release_parameters, dict)
+        else None
+    )
+    if (
+        not isinstance(frozen_cases_per_cell, int)
+        or isinstance(frozen_cases_per_cell, bool)
+        or frozen_cases_per_cell < MIN_FROZEN_CASES_PER_CELL
+    ):
+        errors.append("benchmark manifest release_profile_parameters are invalid")
+        frozen_cases_per_cell = DEFAULT_FROZEN_CASES_PER_CELL
+    try:
+        validate_rows(
+            rows,
+            release_profile=True,
+            frozen_cases_per_cell=frozen_cases_per_cell,
+        )
+    except BenchmarkValidationError as exc:
+        errors.extend(exc.errors)
     expected_manifest_fields = {
         "schema_version",
         "validator_version",
@@ -1175,6 +1723,13 @@ def validate_benchmark_manifest_for_ratings(
         "corpus_source_sha256",
         "benchmark_content_sha256",
         "release_profile_enforced",
+        "release_profile_parameters",
+        "power_plan_sha256",
+        "development_discordance_receipt_sha256",
+        "development_corpus_sha256",
+        "development_benchmark_manifest_sha256",
+        "development_comparison_manifest_sha256",
+        "comparison_binding",
         "row_count",
         "family_count",
         "family_assignment_sha256",
@@ -1197,6 +1752,7 @@ def validate_benchmark_manifest_for_ratings(
         sources=[],
         receipt_path=None,
         release_profile=True,
+        frozen_cases_per_cell=frozen_cases_per_cell,
     )
     corpus_derived_fields = (
         "validator_version",
@@ -1205,6 +1761,7 @@ def validate_benchmark_manifest_for_ratings(
         "corpus_source_sha256",
         "benchmark_content_sha256",
         "release_profile_enforced",
+        "release_profile_parameters",
         "row_count",
         "family_count",
         "family_assignment_sha256",
@@ -1217,6 +1774,36 @@ def validate_benchmark_manifest_for_ratings(
     receipt_sha = manifest.get("leakage_receipt_sha256")
     if not isinstance(receipt_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", receipt_sha):
         errors.append("rating workflow requires a benchmark with a leakage receipt")
+    power_plan_sha = manifest.get("power_plan_sha256")
+    if not isinstance(power_plan_sha, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", power_plan_sha
+    ):
+        errors.append("rating workflow requires a benchmark with a sealed power plan")
+    for field in (
+        "development_discordance_receipt_sha256",
+        "development_corpus_sha256",
+        "development_benchmark_manifest_sha256",
+        "development_comparison_manifest_sha256",
+    ):
+        value = manifest.get(field)
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+            errors.append(f"rating workflow requires valid {field}")
+    comparison_binding = manifest.get("comparison_binding")
+    if not isinstance(comparison_binding, dict) or set(comparison_binding) != set(
+        COMPARISON_BINDING_FIELDS
+    ):
+        errors.append("benchmark manifest comparison_binding is invalid")
+        comparison_binding = {}
+    for field in COMPARISON_BINDING_FIELDS:
+        value = comparison_binding.get(field)
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+            errors.append(f"benchmark manifest comparison_binding {field} is invalid")
+    for field in (
+        "development_benchmark_manifest_sha256",
+        "development_comparison_manifest_sha256",
+    ):
+        if comparison_binding.get(field) != manifest.get(field):
+            errors.append(f"benchmark manifest comparison_binding {field} mismatch")
     sources = manifest.get("leakage_sources")
     roles: set[str] = set()
     if not isinstance(sources, list):
@@ -1245,6 +1832,125 @@ def validate_benchmark_manifest_for_ratings(
     return manifest
 
 
+def validate_generation_receipts(
+    paths: Sequence[Path],
+    *,
+    expected_model_labels: Sequence[str],
+    benchmark_manifest_sha256: str,
+    benchmark_manifest: dict[str, Any],
+    corpus_rows: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    label_set = set(expected_model_labels)
+    errors: list[str] = []
+    if len(label_set) != 2 or len(expected_model_labels) != 2:
+        errors.append("frozen release rating requires exactly two distinct model labels")
+    if len(paths) != len(label_set):
+        errors.append(
+            f"expected {len(label_set)} frozen generation receipts, observed {len(paths)}"
+        )
+    expected_fields = {
+        "schema_version",
+        "opaque_model_label",
+        "artifact_sha256",
+        "evaluation_config_sha256",
+        "benchmark_manifest_sha256",
+        "generation_output_sha256",
+        "case_count",
+        "generation_error_count",
+    }
+    expected_case_count = sum(row.get("split") == "frozen" for row in corpus_rows)
+    observed_labels: set[str] = set()
+    observed_pairs: set[tuple[str, str]] = set()
+    validated: list[dict[str, Any]] = []
+    for path in paths:
+        receipt = _read_json_object(path, "frozen generation receipt")
+        if set(receipt) != expected_fields:
+            errors.append(
+                f"frozen generation receipt {path.name} must contain exactly {sorted(expected_fields)}"
+            )
+            continue
+        if receipt.get("schema_version") != "eg1-multilingual-frozen-generation-v1":
+            errors.append(f"frozen generation receipt {path.name} schema_version is invalid")
+        label = receipt.get("opaque_model_label")
+        if label not in label_set or label in observed_labels:
+            errors.append(f"frozen generation receipt {path.name} model label is invalid")
+        else:
+            observed_labels.add(label)
+        for field in (
+            "artifact_sha256",
+            "evaluation_config_sha256",
+            "benchmark_manifest_sha256",
+            "generation_output_sha256",
+        ):
+            value = receipt.get(field)
+            if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+                errors.append(f"frozen generation receipt {path.name} {field} is invalid")
+        if receipt.get("benchmark_manifest_sha256") != benchmark_manifest_sha256:
+            errors.append(
+                f"frozen generation receipt {path.name} benchmark-manifest hash mismatch"
+            )
+        if receipt.get("case_count") != expected_case_count:
+            errors.append(
+                f"frozen generation receipt {path.name} case_count must equal {expected_case_count}"
+            )
+        if receipt.get("generation_error_count") != 0:
+            errors.append(
+                f"frozen generation receipt {path.name} must have zero generation errors"
+            )
+        artifact = receipt.get("artifact_sha256")
+        config = receipt.get("evaluation_config_sha256")
+        if isinstance(artifact, str) and isinstance(config, str):
+            observed_pairs.add((artifact, config))
+        validated.append(
+            {
+                "opaque_model_label": label,
+                "receipt_sha256": sha256_file(path),
+                "artifact_sha256": artifact,
+                "evaluation_config_sha256": config,
+                "generation_output_sha256": receipt.get("generation_output_sha256"),
+                "case_count": receipt.get("case_count"),
+            }
+        )
+    if observed_labels != label_set:
+        errors.append(
+            f"frozen generation receipt labels mismatch: expected {sorted(label_set)}, "
+            f"observed {sorted(observed_labels)}"
+        )
+    binding = benchmark_manifest.get("comparison_binding")
+    if isinstance(binding, dict):
+        expected_pairs = {
+            (
+                binding.get("baseline_artifact_sha256"),
+                binding.get("baseline_evaluation_config_sha256"),
+            ),
+            (
+                binding.get("finalist_artifact_sha256"),
+                binding.get("finalist_evaluation_config_sha256"),
+            ),
+        }
+        if observed_pairs != expected_pairs:
+            errors.append("frozen generation artifact/config pairs do not match locked comparison")
+    else:
+        errors.append("benchmark manifest lacks a locked comparison_binding")
+    if errors:
+        raise BenchmarkValidationError(errors)
+    return sorted(validated, key=lambda item: item["opaque_model_label"])
+
+
+def validate_locked_comparison_binding(
+    benchmark_manifest: dict[str, Any], validated_power_plan: dict[str, Any]
+) -> None:
+    if benchmark_manifest.get("comparison_binding") != validated_power_plan.get(
+        "comparison_binding"
+    ):
+        raise BenchmarkValidationError(
+            [
+                "benchmark manifest comparison_binding does not match the "
+                "recomputed power plan"
+            ]
+        )
+
+
 def build_rating_manifest(
     *,
     ratings: Sequence[dict[str, Any]],
@@ -1253,6 +1959,7 @@ def build_rating_manifest(
     benchmark_manifest_sha256: str,
     expected_model_labels: Sequence[str],
     workflow_stats: dict[str, Any],
+    generation_receipts: Sequence[dict[str, Any]] = (),
 ) -> dict[str, Any]:
     rating_schema_path = (
         Path(__file__).resolve().parent / "multilingual_benchmark_v2_rating.schema.json"
@@ -1276,6 +1983,7 @@ def build_rating_manifest(
         "rating_source_sha256": sha256_file(ratings_path),
         "rating_content_sha256": rating_content_sha256(ratings),
         "expected_model_labels": sorted(expected_model_labels),
+        "generation_receipts": list(generation_receipts),
         "rating_count": len(ratings),
         "workflow_stats": workflow_stats,
         "counts_by_model_and_round": _counter_to_nested(counts),
@@ -1301,7 +2009,70 @@ def write_manifest(path: Path, manifest: dict[str, Any]) -> None:
 def validate_command(args: argparse.Namespace) -> int:
     corpus_path = args.corpus.expanduser().resolve()
     rows = read_benchmark(corpus_path)
-    validate_rows(rows, release_profile=args.release_profile)
+    validate_rows(
+        rows,
+        release_profile=args.release_profile,
+        frozen_cases_per_cell=args.frozen_cases_per_cell,
+    )
+    power_plan_path = args.power_plan.expanduser().resolve() if args.power_plan else None
+    discordance_receipt_path = (
+        args.development_discordance_receipt.expanduser().resolve()
+        if args.development_discordance_receipt
+        else None
+    )
+    development_benchmark_manifest_path = (
+        args.development_benchmark_manifest.expanduser().resolve()
+        if args.development_benchmark_manifest
+        else None
+    )
+    development_corpus_path = (
+        args.development_corpus.expanduser().resolve()
+        if args.development_corpus
+        else None
+    )
+    development_comparison_manifest_path = (
+        args.development_comparison_manifest.expanduser().resolve()
+        if args.development_comparison_manifest
+        else None
+    )
+    if args.release_profile and power_plan_path is None:
+        raise BenchmarkValidationError(["release profile requires a sealed power plan"])
+    if args.release_profile and any(
+        path is None
+        for path in (
+            discordance_receipt_path,
+            development_corpus_path,
+            development_benchmark_manifest_path,
+            development_comparison_manifest_path,
+        )
+    ):
+        raise BenchmarkValidationError(
+            [
+                "release profile requires the bound development discordance receipt, "
+                "benchmark manifest, and comparison manifest"
+            ]
+        )
+    if power_plan_path is not None:
+        if any(
+            path is None
+            for path in (
+                discordance_receipt_path,
+                development_corpus_path,
+                development_benchmark_manifest_path,
+                development_comparison_manifest_path,
+            )
+        ):
+            raise BenchmarkValidationError(
+                ["power plan validation requires all bound development receipts"]
+            )
+        validate_power_plan(
+            power_plan_path,
+            frozen_cases_per_cell=args.frozen_cases_per_cell,
+            discordance_receipt_path=discordance_receipt_path,
+            development_corpus_path=development_corpus_path,
+            development_benchmark_manifest_path=development_benchmark_manifest_path,
+            development_comparison_manifest_path=development_comparison_manifest_path,
+        )
     sources = parse_leakage_sources(args.leakage_source)
     exact_errors = exact_leakage_errors(rows, sources)
     if exact_errors:
@@ -1330,6 +2101,12 @@ def validate_command(args: argparse.Namespace) -> int:
         sources=sources,
         receipt_path=receipt_path,
         release_profile=args.release_profile,
+        frozen_cases_per_cell=args.frozen_cases_per_cell,
+        power_plan_path=power_plan_path,
+        discordance_receipt_path=discordance_receipt_path,
+        development_corpus_path=development_corpus_path,
+        development_benchmark_manifest_path=development_benchmark_manifest_path,
+        development_comparison_manifest_path=development_comparison_manifest_path,
     )
     if args.manifest_out:
         write_manifest(args.manifest_out.expanduser().resolve(), manifest)
@@ -1348,8 +2125,29 @@ def validate_command(args: argparse.Namespace) -> int:
 
 def hash_command(args: argparse.Namespace) -> int:
     rows = read_benchmark(args.corpus.expanduser().resolve())
-    validate_rows(rows, release_profile=args.release_profile)
+    validate_rows(
+        rows,
+        release_profile=args.release_profile,
+        frozen_cases_per_cell=args.frozen_cases_per_cell,
+    )
     print(benchmark_content_sha256(rows))
+    return 0
+
+
+def power_plan_command(args: argparse.Namespace) -> int:
+    plan = release_power_plan(
+        discordance_receipt_path=args.development_discordance_receipt.expanduser().resolve(),
+        development_corpus_path=args.development_corpus.expanduser().resolve(),
+        development_benchmark_manifest_path=args.development_benchmark_manifest.expanduser().resolve(),
+        development_comparison_manifest_path=args.development_comparison_manifest.expanduser().resolve(),
+        maximum_cases_per_cell=args.maximum_cases_per_cell,
+    )
+    rendered = canonical_json(plan)
+    if args.out:
+        output_path = args.out.expanduser().resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(rendered + "\n", encoding="utf-8")
+    print(rendered)
     return 0
 
 
@@ -1361,6 +2159,55 @@ def validate_ratings_command(args: argparse.Namespace) -> int:
     benchmark_manifest = validate_benchmark_manifest_for_ratings(
         benchmark_manifest_path, rows=rows, corpus_path=corpus_path
     )
+    power_plan_path = args.power_plan.expanduser().resolve()
+    discordance_receipt_path = args.development_discordance_receipt.expanduser().resolve()
+    development_corpus_path = args.development_corpus.expanduser().resolve()
+    development_benchmark_manifest_path = (
+        args.development_benchmark_manifest.expanduser().resolve()
+    )
+    development_comparison_manifest_path = (
+        args.development_comparison_manifest.expanduser().resolve()
+    )
+    source_hashes = {
+        "power_plan_sha256": sha256_file(power_plan_path),
+        "development_discordance_receipt_sha256": sha256_file(
+            discordance_receipt_path
+        ),
+        "development_corpus_sha256": sha256_file(development_corpus_path),
+        "development_benchmark_manifest_sha256": sha256_file(
+            development_benchmark_manifest_path
+        ),
+        "development_comparison_manifest_sha256": sha256_file(
+            development_comparison_manifest_path
+        ),
+    }
+    source_errors = [
+        f"rating source {field} does not match sealed benchmark manifest"
+        for field, actual in source_hashes.items()
+        if benchmark_manifest.get(field) != actual
+    ]
+    if source_errors:
+        raise BenchmarkValidationError(source_errors)
+    frozen_cases_per_cell = benchmark_manifest["release_profile_parameters"][
+        "frozen_cases_per_cell"
+    ]
+    validated_power_plan = validate_power_plan(
+        power_plan_path,
+        frozen_cases_per_cell=frozen_cases_per_cell,
+        discordance_receipt_path=discordance_receipt_path,
+        development_corpus_path=development_corpus_path,
+        development_benchmark_manifest_path=development_benchmark_manifest_path,
+        development_comparison_manifest_path=development_comparison_manifest_path,
+    )
+    validate_locked_comparison_binding(benchmark_manifest, validated_power_plan)
+    benchmark_manifest_sha = sha256_file(benchmark_manifest_path)
+    generation_receipts = validate_generation_receipts(
+        [path.expanduser().resolve() for path in args.generation_receipt],
+        expected_model_labels=args.expected_model_label,
+        benchmark_manifest_sha256=benchmark_manifest_sha,
+        benchmark_manifest=benchmark_manifest,
+        corpus_rows=rows,
+    )
     ratings = read_ratings(ratings_path)
     workflow_stats = validate_rating_rows(
         ratings,
@@ -1371,9 +2218,10 @@ def validate_ratings_command(args: argparse.Namespace) -> int:
         ratings=ratings,
         ratings_path=ratings_path,
         benchmark_manifest=benchmark_manifest,
-        benchmark_manifest_sha256=sha256_file(benchmark_manifest_path),
+        benchmark_manifest_sha256=benchmark_manifest_sha,
         expected_model_labels=args.expected_model_label,
         workflow_stats=workflow_stats,
+        generation_receipts=generation_receipts,
     )
     if args.manifest_out:
         write_manifest(args.manifest_out.expanduser().resolve(), manifest)
@@ -1401,8 +2249,26 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument(
         "--release-profile",
         action="store_true",
-        help="enforce the 160-development/320-frozen per-language matrix",
+        help="enforce the balanced development/frozen per-language matrix",
     )
+    validate_parser.add_argument(
+        "--frozen-cases-per-cell",
+        type=int,
+        default=DEFAULT_FROZEN_CASES_PER_CELL,
+        help=(
+            "predeclared frozen rows per behavior-domain cell; minimum/default 4 "
+            "(320 per language)"
+        ),
+    )
+    validate_parser.add_argument(
+        "--power-plan",
+        type=Path,
+        help="sealed deterministic JSON emitted by the power-plan command",
+    )
+    validate_parser.add_argument("--development-discordance-receipt", type=Path)
+    validate_parser.add_argument("--development-corpus", type=Path)
+    validate_parser.add_argument("--development-benchmark-manifest", type=Path)
+    validate_parser.add_argument("--development-comparison-manifest", type=Path)
     validate_parser.add_argument(
         "--leakage-source",
         action="append",
@@ -1419,7 +2285,30 @@ def build_parser() -> argparse.ArgumentParser:
     )
     hash_parser.add_argument("--corpus", type=Path, required=True)
     hash_parser.add_argument("--release-profile", action="store_true")
+    hash_parser.add_argument(
+        "--frozen-cases-per-cell",
+        type=int,
+        default=DEFAULT_FROZEN_CASES_PER_CELL,
+    )
     hash_parser.set_defaults(func=hash_command)
+
+    power_parser = subparsers.add_parser(
+        "power-plan",
+        help="size frozen behavior-domain cells using exact paired McNemar power",
+    )
+    power_parser.add_argument(
+        "--development-discordance-receipt", type=Path, required=True
+    )
+    power_parser.add_argument("--development-corpus", type=Path, required=True)
+    power_parser.add_argument(
+        "--development-benchmark-manifest", type=Path, required=True
+    )
+    power_parser.add_argument(
+        "--development-comparison-manifest", type=Path, required=True
+    )
+    power_parser.add_argument("--maximum-cases-per-cell", type=int, default=30)
+    power_parser.add_argument("--out", type=Path)
+    power_parser.set_defaults(func=power_plan_command)
 
     ratings_parser = subparsers.add_parser(
         "validate-ratings",
@@ -1428,6 +2317,24 @@ def build_parser() -> argparse.ArgumentParser:
     ratings_parser.add_argument("--corpus", type=Path, required=True)
     ratings_parser.add_argument("--benchmark-manifest", type=Path, required=True)
     ratings_parser.add_argument("--ratings", type=Path, required=True)
+    ratings_parser.add_argument("--power-plan", type=Path, required=True)
+    ratings_parser.add_argument(
+        "--development-discordance-receipt", type=Path, required=True
+    )
+    ratings_parser.add_argument("--development-corpus", type=Path, required=True)
+    ratings_parser.add_argument(
+        "--development-benchmark-manifest", type=Path, required=True
+    )
+    ratings_parser.add_argument(
+        "--development-comparison-manifest", type=Path, required=True
+    )
+    ratings_parser.add_argument(
+        "--generation-receipt",
+        type=Path,
+        action="append",
+        required=True,
+        help="frozen generation receipt; repeat once per opaque model label",
+    )
     ratings_parser.add_argument(
         "--expected-model-label",
         action="append",

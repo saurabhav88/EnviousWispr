@@ -1244,7 +1244,7 @@ The audit also corrected the runtime oracle. A future multi-adapter implementati
 
 Timestamp: 2026-07-15 05:35 EDT
 
-Status: CUDA inference and deterministic development checks complete; blind semantic audit pending
+Status: complete; reject Ministral from this tuning lane
 
 AlienSV downloaded the official BF16 `Ministral-3-3B-Instruct-2512` checkpoint and ran it without tuning as an untouched Instruct-checkpoint control. It is a valid one-universal-model architecture and its registry Q5 artifact is approximately 2.30 GiB. It is not described as a base-pretrained model.
 
@@ -1254,4 +1254,37 @@ All 92 requested development generations completed without an inference error: 5
 
 The English deterministic result is weak: 11/20 had the requested visible structure, only 1/20 preserved every required phrase, 19/20 avoided the forbidden phrases, and just 1/20 was strict. The Russian deterministic result was 10/16 required-span pass, 14/16 forbidden-span pass, 15/16 structure pass, and 7/16 strict. The generic multilingual scorer displayed 56/56 because those older rows do not contain its `required` and `categories` fields; that number is invalid as a quality metric and is excluded from every comparison.
 
-Decision remains pending the reviewer who is blindly scoring all 92 outputs for meaning, cleanup, grammar, and damage. No Ministral tuning run will start unless that audit materially contradicts the severe English preservation result.
+The independent model-assisted reviewer then scored all 92 outputs without consulting any other model's scores. Strict results were 30/92 overall, 24/56 on the multilingual set, 5/16 Russian, and 1/20 English two-item lists. Meaning was safe on 61/92, requested cleanup completed on 48/92, and only 47/92 avoided a damaging extra edit. Thirteen multilingual rows carry uncertainty flags because this is not native review; none are needed to explain the decisive English failure. All 92 IDs, strict-AND calculations, failure reasons, and four raw input hashes validated.
+
+Decision: reject untouched Ministral 3 3B Instruct from the next tuning lane. Its smaller 2.30 GiB registry Q5 is attractive, but size cannot rescue 1/20 strict English list behavior or the observed meaning/edit damage. Do not spend a training run on it unless later native evidence invalidates this development audit.
+
+### STAT-003 - Frozen size changed from fixed to power-driven
+
+Timestamp: 2026-07-15 05:48 EDT
+
+Status: harness corrected before any real or frozen V2 corpus exists
+
+The original V2 validator fixed frozen size at 320 rows per language. That supports per-language rate estimation, but it does not automatically provide 80% paired power for a five-point improvement after five-language correction. Unconditional power calculations for the two-sided exact conditional McNemar/binomial test at worst-case `alpha=0.05/5=0.01` found, when the nuisance discordance rate is treated as known:
+
+| Frozen rows per language | Power at 10% disagreement | Power at 20% disagreement | Power at 30% disagreement |
+|---:|---:|---:|---:|
+| 320 | 55.8% | 24.4% | 14.8% |
+| 480 | 80.5% | 41.4% | 25.5% |
+| 640 | 92.4% | 57.2% | 36.9% |
+| 960 | 99.2% | 79.99% | 57.9% |
+
+At a known 20% nuisance rate, the first balanced size that truly clears rather than rounds to 80% is 1,040 rows per language (`k=13`, 83.8% power). The release planner is more conservative because development estimates that nuisance rate. It takes the largest simultaneous 95% Bonferroni-Wilson upper endpoint across all five languages. A raw 16/160 discordance rate in each language becomes 16.89% for sizing and selects 880 rows per language (`k=11`).
+
+The exact finalist is selected and hashed on development before sizing. A separate custodian emits only aggregate pair and discordance counts per language, with case-level outcomes and arm direction withheld. The planner validates the actual balanced 800-row development corpus and recomputes its manifest, binds the aggregate receipt to the exact current/finalist artifact and evaluation-config hashes, and saves deterministic JSON. Release validation recomputes the plan and pins every source hash. Frozen native ratings additionally require two generation receipts whose unordered artifact/config pairs match the locked comparison. The chosen `k` cannot change after either model sees frozen data.
+
+### STAT-004 - Independent harness audit closed fail-open paths
+
+Timestamp: 2026-07-15 06:18 EDT
+
+Status: complete; 54/54 evaluation tests pass
+
+An independent code audit challenged the statistical harness before any V2 frozen data existed. It found and closed fail-open paths around caller-declared hashes, a fabricated development manifest, visible case-level development outcomes, point-estimate sizing, generation receipts, and a final comparison-binding tamper.
+
+The sealed workflow now recomputes the actual balanced 800-row development manifest, uses only aggregate arm-blinded disagreement counts, takes the largest simultaneous Bonferroni-Wilson upper endpoint, locks the exact baseline/finalist artifact and evaluation-config pairs, and requires both frozen generation receipts to match those pairs. The final regression proves that editing the benchmark manifest to swap a model hash and supplying matching generation receipts still fails because the manifest binding must equal the independently recomputed power plan.
+
+Validation receipts prove internal hash consistency. They do not independently hash model, evaluation-config, or generation-output files supplied outside the validator. Production frozen receipts must therefore come from the trusted generation harness or an independent custodian, not be hand-written.

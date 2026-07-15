@@ -95,10 +95,16 @@ def synthetic_row(
     }
 
 
-def synthetic_release_corpus() -> list[dict]:
+def synthetic_release_corpus(
+    frozen_cases_per_cell: int = benchmark.DEFAULT_FROZEN_CASES_PER_CELL,
+) -> list[dict]:
     rows: list[dict] = []
     for split in benchmark.SPLITS:
-        per_behavior = benchmark.RELEASE_COUNTS[split]["per_behavior"]
+        per_behavior = (
+            len(benchmark.DOMAINS) * benchmark.DEVELOPMENT_CASES_PER_CELL
+            if split == "development"
+            else len(benchmark.DOMAINS) * frozen_cases_per_cell
+        )
         for language in benchmark.LANGUAGES:
             for behavior_index, behavior in enumerate(benchmark.BEHAVIORS):
                 for index in range(per_behavior):
@@ -137,6 +143,108 @@ def synthetic_release_corpus() -> list[dict]:
                         row["requirements"]["formatting"]["expected_item_count"] = 3 + index % 3
                     rows.append(row)
     return rows
+
+
+def write_power_inputs(
+    root: Path, discordant_per_language: int
+) -> tuple[Path, Path, Path, Path]:
+    development_corpus_path = root / "development-corpus.jsonl"
+    development_rows = [
+        row for row in synthetic_release_corpus() if row["split"] == "development"
+    ]
+    development_corpus_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in development_rows),
+        encoding="utf-8",
+    )
+    benchmark_manifest_path = root / "development-benchmark.manifest.json"
+    benchmark.write_manifest(
+        benchmark_manifest_path,
+        benchmark.build_manifest(
+            rows=development_rows,
+            corpus_path=development_corpus_path,
+            sources=[],
+            receipt_path=None,
+            release_profile=False,
+        ),
+    )
+    comparison_manifest_path = root / "development-comparison.manifest.json"
+    comparison_manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "eg1-multilingual-development-comparison-v1",
+                "baseline_artifact_sha256": "b" * 64,
+                "baseline_evaluation_config_sha256": "c" * 64,
+                "finalist_artifact_sha256": "d" * 64,
+                "finalist_evaluation_config_sha256": "e" * 64,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    receipt_path = root / "development-discordance.json"
+    receipt_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "eg1-multilingual-development-discordance-v1",
+                "custodian_id": "synthetic-blinded-custodian",
+                "arm_blinded": True,
+                "case_level_outcomes_withheld": True,
+                "development_benchmark_manifest_sha256": benchmark.sha256_file(
+                    benchmark_manifest_path
+                ),
+                "development_comparison_manifest_sha256": benchmark.sha256_file(
+                    comparison_manifest_path
+                ),
+                "per_language": {
+                    language: {
+                        "pair_count": benchmark.RELEASE_COUNTS["development"][
+                            "per_language"
+                        ],
+                        "discordant_count": discordant_per_language,
+                    }
+                    for language in benchmark.LANGUAGES
+                },
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return (
+        receipt_path,
+        development_corpus_path,
+        benchmark_manifest_path,
+        comparison_manifest_path,
+    )
+
+
+def write_generation_receipt(
+    path: Path,
+    *,
+    label: str,
+    artifact_sha256: str,
+    evaluation_config_sha256: str,
+    benchmark_manifest_sha256: str,
+    case_count: int,
+) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "eg1-multilingual-frozen-generation-v1",
+                "opaque_model_label": label,
+                "artifact_sha256": artifact_sha256,
+                "evaluation_config_sha256": evaluation_config_sha256,
+                "benchmark_manifest_sha256": benchmark_manifest_sha256,
+                "generation_output_sha256": format(100 + ord(label[-1]), "064x"),
+                "case_count": case_count,
+                "generation_error_count": 0,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def synthetic_rating(
@@ -294,6 +402,242 @@ class MultilingualBenchmarkV2Tests(unittest.TestCase):
         rows = synthetic_release_corpus()
         self.assertEqual(len(rows), 2400)
         benchmark.validate_rows(rows, release_profile=True)
+
+    def test_release_profile_accepts_predeclared_power_expansion(self) -> None:
+        rows = synthetic_release_corpus(frozen_cases_per_cell=6)
+        self.assertEqual(len(rows), 3200)
+        benchmark.validate_rows(
+            rows, release_profile=True, frozen_cases_per_cell=6
+        )
+        with self.assertRaises(benchmark.BenchmarkValidationError):
+            benchmark.validate_rows(rows, release_profile=True)
+
+    def test_exact_mcnemar_power_matches_reference_calculation(self) -> None:
+        power = benchmark.exact_mcnemar_power(
+            320, discordance_rate=0.10, net_improvement=0.05, alpha=0.01
+        )
+        self.assertAlmostEqual(power, 0.558, places=3)
+
+    def test_power_plan_expands_before_frozen_sealing(self) -> None:
+        plan = benchmark.frozen_power_plan(
+            discordance_rate=0.10,
+            net_improvement=0.05,
+            target_power=0.80,
+            familywise_alpha=0.05,
+            primary_language_comparisons=5,
+            maximum_cases_per_cell=12,
+        )
+        self.assertEqual(plan["selected"]["frozen_cases_per_cell"], 6)
+        self.assertEqual(plan["selected"]["frozen_cases_per_language"], 480)
+        self.assertGreaterEqual(plan["selected"]["exact_power"], 0.80)
+
+        higher_discordance = benchmark.frozen_power_plan(
+            discordance_rate=0.20,
+            net_improvement=0.05,
+            target_power=0.80,
+            familywise_alpha=0.05,
+            primary_language_comparisons=5,
+            maximum_cases_per_cell=13,
+        )
+        self.assertEqual(
+            higher_discordance["evaluated"][-2]["frozen_cases_per_language"], 960
+        )
+        self.assertLess(higher_discordance["evaluated"][-2]["exact_power"], 0.80)
+        self.assertEqual(
+            higher_discordance["selected"]["frozen_cases_per_language"], 1040
+        )
+
+    def test_power_plan_receipt_is_recomputed_and_bound_to_release_size(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (
+                receipt_path,
+                development_corpus_path,
+                development_manifest_path,
+                comparison_manifest_path,
+            ) = write_power_inputs(root, discordant_per_language=16)
+            plan = benchmark.release_power_plan(
+                discordance_receipt_path=receipt_path,
+                development_corpus_path=development_corpus_path,
+                development_benchmark_manifest_path=development_manifest_path,
+                development_comparison_manifest_path=comparison_manifest_path,
+                maximum_cases_per_cell=30,
+            )
+            self.assertEqual(
+                plan["discordance_sizing_method"],
+                "maximum_per_language_bonferroni_wilson_simultaneous_95_upper",
+            )
+            self.assertGreater(plan["sizing_discordance_rate"], 0.10)
+            path = Path(tmp) / "power-plan.json"
+            path.write_text(benchmark.canonical_json(plan) + "\n", encoding="utf-8")
+            selected = plan["selected"]["frozen_cases_per_cell"]
+            self.assertEqual(
+                benchmark.validate_power_plan(
+                    path,
+                    frozen_cases_per_cell=selected,
+                    discordance_receipt_path=receipt_path,
+                    development_corpus_path=development_corpus_path,
+                    development_benchmark_manifest_path=development_manifest_path,
+                    development_comparison_manifest_path=comparison_manifest_path,
+                ),
+                plan,
+            )
+            with self.assertRaisesRegex(
+                benchmark.BenchmarkValidationError, f"requested {selected - 1}"
+            ):
+                benchmark.validate_power_plan(
+                    path,
+                    frozen_cases_per_cell=selected - 1,
+                    discordance_receipt_path=receipt_path,
+                    development_corpus_path=development_corpus_path,
+                    development_benchmark_manifest_path=development_manifest_path,
+                    development_comparison_manifest_path=comparison_manifest_path,
+                )
+            plan["selected"]["exact_power"] = 0.99
+            path.write_text(benchmark.canonical_json(plan) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(
+                benchmark.BenchmarkValidationError, "deterministic recomputation"
+            ):
+                benchmark.validate_power_plan(
+                    path,
+                    frozen_cases_per_cell=selected,
+                    discordance_receipt_path=receipt_path,
+                    development_corpus_path=development_corpus_path,
+                    development_benchmark_manifest_path=development_manifest_path,
+                    development_comparison_manifest_path=comparison_manifest_path,
+                )
+
+    def test_power_plan_rejects_fabricated_development_manifest_even_when_rehashed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            receipt_path, corpus_path, manifest_path, comparison_path = write_power_inputs(
+                root, discordant_per_language=0
+            )
+            manifest_path.write_text(
+                json.dumps({"benchmark_content_sha256": "fabricated"}) + "\n",
+                encoding="utf-8",
+            )
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            receipt["development_benchmark_manifest_sha256"] = benchmark.sha256_file(
+                manifest_path
+            )
+            receipt_path.write_text(json.dumps(receipt) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(
+                benchmark.BenchmarkValidationError,
+                "development benchmark manifest field set is invalid",
+            ):
+                benchmark.release_power_plan(
+                    discordance_receipt_path=receipt_path,
+                    development_corpus_path=corpus_path,
+                    development_benchmark_manifest_path=manifest_path,
+                    development_comparison_manifest_path=comparison_path,
+                    maximum_cases_per_cell=30,
+                )
+
+    def test_generation_receipts_must_match_locked_artifact_config_pairs(self) -> None:
+        corpus = [
+            synthetic_row("GEN-1", split="frozen", with_validator=True),
+            synthetic_row("GEN-2", split="frozen", with_validator=True),
+        ]
+        benchmark_manifest_sha = "f" * 64
+        benchmark_manifest = {
+            "comparison_binding": {
+                "baseline_artifact_sha256": "a" * 64,
+                "baseline_evaluation_config_sha256": "b" * 64,
+                "finalist_artifact_sha256": "c" * 64,
+                "finalist_evaluation_config_sha256": "d" * 64,
+            }
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            first = Path(tmp) / "m1.json"
+            second = Path(tmp) / "m2.json"
+            write_generation_receipt(
+                first,
+                label="M1",
+                artifact_sha256="a" * 64,
+                evaluation_config_sha256="b" * 64,
+                benchmark_manifest_sha256=benchmark_manifest_sha,
+                case_count=2,
+            )
+            write_generation_receipt(
+                second,
+                label="M2",
+                artifact_sha256="c" * 64,
+                evaluation_config_sha256="d" * 64,
+                benchmark_manifest_sha256=benchmark_manifest_sha,
+                case_count=2,
+            )
+            validated = benchmark.validate_generation_receipts(
+                [second, first],
+                expected_model_labels=["M1", "M2"],
+                benchmark_manifest_sha256=benchmark_manifest_sha,
+                benchmark_manifest=benchmark_manifest,
+                corpus_rows=corpus,
+            )
+            self.assertEqual([row["opaque_model_label"] for row in validated], ["M1", "M2"])
+
+            bad = json.loads(second.read_text(encoding="utf-8"))
+            bad["artifact_sha256"] = "e" * 64
+            second.write_text(json.dumps(bad) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(
+                benchmark.BenchmarkValidationError,
+                "do not match locked comparison",
+            ):
+                benchmark.validate_generation_receipts(
+                    [first, second],
+                    expected_model_labels=["M1", "M2"],
+                    benchmark_manifest_sha256=benchmark_manifest_sha,
+                    benchmark_manifest=benchmark_manifest,
+                    corpus_rows=corpus,
+                )
+
+    def test_manifest_cannot_swap_locked_pair_and_supply_matching_receipts(self) -> None:
+        corpus = [synthetic_row("GEN-TAMPER", split="frozen", with_validator=True)]
+        locked_binding = {
+            "baseline_artifact_sha256": "a" * 64,
+            "baseline_evaluation_config_sha256": "b" * 64,
+            "finalist_artifact_sha256": "c" * 64,
+            "finalist_evaluation_config_sha256": "d" * 64,
+            "development_benchmark_manifest_sha256": "e" * 64,
+            "development_comparison_manifest_sha256": "f" * 64,
+        }
+        validated_power_plan = {"comparison_binding": locked_binding}
+        tampered_manifest = {"comparison_binding": dict(locked_binding)}
+        tampered_manifest["comparison_binding"]["baseline_artifact_sha256"] = "9" * 64
+        benchmark_manifest_sha = "8" * 64
+        with tempfile.TemporaryDirectory() as tmp:
+            first = Path(tmp) / "m1.json"
+            second = Path(tmp) / "m2.json"
+            write_generation_receipt(
+                first,
+                label="M1",
+                artifact_sha256="9" * 64,
+                evaluation_config_sha256="b" * 64,
+                benchmark_manifest_sha256=benchmark_manifest_sha,
+                case_count=1,
+            )
+            write_generation_receipt(
+                second,
+                label="M2",
+                artifact_sha256="c" * 64,
+                evaluation_config_sha256="d" * 64,
+                benchmark_manifest_sha256=benchmark_manifest_sha,
+                case_count=1,
+            )
+            benchmark.validate_generation_receipts(
+                [first, second],
+                expected_model_labels=["M1", "M2"],
+                benchmark_manifest_sha256=benchmark_manifest_sha,
+                benchmark_manifest=tampered_manifest,
+                corpus_rows=corpus,
+            )
+            with self.assertRaisesRegex(
+                benchmark.BenchmarkValidationError,
+                "does not match the recomputed power plan",
+            ):
+                benchmark.validate_locked_comparison_binding(
+                    tampered_manifest, validated_power_plan
+                )
 
     def test_release_profile_rejects_missing_stratum_row(self) -> None:
         rows = synthetic_release_corpus()
@@ -642,12 +986,37 @@ class MultilingualBenchmarkV2Tests(unittest.TestCase):
                 )
             receipt_path = root / "receipt.json"
             receipt_path.write_text("{}\n", encoding="utf-8")
+            (
+                discordance_receipt_path,
+                development_corpus_path,
+                development_manifest_path,
+                comparison_manifest_path,
+            ) = write_power_inputs(root, discordant_per_language=0)
+            power_plan_path = root / "power-plan.json"
+            power_plan_path.write_text(
+                benchmark.canonical_json(
+                    benchmark.release_power_plan(
+                        discordance_receipt_path=discordance_receipt_path,
+                        development_corpus_path=development_corpus_path,
+                        development_benchmark_manifest_path=development_manifest_path,
+                        development_comparison_manifest_path=comparison_manifest_path,
+                        maximum_cases_per_cell=4,
+                    )
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             manifest = benchmark.build_manifest(
                 rows=rows,
                 corpus_path=corpus_path,
                 sources=sources,
                 receipt_path=receipt_path,
                 release_profile=True,
+                power_plan_path=power_plan_path,
+                discordance_receipt_path=discordance_receipt_path,
+                development_corpus_path=development_corpus_path,
+                development_benchmark_manifest_path=development_manifest_path,
+                development_comparison_manifest_path=comparison_manifest_path,
             )
             manifest_path = root / "benchmark.manifest.json"
             benchmark.write_manifest(manifest_path, manifest)
