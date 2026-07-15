@@ -165,7 +165,10 @@ scripts/eval/*
 !scripts/eval/acceptance_gate.py
 !scripts/eval/chunk_size_benchmark.py
 !scripts/eval/overpolish-eval.py
+!scripts/eval/screen_eg1_replay_semantic_neighbors.py
 !scripts/eval/golden_judge_scores.json
+!scripts/eval/contracts/
+!scripts/eval/contracts/eg1_replay_semantic_screen_v1.json
 !scripts/eval/prompts/
 !scripts/eval/prompts/**
 !scripts/eval/corpus/
