@@ -453,6 +453,25 @@ import Testing
       #expect(h.driver.overlayIntent == .recording(audioLevel: 0))
     }
 
+    @Test(
+      "a cold model load starting mid-Arming morphs the pill hidden → caching via the display-only channel (Codex r3 P2)"
+    )
+    func coldLoadDuringArmingPushesCachingOverlay() async throws {
+      // A slow cold load: the adapter stays not-ready (the clock never advances),
+      // so the session parks in Arming with `didLoadModelThisSession` set. Arming
+      // maps to a single `PipelineState`, so `onStateChange` never re-fires — the
+      // display-only overlay observer MUST push the caching pill, or a cold load
+      // that starts mid-Arming stays invisible (Codex code-diff r3 P2).
+      let h = makeDriver(behavior: .slowLoad(ticksToReady: 3))
+      var pushed: [OverlayIntent] = []
+      h.driver.onOverlayIntentChange = { pushed.append($0) }
+      try await h.driver.handle(event: .toggleRecording(.testDefault()))
+      await drainUntil { pushed.contains(.cachingModel(engineLabel: "Parakeet v3")) }
+      #expect(
+        pushed.contains(.cachingModel(engineLabel: "Parakeet v3")),
+        "the cold load must surface the caching pill through onOverlayIntentChange")
+    }
+
     @Test("a COLD arming surfaces the cold-boot pill, not the bare wall (#879)")
     func coldPreparingShowsCachingPill() {
       let h = makeDriver()

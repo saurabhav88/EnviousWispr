@@ -350,7 +350,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   private var pendingCancelDisposition: RecordingTerminalKind = .failure
 
-  /// Fired by the finalizing-sub-status observer (`observeFinalizingSubStatus`)
+  /// Fired by the finalizing-sub-status observer (`observeDisplayOnlyOverlay`)
   /// whenever the overlay's intent should refresh because of a `.transcribing`
   /// → `.polishing` flip that does NOT change the public `PipelineState` (both
   /// collapse to `.polishing`, so `onStateChange` never sees it). Display-only
@@ -595,7 +595,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// sub-status flips.
   func start() {
     observeKernelState()
-    observeFinalizingSubStatus()
+    observeDisplayOnlyOverlay()
     kernel.onApproachingMaxDuration = { [weak self] remaining in
       self?.onApproachingMaxDuration?(remaining)
     }
@@ -1286,35 +1286,45 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     }
   }
 
-  /// Arm a SECOND, separate `withObservationTracking` on
-  /// `kernel.finalizingSubStatus` (NOT `kernel.state`) so the overlay can flip
-  /// "Transcribing…" → "Polishing…" mid-`.finalizing` — a sub-status change the
-  /// public `PipelineState` collapses to `.polishing`, so `observeKernelState`
-  /// never sees it (#930).
+  /// Arm a SECOND, separate `withObservationTracking` for the DISPLAY-ONLY
+  /// overlay refreshes whose trigger the public `PipelineState` collapses, so
+  /// `observeKernelState` / `onStateChange` never sees them. Two such cases:
+  ///
+  /// - `deliveringPhase` flip "Transcribing…" → "Polishing…" mid-`.delivering`
+  ///   (`PipelineState` collapses both to `.polishing`, #930).
+  /// - `didLoadModelThisSession` flip while `.arming`: a cold model load that
+  ///   STARTS mid-Arming (adapter was `.ready` at first render, then went
+  ///   not-ready before the readiness check) must morph the pill `.hidden` →
+  ///   `.cachingModel`. Arming ALWAYS maps to `.loadingModel`, so no
+  ///   `onStateChange` re-fires and the cold load would otherwise stay invisible
+  ///   until Live or failure (Codex code-diff r3 P2). The kernel stamps the flag
+  ///   BEFORE `warmUp` while `adapter.readiness != .ready` (`:970-974`), so
+  ///   `overlayIntent` reads the cold pill at this fire.
   ///
   /// Two deliberate shapes:
-  /// 1. Re-arm UNCONDITIONALLY via `defer`, BEFORE the `.finalizing` guard.
-  ///    `finalizingSubStatus` resets to `.transcribing` during
-  ///    `resetSessionState()` at the START of the next session, while the
-  ///    kernel is NOT `.finalizing`; if the re-arm sat behind the guard the
-  ///    observation would silently die after the first session.
-  /// 2. Push the overlay intent ONLY while `kernel.state == .finalizing`, and
-  ///    ONLY through `onOverlayIntentChange` — never `fireStateChangeIfNeeded` /
-  ///    `onStateChange`. The public `PipelineState` fan-out and `ASREventRouter`
-  ///    routing stay byte-identical; this channel is display-only.
-  ///
-  /// A late flip whose `@MainActor` hop lands after a new session is finalizing
-  /// re-reads the CURRENT `overlayIntent`, so the worst case is one redundant
-  /// push of the correct label, which the overlay dedups (`show(intent:)`).
-  private func observeFinalizingSubStatus() {
+  /// 1. Re-arm UNCONDITIONALLY via `defer`, BEFORE the state guard. Both tracked
+  ///    fields reset during `resetSessionState()` at the START of the next
+  ///    session, while the kernel is NOT in the pushing state; if the re-arm sat
+  ///    behind the guard the observation would silently die after one session.
+  /// 2. Push ONLY through `onOverlayIntentChange` — never `fireStateChangeIfNeeded`
+  ///    / `onStateChange`. The `PipelineState` fan-out and `ASREventRouter`
+  ///    routing stay byte-identical; this channel is display-only. Level-triggered
+  ///    (re-reads the CURRENT `overlayIntent`), so a coalesced fire and a late
+  ///    `@MainActor` hop both push the correct overlay, which the overlay dedups
+  ///    (`show(intent:)`).
+  private func observeDisplayOnlyOverlay() {
     withObservationTracking {
       _ = kernel.deliveringPhase
+      _ = kernel.didLoadModelThisSession
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         guard let self else { return }
-        defer { self.observeFinalizingSubStatus() }
-        if self.kernel.state == .delivering {
+        defer { self.observeDisplayOnlyOverlay() }
+        switch self.kernel.state {
+        case .delivering, .arming:
           self.onOverlayIntentChange?(self.overlayIntent)
+        case .idle, .live, .stopping:
+          break
         }
       }
     }
@@ -1489,7 +1499,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       // `deliveringPhase`, so the public flip reaches `onStateChange`; the
       // `.finalizing(.transcribing) → .finalizing(.polishing)` flip dedupes to
       // no public change. The floating overlay refreshes live via
-      // `observeFinalizingSubStatus` (#930).
+      // `observeDisplayOnlyOverlay` (#930).
       switch deliveringPhase {
       case .transcribing:
         return .transcribing
