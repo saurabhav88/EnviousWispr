@@ -233,15 +233,38 @@ def local_hugging_face_revision(base_path: Path, artifact_name: str) -> str | No
     )
 
 
-def validate_qwen35_base_artifacts(base_path: Path) -> dict[str, Any]:
+def validate_qwen35_base_artifacts(
+    base_path: Path, *, config_bytes: bytes | None = None
+) -> dict[str, Any]:
     expected_revision = str(QWEN35_PREFLIGHT_CONTRACT["base_revision"])
     expected_hashes = dict(QWEN35_PREFLIGHT_CONTRACT["artifact_sha256"])
+    if config_bytes is None:
+        config_bytes, captured_config_sha256 = read_once(
+            base_path / "config.json", "pinned Qwen3.5 config"
+        )
+    else:
+        captured_config_sha256 = sha256_bytes(config_bytes)
+    index_bytes, captured_index_sha256 = read_once(
+        base_path / "model.safetensors.index.json",
+        "pinned Qwen3.5 model index",
+    )
+    captured_small_hashes = {
+        "config.json": captured_config_sha256,
+        "model.safetensors.index.json": captured_index_sha256,
+    }
+    captured_config = parse_json_object_bytes(config_bytes, "pinned Qwen3.5 config")
+    if model_family(captured_config) != QWEN35_FAMILY:
+        raise ValueError("Pinned Qwen3.5 config no longer identifies Qwen3.5")
+    index = parse_json_object_bytes(index_bytes, "pinned Qwen3.5 model index")
     artifact_receipt: dict[str, Any] = {}
     for artifact_name, expected_sha256 in sorted(expected_hashes.items()):
         artifact_path = base_path / artifact_name
         if not artifact_path.is_file():
             raise ValueError(f"Pinned Qwen3.5 artifact is missing: {artifact_path}")
-        actual_sha256 = sha256(artifact_path)
+        if artifact_name in captured_small_hashes:
+            actual_sha256 = captured_small_hashes[artifact_name]
+        else:
+            actual_sha256 = sha256(artifact_path)
         if actual_sha256 != expected_sha256:
             raise ValueError(
                 f"Pinned Qwen3.5 artifact hash mismatch for {artifact_name}: "
@@ -258,8 +281,6 @@ def validate_qwen35_base_artifacts(base_path: Path) -> dict[str, Any]:
             "revision": actual_revision,
         }
 
-    index_path = base_path / "model.safetensors.index.json"
-    index = json.loads(index_path.read_text(encoding="utf-8"))
     actual_shards = sorted(set(index.get("weight_map", {}).values()))
     expected_shards = sorted(QWEN35_PREFLIGHT_CONTRACT["weight_shards"])
     if actual_shards != expected_shards:
@@ -545,10 +566,40 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def read_prompt(path: Path) -> str:
+def sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def read_once(path: Path, label: str) -> tuple[bytes, str]:
+    try:
+        value = path.read_bytes()
+    except OSError as error:
+        raise ValueError(f"Cannot read {label}: {path}") from error
+    return value, sha256_bytes(value)
+
+
+def parse_json_object_bytes(value: bytes, label: str) -> dict[str, Any]:
+    try:
+        text = value.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError(f"{label} is not valid UTF-8") from error
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{label} is invalid JSON") from error
+    if not isinstance(parsed, dict):
+        raise ValueError(f"{label} must be a JSON object")
+    return parsed
+
+
+def read_prompt_bytes(value: bytes, label: str) -> str:
+    try:
+        text = value.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError(f"{label} is not valid UTF-8") from error
     lines = [
         line
-        for line in path.read_text(encoding="utf-8").splitlines()
+        for line in text.splitlines()
         if not line.startswith("#")
     ]
     prompt = "\n".join(lines).strip()
@@ -557,19 +608,37 @@ def read_prompt(path: Path) -> str:
     return prompt
 
 
-def read_rows(path: Path) -> list[dict[str, Any]]:
+def read_rows_bytes(value: bytes, label: str) -> list[dict[str, Any]]:
+    try:
+        text = value.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError(f"{label} is not valid UTF-8") from error
     rows: list[dict[str, Any]] = []
-    with path.open(encoding="utf-8") as handle:
-        for line_number, line in enumerate(handle, 1):
-            if not line.strip():
-                continue
+    for line_number, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
             row = json.loads(line)
-            if not isinstance(row.get("input"), str) or not isinstance(row.get("output"), str):
-                raise ValueError(f"{path}:{line_number}: missing string input/output")
-            rows.append(row)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"{label}:{line_number}: invalid JSON") from error
+        if not isinstance(row, dict):
+            raise ValueError(f"{label}:{line_number}: expected a JSON object")
+        if not isinstance(row.get("input"), str) or not isinstance(row.get("output"), str):
+            raise ValueError(f"{label}:{line_number}: missing string input/output")
+        rows.append(row)
     if not rows:
         raise ValueError("Training dataset is empty")
     return rows
+
+
+def capture_training_inputs(
+    data_path: Path, prompt_path: Path
+) -> tuple[list[dict[str, Any]], str, str, str]:
+    data_bytes, data_sha256 = read_once(data_path, "training dataset")
+    prompt_bytes, prompt_sha256 = read_once(prompt_path, "training prompt")
+    rows = read_rows_bytes(data_bytes, str(data_path))
+    system_prompt = read_prompt_bytes(prompt_bytes, str(prompt_path))
+    return rows, system_prompt, data_sha256, prompt_sha256
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -800,7 +869,11 @@ def main() -> None:
     config_path = base_path / "config.json"
     if not config_path.is_file():
         raise SystemExit(f"Base model config is missing: {config_path}")
-    config = json.loads(config_path.read_text(encoding="utf-8"))
+    try:
+        config_bytes, config_sha256 = read_once(config_path, "base model config")
+        config = parse_json_object_bytes(config_bytes, "base model config")
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     family = model_family(config)
     try:
         training_mode = resolve_training_mode(family, args.training_mode)
@@ -810,10 +883,10 @@ def main() -> None:
     if output_dir.exists():
         raise SystemExit(f"Refusing to reuse existing output directory: {output_dir}")
 
-    rows = read_rows(data_path)
-    data_sha256 = sha256(data_path)
-    prompt_sha256 = sha256(prompt_path) if args.preflight_only else None
     try:
+        rows, system_prompt, data_sha256, prompt_sha256 = capture_training_inputs(
+            data_path, prompt_path
+        )
         validate_preflight_request(
             family=family,
             enabled=args.preflight_only,
@@ -830,7 +903,9 @@ def main() -> None:
     base_artifact_receipt: dict[str, Any] | None = None
     if family == QWEN35_FAMILY:
         try:
-            base_artifact_receipt = validate_qwen35_base_artifacts(base_path)
+            base_artifact_receipt = validate_qwen35_base_artifacts(
+                base_path, config_bytes=config_bytes
+            )
         except ValueError as error:
             raise SystemExit(str(error)) from error
         base_revision = str(base_artifact_receipt["revision"])
@@ -839,9 +914,6 @@ def main() -> None:
     if family == QWEN35_FAMILY and os.environ.get("UNSLOTH_ENABLE_FULL_FINETUNING") == "1":
         raise SystemExit("Refusing Qwen3.5 run with UNSLOTH_ENABLE_FULL_FINETUNING=1")
 
-    system_prompt = read_prompt(prompt_path)
-    if prompt_sha256 is None:
-        prompt_sha256 = sha256(prompt_path)
     lora_dropout = 0 if family == QWEN35_FAMILY else 0.05
     warmup_ratio = effective_warmup_ratio(family, args.preflight_only)
     scheduler = (
@@ -864,7 +936,7 @@ def main() -> None:
         "base_revision": base_revision,
         "preflight_contract": QWEN35_PREFLIGHT_CONTRACT if args.preflight_only else None,
         "base_artifact_receipt": base_artifact_receipt,
-        "base_config_sha256": sha256(config_path),
+        "base_config_sha256": config_sha256,
         "data_path": str(data_path),
         "data_sha256": data_sha256,
         "row_count": len(rows),

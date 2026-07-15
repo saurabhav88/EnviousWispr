@@ -128,6 +128,89 @@ class TrainingModeTests(unittest.TestCase):
             trainer.qwen35_preflight_first_step_learning_rate(5e-5)
 
 
+class TrainingInputSnapshotTests(unittest.TestCase):
+    def test_data_and_prompt_are_opened_once_and_survive_post_capture_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_path = root / "training.jsonl"
+            prompt_path = root / "prompt.txt"
+            original_rows = [{"input": "hello", "output": "Hello."}]
+            original_data = (
+                json.dumps(original_rows[0], ensure_ascii=False) + "\n"
+            ).encode("utf-8")
+            original_prompt = b"# receipt comment\nOriginal model prompt.\n"
+            mutated_data = b'{"input":"mutated","output":"Mutated."}\n'
+            mutated_prompt = b"Mutated model prompt.\n"
+            data_path.write_bytes(original_data)
+            prompt_path.write_bytes(original_prompt)
+
+            real_read_bytes = Path.read_bytes
+            read_counts: dict[Path, int] = {}
+
+            def read_then_mutate(path: Path) -> bytes:
+                value = real_read_bytes(path)
+                read_counts[path] = read_counts.get(path, 0) + 1
+                if path == data_path:
+                    path.write_bytes(mutated_data)
+                elif path == prompt_path:
+                    path.write_bytes(mutated_prompt)
+                return value
+
+            with mock.patch.object(
+                Path, "read_bytes", autospec=True, side_effect=read_then_mutate
+            ):
+                rows, system_prompt, data_sha256, prompt_sha256 = (
+                    trainer.capture_training_inputs(data_path, prompt_path)
+                )
+
+            self.assertEqual(read_counts, {data_path: 1, prompt_path: 1})
+            self.assertEqual(rows, original_rows)
+            self.assertEqual(system_prompt, "Original model prompt.")
+            self.assertEqual(data_sha256, hashlib.sha256(original_data).hexdigest())
+            self.assertEqual(prompt_sha256, hashlib.sha256(original_prompt).hexdigest())
+            self.assertNotEqual(data_sha256, hashlib.sha256(mutated_data).hexdigest())
+            self.assertNotEqual(prompt_sha256, hashlib.sha256(mutated_prompt).hexdigest())
+
+    def test_invalid_input_bytes_fail_before_output_or_model_validation(self) -> None:
+        valid_data = b'{"input":"hello","output":"Hello."}\n'
+        cases = {
+            "invalid_json": (b"{not-json}\n", b"Valid prompt.\n", "invalid JSON"),
+            "invalid_utf8": (valid_data, b"\xff\xfe", "not valid UTF-8"),
+        }
+        for case, (data_bytes, prompt_bytes, error_pattern) in cases.items():
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                base_path = root / "Qwen3.5-4B"
+                base_path.mkdir()
+                (base_path / "config.json").write_text(
+                    json.dumps(qwen35_config_fixture()), encoding="utf-8"
+                )
+                data_path = root / "training.jsonl"
+                prompt_path = root / "prompt.txt"
+                data_path.write_bytes(data_bytes)
+                prompt_path.write_bytes(prompt_bytes)
+                args = SimpleNamespace(
+                    base=str(base_path),
+                    data=str(data_path),
+                    prompt=str(prompt_path),
+                    tag=f"invalid-{case}",
+                    output_root=str(root / "out"),
+                    training_mode="auto",
+                )
+
+                with (
+                    mock.patch.object(trainer, "parse_args", return_value=args),
+                    mock.patch.object(
+                        trainer, "validate_qwen35_base_artifacts"
+                    ) as base_validator,
+                    self.assertRaisesRegex(SystemExit, error_pattern),
+                ):
+                    trainer.main()
+
+                base_validator.assert_not_called()
+                self.assertFalse((root / "out" / args.tag).exists())
+
+
 class Qwen35TargetTests(unittest.TestCase):
     def test_verified_hybrid_target_placement_and_trainable_count(self) -> None:
         expected = qwen35_base_target_fixture()
@@ -290,17 +373,16 @@ class Qwen35AdapterEvidenceTests(unittest.TestCase):
             root = Path(tmp)
             base_path = root / "Qwen3.5-4B"
             base_path.mkdir()
-            (base_path / "config.json").write_text(
-                json.dumps(qwen35_config_fixture()),
-                encoding="utf-8",
-            )
+            original_config = json.dumps(qwen35_config_fixture()).encode("utf-8")
+            (base_path / "config.json").write_bytes(original_config)
             data_path = root / "private.jsonl"
-            data_path.write_text(
-                "".join(json.dumps(row) + "\n" for row in private_preflight_rows()),
-                encoding="utf-8",
-            )
+            original_data = "".join(
+                json.dumps(row) + "\n" for row in private_preflight_rows()
+            ).encode("utf-8")
+            data_path.write_bytes(original_data)
             prompt_path = root / "prompt.txt"
-            prompt_path.write_text("Pinned synthetic preflight prompt.\n", encoding="utf-8")
+            original_prompt = b"Pinned synthetic preflight prompt.\n"
+            prompt_path.write_bytes(original_prompt)
             output_root = root / "out"
             tag = "synthetic-128-of-248"
             manifest_path = output_root / tag / "training-manifest.json"
@@ -349,17 +431,6 @@ class Qwen35AdapterEvidenceTests(unittest.TestCase):
             trl.SFTConfig = SimpleNamespace()
             trl.SFTTrainer = mock.Mock(name="SFTTrainer")
 
-            def fixed_hash(path: Path) -> str:
-                if path.name == data_path.name:
-                    return str(trainer.QWEN35_PREFLIGHT_CONTRACT["data_sha256"])
-                if path.name == prompt_path.name:
-                    return str(trainer.QWEN35_PREFLIGHT_CONTRACT["prompt_sha256"])
-                if path.name == "config.json":
-                    return str(
-                        trainer.QWEN35_PREFLIGHT_CONTRACT["artifact_sha256"]["config.json"]
-                    )
-                raise AssertionError(f"Unexpected hash read: {path}")
-
             real_write_json = trainer.write_json
             manifest_snapshots: list[dict[str, object]] = []
 
@@ -367,9 +438,35 @@ class Qwen35AdapterEvidenceTests(unittest.TestCase):
                 manifest_snapshots.append(json.loads(json.dumps(value)))
                 real_write_json(path, value)
 
+            real_read_bytes = Path.read_bytes
+            read_counts: dict[Path, int] = {}
+            resolved_config_path = (base_path / "config.json").resolve()
+            resolved_data_path = data_path.resolve()
+            resolved_prompt_path = prompt_path.resolve()
+
+            def read_then_mutate(path: Path) -> bytes:
+                value = real_read_bytes(path)
+                read_counts[path] = read_counts.get(path, 0) + 1
+                if path == resolved_config_path:
+                    path.write_text('{"model_type":"mutated"}', encoding="utf-8")
+                elif path == resolved_data_path:
+                    path.write_bytes(b'{"input":"later","output":"Later."}\n')
+                elif path == resolved_prompt_path:
+                    path.write_bytes(b"Later prompt.\n")
+                return value
+
             with (
                 mock.patch.object(trainer, "parse_args", return_value=args),
-                mock.patch.object(trainer, "sha256", side_effect=fixed_hash),
+                mock.patch.dict(
+                    trainer.QWEN35_PREFLIGHT_CONTRACT,
+                    {
+                        "data_sha256": hashlib.sha256(original_data).hexdigest(),
+                        "prompt_sha256": hashlib.sha256(original_prompt).hexdigest(),
+                    },
+                ),
+                mock.patch.object(
+                    Path, "read_bytes", autospec=True, side_effect=read_then_mutate
+                ),
                 mock.patch.object(
                     trainer,
                     "validate_qwen35_base_artifacts",
@@ -400,6 +497,23 @@ class Qwen35AdapterEvidenceTests(unittest.TestCase):
             self.assertEqual(pending["hyperparameters"]["scheduler"], "cosine")
             self.assertEqual(pending["hyperparameters"]["warmup_ratio"], 0.0)
             self.assertEqual(pending["hyperparameters"]["max_steps"], 1)
+            self.assertEqual(read_counts[resolved_config_path], 1)
+            self.assertEqual(read_counts[resolved_data_path], 1)
+            self.assertEqual(read_counts[resolved_prompt_path], 1)
+            self.assertEqual(
+                pending["base_config_sha256"],
+                hashlib.sha256(original_config).hexdigest(),
+            )
+            self.assertEqual(
+                pending["data_sha256"], hashlib.sha256(original_data).hexdigest()
+            )
+            self.assertEqual(
+                pending["prompt_sha256"], hashlib.sha256(original_prompt).hexdigest()
+            )
+            self.assertEqual(
+                pending["system_prompt"], "Pinned synthetic preflight prompt."
+            )
+            self.assertEqual(pending["row_count"], 4)
             self.assertEqual(pending_receipt["matched_module_count"], 128)
             self.assertEqual(
                 sum(pending["preflight_contract"]["target_suffix_counts"].values()),
@@ -731,6 +845,10 @@ class Qwen35ArtifactContractTests(unittest.TestCase):
                     ),
                     encoding="utf-8",
                 )
+            elif artifact_name == "config.json":
+                artifact_path.write_text(
+                    json.dumps(qwen35_config_fixture()), encoding="utf-8"
+                )
             else:
                 artifact_path.write_bytes(b"synthetic unit-test placeholder")
             (metadata_path / f"{artifact_name}.metadata").write_text(
@@ -742,9 +860,20 @@ class Qwen35ArtifactContractTests(unittest.TestCase):
     def expected_hash(self, path: Path) -> str:
         return str(trainer.QWEN35_PREFLIGHT_CONTRACT["artifact_sha256"][path.name])
 
+    def expected_small_hash(self, value: bytes) -> str:
+        parsed = json.loads(value.decode("utf-8"))
+        artifact_name = (
+            "model.safetensors.index.json" if "weight_map" in parsed else "config.json"
+        )
+        return str(trainer.QWEN35_PREFLIGHT_CONTRACT["artifact_sha256"][artifact_name])
+
     def test_complete_artifact_contract_records_every_hash_and_revision(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
-            trainer, "sha256", side_effect=self.expected_hash
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(trainer, "sha256", side_effect=self.expected_hash),
+            mock.patch.object(
+                trainer, "sha256_bytes", side_effect=self.expected_small_hash
+            ),
         ):
             receipt = trainer.validate_qwen35_base_artifacts(self.make_base(Path(tmp)))
 
@@ -757,22 +886,108 @@ class Qwen35ArtifactContractTests(unittest.TestCase):
             trainer.QWEN35_PREFLIGHT_CONTRACT["weight_shards"],
         )
 
+    def test_config_and_index_are_single_snapshots_despite_file_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base_path = self.make_base(Path(tmp))
+            config_path = base_path / "config.json"
+            index_path = base_path / "model.safetensors.index.json"
+            real_read_bytes = Path.read_bytes
+            original_config = real_read_bytes(config_path)
+            original_index = real_read_bytes(index_path)
+            artifact_hashes = dict(
+                trainer.QWEN35_PREFLIGHT_CONTRACT["artifact_sha256"]
+            )
+            artifact_hashes["config.json"] = hashlib.sha256(
+                original_config
+            ).hexdigest()
+            artifact_hashes["model.safetensors.index.json"] = hashlib.sha256(
+                original_index
+            ).hexdigest()
+            read_counts: dict[Path, int] = {}
+
+            def read_then_mutate(path: Path) -> bytes:
+                value = real_read_bytes(path)
+                read_counts[path] = read_counts.get(path, 0) + 1
+                if path == config_path:
+                    path.write_text('{"model_type":"mutated"}', encoding="utf-8")
+                elif path == index_path:
+                    path.write_text(
+                        '{"weight_map":{"model.weight":"mutated.safetensors"}}',
+                        encoding="utf-8",
+                    )
+                return value
+
+            with (
+                mock.patch.object(
+                    Path, "read_bytes", autospec=True, side_effect=read_then_mutate
+                ),
+                mock.patch.dict(
+                    trainer.QWEN35_PREFLIGHT_CONTRACT,
+                    {"artifact_sha256": artifact_hashes},
+                ),
+                mock.patch.object(trainer, "sha256", side_effect=self.expected_hash),
+            ):
+                receipt = trainer.validate_qwen35_base_artifacts(base_path)
+
+            self.assertEqual(read_counts, {config_path: 1, index_path: 1})
+            self.assertEqual(
+                receipt["artifacts"]["config.json"]["sha256"],
+                hashlib.sha256(original_config).hexdigest(),
+            )
+            self.assertEqual(
+                receipt["artifacts"]["model.safetensors.index.json"]["sha256"],
+                hashlib.sha256(original_index).hexdigest(),
+            )
+            self.assertEqual(
+                receipt["index_weight_shards"],
+                trainer.QWEN35_PREFLIGHT_CONTRACT["weight_shards"],
+            )
+
+    def test_invalid_config_or_index_snapshot_is_rejected(self) -> None:
+        cases = {
+            "config_utf8": ("config.json", b"\xff\xfe", "not valid UTF-8"),
+            "index_json": (
+                "model.safetensors.index.json",
+                b"{not-json}\n",
+                "invalid JSON",
+            ),
+        }
+        for case, (artifact_name, invalid_bytes, error_pattern) in cases.items():
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
+                base_path = self.make_base(Path(tmp))
+                (base_path / artifact_name).write_bytes(invalid_bytes)
+                with self.assertRaisesRegex(ValueError, error_pattern):
+                    trainer.validate_qwen35_base_artifacts(base_path)
+
     def test_artifact_contract_rejects_hash_and_index_shard_drift(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base_path = self.make_base(Path(tmp))
-            with mock.patch.object(trainer, "sha256", return_value="0" * 64):
+            with (
+                mock.patch.object(trainer, "sha256", return_value="0" * 64),
+                mock.patch.object(
+                    trainer, "sha256_bytes", side_effect=self.expected_small_hash
+                ),
+            ):
                 with self.assertRaisesRegex(ValueError, "artifact hash mismatch"):
                     trainer.validate_qwen35_base_artifacts(base_path)
 
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
-            trainer, "sha256", side_effect=self.expected_hash
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(trainer, "sha256", side_effect=self.expected_hash),
+            mock.patch.object(
+                trainer, "sha256_bytes", side_effect=self.expected_small_hash
+            ),
         ):
             base_path = self.make_base(Path(tmp), shards=["unexpected.safetensors"])
             with self.assertRaisesRegex(ValueError, "index shard list mismatch"):
                 trainer.validate_qwen35_base_artifacts(base_path)
 
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
-            trainer, "sha256", side_effect=self.expected_hash
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(trainer, "sha256", side_effect=self.expected_hash),
+            mock.patch.object(
+                trainer, "sha256_bytes", side_effect=self.expected_small_hash
+            ),
         ):
             base_path = self.make_base(Path(tmp))
             metadata = (
@@ -896,17 +1111,18 @@ class PreflightSafetyTests(unittest.TestCase):
                 lr=5e-5,
             )
 
-            def fixed_hash(path: Path) -> str:
-                if path.name == data_path.name:
-                    return str(trainer.QWEN35_PREFLIGHT_CONTRACT["data_sha256"])
-                if path.name == prompt_path.name:
-                    return "d" * 64
-                raise AssertionError(f"Unexpected hash read before prompt rejection: {path}")
-
             with (
                 mock.patch.object(trainer, "parse_args", return_value=args),
-                mock.patch.object(trainer, "read_rows", return_value=private_preflight_rows()),
-                mock.patch.object(trainer, "sha256", side_effect=fixed_hash),
+                mock.patch.object(
+                    trainer,
+                    "capture_training_inputs",
+                    return_value=(
+                        private_preflight_rows(),
+                        "wrong prompt",
+                        trainer.QWEN35_PREFLIGHT_CONTRACT["data_sha256"],
+                        "d" * 64,
+                    ),
+                ),
                 mock.patch.object(trainer, "validate_qwen35_base_artifacts") as base_validator,
                 self.assertRaisesRegex(SystemExit, "prompt SHA-256 mismatch"),
             ):
