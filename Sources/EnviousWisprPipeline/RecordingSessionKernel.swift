@@ -30,6 +30,11 @@ public enum RecordingFailureReason: Equatable, Sendable {
   case modelWedged
   case modelLoadFailed
   case captureStartFailed
+  /// #1558 (cloud review P2 #1563): a start-stage failure where NO usable input
+  /// device was found — distinct from the generic `.captureStartFailed` so the
+  /// toggle/menu path surfaces the actionable "No microphone found." notice, the
+  /// same as the prewarm (PTT) path already does AppKit-side.
+  case noMicrophoneFound
   case noAudioCaptured
   case asrEmpty
   case asrFailed
@@ -994,7 +999,7 @@ final class RecordingSessionKernel {
     } catch {
       guard isCurrent(sid) else { return }
       telemetryState.captureFailureError = error
-      finishTerminal(.failed(classifyCaptureStartError(error)), sid: sid)
+      finishTerminal(.failed(Self.classifyCaptureStartError(error)), sid: sid)
       return
     }
     guard isCurrent(sid) else { return }
@@ -1029,7 +1034,7 @@ final class RecordingSessionKernel {
       } catch {
         guard isCurrent(sid) else { return }
         telemetryState.captureFailureError = error
-        finishTerminal(.failed(classifyCaptureStartError(error)), sid: sid)
+        finishTerminal(.failed(Self.classifyCaptureStartError(error)), sid: sid)
         return
       }
       guard isCurrent(sid) else { return }
@@ -3429,7 +3434,16 @@ final class RecordingSessionKernel {
       / Int(AudioConstants.sampleRate)
   }
 
-  private func classifyCaptureStartError(_ error: Error) -> RecordingFailureReason {
+  // Pure classification (no instance state) — `nonisolated static` so it is
+  // directly unit-testable via `@testable`.
+  nonisolated static func classifyCaptureStartError(_ error: Error) -> RecordingFailureReason {
+    // #1558 (cloud review P2 #1563): a missing input device on the toggle/menu
+    // start path throws `AudioError.noBuiltInMicrophoneFound`. Classify it
+    // distinctly so it surfaces "No microphone found." (parity with the prewarm
+    // path's AppKit-side handling), not the generic capture error.
+    if let audioError = error as? AudioError, case .noBuiltInMicrophoneFound = audioError {
+      return .noMicrophoneFound
+    }
     // The capture seam surfaces permission revocation distinctly from a
     // generic engine-start failure (PR-1 §B.1.2).
     let description = String(describing: error).lowercased()

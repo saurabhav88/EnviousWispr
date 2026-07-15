@@ -603,6 +603,19 @@ final class KernelLifecycleTelemetrySink {
         error,
         .audioCaptureFailed, "recording",
         captureFailureExtra(error: error, failureMode: "thrown_start"))
+    case .noMicrophoneFound:
+      // #1558: no usable input device on the toggle/menu start path. Keeps the
+      // `audio_capture_failed` cluster populated (distinct `failureMode`) so the
+      // held-release drop can still be watched post-ship.
+      let error =
+        telemetryState.captureFailureError
+        ?? NSError(
+          domain: "EnviousWispr", code: -16,
+          userInfo: [NSLocalizedDescriptionKey: "No usable microphone device was found"])
+      emitCaptureError(
+        error,
+        .audioCaptureFailed, "recording",
+        captureFailureExtra(error: error, failureMode: "no_microphone_found"))
     case .asrEmpty:
       // #979: ASR-empty on non-speech (ambient noise trips VAD, engine
       // correctly returns empty) is an EXPECTED outcome, not an error.

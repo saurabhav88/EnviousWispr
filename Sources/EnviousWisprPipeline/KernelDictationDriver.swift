@@ -1519,6 +1519,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     case .modelWedged: return .modelWedged
     case .modelLoadFailed: return .modelLoadFailed
     case .captureStartFailed: return .captureStartFailed
+    case .noMicrophoneFound: return .noMicrophoneFound
     case .noAudioCaptured: return .noAudioCaptured
     case .asrEmpty: return .asrEmptyWithSpeech
     case .asrFailed: return .asrFailed

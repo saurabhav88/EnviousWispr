@@ -741,6 +741,18 @@ import Testing
     #expect(recorder.captureErrors.first?.stage == "recording")
   }
 
+  @Test(".failed(.noMicrophoneFound) emits .audioCaptureFailed captureError (#1558)")
+  func failedNoMicrophoneFoundEmission() {
+    let recorder = Recorder()
+    let sink = makeSink(recorder: recorder)
+    sink.emit(.failed(.noMicrophoneFound))
+    // Keeps the audio_capture_failed cluster populated (distinct failureMode)
+    // so the held-release drop stays observable post-ship.
+    #expect(recorder.captureErrors.count == 1)
+    #expect(recorder.captureErrors.first?.category == .audioCaptureFailed)
+    #expect(recorder.captureErrors.first?.stage == "recording")
+  }
+
   @Test(
     ".failed(.asrEmpty) downgrades to a breadcrumb, emits NO captureError (#979)",
     .bug("https://github.com/saurabhav88/EnviousWispr/issues/979", "ASR-empty non-bug"))

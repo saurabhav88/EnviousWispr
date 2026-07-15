@@ -1,5 +1,6 @@
 import EnviousWisprAudio
 import EnviousWisprCore
+import Foundation
 import Testing
 
 @testable import EnviousWisprPipeline
@@ -18,6 +19,7 @@ import Testing
       (.modelWedged, .modelWedged),
       (.modelLoadFailed, .modelLoadFailed),
       (.captureStartFailed, .captureStartFailed),
+      (.noMicrophoneFound, .noMicrophoneFound),
       (.noAudioCaptured, .noAudioCaptured),
       (.asrEmpty, .asrEmptyWithSpeech),
       (.asrFailed, .asrFailed),
@@ -29,6 +31,25 @@ import Testing
     for (reason, expected) in cases {
       #expect(KernelDictationDriver.terminalNoticeReason(for: reason) == expected)
     }
+  }
+
+  @Test("classifyCaptureStartError distinguishes no-device, permission, and generic (P2 #1563)")
+  func captureStartErrorClassification() {
+    // A missing input device must classify distinctly so the toggle/menu path
+    // surfaces "No microphone found.", not the generic capture error.
+    #expect(
+      RecordingSessionKernel.classifyCaptureStartError(AudioError.noBuiltInMicrophoneFound)
+        == .noMicrophoneFound)
+    // Permission and generic classifications are unchanged.
+    #expect(
+      RecordingSessionKernel.classifyCaptureStartError(
+        NSError(
+          domain: "x", code: 1,
+          userInfo: [NSLocalizedDescriptionKey: "microphone permission denied"]))
+        == .permissionDenied)
+    #expect(
+      RecordingSessionKernel.classifyCaptureStartError(NSError(domain: "x", code: 2))
+        == .captureStartFailed)
   }
 
   @Test("interruption cause maps: deviceRemoved / engineLost / nil → neutral")

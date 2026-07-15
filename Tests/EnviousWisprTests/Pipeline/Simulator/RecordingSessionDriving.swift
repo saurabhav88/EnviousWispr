@@ -401,6 +401,11 @@ final class KernelRecordingSession: RecordingSessionDriving {
     case .modelWedged: return .modelWedged
     case .modelLoadFailed: return .modelLoadFailed
     case .captureStartFailed: return .captureStartFailed
+    // #1558: the simulator's FSM taxonomy does not distinguish a no-device
+    // start failure from a generic capture-start failure — both drive the FSM
+    // identically here. The user-facing distinction is proven in
+    // TerminalNoticeReasonMappingTests / KernelLifecycleTelemetrySinkTests.
+    case .noMicrophoneFound: return .captureStartFailed
     case .noAudioCaptured: return .noAudioCaptured
     case .asrEmpty: return .asrEmpty
     case .asrFailed: return .asrFailed
