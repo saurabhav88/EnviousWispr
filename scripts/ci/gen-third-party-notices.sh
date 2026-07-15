@@ -131,7 +131,25 @@ if [[ "$MODE" == "check" ]]; then
     done
   done
   [[ "$stale" -eq 1 ]] && exit 1
-  echo "third-party notices verified (${#COMPONENTS[@]} components: coverage + version sync vs Package.resolved + name/license/url in committed notices)"
+
+  # #1487: EnviousWisprAppKit/Resources carries a SECOND copy of LICENSE +
+  # THIRD-PARTY-NOTICES.txt (bundled via Bundle.module for the in-app Open
+  # Source Licenses screen — the release DMG's Contents/Resources/Licenses
+  # copy is a separate, release-only step and can't cover dev/CI builds).
+  # Root stays the single generation source; this catches the mirror going
+  # stale after either file is edited/regenerated without the copy following.
+  APPKIT_RES="${PROJ_ROOT}/Sources/EnviousWisprAppKit/Resources"
+  if ! diff -q "${PROJ_ROOT}/LICENSE" "${APPKIT_RES}/GPL-3.0.txt" >/dev/null 2>&1; then
+    echo "error: ${APPKIT_RES}/GPL-3.0.txt is stale vs LICENSE — cp LICENSE ${APPKIT_RES}/GPL-3.0.txt" >&2
+    stale=1
+  fi
+  if ! diff -q "$NOTICES" "${APPKIT_RES}/THIRD-PARTY-NOTICES.txt" >/dev/null 2>&1; then
+    echo "error: ${APPKIT_RES}/THIRD-PARTY-NOTICES.txt is stale vs THIRD-PARTY-NOTICES.txt — cp THIRD-PARTY-NOTICES.txt ${APPKIT_RES}/THIRD-PARTY-NOTICES.txt" >&2
+    stale=1
+  fi
+  [[ "$stale" -eq 1 ]] && exit 1
+
+  echo "third-party notices verified (${#COMPONENTS[@]} components: coverage + version sync vs Package.resolved + name/license/url in committed notices; AppKit Resources mirror in sync)"
   exit 0
 fi
 

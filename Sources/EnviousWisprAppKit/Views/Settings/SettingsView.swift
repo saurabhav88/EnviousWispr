@@ -188,6 +188,8 @@ struct UnifiedWindowView: View {
       // Issue #958: D1 action row never selects this case (no `.tag`), but the
       // exhaustive switch requires an arm.
       EmptyView()
+    case .openSourceLicenses:
+      page(.openSourceLicenses) { OpenSourceLicensesView() }
     #if DEBUG
       case .diagnostics:
         page(.diagnostics) { DiagnosticsSettingsView() }

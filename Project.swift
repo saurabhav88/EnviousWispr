@@ -301,7 +301,10 @@ let project = Project(
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
         .package(product: "Sparkle"),
-      ]),
+      ],
+      // #1487: bundled GPL-3.0.txt + THIRD-PARTY-NOTICES.txt for the in-app
+      // Open Source Licenses screen, read via Bundle.module at runtime.
+      hasResources: true),
 
     // ---- XPC services (audio capture is in-process since #1543; ASR stays isolated) ----
     .target(
