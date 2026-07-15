@@ -19,25 +19,48 @@ sys.path.insert(0, str(EVAL_DIR))
 import train_eg1_multilingual_qlora as trainer  # noqa: E402
 
 
-def qwen35_language_target_fixture() -> list[str]:
+def qwen35_config_fixture() -> dict[str, object]:
+    return {
+        "model_type": "qwen3_5",
+        "architectures": ["Qwen3_5ForConditionalGeneration"],
+        "text_config": {
+            "num_hidden_layers": 32,
+            "layer_types": [
+                "full_attention" if (layer + 1) % 4 == 0 else "linear_attention"
+                for layer in range(32)
+            ],
+        },
+    }
+
+
+def qwen35_base_target_fixture() -> list[str]:
     names: list[str] = []
     for layer in range(32):
-        prefix = f"base_model.model.model.layers.{layer}"
+        prefix = f"model.layers.{layer}"
         names.extend(
             f"{prefix}.mlp.{suffix}" for suffix in ("gate_proj", "up_proj", "down_proj")
         )
-    for layer in range(24):
-        prefix = f"base_model.model.model.layers.{layer}.linear_attn"
-        names.extend(
-            f"{prefix}.{suffix}"
-            for suffix in ("in_proj_a", "in_proj_b", "in_proj_qkv", "in_proj_z", "out_proj")
-        )
-    for layer in range(8):
-        prefix = f"base_model.model.model.layers.{layer}.self_attn"
-        names.extend(
-            f"{prefix}.{suffix}" for suffix in ("q_proj", "k_proj", "v_proj", "o_proj")
-        )
+        if (layer + 1) % 4 == 0:
+            names.extend(
+                f"{prefix}.self_attn.{suffix}"
+                for suffix in ("q_proj", "k_proj", "v_proj", "o_proj")
+            )
+        else:
+            names.extend(
+                f"{prefix}.linear_attn.{suffix}"
+                for suffix in (
+                    "in_proj_a",
+                    "in_proj_b",
+                    "in_proj_qkv",
+                    "in_proj_z",
+                    "out_proj",
+                )
+            )
     return sorted(names)
+
+
+def qwen35_language_target_fixture() -> list[str]:
+    return sorted(f"base_model.model.{name}" for name in qwen35_base_target_fixture())
 
 
 def private_preflight_rows(count: int = 4) -> list[dict[str, str]]:
@@ -106,19 +129,119 @@ class TrainingModeTests(unittest.TestCase):
 
 
 class Qwen35TargetTests(unittest.TestCase):
-    def test_verified_hybrid_target_coverage_and_trainable_count(self) -> None:
-        names = qwen35_language_target_fixture()
+    def test_verified_hybrid_target_placement_and_trainable_count(self) -> None:
+        expected = qwen35_base_target_fixture()
+        actual = qwen35_language_target_fixture()
 
-        self.assertEqual(len(names), 248)
         self.assertEqual(
-            trainer.qwen35_target_suffix_counts(names),
+            trainer.qwen35_expected_target_module_names(qwen35_config_fixture()),
+            expected,
+        )
+        self.assertEqual(len(actual), 248)
+        self.assertEqual(
+            trainer.qwen35_target_suffix_counts(actual),
             trainer.QWEN35_PREFLIGHT_CONTRACT["target_suffix_counts"],
         )
         trainer.validate_qwen35_adapter_receipt(
-            names,
+            actual,
+            expected,
             trainer.QWEN35_PREFLIGHT_CONTRACT["rank_16_trainable_parameters"],
             rank=16,
         )
+        placement = trainer.qwen35_normalized_adapter_placement(actual, expected)
+        self.assertEqual(
+            placement["expected_target_module_set_sha256"],
+            placement["actual_target_module_set_sha256"],
+        )
+        self.assertEqual(
+            placement["expected_target_placement_counts"],
+            placement["actual_target_placement_counts"],
+        )
+        self.assertEqual(
+            placement["expected_target_placement_counts"]["self_attn"]["layer_indices"],
+            [3, 7, 11, 15, 19, 23, 27, 31],
+        )
+
+    def test_exact_targets_are_derived_from_verified_base_before_peft(self) -> None:
+        expected = qwen35_base_target_fixture()
+        base_model = SimpleNamespace(
+            named_modules=lambda: [(name, object()) for name in expected]
+        )
+        self.assertEqual(
+            trainer.derive_qwen35_expected_targets_before_peft(
+                base_model, qwen35_config_fixture()
+            ),
+            expected,
+        )
+
+    def test_layer_type_position_drift_is_rejected_by_pinned_set_hash(self) -> None:
+        config = qwen35_config_fixture()
+        layer_types = config["text_config"]["layer_types"]
+        layer_types[2], layer_types[3] = layer_types[3], layer_types[2]
+        with self.assertRaisesRegex(RuntimeError, "target placement hash drifted"):
+            trainer.qwen35_expected_target_module_names(config)
+
+    def test_missing_base_target_is_rejected_before_peft(self) -> None:
+        base_model = SimpleNamespace(
+            named_modules=lambda: [
+                (name, object()) for name in qwen35_base_target_fixture()[:-1]
+            ]
+        )
+        with self.assertRaisesRegex(RuntimeError, "before PEFT injection"):
+            trainer.derive_qwen35_expected_targets_before_peft(
+                base_model, qwen35_config_fixture()
+            )
+
+    def test_248_wrong_parent_paths_with_perfect_suffix_counts_are_rejected(self) -> None:
+        fabricated: list[str] = []
+        for suffix, count in trainer.QWEN35_EXPECTED_TARGET_SUFFIX_COUNTS.items():
+            fabricated.extend(
+                f"base_model.model.model.layers.0.fake_parent_{index}.{suffix}"
+                for index in range(count)
+            )
+        self.assertEqual(len(fabricated), 248)
+        self.assertEqual(
+            trainer.qwen35_target_suffix_counts(fabricated),
+            trainer.QWEN35_PREFLIGHT_CONTRACT["target_suffix_counts"],
+        )
+        with self.assertRaisesRegex(RuntimeError, "exact placement mismatch"):
+            trainer.validate_qwen35_adapter_receipt(
+                fabricated,
+                qwen35_base_target_fixture(),
+                trainer.QWEN35_PREFLIGHT_CONTRACT["rank_16_trainable_parameters"],
+                rank=16,
+            )
+
+    def test_missing_extra_duplicate_and_layer_drift_are_rejected(self) -> None:
+        expected = qwen35_base_target_fixture()
+        actual = qwen35_language_target_fixture()
+        full_attention_path = (
+            "base_model.model.model.layers.3.self_attn.q_proj"
+        )
+        cases = {
+            "missing": actual[:-1],
+            "extra": actual
+            + ["base_model.model.model.layers.32.mlp.gate_proj"],
+            "duplicate": actual + [actual[0]],
+            "layer_drift": [
+                "base_model.model.model.layers.0.self_attn.q_proj"
+                if name == full_attention_path
+                else name
+                for name in actual
+            ],
+        }
+        for case, mutated in cases.items():
+            with self.subTest(case=case), self.assertRaisesRegex(
+                RuntimeError, "target coverage drifted"
+            ):
+                trainer.validate_qwen35_adapter_receipt(
+                    mutated,
+                    expected,
+                    trainer.QWEN35_PREFLIGHT_CONTRACT[
+                        "rank_16_trainable_parameters"
+                    ],
+                    rank=16,
+                )
 
     def test_vision_and_mtp_targets_are_refused_even_with_same_suffix_counts(self) -> None:
         names = qwen35_language_target_fixture()
@@ -134,6 +257,7 @@ class Qwen35TargetTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "vision/MTP"):
                 trainer.validate_qwen35_adapter_receipt(
                     mutated,
+                    qwen35_base_target_fixture(),
                     trainer.QWEN35_PREFLIGHT_CONTRACT["rank_16_trainable_parameters"],
                     rank=16,
                 )
@@ -141,6 +265,10 @@ class Qwen35TargetTests(unittest.TestCase):
 
 class Qwen35AdapterEvidenceTests(unittest.TestCase):
     def test_128_of_248_mismatch_persists_blocked_receipt_before_trainer(self) -> None:
+        class FakeBaseModel:
+            def named_modules(self) -> list[tuple[str, object]]:
+                return [(name, object()) for name in qwen35_base_target_fixture()]
+
         class FakeModel:
             def __init__(self) -> None:
                 self.save_pretrained = mock.Mock(name="save_pretrained")
@@ -163,12 +291,7 @@ class Qwen35AdapterEvidenceTests(unittest.TestCase):
             base_path = root / "Qwen3.5-4B"
             base_path.mkdir()
             (base_path / "config.json").write_text(
-                json.dumps(
-                    {
-                        "model_type": "qwen3_5",
-                        "architectures": ["Qwen3_5ForConditionalGeneration"],
-                    }
-                ),
+                json.dumps(qwen35_config_fixture()),
                 encoding="utf-8",
             )
             data_path = root / "private.jsonl"
@@ -200,10 +323,11 @@ class Qwen35AdapterEvidenceTests(unittest.TestCase):
                 skip_merge=True,
             )
 
+            fake_base_model = FakeBaseModel()
             fake_model = FakeModel()
             fake_tokenizer = SimpleNamespace(save_pretrained=mock.Mock(name="tokenizer_save"))
             fast_model = SimpleNamespace(
-                from_pretrained=mock.Mock(return_value=(fake_model, fake_tokenizer)),
+                from_pretrained=mock.Mock(return_value=(fake_base_model, fake_tokenizer)),
                 get_peft_model=mock.Mock(return_value=fake_model),
             )
             unsloth = ModuleType("unsloth")
@@ -282,6 +406,21 @@ class Qwen35AdapterEvidenceTests(unittest.TestCase):
                 248,
             )
             self.assertEqual(len(pending_receipt["matched_module_names"]), 128)
+            self.assertEqual(pending_receipt["actual_target_module_count"], 128)
+            self.assertEqual(pending_receipt["expected_target_module_count"], 248)
+            self.assertNotEqual(
+                pending_receipt["actual_target_module_set_sha256"],
+                pending_receipt["expected_target_module_set_sha256"],
+            )
+            self.assertEqual(
+                pending_receipt["expected_target_placement_counts"]["linear_attn"][
+                    "module_count"
+                ],
+                120,
+            )
+            self.assertNotIn(
+                "linear_attn", pending_receipt["actual_target_placement_counts"]
+            )
             self.assertEqual(
                 pending_receipt["target_suffix_counts"],
                 {
@@ -326,6 +465,7 @@ class Qwen35AdapterEvidenceTests(unittest.TestCase):
                 manifest=manifest,
                 receipt=receipt,
                 lora_module_names=qwen35_partial_target_fixture(),
+                expected_module_names=qwen35_base_target_fixture(),
                 trainable_parameters=123_456,
                 rank=16,
             )

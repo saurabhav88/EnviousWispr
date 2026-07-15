@@ -28,6 +28,16 @@ PREFLIGHT_EVIDENCE_CLASS = "compatibility_preflight_not_quality_evidence"
 PREFLIGHT_ROW_PROVENANCE = "private_synthetic_non_benchmark_qwen35_compatibility_v1"
 QWEN35_RESPONSE_MARKER = "<|im_start|>assistant\n"
 GEMMA_RESPONSE_MARKER = "<|turn>model\n"
+QWEN35_MLP_TARGET_SUFFIXES = ("gate_proj", "up_proj", "down_proj")
+QWEN35_FULL_ATTENTION_TARGET_SUFFIXES = ("q_proj", "k_proj", "v_proj", "o_proj")
+QWEN35_LINEAR_ATTENTION_TARGET_SUFFIXES = (
+    "in_proj_a",
+    "in_proj_b",
+    "in_proj_qkv",
+    "in_proj_z",
+    "out_proj",
+)
+QWEN35_ALLOWED_PEFT_PREFIXES = ("base_model.model.",)
 QWEN35_EXPECTED_TARGET_SUFFIX_COUNTS = {
     "down_proj": 32,
     "gate_proj": 32,
@@ -72,6 +82,9 @@ QWEN35_PREFLIGHT_CONTRACT: dict[str, Any] = {
         "model.safetensors-00002-of-00002.safetensors",
     ],
     "target_suffix_counts": QWEN35_EXPECTED_TARGET_SUFFIX_COUNTS,
+    "target_module_set_sha256": (
+        "707ca9ad5e438a00d45d0625b82467881ba356ef73f1319b21baa5ddcbb9ace3"
+    ),
     "rank_16_trainable_parameters": QWEN35_R16_TRAINABLE_PARAMETERS,
 }
 
@@ -282,6 +295,182 @@ def qwen35_target_suffix_counts(module_names: list[str]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
+def qwen35_text_layer_types(config: dict[str, Any]) -> list[str]:
+    text_config = config.get("text_config")
+    if not isinstance(text_config, dict):
+        raise RuntimeError("Pinned Qwen3.5 config lacks text_config")
+    layer_types = text_config.get("layer_types")
+    hidden_layers = text_config.get("num_hidden_layers")
+    expected_layers = int(QWEN35_EXPECTED_TARGET_SUFFIX_COUNTS["gate_proj"])
+    if hidden_layers != expected_layers or not isinstance(layer_types, list):
+        raise RuntimeError(
+            "Pinned Qwen3.5 text-layer contract drifted: "
+            f"expected {expected_layers} layer_types, got {hidden_layers}"
+        )
+    normalized = [str(layer_type) for layer_type in layer_types]
+    if len(normalized) != expected_layers:
+        raise RuntimeError(
+            "Pinned Qwen3.5 layer_types length drifted: "
+            f"expected {expected_layers}, got {len(normalized)}"
+        )
+    unknown = sorted(set(normalized) - {"linear_attention", "full_attention"})
+    expected_linear = int(QWEN35_EXPECTED_TARGET_SUFFIX_COUNTS["in_proj_a"])
+    expected_full = int(QWEN35_EXPECTED_TARGET_SUFFIX_COUNTS["q_proj"])
+    if (
+        unknown
+        or normalized.count("linear_attention") != expected_linear
+        or normalized.count("full_attention") != expected_full
+    ):
+        raise RuntimeError(
+            "Pinned Qwen3.5 layer-type distribution drifted: "
+            f"unknown={unknown}, linear={normalized.count('linear_attention')}, "
+            f"full={normalized.count('full_attention')}"
+        )
+    return normalized
+
+
+def qwen35_expected_target_module_names(config: dict[str, Any]) -> list[str]:
+    expected: list[str] = []
+    for layer_index, layer_type in enumerate(qwen35_text_layer_types(config)):
+        layer_prefix = f"model.layers.{layer_index}"
+        expected.extend(
+            f"{layer_prefix}.mlp.{suffix}" for suffix in QWEN35_MLP_TARGET_SUFFIXES
+        )
+        if layer_type == "full_attention":
+            parent = "self_attn"
+            suffixes = QWEN35_FULL_ATTENTION_TARGET_SUFFIXES
+        else:
+            parent = "linear_attn"
+            suffixes = QWEN35_LINEAR_ATTENTION_TARGET_SUFFIXES
+        expected.extend(f"{layer_prefix}.{parent}.{suffix}" for suffix in suffixes)
+    expected = sorted(expected)
+    expected_hash = str(QWEN35_PREFLIGHT_CONTRACT["target_module_set_sha256"])
+    actual_hash = qwen35_module_set_sha256(expected)
+    if actual_hash != expected_hash:
+        raise RuntimeError(
+            "Pinned Qwen3.5 target placement hash drifted: "
+            f"expected {expected_hash}, got {actual_hash}"
+        )
+    return expected
+
+
+def qwen35_module_set_sha256(module_names: list[str]) -> str:
+    canonical = "\n".join(sorted(set(module_names))) + "\n"
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def qwen35_duplicate_module_names(module_names: list[str]) -> list[str]:
+    counts: dict[str, int] = {}
+    for name in module_names:
+        counts[name] = counts.get(name, 0) + 1
+    return sorted(name for name, count in counts.items() if count > 1)
+
+
+def qwen35_target_placement_counts(module_names: list[str]) -> dict[str, Any]:
+    placements: dict[str, dict[str, Any]] = {}
+    unparsed = 0
+    for name in module_names:
+        components = name.split(".")
+        parsed = False
+        for index in range(len(components) - 3):
+            if components[index] != "layers" or not components[index + 1].isdigit():
+                continue
+            parent = components[index + 2]
+            placement = placements.setdefault(
+                parent, {"module_count": 0, "layer_indices": set()}
+            )
+            placement["module_count"] += 1
+            placement["layer_indices"].add(int(components[index + 1]))
+            parsed = True
+            break
+        if not parsed:
+            unparsed += 1
+    result: dict[str, Any] = {}
+    for parent, placement in sorted(placements.items()):
+        layer_indices = sorted(placement["layer_indices"])
+        result[parent] = {
+            "module_count": placement["module_count"],
+            "layer_count": len(layer_indices),
+            "layer_indices": layer_indices,
+        }
+    if unparsed:
+        result["unparsed"] = {"module_count": unparsed}
+    return result
+
+
+def derive_qwen35_expected_targets_before_peft(
+    model: Any, config: dict[str, Any]
+) -> list[str]:
+    expected = qwen35_expected_target_module_names(config)
+    module_names = [name for name, _module in model.named_modules()]
+    duplicate_names = qwen35_duplicate_module_names(module_names)
+    target_suffixes = set(QWEN35_EXPECTED_TARGET_SUFFIX_COUNTS)
+    observed = sorted(
+        name
+        for name in module_names
+        if name.startswith("model.layers.")
+        and name.rsplit(".", 1)[-1] in target_suffixes
+    )
+    if duplicate_names or set(observed) != set(expected):
+        missing = sorted(set(expected) - set(observed))
+        unexpected = sorted(set(observed) - set(expected))
+        raise RuntimeError(
+            "Pinned Qwen3.5 base target placement drifted before PEFT injection: "
+            f"expected_hash={qwen35_module_set_sha256(expected)}, "
+            f"actual_hash={qwen35_module_set_sha256(observed)}, "
+            f"missing={len(missing)}, unexpected={len(unexpected)}, "
+            f"duplicates={len(duplicate_names)}"
+        )
+    return expected
+
+
+def qwen35_normalized_adapter_placement(
+    module_names: list[str], expected_module_names: list[str]
+) -> dict[str, Any]:
+    expected_set = set(expected_module_names)
+    normalized: list[str] = []
+    unmatched: list[str] = []
+    prefixes: list[str] = []
+    for name in module_names:
+        if name in expected_set:
+            normalized.append(name)
+            prefixes.append("direct")
+            continue
+        matched = False
+        for prefix in QWEN35_ALLOWED_PEFT_PREFIXES:
+            if name.startswith(prefix) and name[len(prefix) :] in expected_set:
+                normalized.append(name[len(prefix) :])
+                prefixes.append(prefix)
+                matched = True
+                break
+        if not matched:
+            unmatched.append(name)
+    hash_names = normalized + [f"<unmatched>{name}" for name in unmatched]
+    placement_names = normalized + unmatched
+    return {
+        "expected_target_module_count": len(expected_module_names),
+        "actual_target_module_count": len(module_names),
+        "expected_target_module_set_sha256": qwen35_module_set_sha256(
+            expected_module_names
+        ),
+        "actual_target_module_set_sha256": qwen35_module_set_sha256(hash_names),
+        "expected_target_placement_counts": qwen35_target_placement_counts(
+            expected_module_names
+        ),
+        "actual_target_placement_counts": qwen35_target_placement_counts(
+            placement_names
+        ),
+        "normalized_matched_module_names": sorted(normalized),
+        "unmatched_module_names": sorted(unmatched),
+        "normalization_prefixes": sorted(set(prefixes)),
+        "duplicate_expected_module_names": qwen35_duplicate_module_names(
+            expected_module_names
+        ),
+        "duplicate_module_names": qwen35_duplicate_module_names(module_names),
+        "duplicate_normalized_module_names": qwen35_duplicate_module_names(normalized),
+    }
+
+
 def qwen35_forbidden_target_names(module_names: list[str]) -> list[str]:
     forbidden: list[str] = []
     for name in module_names:
@@ -306,7 +495,10 @@ def expected_qwen35_trainable_parameters(rank: int) -> int:
 
 
 def validate_qwen35_adapter_receipt(
-    module_names: list[str], trainable_parameters: int, rank: int
+    module_names: list[str],
+    expected_module_names: list[str],
+    trainable_parameters: int,
+    rank: int,
 ) -> None:
     suffix_counts = qwen35_target_suffix_counts(module_names)
     expected_suffix_counts = dict(QWEN35_PREFLIGHT_CONTRACT["target_suffix_counts"])
@@ -318,6 +510,25 @@ def validate_qwen35_adapter_receipt(
     forbidden = qwen35_forbidden_target_names(module_names)
     if forbidden:
         raise RuntimeError(f"Qwen3.5 LoRA unexpectedly targeted vision/MTP modules: {forbidden}")
+    placement = qwen35_normalized_adapter_placement(
+        module_names, expected_module_names
+    )
+    actual_normalized = placement["normalized_matched_module_names"]
+    if (
+        placement["unmatched_module_names"]
+        or placement["duplicate_expected_module_names"]
+        or placement["duplicate_module_names"]
+        or placement["duplicate_normalized_module_names"]
+        or placement["normalization_prefixes"] not in [["base_model.model."], ["direct"]]
+        or set(actual_normalized) != set(expected_module_names)
+    ):
+        raise RuntimeError(
+            "Qwen3.5 LoRA target coverage drifted: exact placement mismatch; "
+            f"expected_hash={placement['expected_target_module_set_sha256']}, "
+            f"actual_hash={placement['actual_target_module_set_sha256']}, "
+            f"unmatched={len(placement['unmatched_module_names'])}, "
+            f"duplicates={len(placement['duplicate_module_names'])}"
+        )
     expected_trainable = expected_qwen35_trainable_parameters(rank)
     if trainable_parameters != expected_trainable:
         raise RuntimeError(
@@ -398,17 +609,26 @@ def persist_qwen35_adapter_receipt_before_validation(
     manifest: dict[str, Any],
     receipt: dict[str, Any],
     lora_module_names: list[str],
+    expected_module_names: list[str],
     trainable_parameters: int,
     rank: int,
 ) -> None:
     manifest["status"] = "adapter_validation_pending_not_complete"
     receipt["validation_status"] = "pending"
+    receipt.update(
+        qwen35_normalized_adapter_placement(
+            lora_module_names, expected_module_names
+        )
+    )
     manifest["adapter_receipt"] = receipt
     write_json(manifest_path, manifest)
 
     try:
         validate_qwen35_adapter_receipt(
-            lora_module_names, trainable_parameters, rank
+            lora_module_names,
+            expected_module_names,
+            trainable_parameters,
+            rank,
         )
     except RuntimeError as error:
         manifest["status"] = "blocked_adapter_validation_failed"
@@ -715,6 +935,7 @@ def main() -> None:
     manifest["cuda_device"] = torch.cuda.get_device_name(0)
     manifest["cuda_bf16_supported"] = torch.cuda.is_bf16_supported()
 
+    expected_qwen35_target_names: list[str] | None = None
     if family == QWEN35_FAMILY:
         from unsloth import FastModel
 
@@ -728,6 +949,33 @@ def main() -> None:
             use_gradient_checkpointing="unsloth",
             text_only=True,
         )
+        try:
+            expected_qwen35_target_names = derive_qwen35_expected_targets_before_peft(
+                model, config
+            )
+        except RuntimeError as error:
+            manifest["status"] = "blocked_base_target_derivation_failed"
+            manifest["base_target_derivation_receipt"] = {
+                "validation_status": "failed",
+                "error_type": type(error).__name__,
+                "error_message_sha256": hashlib.sha256(
+                    str(error).encode("utf-8")
+                ).hexdigest(),
+            }
+            write_json(output_dir / "training-manifest.json", manifest)
+            raise
+        manifest["status"] = "base_target_placement_derived_not_injected"
+        manifest["base_target_derivation_receipt"] = {
+            "validation_status": "passed_pre_injection",
+            "expected_target_module_count": len(expected_qwen35_target_names),
+            "expected_target_module_set_sha256": qwen35_module_set_sha256(
+                expected_qwen35_target_names
+            ),
+            "expected_target_placement_counts": qwen35_target_placement_counts(
+                expected_qwen35_target_names
+            ),
+        }
+        write_json(output_dir / "training-manifest.json", manifest)
         model = FastModel.get_peft_model(
             model,
             r=args.rank,
@@ -777,11 +1025,14 @@ def main() -> None:
     )
     receipt = adapter_receipt(model, lora_module_names, trainable_parameters)
     if family == QWEN35_FAMILY:
+        if expected_qwen35_target_names is None:
+            raise RuntimeError("Qwen3.5 expected target placement was not derived")
         persist_qwen35_adapter_receipt_before_validation(
             manifest_path=output_dir / "training-manifest.json",
             manifest=manifest,
             receipt=receipt,
             lora_module_names=lora_module_names,
+            expected_module_names=expected_qwen35_target_names,
             trainable_parameters=trainable_parameters,
             rank=args.rank,
         )
