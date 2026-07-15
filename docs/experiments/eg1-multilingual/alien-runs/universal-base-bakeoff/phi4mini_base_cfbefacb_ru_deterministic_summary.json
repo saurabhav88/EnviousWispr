@@ -1,0 +1,166 @@
+[
+  {
+    "run_id": "base-bakeoff-phi4mini-ru_dev16",
+    "model_id": "phi4mini_base_cfbefacb",
+    "n": 16,
+    "warning": "Deterministic checks only; fluency and grammar still require blinded native review.",
+    "metrics": {
+      "nonempty": {
+        "successes": 16,
+        "total": 16,
+        "rate": 1.0,
+        "wilson_95": [
+          0.8064,
+          1.0
+        ]
+      },
+      "script_retained": {
+        "successes": 12,
+        "total": 16,
+        "rate": 0.75,
+        "wilson_95": [
+          0.505,
+          0.8982
+        ]
+      },
+      "required_all": {
+        "successes": 5,
+        "total": 16,
+        "rate": 0.3125,
+        "wilson_95": [
+          0.1416,
+          0.556
+        ]
+      },
+      "forbidden_all": {
+        "successes": 16,
+        "total": 16,
+        "rate": 1.0,
+        "wilson_95": [
+          0.8064,
+          1.0
+        ]
+      },
+      "structure_ok": {
+        "successes": 16,
+        "total": 16,
+        "rate": 1.0,
+        "wilson_95": [
+          0.8064,
+          1.0
+        ]
+      },
+      "strict_deterministic_pass": {
+        "successes": 5,
+        "total": 16,
+        "rate": 0.3125,
+        "wilson_95": [
+          0.1416,
+          0.556
+        ]
+      }
+    },
+    "by_category": {
+      "code_switching": {
+        "successes": 1,
+        "total": 2,
+        "rate": 0.5,
+        "wilson_95": [
+          0.0945,
+          0.9055
+        ]
+      },
+      "entities_numbers": {
+        "successes": 0,
+        "total": 6,
+        "rate": 0.0,
+        "wilson_95": [
+          0.0,
+          0.3903
+        ]
+      },
+      "fillers": {
+        "successes": 0,
+        "total": 2,
+        "rate": 0.0,
+        "wilson_95": [
+          0.0,
+          0.6576
+        ]
+      },
+      "list_bullets": {
+        "successes": 0,
+        "total": 1,
+        "rate": 0.0,
+        "wilson_95": [
+          0.0,
+          0.7935
+        ]
+      },
+      "list_numbered": {
+        "successes": 0,
+        "total": 1,
+        "rate": 0.0,
+        "wilson_95": [
+          0.0,
+          0.7935
+        ]
+      },
+      "morphology_case": {
+        "successes": 2,
+        "total": 3,
+        "rate": 0.6667,
+        "wilson_95": [
+          0.2077,
+          0.9385
+        ]
+      },
+      "morphology_gender": {
+        "successes": 2,
+        "total": 2,
+        "rate": 1.0,
+        "wilson_95": [
+          0.3424,
+          1.0
+        ]
+      },
+      "morphology_number": {
+        "successes": 2,
+        "total": 3,
+        "rate": 0.6667,
+        "wilson_95": [
+          0.2077,
+          0.9385
+        ]
+      },
+      "quoted_content": {
+        "successes": 0,
+        "total": 1,
+        "rate": 0.0,
+        "wilson_95": [
+          0.0,
+          0.7935
+        ]
+      },
+      "restraint": {
+        "successes": 1,
+        "total": 4,
+        "rate": 0.25,
+        "wilson_95": [
+          0.0456,
+          0.6994
+        ]
+      },
+      "self_correction": {
+        "successes": 0,
+        "total": 2,
+        "rate": 0.0,
+        "wilson_95": [
+          0.0,
+          0.6576
+        ]
+      }
+    },
+    "input": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/phi4mini_base_cfbefacb_ru_dev16.jsonl"
+  }
+]

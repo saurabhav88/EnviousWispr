@@ -17,6 +17,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from generation_contract import resolve_eos_token_id
+
 
 LANGUAGE_NAMES = {
     "de": "German",
@@ -151,6 +153,15 @@ def main() -> None:
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = "left"
+
+    # Publisher generation configs can declare more than one valid stop token.
+    # Phi-4-mini, for example, needs both <|end|> and <|endoftext|>; replacing
+    # that list with the tokenizer's single EOS makes valid answers run to the
+    # token cap and repeat or leak prompt text. Preserve the pinned model
+    # contract, falling back only when the model does not declare one.
+    generation_eos_token_id = resolve_eos_token_id(
+        model.generation_config, tokenizer.eos_token_id
+    )
     model.eval()
 
     manifest = {
@@ -178,6 +189,7 @@ def main() -> None:
         "seed": args.seed,
         "include_language_label": args.include_language_label,
         "enable_thinking": args.enable_thinking,
+        "generation_eos_token_id": generation_eos_token_id,
         "torch_version": torch.__version__,
         "cuda_device": torch.cuda.get_device_name(0),
     }
@@ -234,7 +246,7 @@ def main() -> None:
                     do_sample=False,
                     max_new_tokens=args.max_new_tokens,
                     pad_token_id=tokenizer.pad_token_id,
-                    eos_token_id=tokenizer.eos_token_id,
+                    eos_token_id=generation_eos_token_id,
                 )
             torch.cuda.synchronize()
             batch_latency_ms = round((time.perf_counter() - batch_started) * 1000, 2)

@@ -1,6 +1,6 @@
 # EG-1 Multilingual Overnight Readout
 
-Status: living draft as of 2026-07-15 06:55 EDT. Development evidence only; no frozen release claim.
+Status: living draft as of 2026-07-15 07:13 EDT. Development evidence only; no frozen release claim.
 
 ## The short answer
 
@@ -27,6 +27,7 @@ Official model-card coverage is only an eligibility screen, not proof of polishi
 | [Qwen3](https://qwenlm.github.io/blog/qwen3/) | 119 languages and dialects; the official list explicitly includes English, German, French, Spanish, and Russian. | All five are claimed, but current EG-1's task-specific audits still find real damage. |
 | [Qwen3.5](https://huggingface.co/Qwen/Qwen3.5-4B) | 201 languages and dialects, with aggregate multilingual benchmarks over 23-63 settings depending on the benchmark. | Broadest claimed coverage, but the small copy-edit audit did not match the aggregate ranking. |
 | [Gemma 4](https://huggingface.co/google/gemma-4-E4B-it) | Pre-trained on 140+ languages with out-of-the-box support for 35+. | Broad enough to test all five; native task data must establish which are truly strong. |
+| [Phi-4-mini](https://huggingface.co/microsoft/Phi-4-mini-instruct) | Explicitly lists all five target languages among 23, but Microsoft says training remains primarily English. | Eligible on paper; task audit found frequent translation and number/entity corruption, so it is rejected. |
 | [Ministral 3](https://huggingface.co/mistralai/Ministral-3-3B-Instruct-2512-BF16) | Claims dozens and explicitly names English, French, Spanish, and German among 11 highlighted languages. Russian is not in that explicit list. | Russian is a higher-risk target even before the weak task-specific English result. |
 
 This is why the project cannot choose a base from a general multilingual leaderboard. The relevant question is whether it safely preserves names, numbers, scope, corrections, lists, and grammar in each target language.
@@ -46,7 +47,8 @@ This is why the project cannot choose a base from a general multilingual leaderb
 | 2 | Qwen3.5-4B | Strong grammar and German slice; 5/56 meaning-damaging rows and weak lists without targeted training. | Reserve universal challenger. |
 | 3 | Qwen3.5-9B capacity control | Blind audit: 40/92 strict overall and 31/56 multilingual, but 15 damaging edits, 7/16 Russian, only 2/20 English two-item, and 0/100 broad list activation. | Stop after the full development benchmark; extra capacity did not justify a tuning or Mac-runtime lane. |
 | 4 | Current Qwen3 EG-1 | Smallest shipping baseline, but 8/56 damaging rows in the current multilingual audit and weak short-list activation. | Keep as exact-Mac baseline, not evidence that quality is solved. |
-| 5 | Ministral 3 3B Instruct | Compact, but the blind audit found only 30/92 strict overall, 24/56 multilingual, 5/16 Russian, and 1/20 English two-item outputs. | Reject from this tuning lane; do not spend a training run on it. |
+| 5 | Phi-4-mini-instruct | English list shape was comparatively strong at 11/20 semantic strict, but multilingual was only 18/56 and 26/92 rows had damaging edits, including translation and critical identifier/number corruption. | Reject from this tuning lane; do not spend a training run on it. |
+| 6 | Ministral 3 3B Instruct | Compact, but the blind audit found only 30/92 strict overall, 24/56 multilingual, 5/16 Russian, and 1/20 English two-item outputs. | Reject from this tuning lane; do not spend a training run on it. |
 
 These differences are small development signals, not statistically established release rankings. Native review and frozen data are still required.
 
@@ -59,7 +61,7 @@ The list-aware prompt increased visible list activation, but prompt-only changes
 
 Conclusion: prompt engineering helps expose the behavior boundary but does not solve the problem alone. The best remaining universal route is a materially larger, balanced, native-reviewed training dose, followed by frozen and exact-Mac validation.
 
-Simply increasing Qwen3.5 from 4B to 9B did not solve it either. The 9B control learned explicit two-bullet shape more readily, but it dropped scope or identity in eight of those explicit rows and never activated on the broader 100-case positive-list check. Better data and stricter preservation training matter more than parameter count alone.
+Simply increasing Qwen3.5 from 4B to 9B did not solve it either. The 9B control learned explicit two-bullet shape more readily, but it dropped scope or identity in eight of those explicit rows and never activated on the broader 100-case positive-list check. Switching to Phi-4-mini improved English list shape but made international safety much worse. Better data and stricter preservation training matter more than parameter count or a family swap alone.
 
 ## The honest benchmark now being built
 
@@ -92,11 +94,10 @@ One selected adapter loaded offline and added about 79 MiB idle memory with sub-
 
 ## Work still in flight
 
-1. Finish the untouched Phi-4-mini control on the gaming PC. It is MIT-licensed, tuneable, explicitly covers all five target languages, and still uses one universal base; it receives one smoke and one development benchmark only.
-2. Finish and leakage-screen the new 100-positive/100-restraint English list development corpus, which was generated without seeing model outputs.
-3. Run current EG-1 with the shipped prompt and the list-aware prompt through the exact bundled Mac runtime on that new corpus.
-4. Score structure, preservation, false lists, damage proxies, confidence intervals, and paired changes; then run independent semantic cross-review.
-5. Use that result to decide whether any prompt variant survives and whether the next universal Gemma/Qwen training dose should begin.
+1. Finish and leakage-screen the new 100-positive/100-restraint English list development corpus, which was generated without seeing model outputs.
+2. Run current EG-1 with the shipped prompt and the list-aware prompt through the exact bundled Mac runtime on that new corpus.
+3. Score structure, preservation, false lists, damage proxies, confidence intervals, and paired changes; then run independent semantic cross-review.
+4. Use that result to decide whether any prompt variant survives and whether the next universal Gemma/Qwen training dose should begin.
 
 ## Decisions that are not yet justified
 
