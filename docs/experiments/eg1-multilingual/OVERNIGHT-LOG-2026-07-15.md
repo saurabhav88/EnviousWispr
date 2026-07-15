@@ -1409,3 +1409,17 @@ Timestamp: 2026-07-15 07:35 EDT
 Status: contained and rotated
 
 A process-list diagnostic printed the active local llama-server command line into tool output, which included its ephemeral API credential. The credential value is deliberately omitted from this log. The owning EnviousWispr local app was terminated and relaunched immediately. The prior local endpoint was verified closed; the replacement server was verified ready, bound only to `127.0.0.1`, with a fresh credential present. Future process checks must select PID, readiness, host, port, and credential presence without printing the full command line.
+
+### RUNTIME-SEC-002 - Proxy-safe exact-Mac launcher
+
+Timestamp: 2026-07-15 07:52 EDT
+
+Status: implemented; independent re-review clean
+
+The first redacted launcher draft found the app-owned llama-server without printing its credential, but independent review found that copying the shell environment could preserve `HTTP_PROXY` or `ALL_PROXY`. Python may not bypass those proxies for `127.0.0.1`, so an exact-Mac request could have sent the bearer credential to a configured proxy. No benchmark was run through that draft.
+
+The corrected launcher uses a minimal child environment containing only the ephemeral credential and explicit loopback `NO_PROXY` values. Exact request mode also constructs a proxy-disabled HTTP opener, so the transport remains local even if the wrapper is bypassed. A poisoned-proxy integration test proves the exact request still reaches the loopback fixture. The launcher now additionally requires an explicit app-bundle path, proves the child and parent belong to that exact bundle, requires model ID `eg-1`, validates `-c 16384 -fa on --cache-type-k q8_0 --cache-type-v q8_0`, checks authenticated `/health` HTTP 200, and refuses to overwrite an existing or symlinked output path.
+
+The explicit live preflight passed against the already-verified `EnviousWispr-5b` local app without printing the credential. Focused security and exact-wire tests passed 19/19; the full evaluation suite passed 76/76. The sealed list corpus has not yet been sent to either prompt arm.
+
+Independent re-review found no remaining issue: the credential does not enter argv, logs, proxy settings, or inherited Python configuration; app identity, parentage, flags, authenticated health, model ID, and exact-mode proxy bypass all fail closed.

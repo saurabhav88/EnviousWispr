@@ -145,7 +145,11 @@ class EG1ShippedRequestTests(unittest.TestCase):
                 self.assertEqual(shipped.strip_llm_preamble(input_text), expected)
 
     def _run_exact_runner(
-        self, response_payload: dict, *, partial_responses: int = 0
+        self,
+        response_payload: dict,
+        *,
+        partial_responses: int = 0,
+        poison_proxy: bool = False,
     ) -> tuple[dict, dict]:
         _FakeHandler.response_payload = response_payload
         _FakeHandler.request_bodies = []
@@ -172,6 +176,13 @@ class EG1ShippedRequestTests(unittest.TestCase):
                 )
                 env = os.environ.copy()
                 env["OPENAI_API_KEY"] = "unit-test-only"
+                if poison_proxy:
+                    env["HTTP_PROXY"] = "http://127.0.0.1:1"
+                    env["http_proxy"] = "http://127.0.0.1:1"
+                    env["ALL_PROXY"] = "http://127.0.0.1:1"
+                    env["all_proxy"] = "http://127.0.0.1:1"
+                    env["NO_PROXY"] = ""
+                    env["no_proxy"] = ""
                 subprocess.run(
                     [
                         sys.executable,
@@ -252,6 +263,21 @@ class EG1ShippedRequestTests(unittest.TestCase):
         )
         self.assertEqual(result["candidate"], "Move it Friday.")
         self.assertEqual(result["attempts"], 2)
+
+    def test_exact_runner_ignores_environment_proxy(self) -> None:
+        result, _ = self._run_exact_runner(
+            {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": "Move it Friday."},
+                    }
+                ]
+            },
+            poison_proxy=True,
+        )
+        self.assertEqual(result["candidate"], "Move it Friday.")
+        self.assertEqual(result["attempts"], 1)
 
     def test_exact_runner_rejects_spoofed_localhost_before_network(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

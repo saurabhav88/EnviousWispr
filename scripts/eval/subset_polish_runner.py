@@ -23,7 +23,9 @@ ap.add_argument("--out", required=True)
 ap.add_argument("--workers", type=int, default=8)
 # #1271: point the openai provider at an OpenAI-compatible LOCAL server
 # (the native EG-1 llama-server) — the shipped (artifact x engine x flags)
-# combination is the unit of QA. Localhost endpoints take a dummy key.
+# combination is the unit of QA. Standalone localhost servers may take a dummy
+# key; the shipped app uses a per-launch credential. Use eg1_local_app_eval.py
+# for app-owned servers so that credential never appears in shell history.
 ap.add_argument("--endpoint", default="https://api.openai.com/v1/chat/completions")
 # gpt-5.1+ reasoning models reject a non-default temperature but accept
 # reasoning_effort ("none" = thinking off, verified against developers.openai.com
@@ -87,6 +89,11 @@ if args.provider == "ollama":
     args.workers = 1
 
 prompts = [json.loads(l) for l in open(args.prompts) if l.strip()]
+exact_local_opener = (
+    urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    if args.eg1_shipped_request
+    else None
+)
 
 def retryable_eg1_transport_error(error):
     reason = error.reason if isinstance(error, urllib.error.URLError) else error
@@ -134,8 +141,10 @@ def call_openai(system, user, max_tokens=None):
             if remaining <= 0:
                 raise TimeoutError("eg1_pipeline_timeout")
             try:
+                if exact_local_opener is None:
+                    raise RuntimeError("missing proxy-disabled EG-1 opener")
                 response = json.load(
-                    urllib.request.urlopen(req, timeout=min(20, remaining))
+                    exact_local_opener.open(req, timeout=min(20, remaining))
                 )
                 content, finish_reason = parse_success(response)
                 if time.monotonic() > logical_deadline:
