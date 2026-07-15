@@ -4,9 +4,11 @@ Status: proposed release-grade protocol. The current Russian 16-development/8-fr
 
 ## Product architecture gate
 
-- Allowed: one shared multilingual full model, even when it is larger than current EG-1.
-- Allowed fallback: one shared full base plus small hot-swappable language LoRA adapters.
-- Disqualified: any architecture requiring users to download multiple full-size language models.
+- Preferred: one universal multilingual model, even when it is larger than current EG-1.
+- Allowed fallback only after the predeclared universal data-dose ladder fails or plateaus: one byte-identical shared base plus delta-only language LoRA adapters. An adapter cannot duplicate the base tensors or run independently as a complete model. The current safe prototype starts or restarts the server with exactly one selected adapter.
+- Disqualified: one user must install more than one complete base-weight set to enable any two claimed languages. Calling a package compact, regional, optional, or language-specific does not change this gate. Shards of one model count together as one base-weight set.
+- A user may install any number of eligible delta adapters without downloading another base. Their maximum byte or base-ratio limit must be predeclared before final ranking; the measured 63-171 MiB artifacts prove feasibility but do not define the limit.
+- Simultaneous preload or per-request switching is eligible only after two byte-for-byte checks pass through the exact bundled runtime: all adapters inactive equals the pure base, and one active adapter in a multi-loaded server equals that adapter loaded alone. A merged GGUF is a separate release artifact, not the isolation oracle.
 - App inference remains fully offline after model or adapter download.
 
 ## Corpus matrix
@@ -62,6 +64,13 @@ A strict green requires every gate:
 Report numerator, denominator, and Wilson 95% interval for strict green, language retention, meaning preservation, grammar, cleanup, positive-list success, and false-list rate. Report S0-S4 damage severity separately. Use paired bootstrap confidence intervals and exact McNemar tests for candidate-versus-current comparisons.
 
 Use Holm-Bonferroni correction across the five primary language comparisons. Category analyses are secondary; control them with a 5% Benjamini-Hochberg false-discovery rate.
+
+## What the sample sizes can establish
+
+- A 90% development score on 160 rows has a Wilson 95% interval of about 84.4-93.8%. Development slices can reject weak recipes and reveal failure clusters, but they cannot support a 94-95% release claim.
+- A 90% frozen score on 320 rows has a Wilson 95% interval of about 86.2-92.8%; a 95% score has an interval of about 92.0-96.9%. Report the interval, not only the point estimate.
+- Observing zero critical failures in 320 rows leaves a one-sided 95% upper bound of about 0.93% per case. Zero in all 1,600 rows lowers that bound to about 0.19%. A zero-observed rule is a strong release gate, not proof that the true failure probability is literally zero.
+- Paired-comparison power depends on how often current and candidate disagree, not only total sample size. After a blinded development pilot, compute exact McNemar power from the observed discordant rate. If a five-point net change would have less than 80% power after five-language correction, increase the frozen sample before sealing it; never add rows after seeing frozen model results.
 
 ## Native review
 

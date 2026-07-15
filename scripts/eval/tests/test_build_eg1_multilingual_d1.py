@@ -1,0 +1,439 @@
+#!/usr/bin/env python3
+"""Tests for the D1 allocation and fail-closed export gate.
+
+The generated strings below are disposable validator fixtures. They are not
+training examples and are written only inside a temporary test directory.
+"""
+
+from __future__ import annotations
+
+import copy
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from collections import Counter
+from pathlib import Path
+
+
+EVAL_DIR = Path(__file__).resolve().parents[1]
+REPO_ROOT = EVAL_DIR.parents[1]
+sys.path.insert(0, str(EVAL_DIR))
+
+import build_eg1_multilingual_d1 as d1  # noqa: E402
+
+
+CONTRACT_PATH = EVAL_DIR / "eg1_multilingual_d1_contract_v1.json"
+PROMPT_PATH = EVAL_DIR / "prompts" / "eg1-list-aware-v2.txt"
+SCRIPT_PATH = EVAL_DIR / "build_eg1_multilingual_d1.py"
+
+
+def write_json(path: Path, value: object) -> None:
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def make_contract(*, training: bool, release: bool) -> dict[str, object]:
+    contract = copy.deepcopy(d1.read_json(CONTRACT_PATH))
+    contract["prompt"]["path"] = str(PROMPT_PATH)
+    contract["approval"] = {
+        "training_export_allowed": training,
+        "release_export_allowed": release,
+        "approved_by": "test-reviewer" if training else None,
+        "approval_reference": "test-only" if training else None,
+    }
+    if release:
+        contract["prompt"]["development_only"] = False
+    return contract
+
+
+def make_registry(*, sealed: bool) -> dict[str, object]:
+    groups = {
+        name: {
+            "status": "complete" if sealed else "pending",
+            "source_artifact_sha256": "a" * 64 if sealed else None,
+        }
+        for name in d1.read_json(CONTRACT_PATH)["blocked_registry_required_groups"]
+    }
+    return {
+        "schema_version": d1.REGISTRY_SCHEMA,
+        "registry_id": "test-registry",
+        "status": "sealed" if sealed else "draft",
+        "required_groups": groups,
+        "exact_family_ids": [],
+        "family_prefixes": ["LF-", "LFT-"],
+        "semantic_origin_ids": [],
+        "normalized_input_sha256": [],
+        "normalized_output_sha256": [],
+    }
+
+
+def make_rows(slots: list[dict[str, object]], *, approved: bool) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for slot in slots:
+        family_id = str(slot["family_id"])
+        language = str(slot["language"])
+        stratum = str(slot["stratum"])
+        if stratum == "positive_list":
+            marker = "{index}." if slot["list_type"] == "explicit_numbering" else "-"
+            lines = [
+                f"{marker.format(index=index) if '{index}' in marker else marker} item {index} {family_id}"
+                for index in range(1, int(slot["item_count"]) + 1)
+            ]
+            output = "\n".join(lines)
+            formatting = "numbered" if slot["list_type"] == "explicit_numbering" else "bullets"
+            input_text = f"positive request {language} {family_id} alpha beta gamma"
+        elif stratum == "matched_restraint":
+            output = f"Ordinary restraint prose for {family_id}."
+            formatting = "prose"
+            input_text = f"narrative restraint {language} {family_id} ordinary sentence"
+        else:
+            output = f"Clean core prose for {family_id}."
+            formatting = "prose"
+            input_text = f"raw core dictation {language} {family_id} unique sentence"
+        high_risk = slot["safety_risk"] in {"medical", "legal", "financial"}
+        row = dict(slot)
+        row.update(
+            {
+                "semantic_origin_id": f"ORIGIN-{family_id}",
+                "semantic_scenario_id": f"SCENARIO-{family_id}",
+                "authoring_template_id": f"TEMPLATE-{family_id}",
+                "source_provenance": {
+                    "source_id": f"SOURCE-{family_id}",
+                    "author_id": f"AUTHOR-{language}",
+                    "author_type": "human_native",
+                    "author_language": language,
+                    "origin_mode": slot["origin_mode"],
+                },
+                "input": input_text,
+                "output": output,
+                "checks": {
+                    "meaning": [f"meaning-{family_id}"],
+                    "entities": [],
+                    "numbers": [],
+                    "timing": ["preserve timing"] if high_risk else [],
+                    "attribution": ["preserve attribution"] if high_risk else [],
+                    "formatting": formatting,
+                    "compound_scope": ["preserve shared scope"],
+                },
+                "native_reviewed": approved,
+                "native_review": {
+                    "status": "approved" if approved else "pending",
+                    "reviewer_id": f"REVIEWER-{language}" if approved else None,
+                    "reviewer_type": "human_native" if approved else None,
+                    "reviewer_language": language if approved else None,
+                    "reviewed_at": "2026-07-15T05:00:00Z" if approved else None,
+                    "notes": "test fixture",
+                },
+            }
+        )
+        rows.append(row)
+    return rows
+
+
+def make_leakage_receipt(
+    rows_path: Path, registry_path: Path, prompt_sha256: str
+) -> dict[str, object]:
+    return {
+        "schema_version": d1.LEAKAGE_SCHEMA,
+        "status": "pass",
+        "candidate_rows_sha256": d1.sha256_file(rows_path),
+        "blocked_registry_sha256": d1.sha256_file(registry_path),
+        "prompt_sha256": prompt_sha256,
+        "checks": {
+            name: {"status": "pass", "matches": 0}
+            for name in d1.read_json(CONTRACT_PATH)["leakage_receipt_required_checks"]
+        },
+    }
+
+
+class D1BuilderTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.contract = d1.read_json(CONTRACT_PATH)
+        cls.slots = d1.build_slots(cls.contract)
+
+    def test_full_plan_is_deterministic_and_balanced(self) -> None:
+        self.assertFalse(self.contract["approval"]["training_export_allowed"])
+        self.assertFalse(self.contract["approval"]["release_export_allowed"])
+        self.assertTrue(self.contract["prompt"]["development_only"])
+        registry_template = d1.read_json(
+            REPO_ROOT
+            / "docs"
+            / "experiments"
+            / "eg1-multilingual"
+            / "D1-BLOCKED-FAMILY-REGISTRY-TEMPLATE-V1.json"
+        )
+        self.assertEqual(registry_template["status"], "draft")
+        self.assertEqual(self.slots, d1.build_slots(self.contract))
+        self.assertEqual(len(self.slots), 2000)
+        for language in self.contract["languages"]:
+            rows = [slot for slot in self.slots if slot["language"] == language]
+            self.assertEqual(len(rows), 400)
+            self.assertEqual(
+                Counter(slot["stratum"] for slot in rows),
+                Counter({"core": 120, "positive_list": 140, "matched_restraint": 140}),
+            )
+            positives = [slot for slot in rows if slot["stratum"] == "positive_list"]
+            restraints = [slot for slot in rows if slot["stratum"] == "matched_restraint"]
+            self.assertEqual(Counter(slot["item_count"] for slot in positives), Counter({2: 35, 3: 35, 5: 35, 7: 35}))
+            self.assertEqual(set(Counter(slot["list_type"] for slot in positives).values()), {28})
+            self.assertEqual(set(Counter(slot["domain"] for slot in positives).values()), {28})
+            self.assertEqual(set(Counter(slot["length_bucket"] for slot in positives).values()), {35})
+            self.assertEqual(set(Counter(slot["restraint_type"] for slot in restraints).values()), {20})
+            self.assertEqual(Counter(slot["origin_mode"] for slot in rows), Counter({"native_original": 320, "shared_concept_independent_rewrite": 80}))
+            self.assertEqual(
+                set(Counter((slot["item_count"], slot["list_type"]) for slot in positives).values()),
+                {7},
+            )
+            self.assertEqual(
+                set(Counter((slot["item_count"], slot["domain"]) for slot in positives).values()),
+                {7},
+            )
+            domain_length_counts = Counter(
+                (slot["domain"], slot["length_bucket"]) for slot in positives
+            ).values()
+            self.assertGreaterEqual(min(domain_length_counts), 6)
+            self.assertLessEqual(max(domain_length_counts), 8)
+        self.assertEqual(d1.verify_plan(self.contract, self.slots), [])
+
+    def test_draft_accepts_pending_review_but_training_does_not(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            contract_path = root / "contract.json"
+            rows_path = root / "rows.jsonl"
+            registry_path = root / "registry.json"
+            receipt_path = root / "receipt.json"
+            report_path = root / "training-report.json"
+            output_path = root / "training.jsonl"
+            contract = make_contract(training=True, release=False)
+            write_json(contract_path, contract)
+            write_jsonl(rows_path, make_rows(self.slots, approved=False))
+            write_json(registry_path, make_registry(sealed=True))
+            write_json(
+                receipt_path,
+                make_leakage_receipt(rows_path, registry_path, contract["prompt"]["sha256"]),
+            )
+            draft, _ = d1.evaluate(
+                contract_path=contract_path,
+                rows_path=rows_path,
+                registry_path=registry_path,
+                purpose="draft",
+                leakage_receipt_path=None,
+            )
+            self.assertEqual(draft["status"], "pass")
+            self.assertFalse(draft["eligible_for_training_export"])
+            training, _ = d1.evaluate(
+                contract_path=contract_path,
+                rows_path=rows_path,
+                registry_path=registry_path,
+                purpose="training",
+                leakage_receipt_path=None,
+            )
+            self.assertEqual(training["status"], "fail")
+            self.assertTrue(any("native review" in item for item in training["promotion_blockers"]))
+            process = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT_PATH),
+                    "validate",
+                    "--contract",
+                    str(contract_path),
+                    "--rows",
+                    str(rows_path),
+                    "--blocked-registry",
+                    str(registry_path),
+                    "--purpose",
+                    "training",
+                    "--leakage-receipt",
+                    str(receipt_path),
+                    "--report",
+                    str(report_path),
+                    "--output",
+                    str(output_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(process.returncode, 2)
+            self.assertFalse(output_path.exists())
+
+    def test_draft_never_claims_training_or_release_eligibility(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            contract_path = root / "contract.json"
+            rows_path = root / "rows.jsonl"
+            registry_path = root / "registry.json"
+            write_json(contract_path, make_contract(training=False, release=False))
+            write_jsonl(rows_path, make_rows(self.slots, approved=True))
+            write_json(registry_path, make_registry(sealed=True))
+            report, _ = d1.evaluate(
+                contract_path=contract_path,
+                rows_path=rows_path,
+                registry_path=registry_path,
+                purpose="draft",
+                leakage_receipt_path=None,
+            )
+            self.assertEqual(report["status"], "pass")
+            self.assertFalse(report["eligible_for_training_export"])
+            self.assertFalse(report["eligible_for_release_export"])
+
+    def test_unsealed_blocked_registry_stops_training(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            contract_path = root / "contract.json"
+            rows_path = root / "rows.jsonl"
+            registry_path = root / "registry.json"
+            receipt_path = root / "receipt.json"
+            contract = make_contract(training=True, release=False)
+            write_json(contract_path, contract)
+            write_jsonl(rows_path, make_rows(self.slots, approved=True))
+            write_json(registry_path, make_registry(sealed=False))
+            write_json(receipt_path, make_leakage_receipt(rows_path, registry_path, contract["prompt"]["sha256"]))
+            report, _ = d1.evaluate(
+                contract_path=contract_path,
+                rows_path=rows_path,
+                registry_path=registry_path,
+                purpose="training",
+                leakage_receipt_path=receipt_path,
+            )
+            self.assertEqual(report["status"], "fail")
+            self.assertTrue(any("registry" in item for item in report["promotion_blockers"]))
+
+    def test_approved_rows_and_sealed_receipts_export_training_data(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            contract_path = root / "contract.json"
+            rows_path = root / "rows.jsonl"
+            registry_path = root / "registry.json"
+            receipt_path = root / "receipt.json"
+            report_path = root / "report.json"
+            output_path = root / "training.jsonl"
+            contract = make_contract(training=True, release=False)
+            write_json(contract_path, contract)
+            write_jsonl(rows_path, make_rows(self.slots, approved=True))
+            write_json(registry_path, make_registry(sealed=True))
+            write_json(receipt_path, make_leakage_receipt(rows_path, registry_path, contract["prompt"]["sha256"]))
+            process = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT_PATH),
+                    "validate",
+                    "--contract",
+                    str(contract_path),
+                    "--rows",
+                    str(rows_path),
+                    "--blocked-registry",
+                    str(registry_path),
+                    "--purpose",
+                    "training",
+                    "--leakage-receipt",
+                    str(receipt_path),
+                    "--report",
+                    str(report_path),
+                    "--output",
+                    str(output_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(process.returncode, 0, process.stderr)
+            self.assertTrue(output_path.is_file())
+            self.assertEqual(len(d1.read_jsonl(output_path)), 2000)
+            manifest = d1.read_json(output_path.with_suffix(".jsonl.manifest.json"))
+            self.assertEqual(manifest["native_reviewed_count"], 2000)
+
+    def test_release_export_needs_separate_approval_and_nondevelopment_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            contract_path = root / "contract.json"
+            rows_path = root / "rows.jsonl"
+            registry_path = root / "registry.json"
+            receipt_path = root / "receipt.json"
+            contract = make_contract(training=True, release=False)
+            write_json(contract_path, contract)
+            write_jsonl(rows_path, make_rows(self.slots, approved=True))
+            write_json(registry_path, make_registry(sealed=True))
+            write_json(receipt_path, make_leakage_receipt(rows_path, registry_path, contract["prompt"]["sha256"]))
+            report, _ = d1.evaluate(
+                contract_path=contract_path,
+                rows_path=rows_path,
+                registry_path=registry_path,
+                purpose="release",
+                leakage_receipt_path=receipt_path,
+            )
+            self.assertEqual(report["status"], "fail")
+            self.assertIn("D1 contract has no release-export approval", report["promotion_blockers"])
+            self.assertIn("development-only prompt cannot produce release data", report["promotion_blockers"])
+
+    def test_blocked_origin_and_reused_pair_template_are_rejected(self) -> None:
+        rows = make_rows(self.slots, approved=True)
+        positive = next(row for row in rows if row["stratum"] == "positive_list")
+        restraint = next(row for row in rows if row["pair_id"] == positive["pair_id"] and row["stratum"] == "matched_restraint")
+        restraint["authoring_template_id"] = positive["authoring_template_id"]
+        registry = make_registry(sealed=True)
+        positive["semantic_origin_id"] = "LF-001"
+        synthetic = next(row for row in rows if row["family_id"] != positive["family_id"])
+        synthetic["source_provenance"]["author_type"] = "synthetic_native"
+        synthetic["source_provenance"].update(
+            {
+                "author_model_id": "same-model",
+                "author_configuration_id": "same-config",
+                "critic_model_id": "same-model",
+                "critic_configuration_id": "same-config",
+            }
+        )
+        errors, _, _ = d1.validate_candidate_rows(self.contract, self.slots, rows, registry)
+        self.assertTrue(any("semantic origin is blocked" in item for item in errors))
+        self.assertTrue(any("reuse an authoring template" in item for item in errors))
+        self.assertTrue(any("synthetic author and critic are identical" in item for item in errors))
+
+    def test_positive_list_markers_must_match_the_allocated_list_type(self) -> None:
+        rows = make_rows(self.slots, approved=True)
+        numbered = next(
+            row
+            for row in rows
+            if row["stratum"] == "positive_list"
+            and row["list_type"] == "explicit_numbering"
+        )
+        numbered["output"] = "\n".join(
+            f"- wrong bullet {index} {numbered['family_id']}"
+            for index in range(1, numbered["item_count"] + 1)
+        )
+        bulleted = next(
+            row
+            for row in rows
+            if row["stratum"] == "positive_list"
+            and row["list_type"] != "explicit_numbering"
+        )
+        bulleted["output"] = "\n".join(
+            f"{index}. wrong number {bulleted['family_id']}"
+            for index in range(1, bulleted["item_count"] + 1)
+        )
+        errors, _, _ = d1.validate_candidate_rows(
+            self.contract, self.slots, rows, make_registry(sealed=True)
+        )
+        self.assertTrue(
+            any(
+                numbered["family_id"] in item and "numbered markers" in item
+                for item in errors
+            )
+        )
+        self.assertTrue(
+            any(
+                bulleted["family_id"] in item and "bullet markers" in item
+                for item in errors
+            )
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

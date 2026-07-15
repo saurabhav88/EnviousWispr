@@ -157,7 +157,7 @@ Interpretation for EG-1:
 - Prompt engineering can plausibly reduce translation, extra commentary, and inconsistent output language when the base already has the language.
 - Prompt engineering cannot reliably teach missing Russian inflections, language-specific filler behavior, or cleanup patterns absent from the weights.
 - A small, balanced multilingual SFT experiment is justified if prompt tests still damage grammar or meaning. It must include English replay and task-specific examples rather than translated generic chat alone.
-- A separate language-specific model is not the first move. It becomes justified only if the untouched Qwen base fails the task in that language, or a balanced tune cannot reach the morphology/safety gates without hurting English.
+- A separate full language model is never an allowed fallback. If universal training fails after the predeclared dose ladder, language-specific adaptation may proceed only as a delta adapter over one shared base.
 
 Decision:
 
@@ -309,13 +309,12 @@ Hard product constraints:
 - Acceptable fallback only if one multilingual model cannot pass per-language gates: one shared approximately 2.7 GB Qwen base plus one small user-selected regional adapter.
 - Rejected as a dealbreaker: separate approximately 2.9 GB full models for English, German, Russian, French, and other languages.
 
-Runtime feasibility verified:
+Runtime capability inspection at this point in the run (superseded by exact-Mac `ARCH-003`):
 
 - The exact bundled `llama-server` accepts multiple `--lora` adapters.
-- It supports `--lora-init-without-apply`, global `POST /lora-adapters`, and a per-request `lora` field.
-- Per-request selection is the safer app design because global switching can race.
-- Requests with different adapter configurations are not batched together; that is a small concern for a single-user local app.
-- Prompt/KV caches must be isolated by adapter identity.
+- Its documentation advertises `--lora-init-without-apply`, global `POST /lora-adapters`, and a per-request `lora` field.
+- This was only an API-surface hypothesis. Later exact-Mac testing found that the bundled build ignored per-request selection and that inactive preloaded adapters changed deterministic output. The only approved prototype starts or restarts the server with exactly one selected adapter.
+- Future switching support must prove all-inactive output equals the pure base and one-active multi-loaded output equals that same adapter loaded alone, both byte-for-byte. A merged GGUF is not the isolation oracle.
 
 Official reference: <https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md#post-lora-adapters>
 
@@ -423,7 +422,7 @@ Status: founder decision recorded
 
 - Acceptable: one larger full model when it reliably supports every chosen language offline.
 - Acceptable fallback: one shared full model plus small optional regional LoRA adapters.
-- Rejected and disqualified regardless of quality score: requiring a user to download multiple full-size models to obtain multilingual polishing. This is not a weighted tradeoff.
+- Rejected and disqualified regardless of quality score: requiring one user to install more than one complete base-weight set to obtain multilingual polishing. This is not a weighted tradeoff.
 - Ranking rule: artifact size, Mac memory, latency, and power are weighted costs in the base-model scorecard, not hard exclusions by themselves.
 
 This clarification restores Gemma 4 E4B to the serious-candidate lane. A single larger universal download can win. No architecture experiment may propose separate full English, German, French, Russian, or Spanish downloads.
@@ -617,7 +616,7 @@ Status: proposed matrix; final measurements pending
 
 The candidate matrix now uses hard architecture/safety/runtime gates followed by a 100-point weighted rank. Quality and safety control 65 points; deployment cost controls 25 points, including 8 points for exact download size; engineering and licensing control 10 points.
 
-This implements the founder decision precisely: file size matters, but a single larger universal model can win. Any design requiring multiple full-size language downloads is disqualified before scoring. Exact candidate GGUF size, Mac memory, latency, power, runtime parity, and sealed multilingual quality remain pending.
+This implements the founder decision precisely: file size matters, but a single larger universal model can win. Any design requiring one user to install more than one complete base-weight set is disqualified before scoring. Exact candidate GGUF size, Mac memory, latency, power, runtime parity, and sealed multilingual quality remain pending.
 
 Full matrix: `docs/experiments/eg1-multilingual/MODEL-SCORECARD-V1.md`.
 
@@ -627,10 +626,10 @@ Timestamp: 2026-07-15 02:36 EDT
 
 Status: hard product constraint
 
-Founder clarification: any multilingual architecture that requires one user to download multiple full-size language models is unacceptable, not merely a lower-scoring option. It is now a hard disqualifier before model ranking. The only allowed deployment shapes are:
+Founder clarification: any multilingual architecture that requires one user to install more than one complete base-weight set is unacceptable, not merely a lower-scoring option. It is now a hard disqualifier before model ranking. The only allowed deployment shapes are:
 
 1. one universal full model that handles every supported language; or
-2. one shared full base plus small, hot-swappable language adapters if a universal tune cannot reach the quality gates.
+2. one shared full base plus small delta-only language adapters if a universal tune cannot reach the quality gates. The current safe runtime shape loads exactly one selected adapter at server start; hot-swapping is not approved.
 
 A larger single universal model is allowed. Exact download size remains an 8-point weighted factor among architectures that pass this gate. Polishing must remain fully offline after the initial model or adapter download.
 
@@ -1142,3 +1141,101 @@ Two distinct 63 MiB adapters were then loaded together. The global endpoint swit
 Additional runtime caveats: the bundled build did not honor per-request adapter selection in this probe; the global offline endpoint did work. A deliberately excessive scale-100 stress probe caused runaway generation and was terminated, so production switching must restrict adapter IDs and scales to approved values such as 0 or 1.
 
 Decision: one shared base plus small adapters is a valid download/storage fallback. Simultaneously preloading multiple adapters and treating scale 0 as clean isolation is rejected for the current bundled server. The safe fallback prototype is to start or restart the local server with exactly one selected adapter; observed model load was about 0.55-1.18 seconds, still fully offline. A newer runtime may later restore true hot-swapping, but it must prove inactive-adapter parity first. This does not beat the preferred one-universal-model path, and no language adapter is approved until it passes the same held-out, native-review, safety, and exact-Mac gates.
+
+### ARCH-004 - Adapter memory cost and upstream check
+
+Timestamp: 2026-07-15 04:53 EDT
+
+Status: exact-Mac idle memory measured; no upstream fix assumed
+
+The exact bundled server was restarted three times with identical base, context, flash-attention, and Q8 KV-cache flags. Measurements were taken after readiness and before inference, with warm filesystem cache.
+
+| Loaded configuration | RSS | Delta from base | `vmmap` physical footprint | Readiness |
+|---|---:|---:|---:|---:|
+| Q5 base only | 4,178,240 KiB | - | 1.3 GiB | 766 ms |
+| Base + one 63 MiB adapter | 4,259,104 KiB | 80,864 KiB (79.0 MiB) | 1.3 GiB, 1.4 GiB peak | 697 ms |
+| Base + two 63 MiB adapters | 4,324,256 KiB | 146,016 KiB (142.6 MiB) | 1.4 GiB, 1.5 GiB peak | 733 ms |
+
+Each additional rank-16 F16 LoRA therefore adds roughly its file size to idle resident memory, with low sub-second warm-load overhead. The RSS absolute value includes mapped model pages and differs from Apple's physical-footprint accounting, so the within-run deltas are the relevant comparison.
+
+Storage projection using the measured Qwen artifacts: base plus one adapter is about 2.75 GiB; base plus four non-English adapters is about 2.94 GiB; base plus five adapters is about 3.00 GiB. Five separate copies of the 2.69 GiB full model would be about 13.45 GiB and remains categorically disqualified.
+
+The bundled llama.cpp commit is `fdb1db877c526ec90f668eca1b858da5dba85560` from 2026-07-02. Upstream `master` was 161 commits ahead at the time of this check, but none of those commit subjects mentioned LoRA and no matching public issue was found for inactive scale-0 adapter interference. That is not evidence of a fix. Do not upgrade the runtime or promise seamless hot-swapping until the same pure-base/single/dual parity probe passes on a candidate build.
+
+### DATA-005 - Low-dose multilingual smoke coverage audit
+
+Timestamp: 2026-07-15 04:57 EDT
+
+Status: complete; smoke-data claims narrowed
+
+The 5,836-row smoke corpus contains the original 5,656 rows plus exactly 180 additions:
+
+| Language | Added rows |
+|---|---:|
+| German | 40 |
+| Spanish | 40 |
+| French | 40 |
+| Russian | 40 |
+| English | 20 |
+
+The 20 English additions are ten explicit-list and ten ordinal-list rows. Each non-English language has only three to six rows in each of nine broad categories: filler/correction, explicit list, implicit list, list trap, morphology preserve, morphology repair, ordinal list, preservation, and punctuation.
+
+All 180 additions list `source: claude-sonnet-4-6` and `native_reviewed: false`. They have category and family labels but no domain or high-risk safety stratum. The non-English share is 160/5,836 (2.74%), or only 40 rows (0.69%) per target language.
+
+Decision: the completed low-dose experiments are valid directional screens for base and recipe behavior, but they cannot answer whether a carefully balanced, native-validated universal model will work. The next data-dose experiment must not reuse this tiny synthetic-only mixture as evidence against the universal architecture.
+
+### STAT-002 - Sample-size interpretation tightened
+
+Timestamp: 2026-07-15 04:59 EDT
+
+Status: benchmark protocol updated before frozen data exists
+
+Wilson interval calculations make the current evidence limits concrete:
+
+- 144/160 (90%) development strict has a 95% interval of 84.4-93.8%; it cannot establish a 94-95% release claim.
+- 288/320 (90%) frozen strict has a 95% interval of 86.2-92.8%.
+- 304/320 (95%) frozen strict has a 95% interval of 92.0-96.9%.
+- Zero critical failures in 320 rows leaves a one-sided 95% upper bound of about 0.93% per case; zero in all 1,600 leaves about 0.19%.
+
+Paired McNemar power depends on the observed current-versus-candidate disagreement rate. The protocol now requires a blinded development pilot power calculation and expansion before frozen sealing when a five-point net change would have less than 80% power after five-language correction. Frozen sample size cannot change after model results are seen.
+
+### HARNESS-005 - Multilingual V2 corpus and native-rating gates implemented
+
+Timestamp: 2026-07-15 05:16 EDT
+
+Status: model-blind tooling complete; no real or frozen corpus authored
+
+The V2 validator, corpus schema, rating schema, tests, and specification now mechanically enforce the release protocol before any candidate output is seen:
+
+- exactly 160 development and 320 frozen rows per language across English, German, French, Spanish, and Russian;
+- all 16 behaviors and five domains, with every behavior-by-domain cell fixed at two development and four frozen rows per language;
+- whole-family split isolation, matched list-activation/restraint contrasts, at least 80% native-original authoring, independent native validation for every frozen row, and normalized Unicode leakage screening;
+- pinned training, prior-evaluation, and blocked-family sources plus exact, token, character, and embedding leakage receipts;
+- two distinct blinded native initial ratings for every frozen case/model, third-reviewer adjudication for every axis or severity disagreement, and at least 10% repeated ratings globally, per reviewer, and per language/model arm;
+- recomputation of every corpus-derived benchmark-manifest field and exact binding of the rating manifest to that benchmark manifest.
+
+Independent main-thread validation passed Python compilation, both JSON schemas, CLI help, and the complete evaluation test discovery: 36/36 tests passed. The tests use synthetic fixtures only. No real candidate output or frozen benchmark content was opened.
+
+### DATA-006 - D1 universal multilingual training-data builder implemented
+
+Timestamp: 2026-07-15 05:17 EDT
+
+Status: allocation and fail-closed export gate complete; no D1 examples authored or trained
+
+The D1 contract deterministically allocates 2,000 training families: 400 each for English, German, French, Spanish, and Russian. Each language receives 120 core-polish, 140 positive-list, and 140 matched-restraint rows. Positive lists balance two, three, five, and seven items; list type, domain, length, difficulty, safety, and restraint axes are explicitly checked.
+
+Training export remains impossible in the checked-in state. It requires all 2,000 rows to receive independent human-native approval, a sealed blocked-family registry covering old training/evaluation and the new benchmarks, passing exact/token/character/embedding leakage receipts bound to current artifact hashes, prompt-hash parity, and explicit training approval. Release export has a separate approval and forbids the development-only prompt.
+
+Main review fixed two fail-closed issues before acceptance: draft reports can never claim training eligibility, and actual numbered-versus-bullet marker shapes must match the allocated list type. Python compilation, contract/registry JSON parsing, and 8/8 focused tests passed. No examples were generated and no training started.
+
+### ARCH-005 - Download gate made loophole-proof
+
+Timestamp: 2026-07-15 05:18 EDT
+
+Status: hard gate clarified after independent architecture audit
+
+The earlier phrase `multiple full-size models` was directionally correct but undefined. It could be evaded by renaming a complete per-language model as compact, regional, optional, or an adapter. The gate now rejects any design where one user must install more than one complete base-weight set to enable any two claimed languages. Shards of one base count together as one base; a permitted adapter must be delta-only, cannot duplicate the base tensors, and cannot run independently as a complete model.
+
+Universal Tier A remains preferred. Shared-base-plus-adapter Tier B enters finalist ranking only after the predeclared universal data-dose ladder fails or plateaus. Download ranking now uses the complete five-language footprint, not base-only or the smallest selected-language package. At measured Qwen sizes, base plus one adapter is about 2.75 GiB and base plus five same-sized adapters is about 3.00 GiB; five separate full models would be about 13.45 GiB and is never scored.
+
+The audit also corrected the runtime oracle. A future multi-adapter implementation must prove that all-inactive output equals the pure base and one-active multi-loaded output equals that adapter loaded alone, byte-for-byte. The merged GGUF is a separate release artifact because merge and quantization order can change output.

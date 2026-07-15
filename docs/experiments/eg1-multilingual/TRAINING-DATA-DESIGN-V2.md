@@ -22,7 +22,7 @@ The original 5,656-row training set has 259 outputs with at least two list lines
 
 It also contains 80 `LF-*` and 80 `LFT-*` rows copied directly from the old benchmark. The old 94-95% style headline therefore mixes real learning with train/test leakage and does not estimate family-level generalization.
 
-The first multilingual smoke added only 160 non-English rows, 2.74% of the 5,836-row mixture. It was a direction screen, not a serious test of universal multilingual capacity. The prompt-aligned Gemma experiment improved Russian but regressed English lists and introduced medical timing damage. That result rejects the exact low-dose recipe, not universal multilingual tuning.
+The first multilingual smoke added only 160 non-English rows, 2.74% of the 5,836-row mixture: 40 synthetic rows each for German, French, Spanish, and Russian, plus 20 synthetic English list rows. Every added row was marked `native_reviewed: false`, and the schema had no domain or high-risk safety stratum. It was a direction screen, not a serious test of universal multilingual capacity. The prompt-aligned Gemma experiment improved Russian but regressed English lists and introduced medical timing damage. That result rejects the exact low-dose recipe, not universal multilingual tuning.
 
 ## Data contract
 
