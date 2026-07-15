@@ -150,6 +150,7 @@ class EG1ShippedRequestTests(unittest.TestCase):
         *,
         partial_responses: int = 0,
         poison_proxy: bool = False,
+        expected_returncode: int = 0,
     ) -> tuple[dict, dict]:
         _FakeHandler.response_payload = response_payload
         _FakeHandler.request_bodies = []
@@ -183,7 +184,7 @@ class EG1ShippedRequestTests(unittest.TestCase):
                     env["all_proxy"] = "http://127.0.0.1:1"
                     env["NO_PROXY"] = ""
                     env["no_proxy"] = ""
-                subprocess.run(
+                process = subprocess.run(
                     [
                         sys.executable,
                         str(EVAL_DIR / "subset_polish_runner.py"),
@@ -200,10 +201,11 @@ class EG1ShippedRequestTests(unittest.TestCase):
                         str(output),
                     ],
                     env=env,
-                    check=True,
+                    check=False,
                     capture_output=True,
                     text=True,
                 )
+                self.assertEqual(process.returncode, expected_returncode)
                 result = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(
                 len(_FakeHandler.request_bodies), partial_responses + 1
@@ -244,7 +246,8 @@ class EG1ShippedRequestTests(unittest.TestCase):
                         "message": {"content": "partial"},
                     }
                 ]
-            }
+            },
+            expected_returncode=2,
         )
         self.assertEqual(result["candidate"], "")
         self.assertIn("output_truncated", result["error"])
@@ -323,6 +326,44 @@ class EG1ShippedRequestTests(unittest.TestCase):
             self.assertNotEqual(process.returncode, 0)
             self.assertIn("requires a local OpenAI-compatible endpoint", combined)
             self.assertNotIn(sentinel, combined)
+            self.assertFalse(output.exists())
+
+    def test_exact_runner_rejects_duplicate_prompt_ids_before_network(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            prompts = root / "prompts.jsonl"
+            output = root / "output.jsonl"
+            duplicate = {
+                "id": "WIRE-DUPLICATE",
+                "system": "copy edit",
+                "user": "<TRANSCRIPT>\nx\n</TRANSCRIPT>",
+                "max_tokens": 256,
+            }
+            prompts.write_text(
+                json.dumps(duplicate) + "\n" + json.dumps(duplicate) + "\n",
+                encoding="utf-8",
+            )
+            process = subprocess.run(
+                [
+                    sys.executable,
+                    str(EVAL_DIR / "subset_polish_runner.py"),
+                    "--prompts",
+                    str(prompts),
+                    "--provider",
+                    "openai",
+                    "--model",
+                    "eg-1",
+                    "--endpoint",
+                    "http://127.0.0.1:1/v1/chat/completions",
+                    "--eg1-shipped-request",
+                    "--out",
+                    str(output),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(process.returncode, 0)
+            self.assertIn("duplicate prompt id", process.stdout + process.stderr)
             self.assertFalse(output.exists())
 
 

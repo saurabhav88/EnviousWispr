@@ -1,6 +1,6 @@
 # EG-1 Multilingual Overnight Readout
 
-Status: living draft as of 2026-07-15 07:26 EDT. Development evidence only; no frozen release claim.
+Status: living draft as of 2026-07-15 10:10 EDT. Development evidence only; no frozen release claim.
 
 ## The short answer
 
@@ -85,6 +85,8 @@ No frozen model outputs have been opened. The real corpus cannot pass validation
 
 The D1 universal training-data contract separately allocates 2,000 families: 400 per priority language, balanced across core polishing, positive lists, and matched prose restraints. It cannot export training data until every row is independently native-approved and screened against training and benchmark families.
 
+The broad English Type B gate remains required, but its content must be rebuilt. A fresh audit found shipping training overlaps 1,549/1,890 old Type B rows exactly and exposes 1,866/1,890 through provenance families. The 900 overflow rows have zero exact overlap but 899/900 share exposed families, so they cannot simply replace the training rows. Only 23 rows are provisionally reusable. The replacement target remains 1,890 cases with the original 17-category, four-length-bucket, and 300-trap balance; 1,867 genuinely new model-blind families must be authored and sealed before candidate output. The 75+75 list pilot is a fast diagnostic, never the broad performance claim.
+
 ## Adapter fallback: feasible, but not needed yet
 
 The exact bundled Mac runtime proved the permitted storage shape:
@@ -98,10 +100,10 @@ One selected adapter loaded offline and added about 79 MiB idle memory with sub-
 
 ## Work still in flight
 
-1. Finish and leakage-screen the new 100-positive/100-restraint English list development corpus, which was generated without seeing model outputs.
-2. Run current EG-1 with the shipped prompt and the list-aware prompt through the exact bundled Mac runtime on that new corpus.
-3. Score structure, preservation, false lists, damage proxies, confidence intervals, and paired changes; then run independent semantic cross-review.
-4. Use that result to decide whether any prompt variant survives and whether the next universal Gemma/Qwen training dose should begin.
+1. Commit the completed V2 runner/scorer/blind-review code and independently audited 75+75 corpus as the code anchor, then fill and commit the contract bindings as the only child-commit change.
+2. Run current EG-1 with the shipped prompt and list-aware prompt through that connector-wire-exact Mac path, then score and review blindly.
+3. Author and review the leakage-clean 1,890-case Type B replacement from 1,867 fresh families plus at most 23 provisionally retained rows. The exact balanced manifest contract is built; the fresh questions are not.
+4. Use the diagnostic and broad-gate results to decide whether any prompt survives and whether the next universal Gemma/Qwen data dose should begin.
 
 ## Decisions that are not yet justified
 

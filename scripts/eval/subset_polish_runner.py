@@ -89,6 +89,11 @@ if args.provider == "ollama":
     args.workers = 1
 
 prompts = [json.loads(l) for l in open(args.prompts) if l.strip()]
+prompt_ids = [prompt.get("id") if isinstance(prompt, dict) else None for prompt in prompts]
+if any(not isinstance(prompt_id, str) or not prompt_id for prompt_id in prompt_ids):
+    raise SystemExit("every prompt must have a nonempty string id")
+if len(prompt_ids) != len(set(prompt_ids)):
+    raise SystemExit("duplicate prompt id; refusing to dispatch corrupted evidence")
 exact_local_opener = (
     urllib.request.build_opener(urllib.request.ProxyHandler({}))
     if args.eg1_shipped_request
@@ -266,7 +271,7 @@ with ThreadPoolExecutor(max_workers=args.workers) as ex:
         if done % 100 == 0:
             print(f"  {done}/{len(prompts)} ({int(time.time()-t0)}s)", flush=True)
 
-with open(args.out, "w") as f:
+with open(args.out, "x") as f:
     for p in prompts:
         f.write(json.dumps(results[p["id"]]) + "\n")
 errs = [r for r in results.values() if r.get("error")]
@@ -276,3 +281,4 @@ if lats:
     print(f"latency ms: median={lats[len(lats)//2]} p90={lats[len(lats)*9//10]} max={lats[-1]}")
 if errs:
     print("first errors:", [e["error"] for e in errs[:5]])
+    raise SystemExit(2)

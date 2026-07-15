@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -81,7 +82,18 @@ class SelectionVerificationTests(unittest.TestCase):
         )
         self.assertTrue(verification.receipt["regenerated_first_n_matches"])
         self.assertTrue(verification.receipt["definition_hash_matches_expected_and_sealed"])
-        self.assertTrue(verification.receipt["live_generator_matches_sealed"])
+        self.assertFalse(verification.receipt["live_generator_matches_sealed"])
+        self.assertTrue(verification.receipt["sealed_generator_proof_matches"])
+
+    def test_historical_generator_snapshot_matches_sealed_hash(self) -> None:
+        historical = (
+            assembler.HISTORICAL_GENERATOR_DIR
+            / f"generate_eg1_english_list_benchmark.{self.manifest['generator_sha256'][:8]}.py"
+        )
+        self.assertEqual(
+            benchmark.file_sha256(historical),
+            self.manifest["generator_sha256"],
+        )
 
     def test_rejects_non_first_n_selection(self) -> None:
         manifest = copy.deepcopy(self.manifest)
@@ -223,6 +235,63 @@ class LeakageTests(unittest.TestCase):
 
 
 class SnapshotAndPublicationTests(unittest.TestCase):
+    def test_audit_inventory_hashes_the_same_bytes_it_parses(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            path = Path(raw_directory) / "source.jsonl"
+            first = b'{"id":"first","input":"first source text"}\n'
+            second = b'{"id":"second","input":"replacement source text"}\n'
+            path.write_bytes(first)
+            with patch.object(Path, "read_bytes", side_effect=[first, second]) as read:
+                inputs, inventories, _ = benchmark.load_audit_sources([str(path)])
+            self.assertEqual(read.call_count, 1)
+            self.assertEqual(inventories[0]["sha256"], benchmark.sha256_bytes(first))
+            self.assertEqual(inputs[0].source_id, "first")
+
+    def test_generator_refuses_existing_jsonl_without_changing_it(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            path = Path(raw_directory) / "cases.jsonl"
+            path.write_text("keep\n", encoding="utf-8")
+            with self.assertRaises(FileExistsError):
+                benchmark.write_jsonl(path, [{"id": "new"}])
+            self.assertEqual(path.read_text(encoding="utf-8"), "keep\n")
+
+    def test_generator_short_write_leaves_no_final_file(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            path = root / "cases.jsonl"
+
+            class FailingHandle:
+                def __init__(self, fd: int) -> None:
+                    self.fd = fd
+
+                def __enter__(self) -> "FailingHandle":
+                    return self
+
+                def __exit__(self, *_: object) -> None:
+                    os.close(self.fd)
+
+                def write(self, value: bytes) -> None:
+                    os.write(self.fd, value[:1])
+                    raise OSError("injected short write")
+
+                def flush(self) -> None:
+                    return None
+
+                def fileno(self) -> int:
+                    return self.fd
+
+            with (
+                patch.object(
+                    benchmark.os,
+                    "fdopen",
+                    side_effect=lambda fd, _mode: FailingHandle(fd),
+                ),
+                self.assertRaisesRegex(OSError, "injected short write"),
+            ):
+                benchmark.write_jsonl(path, [{"id": "new"}])
+            self.assertFalse(path.exists())
+            self.assertEqual(list(root.glob(".cases.jsonl.*")), [])
+
     def test_source_mutation_after_sealing_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             path = Path(raw_directory) / "source.jsonl"

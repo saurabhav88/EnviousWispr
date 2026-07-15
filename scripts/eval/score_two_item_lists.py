@@ -64,8 +64,14 @@ def structure_ok(output: str) -> tuple[bool, int, list[str]]:
     lines = [line.strip() for line in output.splitlines() if line.strip()]
     bullets = [line for line in lines if BULLET_RE.match(line)]
     other = [line for line in lines if not BULLET_RE.match(line)]
-    allowed_header = len(other) <= 1 and (not other or other[0].endswith(":") or other[0].endswith("—"))
-    return len(bullets) == 2 and allowed_header, len(bullets), other
+    bare_list = len(lines) == 2 and len(bullets) == 2
+    headed_list = (
+        len(lines) == 3
+        and not BULLET_RE.match(lines[0])
+        and (lines[0].endswith(":") or lines[0].endswith("—"))
+        and all(BULLET_RE.match(line) for line in lines[1:])
+    )
+    return bare_list or headed_list, len(bullets), other
 
 
 def main() -> None:

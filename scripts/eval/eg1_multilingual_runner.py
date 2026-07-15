@@ -91,8 +91,29 @@ def tokenizer_hashes(path: Path) -> dict[str, str]:
     return hashes
 
 
+def prepare_output_paths(output_path: Path) -> Path:
+    manifest_path = output_path.with_suffix(output_path.suffix + ".manifest.json")
+    collisions = [path for path in (output_path, manifest_path) if path.exists()]
+    if collisions:
+        rendered = ", ".join(str(path) for path in collisions)
+        raise SystemExit(f"Refusing to overwrite existing experiment evidence: {rendered}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    return manifest_path
+
+
+def write_bound_manifest(
+    manifest: dict[str, Any], *, output_path: Path, manifest_path: Path
+) -> None:
+    manifest["output_sha256"] = sha256(output_path)
+    with manifest_path.open("x", encoding="utf-8") as handle:
+        handle.write(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+
+
 def main() -> None:
     args = parse_args()
+
+    output_path = Path(args.output).resolve()
+    manifest_path = prepare_output_paths(output_path)
 
     import torch
     from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
@@ -102,8 +123,6 @@ def main() -> None:
     tokenizer_path = Path(os.path.expanduser(args.tokenizer or args.model)).resolve()
     corpus_path = Path(args.corpus).resolve()
     prompt_path = Path(args.prompt).resolve()
-    output_path = Path(args.output).resolve()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     selected_languages = {item.strip() for item in args.languages.split(",") if item.strip()}
     rows: list[dict[str, Any]] = []
@@ -195,7 +214,7 @@ def main() -> None:
     }
 
     started = time.perf_counter()
-    with output_path.open("w", encoding="utf-8") as output_handle:
+    with output_path.open("x", encoding="utf-8") as output_handle:
         for batch_start in range(0, len(rows), args.batch_size):
             batch = rows[batch_start : batch_start + args.batch_size]
             conversations: list[list[dict[str, str]]] = []
@@ -272,10 +291,7 @@ def main() -> None:
 
     manifest["elapsed_seconds"] = round(time.perf_counter() - started, 3)
     manifest["completed_at_epoch"] = time.time()
-    manifest_path = output_path.with_suffix(output_path.suffix + ".manifest.json")
-    manifest_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    write_bound_manifest(manifest, output_path=output_path, manifest_path=manifest_path)
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
 
 

@@ -11,7 +11,9 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import re
+import tempfile
 import unicodedata
 from collections import defaultdict
 from pathlib import Path
@@ -21,6 +23,23 @@ from typing import Any, Callable
 BULLET_RE = re.compile(r"^\s*[-*•]\s+(\S.*)$")
 NUMBER_RE = re.compile(r"^\s*(\d+)[.)]\s+(\S.*)$")
 AXES = ("domain", "case_type", "item_count", "length_bucket", "compound_required")
+
+
+def publish_exclusive(
+    path: Path, value: bytes, before_link: Callable[[], None] | None = None
+) -> None:
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temp = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(value)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if before_link is not None:
+            before_link()
+        os.link(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 def parse_args() -> argparse.Namespace:
@@ -544,9 +563,19 @@ def main() -> None:
         raise SystemExit("--out already exists; refusing to overwrite scoring evidence")
     report = build_report(args.positive_corpus, args.restraint_corpus, args.candidates)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+    inventories = [
+        report["scorer_source"],
+        report["corpora"]["positive"],
+        report["corpora"]["restraint"],
+        *report["candidate_sources"],
+    ]
+    report_bytes = (
+        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    publish_exclusive(
+        args.out,
+        report_bytes,
+        before_link=lambda: [verify_inventory(item) for item in inventories],
     )
     print(
         json.dumps(

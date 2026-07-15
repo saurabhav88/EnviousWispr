@@ -62,6 +62,15 @@ REQUIRED_CHECK_FIELDS = {
     "formatting",
     "compound_scope",
 }
+LIST_CHECK_FIELDS = (
+    "meaning",
+    "entities",
+    "numbers",
+    "timing",
+    "attribution",
+    "compound_scope",
+)
+FORMATTING_CHECKS = {"bullets", "numbered", "prose"}
 SLOT_FIELDS = (
     "language",
     "split",
@@ -608,11 +617,43 @@ def validate_candidate_rows(
             errors.append(f"{family_id}: normalized output is blocked")
 
         checks = row["checks"]
-        if not isinstance(checks, dict) or not REQUIRED_CHECK_FIELDS.issubset(checks):
-            errors.append(f"{family_id}: checks are incomplete")
-        elif row["safety_risk"] in {"medical", "legal", "financial"}:
-            if not checks.get("timing") or not checks.get("attribution"):
-                errors.append(f"{family_id}: high-risk row needs timing and attribution checks")
+        if not isinstance(checks, dict):
+            errors.append(f"{family_id}: checks must be an object")
+            checks = {}
+        else:
+            missing_checks = sorted(REQUIRED_CHECK_FIELDS - set(checks))
+            unknown_checks = sorted(set(checks) - REQUIRED_CHECK_FIELDS)
+            if missing_checks:
+                errors.append(f"{family_id}: checks missing {missing_checks}")
+            if unknown_checks:
+                errors.append(f"{family_id}: checks have unknown fields {unknown_checks}")
+
+        valid_list_checks: dict[str, list[str]] = {}
+        for field in LIST_CHECK_FIELDS:
+            value = checks.get(field)
+            if not isinstance(value, list) or any(
+                not isinstance(item, str) or not item.strip() for item in value
+            ):
+                errors.append(
+                    f"{family_id}: checks.{field} must be a list of nonempty strings"
+                )
+                continue
+            valid_list_checks[field] = value
+        if not valid_list_checks.get("meaning"):
+            errors.append(f"{family_id}: checks.meaning must be nonempty")
+
+        formatting_check = checks.get("formatting")
+        if formatting_check not in FORMATTING_CHECKS:
+            errors.append(
+                f"{family_id}: checks.formatting must be one of "
+                f"{sorted(FORMATTING_CHECKS)}"
+            )
+
+        if row["safety_risk"] in {"medical", "legal", "financial"} and (
+            not valid_list_checks.get("timing")
+            or not valid_list_checks.get("attribution")
+        ):
+            errors.append(f"{family_id}: high-risk row needs timing and attribution checks")
 
         bullet_lines = BULLET_LINE.findall(output_text)
         numbered_lines = NUMBERED_LINE.findall(output_text)
@@ -622,11 +663,10 @@ def validate_candidate_rows(
                 errors.append(
                     f"{family_id}: expected {row['item_count']} list lines, got {list_line_count}"
                 )
-            formatting = checks.get("formatting") if isinstance(checks, dict) else None
             expected_format = (
                 "numbered" if row["list_type"] == "explicit_numbering" else "bullets"
             )
-            if formatting != expected_format:
+            if formatting_check != expected_format:
                 errors.append(f"{family_id}: formatting check must be {expected_format}")
             if row["list_type"] == "explicit_numbering":
                 if len(numbered_lines) != row["item_count"] or bullet_lines:
@@ -639,8 +679,11 @@ def validate_candidate_rows(
                     f"{family_id}: {row['list_type']} output must use exactly "
                     f"{row['item_count']} bullet markers"
                 )
-        elif row["stratum"] == "matched_restraint" and list_line_count:
-            errors.append(f"{family_id}: restraint output contains list lines")
+        else:
+            if formatting_check != "prose":
+                errors.append(f"{family_id}: formatting check must be prose")
+            if row["stratum"] == "matched_restraint" and list_line_count:
+                errors.append(f"{family_id}: restraint output contains list lines")
 
         provenance = row["source_provenance"]
         required_provenance = {

@@ -20,6 +20,7 @@ from typing import Any, Callable
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[1]
 GENERATOR_RELATIVE = Path("scripts/eval/generate_eg1_english_list_benchmark.py")
+HISTORICAL_GENERATOR_DIR = HERE / "historical"
 sys.path.insert(0, str(HERE))
 
 import generate_eg1_english_list_benchmark as benchmark  # noqa: E402
@@ -307,8 +308,18 @@ def verify_sealed_selection(
     generator_path = remap_sealed_path(manifest["generator"], old_root)
     if generator_path != REPO_ROOT / GENERATOR_RELATIVE:
         raise ValueError("portable generator remap did not reach the canonical current path")
-    _, live_generator_sha = read_once(
-        generator_path, manifest.get("generator_sha256"), "sealed generator"
+    sealed_generator_sha = manifest.get("generator_sha256")
+    if not isinstance(sealed_generator_sha, str):
+        raise ValueError("sealed manifest has no generator SHA-256")
+    _, live_generator_sha = read_once(generator_path, None, "live generator")
+    proof_path = generator_path
+    if live_generator_sha != sealed_generator_sha:
+        proof_path = (
+            HISTORICAL_GENERATOR_DIR
+            / f"generate_eg1_english_list_benchmark.{sealed_generator_sha[:8]}.py"
+        )
+    _, proof_sha = read_once(
+        proof_path, sealed_generator_sha, "sealed generator proof"
     )
     receipt = {
         "required_flag_matches": flag_matches,
@@ -318,7 +329,11 @@ def verify_sealed_selection(
         "recomputed_definition_sha256": recomputed_definition_sha,
         "definition_hash_matches_expected_and_sealed": definition_matches,
         "live_generator_sha256": live_generator_sha,
-        "live_generator_matches_sealed": live_generator_sha == manifest.get("generator_sha256"),
+        "live_generator_matches_sealed": live_generator_sha == sealed_generator_sha,
+        "sealed_generator_sha256": sealed_generator_sha,
+        "sealed_generator_proof_path": repo_relative(proof_path),
+        "sealed_generator_proof_sha256": proof_sha,
+        "sealed_generator_proof_matches": proof_sha == sealed_generator_sha,
         "pilot_count_per_role": pilot_count,
         "full_count_per_role": full_count,
         "seed": seed,
@@ -876,16 +891,24 @@ def main() -> None:
                 "source_bytes_snapshotted_in_bundle": len(source_receipts) > 0,
             },
             "generator": {
-                "path": repo_relative(generator_path),
-                "sha256": verification.receipt["live_generator_sha256"],
-                "matches_sealed": verification.receipt["live_generator_matches_sealed"],
-                "inactive_output_writer_exception": {
+                "path": verification.receipt["sealed_generator_proof_path"],
+                "sha256": verification.receipt["sealed_generator_proof_sha256"],
+                "matches_sealed": verification.receipt["sealed_generator_proof_matches"],
+                "live_path": repo_relative(generator_path),
+                "live_sha256": verification.receipt["live_generator_sha256"],
+                "live_matches_sealed": verification.receipt[
+                    "live_generator_matches_sealed"
+                ],
+                "historical_snapshot_used": not verification.receipt[
+                    "live_generator_matches_sealed"
+                ],
+                "generation_scope": {
                     "generation_mode_invoked": False,
                     "generator_output_writer_invoked": False,
                     "reason": (
-                        "The generator remains byte-exact through this sealed assembly; "
-                        "only existing checkpoints are read. Its writers will be made "
-                        "exclusive after successful bundle publication under a new hash."
+                        "This assembly only reads existing sealed checkpoints. The exact "
+                        "historical generator is retained as an immutable source snapshot; "
+                        "the live generator may contain later safety-only writer changes."
                     ),
                 },
             },

@@ -1469,3 +1469,171 @@ The rewritten assembler proves the sealed first-N selection by regenerating the 
 Publication is now one exclusive bundle. Existing output fails closed; pre-receipt failures clean only files created by that invocation; the receipt is written last as the commit marker. Sixteen targeted tests cover first-N/definition/flags, all three fuzzy axes, cross-field/cross-batch/cross-role screening, family aliases, mutation, exclusive publication and cleanup, portable replay, and required receipt fields. Independent re-audit found no remaining issue.
 
 Sequencing exception: the sealed generator remains byte-exact at `ead3e1b9cbd6b9dad65092296de33e2c5baec716598b008d69d2bae2e8890a3b` for this one assembly because its validator functions are active but its overwrite-capable generation writer is not invoked. Changing it now would invalidate the sealed prompt/checkpoint contract. Its general output writers must be patched to exclusive mode immediately after the audited bundle is published, under a new recorded hash.
+
+### TYPE-B-001 - Broad 1,890-case litmus-test leakage audit
+
+Timestamp: 2026-07-15 09:41 EDT
+
+Status: old Type B and overflow sets rejected as held-out evidence; scale and balance retained as the replacement target
+
+Founder requirement: every viable EG-1 version must continue to face a broad approximately 1,800-case Type B litmus test. Cases used in training must be replaced with overflow or genuinely fresh families. The 75+75 English list pilot is only a fast directional diagnostic and cannot replace this broad gate.
+
+The shipping training authority is `scripts/eval/runs/bakeoff-1265/train_sft_v2.jsonl`: 5,656 rows, SHA-256 `5afc6b9435c7bef08df17ba3c4edcb889b8329cd7c1520c49d681999a666f568`. It contains all 3,036 v1 rows plus 2,620 later rows. Source counts are 1,549 Type B, 1,487 founder, 1,924 distilled, and 696 targeted.
+
+The audit reproduced exact ID and casefold/space-normalized input overlap of 1,549/1,890 in `type_b_approved_1890.jsonl`. Conservative NFKC, casefold, and punctuation-insensitive comparison finds 1,551/1,890. Provenance-family components expose 1,866/1,890 approved rows. The separate 900 overflow rows have zero exact input/output overlap but 899/900 belong to an exposed Type B family. The nine category overflow files are partitions of those same 900 rows, not additional supply.
+
+Only 23 rows are provisionally mechanically reusable: 22 approved rows plus `SCT-OF-003`. They are not yet fully held out because the other 4,107 founder/distilled/targeted training rows lack complete family metadata and still require blind semantic-family comparison. Preserving the original Type B composition therefore requires 1,867 new model-blind families: 298 trap and 1,569 non-trap, distributed across the original 17 categories and four length buckets.
+
+Decision: retain the 1,890-case scale and original category/length/trap balance, but rebuild the content. Create semantic-family IDs before text, use one benchmark case per family, split authorship from review, block every training family, and apply exact normalized text, token/character n-gram, explicit family-graph, embedding-neighbor, and blind human-family gates. No paraphrase, localization, or origin-family variant of an old Type B/training row is eligible. Seal the replacement before candidate output and never substitute rows after seeing scores.
+
+This audit resolves a stale provenance claim. The old knowledge statement that training had zero input overlap with the full 1,890 incorrectly generalized the protected hard-340/overflow check to the working Type B set. The current 1,549/1,890 finding is correct under its stated normalization; conservative normalization finds 1,551.
+
+### AB-PREFLIGHT-001 - Prompt-pilot execution blocked and hardened
+
+Timestamp: 2026-07-15 09:42 EDT
+
+Status: no pilot model output generated; V2 sealing work in progress
+
+Independent preflight rejected the first proposed A/B path before model output. It found that any metadata-valid 75+75 files and two prompts could create a green-looking render receipt; two single-arm invocations did not prove the same server stayed alive; general runner/scorer writes were overwrite-capable; the baseline inference-health gate was missing; filename order could define arm direction; no opaque semantic packet existed; and connector-wire output was being described too broadly as final app output.
+
+The replacement V2 path binds the portable assembly receipt, exact corpora, raw and model-visible prompts, code hashes, decision contract, and clean Git commit. A single dual-arm orchestrator snapshots the sealed prompts, authenticates once, proves the same PID/parent/app/endpoint/credential privately before and after both arms, and publishes explicit baseline/candidate outputs with a receipt last. Both arms must have zero errors and empty outputs. Output creation is exclusive. A receipt-bound scorer computes every mechanical advancement condition with explicit direction. A separate per-case randomized packet and sealed mapping support arm-blind semantic review. This remains connector-wire exact only; paste-equivalent claims require the later app-level `validatePolishOutput` fallback path.
+
+### LEAKAGE-AUDIT-003 - Portable 75+75 corpus published
+
+Timestamp: 2026-07-15 10:00 EDT
+
+Status: complete; both internal passes and independent full recomputation clean
+
+The hardened assembler completed both written-byte passes and published one exclusive bundle with its receipt last. No candidate model output was generated or opened. The bundle contains 75 positive-list and 75 prose-restraint rows, 30 checkpoint snapshots, and nine source snapshots covering 8,307 source rows / 16,614 source texts. Each internal pass performed 5,028,900 comparisons. Maximum observed similarity stayed below every gate: sequence `0.741117 < 0.82`, token `0.545455 < 0.78`, and character four-gram `0.462069 < 0.75`.
+
+The immutable hashes are:
+
+- positive corpus: `107915d52ba6b60a15b52b620db82278d1d3aff14471483c479b4e98675739e2`
+- restraint corpus: `e067e46c079e317fd49b4e9364c15f6e7a60ed35532587893b3830c4d987d57b`
+- publication receipt: `13f2bc1026526a4f37b6a376437aa5e6e21d76cd300a764d897632be3712937b`
+
+Independent audit found all 41 pre-receipt members present, no extras or symlinks, exact receipt-bound hashes, receipt mtime last, exact checkpoint/spec lineage, 150 unique IDs and families, zero source-family collisions, and zero cross-case normalized duplicate text. The 60 same-case restraint input/gold duplicates are intentional. Its separate full recomputation completed all 5,028,900 comparisons with zero exact or high-similarity violations and reproduced every maximum and relation count byte-for-value: 4,984,200 sealed-source, 22,500 cross-role, 21,000 cross-batch, and 1,200 within-batch comparisons. The shipping 5,656-pair training file is fully contained in the audited 5,836-row superset. The corpus is cleared for unreviewed development rendering; the V2 contract remains the sole execution block.
+
+After the immutable bundle published, the general generator writers were changed from overwrite-capable output to atomic exclusive publication. The receipt correctly retains the historical generator hash `ead3e1b9cbd6b9dad65092296de33e2c5baec716598b008d69d2bae2e8890a3b` used for this corpus; commit `fa5b9cf8` preserves those bytes. The hardened live generator is `cf6031efc4e572e3cb4393e8f3798d5a577a80232fe348c164e52d54f205a8dc`. This is recorded code evolution, not corpus mutation.
+
+### EVAL-SEAL-001 - Executable V2 evidence chain
+
+Timestamp: 2026-07-15 10:10 EDT
+
+Status: code complete and synthetic tests green; contract intentionally still pending; no prompt-arm output generated
+
+The V2 contract is now executable rather than descriptive. Rendering, the same-server Mac orchestrator, deterministic A/B scoring, blind packet construction, and semantic unblinding all parse the same exact binding map, reject pending/missing/extra/duplicate/altered bindings, and prove a two-commit chain: one code/data anchor plus one contract-only binding commit. The same canonical hashes are rechecked before evidence appears.
+
+Blind review uses a private random 256-bit seed by default and independently balances each 75-case lane 38/37 across opaque labels. Judgment schema, uniqueness, and complete 300-judgment coverage must pass before the private mapping is read. Private mapping publishes first; the public packet receipt publishes last with cross-binding. Candidate semantic regression now means a meaning-damaging edit at higher severity than baseline; harmless S1-versus-S0 cleanup differences do not fail the gate. Direct reports use atomic exclusive publication, so a short write cannot leave a truncated final evidence file.
+
+Focused evaluator validation and the complete evaluation suite pass 157/157 unittest-discovery tests, plus 180 pytest tests and 14 pytest subtests, including pending/altered/duplicate contract rejection, wrong-live-model rejection, same-server before/after checks, inference health, paired threshold boundaries, blind-label balance, no-early-unblind read spies, transaction cleanup, preservation-metadata type rejection, evidence-overwrite rejection, generation-output hashing, live leakage revalidation, duplicate-prompt rejection, exact header positioning, and the exact 1,890-slot Type B manifest. The contract remains deliberately `PENDING` until this code/data anchor is committed; model execution is prohibited before the contract-only child commit.
+
+### TYPE-B-002 - Replacement manifest contract
+
+Timestamp: 2026-07-15 10:10 EDT
+
+Status: deterministic 1,890-slot manifest builder and tests complete; fresh case authorship not started
+
+The replacement gate preserves exactly 1,890 cases rather than shrinking to a convenient diagnostic. It reserves 23 provisional legacy/overflow slots for manual family review and 1,867 fresh-family slots. The original 17-category counts, length buckets `480/482/468/460`, tiers `900/292/698`, and trap balance `1,590/300` are exact. Every slot has a preassigned unique family ID, separate author/reviewer lanes, candidate output disabled, and training eligibility disabled. Source hashes and final manifest bytes are receipt-bound; injected receipt failure removes the partial bundle. This is the construction contract only. The eventual questions still require model-blind authorship, semantic-family screening, and review before the Type B V2 set can be frozen.
+
+### EVAL-SEAL-002 - Final proof-layer and live-model hardening
+
+Timestamp: 2026-07-15 10:34 EDT
+
+Status: four independent audit findings fixed and re-audited; exact-Mac artifact gate passed; no prompt-arm output generated
+
+A final code-only audit found four proof-layer defects before any model output: a partial one-byte receipt could survive a failed publish; generator parsing and hashing could observe different reads; the historical sealed generator was proven only by a synthetic test rather than immutable bytes; and the live server identity named `eg-1` without proving the exact weight shards. All four were fixed and the frozen re-audit passed eight focused tests.
+
+Both renderer and A/B publisher now remove their entire new bundle after any receipt-write failure, including an injected one-byte short write. Corpus and audit-source hashes are computed from the exact captured bytes that are parsed. The sealed generator is preserved as the real immutable snapshot `scripts/eval/historical/generate_eg1_english_list_benchmark.ead3e1b9.py`, whose SHA-256 is exactly `ead3e1b9cbd6b9dad65092296de33e2c5baec716598b008d69d2bae2e8890a3b`; the hardened live generator is `7eee13f4bf14609f4e748ed4cab71ff6ade211688d85fddbcbfde51b0e1282bf`.
+
+The Mac wrapper now reads the app delivery manifest, proves its entrypoint, size, and SHA-256 for all eight open Q5 shards under stable file metadata, and carries the complete artifact identity through every same-server check and receipt. The canonical and live app manifest both hash to `3d7a09f3dc91a6f891dd74ec64c3992e99e75793d3875d085ea87754033a6624`. That hash is now also an executable decision-contract binding, so a different live EG-1 artifact fails before either arm runs. Direct negative tests prove the renderer rejects a changed manifest binding, the orchestrator never calls either arm or publishes output when the live manifest differs, and same-length shard tampering reaches and fails the content-hash branch rather than only the size check.
+
+The required committed-diff review then found one broader P2: the multilingual power planner could accept the same artifact/config pair as both baseline and finalist under two opaque labels. The comparison validator now rejects identical pairs before sizing or sealing, with a regression test that rebinds the comparison receipt to an intentionally identical pair. The fix remained covered as the suite later grew; current validation passes 157/157 unittest-discovery tests, plus 180 pytest tests and 14 pytest subtests.
+
+### TYPE-B-003 - Fresh-family authorship and custody protocol
+
+Timestamp: 2026-07-15 10:38 EDT
+
+Status: read-only design audit complete; no fresh Type B text or candidate output generated
+
+The 1,890-case Type B V2 set is reserved for one finalist confirmation pass, not prompt or adapter iteration. The 75+75 pilot and separate development panels remain the tuning surface. If any Type B V2 rows are opened repeatedly, they must be predeclared as development rows and cannot be described as held out.
+
+Before wording, every fresh slot receives a language-neutral scenario card covering domain, register, difficulty, ASR/disfluency shape, risk, required entities/numbers/timing/scope, prohibited edits, behavior/trap, and secondary behaviors. Family, scenario, and template IDs are assigned before prose. Authorship must use at least eight distinct human/source identities; target at least 50% human/native-original scenarios, at least three genuinely different synthetic generator families for the remainder, no synthetic provider above 20% overall or 25% within a category, and mixed 12-16 case batches rather than category blocks.
+
+Every row requires separate semantic/minimal-edit and family/leakage reviewers. A stratified 15-20% sample is double-coded, while medical, legal, financial, and other high-risk rows are double-reviewed in full. A wave stops for rubric repair and re-review when raw agreement is below 95% or reliability is below 0.80 in any stratum. Leakage gates cover exact normalized text, explicit origin/family graph, token and character similarity, embeddings, and blind human neighbor adjudication against training, all old benchmarks, the 75+75 pilot, multilingual sets, and D1. Provider, author, template, n-gram, and embedding-tail diversity are reported before sealing.
+
+Co-primary confirmation outcomes are non-trap strict success, trap false-positive rate, and semantic meaning damage as a hard gate. Paired candidate comparisons use exact McNemar and paired intervals; rate estimates use Wilson intervals; 17 category cuts are secondary and use Holm correction for confirmatory claims. AlienSV handles heavy clustering, leakage scans, BF16 training, and LoRA bakeoffs in isolated workspaces; the Mac remains custodian and exact shipping-runtime authority. AlienSV was confirmed reachable over Tailscale as `saura@aliensv`, with the RTX 4090 online and 22,982 MiB free at this checkpoint.
+
+### PRIVACY-001 - Private corpus publication incident and containment
+
+Timestamp: 2026-07-15 11:18 EDT
+
+Status: public feature branch scrubbed; local corpus restored and verified ignored; no main-branch exposure from this work
+
+The confirming diff review found that an earlier overnight commit had force-added the private founder-derived training mixture under `docs/experiments/eg1-multilingual/`. This violated the repository rule that private founder and tuning corpora stay ignored and that only aggregate counts, hashes, and safe synthetic evidence may be published. The review also identified personally identifying content inside that file. Its contents are intentionally omitted from this log.
+
+All pushes and model runs stopped immediately. The remote feature branch was rewritten from the repository root with that path removed from every reachable commit, verified commit-by-commit, and force-updated from old tip `fa5b9cf8` to sanitized tip `67d5cc9d`. The active local branch was then rewritten by the same filter. The exact local corpus was backed up, restored byte-for-byte, verified ignored, and verified absent from the Git index. The branch remains blocked from any further push until the rest of the review findings pass a confirming review.
+
+No pull request or other named GitHub ref points at the old branch history. A read-only API check nevertheless confirms that the now-unreachable original commit object is still temporarily addressable by its exact SHA, which is normal for GitHub object retention after a force-push. Permanent cache/object purge requires a private GitHub Support request and is not safe to initiate without founder authorization. Do not put the corpus details or identifying values in a public issue.
+
+### EVAL-SEAL-003 - Partial benchmark runs now fail automation
+
+Timestamp: 2026-07-15 11:20 EDT
+
+Status: confirming-review P2 adopted; full suite passes; confirming review pending
+
+The confirming review found that `subset_polish_runner.py` preserved error rows but still returned exit code zero after exhausted retries, truncation, or empty output. That allowed a direct shell workflow to treat incomplete evidence as successful. The runner now writes the inspectable output and summary first, then exits with code 2 whenever any row carries an error. The exact-wire test helper now asserts the expected process return code, and the truncated-output regression proves both the preserved error row and nonzero exit. Focused validation passes 12 tests plus seven subtests. The earlier `172 plus 14 subtests` report was a valid pytest count before later regressions were added; the apparent discrepancy came from comparing pytest with unittest discovery. Current validation passes 157/157 unittest-discovery tests, plus 180 pytest tests and 14 pytest subtests.
+
+### GIT-HISTORY-001 - Privacy scrub graph repair
+
+Timestamp: 2026-07-15 11:34 EDT
+
+Status: repaired and verified; public branch is private-corpus-free and based on current main
+
+The emergency `git filter-branch --prune-empty` scrub removed the private corpus but also collapsed unrelated historical commits, leaving the feature branch with an invalid merge base and a misleading 1,151-commit diff. The named review was stopped because that graph made its scope invalid.
+
+The repair replayed exactly the 23 overnight commits from the original `08803450` base onto current `origin/main` `12ce8700` in an isolated worktree. At the one commit that introduced the private corpus, the file was removed before recreating that commit; every rebuilt commit was then checked to prove that path was absent. The corrected public branch was force-updated from the collapsed tip `67d5cc9d` to clean tip `01d596b9`. The reviewed anchor patch was applied byte-for-patch onto that clean history as temporary local commit `846f0d75` before these final audit notes were folded into the same code anchor. The branch remains exactly 24 overnight commits ahead of current main and one commit ahead of its public remote. The discarded local graph was deleted only after stable patch IDs proved the anchor change was identical.
+
+### LEAKAGE-AUDIT-004 - Historical-generator proof bundle
+
+Timestamp: 2026-07-15 11:35 EDT
+
+Status: complete; both internal passes and independent full recomputation clean; no model output generated
+
+The second 75+75 assembly completed both internal 5,028,900-comparison passes and published local ignored bundle `scripts/eval/corpus/eg1_english_list_pilot75_v2_bundle`. Receipt SHA-256 is `131cc84898db829859aa6d73940df8685882adeedb76057a050231bcf3efc000`; positive corpus SHA-256 is `1fffba6215670a9a1cfd3cb723d39a6ee479b9dfbae47224aa8ed04a7520baee`; restraint corpus SHA-256 is `e44cdceb4a1eca8ea2b90528af170897021218b506122f9d9952546495055e21`. Both passes reproduce sequence `0.741117 < 0.82`, token `0.545455 < 0.78`, character four-gram `0.462069 < 0.75`, and relation counts 4,984,200 sealed-source, 22,500 cross-role, 21,000 cross-batch, and 1,200 within-batch comparisons. The real historical generator snapshot proof is present and matched.
+
+Comparison against the first bundle found identical row counts, ID order, and every semantic field across all 150 cases. Every similarity score is also identical. The byte hashes differ only because 94 `similarity_audit.nearest_source` strings name the new bundle directory. The bundle contains nine audit-source snapshots, including the private 5,836-row training superset with 1,487 founder-derived rows. Therefore the entire bundle and receipt remain gitignored and will not be force-added; only safe aggregate hashes and counts appear in tracked documentation and the later executable contract.
+
+The independent replay verified all 41 pre-receipt members with zero missing, extra, or hash-mismatched files; nine of nine source snapshots; 30 of 30 checkpoints; all 150 first-N lineage mappings; and the historical generator fallback proof. Its actual matcher completed exactly 5,028,900 comparisons with zero exact-overlap or high-similarity violations and reproduced both receipt passes byte-for-value: 4,984,200 sealed-source, 21,000 cross-batch, 22,500 cross-role, and 1,200 within-batch comparisons, with maxima `0.741117`, `0.545455`, and `0.462069`. The focused independent audit suite passed 20/20. This closes the final corpus-side execution block.
+
+### MAC-PREFLIGHT-004 - Exact shipping-path readiness rechecked
+
+Timestamp: 2026-07-15 11:45 EDT
+
+Status: ready but still sealed; no prompt rendering or model output generated
+
+The live machine has exactly one `EnviousWispr` app process and one child `llama-server`. Their executable paths resolve to `/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-5b/build/EnviousWispr Local.app`; the server parent is the verified app process. The app-embedded `eg1-delivery-manifest.json` is byte-identical to `Sources/EnviousWispr/Resources/eg1-delivery-manifest.json`, both SHA-256 `3d7a09f3dc91a6f891dd74ec64c3992e99e75793d3875d085ea87754033a6624`. The fail-closed preflight also authenticated locally and verified the complete sharded model artifact against that manifest without generating a completion. No bearer value was printed or retained. The sealed orchestrator will repeat the same artifact proof before and after both arms when execution is finally authorized by the contract-only child commit.
+
+### EVAL-SEAL-004 - D1 preservation metadata now fails closed
+
+Timestamp: 2026-07-15 11:54 EDT
+
+Status: named-review P2 fixed; focused and full suites pass; confirming review pending
+
+The required named committed-diff review found that the future D1 multilingual training exporter checked only for preservation-check keys. Malformed values such as `null`, booleans, empty strings, or any truthy high-risk timing value could therefore pass into an approved training export. The gate now requires meaning, entity, number, timing, attribution, and compound-scope checks to be lists containing only nonempty strings; meaning must contain at least one requirement; unknown check fields fail; formatting must be one of `bullets`, `numbered`, or `prose` and must match the allocated stratum/list type; and high-risk timing/attribution must be valid nonempty lists. The new malformed-metadata regression passes with the full focused D1 suite, 9/9 tests; current complete validation passes 157/157 unittest-discovery tests, plus 180 pytest tests and 14 pytest subtests.
+
+### EVAL-SEAL-005 - Final evidence inputs now fail closed
+
+The next required named committed-diff review found three evidence-chain gaps: the final rating gate trusted shaped leakage hashes without reopening the sealed inputs; the CUDA experiment runner could truncate a prior result at a reused output path; and its manifest did not hash the generated JSONL. The rating command now requires the live leakage sources and receipt, reruns exact-leak checks and full receipt validation, and compares the current inventory and receipt hash with the sealed benchmark manifest. The runner rejects either result or manifest collisions before loading the model, uses exclusive creation for both files, and writes the closed output's SHA-256 into its manifest. New regressions prove leakage drift is rejected, prior evidence is never overwritten, and output mutation is detectable from the manifest hash.
+
+### EVAL-SEAL-006 - Structure and dispatch identities fail closed
+
+The next confirming review found two older fail-open paths in the broader evaluation toolkit. The legacy two-item scorer discarded line positions, so two bullets followed by `Note:` could pass as if the note were a leading header. It now accepts only a bare two-bullet list or one header followed by exactly two bullets. The shared subset runner also keyed results by case ID without first rejecting duplicate input IDs, which could overwrite a failed result and emit the surviving row twice. It now rejects invalid or duplicate prompt IDs before any network dispatch. Four regressions cover bare lists, valid leading headers, trailing prose/header rejection, and pre-network duplicate rejection.
+
+### TYPE-B-004 - Slot allocator versus frozen-benchmark gap audit
+
+Timestamp: 2026-07-15 11:54 EDT
+
+Status: read-only audit complete; authorship remains correctly blocked
+
+The current 1,890-row builder is a deterministic fail-closed slot allocator, not yet an authoring, leakage, review, freeze, or scoring pipeline. Its pinned four source hashes and counts match live bytes; its focused tests pass 3/3; and no durable Type B V2 output bundle exists. Before official slot publication it still needs schema/code/commit binding, receipt-pinned joint cells and fresh trap counts, deterministic and source-drift negative tests, and 23 same-cell replacement reserves for any provisional rejection. Before prose authoring it also needs the sealed blocked-family registry, scenario-card/authorship schema, provider and reviewer custody, Type B-specific validation and leakage receipts, exclusive private freeze publication, and a receipt-bound exact-Mac runner/scorer/blind-review path. The safe next action is to harden those contracts before generating the 1,867 fresh families; candidate outputs remain prohibited from Type B V2 until the one locked finalist confirmation.

@@ -27,7 +27,7 @@ from dataclasses import asdict, dataclass
 from difflib import SequenceMatcher
 from itertools import product
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 
 DOMAINS = ("work_admin", "personal_home", "technical_product", "medical", "legal_financial")
@@ -151,36 +151,29 @@ def input_value(row: dict[str, Any]) -> str | None:
     return None
 
 
-def load_json_rows_bytes(path: Path, value: bytes) -> list[dict[str, Any]]:
+def load_json_rows(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    try:
-        text = value.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise ValueError(f"{path} is not UTF-8") from error
     if path.suffix == ".jsonl":
-        for line_number, line in enumerate(text.splitlines(), 1):
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            if not isinstance(row, dict):
-                raise ValueError(f"{path}:{line_number} is not a JSON object")
-            rows.append(row)
+        with path.open(encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, 1):
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if not isinstance(row, dict):
+                    raise ValueError(f"{path}:{line_number} is not a JSON object")
+                rows.append(row)
         return rows
-    parsed = json.loads(text)
-    if isinstance(parsed, list):
-        rows = parsed
-    elif isinstance(parsed, dict):
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(value, list):
+        rows = value
+    elif isinstance(value, dict):
         for key in ("rows", "cases", "data"):
-            if isinstance(parsed.get(key), list):
-                rows = parsed[key]
+            if isinstance(value.get(key), list):
+                rows = value[key]
                 break
     if not rows or not all(isinstance(row, dict) for row in rows):
         raise ValueError(f"{path} has no supported row array")
     return rows
-
-
-def load_json_rows(path: Path) -> list[dict[str, Any]]:
-    return load_json_rows_bytes(path, path.read_bytes())
 
 
 def load_audit_sources(paths: list[str]) -> tuple[list[AuditInput], list[dict[str, Any]], set[str]]:
@@ -191,9 +184,7 @@ def load_audit_sources(paths: list[str]) -> tuple[list[AuditInput], list[dict[st
         path = Path(raw_path).resolve()
         if not path.is_file():
             raise ValueError(f"audit source does not exist: {path}")
-        source_bytes = path.read_bytes()
-        rows = load_json_rows_bytes(path, source_bytes)
-        source_sha = sha256_bytes(source_bytes)
+        rows = load_json_rows(path)
         input_count = 0
         for index, row in enumerate(rows, 1):
             family = row.get("family")
@@ -218,7 +209,7 @@ def load_audit_sources(paths: list[str]) -> tuple[list[AuditInput], list[dict[st
         inventories.append(
             {
                 "path": str(path),
-                "sha256": source_sha,
+                "sha256": file_sha256(path),
                 "row_count": len(rows),
                 "input_count": input_count,
             }
@@ -577,30 +568,11 @@ def enrich(row: dict[str, Any], spec: CaseSpec, batch_id: str, similarity_audit:
     }
 
 
-def publish_bytes_exclusive(
-    path: Path, value: bytes, before_link: Callable[[], None] | None = None
-) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    temp = Path(temp_name)
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(value)
-            handle.flush()
-            os.fsync(handle.fileno())
-        if before_link is not None:
-            before_link()
-        os.link(temp, path)
-    finally:
-        temp.unlink(missing_ok=True)
-
-
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
-    value = b"".join(
-        (json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
-        for row in rows
-    )
-    publish_bytes_exclusive(path, value)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
 
 
 def validate_complete_corpus(
@@ -610,9 +582,7 @@ def validate_complete_corpus(
     audit_inputs: list[AuditInput],
     audit_families: set[str],
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    corpus_bytes = path.read_bytes()
-    rows = load_json_rows_bytes(path, corpus_bytes)
-    corpus_sha = sha256_bytes(corpus_bytes)
+    rows = load_json_rows(path)
     if len(rows) != count:
         raise ValueError(f"{path}: expected {count} rows, found {len(rows)}")
     seen_ids: set[str] = set()
@@ -665,7 +635,7 @@ def validate_complete_corpus(
         raise ValueError(f"{path}: length imbalance {dist['length_bucket']}")
     return rows, {
         "path": str(path),
-        "sha256": corpus_sha,
+        "sha256": file_sha256(path),
         "row_count": len(rows),
         "distributions": dist,
         "pairwise_balance": pairwise_balance([
@@ -728,21 +698,19 @@ def generate_role(
                     )
                     accepted = validate_batch(raw_rows, batch, blocked, families)
                     if checkpoint:
-                        publish_bytes_exclusive(
-                            checkpoint,
-                            (
-                                json.dumps(
-                                    {
-                                        "prompt_sha256": prompt_sha,
-                                        "specs": [asdict(spec) for spec in batch],
-                                        "rows": raw_rows,
-                                    },
-                                    ensure_ascii=False,
-                                    indent=2,
-                                    sort_keys=True,
-                                )
-                                + "\n"
-                            ).encode("utf-8"),
+                        checkpoint.write_text(
+                            json.dumps(
+                                {
+                                    "prompt_sha256": prompt_sha,
+                                    "specs": [asdict(spec) for spec in batch],
+                                    "rows": raw_rows,
+                                },
+                                ensure_ascii=False,
+                                indent=2,
+                                sort_keys=True,
+                            )
+                            + "\n",
+                            encoding="utf-8",
                         )
                     break
                 except (ValueError, json.JSONDecodeError, RuntimeError) as error:
@@ -833,8 +801,6 @@ def main() -> None:
     )
     ensure_source_snapshots_unchanged(inventories)
 
-    generator_path = Path(__file__).resolve()
-    generator_sha = file_sha256(generator_path)
     manifest = {
         "status": "candidate_requires_independent_native_review",
         "model_blind": True,
@@ -844,8 +810,8 @@ def main() -> None:
         "created_at_epoch": started,
         "elapsed_seconds": round(time.time() - started, 3),
         "mode": args.mode,
-        "generator": str(generator_path),
-        "generator_sha256": generator_sha,
+        "generator": str(Path(__file__).resolve()),
+        "generator_sha256": file_sha256(Path(__file__).resolve()),
         "model": args.model if args.mode == "generate" else None,
         "batch_id": args.batch_id,
         "seed": args.seed,
@@ -866,25 +832,8 @@ def main() -> None:
         },
     }
     output_manifest = manifest_path(args)
-
-    def verify_before_manifest_link() -> None:
-        ensure_source_snapshots_unchanged(inventories)
-        for report, label in (
-            (positive_report, "positive corpus"),
-            (restraint_report, "restraint corpus"),
-        ):
-            if file_sha256(Path(report["path"])) != report["sha256"]:
-                raise RuntimeError(f"{label} changed before manifest publication")
-        if file_sha256(generator_path) != generator_sha:
-            raise RuntimeError("generator changed before manifest publication")
-
-    publish_bytes_exclusive(
-        output_manifest,
-        (
-            json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-        ).encode("utf-8"),
-        before_link=verify_before_manifest_link,
-    )
+    output_manifest.parent.mkdir(parents=True, exist_ok=True)
+    output_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({
         "manifest": str(output_manifest),
         "manifest_sha256": file_sha256(output_manifest),

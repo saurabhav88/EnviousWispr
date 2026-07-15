@@ -386,6 +386,14 @@ def _development_discordance_summary(
         value = comparison.get(field)
         if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
             errors.append(f"development comparison manifest {field} is invalid")
+    if (
+        comparison.get("baseline_artifact_sha256"),
+        comparison.get("baseline_evaluation_config_sha256"),
+    ) == (
+        comparison.get("finalist_artifact_sha256"),
+        comparison.get("finalist_evaluation_config_sha256"),
+    ):
+        errors.append("development comparison must bind distinct artifact/config pairs")
 
     receipt = _read_json_object(discordance_receipt_path, "development discordance receipt")
     expected_receipt_fields = {
@@ -1832,6 +1840,45 @@ def validate_benchmark_manifest_for_ratings(
     return manifest
 
 
+def validate_live_leakage_evidence_for_ratings(
+    manifest: dict[str, Any],
+    *,
+    rows: Sequence[dict[str, Any]],
+    source_specs: Sequence[str],
+    receipt_path: Path,
+) -> None:
+    """Re-run and bind leakage checks at the final rating gate."""
+    sources = parse_leakage_sources(source_specs)
+    errors = exact_leakage_errors(rows, sources)
+    if errors:
+        raise BenchmarkValidationError(errors)
+    if not receipt_path.is_file():
+        raise BenchmarkValidationError([f"missing leakage receipt: {receipt_path}"])
+    validate_leakage_receipt(receipt_path, rows=rows, sources=sources)
+
+    current_inventory = [
+        {"role": source.role, "name": source.name, "sha256": source.sha256}
+        for source in sources
+    ]
+    sealed_inventory = manifest.get("leakage_sources")
+    if isinstance(sealed_inventory, list):
+        sealed_inventory = sorted(
+            sealed_inventory,
+            key=lambda source: (str(source.get("role")), str(source.get("name"))),
+        )
+    evidence_errors: list[str] = []
+    if current_inventory != sealed_inventory:
+        evidence_errors.append(
+            "live leakage source inventory/hashes do not match sealed benchmark manifest"
+        )
+    if sha256_file(receipt_path) != manifest.get("leakage_receipt_sha256"):
+        evidence_errors.append(
+            "live leakage receipt does not match sealed benchmark manifest"
+        )
+    if evidence_errors:
+        raise BenchmarkValidationError(evidence_errors)
+
+
 def validate_generation_receipts(
     paths: Sequence[Path],
     *,
@@ -2159,6 +2206,12 @@ def validate_ratings_command(args: argparse.Namespace) -> int:
     benchmark_manifest = validate_benchmark_manifest_for_ratings(
         benchmark_manifest_path, rows=rows, corpus_path=corpus_path
     )
+    validate_live_leakage_evidence_for_ratings(
+        benchmark_manifest,
+        rows=rows,
+        source_specs=args.leakage_source,
+        receipt_path=args.leakage_receipt.expanduser().resolve(),
+    )
     power_plan_path = args.power_plan.expanduser().resolve()
     discordance_receipt_path = args.development_discordance_receipt.expanduser().resolve()
     development_corpus_path = args.development_corpus.expanduser().resolve()
@@ -2341,6 +2394,14 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="predeclared opaque model label; repeat once per model arm",
     )
+    ratings_parser.add_argument(
+        "--leakage-source",
+        action="append",
+        required=True,
+        metavar="ROLE:NAME=PATH",
+        help="re-screen against each source sealed into the benchmark manifest",
+    )
+    ratings_parser.add_argument("--leakage-receipt", type=Path, required=True)
     ratings_parser.add_argument("--manifest-out", type=Path)
     ratings_parser.set_defaults(func=validate_ratings_command)
     return parser

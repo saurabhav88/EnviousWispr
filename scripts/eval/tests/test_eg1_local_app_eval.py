@@ -1,7 +1,10 @@
 import dataclasses
+import hashlib
 import importlib.util
+import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -16,6 +19,64 @@ SPEC.loader.exec_module(MODULE)
 
 
 class EG1LocalAppEvalTests(unittest.TestCase):
+    def test_parses_model_path_with_spaces(self):
+        path = MODULE.parse_model_path(
+            "llama-server -m /Users/test/Library/Application Support/"
+            "EnviousWispr/Models/eg-1/model.gguf --host 127.0.0.1"
+        )
+        self.assertEqual(
+            path,
+            Path(
+                "/Users/test/Library/Application Support/"
+                "EnviousWispr/Models/eg-1/model.gguf"
+            ),
+        )
+
+    def test_verifies_every_manifest_component_and_entrypoint(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            app = root / "EnviousWispr Local.app"
+            resources = app / "Contents" / "Resources"
+            resources.mkdir(parents=True)
+            models = root / "Models"
+            models.mkdir()
+            first = models / "first.gguf"
+            second = models / "second.gguf"
+            first.write_bytes(b"first shard")
+            second.write_bytes(b"second shard")
+            files = []
+            for path in (first, second):
+                value = path.read_bytes()
+                files.append(
+                    {
+                        "installPath": path.name,
+                        "sizeBytes": len(value),
+                        "sha256": hashlib.sha256(value).hexdigest(),
+                    }
+                )
+            manifest = {
+                "identity": {"name": "eg-1", "revision": "test-revision"},
+                "admission": {
+                    "layout": "componentSet",
+                    "entrypointFile": first.name,
+                },
+                "files": files,
+                "totalBytes": sum(item["sizeBytes"] for item in files),
+            }
+            manifest_path = resources / "eg1-delivery-manifest.json"
+            manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+            artifact = MODULE.verify_model_artifact(app, first)
+            self.assertEqual(artifact.entrypoint_path, first.resolve())
+            self.assertEqual(artifact.revision, "test-revision")
+            self.assertEqual(len(artifact.components), 2)
+            self.assertTrue(artifact.public_receipt()["all_component_hashes_verified"])
+
+            second.write_bytes(b"tamper shard")
+            with self.assertRaisesRegex(
+                MODULE.LocalServerDiscoveryError, "component hash is invalid"
+            ):
+                MODULE.verify_model_artifact(app, first)
+
     def test_parses_loopback_server_without_public_credential(self):
         secret = "private-value-that-must-never-be-printed"
         host, port, parsed = MODULE.parse_server_flags(

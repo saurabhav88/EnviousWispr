@@ -434,6 +434,79 @@ class D1BuilderTests(unittest.TestCase):
             )
         )
 
+    def test_preservation_checks_require_typed_nonempty_metadata(self) -> None:
+        rows = make_rows(self.slots, approved=True)
+        empty_meaning = rows[0]
+        empty_meaning["checks"]["meaning"] = []
+
+        malformed_lists = rows[1]
+        malformed_lists["checks"]["entities"] = None
+        malformed_lists["checks"]["numbers"] = [""]
+        malformed_lists["checks"]["compound_scope"] = True
+        malformed_lists["checks"]["unexpected"] = []
+
+        high_risk = next(
+            row
+            for row in rows
+            if row["safety_risk"] in {"medical", "legal", "financial"}
+            and row["family_id"]
+            not in {empty_meaning["family_id"], malformed_lists["family_id"]}
+        )
+        high_risk["checks"]["timing"] = "preserve timing"
+        high_risk["checks"]["attribution"] = [""]
+
+        prose = next(
+            row
+            for row in rows
+            if row["stratum"] == "core"
+            and row["family_id"]
+            not in {
+                empty_meaning["family_id"],
+                malformed_lists["family_id"],
+                high_risk["family_id"],
+            }
+        )
+        prose["checks"]["formatting"] = "bullets"
+
+        errors, _, _ = d1.validate_candidate_rows(
+            self.contract, self.slots, rows, make_registry(sealed=True)
+        )
+        self.assertTrue(
+            any(
+                empty_meaning["family_id"] in item
+                and "checks.meaning must be nonempty" in item
+                for item in errors
+            )
+        )
+        for field in ("entities", "numbers", "compound_scope"):
+            self.assertTrue(
+                any(
+                    malformed_lists["family_id"] in item
+                    and f"checks.{field} must be a list" in item
+                    for item in errors
+                )
+            )
+        self.assertTrue(
+            any(
+                malformed_lists["family_id"] in item
+                and "checks have unknown fields" in item
+                for item in errors
+            )
+        )
+        self.assertTrue(
+            any(
+                high_risk["family_id"] in item
+                and "high-risk row needs timing and attribution checks" in item
+                for item in errors
+            )
+        )
+        self.assertTrue(
+            any(
+                prose["family_id"] in item and "formatting check must be prose" in item
+                for item in errors
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

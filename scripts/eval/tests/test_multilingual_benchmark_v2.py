@@ -534,6 +534,42 @@ class MultilingualBenchmarkV2Tests(unittest.TestCase):
                     maximum_cases_per_cell=30,
                 )
 
+    def test_power_plan_rejects_identical_baseline_and_finalist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            receipt_path, corpus_path, manifest_path, comparison_path = write_power_inputs(
+                root, discordant_per_language=16
+            )
+            comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+            comparison["finalist_artifact_sha256"] = comparison[
+                "baseline_artifact_sha256"
+            ]
+            comparison["finalist_evaluation_config_sha256"] = comparison[
+                "baseline_evaluation_config_sha256"
+            ]
+            comparison_path.write_text(
+                json.dumps(comparison, sort_keys=True) + "\n", encoding="utf-8"
+            )
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            receipt["development_comparison_manifest_sha256"] = benchmark.sha256_file(
+                comparison_path
+            )
+            receipt_path.write_text(
+                json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8"
+            )
+
+            with self.assertRaisesRegex(
+                benchmark.BenchmarkValidationError,
+                "development comparison must bind distinct artifact/config pairs",
+            ):
+                benchmark.release_power_plan(
+                    discordance_receipt_path=receipt_path,
+                    development_corpus_path=corpus_path,
+                    development_benchmark_manifest_path=manifest_path,
+                    development_comparison_manifest_path=comparison_path,
+                    maximum_cases_per_cell=30,
+                )
+
     def test_generation_receipts_must_match_locked_artifact_config_pairs(self) -> None:
         corpus = [
             synthetic_row("GEN-1", split="frozen", with_validator=True),
@@ -813,6 +849,91 @@ class MultilingualBenchmarkV2Tests(unittest.TestCase):
             with self.assertRaises(benchmark.BenchmarkValidationError) as raised:
                 benchmark.validate_leakage_receipt(receipt_path, rows=[row], sources=[source])
             self.assertIn("embedding_cosine", str(raised.exception))
+
+    def test_rating_gate_revalidates_live_leakage_sources_and_receipt(self) -> None:
+        row = synthetic_row("RATING-LEAK-001")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_specs: list[str] = []
+            sources: list[benchmark.LeakageSource] = []
+            receipt_entries: list[dict] = []
+            methods = {
+                "exact_normalized": {"status": "pass", "violations": 0},
+                "token_ngram_jaccard": {
+                    "status": "pass",
+                    "violations": 0,
+                    "threshold": 0.8,
+                    "max_observed": 0.2,
+                },
+                "character_ngram_jaccard": {
+                    "status": "pass",
+                    "violations": 0,
+                    "threshold": 0.85,
+                    "max_observed": 0.3,
+                },
+                "embedding_cosine": {
+                    "status": "pass",
+                    "violations": 0,
+                    "threshold": 0.9,
+                    "max_observed": 0.4,
+                },
+            }
+            for role in benchmark.LEAKAGE_ROLES:
+                source_path = root / f"{role}.jsonl"
+                source_path.write_text(
+                    json.dumps({"family_id": f"unrelated-{role}"}) + "\n",
+                    encoding="utf-8",
+                )
+                source = benchmark.LeakageSource(
+                    role, role, source_path, benchmark.sha256_file(source_path)
+                )
+                sources.append(source)
+                source_specs.append(f"{role}:{role}={source_path}")
+                receipt_entries.append(
+                    {
+                        "role": role,
+                        "name": role,
+                        "sha256": source.sha256,
+                        "methods": methods,
+                    }
+                )
+            receipt_path = root / "receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "eg1-multilingual-leakage-receipt-v1",
+                        "benchmark_content_sha256": benchmark.benchmark_content_sha256([row]),
+                        "screening_policy_id": "synthetic-policy-v1",
+                        "sources": receipt_entries,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            manifest = {
+                "leakage_sources": [
+                    {"role": source.role, "name": source.name, "sha256": source.sha256}
+                    for source in sources
+                ],
+                "leakage_receipt_sha256": benchmark.sha256_file(receipt_path),
+            }
+            benchmark.validate_live_leakage_evidence_for_ratings(
+                manifest,
+                rows=[row],
+                source_specs=source_specs,
+                receipt_path=receipt_path,
+            )
+
+            sources[0].path.write_text(
+                json.dumps({"input": row["asr_input"]}) + "\n", encoding="utf-8"
+            )
+            with self.assertRaises(benchmark.BenchmarkValidationError) as raised:
+                benchmark.validate_live_leakage_evidence_for_ratings(
+                    manifest,
+                    rows=[row],
+                    source_specs=source_specs,
+                    receipt_path=receipt_path,
+                )
+            self.assertIn("exact-leaks", str(raised.exception))
 
     def test_schema_files_are_valid_json_and_pin_all_scoring_axes(self) -> None:
         corpus_schema = json.loads(
