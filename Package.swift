@@ -155,7 +155,8 @@ let package = Package(
         "FluidAudio",
         "Sparkle",
       ],
-      path: "Sources/EnviousWisprAppKit"
+      path: "Sources/EnviousWisprAppKit",
+      resources: [.process("Resources")]
     ),
     .executableTarget(
       name: "EnviousWisprASRService",

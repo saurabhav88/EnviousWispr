@@ -226,6 +226,7 @@ const jsonLdFaq = JSON.stringify({
         <span class="trust-item"><span class="trust-dot" aria-hidden="true"></span>Free download</span>
         <span class="trust-item"><span class="trust-dot" aria-hidden="true"></span>No account needed</span>
         <span class="trust-item"><span class="trust-dot" aria-hidden="true"></span>Works offline</span>
+        <a href="https://github.com/saurabhav88/EnviousWispr" target="_blank" rel="noopener" class="trust-item trust-link"><span class="trust-dot" aria-hidden="true"></span>GPLv3 open source, view the code</a>
       </div>
 
       <p class="hero-brew reveal" style="--i:4.5">Prefer the terminal? <code>brew install --cask saurabhav88/tap/enviouswispr</code></p>
@@ -616,6 +617,7 @@ const jsonLdFaq = JSON.stringify({
         </p>
 
         <p class="cta-brew">Or with Homebrew: <code>brew install --cask saurabhav88/tap/enviouswispr</code></p>
+        <p class="cta-brew">GPLv3 open source. <a href="https://github.com/saurabhav88/EnviousWispr" target="_blank" rel="noopener">View the source</a>.</p>
       </div>
     </div>
   </section>
@@ -691,6 +693,8 @@ const jsonLdFaq = JSON.stringify({
   border-radius: 6px; padding: 3px 8px; user-select: all; overflow-wrap: anywhere;
 }
 .trust-item { display: flex; align-items: center; gap: 7px; }
+.trust-link { color: inherit; text-decoration: none; }
+.trust-link:hover { color: var(--text-2); text-decoration: underline; }
 .trust-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
 
 /* ═══════════════════════════════════════════════════════
