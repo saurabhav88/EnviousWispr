@@ -1274,7 +1274,7 @@ class CleanArchiveEvalDiscoveryTests(unittest.TestCase):
             )
             output = result.stdout + result.stderr
             self.assertEqual(result.returncode, 0, output)
-            self.assertIn("OK (skipped=2)", output)
+            self.assertIn("OK (skipped=3)", output)
             self.assertEqual(
                 output.count(
                     "requires all four ignored real-private Type B source files"
@@ -1285,6 +1285,16 @@ class CleanArchiveEvalDiscoveryTests(unittest.TestCase):
             self.assertEqual(
                 output.count(
                     "set EG1_REPLAY_PRIVATE_INTEGRATION=1 for the local private-artifact gate"
+                ),
+                1,
+                output,
+            )
+            self.assertEqual(
+                output.count("clean-archive lifecycle requires a Git worktree")
+                + output.count("clean-archive lifecycle requires committed control bytes")
+                + output.count(
+                    "set EG1_PRIVATE_EVAL_SOURCE_ROOT and "
+                    "EG1_MULTILINGUAL_SCANNER_MODEL_DIR for the private deep lifecycle"
                 ),
                 1,
                 output,

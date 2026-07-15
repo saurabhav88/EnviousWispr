@@ -170,6 +170,7 @@ scripts/eval/*
 !scripts/eval/eg1_swift_string_count_oracle.swift
 !scripts/eval/screen_eg1_replay_semantic_neighbors.py
 !scripts/eval/build_eg1_d1_shared_concept_registry.py
+!scripts/eval/build_eg1_multilingual_development_authoring.py
 !scripts/eval/golden_judge_scores.json
 !scripts/eval/contracts/
 !scripts/eval/contracts/eg1_replay_semantic_screen_v1.json

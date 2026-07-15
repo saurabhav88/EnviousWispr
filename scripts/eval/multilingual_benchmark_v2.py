@@ -7,12 +7,17 @@ This tool validates benchmark inputs only. It does not run or inspect models.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
+import importlib.util
 import json
 import math
+import os
 import re
 import subprocess
 import sys
+import tempfile
+import types
 import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -23,9 +28,41 @@ from typing import Any, Iterable, Sequence
 
 SCRIPT_PATH = Path(__file__).resolve()
 REPO_ROOT = SCRIPT_PATH.parents[2]
+DEVELOPMENT_AUTHORING_VERIFIER_PATH = (
+    SCRIPT_PATH.parent / "build_eg1_multilingual_development_authoring.py"
+)
+DEVELOPMENT_LEAKAGE_SCANNER_PATH = (
+    SCRIPT_PATH.parent / "scan_eg1_multilingual_development_leakage.py"
+)
+RATING_SCHEMA_PATH = (
+    SCRIPT_PATH.parent / "multilingual_benchmark_v2_rating.schema.json"
+)
+DEVELOPMENT_AUTHORING_IMPORT_CLOSURE = (
+    SCRIPT_PATH,
+    DEVELOPMENT_AUTHORING_VERIFIER_PATH,
+    DEVELOPMENT_LEAKAGE_SCANNER_PATH,
+    SCRIPT_PATH.parent / "screen_eg1_replay_semantic_neighbors.py",
+    SCRIPT_PATH.parent / "build_eg1_replay_inventory.py",
+    SCRIPT_PATH.parent / "eg1_replay_normalizer_v1.py",
+    SCRIPT_PATH.parent / "multilingual_benchmark_v2.schema.json",
+    RATING_SCHEMA_PATH,
+    SCRIPT_PATH.parent
+    / "contracts/eg1_multilingual_development_authoring_v1.json",
+    SCRIPT_PATH.parent
+    / "contracts/eg1_multilingual_development_leakage_scanner_v1.json",
+)
+DEVELOPMENT_AUTHORING_MODULE_NAMES = (
+    "multilingual_benchmark_v2",
+    "eg1_pinned_multilingual_benchmark_v2",
+    "scan_eg1_multilingual_development_leakage",
+    "eg1_replay_normalizer_v1",
+    "build_eg1_replay_inventory",
+    "eg1_pinned_replay_semantic_neighbors",
+    "_eg1_multilingual_development_authoring_for_ratings",
+)
 SCHEMA_VERSION = "eg1-multilingual-benchmark-v2"
 RATING_SCHEMA_VERSION = "eg1-multilingual-benchmark-v2-rating"
-VALIDATOR_VERSION = "1.5.0"
+VALIDATOR_VERSION = "1.6.0"
 LANGUAGES = ("en", "de", "fr", "es", "ru")
 SPLITS = ("development", "frozen")
 DOMAINS = (
@@ -918,6 +955,7 @@ def validate_rows(
         "schema_version",
         "case_id",
         "semantic_family_id",
+        "shared_concept_brief_id",
         "split",
         "language",
         "domain",
@@ -946,7 +984,8 @@ def validate_rows(
         "independent_native_validator",
     }
     allowed_provenance_fields = required_provenance_fields | {
-        "blocked_family_clearances"
+        "blocked_family_clearances",
+        "shared_concept_binding",
     }
 
     for row_number, row in enumerate(rows, start=1):
@@ -964,6 +1003,14 @@ def validate_rows(
             value = row.get(field)
             if not _nonempty_string(value) or not IDENTIFIER_RE.fullmatch(value):
                 errors.append(f"{case_id}: {field} must be a stable identifier")
+        shared_brief_id = row.get("shared_concept_brief_id")
+        if shared_brief_id is not None and (
+            not _nonempty_string(shared_brief_id)
+            or not IDENTIFIER_RE.fullmatch(shared_brief_id)
+        ):
+            errors.append(
+                f"{case_id}: shared_concept_brief_id must be a stable identifier or null"
+            )
         if case_id in seen_case_ids:
             errors.append(f"{case_id}: duplicate case_id")
         seen_case_ids.add(case_id)
@@ -1076,6 +1123,25 @@ def validate_rows(
             errors.append(f"{case_id}: provenance.source_type must be one of {list(SOURCE_TYPES)}")
         if not _nonempty_string(provenance.get("source_ref")):
             errors.append(f"{case_id}: provenance.source_ref must be non-empty")
+        shared_binding = provenance.get("shared_concept_binding")
+        if provenance.get("source_type") == "shared_concept_local_rewrite":
+            if not isinstance(shared_binding, dict) or set(shared_binding) != {
+                "brief_id",
+                "brief_sha256",
+                "independent_local_rewrite",
+                "candidate_model_output_seen",
+            }:
+                errors.append(f"{case_id}: shared row lacks exact shared concept binding")
+            elif (
+                shared_binding.get("brief_id") != shared_brief_id
+                or not isinstance(shared_binding.get("brief_sha256"), str)
+                or not SHA256_RE.fullmatch(shared_binding["brief_sha256"])
+                or shared_binding.get("independent_local_rewrite") is not True
+                or shared_binding.get("candidate_model_output_seen") is not False
+            ):
+                errors.append(f"{case_id}: shared concept binding is invalid")
+        elif shared_brief_id is not None or shared_binding is not None:
+            errors.append(f"{case_id}: native-original row must not carry a shared brief")
 
         author = provenance.get("native_author")
         _validate_review_record(
@@ -2655,6 +2721,244 @@ def validate_live_leakage_evidence_for_ratings(
         raise BenchmarkValidationError(evidence_errors)
 
 
+def _rating_gate_git_output(*arguments: str) -> bytes:
+    try:
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=REPO_ROOT,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ).stdout
+    except subprocess.CalledProcessError as error:
+        raise BenchmarkValidationError(
+            [f"cannot authenticate rating-gate Git state: {' '.join(arguments)}"]
+        ) from error
+
+
+def capture_development_authoring_import_closure(
+    expected_head: str,
+) -> dict[Path, bytes]:
+    """Authenticate every local import before any authoring verifier code runs."""
+    if not re.fullmatch(r"[0-9a-f]{40}", expected_head):
+        raise BenchmarkValidationError(
+            ["expected Git HEAD must be a lowercase 40-character SHA-1"]
+        )
+    actual_head = _rating_gate_git_output("rev-parse", "HEAD").decode().strip()
+    if actual_head != expected_head:
+        raise BenchmarkValidationError(
+            ["Git HEAD differs from the predeclared rating-gate commit"]
+        )
+    if _rating_gate_git_output("status", "--porcelain", "--untracked-files=no"):
+        raise BenchmarkValidationError(
+            ["tracked worktree must be clean before loading the rating verifier"]
+        )
+
+    tracked_eval_python = {
+        line
+        for line in _rating_gate_git_output(
+            "ls-tree", "-r", "--name-only", expected_head, "--", "scripts/eval"
+        )
+        .decode("utf-8")
+        .splitlines()
+        if line.endswith(".py")
+    }
+    live_eval_python = {
+        str(path.relative_to(REPO_ROOT))
+        for path in (REPO_ROOT / "scripts/eval").rglob("*.py")
+    }
+    untracked_python = sorted(live_eval_python - tracked_eval_python)
+    if untracked_python:
+        raise BenchmarkValidationError(
+            [
+                "untracked scripts/eval Python shadow(s) must be removed before "
+                f"loading the rating verifier: {', '.join(untracked_python)}"
+            ]
+        )
+
+    captured: dict[Path, bytes] = {}
+    for path in DEVELOPMENT_AUTHORING_IMPORT_CLOSURE:
+        try:
+            relative = str(path.relative_to(REPO_ROOT))
+        except ValueError as error:
+            raise BenchmarkValidationError(
+                [f"rating-gate import control is outside the repository: {path}"]
+            ) from error
+        if not path.is_file() or path.is_symlink():
+            raise BenchmarkValidationError(
+                [f"rating-gate import control is not a regular file: {relative}"]
+            )
+        try:
+            committed = _rating_gate_git_output(
+                "show", f"{expected_head}:{relative}"
+            )
+            live = path.read_bytes()
+        except OSError as error:
+            raise BenchmarkValidationError(
+                [f"cannot read rating-gate import control: {relative}"]
+            ) from error
+        if live != committed:
+            raise BenchmarkValidationError(
+                [f"committed bytes differ from live rating-gate control: {relative}"]
+            )
+        captured[path] = committed
+    return captured
+
+
+def _load_committed_module(name: str, path: Path, source: bytes) -> Any:
+    module = types.ModuleType(name)
+    module.__file__ = str(path)
+    module.__package__ = ""
+    module.__spec__ = importlib.util.spec_from_loader(
+        name, loader=None, origin=str(path)
+    )
+    sys.modules[name] = module
+    exec(compile(source, str(path), "exec"), module.__dict__)
+    return module
+
+
+def load_development_authoring_verifier(expected_head: str) -> Any:
+    """Load only the committed authoring verifier and its authenticated imports."""
+    captured = capture_development_authoring_import_closure(expected_head)
+    current_module = sys.modules[__name__]
+    previous_modules = {
+        name: sys.modules.get(name) for name in DEVELOPMENT_AUTHORING_MODULE_NAMES
+    }
+    module_name = "_eg1_multilingual_development_authoring_for_ratings"
+    try:
+        for dependency_name in DEVELOPMENT_AUTHORING_MODULE_NAMES:
+            sys.modules.pop(dependency_name, None)
+        current_module._EG1_AUTHENTICATED_SOURCE_SHA256 = sha256_bytes(
+            captured[SCRIPT_PATH]
+        )
+        sys.modules["multilingual_benchmark_v2"] = current_module
+        sys.modules["eg1_pinned_multilingual_benchmark_v2"] = current_module
+        scanner = _load_committed_module(
+            "scan_eg1_multilingual_development_leakage",
+            DEVELOPMENT_LEAKAGE_SCANNER_PATH,
+            captured[DEVELOPMENT_LEAKAGE_SCANNER_PATH],
+        )
+        if (
+            Path(scanner.SCRIPT_PATH).resolve()
+            != DEVELOPMENT_LEAKAGE_SCANNER_PATH.resolve()
+        ):
+            raise RuntimeError("development leakage scanner path changed")
+        module = _load_committed_module(
+            module_name,
+            DEVELOPMENT_AUTHORING_VERIFIER_PATH,
+            captured[DEVELOPMENT_AUTHORING_VERIFIER_PATH],
+        )
+        if (
+            Path(module.SCRIPT_PATH).resolve()
+            != DEVELOPMENT_AUTHORING_VERIFIER_PATH.resolve()
+        ):
+            raise RuntimeError("development authoring verifier path changed")
+        if capture_development_authoring_import_closure(expected_head) != captured:
+            raise RuntimeError("rating-gate import closure changed while loading")
+    except Exception as error:
+        for dependency_name, previous in previous_modules.items():
+            if previous is None:
+                sys.modules.pop(dependency_name, None)
+            else:
+                sys.modules[dependency_name] = previous
+        if isinstance(error, BenchmarkValidationError):
+            raise
+        raise BenchmarkValidationError(
+            [f"cannot load the development authoring verifier: {error}"]
+        ) from error
+    return module
+
+
+def authenticate_development_authoring_for_ratings(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Reopen the complete 800-row authoring chain before accepting ratings."""
+    authenticated_fingerprint = capture_rating_authentication_fingerprint(args)
+    authoring = load_development_authoring_verifier(args.expected_git_head)
+    bundle = args.development_authoring_bundle.expanduser().resolve()
+    try:
+        expected_head = authoring.validate_git_state(args.expected_git_head)
+        receipt = authoring.authenticate_evaluation_bundle(
+            bundle,
+            expected_head,
+            authoring.validate_private_file(
+                args.development_allocation_receipt,
+                "development allocation receipt",
+            ),
+            authoring.validate_private_file(
+                args.development_shared_brief_receipt,
+                "development shared-brief receipt",
+            ),
+            authoring.validate_private_file(
+                args.development_launch_receipt,
+                "development launch receipt",
+            ),
+            authoring.validate_private_file(
+                args.development_roster,
+                "development private roster",
+            ),
+            authoring.validate_private_file(
+                args.development_native_review_seal,
+                "development native-review seal",
+            ),
+            authoring.validate_private_file(
+                args.development_contrast_comparability_seal,
+                "development contrast-comparability seal",
+            ),
+            authoring.validate_private_file(
+                args.development_leakage_receipt,
+                "development leakage receipt",
+            ),
+            authoring.validate_private_file(
+                args.development_blocked_registry_receipt,
+                "development blocked-registry receipt",
+            ),
+            authoring.validate_private_file(
+                args.development_leakage_inventory,
+                "development leakage inventory",
+            ),
+            authoring.validate_private_specs(
+                args.development_leakage_source,
+                "development leakage source",
+            ),
+            authoring.validate_private_specs(
+                args.development_source_receipt,
+                "development source receipt",
+            ),
+            args.development_scanner_model_dir.expanduser().resolve(),
+        )
+    except authoring.ValidationFailure as error:
+        raise BenchmarkValidationError(
+            [f"development authoring evidence is not authentic: {error}"]
+        ) from error
+    bindings = {
+        "development corpus": (
+            bundle / "development-corpus.jsonl",
+            args.development_corpus.expanduser().resolve(),
+        ),
+        "development benchmark manifest": (
+            bundle / "development-corpus.manifest.json",
+            args.development_benchmark_manifest.expanduser().resolve(),
+        ),
+    }
+    errors = [
+        f"{label} is not the authenticated development authoring artifact"
+        for label, (authenticated, supplied) in bindings.items()
+        if not authenticated.is_file()
+        or not supplied.is_file()
+        or sha256_file(authenticated) != sha256_file(supplied)
+    ]
+    if errors:
+        raise BenchmarkValidationError(errors)
+    if capture_rating_authentication_fingerprint(args) != authenticated_fingerprint:
+        raise BenchmarkValidationError(
+            ["development authoring evidence changed during authentication"]
+        )
+    authenticated = dict(receipt)
+    authenticated["_rating_gate_authenticated_fingerprint"] = authenticated_fingerprint
+    return authenticated
+
+
 def validate_generation_receipts(
     paths: Sequence[Path],
     *,
@@ -2782,11 +3086,9 @@ def build_rating_manifest(
     benchmark_manifest_sha256: str,
     expected_model_labels: Sequence[str],
     workflow_stats: dict[str, Any],
+    rating_schema_path: Path,
     generation_receipts: Sequence[dict[str, Any]] = (),
 ) -> dict[str, Any]:
-    rating_schema_path = (
-        Path(__file__).resolve().parent / "multilingual_benchmark_v2_rating.schema.json"
-    )
     row_hashes = [
         {
             "rating_id": row["rating_id"],
@@ -2991,7 +3293,295 @@ def power_plan_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _rating_spec_identity_path(spec: str, label: str) -> tuple[str, Path]:
+    try:
+        identity, raw_path = spec.split("=", 1)
+    except ValueError as error:
+        raise BenchmarkValidationError(
+            [f"invalid {label} {spec!r}; expected IDENTITY=PATH"]
+        ) from error
+    if not identity or not raw_path:
+        raise BenchmarkValidationError(
+            [f"invalid {label} {spec!r}; expected IDENTITY=PATH"]
+        )
+    return identity, Path(raw_path).expanduser().resolve()
+
+
+def _regular_tree_fingerprint(root: Path, label: str) -> dict[str, str]:
+    if not root.is_dir() or root.is_symlink():
+        raise BenchmarkValidationError([f"{label} is not a regular directory: {root}"])
+    fingerprint: dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        relative = str(path.relative_to(root))
+        if path.is_symlink():
+            raise BenchmarkValidationError([f"{label} contains a symlink: {relative}"])
+        if path.is_dir():
+            continue
+        if not path.is_file():
+            raise BenchmarkValidationError(
+                [f"{label} contains a non-regular entry: {relative}"]
+            )
+        fingerprint[relative] = sha256_file(path)
+    if not fingerprint:
+        raise BenchmarkValidationError([f"{label} contains no regular files: {root}"])
+    return fingerprint
+
+
+def _authoring_rating_paths(args: argparse.Namespace) -> tuple[list[Path], list[Path]]:
+    files = [
+        args.development_corpus,
+        args.development_benchmark_manifest,
+        args.development_roster,
+        args.development_native_review_seal,
+        args.development_contrast_comparability_seal,
+        args.development_leakage_receipt,
+        args.development_blocked_registry_receipt,
+        args.development_leakage_inventory,
+    ]
+    for spec in (
+        *args.development_leakage_source,
+        *args.development_source_receipt,
+    ):
+        files.append(_rating_spec_identity_path(spec, "development evidence")[1])
+    directories = [
+        args.development_authoring_bundle,
+        args.development_allocation_receipt.parent,
+        args.development_shared_brief_receipt.parent,
+        args.development_launch_receipt.parent,
+    ]
+    return (
+        list(dict.fromkeys(path.expanduser().resolve() for path in files)),
+        list(dict.fromkeys(path.expanduser().resolve() for path in directories)),
+    )
+
+
+def capture_rating_authentication_fingerprint(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    authoring_files, authoring_directories = _authoring_rating_paths(args)
+    file_digests: dict[Path, str] = {}
+    for path in authoring_files:
+        if path.is_symlink() or not path.is_file():
+            raise BenchmarkValidationError(
+                [f"authenticated authoring evidence is not a regular file: {path}"]
+            )
+        file_digests[path] = sha256_file(path)
+    directory_fingerprints = {
+        directory: _regular_tree_fingerprint(
+            directory, "authenticated authoring evidence bundle"
+        )
+        for directory in authoring_directories
+    }
+    for directory, fingerprint in directory_fingerprints.items():
+        for relative, digest in fingerprint.items():
+            path = directory / relative
+            prior = file_digests.setdefault(path, digest)
+            if prior != digest:
+                raise BenchmarkValidationError(
+                    ["authenticated authoring evidence changed while fingerprinting"]
+                )
+    model_dir = args.development_scanner_model_dir.expanduser().resolve()
+    return {
+        "controls": capture_development_authoring_import_closure(
+            args.expected_git_head
+        ),
+        "files": file_digests,
+        "directories": directory_fingerprints,
+        "model_dir": model_dir,
+        "model": _regular_tree_fingerprint(
+            model_dir, "development scanner model"
+        ),
+    }
+
+
+@contextlib.contextmanager
+def immutable_rating_inputs(
+    args: argparse.Namespace,
+    authenticated_fingerprint: dict[str, Any],
+) -> Iterable[tuple[argparse.Namespace, Any]]:
+    """Freeze every post-authentication input and expose a final mutation check."""
+    if (
+        capture_rating_authentication_fingerprint(args)
+        != authenticated_fingerprint
+    ):
+        raise BenchmarkValidationError(
+            ["development authoring evidence changed before rating inputs were frozen"]
+        )
+    controls = authenticated_fingerprint["controls"]
+    original_digests: dict[Path, str] = dict(authenticated_fingerprint["files"])
+    authoring_files, authoring_directories = _authoring_rating_paths(args)
+    authoring_tree_fingerprints: dict[Path, dict[str, str]] = dict(
+        authenticated_fingerprint["directories"]
+    )
+    model_dir = authenticated_fingerprint["model_dir"]
+    model_fingerprint = authenticated_fingerprint["model"]
+
+    def capture(path: Path, label: str) -> tuple[Path, bytes]:
+        resolved = path.expanduser().resolve()
+        if resolved.is_symlink() or not resolved.is_file():
+            raise BenchmarkValidationError([f"{label} is not a regular file: {resolved}"])
+        try:
+            data = resolved.read_bytes()
+        except OSError as error:
+            raise BenchmarkValidationError([f"cannot read {label}: {resolved}"]) from error
+        digest = sha256_bytes(data)
+        prior = original_digests.setdefault(resolved, digest)
+        if prior != digest:
+            raise BenchmarkValidationError([f"{label} changed while inputs were frozen"])
+        return resolved, data
+
+    with tempfile.TemporaryDirectory(prefix="eg1-rating-inputs-") as raw_tmp:
+        snapshot_root = Path(raw_tmp)
+        os.chmod(snapshot_root, 0o700)
+        frozen = argparse.Namespace(**vars(args))
+        copied: dict[Path, Path] = {}
+
+        def snapshot(path: Path, label: str) -> Path:
+            resolved = path.expanduser().resolve()
+            existing = copied.get(resolved)
+            if existing is not None:
+                return existing
+            resolved, data = capture(resolved, label)
+            suffix = resolved.suffix if resolved.suffix else ".input"
+            target = snapshot_root / f"{len(copied):04d}{suffix}"
+            target.write_bytes(data)
+            os.chmod(target, 0o400)
+            copied[resolved] = target
+            return target
+
+        for attribute in (
+            "corpus",
+            "benchmark_manifest",
+            "ratings",
+            "power_plan",
+            "development_discordance_receipt",
+            "development_corpus",
+            "development_benchmark_manifest",
+            "development_comparison_manifest",
+            "leakage_receipt",
+            "blocked_registry_receipt",
+        ):
+            setattr(
+                frozen,
+                attribute,
+                snapshot(getattr(args, attribute), f"rating input {attribute}"),
+            )
+        frozen.rating_schema_path = snapshot(RATING_SCHEMA_PATH, "rating schema")
+        frozen.generation_receipt = [
+            snapshot(path, "generation receipt") for path in args.generation_receipt
+        ]
+        frozen.leakage_source = []
+        for spec in args.leakage_source:
+            identity, path = _rating_spec_identity_path(spec, "leakage source")
+            frozen.leakage_source.append(
+                f"{identity}={snapshot(path, 'leakage source')}"
+            )
+
+        for path in authoring_files:
+            capture(path, "authenticated authoring evidence")
+        for directory in authoring_directories:
+            fingerprint = _regular_tree_fingerprint(
+                directory, "authenticated authoring evidence bundle"
+            )
+            if fingerprint != authoring_tree_fingerprints.get(directory):
+                raise BenchmarkValidationError(
+                    ["authenticated authoring evidence changed before snapshotting"]
+                )
+            for relative, digest in fingerprint.items():
+                path = directory / relative
+                prior = original_digests.setdefault(path, digest)
+                if prior != digest:
+                    raise BenchmarkValidationError(
+                        ["authenticated authoring evidence changed while inputs were frozen"]
+                    )
+
+        def recheck() -> None:
+            errors: list[str] = []
+            for path, expected_digest in original_digests.items():
+                if (
+                    path.is_symlink()
+                    or not path.is_file()
+                    or sha256_file(path) != expected_digest
+                ):
+                    errors.append(f"rating input changed before publication: {path}")
+            for directory, expected in authoring_tree_fingerprints.items():
+                try:
+                    observed = _regular_tree_fingerprint(
+                        directory, "authenticated authoring evidence bundle"
+                    )
+                except BenchmarkValidationError as error:
+                    errors.extend(error.errors)
+                    continue
+                if observed != expected:
+                    errors.append(
+                        "authenticated authoring evidence bundle changed before publication: "
+                        f"{directory}"
+                    )
+            try:
+                if (
+                    _regular_tree_fingerprint(model_dir, "development scanner model")
+                    != model_fingerprint
+                ):
+                    errors.append("development scanner model changed before publication")
+                if (
+                    capture_development_authoring_import_closure(
+                        args.expected_git_head
+                    )
+                    != controls
+                ):
+                    errors.append("rating-gate controls changed before publication")
+            except BenchmarkValidationError as error:
+                errors.extend(error.errors)
+            if errors:
+                raise BenchmarkValidationError(errors)
+
+        yield frozen, recheck
+
+
+def write_manifest_atomic(
+    path: Path,
+    manifest: dict[str, Any],
+    *,
+    before_publish: Any,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = (
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    descriptor, raw_temporary = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(raw_temporary)
+    try:
+        os.chmod(temporary, 0o600)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        before_publish()
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        temporary.unlink(missing_ok=True)
+        raise
+
+
 def validate_ratings_command(args: argparse.Namespace) -> int:
+    authentication = authenticate_development_authoring_for_ratings(args)
+    with immutable_rating_inputs(
+        args, authentication["_rating_gate_authenticated_fingerprint"]
+    ) as (frozen_args, recheck):
+        return _validate_frozen_ratings_command(frozen_args, args, recheck)
+
+
+def _validate_frozen_ratings_command(
+    args: argparse.Namespace,
+    original_args: argparse.Namespace,
+    recheck: Any,
+) -> int:
     corpus_path = args.corpus.expanduser().resolve()
     benchmark_manifest_path = args.benchmark_manifest.expanduser().resolve()
     ratings_path = args.ratings.expanduser().resolve()
@@ -3070,10 +3660,17 @@ def validate_ratings_command(args: argparse.Namespace) -> int:
         benchmark_manifest_sha256=benchmark_manifest_sha,
         expected_model_labels=args.expected_model_label,
         workflow_stats=workflow_stats,
+        rating_schema_path=args.rating_schema_path,
         generation_receipts=generation_receipts,
     )
     if args.manifest_out:
-        write_manifest(args.manifest_out.expanduser().resolve(), manifest)
+        write_manifest_atomic(
+            original_args.manifest_out.expanduser().resolve(),
+            manifest,
+            before_publish=recheck,
+        )
+    else:
+        recheck()
     print(
         canonical_json(
             {
@@ -3178,6 +3775,50 @@ def build_parser() -> argparse.ArgumentParser:
     ratings_parser.add_argument(
         "--development-comparison-manifest", type=Path, required=True
     )
+    ratings_parser.add_argument(
+        "--development-authoring-bundle", type=Path, required=True
+    )
+    ratings_parser.add_argument(
+        "--development-allocation-receipt", type=Path, required=True
+    )
+    ratings_parser.add_argument(
+        "--development-shared-brief-receipt", type=Path, required=True
+    )
+    ratings_parser.add_argument(
+        "--development-launch-receipt", type=Path, required=True
+    )
+    ratings_parser.add_argument("--development-roster", type=Path, required=True)
+    ratings_parser.add_argument(
+        "--development-native-review-seal", type=Path, required=True
+    )
+    ratings_parser.add_argument(
+        "--development-contrast-comparability-seal", type=Path, required=True
+    )
+    ratings_parser.add_argument(
+        "--development-leakage-receipt", type=Path, required=True
+    )
+    ratings_parser.add_argument(
+        "--development-blocked-registry-receipt", type=Path, required=True
+    )
+    ratings_parser.add_argument(
+        "--development-leakage-inventory", type=Path, required=True
+    )
+    ratings_parser.add_argument(
+        "--development-leakage-source",
+        action="append",
+        required=True,
+        metavar="ROLE:NAME=PATH",
+    )
+    ratings_parser.add_argument(
+        "--development-source-receipt",
+        action="append",
+        required=True,
+        metavar="ROLE:NAME=PATH",
+    )
+    ratings_parser.add_argument(
+        "--development-scanner-model-dir", type=Path, required=True
+    )
+    ratings_parser.add_argument("--expected-git-head", required=True)
     ratings_parser.add_argument(
         "--generation-receipt",
         type=Path,

@@ -8,6 +8,7 @@
     "schema_version",
     "case_id",
     "semantic_family_id",
+    "shared_concept_brief_id",
     "split",
     "language",
     "domain",
@@ -29,6 +30,12 @@
     },
     "semantic_family_id": {
       "$ref": "#/$defs/identifier"
+    },
+    "shared_concept_brief_id": {
+      "oneOf": [
+        {"$ref": "#/$defs/identifier"},
+        {"type": "null"}
+      ]
     },
     "split": {
       "enum": ["development", "frozen"]
@@ -174,6 +181,9 @@
             }
           ]
         },
+        "shared_concept_binding": {
+          "$ref": "#/$defs/shared_concept_binding"
+        },
         "blocked_family_clearances": {
           "type": "array",
           "minItems": 1,
@@ -296,6 +306,22 @@
           "type": "string",
           "format": "date"
         }
+      }
+    },
+    "shared_concept_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brief_id",
+        "brief_sha256",
+        "independent_local_rewrite",
+        "candidate_model_output_seen"
+      ],
+      "properties": {
+        "brief_id": {"$ref": "#/$defs/identifier"},
+        "brief_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "independent_local_rewrite": {"const": true},
+        "candidate_model_output_seen": {"const": false}
       }
     }
   }

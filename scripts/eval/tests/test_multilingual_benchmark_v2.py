@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import argparse
 import copy
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -46,6 +48,18 @@ def synthetic_row(
 ) -> dict:
     contract, item_count = _list_contract(behavior)
     author_id = f"author-{language}"
+    resolved_family_id = family_id or f"family-{case_id}"
+    if source_type == "shared_concept_local_rewrite" and family_id is None:
+        parts = case_id.split("-")
+        if len(parts) >= 5 and parts[0] == "SYN":
+            resolved_family_id = "family-" + "-".join(
+                (parts[0], parts[1], *parts[3:])
+            )
+    brief_id = (
+        f"brief-{resolved_family_id}"
+        if source_type == "shared_concept_local_rewrite"
+        else None
+    )
     validator = None
     if with_validator:
         validator = {
@@ -59,7 +73,8 @@ def synthetic_row(
     return {
         "schema_version": benchmark.SCHEMA_VERSION,
         "case_id": case_id,
-        "semantic_family_id": family_id or f"family-{case_id}",
+        "semantic_family_id": resolved_family_id,
+        "shared_concept_brief_id": brief_id,
         "split": split,
         "language": language,
         "domain": domain,
@@ -92,8 +107,81 @@ def synthetic_row(
                 "reviewed_on": "2026-07-15",
             },
             "independent_native_validator": validator,
+            **(
+                {
+                    "shared_concept_binding": {
+                        "brief_id": brief_id,
+                        "brief_sha256": benchmark.sha256_bytes(
+                            brief_id.encode("utf-8")
+                        ),
+                        "independent_local_rewrite": True,
+                        "candidate_model_output_seen": False,
+                    }
+                }
+                if brief_id is not None
+                else {}
+            ),
         },
     }
+
+
+def rating_snapshot_args(root: Path) -> argparse.Namespace:
+    inputs = root / "inputs"
+    inputs.mkdir()
+
+    def write(name: str, payload: bytes = b"{}\n") -> Path:
+        path = inputs / name
+        path.write_bytes(payload)
+        return path
+
+    bundle_paths = {}
+    for name in ("evaluation", "allocation", "briefs", "launch"):
+        directory = root / name
+        directory.mkdir()
+        receipt = directory / "receipt.json"
+        receipt.write_bytes(b"{}\n")
+        bundle_paths[name] = receipt
+    model = root / "model"
+    model.mkdir()
+    (model / "weights.bin").write_bytes(b"model")
+    release_source = write("release-source.jsonl", b'{"text":"release"}\n')
+    development_source = write(
+        "development-source.jsonl", b'{"text":"development"}\n'
+    )
+    development_source_receipt = write("development-source-receipt.json")
+    return argparse.Namespace(
+        expected_git_head="1" * 40,
+        corpus=write("corpus.jsonl", b'{"case_id":"one"}\n'),
+        benchmark_manifest=write("benchmark-manifest.json"),
+        ratings=write("ratings.jsonl", b'{"rating_id":"one"}\n'),
+        power_plan=write("power-plan.json"),
+        development_discordance_receipt=write("discordance.json"),
+        development_corpus=write("development-corpus.jsonl"),
+        development_benchmark_manifest=write("development-manifest.json"),
+        development_comparison_manifest=write("comparison-manifest.json"),
+        leakage_receipt=write("leakage-receipt.json"),
+        blocked_registry_receipt=write("blocked-receipt.json"),
+        generation_receipt=[write("generation-one.json"), write("generation-two.json")],
+        leakage_source=[f"training:release={release_source}"],
+        development_authoring_bundle=bundle_paths["evaluation"].parent,
+        development_allocation_receipt=bundle_paths["allocation"],
+        development_shared_brief_receipt=bundle_paths["briefs"],
+        development_launch_receipt=bundle_paths["launch"],
+        development_roster=write("roster.json"),
+        development_native_review_seal=write("native-review.json"),
+        development_contrast_comparability_seal=write("comparability.json"),
+        development_leakage_receipt=write("development-leakage.json"),
+        development_blocked_registry_receipt=write("development-blocked.json"),
+        development_leakage_inventory=write("development-inventory.json"),
+        development_leakage_source=[
+            f"training:development={development_source}"
+        ],
+        development_source_receipt=[
+            f"training:development={development_source_receipt}"
+        ],
+        development_scanner_model_dir=model,
+        manifest_out=root / "rating-manifest.json",
+    )
 
 
 def write_synthetic_leakage_evidence(
@@ -1470,8 +1558,343 @@ class MultilingualBenchmarkV2Tests(unittest.TestCase):
                 benchmark_manifest_sha256="a" * 64,
                 expected_model_labels=["M1"],
                 workflow_stats=stats,
+                rating_schema_path=benchmark.RATING_SCHEMA_PATH,
             )
         self.assertEqual(manifest["benchmark_manifest_sha256"], "a" * 64)
+
+    def test_rating_gate_reopens_full_development_authoring_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bundle = root / "evaluation"
+            bundle.mkdir()
+            development_corpus = root / "development-corpus.jsonl"
+            development_manifest = root / "development-manifest.json"
+            development_corpus.write_bytes(b'{"case_id":"development-1"}\n')
+            development_manifest.write_bytes(b'{"manifest":"development"}\n')
+            (bundle / "development-corpus.jsonl").write_bytes(
+                development_corpus.read_bytes()
+            )
+            (bundle / "development-corpus.manifest.json").write_bytes(
+                development_manifest.read_bytes()
+            )
+            paths = {
+                name: root / f"{name}.json"
+                for name in (
+                    "allocation",
+                    "brief",
+                    "launch",
+                    "roster",
+                    "native",
+                    "comparability",
+                    "leakage",
+                    "blocked",
+                    "inventory",
+                )
+            }
+            for path in paths.values():
+                path.write_text("{}\n", encoding="utf-8")
+            model_dir = root / "model"
+            model_dir.mkdir()
+            args = argparse.Namespace(
+                development_authoring_bundle=bundle,
+                expected_git_head="1" * 40,
+                development_allocation_receipt=paths["allocation"],
+                development_shared_brief_receipt=paths["brief"],
+                development_launch_receipt=paths["launch"],
+                development_roster=paths["roster"],
+                development_native_review_seal=paths["native"],
+                development_contrast_comparability_seal=paths["comparability"],
+                development_leakage_receipt=paths["leakage"],
+                development_blocked_registry_receipt=paths["blocked"],
+                development_leakage_inventory=paths["inventory"],
+                development_leakage_source=["training:train=/private/source.jsonl"],
+                development_source_receipt=["training:train=/private/receipt.json"],
+                development_scanner_model_dir=model_dir,
+                development_corpus=development_corpus,
+                development_benchmark_manifest=development_manifest,
+            )
+
+            class FakeValidationFailure(Exception):
+                pass
+
+            verifier = mock.Mock()
+            verifier.ValidationFailure = FakeValidationFailure
+            verifier.validate_git_state.return_value = "1" * 40
+            verifier.validate_private_file.side_effect = lambda path, _label: path
+            verifier.validate_private_specs.side_effect = lambda specs, _label: specs
+            verifier.authenticate_evaluation_bundle.return_value = {
+                "status": "development_evaluation_authorized_operator_attested_nonrelease"
+            }
+            with mock.patch.object(
+                benchmark,
+                "load_development_authoring_verifier",
+                return_value=verifier,
+            ) as loader, mock.patch.object(
+                benchmark,
+                "capture_rating_authentication_fingerprint",
+                return_value={"authenticated": True},
+            ):
+                receipt = benchmark.authenticate_development_authoring_for_ratings(args)
+            loader.assert_called_once_with("1" * 40)
+            self.assertEqual(
+                receipt["status"],
+                "development_evaluation_authorized_operator_attested_nonrelease",
+            )
+            verifier.authenticate_evaluation_bundle.assert_called_once()
+            call = verifier.authenticate_evaluation_bundle.call_args
+            self.assertEqual(call.args[0], bundle.resolve())
+            self.assertEqual(call.args[1], "1" * 40)
+            self.assertEqual(call.args[-1], model_dir.resolve())
+
+    def test_rating_gate_rejects_plain_manifest_without_authoring_receipt(self) -> None:
+        class FakeValidationFailure(Exception):
+            pass
+
+        verifier = mock.Mock()
+        verifier.ValidationFailure = FakeValidationFailure
+        verifier.validate_git_state.return_value = "1" * 40
+        verifier.validate_private_file.side_effect = lambda path, _label: path
+        verifier.validate_private_specs.side_effect = lambda specs, _label: specs
+        verifier.authenticate_evaluation_bundle.side_effect = FakeValidationFailure(
+            "evaluation receipt is missing"
+        )
+        placeholder = Path("/private/plain-manifest-only")
+        args = argparse.Namespace(
+            development_authoring_bundle=placeholder,
+            expected_git_head="1" * 40,
+            development_allocation_receipt=placeholder,
+            development_shared_brief_receipt=placeholder,
+            development_launch_receipt=placeholder,
+            development_roster=placeholder,
+            development_native_review_seal=placeholder,
+            development_contrast_comparability_seal=placeholder,
+            development_leakage_receipt=placeholder,
+            development_blocked_registry_receipt=placeholder,
+            development_leakage_inventory=placeholder,
+            development_leakage_source=["training:train=/private/source.jsonl"],
+            development_source_receipt=["training:train=/private/receipt.json"],
+            development_scanner_model_dir=placeholder,
+            development_corpus=placeholder,
+            development_benchmark_manifest=placeholder,
+        )
+        with mock.patch.object(
+            benchmark,
+            "load_development_authoring_verifier",
+            return_value=verifier,
+        ) as loader, mock.patch.object(
+            benchmark,
+            "capture_rating_authentication_fingerprint",
+            return_value={"authenticated": True},
+        ), self.assertRaisesRegex(
+            benchmark.BenchmarkValidationError,
+            "development authoring evidence is not authentic",
+        ):
+            benchmark.authenticate_development_authoring_for_ratings(args)
+        loader.assert_called_once_with("1" * 40)
+        verifier.authenticate_evaluation_bundle.assert_called_once()
+
+    def test_rating_loader_rejects_untracked_eval_python_before_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            eval_dir = repo / "scripts/eval"
+            eval_dir.mkdir(parents=True)
+            (eval_dir / "tracked_control.py").write_text("CONTROL = True\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.invalid"],
+                cwd=repo,
+                check=True,
+            )
+            subprocess.run(["git", "add", "scripts/eval/tracked_control.py"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "control"], cwd=repo, check=True)
+            head = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=repo, text=True
+            ).strip()
+            (eval_dir / "multilingual_benchmark_v2_shadow.py").write_text(
+                "raise RuntimeError('malicious shadow executed')\n", encoding="utf-8"
+            )
+            with mock.patch.object(benchmark, "REPO_ROOT", repo), mock.patch.object(
+                benchmark, "_load_committed_module"
+            ) as execute, self.assertRaisesRegex(
+                benchmark.BenchmarkValidationError,
+                "untracked scripts/eval Python shadow",
+            ):
+                benchmark.load_development_authoring_verifier(head)
+            execute.assert_not_called()
+
+    def test_rating_loader_rejects_dirty_authoring_before_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            eval_dir = repo / "scripts/eval"
+            eval_dir.mkdir(parents=True)
+            authoring = eval_dir / "build_eg1_multilingual_development_authoring.py"
+            authoring.write_text("CONTROL = True\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.invalid"],
+                cwd=repo,
+                check=True,
+            )
+            subprocess.run(["git", "add", str(authoring.relative_to(repo))], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "authoring"], cwd=repo, check=True)
+            head = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=repo, text=True
+            ).strip()
+            authoring.write_text("raise RuntimeError('dirty authoring executed')\n", encoding="utf-8")
+            with mock.patch.object(benchmark, "REPO_ROOT", repo), mock.patch.object(
+                benchmark, "_load_committed_module"
+            ) as execute, self.assertRaisesRegex(
+                benchmark.BenchmarkValidationError,
+                "tracked worktree must be clean",
+            ):
+                benchmark.load_development_authoring_verifier(head)
+            execute.assert_not_called()
+
+    def test_validate_ratings_command_authenticates_development_before_manifest(self) -> None:
+        args = argparse.Namespace()
+        error = benchmark.BenchmarkValidationError(
+            ["development authoring evidence is not authentic"]
+        )
+        with mock.patch.object(
+            benchmark,
+            "authenticate_development_authoring_for_ratings",
+            side_effect=error,
+        ) as authenticate, self.assertRaisesRegex(
+            benchmark.BenchmarkValidationError,
+            "development authoring evidence is not authentic",
+        ):
+            benchmark.validate_ratings_command(args)
+        authenticate.assert_called_once_with(args)
+
+    def test_rating_inputs_use_private_copies_and_survive_swap_restore(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            args = rating_snapshot_args(Path(tmp))
+            original = args.ratings.read_bytes()
+            with mock.patch.object(
+                benchmark,
+                "capture_development_authoring_import_closure",
+                return_value={Path("control.py"): b"control"},
+            ):
+                fingerprint = benchmark.capture_rating_authentication_fingerprint(args)
+                with benchmark.immutable_rating_inputs(
+                    args, fingerprint
+                ) as (frozen, recheck):
+                    args.ratings.write_bytes(b'{"rating_id":"attacker"}\n')
+                    self.assertEqual(frozen.ratings.read_bytes(), original)
+                    args.ratings.write_bytes(original)
+                    recheck()
+
+    def test_rating_manifest_uses_frozen_schema_during_swap_restore(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            args = rating_snapshot_args(root)
+            schema_path = root / "rating.schema.json"
+            original_schema = b'{"title":"approved"}\n'
+            schema_path.write_bytes(original_schema)
+            with mock.patch.object(
+                benchmark, "RATING_SCHEMA_PATH", schema_path
+            ), mock.patch.object(
+                benchmark,
+                "capture_development_authoring_import_closure",
+                return_value={Path("control.py"): b"control"},
+            ):
+                fingerprint = benchmark.capture_rating_authentication_fingerprint(args)
+                with benchmark.immutable_rating_inputs(
+                    args, fingerprint
+                ) as (frozen, recheck):
+                    schema_path.write_bytes(b'{"title":"attacker"}\n')
+                    manifest = benchmark.build_rating_manifest(
+                        ratings=[],
+                        ratings_path=frozen.ratings,
+                        benchmark_manifest={"benchmark_content_sha256": "a" * 64},
+                        benchmark_manifest_sha256="b" * 64,
+                        expected_model_labels=[],
+                        workflow_stats={},
+                        rating_schema_path=frozen.rating_schema_path,
+                    )
+                    schema_path.write_bytes(original_schema)
+                    recheck()
+            self.assertEqual(
+                manifest["rating_schema_sha256"],
+                benchmark.sha256_bytes(original_schema),
+            )
+
+    def test_rating_inputs_reject_mutation_between_authentication_and_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            args = rating_snapshot_args(Path(tmp))
+            with mock.patch.object(
+                benchmark,
+                "capture_development_authoring_import_closure",
+                return_value={Path("control.py"): b"control"},
+            ):
+                authenticated = benchmark.capture_rating_authentication_fingerprint(args)
+                args.development_roster.write_bytes(b"mutated after authentication")
+                with self.assertRaisesRegex(
+                    benchmark.BenchmarkValidationError,
+                    "changed before rating inputs were frozen",
+                ):
+                    with benchmark.immutable_rating_inputs(args, authenticated):
+                        self.fail("mutated evidence must not be exposed to rating code")
+
+    def test_rating_inputs_reject_every_watched_input_mutation(self) -> None:
+        targets = (
+            "corpus",
+            "benchmark_manifest",
+            "ratings",
+            "power_plan",
+            "generation_receipt",
+            "leakage_receipt",
+            "leakage_source",
+            "development_roster",
+            "development_corpus",
+            "development_benchmark_manifest",
+            "development_native_review_seal",
+            "development_contrast_comparability_seal",
+            "development_scanner_model_dir",
+        )
+        for target_name in targets:
+            with self.subTest(target=target_name), tempfile.TemporaryDirectory() as tmp:
+                args = rating_snapshot_args(Path(tmp))
+                with mock.patch.object(
+                    benchmark,
+                    "capture_development_authoring_import_closure",
+                    return_value={Path("control.py"): b"control"},
+                ):
+                    fingerprint = benchmark.capture_rating_authentication_fingerprint(args)
+                    with benchmark.immutable_rating_inputs(
+                        args, fingerprint
+                    ) as (_frozen, recheck):
+                        target = getattr(args, target_name)
+                        if target_name == "generation_receipt":
+                            target = target[0]
+                        elif target_name == "leakage_source":
+                            target = Path(target[0].split("=", 1)[1])
+                        if target.is_dir():
+                            target = target / "weights.bin"
+                        target.write_bytes(b"mutated")
+                        with self.assertRaisesRegex(
+                            benchmark.BenchmarkValidationError,
+                            "changed before publication",
+                        ):
+                            recheck()
+
+    def test_atomic_rating_manifest_leaves_no_partial_file_on_recheck_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "manifest.json"
+
+            def reject() -> None:
+                raise benchmark.BenchmarkValidationError(["input mutated"])
+
+            with self.assertRaisesRegex(
+                benchmark.BenchmarkValidationError, "input mutated"
+            ):
+                benchmark.write_manifest_atomic(
+                    output, {"status": "valid"}, before_publish=reject
+                )
+            self.assertFalse(output.exists())
+            self.assertEqual(list(output.parent.glob(".manifest.json.*.tmp")), [])
 
 
 if __name__ == "__main__":

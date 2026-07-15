@@ -35,6 +35,76 @@ Model size is a ranking factor only after the architecture and quality gates pas
 
 The frozen corpus cannot be used to choose between several finalists. A second finalist requires a newly authored and newly sealed frozen version.
 
+### Development authoring gate
+
+The 800-row development matrix is created through
+`scripts/eval/build_eg1_multilingual_development_authoring.py`. Its tracked
+contract is
+`scripts/eval/contracts/eg1_multilingual_development_authoring_v1.json`.
+
+The workflow has four fail-closed stages:
+
+1. `allocate` seals exactly 800 text-free slots: 160 for each of EN/DE/FR/ES/RU and exactly two rows in every language x behavior x domain cell. It also creates ten 16-row author packets and ten 16-row reviewer packets per language; every packet contains every behavior exactly once. Difficulty varies by cell and every behavior/language has all three levels. The 200 list/restraint contrasts predeclare only an opaque brief ID and archetype; their source types are matched exactly (160 native/native and 40 shared/shared). No prose, identity, review approval, or candidate output is allowed.
+2. `seal-briefs` consumes a private completion for exactly 32 shared concepts and the same private roster used downstream. Each concept binds one allocation-created brief ID to one meaning-safe, language-neutral brief and exact hash, one row in each of the five languages, and registered `concept_author` / `concept_reviewer` identity references from that roster. The lanes require at least five people each and cap each person at eight briefs. The roster ID and exact bytes are bound into the registry and receipt. The seal must be created in a strict descendant of the allocation commit. Native-original rows never carry a shared brief. This 32-brief development contract is separate from D1's 80 shared concepts.
+3. `launch` binds those immutable packets and the exact sealed brief registry to that same private operator-approved roster. The concept roles are human, consented custodians without artificial five-language native claims. Every language separately requires at least five native people in each disjoint local author/reviewer lane, per-language native attestations, and no more than two of ten packets per person. All four roles use singular assignments and globally unique, cross-namespace opaque participant and identity references. Concept custody identities must be distinct from every local author/reviewer identity. Concept and local identity cluster counts remain in gitignored receipt-last bundles and all four are named as human-variance clusters for analysis. These are unsigned operator attestations, not cryptographic identity or custody proof.
+4. `merge` is the first stage allowed to read authored rows. It refuses output unless all 800 rows exactly match the deterministic allocation, sealed shared briefs, and launch assignments, every shared local rewrite and native fidelity review binds the exact brief ID/hash, the native-review seal covers every row, an additional reviewer independently approves all 200 contrast sets as comparable, the authenticated Type B blocked-registry receipt passes, and live training/prior-eval/family/text-hash sources match an exhaustive operator-attested inventory, producing receipts, and a four-method scanner receipt bound to the contract's exact approved scanner ID, script path, scanner-contract path, bytes, and producing commit. The merge and `verify-eval` commands require the local pinned embedding model directory so the canonical scanner can recompute the full receipt. Each language uses at least five comparability reviewers and caps each reviewer at eight of its 40 contrast sets; the receipt records those reviewer clusters.
+
+Successful merge status is `development_evaluation_authorized_operator_attested_nonrelease`. It is valid only for development experiments. Release or frozen-benchmark eligibility stays false until a separately predeclared independent custodian pins or signs the complete leakage inventory. `verify-eval` reopens every private upstream bundle, seal, inventory, receipt, and live source; the three-file evaluation bundle cannot authorize itself.
+
+Every stage requires a clean predeclared Git commit and authenticates the
+committed contract, builder, benchmark validator, and benchmark schema bytes.
+Receipt controls are read from each receipt's producing commit, which must be an ancestor of the current commit; later descendant commits remain valid and non-ancestor receipts fail. The blocked-registry dependency closure includes its four sibling artifacts and all four raw source corpora from the authenticated producing contract. Every dependency is snapshotted before validation and rehashed immediately before the receipt is written or verification returns;
+duplicates, missing cells, stale receipts, identity substitution, candidate
+output fields, input mutation, and partial publication all block the stage.
+
+```bash
+mkdir -p "$PWD/artifacts/eg1-development"
+
+python3 scripts/eval/build_eg1_multilingual_development_authoring.py allocate \
+  --expected-git-head "$(git rev-parse HEAD)" \
+  --out-bundle "$PWD/artifacts/eg1-development/allocation"
+
+# After committing the allocation, complete the exact 32-concept private template,
+# commit the sealing controls in a strict descendant, then seal it:
+python3 scripts/eval/build_eg1_multilingual_development_authoring.py seal-briefs \
+  --allocation-receipt "$PWD/artifacts/eg1-development/allocation/receipt.json" \
+  --private-completion /absolute/private/path/shared-concept-briefs-complete.json \
+  --roster /absolute/private/path/development-roster.json \
+  --expected-git-head "$(git rev-parse HEAD)" \
+  --out-bundle "$PWD/artifacts/eg1-development/shared-briefs"
+
+python3 scripts/eval/build_eg1_multilingual_development_authoring.py launch \
+  --allocation-receipt "$PWD/artifacts/eg1-development/allocation/receipt.json" \
+  --shared-brief-receipt "$PWD/artifacts/eg1-development/shared-briefs/receipt.json" \
+  --roster /absolute/private/path/development-roster.json \
+  --expected-git-head "$(git rev-parse HEAD)" \
+  --out-bundle "$PWD/artifacts/eg1-development/launch"
+
+# Merge additionally requires --completed-corpus, --native-review-seal,
+# --contrast-comparability-seal, --leakage-receipt,
+# --blocked-registry-receipt, --leakage-inventory, --scanner-model-dir, and matching
+# ROLE:NAME=PATH values through both --leakage-source and --source-receipt.
+# Before model inference, authenticate the merged bundle again with the same
+# allocation/shared-brief/launch/roster/seals/leakage/inventory/source arguments:
+python3 scripts/eval/build_eg1_multilingual_development_authoring.py verify-eval \
+  --bundle "$PWD/artifacts/eg1-development/evaluation" \
+  --allocation-receipt "$PWD/artifacts/eg1-development/allocation/receipt.json" \
+  --shared-brief-receipt "$PWD/artifacts/eg1-development/shared-briefs/receipt.json" \
+  --launch-receipt "$PWD/artifacts/eg1-development/launch/receipt.json" \
+  --roster /absolute/private/path/development-roster.json \
+  --native-review-seal /absolute/private/path/native-review-seal.json \
+  --contrast-comparability-seal /absolute/private/path/contrast-comparability-seal.json \
+  --leakage-receipt /absolute/private/path/leakage-receipt.json \
+  --blocked-registry-receipt /absolute/private/path/blocked-registry/receipt.json \
+  --leakage-inventory /absolute/private/path/leakage-inventory.json \
+  --leakage-source ROLE:NAME=/absolute/private/path/source.jsonl \
+  --source-receipt ROLE:NAME=/absolute/private/path/source-receipt.json \
+  --scanner-model-dir /absolute/path/to/Qwen3-Embedding-0.6B/revision-snapshot \
+  --expected-git-head "$(git rev-parse HEAD)"
+```
+
+Pooled uncertainty and effective sample size cluster by `semantic_family_id`, `author_id`, and `native_reviewer_id`; the 800 rows contain 672 independent semantic-family clusters. Per-language rows remain family-independent at 160 each. Contrast inference pairs and clusters by `contrast_set_id` and also carries author, native-reviewer, and comparability-reviewer clusters. Treating 800 authored rows or 200 contrasts as independent observations is forbidden.
+
 ## 3. Corpus size, power, and strata
 
 The minimum release profile contains 2,400 rows. Development remains fixed at 160 rows per language. Frozen begins at 320 per language but expands in balanced 80-row increments when the predeclared paired-power plan requires it.
@@ -225,7 +295,7 @@ Agreement is computed on the two initial, pre-adjudication ratings. Report raw a
 
 LLM judges and subagents may triage or audit. Only blinded native ratings can authorize multilingual release quality.
 
-The global workflow is mechanically checked by `validate-ratings`. It recomputes every corpus-derived benchmark-manifest field, requires the sealed leakage receipt, authenticated blocked-registry receipt, and exact four-role source inventory, and takes a predeclared list of opaque model labels. It fails unless every frozen case and model has exactly two distinct native initial reviewers, every axis or S0-S4 disagreement has exactly one third reviewer, the adjudicator is different from both initial reviewers, and the global, per-reviewer, and per-language-model repeat minimums pass. Candidate text is not part of the rating file or validator input.
+The global workflow is mechanically checked by `validate-ratings`. Before reading ratings, it proves the predeclared Git HEAD and clean tracked worktree, rejects untracked Python shadows under `scripts/eval`, byte-matches the complete local authoring/scanner import and contract closure to that commit, and only then executes the captured committed verifier bytes. It reopens the complete authenticated development-authoring bundle, allocation, sealed shared briefs, launch, private roster, native-review seal, comparability seal, leakage inventory, producing receipts, sources, scanner receipt, and pinned local scanner model. Authentication captures and rechecks that exact evidence/model fingerprint. All later rating inputs are read from private immutable temporary copies; the originals and full model/control closure are rechecked immediately before atomic manifest publication. The development corpus and manifest supplied to the power and rating gates must have the same bytes as the authenticated authoring bundle artifacts; a plain development manifest cannot authorize ratings. It then recomputes every release-corpus-derived benchmark-manifest field, requires the sealed release leakage receipt, authenticated blocked-registry receipt, and exact four-role source inventory, and takes a predeclared list of opaque model labels. It fails unless every frozen case and model has exactly two distinct native initial reviewers, every axis or S0-S4 disagreement has exactly one third reviewer, the adjudicator is different from both initial reviewers, and the global, per-reviewer, and per-language-model repeat minimums pass. Candidate text is not part of the rating file or validator input.
 
 ```bash
 python3 scripts/eval/multilingual_benchmark_v2.py validate-ratings \
@@ -237,6 +307,20 @@ python3 scripts/eval/multilingual_benchmark_v2.py validate-ratings \
   --development-corpus /absolute/path/to/development-corpus-v2.jsonl \
   --development-benchmark-manifest /absolute/path/to/development-corpus-v2.manifest.json \
   --development-comparison-manifest /absolute/path/to/development-comparison-v1.json \
+  --development-authoring-bundle /absolute/private/path/development-evaluation \
+  --development-allocation-receipt /absolute/private/path/allocation/receipt.json \
+  --development-shared-brief-receipt /absolute/private/path/shared-briefs/receipt.json \
+  --development-launch-receipt /absolute/private/path/launch/receipt.json \
+  --development-roster /absolute/private/path/native-roster.json \
+  --development-native-review-seal /absolute/private/path/native-review-seal.json \
+  --development-contrast-comparability-seal /absolute/private/path/contrast-comparability-seal.json \
+  --development-leakage-receipt /absolute/private/path/development-leakage/receipt.json \
+  --development-blocked-registry-receipt /absolute/private/path/type-b-v2-registry/receipt.json \
+  --development-leakage-inventory /absolute/private/path/development-leakage-inventory.json \
+  --development-leakage-source ROLE:NAME=/absolute/private/path/source.jsonl \
+  --development-source-receipt ROLE:NAME=/absolute/private/path/source-receipt.json \
+  --development-scanner-model-dir /absolute/path/to/Qwen3-Embedding-0.6B/revision-snapshot \
+  --expected-git-head "$(git rev-parse HEAD)" \
   --generation-receipt /absolute/path/to/frozen-generation-M1.json \
   --generation-receipt /absolute/path/to/frozen-generation-M2.json \
   --expected-model-label M1 \

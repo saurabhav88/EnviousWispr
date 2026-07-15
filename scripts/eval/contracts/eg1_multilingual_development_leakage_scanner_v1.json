@@ -1,0 +1,69 @@
+{
+  "schema_version": "eg1-multilingual-development-leakage-scanner-v1",
+  "replay_backend_binding": {
+    "path": "scripts/eval/screen_eg1_replay_semantic_neighbors.py",
+    "sha256": "094cab008f265484da7fb38d92e0148f063cc02941a616d4c88f39284f8cddd9"
+  },
+  "multilingual_validator_binding": {
+    "path": "scripts/eval/multilingual_benchmark_v2.py",
+    "sha256": "0f2772b9b1d989a2c0f7a8b6898a182b2f6782bfdc397319b4bd9d73ac6a47d7"
+  },
+  "replay_inventory_binding": {
+    "path": "scripts/eval/build_eg1_replay_inventory.py",
+    "sha256": "1d8920a705b8c0dee8d54e7e2fd97de98e571212ef641858caf8ee33637b3927"
+  },
+  "replay_normalizer_binding": {
+    "path": "scripts/eval/eg1_replay_normalizer_v1.py",
+    "sha256": "33ac563c1c5e09f88d0d7ab25a2a5f10070f3bfda0e71cbe1d00b57b86c961ef"
+  },
+  "required_methods": [
+    "exact_normalized",
+    "token_ngram_jaccard",
+    "character_ngram_jaccard",
+    "embedding_cosine"
+  ],
+  "token_ngram_width": 3,
+  "character_ngram_width": 5,
+  "production_thresholds": {
+    "token_ngram_jaccard": "calibration_required",
+    "character_ngram_jaccard": "calibration_required",
+    "embedding_cosine": "calibration_required"
+  },
+  "synthetic_test_only_thresholds": {
+    "token_ngram_jaccard": 0.8,
+    "character_ngram_jaccard": 0.85,
+    "embedding_cosine": 0.9
+  },
+  "embedding": {
+    "repo_id": "Qwen/Qwen3-Embedding-0.6B",
+    "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+    "tree_sha256": "087413375b109d83ccd69bff217f841ce9029e9a6d7d3804129d65a5f9bf319e",
+    "file_count": 10,
+    "total_bytes": 1207487354,
+    "embedding_dimension": 1024,
+    "pooling": "last_token",
+    "prompt_name": "document",
+    "batch_size": 32,
+    "comparison_batch_size": 128,
+    "device": "mps",
+    "execution_scope": "mac_mps_canonical_aliensv_calibration_only",
+    "model_dtype": "float16",
+    "output_precision": "float32",
+    "normalize_embeddings": true,
+    "max_seq_length": 32768,
+    "comparison_axes": [
+      "input_input",
+      "output_output",
+      "input_output",
+      "output_input"
+    ],
+    "score_decimals": 6,
+    "top_k": 5,
+    "runtime_versions": {
+      "sentence_transformers": "5.6.0",
+      "transformers": "5.12.1",
+      "torch": "2.12.1",
+      "numpy": "2.4.6"
+    }
+  }
+}
