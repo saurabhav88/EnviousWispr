@@ -1412,7 +1412,7 @@ A process-list diagnostic printed the active local llama-server command line int
 
 ### RUNTIME-SEC-002 - Proxy-safe exact-Mac launcher
 
-Timestamp: 2026-07-15 07:52 EDT
+Timestamp: 2026-07-15 07:48 EDT
 
 Status: implemented; independent re-review clean
 
