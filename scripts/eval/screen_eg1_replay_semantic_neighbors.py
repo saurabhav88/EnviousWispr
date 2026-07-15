@@ -1026,6 +1026,7 @@ def validate_published_bundle(
     model_dir: Path,
     bundle: Path,
     *,
+    trusted_receipt_sha256: str,
     repo_root: Path = REPO_ROOT,
     script_path: Path = SCRIPT_PATH,
 ) -> dict[str, Any]:
@@ -1076,7 +1077,20 @@ def validate_published_bundle(
         raise ValueError("semantic-screen source counts differ from contract")
     receipt_path = bundle / RECEIPT_FILENAME
     queue_path = bundle / QUEUE_FILENAME
-    receipt_bytes, _ = read_once(receipt_path)
+    try:
+        members = list(bundle.iterdir())
+    except OSError as error:
+        raise ValueError("semantic-screen bundle cannot be enumerated") from error
+    if (
+        {path.name for path in members} != {RECEIPT_FILENAME, QUEUE_FILENAME}
+        or any(not path.is_file() or path.is_symlink() for path in members)
+    ):
+        raise ValueError("semantic-screen bundle contains undeclared artifacts")
+    receipt_bytes, receipt_sha = read_once(receipt_path)
+    if receipt_sha != require_hash(
+        trusted_receipt_sha256, "trusted semantic-screen receipt hash"
+    ):
+        raise ValueError("semantic-screen receipt differs from the trusted result")
     queue_bytes, queue_sha = read_once(queue_path)
     receipt = parse_object_bytes(receipt_bytes, "semantic-screen receipt")
     if set(receipt) != {

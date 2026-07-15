@@ -27,6 +27,7 @@ SPEC = importlib.util.spec_from_file_location(
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+PRODUCTION_FULL_RECEIPT_SHA256 = "0" * 64
 
 
 def encode_rows(rows: list[dict[str, object]]) -> bytes:
@@ -76,6 +77,7 @@ class SemanticScreenFixture(unittest.TestCase):
         self.reference_path = self.root / "scripts/eval/corpus/type_b_all_v1.jsonl"
         self.model_revision = "synthetic-model-revision"
         self.model_dir = self.root / "models" / self.model_revision
+        self.trusted_receipts: dict[Path, str] = {}
         for path in (
             self.builder.parent,
             self.contract.parent,
@@ -296,14 +298,22 @@ class SemanticScreenFixture(unittest.TestCase):
             script_path=self.builder,
             backend_factory=FakeEmbeddingBackend,
         )
+        self.trusted_receipts[output] = MODULE.sha256_bytes(
+            (output / MODULE.RECEIPT_FILENAME).read_bytes()
+        )
         return output, receipt
 
-    def _validate(self, output: Path) -> dict[str, object]:
+    def _validate(
+        self, output: Path, trusted_receipt_sha256: str | None = None
+    ) -> dict[str, object]:
         return MODULE.validate_published_bundle(
             self.contract,
             self.inventory_bundle,
             self.model_dir,
             output,
+            trusted_receipt_sha256=(
+                trusted_receipt_sha256 or self.trusted_receipts[output]
+            ),
             repo_root=self.root,
             script_path=self.builder,
         )
@@ -390,7 +400,10 @@ class SemanticScreenFixture(unittest.TestCase):
             )
             receipt_path.write_bytes(MODULE.canonical_json(receipt))
             with self.assertRaises(ValueError):
-                self._validate(output)
+                self._validate(
+                    output,
+                    MODULE.sha256_bytes(receipt_path.read_bytes()),
+                )
         receipt_path.write_bytes(MODULE.canonical_json(original))
         self._validate(output)
 
@@ -416,7 +429,10 @@ class SemanticScreenFixture(unittest.TestCase):
             queue_path.write_bytes(queue_bytes)
             receipt_path.write_bytes(MODULE.canonical_json(receipt))
             with self.assertRaises(ValueError):
-                self._validate(output)
+                self._validate(
+                    output,
+                    MODULE.sha256_bytes(receipt_path.read_bytes()),
+                )
         queue_path.write_bytes(original_queue)
         receipt_path.write_bytes(original_receipt)
         self._validate(output)
@@ -440,6 +456,42 @@ class SemanticScreenFixture(unittest.TestCase):
             with self.assertRaises(OSError):
                 self._build("failed-publication")
         self.assertFalse(output.exists())
+
+    def test_trusted_receipt_rejects_coherent_score_forgery_and_extra_files(self) -> None:
+        output, _ = self._build()
+        queue_path = output / MODULE.QUEUE_FILENAME
+        receipt_path = output / MODULE.RECEIPT_FILENAME
+        original_queue = queue_path.read_bytes()
+        original_receipt = receipt_path.read_bytes()
+        rows = [json.loads(line) for line in original_queue.splitlines()]
+        neighbor = rows[0]["neighbors"][0]
+        axis = next(
+            name
+            for name, score in neighbor["component_cosines"].items()
+            if score < neighbor["max_cosine"]
+        )
+        neighbor["component_cosines"][axis] = round(
+            neighbor["component_cosines"][axis] - 0.000001, 6
+        )
+        queue_bytes = encode_rows(rows)
+        receipt = json.loads(original_receipt)
+        receipt["artifact"]["sha256"] = MODULE.sha256_bytes(queue_bytes)
+        receipt.pop("receipt_payload_sha256")
+        receipt["receipt_payload_sha256"] = MODULE.sha256_bytes(
+            MODULE.canonical_json(receipt)
+        )
+        queue_path.write_bytes(queue_bytes)
+        receipt_path.write_bytes(MODULE.canonical_json(receipt))
+        with self.assertRaises(ValueError):
+            self._validate(output)
+        queue_path.write_bytes(original_queue)
+        receipt_path.write_bytes(original_receipt)
+        extra = output / "undeclared-private-export.jsonl"
+        extra.write_bytes(b"synthetic undeclared artifact")
+        with self.assertRaises(ValueError):
+            self._validate(output)
+        extra.unlink()
+        self._validate(output)
 
     def test_cli_error_is_generic_and_does_not_echo_source_content(self) -> None:
         sentinel = "synthetic-secret-cli-sentinel"
@@ -525,6 +577,7 @@ class RealPrivateSemanticScreenIntegration(unittest.TestCase):
             inventory_bundle,
             model_dir,
             bundle,
+            trusted_receipt_sha256=PRODUCTION_FULL_RECEIPT_SHA256,
             repo_root=repo_root,
             script_path=MODULE.SCRIPT_PATH,
         )
