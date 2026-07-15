@@ -131,6 +131,31 @@ import Testing
     #expect(h.kernel.recordingOutcome != nil, "the second toggle drove the session to a terminal")
   }
 
+  @Test(
+    "a stop toggle during Arming (before the first buffer) stops the session, never leaves the mic open"
+  )
+  func toggleDuringArmingStops() async throws {
+    // #1548 D1 + Codex code-diff P1: Arming is a distinct state that can last up
+    // to the 800 ms no-buffer deadline with the pill hidden. A stop toggle in
+    // that window MUST stop — dropping it would leave the mic recording against
+    // the user's explicit intent.
+    let h = makeDriver()
+    // Warm the engine so the kernel parks at Arming awaiting the first buffer
+    // (no cold load), and deliver NO buffer — the session stays in Arming.
+    try await h.adapter.warmUp()
+    try await h.driver.handle(event: .toggleRecording(.testDefault()))
+    await drainUntil { h.kernel.state == .arming }
+    #expect(h.kernel.state == .arming, "precondition: parked in Arming, no buffer yet")
+
+    // Second toggle = stop. Must NOT be a no-op.
+    try await h.driver.handle(event: .toggleRecording(.testDefault()))
+    await drainUntil { h.kernel.recordingOutcome != nil }
+    #expect(
+      h.kernel.recordingOutcome == .discarded(.releasedBeforeRecording),
+      "a stop before the first buffer discards as released-before-recording")
+    #expect(h.kernel.state == .idle, "the mic must not remain open in Arming/Live")
+  }
+
   // MARK: External-error surface
 
   @Test("setExternalError surfaces .error on state and overlay")

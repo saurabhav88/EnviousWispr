@@ -1045,8 +1045,19 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         kernel.start(config: config)
       case .live:
         kernel.requestStop()
-      case .arming, .stopping, .delivering:
-        // Mid-session — don't interrupt processing (PR-1 §B.1.2).
+      case .arming:
+        // A stop toggle during Arming (before the first buffer commits Live) is
+        // a REAL stop — the user pressed to stop before recording was even
+        // established. #1548 D1 made Arming a distinct state that can last up to
+        // the 800 ms no-buffer deadline with the pill HIDDEN; dropping the toggle
+        // here would leave the mic recording against the user's explicit intent
+        // (Codex code-diff P1). `requestStop()` aborts Arming and concludes
+        // `.discarded(.releasedBeforeRecording)` — the kernel already handles the
+        // `.arming` case (impl-design consult, Dec 1).
+        kernel.requestStop()
+      case .stopping, .delivering:
+        // Mid-session — don't interrupt processing past the point of no return
+        // (PR-1 §B.1.2 safe point: a transcript is being produced/delivered).
         break
       }
     case .requestStop:
