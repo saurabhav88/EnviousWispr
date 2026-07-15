@@ -1,10 +1,12 @@
 # EG-1 Multilingual Overnight Readout
 
-Status: living draft as of 2026-07-15 10:10 EDT. Development evidence only; no frozen release claim.
+Status: living draft as of 2026-07-15 12:56 EDT. Development evidence only; no frozen release claim.
 
 ## The short answer
 
 The old 93.7% score is not trustworthy as a real-world quality claim. The old training and evaluation files overlap on 1,549 of 1,890 evaluation rows, about 82%. Real user feedback about lists and international languages is consistent with the failures found in the new audits.
+
+The first fresh exact-Mac result is now complete. A list-aware prompt made EG-1 produce more lists, but it also produced more false lists, more scope loss, and six candidate-only meaning-damaging cases under arm-blind review. Prompt-only is rejected.
 
 The product architecture is now non-negotiable:
 
@@ -58,7 +60,9 @@ These differences are small development signals, not statistically established r
 
 The list-aware prompt increased visible list activation, but prompt-only changes were not safe enough:
 
-- Current EG-1 created false lists and meaning damage.
+- On a fresh leakage-audited 75 positive plus 75 restraint comparison through the exact shipped Mac runtime, current EG-1's list-aware prompt increased list activation from 52/75 to 68/75 but strict positive success only from 11/75 to 15/75. The four-case paired gain was not statistically significant (`p=0.125`) and missed the predeclared eight-case minimum.
+- False lists increased from 25/75 to 32/75. Positive scope loss increased from 15/75 to 23/75.
+- Three independent blind reviewers plus a fourth blind adjudication found 12/150 meaning-damaging candidate outputs versus 8/150 for baseline, including six candidate-only damaging cases and only two baseline-only cases.
 - The safer Gemma arm improved list shape, but its low-dose and prompt-aligned tuned checkpoints still introduced scope or medical-timing damage.
 
 Conclusion: prompt engineering helps expose the behavior boundary but does not solve the problem alone. The best remaining universal route is a materially larger, balanced, native-reviewed training dose, followed by frozen and exact-Mac validation.
@@ -85,7 +89,7 @@ No frozen model outputs have been opened. The real corpus cannot pass validation
 
 The D1 universal training-data contract separately allocates 2,000 families: 400 per priority language, balanced across core polishing, positive lists, and matched prose restraints. It cannot export training data until every row is independently native-approved and screened against training and benchmark families.
 
-The broad English Type B gate remains required, but its content must be rebuilt. A fresh audit found shipping training overlaps 1,549/1,890 old Type B rows exactly and exposes 1,866/1,890 through provenance families. The 900 overflow rows have zero exact overlap but 899/900 share exposed families, so they cannot simply replace the training rows. Only 23 rows are provisionally reusable. The replacement target remains 1,890 cases with the original 17-category, four-length-bucket, and 300-trap balance; 1,867 genuinely new model-blind families must be authored and sealed before candidate output. The 75+75 list pilot is a fast diagnostic, never the broad performance claim.
+The broad English Type B gate remains required, but its content must be rebuilt. A fresh audit found shipping training overlaps 1,549/1,890 old Type B rows exactly and exposes 1,866/1,890 through provenance families. The 900 overflow rows have zero exact overlap but 899/900 share exposed families, so they cannot simply replace the training rows. Only 23 rows are provisionally reusable. The allocation contract now seals the 1,890 final cells, 1,867 fresh primary families, and 23 same-cell fresh replacement reserves. It is code-, source-, and clean-commit-bound, but prose authorship remains blocked until the family/leakage registry and private freeze pipeline are sealed. The 75+75 list pilot is a fast diagnostic, never the broad performance claim.
 
 ## Adapter fallback: feasible, but not needed yet
 
@@ -100,10 +104,10 @@ One selected adapter loaded offline and added about 79 MiB idle memory with sub-
 
 ## Work still in flight
 
-1. Commit the completed V2 runner/scorer/blind-review code and independently audited 75+75 corpus as the code anchor, then fill and commit the contract bindings as the only child-commit change.
-2. Run current EG-1 with the shipped prompt and list-aware prompt through that connector-wire-exact Mac path, then score and review blindly.
-3. Author and review the leakage-clean 1,890-case Type B replacement from 1,867 fresh families plus at most 23 provisionally retained rows. The exact balanced manifest contract is built; the fresh questions are not.
-4. Use the diagnostic and broad-gate results to decide whether any prompt survives and whether the next universal Gemma/Qwen data dose should begin.
+1. Seal the Type B blocked-family registry, scenario/authorship schema, leakage receipts, and private freeze pipeline; then author and independently review the 1,890 fresh assignments without exposing candidate output.
+2. Build the materially larger balanced English/German/French/Spanish/Russian training mixture with native review and train the Gemma 4 E4B primary plus Qwen3.5-4B reserve on AlienSV.
+3. Compare those candidates on development panels. Stop each exact recipe after one smoke and one full benchmark if it does not improve without meaningful regressions.
+4. Run the leakage-clean Type B V2 gate only once on a locked finalist, then validate any survivor through the exact shipped Mac path.
 
 ## Decisions that are not yet justified
 

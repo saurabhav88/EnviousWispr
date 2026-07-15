@@ -1637,3 +1637,29 @@ Timestamp: 2026-07-15 11:54 EDT
 Status: read-only audit complete; authorship remains correctly blocked
 
 The current 1,890-row builder is a deterministic fail-closed slot allocator, not yet an authoring, leakage, review, freeze, or scoring pipeline. Its pinned four source hashes and counts match live bytes; its focused tests pass 3/3; and no durable Type B V2 output bundle exists. Before official slot publication it still needs schema/code/commit binding, receipt-pinned joint cells and fresh trap counts, deterministic and source-drift negative tests, and 23 same-cell replacement reserves for any provisional rejection. Before prose authoring it also needs the sealed blocked-family registry, scenario-card/authorship schema, provider and reviewer custody, Type B-specific validation and leakage receipts, exclusive private freeze publication, and a receipt-bound exact-Mac runner/scorer/blind-review path. The safe next action is to harden those contracts before generating the 1,867 fresh families; candidate outputs remain prohibited from Type B V2 until the one locked finalist confirmation.
+
+### MAC-AB-001 - Fresh 75+75 shipped-runtime prompt comparison
+
+Timestamp: 2026-07-15 12:56 EDT
+
+Status: complete; list-aware prompt rejected
+
+The exact shipped EG-1 Q5 artifact completed 150 baseline and 150 candidate requests sequentially through one authenticated Mac app server. Both arms had zero request failures and zero empty outputs, and the orchestrator proved the same server and delivery-manifest identity before and after each arm. The A/B receipt SHA-256 is `5cc171aacb79682bba8237dbdcf3a3e78681df8ebe2f065e7c1f0b1d51bdaba0`.
+
+The list-aware prompt increased positive-list activation from 52/75 to 68/75, but strict positive success rose only from 11/75 to 15/75. The paired positive gain was four cases, below the predeclared minimum of eight, with exact McNemar `p=0.125`. It also increased restraint false lists from 25/75 to 32/75, including seven candidate-only false lists. Positive item loss worsened from 22 to 23 cases and positive scope loss from 15 to 23. Every mechanical advancement condition except inference health failed.
+
+Three independent arm-blind reviewers then produced 900 judgments. Meaning-damage agreement was 283/300, or 94.3%, with Fleiss kappa `0.747`; exact five-level severity agreement was 245/300, or 81.7%, with Fleiss kappa `0.571`. A predeclared conservative consensus resolved 282 outputs. Eighteen severe or wide disagreements received a fourth arm-blind adjudication before the mapping was opened. The final 300-row judgment SHA-256 is `efdbcb2f32e89edc9d8bcfd036b7526ea5b80772f7de07024791639cb0494564`.
+
+After unblinding, baseline had 8/150 meaning-damaging outputs and the candidate had 12/150. Six cases were candidate-only damage, two were baseline-only damage, and all six candidate-only cases also had higher candidate severity. The semantic report SHA-256 is `365fc67776c0c5f2028a2d17ad77da5a1aff394ea994ee62693c196d2d61605b`. This independently confirms the earlier small-set conclusion: prompt-only list activation is not a safe EG-1 improvement.
+
+### TYPE-B-005 - Allocation and same-cell reserves sealed
+
+Timestamp: 2026-07-15 12:56 EDT
+
+Status: first hardening stage complete; authorship still blocked on family/leakage and freeze contracts
+
+The Type B V2 allocator now reads a tracked allocation contract that pins the exact 17-category by four-length-bucket joint cells, source hashes, 23 provisional IDs, final trap count, and all slot totals. It emits the 1,890 final slots plus 23 separately authored same-cell replacement reserves, for 1,890 fresh-authorship assignments and 1,913 total slot records. Primary and reserve family IDs are globally unique; all rows remain benchmark-ineligible, training-ineligible, and candidate-output-free.
+
+An independent committed-diff review found that file hashes alone did not prove an immutable allocation checkout. The publisher now requires an exact clean Git HEAD, proves both the builder and contract bytes belong to that commit, rechecks the state before receipt publication, and records the commit. The confirming review passed. The live main-branch receipt is bound to commit `de5b8fbf1a821005fe5014eb61b5d92372f8b2c3` and hashes to `aa125a30fef59b93ee646217aa2002fe819cb00823021386f01064bbc4ba4ad8`.
+
+Sequential validation passes 165/165 unittest-discovery tests and 188 pytest tests plus 14 subtests. Running those two suites concurrently is prohibited: both contain negative tests that temporarily mutate the same canonical decision-contract fixture. A deliberate parallel attempt reproduced the race, the contract hash gate caught the leftover synthetic value, the committed binding was restored exactly, and both suites then passed sequentially with the contract hash unchanged.
