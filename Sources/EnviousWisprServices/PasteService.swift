@@ -481,7 +481,12 @@ public enum PasteService {
     let childrenRead = AXUIElementCopyAttributeValue(
       element, kAXChildrenAttribute as CFString, &childrenRef)
     if childrenRead == .attributeUnsupported || childrenRead == .noValue {
-      return .confirmedAbsent
+      // At depth 0, `element` IS the menu bar itself -- a working app's menu
+      // bar always exposes its top-level menus, so a read failure here means
+      // we couldn't traverse it at all, not that we confirmed no target
+      // (cloud Codex review, PR #1559). Deeper levels stay .confirmedAbsent:
+      // a terminal menu item genuinely having no submenu is the normal case.
+      return depth == 0 ? .unreadable : .confirmedAbsent
     }
     guard childrenRead == .success, let children = childrenRef as? [AXUIElement] else {
       return .unreadable
