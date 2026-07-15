@@ -40,14 +40,18 @@ jobs:
           FAIL=0
           for WF in .github/workflows/*.yml .github/workflows/*.yaml; do
             [ -f "$WF" ] || continue
-            for SCRIPT in $(grep -oE '\./scripts/[a-zA-Z0-9_-]+\.sh' "$WF" | sort -u); do
-              if [ ! -f "$SCRIPT" ]; then
+            while IFS= read -r SCRIPT; do
+              [ -n "$SCRIPT" ] || continue
+              if [ -f "$SCRIPT" ]; then
+                echo "  OK  $SCRIPT"
+              elif [ -f "website/$SCRIPT" ]; then
+                # deploy-blog runs this path with working-directory: website.
+                echo "  OK  website/$SCRIPT"
+              else
                 echo "::error file=$WF::Referenced script $SCRIPT does not exist"
                 FAIL=1
-              else
-                echo "  OK  $SCRIPT"
               fi
-            done
+            done < <(grep -oE '(\./)?scripts/[a-zA-Z0-9_./-]+\.sh' "$WF" | sort -u)
           done
           if [ "$FAIL" -eq 0 ]; then
             echo "All referenced scripts exist."
@@ -70,6 +74,14 @@ jobs:
           # release workflow relies on, before it silently falls back to auto-notes.
           python3 scripts/ci/render-release-notes.py --self-test
 
+      - name: Check appcast delivery owner
+        run: |
+          set -euo pipefail
+          echo "==> ShellCheck appcast delivery owner ..."
+          shellcheck scripts/ci/appcast-delivery.sh
+          echo "==> Running deterministic appcast delivery self-test ..."
+          scripts/ci/appcast-delivery.sh --self-test
+
       - name: Drift check summary
         if: always()
         run: |
@@ -78,3 +90,4 @@ jobs:
           echo "- Script existence: checked"
           echo "- YAML validity: checked"
           echo "- Release-notes renderer: checked"
+          echo "- Appcast delivery ShellCheck + self-test: checked"
