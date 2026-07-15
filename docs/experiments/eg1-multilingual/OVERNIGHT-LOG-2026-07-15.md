@@ -1288,3 +1288,64 @@ An independent code audit challenged the statistical harness before any V2 froze
 The sealed workflow now recomputes the actual balanced 800-row development manifest, uses only aggregate arm-blinded disagreement counts, takes the largest simultaneous Bonferroni-Wilson upper endpoint, locks the exact baseline/finalist artifact and evaluation-config pairs, and requires both frozen generation receipts to match those pairs. The final regression proves that editing the benchmark manifest to swap a model hash and supplying matching generation receipts still fails because the manifest binding must equal the independently recomputed power plan.
 
 Validation receipts prove internal hash consistency. They do not independently hash model, evaluation-config, or generation-output files supplied outside the validator. Production frozen receipts must therefore come from the trusted generation harness or an independent custodian, not be hand-written.
+
+### RES-008 - Multilingual tuning literature supports mixed universal data, not blind scale
+
+Timestamp: 2026-07-15 06:19 EDT
+
+Status: research complete; adjacent-task evidence, not EG-1 proof
+
+Primary-source findings:
+
+- [Liu and Niehues, MRL 2025](https://aclanthology.org/2025.mrl-main.23/) found that multilingual forgetting depends strongly on model-to-data scale and instruction-following ability; parameter-efficient tuning did not automatically prevent forgetting.
+- [CLiKA, NAACL 2024](https://aclanthology.org/2024.naacl-long.339/) found multilingual instruction tuning can help cross-language alignment, while single-target continued pretraining can improve one language at the expense of others and mixed pretraining reduces that damage.
+- [Kunz and Holmstrom, 2024](https://arxiv.org/abs/2402.00149) found target-language adapter effects were inconsistent across tasks, languages, and models. An adapter is therefore a deployment option to test, not an assumed quality win.
+- [M-DaQ, 2025](https://arxiv.org/abs/2509.15549) reported gains from selecting multilingual instruction data for both quality and semantic diversity, supporting the current family-diverse/native-review gates rather than raw row-count scaling.
+
+Decision for EG-1: retain the one-universal-model lane with a balanced five-language mixture, English replay, positive-list/restraint pairs, and nested D1-D5 data doses. LoRA remains a practical tuning and storage mechanism, not protection against English or cross-language regressions. Do not jump to 100,000 rows merely because storage and CUDA allow it; advance only when the per-language learning curve improves without English or safety damage. The one-shared-base adapter fallback remains eligible only after that universal learning curve actually plateaus or fails.
+
+### MAC-HARNESS-003 - Exact shipped-request evaluation mode
+
+Timestamp: 2026-07-15 06:47 EDT
+
+Status: independently audited and ready for the short English development run; novel corpus generation still in progress
+
+The active Mac app and its child `llama-server` are healthy. The bundled server, prompt builder, connector, runtime/delivery manifests, and all eight open Q5 shards match the current branch and delivery hashes. The two prompt arms will therefore use one process and one identical base-weight set.
+
+The prior Python runner was a fair raw prompt comparison but omitted four shipped connector rules: per-case `max_tokens`, rejection of `finish_reason=length`, the 20-second transport timeout with one narrow connection retry, and EG-1 preamble/transcript-tag cleanup. A new pure-Python contract mirror and `--eg1-shipped-request` mode now reproduce those request/response rules for controlled evaluation. The renderer also neutralizes embedded transcript tags and records the shipped output-token budget. Exact-mode failures do not enter the generic six-retry loop.
+
+Eleven focused wire/cleanup tests and the full 65-test evaluation suite pass. The test server proves the exact JSON field set, 256-token floor, cleanup behavior, fail-closed handling of truncated HTTP-200 output, rejection of spoofed localhost URLs before any request, and one retry after a physically incomplete response. A parity regression also rejects a malformed later `choices` element because Swift rejects the whole array rather than accepting only a valid first choice. Generic provider artifacts keep their previous schema.
+
+Independent audit found no remaining parity blocker for the intended short US-English benchmark. The exact-mode latency includes the full call and possible 750 ms retry wait inside the logical 15-second pipeline budget. Long non-ASCII inputs deliberately fail closed above the 256-character floor because Python `len` is not Swift `String.count`; any such multilingual release run must obtain the budget from the Swift renderer. The app connector remains release authority; this Python mirror is the exact-request experiment path for the new short English corpus.
+
+### BASE-RUN-006 - Qwen3.5-9B capacity control
+
+Timestamp: 2026-07-15 06:55 EDT
+
+Status: BF16 discovery and blind semantic review complete; stop, do not tune this control
+
+Qwen3.5-9B is the one additional base control, not a new release choice. It isolates capacity within the same family as the 4B reserve. The official Apache-2.0 model claims 201 languages, uses 9B language parameters, and reports higher 9B-versus-4B instruction and multilingual aggregates. The pinned publisher revision is `c202236235762e1c871ad0ccb60c8ee5ba337b9a`; official BF16 weight shards total 19,306,310,880 bytes (17.980 GiB), which fits the RTX 4090 for short-context serial discovery.
+
+AlienSV used a separate native-Windows CUDA environment at `C:\Users\saura\eg1-ml-winvenv` with Torch 2.12.1+cu130, Transformers 5.5.0, and CUDA verification on the RTX 4090. This avoided changing the existing spoken-command environment and followed the native-Windows reliability rule. The five-case smoke passed before the larger runs.
+
+All 392 requested BF16 generations then completed without an inference error: 56 multilingual, 16 Russian, 20 English two-item, and the 200 contaminated overflow development rows. No output was empty and no `<think>` marker leaked. Mechanical list results were:
+
+| Suite | Result |
+|---|---:|
+| English two-item exact two list lines | 10/20 |
+| English two-item all required spans | 1/20 |
+| English two-item deterministic strict | 1/20 |
+| Russian deterministic strict | 7/16 |
+| Overflow positive list activation | 0/100 |
+| Overflow positive intended line count | 0/100 |
+| Overflow false lists | 0/100 |
+
+The 9B control is more responsive to explicit two-item instructions than the untouched 4B bases, but that visible shape did not survive the deterministic preservation gate: only 1/20 kept every required audited span, and only that same row was mechanically strict. Russian deterministic strict was 7/16, and the model ignored every positive overflow list request. That makes it a useful capacity signal, not a prompt-only solution.
+
+The independent reviewer then scored the 92 clean discovery rows without opening another candidate's artifacts. Aggregate strict was 40/92, meaning was preserved on 78/92, cleanup passed on 60/92, grammar/punctuation passed on 87/92, and 15/92 had a damaging extra edit. Suite strict was 31/56 multilingual, 7/16 Russian, and 2/20 English two-item. Of 23 list-applicable rows, only 11 had correct list behavior. All ten explicit English requests became bullets, but none of ten scoped implicit cases did; eight explicit outputs dropped important scope or identity, including patient, medical timing, estate, and contract context.
+
+Priority-language strict slices were German 7/8, French 4/8, Spanish 3/8, Russian 7/16, and English 2/20. Portuguese, retained as an extra diagnostic language, was 0/8 because every row kept filler or correction traces. On the shared ML56 set, 9B's 31 strict passes slightly exceeded Gemma's 29 and Qwen3.5-4B's 28, but its four damaging rows were worse than Gemma's one, and its English result was worse than Gemma's 4/20. Capacity therefore did not yield a safe, broad improvement.
+
+Decision: stop the Qwen3.5-9B lane after its smoke and full development benchmark. Do not spend a tuning run on it with the current data. It remains a valid one-universal-model architecture, so this rejects the capacity-only hypothesis, not the founder's one-model requirement. Reconsider only if the balanced native-reviewed data program later provides evidence that justifies the larger Mac/runtime cost.
+
+Repository artifact SHA-256 receipts, after normalizing Windows CRLF transport endings to LF without changing any JSON content, are `c018a97e87d895fdecf425a6e09f8212b9a0f1774ff3170327853b98612484ea` for multilingual 56, `e539a73c2f024207148d9537bfbbe7a88ef6fdeec17f7e82df43a7cddfdf0ac5` for Russian 16, `d6bf474f34ef404117eebf8520950144c422ec767f3d418a55b2528e886c6b0f` and `3714854057ad3bbda0d28e036594c1301c4c03935a2e697d74eb505e809e4262` for the two English halves, and `ce08e264b251dc2ecd6a1420fe3a6ab107d6bdb8d45c2333312ce148a39f77fc` / `d65e60b0cf49aa86424237fc421a5a3ee6a5b13e65011076e80ebb3d4480ca10` for the positive/restraint overflow sets. The independently reviewed row content did not change; its hash bindings were updated to the normalized repository artifacts. The review SHA-256 is `8c48793f3b8474adc08e791d33997bb7207e527848a6745aa1706aff0ea5565a`, and its strict formula and aggregate recount independently validated. The normalized official download-manifest SHA-256 is `a0ae287f2bcf13525137aeb617335697aab5ce96205b1629b34350529545f298`.

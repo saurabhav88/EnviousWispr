@@ -1,6 +1,6 @@
 # EG-1 Multilingual Overnight Readout
 
-Status: living draft as of 2026-07-15 06:18 EDT. Development evidence only; no frozen release claim.
+Status: living draft as of 2026-07-15 06:55 EDT. Development evidence only; no frozen release claim.
 
 ## The short answer
 
@@ -44,8 +44,9 @@ This is why the project cannot choose a base from a general multilingual leaderb
 |---:|---|---|---|
 | 1 | Gemma 4 E4B | Lowest observed meaning damage in the 56-case blind development audit: 1/56, versus 5 for Qwen3.5 and 7 for untouched Qwen3. Much larger download. | Safety-first universal training base; exact low-dose checkpoints rejected, serious balanced-data experiment still justified. |
 | 2 | Qwen3.5-4B | Strong grammar and German slice; 5/56 meaning-damaging rows and weak lists without targeted training. | Reserve universal challenger. |
-| 3 | Current Qwen3 EG-1 | Smallest shipping baseline, but 8/56 damaging rows in the current multilingual audit and weak short-list activation. | Keep as exact-Mac baseline, not evidence that quality is solved. |
-| 4 | Ministral 3 3B Instruct | Compact, but the blind audit found only 30/92 strict overall, 24/56 multilingual, 5/16 Russian, and 1/20 English two-item outputs. | Reject from this tuning lane; do not spend a training run on it. |
+| 3 | Qwen3.5-9B capacity control | Blind audit: 40/92 strict overall and 31/56 multilingual, but 15 damaging edits, 7/16 Russian, only 2/20 English two-item, and 0/100 broad list activation. | Stop after the full development benchmark; extra capacity did not justify a tuning or Mac-runtime lane. |
+| 4 | Current Qwen3 EG-1 | Smallest shipping baseline, but 8/56 damaging rows in the current multilingual audit and weak short-list activation. | Keep as exact-Mac baseline, not evidence that quality is solved. |
+| 5 | Ministral 3 3B Instruct | Compact, but the blind audit found only 30/92 strict overall, 24/56 multilingual, 5/16 Russian, and 1/20 English two-item outputs. | Reject from this tuning lane; do not spend a training run on it. |
 
 These differences are small development signals, not statistically established release rankings. Native review and frozen data are still required.
 
@@ -57,6 +58,8 @@ The list-aware prompt increased visible list activation, but prompt-only changes
 - The safer Gemma arm improved list shape, but its low-dose and prompt-aligned tuned checkpoints still introduced scope or medical-timing damage.
 
 Conclusion: prompt engineering helps expose the behavior boundary but does not solve the problem alone. The best remaining universal route is a materially larger, balanced, native-reviewed training dose, followed by frozen and exact-Mac validation.
+
+Simply increasing Qwen3.5 from 4B to 9B did not solve it either. The 9B control learned explicit two-bullet shape more readily, but it dropped scope or identity in eight of those explicit rows and never activated on the broader 100-case positive-list check. Better data and stricter preservation training matter more than parameter count alone.
 
 ## The honest benchmark now being built
 
@@ -89,10 +92,11 @@ One selected adapter loaded offline and added about 79 MiB idle memory with sub-
 
 ## Work still in flight
 
-1. Finish and leakage-screen the new 100-positive/100-restraint English list development corpus, which was generated without seeing model outputs.
-2. Run current EG-1 with the shipped prompt and the list-aware prompt through the exact bundled Mac runtime on that new corpus.
-3. Score structure, preservation, false lists, damage proxies, confidence intervals, and paired changes; then run independent semantic cross-review.
-4. Use that result to decide whether any prompt variant survives and whether the next universal Gemma/Qwen training dose should begin.
+1. Finish the untouched Phi-4-mini control on the gaming PC. It is MIT-licensed, tuneable, explicitly covers all five target languages, and still uses one universal base; it receives one smoke and one development benchmark only.
+2. Finish and leakage-screen the new 100-positive/100-restraint English list development corpus, which was generated without seeing model outputs.
+3. Run current EG-1 with the shipped prompt and the list-aware prompt through the exact bundled Mac runtime on that new corpus.
+4. Score structure, preservation, false lists, damage proxies, confidence intervals, and paired changes; then run independent semantic cross-review.
+5. Use that result to decide whether any prompt variant survives and whether the next universal Gemma/Qwen training dose should begin.
 
 ## Decisions that are not yet justified
 

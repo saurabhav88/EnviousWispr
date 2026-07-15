@@ -7,6 +7,8 @@ import argparse
 import json
 from pathlib import Path
 
+from eg1_shipped_request import build_user_message, output_token_budget
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -24,7 +26,7 @@ def main() -> None:
     ]
     system = "\n".join(prompt_lines).strip()
     selected_ids = set(args.ids or [])
-    rendered: list[dict[str, str]] = []
+    rendered: list[dict[str, object]] = []
     for corpus_path in args.corpus:
         for line in Path(corpus_path).read_text(encoding="utf-8").splitlines():
             if not line.strip():
@@ -41,7 +43,8 @@ def main() -> None:
                 {
                     "id": row["id"],
                     "system": system,
-                    "user": f"<TRANSCRIPT>\n{transcript}\n</TRANSCRIPT>",
+                    "user": build_user_message(transcript),
+                    "max_tokens": output_token_budget(transcript),
                 }
             )
 
