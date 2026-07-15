@@ -23,8 +23,11 @@ No evidence here is native-reviewed frozen release evidence.
 
 The audit script pins every source by SHA-256 and row count, checks paired case
 identity, recomputes English list mechanics from the pinned candidates, and
-emits only aggregate counts and confidence intervals. It never emits
-transcript, reference, candidate, or judge-note text.
+emits only aggregate counts and confidence intervals. The BASE-RUN-005 counts
+come from an immutable tracked receipt that records the producing commit, Git
+blob, full-log hash, and section hash. Later additions to the living overnight
+log do not change or break this audit, including in shallow clones. It never
+emits transcript, reference, candidate, or judge-note text.
 
 Run it from this checkout while pointing at the ignored historical artifacts:
 
@@ -80,9 +83,11 @@ Priority-language strict counts were German 6/8, French 6/8, and Spanish 3/8.
 The English two-item slice separately reported 13/20 meaning-safe, 7/20
 damaging, and 3/20 strict.
 
-The script parses these counts from the pinned log and recomputes rates and
-confidence intervals. The per-case semantic judgments were not retained, so
-the classifications themselves cannot be independently recomputed.
+The script reads these counts from the hash-pinned BASE-RUN-005 aggregate
+receipt, which records source commit
+`9a4e7a025b76b252c534f6ea0332f8acafa6fbe5`, and recomputes rates and confidence
+intervals. The per-case semantic judgments were not retained, so the
+classifications themselves cannot be independently recomputed.
 
 This stratum conflicts sharply with the legacy judge on the same ML56 case
 families:
@@ -194,7 +199,10 @@ Pooling them would create false precision.
 
 ## Source trail
 
-- `docs/experiments/eg1-multilingual/OVERNIGHT-LOG-2026-07-15.md`
+- `docs/experiments/eg1-multilingual/receipts/qwen3-base-run-005.aggregate.json`,
+  sourced from the overnight log at producing commit
+  `9a4e7a025b76b252c534f6ea0332f8acafa6fbe5`, blob
+  `22bd3ebf3be9f8ddcfe8fa5d0524b7b70002357c`
 - `docs/experiments/eg1-multilingual/scored/*.scored.jsonl`
 - `docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/`
 - ignored historical sources under `scripts/eval/runs/bakeoff-1265/` and

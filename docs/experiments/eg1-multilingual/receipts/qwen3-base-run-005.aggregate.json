@@ -1,0 +1,38 @@
+{
+  "schema_version": "qwen3-base-run-005-aggregate-v1",
+  "source": {
+    "path": "docs/experiments/eg1-multilingual/OVERNIGHT-LOG-2026-07-15.md",
+    "producing_commit": "9a4e7a025b76b252c534f6ea0332f8acafa6fbe5",
+    "git_blob_oid": "22bd3ebf3be9f8ddcfe8fa5d0524b7b70002357c",
+    "sha256": "5f3ba1c3b6f6d23890d568620d29e8e69a8ca654041a7fe98d7811202f2b9e61",
+    "section_start": "### BASE-RUN-005 - Independent universal-base semantic ranking",
+    "section_end": "### ARCH-003",
+    "section_payload_sha256": "fb99f9b70856c87aa8b1baf540d37ba301d29576f20f51a3b8f824eeb4753d60"
+  },
+  "aggregate": {
+    "overall": {
+      "total": 56,
+      "same_language": 54,
+      "meaning_safe": 52,
+      "cleanup": 28,
+      "grammar": 45,
+      "damaging": 7,
+      "strict": 26
+    },
+    "strict_by_language": {
+      "de": 6,
+      "es": 3,
+      "fr": 6,
+      "pt": 0,
+      "hi": 3,
+      "ja": 3,
+      "zh": 5
+    },
+    "english_twoitem": {
+      "total": 20,
+      "meaning_safe": 13,
+      "damaging": 7,
+      "strict": 3
+    }
+  }
+}

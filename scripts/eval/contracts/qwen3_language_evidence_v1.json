@@ -8,10 +8,17 @@
     "ru"
   ],
   "tracked_sources": {
-    "overnight_log": {
-      "path": "docs/experiments/eg1-multilingual/OVERNIGHT-LOG-2026-07-15.md",
-      "sha256": "57af7e63e50edc001b68dbd7e3f390b253a070028956d0059f329acfb8016a6a",
-      "format": "text"
+    "base_run_005_receipt": {
+      "path": "docs/experiments/eg1-multilingual/receipts/qwen3-base-run-005.aggregate.json",
+      "sha256": "8413906dd4cf4457d04b6d0992f76ad3038172bf02d935cfa9fb69d7f0959fcc",
+      "format": "json",
+      "source_path": "docs/experiments/eg1-multilingual/OVERNIGHT-LOG-2026-07-15.md",
+      "source_commit": "9a4e7a025b76b252c534f6ea0332f8acafa6fbe5",
+      "source_git_blob_oid": "22bd3ebf3be9f8ddcfe8fa5d0524b7b70002357c",
+      "source_sha256": "5f3ba1c3b6f6d23890d568620d29e8e69a8ca654041a7fe98d7811202f2b9e61",
+      "source_section_start": "### BASE-RUN-005 - Independent universal-base semantic ranking",
+      "source_section_end": "### ARCH-003",
+      "source_section_payload_sha256": "fb99f9b70856c87aa8b1baf540d37ba301d29576f20f51a3b8f824eeb4753d60"
     },
     "ru_base_ship": {
       "path": "docs/experiments/eg1-multilingual/scored/base_ship_dev16.scored.jsonl",

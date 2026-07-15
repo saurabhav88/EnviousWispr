@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import importlib.util
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -39,7 +40,86 @@ def legacy_row(
     }
 
 
+def base_run_005_fixture() -> tuple[dict[str, object], dict[str, object]]:
+    source = {
+        "path": "docs/experiment-log.md",
+        "producing_commit": "2" * 40,
+        "git_blob_oid": "3" * 40,
+        "sha256": "4" * 64,
+        "section_start": "### BASE-RUN-005 - Independent universal-base semantic ranking",
+        "section_end": "### ARCH-003",
+        "section_payload_sha256": "5" * 64,
+    }
+    receipt: dict[str, object] = {
+        "schema_version": "qwen3-base-run-005-aggregate-v1",
+        "source": source,
+        "aggregate": {
+            "overall": {
+                "total": 56,
+                "same_language": 54,
+                "meaning_safe": 52,
+                "cleanup": 28,
+                "grammar": 45,
+                "damaging": 7,
+                "strict": 26,
+            },
+            "strict_by_language": {
+                "de": 6,
+                "es": 3,
+                "fr": 6,
+                "pt": 0,
+                "hi": 3,
+                "ja": 3,
+                "zh": 5,
+            },
+            "english_twoitem": {
+                "total": 20,
+                "meaning_safe": 13,
+                "damaging": 7,
+                "strict": 3,
+            },
+        },
+    }
+    spec: dict[str, object] = {
+        "source_path": source["path"],
+        "source_commit": source["producing_commit"],
+        "source_git_blob_oid": source["git_blob_oid"],
+        "source_sha256": source["sha256"],
+        "source_section_start": source["section_start"],
+        "source_section_end": source["section_end"],
+        "source_section_payload_sha256": source["section_payload_sha256"],
+    }
+    return receipt, spec
+
+
 class Qwen3LanguageEvidenceAuditTests(unittest.TestCase):
+    def test_immutable_receipt_survives_later_live_log_without_git_history(self) -> None:
+        receipt, spec = base_run_005_fixture()
+        relative = Path("docs/receipts/base-run-005.json")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            live_log = root / str(spec["source_path"])
+            receipt_path = root / relative
+            live_log.parent.mkdir(parents=True)
+            receipt_path.parent.mkdir(parents=True)
+            live_log.write_text("old evidence\n### LATER-RUN\nnew evidence\n", encoding="utf-8")
+            payload = json.dumps(receipt, sort_keys=True).encode("utf-8")
+            receipt_path.write_bytes(payload)
+            spec.update(
+                {
+                    "path": relative.as_posix(),
+                    "sha256": MODULE.sha256_bytes(payload),
+                    "format": "json",
+                }
+            )
+
+            loaded = MODULE.load_source(root, "base_run_005_receipt", spec)
+            parsed = MODULE.parse_base_run_005_receipt(loaded, spec)
+
+            self.assertFalse((root / ".git").exists())
+            self.assertIn("LATER-RUN", live_log.read_text(encoding="utf-8"))
+            self.assertEqual(parsed["overall"]["strict"], 26)
+
     def test_legacy_rejudge_replaces_only_the_pinned_language_slice(self) -> None:
         rows = [
             legacy_row("de-1", "de", True, True, True),
@@ -182,28 +262,20 @@ class Qwen3LanguageEvidenceAuditTests(unittest.TestCase):
         self.assertLess(interval[0], 0.7)
         self.assertEqual(interval[1], 1.0)
 
-    def test_base_run_005_parser_extracts_only_published_aggregates(self) -> None:
-        text = """
-### BASE-RUN-005 - Independent universal-base semantic ranking
-| Qwen3 4B | 54/56 | 52/56 | 28/56 | 45/56 | 7 | 26/56 |
-| German | 5 | 8 | 6 |
-| Spanish | 4 | 4 | 3 |
-| French | 4 | 4 | 6 |
-| Portuguese | 1 | 0 | 0 |
-| Hindi | 4 | 2 | 3 |
-| Japanese | 5 | 5 | 3 |
-| Chinese | 6 | 5 | 5 |
-Qwen3 had 13/20 meaning safety, seven damaging rows, and 3/20 strict.
-### ARCH-003
-"""
+    def test_base_run_005_receipt_validates_provenance_and_counts(self) -> None:
+        receipt, spec = base_run_005_fixture()
 
-        result = MODULE.parse_base_run_005(text)
+        result = MODULE.parse_base_run_005_receipt(receipt, spec)
 
         self.assertEqual(result["overall"]["damaging"], 7)
         self.assertEqual(result["strict_by_language"]["de"], 6)
         self.assertEqual(result["strict_by_language"]["fr"], 6)
         self.assertEqual(result["strict_by_language"]["es"], 3)
         self.assertEqual(result["english_twoitem"]["strict"], 3)
+
+        receipt["source"]["producing_commit"] = "6" * 40
+        with self.assertRaises(MODULE.AuditError):
+            MODULE.parse_base_run_005_receipt(receipt, spec)
 
     def test_failed_rerun_removes_previous_pass_report(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -129,6 +129,11 @@ def source_receipt(role: str, spec: dict[str, Any]) -> dict[str, Any]:
     if "rows" in spec:
         receipt["rows"] = spec["rows"]
     for key in (
+        "source_path",
+        "source_commit",
+        "source_git_blob_oid",
+        "source_sha256",
+        "source_section_payload_sha256",
         "variant",
         "model_id",
         "prompt_sha256",
@@ -356,69 +361,73 @@ def type_b_report(counts: dict[str, int]) -> dict[str, Any]:
     return report
 
 
-def parse_base_run_005(text: str) -> dict[str, Any]:
-    start = "### BASE-RUN-005 - Independent universal-base semantic ranking"
-    end = "### ARCH-003"
-    if text.count(start) != 1 or end not in text.split(start, 1)[1]:
-        raise AuditError("overnight_log: BASE-RUN-005 section missing")
-    section = text.split(start, 1)[1].split(end, 1)[0]
-
-    aggregate_match = re.search(
-        r"\| Qwen3 4B \| (\d+)/56 \| (\d+)/56 \| (\d+)/56 \| (\d+)/56 \| (\d+) \| (\d+)/56 \|",
-        section,
-    )
-    if aggregate_match is None:
-        raise AuditError("overnight_log: Qwen3 aggregate row missing")
-    overall_values = [int(value) for value in aggregate_match.groups()]
-    overall = dict(
-        zip(
-            ("same_language", "meaning_safe", "cleanup", "grammar", "damaging", "strict"),
-            overall_values,
-            strict=True,
-        )
-    )
-    overall["total"] = 56
-
-    language_names = {
-        "de": "German",
-        "es": "Spanish",
-        "fr": "French",
-        "pt": "Portuguese",
-        "hi": "Hindi",
-        "ja": "Japanese",
-        "zh": "Chinese",
+def parse_base_run_005_receipt(
+    receipt: dict[str, Any], spec: dict[str, Any]
+) -> dict[str, Any]:
+    if receipt.get("schema_version") != "qwen3-base-run-005-aggregate-v1":
+        raise AuditError("base_run_005_receipt: unsupported schema")
+    source = receipt.get("source")
+    expected_source = {
+        "path": spec.get("source_path"),
+        "producing_commit": spec.get("source_commit"),
+        "git_blob_oid": spec.get("source_git_blob_oid"),
+        "sha256": spec.get("source_sha256"),
+        "section_start": spec.get("source_section_start"),
+        "section_end": spec.get("source_section_end"),
+        "section_payload_sha256": spec.get("source_section_payload_sha256"),
     }
-    strict_by_language: dict[str, int] = {}
-    for code, name in language_names.items():
-        match = re.search(
-            rf"\| {name} \| \d+ \| \d+ \| (\d+) \|",
-            section,
-        )
-        if match is None:
-            raise AuditError("overnight_log: Qwen3 language row missing")
-        strict_by_language[code] = int(match.group(1))
+    if source != expected_source:
+        raise AuditError("base_run_005_receipt: source provenance mismatch")
+    if re.fullmatch(r"[0-9a-f]{40}", str(source["producing_commit"])) is None:
+        raise AuditError("base_run_005_receipt: invalid source commit")
+    if re.fullmatch(r"[0-9a-f]{40,64}", str(source["git_blob_oid"])) is None:
+        raise AuditError("base_run_005_receipt: invalid source blob OID")
+    for key in ("sha256", "section_payload_sha256"):
+        if re.fullmatch(r"[0-9a-f]{64}", str(source[key])) is None:
+            raise AuditError(f"base_run_005_receipt: invalid {key}")
 
-    english_match = re.search(
-        r"Qwen3 had (\d+)/20 meaning safety, (\w+) damaging rows, and (\d+)/20 strict\.",
-        section,
-    )
-    if english_match is None:
-        raise AuditError("overnight_log: Qwen3 English two-item aggregate missing")
-    number_words = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9}
-    damaging_word = english_match.group(2)
-    if damaging_word not in number_words:
-        raise AuditError("overnight_log: unsupported damaging-count word")
-    english_twoitem = {
-        "total": 20,
-        "meaning_safe": int(english_match.group(1)),
-        "damaging": number_words[damaging_word],
-        "strict": int(english_match.group(3)),
+    aggregate = receipt.get("aggregate")
+    if not isinstance(aggregate, dict):
+        raise AuditError("base_run_005_receipt: aggregate missing")
+    overall = aggregate.get("overall")
+    strict_by_language = aggregate.get("strict_by_language")
+    english_twoitem = aggregate.get("english_twoitem")
+    expected_overall_keys = {
+        "total",
+        "same_language",
+        "meaning_safe",
+        "cleanup",
+        "grammar",
+        "damaging",
+        "strict",
     }
-    return {
-        "overall": overall,
-        "strict_by_language": strict_by_language,
-        "english_twoitem": english_twoitem,
-    }
+    if not isinstance(overall, dict) or set(overall) != expected_overall_keys:
+        raise AuditError("base_run_005_receipt: invalid overall aggregate")
+    if (
+        not isinstance(strict_by_language, dict)
+        or set(strict_by_language) != {"de", "es", "fr", "pt", "hi", "ja", "zh"}
+    ):
+        raise AuditError("base_run_005_receipt: invalid language aggregate")
+    if (
+        not isinstance(english_twoitem, dict)
+        or set(english_twoitem) != {"total", "meaning_safe", "damaging", "strict"}
+    ):
+        raise AuditError("base_run_005_receipt: invalid English aggregate")
+    if overall.get("total") != 56 or english_twoitem.get("total") != 20:
+        raise AuditError("base_run_005_receipt: invalid denominators")
+    if any(type(value) is not int or not 0 <= value <= 56 for value in overall.values()):
+        raise AuditError("base_run_005_receipt: invalid overall count")
+    if any(
+        type(value) is not int or not 0 <= value <= 8
+        for value in strict_by_language.values()
+    ):
+        raise AuditError("base_run_005_receipt: invalid language count")
+    if any(
+        type(value) is not int or not 0 <= value <= 20
+        for value in english_twoitem.values()
+    ):
+        raise AuditError("base_run_005_receipt: invalid English count")
+    return aggregate
 
 
 def leakage_counts(
@@ -613,7 +622,9 @@ def build_report(
     if not isinstance(expected, dict):
         raise AuditError("contract: expected aggregates missing")
 
-    base_run_005 = parse_base_run_005(tracked["overnight_log"])
+    base_run_005 = parse_base_run_005_receipt(
+        tracked["base_run_005_receipt"], tracked_specs["base_run_005_receipt"]
+    )
     assert_expected(
         base_run_005,
         expected["qwen_base_run_005_reported"],
@@ -683,7 +694,7 @@ def build_report(
             for name, count in base_run_005["english_twoitem"].items()
             if name != "total"
         },
-        "reproducibility_limit": "counts are parsed from the pinned log and rates are recomputed; semantic row judgments cannot be independently recomputed",
+        "reproducibility_limit": "counts come from the hash-pinned aggregate receipt with producing-commit provenance and rates are recomputed; semantic row judgments cannot be independently recomputed",
     }
 
     ru_roles = [role for role in tracked_specs if role.startswith("ru_")]
