@@ -29,6 +29,8 @@ LEAKAGE_SCHEMA = "eg1-d1-leakage-receipt-v1"
 SHARED_CONCEPT_SCHEMA = "eg1-d1-shared-concept-registry-v1"
 PACKET_RECEIPT_SCHEMA = "eg1-d1-authoring-packet-receipt-v1"
 MERGE_RECEIPT_SCHEMA = "eg1-d1-authoring-merge-receipt-v1"
+LAUNCH_ASSIGNMENT_SCHEMA = "eg1-d1-authoring-assignment-v1"
+LAUNCH_RECEIPT_SCHEMA = "eg1-d1-authoring-launch-receipt-v1"
 BULLET_LINE = re.compile(r"^\s*[-*\u2022]\s+\S", re.MULTILINE)
 NUMBERED_LINE = re.compile(r"^\s*\d+[.)]\s+\S", re.MULTILINE)
 REQUIRED_ROW_FIELDS = {
@@ -181,6 +183,37 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
                 raise ValidationFailure(f"{path}:{line_number}: expected an object")
             rows.append(row)
     return rows
+
+
+def read_json_snapshot(path: Path) -> tuple[dict[str, Any], str]:
+    try:
+        value = path.read_bytes()
+        parsed = json.loads(value)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValidationFailure(f"{path}: cannot read valid JSON: {error}") from error
+    if not isinstance(parsed, dict):
+        raise ValidationFailure(f"{path}: expected a JSON object")
+    return parsed, sha256_bytes(value)
+
+
+def read_jsonl_snapshot(path: Path) -> tuple[list[dict[str, Any]], str]:
+    try:
+        value = path.read_bytes()
+        text_value = value.decode("utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise ValidationFailure(f"{path}: cannot read valid UTF-8 JSONL: {error}") from error
+    rows: list[dict[str, Any]] = []
+    for line_number, line in enumerate(text_value.splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise ValidationFailure(f"{path}:{line_number}: invalid JSON: {error}") from error
+        if not isinstance(row, dict):
+            raise ValidationFailure(f"{path}:{line_number}: expected a JSON object")
+        rows.append(row)
+    return rows, sha256_bytes(value)
 
 
 def write_json_atomic(path: Path, value: Any) -> None:
@@ -615,6 +648,9 @@ def build_authoring_packet_receipt(
     slots: list[dict[str, Any]],
     shared_registry_path: Path | None,
     shared_registry: dict[str, Any] | None,
+    contract_sha256: str | None = None,
+    builder_sha256: str | None = None,
+    shared_registry_sha256: str | None = None,
 ) -> dict[str, Any]:
     if (shared_registry_path is None) != (shared_registry is None):
         raise ValidationFailure(
@@ -652,7 +688,11 @@ def build_authoring_packet_receipt(
         shared_receipt = {
             "status": "sealed",
             "registry_id": shared_registry["registry_id"],
-            "registry_sha256": sha256_file(shared_registry_path),
+            "registry_sha256": (
+                shared_registry_sha256
+                if shared_registry_sha256 is not None
+                else sha256_file(shared_registry_path)
+            ),
             "concept_count": len(bindings),
             "bindings_sha256": canonical_json_sha256(binding_rows),
         }
@@ -675,8 +715,16 @@ def build_authoring_packet_receipt(
 
     payload = {
         "schema_version": PACKET_RECEIPT_SCHEMA,
-        "contract_sha256": sha256_file(contract_path),
-        "builder_sha256": sha256_file(Path(__file__).resolve()),
+        "contract_sha256": (
+            contract_sha256
+            if contract_sha256 is not None
+            else sha256_file(contract_path)
+        ),
+        "builder_sha256": (
+            builder_sha256
+            if builder_sha256 is not None
+            else sha256_file(Path(__file__).resolve())
+        ),
         "seed": contract["seed"],
         "total_rows": len(slots),
         "language_rows": contract["language_rows"],
@@ -744,12 +792,212 @@ def parse_completed_packet_arguments(values: list[str]) -> dict[str, Path]:
     return packets
 
 
+def authoring_launch_state(
+    *,
+    contract_path: Path,
+    slots: list[dict[str, Any]],
+    rows: list[dict[str, Any]],
+    assignments_path: Path,
+    receipt_path: Path,
+    packet_receipt_sha256: str | None = None,
+    shared_registry_sha256: str | None = None,
+) -> tuple[list[str], dict[str, Any]]:
+    errors: list[str] = []
+    assignments, assignment_sha = read_jsonl_snapshot(assignments_path)
+    receipt, receipt_sha = read_json_snapshot(receipt_path)
+    launch_builder_path = Path(__file__).resolve().with_name(
+        "build_eg1_d1_authoring_launch.py"
+    )
+
+    if receipt.get("schema_version") != LAUNCH_RECEIPT_SCHEMA:
+        errors.append("authoring launch receipt has unsupported schema")
+    if receipt.get("status") != "all_authorship_assignments_ready":
+        errors.append("authoring launch does not make all 2,000 rows ready")
+    contract_binding = receipt.get("contract")
+    if not isinstance(contract_binding, dict) or contract_binding.get(
+        "sha256"
+    ) != sha256_file(contract_path):
+        errors.append("authoring launch contract hash does not match")
+    builder_binding = receipt.get("builder")
+    if (
+        not launch_builder_path.is_file()
+        or not isinstance(builder_binding, dict)
+        or builder_binding.get("sha256") != sha256_file(launch_builder_path)
+    ):
+        errors.append("authoring launch builder hash does not match")
+    inputs = receipt.get("inputs")
+    if not isinstance(inputs, dict):
+        errors.append("authoring launch input bindings are missing")
+        inputs = {}
+    if packet_receipt_sha256 is not None and inputs.get(
+        "packet_receipt_sha256"
+    ) != packet_receipt_sha256:
+        errors.append("authoring launch packet receipt hash does not match")
+    if shared_registry_sha256 is not None and inputs.get(
+        "shared_concept_registry_sha256"
+    ) != shared_registry_sha256:
+        errors.append("authoring launch shared-concept registry hash does not match")
+    artifacts = receipt.get("artifacts")
+    artifact = (
+        artifacts.get("assignments.jsonl") if isinstance(artifacts, dict) else None
+    )
+    if (
+        not isinstance(artifact, dict)
+        or artifact.get("sha256") != assignment_sha
+        or artifact.get("row_count") != len(assignments)
+    ):
+        errors.append("authoring launch assignment artifact binding does not match")
+    counts = receipt.get("counts")
+    if (
+        not isinstance(counts, dict)
+        or counts.get("total_slots") != len(slots)
+        or counts.get("ready_to_author") != len(slots)
+        or counts.get("blocked_shared_concept_slots") != 0
+    ):
+        errors.append("authoring launch receipt counts do not cover all slots")
+    gates = receipt.get("gates")
+    if (
+        not isinstance(gates, dict)
+        or gates.get("human_native_author_fraction_satisfied") is not True
+        or gates.get("all_assigned_reviewers_human_native") is not True
+        or gates.get("author_reviewer_identity_separation_verified") is not True
+        or gates.get("training_eligible") is not False
+        or gates.get("release_eligible") is not False
+    ):
+        errors.append("authoring launch gate receipt is malformed")
+
+    expected_slots = {slot["family_id"]: slot for slot in slots}
+    assignments_by_id: dict[str, dict[str, Any]] = {}
+    ready_by_language: Counter[str] = Counter()
+    human_by_language: Counter[str] = Counter()
+    for assignment_number, assignment in enumerate(assignments, 1):
+        family_id = assignment.get("family_id")
+        if not isinstance(family_id, str) or not family_id:
+            errors.append(f"launch assignment {assignment_number}: invalid family_id")
+            continue
+        if family_id in assignments_by_id:
+            errors.append(f"{family_id}: duplicate launch assignment")
+            continue
+        assignments_by_id[family_id] = assignment
+        slot = expected_slots.get(family_id)
+        if slot is None:
+            errors.append(f"{family_id}: launch assignment is not allocated")
+            continue
+        if assignment.get("schema_version") != LAUNCH_ASSIGNMENT_SCHEMA:
+            errors.append(f"{family_id}: launch assignment schema is unsupported")
+        for field in SLOT_FIELDS:
+            if assignment.get(field) != slot[field]:
+                errors.append(f"{family_id}: launch assignment changed {field}")
+        if assignment.get("launch_status") != "ready_to_author":
+            errors.append(f"{family_id}: launch assignment is not ready to author")
+        else:
+            ready_by_language[slot["language"]] += 1
+        author_type = assignment.get("author_type")
+        if author_type not in {"human_native", "synthetic_native"}:
+            errors.append(f"{family_id}: launch author type is invalid")
+        elif author_type == "human_native":
+            human_by_language[slot["language"]] += 1
+            if any(
+                assignment.get(field) is not None
+                for field in (
+                    "author_model_id",
+                    "author_configuration_id",
+                    "critic_model_id",
+                    "critic_configuration_id",
+                )
+            ):
+                errors.append(f"{family_id}: human launch author has model metadata")
+        else:
+            synthetic_fields = (
+                "author_model_id",
+                "author_configuration_id",
+                "critic_model_id",
+                "critic_configuration_id",
+            )
+            if any(not assignment.get(field) for field in synthetic_fields):
+                errors.append(f"{family_id}: synthetic launch metadata is incomplete")
+            elif (
+                assignment["author_model_id"],
+                assignment["author_configuration_id"],
+            ) == (
+                assignment["critic_model_id"],
+                assignment["critic_configuration_id"],
+            ):
+                errors.append(f"{family_id}: synthetic launch author and critic are identical")
+        if assignment.get("native_reviewer_type") != "human_native":
+            errors.append(f"{family_id}: launch reviewer is not human-native")
+        if not assignment.get("author_id") or not assignment.get("native_reviewer_id"):
+            errors.append(f"{family_id}: launch author or reviewer ID is missing")
+        elif assignment["author_id"] == assignment["native_reviewer_id"]:
+            errors.append(f"{family_id}: launch author and reviewer are identical")
+        if (
+            assignment.get("candidate_model_output_seen") is not False
+            or assignment.get("prose_authored") is not False
+            or assignment.get("native_review_approved") is not False
+        ):
+            errors.append(f"{family_id}: launch assignment contains completed work")
+
+    if set(assignments_by_id) != set(expected_slots):
+        errors.append("authoring launch assignment coverage does not match D1 slots")
+    for language in {slot["language"] for slot in slots}:
+        ready_count = ready_by_language[language]
+        if ready_count == 0 or human_by_language[language] * 2 < ready_count:
+            errors.append(
+                f"{language}: launch human-native author fraction is below 50%"
+            )
+
+    for row in rows:
+        family_id = row.get("family_id")
+        assignment = assignments_by_id.get(family_id)
+        if assignment is None:
+            continue
+        provenance = row.get("source_provenance")
+        if not isinstance(provenance, dict):
+            continue
+        binding_fields = (
+            ("author_id", "author_id"),
+            ("author_type", "author_type"),
+            ("author_model_id", "author_model_id"),
+            ("author_configuration_id", "author_configuration_id"),
+            ("critic_model_id", "critic_model_id"),
+            ("critic_configuration_id", "critic_configuration_id"),
+        )
+        for provenance_field, assignment_field in binding_fields:
+            if provenance.get(provenance_field) != assignment.get(assignment_field):
+                errors.append(
+                    f"{family_id}: {provenance_field} differs from launch assignment"
+                )
+        native_review = row.get("native_review")
+        if isinstance(native_review, dict) and (
+            row.get("native_reviewed") is True
+            or native_review.get("reviewer_id") is not None
+        ):
+            if native_review.get("reviewer_id") != assignment.get("native_reviewer_id"):
+                errors.append(f"{family_id}: reviewer differs from launch assignment")
+            if native_review.get("reviewer_type") != assignment.get(
+                "native_reviewer_type"
+            ):
+                errors.append(f"{family_id}: reviewer type differs from launch assignment")
+
+    summary = {
+        "assignments_path": str(assignments_path.resolve()),
+        "assignments_sha256": assignment_sha,
+        "receipt_path": str(receipt_path.resolve()),
+        "receipt_sha256": receipt_sha,
+        "row_count": len(assignments),
+        "status": receipt.get("status"),
+    }
+    return sorted(set(errors)), summary
+
+
 def merge_authoring_packets(
     *,
     contract_path: Path,
     packet_receipt_path: Path,
     completed_packets: dict[str, Path],
     shared_registry_path: Path | None,
+    launch_assignments_path: Path,
+    launch_receipt_path: Path,
     output_path: Path,
     merge_receipt_path: Path,
 ) -> dict[str, Any]:
@@ -862,13 +1110,28 @@ def merge_authoring_packets(
             f"extra={len(extra_ids)}, unique={len(actual_by_id)}"
         )
     ordered_rows = [actual_by_id[slot["family_id"]] for slot in slots]
+    packet_receipt_sha = sha256_file(packet_receipt_path)
+    shared_registry_sha = sha256_file(shared_registry_path)
+    launch_errors, launch_summary = authoring_launch_state(
+        contract_path=contract_path,
+        slots=slots,
+        rows=ordered_rows,
+        assignments_path=launch_assignments_path,
+        receipt_path=launch_receipt_path,
+        packet_receipt_sha256=packet_receipt_sha,
+        shared_registry_sha256=shared_registry_sha,
+    )
+    if launch_errors:
+        raise ValidationFailure("; ".join(launch_errors))
     merged_payload = jsonl_bytes(ordered_rows)
     receipt_payload = {
         "schema_version": MERGE_RECEIPT_SCHEMA,
         "contract_sha256": sha256_file(contract_path),
         "builder_sha256": sha256_file(Path(__file__).resolve()),
-        "authoring_packet_receipt_sha256": sha256_file(packet_receipt_path),
-        "shared_concept_registry_sha256": sha256_file(shared_registry_path),
+        "authoring_packet_receipt_sha256": packet_receipt_sha,
+        "shared_concept_registry_sha256": shared_registry_sha,
+        "authoring_launch_assignments_sha256": launch_summary["assignments_sha256"],
+        "authoring_launch_receipt_sha256": launch_summary["receipt_sha256"],
         "completed_packets": completed_receipts,
         "completed_packet_set_sha256": canonical_json_sha256(completed_receipts),
         "row_count": len(ordered_rows),
@@ -1307,6 +1570,8 @@ def evaluate(
     shared_concept_registry_path: Path | None,
     purpose: str,
     leakage_receipt_path: Path | None,
+    launch_assignments_path: Path | None = None,
+    launch_receipt_path: Path | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     contract = read_json(contract_path)
     rows = read_jsonl(rows_path)
@@ -1327,12 +1592,31 @@ def evaluate(
         contract, slots, rows, registry, shared_bindings
     )
     errors.extend(row_errors)
+    launch_summary: dict[str, Any] | None = None
+    if (launch_assignments_path is None) != (launch_receipt_path is None):
+        errors.append("authoring launch assignments and receipt must be supplied together")
+    elif launch_assignments_path and launch_receipt_path:
+        launch_errors, launch_summary = authoring_launch_state(
+            contract_path=contract_path,
+            slots=slots,
+            rows=rows,
+            assignments_path=launch_assignments_path,
+            receipt_path=launch_receipt_path,
+            shared_registry_sha256=(
+                sha256_file(shared_concept_registry_path)
+                if shared_concept_registry_path
+                else None
+            ),
+        )
+        errors.extend(launch_errors)
     prompt, prompt_blockers = prompt_state(contract_path, contract)
     blockers = registry_blockers + row_blockers + prompt_blockers
 
     candidate_sha = sha256_file(rows_path)
     registry_sha = sha256_file(registry_path)
     if purpose in {"training", "release"}:
+        if launch_summary is None:
+            blockers.append("approved authoring launch assignment binding is missing")
         if not contract.get("approval", {}).get("training_export_allowed"):
             blockers.append("D1 contract has no training-export approval")
         blockers.extend(
@@ -1399,6 +1683,7 @@ def evaluate(
             ),
             "concept_count": len(shared_bindings),
         },
+        "authoring_launch": launch_summary,
         "prompt": prompt,
         "metrics": metrics,
         "errors": errors,
@@ -1438,6 +1723,8 @@ def parse_args() -> argparse.Namespace:
         metavar="LANGUAGE=PATH",
     )
     merge_parser.add_argument("--shared-concept-registry", required=True)
+    merge_parser.add_argument("--launch-assignments", required=True)
+    merge_parser.add_argument("--launch-receipt", required=True)
     merge_parser.add_argument("--output", required=True)
     merge_parser.add_argument("--receipt", required=True)
 
@@ -1450,6 +1737,8 @@ def parse_args() -> argparse.Namespace:
     validate_parser.add_argument("--shared-concept-registry", required=True)
     validate_parser.add_argument("--purpose", choices=("draft", "training", "release"), required=True)
     validate_parser.add_argument("--leakage-receipt")
+    validate_parser.add_argument("--launch-assignments")
+    validate_parser.add_argument("--launch-receipt")
     validate_parser.add_argument("--report", required=True)
     validate_parser.add_argument("--output")
     return parser.parse_args()
@@ -1500,6 +1789,8 @@ def main() -> None:
                     args.completed_packet
                 ),
                 shared_registry_path=Path(args.shared_concept_registry).resolve(),
+                launch_assignments_path=Path(args.launch_assignments).resolve(),
+                launch_receipt_path=Path(args.launch_receipt).resolve(),
                 output_path=output_path,
                 merge_receipt_path=merge_receipt_path,
             )
@@ -1529,6 +1820,14 @@ def main() -> None:
             leakage_receipt_path=(
                 Path(args.leakage_receipt).resolve() if args.leakage_receipt else None
             ),
+            launch_assignments_path=(
+                Path(args.launch_assignments).resolve()
+                if args.launch_assignments
+                else None
+            ),
+            launch_receipt_path=(
+                Path(args.launch_receipt).resolve() if args.launch_receipt else None
+            ),
         )
         write_json_atomic(report_path, report)
         if report["status"] != "pass":
@@ -1553,6 +1852,12 @@ def main() -> None:
                 "shared_concept_registry_sha256": report[
                     "shared_concept_registry"
                 ]["sha256"],
+                "authoring_launch_assignments_sha256": report[
+                    "authoring_launch"
+                ]["assignments_sha256"],
+                "authoring_launch_receipt_sha256": report["authoring_launch"][
+                    "receipt_sha256"
+                ],
             }
             manifest_path = output_path.with_suffix(output_path.suffix + ".manifest.json")
             write_json_atomic(manifest_path, manifest)

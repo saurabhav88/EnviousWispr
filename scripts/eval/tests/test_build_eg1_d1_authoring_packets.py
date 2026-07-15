@@ -24,6 +24,7 @@ from test_build_eg1_multilingual_d1 import (  # noqa: E402
     CONTRACT_PATH,
     make_rows,
     make_shared_concept_registry,
+    write_launch_bundle,
     write_json,
     write_jsonl,
 )
@@ -49,6 +50,13 @@ class D1AuthoringPacketTests(unittest.TestCase):
             output_dir=packet_dir,
             shared_registry_path=shared_path,
         )
+        if shared_path:
+            write_launch_bundle(
+                root,
+                contract_path=CONTRACT_PATH,
+                packet_dir=packet_dir,
+                shared_path=shared_path,
+            )
         rows = make_rows(self.slots, approved=False)
         completed: dict[str, Path] = {}
         for language in self.contract["languages"]:
@@ -69,6 +77,8 @@ class D1AuthoringPacketTests(unittest.TestCase):
             packet_receipt_path=packet_dir / "authoring-packet-receipt.json",
             completed_packets=completed,
             shared_registry_path=shared_path,
+            launch_assignments_path=root / "authoring-launch" / "assignments.jsonl",
+            launch_receipt_path=root / "authoring-launch" / "receipt.json",
             output_path=root / "merged.jsonl",
             merge_receipt_path=root / "merge-receipt.json",
         )
@@ -152,6 +162,29 @@ class D1AuthoringPacketTests(unittest.TestCase):
             write_json(receipt_path, receipt)
             with self.assertRaisesRegex(
                 d1.ValidationFailure, "authoring packet receipt does not match"
+            ):
+                self.merge(root, packet_dir, shared_path, completed)
+
+    def test_author_or_reviewer_change_from_launch_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            packet_dir, shared_path, completed = self.prepare(root)
+            language = self.contract["languages"][0]
+            rows = d1.read_jsonl(completed[language])
+            rows[0]["source_provenance"]["author_id"] = "fixture-substitute-author"
+            rows[1]["native_reviewed"] = True
+            rows[1]["native_review"].update(
+                {
+                    "status": "approved",
+                    "reviewer_id": "fixture-substitute-reviewer",
+                    "reviewer_type": "human_native",
+                    "reviewer_language": language,
+                    "reviewed_at": "2026-07-15T05:00:00Z",
+                }
+            )
+            write_jsonl(completed[language], rows)
+            with self.assertRaisesRegex(
+                d1.ValidationFailure, "differs from launch assignment"
             ):
                 self.merge(root, packet_dir, shared_path, completed)
 
