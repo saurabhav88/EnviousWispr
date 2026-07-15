@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 import unicodedata
@@ -25,6 +26,9 @@ from typing import Any, Iterable
 CONTRACT_SCHEMA = "eg1-multilingual-d1-contract-v1"
 REGISTRY_SCHEMA = "eg1-d1-blocked-family-registry-v1"
 LEAKAGE_SCHEMA = "eg1-d1-leakage-receipt-v1"
+SHARED_CONCEPT_SCHEMA = "eg1-d1-shared-concept-registry-v1"
+PACKET_RECEIPT_SCHEMA = "eg1-d1-authoring-packet-receipt-v1"
+MERGE_RECEIPT_SCHEMA = "eg1-d1-authoring-merge-receipt-v1"
 BULLET_LINE = re.compile(r"^\s*[-*\u2022]\s+\S", re.MULTILINE)
 NUMBERED_LINE = re.compile(r"^\s*\d+[.)]\s+\S", re.MULTILINE)
 REQUIRED_ROW_FIELDS = {
@@ -87,6 +91,11 @@ SLOT_FIELDS = (
     "origin_mode",
     "cross_language_concept_id",
 )
+SHARED_CONCEPT_ROW_FIELDS = (
+    "shared_concept_registry_id",
+    "shared_concept_brief_id",
+    "shared_concept_brief_sha256",
+)
 
 
 class ValidationFailure(Exception):
@@ -99,6 +108,30 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def canonical_json_sha256(value: Any) -> str:
+    return sha256_bytes(canonical_json_bytes(value))
+
+
+def jsonl_bytes(rows: Iterable[dict[str, Any]]) -> bytes:
+    return b"".join(
+        json.dumps(row, ensure_ascii=False, sort_keys=True).encode("utf-8") + b"\n"
+        for row in rows
+    )
 
 
 def normalized(text: str) -> str:
@@ -472,6 +505,400 @@ def verify_plan(contract: dict[str, Any], slots: list[dict[str, Any]]) -> list[s
     return errors
 
 
+def shared_concept_ids(slots: list[dict[str, Any]]) -> list[str]:
+    return sorted(
+        {
+            slot["cross_language_concept_id"]
+            for slot in slots
+            if slot["origin_mode"] == "shared_concept_independent_rewrite"
+        }
+    )
+
+
+def shared_concept_registry_state(
+    slots: list[dict[str, Any]], registry: dict[str, Any] | None
+) -> tuple[list[str], dict[str, dict[str, str]]]:
+    expected_ids = set(shared_concept_ids(slots))
+    if registry is None:
+        return ["sealed shared-concept registry is missing"], {}
+    errors: list[str] = []
+    if registry.get("schema_version") != SHARED_CONCEPT_SCHEMA:
+        return ["shared-concept registry has unsupported schema"], {}
+    registry_id = registry.get("registry_id")
+    if (
+        not isinstance(registry_id, str)
+        or not registry_id.strip()
+        or registry_id.startswith("REPLACE_")
+    ):
+        errors.append("shared-concept registry ID is not finalized")
+    if registry.get("status") != "sealed":
+        errors.append("shared-concept registry status is not sealed")
+    approval = registry.get("approval")
+    if not isinstance(approval, dict) or approval.get("approved_for_authoring") is not True:
+        errors.append("shared-concept registry is not approved for authoring")
+    elif any(
+        not isinstance(approval.get(field), str) or not approval[field].strip()
+        for field in ("approved_by", "approval_reference")
+    ):
+        errors.append("shared-concept registry approval lacks typed identity/reference")
+    concepts = registry.get("concepts")
+    if not isinstance(concepts, list):
+        return errors + ["shared-concept registry concepts must be a list"], {}
+
+    bindings: dict[str, dict[str, str]] = {}
+    brief_ids: set[str] = set()
+    for index, concept in enumerate(concepts, 1):
+        if not isinstance(concept, dict):
+            errors.append(f"shared-concept registry row {index} must be an object")
+            continue
+        concept_id = concept.get("cross_language_concept_id")
+        if not isinstance(concept_id, str) or not concept_id.strip():
+            errors.append(f"shared-concept registry row {index} lacks a concept ID")
+            continue
+        if concept_id in bindings:
+            errors.append(f"shared-concept registry duplicates {concept_id}")
+            continue
+        brief_id = concept.get("brief_id")
+        brief = concept.get("brief")
+        brief_sha256 = concept.get("brief_sha256")
+        if not isinstance(brief_id, str) or not brief_id.strip():
+            errors.append(f"{concept_id}: shared-concept brief ID is missing")
+            continue
+        if brief_id in brief_ids:
+            errors.append(f"shared-concept brief ID is reused: {brief_id}")
+        brief_ids.add(brief_id)
+        if not isinstance(brief, str) or not brief.strip():
+            errors.append(f"{concept_id}: shared-concept brief is empty")
+            continue
+        actual_brief_sha256 = sha256_bytes(brief.encode("utf-8"))
+        if brief_sha256 != actual_brief_sha256:
+            errors.append(f"{concept_id}: shared-concept brief hash does not match")
+            continue
+        bindings[concept_id] = {
+            "shared_concept_registry_id": registry_id,
+            "shared_concept_brief_id": brief_id,
+            "shared_concept_brief_sha256": actual_brief_sha256,
+        }
+
+    actual_ids = set(bindings)
+    missing_ids = sorted(expected_ids - actual_ids)
+    extra_ids = sorted(actual_ids - expected_ids)
+    if missing_ids:
+        errors.append(
+            f"shared-concept registry is missing {len(missing_ids)} concepts; "
+            f"first={missing_ids[0]}"
+        )
+    if extra_ids:
+        errors.append(
+            f"shared-concept registry has {len(extra_ids)} unallocated concepts; "
+            f"first={extra_ids[0]}"
+        )
+    if len(concepts) != len(expected_ids):
+        errors.append(
+            f"shared-concept registry expected {len(expected_ids)} rows, got {len(concepts)}"
+        )
+    return sorted(set(errors)), bindings
+
+
+def slot_identity_sha256(rows: list[dict[str, Any]]) -> str:
+    identities = [
+        {"family_id": row["family_id"], **{field: row[field] for field in SLOT_FIELDS}}
+        for row in rows
+    ]
+    return canonical_json_sha256(identities)
+
+
+def build_authoring_packet_receipt(
+    *,
+    contract_path: Path,
+    contract: dict[str, Any],
+    slots: list[dict[str, Any]],
+    shared_registry_path: Path | None,
+    shared_registry: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if (shared_registry_path is None) != (shared_registry is None):
+        raise ValidationFailure(
+            "shared-concept registry path and parsed content must be supplied together"
+        )
+    languages = contract.get("languages")
+    if (
+        not isinstance(languages, list)
+        or len(languages) != 5
+        or len(set(languages)) != 5
+        or any(
+            not isinstance(language, str)
+            or not re.fullmatch(r"[a-z][a-z0-9_-]*", language)
+            for language in languages
+        )
+    ):
+        raise ValidationFailure("D1 packet workflow requires five unique safe language IDs")
+    if contract.get("total_rows") != 2000 or contract.get("language_rows") != 400:
+        raise ValidationFailure("D1 packet workflow requires 2,000 rows and 400 per language")
+
+    shared_errors, bindings = shared_concept_registry_state(slots, shared_registry)
+    if shared_registry is None:
+        shared_receipt: dict[str, Any] = {
+            "status": "blocked",
+            "reason": "sealed_shared_concept_registry_required",
+            "concept_count": len(shared_concept_ids(slots)),
+        }
+    elif shared_errors:
+        raise ValidationFailure("; ".join(shared_errors))
+    else:
+        binding_rows = [
+            {"cross_language_concept_id": concept_id, **bindings[concept_id]}
+            for concept_id in sorted(bindings)
+        ]
+        shared_receipt = {
+            "status": "sealed",
+            "registry_id": shared_registry["registry_id"],
+            "registry_sha256": sha256_file(shared_registry_path),
+            "concept_count": len(bindings),
+            "bindings_sha256": canonical_json_sha256(binding_rows),
+        }
+
+    packets: list[dict[str, Any]] = []
+    for language in languages:
+        packet_rows = [slot for slot in slots if slot["language"] == language]
+        if len(packet_rows) != 400:
+            raise ValidationFailure(f"{language}: expected 400 authoring slots")
+        filename = f"d1-authoring-{language}.jsonl"
+        packets.append(
+            {
+                "language": language,
+                "filename": filename,
+                "row_count": len(packet_rows),
+                "packet_sha256": sha256_bytes(jsonl_bytes(packet_rows)),
+                "slot_identity_sha256": slot_identity_sha256(packet_rows),
+            }
+        )
+
+    payload = {
+        "schema_version": PACKET_RECEIPT_SCHEMA,
+        "contract_sha256": sha256_file(contract_path),
+        "builder_sha256": sha256_file(Path(__file__).resolve()),
+        "seed": contract["seed"],
+        "total_rows": len(slots),
+        "language_rows": contract["language_rows"],
+        "packets": packets,
+        "packet_set_sha256": canonical_json_sha256(packets),
+        "shared_concept_authoring": shared_receipt,
+    }
+    return {**payload, "receipt_payload_sha256": canonical_json_sha256(payload)}
+
+
+def write_authoring_packets(
+    *,
+    contract_path: Path,
+    output_dir: Path,
+    shared_registry_path: Path | None,
+) -> dict[str, Any]:
+    if output_dir.exists() or output_dir.is_symlink():
+        raise ValidationFailure(f"refusing to overwrite existing output: {output_dir}")
+    contract = read_json(contract_path)
+    slots = build_slots(contract)
+    plan_errors = verify_plan(contract, slots)
+    if plan_errors:
+        raise ValidationFailure("; ".join(plan_errors))
+    shared_registry = read_json(shared_registry_path) if shared_registry_path else None
+    receipt = build_authoring_packet_receipt(
+        contract_path=contract_path,
+        contract=contract,
+        slots=slots,
+        shared_registry_path=shared_registry_path,
+        shared_registry=shared_registry,
+    )
+
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary_dir = Path(
+        tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent)
+    )
+    try:
+        for packet in receipt["packets"]:
+            packet_rows = [
+                slot for slot in slots if slot["language"] == packet["language"]
+            ]
+            packet_path = temporary_dir / packet["filename"]
+            packet_path.write_bytes(jsonl_bytes(packet_rows))
+            if sha256_file(packet_path) != packet["packet_sha256"]:
+                raise ValidationFailure(f"{packet['language']}: packet write hash mismatch")
+        write_json_atomic(temporary_dir / "authoring-packet-receipt.json", receipt)
+        os.replace(temporary_dir, output_dir)
+    except BaseException:
+        shutil.rmtree(temporary_dir, ignore_errors=True)
+        raise
+    return receipt
+
+
+def parse_completed_packet_arguments(values: list[str]) -> dict[str, Path]:
+    packets: dict[str, Path] = {}
+    for value in values:
+        language, separator, raw_path = value.partition("=")
+        if not separator or not language or not raw_path:
+            raise ValidationFailure(
+                f"invalid --completed-packet {value!r}; expected LANGUAGE=PATH"
+            )
+        if language in packets:
+            raise ValidationFailure(f"duplicate completed packet for {language}")
+        packets[language] = Path(raw_path).resolve()
+    return packets
+
+
+def merge_authoring_packets(
+    *,
+    contract_path: Path,
+    packet_receipt_path: Path,
+    completed_packets: dict[str, Path],
+    shared_registry_path: Path | None,
+    output_path: Path,
+    merge_receipt_path: Path,
+) -> dict[str, Any]:
+    if output_path == merge_receipt_path:
+        raise ValidationFailure("merged output and merge receipt must be different paths")
+    for path in (output_path, merge_receipt_path):
+        if path.exists() or path.is_symlink():
+            raise ValidationFailure(f"refusing to overwrite existing output: {path}")
+
+    contract = read_json(contract_path)
+    slots = build_slots(contract)
+    plan_errors = verify_plan(contract, slots)
+    if plan_errors:
+        raise ValidationFailure("; ".join(plan_errors))
+    shared_registry = read_json(shared_registry_path) if shared_registry_path else None
+    expected_packet_receipt = build_authoring_packet_receipt(
+        contract_path=contract_path,
+        contract=contract,
+        slots=slots,
+        shared_registry_path=shared_registry_path,
+        shared_registry=shared_registry,
+    )
+    actual_packet_receipt = read_json(packet_receipt_path)
+    if actual_packet_receipt != expected_packet_receipt:
+        raise ValidationFailure(
+            "authoring packet receipt does not match the current contract, builder, "
+            "allocation, or shared-concept registry"
+        )
+    if expected_packet_receipt["shared_concept_authoring"]["status"] != "sealed":
+        raise ValidationFailure(
+            "shared-concept authoring is blocked until a sealed registry is bound"
+        )
+    shared_errors, bindings = shared_concept_registry_state(slots, shared_registry)
+    if shared_errors:
+        raise ValidationFailure("; ".join(shared_errors))
+
+    expected_languages = set(contract["languages"])
+    if set(completed_packets) != expected_languages:
+        missing = sorted(expected_languages - set(completed_packets))
+        extra = sorted(set(completed_packets) - expected_languages)
+        raise ValidationFailure(
+            f"completed packet languages differ; missing={missing}, extra={extra}"
+        )
+
+    expected_by_id = {slot["family_id"]: slot for slot in slots}
+    actual_by_id: dict[str, dict[str, Any]] = {}
+    completed_receipts: list[dict[str, Any]] = []
+    for language in contract["languages"]:
+        packet_path = completed_packets[language]
+        rows = read_jsonl(packet_path)
+        if len(rows) != contract["language_rows"]:
+            raise ValidationFailure(
+                f"{language}: expected {contract['language_rows']} completed rows, got {len(rows)}"
+            )
+        for row_number, row in enumerate(rows, 1):
+            missing_fields = REQUIRED_ROW_FIELDS - set(row)
+            if missing_fields:
+                raise ValidationFailure(
+                    f"{language} row {row_number}: missing completed fields "
+                    f"{sorted(missing_fields)}"
+                )
+            family_id = row.get("family_id")
+            if not isinstance(family_id, str) or not family_id:
+                raise ValidationFailure(
+                    f"{language} row {row_number}: family_id must be nonempty"
+                )
+            if family_id in actual_by_id:
+                raise ValidationFailure(f"duplicate completed family_id: {family_id}")
+            slot = expected_by_id.get(family_id)
+            if slot is None:
+                raise ValidationFailure(f"unallocated completed family_id: {family_id}")
+            if slot["language"] != language or row.get("language") != language:
+                raise ValidationFailure(
+                    f"{family_id}: row is in the wrong language packet"
+                )
+            for field in SLOT_FIELDS:
+                if row.get(field) != slot[field]:
+                    raise ValidationFailure(
+                        f"{family_id}: allocated {field} changed from "
+                        f"{slot[field]!r} to {row.get(field)!r}"
+                    )
+            concept_id = slot["cross_language_concept_id"]
+            if concept_id:
+                binding = bindings[concept_id]
+                for field in SHARED_CONCEPT_ROW_FIELDS:
+                    if row.get(field) != binding[field]:
+                        raise ValidationFailure(
+                            f"{family_id}: shared-concept {field} does not match "
+                            "the sealed brief registry"
+                        )
+            elif any(row.get(field) is not None for field in SHARED_CONCEPT_ROW_FIELDS):
+                raise ValidationFailure(
+                    f"{family_id}: native-original row carries shared-concept binding"
+                )
+            actual_by_id[family_id] = row
+        completed_receipts.append(
+            {
+                "language": language,
+                "filename": packet_path.name,
+                "row_count": len(rows),
+                "sha256": sha256_file(packet_path),
+            }
+        )
+
+    missing_ids = sorted(set(expected_by_id) - set(actual_by_id))
+    extra_ids = sorted(set(actual_by_id) - set(expected_by_id))
+    if missing_ids or extra_ids or len(actual_by_id) != len(slots):
+        raise ValidationFailure(
+            f"completed family coverage differs; missing={len(missing_ids)}, "
+            f"extra={len(extra_ids)}, unique={len(actual_by_id)}"
+        )
+    ordered_rows = [actual_by_id[slot["family_id"]] for slot in slots]
+    merged_payload = jsonl_bytes(ordered_rows)
+    receipt_payload = {
+        "schema_version": MERGE_RECEIPT_SCHEMA,
+        "contract_sha256": sha256_file(contract_path),
+        "builder_sha256": sha256_file(Path(__file__).resolve()),
+        "authoring_packet_receipt_sha256": sha256_file(packet_receipt_path),
+        "shared_concept_registry_sha256": sha256_file(shared_registry_path),
+        "completed_packets": completed_receipts,
+        "completed_packet_set_sha256": canonical_json_sha256(completed_receipts),
+        "row_count": len(ordered_rows),
+        "merged_rows_sha256": sha256_bytes(merged_payload),
+    }
+    merge_receipt = {
+        **receipt_payload,
+        "receipt_payload_sha256": canonical_json_sha256(receipt_payload),
+    }
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    merge_receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    output_written = False
+    receipt_written = False
+    try:
+        write_jsonl_atomic(output_path, ordered_rows)
+        output_written = True
+        if sha256_file(output_path) != merge_receipt["merged_rows_sha256"]:
+            raise ValidationFailure("merged rows write hash mismatch")
+        write_json_atomic(merge_receipt_path, merge_receipt)
+        receipt_written = True
+    except BaseException:
+        if receipt_written:
+            merge_receipt_path.unlink(missing_ok=True)
+        if output_written:
+            output_path.unlink(missing_ok=True)
+        raise
+    return merge_receipt
+
+
 def registry_state(
     contract: dict[str, Any], registry: dict[str, Any]
 ) -> tuple[list[str], list[str]]:
@@ -547,6 +974,7 @@ def validate_candidate_rows(
     slots: list[dict[str, Any]],
     rows: list[dict[str, Any]],
     registry: dict[str, Any],
+    shared_concept_bindings: dict[str, dict[str, str]] | None = None,
 ) -> tuple[list[str], list[str], dict[str, Any]]:
     errors: list[str] = []
     blockers: list[str] = []
@@ -586,6 +1014,21 @@ def validate_candidate_rows(
                 errors.append(
                     f"{family_id}: {field} must be {slot[field]!r}, got {row.get(field)!r}"
                 )
+        concept_id = slot["cross_language_concept_id"]
+        if concept_id:
+            binding = (shared_concept_bindings or {}).get(concept_id)
+            if binding is None:
+                errors.append(
+                    f"{family_id}: opaque shared-concept ID has no sealed brief binding"
+                )
+            else:
+                for field in SHARED_CONCEPT_ROW_FIELDS:
+                    if row.get(field) != binding[field]:
+                        errors.append(
+                            f"{family_id}: {field} does not match the sealed concept brief"
+                        )
+        elif any(row.get(field) is not None for field in SHARED_CONCEPT_ROW_FIELDS):
+            errors.append(f"{family_id}: native-original row has shared-concept metadata")
 
         semantic_origin_id = row["semantic_origin_id"]
         if not isinstance(semantic_origin_id, str) or not semantic_origin_id:
@@ -861,19 +1304,27 @@ def evaluate(
     contract_path: Path,
     rows_path: Path,
     registry_path: Path,
+    shared_concept_registry_path: Path | None,
     purpose: str,
     leakage_receipt_path: Path | None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     contract = read_json(contract_path)
     rows = read_jsonl(rows_path)
     registry = read_json(registry_path)
+    shared_concept_registry = (
+        read_json(shared_concept_registry_path) if shared_concept_registry_path else None
+    )
     receipt = read_json(leakage_receipt_path) if leakage_receipt_path else None
     slots = build_slots(contract)
     errors = verify_plan(contract, slots)
     registry_errors, registry_blockers = registry_state(contract, registry)
     errors.extend(registry_errors)
+    shared_errors, shared_bindings = shared_concept_registry_state(
+        slots, shared_concept_registry
+    )
+    errors.extend(shared_errors)
     row_errors, row_blockers, metrics = validate_candidate_rows(
-        contract, slots, rows, registry
+        contract, slots, rows, registry, shared_bindings
     )
     errors.extend(row_errors)
     prompt, prompt_blockers = prompt_state(contract_path, contract)
@@ -930,6 +1381,24 @@ def evaluate(
             "sha256": registry_sha,
             "status": registry.get("status"),
         },
+        "shared_concept_registry": {
+            "path": (
+                str(shared_concept_registry_path.resolve())
+                if shared_concept_registry_path
+                else None
+            ),
+            "sha256": (
+                sha256_file(shared_concept_registry_path)
+                if shared_concept_registry_path
+                else None
+            ),
+            "status": (
+                shared_concept_registry.get("status")
+                if shared_concept_registry
+                else "missing"
+            ),
+            "concept_count": len(shared_bindings),
+        },
         "prompt": prompt,
         "metrics": metrics,
         "errors": errors,
@@ -948,12 +1417,37 @@ def parse_args() -> argparse.Namespace:
     slots_parser.add_argument("--contract", required=True)
     slots_parser.add_argument("--output", required=True)
 
+    packets_parser = subparsers.add_parser(
+        "packets",
+        help="split the allocation into five immutable language authoring packets",
+    )
+    packets_parser.add_argument("--contract", required=True)
+    packets_parser.add_argument("--output-dir", required=True)
+    packets_parser.add_argument("--shared-concept-registry")
+
+    merge_parser = subparsers.add_parser(
+        "merge-packets",
+        help="merge five completed packets after exact allocation identity checks",
+    )
+    merge_parser.add_argument("--contract", required=True)
+    merge_parser.add_argument("--packet-receipt", required=True)
+    merge_parser.add_argument(
+        "--completed-packet",
+        action="append",
+        required=True,
+        metavar="LANGUAGE=PATH",
+    )
+    merge_parser.add_argument("--shared-concept-registry", required=True)
+    merge_parser.add_argument("--output", required=True)
+    merge_parser.add_argument("--receipt", required=True)
+
     validate_parser = subparsers.add_parser(
         "validate", help="validate draft rows or export approved training/release rows"
     )
     validate_parser.add_argument("--contract", required=True)
     validate_parser.add_argument("--rows", required=True)
     validate_parser.add_argument("--blocked-registry", required=True)
+    validate_parser.add_argument("--shared-concept-registry", required=True)
     validate_parser.add_argument("--purpose", choices=("draft", "training", "release"), required=True)
     validate_parser.add_argument("--leakage-receipt")
     validate_parser.add_argument("--report", required=True)
@@ -978,6 +1472,43 @@ def main() -> None:
             print(f"wrote {len(slots)} allocation slots to {output_path}")
             return
 
+        if args.command == "packets":
+            output_dir = Path(args.output_dir).resolve()
+            receipt = write_authoring_packets(
+                contract_path=Path(args.contract).resolve(),
+                output_dir=output_dir,
+                shared_registry_path=(
+                    Path(args.shared_concept_registry).resolve()
+                    if args.shared_concept_registry
+                    else None
+                ),
+            )
+            shared_status = receipt["shared_concept_authoring"]["status"]
+            print(
+                f"wrote 5 authoring packets ({receipt['total_rows']} rows) to "
+                f"{output_dir}; shared concepts: {shared_status}"
+            )
+            return
+
+        if args.command == "merge-packets":
+            output_path = Path(args.output).resolve()
+            merge_receipt_path = Path(args.receipt).resolve()
+            receipt = merge_authoring_packets(
+                contract_path=Path(args.contract).resolve(),
+                packet_receipt_path=Path(args.packet_receipt).resolve(),
+                completed_packets=parse_completed_packet_arguments(
+                    args.completed_packet
+                ),
+                shared_registry_path=Path(args.shared_concept_registry).resolve(),
+                output_path=output_path,
+                merge_receipt_path=merge_receipt_path,
+            )
+            print(
+                f"merged {receipt['row_count']} completed rows to {output_path}; "
+                f"receipt: {merge_receipt_path}"
+            )
+            return
+
         report_path = Path(args.report).resolve()
         output_path = Path(args.output).resolve() if args.output else None
         if args.purpose == "draft" and output_path is not None:
@@ -991,6 +1522,9 @@ def main() -> None:
             contract_path=Path(args.contract).resolve(),
             rows_path=Path(args.rows).resolve(),
             registry_path=Path(args.blocked_registry).resolve(),
+            shared_concept_registry_path=Path(
+                args.shared_concept_registry
+            ).resolve(),
             purpose=args.purpose,
             leakage_receipt_path=(
                 Path(args.leakage_receipt).resolve() if args.leakage_receipt else None
@@ -1016,6 +1550,9 @@ def main() -> None:
                 "prompt_sha256": report["prompt"]["sha256"],
                 "contract_sha256": report["contract"]["sha256"],
                 "blocked_registry_sha256": report["blocked_registry"]["sha256"],
+                "shared_concept_registry_sha256": report[
+                    "shared_concept_registry"
+                ]["sha256"],
             }
             manifest_path = output_path.with_suffix(output_path.suffix + ".manifest.json")
             write_json_atomic(manifest_path, manifest)

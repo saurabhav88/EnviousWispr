@@ -74,8 +74,52 @@ def make_registry(*, sealed: bool) -> dict[str, object]:
     }
 
 
+def make_shared_concept_registry(
+    slots: list[dict[str, object]], *, sealed: bool = True
+) -> dict[str, object]:
+    concepts = []
+    concept_ids = sorted(
+        {
+            str(slot["cross_language_concept_id"])
+            for slot in slots
+            if slot["cross_language_concept_id"]
+        }
+    )
+    for concept_id in concept_ids:
+        brief = f"TEST-BYTES::{concept_id}"
+        concepts.append(
+            {
+                "cross_language_concept_id": concept_id,
+                "brief_id": f"BRIEF-{concept_id}",
+                "brief": brief,
+                "brief_sha256": d1.sha256_bytes(brief.encode("utf-8")),
+            }
+        )
+    return {
+        "schema_version": d1.SHARED_CONCEPT_SCHEMA,
+        "registry_id": "test-shared-concepts",
+        "status": "sealed" if sealed else "draft",
+        "approval": {
+            "approved_for_authoring": sealed,
+            "approved_by": "test-reviewer" if sealed else None,
+            "approval_reference": "test-only" if sealed else None,
+        },
+        "concepts": concepts,
+    }
+
+
+def shared_bindings(
+    slots: list[dict[str, object]], registry: dict[str, object]
+) -> dict[str, dict[str, str]]:
+    errors, bindings = d1.shared_concept_registry_state(slots, registry)
+    if errors:
+        raise AssertionError(errors)
+    return bindings
+
+
 def make_rows(slots: list[dict[str, object]], *, approved: bool) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
+    bindings = shared_bindings(slots, make_shared_concept_registry(slots))
     for slot in slots:
         family_id = str(slot["family_id"])
         language = str(slot["language"])
@@ -133,6 +177,11 @@ def make_rows(slots: list[dict[str, object]], *, approved: bool) -> list[dict[st
                 },
             }
         )
+        concept_id = slot["cross_language_concept_id"]
+        if concept_id:
+            row.update(bindings[str(concept_id)])
+        else:
+            row.update({field: None for field in d1.SHARED_CONCEPT_ROW_FIELDS})
         rows.append(row)
     return rows
 
@@ -158,6 +207,9 @@ class D1BuilderTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.contract = d1.read_json(CONTRACT_PATH)
         cls.slots = d1.build_slots(cls.contract)
+        cls.shared_bindings = shared_bindings(
+            cls.slots, make_shared_concept_registry(cls.slots)
+        )
 
     def test_full_plan_is_deterministic_and_balanced(self) -> None:
         self.assertFalse(self.contract["approval"]["training_export_allowed"])
@@ -209,6 +261,7 @@ class D1BuilderTests(unittest.TestCase):
             contract_path = root / "contract.json"
             rows_path = root / "rows.jsonl"
             registry_path = root / "registry.json"
+            shared_path = root / "shared-concepts.json"
             receipt_path = root / "receipt.json"
             report_path = root / "training-report.json"
             output_path = root / "training.jsonl"
@@ -216,6 +269,7 @@ class D1BuilderTests(unittest.TestCase):
             write_json(contract_path, contract)
             write_jsonl(rows_path, make_rows(self.slots, approved=False))
             write_json(registry_path, make_registry(sealed=True))
+            write_json(shared_path, make_shared_concept_registry(self.slots))
             write_json(
                 receipt_path,
                 make_leakage_receipt(rows_path, registry_path, contract["prompt"]["sha256"]),
@@ -224,6 +278,7 @@ class D1BuilderTests(unittest.TestCase):
                 contract_path=contract_path,
                 rows_path=rows_path,
                 registry_path=registry_path,
+                shared_concept_registry_path=shared_path,
                 purpose="draft",
                 leakage_receipt_path=None,
             )
@@ -233,6 +288,7 @@ class D1BuilderTests(unittest.TestCase):
                 contract_path=contract_path,
                 rows_path=rows_path,
                 registry_path=registry_path,
+                shared_concept_registry_path=shared_path,
                 purpose="training",
                 leakage_receipt_path=None,
             )
@@ -249,6 +305,8 @@ class D1BuilderTests(unittest.TestCase):
                     str(rows_path),
                     "--blocked-registry",
                     str(registry_path),
+                    "--shared-concept-registry",
+                    str(shared_path),
                     "--purpose",
                     "training",
                     "--leakage-receipt",
@@ -271,13 +329,16 @@ class D1BuilderTests(unittest.TestCase):
             contract_path = root / "contract.json"
             rows_path = root / "rows.jsonl"
             registry_path = root / "registry.json"
+            shared_path = root / "shared-concepts.json"
             write_json(contract_path, make_contract(training=False, release=False))
             write_jsonl(rows_path, make_rows(self.slots, approved=True))
             write_json(registry_path, make_registry(sealed=True))
+            write_json(shared_path, make_shared_concept_registry(self.slots))
             report, _ = d1.evaluate(
                 contract_path=contract_path,
                 rows_path=rows_path,
                 registry_path=registry_path,
+                shared_concept_registry_path=shared_path,
                 purpose="draft",
                 leakage_receipt_path=None,
             )
@@ -291,16 +352,19 @@ class D1BuilderTests(unittest.TestCase):
             contract_path = root / "contract.json"
             rows_path = root / "rows.jsonl"
             registry_path = root / "registry.json"
+            shared_path = root / "shared-concepts.json"
             receipt_path = root / "receipt.json"
             contract = make_contract(training=True, release=False)
             write_json(contract_path, contract)
             write_jsonl(rows_path, make_rows(self.slots, approved=True))
             write_json(registry_path, make_registry(sealed=False))
+            write_json(shared_path, make_shared_concept_registry(self.slots))
             write_json(receipt_path, make_leakage_receipt(rows_path, registry_path, contract["prompt"]["sha256"]))
             report, _ = d1.evaluate(
                 contract_path=contract_path,
                 rows_path=rows_path,
                 registry_path=registry_path,
+                shared_concept_registry_path=shared_path,
                 purpose="training",
                 leakage_receipt_path=receipt_path,
             )
@@ -313,6 +377,7 @@ class D1BuilderTests(unittest.TestCase):
             contract_path = root / "contract.json"
             rows_path = root / "rows.jsonl"
             registry_path = root / "registry.json"
+            shared_path = root / "shared-concepts.json"
             receipt_path = root / "receipt.json"
             report_path = root / "report.json"
             output_path = root / "training.jsonl"
@@ -320,6 +385,7 @@ class D1BuilderTests(unittest.TestCase):
             write_json(contract_path, contract)
             write_jsonl(rows_path, make_rows(self.slots, approved=True))
             write_json(registry_path, make_registry(sealed=True))
+            write_json(shared_path, make_shared_concept_registry(self.slots))
             write_json(receipt_path, make_leakage_receipt(rows_path, registry_path, contract["prompt"]["sha256"]))
             process = subprocess.run(
                 [
@@ -332,6 +398,8 @@ class D1BuilderTests(unittest.TestCase):
                     str(rows_path),
                     "--blocked-registry",
                     str(registry_path),
+                    "--shared-concept-registry",
+                    str(shared_path),
                     "--purpose",
                     "training",
                     "--leakage-receipt",
@@ -357,16 +425,19 @@ class D1BuilderTests(unittest.TestCase):
             contract_path = root / "contract.json"
             rows_path = root / "rows.jsonl"
             registry_path = root / "registry.json"
+            shared_path = root / "shared-concepts.json"
             receipt_path = root / "receipt.json"
             contract = make_contract(training=True, release=False)
             write_json(contract_path, contract)
             write_jsonl(rows_path, make_rows(self.slots, approved=True))
             write_json(registry_path, make_registry(sealed=True))
+            write_json(shared_path, make_shared_concept_registry(self.slots))
             write_json(receipt_path, make_leakage_receipt(rows_path, registry_path, contract["prompt"]["sha256"]))
             report, _ = d1.evaluate(
                 contract_path=contract_path,
                 rows_path=rows_path,
                 registry_path=registry_path,
+                shared_concept_registry_path=shared_path,
                 purpose="release",
                 leakage_receipt_path=receipt_path,
             )
@@ -391,7 +462,9 @@ class D1BuilderTests(unittest.TestCase):
                 "critic_configuration_id": "same-config",
             }
         )
-        errors, _, _ = d1.validate_candidate_rows(self.contract, self.slots, rows, registry)
+        errors, _, _ = d1.validate_candidate_rows(
+            self.contract, self.slots, rows, registry, self.shared_bindings
+        )
         self.assertTrue(any("semantic origin is blocked" in item for item in errors))
         self.assertTrue(any("reuse an authoring template" in item for item in errors))
         self.assertTrue(any("synthetic author and critic are identical" in item for item in errors))
@@ -419,7 +492,11 @@ class D1BuilderTests(unittest.TestCase):
             for index in range(1, bulleted["item_count"] + 1)
         )
         errors, _, _ = d1.validate_candidate_rows(
-            self.contract, self.slots, rows, make_registry(sealed=True)
+            self.contract,
+            self.slots,
+            rows,
+            make_registry(sealed=True),
+            self.shared_bindings,
         )
         self.assertTrue(
             any(
@@ -469,7 +546,11 @@ class D1BuilderTests(unittest.TestCase):
         prose["checks"]["formatting"] = "bullets"
 
         errors, _, _ = d1.validate_candidate_rows(
-            self.contract, self.slots, rows, make_registry(sealed=True)
+            self.contract,
+            self.slots,
+            rows,
+            make_registry(sealed=True),
+            self.shared_bindings,
         )
         self.assertTrue(
             any(

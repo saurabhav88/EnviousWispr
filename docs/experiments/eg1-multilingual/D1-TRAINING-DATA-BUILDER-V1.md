@@ -1,6 +1,6 @@
 # EG-1 D1 Universal Multilingual Data Builder V1
 
-Status: tooling and allocation contract only. No D1 examples have been authored, exported, or trained.
+Status: tooling and allocation contract only. Authoring remains blocked until the private shared-concept briefs are sealed. No D1 examples have been authored, exported, or trained.
 
 ## Purpose
 
@@ -29,7 +29,7 @@ Within each language:
 - Seven restraint types each receive 20 families.
 - Every positive family is paired with one separately authored restraint family that has the same domain, length, difficulty, risk, and item-count pressure.
 - Every core behavior includes medical and legal/financial examples. Core totals remain balanced across domains, lengths, and difficulty.
-- 320 families are native-original and 80 are independently rewritten shared concepts. The same 80 opaque concept IDs span all five languages, but each language must use a different authoring template and native-language author. A synthetic native-language author is allowed only with full model/config provenance, a different synthetic critic, and later human native approval.
+- 320 families are native-original and 80 are independently rewritten shared concepts. An opaque concept ID alone does not prove five authors used the same meaning. Before any shared-origin row can merge or validate, a private sealed registry must bind every one of the 80 IDs to one approved semantic brief ID and exact brief hash. The packet and merge receipts expose only IDs and hashes, never the private brief prose. Each language must use a different authoring template and native-language author. A synthetic native-language author is allowed only with full model/config provenance, a different synthetic critic, and later separate human native approval.
 
 The allocation is deterministic SHA-256 ordering. It does not rely on Python's random implementation, so the same contract and seed produce the same family slots.
 
@@ -44,8 +44,13 @@ Each authored JSONL row must match its allocated slot and include:
 - realistic ASR-style `input` and minimally edited `output`;
 - explicit meaning, entity, number, timing, attribution, formatting, and compound-scope checks;
 - `native_reviewed` plus reviewer identity, reviewer language, timestamp, and status.
+- for shared-origin rows, the sealed concept-registry ID, brief ID, and brief SHA-256.
 
 Positive and restraint partners must not reuse a scenario, template, or near-identical wording. Medical, legal, and financial rows must carry nonempty timing and attribution checks. Positive list outputs must have exactly the allocated number of list lines. Restraint outputs must have none.
+
+## Private shared-concept input
+
+The private registry uses schema `eg1-d1-shared-concept-registry-v1`, a finalized `registry_id`, `status: sealed`, and an approval object with `approved_for_authoring: true`, approver identity, and approval reference. Its `concepts` list must cover exactly the 80 allocated IDs once each. Every entry carries the opaque concept ID, a unique brief ID, the private semantic brief, and the SHA-256 of those exact brief bytes. Any missing, extra, duplicate, empty, unapproved, or hash-mismatched entry fails before packet merge or draft validation. The private prose is never copied into public receipts or tracked artifacts.
 
 ## Blocked-family input
 
@@ -83,14 +88,31 @@ The builder validates artifact hashes and every check. It does not pretend its e
 
 ## Fail-closed workflow
 
-The checked-in contract pins the development-only list-aware prompt by SHA-256. Both training and release approvals are `false`. The blocked-family template is also `draft`. Therefore the current repository state cannot export a trainable D1 dataset by accident.
+The checked-in contract pins the development-only list-aware prompt by SHA-256. Both training and release approvals are `false`. The blocked-family template is also `draft`, and no private shared-concept brief registry is sealed. Therefore the current repository state cannot merge a complete authoring set or export a trainable D1 dataset by accident. Packet creation without that registry is allowed only to distribute the 320 native-original slots per language; its receipt is marked `blocked`, and shared-origin authorship plus all merging remain disabled.
 
-When authoring is approved, write allocation slots only:
+Create five immutable 400-row authoring packets. Before the private concept registry exists, run this command without `--shared-concept-registry`; the receipt is marked `blocked`, and every `shared_concept_independent_rewrite` slot must remain unauthored. Once the sealed registry exists, bind it while creating a fresh packet set:
 
 ```bash
-python3 scripts/eval/build_eg1_multilingual_d1.py slots \
+python3 scripts/eval/build_eg1_multilingual_d1.py packets \
   --contract scripts/eval/eg1_multilingual_d1_contract_v1.json \
-  --output /approved/private/path/d1-slots.jsonl
+  --shared-concept-registry /approved/private/path/d1-shared-concepts-sealed.json \
+  --output-dir /approved/private/path/d1-authoring-packets
+```
+
+Each packet must be completed independently without changing its allocated fields. Merge accepts exactly one completed file for each language and exactly one copy of every family. It rejects a missing/duplicate family, a row in the wrong language packet, slot drift, receipt drift, or a shared row that is not bound to its sealed brief:
+
+```bash
+python3 scripts/eval/build_eg1_multilingual_d1.py merge-packets \
+  --contract scripts/eval/eg1_multilingual_d1_contract_v1.json \
+  --packet-receipt /approved/private/path/d1-authoring-packets/authoring-packet-receipt.json \
+  --shared-concept-registry /approved/private/path/d1-shared-concepts-sealed.json \
+  --completed-packet en=/approved/private/path/en.completed.jsonl \
+  --completed-packet de=/approved/private/path/de.completed.jsonl \
+  --completed-packet fr=/approved/private/path/fr.completed.jsonl \
+  --completed-packet es=/approved/private/path/es.completed.jsonl \
+  --completed-packet ru=/approved/private/path/ru.completed.jsonl \
+  --output /approved/private/path/d1-authored-merged.jsonl \
+  --receipt /approved/private/path/d1-authored-merge-receipt.json
 ```
 
 Validate incomplete authoring without creating a trainable output:
@@ -100,6 +122,7 @@ python3 scripts/eval/build_eg1_multilingual_d1.py validate \
   --contract scripts/eval/eg1_multilingual_d1_contract_v1.json \
   --rows /approved/private/path/d1-authored.jsonl \
   --blocked-registry /approved/private/path/d1-blocked-sealed.json \
+  --shared-concept-registry /approved/private/path/d1-shared-concepts-sealed.json \
   --purpose draft \
   --report /approved/private/path/d1-draft-report.json
 ```
@@ -111,13 +134,14 @@ python3 scripts/eval/build_eg1_multilingual_d1.py validate \
   --contract /approved/private/path/d1-contract-approved.json \
   --rows /approved/private/path/d1-authored.jsonl \
   --blocked-registry /approved/private/path/d1-blocked-sealed.json \
+  --shared-concept-registry /approved/private/path/d1-shared-concepts-sealed.json \
   --leakage-receipt /approved/private/path/d1-leakage-receipt.json \
   --purpose training \
   --report /approved/private/path/d1-training-report.json \
   --output /approved/private/path/d1-training-approved.jsonl
 ```
 
-Release export repeats the same checks and additionally requires a non-development prompt plus separate `release_export_allowed: true` approval. Missing native review, one failed leakage check, one unresolved blocked-family group, a prompt hash mismatch, or one family allocation mismatch exits nonzero before dataset export.
+Release export repeats the same checks and additionally requires a non-development prompt plus separate `release_export_allowed: true` approval. Packet merge is structural only and never grants training eligibility. Missing human native review, one failed leakage check, one unresolved blocked-family group, a missing or changed shared brief binding, a prompt hash mismatch, or one family allocation mismatch exits nonzero before dataset export.
 
 Only the gate-produced JSONL and its companion manifest may be passed to the generic QLoRA trainer. The exact quantized GGUF through the bundled Mac runtime remains the release authority.
 
@@ -128,9 +152,12 @@ Run from the repository root:
 ```bash
 python3 -m py_compile \
   scripts/eval/build_eg1_multilingual_d1.py \
-  scripts/eval/tests/test_build_eg1_multilingual_d1.py
+  scripts/eval/tests/test_build_eg1_multilingual_d1.py \
+  scripts/eval/tests/test_build_eg1_d1_authoring_packets.py
 
-python3 -m unittest scripts/eval/tests/test_build_eg1_multilingual_d1.py -v
+python3 -m unittest \
+  scripts/eval/tests/test_build_eg1_multilingual_d1.py \
+  scripts/eval/tests/test_build_eg1_d1_authoring_packets.py -v
 ```
 
-The tests cover deterministic 2,000-slot balance, positive/restraint matching, numbered-versus-bullet marker enforcement, draft eligibility reporting, pending-native-review rejection, unsealed-registry rejection, successful approved training export in a temporary directory, separate release approval, and blocked-family/template reuse rejection.
+The tests cover deterministic 2,000-slot balance, five immutable 400-row packet hashes, one successful exact merge, missing/duplicate/cross-language/tampered-row rejection, receipt-tamper rejection, opaque shared-ID rejection without a sealed brief, positive/restraint matching, numbered-versus-bullet marker enforcement, draft eligibility reporting, pending-native-review rejection, unsealed-registry rejection, successful approved training export in a temporary directory, separate release approval, and blocked-family/template reuse rejection.
