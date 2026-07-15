@@ -1,5 +1,6 @@
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
 @testable import EnviousWisprPipeline
@@ -129,6 +130,14 @@ final class StopTimeZeroSignalTelemetryLog {
   var fired: [CaptureStallContext] = []
 }
 
+/// Heartpath 5b (#1520): records the kernel's dead-mic telemetry closures so a
+/// test can assert what fired without a real emitter. Reference type for the
+/// same pre-`self` capture constraint as `StopTimeZeroSignalTelemetryLog`.
+final class DeadMicTelemetryLog {
+  var retireAttempts: [DeadMicRetireAttemptContext] = []
+  var recoveries: [DeadMicRecoveryOutcome] = []
+}
+
 @MainActor
 final class KernelRecordingSession: RecordingSessionDriving {
   private let kernel: RecordingSessionKernel
@@ -152,6 +161,14 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// `HeartPathTelemetryEmitter`.
   var stopTimeZeroSignalTelemetryFired: [CaptureStallContext] { stopTimeTelemetryLog.fired }
 
+  /// Heartpath 5b (#1520): the shared capture-telemetry state, passed to the
+  /// kernel so arm-on-retire works. Production shares the SAME instance with the
+  /// lifecycle sink; kernel-only tests exercise the arm + later-retire path.
+  let captureTelemetry = CaptureTelemetryState()
+  private let deadMicLog = DeadMicTelemetryLog()
+  var deadMicRetireAttempts: [DeadMicRetireAttemptContext] { deadMicLog.retireAttempts }
+  var deadMicRecoveries: [DeadMicRecoveryOutcome] { deadMicLog.recoveries }
+
   init(
     engine: FakeEngine,
     capture: FakeAudioCapture,
@@ -173,6 +190,8 @@ final class KernelRecordingSession: RecordingSessionDriving {
     let limb = self.limb
     let telemetryState = self.telemetryState
     let stopTimeTelemetryLog = self.stopTimeTelemetryLog
+    let captureTelemetry = self.captureTelemetry
+    let deadMicLog = self.deadMicLog
     self.kernel = RecordingSessionKernel(
       adapter: engine,
       audioCapture: capture,
@@ -207,6 +226,13 @@ final class KernelRecordingSession: RecordingSessionDriving {
       // minimum-recording threshold would discard most scenarios. The
       // dedicated #4 coverage lives in `ConductorParitySeamTests`.
       minimumRecordingTicks: minimumRecordingTicks,
+      captureTelemetry: captureTelemetry,
+      deadMicRetireAttemptTelemetry: { [deadMicLog] ctx in
+        deadMicLog.retireAttempts.append(ctx)
+      },
+      deadMicRecoveryTelemetry: { [deadMicLog] outcome in
+        deadMicLog.recoveries.append(outcome)
+      },
       stopTimeZeroSignalTelemetry: { [stopTimeTelemetryLog] ctx in
         stopTimeTelemetryLog.fired.append(ctx)
       },

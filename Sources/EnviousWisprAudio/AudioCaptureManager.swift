@@ -156,6 +156,14 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// Always a HALDeviceInputSource — the sole capture backend.
   private var activeSource: (any AudioInputSource)?
 
+  /// Heartpath 5b (#1520): the source object that captured the current session,
+  /// RETAINED (not `ObjectIdentifier` — an address token can alias a freshly
+  /// allocated source after the captured one deallocates). Compared by `===` in
+  /// `retireCapturingSource` so a stale finish can only retire the exact source it
+  /// captured, never a newer take's source. Cleared the moment that source is torn
+  /// down or replaced, so no torn-down source is retained past its lifetime.
+  private var captureSessionSource: (any AudioInputSource)?
+
   #if DEBUG
     /// #1317 proof-bench: the single DEBUG-only all-zero injector, handed to every
     /// source on install so it can substitute digital silence at the forwarder.
@@ -422,6 +430,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // App-lifetime session id (#1543): one increment per live capture session,
     // read by the dead-air ctx, correlation extras, dedup, and the stall filter.
     captureSessionCounter &+= 1
+    captureSessionSource = source  // heartpath 5b: retain the object that owns this session
     captureStartUptimeNs = DispatchTime.now().uptimeNanoseconds
     // Crash-recovery limb: arm the spool from the directive AFTER capture is
     // live (the feed loop guards on `isCapturing`). Fail-open — never throws,
@@ -540,14 +549,89 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   }
 
   public func rebuildEngine() {
-    // Only a real rebuild advances the incarnation: with no active source nothing
-    // is destroyed, so a bump here would falsely satisfy `fresh_pipe_proven`.
     guard let source = activeSource else { return }
+    rebuildActiveSource(source)
+  }
+
+  /// Heartpath 5b (#1520): retire the source that captured `sessionID` so the next
+  /// press opens a fresh one (re-establishing a dead Bluetooth link). Fenced three
+  /// ways and idempotent — a no-op unless this is still the current capture session
+  /// AND the retained captured source is still the running active source, so a
+  /// stale finish from an older take can never tear down a newer take's source.
+  /// Whether the take was silent is decided by the kernel; this method is
+  /// device-blame-free.
+  @discardableResult
+  public func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult {
+    guard sessionID == captureSessionCounter else {
+      Self.btRouteLog("Zero-signal retire skipped: stale capture session")
+      return .staleSession
+    }
+    guard let capturedSource = captureSessionSource else {
+      Self.btRouteLog("Zero-signal retire skipped: captured source already gone")
+      return .capturedSourceGone
+    }
+    defer { clearCaptureSessionSource(ifMatching: capturedSource) }
+    guard let source = activeSource else {
+      Self.btRouteLog("Zero-signal retire skipped: active source already gone")
+      return .activeSourceGone
+    }
+    guard source === capturedSource else {
+      Self.btRouteLog("Zero-signal retire skipped: source was replaced")
+      return .sourceReplaced
+    }
+    guard source.isRunning else {
+      Self.btRouteLog("Zero-signal retire skipped: source already torn down")
+      return .sourceNotRunning
+    }
+    rebuildActiveSource(source)
+    Self.btRouteLog("Zero-signal source retired")
+    return .retired
+  }
+
+  /// The single destructive teardown of the active source, shared by
+  /// `rebuildEngine()` and `retireCapturingSource`. Only a real rebuild advances
+  /// the incarnation: with no active source nothing is destroyed, so a bump here
+  /// would falsely satisfy `fresh_pipe_proven`.
+  private func rebuildActiveSource(_ source: any AudioInputSource) {
     source.rebuild()
+    clearCaptureSessionSource(ifMatching: source)
     #if DEBUG
       debugSourceIncarnation += 1  // destructive rebuild of the active source's resources
     #endif
   }
+
+  /// Drop the retained capture-session source once it is torn down or replaced, so
+  /// no torn-down source is retained for the rest of the app's life. Matches by
+  /// reference so an older teardown never clears a newer session's retained source.
+  private func clearCaptureSessionSource(ifMatching source: any AudioInputSource) {
+    guard let captured = captureSessionSource, captured === source else { return }
+    captureSessionSource = nil
+  }
+
+  #if DEBUG
+    /// Test seam (heartpath 5b): install `captured` as the retained capture source
+    /// for session `sessionID`, with `active` (defaulting to `captured`) as the
+    /// live active source — without real hardware. Mirrors the `isCapturing`
+    /// internal(set) "arm without hardware" pattern the other manager unit tests
+    /// use, because `beginCapturePhase` needs a real device format a stub cannot
+    /// provide. Lets `AudioCaptureManagerRetireFenceTests` exercise the retire
+    /// fence against the REAL manager state, not a `FakeAudioCapture`.
+    func installCapturedSourceForTesting(
+      _ captured: any AudioInputSource, active: (any AudioInputSource)? = nil, sessionID: UInt64
+    ) {
+      captureSessionSource = captured
+      activeSource = active ?? captured
+      captureSessionCounter = sessionID
+    }
+
+    /// Test seam (heartpath 5b): drop the live active source while KEEPING the
+    /// retained capture-session source, so `retireCapturingSource` reaches the
+    /// `.activeSourceGone` branch. The installer's optional `active` argument
+    /// treats nil as "use captured" and cannot construct this state directly.
+    func clearActiveSourceForTesting() {
+      activeSource = nil
+    }
+  #endif
 
   public func preWarm() async throws {
     let preWarmStart = ContinuousClock.now
@@ -636,6 +720,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     idleSince = nil
     guard let source = activeSource else { return }
     activeSource = nil
+    clearCaptureSessionSource(ifMatching: source)  // heartpath 5b: don't retain a torn-down source
     Self.btRouteLog("Warm engine teardown")
     engineStopTask = Task { [weak self] in
       _ = await source.stop()
@@ -743,6 +828,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       Self.btRouteLog("Route changed while warm — tearing down old source")
       existing.rebuild()
       activeSource = nil
+      clearCaptureSessionSource(ifMatching: existing)  // heartpath 5b
     }
 
     let decision = routeResolver.resolve(
@@ -769,6 +855,11 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       source = halSource
     }
 
+    // heartpath 5b: a stopped prior source overwritten here must not stay retained
+    // by the capture-session fence.
+    if let prior = activeSource {
+      clearCaptureSessionSource(ifMatching: prior)
+    }
     #if DEBUG
       source.debugZeroFillController = debugZeroFillController
       debugSourceIncarnation += 1  // new source installed at the activeSource authority
