@@ -122,7 +122,7 @@ Ensures `git show v{tag}:{file}` works in Path A, and `git tag --contains`/`git 
 "New" is a Sentry fingerprint with at least one event in the last 25 hours — not every unresolved issue, not a scan of GitHub's closed tickets, not a lifetime-aggregate threshold.
 
 ```bash
-RESPONSE=$(curl -s -w '\n%{http_code}' -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
+RESPONSE=$(curl -s -D /tmp/tik-step1-headers.txt -w '\n%{http_code}' -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
   "https://us.sentry.io/api/0/projects/envious-labs-llc/enviouswispr/issues/?query=is%3Aunresolved%20issue.category%3Aerror&sort=date&limit=50")
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 BODY=$(echo "$RESPONSE" | sed '$d')
@@ -132,8 +132,9 @@ if ! echo "$BODY" | jq empty 2>/dev/null; then
   exit 0
 fi
 ```
+The `-D /tmp/tik-step1-headers.txt` flag dumps response headers (including `Link:`) to that file without disturbing the `-w`/body-splitting above; `grep -i '^Link:' /tmp/tik-step1-headers.txt` reads it for the pagination check below.
 
-**Paginate if the page is full of still-in-window results.** Results are sorted by `date` (=`lastSeen`) descending, so the 25h cutoff can be applied incrementally: after fetching a page, if its LAST (oldest) entry still has `lastSeen` within the 25h window AND the `Link:` header has `rel="next"`, fetch the next page (same cursor-following recipe as Path A/C) and keep going — a fully-new-and-still-in-window page means there could be more beyond it. Stop as soon as a page's oldest entry falls outside the window (everything after it will also be outside, since the list is date-sorted) or the `Link:` header has no next page. Cap at 5 pages (250 issues) as a runaway guard against a pathological day; if the cap is hit while the last page was still fully in-window, log `Step 1: hit the 5-page cap with more still-new fingerprints pending — some may be dropped this run` (this is a visible gap, not a silent one; the same fingerprints will still be "new" enough to appear again on the next run within the 25h window's overlap).
+**Paginate if the page is full of still-in-window results.** Results are sorted by `date` (=`lastSeen`) descending, so the 25h cutoff can be applied incrementally: after fetching a page, if its LAST (oldest) entry still has `lastSeen` within the 25h window AND the dumped `Link:` header has `rel="next"`, fetch the next page (same `-D`/cursor-following recipe, new temp file or overwrite) and keep going — a fully-new-and-still-in-window page means there could be more beyond it. Stop as soon as a page's oldest entry falls outside the window (everything after it will also be outside, since the list is date-sorted) or the `Link:` header has no next page. Cap at 5 pages (250 issues) as a runaway guard against a pathological day; if the cap is hit while the last page was still fully in-window, log `Step 1: hit the 5-page cap with more still-new fingerprints pending — some may be dropped this run` (this is a visible gap, not a silent one; the same fingerprints will still be "new" enough to appear again on the next run within the 25h window's overlap).
 
 Filter to issues where `lastSeen` is within the last 25 hours:
 ```python
@@ -244,7 +245,7 @@ Use numeric `id`, not `shortId`. The response's `entries[]` has a `type: "except
 
 **3. Extract git tag from `release`:** `com.enviouswispr.app@v1.9.3` → tag `v1.9.3`; a `-N-gHASH-dev` suffix or `-dev`/`development` environment means dev build. Null/missing release → use HEAD.
 
-**4. Read source at crash site:** `git show {tag}:{filename} | sed -n '{lineNo-10},{lineNo+10}p'`. Tag miss → HEAD, noted as such.
+**4. Read source at crash site:** `git show {tag}:{filename} | sed -n '{start},{lineNo+10}p'` where `start = max(1, lineNo-10)` — a bare `lineNo-10` produces an invalid sed address (`-5,15p` or `0,12p`) for a crash frame within 10 lines of the top of the file, and GNU sed exits non-zero on that. Tag miss → HEAD, noted as such.
 
 **5. Classify severity** (deterministic; may override with explicit reason): P0 = `level=fatal` OR `userCount>=10`; P1 = `userCount>=3` OR `count>=20`; P2 = `userCount>=2` OR `count>=5`; P3 = everything else. Uses the Sentry issue AGGREGATE here (Path A has no prior-close boundary to score against).
 
