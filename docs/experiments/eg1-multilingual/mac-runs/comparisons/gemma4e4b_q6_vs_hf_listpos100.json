@@ -1,0 +1,221 @@
+{
+  "baseline": "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_listpos100.jsonl",
+  "candidate": "docs/experiments/eg1-multilingual/mac-runs/gemma4e4b_q6_listv2_listpos100.jsonl",
+  "rows": 100,
+  "exact_matches": 70,
+  "canonical_matches": 70,
+  "changed": 30,
+  "list_structure_changes": 8,
+  "changed_rows": [
+    {
+      "id": "LF-002",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 0,
+      "baseline": "I looked at three places today. They were all pretty nice. I really liked:\n* the one on Elm Street\n* the loft downtown\n* the townhouse near the park\n\nI am going to apply for the loft. Fingers crossed.",
+      "candidate": "I looked at three places today. They were all pretty nice. I really liked the one on Elm Street, the loft downtown, and the townhouse near the park. I am going to apply for the loft. Fingers crossed."
+    },
+    {
+      "id": "LF-008",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "Your current diet is okay, but we can improve it. You should add more:\n* spinach\n* kale\n* broccoli\n* carrots\n* bell peppers\n\nThese vegetables are packed with vitamins. Try roasting them for better flavor.",
+      "candidate": "Your current diet is okay, but we can improve it. You should add more:\n* spinach\n* kale\n* broccoli\n* carrots\n* bell peppers\nto your meals. These vegetables are packed with vitamins. Try roasting them for better flavor."
+    },
+    {
+      "id": "LF-011",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "Website fixes:\n* Mobile menu\n* Contact form\n* Image compression",
+      "candidate": "Website fixes:\n* mobile menu\n* contact form\n* image compression"
+    },
+    {
+      "id": "LF-012",
+      "baseline_list_lines": 8,
+      "candidate_list_lines": 8,
+      "baseline": "Weather looks clear. Pack:\n* Tent\n* Stakes\n* Sleeping bags\n* Lantern\n* Matches\n* Cookware\n* Coffee\n* Trash bags\n\nLeave before noon.",
+      "candidate": "Weather looks clear. Pack:\n* tent\n* stakes\n* sleeping bags\n* lantern\n* matches\n* cookware\n* coffee\n* trash bags\n\nLeave before noon."
+    },
+    {
+      "id": "LF-038",
+      "baseline_list_lines": 7,
+      "candidate_list_lines": 7,
+      "baseline": "The memo went out to:\n* Sales\n* Marketing\n* Product\n* Engineering\n* Design\n* HR\n* Legal",
+      "candidate": "The memo went out to:\n* sales\n* marketing\n* product\n* engineering\n* design\n* hr\n* legal"
+    },
+    {
+      "id": "LF-040",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "- hammer\n- nails\n- some wood glue",
+      "candidate": "- hammer\n- nails\n- wood glue"
+    },
+    {
+      "id": "LF-042",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "We are planning a maintenance window tonight. Expect some downtime. We will be:\n* Upgrading the OS\n* Patching the database\n* Rotating keys\n* Updating SSL certificates\n* Restarting the load balancers\n\nSystems should be back online by 3 AM. Let support know if issues persist.",
+      "candidate": "We are planning a maintenance window tonight. Expect some downtime. We will be:\n* upgrading the OS\n* patching the database\n* rotating keys\n* updating SSL certificates\n* restarting the load balancers\n\nSystems should be back online by 3 am. Let support know if issues persist."
+    },
+    {
+      "id": "LF-043",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 0,
+      "baseline": "- React\n- Node\n- Postgres\n- Redis\n- Docker",
+      "candidate": "React\nNode\nPostgres\nRedis\nDocker"
+    },
+    {
+      "id": "LF-044",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "Errands:\n* Dry cleaning\n* Pharmacy\n* Post office",
+      "candidate": "Errands:\n* dry cleaning\n* pharmacy\n* post office"
+    },
+    {
+      "id": "LF-046",
+      "baseline_list_lines": 8,
+      "candidate_list_lines": 7,
+      "baseline": "Tomorrow's clinic is fully booked, so the opening checklist matters. Verify:\n* vaccine fridge\n* exam rooms\n* consent forms\n* interpreter\n* schedule\n* masks\n* labels\n* emergency kit\n\nPost updates before doors open.",
+      "candidate": "Tomorrow's clinic is fully booked, so the opening checklist matters. Verify:\n* vaccine fridge\n* exam rooms\n* consent forms\n* interpreter schedule\n* masks\n* labels\n* emergency kit\n\nPost updates before doors open."
+    },
+    {
+      "id": "LF-047",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 0,
+      "baseline": "- apples\n- bananas\n- pears",
+      "candidate": "Apples, bananas, and pears"
+    },
+    {
+      "id": "LF-048",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "We will be testing your:\n* endurance\n* strength\n* flexibility\n* balance\n* agility\n\nLet's get started.",
+      "candidate": "We will be testing:\n* endurance\n* strength\n* flexibility\n* balance\n* agility\n\nLet's get started."
+    },
+    {
+      "id": "LF-049",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "Good morning, class. Take your seats, please. For homework tonight, you must:\n* Read chapter four\n* Answer the questions\n* Write a short essay\n\nIt is due on Friday. No late assignments will be accepted.",
+      "candidate": "Good morning class. Take your seats please. For homework tonight, you must:\n* Read chapter four\n* Answer the questions\n* Write a short essay\n\nIt is due on Friday. No late assignments will be accepted."
+    },
+    {
+      "id": "LF-050",
+      "baseline_list_lines": 7,
+      "candidate_list_lines": 7,
+      "baseline": "In the menu you will find:\n* Profile\n* Notifications\n* Privacy\n* Security\n* Billing\n* Preferences\n* Help",
+      "candidate": "In the menu you will find:\n* profile\n* notifications\n* privacy\n* security\n* billing\n* preferences\n* help"
+    },
+    {
+      "id": "LF-052",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 4,
+      "baseline": "Hardware store:\n* Screws\n* Sandpaper\n* Paint brushes",
+      "candidate": "- hardware store\n- screws\n- sandpaper\n- paint brushes"
+    },
+    {
+      "id": "LF-054",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "Tomorrow:\n* Cover fractions\n* Decimals\n* Word problems\n* Practice quiz\n* Review game",
+      "candidate": "Tomorrow:\n* cover fractions\n* decimals\n* word problems\n* practice quiz\n* review game"
+    },
+    {
+      "id": "LF-059",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "The meeting will cover:\n* Q1 results\n* Q2 planning\n* Hiring updates\n* Marketing spend\n* Engineering goals",
+      "candidate": "The meeting will cover:\n* Q1 results\n* Q2 planning\n* hiring updates\n* marketing spend\n* engineering goals"
+    },
+    {
+      "id": "LF-063",
+      "baseline_list_lines": 7,
+      "candidate_list_lines": 7,
+      "baseline": "Our board packet is going out Wednesday, and I want it complete. Include:\n* agenda\n* minutes\n* treasurer report\n* grant update\n* volunteer numbers\n* facilities plan\n* vote summary\n\nSend me edits by noon.",
+      "candidate": "Our board packet is going out Wednesday, and I want it complete. Include:\n*   agenda\n*   minutes\n*   treasurer report\n*   grant update\n*   volunteer numbers\n*   facilities plan\n*   vote summary\n\nSend me edits by noon."
+    },
+    {
+      "id": "LF-066",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "Gift ideas:\n* Scarf\n* Cookbook\n* Concert tickets",
+      "candidate": "Gift ideas:\n* scarf\n* cookbook\n* concert tickets"
+    },
+    {
+      "id": "LF-074",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "Agenda:\n* Hiring\n* Budget\n* Roadmap",
+      "candidate": "Agenda:\n- hiring\n- budget\n- roadmap"
+    },
+    {
+      "id": "LF-075",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "In settings, you can:\n* Reset your password\n* Update your email\n* Delete your account",
+      "candidate": "In settings, you can:\n* reset your password\n* update your email\n* delete your account"
+    },
+    {
+      "id": "LF-078",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "The big day is approaching fast. We still have a lot to do. We need to:\n* finalize the guest list\n* pick the flowers\n* hire a DJ\n* choose the menu\n* write our vows\n\nI am feeling a bit stressed. We can get through this together.",
+      "candidate": "The big day is approaching fast. We still have a lot to do. We need to:\n* finalize the guest list\n* pick the flowers\n* hire a dj\n* choose the menu\n* write our vows\n\nI am feeling a bit stressed. We can get through this together."
+    },
+    {
+      "id": "LF-080",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "Cleaning list:\n* Kitchen counters\n* Bathroom mirror\n* Laundry\n* Floors\n* Trash",
+      "candidate": "Cleaning list:\n* kitchen counters\n* bathroom mirror\n* laundry\n* floors\n* trash"
+    },
+    {
+      "id": "LF-085",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "The kickoff was useful, and everyone seemed aligned. Our decisions today were:\n* weekly syncs\n* shared dashboard\n* single owner per workstream\n\nI will publish minutes later. Please correct anything I missed.",
+      "candidate": "The kickoff was useful and everyone seemed aligned. Our decisions today were:\n* weekly syncs\n* shared dashboard\n* single owner per workstream\n\nI will publish minutes later. Please correct anything I missed."
+    },
+    {
+      "id": "LF-091",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "The house feels chaotic. Start with:\n* dishes\n* mail\n* laundry\n\nDo not overthink it.",
+      "candidate": "The house feels chaotic. Start with:\n* dishes\n* mail\n* laundry\nDo not overthink it."
+    },
+    {
+      "id": "LF-093",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "- flight\n- hotel\n- rental car",
+      "candidate": "* flight\n* hotel\n* rental car"
+    },
+    {
+      "id": "LF-095",
+      "baseline_list_lines": 7,
+      "candidate_list_lines": 0,
+      "baseline": "- North America\n- South America\n- Europe\n- Asia\n- Africa\n- Australia\n- Antarctica",
+      "candidate": "North America\nSouth America\nEurope\nAsia\nAfrica\nAustralia\nAntarctica"
+    },
+    {
+      "id": "LF-098",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "Our booth setup window is short and the venue is strict. Make sure we have:\n* Banners\n* Demo laptop\n* Scanner\n* Swag\n* Backup hotspot\n\nSecurity closes the dock at five. Call me if there is a problem.",
+      "candidate": "Our booth setup window is short and the venue is strict. Make sure we have:\n* banners\n* demo laptop\n* scanner\n* swag\n* backup hotspot\n\nSecurity closes the dock at five. Call me if there is a problem."
+    },
+    {
+      "id": "LF-099",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 0,
+      "baseline": "The cleaners come Friday morning. We should make it easier for them tonight.\n\n* Move the bikes\n* Clear the counters\n* Put away shoes\n\nI can handle the garage tomorrow. Thanks.",
+      "candidate": "The cleaners come Friday morning. We should make it easier for them tonight. Move the bikes, clear the counters, and put away shoes. I can handle the garage tomorrow. Thanks."
+    },
+    {
+      "id": "LF-100",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 3,
+      "baseline": "Thanks again for helping tonight. Bedtime is usually around eight. Please give Mia pajamas, story, and water by the bed. The monitor is on the dresser. Call if anything feels off.",
+      "candidate": "Thanks again for helping tonight. Bedtime is usually around eight. Please give Mia:\n* Pajamas\n* Story\n* Water by the bed\n\nThe monitor is on the dresser. Call if anything feels off."
+    }
+  ]
+}

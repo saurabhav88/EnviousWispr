@@ -14,10 +14,11 @@ LIST_LINE_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+", re.MULTILINE)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--baseline", type=Path, required=True)
-    parser.add_argument("--candidate", type=Path, required=True)
+    parser.add_argument("--baseline", type=Path, nargs="+", required=True)
+    parser.add_argument("--candidate", type=Path, nargs="+", required=True)
     parser.add_argument("--baseline-field", default="output")
     parser.add_argument("--candidate-field", default="candidate")
+    parser.add_argument("--ids", nargs="*", help="Optional exact paired IDs to compare")
     parser.add_argument("--output", type=Path)
     return parser.parse_args()
 
@@ -36,6 +37,16 @@ def load_rows(path: Path) -> dict[str, dict]:
     return rows
 
 
+def load_many(paths: list[Path]) -> dict[str, dict]:
+    combined: dict[str, dict] = {}
+    for path in paths:
+        for row_id, row in load_rows(path).items():
+            if row_id in combined:
+                raise ValueError(f"duplicate id {row_id!r} across paired input shards")
+            combined[row_id] = row
+    return combined
+
+
 def canonical(text: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
     return "\n".join(line.rstrip() for line in text.splitlines())
@@ -47,8 +58,18 @@ def list_line_count(text: str) -> int:
 
 def main() -> None:
     args = parse_args()
-    baseline = load_rows(args.baseline)
-    candidate = load_rows(args.candidate)
+    baseline = load_many(args.baseline)
+    candidate = load_many(args.candidate)
+    selected_ids = set(args.ids or [])
+    if selected_ids:
+        missing_baseline = sorted(selected_ids - set(baseline))
+        missing_candidate = sorted(selected_ids - set(candidate))
+        if missing_baseline or missing_candidate:
+            raise ValueError(
+                f"requested ids missing: baseline={missing_baseline} candidate={missing_candidate}"
+            )
+        baseline = {row_id: baseline[row_id] for row_id in baseline if row_id in selected_ids}
+        candidate = {row_id: candidate[row_id] for row_id in candidate if row_id in selected_ids}
     baseline_ids = set(baseline)
     candidate_ids = set(candidate)
     if baseline_ids != candidate_ids:
@@ -86,8 +107,8 @@ def main() -> None:
 
     report = json.dumps(
         {
-            "baseline": str(args.baseline),
-            "candidate": str(args.candidate),
+            "baseline": [str(path) for path in args.baseline],
+            "candidate": [str(path) for path in args.candidate],
             "rows": len(baseline),
             "exact_matches": exact_matches,
             "canonical_matches": canonical_matches,

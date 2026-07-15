@@ -856,3 +856,52 @@ Paired output comparison against the AlienSV BF16/Hugging Face run found materia
 Many changed rows are harmless capitalization or bullet-marker differences, but at least one is a hard meaning failure: Russian `ru-dev-011` changed invoice code `АВ-204` to `АВ-24`, where the BF16/HF candidate preserved it. Q5 also removed list structure from several positive cases that BF16 formatted correctly. The independent semantic rescore is still running, so these are not yet final aggregate quality numbers.
 
 Decision: the 5.37 GiB Q5 artifact is not a release candidate. This does not yet reject the one-model Gemma architecture because the founder explicitly allows a larger single model. A Q6_K artifact is being produced from the same F16 GGUF to test whether the failure is quantization-sensitive. Model size remains weighted after the hard single-model gate; quality and zero damaging regressions come first.
+
+### RUNTIME-003 - Independent Q5 semantic score
+
+Timestamp: 2026-07-15 03:37 EDT
+
+Status: complete; Q5 rejected
+
+Independent scoring of all 292 exact-Mac Q5 development outputs confirmed that the raw drift included real quality regressions.
+
+| Suite | HF/BF16 strict | Mac Q5 strict | Paired wins / losses / ties |
+|---|---:|---:|---:|
+| Positive lists | 90/100 | 85/100 | 1 / 6 / 93 |
+| Restraint traps | 97/100 | 96/100 | 0 / 1 / 99 |
+| Two-item lists | 4/20 | 4/20 | 1 / 1 / 18 |
+| Multilingual 56 | 32/56 | 34/56 | 6 / 4 / 46 |
+| Russian 16 | 12/16 | 11/16 | 0 / 1 / 15 |
+| Total | 235/292 | 230/292 | 8 / 13 / 271 |
+
+The aggregate paired difference is not statistically significant on this sample (exact McNemar p=0.383), but the candidate fails the hard zero-damage rule. It flattened several requested lists, converted `Hardware store:` into a fourth item, lost required scope in two-item cases, and corrupted `АВ-204` to `АВ-24`. Positive-list strict fell five points. Multilingual aggregate strict improved by two, mainly through filler cleanup, showing why aggregate-only ranking would be unsafe.
+
+### RUNTIME-004 - Q6 full run and Q8 failure probe
+
+Timestamp: 2026-07-15 03:37 EDT
+
+Status: Q6 rejected on hard damage; Q8 diagnostic stopped after smoke
+
+Q6_K was produced from the same F16 GGUF and hash-matched on the Mac.
+
+- Size: 6,217,261,376 bytes (5.79 GiB).
+- SHA-256: `341776799b24a8e7ade88882cf7cca0590e9b9fc3ca91a011bba46ba6d96dbb8`.
+- Warm-cache bundled-server readiness: about 1.25 seconds.
+- RSS during the run: 6,447,072 KiB (about 6.15 GiB).
+- Full development run: 292/292 rows, zero API errors, median 704 ms, p90 1,241 ms, max 12,781 ms.
+
+Q6 still corrupted `АВ-204` to `АВ-24`, so it fails the hard meaning-safety gate before aggregate ranking. Independent scoring completed with 233/292 strict versus 235/292 HF/BF16 and 230/292 Q5. Paired Q6-versus-HF was 8 wins, 10 losses, and 274 ties (exact McNemar p=0.815), so no aggregate difference is statistically proven. Per-suite strict was 88/100 positive lists, 95/100 restraint, 6/20 two-item, 33/56 multilingual, and 11/16 Russian. Ten rows were meaning-damaging under the suite rubrics.
+
+The second hard loss was `en-two-item-dev-v1b-005`, which dropped both the `new user auth endpoint` scope and the phrase `critical requirements`. Q6 did repair Q5's `Q3 report` scope loss and improved two-item strict from 4/20 to 6/20, but zero-damage safety takes precedence.
+
+Q8_0 was then produced as the one allowed higher-precision diagnostic smoke rather than promoted directly to a full benchmark.
+
+- Size: 8,031,240,512 bytes (7.48 GiB).
+- SHA-256: `7556098cfd03d349821d94f7bd261ed847e8d8a3d9e9c0e14a935c59a7c9a3f9`.
+- Warm-cache bundled-server readiness: about 1.44 seconds.
+- RSS after 15 probes: 8,170,800 KiB (about 7.79 GiB).
+- Failure probe: 15/15 rows, zero API errors, median 919 ms.
+
+The diagnostic probe was predeclared from Q5/Q6 failures and is not an independent benchmark. Q8 repaired the Russian invoice identifier and several multilingual failures, proving that precision is a real quality variable. It still dropped the endpoint/requirements scope in `en-two-item-dev-v1b-005` and flattened several requested English lists. Under the one-smoke/one-full hard-stop rule, Q8 was not promoted to another full run because the smoke still contained meaning damage.
+
+Decision: Q5, Q6, and Q8 are all still one universal offline model and therefore pass the architecture/download gate. None of these old-prompt-trained artifacts passes the quality gate. The prompt-aligned universal training run remains the next controlled candidate; if its BF16 result is promising, its exact Mac artifact should start at Q8 for safety and then test whether a smaller quantization is non-inferior.

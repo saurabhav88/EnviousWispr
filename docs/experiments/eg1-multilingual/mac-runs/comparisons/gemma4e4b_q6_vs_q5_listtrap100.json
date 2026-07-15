@@ -1,0 +1,46 @@
+{
+  "baseline": "docs/experiments/eg1-multilingual/mac-runs/gemma4e4b_q5_listv2_listtrap100.jsonl",
+  "candidate": "docs/experiments/eg1-multilingual/mac-runs/gemma4e4b_q6_listv2_listtrap100.jsonl",
+  "rows": 100,
+  "exact_matches": 95,
+  "canonical_matches": 95,
+  "changed": 5,
+  "list_structure_changes": 0,
+  "changed_rows": [
+    {
+      "id": "LFT-046",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Because of the lease, the movers, and the inspection next week is messy. Let's keep plans loose. I'll make a calendar tonight.",
+      "candidate": "Because of the lease, the movers, and the inspection next week, it's messy. Let's keep plans loose. I'll make a calendar tonight."
+    },
+    {
+      "id": "LFT-063",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Between the customer escalation, the roadmap meeting, and the hiring loop, I'm stretched thin. I can still cover the launch. Please move my one-on-one. Thanks.",
+      "candidate": "Between the customer escalation, the roadmap meeting, and the hiring loop, I'm stretched thin. I can still cover the launch. Please move my one-on-one."
+    },
+    {
+      "id": "LFT-078",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Given the missing files, the corrupted data, and the tight deadline we are in, big trouble. We need to escalate this.",
+      "candidate": "Given the missing files, the corrupted data, and the tight deadline we are in big trouble. We need to escalate this."
+    },
+    {
+      "id": "LFT-089",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "I rinsed the berries, chopped the onions, and started the rice. Set a timer for 10 minutes. Don't forget the sauce.",
+      "candidate": "I rinsed the berries, chopped the onions, and started the rice. Set a timer for ten minutes. Don't forget the sauce."
+    },
+    {
+      "id": "LFT-091",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "The contract is long, complicated, and full of jargon. I tried to read it. It gave me a headache. We need a lawyer to look at this.",
+      "candidate": "The contract is long, complicated, and full of jargon. I tried to read it; it gave me a headache. We need a lawyer to look at this."
+    }
+  ]
+}
