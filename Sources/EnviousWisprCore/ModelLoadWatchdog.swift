@@ -9,14 +9,12 @@ import Foundation
 /// cancel, fresh helper on next press).
 ///
 /// The wall-clock `deadlineMs` constant from the prior design is gone; the
-/// trigger is now signal-based (`LoadProgressWatcher`). `WedgeError` and
-/// `userMessage` remain because the recovery surface (Sentry event +
-/// user-visible "tap to retry" overlay) is unchanged.
+/// trigger is now signal-based (`LoadProgressWatcher`). `WedgeError` remains
+/// because the recovery surface (Sentry event + the user-visible retry
+/// overlay) is unchanged. #1558 removed the `userMessage` copy constant: a
+/// wedge now maps to the typed `TerminalNoticeReason.modelWedged`, and the
+/// AppKit presenter authors the sentence.
 public enum ModelLoadWatchdog {
-  /// User-visible recovery message shown when the watcher fires.
-  /// Set on the active pipeline via `setExternalError(...)` after recovery.
-  public static let userMessage: String = "Speech engine isn't responding, tap to retry."
-
   /// Synthetic error type used when capturing the wedge to Sentry.
   /// The wedge is silent (no thrown error from the underlying call); we
   /// fabricate one so the existing `SentryBreadcrumb.captureError(...)` API

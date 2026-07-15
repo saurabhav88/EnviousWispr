@@ -771,7 +771,7 @@ FINDINGS
 
 2. Heart-path contract mismatch in the old Parakeet pipeline's `stopAndTranscribe()`:
    a thrown ASR error currently lands in the outer `catch` and sets
-   `.error("Transcription failed: ...")` without any fallback paste. That contradicts the
+   `.error(.asrFailed)` without any fallback paste. That contradicts the
    stated requirement that the heart path never fails and should still deliver something.
 
 3. Heart-vs-limb ambiguity in `TranscriptFinalizer.finalize(...)`:

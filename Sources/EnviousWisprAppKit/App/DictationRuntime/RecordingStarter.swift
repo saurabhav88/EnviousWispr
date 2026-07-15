@@ -28,6 +28,10 @@ final class RecordingStarter {
   /// reference an init param) is today's block; a test injects a counting spy.
   let accessibilityRefresh: @MainActor () -> Void
 
+  /// #1558 — narrow live mic-permission check the prewarm error router reads so a
+  /// denied-permission start surfaces "Microphone access is off." Bound in init.
+  let micPermissionDenied: @MainActor () -> Bool
+
   /// Arms the crash-recovery limb for a recording about to start, returning the
   /// durable session id + opaque directive payload (nil when recovery is off or
   /// could not arm). A bare closure so it stays off this start-path home's
@@ -162,6 +166,7 @@ final class RecordingStarter {
         perms.refreshAccessibilityStatus()
         if !perms.hasAccessibilityPermission { perms.restartMonitoringIfNeeded() }
       }
+    self.micPermissionDenied = { perms.microphonePermissionIsDenied }
   }
 
   /// Hotkey PTT start path. Mirrors the former root-state file (pre-PR10):
@@ -248,14 +253,21 @@ final class RecordingStarter {
         stage: "recording", message: "preWarm failed — start aborted",
         level: .warning, data: ["error": String(describing: error)]
       )
-      let nsError = error as NSError
-      let noMic =
-        nsError.domain == AudioError.errorDomain
-        && nsError.code == AudioError.noBuiltInMicrophoneFound.errorCode
-      active.setExternalError(
-        noMic
-          ? "No microphone found. Please connect a microphone."
-          : "Microphone unavailable — try again.")
+      // #1558: emit a TYPED reason (presenter authors the sentence). A denied
+      // mic is the real, user-actionable cause of a prewarm failure regardless
+      // of the thrown error's wording, so it is checked FIRST; only then fall
+      // back to no-device vs generic capture failure.
+      let reason: TerminalNoticeReason
+      if micPermissionDenied() {
+        reason = .permissionDenied
+      } else {
+        let nsError = error as NSError
+        let noMic =
+          nsError.domain == AudioError.errorDomain
+          && nsError.code == AudioError.noBuiltInMicrophoneFound.errorCode
+        reason = noMic ? .noMicrophoneFound : .micWouldNotOpen
+      }
+      active.setTerminalReason(reason)
       return
     }
     guard !Task.isCancelled else {
@@ -326,8 +338,8 @@ final class RecordingStarter {
     } catch {
       heartControlRecovery.recover(
         error: error, op: "toggle-from-prewarm",
-        message: ModelLoadWatchdog.userMessage,
-        setExternalError: active.setExternalError)
+        reason: .modelWedged,
+        setTerminalReason: active.setTerminalReason)
       return
     }
     let totalMs = Self.elapsedMs(since: pttStart)
@@ -360,7 +372,7 @@ final class RecordingStarter {
       )
       recordingOverlay.show(intent: .hidden)
       recordingLockedAccess.set(false)
-      active.setExternalError(ModelLoadWatchdog.userMessage)
+      active.setTerminalReason(.modelWedged)
       return
     }
     if !pipelineActive && !pipelineInError && userStoppedDuringStart {
@@ -468,8 +480,8 @@ final class RecordingStarter {
     } catch {
       heartControlRecovery.recover(
         error: error, op: "toggle",
-        message: ModelLoadWatchdog.userMessage,
-        setExternalError: active.setExternalError)
+        reason: .modelWedged,
+        setTerminalReason: active.setTerminalReason)
     }
   }
 

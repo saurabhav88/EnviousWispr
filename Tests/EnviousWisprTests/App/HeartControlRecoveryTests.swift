@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -12,19 +13,19 @@ import Testing
 /// other error must produce the full diagnostic trail.
 ///
 /// PR-9 (#827) deleted the `DictationPipeline` protocol; `recover` now takes a
-/// narrow `setExternalError` closure, so the old `FakePipeline` conformer is
-/// replaced by this minimal error-surface spy.
+/// narrow `setTerminalReason` closure (#1558: a typed reason, not English), so
+/// the old `FakePipeline` conformer is replaced by this minimal reason spy.
 @Suite("HeartControlRecovery (#585)")
 @MainActor
 struct HeartControlRecoveryTests {
 
-  /// `@MainActor` so `setExternalError` matches the `recover` parameter's
-  /// `@MainActor (String) -> Void` type (which is implicitly `Sendable` in
+  /// `@MainActor` so `setTerminalReason` matches the `recover` parameter's
+  /// `@MainActor (TerminalNoticeReason) -> Void` type (implicitly `Sendable` in
   /// Swift 6); production passes a `@MainActor` driver method for the same reason.
   @MainActor
   final class ErrorSurfaceSpy {
-    var calls: [String] = []
-    func setExternalError(_ message: String) { calls.append(message) }
+    var calls: [TerminalNoticeReason] = []
+    func setTerminalReason(_ reason: TerminalNoticeReason) { calls.append(reason) }
   }
 
   final class CaptureSpy: @unchecked Sendable {
@@ -106,15 +107,15 @@ struct HeartControlRecoveryTests {
     withSentrySpy { spy in
       struct BoomError: Error {}
       recovery.recover(
-        error: BoomError(), op: "toggle", message: "Try again.",
-        setExternalError: sink.setExternalError)
+        error: BoomError(), op: "toggle", reason: .modelWedged,
+        setTerminalReason: sink.setTerminalReason)
       #expect(spy.calls.count == 1)
       #expect(spy.calls.first?.extra?["op"] as? String == "toggle")
       #expect(spy.calls.first?.extra?["backend"] as? String == "parakeet")
     }
     #expect(hide.count == 1, "overlay must be hidden")
     #expect(locked.values == [false], "lock must be cleared")
-    #expect(sink.calls == ["Try again."])
+    #expect(sink.calls == [.modelWedged])
   }
 
   @Test(
@@ -126,8 +127,8 @@ struct HeartControlRecoveryTests {
     let recovery = makeRecovery(hideCalls: hide, lockedCalls: locked)
     withSentrySpy { spy in
       recovery.recover(
-        error: CancellationError(), op: "toggle", message: "Try again.",
-        setExternalError: sink.setExternalError)
+        error: CancellationError(), op: "toggle", reason: .modelWedged,
+        setTerminalReason: sink.setTerminalReason)
       #expect(spy.calls.isEmpty, "CancellationError must not capture to Sentry")
     }
     #expect(hide.count == 1, "overlay must still be hidden so user UI isn't stuck")
@@ -146,8 +147,8 @@ struct HeartControlRecoveryTests {
     withSentrySpy { spy in
       struct E: Error {}
       recovery.recover(
-        error: E(), op: "toggle-from-prewarm", message: "",
-        setExternalError: sink.setExternalError)
+        error: E(), op: "toggle-from-prewarm", reason: .modelWedged,
+        setTerminalReason: sink.setTerminalReason)
       #expect(spy.calls.first?.extra?["op"] as? String == "toggle-from-prewarm")
     }
   }

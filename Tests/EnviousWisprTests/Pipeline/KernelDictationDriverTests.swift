@@ -25,10 +25,10 @@ import Testing
       -> PipelineState
     {
       KernelDictationDriver.pipelineState(
-        for: s, outcome: nil, deliveringPhase: phase, externalError: nil)
+        for: s, outcome: nil, deliveringPhase: phase, externalReason: nil)
     }
     func mappedOutcome(_ o: RecordingOutcome) -> PipelineState {
-      KernelDictationDriver.pipelineState(for: .idle, outcome: o, externalError: nil)
+      KernelDictationDriver.pipelineState(for: .idle, outcome: o, externalReason: nil)
     }
     // In-flight states (#1548 D1) — every active state must report `isActive` so
     // the backend-switch guard (`PipelineSettingsSync`, §3.13) sees the kernel
@@ -59,46 +59,34 @@ import Testing
     }
   }
 
-  @Test("an external error overrides the mapped state")
-  func externalErrorOverridesState() {
+  @Test("an external reason overrides the mapped state")
+  func externalReasonOverridesState() {
     #expect(
-      KernelDictationDriver.pipelineState(for: .idle, outcome: nil, externalError: "boom")
-        == .error("boom"))
+      KernelDictationDriver.pipelineState(for: .idle, outcome: nil, externalReason: .modelWedged)
+        == .error(.modelWedged))
     #expect(
-      KernelDictationDriver.pipelineState(for: .live, outcome: nil, externalError: "boom")
-        == .error("boom"))
+      KernelDictationDriver.pipelineState(for: .live, outcome: nil, externalReason: .modelWedged)
+        == .error(.modelWedged))
   }
 
-  @Test("failureMessage mirrors the shipped strings for the equivalent failures")
-  func failureMessages() {
-    #expect(KernelDictationDriver.failureMessage(.asrEmpty) == "Couldn't catch that -- try again")
-    #expect(KernelDictationDriver.failureMessage(.noAudioCaptured) == "No audio captured")
+  // #1558: the driver's `failureMessage` string-authoring was deleted. Reason
+  // mapping is proven in `TerminalNoticeReasonMappingTests`; customer copy in
+  // `TerminalNoticePresenterTests`. What remains here is that the outcome map
+  // yields the correct TYPED reason (no raw detail).
+  @Test("the failed-outcome map yields the typed reason, not an authored string")
+  func failedOutcomeYieldsTypedReason() {
     #expect(
-      KernelDictationDriver.failureMessage(.emptyAfterProcessing)
-        == "No speech detected. Your clipboard is unchanged. Try again.")
-  }
-
-  @Test("failureMessage embeds error detail for the three TP-parity reasons (Div 4)")
-  func failureMessagesWithDetail() {
-    // Parity with the old Parakeet pipeline at TP:440-445 / TP:577-588 / TP:1045-1051:
-    // include `error.localizedDescription` when present.
+      KernelDictationDriver.pipelineState(
+        for: .idle, outcome: .failed(.asrEmpty), externalReason: nil)
+        == .error(.asrEmptyWithSpeech))
     #expect(
-      KernelDictationDriver.failureMessage(.modelLoadFailed, detail: "out of memory")
-        == "Model load failed: out of memory")
+      KernelDictationDriver.pipelineState(
+        for: .idle, outcome: .failed(.modelLoadFailed), externalReason: nil)
+        == .error(.modelLoadFailed))
     #expect(
-      KernelDictationDriver.failureMessage(.captureStartFailed, detail: "device busy")
-        == "Recording failed: device busy")
-    #expect(
-      KernelDictationDriver.failureMessage(.asrFailed, detail: "stream closed")
-        == "Transcription failed: stream closed")
-    // No detail → byte-parity with the bare strings.
-    #expect(KernelDictationDriver.failureMessage(.modelLoadFailed) == "Model load failed.")
-    #expect(KernelDictationDriver.failureMessage(.captureStartFailed) == "Recording failed.")
-    #expect(KernelDictationDriver.failureMessage(.asrFailed) == "Transcription failed.")
-    // Other reasons ignore the detail (out-of-scope for parity).
-    #expect(
-      KernelDictationDriver.failureMessage(.asrEmpty, detail: "irrelevant")
-        == "Couldn't catch that -- try again")
+      KernelDictationDriver.pipelineState(
+        for: .idle, outcome: .noTransport, externalReason: nil)
+        == .error(.noAudioCaptured))
   }
 
   // MARK: handle(event:) -> kernel triggers
@@ -160,20 +148,20 @@ import Testing
 
   // MARK: External-error surface
 
-  @Test("setExternalError surfaces .error on state and overlay")
-  func setExternalErrorSurfaces() {
+  @Test("setTerminalReason surfaces .error on state and overlay (typed)")
+  func setTerminalReasonSurfaces() {
     let h = makeDriver()
-    h.driver.setExternalError("device unplugged")
-    #expect(h.driver.state == .error("device unplugged"))
-    #expect(h.driver.overlayIntent == .error(message: "device unplugged"))
+    h.driver.setTerminalReason(.deviceRemoved)
+    #expect(h.driver.state == .error(.deviceRemoved))
+    #expect(h.driver.overlayIntent == .error(reason: .deviceRemoved))
   }
 
-  @Test("a new start clears the external error")
-  func startClearsExternalError() async throws {
+  @Test("a new start clears the external terminal reason")
+  func startClearsTerminalReason() async throws {
     let h = makeDriver()
-    h.driver.setExternalError("device unplugged")
+    h.driver.setTerminalReason(.deviceRemoved)
     try await startDriverToLive(h)
-    #expect(h.driver.state != .error("device unplugged"))
+    #expect(h.driver.state != .error(.deviceRemoved))
   }
 
   // MARK: currentTranscript / lastPolishError side-channel
@@ -207,23 +195,19 @@ import Testing
   }
 
   #if DEBUG
-    @Test("overlayIntent surfaces failure detail (Div 4 — overlay parity)")
-    func overlayIntentEnrichedDetail() {
+    @Test("a failed terminal surfaces the TYPED reason — no raw detail leak (#1558)")
+    func failedTerminalSurfacesTypedReasonNoRawLeak() {
       let h = makeDriver()
-      h.kernel.testSetModelLoadError(
-        NSError(
-          domain: "test", code: 1,
-          userInfo: [NSLocalizedDescriptionKey: "vram exhausted"]))
       // Conclude on .failed(.modelLoadFailed) — the ending category is an
-      // outcome now, not an FSM state (#1548 D1).
+      // outcome now, not an FSM state (#1548 D1). #1558: the driver no longer
+      // reads a raw `localizedDescription`; the state and overlay carry the
+      // TYPED reason and the presenter authors clean copy.
       #expect(h.kernel.testForceTransition(to: .arming))
       h.kernel.testForceConclude(.failed(.modelLoadFailed))
-      // Both the lifecycle-coordinator state read AND the visible overlay
-      // must carry the enriched detail; an unenriched overlay was the bug
-      // Codex flagged on the initial Div 4 patch.
-      #expect(h.driver.state == .error("Model load failed: vram exhausted"))
-      #expect(
-        h.driver.overlayIntent == .error(message: "Model load failed: vram exhausted"))
+      // The state and overlay carry the typed reason; no String detail exists to
+      // leak. Customer copy is proven in `TerminalNoticePresenterTests` (AppKit).
+      #expect(h.driver.state == .error(.modelLoadFailed))
+      #expect(h.driver.overlayIntent == .error(reason: .modelLoadFailed))
     }
 
     @Test(

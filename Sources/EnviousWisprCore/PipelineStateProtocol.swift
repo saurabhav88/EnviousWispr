@@ -12,7 +12,7 @@ public enum PipelineActivity: Equatable, Sendable {
   case recording
   case processing
   case complete
-  case error(String)
+  case error(TerminalNoticeReason)
 }
 
 /// Narrow protocol the planner / handler consume. Backends' concrete enums
@@ -36,7 +36,7 @@ extension PipelineState: PipelineStateProtocol {
     case .recording: return .recording
     case .transcribing, .polishing: return .processing
     case .complete: return .complete
-    case .error(let msg): return .error(msg)
+    case .error(let reason): return .error(reason)
     }
   }
 }

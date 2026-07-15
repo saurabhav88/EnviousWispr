@@ -170,11 +170,12 @@ struct StatusView: View {
           }
         }
 
-      case .error(let msg):
+      case .error(let reason):
         ContentUnavailableView {
           Label("Error", systemImage: "exclamationmark.triangle")
         } description: {
-          Text(msg)
+          // #1558: the presenter is the sole author; no raw detail reaches here.
+          Text(TerminalNoticePresenter.copy(for: reason))
         } actions: {
           Button("Try Again") {
             dictationRuntime.resetActivePipeline()

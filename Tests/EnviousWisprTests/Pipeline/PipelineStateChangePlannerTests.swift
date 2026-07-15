@@ -225,7 +225,7 @@ struct PipelineStateChangePlannerTests {
   @Test("non-complete transitions cancel pending warning")
   func nonCompleteTransitionsCancelWarning() {
     let nonCompleteStates: [PipelineState] = [
-      .idle, .loadingModel, .recording, .transcribing, .polishing, .error("boom"),
+      .idle, .loadingModel, .recording, .transcribing, .polishing, .error(.modelWedged),
     ]
     for state in nonCompleteStates {
       let plan = PipelineStateChangePlanner.plan(
@@ -263,7 +263,7 @@ struct PipelineStateChangePlannerTests {
       (.transcribing, .processing(label: "Transcribing...")),
       (.polishing, .processing(label: "Polishing...")),
       (.recording, .recording(audioLevel: 0)),
-      (.error("boom"), .error(message: "boom")),
+      (.error(.modelWedged), .error(reason: .modelWedged)),
     ]
     for (state, intent) in pairs {
       let plan = PipelineStateChangePlanner.plan(
@@ -293,8 +293,8 @@ struct PipelineStateChangePlannerTests {
   @Test("error state emits reportPipelineFailed with error code")
   func errorStateEmitsReportPipelineFailed() {
     let plan = PipelineStateChangePlanner.plan(
-      to: PipelineState.error("mic_disconnected"),
-      pipelineOverlayIntent: .error(message: "mic_disconnected"),
+      to: PipelineState.error(.deviceRemoved),
+      pipelineOverlayIntent: .error(reason: .deviceRemoved),
       isClipboardFallback: false,
       isAccessibilityToast: false,
       lastPolishError: nil,
@@ -302,9 +302,9 @@ struct PipelineStateChangePlannerTests {
       historySaved: true,
       historySaveReason: nil
     )
-    #expect(plan.effects.contains(.reportPipelineFailed(errorCode: "mic_disconnected")))
+    #expect(plan.effects.contains(.reportPipelineFailed(errorCode: TerminalNoticeReason.deviceRemoved.rawValue)))
     #expect(plan.effects.contains(.cancelPendingWarning))
-    #expect(plan.effects.contains(.showOverlay(.error(message: "mic_disconnected"))))
+    #expect(plan.effects.contains(.showOverlay(.error(reason: .deviceRemoved))))
     // error must not trigger .complete-path effects.
     #expect(!plan.effects.contains(.appendCompletedTranscript))
     #expect(!plan.effects.contains(.reportDictationCompleted))
@@ -401,8 +401,8 @@ struct PipelineStateChangePlannerTests {
   @Test("error plan produces cancel, show, report order")
   func errorEffectOrder() {
     let plan = PipelineStateChangePlanner.plan(
-      to: PipelineState.error("bad"),
-      pipelineOverlayIntent: .error(message: "bad"),
+      to: PipelineState.error(.modelWedged),
+      pipelineOverlayIntent: .error(reason: .modelWedged),
       isClipboardFallback: false,
       isAccessibilityToast: false,
       lastPolishError: nil,
@@ -413,8 +413,8 @@ struct PipelineStateChangePlannerTests {
     #expect(
       plan.effects == [
         .cancelPendingWarning,
-        .showOverlay(.error(message: "bad")),
-        .reportPipelineFailed(errorCode: "bad"),
+        .showOverlay(.error(reason: .modelWedged)),
+        .reportPipelineFailed(errorCode: TerminalNoticeReason.modelWedged.rawValue),
       ])
   }
 
@@ -709,7 +709,7 @@ struct PipelineStateChangePlannerTests {
     #expect(PipelineState.transcribing.activity == .processing)
     #expect(PipelineState.polishing.activity == .processing)
     #expect(PipelineState.complete.activity == .complete)
-    #expect(PipelineState.error("x").activity == .error("x"))
+    #expect(PipelineState.error(.modelWedged).activity == .error(.modelWedged))
   }
 
   // PR-5 Rung 5 (#827) deleted: WhisperKit's bespoke state-activity mapping

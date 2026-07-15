@@ -131,10 +131,11 @@ import Testing
     // MARK: Helper — assert PipelineState equality (custom because
     // .error(_) holds an associated value)
 
-    private func assertDriverIsError(_ driver: KernelDictationDriver, contains: String) {
-      if case .error(let msg) = driver.state {
-        #expect(
-          msg.contains(contains), "expected .error containing \"\(contains)\", got \"\(msg)\"")
+    private func assertDriverIsError(
+      _ driver: KernelDictationDriver, reason expected: TerminalNoticeReason
+    ) {
+      if case .error(let reason) = driver.state {
+        #expect(reason == expected, "expected .error(\(expected)), got .error(\(reason))")
       } else {
         Issue.record("expected .error, got \(driver.state)")
       }
@@ -199,10 +200,10 @@ import Testing
         await place(fx.kernel, in: placement)
         fx.driver.handleASRServiceInterruption()
         await drain()
-        // The driver's setExternalError sets the .error state; the kernel
+        // The driver's setTerminalReason sets the .error state; the kernel
         // may be parked at any of several states depending on cancel
         // semantics, but the driver's public state must be .error.
-        assertDriverIsError(fx.driver, contains: "Transcription service crashed")
+        assertDriverIsError(fx.driver, reason: .asrInterrupted)
       }
     }
 
@@ -227,19 +228,19 @@ import Testing
     // The forced-state fixture has no recording-exit continuation, so the
     // matrix freeze covers only the bridge cases and the no-op cases.
 
-    /// #1408: the bridged sentence is CAUSE-AWARE. This test used to inject
+    /// #1408 / #1558: the bridged REASON is CAUSE-AWARE. This test used to inject
     /// `.engineLost` and demand "Microphone disconnected" — it froze the very
     /// claim that was false, since an engine that fails to recover leaves the
     /// microphone plugged in. Both causes are exercised now, so the freeze locks
-    /// the distinction rather than the bug.
+    /// the distinction rather than the bug. Copy is frozen in the presenter test.
     @Test(
       "handleEngineInterruption: L/S/T/F bridges to a cause-accurate driver error (matrix #4)",
       arguments: [
-        (EngineInterruptionCause.deviceRemoved, "Microphone disconnected"),
-        (EngineInterruptionCause.engineLost, "Recording interrupted"),
+        (EngineInterruptionCause.deviceRemoved, TerminalNoticeReason.deviceRemoved),
+        (EngineInterruptionCause.engineLost, TerminalNoticeReason.engineLost),
       ])
     func engineInterruptionBridgesActiveNonRecording(
-      cause: EngineInterruptionCause, expected: String
+      cause: EngineInterruptionCause, expected: TerminalNoticeReason
     ) async {
       for placement: Placement in [
         .arming, .stopping, .deliveringTranscribing, .deliveringFinalizing,
@@ -248,7 +249,7 @@ import Testing
         await place(fx.kernel, in: placement)
         fx.driver.handleEngineInterruption(cause)
         await drain()
-        assertDriverIsError(fx.driver, contains: expected)
+        assertDriverIsError(fx.driver, reason: expected)
       }
     }
 
@@ -281,16 +282,16 @@ import Testing
       // The old test ended in `_ = fx.driver.state  // no crash on read`, which
       // stayed green even if reset() stopped nil-ing lastExternalError (the
       // getter is pure and cannot crash). This pins the real reset() contract.
-      fx.driver.setExternalError("boom")
-      #expect(fx.driver.state == .error("boom"))
+      fx.driver.setTerminalReason(.modelWedged)
+      #expect(fx.driver.state == .error(.modelWedged))
       fx.driver.reset()
       await drain()
       // reset() nils lastExternalError synchronously, so the external-error
       // short-circuit no longer applies. kernel.cancel from .preparing leaves
       // the kernel ~.preparing in this forced-state fixture (no forward path to
       // consume the cancel flag), so the public state falls back to the mapped
-      // kernel state — crucially NOT .error("boom").
-      #expect(fx.driver.state != .error("boom"))
+      // kernel state — crucially NOT .error(.modelWedged).
+      #expect(fx.driver.state != .error(.modelWedged))
     }
   }
 

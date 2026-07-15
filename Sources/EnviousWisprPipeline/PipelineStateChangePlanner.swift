@@ -193,9 +193,12 @@ enum PipelineStateChangePlanner {
       }
     }
 
-    // Step 3 — error-path telemetry.
-    if case .error(let msg) = newState.activity {
-      effects.append(.reportPipelineFailed(errorCode: msg))
+    // Step 3 — error-path telemetry. #1558: the payload is now a typed
+    // `TerminalNoticeReason`; its stable `rawValue` is the PostHog
+    // `pipeline.failed.error_code`. String only at the telemetry boundary — no
+    // customer copy, no user payload.
+    if case .error(let reason) = newState.activity {
+      effects.append(.reportPipelineFailed(errorCode: reason.rawValue))
     }
 
     return PipelineStateChangePlan(effects: effects)

@@ -9,29 +9,10 @@ import Foundation
 // PR-9 of #827 — `KernelDictationDriver` is the single concrete driver and the
 // App consumes it directly. `KernelOwnershipFreezeTests` keeps it deleted.
 
-/// Known interruption message strings used to route .error state to .interruption overlay intent.
-enum InterruptionMessages {
-  /// Shown ONLY when Core Audio confirmed the input device went away.
-  static let micDisconnected = "Microphone disconnected"
-
-  /// #1408. Shown for every other interruption: an engine that failed to
-  /// recover with the microphone still attached, or a capture-session
-  /// interruption. Says exactly what we know and nothing we cannot back.
-  static let recordingInterrupted = "Recording interrupted"
-
-  /// #1408: the SINGLE place that decides which interruption sentence a user
-  /// sees. Three sites in `KernelDictationDriver` render an audio interruption
-  /// (the external-error path, the overlay intent, and the public state mapper);
-  /// all three route here so the sentence cannot drift between them.
-  ///
-  /// A missing cause yields the neutral line. The kernel refuses salvage when it
-  /// reaches an audio-interruption exit with nothing stamped, and an unstamped
-  /// interruption is precisely the case where we have no evidence a microphone
-  /// left — so the default fails toward the claim we can always back.
-  static func message(for cause: EngineInterruptionCause?) -> String {
-    cause?.isDeviceLoss == true ? micDisconnected : recordingInterrupted
-  }
-}
+// #1558 (heartpath E1): `InterruptionMessages` — the former single authority
+// for interruption copy — was deleted. The driver now stamps a typed
+// `TerminalNoticeReason` (`.deviceRemoved` / `.engineLost` / `.unknownInterruption`)
+// and `TerminalNoticePresenter` in AppKit authors the sentence.
 
 /// #1408 (grounded review A1): what a COMPLETED take discloses about the
 /// interruption that cut it short. Derived from the stamped
@@ -88,12 +69,14 @@ public enum OverlayIntent: Equatable, Sendable {
   /// Transient warning notice for degraded-but-delivered results (e.g. polish failed).
   /// Orange icon, auto-dismissed by the overlay panel after 2.5 seconds.
   case warning(message: String)
-  /// Transient error notice shown when ASR fails despite speech evidence.
-  /// Auto-dismissed by the overlay panel after 3 seconds.
-  case error(message: String)
-  /// Transient interruption notice shown when the recording device disconnects.
-  /// Distress lips (red pulse) with reason text, auto-dismissed after 2 seconds.
-  case interruption(message: String)
+  /// Transient error notice for a terminal capture / transcription failure.
+  /// #1558: carries a TYPED reason; `TerminalNoticePresenter` authors the
+  /// sentence. Auto-dismissed by the overlay panel after 3 seconds.
+  case error(reason: TerminalNoticeReason)
+  /// Transient interruption notice shown when the recording was cut short
+  /// (device removed, or engine lost with the mic still attached). #1558:
+  /// carries a TYPED reason. Distress lips (red pulse), auto-dismissed after 2 seconds.
+  case interruption(reason: TerminalNoticeReason)
   /// Passive language-lock discoverability chip surfaced post-dictation when the
   /// detector observed N consecutive high-confidence accepts of the same non-English
   /// language. Renders State A (strikes 1+2: Lock + Dismiss) or State B (strike 3:

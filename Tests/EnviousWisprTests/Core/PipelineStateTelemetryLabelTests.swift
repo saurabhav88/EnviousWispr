@@ -18,12 +18,12 @@ struct PipelineStateTelemetryLabelTests {
     #expect(PipelineState.transcribing.telemetryLabel == "transcribing")
     #expect(PipelineState.polishing.telemetryLabel == "polishing")
     #expect(PipelineState.complete.telemetryLabel == "complete")
-    #expect(PipelineState.error("boom").telemetryLabel == "error")
+    #expect(PipelineState.error(.modelWedged).telemetryLabel == "error")
   }
 
   @Test("error label is independent of the associated message")
   func errorLabelIgnoresMessage() {
-    #expect(PipelineState.error("").telemetryLabel == "error")
-    #expect(PipelineState.error("some failure").telemetryLabel == "error")
+    #expect(PipelineState.error(.asrFailed).telemetryLabel == "error")
+    #expect(PipelineState.error(.deviceRemoved).telemetryLabel == "error")
   }
 }

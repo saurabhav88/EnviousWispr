@@ -21,7 +21,7 @@ public enum PipelineState: Equatable, Sendable {
   case transcribing
   case polishing
   case complete
-  case error(String)
+  case error(TerminalNoticeReason)
 
   public var isActive: Bool {
     switch self {

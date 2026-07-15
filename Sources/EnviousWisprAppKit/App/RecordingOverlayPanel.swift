@@ -200,7 +200,9 @@ final class RecordingOverlayPanel {
           .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
         ])
       showWarning(message: message)
-    case .error(let message):
+    case .error(let reason):
+      // #1558: the presenter is the sole author of the sentence.
+      let message = TerminalNoticePresenter.copy(for: reason)
       NSAccessibility.post(
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
@@ -209,7 +211,8 @@ final class RecordingOverlayPanel {
           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
         ])
       showError(message: message)
-    case .interruption(let message):
+    case .interruption(let reason):
+      let message = TerminalNoticePresenter.copy(for: reason)
       NSAccessibility.post(
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,

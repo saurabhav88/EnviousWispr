@@ -161,7 +161,7 @@ struct BackendMetadataTests {
   func statusTextParakeetError() {
     let bm = makeBackendMetadata()
     bm.asrManager.setInitialBackendType(.parakeet)
-    #expect(bm.statusText(for: .error("boom")) == "Error")
+    #expect(bm.statusText(for: .error(.modelWedged)) == "Error")
   }
 
   @Test("statusText Parakeet: .idle falls back to model-loaded label")

@@ -603,19 +603,32 @@ final class KernelLifecycleTelemetrySink {
         error,
         .audioCaptureFailed, "recording",
         captureFailureExtra(error: error, failureMode: "thrown_start"))
+    case .noMicrophoneFound:
+      // #1558: no usable input device on the toggle/menu start path. Keeps the
+      // `audio_capture_failed` cluster populated (distinct `failureMode`) so the
+      // held-release drop can still be watched post-ship.
+      let error =
+        telemetryState.captureFailureError
+        ?? NSError(
+          domain: "EnviousWispr", code: -16,
+          userInfo: [NSLocalizedDescriptionKey: "No usable microphone device was found"])
+      emitCaptureError(
+        error,
+        .audioCaptureFailed, "recording",
+        captureFailureExtra(error: error, failureMode: "no_microphone_found"))
     case .asrEmpty:
       // #979: ASR-empty on non-speech (ambient noise trips VAD, engine
       // correctly returns empty) is an EXPECTED outcome, not an error.
       // Evidence: 7 organic capture pairs all ambient non-speech (energy-mod
       // 0.08-0.19, no inter-word pauses); founder repro "airplane, light taps";
       // SuperWhisper logs the same condition and treats it as a soft notice.
-      // The user already sees "Couldn't catch that" from the terminal STATE
-      // (KernelDictationDriver), independent of this emit. Downgrade from a
-      // Sentry error (which flagged a non-bug AND auto-filed issues via the
-      // Sentry->GitHub triage) to a context-only breadcrumb. Frequency still
-      // lives in PostHog pipeline.failed (error_code "Couldn't catch that --
-      // try again"); engineering evidence still lives in the DEBUG
-      // DictationAudioArchive. Both untouched.
+      // The user already sees the terminal notice ("Transcription error. Try
+      // again.", #1558) from the terminal STATE (KernelDictationDriver),
+      // independent of this emit. Downgrade from a Sentry error (which flagged
+      // a non-bug AND auto-filed issues via the Sentry->GitHub triage) to a
+      // context-only breadcrumb. Frequency still lives in PostHog
+      // pipeline.failed (error_code "asr_empty_with_speech"); engineering
+      // evidence still lives in the DEBUG DictationAudioArchive. Both remain intact.
       breadcrumb(
         "asr", "ASR returned empty text despite speech evidence",
         telemetryState.asrEmptyDiagnostics?.sentryExtra() ?? ["backend": backend.rawValue])

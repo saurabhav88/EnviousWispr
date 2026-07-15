@@ -1,3 +1,4 @@
+import AVFoundation
 import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
@@ -46,7 +47,8 @@ import Testing
     accessibilityRefresh: (@MainActor () -> Void)? = nil,
     releaseDuringRecoveryArm: Bool = false,
     isRecovering: Bool = false,
-    recoveringDuringArm: Bool = false
+    recoveringDuringArm: Bool = false,
+    micStatus: AVAuthorizationStatus = .authorized
   ) -> Fixture {
     // `RecordingOverlayPanel.show(intent: .recording, ...)` posts an
     // `NSAccessibility` notification against `NSApp.mainWindow`. `NSApp`
@@ -68,7 +70,7 @@ import Testing
     let settings = SettingsManager(
       defaults: UserDefaults(suiteName: "ew-test-\(UUID().uuidString)")!)
     let overlay = RecordingOverlayPanel()
-    let permissions = PermissionsService()
+    let permissions = PermissionsService(microphoneReader: { micStatus })
     let lockBox = TestRecordingLockedBox()
     let lockAccess = DictationLifecycleCoordinator.RecordingLockedAccess(
       get: { lockBox.isLocked },
@@ -184,7 +186,7 @@ import Testing
 
     await fx.starter.start()
 
-    #expect(fx.kernelDriver.state == .error("No microphone found. Please connect a microphone."))
+    #expect(fx.kernelDriver.state == .error(.noMicrophoneFound))
   }
 
   @Test("XPC-sanitized no-microphone prewarm error surfaces distinct copy")
@@ -197,7 +199,25 @@ import Testing
 
     await fx.starter.start()
 
-    #expect(fx.kernelDriver.state == .error("No microphone found. Please connect a microphone."))
+    #expect(fx.kernelDriver.state == .error(.noMicrophoneFound))
+  }
+
+  @Test(
+    "a prewarm failure while mic permission is denied surfaces the actionable permission notice, not the generic capture error (cloud review P2 #1563)"
+  )
+  func permissionDeniedPrewarmSurfacesPermissionNotice() async {
+    // Mic permission is denied; the prewarm error itself is a generic capture
+    // failure (not a no-device error). #1558: permission is the real,
+    // user-actionable cause and must win — the user should see "Microphone
+    // access is off.", never the generic "Audio capture error. Try again."
+    let fx = Self.makeFixture(micStatus: .denied)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    fx.audio.preWarmError = NSError(domain: "SomeGenericCapture", code: 99)
+
+    await fx.starter.start()
+
+    #expect(fx.kernelDriver.state == .error(.permissionDenied))
   }
 
   /// The old `toggleAndStartBothRefreshAccessibilityStatus` had ZERO `#expect` —

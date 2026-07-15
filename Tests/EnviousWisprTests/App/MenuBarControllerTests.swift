@@ -48,7 +48,7 @@ struct MenuBarControllerTests {
 
   @Test("iconState: error → error")
   func iconStateError() {
-    #expect(MenuBarController.iconState(fixture(pipelineState: .error("boom"))) == .error)
+    #expect(MenuBarController.iconState(fixture(pipelineState: .error(.modelWedged))) == .error)
   }
 
   @Test("iconState: complete → idle (no special icon)")

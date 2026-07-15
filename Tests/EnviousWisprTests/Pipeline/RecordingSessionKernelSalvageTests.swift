@@ -536,58 +536,49 @@ import Testing
   /// longer carry "Microphone disconnected" unconditionally — that string was a
   /// lie for a recovery failure, the duration cap, and our own helper crashing.
   ///
-  /// `InterruptionMessages.message(for:)` is the one authority for which sentence
-  /// a user reads, and the three `KernelDictationDriver` render sites all route
-  /// through it. These tests are what keep the claim honest: exactly the causes
-  /// backed by a real Core Audio removal may say a microphone disconnected.
-  @Suite("The interruption sentence never claims more than we know (#1408)")
-  struct InterruptionMessageTests {
+  /// #1558: the interruption copy authority moved from `InterruptionMessages`
+  /// to the typed map (`KernelDictationDriver.terminalNoticeReason(for:)`) plus
+  /// the AppKit presenter. These tests keep the claim honest at the TYPED-reason
+  /// layer: only a verified device loss earns the disconnect reason; the
+  /// customer sentence itself is frozen in `TerminalNoticePresenterTests`.
+  @Suite("The interruption reason never claims more than we know (#1408 / #1558)")
+  struct InterruptionReasonTests {
 
-    @Test("only a verified device loss says the microphone disconnected")
-    func onlyDeviceLossClaimsADisconnect() {
+    @Test("only a verified device loss maps to the disconnect reason")
+    func onlyDeviceLossMapsToDisconnectReason() {
       for cause in EngineInterruptionCause.allCases {
-        let sentence = InterruptionMessages.message(for: cause)
+        let reason = KernelDictationDriver.terminalNoticeReason(for: cause)
         if cause.isDeviceLoss {
-          #expect(sentence == "Microphone disconnected", "\(cause) earns the claim")
+          #expect(reason == .deviceRemoved, "\(cause) earns the disconnect reason")
         } else {
           #expect(
-            sentence == "Recording interrupted",
-            "\(cause) is not a microphone walking away, so it must not say one did")
+            reason == .engineLost,
+            "\(cause) is not a microphone walking away, so it must not claim one did")
         }
       }
     }
 
-    /// The set that may claim a disconnect is exactly the set `isDeviceLoss`
-    /// names. Coupled rather than restated, so a sixth cause cannot quietly
-    /// inherit the disconnect sentence by being added to the wrong list.
-    @Test("the claiming set is exactly the isDeviceLoss set")
-    func claimingSetEqualsDeviceLossSet() {
+    /// The set mapping to `.deviceRemoved` is exactly the `isDeviceLoss` set —
+    /// coupled, so a new cause cannot inherit the disconnect reason by accident.
+    @Test("the disconnect-reason set is exactly the isDeviceLoss set")
+    func disconnectReasonSetEqualsDeviceLossSet() {
       let claims = Set(
         EngineInterruptionCause.allCases.filter {
-          InterruptionMessages.message(for: $0) == "Microphone disconnected"
+          KernelDictationDriver.terminalNoticeReason(for: $0) == .deviceRemoved
         })
       let deviceLoss = Set(EngineInterruptionCause.allCases.filter(\.isDeviceLoss))
       #expect(claims == deviceLoss)
       #expect(claims == [.deviceRemoved])
     }
 
-    /// An `.audioInterrupted` terminal with no stamped cause should never be
-    /// reachable (the kernel refuses salvage and logs), but if it ever is, the
-    /// absence of evidence must not read as evidence of a disconnect.
-    @Test("no stamped cause falls back to the neutral line, never a disconnect")
+    /// A no-stamped-cause interruption should never be reachable (the kernel
+    /// refuses salvage and logs), but if it ever is, the absence of evidence
+    /// must map to the neutral reason, never a disconnect.
+    @Test("no stamped cause falls back to the neutral reason, never a disconnect")
     func missingCauseIsNeutral() {
-      #expect(InterruptionMessages.message(for: nil) == "Recording interrupted")
-    }
-
-    /// Rule 6: no em-dashes or en-dashes in anything a user reads.
-    @Test("neither sentence carries a dash a human would see")
-    func noDashesInUserFacingCopy() {
-      for sentence in [
-        InterruptionMessages.micDisconnected, InterruptionMessages.recordingInterrupted,
-      ] {
-        #expect(!sentence.contains("\u{2014}"), "em-dash in user-facing copy: \(sentence)")
-        #expect(!sentence.contains("\u{2013}"), "en-dash in user-facing copy: \(sentence)")
-      }
+      #expect(
+        KernelDictationDriver.terminalNoticeReason(for: EngineInterruptionCause?.none)
+          == .unknownInterruption)
     }
   }
 

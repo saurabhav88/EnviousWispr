@@ -35,10 +35,32 @@ public final class PermissionsService {
   /// to the live no-prompt system check in production.
   private let accessibilityReader: () -> Bool
 
-  public init(accessibilityReader: @escaping () -> Bool = { AXIsProcessTrusted() }) {
+  /// Injected mirror of `accessibilityReader` for the microphone status, so the
+  /// start-path error router (#1558) is testable; defaults to the live
+  /// no-prompt system check.
+  private let microphoneReader: () -> AVAuthorizationStatus
+
+  public init(
+    accessibilityReader: @escaping () -> Bool = { AXIsProcessTrusted() },
+    microphoneReader: @escaping () -> AVAuthorizationStatus = {
+      AVCaptureDevice.authorizationStatus(for: .audio)
+    }
+  ) {
     self.accessibilityReader = accessibilityReader
-    microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+    self.microphoneReader = microphoneReader
+    microphoneStatus = microphoneReader()
     accessibilityGranted = accessibilityReader()
+  }
+
+  /// #1558: live microphone-denied check for the start-path error router. A
+  /// prewarm failure while permission is denied or restricted must map to the
+  /// actionable "Microphone access is off." notice, not the generic retry.
+  /// Reads live (not the cached snapshot) so a mid-session revoke is honored.
+  public var microphonePermissionIsDenied: Bool {
+    switch microphoneReader() {
+    case .denied, .restricted: return true
+    default: return false
+    }
   }
 
   /// Request microphone access. Returns true if granted.

@@ -276,10 +276,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// and the frontmost app / focused element at recording start.
   private let context: KernelSessionContext
 
-  /// External-error surface (PR-4 §3.7). `kernel.cancel()` alone maps to a
-  /// `.hidden` overlay, so the driver owns the error state pushed in from
-  /// outside (`setExternalError`). Cleared on the next start / reset.
-  private var lastExternalError: String?
+  /// External-error surface (PR-4 §3.7; #1558 typed). `kernel.cancel()` alone
+  /// maps to a `.hidden` overlay, so the driver owns the terminal reason pushed
+  /// in from outside (`setTerminalReason`). Carries a TYPED
+  /// `TerminalNoticeReason`, never authored English — the AppKit presenter
+  /// speaks the sentence. Cleared on the next start / reset.
+  private var lastTerminalReason: TerminalNoticeReason?
 
   /// #959 — set by `ASREventRouter` when the OS reaps this engine's idle ASR
   /// service while a resident model was loaded (readiness drops to `.notReady`
@@ -342,7 +344,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// session's `.cancelled` terminal. `.cancelled` is reached by BOTH a genuine
   /// user cancel (`RecordingFinalizer.cancel()` → `cancelRecording(disposition:
   /// .discard)`) AND fault/system cancels that route through `kernel.cancel()`
-  /// (active `reset()`, `setExternalError()`, the settings-rebuild cancel). A user
+  /// (active `reset()`, `setTerminalReason()`, the settings-rebuild cancel). A user
   /// cancel should DELETE the spool; a fault cancel should RETAIN recoverable
   /// audio. Defaults to `.failure` (RETAIN) so any cancel NOT explicitly attributed
   /// as a user discard conservatively keeps the audio. Set at the `cancelRecording`
@@ -403,7 +405,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     self.adapter = adapter
     self.captureErrorSink = captureErrorSink
     self.lastFiredState = Self.pipelineState(
-      for: kernel.state, outcome: kernel.recordingOutcome, externalError: nil)
+      for: kernel.state, outcome: kernel.recordingOutcome, externalReason: nil)
     self.lastEndedWithoutSaveSessionID = nil
   }
 
@@ -616,8 +618,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     Self.pipelineState(
       for: kernel.state, outcome: kernel.recordingOutcome,
       deliveringPhase: kernel.deliveringPhase,
-      externalError: lastExternalError,
-      failureDetail: kernel.lastFailureDetail,
+      externalReason: lastTerminalReason,
       interruptionCause: kernel.lastAudioInterruptionCause)
   }
 
@@ -698,9 +699,9 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// "Try Again" button, which renders only when the driver's
   /// `pipelineState` is `.error`. Most `.error` mappings come from
   /// terminal kernel states (`.failed`, `.audioInterrupted`,
-  /// `.asrInterrupted`), but `lastExternalError` can also surface
+  /// `.asrInterrupted`), but `lastTerminalReason` can also surface
   /// `.error` while the kernel is still in an active state — the mic
-  /// disconnect / ASR crash paths route through `setExternalError(...)`
+  /// disconnect / ASR crash paths route through `setTerminalReason(...)`
   /// from `.preparing`, `.warmingUp`, `.stopping`, `.transcribing`, and
   /// `.finalizing` (see `handleEngineInterruption` / `handleASRServiceInterruption`).
   /// Active-state `reset()` is therefore a real production path, not a
@@ -717,11 +718,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// completion from an active state, use `cancelRecording()` + `reset()`
   /// (async-then-sync), or wait for the kernel-state observer to fire
   /// with the terminal state. The external-error surface that "Try Again"
-  /// re-enters from is cleared synchronously here via `lastExternalError =
+  /// re-enters from is cleared synchronously here via `lastTerminalReason =
   /// nil`, so the user-visible `.error` resolves immediately even when the
   /// kernel itself takes another tick to reach `.idle`.
   public func reset() {
-    lastExternalError = nil
+    lastTerminalReason = nil
     if !Self.isTerminal(kernel.state) {
       // Best-effort: request cancellation. Caller-visible state will not
       // reach `.idle` synchronously from `.recording` / `.transcribing` —
@@ -747,7 +748,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       // Clear the post-recording polish error alongside the transcript — both
       // are last-session outcome fields surfaced publicly (`currentTranscript`
       // / `lastPolishError`). Idle-gated (not unconditional like
-      // `lastExternalError`) for the same reason as the transcript: a `reset()`
+      // `lastTerminalReason`) for the same reason as the transcript: a `reset()`
       // that no-ops because the kernel sits in `.finalizing` must leave the
       // in-flight outcome intact for completion telemetry. Without this, a
       // prior session's "AI polish failed" surface lingered into the next
@@ -786,7 +787,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// `handleEngineInterruption()` (old Parakeet pipeline)
   /// was state-agnostic: emit Sentry+PostHog state change, cancel cleanup,
   /// flip UI to the mic-disconnect error. Bridge matrix #4 ports the old
-  /// behavior for those states via `setExternalError`.
+  /// behavior for those states via `setTerminalReason`.
   public func handleEngineInterruption(_ cause: EngineInterruptionCause) {
     switch kernel.state {
     case .live:
@@ -796,7 +797,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       // `.audioInterrupted` from here (§5.2 parity), so the lifecycle sink's
       // `.audioInterrupted` handler never fires.
       SentryBreadcrumb.updateRecordingState(active: false)
-      setExternalError(InterruptionMessages.message(for: cause))
+      setTerminalReason(Self.terminalNoticeReason(for: cause))
     case .idle:
       // Already idle / concluded — no useful action. Router-stale calls
       // land here.
@@ -814,7 +815,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// was state-agnostic: always emit the `xpc_service_error` Sentry event +
   /// flip the UI to the ASR-crash error. Bridge matrix #2 ports the old
   /// behavior for `.preparing`, `.warmingUp`, `.stopping`, `.finalizing`
-  /// via direct Sentry emission + `setExternalError`.
+  /// via direct Sentry emission + `setTerminalReason`.
   public func handleASRServiceInterruption() {
     // `.live` and `.delivering(.transcribing)` route to the kernel FSM; every
     // other active state (including the `delivering(.finalizing(_))` safe point)
@@ -857,7 +858,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
           ]),
         .xpcServiceError, "asr",
         ["was_recording": false, "backend": backendID], nil)
-      setExternalError(Self.asrInterruptedMessage)
+      setTerminalReason(.asrInterrupted)
     }
   }
 
@@ -922,8 +923,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   }
 
   public var overlayIntent: OverlayIntent {
-    if let lastExternalError {
-      return .error(message: lastExternalError)
+    if let lastTerminalReason {
+      return .error(reason: lastTerminalReason)
     }
     // A concluded session carries its ending category on `recordingOutcome`
     // (state has returned to `.idle`, #1548 D1). The ending pill reads from the
@@ -933,20 +934,18 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       case .completed, .cancelled, .discarded, .noSpeech:
         return .hidden
       case .failed(let reason):
-        // Thread `kernel.lastFailureDetail` so the overlay surfaces the same
-        // enriched "Model load failed: <detail>" / "Recording failed: <detail>"
-        // / "Transcription failed: <detail>" string the `state` getter does.
-        return .error(
-          message: Self.failureMessage(reason, detail: kernel.lastFailureDetail))
+        // #1558: emit the TYPED reason; the raw detail stays owned by the
+        // producer's Sentry site and never reaches the pill.
+        return .error(reason: Self.terminalNoticeReason(for: reason))
       case .noTransport:
-        // Existing "No audio captured" copy (locked projection, §4 / §7) — no
-        // new user-facing string.
-        return .error(message: Self.failureMessage(.noAudioCaptured, detail: nil))
+        // No audio transport arrived — same "no audio to turn into text"
+        // outcome as an empty buffer (parity with the prior "No audio captured").
+        return .error(reason: .noAudioCaptured)
       case .audioInterrupted:
         return .interruption(
-          message: InterruptionMessages.message(for: kernel.lastAudioInterruptionCause))
+          reason: Self.terminalNoticeReason(for: kernel.lastAudioInterruptionCause))
       case .asrInterrupted:
-        return .error(message: Self.asrInterruptedMessage)
+        return .error(reason: .asrInterrupted)
       }
     }
     switch kernel.state {
@@ -1007,7 +1006,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // `context.config` for the wiring's `processText` / `deliver`
         // closures to read at finalize time (the wiring's optional-chained
         // reads were always-nil in production until this PR — finding #6).
-        lastExternalError = nil
+        lastTerminalReason = nil
         // #1063 PR2: a fresh session starts with the conservative cancel
         // disposition (RETAIN) — only a genuine user cancel during this session
         // flips it to discard. Prevents a stale user-discard from a prior session
@@ -1065,7 +1064,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     case .cancelRecording:
       kernel.cancel()
     case .reset:
-      lastExternalError = nil
+      lastTerminalReason = nil
       kernel.reset()
       // Same guard as the sync `reset()` method above — only clear once the
       // kernel actually lands at idle, so a `.reset` event arriving during
@@ -1080,7 +1079,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       }
       // PR-4.5 #9 (Codex r5): when the kernel is already idle, `reset()` is a
       // no-op, so the kernel-state observation does NOT fire. After
-      // `setExternalError` parked the observer on `.error`, that observer
+      // `setTerminalReason` parked the observer on `.error`, that observer
       // would stay stuck. Driving the fan-out directly mirrors the #9 fix on
       // the error-set side.
       fireStateChangeIfNeeded()
@@ -1092,7 +1091,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// start / reset clears it.
   ///
   /// PR-4.5 #9: also fires `onStateChange` directly with the mapped `.error`
-  /// state. The state mapper reads `lastExternalError`, so the *driver's*
+  /// state. The state mapper reads `lastTerminalReason`, so the *driver's*
   /// public state did change; but the kernel-state observer at
   /// `observeKernelState` only fires when `kernel.state` itself changes. When
   /// `kernel.cancel()` is a no-op (kernel already idle / terminal — common
@@ -1100,10 +1099,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// runs and the lifecycle coordinator never learns about the error. Direct
   /// fire-through ensures the error reaches the overlay / hotkey teardown
   /// path regardless of kernel-state movement.
-  public func setExternalError(_ message: String) {
+  public func setTerminalReason(_ reason: TerminalNoticeReason) {
     kernel.cancel()
     outcome.transcript = nil
-    lastExternalError = message
+    lastTerminalReason = reason
     fireStateChangeIfNeeded()
   }
 
@@ -1434,16 +1433,14 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// states. `state.isActive` is `true` for every active kernel state, which
   /// the `PipelineSettingsSync` backend-switch guard depends on (§3.13).
   ///
-  /// `failureDetail` is the underlying-error `localizedDescription` for the
-  /// three reasons the old Parakeet pipeline embedded into its error strings
-  /// (model load, recording start, transcription); the static map embeds it
-  /// when present and falls back to the parity-bare string when nil. The
-  /// driver's instance `state` getter threads `kernel.lastFailureDetail`
-  /// through; existing test callers pass nil for byte-parity coverage.
-  /// `interruptionCause` selects the audio-interruption sentence (#1408). It
-  /// defaults to nil, which yields the neutral "Recording interrupted" line —
-  /// never a disconnect claim. Only the instance `state` getter has a kernel to
-  /// read the real cause from; test callers keep the byte-parity default.
+  /// #1558: `externalReason` and the outcome map now yield a TYPED
+  /// `TerminalNoticeReason`; the AppKit presenter authors the sentence, so the
+  /// raw underlying-error detail (once embedded here as
+  /// "Model load failed: <detail>") never reaches a user surface — it stays
+  /// owned by the producer's Sentry site. `interruptionCause` selects the
+  /// audio-interruption reason (#1408): nil yields `.unknownInterruption` (the
+  /// neutral "Recording interrupted." line), never a disconnect claim. Only the
+  /// instance `state` getter has a kernel to read the real cause from.
   // Internal (was public): the signature now names the internal
   // `RecordingOutcome` / `DeliveringPhase` types. No App-layer caller exists
   // (only same-module `state` getter + `@testable` tests); the App reads the
@@ -1452,16 +1449,14 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     for state: RecordingSessionState,
     outcome: RecordingOutcome?,
     deliveringPhase: DeliveringPhase = .transcribing,
-    externalError: String?,
-    failureDetail: String? = nil,
+    externalReason: TerminalNoticeReason?,
     interruptionCause: EngineInterruptionCause? = nil
   ) -> PipelineState {
-    if let externalError {
-      return .error(externalError)
+    if let externalReason {
+      return .error(externalReason)
     }
     // A concluded session's public state comes from `recordingOutcome` (state
-    // has returned to `.idle`, #1548 D1). Byte-parity with the old terminal-state
-    // mapping.
+    // has returned to `.idle`, #1548 D1).
     if let outcome {
       switch outcome {
       case .completed:
@@ -1469,13 +1464,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       case .cancelled, .discarded, .noSpeech:
         return .idle
       case .failed(let reason):
-        return .error(failureMessage(reason, detail: failureDetail))
+        return .error(terminalNoticeReason(for: reason))
       case .noTransport:
-        return .error(failureMessage(.noAudioCaptured, detail: nil))
+        return .error(.noAudioCaptured)
       case .audioInterrupted:
-        return .error(InterruptionMessages.message(for: interruptionCause))
+        return .error(terminalNoticeReason(for: interruptionCause))
       case .asrInterrupted:
-        return .error(asrInterruptedMessage)
+        return .error(.asrInterrupted)
       }
     }
     switch state {
@@ -1509,55 +1504,42 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     }
   }
 
-  /// Mirrors the shipped the old Parakeet pipeline string verbatim (em-dash
-  /// included) — PR-4 parity; the em-dash cleanup is a separate content change.
-  static let asrInterruptedMessage = "Transcription service crashed — please try again"
-
-  /// User-facing message for a `failed` terminal. The plan does not enumerate
-  /// this map; each message mirrors today's the old Parakeet pipeline string for
-  /// the equivalent failure verbatim (parity — PR-4's bar is "user feels
-  /// nothing change"), or a sensible message where the kernel splits a reason
-  /// today's pipeline did not name distinctly. The `captureStalled` em-dash is
-  /// preserved to match the shipped string byte-for-byte; fixing it is a
-  /// separate content-lane change, out of PR-4 scope.
-  static func failureMessage(_ reason: RecordingFailureReason, detail: String? = nil)
-    -> String
+  /// #1558: map a kernel `RecordingFailureReason` to the typed, presentation-
+  /// neutral `TerminalNoticeReason`. PURE — no telemetry side effect (this map
+  /// is read from BOTH the state and overlay projections, so emitting here
+  /// would double-fire; the raw error is already captured at its producer's
+  /// Sentry site). Total over all 12 cases (no `default`), so a new
+  /// `RecordingFailureReason` reds the build until it is assigned a reason.
+  nonisolated static func terminalNoticeReason(for reason: RecordingFailureReason)
+    -> TerminalNoticeReason
   {
     switch reason {
-    case .prepareFailed:
-      return "Couldn't start dictation. Please try again."
-    case .permissionDenied:
-      return "Microphone permission denied."
-    case .modelWedged:
-      return ModelLoadWatchdog.userMessage
-    case .modelLoadFailed:
-      // Old Parakeet pipeline shape: "Model load failed: <error.localizedDescription>"
-      // (TP:440-445). Fall back to the bare string when no detail is captured.
-      return detail.map { "Model load failed: \($0)" } ?? "Model load failed."
-    case .captureStartFailed:
-      // Old Parakeet pipeline shape: "Recording failed: <error.localizedDescription>"
-      // (TP:577-588).
-      return detail.map { "Recording failed: \($0)" } ?? "Recording failed."
-    case .noAudioCaptured:
-      return "No audio captured"
-    case .asrEmpty:
-      return "Couldn't catch that -- try again"
-    case .asrFailed:
-      // Old Parakeet pipeline shape: "Transcription failed: <error.localizedDescription>"
-      // (TP:1045-1051).
-      return detail.map { "Transcription failed: \($0)" } ?? "Transcription failed."
-    case .asrWedged:
-      return "Transcription stalled. Please try again."
-    case .emptyAfterProcessing:
-      return "No speech detected. Your clipboard is unchanged. Try again."
-    case .captureStalled:
-      return "No audio detected — try again."
-    case .zeroSignal:
-      // #1317 PR3: the harness delivered all-zero audio from a running,
-      // unmuted mic. The kernel has already requested the capture-pipeline
-      // rebuild by the time this failure is mapped, so the copy states what
-      // the app is actually doing (founder-chosen wording).
-      return "Mic problem. Resetting it."
+    case .prepareFailed: return .prepareFailed
+    case .permissionDenied: return .permissionDenied
+    case .modelWedged: return .modelWedged
+    case .modelLoadFailed: return .modelLoadFailed
+    case .captureStartFailed: return .captureStartFailed
+    case .noMicrophoneFound: return .noMicrophoneFound
+    case .noAudioCaptured: return .noAudioCaptured
+    case .asrEmpty: return .asrEmptyWithSpeech
+    case .asrFailed: return .asrFailed
+    case .asrWedged: return .asrWedged
+    case .emptyAfterProcessing: return .emptyAfterProcessing
+    case .captureStalled: return .captureStalled
+    case .zeroSignal: return .zeroSignal
+    }
+  }
+
+  /// #1558: map a stamped `EngineInterruptionCause` (optional) to the typed
+  /// interruption reason. `nil` → `.unknownInterruption` (neutral line), the
+  /// same choice the retired `InterruptionMessages` made. Exhaustive.
+  nonisolated static func terminalNoticeReason(for cause: EngineInterruptionCause?)
+    -> TerminalNoticeReason
+  {
+    switch cause {
+    case .some(.deviceRemoved): return .deviceRemoved
+    case .some(.engineLost): return .engineLost
+    case .none: return .unknownInterruption
     }
   }
 }

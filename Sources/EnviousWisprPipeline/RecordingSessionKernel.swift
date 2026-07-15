@@ -30,6 +30,11 @@ public enum RecordingFailureReason: Equatable, Sendable {
   case modelWedged
   case modelLoadFailed
   case captureStartFailed
+  /// #1558 (cloud review P2 #1563): a start-stage failure where NO usable input
+  /// device was found — distinct from the generic `.captureStartFailed` so the
+  /// toggle/menu path surfaces the actionable "No microphone found." notice, the
+  /// same as the prewarm (PTT) path already does AppKit-side.
+  case noMicrophoneFound
   case noAudioCaptured
   case asrEmpty
   case asrFailed
@@ -535,26 +540,12 @@ final class RecordingSessionKernel {
   /// `failed(.modelWedged)` so Sentry/PostHog keep the old payload shape.
   private(set) var modelLoadWedgeTelemetry: KernelModelLoadWedgeTelemetry?
 
-  /// User-visible detail for the current `.failed(reason)` state, if any —
-  /// the underlying error's `localizedDescription` for the three reasons the
-  /// old Parakeet pipeline embedded into its error strings (TP:440-445,
-  /// TP:577-588, TP:1045-1051). `nil` when the kernel is not in a
-  /// detail-bearing failed state, OR when no underlying error was captured.
-  /// Reading scope is intentionally narrow: this is the user-message
-  /// enrichment seam, not a general error-introspection API.
-  var lastFailureDetail: String? {
-    guard case .failed(let reason) = recordingOutcome else { return nil }
-    switch reason {
-    case .modelLoadFailed:
-      return telemetryState.modelLoadError?.localizedDescription
-    case .captureStartFailed:
-      return telemetryState.captureFailureError?.localizedDescription
-    case .asrFailed:
-      return telemetryState.transcriptionFailureError?.localizedDescription
-    default:
-      return nil
-    }
-  }
+  // #1558: the UI-only `lastFailureDetail` accessor was deleted. It existed to
+  // enrich a user-facing "Model load failed: <detail>" string; that string is
+  // gone (the presenter authors the sentence, the raw error goes to Sentry
+  // only). The underlying telemetry fields (`modelLoadError`,
+  // `captureFailureError`, `transcriptionFailureError`) remain — they still
+  // feed `KernelLifecycleTelemetrySink`'s Sentry capture.
 
   /// The session task bag, keyed by `SessionID` (PR-1 §B.1.6). Reaching a
   /// terminal state cancels and clears it — nonblocking (PR-3 plan §3.1a).
@@ -1008,7 +999,7 @@ final class RecordingSessionKernel {
     } catch {
       guard isCurrent(sid) else { return }
       telemetryState.captureFailureError = error
-      finishTerminal(.failed(classifyCaptureStartError(error)), sid: sid)
+      finishTerminal(.failed(Self.classifyCaptureStartError(error)), sid: sid)
       return
     }
     guard isCurrent(sid) else { return }
@@ -1043,7 +1034,7 @@ final class RecordingSessionKernel {
       } catch {
         guard isCurrent(sid) else { return }
         telemetryState.captureFailureError = error
-        finishTerminal(.failed(classifyCaptureStartError(error)), sid: sid)
+        finishTerminal(.failed(Self.classifyCaptureStartError(error)), sid: sid)
         return
       }
       guard isCurrent(sid) else { return }
@@ -2915,7 +2906,8 @@ final class RecordingSessionKernel {
   /// This used to be TWO rules, the second gated on `cause.isDeviceLoss`, because
   /// `.audioInterrupted` rendered "Microphone disconnected" unconditionally and
   /// that would have been a lie for a duration cap. The cause-aware sentence now
-  /// lives at its own single authority (`InterruptionMessages.message(for:)`), so
+  /// lives at its own single authority (#1558: the driver stamps a typed
+  /// `TerminalNoticeReason` and `TerminalNoticePresenter` authors the copy), so
   /// the floor no longer has to encode a copy decision. What the terminal MEANS
   /// (the spool survives) and what the user READS are separate questions with
   /// separate owners — which is the same split `hasRecoverableAudio` and
@@ -3442,7 +3434,16 @@ final class RecordingSessionKernel {
       / Int(AudioConstants.sampleRate)
   }
 
-  private func classifyCaptureStartError(_ error: Error) -> RecordingFailureReason {
+  // Pure classification (no instance state) — `nonisolated static` so it is
+  // directly unit-testable via `@testable`.
+  nonisolated static func classifyCaptureStartError(_ error: Error) -> RecordingFailureReason {
+    // #1558 (cloud review P2 #1563): a missing input device on the toggle/menu
+    // start path throws `AudioError.noBuiltInMicrophoneFound`. Classify it
+    // distinctly so it surfaces "No microphone found." (parity with the prewarm
+    // path's AppKit-side handling), not the generic capture error.
+    if let audioError = error as? AudioError, case .noBuiltInMicrophoneFound = audioError {
+      return .noMicrophoneFound
+    }
     // The capture seam surfaces permission revocation distinctly from a
     // generic engine-start failure (PR-1 §B.1.2).
     let description = String(describing: error).lowercased()
@@ -3519,19 +3520,8 @@ final class RecordingSessionKernel {
     /// "no active task references remain after a terminal state" invariant.
     var testActiveTaskCount: Int { taskBag.count }
 
-    /// Test-only telemetry-error setters. Unit tests that need to assert the
-    /// `lastFailureDetail` mapping reach the underlying telemetry fields
-    /// through these hooks rather than driving a real warm-up / capture /
-    /// transcription failure.
-    func testSetModelLoadError(_ error: (any Error)?) {
-      telemetryState.modelLoadError = error
-    }
-    func testSetCaptureFailureError(_ error: (any Error)?) {
-      telemetryState.captureFailureError = error
-    }
-    func testSetTranscriptionFailureError(_ error: (any Error)?) {
-      telemetryState.transcriptionFailureError = error
-    }
+    // #1558: the three `testSet*Error` hooks that fed the deleted
+    // `lastFailureDetail` mapping test were removed with it — dead scaffolding.
     /// #1358: pre-seed the interruption cause so a test can exercise
     /// `interruptedTerminalFloor` (which reads `lastAudioInterruptionCause`)
     /// without driving a real mid-recording interruption.

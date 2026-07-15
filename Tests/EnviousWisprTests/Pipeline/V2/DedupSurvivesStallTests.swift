@@ -68,12 +68,12 @@ struct DedupSurvivesStallTests {
     // First stall in session 1 — emitter fires (no prior dedup); the kernel's
     // recording-exit continuation resumes the forward-path coroutine, which
     // then transitions to `.failed(.captureStalled)` (driver maps to
-    // `.error("No audio detected -- try again.")`). The transition is async
+    // `.error(.captureStalled)`). The transition is async
     // because the forward path runs in a separate Task — poll until it lands.
     pipeline.handleCaptureStall(Self.stallContext(sessionID: 1))
-    await stateWaiter.wait(for: .error("No audio detected — try again."))
+    await stateWaiter.wait(for: .error(.captureStalled))
     #expect(
-      pipeline.state == .error("No audio detected — try again."),
+      pipeline.state == .error(.captureStalled),
       "first stall in session 1 must flip state to .error")
 
     // Reset to idle so we can start session 2. `cancelRecording()` is a
@@ -96,9 +96,9 @@ struct DedupSurvivesStallTests {
     // to .error. If dedup state had leaked across recordings, state would
     // remain .recording and this test would fail.
     pipeline.handleCaptureStall(Self.stallContext(sessionID: 2))
-    await stateWaiter.wait(for: .error("No audio detected — try again."))
+    await stateWaiter.wait(for: .error(.captureStalled))
     #expect(
-      pipeline.state == .error("No audio detected — try again."),
+      pipeline.state == .error(.captureStalled),
       "stall in fresh session 2 must fire — dedup state must not survive restart")
 
     await pipeline.cancelRecording()
@@ -162,7 +162,7 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
     currentCaptureSessionID += 1
     // #1548 D2: reaching `.live` no longer needs a buffer (the forward path
     // transitions sequentially). But THIS scenario is a stall AFTER audio arrives —
-    // a genuine capture-stall ("No audio detected — try again."), not a dead-mic
+    // a genuine capture-stall (.captureStalled), not a dead-mic
     // no-transport. So deliver ONE buffer to make `bufferCountThisSession > 0`,
     // which is what routes the later `.noBuffers` stall to `.captureStall` instead
     // of `.noTransport`. Then the stream parks, holding `.live`.
