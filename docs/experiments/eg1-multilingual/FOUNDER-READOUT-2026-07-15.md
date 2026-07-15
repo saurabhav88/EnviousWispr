@@ -1,6 +1,6 @@
 # EG-1 Multilingual Overnight Readout
 
-Status: living draft as of 2026-07-15 12:56 EDT. Development evidence only; no frozen release claim.
+Status: living draft as of 2026-07-15 16:31 EDT. Development evidence only; no frozen release claim.
 
 ## The short answer
 
@@ -56,6 +56,24 @@ This is why the project cannot choose a base from a general multilingual leaderb
 
 These differences are small development signals, not statistically established release rankings. Native review and frozen data are still required.
 
+## What Qwen3's language evidence actually says
+
+There is no statistically valid ranking of English, German, French, Spanish, and Russian yet. The existing evidence mixes different prompts, runtimes, judges, tasks, and exposed development sets.
+
+The narrow current-EG-1 diagnostic is German > French > Spanish on one shared eight-case legacy slice: German passed polishing on 8/8, French on 6/8, and Spanish on 2/8. Those samples are tiny: the 95% Wilson intervals are 67.6%-100%, 40.9%-92.9%, and 7.1%-59.1%, respectively.
+
+Untouched Qwen3 is even less stable across evidence paths:
+
+| Language | Legacy strict | Newer bakeoff strict |
+|---|---:|---:|
+| German | 0/8 | 6/8 |
+| French | 3/8 | 6/8 |
+| Spanish | 1/8 | 3/8 |
+
+The case families are shared, but the prompt and review path changed. The newer aggregate reports seven damaging rows across its 56 multilingual cases, and its per-case semantic judgments were not retained for independent recomputation. The disagreement is evidence of prompt/judge sensitivity, not a real improvement.
+
+Russian is also prompt-sensitive: untouched Qwen3 moves from 3/16 strict with the shipping prompt to 7/16 with the strict or labeled prompt on the same development cases. English broad Type B is excluded because of training/family exposure, while English list mechanics measure a different task. The first defensible ranking must therefore come from the common, balanced, family-disjoint, native-reviewed five-language benchmark.
+
 ## What was learned about prompts versus training
 
 The list-aware prompt increased visible list activation, but prompt-only changes were not safe enough:
@@ -70,6 +88,8 @@ Conclusion: prompt engineering helps expose the behavior boundary but does not s
 Simply increasing Qwen3.5 from 4B to 9B did not solve it either. The 9B control learned explicit two-bullet shape more readily, but it dropped scope or identity in eight of those explicit rows and never activated on the broader 100-case positive-list check. Switching to Phi-4-mini improved English list shape but made international safety much worse. Better data and stricter preservation training matter more than parameter count or a family swap alone.
 
 The multilingual-specialist EuroLLM-9B control also failed before the full benchmark: two of five untouched Spanish smoke outputs exposed internal wrapper tags. The predeclared fail-closed rule stopped the lane immediately. This rejects that exact model, not the one-universal-model requirement.
+
+The Qwen3.5-4B reserve is also not ready to train. Its single authorized AlienSV compatibility preflight attached LoRA to all 128 standard attention/MLP targets but none of the 120 required GDN targets, so the exact 248-target gate stopped it at zero optimizer steps. No adapter, checkpoint, merged model, or quality score was produced. This is a compatibility blocker in the current training stack, not evidence that Qwen3.5 is good or bad at polishing.
 
 ## The honest benchmark now being built
 
@@ -89,7 +109,11 @@ No frozen model outputs have been opened. The real corpus cannot pass validation
 
 The D1 universal training-data contract separately allocates 2,000 families: 400 per priority language, balanced across core polishing, positive lists, and matched prose restraints. It cannot export training data until every row is independently native-approved and screened against training and benchmark families.
 
-The broad English Type B gate remains required, but its content must be rebuilt. A fresh audit found shipping training overlaps 1,549/1,890 old Type B rows exactly and exposes 1,866/1,890 through provenance families. The 900 overflow rows have zero exact overlap but 899/900 share exposed families, so they cannot simply replace the training rows. Only 23 rows are provisionally reusable. The allocation contract now seals the 1,890 final cells, 1,867 fresh primary families, and 23 same-cell fresh replacement reserves. It is code-, source-, and clean-commit-bound, but prose authorship remains blocked until the family/leakage registry and private freeze pipeline are sealed. The 75+75 list pilot is a fast diagnostic, never the broad performance claim.
+The broad English Type B gate remains required, but its content must be rebuilt. A fresh audit found shipping training overlaps 1,549/1,890 old Type B rows exactly. ID/origin transitive components expose 1,866/1,890 rows; seeding that same family graph with conservative normalized-text matches exposes 1,868/1,890. The old gate cannot support a real-world accuracy claim. The 900 overflow rows have zero exact overlap but 899/900 share exposed families, so they cannot simply replace the training rows.
+
+The replacement controls are now sealed. The authenticated registry covers 11,236 source rows, 7,198 opaque blocked families, 13,733 normalized input/output hashes, and all 23 provisional decisions. Because semantic-family clearance was not proven for any provisional row, all 23 are replaced. The authoring workflow now holds 1,867 fresh primary assignments plus 23 activated same-cell reserves: 1,890 active assignments in 126 balanced 15-case packets, with 1,913 total custody records. Its canonical metadata-only receipt is `d0867b581d73e4f7b5717a0c78ac42a2b4043b0328a4f1d957048ce55878979f`. No benchmark prose or candidate output exists yet.
+
+The old 5,656-row English replay source has also been screened without publishing private text. Exact overlap and duplicate-family controls left 4,051 candidate-only rows. A local four-axis embedding screen compared every candidate with all 2,790 historical Type B rows and produced a metadata-only manual-review queue. The queue is authenticated and review-cleared, but every row still requires semantic-family, meaning-safety, and native-editorial approval. Zero replay rows are training-eligible and export remains prohibited.
 
 ## Adapter fallback: feasible, but not needed yet
 
@@ -104,10 +128,11 @@ One selected adapter loaded offline and added about 79 MiB idle memory with sub-
 
 ## Work still in flight
 
-1. Seal the Type B blocked-family registry, scenario/authorship schema, leakage receipts, and private freeze pipeline; then author and independently review the 1,890 fresh assignments without exposing candidate output.
-2. Build the materially larger balanced English/German/French/Spanish/Russian training mixture with native review and train the Gemma 4 E4B primary plus Qwen3.5-4B reserve on AlienSV.
-3. Compare those candidates on development panels. Stop each exact recipe after one smoke and one full benchmark if it does not improve without meaningful regressions.
-4. Run the leakage-clean Type B V2 gate only once on a locked finalist, then validate any survivor through the exact shipped Mac path.
+1. Supply a real private native author/reviewer roster. The reviewed launch gate can start 1,600 native-original D1 rows, 320 per language, while keeping at least 50% human-native authorship and a separate human-native reviewer for every row. The remaining 400 shared-concept rows require the sealed private concept registry.
+2. Author and independently review the 1,890 Type B assignments, then complete the D1, development, and frozen native-review gates without exposing candidate output.
+3. Train the Gemma 4 E4B primary only after the data is approved. Resolve the 248-target Qwen3.5 compatibility blocker before spending another Qwen reserve run on AlienSV.
+4. Compare candidates on development panels. Stop each exact recipe after one smoke and one full benchmark if it does not improve without meaningful regressions.
+5. Run the leakage-clean Type B V2 gate only once on a locked finalist, then validate any survivor through the exact shipped Mac path.
 
 ## Decisions that are not yet justified
 

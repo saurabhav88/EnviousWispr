@@ -1732,3 +1732,33 @@ Because the authenticated builder hash changed, a deterministic confirmation pub
 The confirming review found one remaining evidence-durability defect: the later validator reopened the current contract and tools before consulting the receipt's producing commit, so a future control-file update could make valid old evidence unverifiable. The validator now opens and validates the contract and all three tool bindings from `execution_git_head`, while reopening the current private sources, inventory, and model against those historical bindings. A real later-commit regression changes both live builder and contract and proves that the old trusted bundle still authenticates. This validator-only repair does not change or republish the v2 queue or receipt.
 
 Every one of the 4,051 rows remains queued for manual semantic-family, meaning-safety, and native-editorial review; zero rows are training-eligible and training export remains prohibited. This screen covers only the exact historical Type B source. It does not claim semantic clearance against D1, development panels, future frozen benchmark families, or any source whose final registry is not yet sealed. Synthetic tests cover deterministic bytes, four-axis scoring, tamper failures, dirty Git, receipt-last cleanup, unknown fingerprints, fabricated approvals, artifact-count forgery, coherent score forgery, undeclared bundle members, historical-control validation, and generic privacy-safe CLI errors. Post-fix focused validation passed all 10 portable tests with the one explicit private gate skipped; the real-private gate passed separately; complete evaluator discovery passed 236/236 with exactly two explicit private gates skipped.
+
+### TYPE-B-006 - Authenticated 1,890-case authoring packets
+
+Timestamp: 2026-07-15 16:31 EDT
+
+Status: metadata-only authoring workflow complete; no benchmark prose or candidate output exists
+
+The source registry and all 23 provisional replacement decisions now feed a deterministic authoring workflow. It activates 1,867 fresh primary assignments plus 23 same-cell reserves, producing exactly 1,890 active assignments across 126 balanced packets of 15. The full custody ledger keeps all 1,913 primary and reserve records, including the 23 inactive provisional rows that were replaced. Each packet spans 13 or 14 behavior categories, and no packet contains more than three multi-behavior assignments.
+
+The canonical ignored authoring bundle is bound to execution commit `f2d90838cfd7c4762d93aac64cd416fd18afcf79` and receipt SHA-256 `d0867b581d73e4f7b5717a0c78ac42a2b4043b0328a4f1d957048ce55878979f`. It contains assignments and custody metadata only. It grants no eligibility and includes no authored prose, candidate output, or model score. Focused coordinator validation passed 20/20. An independent review found and fixed packet-balancing bias before integration.
+
+### D1-NATIVE-001 - Real native-author/reviewer launch gate
+
+Timestamp: 2026-07-15 16:31 EDT
+
+Status: launch controls complete; zero assignments published because no real private roster exists
+
+The D1 launch tool can assign 1,600 native-original rows, 320 per priority language, once a real private roster with opaque identity and consent references is supplied. It keeps at least half of each language's rows human-native-authored and requires a separate human-native reviewer for every row. Duplicate human identities, fake or PII-shaped references, self-review, roster drift, and post-validation source mutation fail closed. The final merge and training validators consume the same launch binding, so a later author or reviewer substitution cannot bypass the gate.
+
+The remaining 400 shared-concept rows are not launchable until their sealed private concept registry exists. No identities, assignments, prose, approvals, or model output were published. Focused validation passed 30/30; complete isolated evaluator validation passed 298 tests with one expected private-data skip; independent review found no actionable defect.
+
+### QWEN3-LANGUAGE-001 - Comparable-evidence audit rejects a false ranking
+
+Timestamp: 2026-07-15 16:31 EDT
+
+Status: audit complete; no valid five-language ranking and no release claim
+
+The audit separates evidence by prompt, runtime, task, judge, and exposure instead of pooling incompatible scores. The only shared current-EG-1 diagnostic slice has eight cases per language: German polish 8/8, French 6/8, and Spanish 2/8, with wide Wilson intervals. Untouched Qwen3 varies sharply between the legacy and newer review paths on the same language families: German strict 0/8 versus 6/8, French 3/8 versus 6/8, and Spanish 1/8 versus 3/8. Russian changes from 3/16 to 7/16 under different prompts. English old Type B is excluded because 1,868/1,890 rows have conservative normalized-seeded family exposure, and English list mechanics remain a separate task-specific lane.
+
+The newer bakeoff aggregate is now preserved as an immutable tracked receipt that records its producing commit, Git blob, full-log hash, and section hash, so later additions to this living log cannot silently change the evidence. The audit recomputes retained case-level mechanics and confidence intervals but does not invent missing per-case semantic judgments. Focused validation passed 10/10; the related suite passed 76/76; the real private audit, exact coordinator replay, and depth-one shallow-clone replay all passed. Decision: the first valid language ranking must use the common, balanced, family-disjoint, native-reviewed five-language benchmark.
