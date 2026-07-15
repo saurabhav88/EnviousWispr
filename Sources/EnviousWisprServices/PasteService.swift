@@ -430,13 +430,30 @@ public enum PasteService {
     return cmdChar.lowercased() == "v" && modifiers == 0
   }
 
+  /// Outcome of walking an app's menu bar for the ⌘V-shortcut Paste item.
+  /// Distinguishes "read fine, no matching item" from "couldn't read the menu
+  /// bar at all" — collapsing both into one `nil` hid a real AX failure behind
+  /// the same telemetry label as a genuine no-target refusal (#1435).
+  public enum MenuItemProbeResult {
+    case found(AXUIElement)
+    case confirmedAbsent
+    case unreadable
+  }
+
+  /// Outcome of reading an AX menu item's enabled state.
+  public enum MenuItemEnabledResult {
+    case enabled
+    case disabled
+    case unreadable
+  }
+
   /// Walk the app's menu bar to find the Edit > Paste item, identified by its
-  /// ⌘V shortcut rather than its (localized) title. Returns the menu-item
-  /// element or nil. Bounded traversal depth (menu bar → top menus → items).
-  /// Live-only (like `captureFocusedElement` / `forceActivateApp`); the pure
-  /// matching logic is covered by `isPasteShortcut` unit tests.
+  /// ⌘V shortcut rather than its (localized) title. Bounded traversal depth
+  /// (menu bar → top menus → items). Live-only (like `captureFocusedElement` /
+  /// `forceActivateApp`); the pure matching logic is covered by
+  /// `isPasteShortcut` unit tests.
   @MainActor
-  public static func findPasteMenuItem(pid: pid_t) -> AXUIElement? {
+  public static func findPasteMenuItem(pid: pid_t) -> MenuItemProbeResult {
     let app = AXUIElementCreateApplication(pid)
     // Cap AX round-trips so a misbehaving app can't hang the paste path.
     AXUIElementSetAttributeValue(app, "AXTimeout" as CFString, Float(1.0) as CFTypeRef)
@@ -444,55 +461,88 @@ public enum PasteService {
     guard
       AXUIElementCopyAttributeValue(app, kAXMenuBarAttribute as CFString, &menuBarRef) == .success,
       let menuBar = menuBarRef
-    else { return nil }
-    let menuBarElement = menuBar as! AXUIElement
-    return firstPasteItem(in: menuBarElement, depth: 0)
+    else { return .unreadable }
+    return firstPasteItem(in: menuBar as! AXUIElement, depth: 0)
   }
 
   /// Depth-bounded search for the first ⌘V menu item under `element`.
+  /// Propagates `.unreadable` from any AX read that fails for a reason OTHER
+  /// than "this attribute genuinely doesn't apply here"
+  /// (`.attributeUnsupported`/`.noValue`, the normal shape for a leaf item
+  /// with no children or no shortcut) — a deeper traversal failure is the same
+  /// bug this type exists to fix, one level down (#1435 grounded review r1).
   @MainActor
-  private static func firstPasteItem(in element: AXUIElement, depth: Int) -> AXUIElement? {
+  private static func firstPasteItem(in element: AXUIElement, depth: Int) -> MenuItemProbeResult {
     // menu bar(0) → menu-bar-item(1) → menu(2) → menu-item(3); allow a little
     // slack for apps that nest an extra group, but stay bounded.
-    guard depth <= 4 else { return nil }
-    var childrenRef: CFTypeRef?
-    guard
-      AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
-        == .success,
-      let children = childrenRef as? [AXUIElement]
-    else { return nil }
+    guard depth <= 4 else { return .confirmedAbsent }
 
+    var childrenRef: CFTypeRef?
+    let childrenRead = AXUIElementCopyAttributeValue(
+      element, kAXChildrenAttribute as CFString, &childrenRef)
+    if childrenRead == .attributeUnsupported || childrenRead == .noValue {
+      // At depth 0, `element` IS the menu bar itself -- a working app's menu
+      // bar always exposes its top-level menus, so a read failure here means
+      // we couldn't traverse it at all, not that we confirmed no target
+      // (cloud Codex review, PR #1559). Deeper levels stay .confirmedAbsent:
+      // a terminal menu item genuinely having no submenu is the normal case.
+      return depth == 0 ? .unreadable : .confirmedAbsent
+    }
+    guard childrenRead == .success, let children = childrenRef as? [AXUIElement] else {
+      return .unreadable
+    }
+
+    var encounteredUnreadableBranch = false
     for child in children {
       var cmdCharRef: CFTypeRef?
-      let hasShortcut =
-        AXUIElementCopyAttributeValue(child, "AXMenuItemCmdChar" as CFString, &cmdCharRef)
-        == .success
-      if hasShortcut {
-        var modRef: CFTypeRef?
-        _ = AXUIElementCopyAttributeValue(child, "AXMenuItemCmdModifiers" as CFString, &modRef)
-        let modifiers = (modRef as? Int) ?? -1
-        if isPasteShortcut(cmdChar: cmdCharRef as? String, modifiers: modifiers) {
-          return child
+      let commandRead = AXUIElementCopyAttributeValue(
+        child, "AXMenuItemCmdChar" as CFString, &cmdCharRef)
+      switch commandRead {
+      case .success:
+        guard let command = cmdCharRef as? String else {
+          encounteredUnreadableBranch = true
+          break
         }
+        if command.lowercased() == "v" {
+          var modifiersRef: CFTypeRef?
+          let modifiersRead = AXUIElementCopyAttributeValue(
+            child, "AXMenuItemCmdModifiers" as CFString, &modifiersRef)
+          guard modifiersRead == .success, let modifiers = modifiersRef as? Int else {
+            encounteredUnreadableBranch = true
+            break
+          }
+          if isPasteShortcut(cmdChar: command, modifiers: modifiers) {
+            return .found(child)
+          }
+        }
+      case .attributeUnsupported, .noValue:
+        break
+      default:
+        encounteredUnreadableBranch = true
       }
-      if let found = firstPasteItem(in: child, depth: depth + 1) {
-        return found
+
+      switch firstPasteItem(in: child, depth: depth + 1) {
+      case .found(let item): return .found(item)
+      case .confirmedAbsent: break
+      case .unreadable: encounteredUnreadableBranch = true
       }
     }
-    return nil
+    return encounteredUnreadableBranch ? .unreadable : .confirmedAbsent
   }
 
   /// Whether an AX menu item is currently enabled. Apps disable Edit > Paste
   /// when there is no paste target focused or the clipboard is empty — this is
   /// the Scenario-A-vs-B discriminator, so it MUST be read AFTER our text is on
-  /// the clipboard. Fails closed (returns false) on any AX error.
+  /// the clipboard. Distinguishes a genuinely-disabled item from an AX read
+  /// that failed or returned a non-Bool value (#1435).
   @MainActor
-  public static func isMenuItemEnabled(_ item: AXUIElement) -> Bool {
+  public static func isMenuItemEnabled(_ item: AXUIElement) -> MenuItemEnabledResult {
     var ref: CFTypeRef?
     guard
-      AXUIElementCopyAttributeValue(item, kAXEnabledAttribute as CFString, &ref) == .success
-    else { return false }
-    return (ref as? Bool) ?? false
+      AXUIElementCopyAttributeValue(item, kAXEnabledAttribute as CFString, &ref) == .success,
+      let enabled = ref as? Bool
+    else { return .unreadable }
+    return enabled ? .enabled : .disabled
   }
 
   /// Trigger a menu item's default action (AXPress) — equivalent to the user
