@@ -422,6 +422,148 @@ def persist_qwen35_adapter_receipt_before_validation(
     write_json(manifest_path, manifest)
 
 
+def observed_global_step(trainer: Any) -> int | None:
+    raw_step = getattr(getattr(trainer, "state", None), "global_step", None)
+    try:
+        return int(raw_step) if raw_step is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def persist_training_failure(
+    *,
+    manifest_path: Path,
+    manifest: dict[str, Any],
+    trainer: Any,
+    status: str,
+    phase: str,
+    error: BaseException,
+) -> None:
+    step = observed_global_step(trainer)
+    error_message = str(error)
+    manifest["status"] = status
+    manifest["observed_global_step"] = step
+    manifest["failure_receipt"] = {
+        "phase": phase,
+        "error_type": type(error).__name__,
+        "error_message_sha256": hashlib.sha256(error_message.encode("utf-8")).hexdigest(),
+        "observed_global_step": step,
+        "failed_at_epoch": time.time(),
+    }
+    write_json(manifest_path, manifest)
+
+
+def run_training_and_save_with_receipts(
+    *,
+    trainer: Any,
+    model: Any,
+    tokenizer: Any,
+    torch: Any,
+    manifest_path: Path,
+    manifest: dict[str, Any],
+    output_dir: Path,
+    preflight_only: bool,
+    skip_merge: bool,
+) -> None:
+    torch.cuda.reset_peak_memory_stats()
+    manifest["status"] = "training_in_progress_not_complete"
+    manifest["training_started_at_epoch"] = time.time()
+    manifest["observed_global_step"] = observed_global_step(trainer)
+    write_json(manifest_path, manifest)
+
+    training_started = time.perf_counter()
+    try:
+        statistics = trainer.train()
+    except BaseException as error:
+        manifest["training_elapsed_seconds"] = round(
+            time.perf_counter() - training_started, 3
+        )
+        persist_training_failure(
+            manifest_path=manifest_path,
+            manifest=manifest,
+            trainer=trainer,
+            status="training_failed_not_complete",
+            phase="trainer.train",
+            error=error,
+        )
+        raise
+
+    completed_steps = observed_global_step(trainer)
+    manifest["training_elapsed_seconds"] = round(time.perf_counter() - training_started, 3)
+    manifest["training_metrics"] = statistics.metrics
+    manifest["completed_steps"] = completed_steps
+    manifest["observed_global_step"] = completed_steps
+    manifest["peak_cuda_memory_allocated_bytes"] = torch.cuda.max_memory_allocated()
+    manifest["peak_cuda_memory_reserved_bytes"] = torch.cuda.max_memory_reserved()
+    required_steps = int(QWEN35_PREFLIGHT_CONTRACT["max_steps"])
+    if preflight_only and completed_steps != required_steps:
+        error = RuntimeError(
+            f"Preflight must complete exactly {required_steps} step, got {completed_steps}"
+        )
+        persist_training_failure(
+            manifest_path=manifest_path,
+            manifest=manifest,
+            trainer=trainer,
+            status="blocked_completed_step_mismatch",
+            phase="completed_step_validation",
+            error=error,
+        )
+        raise error
+
+    adapter_dir = output_dir / "adapter"
+    manifest["status"] = "training_complete_save_pending_not_complete"
+    manifest["training_completed_at_epoch"] = time.time()
+    manifest["adapter_save_receipt"] = {
+        "status": "pending",
+        "adapter_path": str(adapter_dir),
+    }
+    write_json(manifest_path, manifest)
+
+    try:
+        model.save_pretrained(adapter_dir)
+        tokenizer.save_pretrained(adapter_dir)
+    except BaseException as error:
+        persist_training_failure(
+            manifest_path=manifest_path,
+            manifest=manifest,
+            trainer=trainer,
+            status="adapter_save_failed_not_complete",
+            phase="adapter_save",
+            error=error,
+        )
+        raise
+
+    manifest["adapter_path"] = str(adapter_dir)
+    manifest["adapter_save_receipt"] = {
+        "status": "complete",
+        "adapter_path": str(adapter_dir),
+        "model_saved": True,
+        "tokenizer_saved": True,
+    }
+
+    if not skip_merge:
+        merged_dir = output_dir / "merged16"
+        try:
+            model.save_pretrained_merged(
+                str(merged_dir), tokenizer, save_method="merged_16bit"
+            )
+        except BaseException as error:
+            persist_training_failure(
+                manifest_path=manifest_path,
+                manifest=manifest,
+                trainer=trainer,
+                status="merge_failed_not_complete",
+                phase="model_merge",
+                error=error,
+            )
+            raise
+        manifest["merged_path"] = str(merged_dir)
+
+    manifest["status"] = "complete"
+    manifest["completed_at_epoch"] = time.time()
+    write_json(manifest_path, manifest)
+
+
 def sft_config(SFTConfig: Any, **kwargs: Any) -> Any:
     parameters = set(inspect.signature(SFTConfig.__init__).parameters)
     if "max_seq_length" in kwargs and "max_seq_length" not in parameters:
@@ -756,32 +898,17 @@ def main() -> None:
             manifest["sample_0_labeled_tokens"] = labeled_tokens
     write_json(output_dir / "training-manifest.json", manifest)
 
-    torch.cuda.reset_peak_memory_stats()
-    training_started = time.perf_counter()
-    statistics = trainer.train()
-    manifest["training_elapsed_seconds"] = round(time.perf_counter() - training_started, 3)
-    manifest["training_metrics"] = statistics.metrics
-    manifest["completed_steps"] = int(trainer.state.global_step)
-    manifest["peak_cuda_memory_allocated_bytes"] = torch.cuda.max_memory_allocated()
-    manifest["peak_cuda_memory_reserved_bytes"] = torch.cuda.max_memory_reserved()
-    if args.preflight_only and manifest["completed_steps"] != 1:
-        raise RuntimeError(
-            f"Preflight must complete exactly one step, got {manifest['completed_steps']}"
-        )
-
-    adapter_dir = output_dir / "adapter"
-    model.save_pretrained(adapter_dir)
-    tokenizer.save_pretrained(adapter_dir)
-    manifest["adapter_path"] = str(adapter_dir)
-
-    if not args.skip_merge:
-        merged_dir = output_dir / "merged16"
-        model.save_pretrained_merged(str(merged_dir), tokenizer, save_method="merged_16bit")
-        manifest["merged_path"] = str(merged_dir)
-
-    manifest["status"] = "complete"
-    manifest["completed_at_epoch"] = time.time()
-    write_json(output_dir / "training-manifest.json", manifest)
+    run_training_and_save_with_receipts(
+        trainer=trainer,
+        model=model,
+        tokenizer=tokenizer,
+        torch=torch,
+        manifest_path=output_dir / "training-manifest.json",
+        manifest=manifest,
+        output_dir=output_dir,
+        preflight_only=args.preflight_only,
+        skip_merge=args.skip_merge,
+    )
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
 
 

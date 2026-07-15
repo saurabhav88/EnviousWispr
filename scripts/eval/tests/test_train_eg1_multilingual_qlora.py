@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import tempfile
@@ -345,6 +346,228 @@ class Qwen35AdapterEvidenceTests(unittest.TestCase):
 
             self.assertEqual(path.read_text(encoding="utf-8"), '{"status":"previous"}\n')
             self.assertEqual(list(root.glob(f".{path.name}.*")), [])
+
+
+class Qwen35TrainingLifecycleTests(unittest.TestCase):
+    def components(self) -> tuple[SimpleNamespace, SimpleNamespace, SimpleNamespace, ModuleType]:
+        training = SimpleNamespace(
+            state=SimpleNamespace(global_step=0),
+            train=mock.Mock(name="train"),
+        )
+        model = SimpleNamespace(
+            save_pretrained=mock.Mock(name="save_pretrained"),
+            save_pretrained_merged=mock.Mock(name="save_pretrained_merged"),
+        )
+        tokenizer = SimpleNamespace(save_pretrained=mock.Mock(name="tokenizer_save"))
+        torch = ModuleType("torch")
+        torch.cuda = SimpleNamespace(
+            reset_peak_memory_stats=mock.Mock(),
+            max_memory_allocated=lambda: 111,
+            max_memory_reserved=lambda: 222,
+        )
+        return training, model, tokenizer, torch
+
+    def run_lifecycle(
+        self,
+        root: Path,
+        training: SimpleNamespace,
+        model: SimpleNamespace,
+        tokenizer: SimpleNamespace,
+        torch: ModuleType,
+        *,
+        skip_merge: bool = False,
+    ) -> Path:
+        output_dir = root / "out"
+        manifest_path = output_dir / "training-manifest.json"
+        trainer.run_training_and_save_with_receipts(
+            trainer=training,
+            model=model,
+            tokenizer=tokenizer,
+            torch=torch,
+            manifest_path=manifest_path,
+            manifest={"status": "adapter_validation_passed_not_trained"},
+            output_dir=output_dir,
+            preflight_only=True,
+            skip_merge=skip_merge,
+        )
+        return manifest_path
+
+    def assert_no_save_or_merge(
+        self, model: SimpleNamespace, tokenizer: SimpleNamespace
+    ) -> None:
+        model.save_pretrained.assert_not_called()
+        model.save_pretrained_merged.assert_not_called()
+        tokenizer.save_pretrained.assert_not_called()
+
+    def test_train_exception_after_step_persists_failure_and_blocks_save_merge(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            training, model, tokenizer, torch = self.components()
+
+            def fail_after_step() -> None:
+                training.state.global_step = 1
+                raise RuntimeError("synthetic optimizer failure")
+
+            training.train.side_effect = fail_after_step
+            with self.assertRaisesRegex(RuntimeError, "synthetic optimizer failure"):
+                self.run_lifecycle(root, training, model, tokenizer, torch)
+
+            on_disk = json.loads(
+                (root / "out" / "training-manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(on_disk["status"], "training_failed_not_complete")
+            self.assertEqual(on_disk["observed_global_step"], 1)
+            self.assertEqual(on_disk["failure_receipt"]["phase"], "trainer.train")
+            self.assertNotEqual(on_disk["status"], "complete")
+            self.assert_no_save_or_merge(model, tokenizer)
+
+    def test_failure_receipt_hashes_private_error_without_persisting_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            training, model, tokenizer, torch = self.components()
+            private_error = "PRIVATE_ROW_SENTINEL user@example.test /private/dataset.jsonl"
+
+            def fail_with_private_text() -> None:
+                training.state.global_step = 1
+                raise RuntimeError(private_error)
+
+            training.train.side_effect = fail_with_private_text
+            with self.assertRaisesRegex(RuntimeError, "PRIVATE_ROW_SENTINEL"):
+                self.run_lifecycle(root, training, model, tokenizer, torch)
+
+            manifest_text = (root / "out" / "training-manifest.json").read_text(
+                encoding="utf-8"
+            )
+            on_disk = json.loads(manifest_text)
+            self.assertNotIn(private_error, manifest_text)
+            self.assertNotIn("PRIVATE_ROW_SENTINEL", manifest_text)
+            self.assertEqual(on_disk["failure_receipt"]["error_type"], "RuntimeError")
+            self.assertEqual(
+                on_disk["failure_receipt"]["error_message_sha256"],
+                hashlib.sha256(private_error.encode("utf-8")).hexdigest(),
+            )
+            self.assert_no_save_or_merge(model, tokenizer)
+
+    def test_wrong_completed_step_persists_blocked_status_and_blocks_save_merge(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            training, model, tokenizer, torch = self.components()
+
+            def complete_two_steps() -> SimpleNamespace:
+                training.state.global_step = 2
+                return SimpleNamespace(metrics={"loss": 0.5})
+
+            training.train.side_effect = complete_two_steps
+            with self.assertRaisesRegex(RuntimeError, "exactly 1 step, got 2"):
+                self.run_lifecycle(root, training, model, tokenizer, torch)
+
+            on_disk = json.loads(
+                (root / "out" / "training-manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(on_disk["status"], "blocked_completed_step_mismatch")
+            self.assertEqual(on_disk["completed_steps"], 2)
+            self.assertEqual(on_disk["observed_global_step"], 2)
+            self.assertEqual(
+                on_disk["failure_receipt"]["phase"], "completed_step_validation"
+            )
+            self.assertNotEqual(on_disk["status"], "complete")
+            self.assert_no_save_or_merge(model, tokenizer)
+
+    def test_save_failure_after_one_step_persists_failure_and_blocks_merge(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            training, model, tokenizer, torch = self.components()
+
+            def complete_one_step() -> SimpleNamespace:
+                training.state.global_step = 1
+                return SimpleNamespace(metrics={"loss": 0.25})
+
+            training.train.side_effect = complete_one_step
+            model.save_pretrained.side_effect = OSError("synthetic adapter save failure")
+            with self.assertRaisesRegex(OSError, "synthetic adapter save failure"):
+                self.run_lifecycle(root, training, model, tokenizer, torch)
+
+            on_disk = json.loads(
+                (root / "out" / "training-manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(on_disk["status"], "adapter_save_failed_not_complete")
+            self.assertEqual(on_disk["completed_steps"], 1)
+            self.assertEqual(on_disk["observed_global_step"], 1)
+            self.assertEqual(on_disk["adapter_save_receipt"]["status"], "pending")
+            self.assertEqual(on_disk["failure_receipt"]["phase"], "adapter_save")
+            self.assertNotEqual(on_disk["status"], "complete")
+            model.save_pretrained.assert_called_once()
+            tokenizer.save_pretrained.assert_not_called()
+            model.save_pretrained_merged.assert_not_called()
+
+    def test_training_state_write_failure_stops_before_train_or_save(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            training, model, tokenizer, torch = self.components()
+            with (
+                mock.patch.object(
+                    trainer, "write_json", side_effect=OSError("synthetic state write failure")
+                ),
+                self.assertRaisesRegex(OSError, "synthetic state write failure"),
+            ):
+                self.run_lifecycle(root, training, model, tokenizer, torch)
+
+            training.train.assert_not_called()
+            self.assert_no_save_or_merge(model, tokenizer)
+
+    def test_failure_receipt_write_failure_remains_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            training, model, tokenizer, torch = self.components()
+            real_write_json = trainer.write_json
+            write_count = 0
+
+            def fail_terminal_receipt(path: Path, payload: dict[str, object]) -> None:
+                nonlocal write_count
+                write_count += 1
+                if write_count == 2:
+                    raise OSError("synthetic terminal receipt write failure")
+                real_write_json(path, payload)
+
+            def fail_after_step() -> None:
+                training.state.global_step = 1
+                raise RuntimeError("synthetic optimizer failure")
+
+            training.train.side_effect = fail_after_step
+            with (
+                mock.patch.object(trainer, "write_json", side_effect=fail_terminal_receipt),
+                self.assertRaisesRegex(OSError, "terminal receipt write failure"),
+            ):
+                self.run_lifecycle(root, training, model, tokenizer, torch)
+
+            on_disk = json.loads(
+                (root / "out" / "training-manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(on_disk["status"], "training_in_progress_not_complete")
+            self.assertNotEqual(on_disk["status"], "complete")
+            self.assert_no_save_or_merge(model, tokenizer)
+
+    def test_exact_one_step_and_adapter_save_are_required_before_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            training, model, tokenizer, torch = self.components()
+
+            def complete_one_step() -> SimpleNamespace:
+                training.state.global_step = 1
+                return SimpleNamespace(metrics={"loss": 0.25})
+
+            training.train.side_effect = complete_one_step
+            manifest_path = self.run_lifecycle(
+                root, training, model, tokenizer, torch, skip_merge=True
+            )
+
+            on_disk = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(on_disk["status"], "complete")
+            self.assertEqual(on_disk["completed_steps"], 1)
+            self.assertEqual(on_disk["adapter_save_receipt"]["status"], "complete")
+            model.save_pretrained.assert_called_once()
+            tokenizer.save_pretrained.assert_called_once()
+            model.save_pretrained_merged.assert_not_called()
 
 
 class Qwen35ArtifactContractTests(unittest.TestCase):
