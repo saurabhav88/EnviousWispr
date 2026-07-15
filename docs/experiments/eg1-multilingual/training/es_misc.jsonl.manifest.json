@@ -1,0 +1,15 @@
+{
+  "batch_id": "smoke-v1-d",
+  "language": "es",
+  "model": "claude-sonnet-4-6",
+  "generated_at_epoch": 1784093093.4145012,
+  "row_count": 12,
+  "quotas": {
+    "correction_filler": 5,
+    "punctuation": 3,
+    "preservation": 4
+  },
+  "prompt_sha256": "8239c01cd7b8a559d0e1a4c6a4ba47024aaba6f4ee5a120336628b7147d9f308",
+  "audit_corpora": [],
+  "warning": "Experimental teacher data; not native-reviewed and not release gold."
+}

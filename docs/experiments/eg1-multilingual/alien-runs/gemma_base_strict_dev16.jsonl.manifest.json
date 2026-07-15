@@ -1,0 +1,26 @@
+{
+  "run_id": "RU-GEMMA4-BASE-STRICT-DEV16",
+  "started_at_epoch": 1784092028.8907719,
+  "host": "AlienSV",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "git_head": null,
+  "model_id": "gemma4-e4b-base",
+  "model_path": "/home/saura/tuning/models/gemma-4-E4B-it",
+  "corpus_path": "/mnt/c/Users/saura/eg1-overnight/eg1_multilingual_ru_v1.jsonl",
+  "corpus_sha256": "2f066967758f2e332fafe14f1182a64ba7e567ae07b71d343bdc70775dc3512c",
+  "prompt_path": "/mnt/c/Users/saura/eg1-overnight/eg1-multilingual-strict-v1.txt",
+  "prompt_sha256": "326c951b2ba6b245f9e59215a3ccbe101715fc4fdd411cfbf9f35838910aa894",
+  "split": "dev",
+  "languages": [
+    "ru"
+  ],
+  "case_count": 16,
+  "batch_size": 4,
+  "max_new_tokens": 256,
+  "seed": 1265,
+  "include_language_label": false,
+  "torch_version": "2.10.0+cu128",
+  "cuda_device": "NVIDIA GeForce RTX 4090",
+  "elapsed_seconds": 7.606,
+  "completed_at_epoch": 1784092036.528228
+}

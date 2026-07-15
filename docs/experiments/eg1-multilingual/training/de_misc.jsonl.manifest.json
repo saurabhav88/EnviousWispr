@@ -1,0 +1,17 @@
+{
+  "batch_id": "smoke-v1-d",
+  "language": "de",
+  "model": "claude-sonnet-4-6",
+  "generated_at_epoch": 1784092459.384894,
+  "row_count": 12,
+  "quotas": {
+    "correction_filler": 4,
+    "explicit_list": 1,
+    "punctuation": 3,
+    "preservation": 4
+  },
+  "prompt_sha256": "22bfdea318a1b1782ca47591b0af7d2b29eec1d5da55ba5e0b0cd758f10e22d9",
+  "audit_corpora": [],
+  "warning": "Experimental teacher data; not native-reviewed and not release gold.",
+  "post_generation_edit": "Row d-001 was relabeled from correction_filler to explicit_list after model-assisted audit."
+}

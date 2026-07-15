@@ -1,0 +1,174 @@
+{
+  "status": "pass",
+  "baseline": {
+    "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/runs/bakeoff-1265/train_sft_v2.jsonl",
+    "sha256": "5afc6b9435c7bef08df17ba3c4edcb889b8329cd7c1520c49d681999a666f568",
+    "row_count": 5656
+  },
+  "prompt": {
+    "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/prompts/eg1-polish-prompt-v1.txt",
+    "sha256": "7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62"
+  },
+  "generated_row_count": 180,
+  "combined_row_count": 5836,
+  "expected_language_counts": {
+    "en": 20,
+    "de": 40,
+    "fr": 40,
+    "ru": 40,
+    "es": 40
+  },
+  "actual_language_counts": {
+    "de": 40,
+    "en": 20,
+    "es": 40,
+    "fr": 40,
+    "ru": 40
+  },
+  "category_counts": {
+    "de:correction_filler": 4,
+    "de:explicit_list": 6,
+    "de:implicit_list": 5,
+    "de:list_trap": 5,
+    "de:morphology_preserve": 4,
+    "de:morphology_repair": 4,
+    "de:ordinal_list": 5,
+    "de:preservation": 4,
+    "de:punctuation": 3,
+    "en:explicit_list": 10,
+    "en:ordinal_list": 10,
+    "es:correction_filler": 5,
+    "es:explicit_list": 5,
+    "es:implicit_list": 5,
+    "es:list_trap": 5,
+    "es:morphology_preserve": 4,
+    "es:morphology_repair": 4,
+    "es:ordinal_list": 5,
+    "es:preservation": 4,
+    "es:punctuation": 3,
+    "fr:correction_filler": 5,
+    "fr:explicit_list": 5,
+    "fr:implicit_list": 5,
+    "fr:list_trap": 5,
+    "fr:morphology_preserve": 4,
+    "fr:morphology_repair": 4,
+    "fr:ordinal_list": 5,
+    "fr:preservation": 4,
+    "fr:punctuation": 3,
+    "ru:correction_filler": 5,
+    "ru:explicit_list": 5,
+    "ru:implicit_list": 5,
+    "ru:list_trap": 5,
+    "ru:morphology_preserve": 4,
+    "ru:morphology_repair": 4,
+    "ru:ordinal_list": 5,
+    "ru:preservation": 4,
+    "ru:punctuation": 3
+  },
+  "source_files": [
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/de_lists_a.jsonl",
+      "sha256": "fe3bf0279bb94915f411ccdb85d8ffe2939bbff4086730da21ca3750493da6fb",
+      "row_count": 10
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/de_lists_b.jsonl",
+      "sha256": "adc97ac76fdb58b44d3b8b11a44af988bf69a6ad91c534aebaca3b1ef61ffafb",
+      "row_count": 10
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/de_misc.jsonl",
+      "sha256": "96f0bde7c1e1fe903ef7f3a21a7aa6c42850ed68051dfb1910ee70b7faa8e54f",
+      "row_count": 12
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/de_morph.jsonl",
+      "sha256": "b067c69094e95c14c577715116a6ff291bd390e6ebda1c73c409328afe462f24",
+      "row_count": 8
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/en_lists_a.jsonl",
+      "sha256": "9155c4464bfe4eb94f7406418bbf69d57e4c8fb62dfa53313ffe1d04f113d8b1",
+      "row_count": 10
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/en_lists_b.jsonl",
+      "sha256": "5ac346aef411fd97a656bc580527baa1b34825d0630e4f1dabb2c321f335b336",
+      "row_count": 10
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/es_lists_a.jsonl",
+      "sha256": "f401dec1989287b29e12b5678beec91f81731ab8d13fc81fa062989bfba2d51c",
+      "row_count": 10
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/es_lists_b.jsonl",
+      "sha256": "1d8c690f972a385b2f16a63beb64ddbae9e2451f0c270b4c78a709060112cebd",
+      "row_count": 10
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/es_misc.jsonl",
+      "sha256": "3e721813e3ce8d25297875a0a086e5822b38a25e9df851121f8a300facd1963c",
+      "row_count": 12
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/es_morph.jsonl",
+      "sha256": "c50b971f0914b0f266ee4a89735e703852872994128a2db9694ae87389c76af6",
+      "row_count": 8
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/fr_lists_a.jsonl",
+      "sha256": "7930715ab59769cd2d762b644a87de08144d7e8081f5904e6ea273e7b643952f",
+      "row_count": 10
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/fr_lists_b.jsonl",
+      "sha256": "e1bc7bf8f097d31f9e6de8c903c35d75d662b4d4959c9f09b467e28acd5733db",
+      "row_count": 10
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/fr_misc.jsonl",
+      "sha256": "b9d0cd3a2837eeccf2ab32f46bd87dd30105b8a05e952afe9f659797103129b5",
+      "row_count": 12
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/fr_morph.jsonl",
+      "sha256": "1339ddddb665ee8a0e9d3e78703ecc18b3cb41fce8ee865d26689e15439cd4f1",
+      "row_count": 8
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/ru_lists_a.jsonl",
+      "sha256": "dd99caf12d8d59f60b7b0f078f1da72050b2112b95ac1f37986d02dd73616bc4",
+      "row_count": 10
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/ru_lists_b.jsonl",
+      "sha256": "2b1c3b022192994836dff50596ed827d48de96d0b7d40a0305bc9fdf051f6a74",
+      "row_count": 10
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/ru_misc.jsonl",
+      "sha256": "e5362440e2b91e990baac2e96582260cb0c82332f2c7339e330cffe221ee0c50",
+      "row_count": 12
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/training/ru_morph.jsonl",
+      "sha256": "a94fe50e0aa32775ff3db06bb8193aa6c7d765c5ba471cd601ff15d5a8ae2209",
+      "row_count": 8
+    }
+  ],
+  "audit_corpora": [
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/corpus/eg1_multilingual_ru_v1.jsonl",
+      "sha256": "2f066967758f2e332fafe14f1182a64ba7e567ae07b71d343bdc70775dc3512c",
+      "row_count": 24
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/runs/bakeoff-1265/probes/multilingual_cases.jsonl",
+      "sha256": "6e4a85ce7955a184cb15bdda78c3542107403e02b0136ad52d569379941a65e3",
+      "row_count": 56
+    }
+  ],
+  "errors": [],
+  "combined_sha256": "31a610847b412868580fc95b1fdb5b4b50900bfc61e07a94e2009ebcccd0a0d2"
+}
