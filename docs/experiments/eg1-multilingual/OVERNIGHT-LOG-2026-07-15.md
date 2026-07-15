@@ -1388,3 +1388,16 @@ All artifacts are LF-normalized. SHA-256 receipts:
 - official snapshot manifest: `dde616e0bf218d5ec2b57808748527446283d7c208b5bf2b2912043ca38241de`
 - raw smoke outputs: `04ba18bb0aa00ecb28c2de8d72b28648b31c361df0102a93d0d2efb8a9ff4dbc`
 - smoke run manifest: `1802c555586640ad1b7ced391d8f094701c924769b892ef2d0ef0264a7035a0c`
+
+### LIST-PILOT-001 - Model-blind 75+75 development pilot predeclaration
+
+Timestamp: manifest created 2026-07-15 07:19 EDT; committed before any EG-1 prompt-arm output was generated
+
+Status: immutable selection anchor; corpus generation and leakage validation still in progress
+
+The directional English list pilot is predeclared as the first 75 accepted checkpoint-order cases in each of two lanes: positive lists and matched prose restraints. Selection used no current-EG-1 or prompt-variant output. The 150 selected slots balance five real-use domains, two-to-five-item shapes, short-to-extended inputs, and compound versus non-compound cases. The remaining 25 slots per lane are reserved for the later 100+100 corpus and cannot be substituted into this pilot based on model behavior.
+
+This is development evidence only. The manifest explicitly records `frozen: false`, `native_reviewed: false`, and `training_eligible: false`. Model generation remains prohibited until both 75-case source lanes exist and a separate portable validation receipt passes exact/fuzzy family leakage checks. The sealed manifest contains Mac-absolute audit paths and must not be edited; the later receipt will add portable repo-relative bindings while preserving these exact hashes:
+
+- sealed manifest SHA-256: `7d7831eb14406f15c1e9c12cbdf98e3d198b370ee5623cfa9a565307d08dd174`
+- canonical pilot-definition SHA-256: `5a7cb24ef6fe61f7f67cee66338fc0a4adcf1da16697ff31e2c10f6faf50ca04`
