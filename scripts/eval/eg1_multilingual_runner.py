@@ -107,7 +107,10 @@ def main() -> None:
     rows: list[dict[str, Any]] = []
     with corpus_path.open(encoding="utf-8") as handle:
         for line in handle:
-            row = json.loads(line)
+            row = dict(json.loads(line))
+            row.setdefault("lang", "en")
+            if "input" not in row and isinstance(row.get("asr_input"), str):
+                row["input"] = row["asr_input"]
             if args.split != "all" and row.get("split") != args.split:
                 continue
             if selected_languages and row.get("lang") not in selected_languages:

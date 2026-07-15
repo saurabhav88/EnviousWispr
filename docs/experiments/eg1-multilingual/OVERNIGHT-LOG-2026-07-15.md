@@ -608,3 +608,156 @@ Independent model-assisted review completed after the deterministic score:
 | Strict all gates | 9/16 | 9/16 |
 
 Paired strict wins/losses/ties were 0/0/16. The candidate fixed current EG-1's case-15 corruption but introduced the case-12 numerical corruption; both retained the appointment conflict, broken five-application agreement, and PR 184 to PR 84 error. Independent conclusion matches the deterministic decision: trade, not improvement. This review is model-assisted rather than native-speaker proof.
+
+### MODEL-001 - Weighted selection matrix
+
+Timestamp: 2026-07-15 02:12 EDT
+
+Status: proposed matrix; final measurements pending
+
+The candidate matrix now uses hard architecture/safety/runtime gates followed by a 100-point weighted rank. Quality and safety control 65 points; deployment cost controls 25 points, including 8 points for exact download size; engineering and licensing control 10 points.
+
+This implements the founder decision precisely: file size matters, but a single larger universal model can win. Any design requiring multiple full-size language downloads is disqualified before scoring. Exact candidate GGUF size, Mac memory, latency, power, runtime parity, and sealed multilingual quality remain pending.
+
+Full matrix: `docs/experiments/eg1-multilingual/MODEL-SCORECARD-V1.md`.
+
+### ARCH-002 - No multiple full-model downloads
+
+Timestamp: 2026-07-15 02:36 EDT
+
+Status: hard product constraint
+
+Founder clarification: any multilingual architecture that requires one user to download multiple full-size language models is unacceptable, not merely a lower-scoring option. It is now a hard disqualifier before model ranking. The only allowed deployment shapes are:
+
+1. one universal full model that handles every supported language; or
+2. one shared full base plus small, hot-swappable language adapters if a universal tune cannot reach the quality gates.
+
+A larger single universal model is allowed. Exact download size remains an 8-point weighted factor among architectures that pass this gate. Polishing must remain fully offline after the initial model or adapter download.
+
+### TRAIN-003 - Gemma multilingual-augmented smoke candidate
+
+Timestamp: 2026-07-15 02:41 EDT
+
+Status: training complete; discovery finalist pending broader regressions
+
+Valid run: `gemma4e4b_multilingual_smoke_v1` on AlienSV RTX 4090, using the exact same 5,836-row corpus and prompt as the Qwen smoke comparison.
+
+- Clean base: Gemma 4 E4B Instruct.
+- QLoRA: rank 16, alpha 32, 36,700,160 trainable parameters, two epochs, effective batch 16, seed 1265, response-only loss.
+- Training time: 1,490.964 seconds (24.85 minutes); trainer runtime 1,524.767 seconds.
+- Final aggregate training loss: 0.0221933.
+- Adapter directory: 179,089,899 bytes (about 171 MiB including tokenizer/config files).
+- Merged FP16 directory: 16,024,814,477 bytes.
+
+Untouched Russian development evaluation used the shipped prompt, pristine Gemma tokenizer, greedy decoding, and the same 16 cases. Frozen rows were not opened.
+
+- Deterministic strict pass: 9/16 versus current EG-1 at 7/16.
+- Independent model-assisted strict pass: 14/16 versus current EG-1 at 8/16 when spoken list-command leakage counts as incomplete cleanup.
+- Paired independent strict result: 6 wins, 0 losses, 10 ties.
+- Meaning-safe: 15/16 versus 12/16; damaging cases: 1/16 versus 4/16.
+- Gemma resolved the appointment self-correction, singular-team agreement, direct-list command leakage, AV-204 formatting, 1.6-to-1.8 correction, and preserved PR 184 and A4 where current EG-1 corrupted content.
+- Remaining shared failure: both models broke “five new applications” into a malformed singular result. Gemma also retained two fillers in the hardest mixed case, so it was not strict green there.
+
+Decision: Gemma is the first discovery candidate to show a clear paired gain without an observed paired strict loss. It is not a release winner yet. The existing 56-case multilingual probe, English list activation/restraint, exact quantization size, and shipped-Mac runtime must pass before frozen evaluation.
+
+### BENCH-002 - Two-item English list development corpus
+
+Timestamp: 2026-07-15 02:41 EDT
+
+Status: candidate corpus under independent review; not frozen or release evidence
+
+The existing specialist corpus had no direct two-item positive list cases, matching the real-user weakness. A generator now creates exactly balanced development candidates across explicit/scoped prompts and work, personal, technical, medical, and legal/financial domains while screening exact duplicates against existing training and evaluation corpora.
+
+- Sonnet generations at 40, 20, and 10 rows each exceeded the 180-second bounded generation limit and produced no usable artifact.
+- Haiku produced two independent 10-row batches (`v1a` and `v1b`). Both remain `native_reviewed: false` and development-only.
+- The first independent semantic audit found nine gold-answer scope/detail losses. Those gold answers were repaired.
+- A second audit found that eight mechanical `required` arrays still checked nouns but not the task action. Those checks were repaired. Final live-tree rescan is pending.
+- `v1b` was generated successfully and is undergoing a separate independent audit before any model sees it.
+
+This is intentional benchmark hygiene: generated cases are quarantined until semantic and mechanical checks agree, and no failed candidate is allowed to become a frozen benchmark silently.
+
+### EVAL-004 - Existing 56-case multilingual development comparison
+
+Timestamp: 2026-07-15 02:53 EDT
+
+Status: complete for discovery; not native or release proof
+
+The current EG-1, Qwen multilingual smoke, and Gemma multilingual smoke candidates were run on the existing eight-cases-per-language probe for German, Spanish, French, Hindi, Japanese, Portuguese, and Chinese. All used the shipped prompt and deterministic decoding. An independent model-assisted scorer ignored the old labels and rescored every output. No frozen cases were inspected.
+
+| Model | Same language | Meaning safe | Cleanup complete | Grammar correct | Damaging | Strict |
+|---|---:|---:|---:|---:|---:|---:|
+| Current EG-1 | 56/56 | 48/56 | 35/56 | 50/56 | 8/56 | 32/56 |
+| Qwen multilingual smoke | 56/56 | 52/56 | 37/56 | 51/56 | 4/56 | 34/56 |
+| Gemma multilingual smoke | 56/56 | 54/56 | 35/56 | 52/56 | 2/56 | 34/56 |
+
+Paired strict comparison versus current was 7 wins/5 losses/44 ties for Qwen and 8 wins/6 losses/42 ties for Gemma. These are small, non-significant discovery changes, not proof of a strict-quality win. Gemma's safety result is more interesting: it reduced observed damaging cases from 8 to 2 and had only one new damaging regression, changing German `Also` to `Auch` and thereby adding “too.” Qwen introduced that same German error plus a French uncertainty-to-certainty error.
+
+Per-language strict results for current/Qwen/Gemma were German 8/7/7, Spanish 3/5/4, French 6/6/6, Hindi 2/2/3, Japanese 5/5/6, Portuguese 3/4/3, and Chinese 5/5/5, each out of eight. All three failed the same Hindi time self-correction case. Gemma's strict rate remained limited by retained fillers in Spanish, French, Portuguese, and Chinese even when meaning was safe.
+
+Decision: neither low-dose tune proves a universal-model win on this probe. Gemma remains the safer discovery finalist because it combined the strong Russian paired result with the lowest damage count here. Its next training recipe needs more cleanup examples and scorer calibration, not merely more languages.
+
+### BENCH-003 - Audited English two-item development set ready
+
+Timestamp: 2026-07-15 02:53 EDT
+
+Status: go for development experiments; not frozen or release proof
+
+Both 10-row batches completed repeated independent live-tree audits after correcting scope loss, attribution loss, weak required checks, and duplicate scenario shapes. Final result: 20/20 cases are structurally and semantically approved for development use, with five explicit and five scoped cases per batch, two cases per domain, and one deliberately short 18-word case. Both remain `native_reviewed: false`.
+
+Under the unchanged shipped prompt, preliminary deterministic structure-only scoring found exactly two appropriate bullet lines in:
+
+- current EG-1: 11/20;
+- Qwen multilingual smoke: 10/20;
+- Gemma multilingual smoke: 8/20.
+
+The stricter mechanical gate, which also requires removal of spoken formatting commands and exact audited scope/action phrases, was only 1/20, 0/20, and 0/20 respectively. This exact-phrase gate is intentionally conservative and requires independent semantic reconciliation before it is treated as the main quality number. The structure result alone confirms that short/scoped two-item list activation is not fixed by either low-dose tune.
+
+Decision: run one predeclared list-aware prompt smoke on current EG-1 and the safer Gemma candidate. Promote the prompt to the full 100-positive/100-restraint development suite only if two-item activation rises materially without meaning damage.
+
+### EVAL-005 - Shipped-prompt English positive lists and restraint
+
+Timestamp: 2026-07-15 02:59 EDT
+
+Status: independent development score complete
+
+An independent model-assisted reviewer scored all 100 existing positive-list cases. This review exposed that activation alone overstates correct list behavior because some activated outputs merge or split items incorrectly.
+
+| Model | Behavior correct | Meaning preserved | Clean | Strict green |
+|---|---:|---:|---:|---:|
+| Current EG-1 | 72/100 | 94/100 | 96/100 | 71/100 |
+| Qwen multilingual smoke | 73/100 | 94/100 | 99/100 | 72/100 |
+| Gemma multilingual smoke | 61/100 | 97/100 | 100/100 | 61/100 |
+
+Qwen versus current had 7 strict wins, 6 losses, and 87 ties; exploratory exact McNemar p=1.00. Gemma had 6 wins, 16 losses, and 78 ties. Neither low-dose tune improves positive-list behavior under the unchanged shipped prompt. Current EG-1 was especially weak in the shortest bucket: 11/25 behavior-correct, matching the earlier 44% short-list finding.
+
+The scorer also found two unsafe gold references (`LF-009` and `LF-087`) that mis-group or overwrite dictated actions. The independent score used the actual dictated input rather than rewarding those defective golds. These rows must be corrected before this corpus is sealed or used for training.
+
+On the 100 restraint traps, all three models produced zero false lists. Independent strict green was current 98/100, Qwen 97/100, Gemma 98/100. Meaning damage was limited to `LFT-046` for current and Qwen; Gemma retained the meaning but had a punctuation garden path. This establishes the key baseline tradeoff: current EG-1 is conservative enough on prose but misses many genuine lists.
+
+### PROMPT-003 - List-aware v2 smoke and full raw run
+
+Timestamp: 2026-07-15 02:59 EDT
+
+Status: smoke promoted; full independent scoring in progress
+
+One predeclared prompt variant added a general behavior rule: create bullets for explicit list/checklist/steps requests or clearly scoped sets of separate tasks/items; use numbers only when requested; remove spoken formatting commands; and preserve ordinary prose/incidental enumerations as prose.
+
+On the audited 20-case two-item smoke, deterministic exact-two-bullet structure changed:
+
+- current EG-1: 11/20 to 19/20;
+- Gemma multilingual smoke: 8/20 to 15/20.
+
+That material activation gain triggered the single allowed full development run. On the 100 positive-list cases, raw structural activation was 91/100 for both current and Gemma, with the intended item count on 88/100 each. Independent semantic scoring is pending.
+
+The restraint side found a real tradeoff. Current+v2 created three false lists (`LFT-039`, `LFT-040`, `LFT-051`), including a damaging split of “picked up dinner.” Gemma+v2 created one false list (`LFT-040`), an ambiguous three-action sentence (“draft, review, send”). Therefore prompt-only is not automatically accepted: Gemma may meet the proposed rate threshold, but the current model's prompt variant does not. Independent full restraint scoring and multilingual checks are running before the lane is stopped or promoted.
+
+Independent scoring of the 100 positive cases then confirmed the structural signal:
+
+| Configuration | Behavior | Meaning | Clean | Strict |
+|---|---:|---:|---:|---:|
+| Current + shipped prompt | 72/100 | 94/100 | 96/100 | 71/100 |
+| Current + list-v2 | 86/100 | 92/100 | 98/100 | 85/100 |
+| Gemma + shipped prompt | 61/100 | 97/100 | 100/100 | 61/100 |
+| Gemma + list-v2 | 90/100 | 96/100 | 100/100 | 90/100 |
+
+Paired strict results were 15 wins/1 loss/84 ties for current+v2 and 30 wins/1 loss/69 ties for Gemma+v2. Exploratory exact McNemar p-values were 0.00052 and 0.000000030 respectively. These are strong development signals, not held-out proof. Gemma+v2 reached 25/25 strict in the former bucket-2 weakness, but created one damaging positive-list segmentation error at `LF-046`. Current+v2 created three damaging positive-list regressions and reproduced both known unsafe gold references. This makes Gemma+v2 the safer prompt candidate.

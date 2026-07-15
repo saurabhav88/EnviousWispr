@@ -1,0 +1,15 @@
+{
+  "status": "candidate_requires_independent_review",
+  "created_at_epoch": 1784097161.768183,
+  "model": "claude-haiku-4-5",
+  "batch_id": "v1b",
+  "row_count": 10,
+  "prompt_sha256": "d83b451ab38a1a51bbf0d2fda53fe1eea8c6a5cf9dfc5e61afc5e38b1a672a3b",
+  "audit_corpora": [
+    "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/eg1_multilingual_smoke_v1.jsonl",
+    "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/corpus/list_format_v1.jsonl",
+    "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/corpus/list_format_trap_v1.jsonl",
+    "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/corpus/eg1_two_item_list_en_dev_v1a.jsonl"
+  ],
+  "native_reviewed": false
+}
