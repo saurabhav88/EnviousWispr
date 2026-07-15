@@ -1148,29 +1148,44 @@ final class RecordingSessionKernel {
     // in the pending slot (r2 Q2.1) — `awaitArmingResolution()` consumes it.
     let resolution = await awaitArmingResolution()
     guard isCurrent(sid), recordingOutcome == nil else { return }
-    // A stop / cancel that arrived during Arming latched here (r3 Q2.3) and is
-    // consumed BEFORE the resolution — a stop before transport is a discard,
-    // matching the pre-#1548 pre-`.recording` latch semantics, even if a late
-    // buffer also committed Live.
-    if stopLatched {
-      finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
-      return
-    }
-    if cancelRequested {
-      finishTerminal(.cancelled, sid: sid)
-      return
-    }
+    // Honor the Arming winner (`armingResolution` is a first-wins latch, r3 Q2.3
+    // / impl-design consult Dec 2). The stop/cancel latch is consumed WITHIN the
+    // `.committedLive` / `.aborted` cases, NOT before the switch: a stop/cancel
+    // that latched in the window between the deadline winning and this task
+    // resuming must be INERT — the deadline won, and its honest "No audio
+    // captured" diagnostic (and retained spool) must not be overwritten by a
+    // silent discard (Codex code-diff r2 P2).
     switch resolution {
     case .committedLive:
+      // Transport proved. A stop/cancel that latched during Arming still
+      // discards / cancels even over this late commit — the pre-#1548
+      // pre-`.recording` latch semantics (a stop before transport is a discard).
+      if stopLatched {
+        finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
+        return
+      }
+      if cancelRequested {
+        finishTerminal(.cancelled, sid: sid)
+        return
+      }
       break  // now `.live` — fall through to the recording-exit tail
     case .deadline:
       // No converted buffer reached the routed-buffer latch within 800 ms —
-      // end the take honestly (§3.5). Existing "No audio captured" copy.
+      // end the take honestly (§3.5). Existing "No audio captured" copy. The
+      // deadline won the latch race, so a later stop/cancel is inert here.
       finishTerminal(.noTransport, sid: sid)
       return
     case .aborted:
-      // Woken by a conclusion whose barrier the guard above already caught, or
-      // a spurious wake with no latch set — bail defensively.
+      // A stop / cancel (or a terminal) won the latch race and resolved Arming.
+      // Conclude by which latch is set; a spurious wake with no latch bails.
+      if stopLatched {
+        finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
+        return
+      }
+      if cancelRequested {
+        finishTerminal(.cancelled, sid: sid)
+        return
+      }
       return
     }
 

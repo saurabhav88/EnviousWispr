@@ -113,6 +113,27 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
+  @Test(
+    "the no-buffer deadline wins over a stop latched in the resume window (first-wins, Codex r2 P2)"
+  )
+  func noBufferDeadlineWinsOverRacingStop() async {
+    // #1548 D1 first-wins latch: the deadline resolves Arming, THEN a stop
+    // latches in the window before the forward task resumes. The deadline must
+    // win — its honest `.noTransport` ("No audio captured", spool retained) must
+    // NOT be overwritten by a silent `.discarded` from the racing stop.
+    let ctx = makeContext()
+    await startToRecording(ctx)
+    #expect(ctx.wrapper.testKernel.state == .arming)
+
+    // Deadline fires (resolves Arming to `.deadline`), then the stop latches
+    // (its `resolveArming(.aborted)` is a no-op against the first-wins latch).
+    ctx.wrapper.testKernel.externalCaptureStalled(stallContext(ctx, failureMode: .noBuffers))
+    await ctx.wrapper.apply(.stop)
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .noTransport)
+  }
+
   // MARK: - Reactive exit: becameZeroMidCapture — normal-stop-path salvage
 
   @Test("reactive becameZeroMidCapture completes normally, transcribing the captured prefix")
