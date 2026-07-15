@@ -180,6 +180,7 @@ scripts/eval/corpus/*
 !scripts/eval/apple_runner/**
 !scripts/eval/tests/
 !scripts/eval/tests/**
+scripts/eval/tests/__pycache__/
 scripts/eval/apple_runner/.build/
 scripts/eval/apple_runner/Package.resolved
 # Alias suggestion eval harness (#637) — PUBLIC tracked files
@@ -189,6 +190,9 @@ scripts/eval/alias_runner/.build/
 scripts/eval/alias_runner/Package.resolved
 !scripts/eval/alias_suggestion_gate.py
 !scripts/eval/golden_alias_scores.json
+!scripts/eval/audit_qwen3_language_evidence.py
+!scripts/eval/contracts/
+!scripts/eval/contracts/qwen3_language_evidence_v1.json
 !scripts/eval/corpus/alias-corpus-a.jsonl
 !scripts/eval/corpus/alias-corpus-b.jsonl
 !scripts/eval/corpus/alias-corpus-c.jsonl
