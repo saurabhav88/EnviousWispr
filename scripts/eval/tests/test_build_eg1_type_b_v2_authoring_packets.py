@@ -642,7 +642,21 @@ class TypeBAuthoringWorkflowTests(unittest.TestCase):
 
     def test_production_contract_stays_blocked_without_final_clean_receipt(self) -> None:
         contract = json.loads(CONTRACT_PATH.read_text())
+        contract["status"] = (
+            "pending_clean_blocked_registry_receipt_authorship_blocked"
+        )
         registry = contract["production_inputs"]["blocked_registry"]
+        registry["status"] = "pending_final_clean_receipt"
+        registry["receipt_sha256"] = None
+        registry["execution_git_head"] = None
+        for name in (
+            "family_artifact",
+            "text_hash_artifact",
+            "source_coverage_artifact",
+            "provisional_decisions_artifact",
+        ):
+            registry[name]["sha256"] = None
+        MODULE.validate_contract(contract, strict=False)
         self.assertEqual(registry["status"], "pending_final_clean_receipt")
         self.assertIsNone(registry["receipt_sha256"])
         self.assertIsNone(registry["execution_git_head"])
