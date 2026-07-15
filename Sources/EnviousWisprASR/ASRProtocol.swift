@@ -89,3 +89,30 @@ enum ASRError: LocalizedError, Sendable {
     }
   }
 }
+
+/// #1525 PR G. Pins each case's exact measured current wire identity
+/// (`docs/audits/2026-07-14-1525-pr-g-preflight.md` §1) — never re-derive.
+/// `.transcriptionFailed` measured as `#0` despite being declared fourth.
+/// Treat that as observed wire behavior, not a rule to re-derive from
+/// payload shape or declaration order. `internal` (bare `var`) matches this
+/// type's own internal visibility. NEVER change any of these strings once
+/// shipped.
+extension ASRError: StableSentryErrorIdentity {
+  var sentryFingerprintDescriptor: String {
+    switch self {
+    case .notReady: return "EnviousWisprASR.ASRError#1"
+    case .streamingNotSupported: return "EnviousWisprASR.ASRError#2"
+    case .streamingTimeout: return "EnviousWisprASR.ASRError#3"
+    case .transcriptionFailed: return "EnviousWisprASR.ASRError#0"
+    }
+  }
+
+  var sentrySemanticID: String {
+    switch self {
+    case .notReady: return "asr.not_ready"
+    case .streamingNotSupported: return "asr.streaming_not_supported"
+    case .streamingTimeout: return "asr.streaming_timeout"
+    case .transcriptionFailed: return "asr.transcription_failed"
+    }
+  }
+}

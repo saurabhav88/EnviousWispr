@@ -11,6 +11,27 @@ public struct ASRLoadSupersededError: Error, Equatable {
   public init() {}
 }
 
+/// #1525 PR G. Pins this struct's exact measured current wire identity
+/// (`docs/audits/2026-07-14-1525-pr-g-preflight.md` §1) — a fixed string,
+/// not a switch (this struct has no stored fields at all). Traced through
+/// every production `warmUp()` caller: no currently reachable Sentry
+/// capture path exists today (sessionless prewarm logs only; the launch/
+/// prewarm classifier routes to non-Sentry telemetry; the session-owned
+/// path's 3 supersession sources — cancelInFlightLoad(), unloadModel(), a
+/// real switchBackend(to:) — are each already absorbed by earlier guards or
+/// structurally deferred). This type represents an EXPECTED supersede
+/// outcome, not necessarily a real failure, and it is pinned defensively so
+/// a future capture site or topology change inherits a stable identity
+/// rather than a runtime-assigned constant. NEVER change this string once
+/// shipped.
+extension ASRLoadSupersededError: StableSentryErrorIdentity {
+  public var sentryFingerprintDescriptor: String {
+    "EnviousWisprASR.ASRLoadSupersededError#1"
+  }
+
+  public var sentrySemanticID: String { "asr.load_superseded" }
+}
+
 // #1388: `ASRLoadCancelledError` (the deliberate-cancel resume for
 // `cancelInFlightLoad()`) lives in EnviousWisprCore beside
 // `ModelLoadWatchdog.WedgeError` — the pipeline driver classifies on it and

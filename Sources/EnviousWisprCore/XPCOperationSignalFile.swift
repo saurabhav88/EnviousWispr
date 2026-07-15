@@ -164,3 +164,24 @@ public struct XPCOperationSignalWedgeError: LocalizedError, Sendable {
     "\(service) XPC operation wedged during \(stage) after signal phase \(observedPhase)"
   }
 }
+
+/// #1525 PR G. Pins this struct's exact measured current wire identity
+/// (`docs/audits/2026-07-14-1525-pr-g-preflight.md` §1). A plain
+/// non-switching property matches this one-shape struct and the shipped
+/// `ModelLoadWatchdog.WedgeError` pattern. Its stored diagnostic fields
+/// (`service`/`stage`/`observedPhase`) do not enter the descriptor. This
+/// descriptor has 2 live production issues riding on it (ENVIOUSWISPR-22,
+/// ENVIOUSWISPR-1B, 3 users total) from a producer
+/// (`AudioCaptureProxy.swift`) deleted the same day this PR was drafted
+/// (`f1b2a331`, #1546) — the surviving ASR-side throw site
+/// (`ASRManagerProxy.swift:660`) reaches only a breadcrumb today, not a
+/// Sentry issue, so this pin preserves dormant history against bridging
+/// changes rather than protecting an active path. NEVER change this string
+/// once shipped.
+extension XPCOperationSignalWedgeError: StableSentryErrorIdentity {
+  public var sentryFingerprintDescriptor: String {
+    "EnviousWisprCore.XPCOperationSignalWedgeError#1"
+  }
+
+  public var sentrySemanticID: String { "xpc.operation_signal_wedge" }
+}

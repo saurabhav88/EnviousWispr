@@ -111,6 +111,36 @@ public enum ASREngineError: Error, Sendable {
   case wedged
 }
 
+/// #1525 PR G. Pins each case's exact measured current wire identity
+/// (`docs/audits/2026-07-14-1525-pr-g-preflight.md` §1) — plain declaration
+/// order, no payload-shape anomaly (all 4 cases carry no associated value).
+/// `.wedged` has a kernel capture route (`RecordingSessionKernel`'s
+/// finalize cadence-stall detector) but it cannot arm against either real
+/// production adapter today — both `ParakeetEngineAdapter` and
+/// `WhisperKitEngineAdapter` return `nil` for `finalizeProgress`, the signal
+/// the detector requires (only the test-only `FakeEngine` exposes it). All
+/// 4 cases are pinned defensively. `public` matches this type's own public
+/// visibility. NEVER change any of these strings once shipped.
+extension ASREngineError: StableSentryErrorIdentity {
+  public var sentryFingerprintDescriptor: String {
+    switch self {
+    case .loadFailed: return "EnviousWisprPipeline.ASREngineError#0"
+    case .decodeFailed: return "EnviousWisprPipeline.ASREngineError#1"
+    case .engineCrashed: return "EnviousWisprPipeline.ASREngineError#2"
+    case .wedged: return "EnviousWisprPipeline.ASREngineError#3"
+    }
+  }
+
+  public var sentrySemanticID: String {
+    switch self {
+    case .loadFailed: return "asrengine.load_failed"
+    case .decodeFailed: return "asrengine.decode_failed"
+    case .engineCrashed: return "asrengine.engine_crashed"
+    case .wedged: return "asrengine.wedged"
+    }
+  }
+}
+
 /// The normalized outcome of one `finalize()` call (PR-1 §B.2.1). The kernel
 /// consumes exactly one of these per session and never sees an engine-specific
 /// result type.

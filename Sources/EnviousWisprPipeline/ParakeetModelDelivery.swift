@@ -15,6 +15,20 @@ public struct ParakeetDeliveryError: Error, Equatable {
   }
 }
 
+/// #1525 PR G. Pins this struct's exact measured current wire identity
+/// (`docs/audits/2026-07-14-1525-pr-g-preflight.md` §1) — a fixed string,
+/// not a switch, confirmed empirically constant across all 10
+/// `DeliveryFailureClass` reasons. Reaches Sentry via the model-load-failed
+/// path when Parakeet delivery cannot be ensured available. NEVER change
+/// this string once shipped.
+extension ParakeetDeliveryError: StableSentryErrorIdentity {
+  public var sentryFingerprintDescriptor: String {
+    "EnviousWisprPipeline.ParakeetDeliveryError#1"
+  }
+
+  public var sentrySemanticID: String { "parakeet.delivery_failed" }
+}
+
 /// Pipeline-side handle for the Parakeet delivery stage (#1348 Phase 2): the
 /// one object the adapter talks to. Owns the flag read (one authority for
 /// "is delivery on"), the ProgressFile bridge for the DOWNLOAD phase (the
