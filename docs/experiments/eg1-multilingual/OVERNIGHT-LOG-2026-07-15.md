@@ -543,3 +543,29 @@ Timestamp: 2026-07-15 01:46 EDT
 Status: invalid before training; fixed and relaunched under a new run ID
 
 The first `qwen4b_multilingual_smoke_v1` launch loaded the clean base but stopped before step 1 because installed TRL 0.24+ expects `processing_class` instead of the historical `tokenizer` argument. No weights were trained. The script now inspects the installed trainer signature, selects the supported argument, and imports Unsloth before TRL so patching occurs in the required order. The valid retry is `qwen4b_multilingual_smoke_v1r2`.
+
+### BENCH-001 - Release-grade benchmark size and separation
+
+Timestamp: 2026-07-15 01:52 EDT
+
+Status: protocol proposed; corpus construction and native review pending
+
+An independent evaluation-design review concluded that the Russian 16-development/8-frozen set and eight-case-per-language probes are discovery screens, not statistically adequate release evidence.
+
+The proposed release benchmark contains 160 development and 320 frozen cases per language for English, German, French, Spanish, and Russian: 800 development and 1,600 frozen cases total. Each language receives 160 general polishing cases, 80 positive-list cases, and 80 restraint cases in the frozen set. The matrix explicitly adds the missing two-item positive lists and balances them against two-item prose traps.
+
+Primary reporting uses numerator/denominator, Wilson 95% intervals, paired bootstrap intervals, exact McNemar comparisons, Holm correction across five primary language tests, and separate scoreboards for core polish, list activation, and false lists. Proposed release gates include at least 285/320 strict green, 317/320 same-language and meaning preservation, 72/80 positive lists, no more than 2/80 false lists per language, and zero S4 critical damage across all frozen cases.
+
+Every frozen corpus requires native authoring/validation before sealing and two blinded native output reviewers plus adjudication. LLM judges and subagents remain triage tools, not release authorities.
+
+Full protocol: `docs/experiments/eg1-multilingual/BENCHMARK-DESIGN-V1.md`.
+
+### DATA-003 - Smoke-corpus balance terminology correction
+
+Timestamp: 2026-07-15 01:55 EDT
+
+Status: interpretation guardrail
+
+The 5,836-row smoke corpus is multilingual-augmented, not truly language-balanced. It contains the original 5,656 mostly English rows, 20 new English list rows, and only 40 rows each for German, French, Spanish, and Russian. Non-English additions are 160/5,836 (2.74%), or 0.69% per added language.
+
+This is deliberate for the cheapest direction test and is consistent with research showing that small multilingual instruction sets can sometimes improve language agreement. It cannot estimate the ceiling of a genuinely balanced corpus with thousands or hundreds of thousands of native-reviewed multilingual examples. A null result would reject this low-dose recipe, not the broader one-model multilingual architecture.
