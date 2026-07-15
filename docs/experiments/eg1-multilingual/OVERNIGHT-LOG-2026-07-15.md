@@ -1001,3 +1001,144 @@ Mechanical list results:
 The clean bases generally returned inline prose despite the explicit list-v2 instruction. This is strong task-specific evidence that prompt wording alone is insufficient for reliable list formatting and that supervised list examples materially teach the behavior. The conclusion is limited to these prompts and development corpora; the overflow scenario-family contamination still applies.
 
 The clean-base choice must therefore be judged mainly on language/meaning safety and tunability, then paired with a stronger, genuinely held-out list-training experiment. Independent semantic scoring of the 56 multilingual and 20 two-item outputs is pending before the base ranking changes.
+
+### EVAL-009 - Independent overflow semantic audit
+
+Timestamp: 2026-07-15 04:09 EDT
+
+Status: complete; aligned checkpoint rejected, corpus quarantined from held-out claims
+
+Independent model-assisted review scored all eight 100-row paraphrase-robustness output files and audited the corpus itself. All output files were complete, unique, non-empty, error-free, and development-only. No frozen rows were inspected.
+
+Corpus provenance and quality findings:
+
+- Exact normalized training overlap is 0/100 for both positive and restraint rows.
+- Each set has only 72 origin families; 28 origins are used twice.
+- 57/72 origin IDs per set occur directly in training, covering 80/100 positive rows and 82/100 restraint rows.
+- Unsafe or ambiguous gold was found at positive IDs `024`, `038`, `049`, `097`, `098`, and `100`, plus trap IDs `005`, `020`, `082`, `083`, and `093`.
+
+These rows require correction or quarantine. The benchmark cannot become frozen evidence merely by changing the input wording.
+
+Independent semantic score:
+
+| Configuration | Positive strict | Restraint strict | Combined strict | Total damage | False lists |
+|---|---:|---:|---:|---:|---:|
+| Current EG-1 + shipped prompt | 58/100 | 99/100 | 157/200 | 8 | 0 |
+| Current EG-1 + list-v2 | 75/100 | 96/100 | 171/200 | 12 | 3 |
+| Previous Gemma + list-v2 | 82/100 | 98/100 | 180/200 | 9 | 1 |
+| Prompt-aligned Gemma + list-v2 | 62/100 | 98/100 | 160/200 | 9 | 0 |
+
+Paired positive-list results:
+
+- Current list-v2 versus shipped: 19 wins, 2 losses, 79 ties; exploratory exact McNemar p=0.000221.
+- Aligned Gemma versus previous Gemma: 2 wins, 22 losses, 76 ties; p=0.0000359.
+- Aligned Gemma versus current list-v2: 7 wins, 20 losses, 73 ties; p=0.0192.
+- Previous Gemma versus current list-v2: 12 wins, 5 losses, 83 ties; p=0.143, so the observed five-point strict advantage is not statistically established.
+
+A one-vote-per-origin sensitivity check preserved the first three conclusions. An independent cross-review scored Gemma/aligned positive strict as 82/64 instead of 82/62 because of ambiguous shared-modifier gold; the aligned regression remained 19 paired losses to one win and highly significant. The exact aligned rate should therefore be reported as 62-64% scorer sensitivity, not false precision.
+
+Important failures included splitting natural compounds such as `laptop charger` and `billing copy`, losing the shared `Collect` scope, fusing separate books into `Dune Foundation`, and producing the garden path `coffee heading to checkout`. Current list-v2 improved activation but created three false lists and the most observed total damage. Previous Gemma is the best observed BF16 arm here, but it still has nine damaging rows and cannot be promoted on contaminated development evidence.
+
+Decision: reject the prompt-aligned checkpoint, keep the previous Gemma training direction as a hypothesis, and build a genuinely new model-blind list/restraint corpus before another weight experiment or release claim.
+
+### DATA-004 - Original list-training distribution explains the weakness
+
+Timestamp: 2026-07-15 04:12 EDT
+
+Status: complete; next data recipe constrained
+
+A direct structural scan of the original 5,656 training rows counted outputs with at least two Markdown list lines:
+
+| List-line count | Training rows |
+|---:|---:|
+| 2 | 3 |
+| 3 | 179 |
+| 4 | 25 |
+| 5 | 30 |
+| 6 | 2 |
+| 7 | 19 |
+| 8 | 1 |
+| **All list-formatted outputs** | **259/5,656** |
+
+Only three original examples teach a two-item list. All three are distilled founder-style dictations; none provides systematic coverage across short/long, explicit/scoped, medical, technical, personal, work, and legal contexts. Three-item lists dominate 179/259 formatted rows.
+
+The same training file contains 80 `LF-*` positive-list IDs and 80 `LFT-*` restraint IDs. Those are the exact 80/100 overlaps found in each old benchmark, explaining how the previous headline could look strong without measuring family-level generalization.
+
+Decision for the next universal training dataset:
+
+- balance two-, three-, five-, and seven-item positives rather than adding more of the already dominant three-item shape;
+- pair every activation family with equally diverse prose-restraint families;
+- include explicit bullets, explicit numbering, scoped implicit tasks, bare labels, corrections, compound items, shared modifiers, and source-wide scope;
+- keep medical/legal timing and attribution preservation as hard safety strata;
+- exclude every development/frozen benchmark family from training, not merely exact wording;
+- preserve English replay and balanced German/French/Spanish/Russian language strata so list gains cannot erase core polish quality.
+
+This is stronger evidence for targeted data rebalancing than for simply scaling the same distribution to hundreds of thousands of rows.
+
+### BASE-RUN-005 - Independent universal-base semantic ranking
+
+Timestamp: 2026-07-15 04:18 EDT
+
+Status: development audit complete; Gemma is the safety-first discovery finalist
+
+An independent reviewer scored the untouched Qwen3-4B-Instruct-2507, Qwen3.5-4B, and Gemma 4 E4B outputs from `BASE-RUN-004`. All candidates remain valid one-universal-model architectures. This is model-assisted development evidence, not native-reviewed or frozen release evidence.
+
+Aggregate 56-case multilingual result:
+
+| Untouched base | Same language | Meaning safe | Cleanup | Grammar | Damaging | Strict |
+|---|---:|---:|---:|---:|---:|---:|
+| Gemma 4 E4B | 56/56 | 55/56 | 29/56 | 49/56 | 1 | 29/56 |
+| Qwen3.5 4B | 56/56 | 54/56 | 32/56 | 52/56 | 5 | 28/56 |
+| Qwen3 4B | 54/56 | 52/56 | 28/56 | 45/56 | 7 | 26/56 |
+
+Strict outcomes were statistically tied on this small development set: Gemma versus Qwen3.5 was 7 wins, 6 losses, 43 ties (exact McNemar p=1.0); Gemma versus Qwen3 was 10/7/39 (p=0.629); and Qwen3.5 versus Qwen3 was 7/5/44 (p=0.774). The safety difference is still operationally important because the release rule does not average away damaging rows.
+
+Per-language strict counts out of eight were:
+
+| Language | Gemma | Qwen3.5 | Qwen3 |
+|---|---:|---:|---:|
+| German | 5 | 8 | 6 |
+| Spanish | 4 | 4 | 3 |
+| French | 4 | 4 | 6 |
+| Portuguese | 1 | 0 | 0 |
+| Hindi | 4 | 2 | 3 |
+| Japanese | 5 | 5 | 3 |
+| Chinese | 6 | 5 | 5 |
+
+Portuguese was the shared weakest language, while Qwen3.5 led the German slice and Qwen3 led French. These eight-case slices are diagnostic only and require native review before language-priority claims.
+
+On the 20 audited English two-item cases, Gemma had 19/20 meaning safety, one damaging row, and 4/20 strict. Qwen3.5 had 18/20 meaning safety, two damaging rows, and 1/20 strict. Qwen3 had 13/20 meaning safety, seven damaging rows, and 3/20 strict. None is usable without targeted list training.
+
+Decision: promote untouched Gemma as the safety-first universal-base discovery finalist; retain Qwen3.5 as a reserve challenger because of its German and grammar strength; drop untouched Qwen3 from the next universal training lane. This is a training-experiment ranking, not a release-model selection.
+
+### ARCH-003 - Shared-base LoRA storage and runtime switching proof
+
+Timestamp: 2026-07-15 04:33 EDT
+
+Status: fallback storage and single-adapter loading proven; simultaneous multi-adapter isolation is not release-safe in the bundled server
+
+AlienSV converted the untouched Qwen3-4B-Instruct-2507 base and the current EG-1 rank-16 checkpoint into separate GGUF artifacts. Both were copied to the Mac and hash-verified.
+
+| Artifact | Bytes | Approximate size | SHA-256 |
+|---|---:|---:|---|
+| Shared Q5_K_M base | 2,889,512,096 | 2.69 GiB | `325015990807c0459552e3d611db47ae9cfe1119c56b7a000d4f30122119bc6b` |
+| Current EG-1 F16 LoRA GGUF | 66,095,424 | 63.0 MiB | `74debfe032f6734c11c8e6220bf5cd38b63fa2581c8e0d554be260b7af4ca2df` |
+| Qwen multilingual-smoke F16 LoRA GGUF | 66,095,360 | 63.0 MiB | `b96473a89f488d134b69e2ed0233c8f05a0bdfd8d5e9854c2847231d1dc149f5` |
+
+The LoRA GGUF is about half the 126.1 MiB PEFT safetensors file and 2.29% of the shared base download. This directly proves the founder-approved fallback storage shape: one full model plus small adapters, not one full model per language.
+
+The exact app-bundled `llama-server` (build `fdb1db8`) loaded the base plus one adapter with the shipped Mac flags and exposed the offline `/lora-adapters` switch. With only the current adapter loaded, scale 0 matched a truly adapter-free base byte-for-byte on all 20 candidate texts. Scale 1 changed all 20 candidate texts, proving that the adapter was actually switched rather than merely listed.
+
+| Runtime configuration | Exact-two-bullet structure | Required phrases | Forbidden phrases absent | Strict |
+|---|---:|---:|---:|---:|
+| Shared base, adapter scale 0 | 10/20 | 2/20 | 16/20 | 2/20 |
+| Shared base, adapter scale 1 | 19/20 | 4/20 | 11/20 | 2/20 |
+| Existing merged EG-1 Q5 | 18/20 | 4/20 | 8/20 | 2/20 |
+
+The existing adapter clearly teaches list activation, but it also loses required meaning or introduces forbidden wording, so it remains rejected as a quality candidate. The merged Q5 and base-plus-LoRA outputs are not equivalent, which shows that merge/quantization order is part of the release artifact and must be benchmarked separately.
+
+Two distinct 63 MiB adapters were then loaded together. The global endpoint switched between them and changed 9/20 candidate texts; switching back to the first adapter reproduced its dual-loaded output byte-for-byte. However, isolation failed: with both adapters at scale 0, 12/20 outputs differed from the truly adapter-free base, and the current adapter's dual-loaded output differed on 8/20 rows from the same current adapter loaded alone. An inactive scale-0 adapter therefore still affects deterministic generation in this exact bundled build.
+
+Additional runtime caveats: the bundled build did not honor per-request adapter selection in this probe; the global offline endpoint did work. A deliberately excessive scale-100 stress probe caused runaway generation and was terminated, so production switching must restrict adapter IDs and scales to approved values such as 0 or 1.
+
+Decision: one shared base plus small adapters is a valid download/storage fallback. Simultaneously preloading multiple adapters and treating scale 0 as clean isolation is rejected for the current bundled server. The safe fallback prototype is to start or restart the local server with exactly one selected adapter; observed model load was about 0.55-1.18 seconds, still fully offline. A newer runtime may later restore true hot-swapping, but it must prove inactive-adapter parity first. This does not beat the preferred one-universal-model path, and no language adapter is approved until it passes the same held-out, native-review, safety, and exact-Mac gates.
