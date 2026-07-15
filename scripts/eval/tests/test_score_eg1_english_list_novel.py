@@ -132,8 +132,23 @@ class NovelEnglishListScorerTests(unittest.TestCase):
         self.assertEqual(result["candidate_error"], "timeout")
         self.assertFalse(result["inference_ok"])
         self.assertFalse(result["strict"])
-        self.assertEqual(model["inference_error_count"], 1)
-        self.assertEqual(model["inference_error_ids"], ["p1"])
+        self.assertEqual(model["inference_failure_count"], 1)
+        self.assertEqual(model["inference_failure_ids"], ["p1"])
+        self.assertEqual(model["candidate_error_count"], 1)
+        self.assertEqual(model["positive"]["forbidden_cleanup"]["successes"], 1)
+
+    def test_empty_restraint_output_fails_inference_no_list_and_cleanup(self) -> None:
+        outputs = dict(self.good_outputs)
+        outputs["r1"] = ""
+        report = self.report(outputs)
+        model = report["models"]["model-a"]
+        result = self.case(report, "r1")
+        self.assertTrue(result["empty_output"])
+        self.assertFalse(result["inference_ok"])
+        self.assertEqual(model["inference_failure_ids"], ["r1"])
+        self.assertEqual(model["empty_output_ids"], ["r1"])
+        self.assertEqual(model["restraint"]["no_list"]["successes"], 0)
+        self.assertEqual(model["restraint"]["forbidden_cleanup"]["successes"], 0)
 
     def test_missing_and_extra_ids_fail_closed(self) -> None:
         missing = dict(self.good_outputs)
@@ -167,6 +182,18 @@ class NovelEnglishListScorerTests(unittest.TestCase):
         result = self.case(report, "p2")
         self.assertFalse(result["compound_atomic"])
         self.assertIn("p2", report["models"]["model-a"]["damage_proxies"]["positive_compound_split"])
+
+    def test_fused_items_plus_fabricated_line_fail_atomicity(self) -> None:
+        outputs = dict(self.good_outputs)
+        outputs["p1"] = (
+            "For Maya by Friday:\n"
+            "- archive logs and rotate keys\n"
+            "- delete the database"
+        )
+        result = self.case(self.report(outputs), "p1")
+        self.assertEqual(result["line_item_hits"], [["archive logs", "rotate keys"], []])
+        self.assertFalse(result["atomic_items"])
+        self.assertFalse(result["strict"])
 
     def test_scope_loss_is_content_damage(self) -> None:
         outputs = dict(self.good_outputs)
@@ -202,12 +229,20 @@ class NovelEnglishListScorerTests(unittest.TestCase):
         self.assertEqual(source_paths, sorted(source_paths))
         self.assertEqual(report["models"]["model-a"]["candidate_sources"][0]["path"], str(left))
         self.assertEqual(report["models"]["model-b"]["candidate_sources"][0]["path"], str(right))
-        paired = report["paired_comparisons"][0]["combined_strict"]
+        paired = report["paired_comparisons"][0]["combined_strict_diagnostic_only"]
         self.assertEqual(
             {key: paired[key] for key in ("both_pass", "left_only", "right_only", "both_fail")},
             {"both_pass": 1, "left_only": 2, "right_only": 0, "both_fail": 0},
         )
         self.assertEqual(paired["exact_mcnemar_p_two_sided"], 0.5)
+        self.assertFalse(report["reporting_contract"]["combined_percentage_allowed"])
+
+    def test_empty_metric_slice_is_unmeasured(self) -> None:
+        value = SCORER.metric(0, 0)
+        self.assertEqual(value["successes"], 0)
+        self.assertEqual(value["total"], 0)
+        self.assertIsNone(value["rate"])
+        self.assertIsNone(value["wilson_95"])
 
 
 if __name__ == "__main__":

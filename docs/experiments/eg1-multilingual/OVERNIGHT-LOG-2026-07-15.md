@@ -1423,3 +1423,15 @@ The corrected launcher uses a minimal child environment containing only the ephe
 The explicit live preflight passed against the already-verified `EnviousWispr-5b` local app without printing the credential. Focused security and exact-wire tests passed 19/19; the full evaluation suite passed 76/76. The sealed list corpus has not yet been sent to either prompt arm.
 
 Independent re-review found no remaining issue: the credential does not enter argv, logs, proxy settings, or inherited Python configuration; app identity, parentage, flags, authenticated health, model ID, and exact-mode proxy bypass all fail closed.
+
+### SCORE-AUDIT-001 - Novel English list scorer adversarial audit
+
+Timestamp: 2026-07-15 07:57 EDT
+
+Status: three false-pass paths fixed; independent re-review clean
+
+The independent scorer audit opened no corpus rows or model outputs. It found that an inference error or empty restraint output could receive no-list and forbidden-cleanup credit; a fused two-item bullet plus one fabricated unmatched bullet could pass atomicity; and an empty slice reported a fake 0% Wilson interval instead of no observation.
+
+The scorer now requires a nonempty, error-free inference before any success metric can pass. It records inference failures, explicit candidate errors, and empty outputs separately and excludes inference failures from damage proxies. Atomicity requires both each audited item to appear on exactly one line and each list line to contain exactly one audited item. Zero-row slices report `rate: null` and `wilson_95: null`. Positive-list strict success, restraint false-list rate, and restraint strict success are explicitly co-primary; the combined paired comparison is labeled diagnostic-only and cannot become a headline percentage. Existing scorer outputs cannot be overwritten.
+
+Focused scorer tests pass 14/14 and the full evaluation suite passes 79/79. Independent re-review reproduced the three fixed edge cases, rechecked Wilson math and exact two-sided McNemar, and found no remaining code issue.

@@ -78,9 +78,9 @@ def contains_phrase(text: str, phrase: str) -> bool:
     return bool(needle) and f" {needle} " in haystack
 
 
-def wilson(successes: int, total: int) -> list[float]:
+def wilson(successes: int, total: int) -> list[float] | None:
     if total == 0:
-        return [0.0, 0.0]
+        return None
     z = 1.959963984540054
     rate = successes / total
     denominator = 1 + z * z / total
@@ -93,7 +93,7 @@ def metric(successes: int, total: int) -> dict[str, Any]:
     return {
         "successes": successes,
         "total": total,
-        "rate": successes / total if total else 0.0,
+        "rate": successes / total if total else None,
         "wilson_95": wilson(successes, total),
     }
 
@@ -160,11 +160,14 @@ def score_candidate(
     row: dict[str, Any],
     scorer: Callable[[dict[str, Any], str], dict[str, Any]],
 ) -> dict[str, Any]:
-    result = scorer(case, candidate_text(row))
+    output = candidate_text(row)
+    result = scorer(case, output)
     error = candidate_error(row)
+    inference_ok = error is None and bool(output)
     result["candidate_error"] = error
-    result["inference_ok"] = error is None
-    if error is not None:
+    result["empty_output"] = not bool(output)
+    result["inference_ok"] = inference_ok
+    if not inference_ok:
         result["strict"] = False
     return result
 
@@ -240,10 +243,16 @@ def score_positive(case: dict[str, Any], output: str) -> dict[str, Any]:
     item_line_hits = {
         item: sum(contains_phrase(line, item) for line in desired_lines) for item in case["items"]
     }
+    line_item_hits = [
+        [item for item in case["items"] if contains_phrase(line, item)]
+        for line in desired_lines
+    ]
     compound_line_hits = {
         item: sum(contains_phrase(line, item) for line in desired_lines) for item in case["compound_items"]
     }
-    atomic_items = all(count == 1 for count in item_line_hits.values())
+    atomic_items = all(count == 1 for count in item_line_hits.values()) and all(
+        len(matches) == 1 for matches in line_item_hits
+    )
     compound_atomic = all(count == 1 for count in compound_line_hits.values())
     spans = preserved_spans(case, output)
     all_list_lines = len(structure["bullets"]) + len(structure["numbered"])
@@ -261,6 +270,7 @@ def score_positive(case: dict[str, Any], output: str) -> dict[str, Any]:
         "intended_count": intended_count,
         "structure_ok": structure_ok,
         "item_line_hits": item_line_hits,
+        "line_item_hits": line_item_hits,
         "compound_line_hits": compound_line_hits,
         "atomic_items": atomic_items,
         "compound_atomic": compound_atomic,
@@ -287,32 +297,43 @@ def score_restraint(case: dict[str, Any], output: str) -> dict[str, Any]:
 
 def metric_set(rows: list[dict[str, Any]], role: str) -> dict[str, Any]:
     total = len(rows)
+
+    def success(row: dict[str, Any], key: str) -> bool:
+        return row["inference_ok"] and row[key]
+
     common = {
-        "preservation": metric(sum(row["preservation"] for row in rows), total),
-        "items_preserved": metric(sum(row["items_preserved"] for row in rows), total),
-        "scope_preserved": metric(sum(row["scope_preserved"] for row in rows), total),
-        "forbidden_cleanup": metric(sum(row["forbidden_cleanup"] for row in rows), total),
+        "inference_ok": metric(sum(row["inference_ok"] for row in rows), total),
+        "preservation": metric(sum(success(row, "preservation") for row in rows), total),
+        "items_preserved": metric(sum(success(row, "items_preserved") for row in rows), total),
+        "scope_preserved": metric(sum(success(row, "scope_preserved") for row in rows), total),
+        "forbidden_cleanup": metric(sum(success(row, "forbidden_cleanup") for row in rows), total),
         "strict": metric(sum(row["strict"] for row in rows), total),
-        "content_damage": metric(sum(row["content_damage"] for row in rows), total),
+        "content_damage": metric(
+            sum(row["inference_ok"] and row["content_damage"] for row in rows), total
+        ),
     }
     if role == "positive_list":
         return {
-            "activation": metric(sum(row["activated"] for row in rows), total),
-            "intended_count": metric(sum(row["intended_count"] for row in rows), total),
-            "structure": metric(sum(row["structure_ok"] for row in rows), total),
-            "atomic_items": metric(sum(row["atomic_items"] for row in rows), total),
+            "activation": metric(sum(success(row, "activated") for row in rows), total),
+            "intended_count": metric(sum(success(row, "intended_count") for row in rows), total),
+            "structure": metric(sum(success(row, "structure_ok") for row in rows), total),
+            "atomic_items": metric(sum(success(row, "atomic_items") for row in rows), total),
             **common,
         }
     return {
-        "no_list": metric(sum(not row["false_list"] for row in rows), total),
-        "false_list": metric(sum(row["false_list"] for row in rows), total),
+        "no_list": metric(
+            sum(row["inference_ok"] and not row["false_list"] for row in rows), total
+        ),
+        "false_list": metric(
+            sum(row["inference_ok"] and row["false_list"] for row in rows), total
+        ),
         **common,
     }
 
 
 def damage_proxies(positive: list[dict[str, Any]], restraint: list[dict[str, Any]]) -> dict[str, Any]:
     def ids(rows: list[dict[str, Any]], predicate: Callable[[dict[str, Any]], bool]) -> list[str]:
-        return [row["id"] for row in rows if predicate(row)]
+        return [row["id"] for row in rows if row["inference_ok"] and predicate(row)]
 
     return {
         "positive_wrong_marker": ids(positive, lambda row: row["wrong_marker_count"] > 0),
@@ -426,15 +447,25 @@ def build_report(
             score_candidate(case, grouped[model_id][case_id], score_restraint)
             for case_id, case in restraint_cases.items()
         ]
-        inference_error_ids = [
+        inference_failure_ids = [
+            row["id"] for row in [*positive, *restraint] if not row["inference_ok"]
+        ]
+        candidate_error_ids = [
             row["id"] for row in [*positive, *restraint] if row["candidate_error"] is not None
+        ]
+        empty_output_ids = [
+            row["id"] for row in [*positive, *restraint] if row["empty_output"]
         ]
         scored[model_id] = {row["id"]: row for row in [*positive, *restraint]}
         models[model_id] = {
             "candidate_paths": sources[model_id],
             "candidate_sources": [inventories_by_path[path] for path in sources[model_id]],
-            "inference_error_count": len(inference_error_ids),
-            "inference_error_ids": inference_error_ids,
+            "inference_failure_count": len(inference_failure_ids),
+            "inference_failure_ids": inference_failure_ids,
+            "candidate_error_count": len(candidate_error_ids),
+            "candidate_error_ids": candidate_error_ids,
+            "empty_output_count": len(empty_output_ids),
+            "empty_output_ids": empty_output_ids,
             "positive": metric_set(positive, "positive_list"),
             "restraint": metric_set(restraint, "prose_restraint"),
             "damage_proxies": damage_proxies(positive, restraint),
@@ -460,7 +491,7 @@ def build_report(
                     "restraint_strict": paired_counts(
                         scored[left_id], scored[right_id], restraint_ids
                     ),
-                    "combined_strict": paired_counts(
+                    "combined_strict_diagnostic_only": paired_counts(
                         scored[left_id], scored[right_id], [*positive_ids, *restraint_ids]
                     ),
                 }
@@ -483,7 +514,17 @@ def build_report(
         "limitations": [
             "Visible list structure and exact audited spans only.",
             "No semantic, native-speaker, frozen-benchmark, or release-quality proof.",
+            "Positive-list and restraint results are co-primary and must remain separate.",
+            "Combined strict comparison is diagnostic-only and cannot be a headline percentage.",
         ],
+        "reporting_contract": {
+            "co_primary_endpoints": [
+                "positive.strict",
+                "restraint.false_list",
+                "restraint.strict",
+            ],
+            "combined_percentage_allowed": False,
+        },
         "scorer_source": scorer_inventory,
         "corpora": {
             "positive": positive_inventory,
@@ -499,6 +540,8 @@ def build_report(
 
 def main() -> None:
     args = parse_args()
+    if args.out.exists() or args.out.is_symlink():
+        raise SystemExit("--out already exists; refusing to overwrite scoring evidence")
     report = build_report(args.positive_corpus, args.restraint_corpus, args.candidates)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(
