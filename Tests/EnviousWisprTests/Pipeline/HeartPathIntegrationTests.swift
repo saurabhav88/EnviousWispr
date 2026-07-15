@@ -526,7 +526,7 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
   }
 
   func rebuildEngine() {}
-  func retireCapturingSource(sessionID: UInt64) {}
+  func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
 
   func preWarm() async throws {}
 

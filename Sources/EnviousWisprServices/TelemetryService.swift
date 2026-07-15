@@ -510,6 +510,103 @@ public final class TelemetryService {
     PostHogSDK.shared.capture(event, properties: props)
   }
 
+  /// Heartpath 5b (#1520): a completed take came back zero-signal, so the fenced
+  /// retire primitive was invoked. `retireAction` records whether teardown
+  /// actually ran (`retired`) or was a fenced no-op. Content-free by
+  /// construction: closed-vocabulary transport / route / policy / shape strings,
+  /// booleans, and elapsed ms — never transcript, audio, device name, or UID.
+  public func deadMicRetireAttempted(
+    transport: String,
+    selectedTransport: String?,
+    failureShape: String,
+    healthGuessRefused: Bool,
+    warmPolicy: String,
+    retireAction: String,
+    msSinceLastGood: Int?,
+    routeFallbackReason: String?
+  ) {
+    let event = "audio.dead_mic_retire_attempted"
+    var props: [String: Any] = [
+      "transport": transport,
+      "failure_shape": failureShape,
+      "health_guess_refused": healthGuessRefused,
+      "warm_policy": warmPolicy,
+      "retire_action": retireAction,
+    ]
+    if let selectedTransport { props["selected_transport"] = selectedTransport }
+    if let msSinceLastGood { props["ms_since_last_good"] = msSinceLastGood }
+    if let routeFallbackReason { props["route_fallback_reason"] = routeFallbackReason }
+    #if DEBUG
+      var stringProps: [String: String] = [
+        "transport": transport,
+        "failure_shape": failureShape,
+        "warm_policy": warmPolicy,
+        "retire_action": retireAction,
+      ]
+      if let selectedTransport { stringProps["selected_transport"] = selectedTransport }
+      if let routeFallbackReason { stringProps["route_fallback_reason"] = routeFallbackReason }
+      var intProps: [String: Int] = [:]
+      if let msSinceLastGood { intProps["ms_since_last_good"] = msSinceLastGood }
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: event, stringProps: stringProps, intProps: intProps,
+          boolProps: ["health_guess_refused": healthGuessRefused]))
+      Task {
+        await AppLogger.shared.log(
+          "dead_mic_retire_attempted transport=\(transport) shape=\(failureShape) "
+            + "action=\(retireAction) health_guess_refused=\(healthGuessRefused) "
+            + "warm_policy=\(warmPolicy)",
+          level: .info, category: "Audio")
+      }
+    #endif
+    PostHogSDK.shared.capture(event, properties: props)
+  }
+
+  /// Heartpath 5b (#1520): a pending dead-mic watch resolved — a LATER take
+  /// either recovered (audio flowed again) or retired again. Same content-free
+  /// boundary as `deadMicRetireAttempted`.
+  public func deadMicRecovery(
+    recovered: Bool,
+    resolution: String,
+    retireShape: String,
+    retireTransport: String,
+    recoveryTransport: String,
+    transportChanged: Bool,
+    gapMs: Int
+  ) {
+    let event = "audio.dead_mic_recovery"
+    let props: [String: Any] = [
+      "recovered": recovered,
+      "resolution": resolution,
+      "retire_shape": retireShape,
+      "retire_transport": retireTransport,
+      "recovery_transport": recoveryTransport,
+      "transport_changed": transportChanged,
+      "gap_ms": gapMs,
+    ]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: event,
+          stringProps: [
+            "resolution": resolution,
+            "retire_shape": retireShape,
+            "retire_transport": retireTransport,
+            "recovery_transport": recoveryTransport,
+          ],
+          intProps: ["gap_ms": gapMs],
+          boolProps: ["recovered": recovered, "transport_changed": transportChanged]))
+      Task {
+        await AppLogger.shared.log(
+          "dead_mic_recovery recovered=\(recovered) resolution=\(resolution) "
+            + "retire_transport=\(retireTransport) recovery_transport=\(recoveryTransport) "
+            + "gap_ms=\(gapMs)",
+          level: .info, category: "Audio")
+      }
+    #endif
+    PostHogSDK.shared.capture(event, properties: props)
+  }
+
   public func dictationCompleted(
     result: String, inputMode: String, asrBackend: String,
     llmProvider: String?, fillerRemoval: Bool,

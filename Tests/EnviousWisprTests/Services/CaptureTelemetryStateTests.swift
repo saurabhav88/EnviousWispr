@@ -38,7 +38,7 @@ struct CaptureTelemetryStateTests {
   func successResetsDedupe() {
     let state = CaptureTelemetryState()
     state.markZombieEmitted(route: "bt")
-    state.recordSuccessfulRecording()
+    state.recordSuccessfulRecording(recoveryTransport: "builtin", sessionID: 1)
     #expect(state.shouldEmitZombie(route: "bt", window: .seconds(30)) == true)
   }
 
@@ -46,7 +46,7 @@ struct CaptureTelemetryStateTests {
   func successSetsBaseline() {
     let state = CaptureTelemetryState()
     #expect(state.timeSinceLastSuccessfulRecordingMs() == nil)
-    state.recordSuccessfulRecording()
+    state.recordSuccessfulRecording(recoveryTransport: "builtin", sessionID: 1)
     let ms = state.timeSinceLastSuccessfulRecordingMs()
     #expect(ms != nil)
     #expect((ms ?? -1) >= 0)
@@ -91,9 +91,88 @@ struct CaptureTelemetryStateTests {
     let clock = ManualInstantClock()
     let state = CaptureTelemetryState(currentInstant: { clock.now })
     #expect(state.timeSinceLastSuccessfulRecordingMs() == nil)
-    state.recordSuccessfulRecording()
+    state.recordSuccessfulRecording(recoveryTransport: "builtin", sessionID: 1)
     clock.advance(by: .milliseconds(2_500))
     #expect(state.timeSinceLastSuccessfulRecordingMs() == 2_500)
+  }
+
+  // MARK: - Dead-mic recovery watch (#1520 heartpath 5b)
+
+  @Test("arm then a LATER session's success → recovered=true, later_success, gap from clock")
+  func armThenSuccessRecovers() {
+    let clock = ManualInstantClock()
+    let state = CaptureTelemetryState(currentInstant: { clock.now })
+
+    #expect(
+      state.armDeadMicWatch(
+        DeadMicRetireWatch(shape: "all_zero_from_start", transport: "bluetooth"), sessionID: 1)
+        == nil)
+    clock.advance(by: .milliseconds(1_200))
+    let outcome = state.recordSuccessfulRecording(recoveryTransport: "bluetooth", sessionID: 2)
+
+    #expect(outcome?.recovered == true)
+    #expect(outcome?.resolution == "later_success")
+    #expect(outcome?.retireShape == "all_zero_from_start")
+    #expect(outcome?.retireTransport == "bluetooth")
+    #expect(outcome?.recoveryTransport == "bluetooth")
+    #expect(outcome?.transportChanged == false)
+    #expect(outcome?.gapMs == 1_200)
+  }
+
+  @Test("the SAME session that armed the watch cannot resolve its own recovery (#1520 P1)")
+  func sameSessionCannotResolveItsOwnWatch() {
+    let state = CaptureTelemetryState()
+    // A becameZeroMidCapture take arms the watch at stop (session 7) AND then
+    // completes successfully by salvaging its prefix — the SAME session 7.
+    state.armDeadMicWatch(
+      DeadMicRetireWatch(shape: "became_zero_mid_capture", transport: "bluetooth"), sessionID: 7)
+    // Its own completion must NOT be credited as a recovery.
+    #expect(state.recordSuccessfulRecording(recoveryTransport: "bluetooth", sessionID: 7) == nil)
+    // The watch is still pending: a genuinely later session (8) resolves it.
+    let later = state.recordSuccessfulRecording(recoveryTransport: "bluetooth", sessionID: 8)
+    #expect(later?.recovered == true)
+    #expect(later?.resolution == "later_success")
+  }
+
+  @Test(
+    "arm while a watch is pending → prior resolves recovered=false, later_retire; new watch armed")
+  func armWhilePendingResolvesPriorAsNotRecovered() {
+    let clock = ManualInstantClock()
+    let state = CaptureTelemetryState(currentInstant: { clock.now })
+
+    #expect(
+      state.armDeadMicWatch(
+        DeadMicRetireWatch(shape: "all_zero_from_start", transport: "bluetooth"), sessionID: 1)
+        == nil)
+    clock.advance(by: .milliseconds(800))
+    let prior = state.armDeadMicWatch(
+      DeadMicRetireWatch(shape: "became_zero_mid_capture", transport: "bluetooth"), sessionID: 2)
+
+    #expect(prior?.recovered == false)
+    #expect(prior?.resolution == "later_retire")
+    #expect(prior?.retireShape == "all_zero_from_start")
+    #expect(prior?.gapMs == 800)
+
+    // The new watch is now pending: a later success resolves IT, not the prior.
+    let resolved = state.recordSuccessfulRecording(recoveryTransport: "builtin", sessionID: 3)
+    #expect(resolved?.recovered == true)
+    #expect(resolved?.retireShape == "became_zero_mid_capture")
+    #expect(resolved?.transportChanged == true)  // bluetooth armed → builtin recovered
+  }
+
+  @Test("success with no pending watch → nil (no fabricated outcome)")
+  func successWithNoWatchIsNil() {
+    let state = CaptureTelemetryState()
+    #expect(state.recordSuccessfulRecording(recoveryTransport: "builtin", sessionID: 1) == nil)
+  }
+
+  @Test("transport_changed reflects a transport-class change at resolution")
+  func transportChangedFlag() {
+    let state = CaptureTelemetryState()
+    state.armDeadMicWatch(
+      DeadMicRetireWatch(shape: "all_zero_from_start", transport: "bluetooth"), sessionID: 1)
+    let outcome = state.recordSuccessfulRecording(recoveryTransport: "builtin", sessionID: 2)
+    #expect(outcome?.transportChanged == true)
   }
 }
 

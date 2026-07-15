@@ -61,3 +61,21 @@ struct ZeroPeakContext: Sendable {
   var outputTransport: String? = nil
   var routeResolutionSource: String? = nil
 }
+
+/// Per-call context for `HeartPathTelemetryEmitter.deadMicRetireAttempted(...)`
+/// (#1520 heartpath 5b). `msSinceLastGood` is deliberately NOT here — the
+/// emitter fills it from its own `CaptureTelemetryState` at emit time.
+struct DeadMicRetireAttemptContext: Sendable {
+  let transport: String
+  let selectedTransport: String?
+  /// `all_zero_from_start` / `became_zero_mid_capture`.
+  let failureShape: String
+  /// The sound said zero but the eligibility-gated stamp did not fire — the
+  /// retire ran on the sample fact alone (the #1520 signature).
+  let healthGuessRefused: Bool
+  /// `WarmEnginePolicy.rawValue` — policy in effect, not per-take reuse.
+  let warmPolicy: String
+  /// `ZeroSignalRetireResult.rawValue` — whether teardown actually ran.
+  let retireAction: String
+  let routeFallbackReason: String?
+}

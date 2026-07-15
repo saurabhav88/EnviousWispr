@@ -560,30 +560,32 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// stale finish from an older take can never tear down a newer take's source.
   /// Whether the take was silent is decided by the kernel; this method is
   /// device-blame-free.
-  public func retireCapturingSource(sessionID: UInt64) {
+  @discardableResult
+  public func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult {
     guard sessionID == captureSessionCounter else {
       Self.btRouteLog("Zero-signal retire skipped: stale capture session")
-      return
+      return .staleSession
     }
     guard let capturedSource = captureSessionSource else {
       Self.btRouteLog("Zero-signal retire skipped: captured source already gone")
-      return
+      return .capturedSourceGone
     }
     defer { clearCaptureSessionSource(ifMatching: capturedSource) }
     guard let source = activeSource else {
       Self.btRouteLog("Zero-signal retire skipped: active source already gone")
-      return
+      return .activeSourceGone
     }
     guard source === capturedSource else {
       Self.btRouteLog("Zero-signal retire skipped: source was replaced")
-      return
+      return .sourceReplaced
     }
     guard source.isRunning else {
       Self.btRouteLog("Zero-signal retire skipped: source already torn down")
-      return
+      return .sourceNotRunning
     }
     rebuildActiveSource(source)
     Self.btRouteLog("Zero-signal source retired")
+    return .retired
   }
 
   /// The single destructive teardown of the active source, shared by
@@ -620,6 +622,14 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       captureSessionSource = captured
       activeSource = active ?? captured
       captureSessionCounter = sessionID
+    }
+
+    /// Test seam (heartpath 5b): drop the live active source while KEEPING the
+    /// retained capture-session source, so `retireCapturingSource` reaches the
+    /// `.activeSourceGone` branch. The installer's optional `active` argument
+    /// treats nil as "use captured" and cannot construct this state directly.
+    func clearActiveSourceForTesting() {
+      activeSource = nil
     }
   #endif
 

@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
 // MARK: - RecordingSessionKernel (epic #827, PR-3; built from PR-1 §B spec)
@@ -233,6 +234,19 @@ final class RecordingSessionKernel {
   // MARK: Telemetry fan-out
 
   private let zombieZeroPeakTelemetry: @MainActor (ZeroPeakContext) -> Void
+  /// Heartpath 5b (#1520): the shared app-level capture-telemetry state. The
+  /// kernel arms the dead-mic recovery watch here on a real retire; the
+  /// lifecycle sink resolves it on a later success. MUST be the same instance
+  /// the lifecycle sink holds or the watch cannot correlate across takes.
+  private let captureTelemetry: CaptureTelemetryState
+  /// Heartpath 5b (#1520): emit `audio.dead_mic_retire_attempted`. Injected
+  /// closure (not a direct emitter dependency), wired by the factory to
+  /// `HeartPathTelemetryEmitter.deadMicRetireAttempted`.
+  private let deadMicRetireAttemptTelemetry: @MainActor (DeadMicRetireAttemptContext) -> Void
+  /// Heartpath 5b (#1520): emit `audio.dead_mic_recovery` for a later-retire
+  /// resolution produced at the retire site. Wired to the SAME emitter method
+  /// the lifecycle sink's later-success resolution uses.
+  private let deadMicRecoveryTelemetry: @MainActor (DeadMicRecoveryOutcome) -> Void
   /// #1317 §3.6 N4: STOP-time zero-signal classification runs INSIDE the
   /// kernel after `stopCapture()` and does not traverse the reactive
   /// `WedgeRecoveryRouter` funnel that the app-side detector's event rides —
@@ -639,6 +653,11 @@ final class RecordingSessionKernel {
     wedgeStallTicks: Int = 2,
     minimumRecordingTicks: Int = 5,
     zombieZeroPeakTelemetry: @escaping @MainActor (ZeroPeakContext) -> Void = { _ in },
+    captureTelemetry: CaptureTelemetryState? = nil,
+    deadMicRetireAttemptTelemetry: @escaping @MainActor (DeadMicRetireAttemptContext) -> Void = {
+      _ in
+    },
+    deadMicRecoveryTelemetry: @escaping @MainActor (DeadMicRecoveryOutcome) -> Void = { _ in },
     stopTimeZeroSignalTelemetry: @escaping @MainActor (CaptureStallContext) -> Void = { _ in },
     // #1317 (cloud review P2 round 2, PR #1512): nil default resolves inside
     // `init` against the `audioCapture` PARAMETER's own
@@ -665,6 +684,9 @@ final class RecordingSessionKernel {
     self.wedgeStallTicks = wedgeStallTicks
     self.minimumRecordingTicks = minimumRecordingTicks
     self.zombieZeroPeakTelemetry = zombieZeroPeakTelemetry
+    self.captureTelemetry = captureTelemetry ?? CaptureTelemetryState()
+    self.deadMicRetireAttemptTelemetry = deadMicRetireAttemptTelemetry
+    self.deadMicRecoveryTelemetry = deadMicRecoveryTelemetry
     self.stopTimeZeroSignalTelemetry = stopTimeZeroSignalTelemetry
     // #1317 (cloud review P2 round 2, PR #1512): the default reads
     // `audioCapture.zeroSignalDiscriminatorDeviceID` — the device the
@@ -1422,8 +1444,39 @@ final class RecordingSessionKernel {
     // in the manager, which logs truthfully; `capturedCaptureSessionID` (snapshotted
     // before the post-stop awaits) pins it to this take so a stale finish can never
     // retire a newer take's source.
-    if signalZeroMode != nil || zeroSignalRecoveryMode != nil {
-      audioCapture.retireCapturingSource(sessionID: capturedCaptureSessionID)
+    if let shapeMode = signalZeroMode ?? zeroSignalRecoveryMode {
+      let retireResult = audioCapture.retireCapturingSource(sessionID: capturedCaptureSessionID)
+      // Route from THIS take's frozen snapshot (`lastResolvedRoute`, set at
+      // go-live after all start retries), NOT a live `currentResolvedRoute` read:
+      // in the fenced `.staleSession` / `.sourceReplaced` races a live read would
+      // describe a NEWER source and misattribute the failed take's transport.
+      let takeRoute = lastResolvedRoute
+      let effectiveTransport = takeRoute?.effective ?? "unknown"
+      // The retire ran on the sample fact alone (no eligibility-gated stamp) —
+      // the #1520 signature. Derived from the already-computed stamp outcome,
+      // never a re-call of `zeroSignalDeviceEligible()` (which reads a
+      // possibly-changed live mute state).
+      let healthGuessRefused = signalZeroMode != nil && zeroSignalRecoveryMode == nil
+      deadMicRetireAttemptTelemetry(
+        DeadMicRetireAttemptContext(
+          transport: effectiveTransport,
+          selectedTransport: takeRoute?.selected,
+          failureShape: shapeMode.rawValue,
+          healthGuessRefused: healthGuessRefused,
+          warmPolicy: audioCapture.warmEnginePolicy.rawValue,
+          retireAction: retireResult.rawValue,
+          routeFallbackReason: takeRoute?.routeFallbackReason))
+      // Arm the recovery watch ONLY when teardown actually ran — a fenced no-op
+      // can never be credited a later recovery. A watch already pending means the
+      // previous retire's later take also retired: emit that as recovered=false.
+      if retireResult == .retired {
+        if let priorOutcome = captureTelemetry.armDeadMicWatch(
+          DeadMicRetireWatch(shape: shapeMode.rawValue, transport: effectiveTransport),
+          sessionID: capturedCaptureSessionID)
+        {
+          deadMicRecoveryTelemetry(priorOutcome)
+        }
+      }
     }
 
     // #1317 / heartpath 5b — the eligibility-gated TERMINAL (unchanged): only an

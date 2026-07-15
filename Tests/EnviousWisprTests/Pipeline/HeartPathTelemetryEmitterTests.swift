@@ -440,7 +440,7 @@ struct HeartPathTelemetryEmitterTests {
     // `time_since_last_successful_recording_ms` key is non-nil. In
     // production at least one successful recording will have happened
     // before the zombie code path can fire.
-    captureTelemetry.recordSuccessfulRecording()
+    captureTelemetry.recordSuccessfulRecording(recoveryTransport: "builtin", sessionID: 1)
     let emitter = Self.makeEmitter(
       backend: .parakeet, captureTelemetry: captureTelemetry, recorder: recorder)
 
@@ -452,6 +452,100 @@ struct HeartPathTelemetryEmitterTests {
       actualKeys == Self.zombieExtraKeys,
       "zombie extras key-set drift: \(actualKeys.symmetricDifference(Self.zombieExtraKeys))")
   }
+
+  // MARK: - Dead-mic telemetry (#1520 heartpath 5b)
+  //
+  // Assert the FEATURE, not the absence of a crash (verify-the-feature-not-the-crash):
+  // each method must add exactly one content-free Sentry breadcrumb (NOT a
+  // standalone captureError — no new issue/alert) AND emit one PostHog event
+  // with the full prop set. The PostHog side is observed via the DEBUG
+  // `testEventHook`, so these two tests are `#if DEBUG`-gated
+  // (swift-testing-debug-seam-needs-if-debug — the Release test lane must not
+  // reference the DEBUG-only hook).
+  #if DEBUG
+    @Test("deadMicRetireAttempted adds one breadcrumb AND one PostHog event with full props")
+    func deadMicRetireAttemptedFansOut() {
+      let recorder = Recorder()
+      let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
+
+      let box = CapturedEventBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      emitter.deadMicRetireAttempted(
+        ctx: DeadMicRetireAttemptContext(
+          transport: "bluetooth",
+          selectedTransport: "bluetooth",
+          failureShape: "all_zero_from_start",
+          healthGuessRefused: true,
+          warmPolicy: "seconds30",
+          retireAction: "retired",
+          routeFallbackReason: nil))
+
+      #expect(recorder.breadcrumbs.count == 1)
+      #expect(recorder.breadcrumbs.first?.message == "Dead mic retire attempted")
+      #expect(recorder.breadcrumbs.first?.data["transport"] as? String == "bluetooth")
+      #expect(recorder.breadcrumbs.first?.data["retire_action"] as? String == "retired")
+      // The breadcrumb carries the full diagnostic payload (parity with PostHog).
+      #expect(recorder.breadcrumbs.first?.data["selected_transport"] as? String == "bluetooth")
+      #expect(recorder.breadcrumbs.first?.data["health_guess_refused"] as? Bool == true)
+      #expect(recorder.errors.isEmpty)  // breadcrumb only, no standalone Sentry event
+
+      let captured = box.event
+      #expect(captured?.name == "audio.dead_mic_retire_attempted")
+      #expect(captured?.stringProps["transport"] == "bluetooth")
+      #expect(captured?.stringProps["failure_shape"] == "all_zero_from_start")
+      #expect(captured?.stringProps["warm_policy"] == "seconds30")
+      #expect(captured?.stringProps["retire_action"] == "retired")
+      #expect(captured?.boolProps["health_guess_refused"] == true)
+    }
+
+    @Test("deadMicRecovered adds one breadcrumb AND one PostHog event with full props")
+    func deadMicRecoveredFansOut() {
+      let recorder = Recorder()
+      let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
+
+      let box = CapturedEventBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      emitter.deadMicRecovered(
+        outcome: DeadMicRecoveryOutcome(
+          retireShape: "all_zero_from_start",
+          retireTransport: "bluetooth",
+          recovered: true,
+          resolution: "later_success",
+          recoveryTransport: "bluetooth",
+          transportChanged: false,
+          gapMs: 1_200))
+
+      #expect(recorder.breadcrumbs.count == 1)
+      #expect(recorder.breadcrumbs.first?.message == "Dead mic recovery observed")
+      #expect(recorder.breadcrumbs.first?.data["recovered"] as? Bool == true)
+      // The breadcrumb carries retire_shape + gap_ms (parity with PostHog).
+      #expect(recorder.breadcrumbs.first?.data["retire_shape"] as? String == "all_zero_from_start")
+      #expect(recorder.breadcrumbs.first?.data["gap_ms"] as? Int == 1_200)
+      #expect(recorder.errors.isEmpty)
+
+      let captured = box.event
+      #expect(captured?.name == "audio.dead_mic_recovery")
+      #expect(captured?.boolProps["recovered"] == true)
+      #expect(captured?.stringProps["resolution"] == "later_success")
+      #expect(captured?.intProps["gap_ms"] == 1_200)
+    }
+
+    /// Sendable-safe capture box for the DEBUG `testEventHook` (a `@Sendable`
+    /// closure): a `@MainActor` class is implicitly Sendable, mutated via
+    /// `MainActor.assumeIsolated` since the emit is synchronous on the main actor.
+    @MainActor
+    private final class CapturedEventBox {
+      var event: CapturedTelemetryEvent?
+    }
+  #endif
 }
 
 /// Fake monotonic instant clock for tests that need deterministic

@@ -1,5 +1,6 @@
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 import Testing
 
@@ -527,5 +528,88 @@ struct ZeroSignalRecoveryTests {
       await ctx.wrapper.apply(.reset)
       await ctx.wrapper.drainReadyWork()
     }
+  }
+
+  // MARK: - Heartpath 5b (#1520): dead-mic retire/recovery telemetry
+
+  @Test("eligible all-zero emits a retire-attempt: action=retired, health_guess_refused=false")
+  func deadMicTelemetryEligibleAllZero() async {
+    let ctx = makeContext()  // eligible by default
+    await startToRecording(ctx)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+    ctx.vad.evidence = .confirmedNoSpeech
+    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.apply(.stop)
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(ctx.wrapper.deadMicRetireAttempts.count == 1)
+    let attempt = ctx.wrapper.deadMicRetireAttempts.first
+    #expect(attempt?.retireAction == "retired")
+    #expect(attempt?.failureShape == "all_zero_from_start")
+    // Eligible: the eligibility-gated stamp fired, so the retire did NOT run on
+    // the sample fact alone.
+    #expect(attempt?.healthGuessRefused == false)
+  }
+
+  @Test("ineligible all-zero (the #1520 gap) emits a retire-attempt with health_guess_refused=true")
+  func deadMicTelemetryIneligibleAllZero() async {
+    let ctx = makeContext(zeroSignalDeviceEligible: { false })
+    await startToRecording(ctx)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+    ctx.vad.evidence = .confirmedNoSpeech
+    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.apply(.stop)
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(ctx.wrapper.deadMicRetireAttempts.count == 1)
+    // The retire ran on the sample fact alone — the eligibility-gated stamp never
+    // fired. This is exactly the case 5b uniquely fixes.
+    #expect(ctx.wrapper.deadMicRetireAttempts.first?.healthGuessRefused == true)
+  }
+
+  @Test("a fenced no-op retire still emits the attempt but arms no recovery watch")
+  func deadMicTelemetryNoOpRetireDoesNotArm() async {
+    let ctx = makeContext()
+    ctx.capture.retireCapturingSourceResult = .sourceNotRunning  // fenced no-op
+
+    for _ in 1...2 {
+      await startToRecording(ctx)
+      ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+      ctx.vad.evidence = .confirmedNoSpeech
+      await ctx.wrapper.drainReadyWork()
+      await ctx.wrapper.apply(.stop)
+      await ctx.wrapper.drainReadyWork()
+      await ctx.wrapper.apply(.reset)
+      await ctx.wrapper.drainReadyWork()
+    }
+
+    #expect(ctx.wrapper.deadMicRetireAttempts.count == 2)  // both dead takes emit
+    #expect(
+      ctx.wrapper.deadMicRetireAttempts.allSatisfy { $0.retireAction == "source_not_running" })
+    // A no-op teardown is never armed, so a later retire can never be credited a
+    // recovery.
+    #expect(ctx.wrapper.deadMicRecoveries.isEmpty)
+  }
+
+  @Test("two consecutive real retires resolve the first as recovered=false, later_retire")
+  func deadMicTelemetryConsecutiveRetiresResolveLaterRetire() async {
+    let ctx = makeContext()  // default fake result is .retired
+
+    for _ in 1...2 {
+      await startToRecording(ctx)
+      ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+      ctx.vad.evidence = .confirmedNoSpeech
+      await ctx.wrapper.drainReadyWork()
+      await ctx.wrapper.apply(.stop)
+      await ctx.wrapper.drainReadyWork()
+      await ctx.wrapper.apply(.reset)
+      await ctx.wrapper.drainReadyWork()
+    }
+
+    // Press 1 armed a watch; press 2's real retire arms over it, resolving press
+    // 1's watch as a NON-recovery (the mic stayed broken).
+    #expect(ctx.wrapper.deadMicRecoveries.count == 1)
+    #expect(ctx.wrapper.deadMicRecoveries.first?.recovered == false)
+    #expect(ctx.wrapper.deadMicRecoveries.first?.resolution == "later_retire")
   }
 }

@@ -299,7 +299,7 @@ private final class NoOpAudioCapture: AudioCaptureInterface {
   }
   func stopCapture() async -> CaptureResult { CaptureResult(samples: []) }
   func rebuildEngine() {}
-  func retireCapturingSource(sessionID: UInt64) {}
+  func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
   func preWarm() async throws {}
   func abortPreWarm() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {

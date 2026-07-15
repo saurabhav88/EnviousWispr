@@ -73,8 +73,9 @@ import Testing
       manager.installCapturedSourceForTesting(stub, sessionID: 7)
       let base = manager.debugSourceIncarnation
 
-      manager.retireCapturingSource(sessionID: 7)
+      let result = manager.retireCapturingSource(sessionID: 7)
 
+      #expect(result == .retired)
       #expect(stub.rebuildCallCount == 1)
       #expect(manager.debugSourceIncarnation == base + 1)
     }
@@ -86,8 +87,9 @@ import Testing
       manager.installCapturedSourceForTesting(stub, sessionID: 7)
       let base = manager.debugSourceIncarnation
 
-      manager.retireCapturingSource(sessionID: 6)  // an older take's id
+      let result = manager.retireCapturingSource(sessionID: 6)  // an older take's id
 
+      #expect(result == .staleSession)
       #expect(stub.rebuildCallCount == 0)
       #expect(manager.debugSourceIncarnation == base)
     }
@@ -102,10 +104,28 @@ import Testing
       // fence closes; the session-id fence alone would let this through).
       manager.installCapturedSourceForTesting(captured, active: replacement, sessionID: 7)
 
-      manager.retireCapturingSource(sessionID: 7)
+      let result = manager.retireCapturingSource(sessionID: 7)
 
+      #expect(result == .sourceReplaced)
       #expect(captured.rebuildCallCount == 0)
       #expect(replacement.rebuildCallCount == 0)
+    }
+
+    @Test("active source already gone → no-op, captured source untouched")
+    func activeSourceGoneIsInert() {
+      let manager = AudioCaptureManager()
+      let stub = StubSource()
+      manager.installCapturedSourceForTesting(stub, sessionID: 7)
+      // Drop the live active source while keeping the retained capture source —
+      // the only way to reach the `.activeSourceGone` branch.
+      manager.clearActiveSourceForTesting()
+      let base = manager.debugSourceIncarnation
+
+      let result = manager.retireCapturingSource(sessionID: 7)
+
+      #expect(result == .activeSourceGone)
+      #expect(stub.rebuildCallCount == 0)
+      #expect(manager.debugSourceIncarnation == base)
     }
 
     @Test("stopped captured source → no-op, no bump")
@@ -116,8 +136,9 @@ import Testing
       manager.installCapturedSourceForTesting(stub, sessionID: 7)
       let base = manager.debugSourceIncarnation
 
-      manager.retireCapturingSource(sessionID: 7)
+      let result = manager.retireCapturingSource(sessionID: 7)
 
+      #expect(result == .sourceNotRunning)
       #expect(stub.rebuildCallCount == 0)
       #expect(manager.debugSourceIncarnation == base)
     }
@@ -128,13 +149,13 @@ import Testing
       let stub = StubSource()
       manager.installCapturedSourceForTesting(stub, sessionID: 7)
 
-      manager.retireCapturingSource(sessionID: 7)
+      #expect(manager.retireCapturingSource(sessionID: 7) == .retired)
       #expect(stub.rebuildCallCount == 1)
 
       // The retire cleared `captureSessionSource`, so a repeat hits the
       // "captured source already gone" guard — proving no stale retain lingers
       // (the retain-release property, without exposing the private field).
-      manager.retireCapturingSource(sessionID: 7)
+      #expect(manager.retireCapturingSource(sessionID: 7) == .capturedSourceGone)
       #expect(stub.rebuildCallCount == 1)  // still 1, not 2
     }
   }
