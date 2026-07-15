@@ -1445,3 +1445,15 @@ Status: predeclared before prompt-arm output
 The 75+75 development pilot is intentionally underpowered for a five-point lift and cannot prove the 2.5% release false-list ceiling. The decision contract now requires at least eight net positive-list strict wins plus exact paired `p < 0.05`, zero new restraint false-list regressions, no increase in audited item/scope loss, zero new arm-blind semantic meaning damage, and zero inference failures. Positive and restraint remain co-primary; no combined headline is allowed. Passing only advances a prompt to a larger native-reviewed/frozen evaluation.
 
 The contract binds the sealed selection, corrected scorer, and canonical power implementation by SHA-256. It records representative Wilson intervals and exact paired power before outputs exist. The full contract is `docs/experiments/eg1-multilingual/ENGLISH-LIST-PILOT75-DECISION-CONTRACT-V1.md`.
+
+### LEAKAGE-AUDIT-001 - Portable assembler stopped before publication
+
+Timestamp: 2026-07-15 08:58 EDT
+
+Status: 75+75 checkpoints complete; first leakage pass clean; publication blocked pending code fixes
+
+The model-blind generator accepted all 75 selected positive cases and all 75 selected restraint cases. Restraint generation used 15 five-case checkpoints. Three first attempts were rejected before checkpointing: one duplicate semantic-family label in batch 6, one invalid forbidden span in batch 7, and another duplicate family in batch 8. Each unchanged automatic retry passed. No candidate model output was generated.
+
+The first full portable input/output cross-field leakage pass completed without a collision. During its independent written-byte revalidation, a separate code-only audit found proof-layer defects: the assembler did not recompute the claimed first-N selection; source and checkpoint paths had validate-then-reopen timing windows; multi-file overwrite-capable publication could leave a partial bundle; relocated checkouts could not replay absolute sealed paths; and the receipt hardcoded one claim while omitting important assembly parameters and coverage evidence.
+
+The active validation process was terminated before publication. No final corpus, receipt, or model output exists. Accepted checkpoints and transaction bytes remain preserved. The required next sequence is fixed: patch all findings with integration tests, independent re-audit, rerun the complete two-pass leakage validation, publish the receipt last as the exclusive commit marker, independently audit the final receipt, and only then allow exact-Mac prompt generation.
