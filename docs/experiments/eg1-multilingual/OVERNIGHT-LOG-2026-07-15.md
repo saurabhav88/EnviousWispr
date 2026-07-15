@@ -1457,3 +1457,15 @@ The model-blind generator accepted all 75 selected positive cases and all 75 sel
 The first full portable input/output cross-field leakage pass completed without a collision. During its independent written-byte revalidation, a separate code-only audit found proof-layer defects: the assembler did not recompute the claimed first-N selection; source and checkpoint paths had validate-then-reopen timing windows; multi-file overwrite-capable publication could leave a partial bundle; relocated checkouts could not replay absolute sealed paths; and the receipt hardcoded one claim while omitting important assembly parameters and coverage evidence.
 
 The active validation process was terminated before publication. No final corpus, receipt, or model output exists. Accepted checkpoints and transaction bytes remain preserved. The required next sequence is fixed: patch all findings with integration tests, independent re-audit, rerun the complete two-pass leakage validation, publish the receipt last as the exclusive commit marker, independently audit the final receipt, and only then allow exact-Mac prompt generation.
+
+### LEAKAGE-AUDIT-002 - Hardened assembler re-audit
+
+Timestamp: 2026-07-15 09:11 EDT
+
+Status: independent code re-audit clean; full validation rerun authorized after commit
+
+The rewritten assembler proves the sealed first-N selection by regenerating the full deterministic specification sequence, recomputing the canonical definition hash, validating the excluded suffix/distributions/flags, and binding the expected manifest and generator hashes. Audit sources and checkpoints are read once, hashed and parsed from the same bytes, snapshotted byte-for-byte, reparsed, and rehashed. The portable receipt contains computed comparison counters, field-pair coverage, cross-batch/cross-role evidence, per-axis maxima with provenance, batch ID, assembly parameters, and only repository-relative paths.
+
+Publication is now one exclusive bundle. Existing output fails closed; pre-receipt failures clean only files created by that invocation; the receipt is written last as the commit marker. Sixteen targeted tests cover first-N/definition/flags, all three fuzzy axes, cross-field/cross-batch/cross-role screening, family aliases, mutation, exclusive publication and cleanup, portable replay, and required receipt fields. Independent re-audit found no remaining issue.
+
+Sequencing exception: the sealed generator remains byte-exact at `ead3e1b9cbd6b9dad65092296de33e2c5baec716598b008d69d2bae2e8890a3b` for this one assembly because its validator functions are active but its overwrite-capable generation writer is not invoked. Changing it now would invalidate the sealed prompt/checkpoint contract. Its general output writers must be patched to exclusive mode immediately after the audited bundle is published, under a new recorded hash.
