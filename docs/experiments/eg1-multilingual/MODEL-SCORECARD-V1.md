@@ -51,7 +51,7 @@ Download-size ranking uses every byte required to enable English, German, French
 | Untouched Gemma 4 E4B | 56 multilingual: strict 29/56, meaning 55/56, 1 damaging; English two-item strict 4/20 with 1 damaging | Registry Q4 4.97 GiB | none | Safety-first universal-base discovery finalist; native/frozen proof pending |
 | Historical English-tuned Gemma 4 E4B | Russian independent strict 12/16; learned lists but retained filler/number failures | Custom GGUF not built | about 140 MiB | Evidence for multilingual Gemma experiment |
 | Untouched Qwen3.5-4B | 56 multilingual: strict 28/56, meaning 54/56, 5 damaging; strongest German slice at 8/8 | Registry Q5 2.93 GiB | none | Reserve universal-base challenger; native/frozen proof pending |
-| Ministral 3 3B | Not yet run task-specific benchmark | Registry Q5 2.30 GiB | none | Research backlog |
+| Untouched Ministral 3 3B Instruct | English two-item deterministic strict 1/20 and all-required preservation 1/20; Russian deterministic strict 7/16; blind semantic audit pending | Registry Q5 2.30 GiB | none | Universal architecture passes, but do not tune unless semantic audit contradicts the severe English preservation result |
 
 The size column can change rank, but it cannot rescue unsafe or low-quality output. Conversely, one 5-8 GiB universal model can beat a 2.69 GiB model if the measured quality gain is large enough and Mac runtime remains acceptable. A user downloading multiple full models remains disqualified before this table is scored.
 

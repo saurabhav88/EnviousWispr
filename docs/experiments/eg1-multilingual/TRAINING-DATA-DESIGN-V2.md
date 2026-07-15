@@ -4,7 +4,7 @@ Status: proposed next training lane. Do not launch until the model-blind develop
 
 ## Product boundary
 
-The preferred result is one universal offline model for English, German, French, Spanish, and Russian. One shared full base plus small optional LoRA adapters is a fallback only if the universal learning curve plateaus below the per-language gates. Requiring one user to download multiple full-size language models is disqualified.
+The preferred result is one universal offline model for English, German, French, Spanish, and Russian. One byte-identical shared base plus delta-only LoRA adapters is a fallback only if the universal learning curve plateaus below the per-language gates. An adapter cannot duplicate the base tensors or run independently as a complete model. Requiring one user to install more than one complete base-weight set to enable any two claimed languages is disqualified, regardless of whether a package is called compact, regional, optional, or language-specific.
 
 ## Why the current distribution is insufficient
 

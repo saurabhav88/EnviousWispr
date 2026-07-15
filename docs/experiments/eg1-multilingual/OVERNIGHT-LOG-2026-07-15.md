@@ -1239,3 +1239,19 @@ The earlier phrase `multiple full-size models` was directionally correct but und
 Universal Tier A remains preferred. Shared-base-plus-adapter Tier B enters finalist ranking only after the predeclared universal data-dose ladder fails or plateaus. Download ranking now uses the complete five-language footprint, not base-only or the smallest selected-language package. At measured Qwen sizes, base plus one adapter is about 2.75 GiB and base plus five same-sized adapters is about 3.00 GiB; five separate full models would be about 13.45 GiB and is never scored.
 
 The audit also corrected the runtime oracle. A future multi-adapter implementation must prove that all-inactive output equals the pure base and one-active multi-loaded output equals that adapter loaded alone, byte-for-byte. The merged GGUF is a separate release artifact because merge and quantization order can change output.
+
+### BASE-RUN-005 - Untouched Ministral 3 3B Instruct control
+
+Timestamp: 2026-07-15 05:35 EDT
+
+Status: CUDA inference and deterministic development checks complete; blind semantic audit pending
+
+AlienSV downloaded the official BF16 `Ministral-3-3B-Instruct-2512` checkpoint and ran it without tuning as an untouched Instruct-checkpoint control. It is a valid one-universal-model architecture and its registry Q5 artifact is approximately 2.30 GiB. It is not described as a base-pretrained model.
+
+The generic Hugging Face runner initially failed because `AutoModelForCausalLM` does not load `Mistral3Config`. The runner now detects `model_type=mistral3` and uses `Mistral3ForConditionalGeneration` plus `MistralCommonBackend`; the existing Qwen and Gemma path is unchanged. A controlled prompt confirmed that the official and bundled tokenizer paths produced identical token IDs. The isolated `mistral-common` environment did not mutate the shared training environment.
+
+All 92 requested development generations completed without an inference error: 56 multilingual cases, 20 English two-item list cases, and 16 Russian cases. Raw output SHA-256 receipts are `4d904e48c8307991656eb42a4b46ea8dfca1d8e04072210a34982e2ad84d0415` for the multilingual 56, `b675dd3762049a71ccc3ee8e9b294c7780d49142df1ea24e46a5e6601032534c` and `5bdb9c6a67d8efa312d3b7dcb2700621410f7a9da134b84b3aa9e160a3f6ddc8` for the two English halves, and `e500987ddca138c3335732cf3fff38dd1cc7f8cd65ffbd9887cc79363e67673e` for Russian. The exact inference-runner SHA-256 was `e023cb200470768aaee384d8c9f61fa5359d62bdc7fc4561cae7dd985d31fa8a`.
+
+The English deterministic result is weak: 11/20 had the requested visible structure, only 1/20 preserved every required phrase, 19/20 avoided the forbidden phrases, and just 1/20 was strict. The Russian deterministic result was 10/16 required-span pass, 14/16 forbidden-span pass, 15/16 structure pass, and 7/16 strict. The generic multilingual scorer displayed 56/56 because those older rows do not contain its `required` and `categories` fields; that number is invalid as a quality metric and is excluded from every comparison.
+
+Decision remains pending the reviewer who is blindly scoring all 92 outputs for meaning, cleanup, grammar, and damage. No Ministral tuning run will start unless that audit materially contradicts the severe English preservation result.

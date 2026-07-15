@@ -82,7 +82,7 @@ def git_head() -> str | None:
 
 def tokenizer_hashes(path: Path) -> dict[str, str]:
     hashes: dict[str, str] = {}
-    for name in ("tokenizer.json", "tokenizer_config.json", "tokenizer.model"):
+    for name in ("tokenizer.json", "tokenizer_config.json", "tokenizer.model", "tekken.json"):
         candidate = path / name
         if candidate.is_file():
             hashes[name] = sha256(candidate)
@@ -93,7 +93,7 @@ def main() -> None:
     args = parse_args()
 
     import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
     torch.manual_seed(args.seed)
     model_path = Path(os.path.expanduser(args.model)).resolve()
@@ -124,15 +124,33 @@ def main() -> None:
     system_template = read_prompt(prompt_path)
     # Merged checkpoints can carry mutated tokenizer metadata. A tuned model
     # should use the exact untouched base tokenizer it was trained against.
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+    model_config = AutoConfig.from_pretrained(model_path)
+    is_mistral3 = model_config.model_type == "mistral3"
+    if is_mistral3:
+        if args.enable_thinking:
+            raise SystemExit("--enable-thinking is not supported by the Mistral3 evaluation path")
+        from transformers import Mistral3ForConditionalGeneration, MistralCommonBackend
+
+        tokenizer = MistralCommonBackend.from_pretrained(tokenizer_path)
+        model = Mistral3ForConditionalGeneration.from_pretrained(
+            model_path,
+            torch_dtype=torch.bfloat16,
+            device_map="cuda",
+        )
+        model_loader = "Mistral3ForConditionalGeneration"
+        tokenizer_loader = "MistralCommonBackend"
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            torch_dtype=torch.bfloat16,
+            device_map="cuda",
+        )
+        model_loader = "AutoModelForCausalLM"
+        tokenizer_loader = "AutoTokenizer"
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = "left"
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype=torch.bfloat16,
-        device_map="cuda",
-    )
     model.eval()
 
     manifest = {
@@ -143,7 +161,10 @@ def main() -> None:
         "git_head": git_head(),
         "model_id": args.model_id,
         "model_path": str(model_path),
+        "model_type": model_config.model_type,
+        "model_loader": model_loader,
         "tokenizer_path": str(tokenizer_path),
+        "tokenizer_loader": tokenizer_loader,
         "tokenizer_hashes": tokenizer_hashes(tokenizer_path),
         "corpus_path": str(corpus_path),
         "corpus_sha256": sha256(corpus_path),
@@ -165,7 +186,7 @@ def main() -> None:
     with output_path.open("w", encoding="utf-8") as output_handle:
         for batch_start in range(0, len(rows), args.batch_size):
             batch = rows[batch_start : batch_start + args.batch_size]
-            rendered: list[str] = []
+            conversations: list[list[dict[str, str]]] = []
             for row in batch:
                 language_name = LANGUAGE_NAMES.get(row["lang"], row["lang"])
                 system_prompt = system_template.replace("{{LANGUAGE_NAME}}", language_name)
@@ -174,7 +195,7 @@ def main() -> None:
                     language_label = (
                         f'<LANGUAGE code="{row["lang"]}">{language_name}</LANGUAGE>\n'
                     )
-                messages = [
+                conversations.append([
                     {"role": "system", "content": system_prompt},
                     {
                         "role": "user",
@@ -182,17 +203,29 @@ def main() -> None:
                             f"{language_label}<TRANSCRIPT>\n{row['input']}\n</TRANSCRIPT>"
                         ),
                     },
-                ]
-                rendered.append(
-                    tokenizer.apply_chat_template(
-                        messages,
-                        tokenize=False,
-                        add_generation_prompt=True,
-                        enable_thinking=args.enable_thinking,
-                    )
-                )
+                ])
 
-            encoded = tokenizer(rendered, return_tensors="pt", padding=True).to(model.device)
+            if is_mistral3:
+                encoded = tokenizer.apply_chat_template(
+                    conversations,
+                    tokenize=True,
+                    add_generation_prompt=True,
+                    padding=True,
+                    return_tensors="pt",
+                    return_dict=True,
+                ).to(model.device)
+            else:
+                rendered: list[str] = []
+                for messages in conversations:
+                    rendered.append(
+                        tokenizer.apply_chat_template(
+                            messages,
+                            tokenize=False,
+                            add_generation_prompt=True,
+                            enable_thinking=args.enable_thinking,
+                        )
+                    )
+                encoded = tokenizer(rendered, return_tensors="pt", padding=True).to(model.device)
             torch.cuda.synchronize()
             batch_started = time.perf_counter()
             with torch.inference_mode():
