@@ -132,27 +132,29 @@ import Testing
   }
 
   @Test(
-    "a stop toggle during Arming (before the first buffer) stops the session, never leaves the mic open"
+    "a stop toggle while still Arming (capture not yet established) stops the session, never leaves the mic open"
   )
   func toggleDuringArmingStops() async throws {
-    // #1548 D1 + Codex code-diff P1: Arming is a distinct state that can last up
-    // to the 800 ms no-buffer deadline with the pill hidden. A stop toggle in
+    // #1548 D2 + Codex code-diff P1: Arming now means "capture is being
+    // established" (warm-up + stabilization + begin-capture). A stop toggle in
     // that window MUST stop — dropping it would leave the mic recording against
-    // the user's explicit intent.
+    // the user's explicit intent. Park the forward path at format stabilization so
+    // the session is genuinely still `.arming` when the stop toggle lands.
     let h = makeDriver()
-    // Warm the engine so the kernel parks at Arming awaiting the first buffer
-    // (no cold load), and deliver NO buffer — the session stays in Arming.
-    try await h.adapter.warmUp()
+    try await h.adapter.warmUp()  // warm — no cold load; stabilization is the parking point
+    h.capture.gateStabilizationCall = 1  // park the first stabilization call
     try await h.driver.handle(event: .toggleRecording(.testDefault()))
-    await drainUntil { h.kernel.state == .arming }
-    #expect(h.kernel.state == .arming, "precondition: parked in Arming, no buffer yet")
+    await h.capture.awaitStabilizationGateReached()
+    #expect(
+      h.kernel.state == .arming, "precondition: parked in Arming, capture not yet established")
 
     // Second toggle = stop. Must NOT be a no-op.
     try await h.driver.handle(event: .toggleRecording(.testDefault()))
+    h.capture.releaseStabilizationGate()
     await drainUntil { h.kernel.recordingOutcome != nil }
     #expect(
       h.kernel.recordingOutcome == .discarded(.releasedBeforeRecording),
-      "a stop before the first buffer discards as released-before-recording")
+      "a stop before capture is established discards as released-before-recording")
     #expect(h.kernel.state == .idle, "the mic must not remain open in Arming/Live")
   }
 
@@ -427,7 +429,7 @@ import Testing
     }
 
     @Test(
-      "a WARM press stays hidden during Arming, then shows the recording pill once audio lands"
+      "a WARM press shows the recording pill immediately in Arming (#1548 D2 immediate ack)"
     )
     func warmPreparingProjectsToRecordingPill() async throws {
       let h = makeDriver()
@@ -435,20 +437,18 @@ import Testing
       // would surface the caching pill instead).
       try await h.adapter.warmUp()
       #expect(h.adapter.readiness == .ready)
-      // #1548 D1 (founder 2026-07-14): the pill does NOT show early on a warm
-      // press. Arming stays HIDDEN — we do not claim "recording" until transport
-      // is proven. The first buffer lands within ~100 ms on the built-in mic
-      // (imperceptible), so there is no phantom "Preparing..." flash and no
-      // premature pill. Showing it early would defeat the whole transport gate.
+      // #1548 D2 (founder 2026-07-14): the recording pill shows the INSTANT the
+      // press is accepted on a warm engine — no first-buffer gate, no hidden Arming
+      // window. Park the forward path at stabilization so the overlay is observed
+      // while genuinely still `.arming`.
+      h.capture.gateStabilizationCall = 1
       try await h.driver.handle(event: .toggleRecording(.testDefault()))
-      await drainUntil { h.kernel.state == .arming }
+      await h.capture.awaitStabilizationGateReached()
       #expect(h.kernel.state == .arming)
-      #expect(h.driver.overlayIntent == .hidden)
-      // The recording pill appears the instant the first buffer commits Live.
-      for _ in 0..<2000 where h.kernel.state != .live {
-        h.capture.deliverBuffer()
-        await Task.yield()
-      }
+      #expect(h.driver.overlayIntent == .recording(audioLevel: 0))
+      // Releasing capture-establish reaches `.live`, still showing the pill.
+      h.capture.releaseStabilizationGate()
+      await drainUntil { h.kernel.state == .live }
       #expect(h.kernel.state == .live)
       #expect(h.driver.overlayIntent == .recording(audioLevel: 0))
     }

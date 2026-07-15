@@ -250,7 +250,9 @@ final class KernelHeartPathTelemetryObserver {
     }
 
     if prevState == .arming, state == .live {
-      // Transport proven — the recording pill shows (was `→ .recording`).
+      // Capture established — the recording pill shows (was `→ .recording`;
+      // #1548 D2 removed the first-buffer gate, so this fires sequentially the
+      // moment capture is established, not on a first buffer).
       events.append(.recordingCommitted(isStreaming: isStreaming))
     }
 

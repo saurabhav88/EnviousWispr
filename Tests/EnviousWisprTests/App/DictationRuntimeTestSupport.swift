@@ -40,10 +40,8 @@ final class RouterTestAudioCapture: AudioCaptureInterface {
 
   func startEnginePhase() async throws {}
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
-    // #1548 D1: prove transport so a real start reaches `.recording` (Arming →
-    // Live gates on the first converted buffer; the kernel wires
-    // `onBufferCaptured` before this call).
-    if let buffer = TransportGateTestBuffer.makeFirstBuffer() { onBufferCaptured?(buffer) }
+    // #1548 D2: the forward path reaches `.live` sequentially once this returns —
+    // no first-buffer delivery needed to leave Arming.
     return AsyncStream { $0.finish() }
   }
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {

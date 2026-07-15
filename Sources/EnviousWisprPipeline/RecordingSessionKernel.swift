@@ -47,10 +47,13 @@ public enum RecordingFailureReason: Equatable, Sendable {
 /// observable, and a concluded session returns to `.idle` with
 /// `recordingOutcome` set. `state` is pure lifecycle POSITION.
 ///
-/// - `arming`: preparing + warming the model + opening the mic — the pill is
-///   HIDDEN here (transport not yet proven). Was `preparing` + `warmingUp`.
-/// - `live`: a converted buffer has arrived; the recording pill shows. Was
-///   `recording`. Entered on the FIRST buffer, not on capture-start return.
+/// - `arming`: preparing + warming the model + opening the mic. The pill shows
+///   immediately here (recording pill when the model is warm, caching pill on a
+///   genuine cold load) — #1548 D2 removed the first-buffer gate. Was
+///   `preparing` + `warmingUp`.
+/// - `live`: capture is established and the take is being timed. Entered
+///   sequentially the moment capture is established, NOT on a first buffer
+///   (#1548 D2). Was `recording`.
 /// - `delivering`: transcribe + finalize, sub-phase carried by
 ///   `deliveringPhase`. Was `transcribing` + `finalizing`.
 public enum RecordingSessionState: CaseIterable, Equatable, Sendable {
@@ -81,8 +84,8 @@ enum RecordingOutcome: Equatable, Sendable {
   /// `wasRecording` folds in the observer's old `priorState == .recording`
   /// distinction — true when the session was `.live` at interruption.
   case asrInterrupted(wasRecording: Bool)
-  /// #1548: the Arming no-buffer deadline elapsed — no converted buffer ever
-  /// reached the routed-buffer latch. Projects to the existing
+  /// #1548: no audio ever arrived — the 800 ms no-buffer watchdog fired with
+  /// `bufferCountThisSession == 0` (a dead mic). Projects to the existing
   /// `.failed(.noAudioCaptured)` telemetry + "No audio captured" copy.
   case noTransport
 }
@@ -555,30 +558,6 @@ final class RecordingSessionKernel {
   private var pendingRecordingExit: RecordingExit?
   private var recordingExitLatched = false
 
-  /// How Arming resolved (#1548 D1). The forward path parks on
-  /// `awaitArmingResolution()` after `beginCapturePhase()`; the FIRST of a
-  /// first-buffer commit, the no-buffer deadline, or a conclusion
-  /// (stop/cancel/structural-failure via `finishTerminal`) resumes it once.
-  private enum ArmingResolution: Equatable, Sendable {
-    /// The first converted, retained buffer arrived — `commitLiveFromFirstBuffer`
-    /// already flipped Arming → Live, stamped, and started VAD.
-    case committedLive
-    /// The 800 ms no-buffer watchdog fired while still Arming (`.noBuffers`).
-    case deadline
-    /// A conclusion (stop / cancel / structural failure) already set
-    /// `recordingOutcome`; the forward path's barrier guard bails.
-    case aborted
-  }
-  /// Mirror of the recording-exit pending-slot pattern (`:2508`): the winner is
-  /// recorded here when it fires BEFORE the forward path installs its waiter
-  /// (pre-roll callbacks run while `beginCapturePhase()` is suspended, r2 Q2.1).
-  private var armingResolution: ArmingResolution?
-  private var armingContinuation: CheckedContinuation<ArmingResolution, Never>?
-  /// A zero-signal event (`.allZeroFromStart` / `.becameZeroMidCapture`) that
-  /// arrived DURING Arming is latched here, not concluded — `commitLiveFromFirstBuffer`
-  /// delivers it into the Live/stop tail once transport is proven (§3.6).
-  private var pendingArmingZeroSignal: CaptureStallFailureMode?
-
   /// Test-observation signal for the simulator's drain (companion to
   /// `workEpoch`). `true` only in the window between `deliverRecordingExit`
   /// latching an exit from `.recording` and the forward path consuming it and
@@ -739,24 +718,30 @@ final class RecordingSessionKernel {
   }
 
   /// Request a stop. From `.live` it latches the recording-exit; from `.arming`
-  /// it latches a stop the forward path resolves to `discarded` AND wakes a
-  /// suspended Arming waiter (#1548 D1, r3 Q2.3); elsewhere ignored (PR-1
-  /// §B.1.2, invariant 1).
+  /// it latches a stop the forward path's checkpoint resolves to `discarded`
+  /// (#1548 D2); elsewhere ignored (PR-1 §B.1.2, invariant 1).
   func requestStop() {
     switch state {
     case .live:
       deliverRecordingExit(.userStop)
     case .arming:
-      // Latched, then the forward path's post-Arming checkpoint concludes
-      // `.discarded(.releasedBeforeRecording)`. `resolveArming(.aborted)` wakes
-      // it if it is already parked in `awaitArmingResolution()`; if it is still
-      // in an earlier await, the existing latch checkpoints consume `stopLatched`.
-      // `detachedAdapterCancel()` breaks a model-warmup await that has no
-      // deadline (WhisperKit) — without it, a stop during a slow cold load would
-      // strand the session until the load finished (impl-design consult, Dec 1).
+      // First-wins (Codex code-diff P2): if a capture-stall or zero-signal already
+      // latched a recording exit while capture was establishing, that failure WON —
+      // a stop arriving afterward must be fully inert. NOT even
+      // `detachedAdapterCancel()` runs, which would mark the adapter cancelled and
+      // lose a `.becameZeroMidCapture` prefix's salvage. The latched exit is
+      // consumed at the post-establish checkpoint. This is the single source of the
+      // stop-vs-latched-exit ordering, paired with the `!stopLatched` guards in
+      // `externalCaptureStalled`; together they make `stopLatched` and
+      // `recordingExitLatched` mutually exclusive before Live.
+      guard !recordingExitLatched else { return }
+      // Latched; the forward path's checkpoint consumes `stopLatched` and concludes
+      // `.discarded(.releasedBeforeRecording)`. `detachedAdapterCancel()` breaks a
+      // model-warmup await that has no deadline (WhisperKit) — without it, a stop
+      // during a slow cold load would strand the session until the load finished
+      // (impl-design consult, Dec 1).
       stopLatched = true
       detachedAdapterCancel()
-      resolveArming(.aborted)
       bump()
     case .idle, .stopping, .delivering:
       log("stop ignored at \(state)")
@@ -771,11 +756,14 @@ final class RecordingSessionKernel {
     case .live:
       deliverRecordingExit(.cancel)
     case .arming:
+      // First-wins (Codex code-diff P2): a latched capture failure wins; a cancel
+      // arriving afterward is fully inert, including `detachedAdapterCancel()` (see
+      // `requestStop`).
+      guard !recordingExitLatched else { return }
       cancelRequested = true
       detachedAdapterCancel()
-      // Wake a suspended Arming waiter (r3 Q2.3); the forward path's post-Arming
-      // checkpoint concludes `.cancelled`.
-      resolveArming(.aborted)
+      // The forward path's checkpoint consumes `cancelRequested` and concludes
+      // `.cancelled` (#1548 D2).
       bump()
     case .stopping:
       // Cancel after `.live`, before a transcript exists — the safe point does
@@ -1058,6 +1046,11 @@ final class RecordingSessionKernel {
     }
     // The capture engine is up — every terminal from here must stop capture.
     captureLifecycle = .active
+    // First-wins invariant (Codex code-diff P2): a stop/cancel and a latched
+    // recording exit are mutually exclusive before Live — `requestStop`/`cancel`
+    // bail when `recordingExitLatched`, and `externalCaptureStalled` bails when
+    // `stopLatched`. So `stopLatched` here implies no exit is pending, and this
+    // discard cannot clobber a capture failure.
     if stopLatched {
       finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
       return
@@ -1138,56 +1131,33 @@ final class RecordingSessionKernel {
       return
     }
     guard isCurrent(sid) else { return }
-    // Arming → await transport. The pill stays HIDDEN until a converted,
-    // retained buffer proves transport; `commitLiveFromFirstBuffer` (fired from
-    // the buffer callback) flips Arming → Live, stamps recording-start, and
-    // starts VAD (#1548 D1). The forward path parks here until the FIRST of:
-    // a first-buffer commit, the 800 ms no-buffer deadline, or a conclusion
-    // (stop / cancel / structural failure). Pre-roll callbacks can fire while
-    // `beginCapturePhase()` was suspended, so the winner may already be recorded
-    // in the pending slot (r2 Q2.1) — `awaitArmingResolution()` consumes it.
-    let resolution = await awaitArmingResolution()
+    // Capture established (#1548 D2). Acknowledge the press immediately:
+    // transition to `.live` sequentially with no first-buffer gate. "First
+    // converted buffer arrived" is now plain telemetry (`bufferCountThisSession`),
+    // not a state the machine waits behind.
+    //
+    // Concluded-session barrier (Codex r2 defect 1): a `.noBuffers`/zero exit can
+    // conclude the session while `beginCapturePhase()` is suspended — `sid` stays
+    // current but `state` is already `.idle`. Without the `recordingOutcome == nil`
+    // check the resumed path would attempt the illegal `idle → live` transition.
     guard isCurrent(sid), recordingOutcome == nil else { return }
-    // Honor the Arming winner (`armingResolution` is a first-wins latch, r3 Q2.3
-    // / impl-design consult Dec 2). The stop/cancel latch is consumed WITHIN the
-    // `.committedLive` / `.aborted` cases, NOT before the switch: a stop/cancel
-    // that latched in the window between the deadline winning and this task
-    // resuming must be INERT — the deadline won, and its honest "No audio
-    // captured" diagnostic (and retained spool) must not be overwritten by a
-    // silent discard (Codex code-diff r2 P2).
-    switch resolution {
-    case .committedLive:
-      // Transport proved. A stop/cancel that latched during Arming still
-      // discards / cancels even over this late commit — the pre-#1548
-      // pre-`.recording` latch semantics (a stop before transport is a discard).
-      if stopLatched {
-        finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
-        return
-      }
-      if cancelRequested {
-        finishTerminal(.cancelled, sid: sid)
-        return
-      }
-      break  // now `.live` — fall through to the recording-exit tail
-    case .deadline:
-      // No converted buffer reached the routed-buffer latch within 800 ms —
-      // end the take honestly (§3.5). Existing "No audio captured" copy. The
-      // deadline won the latch race, so a later stop/cancel is inert here.
-      finishTerminal(.noTransport, sid: sid)
-      return
-    case .aborted:
-      // A stop / cancel (or a terminal) won the latch race and resolved Arming.
-      // Conclude by which latch is set; a spurious wake with no latch bails.
-      if stopLatched {
-        finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
-        return
-      }
-      if cancelRequested {
-        finishTerminal(.cancelled, sid: sid)
-        return
-      }
+    // First-wins invariant (Codex code-diff P2): a stop/cancel and a latched
+    // recording exit are mutually exclusive before Live (see the source guards in
+    // `requestStop`/`cancel` and `externalCaptureStalled`). So `stopLatched` here
+    // implies no pending capture-failure exit — this discard is safe, and a
+    // capture failure that won instead falls through to Live where
+    // `awaitRecordingExit` consumes it.
+    if stopLatched {
+      // PTT released before Live — no transcribable audio (PR-1 §B.1.2).
+      finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
       return
     }
+    if cancelRequested {
+      finishTerminal(.cancelled, sid: sid)
+      return
+    }
+    guard transition(to: .live) else { return }
+    beginLiveRecording(sid)
 
     let exit = await awaitRecordingExit()
     guard isCurrent(sid), recordingOutcome == nil else { return }
@@ -1339,7 +1309,16 @@ final class RecordingSessionKernel {
       // visible-recording duration.
       return (stopped &- started) < UInt64(minimumRecordingTicks)
     }()
-    if elapsedSubMinimum || bufferCountThisSession == 0 {
+    // #1548 D2 (§3.7): pair the zero-buffer proxy with `captureResult.samples`.
+    // With in-process capture (#1543) the manager can already hold non-empty
+    // audio while `bufferCountThisSession` is still 0 (the kernel callback runs
+    // on a separate MainActor task and has simply not fired yet), so a bare count
+    // check would discard real salvageable audio. Requiring BOTH keeps a
+    // genuinely-empty tap discarding while letting manager-held audio reach the
+    // salvage tail. The elapsed-time gate stays authoritative for too-short takes.
+    if elapsedSubMinimum
+      || (bufferCountThisSession == 0 && captureResult.samples.isEmpty)
+    {
       // PR-5 Rung 5 Pass 2 #5: app.log line for sub-minimum discard so
       // debug-build readers can grep app.log for the tap-too-short
       // signature (parity with OLD `WhisperKitPipeline.swift:578-595`,
@@ -2465,27 +2444,53 @@ final class RecordingSessionKernel {
   /// equality — the App-side `WedgeRecoveryRouter` already filters by
   /// capture session via its own `isCurrentSession(ctx.sessionID)` check.
   ///
-  /// #1317 §3.2 / #1548 D1: routes by `ctx.failureMode` AND lifecycle state.
-  /// - `.noBuffers` while `.arming` → the no-buffer deadline: resolve Arming to
-  ///   `.deadline`, which the forward path concludes `.noTransport` (§3.5).
-  /// - `.noBuffers` while `.live` → today's `.captureStall` exit.
-  /// - `.allZeroFromStart` / `.becameZeroMidCapture` while `.arming` → LATCH the
-  ///   mode; `commitLiveFromFirstBuffer` delivers it once transport is proven
-  ///   (§3.6). While `.live` → the dedicated `.zeroSignal` exit (prefix survives).
+  /// #1317 §3.2 / #1548 D2: routes by `ctx.failureMode` AND lifecycle state.
+  /// - `.noBuffers` + no buffer ever (`bufferCountThisSession == 0`) → dead mic:
+  ///   `finishTerminal(.noTransport)` ("No audio captured", spool retained).
+  /// - `.noBuffers` after a buffer arrived → `.captureStall` (routed via the
+  ///   pending slot from `.arming`, `deliverRecordingExitIfCurrent` from `.live`).
+  /// - `.allZeroFromStart` / `.becameZeroMidCapture` → the dedicated `.zeroSignal`
+  ///   exit through the recording-exit channel from both `.arming` and `.live`.
   func externalCaptureStalled(_ ctx: CaptureStallContext) {
     guard recordingOutcome == nil else { return }
     switch ctx.failureMode {
     case .noBuffers:
-      if state == .arming {
-        resolveArming(.deadline)
+      guard state == .arming || state == .live else { return }
+      // First-wins (Codex r2 defect 2): a stop/cancel/recording-exit may already
+      // own the result while `recordingOutcome` is still nil. `finishTerminal`
+      // only checks `recordingOutcome == nil`, so a direct `.noTransport` here
+      // would override a latched stop. Honor the earlier winner.
+      guard !stopLatched, !cancelRequested, !recordingExitLatched else { return }
+      if bufferCountThisSession == 0 {
+        // Dead mic — no audio ever arrived. "No audio captured", spool retained.
+        finishTerminal(.noTransport, sid: currentSessionID)
       } else {
-        deliverRecordingExitIfCurrent(.captureStall, sid: currentSessionID)
+        // A buffer arrived, then the stream stalled. `.captureStall` must survive
+        // even if the watchdog fires while still `.arming` (pre-roll bumped the
+        // count but `beginCapturePhase` is suspended) — `deliverRecordingExitIfCurrent`
+        // rejects anything outside `.live`, so route through the pending slot
+        // from `.arming` (Codex r2 defect 3).
+        switch state {
+        case .arming: deliverRecordingExit(.captureStall)
+        case .live: deliverRecordingExitIfCurrent(.captureStall, sid: currentSessionID)
+        case .idle, .stopping, .delivering: break
+        }
       }
     case .allZeroFromStart, .becameZeroMidCapture:
-      if state == .arming {
-        pendingArmingZeroSignal = ctx.failureMode
-      } else {
-        deliverRecordingExitIfCurrent(.zeroSignal(ctx.failureMode), sid: currentSessionID)
+      // First-wins (Codex code-diff P2): symmetric with the `.noBuffers` branch —
+      // a stop/cancel or recording-exit that already won must not be overwritten by
+      // a later zero-signal, and the post-`beginCapturePhase` checkpoint honors an
+      // exit latched here over a later stop.
+      guard !stopLatched, !cancelRequested, !recordingExitLatched else { return }
+      // A zero-signal can fire while still `.arming` (pre-roll sample callbacks
+      // run during a suspended `beginCapturePhase`, Codex r1 Q2c). Route it
+      // through the general recording-exit channel from both states; the pending
+      // slot preserves an exit delivered before `awaitRecordingExit()` installs
+      // its continuation (§3.4). No Arming-specific latch.
+      switch state {
+      case .arming: deliverRecordingExit(.zeroSignal(ctx.failureMode))
+      case .live: deliverRecordingExitIfCurrent(.zeroSignal(ctx.failureMode), sid: currentSessionID)
+      case .idle, .stopping, .delivering: break
       }
     }
   }
@@ -2523,36 +2528,25 @@ final class RecordingSessionKernel {
           sequence: self.bufferSequence, sessionID: sid)
         self.adapter.acceptAudio(handoff)
         self.bufferCountThisSession += 1
-        // #1548 D1: the FIRST converted, retained buffer is TRANSPORT — flip
-        // Arming → Live (shows the pill). Amplitude is irrelevant; a zero-filled
-        // buffer is transport (a dead BT link delivering zeros for 800 ms is
-        // FINE — the silence is caught later, in D2). Guarded to fire once
-        // (`state == .arming`).
-        self.commitLiveFromFirstBuffer(sid: sid)
+        // #1548 D2: "first converted buffer arrived" is plain telemetry now —
+        // `bufferCountThisSession` records it. The forward path owns the
+        // `.arming → .live` transition; a buffer no longer drives the state.
         self.bump()
       }
     }
   }
 
-  /// The FIRST converted, retained buffer of the session flips Arming → Live
-  /// (#1548 D1). Runs the machinery that used to fire at the `.recording`
-  /// transition — recording-start stamps, resolved-route snapshot, VAD start —
-  /// and resolves the Arming waiter. Idempotent: only the first buffer (while
-  /// `state == .arming`, `recordingOutcome == nil`) commits.
-  private func commitLiveFromFirstBuffer(sid: SessionID) {
-    // `armingResolution == nil` closes the deadline/first-buffer race: if the
-    // deadline (or a stop/cancel) already latched a winner, a late buffer must
-    // NOT commit Live (impl-design consult, Decision 2).
-    guard isCurrent(sid), state == .arming, recordingOutcome == nil,
-      armingResolution == nil
-    else { return }
-    guard transition(to: .live) else { return }
+  /// Establish the Live-specific facts of a session (#1548 D2) — recording-start
+  /// stamps, resolved-route snapshot, VAD start. Lifted from the deleted
+  /// `commitLiveFromFirstBuffer`; the forward path calls it once, immediately
+  /// after the `.arming → .live` transition. It does NOT clear prior-session
+  /// markers (`lastStopReason`, `lastSalvagedLeadTrimMs`, `lastCaptureHealth`,
+  /// `lastRecordingDurationSeconds`) — that moved to `resetSessionState()` so a
+  /// zero-signal exit queued before Live keeps its reason (§3.4).
+  private func beginLiveRecording(_ sid: SessionID) {
+    guard isCurrent(sid), state == .live, recordingOutcome == nil else { return }
     recordingStartedAtDate = Date()
     recordingStartedAtUptimeNs = DispatchTime.now().uptimeNanoseconds
-    lastStopReason = nil  // #1060: clear prior session's stop reason.
-    lastSalvagedLeadTrimMs = nil  // #1434: clear prior session's salvage marker.
-    lastCaptureHealth = nil  // #1434: clear prior session's capture health.
-    lastRecordingDurationSeconds = nil
     // #1376: snapshot the resolved route AFTER all start retries so the recorded
     // value reflects the FINAL resolved route.
     lastResolvedRoute = audioCapture.currentResolvedRoute
@@ -2567,14 +2561,6 @@ final class RecordingSessionKernel {
         self?.state == .live && self?.currentSessionID == sid
       }
     )
-    // Deliver any zero-signal event latched during Arming into the Live/stop
-    // tail now that transport is proven (§3.6). The existing recording-exit
-    // channel + salvage/all-zero handling process it unchanged.
-    if let latched = pendingArmingZeroSignal {
-      pendingArmingZeroSignal = nil
-      deliverRecordingExit(.zeroSignal(latched))
-    }
-    resolveArming(.committedLive)
   }
 
   // MARK: VAD subscription
@@ -2624,46 +2610,19 @@ final class RecordingSessionKernel {
     }
   }
 
-  // MARK: Arming-resolution channel (#1548 D1)
-
-  /// The forward path parks here after `beginCapturePhase()` until Arming
-  /// resolves. Mirrors `awaitRecordingExit()`'s pending-before-continuation
-  /// pattern so a winner recorded before the waiter is installed (pre-roll
-  /// during a suspended `beginCapturePhase`, r2 Q2.1) is not lost.
-  ///
-  /// `armingResolution` is a per-session WINNER LATCH — it stays populated until
-  /// `resetSessionState()`, NOT cleared on read. This prevents the deadline /
-  /// first-buffer race: once the deadline resumes the waiter (leaving state
-  /// `.arming`), a buffer arriving before the resumed forward task runs must NOT
-  /// commit Live — `commitLiveFromFirstBuffer` and `resolveArming` both gate on
-  /// the latch being empty (impl-design consult, Decision 2).
-  private func awaitArmingResolution() async -> ArmingResolution {
-    if let winner = armingResolution {
-      return winner
-    }
-    return await withCheckedContinuation { continuation in
-      armingContinuation = continuation
-    }
-  }
-
-  /// Record the Arming winner (first-wins latch). Sets `armingResolution`, then
-  /// resumes a suspended waiter. A later resolve is a no-op — the latch already
-  /// fixed the winner, so a late buffer cannot commit Live after a deadline /
-  /// stop / cancel already resolved Arming.
-  private func resolveArming(_ resolution: ArmingResolution) {
-    guard armingResolution == nil else { return }
-    armingResolution = resolution
-    if let continuation = armingContinuation {
-      armingContinuation = nil
-      continuation.resume(returning: resolution)
-    }
-  }
-
   // MARK: Recording-exit channel
 
   private func awaitRecordingExit() async -> RecordingExit {
     if let pending = pendingRecordingExit {
       pendingRecordingExit = nil
+      // Duration ownership (Codex r2 defect 4): a zero exit queued from `.arming`
+      // was delivered before `beginLiveRecording` stamped `recordingStartedAtDate`,
+      // so `deliverRecordingExit` could not record the length. Stamp it HERE, on
+      // the consume path, now that Live timing exists — keeping `beginLiveRecording`
+      // Live-facts-only.
+      if lastRecordingDurationSeconds == nil, let start = recordingStartedAtDate {
+        lastRecordingDurationSeconds = Date().timeIntervalSince(start)
+      }
       return pending
     }
     return await withCheckedContinuation { continuation in
@@ -2774,7 +2733,8 @@ final class RecordingSessionKernel {
       // Only `start` — `idle → arming`.
       return next == .arming
     case .arming:
-      // Transport proven (`→ live`) or a conclusion (`→ idle`, outcome set).
+      // Capture established (`→ live`, #1548 D2 — sequential, no first-buffer
+      // gate) or a conclusion (`→ idle`, outcome set).
       return next == .live || next == .idle
     case .live:
       // Stop accepted (`→ stopping`) or a conclusion (`→ idle`).
@@ -2792,8 +2752,9 @@ final class RecordingSessionKernel {
   /// Which ending OUTCOME is legal from which state (#1548 D1) — the
   /// category-legality the old 14-state transition table enforced on its
   /// terminal edges, now that every conclusion is `<active> → idle`. Mirrors
-  /// the old table's terminal edges EXACTLY (plus `.noTransport` from Arming),
-  /// so no session the old code could conclude is stranded here. Evaluates the
+  /// the old table's terminal edges EXACTLY (plus `.noTransport` from Arming AND
+  /// Live, #1548 D2), so no session the old code could conclude is stranded here.
+  /// Evaluates the
   /// POST-`interruptedTerminalFloor` outcome (r3 Q2.2): the floor can raise a
   /// no-transcript ending to `.audioInterrupted` from `stopping` /
   /// `delivering(_)`, so `.audioInterrupted` is legal there. `finishTerminal`
@@ -2816,15 +2777,17 @@ final class RecordingSessionKernel {
         return false
       }
     case .live:
-      // Old recording terminal edges. `.asrInterrupted` is `wasRecording: true`
-      // ONLY from `.live` (impl-design consult, Decision 4 — the payload is
-      // legality-checked so a wrong flag cannot corrupt `was_recording`).
+      // Old recording terminal edges, plus `.noTransport` (#1548 D2 — the
+      // dead-mic no-buffer watchdog can fire while `.live` now the first-buffer
+      // gate is gone; §3.3). `.asrInterrupted` is `wasRecording: true` ONLY from
+      // `.live` (impl-design consult, Decision 4 — the payload is legality-checked
+      // so a wrong flag cannot corrupt `was_recording`).
       switch outcome {
-      case .failed, .discarded, .cancelled, .audioInterrupted:
+      case .failed, .discarded, .cancelled, .audioInterrupted, .noTransport:
         return true
       case .asrInterrupted(wasRecording: true):
         return true
-      case .asrInterrupted(wasRecording: false), .completed, .noSpeech, .noTransport:
+      case .asrInterrupted(wasRecording: false), .completed, .noSpeech:
         return false
       }
     case .stopping:
@@ -2922,7 +2885,7 @@ final class RecordingSessionKernel {
   /// the session-concluded barrier (#1548 D1).
   ///
   /// Fixed order (§5.3 r4): floor + `isLegalConclusion` validate → set
-  /// `recordingOutcome` → resolve a suspended Arming waiter → `→ .idle` → drain.
+  /// `recordingOutcome` → `→ .idle` → drain.
   private func finishTerminal(_ rawOutcome: RecordingOutcome, sid: SessionID) {
     // Set-once barrier: `isCurrent` fences stale sessions; `recordingOutcome ==
     // nil` prevents a double conclusion.
@@ -2933,13 +2896,22 @@ final class RecordingSessionKernel {
       log("FORBIDDEN conclusion \(outcome) from \(state)/\(deliveringPhase) — refused")
       return
     }
-    let wasArming = (state == .arming)
     let terminal = outcome  // local alias for the existing telemetry logs below
     recordingOutcome = outcome
-    // Wake a forward path suspended in `awaitArmingResolution()` (r3 Q2.3); its
-    // barrier guard then bails. Harmless when no waiter exists (the deadline
-    // path already consumed it) — the pending slot is cleared next session.
-    if wasArming { resolveArming(.aborted) }
+    // #1548 D2: wake a forward path parked in `awaitRecordingExit()` when the
+    // session is concluded DIRECTLY — the dead-mic `.noTransport` branch of
+    // `externalCaptureStalled` calls `finishTerminal` while the forward path sits
+    // on the recording-exit continuation. Without this the continuation leaks and
+    // the forward task stays suspended forever. The resumed path bails immediately
+    // on the `recordingOutcome != nil` barrier (the guard right after
+    // `awaitRecordingExit()`), so the resume value is discarded — it exists only to
+    // release the continuation. This replaces the removed `wasArming` /
+    // `resolveArming(.aborted)` wake, which served the same role for the deleted
+    // Arming waiter.
+    if let continuation = recordingExitContinuation {
+      recordingExitContinuation = nil
+      continuation.resume(returning: .userStop)
+    }
     guard transition(to: .idle) else { return }
     audioCapture.onBufferCaptured = nil
     // PR-4b.1: `onEngineInterrupted` and `onCaptureStalled`
@@ -3074,9 +3046,15 @@ final class RecordingSessionKernel {
     modelLoadWedgeTelemetry = nil
     deliveringPhase = .transcribing
     recordingOutcome = nil
-    armingResolution = nil
-    armingContinuation = nil
-    pendingArmingZeroSignal = nil
+    // #1548 D2 (§3.4): clear prior-session markers HERE (was in
+    // `commitLiveFromFirstBuffer` at Live entry). Clearing them at session start
+    // instead of Live entry means a zero-signal exit queued from `.arming` — which
+    // sets `lastStopReason`/`lastRecordingDurationSeconds` before Live — keeps its
+    // reason instead of having it wiped when the session reaches `.live`.
+    lastStopReason = nil  // #1060
+    lastSalvagedLeadTrimMs = nil  // #1434
+    lastCaptureHealth = nil  // #1434
+    lastRecordingDurationSeconds = nil  // #1060
     deliveredTranscript = nil
     deliveryOutcome = nil
     didLoadModelThisSession = false

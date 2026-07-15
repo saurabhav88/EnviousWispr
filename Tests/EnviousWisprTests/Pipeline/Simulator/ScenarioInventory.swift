@@ -337,12 +337,12 @@ enum ScenarioInventory {
       expected: ExpectedOutcome(
         terminalState: .failed(.captureStartFailed), pasteCount: 0, pasteOutcome: .none,
         transcript: .none, userVisibleError: .recoverableError)),
-    // #1548 D1: a stall BEFORE the first buffer is the no-buffer deadline — the
-    // session never proved transport, so it concludes `.noTransport` (projected
-    // to `.failed(.noAudioCaptured)`), not the live `.captureStall` exit. The
+    // #1548 D2: a no-buffer stall with no audio ever received (`bufferCountThisSession
+    // == 0`) is the dead-mic case — it concludes `.noTransport` (projected to
+    // `.failed(.noAudioCaptured)`), not the live `.captureStall` exit. The
     // stall-AFTER-a-buffer case (genuine `.captureStalled`) is C4.
     Scenario(
-      id: "C3", name: "capture stream stalls before first buffer (no transport)",
+      id: "C3", name: "capture stream stalls with no buffers received (no transport)",
       steps: [.trigger(.start), .capture(.stall), .trigger(.stop)],
       expected: ExpectedOutcome(
         terminalState: .failed(.noAudioCaptured), pasteCount: 0, pasteOutcome: .none,
@@ -372,21 +372,20 @@ enum ScenarioInventory {
       expected: ExpectedOutcome(
         terminalState: .asrInterrupted, pasteCount: 0, pasteOutcome: .none,
         transcript: .none, userVisibleError: .recoverableError)),
-    // #1548 D1: a device that dies BEFORE any audio arrives never proved
-    // transport. The engine-interruption signal is a no-op while Arming (it only
-    // acts from `.live`), so the session concludes via the no-buffer deadline as
-    // `.noTransport` (projected to `.failed(.noAudioCaptured)`). That terminal is
-    // a FAILURE, not a discard, so the crash-recovery spool is still retained —
-    // the #1408 data-loss guarantee holds through no-transport instead of the old
-    // audio-interrupted floor (there is no captured audio to salvage here). The
-    // salvage FLOOR for a device that dies mid-recording WITH audio is C5 + the
-    // salvage-suite floor tests, which deliver a buffer and reach `.live` first.
+    // #1548 D2: with the first-buffer gate gone, capture establishes straight to
+    // `.live`, so a device that dies before the first buffer now routes through the
+    // ONE `.live` interruption path (§3.7) — not the old Arming no-transport
+    // fallback. It concludes `.audioInterrupted` (rendering `.interruption`); the
+    // crash-recovery spool is still retained via that failure terminal. This is the
+    // deliberate unification: one interruption path, not two. The salvage FLOOR for
+    // a device that dies mid-recording WITH audio is C5 + the salvage-suite floor
+    // tests.
     Scenario(
-      id: "C8", name: "device dies before any audio arrives (no transport, spool retained)",
+      id: "C8", name: "device dies before the first buffer (interruption, spool retained)",
       steps: [.trigger(.start), .capture(.interrupt), .capture(.stall)],
       expected: ExpectedOutcome(
-        terminalState: .failed(.noAudioCaptured), pasteCount: 0, pasteOutcome: .none,
-        transcript: .none, userVisibleError: .recoverableError)),
+        terminalState: .audioInterrupted, pasteCount: 0, pasteOutcome: .none,
+        transcript: .none, userVisibleError: .interruption)),
   ]
 
   // MARK: Limb-side (L1–L6)

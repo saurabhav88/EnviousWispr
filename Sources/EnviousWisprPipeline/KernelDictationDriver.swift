@@ -292,12 +292,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   public var residentModelLostWhileIdle = false
 
   /// #959 — latch set by `RecordingStarter` immediately before it dispatches
-  /// `.toggleRecording` on the warm-respawn branch. While set, `overlayIntent`
-  /// routes `.preparing`/`.warmingUp` through the #930 warm `.recording` morph
-  /// (no `.cachingModel` pill) for the sub-second re-warm. Cleared when the
-  /// kernel reaches `.recording` (emitting `service_respawn_completed`) or any
-  /// terminal (no emit). Set ONLY just before the kernel dispatch so a pre-toggle
-  /// abort never leaks a latch.
+  /// `.toggleRecording` on the warm-respawn branch. While set, `.arming` shows the
+  /// recording pill immediately (no `.cachingModel` flash) even though the reaped
+  /// model is transiently reloading — the sub-second re-warm must not flash a
+  /// caching pill (#1548 D2: the warm case now shows the recording pill, not
+  /// `.hidden`). Cleared when the kernel reaches `.live` (emitting
+  /// `service_respawn_completed`) or any terminal (no emit). Set ONLY just before
+  /// the kernel dispatch so a pre-toggle abort never leaks a latch.
   @ObservationIgnored
   public private(set) var warmRespawnInFlight = false
   @ObservationIgnored
@@ -778,11 +779,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// audio-engine-interruption signals into the kernel FSM and the
   /// telemetry emitters.
   ///
-  /// `kernel.externalEngineInterrupted()` only acts on `.recording` (its
-  /// documented contract — `RecordingSessionKernel.swift:1077-1080`). For
-  /// every other active state (`.preparing`, `.warmingUp`, `.stopping`,
-  /// `.transcribing`, `.finalizing`) the kernel silently drops the signal,
-  /// which at PR-4b.4 cutover would leave the UI stuck. Old TP's
+  /// `kernel.externalEngineInterrupted()` only acts on `.live` (its documented
+  /// contract). For every other active state (`.arming`, `.stopping`,
+  /// `.delivering`) the kernel silently drops the signal, which at PR-4b.4
+  /// cutover would leave the UI stuck. Old TP's
   /// `handleEngineInterruption()` (old Parakeet pipeline)
   /// was state-agnostic: emit Sentry+PostHog state change, cancel cleanup,
   /// flip UI to the mic-disconnect error. Bridge matrix #4 ports the old
@@ -953,14 +953,15 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     case .idle:
       return .hidden
     case .arming:
-      // The pill is HIDDEN during Arming — it shows only when transport is
-      // proven (`.live`). Showing the recording pill early would defeat the
-      // whole transport gate (§3.2, D-013/D-020). A GENUINE cold model-load
-      // (`adapter.readiness != .ready`, not a warm-respawn) still surfaces the
-      // honest cold-boot pill; a warm engine / warm-respawn stays hidden until
-      // the first buffer.
+      // Immediate acknowledgement (#1548 D2): the moment the press is accepted,
+      // show the recording pill when the model is warm — OR when a sub-second
+      // warm-respawn is in flight (the reaped model is reloading, but flashing a
+      // caching pill for that ~20ms re-warm is the pointless flash #959 avoids;
+      // now it shows the recording pill instead of `.hidden`). A GENUINE cold
+      // model load (`adapter.readiness != .ready`, not a warm-respawn) still
+      // surfaces the honest caching pill.
       return (warmRespawnInFlight || adapter.readiness == .ready)
-        ? .hidden
+        ? .recording(audioLevel: 0)
         : .cachingModel(engineLabel: adapter.engineIdentity.displayName)
     case .live:
       // The real level is supplied by `AudioCaptureManager` downstream — the
@@ -1046,14 +1047,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       case .live:
         kernel.requestStop()
       case .arming:
-        // A stop toggle during Arming (before the first buffer commits Live) is
-        // a REAL stop — the user pressed to stop before recording was even
-        // established. #1548 D1 made Arming a distinct state that can last up to
-        // the 800 ms no-buffer deadline with the pill HIDDEN; dropping the toggle
-        // here would leave the mic recording against the user's explicit intent
-        // (Codex code-diff P1). `requestStop()` aborts Arming and concludes
-        // `.discarded(.releasedBeforeRecording)` — the kernel already handles the
-        // `.arming` case (impl-design consult, Dec 1).
+        // A stop toggle during Arming (while capture is still being established —
+        // a cold model load can make this window last seconds) is a REAL stop: the
+        // user pressed to stop before recording was even established. Dropping the
+        // toggle here would leave the mic recording against the user's explicit
+        // intent (Codex code-diff P1). `requestStop()` latches the stop, which the
+        // forward path's checkpoint concludes `.discarded(.releasedBeforeRecording)`
+        // (#1548 D2 — the kernel handles the `.arming` case).
         kernel.requestStop()
       case .stopping, .delivering:
         // Mid-session — don't interrupt processing past the point of no return

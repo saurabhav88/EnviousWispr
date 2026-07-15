@@ -160,14 +160,33 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
     isCapturing = true
     isActivelyCapturing = true
     currentCaptureSessionID += 1
-    // #1548 D1: prove transport so the session reaches `.live` (Arming → Live
-    // gates on the first converted buffer; the kernel wires `onBufferCaptured`
-    // before this call). Then the stream parks, holding state at `.recording`.
-    if let buffer = TransportGateTestBuffer.makeFirstBuffer() { onBufferCaptured?(buffer) }
+    // #1548 D2: reaching `.live` no longer needs a buffer (the forward path
+    // transitions sequentially). But THIS scenario is a stall AFTER audio arrives —
+    // a genuine capture-stall ("No audio detected — try again."), not a dead-mic
+    // no-transport. So deliver ONE buffer to make `bufferCountThisSession > 0`,
+    // which is what routes the later `.noBuffers` stall to `.captureStall` instead
+    // of `.noTransport`. Then the stream parks, holding `.live`.
+    if let buffer = Self.makeSilentBuffer() { onBufferCaptured?(buffer) }
     return AsyncStream { cont in
       self.continuation = cont
       // Intentionally never yield, never finish.
     }
+  }
+
+  /// A single silent capture-sized mono float buffer — amplitude is irrelevant to
+  /// buffer-count bookkeeping.
+  private static func makeSilentBuffer() -> AVAudioPCMBuffer? {
+    guard
+      let format = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: AudioConstants.sampleRate,
+        channels: AVAudioChannelCount(AudioConstants.channels),
+        interleaved: false),
+      let buffer = AVAudioPCMBuffer(
+        pcmFormat: format, frameCapacity: AVAudioFrameCount(AudioConstants.captureBufferSize))
+    else { return nil }
+    buffer.frameLength = AVAudioFrameCount(AudioConstants.captureBufferSize)
+    return buffer
   }
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
     try await startEnginePhase()
