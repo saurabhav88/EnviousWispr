@@ -119,7 +119,7 @@ Ensures `git show v{tag}:{file}` works in Path A, and `git tag --contains`/`git 
 
 ## Step 1 — Query Sentry: what "new" means
 
-One call. "New" is a Sentry fingerprint with at least one event in the last 25 hours — not every unresolved issue, not a scan of GitHub's closed tickets, not a lifetime-aggregate threshold.
+"New" is a Sentry fingerprint with at least one event in the last 25 hours — not every unresolved issue, not a scan of GitHub's closed tickets, not a lifetime-aggregate threshold.
 
 ```bash
 RESPONSE=$(curl -s -w '\n%{http_code}' -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
@@ -132,6 +132,8 @@ if ! echo "$BODY" | jq empty 2>/dev/null; then
   exit 0
 fi
 ```
+
+**Paginate if the page is full of still-in-window results.** Results are sorted by `date` (=`lastSeen`) descending, so the 25h cutoff can be applied incrementally: after fetching a page, if its LAST (oldest) entry still has `lastSeen` within the 25h window AND the `Link:` header has `rel="next"`, fetch the next page (same cursor-following recipe as Path A/C) and keep going — a fully-new-and-still-in-window page means there could be more beyond it. Stop as soon as a page's oldest entry falls outside the window (everything after it will also be outside, since the list is date-sorted) or the `Link:` header has no next page. Cap at 5 pages (250 issues) as a runaway guard against a pathological day; if the cap is hit while the last page was still fully in-window, log `Step 1: hit the 5-page cap with more still-new fingerprints pending — some may be dropped this run` (this is a visible gap, not a silent one; the same fingerprints will still be "new" enough to appear again on the next run within the 25h window's overlap).
 
 Filter to issues where `lastSeen` is within the last 25 hours:
 ```python
