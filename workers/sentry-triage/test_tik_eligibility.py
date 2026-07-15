@@ -120,11 +120,23 @@ def test_case7_duplicate_routes_to_canonical():
 
 
 def test_case8_unknown_close_current_release_event_fails_open():
-    # No fix info at all + a production event we can't classify -> ambiguous (reopen).
+    # No fix info at all + a production event we can't classify -> ambiguous.
+    # #1431 (2026-07-15): family is manual-review, NOT reopen -- uncertainty stays
+    # visible but must never mutate a closed issue's state on its own.
     out = decide({"events": [ev("v2.1.4")], "closed_at": CLOSED, "close_class": "unknown",
                   "fix_released_version": None, "fix_merged": False, "latest_release": "v2.1.4"})
     assert out["verdict"] == "ambiguous"
-    assert out["family"] == "ambiguous"
+    assert out["family"] == "manual-review"
+
+
+def test_reopen_eligible_family_is_reopen_not_auto_reopen():
+    # #1431: reopen-eligible still means "release-eligible for consideration" --
+    # the family name is unchanged; the routine (not this pure gate) decides
+    # whether to actually reopen by comparing disposition against prior evidence.
+    out = decide({"events": [ev("v2.1.5")], "closed_at": CLOSED, "close_class": "fixed",
+                  "fix_released_version": "v2.1.5", "fix_merged": True, "latest_release": "v2.1.5"})
+    assert out["verdict"] == "reopen-eligible"
+    assert out["family"] == "reopen"
 
 
 def test_case9_malformed_release_never_prefix():

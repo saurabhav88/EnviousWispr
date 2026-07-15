@@ -2,19 +2,35 @@
 """TIK Sentry-triage eligibility gates (issue #1143 reopen, #1218 create).
 
 Two pure decision functions for the TIK Sentry-triage routine, sharing the
-`is_development()` dev-detector and a fail-open philosophy (anything unprovable
-stays VISIBLE, never silently suppressed):
-  - `decide()` (#1143) -- the REOPEN gate. Given the post-close event set for a
-    closed fingerprint plus the fix-version boundary, decide whether a recurrence is
-    a real regression (reopen), pre-fix-tail noise (hold), or unprovable (ambiguous).
+`is_development()` dev-detector and a fail-open-to-VISIBILITY philosophy
+(anything unprovable stays visible, never silently suppressed):
+  - `decide()` (#1143, revised #1431) -- the REOPEN-ELIGIBILITY gate. Given the
+    post-close event set for a closed fingerprint plus the fix-version boundary,
+    classify a recurrence as release-eligible for reopen (`reopen-eligible`),
+    pre-fix-tail/dev-only/non-bug noise (`hold-*`), or unprovable (`ambiguous`).
+    This module answers the OBJECTIVE, computable question (release math,
+    dev-vs-production, severity from real events) -- it does NOT decide whether
+    to actually reopen. That is a disposition-comparison judgment call the
+    ROUTINE makes by reading the prior close/hold reasoning against the new
+    events (#1431, 2026-07-15): a mechanical auto-reopen on release-relation
+    alone repeatedly ignored prior evidence that this exact fingerprint was
+    already proven benign (#980, three times), and a mechanical auto-reopen on
+    `ambiguous` (unprovable release relation) caused a second false reopen
+    (#1332, 2026-07-12) by mutating a closed issue's state on pure uncertainty.
   - `decide_create()` (#1218) -- the CREATE gate. Given the event list for a NEW
     fingerprint that has no GitHub issue, decide whether it becomes a ticket (create),
     is deliberate fault-injection noise (suppress), or is a dev-only self-healed error
     to list in the run digest (digest). See its own docstring for the branch order.
 
-DESIGN INVARIANTS (council 2026-06-21, 2 rounds; Codex grounded review 3 rounds):
-  - HOLD requires PROOF. Anything we cannot prove benign fails OPEN (ambiguous ->
-    the routine reopens or files visible triage). We never silently suppress.
+DESIGN INVARIANTS (council 2026-06-21, 2 rounds; Codex grounded review 3 rounds;
+family semantics revised #1431, 2026-07-15):
+  - HOLD requires PROOF. Anything we cannot prove benign fails OPEN to VISIBLE
+    triage -- but "visible" no longer means "reopen the issue" for every family.
+    `reopen-eligible` means release-eligible, subject to the routine's own
+    disposition-comparison judgment before it actually reopens. `ambiguous`
+    (family `manual-review`) means flag for a human look WITHOUT mutating the
+    closed issue's state -- state mutation is reserved for cases with actual
+    evidence, never for pure uncertainty. We never silently suppress either way.
   - Severity is scored on the ELIGIBLE partition (post-close, production, on a
     release that actually contains the fix), never the Sentry lifetime aggregate.
   - Dev/dogfood events never count toward customer severity, but a dev build that
@@ -27,8 +43,9 @@ Input (JSON on stdin): see EXPECTED_INPUT_SHAPE below.
 Output (JSON on stdout): {"verdict", "family", "reason", "eligible_user_count",
   "eligible_count", "excluded_dev_count", "observed_production_releases",
   "dev_canary"}.
-On any internal error: prints an `ambiguous` verdict (fail open) and exits 0, so a
-helper bug can never become a silent hold.
+On any internal error: prints an `ambiguous` verdict (family `manual-review`,
+fail open to visible-but-non-mutating) and exits 0, so a helper bug can never
+become a silent hold NOR a silent reopen.
 """
 
 from __future__ import annotations
@@ -61,14 +78,28 @@ _HOLD_VERDICTS = {"hold-prefix-tail", "hold-nonbug", "hold-dev-only",
                   "no-postclose-activity", "dev-canary-postfix"}
 
 # Verdict -> action family. The routine branches on `family`.
-#   reopen   : reopen the issue (regression). Severity from eligible counts.
-#   hold     : leave closed; post a throttled audit comment.
-#   ambiguous: FAIL OPEN -- reopen + `unverified-regression`, never silent.
-#   route    : duplicate -> apply policy on the canonical issue, never the dup.
-#   canary   : do not reopen for customers; internal early-warning note only.
+#   reopen        : release math proves this event set is ELIGIBLE for reopen
+#                   consideration (production, on a release the fix should
+#                   cover). The routine does not auto-reopen on this alone --
+#                   #1431 (2026-07-15): a mechanical reopen on release-relation
+#                   alone ignored prior evidence that this exact fingerprint's
+#                   disposition was already proven benign (#980, three times).
+#                   The routine reads the prior close/hold reasoning and the
+#                   new events, and reopens only when it can articulate a real
+#                   difference; otherwise it stays a hold, same as `hold`.
+#   hold          : leave closed; post a throttled audit comment.
+#   manual-review : we could NOT prove either direction (unresolvable release
+#                   relation, missing fix info, or an incomplete/truncated
+#                   fetch). Uncertainty stays VISIBLE (never silently
+#                   suppressed) but must NOT mutate closed-issue state --
+#                   #1431 (2026-07-15): the #1332 2026-07-12 false reopen came
+#                   through exactly this path when it mapped to a mechanical
+#                   reopen. Flag for a human look; the issue stays closed.
+#   route         : duplicate -> apply policy on the canonical issue, never the dup.
+#   canary        : do not reopen for customers; internal early-warning note only.
 VERDICT_FAMILY = {
     "reopen-eligible": "reopen",
-    "ambiguous": "ambiguous",
+    "ambiguous": "manual-review",
     "hold-prefix-tail": "hold",
     "hold-nonbug": "hold",
     "hold-dev-only": "hold",
@@ -162,7 +193,7 @@ def _as_bool(v) -> bool:
 
     bool("false") is True in Python, so a string boolean from the shell would wrongly
     'prove' a fix merged and silently hold. Anything not provably true -> False, which
-    is the fail-OPEN direction (unproven -> ambiguous -> reopen)."""
+    is the fail-OPEN direction (unproven -> ambiguous -> visible, non-mutating flag)."""
     if v is True:
         return True
     if isinstance(v, str):
@@ -518,7 +549,8 @@ def main(argv=None) -> int:
         data = json.loads(raw)
         result = decide_create(data) if create_mode else decide(data)
     except Exception as exc:  # noqa: BLE001 -- fail OPEN on any helper error
-        # Fail-open shape differs per gate: reopen -> ambiguous (visible reopen),
+        # Fail-open shape differs per gate: reopen-gate -> ambiguous (family
+        # manual-review: visible flag, closed issue stays closed, #1431),
         # create -> create (visible new ticket). Neither can become a silent drop.
         result = (_out_create("create", f"helper error: {type(exc).__name__}: {exc}")
                   if create_mode
