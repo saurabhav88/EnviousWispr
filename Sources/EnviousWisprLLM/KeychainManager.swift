@@ -428,3 +428,32 @@ package enum KeyStoreError: LocalizedError, Sendable {
     }
   }
 }
+
+extension KeyStoreError: StableSentryErrorIdentity {
+  /// #1525 PR F. Pins each case's exact measured current wire identity
+  /// (`docs/audits/2026-07-14-1525-pr-f-preflight.md` §1) — never re-derive
+  /// from ordinal reasoning. Only `.deleteFailed` (`#2`) is proven to reach
+  /// Sentry today (legacy-key-cleanup path); the other 4 are pinned
+  /// defensively so a future capture site inherits a stable identity
+  /// instead of an ordinal that can silently shift. NEVER change any of
+  /// these strings once shipped.
+  package var sentryFingerprintDescriptor: String {
+    switch self {
+    case .storeFailed: return "EnviousWisprLLM.KeyStoreError#0"
+    case .retrieveFailed: return "EnviousWisprLLM.KeyStoreError#1"
+    case .deleteFailed: return "EnviousWisprLLM.KeyStoreError#2"
+    case .unsupportedKey: return "EnviousWisprLLM.KeyStoreError#3"
+    case .rollbackFailed: return "EnviousWisprLLM.KeyStoreError#4"
+    }
+  }
+
+  package var sentrySemanticID: String {
+    switch self {
+    case .storeFailed: return "keystore.store_failed"
+    case .retrieveFailed: return "keystore.retrieve_failed"
+    case .deleteFailed: return "keystore.delete_failed"
+    case .unsupportedKey: return "keystore.unsupported_key"
+    case .rollbackFailed: return "keystore.rollback_failed"
+    }
+  }
+}
