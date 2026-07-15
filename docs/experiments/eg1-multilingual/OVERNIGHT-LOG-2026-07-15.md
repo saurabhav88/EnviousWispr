@@ -1401,3 +1401,11 @@ This is development evidence only. The manifest explicitly records `frozen: fals
 
 - sealed manifest SHA-256: `7d7831eb14406f15c1e9c12cbdf98e3d198b370ee5623cfa9a565307d08dd174`
 - canonical pilot-definition SHA-256: `5a7cb24ef6fe61f7f67cee66338fc0a4adcf1da16697ff31e2c10f6faf50ca04`
+
+### RUNTIME-SEC-001 - Local server credential rotation
+
+Timestamp: 2026-07-15 07:35 EDT
+
+Status: contained and rotated
+
+A process-list diagnostic printed the active local llama-server command line into tool output, which included its ephemeral API credential. The credential value is deliberately omitted from this log. The owning EnviousWispr local app was terminated and relaunched immediately. The prior local endpoint was verified closed; the replacement server was verified ready, bound only to `127.0.0.1`, with a fresh credential present. Future process checks must select PID, readiness, host, port, and credential presence without printing the full command line.
