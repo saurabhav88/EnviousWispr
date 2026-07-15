@@ -57,26 +57,26 @@ This block is machine-parsed. Rendering must reject every missing, extra, duplic
 <!-- EG1_LIST_V2_BINDINGS_BEGIN -->
 ```json
 {
-  "assembly_receipt_sha256": "PENDING",
-  "positive_corpus_sha256": "PENDING",
-  "restraint_corpus_sha256": "PENDING",
-  "baseline_raw_prompt_sha256": "PENDING",
-  "baseline_model_visible_prompt_sha256": "PENDING",
-  "candidate_raw_prompt_sha256": "PENDING",
-  "candidate_model_visible_prompt_sha256": "PENDING",
-  "contract_verifier_sha256": "PENDING",
-  "renderer_sha256": "PENDING",
-  "shipped_request_mirror_sha256": "PENDING",
-  "local_wrapper_sha256": "PENDING",
-  "subset_runner_sha256": "PENDING",
-  "dual_arm_orchestrator_sha256": "PENDING",
-  "deterministic_scorer_sha256": "PENDING",
-  "ab_scorer_sha256": "PENDING",
-  "blind_packet_builder_sha256": "PENDING",
-  "semantic_rubric_sha256": "PENDING",
-  "semantic_unblinder_sha256": "PENDING",
-  "delivery_manifest_sha256": "PENDING",
-  "code_anchor_git_sha1": "PENDING"
+  "assembly_receipt_sha256": "131cc84898db829859aa6d73940df8685882adeedb76057a050231bcf3efc000",
+  "positive_corpus_sha256": "1fffba6215670a9a1cfd3cb723d39a6ee479b9dfbae47224aa8ed04a7520baee",
+  "restraint_corpus_sha256": "e44cdceb4a1eca8ea2b90528af170897021218b506122f9d9952546495055e21",
+  "baseline_raw_prompt_sha256": "7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62",
+  "baseline_model_visible_prompt_sha256": "0c726de8c88323c1029f20a2f888feed1519202d433f09eccd3af8500ed141d8",
+  "candidate_raw_prompt_sha256": "aaedd651c23e8be935d077a2409380abd7803474c0cbce415ab416f038af7c75",
+  "candidate_model_visible_prompt_sha256": "2c22d0ea9c5c255100953b930d7803b487c3691413f1cd83a1843d459b82f9ea",
+  "contract_verifier_sha256": "73cba74c619b26a85525fd56749b32c537aa3d3b94c4348ce73eba188efbebcc",
+  "renderer_sha256": "545cb77c5d57d30d49b023495963cf7761b001ae79c9ac881941c367800463c2",
+  "shipped_request_mirror_sha256": "3833bb4eba1aae9f860e0ebebfd7818e2b1a577f866208112997188b022ba01d",
+  "local_wrapper_sha256": "2698b7011b81e9c096d4b01396be89904676f9ba21876c6634fe35dd5f282568",
+  "subset_runner_sha256": "d7081f95779a5d4853533fb64f401c94a1500e24f569d345fd36183418fb33dd",
+  "dual_arm_orchestrator_sha256": "ecf630e99f294ef9bf563c344ea99426ae69651494a7e76ff943d759a2e7b311",
+  "deterministic_scorer_sha256": "28204c69a58c9b45ac770c9b0681dc1474eec02e55e66529711b42dd90a4599e",
+  "ab_scorer_sha256": "a5dcc52639379c22c9195ae58bba7db7f870c8207e2f916b66d8a1a7956697ce",
+  "blind_packet_builder_sha256": "8199c73f4eb59b349fda3c9dea72f9c982c8a2b138f6ae896c5be2954c31af1c",
+  "semantic_rubric_sha256": "6679d158f247e87411640650dee92ec172c6ffa6eb2165e09fbf8c09ee7b758c",
+  "semantic_unblinder_sha256": "b8a6a7c24ab4624636a229f30424047ebcb54e0c46ba15773c3ad7be334fca65",
+  "delivery_manifest_sha256": "3d7a09f3dc91a6f891dd74ec64c3992e99e75793d3875d085ea87754033a6624",
+  "code_anchor_git_sha1": "da826af8fe6a0405f51fa35f26d412c990468cc3"
 }
 ```
 <!-- EG1_LIST_V2_BINDINGS_END -->
