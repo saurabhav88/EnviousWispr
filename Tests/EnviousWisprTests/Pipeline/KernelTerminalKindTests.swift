@@ -4,27 +4,46 @@ import Testing
 
 @testable import EnviousWisprPipeline
 
-/// #1063 PR2 — the crash-recovery cleanup signal classifies each kernel terminal
-/// as DISCARD (delete the spool) or FAILURE (retain for next-launch recovery).
-/// `matcher-set-adversarial-tests`: every terminal is exercised in BOTH semantic
-/// classes, and the non-terminal / `.completed` / `.idle` states must map to nil
-/// so the signal never fires for a saved take or a resting kernel.
+/// #1063 PR2 / #1548 D1 — the crash-recovery cleanup signal classifies each
+/// concluded session's `RecordingOutcome` as DISCARD (delete the spool) or
+/// FAILURE (retain for next-launch recovery). `matcher-set-adversarial-tests`:
+/// every outcome is exercised in BOTH semantic classes, and `.completed` /
+/// `.cancelled` map to nil so the signal never fires for a saved take or is
+/// left to the dynamic cancel disposition.
 @MainActor
-@Suite("Kernel terminal-kind split (#1063 PR2)")
+@Suite("Kernel terminal-kind split (#1063 PR2, #1548 D1)")
 struct KernelTerminalKindTests {
 
-  @Test("unambiguous discard terminals → .discard (delete the spool)")
-  func discardTerminals() {
-    #expect(KernelDictationDriver.endedWithoutSaveKind(for: .discarded) == .discard)
-    #expect(KernelDictationDriver.endedWithoutSaveKind(for: .noSpeech) == .discard)
+  @Test("unambiguous discard outcomes → .discard (delete the spool)")
+  func discardOutcomes() {
+    #expect(
+      KernelDictationDriver.endedWithoutSaveKind(for: .discarded(.tooShort)) == .discard)
+    #expect(
+      KernelDictationDriver.endedWithoutSaveKind(for: .discarded(.releasedBeforeRecording))
+        == .discard)
+    #expect(KernelDictationDriver.endedWithoutSaveKind(for: .noSpeech(.vadGate)) == .discard)
+    #expect(
+      KernelDictationDriver.endedWithoutSaveKind(for: .noSpeech(.asrEmptyNoSpeech)) == .discard)
   }
 
-  @Test("failure terminals → .failure (RETAIN the recoverable audio)")
-  func failureTerminals() {
+  @Test("failure outcomes → .failure (RETAIN the recoverable audio)")
+  func failureOutcomes() {
     #expect(
       KernelDictationDriver.endedWithoutSaveKind(for: .failed(.asrFailed)) == .failure)
-    #expect(KernelDictationDriver.endedWithoutSaveKind(for: .audioInterrupted) == .failure)
-    #expect(KernelDictationDriver.endedWithoutSaveKind(for: .asrInterrupted) == .failure)
+    #expect(
+      KernelDictationDriver.endedWithoutSaveKind(for: .audioInterrupted(.engineLost))
+        == .failure)
+    #expect(
+      KernelDictationDriver.endedWithoutSaveKind(for: .audioInterrupted(nil)) == .failure)
+    #expect(
+      KernelDictationDriver.endedWithoutSaveKind(for: .asrInterrupted(wasRecording: true))
+        == .failure)
+    #expect(
+      KernelDictationDriver.endedWithoutSaveKind(for: .asrInterrupted(wasRecording: false))
+        == .failure)
+    // #1548 D1: the new no-transport outcome RETAINS (parity with
+    // `.failed(.noAudioCaptured)`, its telemetry projection).
+    #expect(KernelDictationDriver.endedWithoutSaveKind(for: .noTransport) == .failure)
   }
 
   @Test(".cancelled is excluded from the STATIC map (ambiguous — resolved dynamically)")
@@ -35,19 +54,8 @@ struct KernelTerminalKindTests {
     #expect(KernelDictationDriver.endedWithoutSaveKind(for: .cancelled) == nil)
   }
 
-  @Test(".completed and .idle never fire the signal (saved / resting)")
-  func completedAndIdleAreNil() {
+  @Test(".completed never fires the signal (durable save ran)")
+  func completedIsNil() {
     #expect(KernelDictationDriver.endedWithoutSaveKind(for: .completed) == nil)
-    #expect(KernelDictationDriver.endedWithoutSaveKind(for: .idle) == nil)
-  }
-
-  @Test("non-terminal states never fire the signal")
-  func nonTerminalsAreNil() {
-    for state in [
-      RecordingSessionState.preparing, .warmingUp, .recording, .stopping, .transcribing,
-      .finalizing,
-    ] {
-      #expect(KernelDictationDriver.endedWithoutSaveKind(for: state) == nil)
-    }
   }
 }

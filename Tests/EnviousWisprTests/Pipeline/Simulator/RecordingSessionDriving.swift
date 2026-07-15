@@ -216,7 +216,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
 
   // MARK: RecordingSessionDriving — observation
 
-  var state: FSMState { Self.map(kernel.state) }
+  var state: FSMState { Self.map(kernel) }
 
   var effects: SessionEffects {
     var result = SessionEffects()
@@ -334,22 +334,37 @@ final class KernelRecordingSession: RecordingSessionDriving {
 
   // MARK: State mapping — pure, mechanical (no policy)
 
-  private static func map(_ state: RecordingSessionState) -> FSMState {
-    switch state {
+  /// #1548 D1 impedance: the kernel is now a 5-state FSM + a sibling
+  /// `recordingOutcome`; `FSMState` keeps its 14-value vocabulary (plan §2.2
+  /// non-goal). A concluded session (`recordingOutcome != nil`, state `.idle`)
+  /// maps to the matching terminal; an in-flight session maps its state, with
+  /// Arming splitting on `didLoadModelThisSession` (preparing vs warmingUp) and
+  /// Delivering splitting on `deliveringPhase` (transcribing vs finalizing).
+  /// `.noTransport` projects to `.failed(.noAudioCaptured)` (locked projection);
+  /// tests that assert `.noTransport` specifically read `kernel.recordingOutcome`.
+  private static func map(_ kernel: RecordingSessionKernel) -> FSMState {
+    if let outcome = kernel.recordingOutcome {
+      switch outcome {
+      case .completed: return .completed
+      case .failed(let reason): return .failed(map(reason))
+      case .cancelled: return .cancelled
+      case .discarded: return .discarded
+      case .noSpeech: return .noSpeech
+      case .audioInterrupted: return .audioInterrupted
+      case .asrInterrupted: return .asrInterrupted
+      case .noTransport: return .failed(.noAudioCaptured)
+      }
+    }
+    switch kernel.state {
     case .idle: return .idle
-    case .preparing: return .preparing
-    case .warmingUp: return .warmingUp
-    case .recording: return .recording
+    case .arming: return kernel.didLoadModelThisSession ? .warmingUp : .preparing
+    case .live: return .recording
     case .stopping: return .stopping
-    case .transcribing: return .transcribing
-    case .finalizing: return .finalizing
-    case .completed: return .completed
-    case .failed(let reason): return .failed(map(reason))
-    case .cancelled: return .cancelled
-    case .discarded: return .discarded
-    case .noSpeech: return .noSpeech
-    case .audioInterrupted: return .audioInterrupted
-    case .asrInterrupted: return .asrInterrupted
+    case .delivering:
+      switch kernel.deliveringPhase {
+      case .transcribing: return .transcribing
+      case .finalizing: return .finalizing
+      }
     }
   }
 

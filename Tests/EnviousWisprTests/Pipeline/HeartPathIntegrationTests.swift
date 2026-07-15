@@ -462,9 +462,31 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
 
   var loadedSampleCount: Int { loadedSamples.count }
 
-  init(fixtureURL: URL) throws {
+  /// When true, `beginCapturePhase` delivers one buffer through
+  /// `onBufferCaptured` so `bufferCountThisSession > 0`. Default false: no buffer,
+  /// so the manager holds `loadedSamples` while the kernel count stays 0 — the
+  /// salvage-preservation case (§3.7). A caller that needs a genuine capture-stall
+  /// (async `.captureStall`, not the synchronous dead-mic `.noTransport`) opts in.
+  private let deliverFirstBuffer: Bool
+
+  init(fixtureURL: URL, deliverFirstBuffer: Bool = false) throws {
     self.loadedSamples = try Self.readSamples(from: fixtureURL)
     self.audioLevel = loadedSamples.reduce(0) { max($0, abs($1)) }
+    self.deliverFirstBuffer = deliverFirstBuffer
+  }
+
+  static func makeSilentBuffer() -> AVAudioPCMBuffer? {
+    guard
+      let format = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: AudioConstants.sampleRate,
+        channels: AVAudioChannelCount(AudioConstants.channels),
+        interleaved: false),
+      let buffer = AVAudioPCMBuffer(
+        pcmFormat: format, frameCapacity: AVAudioFrameCount(AudioConstants.captureBufferSize))
+    else { return nil }
+    buffer.frameLength = AVAudioFrameCount(AudioConstants.captureBufferSize)
+    return buffer
   }
 
   func startEnginePhase() async throws {
@@ -477,6 +499,12 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
     isCapturing = true
     isActivelyCapturing = true
     capturedSamples = loadedSamples
+    // #1548 D2: the forward path reaches `.live` sequentially once this returns —
+    // no first-buffer delivery needed. The loaded samples above are the session's
+    // audio (returned by `stopCapture()`), so salvage/decode still has real input.
+    // Opt-in buffer delivery (see `deliverFirstBuffer`) bumps the kernel count for
+    // callers that need a genuine capture-stall rather than a dead-mic no-transport.
+    if deliverFirstBuffer, let buffer = Self.makeSilentBuffer() { onBufferCaptured?(buffer) }
     return AsyncStream { continuation in
       continuation.finish()
     }

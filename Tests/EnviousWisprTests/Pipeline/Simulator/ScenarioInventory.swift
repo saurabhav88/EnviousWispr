@@ -337,11 +337,15 @@ enum ScenarioInventory {
       expected: ExpectedOutcome(
         terminalState: .failed(.captureStartFailed), pasteCount: 0, pasteOutcome: .none,
         transcript: .none, userVisibleError: .recoverableError)),
+    // #1548 D2: a no-buffer stall with no audio ever received (`bufferCountThisSession
+    // == 0`) is the dead-mic case — it concludes `.noTransport` (projected to
+    // `.failed(.noAudioCaptured)`), not the live `.captureStall` exit. The
+    // stall-AFTER-a-buffer case (genuine `.captureStalled`) is C4.
     Scenario(
-      id: "C3", name: "capture stream stalls before first buffer",
+      id: "C3", name: "capture stream stalls with no buffers received (no transport)",
       steps: [.trigger(.start), .capture(.stall), .trigger(.stop)],
       expected: ExpectedOutcome(
-        terminalState: .failed(.captureStalled), pasteCount: 0, pasteOutcome: .none,
+        terminalState: .failed(.noAudioCaptured), pasteCount: 0, pasteOutcome: .none,
         transcript: .none, userVisibleError: .recoverableError)),
     Scenario(
       id: "C4", name: "capture stalls after speech evidence",
@@ -368,14 +372,17 @@ enum ScenarioInventory {
       expected: ExpectedOutcome(
         terminalState: .asrInterrupted, pasteCount: 0, pasteOutcome: .none,
         transcript: .none, userVisibleError: .recoverableError)),
-    // #1408 THE FLOOR: a device that dies before any audio arrives would fall
-    // through to the minimum-recording gate and reach `.discarded`, whose
-    // terminal kind DELETES the crash-recovery spool. The floor maps it back to
-    // `.audioInterrupted`, which retains it. C5 cannot cover this — it delivers a
-    // buffer, and the inventory zeroes the minimum-recording tick threshold.
+    // #1548 D2: with the first-buffer gate gone, capture establishes straight to
+    // `.live`, so a device that dies before the first buffer now routes through the
+    // ONE `.live` interruption path (§3.7) — not the old Arming no-transport
+    // fallback. It concludes `.audioInterrupted` (rendering `.interruption`); the
+    // crash-recovery spool is still retained via that failure terminal. This is the
+    // deliberate unification: one interruption path, not two. The salvage FLOOR for
+    // a device that dies mid-recording WITH audio is C5 + the salvage-suite floor
+    // tests.
     Scenario(
-      id: "C8", name: "device dies before any audio arrives (floored, spool retained)",
-      steps: [.trigger(.start), .capture(.interrupt)],
+      id: "C8", name: "device dies before the first buffer (interruption, spool retained)",
+      steps: [.trigger(.start), .capture(.interrupt), .capture(.stall)],
       expected: ExpectedOutcome(
         terminalState: .audioInterrupted, pasteCount: 0, pasteOutcome: .none,
         transcript: .none, userVisibleError: .interruption)),

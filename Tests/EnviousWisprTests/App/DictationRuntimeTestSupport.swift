@@ -40,7 +40,9 @@ final class RouterTestAudioCapture: AudioCaptureInterface {
 
   func startEnginePhase() async throws {}
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
-    AsyncStream { $0.finish() }
+    // #1548 D2: the forward path reaches `.live` sequentially once this returns —
+    // no first-buffer delivery needed to leave Arming.
+    return AsyncStream { $0.finish() }
   }
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
     AsyncStream { $0.finish() }

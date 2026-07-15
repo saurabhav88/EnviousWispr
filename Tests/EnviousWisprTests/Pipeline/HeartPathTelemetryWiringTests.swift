@@ -197,7 +197,11 @@ struct HeartPathTelemetryWiringTests {
       fileName: "r5-stall-guard-fired.wav",
       pattern: .toneBurst
     )
-    let audioCapture = try FixtureAudioCapture(fixtureURL: fixture.url)
+    // #1548 D2: deliver a first buffer so the step-3 stall is a genuine
+    // `.captureStall` (async flip via the recording-exit channel), not a
+    // synchronous dead-mic `.noTransport` — the test observes `.recording`
+    // immediately after firing the stall, which requires the async path.
+    let audioCapture = try FixtureAudioCapture(fixtureURL: fixture.url, deliverFirstBuffer: true)
     let asrManager = MockASRManager(
       transcribeBehavior: .success(
         ASRResult(
@@ -286,7 +290,9 @@ private final class NoOpAudioCapture: AudioCaptureInterface {
 
   func startEnginePhase() async throws {}
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
-    AsyncStream { $0.finish() }
+    // #1548 D2: the forward path reaches `.live` sequentially once this returns —
+    // no first-buffer delivery needed to leave Arming.
+    return AsyncStream { $0.finish() }
   }
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
     AsyncStream { $0.finish() }

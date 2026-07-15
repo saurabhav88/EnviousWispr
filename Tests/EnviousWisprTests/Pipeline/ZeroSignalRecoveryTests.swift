@@ -86,26 +86,127 @@ struct ZeroSignalRecoveryTests {
       stallContext(ctx, failureMode: .allZeroFromStart))
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .failed(.zeroSignal))
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .allZeroFromStart)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == nil)
     // PR3: the poisoned capture pipeline is reset exactly once.
     #expect(ctx.capture.rebuildEngineCallCount == 1)
   }
 
-  @Test("reactive noBuffers is UNCHANGED — still the existing captureStall terminal, NO rebuild")
-  func reactiveNoBuffersUnaffected() async {
+  @Test(
+    "noBuffers with no audio received concludes noTransport (dead mic, not captureStall), NO rebuild"
+  )
+  func reactiveNoBuffersWithNoAudioConcludesNoTransport() async {
+    // #1548 D2: reaching `.live` no longer needs a buffer (sequential transition),
+    // so a `.noBuffers` stall with `bufferCountThisSession == 0` is the dead-mic
+    // case → `.noTransport` ("No audio captured", spool retained), NOT the live
+    // `.captureStall` exit. (The `.captureStall` path — `.noBuffers` AFTER a buffer
+    // arrived — is covered by `captureStalledRoutes` in the external-entry suite.)
     let ctx = makeContext()
     await startToRecording(ctx)
+    #expect(ctx.wrapper.testKernel.state == .live)
 
     ctx.wrapper.testKernel.externalCaptureStalled(stallContext(ctx, failureMode: .noBuffers))
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .failed(.captureStalled))
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .noTransport)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
-    // An ordinary capture stall is NOT the mic-harness glitch — the stall
-    // watchdog owns it, and PR3 must never reset the engine for it.
+    // A dead mic is NOT the mic-harness glitch — it never enters the zero-signal
+    // recovery / engine-rebuild path.
     #expect(ctx.capture.rebuildEngineCallCount == 0)
+  }
+
+  @Test(
+    "dead-mic noTransport and a racing stop honor the first winner (both orderings, Codex r2 P2)")
+  func deadMicAndRacingStopHonorFirstWinner() async {
+    // #1548 D2 first-wins (§3.3): `externalCaptureStalled`'s dead-mic `.noTransport`
+    // must not override a stop that already owns the exit, and a stop must not
+    // override a `.noTransport` that already concluded. `finishTerminal` is
+    // set-once; the no-buffer branch bails on `!recordingExitLatched`.
+
+    // Ordering A — no-buffer first: it concludes `.noTransport` immediately; the
+    // later stop is inert (the session is already idle). "No audio captured" wins.
+    let a = makeContext()
+    await startToRecording(a)
+    a.wrapper.testKernel.externalCaptureStalled(stallContext(a, failureMode: .noBuffers))
+    await a.wrapper.apply(.stop)
+    await a.wrapper.drainReadyWork()
+    #expect(a.wrapper.testKernel.recordingOutcome == .noTransport)
+
+    // Ordering B — stop first: the stop latches the recording exit; the later
+    // no-buffer bails on `!recordingExitLatched`, so the stop wins (a no-audio stop
+    // is a discard tap, NOT `.noTransport`).
+    let b = makeContext()
+    await startToRecording(b)
+    await b.wrapper.apply(.stop)
+    b.wrapper.testKernel.externalCaptureStalled(stallContext(b, failureMode: .noBuffers))
+    await b.wrapper.drainReadyWork()
+    if case .discarded = b.wrapper.testKernel.recordingOutcome {
+      // stop won — correct
+    } else {
+      let got = String(describing: b.wrapper.testKernel.recordingOutcome)
+      Issue.record("stop-first must win with a discard, got \(got)")
+    }
+  }
+
+  @Test(
+    "a mid-capture zero-signal latched while Arming is honored over a stop before Live, not overwritten by discard/cancel (Codex code-diff P2)"
+  )
+  func armingZeroSignalWinsOverLaterStop() async {
+    // #1548 D2 first-wins: a `.becameZeroMidCapture` latches a recording exit while
+    // `beginCapturePhase` is suspended (parked at stabilization). A stop pressed
+    // BEFORE the forward path reaches Live must be FULLY inert — not even
+    // `detachedAdapterCancel()`, which would mark the adapter cancelled and drop a
+    // salvageable prefix (Codex r2). The exit is consumed at the post-establish
+    // checkpoint. (This harness cannot stage a pre-Live prefix — `beginCapturePhase`
+    // clears the fake's samples and pre-`beginSession` buffers are not counted — so
+    // we assert the exit is honored and the outcome is neither the stop's discard
+    // nor a `.cancelled` from a prematurely cancelled adapter.)
+    let ctx = makeContext()
+    ctx.capture.gateStabilizationCall = 1  // park the forward path in `.arming`
+    await ctx.wrapper.apply(.start)
+    await ctx.capture.awaitStabilizationGateReached()
+    #expect(ctx.wrapper.testKernel.state == .arming)
+
+    // Zero-signal latches a recording exit, THEN the user stops — both before Live.
+    ctx.wrapper.testKernel.externalCaptureStalled(
+      stallContext(ctx, failureMode: .becameZeroMidCapture))
+    await ctx.wrapper.apply(.stop)
+    ctx.capture.releaseStabilizationGate()
+    await ctx.wrapper.drainReadyWork()
+
+    // The zero-signal exit was consumed and processed (its failure mode is
+    // stamped), NOT overwritten by the later stop's discard or a cancelled adapter.
+    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
+    #expect(ctx.wrapper.testKernel.recordingOutcome != .discarded(.releasedBeforeRecording))
+    #expect(ctx.wrapper.testKernel.recordingOutcome != .cancelled)
+  }
+
+  @Test(
+    "a zero-signal queued while still Arming preserves a non-nil recording duration (Codex r2 defect 4)"
+  )
+  func preLiveZeroSignalPreservesDuration() async {
+    // #1548 D2 §3.4: a `.becameZeroMidCapture` can fire while still `.arming` (a
+    // pre-roll signal during a suspended establish). It is queued via the
+    // recording-exit pending slot BEFORE `beginLiveRecording` stamps the
+    // recording-start date, so `deliverRecordingExit` cannot record the length.
+    // `awaitRecordingExit` stamps it on consume, after Live timing exists — so the
+    // duration must NOT be nil.
+    let ctx = makeContext()
+    ctx.capture.gateStabilizationCall = 1  // park the forward path in `.arming`
+    await ctx.wrapper.apply(.start)
+    await ctx.capture.awaitStabilizationGateReached()
+    #expect(ctx.wrapper.testKernel.state == .arming)
+
+    // Zero-signal arrives before Live — queued into the pending recording-exit slot.
+    ctx.wrapper.testKernel.externalCaptureStalled(
+      stallContext(ctx, failureMode: .becameZeroMidCapture))
+    ctx.capture.releaseStabilizationGate()
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(
+      ctx.wrapper.testKernel.lastRecordingDurationSeconds != nil,
+      "a pre-Live zero exit must still report a recording duration once Live timing exists")
   }
 
   // MARK: - Reactive exit: becameZeroMidCapture — normal-stop-path salvage
@@ -122,7 +223,7 @@ struct ZeroSignalRecoveryTests {
       stallContext(ctx, failureMode: .becameZeroMidCapture))
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .completed)
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
     // PR3: the mic is reset AND the user still keeps the words they said.
@@ -138,10 +239,13 @@ struct ZeroSignalRecoveryTests {
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
     ctx.vad.evidence = .confirmedNoSpeech
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .failed(.zeroSignal))
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .allZeroFromStart)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.count == 1)
     #expect(
@@ -159,10 +263,13 @@ struct ZeroSignalRecoveryTests {
     ctx.vad.evidence = .voiced
     ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 8_000)]
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .completed)
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.count == 1)
@@ -189,10 +296,13 @@ struct ZeroSignalRecoveryTests {
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
     ctx.vad.evidence = .confirmedNoSpeech  // Silero abstains on the quiet prefix
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .completed)
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
   }
@@ -211,7 +321,7 @@ struct ZeroSignalRecoveryTests {
       stallContext(ctx, failureMode: .becameZeroMidCapture))
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .completed)
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
     // The reactive win must still suppress STOP-time re-classification (§3.6 N4).
@@ -232,10 +342,13 @@ struct ZeroSignalRecoveryTests {
     // full sample count (Grounded Review r1).
     ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 8_000 + threshold)]
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .completed)
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
   }
 
@@ -250,10 +363,13 @@ struct ZeroSignalRecoveryTests {
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
     ctx.vad.evidence = .confirmedNoSpeech
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .noSpeech)
+    #expect(ctx.wrapper.testKernel.recordingOutcome.kind == .noSpeech)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
     // A genuinely MUTED mic is a hardware state, not a harness glitch. Resetting
@@ -271,10 +387,13 @@ struct ZeroSignalRecoveryTests {
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.001)
     ctx.vad.evidence = .confirmedNoSpeech
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .noSpeech)
+    #expect(ctx.wrapper.testKernel.recordingOutcome.kind == .noSpeech)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
     // The false-alarm guard that matters most: a healthy mic in a silent room
@@ -300,7 +419,7 @@ struct ZeroSignalRecoveryTests {
       stallContext(ctx, failureMode: .allZeroFromStart))
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .failed(.zeroSignal))
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
     // STOP-time telemetry never fires for a reactive win — the reactive
     // path's own event rides the WedgeRecoveryRouter funnel instead (§3.6).
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
@@ -326,10 +445,13 @@ struct ZeroSignalRecoveryTests {
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
     ctx.vad.evidence = .confirmedNoSpeech
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .discarded)
+    #expect(ctx.wrapper.testKernel.recordingOutcome.kind == .discarded)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
     #expect(ctx.capture.rebuildEngineCallCount == 0)
@@ -353,10 +475,13 @@ struct ZeroSignalRecoveryTests {
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
     ctx.vad.evidence = .confirmedNoSpeech
 
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+    // otherwise the stop aborts a still-Arming session.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
 
-    #expect(ctx.wrapper.testKernel.state == .failed(.zeroSignal))
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
     #expect(ctx.capture.rebuildEngineCallCount == 2)  // 1 format + 1 zero-signal
   }
 
@@ -371,10 +496,13 @@ struct ZeroSignalRecoveryTests {
       ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
       ctx.vad.evidence = .confirmedNoSpeech
 
+      // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
+      // otherwise the stop aborts a still-Arming session.
+      await ctx.wrapper.drainReadyWork()
       await ctx.wrapper.apply(.stop)
       await ctx.wrapper.drainReadyWork()
 
-      #expect(ctx.wrapper.testKernel.state == .failed(.zeroSignal))
+      #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
       // Best-effort convergence (§3.3): the rebuild is fire-and-forget, so a
       // still-poisoned source on the next press must re-fire recovery rather
       // than silently hand the user another dead take.

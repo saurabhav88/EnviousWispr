@@ -51,6 +51,10 @@ struct KernelSalvageRetryTests {
     await ctx.wrapper.apply(.start)
     await ctx.wrapper.drainReadyWork()
     deliverFailureShapedCapture(ctx)
+    // #1548 D1: the first converted buffer flips Arming → Live (transport gate)
+    // via an async @MainActor hop — drain so the commit lands BEFORE the stop,
+    // otherwise the stop aborts a still-Arming session as released-before-recording.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
   }
@@ -61,7 +65,7 @@ struct KernelSalvageRetryTests {
     await runToTerminal(ctx)
     let kernel = ctx.wrapper.testKernel
 
-    #expect(kernel.state == .completed)
+    #expect(kernel.recordingOutcome == .completed)
     #expect(kernel.deliveredTranscript == "salvaged text")
     #expect(kernel.pasteCount == 1)
     // Exactly one retry fired (one candidate from this shape): primary + 1.
@@ -84,7 +88,7 @@ struct KernelSalvageRetryTests {
     await runToTerminal(ctx)
     let kernel = ctx.wrapper.testKernel
 
-    #expect(kernel.state == .failed(.asrEmpty))
+    #expect(kernel.recordingOutcome == .failed(.asrEmpty))
     #expect(kernel.deliveredTranscript == nil)
     #expect(kernel.pasteCount == 0)
     #expect(kernel.lastSalvagedLeadTrimMs == nil)
@@ -102,7 +106,7 @@ struct KernelSalvageRetryTests {
 
     // The primary decode classified the session as empty; a retry-path error
     // must not surface as `.asrFailed`.
-    #expect(kernel.state == .failed(.asrEmpty))
+    #expect(kernel.recordingOutcome == .failed(.asrEmpty))
     #expect(ctx.engine.finalizeCallCount == 2)
     #expect(kernel.lastSalvagedLeadTrimMs == nil)
   }
@@ -116,11 +120,13 @@ struct KernelSalvageRetryTests {
     ctx.capture.deliverBuffer(frameCount: 48000, amplitude: 0.25)
     ctx.vad.evidence = .voiced
     ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 48000)]
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
     let kernel = ctx.wrapper.testKernel
 
-    #expect(kernel.state == .failed(.asrEmpty))
+    #expect(kernel.recordingOutcome == .failed(.asrEmpty))
     // Exactly the primary decode — the ladder never dispatched.
     #expect(ctx.engine.finalizeCallCount == 1)
   }
@@ -134,7 +140,7 @@ struct KernelSalvageRetryTests {
     await runToTerminal(ctx)
     let kernel = ctx.wrapper.testKernel
 
-    #expect(kernel.state == .completed)
+    #expect(kernel.recordingOutcome == .completed)
     #expect(kernel.deliveredTranscript == "normal text")
     #expect(ctx.engine.finalizeCallCount == 1)
     #expect(kernel.lastSalvagedLeadTrimMs == nil)
@@ -150,11 +156,13 @@ struct KernelSalvageRetryTests {
     deliverFailureShapedCapture(ctx)
     ctx.vad.evidence = .confirmedNoSpeech
     ctx.vad.segments = []
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
     let kernel = ctx.wrapper.testKernel
 
-    #expect(kernel.state == .noSpeech)
+    #expect(kernel.recordingOutcome.kind == .noSpeech)
     #expect(ctx.engine.finalizeCallCount == 1)
     #expect(kernel.lastSalvagedLeadTrimMs == nil)
   }
@@ -174,11 +182,13 @@ struct KernelSalvageRetryTests {
     ctx.capture.deliverBuffer(frameCount: 48000, amplitude: 0.25)
     ctx.vad.evidence = .voiced
     ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 48000)]
+    // #1548 D1: commit the first buffer (Arming -> Live) before stopping.
+    await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainReadyWork()
     let kernel = ctx.wrapper.testKernel
 
-    #expect(kernel.state == .completed)
+    #expect(kernel.recordingOutcome == .completed)
     #expect(kernel.deliveredTranscript == "second take")
     #expect(kernel.lastSalvagedLeadTrimMs == nil)
   }

@@ -61,7 +61,7 @@ struct DrainReadyWorkSettleTests {
     await wrapper.drainReadyWork()
     capture.deliverBuffer()
     await wrapper.drainReadyWork()
-    #expect(kernel.state == .recording)
+    #expect(kernel.state == .live)
     #expect(kernel.hasUnconsumedRecordingExit == false)
 
     // Stop synchronously delivers the exit + resumes the forward path, but does
@@ -70,7 +70,7 @@ struct DrainReadyWorkSettleTests {
     // would settle here — but the exit is unconsumed.
     let epochBeforeStop = kernel.workEpoch
     kernel.requestStop()
-    #expect(kernel.state == .recording)
+    #expect(kernel.state == .live)
     #expect(kernel.hasUnconsumedRecordingExit == true)
     #expect(kernel.workEpoch == epochBeforeStop + 1)
 
@@ -78,7 +78,7 @@ struct DrainReadyWorkSettleTests {
     // the exit and transitions out of `.recording`.
     await wrapper.drainReadyWork()
     #expect(kernel.hasUnconsumedRecordingExit == false)
-    #expect(kernel.state != .recording)
+    #expect(kernel.state != .live)
   }
 
   /// A7 shape: a lone `cancel` from `.recording` latches the exit the same way.
@@ -93,15 +93,15 @@ struct DrainReadyWorkSettleTests {
     await wrapper.drainReadyWork()
     capture.deliverBuffer()
     await wrapper.drainReadyWork()
-    #expect(kernel.state == .recording)
+    #expect(kernel.state == .live)
 
     kernel.cancel()
-    #expect(kernel.state == .recording)
+    #expect(kernel.state == .live)
     #expect(kernel.hasUnconsumedRecordingExit == true)
 
     await wrapper.drainReadyWork()
     #expect(kernel.hasUnconsumedRecordingExit == false)
-    #expect(kernel.state == .cancelled)
+    #expect(kernel.recordingOutcome == .cancelled)
   }
 
   /// Load-robustness check (NOT a guaranteed red-without-fix discriminator):

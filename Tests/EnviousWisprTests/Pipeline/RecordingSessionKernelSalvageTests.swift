@@ -34,6 +34,10 @@ import Testing
   /// wedged rather than reporting a bare state mismatch.
   struct FlooredSite: Sendable, CustomStringConvertible {
     let name: String
+    // #1548 D1: every floored site now delivers ≥1 buffer to reach `.live`
+    // (the transport gate); the sub-minimum-discard site uses the tick-based
+    // gate instead of the retired zero-buffer arm.
+    let minimumRecordingTicks: Int
     let buffers: Int
     let amplitude: Float
     let deadAirVAD: Bool
@@ -87,7 +91,7 @@ import Testing
       wrapper.testKernel.externalEngineInterrupted(cause)
       await wrapper.drainReadyWork()
 
-      #expect(wrapper.testKernel.state == .completed)
+      #expect(wrapper.testKernel.recordingOutcome == .completed)
       #expect(context.paste.pasteCount == 1)
       #expect(wrapper.testKernel.lastAudioInterruptionCause == cause)
       // The dictation is a salvage, and `stop_reason` says so for free.
@@ -109,35 +113,40 @@ import Testing
     /// would reach `.discarded`, whose terminal kind is `.discard` — "delete the
     /// spool now" — destroying the only surviving copy of a recording the user
     /// never chose to throw away.
+    // The PAIR that proves the floor (#1548 D1): identical sub-minimum setup —
+    // one real buffer (so the session reaches `.live` under the transport gate)
+    // but below the tick-based minimum-recording gate (the clock never advances)
+    // — different exit. A too-short USER stop still discards; a too-short
+    // INTERRUPTED recording floors to `.audioInterrupted` (spool retained). The
+    // old zero-buffer arm is unreachable now: with no buffer the session never
+    // reaches `.live`, so it cannot be interrupted mid-recording at all.
     @Test("a sub-minimum USER stop still discards (the floor is inert outside salvage)")
     func subMinimumUserStopStillDiscards() async {
-      let (context, wrapper) = makeWrapper()
-      await context.sut.apply(.start)
-      await context.sut.drainReadyWork()
+      let (context, wrapper) = makeWrapper(minimumRecordingTicks: 5)
+      await startRecording(context, buffers: 1)
 
       await context.sut.apply(.stop)
       await context.sut.drainReadyWork()
 
-      #expect(wrapper.testKernel.state == .discarded)
+      #expect(wrapper.testKernel.recordingOutcome == .discarded(.tooShort))
       #expect(
-        KernelDictationDriver.endedWithoutSaveKind(for: .discarded) == .discard,
+        KernelDictationDriver.endedWithoutSaveKind(for: .discarded(.tooShort)) == .discard,
         "an ordinary too-short tap is still safe to delete")
     }
 
     @Test("a sub-minimum INTERRUPTED recording floors to .audioInterrupted, not .discarded")
     func subMinimumInterruptedFloorsRatherThanDiscards() async {
-      let (_, wrapper) = makeWrapper()
-      await wrapper.apply(.start)
-      await wrapper.drainReadyWork()
+      let (context, wrapper) = makeWrapper(minimumRecordingTicks: 5)
+      await startRecording(context, buffers: 1)
 
-      // No buffers delivered — `bufferCountThisSession == 0` trips the same
-      // minimum-recording gate the user-stop test above lands on.
+      // The clock never advances, so the elapsed window is below the minimum —
+      // the same sub-minimum gate the user-stop pair lands on, but interrupted.
       wrapper.testKernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
 
-      #expect(wrapper.testKernel.state == .audioInterrupted)
+      #expect(wrapper.testKernel.recordingOutcome == .audioInterrupted(.engineLost))
       #expect(
-        KernelDictationDriver.endedWithoutSaveKind(for: .audioInterrupted) == .failure,
+        KernelDictationDriver.endedWithoutSaveKind(for: .audioInterrupted(.engineLost)) == .failure,
         "the floor must convert the spool-deleting terminal into a spool-retaining one")
     }
 
@@ -152,7 +161,7 @@ import Testing
       wrapper.testKernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
 
-      #expect(wrapper.testKernel.state == .audioInterrupted)
+      #expect(wrapper.testKernel.recordingOutcome.kind == .audioInterrupted)
     }
 
     /// Salvaged audio that transcribes to nothing. Without the floor this lands
@@ -170,7 +179,7 @@ import Testing
       wrapper.testKernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
 
-      #expect(wrapper.testKernel.state == .audioInterrupted)
+      #expect(wrapper.testKernel.recordingOutcome.kind == .audioInterrupted)
       #expect(context.paste.pasteCount == 0)
     }
 
@@ -195,9 +204,10 @@ import Testing
       await wrapper.drainReadyWork()
 
       #expect(
-        wrapper.testKernel.state == .audioInterrupted,
-        "reached \(wrapper.testKernel.state) — a wedge would leave a non-terminal state")
-      #expect(wrapper.testKernel.state.isTerminal, "the session must not wedge")
+        wrapper.testKernel.recordingOutcome.kind == .audioInterrupted,
+        "reached \(String(describing: wrapper.testKernel.recordingOutcome)) — a wedge would leave no outcome"
+      )
+      #expect(wrapper.testKernel.recordingOutcome != nil, "the session must not wedge")
       #expect(context.paste.pasteCount == 0)
     }
 
@@ -208,12 +218,17 @@ import Testing
     @Test(
       "every floored terminal site actually terminates (no illegal-transition wedge)",
       arguments: [
-        // (engine behavior, vad evidence, buffers, amplitude) -> each floored site
-        FlooredSite(name: "sub-minimum discard", buffers: 0, amplitude: 0.1, deadAirVAD: false),
-        FlooredSite(name: "VAD-gate no-speech", buffers: 1, amplitude: 0.001, deadAirVAD: true),
+        // Each floored site delivers ≥1 buffer to reach `.live` (#1548 D1); the
+        // sub-minimum-discard site trips the tick-based gate (clock never advances).
+        FlooredSite(
+          name: "sub-minimum discard", minimumRecordingTicks: 5, buffers: 1, amplitude: 0.1,
+          deadAirVAD: false),
+        FlooredSite(
+          name: "VAD-gate no-speech", minimumRecordingTicks: 0, buffers: 1, amplitude: 0.001,
+          deadAirVAD: true),
       ])
     func everyFlooredSiteTerminates(site: FlooredSite) async {
-      let (context, wrapper) = makeWrapper()
+      let (context, wrapper) = makeWrapper(minimumRecordingTicks: site.minimumRecordingTicks)
       if site.deadAirVAD { context.vad.evidence = .confirmedNoSpeech }
       await startRecording(context, buffers: site.buffers, amplitude: site.amplitude)
 
@@ -221,17 +236,20 @@ import Testing
       await wrapper.drainReadyWork()
 
       #expect(
-        wrapper.testKernel.state == .audioInterrupted,
-        "\(site.name): reached \(wrapper.testKernel.state)")
-      #expect(wrapper.testKernel.state.isTerminal, "\(site.name): wedged")
+        wrapper.testKernel.recordingOutcome.kind == .audioInterrupted,
+        "\(site.name): reached \(String(describing: wrapper.testKernel.recordingOutcome))")
+      #expect(wrapper.testKernel.recordingOutcome != nil, "\(site.name): wedged")
     }
 
     /// THE INVARIANT. Absent an explicit user cancel, a session whose exit was a
     /// salvageable interruption terminates in exactly one of two states. There is
     /// no third outcome, and neither outcome deletes a spool today's code retains.
     @Test(
-      "invariant: a salvageable interruption ends .completed or .audioInterrupted, never a third state",
-      arguments: EngineInterruptionCause.allCases.filter(\.hasRecoverableAudio), [0, 1, 3])
+      "invariant: a live salvageable interruption ends .completed or .audioInterrupted, never a third state",
+      // #1548 D1: a genuine interruption is only reachable from `.live`, which
+      // requires ≥1 buffer — the old zero-buffer case is dropped (a zero-buffer
+      // session concludes via the no-transport deadline, not an interruption).
+      arguments: EngineInterruptionCause.allCases.filter(\.hasRecoverableAudio), [1, 3])
     func salvageTerminatesInExactlyTwoStates(
       cause: EngineInterruptionCause, bufferCount: Int
     ) async {
@@ -241,12 +259,12 @@ import Testing
       wrapper.testKernel.externalEngineInterrupted(cause)
       await wrapper.drainReadyWork()
 
-      let terminal = wrapper.testKernel.state
+      let terminal = wrapper.testKernel.recordingOutcome
       #expect(
-        terminal == .completed || terminal == .audioInterrupted,
-        "salvage produced a third terminal: \(terminal)")
-      if terminal != .completed {
-        #expect(KernelDictationDriver.endedWithoutSaveKind(for: terminal) == .failure)
+        terminal.kind == .completed || terminal.kind == .audioInterrupted,
+        "salvage produced a third terminal: \(String(describing: terminal))")
+      if terminal.kind != .completed, let outcome = terminal {
+        #expect(KernelDictationDriver.endedWithoutSaveKind(for: outcome) == .failure)
       }
     }
 
@@ -267,25 +285,31 @@ import Testing
       wrapper.testKernel.externalEngineInterrupted(.engineLost)
       await wrapper.drainReadyWork()
       #expect(
-        wrapper.testKernel.state == .transcribing,
-        "precondition: the salvage tail must still be in flight, got \(wrapper.testKernel.state)")
+        wrapper.testKernel.state == .delivering
+          && wrapper.testKernel.deliveringPhase == .transcribing,
+        "precondition: the salvage tail must still be in flight, got \(wrapper.testKernel.state)/\(wrapper.testKernel.deliveringPhase)"
+      )
 
       await wrapper.apply(.cancel)
       await wrapper.drainReadyWork()
 
-      #expect(wrapper.testKernel.state == .cancelled)
+      #expect(wrapper.testKernel.recordingOutcome == .cancelled)
       #expect(context.paste.pasteCount == 0)
       #expect(
         KernelDictationDriver.endedWithoutSaveKind(for: .cancelled) == nil,
         "`.cancelled` is resolved dynamically by pendingCancelDisposition, not the static map")
     }
 
-    /// Every terminal state the FSM can reach. `RecordingSessionState` has
-    /// associated values so it cannot be `CaseIterable`; this list is the manual
-    /// mirror, and `KernelDictationDriver.endedWithoutSaveKind` is an exhaustive
-    /// switch, so a new state forces a decision there and gets caught here.
-    private static let allTerminals: [RecordingSessionState] = [
-      .completed, .cancelled, .discarded, .noSpeech, .audioInterrupted, .asrInterrupted,
+    /// Every ending outcome the FSM can conclude with (#1548 D1: the ending
+    /// category moved off the state onto `RecordingOutcome`). `RecordingOutcome`
+    /// has associated values so it cannot be `CaseIterable`; this list is the
+    /// manual mirror, and `KernelDictationDriver.endedWithoutSaveKind` is an
+    /// exhaustive switch, so a new outcome forces a decision there and gets
+    /// caught here. Payloads are arbitrary valid values — the floor + the kind
+    /// split only read the category, never the reason.
+    private static let allTerminals: [RecordingOutcome] = [
+      .completed, .cancelled, .discarded(.tooShort), .noSpeech(.vadGate),
+      .audioInterrupted(nil), .asrInterrupted(wasRecording: false), .noTransport,
       .failed(.prepareFailed), .failed(.permissionDenied), .failed(.modelWedged),
       .failed(.modelLoadFailed), .failed(.captureStartFailed), .failed(.noAudioCaptured),
       .failed(.asrEmpty), .failed(.asrFailed), .failed(.asrWedged),
@@ -308,7 +332,7 @@ import Testing
         let floored = kernel.testInterruptedTerminalFloor(terminal)
         if deletesSpool {
           #expect(
-            floored == .audioInterrupted,
+            floored.kind == .audioInterrupted,
             "\(terminal) deletes the spool but the floor let it through")
         }
       }
@@ -327,13 +351,16 @@ import Testing
       #expect(
         kernel.testInterruptedTerminalFloor(.cancelled) == .cancelled,
         "an explicit user cancel is never overridden")
-      #expect(kernel.testInterruptedTerminalFloor(.asrInterrupted) == .asrInterrupted)
+      #expect(
+        kernel.testInterruptedTerminalFloor(.asrInterrupted(wasRecording: false))
+          == .asrInterrupted(wasRecording: false))
       #expect(kernel.testInterruptedTerminalFloor(.failed(.asrEmpty)) == .failed(.asrEmpty))
       #expect(kernel.testInterruptedTerminalFloor(.failed(.asrFailed)) == .failed(.asrFailed))
       // Folded in with the spool-deleting pair: already retaining, but all three
       // no-transcript endings land on one terminal so none of them keeps a
       // different overlay for a reason no user could name.
-      #expect(kernel.testInterruptedTerminalFloor(.failed(.noAudioCaptured)) == .audioInterrupted)
+      #expect(
+        kernel.testInterruptedTerminalFloor(.failed(.noAudioCaptured)).kind == .audioInterrupted)
     }
 
     // MARK: 2b. The floor is unconditional — the SENTENCE is what varies
@@ -350,9 +377,10 @@ import Testing
       wrapper.telemetryState.interruptionCause = cause
       let kernel = wrapper.testKernel
 
-      #expect(kernel.testInterruptedTerminalFloor(.discarded) == .audioInterrupted)
-      #expect(kernel.testInterruptedTerminalFloor(.noSpeech) == .audioInterrupted)
-      #expect(kernel.testInterruptedTerminalFloor(.failed(.noAudioCaptured)) == .audioInterrupted)
+      #expect(kernel.testInterruptedTerminalFloor(.discarded(.tooShort)).kind == .audioInterrupted)
+      #expect(kernel.testInterruptedTerminalFloor(.noSpeech(.vadGate)).kind == .audioInterrupted)
+      #expect(
+        kernel.testInterruptedTerminalFloor(.failed(.noAudioCaptured)).kind == .audioInterrupted)
     }
 
     /// #1408 A3 retired `.maxDurationReached`: the hard cap is a normal
@@ -415,7 +443,7 @@ import Testing
       // And the floor is genuinely inert again: an ordinary stop discards.
       await wrapper.apply(.stop)
       await wrapper.drainReadyWork()
-      #expect(wrapper.testKernel.state == .discarded)
+      #expect(wrapper.testKernel.recordingOutcome.kind == .discarded)
     }
 
     /// The kernel's property is a read-through, not a second copy. The finalization

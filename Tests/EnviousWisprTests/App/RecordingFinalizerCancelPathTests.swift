@@ -140,8 +140,8 @@ import Testing
       fx.asr.activeBackendType = .parakeet
       // idle -> recording is a forbidden direct transition; walk through .preparing
       // first, matching the kernel FSM (KernelDictationDriverTests precedent).
-      _ = fx.kernelDriver.kernelForTesting.testForceTransition(to: .preparing)
-      _ = fx.kernelDriver.kernelForTesting.testForceTransition(to: .recording)
+      _ = fx.kernelDriver.kernelForTesting.testForceTransition(to: .arming)
+      _ = fx.kernelDriver.kernelForTesting.testForceTransition(to: .live)
       let finalizer = fx.finalizer
       let obs = DispatchObservation()
       finalizer.cancelRecordingDispatch = { _ in

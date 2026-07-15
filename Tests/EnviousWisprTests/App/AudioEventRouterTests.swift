@@ -133,15 +133,18 @@ struct AudioEventRouterTests {
           useStreamingASR: false
         )))
 
-    // Drain state changes until the driver is in `.recording`. Reaching
-    // recording runs through warm-up, so allow a generous bound; a stall here
-    // is a real failure, not a flaky pass.
+    // #1548 D1: reaching `.recording` requires the first converted buffer
+    // (Arming → Live transport gate). Deliver one, then keep delivering after
+    // each non-recording transition so the first buffer cannot race the kernel
+    // wiring `onBufferCaptured` during `beginCapturePhase`.
+    audio.deliverBuffer()
     while true {
       guard let state = await waiter.next(timeout: .seconds(5)) else {
         Issue.record("driver did not reach .recording within 5s")
         return
       }
       if state == PipelineState.recording { break }
+      audio.deliverBuffer()
     }
 
     // The kernel claims `audio.onVADAutoStop` via the shared `CaptureVADSignalSource`.
