@@ -19,7 +19,7 @@ import numpy as np
 SCHEMA_VERSION = "eg1-leakage-score-generator-v1"
 ACCEPTED_NONCERTIFYING_STATUS = "calibration_required_noncertifying"
 CANONICAL_SCANNER_PATH = "scripts/eval/scan_eg1_multilingual_development_leakage.py"
-CANONICAL_SCANNER_SHA256 = "366774a4500a32cdc1e2577d8308e089287b38252ec5d2452cdae0af6816438d"
+CANONICAL_SCANNER_SHA256 = "ec9952c7c295f7ed5eb3733efd6d922bba7a1910aa1f484e60c941c89f8ba7f5"
 SCORE_QUANTUM = Decimal("0.00000001")
 
 

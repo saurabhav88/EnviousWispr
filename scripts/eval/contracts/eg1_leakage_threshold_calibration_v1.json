@@ -53,9 +53,9 @@
   },
   "score_generator": {
     "path": "scripts/eval/generate_eg1_leakage_calibration_scores.py",
-    "sha256": "2bdf5d14009a4e1ea73c50489f5f13199ae330b0614924a413e2d59a0412c45b",
+    "sha256": "22ca41d6477a79323018c3a1e8b0f932f356f46e9b57039e2f27424f15026329",
     "scanner_evidence_policy": "full_recomputation_accept_calibration_required_only",
     "scanner_path": "scripts/eval/scan_eg1_multilingual_development_leakage.py",
-    "scanner_sha256": "366774a4500a32cdc1e2577d8308e089287b38252ec5d2452cdae0af6816438d"
+    "scanner_sha256": "ec9952c7c295f7ed5eb3733efd6d922bba7a1910aa1f484e60c941c89f8ba7f5"
   }
 }
