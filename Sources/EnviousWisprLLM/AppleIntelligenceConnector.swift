@@ -154,8 +154,18 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
   /// behavior is identical to before (synchronous filter only). Always fail-open.
   private let classifier: OutputClassifierProtocol?
 
-  public init(classifier: OutputClassifierProtocol? = nil) {
+  /// #1226: runtime-scoring telemetry seam, reusing the existing
+  /// `LLMTelemetrySink` cross-module pattern (`KeychainManager.telemetrySink`,
+  /// `LLMNetworkSession`) rather than inventing a second one. Defaulted to
+  /// `.noop` so every other construction site (tests, keyless paths) stays
+  /// silent; `LLMPolishStep`'s `defaultPolisherFactory` is the one production
+  /// call site that passes a real value.
+  private let telemetrySink: LLMTelemetrySink
+
+  public init(classifier: OutputClassifierProtocol? = nil, telemetrySink: LLMTelemetrySink = .noop)
+  {
     self.classifier = classifier
+    self.telemetrySink = telemetrySink
   }
 
   // MARK: - AFM context-window preflight (#1055)
@@ -440,7 +450,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       let rawContent = try await Self.generateGuardingContextWindow(
         prepared: prepared, wrapped: wrapped, detectedLanguage: detectedLanguage)
       let filtered = await EnviousOutputFilter.filterWithClassifier(
-        input: text, output: rawContent, classifier: classifier)
+        input: text, output: rawContent, classifier: classifier, telemetrySink: telemetrySink)
       let content = filtered.polished
       Self.logAFMTrace(rawContent: rawContent, filtered: filtered)
 
@@ -509,7 +519,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       let rawContent = try await Self.generateGuardingContextWindow(
         prepared: prepared, wrapped: wrapped, detectedLanguage: detectedLanguage)
       let filtered = await EnviousOutputFilter.filterWithClassifier(
-        input: text, output: rawContent, classifier: classifier)
+        input: text, output: rawContent, classifier: classifier, telemetrySink: telemetrySink)
       let content = filtered.polished
       Self.logAFMTrace(rawContent: rawContent, filtered: filtered)
 

@@ -89,12 +89,14 @@ enum EnviousOutputFilter {
   static func filterWithClassifier(
     input: String,
     output: String,
-    classifier: OutputClassifierProtocol?
+    classifier: OutputClassifierProtocol?,
+    telemetrySink: LLMTelemetrySink = .noop
   ) async -> Result {
     let sync = filter(input: input, output: output)
     guard sync.fellBackToRaw == false, let classifier else { return sync }
 
     let rawInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    let computePath = classifier.usedFallbackCompute ? "cpu_fallback" : "default"
     let start = DispatchTime.now()
     // TRUE 50ms wall-clock bound: `withDeadline` returns nil on timeout WITHOUT
     // awaiting a stuck synchronous Core ML inference (Codex P1). A throw/NaN
@@ -109,10 +111,15 @@ enum EnviousOutputFilter {
       Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000)
     guard let score = scored else {
       logClassifierDisabled(reason: "timeout")
+      telemetrySink.limbFailure(
+        "output_safety", "classifier_score", "fell_open", "timeout_\(computePath)", elapsedMs)
       return sync
     }
     guard score.isFinite else {
       logClassifierDisabled(reason: "inference_error")
+      telemetrySink.limbFailure(
+        "output_safety", "classifier_score", "fell_open", "inference_error_\(computePath)",
+        elapsedMs)
       return sync
     }
     let discard = score >= OutputClassifierManifest.discardThreshold

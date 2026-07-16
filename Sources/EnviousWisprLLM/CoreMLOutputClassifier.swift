@@ -21,16 +21,26 @@ import Foundation
 public actor CoreMLOutputClassifier: OutputClassifierProtocol {
   private let model: MLModel
   private let adapter: PairEncodingAdapter
+  /// #1226: true when this instance loaded via the `.cpuAndGPU` fallback
+  /// (`computeUnits != .all` at `load(resourceURL:computeUnits:)`).
+  public let usedFallbackCompute: Bool
 
-  private init(model: MLModel, adapter: PairEncodingAdapter) {
+  private init(model: MLModel, adapter: PairEncodingAdapter, usedFallbackCompute: Bool) {
     self.model = model
     self.adapter = adapter
+    self.usedFallbackCompute = usedFallbackCompute
   }
 
   /// Load + verify + self-test from a bundle resource directory (normally
   /// `Bundle.main.resourceURL`). `nonisolated`-by-default async means the heavy
   /// compile/load runs off the caller's actor (off main) per SE-0338.
-  public static func load(resourceURL: URL) async throws -> CoreMLOutputClassifier {
+  ///
+  /// `computeUnits` (#1226): defaults to `.all` (ANE+GPU+CPU, unchanged
+  /// behavior); `OutputClassifierHolder.beginLoadIfNeeded` passes `.cpuAndGPU`
+  /// for the one bounded retry after a `fixtureSelfTestFailed` on `.all`.
+  public static func load(
+    resourceURL: URL, computeUnits: MLComputeUnits = .all
+  ) async throws -> CoreMLOutputClassifier {
     let fileManager = FileManager.default
     let tokenizerFolder = resourceURL.appendingPathComponent(
       OutputClassifierManifest.tokenizerFolderName, isDirectory: true)
@@ -90,7 +100,8 @@ public actor CoreMLOutputClassifier: OutputClassifierProtocol {
     //    if only the source .mlpackage shipped, compile it on-device.
     let model: MLModel
     do {
-      let configuration = MLModelConfiguration()  // computeUnits = .all (ANE/GPU/CPU)
+      let configuration = MLModelConfiguration()
+      configuration.computeUnits = computeUnits
       if fileManager.fileExists(atPath: compiledModel.path) {
         model = try MLModel(contentsOf: compiledModel, configuration: configuration)
       } else if fileManager.fileExists(atPath: mlpackage.path) {
@@ -110,8 +121,24 @@ public actor CoreMLOutputClassifier: OutputClassifierProtocol {
     // 6. Verify the Core ML I/O contract (3 named multiarray inputs + logits).
     try verifyModelIO(model)
 
+    // #1226 committed fault-injection seam for Live UAT (never compiled into
+    // Release; composes with the codebase's EXISTING EW_FAULT_INJECTION=1
+    // gate so synthetic runs still stamp synthetic=true and never read as a
+    // real incident). Real Mac17,x hardware and a genuine `.all` self-test
+    // failure are otherwise unreachable pre-ship on available hardware.
+    #if DEBUG
+      let environment = ProcessInfo.processInfo.environment
+      let fault = environment["EW_OUTPUT_CLASSIFIER_FAULT"]
+      if environment["EW_FAULT_INJECTION"] == "1",
+        fault == "all_selftests" || (fault == "primary_selftest" && computeUnits == .all)
+      {
+        throw OutputClassifierError.disabled(.fixtureSelfTestFailed)
+      }
+    #endif
+
     // 7. Fixture self-test on the full tokenize→score path.
-    let classifier = CoreMLOutputClassifier(model: model, adapter: adapter)
+    let classifier = CoreMLOutputClassifier(
+      model: model, adapter: adapter, usedFallbackCompute: computeUnits != .all)
     try await classifier.selfTest()
     return classifier
   }

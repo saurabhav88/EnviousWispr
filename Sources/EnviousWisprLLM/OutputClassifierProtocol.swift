@@ -1,3 +1,4 @@
+import CoreML
 import Foundation
 
 /// On-device safety classifier for Apple Intelligence polish output.
@@ -12,6 +13,14 @@ import Foundation
 /// fails open. `score` may throw; callers treat any throw as "keep the polish".
 public protocol OutputClassifierProtocol: Sendable {
   func score(input: String, polished: String) async throws -> Double
+
+  /// #1226: true when this instance loaded via the `.cpuAndGPU` fallback path
+  /// (the default-compute-units attempt failed its fixture self-test) rather
+  /// than the default `.all` (ANE+GPU+CPU). A provenance flag, not a
+  /// Failure/Bypass/Fallback signal itself — tags runtime `score()` telemetry
+  /// so a load-time "succeeded via fallback" is not mistaken for "the runtime
+  /// scoring budget is also fine on this compute path."
+  var usedFallbackCompute: Bool { get }
 }
 
 /// Outcome of one `OutputClassifierHolder.beginLoadIfNeeded` call. Drives
@@ -22,7 +31,24 @@ public enum OutputClassifierAttemptOutcome: Sendable, Equatable {
   case skippedLoadInProgress
   case skippedPermanentlyDisabled(reason: OutputClassifierDisabledReason)
   case succeeded
-  case failedFirstTime(reason: OutputClassifierDisabledReason)
+  /// #1226: the `.all` (default compute units) attempt failed
+  /// `fixtureSelfTestFailed`, and the bounded `.cpuAndGPU` retry succeeded.
+  /// Fallback, not Failure — the classifier is active, just on a different
+  /// compute path.
+  case succeededViaFallback(primaryReason: OutputClassifierDisabledReason)
+  /// Renamed from `.failedFirstTime` (#1226): failed on the FIRST attempt
+  /// with a reason that is NOT retry-eligible (a packaging defect — contract
+  /// hash, tokenizer, shape, missing file) — no `.cpuAndGPU` retry was
+  /// attempted, since a different compute path cannot change the outcome.
+  case failedNoRetry(reason: OutputClassifierDisabledReason)
+  /// #1226: both the `.all` attempt AND the bounded `.cpuAndGPU` retry failed.
+  /// Preserves BOTH reasons distinctly (never collapsed to "last reason
+  /// wins") so triage can tell "still the same self-test failure" from
+  /// "a different failure surfaced on the fallback path."
+  case failedAfterFallback(
+    primaryReason: OutputClassifierDisabledReason,
+    fallbackReason: OutputClassifierDisabledReason
+  )
   case failedRetryable(errorCategory: String)
 }
 
@@ -67,8 +93,15 @@ public final class OutputClassifierHolder {
   /// `CancellationError` and any other unmapped error reset to `.notStarted`
   /// so a later trigger may retry — neither is evidence the classifier itself
   /// is broken.
+  ///
+  /// #1226: retry orchestration lives HERE, inside this one existing
+  /// state-machine method — the loader closure widens to accept the compute
+  /// units to load with, and a `fixtureSelfTestFailed` failure on `.all`
+  /// (Mac17,x/M5) triggers exactly one bounded `.cpuAndGPU` retry before
+  /// terminal failure. State stays `.loading` across both internal attempts
+  /// (no re-check window opens for a concurrent caller mid-retry).
   public func beginLoadIfNeeded(
-    loader: @Sendable () async throws -> OutputClassifierProtocol
+    loader: @Sendable (MLComputeUnits) async throws -> OutputClassifierProtocol
   ) async -> OutputClassifierAttemptOutcome {
     switch state {
     case .ready: return .skippedAlreadyReady
@@ -77,12 +110,29 @@ public final class OutputClassifierHolder {
     case .notStarted: state = .loading
     }
     do {
-      let classifier = try await loader()
+      let classifier = try await loader(.all)
       state = .ready(classifier)
       return .succeeded
     } catch let error as OutputClassifierError {
-      state = .disabled(error.reason)
-      return .failedFirstTime(reason: error.reason)
+      guard error.reason.isRetryEligibleForComputeFallback else {
+        state = .disabled(error.reason)
+        return .failedNoRetry(reason: error.reason)
+      }
+      do {
+        let classifier = try await loader(.cpuAndGPU)
+        state = .ready(classifier)
+        return .succeededViaFallback(primaryReason: error.reason)
+      } catch let fallbackError as OutputClassifierError {
+        state = .disabled(fallbackError.reason)
+        return .failedAfterFallback(
+          primaryReason: error.reason, fallbackReason: fallbackError.reason)
+      } catch is CancellationError {
+        state = .notStarted
+        return .failedRetryable(errorCategory: "cancelled")
+      } catch {
+        state = .notStarted
+        return .failedRetryable(errorCategory: "unknown_load_error")
+      }
     } catch is CancellationError {
       state = .notStarted
       return .failedRetryable(errorCategory: "cancelled")

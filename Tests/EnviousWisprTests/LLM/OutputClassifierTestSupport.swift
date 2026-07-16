@@ -18,6 +18,12 @@ enum OutputClassifierTestPaths {
     .deletingLastPathComponent()  // Tests
     .deletingLastPathComponent()  // repo root
 
+  /// #1226: source-checkout app-resource root (NOT the unit-test bundle —
+  /// the model + tokenizer are app-target resources absent from it), for the
+  /// committed integration test that loads the real classifier via
+  /// `CoreMLOutputClassifier.load(resourceURL:computeUnits:)`.
+  static let classifierResourceRoot = repoRoot.appending(path: "Sources/EnviousWisprLLM/Resources")
+
   static let tokenizerFolder = repoRoot.appending(
     path: "Sources/EnviousWisprLLM/Resources/OutputClassifierTokenizer")
   static let tokenizerJSON = tokenizerFolder.appending(path: "tokenizer.json")
@@ -67,7 +73,14 @@ final class StubOutputClassifier: OutputClassifierProtocol, @unchecked Sendable 
     case throwError
   }
   let behavior: Behavior
-  init(_ behavior: Behavior) { self.behavior = behavior }
+  /// #1226: defaulted so every existing `StubOutputClassifier(.score(...))`
+  /// call site is unaffected; tests exercising `usedFallbackCompute`-tagged
+  /// telemetry pass `true` explicitly.
+  let usedFallbackCompute: Bool
+  init(_ behavior: Behavior, usedFallbackCompute: Bool = false) {
+    self.behavior = behavior
+    self.usedFallbackCompute = usedFallbackCompute
+  }
 
   private let lock = NSLock()
   private var _released = false

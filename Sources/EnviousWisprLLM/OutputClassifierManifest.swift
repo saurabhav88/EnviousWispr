@@ -92,6 +92,17 @@ public enum OutputClassifierDisabledReason: String, Sendable {
   case inferenceError = "inference_error"
   case tokenizerLoadFailed = "tokenizer_load_failed"
   case modelLoadFailed = "model_load_failed"
+
+  /// #1226: the ONLY reason a `.cpuAndGPU` compute-unit retry plausibly
+  /// changes the outcome (a genuine ANE discrimination failure on Mac17,x
+  /// hardware — `.cpuOnly` was ruled out empirically: it produces NaN for
+  /// this model's fp16 attention/softmax ops on any hardware, not just
+  /// Mac17,x). Every other reason is deterministic regardless of compute
+  /// path (packaging defects) or risks masking a resource-exhaustion retry
+  /// into a jetsam (`modelLoadFailed`/`inferenceError`) — never retried.
+  public var isRetryEligibleForComputeFallback: Bool {
+    self == .fixtureSelfTestFailed
+  }
 }
 
 /// Typed load/score failures. All map to fail-open at the call site.

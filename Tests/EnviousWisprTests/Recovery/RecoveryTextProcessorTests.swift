@@ -192,6 +192,10 @@ struct RecoveryTextProcessorTests {
     let handRolledSeams = [
       "limbFailureObserved:", "breadcrumbStarted:", "captureProviderInitError:",
       "captureAFMPolishError:", "breadcrumbCompleted:", "recordPolishSkipped:",
+      // #1226: classifierTelemetrySink joined this struct via the SAME
+      // .silent authority — a hand-rolled sink here would be the same
+      // regression this test already guards against for the other 6 seams.
+      "classifierTelemetrySink:",
     ].filter { code.contains($0) }
 
     #expect(buildsStepFromSilent)

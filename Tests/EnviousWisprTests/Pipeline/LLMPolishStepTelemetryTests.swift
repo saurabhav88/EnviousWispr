@@ -55,7 +55,11 @@ struct LLMPolishStepTelemetryTests {
         },
         recordPolishSkipped: { provider, reason in
           self.skipCalls.append((provider, reason))
-        })
+        },
+        // #1226: this spy suite doesn't exercise the classifier telemetry
+        // path itself (that's `EnviousOutputFilterWithClassifierTests.swift`);
+        // `.noop` keeps this member inert here.
+        classifierTelemetrySink: .noop)
     }
   }
 
@@ -302,5 +306,48 @@ struct LLMPolishStepTelemetryTests {
     #expect(spy.skipCalls.isEmpty)
     #expect(spy.providerInitErrorCalls.isEmpty)
     #expect(spy.afmPolishErrorCalls.isEmpty)
+  }
+
+  // MARK: - #1226 classifier telemetry routing (static source-wiring check)
+
+  /// `LLMTelemetrySink` is a closure container, not `Equatable`, and
+  /// `AppleIntelligenceConnector` stores its telemetry sink privately — a
+  /// runtime spy cannot observe which preset `TelemetrySeams.live`/`.silent`
+  /// selected. Proves the wiring the same way `RecoveryTextProcessorTests`
+  /// proves its own seam selection: reading the real source, not executing it.
+  /// Behavioral emission (does the sink actually fire) is proved separately
+  /// by the spy-sink cases in `EnviousOutputFilterWithClassifierTests.swift`.
+  @Test(
+    ".live assigns classifierTelemetrySink: .live, .silent assigns .noop, defaultPolisherFactory forwards it to AppleIntelligenceConnector"
+  )
+  func classifierTelemetrySinkStaticWiring() throws {
+    let path = Self.repoRoot().appending(
+      path: "Sources/EnviousWisprPipeline/LLMPolishStep.swift")
+    let source = try String(contentsOf: path, encoding: .utf8)
+    let code = source.split(separator: "\n")
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .filter { !$0.hasPrefix("//") }
+      .joined(separator: " ")
+
+    #expect(code.contains("classifierTelemetrySink: .live"))
+    #expect(code.contains("classifierTelemetrySink: .noop"))
+    #expect(
+      code.contains("telemetrySink: telemetry.classifierTelemetrySink"),
+      "defaultPolisherFactory must forward telemetry.classifierTelemetrySink to AppleIntelligenceConnector"
+    )
+    // No second live-vs-silent selection point (#1226 r5/r6 PIVOT — the
+    // original design added a standalone llmTelemetrySink parameter beside
+    // TelemetrySeams; the regression this guards is that reappearing).
+    #expect(!code.contains("llmTelemetrySink:"))
+  }
+
+  /// Repo root, anchored off `#filePath` — this file lives at
+  /// `Tests/EnviousWisprTests/Pipeline/`, four levels below the root.
+  private static func repoRoot() -> URL {
+    URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
   }
 }

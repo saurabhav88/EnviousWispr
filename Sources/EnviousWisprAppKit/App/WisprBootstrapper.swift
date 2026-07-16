@@ -796,11 +796,12 @@ public final class WisprBootstrapper {
     guard provider == .appleIntelligence else { return }
     Task {
       let start = DispatchTime.now()
-      let outcome = await holder.beginLoadIfNeeded {
+      let outcome = await holder.beginLoadIfNeeded { computeUnits in
         guard let resourceURL = Bundle.main.resourceURL else {
           throw OutputClassifierError.disabled(.missingFile)
         }
-        return try await CoreMLOutputClassifier.load(resourceURL: resourceURL)
+        return try await CoreMLOutputClassifier.load(
+          resourceURL: resourceURL, computeUnits: computeUnits)
       }
       let elapsedMs = Int(
         Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000)
@@ -808,13 +809,16 @@ public final class WisprBootstrapper {
       if let logMessage = plan.logMessage {
         await AppLogger.shared.log(logMessage, level: .info, category: "LLM")
       }
-      if let category = plan.postHogErrorCategory {
+      if let category = plan.postHogErrorCategory, let result = plan.postHogResult {
         // #1177 (Telemetry Bible Phase 8): the polish path silently lost its safety
         // net. Population event for the aggregate fail-open rate, tagged by which
         // of the three observation units this is (#1452 — see
         // `OutputClassifierEmissionPolicy`). @MainActor static → direct emit.
+        // #1226: `result` is no longer hardcoded — `.succeededViaFallback` tags
+        // "recovered" so an active-via-fallback classifier never reads as a
+        // failure; every other emitting case keeps the existing "fell_open".
         TelemetryService.shared.limbFailureObserved(
-          limb: "output_safety", operation: "classifier_prewarm", result: "fell_open",
+          limb: "output_safety", operation: "classifier_prewarm", result: result,
           errorCategory: category, durationMs: plan.attemptedRealLoad ? elapsedMs : nil)
       }
       if let sentryReason = plan.sentryReason {
@@ -1056,33 +1060,58 @@ struct OutputClassifierEmissionPolicy: Equatable {
   /// than inferring it from `sentryReason == nil`, which is also nil for
   /// `.failedRetryable` (a real attempt that just isn't alert-worthy).
   let attemptedRealLoad: Bool
+  /// #1226: the PostHog `result` tag. Every existing emitting case (before
+  /// this plan) hardcoded `"fell_open"` at the call site; `.succeededViaFallback`
+  /// is the first case where the classifier is ACTIVE despite an attempt
+  /// failing, so it needs its own `"recovered"` tag rather than reading as a
+  /// failure. `nil` exactly when `postHogErrorCategory` is `nil` (no emission).
+  let postHogResult: String?
 
   static func forOutcome(_ outcome: OutputClassifierAttemptOutcome) -> Self {
     switch outcome {
     case .skippedAlreadyReady, .skippedLoadInProgress:
       return .init(
-        logMessage: nil, postHogErrorCategory: nil, sentryReason: nil, attemptedRealLoad: false)
+        logMessage: nil, postHogErrorCategory: nil, sentryReason: nil, attemptedRealLoad: false,
+        postHogResult: nil)
     case .succeeded:
       return .init(
         logMessage: "[OutputClassifier] preWarm complete", postHogErrorCategory: nil,
-        sentryReason: nil, attemptedRealLoad: true)
+        sentryReason: nil, attemptedRealLoad: true, postHogResult: nil)
+    case .succeededViaFallback(let primaryReason):
+      // Fallback, not Failure: the classifier is active on the `.cpuAndGPU`
+      // path. Non-alerting (no Sentry) but counted so post-ship telemetry can
+      // tell "fallback rescued this device" from "fallback never engaged."
+      return .init(
+        logMessage:
+          "[OutputClassifier] preWarm succeeded via .cpuAndGPU fallback (primary reason=\(primaryReason.rawValue))",
+        postHogErrorCategory: "succeeded_via_fallback:\(primaryReason.rawValue)",
+        sentryReason: nil, attemptedRealLoad: true, postHogResult: "recovered")
     case .skippedPermanentlyDisabled(let reason):
       // Suppressed repeat: counted (unit = "provider-triggered observation of an
       // already-disabled classifier"), never re-alerted — this IS the fix.
       return .init(
         logMessage: nil, postHogErrorCategory: "suppressed_repeat:\(reason.rawValue)",
-        sentryReason: nil, attemptedRealLoad: false)
-    case .failedFirstTime(let reason):
+        sentryReason: nil, attemptedRealLoad: false, postHogResult: "fell_open")
+    case .failedNoRetry(let reason):
       return .init(
         logMessage: "[OutputClassifier] preWarm failed reason=\(reason.rawValue) — fail open",
         postHogErrorCategory: "attempted_load:\(reason.rawValue)", sentryReason: reason,
-        attemptedRealLoad: true)
+        attemptedRealLoad: true, postHogResult: "fell_open")
+    case .failedAfterFallback(let primaryReason, let fallbackReason):
+      // Both compute paths exhausted — carries BOTH reasons distinctly in the
+      // PostHog category string so triage never needs a manual Sentry pull.
+      return .init(
+        logMessage:
+          "[OutputClassifier] preWarm failed after .cpuAndGPU fallback (primary=\(primaryReason.rawValue), fallback=\(fallbackReason.rawValue)) — fail open",
+        postHogErrorCategory:
+          "exhausted_fallback:\(primaryReason.rawValue)->\(fallbackReason.rawValue)",
+        sentryReason: fallbackReason, attemptedRealLoad: true, postHogResult: "fell_open")
     case .failedRetryable(let category):
       // Not the classifier's fault (cancellation / unknown transient error) — counted,
       // never alerted, and the holder itself already allows a later retry.
       return .init(
         logMessage: nil, postHogErrorCategory: "retryable:\(category)", sentryReason: nil,
-        attemptedRealLoad: true)
+        attemptedRealLoad: true, postHogResult: "fell_open")
     }
   }
 }

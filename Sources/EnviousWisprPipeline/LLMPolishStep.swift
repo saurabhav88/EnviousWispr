@@ -50,25 +50,37 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   typealias PolisherFactory = @MainActor (LLMProvider, KeychainManager, OutputClassifierProtocol?)
     ->
     (any TranscriptPolisher)?
-  var makePolisher: PolisherFactory = { provider, keychain, classifier in
-    switch provider {
-    case .openAI: OpenAIConnector(keychainManager: keychain)
-    case .gemini: GeminiConnector(keychainManager: keychain)
-    case .ollama: OllamaConnector()
-    // #832/#913 PR8: the on-device output-safety classifier runs ONLY on Apple
-    // Intelligence output (the path where AFM can compose artifacts). Injected
-    // via init — fail-open when nil (not yet prewarmed / load failed).
-    case .appleIntelligence: AppleIntelligenceConnector(classifier: classifier)
-    // #1271: the EG-1 connector needs the live server endpoint, which this
-    // three-argument seam does not carry. `process()` routes `.egOne`
-    // through `makeEGOnePolisher` + `egOneRuntime` BEFORE consulting this
-    // factory; reaching this case means no runtime handle was injected —
-    // return nil and let the call site's `.egOne` branch throw the silent
-    // bypass (never the surfaced `providerUnavailable`).
-    case .egOne: nil
-    case .none: nil
+
+  /// #1226: builds the default `PolisherFactory`, capturing `telemetry`'s
+  /// `classifierTelemetrySink` for the one provider that reaches the
+  /// classifier. `TelemetrySeams` (below) is the SOLE live-vs-silent
+  /// authority for this step; this factory reads it, never a second
+  /// initializer parameter.
+  private static func defaultPolisherFactory(telemetry: TelemetrySeams) -> PolisherFactory {
+    { provider, keychain, classifier in
+      switch provider {
+      case .openAI: OpenAIConnector(keychainManager: keychain)
+      case .gemini: GeminiConnector(keychainManager: keychain)
+      case .ollama: OllamaConnector()
+      // #832/#913 PR8: the on-device output-safety classifier runs ONLY on Apple
+      // Intelligence output (the path where AFM can compose artifacts). Injected
+      // via init — fail-open when nil (not yet prewarmed / load failed).
+      case .appleIntelligence:
+        AppleIntelligenceConnector(
+          classifier: classifier, telemetrySink: telemetry.classifierTelemetrySink)
+      // #1271: the EG-1 connector needs the live server endpoint, which this
+      // three-argument seam does not carry. `process()` routes `.egOne`
+      // through `makeEGOnePolisher` + `egOneRuntime` BEFORE consulting this
+      // factory; reaching this case means no runtime handle was injected —
+      // return nil and let the call site's `.egOne` branch throw the silent
+      // bypass (never the surfaced `providerUnavailable`).
+      case .egOne: nil
+      case .none: nil
+      }
     }
   }
+
+  var makePolisher: PolisherFactory
 
   /// EG-1 runtime handle (#1271), injected by the composition root through
   /// `KernelDictationDriverFactory` / `RecoveryTextProcessor` — same
@@ -130,6 +142,14 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     /// responsibility, routed through its own, separate `recordPolishSkipped`
     /// seam — this field does not duplicate that.
     let recordPolishSkipped: @MainActor (String, String) -> Void
+    /// #1226: routes the classifier's runtime-scoring telemetry
+    /// (`filterWithClassifier`'s timeout/inference-error branches) through
+    /// this SAME live-vs-silent authority — `.live` on `.live`, `.noop` on
+    /// `.silent` — rather than a second selection point. `LLMTelemetrySink`
+    /// (not a `@MainActor` closure) because it crosses into `EnviousWisprLLM`,
+    /// which does not import `EnviousWisprServices`; mirrors the existing
+    /// `KeychainManager.telemetrySink` / `LLMNetworkSession` pattern.
+    let classifierTelemetrySink: LLMTelemetrySink
 
     static let live = TelemetrySeams(
       limbFailureObserved: { limb, op, result, cat, dur in
@@ -150,7 +170,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       },
       recordPolishSkipped: { provider, reason in
         TelemetryService.shared.polishSkipped(provider: provider, reason: reason)
-      })
+      },
+      classifierTelemetrySink: .live)
 
     static let silent = TelemetrySeams(
       limbFailureObserved: { _, _, _, _, _ in },
@@ -158,7 +179,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       captureProviderInitError: { _ in },
       captureAFMPolishError: { _ in },
       breadcrumbCompleted: { _, _ in },
-      recordPolishSkipped: { _, _ in })
+      recordPolishSkipped: { _, _ in },
+      classifierTelemetrySink: .noop)
   }
 
   public var isEnabled: Bool {
@@ -184,6 +206,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   public init(keychainManager: KeychainManager) {
     self.keychainManager = keychainManager
     self.telemetry = .live
+    self.makePolisher = Self.defaultPolisherFactory(telemetry: .live)
   }
 
   /// Internal-only overload (#1461) — used solely by `RecoveryTextProcessor`
@@ -193,6 +216,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   init(keychainManager: KeychainManager, telemetry: TelemetrySeams) {
     self.keychainManager = keychainManager
     self.telemetry = telemetry
+    self.makePolisher = Self.defaultPolisherFactory(telemetry: telemetry)
   }
 
   /// Test seam (round 6/7 grounded review) — `evictPreviousOllamaModel`
