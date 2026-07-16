@@ -134,7 +134,7 @@ private func emitEquals(
   @Test func gate_requiresHiddenSlot() {
     let h = Harness()
     h.isBluetooth = true
-    h.currentIntent = .warning(message: "x")  // another overlay owns the slot
+    h.currentIntent = .warning(reason: .polishFailed)  // another overlay owns the slot
     let p = h.makePresenter()
     p.reconcile(trigger: .launch)
     #expect(h.showCount == 0)  // never replaces a live overlay

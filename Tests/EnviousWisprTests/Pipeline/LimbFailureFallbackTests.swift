@@ -37,7 +37,7 @@ struct LimbFailureFallbackTests {
     #expect(result.context.text == raw)
     #expect(result.context.polishedText == nil)
     // Polish-failure surface: the error message reaches the caller so the
-    // overlay can show "Polish failed -- using raw text".
+    // overlay can show "Polish failed. Using raw text.".
     #expect(result.polishError == "Polish failed -- test failure")
   }
 

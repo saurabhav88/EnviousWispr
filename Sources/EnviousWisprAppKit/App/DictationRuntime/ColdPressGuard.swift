@@ -66,9 +66,7 @@ enum ColdPressGuard {
       case .ready:
         overlay.show(intent: .engineReady)
       case .notInstalled:
-        overlay.show(
-          intent: .warning(message: "\(label) isn't downloaded yet — open Settings to download it.")
-        )
+        overlay.show(intent: .warning(reason: .modelNotDownloaded(engineLabel: label)))
       case .notReady:
         // Switched but not ready (failed warm / transient block): clear the
         // caching pill; the next press retries via the cold-press path.

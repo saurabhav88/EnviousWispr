@@ -12,7 +12,7 @@ enum PipelineStateSideEffect: Equatable, Sendable {
   /// non-complete transition — mirrors the former root-state file behavior.
   case cancelPendingWarning
 
-  /// Schedule the "Polish failed -- using raw text" warning 400 ms after
+  /// Schedule the "Polish failed. Using raw text." warning 400 ms after
   /// completion. Emitted ONLY on `.complete` when a polish error was recorded
   /// AND the paste did not fall back to clipboard-only.
   case schedulePolishFailedWarning
@@ -128,7 +128,7 @@ enum PipelineStateChangePlanner {
         // #945: a "skipped" notice (no key yet, too long, timed out) is not a
         // hard failure — the in-window banner shows the actionable
         // "AI cleanup skipped: ..." message, but the transient
-        // "Polish failed -- using raw text" overlay would contradict it, so
+        // "Polish failed. Using raw text." overlay would contradict it, so
         // suppress it for skips. Real failures (and the unchanged Apple
         // Intelligence / legacy strings) still schedule the warning.
         // #1167: a history-save failure takes the single post-completion

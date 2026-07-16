@@ -1,4 +1,18 @@
 import EnviousWisprCore
+import EnviousWisprPipeline
+
+/// #1567 (heartpath E3): a typed fact for an in-panel recording notice rendered
+/// through `RecordingOverlayPanel.flashRecordingNotice`. Distinct from
+/// `.warning`: these appear inside the LIVE recording panel, not as a
+/// post-completion pill, so they carry their own family rather than a
+/// `RecordingWarningReason`. Lives in AppKit — the panel and its callers are the
+/// only code that touches it; it never crosses into Pipeline.
+enum RecordingNoticeReason: Equatable, Sendable {
+  /// Within the last minute before the 60-minute cap. Persistent (nil dismiss).
+  case approachingCap
+  /// The VAD model can't load, so silence auto-stop is off. Timed (4 s dismiss).
+  case autoStopUnavailable
+}
 
 /// #1558 (E1) / #1564 (E2). The single, stateless authority that turns the
 /// engine's typed facts into the customer-facing words shown on the pill, the
@@ -88,6 +102,49 @@ enum DictationNarrator {
       return "Transcribing"
     case .polishing:
       return "Polishing"
+    }
+  }
+
+  // MARK: - Post-completion + advisory warnings (E3, #1567)
+
+  /// Founder-LOCKED 2026-07-15. Unchanged from today EXCEPT two approved
+  /// cleanups: model-not-downloaded drops a banned em-dash and polish-failed
+  /// drops a literal `--` — each becomes a clean two-sentence form.
+  static func copy(for reason: RecordingWarningReason) -> String {
+    switch reason {
+    case .modelNotDownloaded(let engineLabel):
+      return "\(engineLabel) isn't downloaded yet. Open Settings to download it."
+    case .polishFailed:
+      return "Polish failed. Using raw text."
+    case .historySaveFailed(let reason):
+      return "Couldn't save to history: \(reason)"
+    case .salvagedBeginning:
+      return "Beginning of dictation was unclear and was skipped"
+    case .interruptedTail(let disclosure, let alsoTrimmedLead):
+      switch (disclosure, alsoTrimmedLead) {
+      case (.deviceRemoved, true):
+        return "Microphone disconnected. Words may be missing."
+      case (.deviceRemoved, false):
+        return "Microphone disconnected. Text may be cut short."
+      case (.otherInterruption, true):
+        return "Recording interrupted. Words may be missing."
+      case (.otherInterruption, false):
+        return "Recording interrupted. Text may be cut short."
+      }
+    }
+  }
+
+  // MARK: - In-panel recording notices (E3, #1567)
+
+  /// Founder-LOCKED unchanged (2026-07-15). Authored here even though these
+  /// render through `flashRecordingNotice` (a live-panel banner), not the
+  /// `.warning` pill — one voice, two render paths.
+  static func copy(for reason: RecordingNoticeReason) -> String {
+    switch reason {
+    case .approachingCap:
+      return "Recording auto-stops in under a minute (60-minute cap)"
+    case .autoStopUnavailable:
+      return "Auto-stop on silence is unavailable right now"
     }
   }
 }

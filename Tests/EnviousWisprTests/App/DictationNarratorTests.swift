@@ -2,6 +2,7 @@ import EnviousWisprCore
 import Testing
 
 @testable import EnviousWisprAppKit
+@testable import EnviousWisprPipeline
 
 /// #1558 (E1) / #1564 (E2). Freezes the copy contract: `DictationNarrator` is
 /// the SOLE author of the founder-locked sentences and processing labels, no
@@ -128,5 +129,80 @@ import Testing
           !copy.contains("\u{2014}") && !copy.contains("\u{2013}"), "\(phase) copy has a dash")
       }
     }
+  }
+
+  // MARK: - Post-completion + advisory warnings (E3, #1567)
+
+  /// Every `RecordingWarningReason` maps to its founder-locked sentence. The
+  /// four interrupted-tail cells and the two interpolated reasons are pinned
+  /// byte-exact; the two cleanups (model-not-downloaded, polish-failed) are the
+  /// only strings that changed from today.
+  @Test("warning reasons map to their exact founder-locked sentences")
+  func warningReasonsMapToLockedCopy() {
+    #expect(
+      DictationNarrator.copy(for: .modelNotDownloaded(engineLabel: "Parakeet"))
+        == "Parakeet isn't downloaded yet. Open Settings to download it.")
+    #expect(DictationNarrator.copy(for: .polishFailed) == "Polish failed. Using raw text.")
+    #expect(
+      DictationNarrator.copy(for: .historySaveFailed(reason: "disk is full"))
+        == "Couldn't save to history: disk is full")
+    #expect(
+      DictationNarrator.copy(for: .salvagedBeginning)
+        == "Beginning of dictation was unclear and was skipped")
+    #expect(
+      DictationNarrator.copy(
+        for: .interruptedTail(disclosure: .deviceRemoved, alsoTrimmedLead: false))
+        == "Microphone disconnected. Text may be cut short.")
+    #expect(
+      DictationNarrator.copy(
+        for: .interruptedTail(disclosure: .deviceRemoved, alsoTrimmedLead: true))
+        == "Microphone disconnected. Words may be missing.")
+    #expect(
+      DictationNarrator.copy(
+        for: .interruptedTail(disclosure: .otherInterruption, alsoTrimmedLead: false))
+        == "Recording interrupted. Text may be cut short.")
+    #expect(
+      DictationNarrator.copy(
+        for: .interruptedTail(disclosure: .otherInterruption, alsoTrimmedLead: true))
+        == "Recording interrupted. Words may be missing.")
+  }
+
+  /// Only a VERIFIED device removal may name the microphone. If this fails, a
+  /// user whose engine died with the mic still attached is being lied to.
+  @Test("the neutral interruption family never mentions the microphone")
+  func neutralInterruptionNeverClaimsTheMicrophone() {
+    for alsoTrimmedLead in [false, true] {
+      let copy = DictationNarrator.copy(
+        for: .interruptedTail(disclosure: .otherInterruption, alsoTrimmedLead: alsoTrimmedLead))
+      #expect(!copy.localizedCaseInsensitiveContains("microphone"))
+      #expect(!copy.localizedCaseInsensitiveContains("mic"))
+    }
+  }
+
+  /// The two founder cleanups: no banned em/en dash, no literal `--`, and the
+  /// second clause capitalizes (a true two-sentence form).
+  @Test("the cleaned-up warning sentences drop the dash and double-hyphen")
+  func cleanedWarningSentencesAreClean() {
+    let cleaned = [
+      DictationNarrator.copy(for: .modelNotDownloaded(engineLabel: "EG-1")),
+      DictationNarrator.copy(for: .polishFailed),
+    ]
+    for copy in cleaned {
+      #expect(!copy.contains("\u{2014}") && !copy.contains("\u{2013}"), "\(copy) has a dash")
+      #expect(!copy.contains(" -- "), "\(copy) has a literal double-hyphen")
+    }
+    #expect(DictationNarrator.copy(for: .polishFailed).contains(". Using"))
+  }
+
+  // MARK: - In-panel recording notices (E3, #1567)
+
+  @Test("recording notices map to their exact founder-locked sentences")
+  func recordingNoticesMapToLockedCopy() {
+    #expect(
+      DictationNarrator.copy(for: RecordingNoticeReason.approachingCap)
+        == "Recording auto-stops in under a minute (60-minute cap)")
+    #expect(
+      DictationNarrator.copy(for: RecordingNoticeReason.autoStopUnavailable)
+        == "Auto-stop on silence is unavailable right now")
   }
 }

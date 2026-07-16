@@ -23,9 +23,9 @@ import Foundation
 /// nil (no value) = a normal completion, nothing to disclose. The two cases
 /// split on the ONLY evidence axis the pipeline has: was the input device
 /// verified removed (`isDeviceLoss`), or did capture die some other way with
-/// the microphone, as far as we know, still attached. Copy for each cell lives
-/// at the factory (`PipelineStateChangeHandlerFactory`), the single copy
-/// authority for post-completion notices.
+/// the microphone, as far as we know, still attached. Completed-warning copy is
+/// authored only by `DictationNarrator` in AppKit; the factory forwards typed
+/// `RecordingWarningReason` facts (#1567, heartpath E3).
 public enum CompletionInterruptionDisclosure: Equatable, Sendable {
   /// Core Audio confirmed the input device went away mid-recording.
   case deviceRemoved
@@ -40,6 +40,27 @@ public enum CompletionInterruptionDisclosure: Equatable, Sendable {
     guard let cause else { return nil }
     self = cause.isDeviceLoss ? .deviceRemoved : .otherInterruption
   }
+}
+
+/// #1567 (heartpath E3): a typed fact explaining a post-completion or advisory
+/// warning rendered through `OverlayIntent.warning`. The engine/coordinator
+/// emits this; `DictationNarrator` in AppKit authors the user-facing words.
+/// Lives in Pipeline because `.interruptedTail` carries a
+/// `CompletionInterruptionDisclosure` (a Pipeline type) and `OverlayIntent` —
+/// its only consumer — is also Pipeline.
+public enum RecordingWarningReason: Equatable, Sendable {
+  /// The SELECTED ASR engine isn't downloaded yet. Carries its display name.
+  case modelNotDownloaded(engineLabel: String)
+  /// AI polish failed; the raw transcript was pasted instead.
+  case polishFailed
+  /// The dictation was pasted but the history write threw. Carries the reason.
+  case historySaveFailed(reason: String)
+  /// The degraded-lead retry recovered this take by trimming a poisoned opening.
+  case salvagedBeginning
+  /// Capture died mid-recording; the pasted text is what survived. `disclosure`
+  /// picks the sentence family (verified device removal vs neutral);
+  /// `alsoTrimmedLead` is true when the take ALSO lost its opening (#1408/#1434).
+  case interruptedTail(disclosure: CompletionInterruptionDisclosure, alsoTrimmedLead: Bool)
 }
 
 /// Events the recording driver handles.
@@ -69,8 +90,10 @@ public enum OverlayIntent: Equatable, Sendable {
   /// inline Grant button. Auto-dismissed after about 6 seconds.
   case accessibilityToast
   /// Transient warning notice for degraded-but-delivered results (e.g. polish failed).
-  /// Orange icon, auto-dismissed by the overlay panel after 2.5 seconds.
-  case warning(message: String)
+  /// #1567 (heartpath E3): carries a TYPED `RecordingWarningReason`;
+  /// `DictationNarrator` in AppKit authors the sentence. Orange icon,
+  /// auto-dismissed by the overlay panel after 2.5 seconds.
+  case warning(reason: RecordingWarningReason)
   /// Transient error notice for a terminal capture / transcription failure.
   /// #1558: carries a TYPED reason; `DictationNarrator` authors the
   /// sentence. Auto-dismissed by the overlay panel after 3 seconds.
