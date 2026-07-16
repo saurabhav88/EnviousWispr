@@ -263,6 +263,155 @@ public actor ModelDeliveryController {
     return false
   }
 
+  /// #1386 PR-2: import an already-downloaded model directory from a foreign,
+  /// user-managed location (WhisperKit's `~/Documents/huggingface/...`) into
+  /// this registration's OWNED cache. The one safe single-writer path for
+  /// relocating a byte-match copy WITHOUT a second delivery lifecycle: copy the
+  /// candidate into controller-owned staging on the install volume, verify every
+  /// manifest file ONCE, then atomically promote + admit through the same
+  /// `CacheAdmission` the fetch path uses. It NEVER deletes the source — the
+  /// caller (the WhisperKit relocation coordinator) owns foreign-source cleanup
+  /// AFTER admission. Rejects non-regular files, symlink components, iCloud
+  /// dataless stubs, and a staging/install volume mismatch (typed refusal)
+  /// BEFORE hashing. Joins an in-flight FETCH that is already admitting the same
+  /// identity; supersedes a no-fetch probe via the proven cancel/drain path.
+  public func importLocalCandidate(
+    _ registration: DeliveryRegistration, from candidateDirectory: URL
+  ) async -> DeliveryOutcome {
+    let identity = registration.manifest.identity
+    if let active = entries[identity, default: Entry()].activeTask,
+      entries[identity]?.activeTaskFetches == true
+    {
+      return await active.value
+    }
+    if let probe = entries[identity]?.activeTask {
+      entries[identity]?.drainingTask = probe
+      entries[identity]?.activeTask = nil
+      probe.cancel()
+    }
+    return await startImport(registration, from: candidateDirectory)
+  }
+
+  private func startImport(
+    _ registration: DeliveryRegistration, from candidateDirectory: URL
+  ) async -> DeliveryOutcome {
+    let identity = registration.manifest.identity
+    var entry = entries[identity, default: Entry()]
+    entry.generation += 1
+    entry.cancelLatched = false
+    // Import WRITES + admits like a fetch, so a joiner must not treat it as a
+    // no-fetch probe (a Download joining an import legitimately admits it).
+    entry.activeTaskFetches = true
+    let generation = entry.generation
+    let drain = entry.drainingTask
+    entry.drainingTask = nil
+    entries[identity] = entry
+
+    let task = Task<DeliveryOutcome, Never> { [weak self] in
+      if let drain { _ = await drain.value }
+      guard let self else { return .failed(DeliveryFailure(reason: .unknown, detail: "gone")) }
+      return await self.runImport(registration, from: candidateDirectory, generation: generation)
+    }
+    entries[identity]?.activeTask = task
+    let outcome = await task.value
+    clearTask(identity: identity, generation: generation)
+    return outcome
+  }
+
+  private func runImport(
+    _ registration: DeliveryRegistration, from candidateDirectory: URL, generation: Int
+  ) async -> DeliveryOutcome {
+    let identity = registration.manifest.identity
+    let manifest = registration.manifest
+    // Post-drain staleness stop (a superseded import must not touch disk).
+    guard entries[identity]?.generation == generation else {
+      return .failed(DeliveryFailure(reason: .cancelled))
+    }
+    let admission = admission(for: registration)
+    let staging = stagingDirectory(for: registration)
+
+    // Same-volume guarantee for the atomic promote (r2 Finding 2): staging and
+    // the install dir MUST share a volume or promote's rename is non-atomic.
+    guard Self.sameVolume(staging, registration.installDirectory) else {
+      let failure = DeliveryFailure(reason: .cacheRepairFailed, detail: "import_volume_mismatch")
+      return await finishFailed(identity, failure, generation: generation)
+    }
+
+    // Fresh staging (discard any stale partial from a prior attempt).
+    try? FileManager.default.removeItem(at: staging)
+
+    // Copy the manifest's files candidate → staging, path-safe: reject symlink
+    // components, non-regular files, and iCloud-dataless stubs BEFORE any bytes
+    // are hashed (r2 Finding 1/2 — path safety lives in the primitive, never a
+    // second walker in the coordinator).
+    do {
+      // Task.detached: a multi-GB directory copy is blocking file IO that must
+      // NOT hold the controller actor (progress/UI reads) — the same off-actor
+      // rule the hash pass follows (`streamingSHA256`). `Task`/`withTaskGroup`
+      // inherit the actor; `@concurrent` needs the enclosing fn nonisolated —
+      // detached utility is the house shape (EG-1 precedent).
+      try await Task.detached(priority: .utility) {
+        try Self.copyCandidate(manifest: manifest, from: candidateDirectory, to: staging)
+      }.value
+    } catch let failure as DeliveryFailure {
+      return await finishFailed(identity, failure, generation: generation)
+    } catch {
+      return await finishFailed(
+        identity, DeliveryFailure(reason: .cacheRepairFailed, detail: "import_copy"),
+        generation: generation)
+    }
+
+    // Post-copy staleness stop (copy suspends): a superseding cancel/import must
+    // not proceed to verify + promote.
+    guard entries[identity]?.generation == generation, !Task.isCancelled else {
+      return finishCancelled(identity, generation: generation)
+    }
+
+    // Verify the staged copy against the manifest — ONE hash pass. Re-check
+    // generation + cancellation after each suspending hash.
+    for file in manifest.files {
+      let staged = staging.appendingPathComponent(file.resolvedInstallPath)
+      guard CacheAdmission.sizeMatches(url: staged, expected: file.sizeBytes),
+        await CacheAdmission.streamingSHA256(of: staged) == file.sha256
+      else {
+        let failure = DeliveryFailure(
+          reason: .cacheRepairFailed, detail: "import_verify:\(file.component)")
+        return await finishFailed(identity, failure, generation: generation)
+      }
+      guard entries[identity]?.generation == generation, !Task.isCancelled else {
+        return finishCancelled(identity, generation: generation)
+      }
+    }
+
+    // Terminal slice: from here through `.admitted` there is NO await, so a
+    // racing cancel either bumped the generation BEFORE this gate (cancel wins;
+    // no promote) or runs AFTER the synchronous promote (completion won). One
+    // terminal per attempt (exhaustive r7 P1, mirrored from runAttempt).
+    guard entries[identity]?.generation == generation, !Task.isCancelled else {
+      return finishCancelled(identity, generation: generation)
+    }
+    do {
+      try admission.promoteAndAdmit(
+        stagedComponents: Set(manifest.filesByComponent.map(\.component)),
+        stagingDirectory: staging, untouchedComponents: [])
+    } catch let failure as DeliveryFailure {
+      return await finishFailed(identity, failure, generation: generation)
+    } catch {
+      return await finishFailed(
+        identity, DeliveryFailure(reason: .cacheRepairFailed, detail: "import_admit"),
+        generation: generation)
+    }
+    // Local adoption without a network fetch (the #1363 adopt signal): distinct
+    // from `attemptCompleted`; emit BEFORE `.admitted` so a first-run migration
+    // is captured with first_run=true (grounded r3 P2).
+    emitAdmittedWithoutFetch(identity, reason: .adoptedInPlace)
+    setState(identity, .admitted, ifGeneration: generation)
+    try? FileManager.default.removeItem(at: staging)
+    await AppLogger.shared.log(
+      "Model delivery imported \(identity.cacheKey)", level: .info, category: "Delivery")
+    return .admitted
+  }
+
   /// The load-miss repair path (grounded r1 revision 7): identical pipeline
   /// with forced revalidation semantics; emits `validation_repair` with
   /// trigger `load_miss` when components were repaired.
@@ -754,6 +903,76 @@ public actor ModelDeliveryController {
     let values = try? probe.resourceValues(
       forKeys: [.volumeAvailableCapacityForImportantUsageKey])
     return values?.volumeAvailableCapacityForImportantUsage
+  }
+
+  // MARK: - Local-candidate import helpers (#1386 PR-2)
+
+  /// Two locations resolve to the same mounted volume — the guarantee that lets
+  /// `promoteAndAdmit`'s staged→install move stay an atomic rename. Walks each to
+  /// its nearest EXISTING ancestor (staging/install may not exist yet on a fresh
+  /// install).
+  static func sameVolume(_ a: URL, _ b: URL) -> Bool {
+    guard let va = nearestVolumeID(of: a), let vb = nearestVolumeID(of: b) else { return false }
+    return va.isEqual(vb)
+  }
+
+  private static func nearestVolumeID(of url: URL)
+    -> (NSCopying & NSSecureCoding & NSObjectProtocol)?
+  {
+    var probe = url.standardizedFileURL
+    let fm = FileManager.default
+    while !fm.fileExists(atPath: probe.path) {
+      let parent = probe.deletingLastPathComponent()
+      guard parent.path != probe.path else { break }
+      probe = parent
+    }
+    return (try? probe.resourceValues(forKeys: [.volumeIdentifierKey]))?.volumeIdentifier
+  }
+
+  /// Copy each manifest file from `candidate/<resolvedInstallPath>` into
+  /// `staging/<resolvedInstallPath>`, refusing (typed `DeliveryFailure`) any
+  /// symlink component, non-regular file, iCloud-dataless stub, missing file, or
+  /// path escaping the candidate root BEFORE copying. This primitive is the
+  /// SINGLE path-safety authority for a foreign candidate (r2 Finding 1/2) — the
+  /// relocation coordinator maps these refusals into policy and never walks the
+  /// tree itself.
+  static func copyCandidate(manifest: DeliveryManifest, from candidate: URL, to staging: URL) throws
+  {
+    let fm = FileManager.default
+    let resolvedRoot = candidate.resolvingSymlinksInPath().standardizedFileURL
+    for file in manifest.files {
+      let relative = file.resolvedInstallPath
+      // Reject a symlink at ANY component of the relative path (escape guard),
+      // resolving-then-comparing, not comparing-then-resolving.
+      var walk = candidate
+      for component in relative.split(separator: "/") {
+        walk.appendPathComponent(String(component))
+        if (try? walk.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true {
+          throw DeliveryFailure(reason: .cacheRepairFailed, detail: "import_symlink")
+        }
+      }
+      let src = candidate.appendingPathComponent(relative)
+      guard
+        let vals = try? src.resourceValues(forKeys: [
+          .isRegularFileKey, .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey,
+        ])
+      else {
+        throw DeliveryFailure(reason: .cacheRepairFailed, detail: "import_missing")
+      }
+      guard vals.isRegularFile == true else {
+        throw DeliveryFailure(reason: .cacheRepairFailed, detail: "import_not_regular")
+      }
+      if vals.isUbiquitousItem == true, vals.ubiquitousItemDownloadingStatus != .current {
+        throw DeliveryFailure(reason: .cacheRepairFailed, detail: "import_dataless")
+      }
+      let resolvedSrc = src.resolvingSymlinksInPath().standardizedFileURL
+      guard resolvedSrc.path.hasPrefix(resolvedRoot.path + "/") else {
+        throw DeliveryFailure(reason: .cacheRepairFailed, detail: "import_escape")
+      }
+      let dst = staging.appendingPathComponent(relative)
+      try fm.createDirectory(at: dst.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try fm.copyItem(at: src, to: dst)
+    }
   }
 
   // MARK: - Telemetry buckets (EG-1's shipped dials)
