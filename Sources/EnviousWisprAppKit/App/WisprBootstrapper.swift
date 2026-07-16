@@ -539,6 +539,11 @@ public final class WisprBootstrapper {
     recordingOverlay.setDiscardRecoveryHandler { [weak recoveryCoordinator] in
       recoveryCoordinator?.discardActiveRecovery()
     }
+    // #1464: after a leftover recording lands in History, post the standalone green
+    // success notice (the `.recovered` path was silent before).
+    recoveryCoordinator.onRecoverySucceeded = { [weak recordingOverlay] in
+      recordingOverlay?.show(intent: .recoverySucceeded)
+    }
     // #1171 — the single owner of ASR-engine selection, status, and switching.
     // Reads the user's choice + active engine + readiness LIVE (no stored "want"
     // copies); serializes switches through one mailbox; defers while a pipeline is

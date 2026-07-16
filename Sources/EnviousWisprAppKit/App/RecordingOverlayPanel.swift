@@ -265,6 +265,24 @@ final class RecordingOverlayPanel {
           icon: .ready
         ).frame(width: 240, height: 44),
         width: 240, height: 44, dismissAfter: 1.5)
+    case .recoverySucceeded:
+      // #1464: standalone green success notice after a leftover recording landed
+      // in History. Mirrors `.engineReady` (launch-visible, green `.ready` icon),
+      // with a subtitle for "where to find it" and a slightly longer dwell.
+      NSAccessibility.post(
+        element: NSApp.mainWindow as Any,
+        notification: .announcementRequested,
+        userInfo: [
+          .announcement: spokenAnnouncement,
+          .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
+        ])
+      presentTransientNotice(
+        content: ColdStartNoticeView(
+          title: DictationNarrator.recoverySucceededTitle,
+          subtitle: DictationNarrator.recoverySucceededSubtitle,
+          icon: .ready
+        ).frame(width: 300, height: 56),
+        width: 300, height: 56, dismissAfter: 3.0)
     case .recoveringLastRecording:
       NSAccessibility.post(
         element: NSApp.mainWindow as Any,

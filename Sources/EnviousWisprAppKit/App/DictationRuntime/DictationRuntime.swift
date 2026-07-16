@@ -137,11 +137,11 @@ final class DictationRuntime {
       },
       // #1063 PR1 (Codex r3): a PTT release or concurrent-toggle stop landing in
       // the arm window mints no session, so the lifecycle coordinator sees no
-      // terminal state — the starter cleans the armed spool/key directly. PR2: it
-      // passes this take's id, and a pre-start abort is always a discard.
+      // terminal state — the starter cleans the armed spool/key directly. #1464:
+      // a pre-start abort has no `RecordingOutcome`, so it routes to the dedicated
+      // coordinator entry point (always a discard — nothing was captured).
       cleanupRecoveryArm: { id in
-        recoveryCoordinator.handleRecordingEndedWithoutDurableSave(
-          recoverySessionID: id, terminal: .discard)
+        recoveryCoordinator.handlePreStartAbort(recoverySessionID: id)
       },
       // #1063 PR2: the recording gate — a press while recovery holds the shared
       // engine mints no session (shows the "recovering" pill).
@@ -160,12 +160,12 @@ final class DictationRuntime {
     dictationLifecycleCoordinator.onDurableSave = { id in
       recoveryCoordinator.handleDurableSave(recoverySessionID: id)
     }
-    // #1063 PR2: a recording that ends at a non-saved terminal routes to recovery
-    // cleanup by KIND — a discard terminal deletes the spool now; a failure
-    // terminal RETAINS it so the next launch recovers the audio.
-    dictationLifecycleCoordinator.onRecordingEndedWithoutDurableSave = { id, kind in
+    // #1063 PR2 / #1464: a recording that ends at a non-saved terminal routes to
+    // recovery cleanup — the coordinator's predicate deletes a discard/no-speech/
+    // user-cancel ending now and RETAINS a fault ending for next-launch recovery.
+    dictationLifecycleCoordinator.onRecordingEndedWithoutDurableSave = { id, ending in
       recoveryCoordinator.handleRecordingEndedWithoutDurableSave(
-        recoverySessionID: id, terminal: kind)
+        recoverySessionID: id, ending: ending)
     }
     let hotkeyController = HotkeyController(
       hotkeyService: hotkeyService,

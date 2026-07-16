@@ -157,23 +157,26 @@ import Testing
   /// fire it: its save path owns deletion via `onDurableSave`. Drives the real
   /// `install()`-wired `onStateChange` for BOTH backends.
   /// #1063 PR2: `install()` wires the driver's kernel-terminal signal
-  /// (`onSessionEndedWithoutSave`, carrying the recovery id + terminal KIND) to the
-  /// coordinator's recovery-cleanup closure. (The "never for `.completed`" guard now
-  /// lives in the driver — it simply never fires this signal for `.completed` — so it
-  /// is covered by the driver's own terminal-kind test, not here.)
+  /// (`onSessionEndedWithoutSave`, carrying the recovery id + the narrow
+  /// `RecordingRecoveryEnding`) to the coordinator's recovery-cleanup closure. (The
+  /// "never for `.completed`" guard now lives in the driver — it simply never fires
+  /// this signal for `.completed` — so it is covered by the driver's own projection
+  /// test, not here.)
   @Test func sessionEndedWithoutSaveSignalRoutesToRecoveryCleanup() {
     for backend in ["parakeet", "whisperKit"] {
       let fx = Self.makeCoordinator()
-      var calls: [(String?, RecordingTerminalKind)] = []
-      fx.coordinator.onRecordingEndedWithoutDurableSave = { id, kind in calls.append((id, kind)) }
+      var calls: [(String?, RecordingRecoveryEnding)] = []
+      fx.coordinator.onRecordingEndedWithoutDurableSave = { id, ending in
+        calls.append((id, ending))
+      }
       fx.coordinator.install()
       let driver = backend == "whisperKit" ? fx.whisperKitKernelDriver : fx.kernelDriver
 
-      driver.onSessionEndedWithoutSave?("sid-1", .discard)
-      driver.onSessionEndedWithoutSave?(nil, .failure)
+      driver.onSessionEndedWithoutSave?("sid-1", .discarded)
+      driver.onSessionEndedWithoutSave?(nil, .failed)
       #expect(calls.count == 2, "\(backend): both signals routed")
-      #expect(calls[0].0 == "sid-1" && calls[0].1 == .discard)
-      #expect(calls[1].0 == nil && calls[1].1 == .failure)
+      #expect(calls[0].0 == "sid-1" && calls[0].1 == .discarded)
+      #expect(calls[1].0 == nil && calls[1].1 == .failed)
     }
   }
 }

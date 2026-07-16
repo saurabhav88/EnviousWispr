@@ -7,12 +7,14 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprServices
 
-/// The host-side `RecoveryCoordinator` (#1063 PR2): arms a recording's encrypted
-/// spool with a DURABLY-stored key, deletes the spool + key on a durable save,
-/// routes a non-saved terminal by KIND (discard deletes, failure retains), and on
-/// launch scans + recovers orphans behind a blocking gate (single-flight, dedup,
-/// generation-guarded discard, `defer`-cleared gate). A fake replayer drives the
-/// scan/gate/generation logic; temp-dir stores keep the tests isolated.
+/// The host-side `RecoveryCoordinator` (#1063 PR2 / #1464): arms a recording's
+/// encrypted spool with a DURABLY-stored key, and is the SOLE spool/key destructor
+/// — it applies two exhaustive predicates (`shouldDeleteOnLiveEnding` for a live
+/// non-saved ending, `shouldDeleteAfterReplay` for a launch replay outcome), so the
+/// replayer no longer deletes. On launch it scans + recovers orphans behind a
+/// blocking gate (single-flight, dedup, generation-guarded discard, `defer`-cleared
+/// gate) and posts a success notice. A fake replayer drives the scan/gate/
+/// generation logic; temp-dir stores keep the tests isolated.
 @MainActor
 @Suite("Recovery coordinator (#1063)")
 struct RecoveryCoordinatorTests {
@@ -150,31 +152,40 @@ struct RecoveryCoordinatorTests {
     #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
   }
 
-  // MARK: - Non-saved terminal routing (terminal-kind split)
+  // MARK: - Non-saved terminal routing (#1464 live-ending predicate)
 
-  @Test("a DISCARD terminal deletes the spool + key")
+  @Test("a delete ending (discard/no-speech/user-cancel) deletes the spool + key")
   func discardTerminalDeletes() async throws {
     let h = Self.makeHarness()
-    let id = "discard-\(UUID().uuidString)"
-    try Self.writeSpool(h.spoolStore, id)
-    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
-    await h.coordinator.handleRecordingEndedWithoutDurableSave(
-      recoverySessionID: id, terminal: .discard)?.value
-    #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
-    #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
+    for ending in [RecordingRecoveryEnding.discarded, .noSpeech, .cancelled(.user)] {
+      let id = "del-\(UUID().uuidString)"
+      try Self.writeSpool(h.spoolStore, id)
+      try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+      await h.coordinator.handleRecordingEndedWithoutDurableSave(
+        recoverySessionID: id, ending: ending)?.value
+      #expect(
+        !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+        "\(ending) should delete the spool")
+      #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
+    }
   }
 
-  @Test("a FAILURE terminal RETAINS the spool + key for next-launch recovery")
+  @Test("a retain ending (fault / system-cancel) RETAINS the spool + key")
   func failureTerminalRetains() async throws {
     let h = Self.makeHarness()
-    let id = "failure-\(UUID().uuidString)"
-    try Self.writeSpool(h.spoolStore, id)
-    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
-    let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
-      recoverySessionID: id, terminal: .failure)
-    #expect(task == nil, "failure retains — no delete work")
-    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
-    #expect((try? h.keyStore.retrieve(for: id)) != nil)
+    let retainEndings: [RecordingRecoveryEnding] = [
+      .failed, .audioInterrupted, .asrInterrupted, .noTransport, .cancelled(.systemOrFault),
+    ]
+    for ending in retainEndings {
+      let id = "keep-\(UUID().uuidString)"
+      try Self.writeSpool(h.spoolStore, id)
+      try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+      let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
+        recoverySessionID: id, ending: ending)
+      #expect(task == nil, "\(ending) retains — no delete work")
+      #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+      #expect((try? h.keyStore.retrieve(for: id)) != nil)
+    }
   }
 
   @Test("non-saved cleanup is a no-op when id is nil")
@@ -182,7 +193,121 @@ struct RecoveryCoordinatorTests {
     let h = Self.makeHarness()
     #expect(
       h.coordinator.handleRecordingEndedWithoutDurableSave(
-        recoverySessionID: nil, terminal: .discard) == nil)
+        recoverySessionID: nil, ending: .discarded) == nil)
+  }
+
+  // MARK: - #1464 delete/retain predicates (adversarial: every case in both classes)
+
+  @Test("shouldDeleteOnLiveEnding: delete endings delete, retain endings retain")
+  func liveEndingPredicate() {
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.discarded))
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.noSpeech))
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.user)))
+    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.failed))
+    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.audioInterrupted))
+    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.asrInterrupted))
+    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.noTransport))
+    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.systemOrFault)))
+  }
+
+  @Test(
+    "shouldDeleteAfterReplay: recovered/abandoned/unrecoverable delete; save/aborted/deferred retain"
+  )
+  func replayOutcomePredicate() {
+    #expect(RecoveryCoordinator.shouldDeleteAfterReplay(.recovered))
+    #expect(RecoveryCoordinator.shouldDeleteAfterReplay(.abandoned))
+    #expect(RecoveryCoordinator.shouldDeleteAfterReplay(.failed(.unrecoverable)))
+    #expect(!RecoveryCoordinator.shouldDeleteAfterReplay(.failed(.save(.other))))
+    #expect(!RecoveryCoordinator.shouldDeleteAfterReplay(.failed(.saveMarkerClearFailed(.other))))
+    #expect(!RecoveryCoordinator.shouldDeleteAfterReplay(.aborted))
+    #expect(!RecoveryCoordinator.shouldDeleteAfterReplay(.deferred))
+  }
+
+  // MARK: - #1464 sole destructor: post-replay deletion + success notice + pre-start abort
+
+  /// The key delete is detached; poll on the OBSERVABLE signal (key gone) with a
+  /// bounded deadline — the same idiom the key-only-sweep tests below use. The loop
+  /// condition IS the signal; the sleep is only the poll interval.
+  private static func awaitKeyDeleted(_ keyStore: RecoveryKeyStore, id: String) async {
+    for _ in 0..<200 where (try? keyStore.retrieve(for: id)) != nil {
+      try? await Task.sleep(for: .milliseconds(5))  // settle: poll interval; loop cond is the signal
+    }
+  }
+
+  @Test("the coordinator deletes the spool + key after a .recovered replay")
+  func recoveredReplayDeletes() async throws {
+    let h = Self.makeHarness()
+    let id = "rec-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    h.replayer.outcomeByDefault = .recovered
+    await h.coordinator.scanAndRecover()
+    await Self.awaitKeyDeleted(h.keyStore, id: id)
+    #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
+  }
+
+  @Test("the coordinator deletes after an unrecoverable replay")
+  func unrecoverableReplayDeletes() async throws {
+    let h = Self.makeHarness()
+    let id = "unrec-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    h.replayer.outcomeByDefault = .failed(.unrecoverable)
+    await h.coordinator.scanAndRecover()
+    await Self.awaitKeyDeleted(h.keyStore, id: id)
+    #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
+  }
+
+  @Test("the coordinator RETAINS the spool + key after a save-failure replay (§3.3)")
+  func saveFailureReplayRetains() async throws {
+    let h = Self.makeHarness()
+    let id = "save-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    h.replayer.outcomeByDefault = .failed(.save(.other))
+    await h.coordinator.scanAndRecover()
+    #expect(
+      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+      "a History-save failure retains the spool for next-launch retry")
+    #expect((try? h.keyStore.retrieve(for: id)) != nil, "and retains the key")
+  }
+
+  @Test("onRecoverySucceeded fires once per .recovered orphan, never on failure")
+  func successCallbackFires() async throws {
+    let h = Self.makeHarness()
+    var successCount = 0
+    h.coordinator.onRecoverySucceeded = { successCount += 1 }
+    try Self.writeSpool(h.spoolStore, "s-\(UUID().uuidString)")
+    h.replayer.outcomeByDefault = .recovered
+    await h.coordinator.scanAndRecover()
+    #expect(successCount == 1, "recovered ⇒ one success notice")
+
+    let h2 = Self.makeHarness()
+    var failCount = 0
+    h2.coordinator.onRecoverySucceeded = { failCount += 1 }
+    try Self.writeSpool(h2.spoolStore, "f-\(UUID().uuidString)")
+    h2.replayer.outcomeByDefault = .failed(.unrecoverable)
+    await h2.coordinator.scanAndRecover()
+    #expect(failCount == 0, "a failed recovery posts no success notice")
+  }
+
+  @Test("pre-start abort deletes the just-armed spool + key")
+  func preStartAbortDeletes() async throws {
+    let h = Self.makeHarness()
+    let id = "abort-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    await h.coordinator.handlePreStartAbort(recoverySessionID: id)?.value
+    #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
+  }
+
+  @Test("pre-start abort is a no-op when id is nil")
+  func preStartAbortNoopWhenNil() {
+    let h = Self.makeHarness()
+    #expect(h.coordinator.handlePreStartAbort(recoverySessionID: nil) == nil)
   }
 
   // MARK: - Launch scan + recover
@@ -251,7 +376,7 @@ struct RecoveryCoordinatorTests {
   @Test("gate ends cleared even when every orphan fails (defer backstop, R1)")
   func scanGateClearedOnAllFailures() async throws {
     let h = Self.makeHarness()
-    h.replayer.outcomeByDefault = .failed
+    h.replayer.outcomeByDefault = .failed(.unrecoverable)
     try Self.writeSpool(h.spoolStore, "orphan-\(UUID().uuidString)")
     await h.coordinator.scanAndRecover()
     #expect(!h.coordinator.isRecovering)
@@ -416,6 +541,6 @@ struct RecoveryCoordinatorTests {
     #expect(result == nil, "a failed durable key store disables recovery for the take")
     #expect(
       coordinator.handleRecordingEndedWithoutDurableSave(
-        recoverySessionID: nil, terminal: .discard) == nil)
+        recoverySessionID: nil, ending: .discarded) == nil)
   }
 }

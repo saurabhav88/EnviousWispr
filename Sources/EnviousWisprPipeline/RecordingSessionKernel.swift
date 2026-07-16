@@ -2894,8 +2894,8 @@ final class RecordingSessionKernel {
   /// **One rule: an interrupted recording that ends with no transcript lands on
   /// `.audioInterrupted`, whatever interrupted it.**
   ///
-  /// `.discarded` / `.noSpeech` DELETE the spool (`RecordingTerminalKind
-  /// .discard`). Letting an interrupted session reach either would destroy the
+  /// `.discarded` / `.noSpeech` DELETE the spool (they project to a delete ending;
+  /// #1464). Letting an interrupted session reach either would destroy the
   /// crash-recovery copy of audio the user can still get back on next launch —
   /// converting "recoverable" into "gone." Safety does not get to depend on which
   /// interruption fired, so this holds for every cause including the duration cap.
@@ -2914,7 +2914,7 @@ final class RecordingSessionKernel {
   /// `isDeviceLoss` draw one layer up.
   ///
   /// `.cancelled` is NEVER floored: an explicit user cancel is honored, and its
-  /// retain/delete disposition belongs to `pendingCancelDisposition`. Every other
+  /// retain/delete disposition belongs to the driver's `pendingCancelOrigin`. Every other
   /// `.failed(reason)` (`.asrEmpty`, `.asrFailed`, `.captureStartFailed`,
   /// `.modelLoadFailed`) keeps its own honest reason and is already spool-retaining.
   private func interruptedTerminalFloor(
@@ -3569,11 +3569,12 @@ final class RecordingSessionKernel {
       lastStopReason = reason
     }
 
-    /// #1408: surface the terminal floor as a pure function so a test can prove
-    /// it covers EVERY outcome whose `RecordingTerminalKind` is `.discard`.
-    /// The floor's mapped set and `KernelDictationDriver.endedWithoutSaveKind`'s
-    /// discard set are two lists of the same fact; without this seam they can
-    /// drift, and a new spool-deleting outcome would silently escape the floor.
+    /// #1408: surface the terminal floor as a pure function so a test can prove it
+    /// covers EVERY outcome that would delete the spool. The floor's mapped set and
+    /// the coordinator's spool-deleting endings (`KernelDictationDriver.recovery
+    /// Ending` → `RecoveryCoordinator.shouldDeleteOnLiveEnding`, #1464) are two lists
+    /// of the same fact; without this seam they can drift, and a new spool-deleting
+    /// outcome would silently escape the floor.
     func testInterruptedTerminalFloor(_ outcome: RecordingOutcome)
       -> RecordingOutcome
     {

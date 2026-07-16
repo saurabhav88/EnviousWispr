@@ -126,6 +126,14 @@ public enum OverlayIntent: Equatable, Sendable {
   /// wait." No session is minted. Auto-dismissed after a few seconds; re-shown
   /// on each blocked press.
   case recoveringLastRecording
+  /// Crash-recovery SUCCESS notice (#1464). A standalone, launch-visible green
+  /// "recovered your last recording" pill posted after a leftover recording lands
+  /// in History — the `.recovered` path was silent before. A DEDICATED case (not
+  /// `.warning`, which shows an orange triangle + a "Warning" announcement, and not
+  /// `flashRecordingNotice`, which no-ops without a live recording panel):
+  /// `DictationNarrator` authors the copy and the panel renders it with the green
+  /// ready/success presentation. No associated value; auto-dismissed by the panel.
+  case recoverySucceeded
   /// Bluetooth cold-start education card (#1480). Shown once per launch when the
   /// configured input is a Bluetooth microphone and dictation is idle, sitting in
   /// the same top-middle slot as the recording pill. Unlike every other intent it
@@ -136,18 +144,39 @@ public enum OverlayIntent: Equatable, Sendable {
   case bluetoothAwareness
 }
 
-/// Why a recording ended at a terminal state WITHOUT a durable transcript save,
-/// classified for the crash-recovery cleanup signal (#1063 PR2). Derived from
-/// the kernel's terminal `RecordingSessionState` by `KernelDictationDriver`.
+/// The user-versus-fault attribution of a `.cancelled` recording terminal — the
+/// only outcome whose recovery disposition is ambiguous (#1464). A genuine user
+/// cancel DELETES the spool; a fault/system cancel RETAINS the recoverable audio.
+/// Kept narrow and public so the driver can project it across the Pipeline →
+/// AppKit boundary without leaking the internal `RecordingOutcome`.
+public enum RecordingCancelOrigin: Equatable, Sendable {
+  case user
+  case systemOrFault
+}
+
+/// The narrow PUBLIC projection of a recording's terminal `RecordingOutcome` that
+/// the crash-recovery cleanup signal needs (#1464). The internal `RecordingOutcome`
+/// (and its `DiscardReason` / `NoSpeechSource` payloads) stays inside Pipeline;
+/// `KernelDictationDriver` maps the already-floored outcome into this before it
+/// crosses into AppKit, where `RecoveryCoordinator` applies the SOLE
+/// delete-versus-retain predicate:
 ///
-/// - `discard`: the user (or the absence of speech) ended it — `.cancelled`,
-///   `.discarded`, `.noSpeech`. Nothing worth recovering: delete the spool now.
-/// - `failure`: a pipeline / audio / engine fault ended it — `.failed`,
-///   `.audioInterrupted`, `.asrInterrupted`. The captured audio is the user's
-///   words they wanted: RETAIN the spool so it is recovered on the next launch.
-public enum RecordingTerminalKind: Equatable, Sendable {
-  case discard
-  case failure
+/// - delete: `.discarded`, `.noSpeech`, `.cancelled(.user)` — nothing worth
+///   recovering, or the user asked to drop it.
+/// - retain: `.failed`, `.audioInterrupted`, `.asrInterrupted`, `.noTransport`,
+///   `.cancelled(.systemOrFault)` — the captured audio is the user's words; keep
+///   the spool so the next launch recovers it.
+///
+/// `.completed` is not representable here — a durable save has its own cleanup
+/// callback (`handleDurableSave`).
+public enum RecordingRecoveryEnding: Equatable, Sendable {
+  case discarded
+  case noSpeech
+  case failed
+  case audioInterrupted
+  case asrInterrupted
+  case noTransport
+  case cancelled(RecordingCancelOrigin)
 }
 
 /// Issue #285 — heart-path telemetry callbacks that the former root state routes to

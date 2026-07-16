@@ -3,7 +3,20 @@ import EnviousWisprCore
 import Foundation
 import Testing
 
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
+
+/// #1464 — does this concluded outcome delete the crash-recovery spool? Composes
+/// the two real authorities the floor must stay ahead of: the driver's projection
+/// (`recoveryEnding`) into the narrow public ending, then the coordinator's sole
+/// delete-versus-retain predicate (`shouldDeleteOnLiveEnding`). `.completed` /
+/// `.cancelled` project to nil (a saved take / a dynamically-resolved cancel) and
+/// are never floor-coupled — they return false here.
+@MainActor
+private func deletesRecoverySpool(_ outcome: RecordingOutcome) -> Bool {
+  guard let ending = KernelDictationDriver.recoveryEnding(for: outcome) else { return false }
+  return RecoveryCoordinator.shouldDeleteOnLiveEnding(ending)
+}
 
 // MARK: - #1408 — salvage a dictation whose capture was interrupted mid-recording
 //
@@ -130,7 +143,7 @@ import Testing
 
       #expect(wrapper.testKernel.recordingOutcome == .discarded(.tooShort))
       #expect(
-        KernelDictationDriver.endedWithoutSaveKind(for: .discarded(.tooShort)) == .discard,
+        deletesRecoverySpool(.discarded(.tooShort)),
         "an ordinary too-short tap is still safe to delete")
     }
 
@@ -146,7 +159,7 @@ import Testing
 
       #expect(wrapper.testKernel.recordingOutcome == .audioInterrupted(.engineLost))
       #expect(
-        KernelDictationDriver.endedWithoutSaveKind(for: .audioInterrupted(.engineLost)) == .failure,
+        !deletesRecoverySpool(.audioInterrupted(.engineLost)),
         "the floor must convert the spool-deleting terminal into a spool-retaining one")
     }
 
@@ -264,7 +277,7 @@ import Testing
         terminal.kind == .completed || terminal.kind == .audioInterrupted,
         "salvage produced a third terminal: \(String(describing: terminal))")
       if terminal.kind != .completed, let outcome = terminal {
-        #expect(KernelDictationDriver.endedWithoutSaveKind(for: outcome) == .failure)
+        #expect(!deletesRecoverySpool(outcome))
       }
     }
 
@@ -272,7 +285,7 @@ import Testing
     /// and cancels has asked us to throw the take away; flooring `.cancelled`
     /// would override an explicit instruction to protect data the user just told
     /// us to discard. Its retain/delete disposition belongs to the driver's
-    /// `pendingCancelDisposition`, not to the floor.
+    /// `pendingCancelOrigin`, not to the floor.
     @Test("an explicit cancel during a salvage is honored, never floored")
     func explicitCancelDuringSalvageIsNotFloored() async {
       // `slowFinalize` dwells inside `.transcribing`, which is how the inventory
@@ -296,17 +309,17 @@ import Testing
       #expect(wrapper.testKernel.recordingOutcome == .cancelled)
       #expect(context.paste.pasteCount == 0)
       #expect(
-        KernelDictationDriver.endedWithoutSaveKind(for: .cancelled) == nil,
-        "`.cancelled` is resolved dynamically by pendingCancelDisposition, not the static map")
+        KernelDictationDriver.recoveryEnding(for: .cancelled) == nil,
+        "`.cancelled` is resolved dynamically by pendingCancelOrigin, not the static projection")
     }
 
     /// Every ending outcome the FSM can conclude with (#1548 D1: the ending
     /// category moved off the state onto `RecordingOutcome`). `RecordingOutcome`
     /// has associated values so it cannot be `CaseIterable`; this list is the
-    /// manual mirror, and `KernelDictationDriver.endedWithoutSaveKind` is an
-    /// exhaustive switch, so a new outcome forces a decision there and gets
-    /// caught here. Payloads are arbitrary valid values — the floor + the kind
-    /// split only read the category, never the reason.
+    /// manual mirror, and `KernelDictationDriver.recoveryEnding` is an exhaustive
+    /// switch, so a new outcome forces a decision there and gets caught here.
+    /// Payloads are arbitrary valid values — the floor + the projection only read
+    /// the category, never the reason.
     private static let allTerminals: [RecordingOutcome] = [
       .completed, .cancelled, .discarded(.tooShort), .noSpeech(.vadGate),
       .audioInterrupted(nil), .asrInterrupted(wasRecording: false), .noTransport,
@@ -316,9 +329,10 @@ import Testing
       .failed(.emptyAfterProcessing), .failed(.captureStalled),
     ]
 
-    /// The floor's mapped set and the driver's `.discard` set are two lists of
-    /// one fact: "this terminal deletes the crash-recovery spool." They live in
-    /// different types and can drift. This test couples them, so adding a new
+    /// The floor's mapped set and the coordinator's spool-deleting endings are two
+    /// lists of one fact: "this terminal deletes the crash-recovery spool." They
+    /// live in different types (Pipeline floor + AppKit predicate) and can drift.
+    /// This test couples them through the two real authorities, so adding a new
     /// spool-deleting terminal without flooring it reddens here rather than
     /// silently destroying a user's only surviving copy of a dictation.
     @Test("the floor covers EVERY terminal that would delete the spool")
@@ -328,7 +342,7 @@ import Testing
       let kernel = wrapper.testKernel
 
       for terminal in Self.allTerminals {
-        let deletesSpool = KernelDictationDriver.endedWithoutSaveKind(for: terminal) == .discard
+        let deletesSpool = deletesRecoverySpool(terminal)
         let floored = kernel.testInterruptedTerminalFloor(terminal)
         if deletesSpool {
           #expect(

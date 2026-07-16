@@ -8,10 +8,15 @@ import Foundation
 
 /// The terminal outcome of one orphan's recovery attempt (#1063 PR2). The
 /// `discarded` outcome is owned by `RecoveryCoordinator` (it deletes + emits on
-/// Discard), never produced by the replayer.
+/// Discard), never produced by the replayer. #1464: the replayer no longer
+/// destroys the spool/key — it returns this outcome and `RecoveryCoordinator`
+/// (the sole destructor) applies the delete-versus-retain predicate.
 enum RecoveryReplayOutcome: Equatable {
   case recovered
-  case failed
+  /// The attempt failed. The payload tells the coordinator whether to delete
+  /// (Camp A / a Camp B *candidate* Phase 1 does not yet retain) or RETAIN (a
+  /// History-write failure — the audio is still good, §3.3).
+  case failed(RecoveryReplayFailure)
   case abandoned
   /// A Discard bumped the recovery generation mid-flight: drop the result, save
   /// nothing. The coordinator already deleted the spool/key/marker.
@@ -19,6 +24,23 @@ enum RecoveryReplayOutcome: Equatable {
   /// The attempt marker could not be written, so recovery was deferred WITHOUT
   /// risking an un-guarded attempt — the spool stays for a future launch.
   case deferred
+}
+
+/// Why a replay `.failed`, carried to `RecoveryCoordinator` so it can apply the
+/// sole destruction predicate (#1464). The fine-grained telemetry reason is
+/// emitted by the replayer itself; this payload carries only the retain-vs-delete
+/// distinction plus the class, so a test can assert the exact returned outcome.
+enum RecoveryReplayFailure: Equatable {
+  /// The recording could not be turned into text — key / decrypt / reconstruct /
+  /// empty-samples / model-load / transcribe / empty-text. DELETE.
+  case unrecoverable
+  /// The transcript was produced but the History write threw; the audio is still
+  /// good. RETAIN for a next-launch retry — the attempt marker was cleared.
+  case save(RecoveryFailureClass)
+  /// As `.save`, but clearing the attempt marker ALSO threw — RETAIN this launch,
+  /// next-launch retry durability not guaranteed (the marker survives, so a
+  /// future launch may treat the spool as a crashed attempt).
+  case saveMarkerClearFailed(RecoveryFailureClass)
 }
 
 /// Per-orphan recovery execution seam — lets `RecoveryCoordinator` drive scan /
@@ -38,10 +60,15 @@ protocol RecoverySpoolReplaying: AnyObject {
 /// transcribe on the shared engine, polish under record-time settings, and save a
 /// non-auto-pasting "Recovered" transcript to History.
 ///
-/// Strict LIMB: every failure path deletes the orphan and surfaces "couldn't
-/// recover" via telemetry/breadcrumb — it never throws into the heart path. One
-/// attempt only: a per-spool marker written BEFORE the risky load/transcribe means
-/// a recovery that crashed the app is abandoned (not retried) on the next launch.
+/// Strict LIMB: every failure path surfaces "couldn't recover" via
+/// telemetry/breadcrumb and never throws into the heart path. #1464: it no longer
+/// destroys the spool/key — it returns a typed outcome and `RecoveryCoordinator`
+/// (the sole destructor) deletes or retains. It KEEPS the attempt-marker lifecycle
+/// (the crash-loop guard): one attempt only — a per-spool marker written BEFORE the
+/// risky load/transcribe means a recovery that crashed the app is abandoned (not
+/// retried) on the next launch. On a History-save failure it clears that marker
+/// itself so the RETAINED spool replays next launch rather than reading as
+/// abandoned (§3.3).
 @MainActor
 final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   private let asrManager: any ASRManagerInterface
@@ -58,7 +85,6 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// version, not the terms — recovery promises normal-quality, not byte-exact).
   private let currentVocabulary:
     @MainActor () -> (corrector: CorrectorVocabulary, polish: PolishVocabulary)
-  private let onCleanupFinished: @Sendable (String) -> Void
 
   init(
     asrManager: any ASRManagerInterface,
@@ -69,7 +95,6 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     keychainManager: KeychainManager,
     outputClassifierHolder: OutputClassifierHolder,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
-    onCleanupFinished: @escaping @Sendable (String) -> Void = { _ in },
     currentVocabulary: @escaping @MainActor () -> (
       corrector: CorrectorVocabulary, polish: PolishVocabulary
     )
@@ -82,7 +107,6 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     self.keychainManager = keychainManager
     self.outputClassifierHolder = outputClassifierHolder
     self.egOneRuntime = egOneRuntime
-    self.onCleanupFinished = onCleanupFinished
     self.currentVocabulary = currentVocabulary
   }
 
@@ -103,13 +127,13 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     let spoolStore = makeSpoolStore()
 
     // One-attempt crash-loop guard: a marker already present means a prior attempt
-    // crashed the app — abandon (delete + log), never retry.
+    // crashed the app — abandon (log + emit), never retry. #1464: the coordinator
+    // deletes on `.abandoned`; the replayer no longer destroys.
     if spoolStore.hasAttemptMarker(for: id) {
-      cleanUp(id, spoolStore: spoolStore)
       SentryBreadcrumb.captureError(
         RecoveryReplayError.abandonedAfterAttempt,
         category: .recoveryAbandonedAfterAttempt, stage: "recovery")
-      TelemetryService.shared.recoveryCompleted(outcome: "abandoned", reason: "crash_loop")
+      TelemetryService.shared.recoveryCompleted(outcome: "abandoned", reason: .crashLoop)
       return .abandoned
     }
     // Write the marker DURABLY before any risky load/transcribe (warm-up included).
@@ -120,30 +144,49 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       SentryBreadcrumb.add(
         stage: "recovery", message: "attempt-marker write failed — deferring recovery",
         level: .warning, data: ["error": String(describing: error)])
+      TelemetryService.shared.recoveryCompleted(outcome: "deferred", reason: .markerWriteFailed)
       return .deferred
     }
 
     // Retrieve the per-session key off the MainActor (`keychain-not-mainactor`).
+    // #1464: split a MISSING key (`key_missing`) from a store READ failure
+    // (`key_read_failed`) — the `try?` that swallowed both is gone.
     let keyStore = self.keyStore
-    let keyData: Data? = await Task.detached(priority: .utility) {
-      try? keyStore.retrieve(for: id)
+    let keyResult: Result<Data, any Error> = await Task.detached(priority: .utility) {
+      Result { try keyStore.retrieve(for: id) }
     }.value
     if isAborted() { return .aborted }
-    guard let keyData else {
-      return await fail(
-        id, spoolStore: spoolStore, reason: "decrypt", category: .recoveryDecryptFailed)
+    let keyData: Data
+    switch keyResult {
+    case .success(let data):
+      keyData = data
+    case .failure(let error):
+      let reason: RecoveryTelemetryReason =
+        (error as? RecoveryKeyStoreError) == .notFound ? .keyMissing : .keyReadFailed
+      return failUnrecoverable(reason: reason, category: .recoveryDecryptFailed)
     }
 
     // Decrypt + reconstruct the valid prefix off the MainActor (heavy for a long
-    // take). `recover` fails closed on a cipher-mode mismatch.
+    // take). `recover` fails closed on a cipher-mode mismatch. #1464: a THROW
+    // before a `RecoveredSpool` exists is `reconstruction_failed`; a spool that
+    // decodes to an EMPTY authenticated prefix is `empty_or_unreadable_samples`.
+    // Neither emits `audio_decrypted` (its absence IS the "not reconstructed"
+    // signal); a NON-EMPTY prefix continues below with `audio_decrypted=true`.
     let cipher = RecoverySpoolCipher(mode: .aesGcm256, keyData: keyData)
-    let recovered: RecoveredSpool? = await Task.detached(priority: .utility) {
-      try? spoolStore.recover(recoverySessionID: id, cipher: cipher)
+    let recoverResult: Result<RecoveredSpool, any Error> = await Task.detached(priority: .utility) {
+      Result { try spoolStore.recover(recoverySessionID: id, cipher: cipher) }
     }.value
     if isAborted() { return .aborted }
-    guard let recovered, !recovered.samples.isEmpty else {
-      return await fail(
-        id, spoolStore: spoolStore, reason: "decrypt", category: .recoveryDecryptFailed)
+    let recovered: RecoveredSpool
+    switch recoverResult {
+    case .success(let spool):
+      recovered = spool
+    case .failure:
+      return failUnrecoverable(reason: .reconstructionFailed, category: .recoveryDecryptFailed)
+    }
+    guard !recovered.samples.isEmpty else {
+      return failUnrecoverable(
+        reason: .emptyOrUnreadableSamples, category: .recoveryDecryptFailed)
     }
 
     // Transcribe on the shared engine (batch). The marker already covers warm-up.
@@ -162,10 +205,11 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       try await asrManager.loadModel()
     } catch {
       // Discard hard-resets the engine, which can throw here — that's an abort,
-      // not a recovery failure (don't delete/log; the coordinator owns cleanup).
+      // not a recovery failure (don't log/emit; the coordinator owns cleanup).
       if isAborted() { return .aborted }
-      return await fail(
-        id, spoolStore: spoolStore, reason: "transcribe", category: .recoveryTranscribeFailed)
+      return failUnrecoverable(
+        reason: .modelLoadFailed, failureClass: Self.classify(error),
+        reconstructedSampleCount: recovered.samples.count, category: .recoveryTranscribeFailed)
     }
     // Discard during the model load: bail BEFORE the expensive batch transcribe.
     if isAborted() { return .aborted }
@@ -176,13 +220,17 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // A Discard-driven engine reset kills the in-flight transcribe and surfaces
       // here as a throw — treat it as an abort (the user discarded), not a failure.
       if isAborted() { return .aborted }
-      return await fail(
-        id, spoolStore: spoolStore, reason: "transcribe", category: .recoveryTranscribeFailed)
+      return failUnrecoverable(
+        reason: .transcribeError, failureClass: Self.classify(error),
+        reconstructedSampleCount: recovered.samples.count, category: .recoveryTranscribeFailed)
     }
     if isAborted() { return .aborted }
     guard !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      return await fail(
-        id, spoolStore: spoolStore, reason: "empty", category: .recoveryTranscribeFailed)
+      // Empty text on good audio: a Camp B *candidate* (genuine silence vs a
+      // transcribe hiccup are indistinguishable here) — no error, so no class.
+      return failUnrecoverable(
+        reason: .emptyText, reconstructedSampleCount: recovered.samples.count,
+        category: .recoveryTranscribeFailed)
     }
 
     // Polish under the recording's record-time settings (raw-fallback floor
@@ -223,20 +271,36 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // is no `await` between here and `append`, so a Discard cannot interleave a
     // stale save (the uncancellable-transcribe stale-save guard, Codex REV-2 R2).
     if isAborted() { return .aborted }
+    let spoolSeconds = Int(recoveredSeconds.rounded())
     do {
       try transcriptStore.save(transcript)
     } catch {
+      // §3.3 (#1464) — a History-write failure is NOT audio loss. RETAIN the spool
+      // (the coordinator does not delete `.save`) and clear the attempt marker so
+      // the next launch REPLAYS instead of reading the spool as a crashed attempt.
+      // The clear can throw (`RecoverySpoolStore.deleteAttemptMarker`); if it does,
+      // retain THIS launch but do not claim durable next-launch retry.
+      let failureClass = Self.classify(error)
       SentryBreadcrumb.add(
-        stage: "recovery", message: "recovered transcript save failed",
+        stage: "recovery", message: "recovered transcript save failed — retaining spool",
         level: .warning, data: ["error": String(describing: error)])
-      cleanUp(id, spoolStore: spoolStore)
-      TelemetryService.shared.recoveryCompleted(outcome: "failed", reason: "save")
-      return .failed
+      do {
+        try spoolStore.deleteAttemptMarker(for: id)
+        TelemetryService.shared.recoveryCompleted(
+          outcome: "failed", reason: .saveFailed, failureClass: failureClass,
+          audioDecrypted: true, spoolSeconds: spoolSeconds)
+        return .failed(.save(failureClass))
+      } catch {
+        TelemetryService.shared.recoveryCompleted(
+          outcome: "failed", reason: .markerClearFailed, failureClass: failureClass,
+          audioDecrypted: true, spoolSeconds: spoolSeconds)
+        return .failed(.saveMarkerClearFailed(failureClass))
+      }
     }
     transcriptCoordinator.append(transcript)
 
-    // Success: delete spool (+ marker) + key.
-    cleanUp(id, spoolStore: spoolStore)
+    // Success. #1464: the coordinator deletes the spool (+ marker) + key on
+    // `.recovered` and posts the success notice; the replayer only reports.
     TelemetryService.shared.recoveryCompleted(
       outcome: "recovered",
       recoveredSeconds: Int(recoveredSeconds.rounded()),
@@ -244,30 +308,45 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     return .recovered
   }
 
-  /// Delete + log a failed orphan (one attempt — no keep-for-retry in PR2).
-  private func fail(
-    _ id: String, spoolStore: RecoverySpoolStore, reason: String,
+  /// Emit the failure breadcrumb + telemetry and return `.failed(.unrecoverable)`.
+  /// Does NOT delete — the coordinator is the sole destructor (#1464), deleting on
+  /// `.unrecoverable`. `reconstructedSampleCount` present ⇒ authenticated
+  /// reconstruction succeeded, so emit `audio_decrypted=true`, the spool-seconds
+  /// bucket, and `camp_b_candidate=true` (good audio, failed downstream — the only
+  /// case a future retry could help). Absent ⇒ omit both (never `audio_decrypted
+  /// =false`).
+  private func failUnrecoverable(
+    reason: RecoveryTelemetryReason,
+    failureClass: RecoveryFailureClass? = nil,
+    reconstructedSampleCount: Int? = nil,
     category: SentryBreadcrumb.ErrorCategory
-  ) async -> RecoveryReplayOutcome {
-    cleanUp(id, spoolStore: spoolStore)
+  ) -> RecoveryReplayOutcome {
     SentryBreadcrumb.captureError(
-      RecoveryReplayError.failed(reason), category: category, stage: "recovery")
-    TelemetryService.shared.recoveryCompleted(outcome: "failed", reason: reason)
-    return .failed
+      RecoveryReplayError.failed(reason.rawValue), category: category, stage: "recovery")
+    let spoolSeconds = reconstructedSampleCount.map {
+      Int((Double($0) / AudioConstants.sampleRate).rounded())
+    }
+    TelemetryService.shared.recoveryCompleted(
+      outcome: "failed",
+      reason: reason,
+      failureClass: failureClass,
+      audioDecrypted: reconstructedSampleCount != nil ? true : nil,
+      campBCandidate: reconstructedSampleCount != nil ? true : nil,
+      spoolSeconds: spoolSeconds)
+    return .failed(.unrecoverable)
   }
 
-  /// Delete a spool (which also clears its attempt marker) and destroy its key.
-  private func cleanUp(_ id: String, spoolStore: RecoverySpoolStore) {
-    try? spoolStore.delete(recoverySessionID: id)
-    let keyStore = self.keyStore
-    let onCleanupFinished = self.onCleanupFinished
-    // A plain Task inherits MainActor and would run synchronous key-store I/O on
-    // the UI executor. A task group adds no ownership value for one operation,
-    // and @concurrent cannot annotate the dependency's synchronous API.
-    Task.detached(priority: .utility) {
-      try? keyStore.delete(for: id)
-      onCleanupFinished(id)
-    }
+  /// Map a caught ASR/storage error to the narrow telemetry failure class (#1464).
+  /// The `NSError` domain/code is INPUT only — never emitted. Starts narrow
+  /// (D-030): only the two host-side wrappers are reliably typed — the default ASR
+  /// engine crosses XPC, which bridges everything else to an opaque `NSError` and
+  /// collapses decode causes into one string. `.notReady` is reserved for a Phase 2
+  /// in-process producer (`ASRError` is ASR-module-internal, kept isolated per
+  /// D-028); an unrecognized error is `.other`.
+  private static func classify(_ error: any Error) -> RecoveryFailureClass {
+    if error is XPCASRTransportError { return .xpcUnreachable }
+    if error is ASRLoadSupersededError { return .cancelled }
+    return .other
   }
 
   private static func transcriptionOptions(for settings: RecordingSettingsSnapshot?)

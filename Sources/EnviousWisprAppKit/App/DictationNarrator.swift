@@ -170,6 +170,7 @@ enum DictationNarrator {
     case .cachingModel(engineLabel: _): return "Getting dictation ready, one moment"
     case .engineReady: return "Dictation ready. Press to start."
     case .recoveringLastRecording: return "Recovering your last recording. Press Discard to skip."
+    case .recoverySucceeded: return recoverySucceededText
     case .bluetoothAwareness:
       return "Bluetooth microphone detected. Wait a moment before speaking on a cold start."
     }
@@ -189,6 +190,12 @@ enum DictationNarrator {
   /// The recovery pill's CONTAINER accessibility label (no ellipsis — distinct
   /// bytes from `recoveryTitle`). VoiceOver reads it as the group's spoken status.
   static let recoveryAccessibilityLabel = "Recovering your last recording"
+  /// #1464 — the recovery SUCCESS notice (green `.recoverySucceeded` pill).
+  /// Title + subtitle for the visual pill; `recoverySucceededText` is the single
+  /// spoken VoiceOver sentence. No em-dash (Rule 6). Founder-approved 2026-07-16.
+  static let recoverySucceededTitle = "Recovered your last recording"
+  static let recoverySucceededSubtitle = "Saved to History"
+  static let recoverySucceededText = "Recovered your last recording. Saved to History."
   static let loadingModelStatus = "Loading model..."  // main-window body (ASCII ellipsis)
   static let loadingModelBadge = "Loading model\u{2026}"  // toolbar badge (Unicode ellipsis)
   static let loadingModelSidebar = "Loading Model"  // sidebar row (title-case, no ellipsis)
