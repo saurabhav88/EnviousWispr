@@ -45,5 +45,17 @@
     "pilot_is_quality_evidence": false,
     "candidate_model_output_allowed": false,
     "output_contains_raw_text": false
+  },
+  "runtime": {
+    "numpy_version": "2.4.4",
+    "score_decimals": 8,
+    "rounding": "decimal_half_up"
+  },
+  "score_generator": {
+    "path": "scripts/eval/generate_eg1_leakage_calibration_scores.py",
+    "sha256": "5f080563f059abdc43925ab96d51901cf26027f860156e4f06b3d021e157f59d",
+    "scanner_evidence_policy": "full_recomputation_accept_calibration_required_only",
+    "scanner_path": "scripts/eval/scan_eg1_multilingual_development_leakage.py",
+    "scanner_sha256": "f23d6c5d24c9aacdb6576bbbc714e3ec831f327345b486e15a7e29d0760ea768"
   }
 }

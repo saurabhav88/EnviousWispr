@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter, defaultdict
+from decimal import Decimal, ROUND_HALF_UP
 import hashlib
 import json
 import math
@@ -12,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 from typing import Any, Sequence
 
 import numpy as np
@@ -46,6 +48,24 @@ ROW_FIELDS = {
 }
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
+TOOL_REPO_PATH = "scripts/eval/calibrate_eg1_leakage_thresholds.py"
+CONTRACT_REPO_PATH = "scripts/eval/contracts/eg1_leakage_threshold_calibration_v1.json"
+SCORE_GENERATOR_REPO_PATH = "scripts/eval/generate_eg1_leakage_calibration_scores.py"
+SCORE_GENERATOR_SHA256 = "5f080563f059abdc43925ab96d51901cf26027f860156e4f06b3d021e157f59d"
+CANONICAL_SCANNER_REPO_PATH = "scripts/eval/scan_eg1_multilingual_development_leakage.py"
+CANONICAL_SCANNER_SHA256 = "f23d6c5d24c9aacdb6576bbbc714e3ec831f327345b486e15a7e29d0760ea768"
+SCORE_RECEIPT_SCHEMA = "eg1-leakage-score-generation-receipt-v1"
+CUSTODY_SCHEMA = "eg1-leakage-validation-custody-v1"
+SCORE_DECIMALS = 8
+SCORE_QUANTUM = Decimal("0.00000001")
+CALIBRATION_NUMPY_VERSION = "2.4.4"
+SCANNER_NUMPY_VERSION = "2.4.6"
+EXPECTED_MODEL_TREE_SHA256 = "087413375b109d83ccd69bff217f841ce9029e9a6d7d3804129d65a5f9bf319e"
+EXPECTED_SCANNER_RUNTIME = {
+    "sentence_transformers": "5.6.0", "transformers": "5.12.1",
+    "torch": "2.12.1", "numpy": SCANNER_NUMPY_VERSION,
+}
 
 
 def canonical_json(value: Any) -> bytes:
@@ -59,6 +79,198 @@ def canonical_json(value: Any) -> bytes:
 
 def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def git_output(arguments: Sequence[str]) -> bytes:
+    return subprocess.run(
+        ["git", *arguments], cwd=REPO_ROOT, check=True, stdout=subprocess.PIPE
+    ).stdout
+
+
+def current_git_head() -> str:
+    return git_output(["rev-parse", "HEAD"]).decode().strip()
+
+
+def require_strict_commit_ancestor(
+    ancestor: str, descendant: str, label: str, repo_root: Path = REPO_ROOT
+) -> None:
+    if ancestor == descendant or subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant], cwd=repo_root
+    ).returncode != 0:
+        raise ValueError(f"{label} must be sealed in a later descendant commit")
+
+
+def committed_artifact_bytes(
+    path: Path, expected_head: str, repo_root: Path = REPO_ROOT
+) -> tuple[bytes, dict[str, Any], str]:
+    resolved = path.resolve()
+    try:
+        relative = str(resolved.relative_to(repo_root.resolve()))
+    except ValueError as error:
+        raise ValueError("evidence artifact must be inside the repository") from error
+    live = read_bytes(resolved, "evidence artifact")
+    value = parse_json(live, "evidence artifact")
+    producing = value.get("producing_git_head") if isinstance(value, dict) else None
+    if producing is None and isinstance(value, dict):
+        provenance = value.get("scanner_provenance")
+        if isinstance(provenance, dict):
+            producing = provenance.get("producing_git_head")
+    if not isinstance(producing, str) or not GIT_SHA.fullmatch(producing):
+        raise ValueError("evidence artifact producing commit is invalid")
+    sealing = subprocess.run(
+        ["git", "log", "-1", "--format=%H", expected_head, "--", relative],
+        cwd=repo_root, check=True, text=True, stdout=subprocess.PIPE,
+    ).stdout.strip()
+    if not GIT_SHA.fullmatch(sealing):
+        raise ValueError("evidence artifact has no committed sealing revision")
+    for ancestor, descendant in ((producing, sealing), (sealing, expected_head)):
+        if subprocess.run(["git", "merge-base", "--is-ancestor", ancestor, descendant], cwd=repo_root).returncode != 0:
+            raise ValueError("evidence artifact history is not an ancestor chain")
+    committed = subprocess.run(
+        ["git", "show", f"{sealing}:{relative}"], cwd=repo_root,
+        check=True, stdout=subprocess.PIPE,
+    ).stdout
+    if committed != live:
+        raise ValueError("evidence artifact differs from committed producer bytes")
+    return live, value, sealing
+
+
+def validate_score_generation_receipt(
+    receipt_path: Path, upstream_path: Path, scores_bytes: bytes,
+    split: str, contract_bytes: bytes, expected_head: str,
+) -> tuple[str, str]:
+    receipt_bytes, receipt, sealing = committed_artifact_bytes(receipt_path, expected_head)
+    upstream_bytes, upstream, _ = committed_artifact_bytes(upstream_path, expected_head)
+    required = {
+        "schema_version", "status", "split", "score_rows_sha256", "score_row_count",
+        "contract_sha256", "producing_git_head", "generator_path", "generator_sha256",
+        "upstream_scanner_receipt_path", "upstream_scanner_receipt_sha256",
+        "scanner_provenance_sha256", "model_tree_sha256", "source_inventory_sha256",
+        "runtime_versions", "methods", "axes", "score_decimals", "contains_raw_text",
+        "candidate_model_output_seen",
+        "pair_input_sha256",
+        "quality_evidence", "production_thresholds_approved", "assurance_scope",
+    }
+    if not isinstance(receipt, dict) or set(receipt) != required:
+        raise ValueError("score-generation receipt schema changed")
+    relative_upstream = str(upstream_path.resolve().relative_to(REPO_ROOT))
+    rows = read_score_rows(scores_bytes, validate_contract(parse_json(contract_bytes, "calibration contract")))
+    provenance = upstream.get("scanner_provenance") if isinstance(upstream, dict) else None
+    embedding = upstream.get("embedding_runtime") if isinstance(upstream, dict) else None
+    tree = embedding.get("model_tree") if isinstance(embedding, dict) else None
+    runtime = embedding.get("runtime_versions") if isinstance(embedding, dict) else None
+    if (
+        receipt.get("schema_version") != SCORE_RECEIPT_SCHEMA
+        or receipt.get("status") != "operator_attested_noncertifying_scores"
+        or receipt.get("split") != split
+        or receipt.get("score_rows_sha256") != sha256_bytes(scores_bytes)
+        or receipt.get("score_row_count") != len(rows)
+        or receipt.get("contract_sha256") != sha256_bytes(contract_bytes)
+        or receipt.get("upstream_scanner_receipt_path") != relative_upstream
+        or receipt.get("upstream_scanner_receipt_sha256") != sha256_bytes(upstream_bytes)
+        or receipt.get("scanner_provenance_sha256") != sha256_bytes(canonical_json(provenance))
+        or not isinstance(provenance, dict)
+        or provenance.get("scanner_path") != CANONICAL_SCANNER_REPO_PATH
+        or provenance.get("scanner_sha256") != CANONICAL_SCANNER_SHA256
+        or not isinstance(tree, dict)
+        or receipt.get("model_tree_sha256") != tree.get("tree_sha256")
+        or receipt.get("model_tree_sha256") != EXPECTED_MODEL_TREE_SHA256
+        or receipt.get("source_inventory_sha256") != upstream.get("source_inventory_sha256")
+        or receipt.get("runtime_versions") != runtime
+        or runtime != EXPECTED_SCANNER_RUNTIME
+        or receipt.get("methods") != ["token_ngram_jaccard", "character_ngram_jaccard", "embedding_cosine"]
+        or receipt.get("axes") != ["input_input", "output_output", "input_output", "output_input"]
+        or receipt.get("score_decimals") != SCORE_DECIMALS
+        or receipt.get("contains_raw_text") is not False
+        or receipt.get("candidate_model_output_seen") is not False
+        or not isinstance(receipt.get("pair_input_sha256"), str)
+        or not SHA256.fullmatch(receipt["pair_input_sha256"])
+        or receipt.get("quality_evidence") is not False
+        or receipt.get("production_thresholds_approved") is not False
+        or receipt.get("assurance_scope") != "operator_attested_unsigned_pair_semantics_nonrelease"
+    ):
+        raise ValueError("score-generation receipt binding is invalid")
+    generator_path = receipt.get("generator_path")
+    if generator_path != SCORE_GENERATOR_REPO_PATH or receipt.get("generator_sha256") != SCORE_GENERATOR_SHA256:
+        raise ValueError("score generator is not the contract-pinned canonical generator")
+    committed_generator = git_output(["show", f"{receipt['producing_git_head']}:{generator_path}"])
+    if sha256_bytes(committed_generator) != receipt.get("generator_sha256"):
+        raise ValueError("score generator differs from committed bytes")
+    return sha256_bytes(receipt_bytes), sealing
+
+
+def validate_custody_artifact(
+    path: Path, *, freeze_path: Path, calibration_scores_bytes: bytes,
+    validation_scores_bytes: bytes, calibration_score_receipt_sha: str,
+    validation_score_receipt_sha: str, contract_bytes: bytes, expected_head: str,
+    calibration_score_sealing: str, validation_score_sealing: str,
+) -> str:
+    freeze_bytes, _, freeze_sealing = committed_artifact_bytes(freeze_path, expected_head)
+    artifact_bytes, value, custody_sealing = committed_artifact_bytes(path, expected_head)
+    require_strict_commit_ancestor(
+        freeze_sealing, custody_sealing, "custody artifact", REPO_ROOT
+    )
+    require_strict_commit_ancestor(
+        calibration_score_sealing, freeze_sealing, "freeze", REPO_ROOT
+    )
+    require_strict_commit_ancestor(
+        freeze_sealing, validation_score_sealing, "validation score seal", REPO_ROOT
+    )
+    for ancestor, descendant, label in (
+        (validation_score_sealing, custody_sealing, "validation score seal"),
+        (custody_sealing, expected_head, "validation execution head"),
+    ):
+        if subprocess.run(
+            ["git", "merge-base", "--is-ancestor", ancestor, descendant], cwd=REPO_ROOT
+        ).returncode != 0:
+            raise ValueError(f"{label} chronology is invalid")
+    required = {
+        "schema_version", "status", "producing_git_head", "contract_sha256",
+        "freeze_receipt_sha256", "calibration_score_rows_sha256",
+        "validation_score_rows_sha256", "calibration_score_receipt_sha256",
+        "validation_score_receipt_sha256", "validation_execution_started",
+        "operator_attested_pre_validation", "assurance_scope", "release_eligible",
+    }
+    expected = {
+        "schema_version": CUSTODY_SCHEMA,
+        "status": "validation_inputs_sealed_before_execution",
+        "producing_git_head": value.get("producing_git_head") if isinstance(value, dict) else None,
+        "contract_sha256": sha256_bytes(contract_bytes),
+        "freeze_receipt_sha256": sha256_bytes(freeze_bytes),
+        "calibration_score_rows_sha256": sha256_bytes(calibration_scores_bytes),
+        "validation_score_rows_sha256": sha256_bytes(validation_scores_bytes),
+        "calibration_score_receipt_sha256": calibration_score_receipt_sha,
+        "validation_score_receipt_sha256": validation_score_receipt_sha,
+        "validation_execution_started": False,
+        "operator_attested_pre_validation": True,
+        "assurance_scope": "operator_attested_unsigned_nonrelease",
+        "release_eligible": False,
+    }
+    if not isinstance(value, dict) or set(value) != required or value != expected:
+        raise ValueError("pre-validation custody artifact binding is invalid")
+    return sha256_bytes(artifact_bytes)
+
+
+def validate_provenance(receipt: dict[str, Any]) -> None:
+    producing = receipt.get("producing_git_head")
+    if not isinstance(producing, str) or not GIT_SHA.fullmatch(producing):
+        raise ValueError("threshold freeze git provenance is invalid")
+    current = current_git_head()
+    ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", producing, current], cwd=REPO_ROOT
+    )
+    if ancestor.returncode != 0:
+        raise ValueError("threshold freeze was not produced by an ancestor commit")
+    bindings = (
+        ("tool_path", "tool_sha256", TOOL_REPO_PATH),
+        ("contract_path", "contract_sha256", CONTRACT_REPO_PATH),
+    )
+    for path_field, sha_field, expected_path in bindings:
+        if receipt.get(path_field) != expected_path:
+            raise ValueError("threshold freeze provenance path changed")
+        committed = git_output(["show", f"{producing}:{expected_path}"])
+        if sha256_bytes(committed) != receipt.get(sha_field):
+            raise ValueError("threshold freeze provenance differs from committed bytes")
 
 
 def read_bytes(path: Path, label: str) -> bytes:
@@ -86,6 +298,8 @@ def validate_contract(value: Any) -> dict[str, Any]:
         "release_profile",
         "statistics",
         "policy",
+        "runtime",
+        "score_generator",
     }
     if not isinstance(value, dict) or set(value) != required:
         raise ValueError("calibration contract schema changed")
@@ -145,6 +359,19 @@ def validate_contract(value: Any) -> dict[str, Any]:
         "output_contains_raw_text": False,
     }:
         raise ValueError("calibration policy changed")
+    if value.get("runtime") != {
+        "numpy_version": CALIBRATION_NUMPY_VERSION,
+        "score_decimals": SCORE_DECIMALS,
+        "rounding": "decimal_half_up",
+    } or np.__version__ != CALIBRATION_NUMPY_VERSION:
+        raise ValueError("calibration runtime changed")
+    if value.get("score_generator") != {
+        "path": SCORE_GENERATOR_REPO_PATH, "sha256": SCORE_GENERATOR_SHA256,
+        "scanner_evidence_policy": "full_recomputation_accept_calibration_required_only",
+        "scanner_path": CANONICAL_SCANNER_REPO_PATH,
+        "scanner_sha256": CANONICAL_SCANNER_SHA256,
+    }:
+        raise ValueError("canonical score generator binding changed")
     return value
 
 
@@ -198,6 +425,12 @@ def read_score_rows(value: bytes, contract: dict[str, Any]) -> list[dict[str, An
             for score in scores.values()
         ):
             raise ValueError("scores must be finite numbers from zero to one")
+        row["scores"] = {
+            method: float(
+                Decimal(str(score)).quantize(SCORE_QUANTUM, rounding=ROUND_HALF_UP)
+            )
+            for method, score in scores.items()
+        }
         rows.append(row)
     if not rows:
         raise ValueError("score input is empty")
@@ -328,7 +561,7 @@ def simultaneous_sensitivity_lower(
     contract: dict[str, Any],
 ) -> tuple[float, dict[str, dict[str, float]]]:
     replicates = contract["statistics"]["bootstrap_replicates"]
-    minima = np.ones(replicates, dtype=np.float32)
+    minima = np.ones(replicates, dtype=np.float64)
     observed: dict[str, dict[str, float]] = {}
     for language in contract["languages"]:
         family_ids, indices = plans[language]
@@ -336,7 +569,7 @@ def simultaneous_sensitivity_lower(
         for axis in contract["axes"]:
             values = np.asarray(
                 [method_table[language][axis][family_id] for family_id in family_ids],
-                dtype=np.float32,
+                dtype=np.float64,
             )
             success = values >= threshold
             observed[language][axis] = round(float(np.mean(success)), 8)
@@ -367,6 +600,7 @@ def select_thresholds(
         winner = candidates[0]
         winner_lower = 0.0
         winner_observed: dict[str, dict[str, float]] = {}
+        found = False
         while low <= high:
             middle = (low + high) // 2
             threshold = candidates[middle]
@@ -375,9 +609,14 @@ def select_thresholds(
             )
             if lower >= minimum:
                 winner, winner_lower, winner_observed = threshold, lower, observed
+                found = True
                 low = middle + 1
             else:
                 high = middle - 1
+        if not found:
+            raise ValueError(
+                f"no {method} threshold meets the simultaneous sensitivity minimum"
+            )
         negative_maximum = max(
             score
             for language in negatives[method].values()
@@ -417,16 +656,28 @@ def common_receipt(
     scores_bytes: bytes,
     rows: Sequence[dict[str, Any]],
 ) -> dict[str, Any]:
+    producing_head = current_git_head()
+    tool_bytes = read_bytes(SCRIPT_PATH, "calibration tool")
+    if git_output(["show", f"{producing_head}:{TOOL_REPO_PATH}"]) != tool_bytes:
+        raise ValueError("calibration tool differs from its producing commit")
+    if git_output(["show", f"{producing_head}:{CONTRACT_REPO_PATH}"]) != contract_bytes:
+        raise ValueError("calibration contract differs from its producing commit")
     return {
         "schema_version": schema,
         "status": status,
         "contract_sha256": sha256_bytes(contract_bytes),
-        "tool_sha256": sha256_bytes(read_bytes(SCRIPT_PATH, "calibration tool")),
+        "contract_path": CONTRACT_REPO_PATH,
+        "tool_sha256": sha256_bytes(tool_bytes),
+        "tool_path": TOOL_REPO_PATH,
+        "producing_git_head": producing_head,
         "score_rows_sha256": sha256_bytes(scores_bytes),
         "score_row_count": len(rows),
         "contains_raw_text": False,
         "candidate_model_output_seen": False,
         "release_eligible": False,
+        "quality_evidence": False,
+        "production_thresholds_approved": False,
+        "assurance_scope": "operator_attested_unsigned_pair_semantics_nonrelease",
     }
 
 
@@ -441,7 +692,7 @@ def build_freeze_receipt(
     thresholds = select_thresholds(positives, negatives, contract)
     receipt = common_receipt(
         FREEZE_SCHEMA,
-        "thresholds_frozen_validation_unseen",
+        "operator_attested_noncertifying_calibration",
         contract_bytes,
         scores_bytes,
         rows,
@@ -466,12 +717,18 @@ def validate_freeze_receipt(value: Any, contract_sha: str) -> dict[str, Any]:
         "schema_version",
         "status",
         "contract_sha256",
+        "contract_path",
         "tool_sha256",
+        "tool_path",
+        "producing_git_head",
         "score_rows_sha256",
         "score_row_count",
         "contains_raw_text",
         "candidate_model_output_seen",
         "release_eligible",
+        "quality_evidence",
+        "production_thresholds_approved",
+        "assurance_scope",
         "release_profile_met",
         "validation_data_seen",
         "no_validation_driven_retuning",
@@ -485,18 +742,20 @@ def validate_freeze_receipt(value: Any, contract_sha: str) -> dict[str, Any]:
         not isinstance(value, dict)
         or set(value) != required
         or value.get("schema_version") != FREEZE_SCHEMA
-        or value.get("status") != "thresholds_frozen_validation_unseen"
+        or value.get("status") != "operator_attested_noncertifying_calibration"
         or value.get("contract_sha256") != contract_sha
-        or value.get("tool_sha256")
-        != sha256_bytes(read_bytes(SCRIPT_PATH, "calibration tool"))
         or value.get("release_profile_met") is not True
         or value.get("validation_data_seen") is not False
         or value.get("no_validation_driven_retuning") is not True
         or value.get("contains_raw_text") is not False
         or value.get("candidate_model_output_seen") is not False
         or value.get("release_eligible") is not False
+        or value.get("quality_evidence") is not False
+        or value.get("production_thresholds_approved") is not False
+        or value.get("assurance_scope") != "operator_attested_unsigned_pair_semantics_nonrelease"
     ):
         raise ValueError("threshold freeze receipt is invalid")
+    validate_provenance(value)
     hashes = value.get("calibration_family_component_hashes")
     if not isinstance(hashes, list) or any(
         not isinstance(item, str) or not SHA256.fullmatch(item) for item in hashes
@@ -560,13 +819,29 @@ def build_validation_receipt(
     scores_bytes: bytes,
     freeze_bytes: bytes,
     expected_freeze_sha256: str,
+    calibration_scores_bytes: bytes,
+    expected_calibration_scores_sha256: str,
 ) -> dict[str, Any]:
     if not SHA256.fullmatch(expected_freeze_sha256) or sha256_bytes(freeze_bytes) != expected_freeze_sha256:
         raise ValueError("threshold freeze receipt differs from its sealed SHA-256")
     contract = validate_contract(parse_json(contract_bytes, "calibration contract"))
+    if (
+        not SHA256.fullmatch(expected_calibration_scores_sha256)
+        or sha256_bytes(calibration_scores_bytes)
+        != expected_calibration_scores_sha256
+    ):
+        raise ValueError("calibration score rows differ from their sealed SHA-256")
     freeze = validate_freeze_receipt(
         parse_json(freeze_bytes, "threshold freeze receipt"), sha256_bytes(contract_bytes)
     )
+    recomputed = build_freeze_receipt(contract_bytes, calibration_scores_bytes)
+    # The verifier may run at a descendant commit. Preserve the already
+    # authenticated producer identity while recomputing every data-derived field.
+    for field in ("producing_git_head", "tool_path", "tool_sha256"):
+        recomputed[field] = freeze[field]
+    recomputed_freeze = canonical_json(recomputed)
+    if recomputed_freeze != freeze_bytes:
+        raise ValueError("threshold freeze does not exactly recompute from calibration scores")
     if freeze.get("bootstrap") != contract["statistics"]:
         raise ValueError("threshold freeze bootstrap contract changed")
     rows = read_score_rows(scores_bytes, contract)
@@ -613,13 +888,9 @@ def build_validation_receipt(
             "threshold_changed_after_freeze": False,
         }
     status = (
-        "validation_failed_frozen_thresholds_unchanged"
+        "operator_attested_noncertifying_validation_failed_statistics"
         if not passed
-        else (
-            "validation_passed_manual_review_required"
-            if manual_required
-            else "validation_passed"
-        )
+        else "operator_attested_noncertifying_validation_passed_statistics"
     )
     receipt = common_receipt(
         VALIDATION_SCHEMA, status, contract_bytes, scores_bytes, rows
@@ -673,8 +944,12 @@ def build_pilot_receipt(contract_bytes: bytes, scores_bytes: bytes) -> dict[str,
 def publish_receipt(bundle: Path, receipt: dict[str, Any]) -> None:
     if bundle.exists():
         raise ValueError("output bundle already exists")
-    bundle.mkdir(parents=True)
+    if not bundle.parent.is_dir():
+        raise ValueError("output bundle parent must already exist")
+    reserved = False
     try:
+        bundle.mkdir()
+        reserved = True
         path = bundle / "receipt.json"
         with path.open("xb") as handle:
             value = canonical_json(receipt)
@@ -688,48 +963,92 @@ def publish_receipt(bundle: Path, receipt: dict[str, Any]) -> None:
         finally:
             os.close(descriptor)
     except Exception:
-        shutil.rmtree(bundle, ignore_errors=True)
+        if reserved:
+            shutil.rmtree(bundle, ignore_errors=True)
         raise
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="mode", required=True)
+    subparsers.add_parser("approve")
     for mode in ("calibrate", "validate", "pilot"):
         child = subparsers.add_parser(mode)
         child.add_argument("--contract", type=Path, default=DEFAULT_CONTRACT)
         child.add_argument("--scores", type=Path, required=True)
-        child.add_argument("--expected-scores-sha256", required=True)
+        child.add_argument("--score-generation-receipt", type=Path, required=True)
+        child.add_argument("--upstream-scanner-receipt", type=Path, required=True)
+        child.add_argument("--expected-git-head", required=True)
         child.add_argument("--out-bundle", type=Path, required=True)
         if mode == "validate":
             child.add_argument("--freeze-receipt", type=Path, required=True)
-            child.add_argument("--expected-freeze-receipt-sha256", required=True)
+            child.add_argument("--calibration-scores", type=Path, required=True)
+            child.add_argument("--calibration-score-generation-receipt", type=Path, required=True)
+            child.add_argument("--calibration-upstream-scanner-receipt", type=Path, required=True)
+            child.add_argument("--custody-artifact", type=Path, required=True)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    if args.mode == "approve":
+        raise ValueError(
+            "production threshold approval is blocked pending an authenticated native pair-corpus owner"
+        )
+    if current_git_head() != args.expected_git_head:
+        raise ValueError("Git HEAD differs from expected head")
+    if subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        cwd=REPO_ROOT, check=True, stdout=subprocess.PIPE,
+    ).stdout:
+        raise ValueError("tracked worktree must be clean")
     contract_bytes = read_bytes(args.contract, "calibration contract")
     scores_bytes = read_bytes(args.scores, "score rows")
-    if (
-        not SHA256.fullmatch(args.expected_scores_sha256)
-        or sha256_bytes(scores_bytes) != args.expected_scores_sha256
-    ):
-        raise ValueError("score rows differ from their sealed SHA-256")
+    score_receipt_sha, score_receipt_sealing = validate_score_generation_receipt(
+        args.score_generation_receipt, args.upstream_scanner_receipt,
+        scores_bytes, "validation" if args.mode == "validate" else "calibration",
+        contract_bytes, args.expected_git_head,
+    )
     if args.mode == "calibrate":
         receipt = build_freeze_receipt(contract_bytes, scores_bytes)
     elif args.mode == "validate":
-        freeze_bytes = read_bytes(args.freeze_receipt, "threshold freeze receipt")
+        freeze_bytes, _, _ = committed_artifact_bytes(
+            args.freeze_receipt, args.expected_git_head
+        )
+        calibration_scores_bytes = read_bytes(
+            args.calibration_scores, "calibration score rows"
+        )
+        calibration_score_receipt_sha, calibration_score_receipt_sealing = validate_score_generation_receipt(
+            args.calibration_score_generation_receipt,
+            args.calibration_upstream_scanner_receipt,
+            calibration_scores_bytes, "calibration", contract_bytes,
+            args.expected_git_head,
+        )
+        custody_sha = validate_custody_artifact(
+            args.custody_artifact, freeze_path=args.freeze_receipt,
+            calibration_scores_bytes=calibration_scores_bytes,
+            validation_scores_bytes=scores_bytes,
+            calibration_score_receipt_sha=calibration_score_receipt_sha,
+            validation_score_receipt_sha=score_receipt_sha,
+            contract_bytes=contract_bytes, expected_head=args.expected_git_head,
+            calibration_score_sealing=calibration_score_receipt_sealing,
+            validation_score_sealing=score_receipt_sealing,
+        )
         receipt = build_validation_receipt(
             contract_bytes,
             scores_bytes,
             freeze_bytes,
-            args.expected_freeze_receipt_sha256,
+            sha256_bytes(freeze_bytes),
+            calibration_scores_bytes,
+            sha256_bytes(calibration_scores_bytes),
         )
+        receipt["authenticated_custody_artifact_sha256"] = custody_sha
+        receipt["calibration_score_generation_receipt_sha256"] = calibration_score_receipt_sha
+        receipt["validation_score_generation_receipt_sha256"] = score_receipt_sha
     else:
         receipt = build_pilot_receipt(contract_bytes, scores_bytes)
     publish_receipt(args.out_bundle, receipt)
-    return 2 if receipt["status"].startswith("validation_failed") else 0
+    return 2 if "failed_statistics" in receipt["status"] else 0
 
 
 if __name__ == "__main__":
