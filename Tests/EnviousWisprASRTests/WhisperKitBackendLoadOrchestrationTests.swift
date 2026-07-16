@@ -50,6 +50,30 @@ struct WhisperKitBackendLoadOrchestrationTests {
       })
   }
 
+  // MARK: #1386 PR-2 — relocation gate (mmap safety)
+
+  @Test("relocation gate REFUSAL blocks the map — loadModel never runs")
+  func relocationGateRefusalBlocksLoad() async throws {
+    struct GatePending: Error {}
+    let recorder = CallRecorder()
+    // The gate runs at the top of performLoad, BEFORE the fake loadModel seam:
+    // a refusal (relocation in flight / TCC deferred) throws before any map.
+    let backend = WhisperKitBackend(
+      testSeams: fastSeams(recorder), relocationGate: { throw GatePending() })
+    try? await backend.loadForTesting { "/fake" }
+    #expect(await recorder.loadCount == 0, "gate refusal must block the map")
+    #expect(!(await backend.isReady))
+  }
+
+  @Test("relocation gate OPEN permits the load")
+  func relocationGateOpenPermitsLoad() async throws {
+    let recorder = CallRecorder()
+    let backend = WhisperKitBackend(testSeams: fastSeams(recorder), relocationGate: {})
+    try await backend.loadForTesting { "/fake" }
+    #expect(await recorder.loadCount == 1)
+    #expect(await backend.isReady)
+  }
+
   // MARK: invariant #1 — single-flight
 
   @Test("concurrent prepare joins ONE load (single-flight, invariant #1)")

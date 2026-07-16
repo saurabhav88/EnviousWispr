@@ -93,6 +93,15 @@ public actor WhisperKitBackend: ASRBackend {
   }
   private let testSeams: TestSeams?
 
+  /// #1386 PR-2: the relocation gate — the SINGLE mmap-safety seam. Awaited at
+  /// the top of `performLoad()` (the one `WhisperKit(config)` map site) before
+  /// any model bytes are mapped, so a byte-relocation in flight can never land
+  /// under an open CoreML file handle (SIGBUS). Import-clean: a stored
+  /// `@Sendable` closure the composition root wires over the Pipeline relocation
+  /// coordinator — ASR imports neither Pipeline nor ModelDelivery. Defaults to a
+  /// no-op so tests and the delivery-disabled legacy path are unaffected.
+  private let relocationGate: @Sendable () async throws -> Void
+
   /// Fail-open warm-up ceiling (seconds). Bounds an invisible background task,
   /// never a user-facing wait (founder-approved exception to
   /// timeout-numbers-need-distribution-evidence, #1275 Gate 2).
@@ -102,10 +111,18 @@ public actor WhisperKitBackend: ASRBackend {
   /// Read-only; used by telemetry to tag per-transcription events with the model in use.
   package var modelVariantName: String { modelVariant }
 
-  package init() { self.testSeams = nil }
+  package init(relocationGate: @escaping @Sendable () async throws -> Void = {}) {
+    self.testSeams = nil
+    self.relocationGate = relocationGate
+  }
 
   /// Test-only initializer that injects fake load/warm-up operations.
-  init(testSeams: TestSeams) { self.testSeams = testSeams }
+  init(
+    testSeams: TestSeams, relocationGate: @escaping @Sendable () async throws -> Void = {}
+  ) {
+    self.testSeams = testSeams
+    self.relocationGate = relocationGate
+  }
 
   /// Snapshot of the current load phase, for tests to assert orchestration
   /// outcomes without touching private state.
@@ -333,6 +350,13 @@ public actor WhisperKitBackend: ASRBackend {
   /// Builds the WhisperKit instance from a model path. Test seam overrides it so
   /// the load orchestration is exercisable without a real model.
   private func performLoad(_ modelPath: String) async throws -> any LoadedASRModel {
+    // #1386 PR-2 mmap-safety gate — the SINGLE map site every backend entry
+    // (`prepare`, `prepareIfCached`) funnels through. A byte-relocation in flight
+    // must finish (or the gate defer/refuse) BEFORE any CoreML map, or a move
+    // landing under an open file handle SIGBUSes. A deferred/refused gate throws,
+    // surfacing as a typed not-ready — never an unguarded map. Runs before the
+    // test-seam return so gate behavior is unit-testable without a real model.
+    try await relocationGate()
     if let seams = testSeams { return try await seams.loadModel(modelPath) }
     let config = WhisperKitConfig(
       model: modelVariant,
@@ -488,7 +512,6 @@ public actor WhisperKitBackend: ASRBackend {
   }
 
   // MARK: - Private
-
 
   // #1276 Step 2 (PR-2): vend the authoritative streaming session for the "Live
   // transcription" toggle's ON + locked-language path. Mirrors
