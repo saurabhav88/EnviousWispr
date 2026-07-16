@@ -485,7 +485,12 @@ export function evaluateOnboardingBlackout(rows, expectedT1, TH = THRESHOLDS.onb
   const baseline = completeDayWindow(rows, baselineEnd.toISOString().slice(0, 10), TH.baselineDays);
 
   const recentStarted = recent.reduce((sum, row) => sum + num(row.started), 0);
-  const recentTerminals = recent.reduce((sum, row) => sum + num(row.completed) + num(row.abandoned), 0);
+  // Raw (unfiltered) abandon count (Codex r6 review finding): the
+  // welcome-screen-excluded `abandoned` field exists for the ABANDON-SHARE
+  // metric's denominator, not for "did any terminal event fire at all." Using
+  // it here means screen-attribution drift (abandoned reads 0 while
+  // abandonedRaw keeps firing) would falsely present as terminal drift too.
+  const recentTerminals = recent.reduce((sum, row) => sum + num(row.completed) + num(row.abandonedRaw), 0);
   const baselineAvg = baseline.reduce((sum, row) => sum + num(row.started), 0) / TH.baselineDays;
 
   // (a) Entry point itself broke: zero starts against a real trailing baseline.

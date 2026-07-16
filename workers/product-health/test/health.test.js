@@ -369,11 +369,21 @@ test("onboarding blackout (b): healthy sessions, zero abandons -> not flagged", 
 });
 
 test("onboarding blackout (b): terminal drift (starts continue, no terminal fires) -> flagged", () => {
-  const rows = [{ day: "2026-07-15", started: 10, completed: 0, abandoned: 0 }];
+  const rows = [{ day: "2026-07-15", started: 10, completed: 0, abandoned: 0, abandonedRaw: 0 }];
   const ev = evaluateOnboardingBlackout(rows, "2026-07-15");
   assert.equal(ev.state, "alerting");
   assert.equal(ev.terminalDrift, true);
   assert.equal(ev.entryPointDown, false);
+});
+
+test("onboarding blackout (b): screen-attribution drift does NOT falsely present as terminal drift (Codex r6 fix)", () => {
+  // Real abandon events fired (abandonedRaw) but properties.screen dropped,
+  // so the welcome-filtered `abandoned` reads 0 — a terminal event DID fire,
+  // this must not read as "terminal events stopped firing."
+  const rows = [{ day: "2026-07-15", started: 10, completed: 0, abandoned: 0, abandonedRaw: 8 }];
+  const ev = evaluateOnboardingBlackout(rows, "2026-07-15");
+  assert.equal(ev.terminalDrift, false);
+  assert.equal(ev.recentTerminals, 8);
 });
 
 test("onboarding blackout (b): insufficient recent activity -> not flagged", () => {
