@@ -9,6 +9,9 @@ import {
   evaluateAFM,
   evaluateTranscription,
   evaluateVolume,
+  evaluateOnboardingAbandon,
+  evaluateBackendTranscription,
+  evaluateOnboardingBlackout,
   buildMessage,
 } from "../src/index.js";
 
@@ -260,4 +263,360 @@ test("message: stays within Discord 2000-char cap", () => {
     })
   );
   assert.ok(msg.length <= 2000);
+});
+
+// ---- Phase 10 (#1179): onboarding abandon ----
+test("onboarding abandon: low volume -> skipped", () => {
+  const rows = [{ day: "2026-07-14", started: 10, abandoned: 2 }];
+  assert.equal(evaluateOnboardingAbandon(rows, "2026-07-15").state, "skipped-low-volume");
+});
+
+test("onboarding abandon: normal -> ok", () => {
+  const rows = [
+    { day: "2026-07-15", started: 50, abandoned: 15 },
+    { day: "2026-07-14", started: 50, abandoned: 15 },
+  ];
+  assert.equal(evaluateOnboardingAbandon(rows, "2026-07-15").state, "evaluated-ok");
+});
+
+test("onboarding abandon: rolling regression only (recent 2 days healthy, older days bad) -> alert", () => {
+  const rows = [
+    { day: "2026-07-15", started: 5, abandoned: 4 },
+    { day: "2026-07-14", started: 5, abandoned: 4 },
+    { day: "2026-07-01", started: 30, abandoned: 17 },
+  ];
+  const ev = evaluateOnboardingAbandon(rows, "2026-07-15");
+  assert.equal(ev.state, "alerting");
+  assert.equal(ev.fastCrossing, false);
+});
+
+test("onboarding abandon: fast regression only, healthy rolling average -> alert via fastCrossing", () => {
+  const rows = [
+    { day: "2026-07-15", started: 10, abandoned: 6 },
+    { day: "2026-07-14", started: 10, abandoned: 6 },
+    { day: "2026-07-01", started: 200, abandoned: 20 },
+  ];
+  const ev = evaluateOnboardingAbandon(rows, "2026-07-15");
+  assert.equal(ev.state, "alerting");
+  assert.equal(ev.fastCrossing, true);
+  assert.ok(ev.rollingShare < THRESHOLDS.onboardingAbandon.share, "rolling share must stay healthy");
+  assert.equal(ev.fastStarted, 20);
+  assert.equal(ev.fastAbandoned, 12);
+  assert.equal(ev.fastShare, 0.6, "fast-window share must reflect only the crossing window, not the rolling total");
+});
+
+test("onboarding abandon: screen-attribution drift (missing-screen volume crosses floor) -> alert", () => {
+  const rows = [
+    { day: "2026-07-15", started: 100, abandoned: 0, abandonedRaw: 40, abandonedMissingScreen: 40 },
+  ];
+  const ev = evaluateOnboardingAbandon(rows, "2026-07-15");
+  assert.equal(ev.state, "alerting");
+  assert.equal(ev.attributionDrift, true);
+  assert.equal(ev.totalAbandonedRaw, 40);
+  assert.equal(ev.totalAbandonedMissingScreen, 40);
+});
+
+test("onboarding abandon: low but real missing-screen volume does NOT trip drift (below floor)", () => {
+  const rows = [
+    { day: "2026-07-15", started: 100, abandoned: 0, abandonedRaw: 5, abandonedMissingScreen: 5 },
+  ];
+  const ev = evaluateOnboardingAbandon(rows, "2026-07-15");
+  assert.notEqual(ev.attributionDrift, true);
+});
+
+test("onboarding abandon: legitimate all-welcome concentration does NOT trip drift (Codex r4 false-positive fix)", () => {
+  // Real raw volume, zero passes the "not welcome" filter, but every one of
+  // those events genuinely carries screen = 'welcome' (abandonedMissingScreen
+  // stays 0) — healthy, correctly-tagged data, not schema drift.
+  const rows = [
+    { day: "2026-07-15", started: 100, abandoned: 0, abandonedRaw: 40, abandonedMissingScreen: 0 },
+  ];
+  const ev = evaluateOnboardingAbandon(rows, "2026-07-15");
+  assert.notEqual(ev.attributionDrift, true);
+  assert.equal(ev.state, "evaluated-ok");
+});
+
+// ---- Phase 10 (#1179): onboarding blackout ----
+function baselineDays(startedPerDay) {
+  return ["2026-07-13", "2026-07-12", "2026-07-11", "2026-07-10", "2026-07-09", "2026-07-08", "2026-07-07"].map(
+    (day) => ({ day, started: startedPerDay, completed: Math.max(0, startedPerDay - 2), abandoned: 1 })
+  );
+}
+
+test("onboarding blackout (a): entry point down (active baseline) -> flagged", () => {
+  const rows = baselineDays(10); // avg 10 >= activeBaselineAvg(8), T-1/T-2 absent -> recentStarted 0
+  const ev = evaluateOnboardingBlackout(rows, "2026-07-15");
+  assert.equal(ev.state, "alerting");
+  assert.equal(ev.entryPointDown, true);
+  assert.equal(ev.terminalDrift, false);
+});
+
+test("onboarding blackout (a): inactive baseline -> not flagged", () => {
+  const rows = baselineDays(5); // avg 5 < activeBaselineAvg(8)
+  const ev = evaluateOnboardingBlackout(rows, "2026-07-15");
+  assert.equal(ev.state, "evaluated-ok");
+  assert.equal(ev.entryPointDown, false);
+});
+
+test("onboarding blackout (b): healthy sessions, zero abandons -> not flagged", () => {
+  const rows = [
+    { day: "2026-07-15", started: 10, completed: 10, abandoned: 0 },
+    { day: "2026-07-14", started: 10, completed: 10, abandoned: 0 },
+  ];
+  const ev = evaluateOnboardingBlackout(rows, "2026-07-15");
+  assert.equal(ev.state, "evaluated-ok");
+  assert.equal(ev.terminalDrift, false);
+});
+
+test("onboarding blackout (b): terminal drift (starts continue, no terminal fires) -> flagged", () => {
+  const rows = [{ day: "2026-07-15", started: 10, completed: 0, abandoned: 0, abandonedRaw: 0 }];
+  const ev = evaluateOnboardingBlackout(rows, "2026-07-15");
+  assert.equal(ev.state, "alerting");
+  assert.equal(ev.terminalDrift, true);
+  assert.equal(ev.entryPointDown, false);
+});
+
+test("onboarding blackout (b): screen-attribution drift does NOT falsely present as terminal drift (Codex r6 fix)", () => {
+  // Real abandon events fired (abandonedRaw) but properties.screen dropped,
+  // so the welcome-filtered `abandoned` reads 0 — a terminal event DID fire,
+  // this must not read as "terminal events stopped firing."
+  const rows = [{ day: "2026-07-15", started: 10, completed: 0, abandoned: 0, abandonedRaw: 8 }];
+  const ev = evaluateOnboardingBlackout(rows, "2026-07-15");
+  assert.equal(ev.terminalDrift, false);
+  assert.equal(ev.recentTerminals, 8);
+});
+
+test("onboarding blackout (b): insufficient recent activity -> not flagged", () => {
+  const rows = [{ day: "2026-07-15", started: 5, completed: 0, abandoned: 0 }];
+  const ev = evaluateOnboardingBlackout(rows, "2026-07-15");
+  assert.equal(ev.state, "evaluated-ok");
+  assert.equal(ev.terminalDrift, false);
+});
+
+// ---- Phase 10 (#1179): per-backend transcription ----
+test("backend transcription: Parakeet low volume -> skipped", () => {
+  const perBackendDays = { parakeet: [{ day: "2026-07-15", dictations: 50, fails: 5 }] };
+  const [ev] = evaluateBackendTranscription(perBackendDays, "2026-07-15");
+  assert.equal(ev.backend, "parakeet");
+  assert.equal(ev.state, "skipped-low-volume");
+});
+
+test("backend transcription: catastrophic all-failure fast window -> alert, not suppressed as low volume", () => {
+  const perBackendDays = {
+    parakeet: [
+      { day: "2026-07-15", dictations: 0, fails: 25 },
+      { day: "2026-07-14", dictations: 0, fails: 25 },
+    ],
+  };
+  const [ev] = evaluateBackendTranscription(perBackendDays, "2026-07-15");
+  assert.equal(ev.state, "alerting");
+  assert.equal(ev.fastCrossing, true);
+});
+
+test("backend transcription: WhisperKit at its real-world volume -> correctly evaluated, not skipped", () => {
+  const perBackendDays = {
+    whisperkit: [
+      { day: "2026-07-15", dictations: 35, fails: 2 },
+      { day: "2026-07-14", dictations: 35, fails: 2 },
+      { day: "2026-06-20", dictations: 400, fails: 20 },
+    ],
+  };
+  const [ev] = evaluateBackendTranscription(perBackendDays, "2026-07-15");
+  assert.equal(ev.state, "evaluated-ok");
+});
+
+test("backend transcription: one backend regresses, the other doesn't", () => {
+  const perBackendDays = {
+    parakeet: [{ day: "2026-07-15", dictations: 300, fails: 5 }],
+    whisperkit: [{ day: "2026-07-15", dictations: 250, fails: 150 }],
+  };
+  const evs = evaluateBackendTranscription(perBackendDays, "2026-07-15");
+  const parakeet = evs.find((e) => e.backend === "parakeet");
+  const whisperkit = evs.find((e) => e.backend === "whisperkit");
+  assert.equal(parakeet.state, "evaluated-ok");
+  assert.equal(whisperkit.state, "alerting");
+});
+
+test("backend transcription: fast-path regression, backend-scoped", () => {
+  const perBackendDays = {
+    parakeet: [
+      { day: "2026-07-15", dictations: 10, fails: 15 },
+      { day: "2026-07-14", dictations: 10, fails: 15 },
+    ],
+  };
+  const [ev] = evaluateBackendTranscription(perBackendDays, "2026-07-15");
+  assert.equal(ev.state, "alerting");
+  assert.equal(ev.fastCrossing, true);
+  assert.equal(ev.fastAttempts, 50);
+  assert.equal(ev.fastFails, 30);
+  assert.equal(ev.fastShare, 0.6, "fast-window share must reflect only the crossing window, not the rolling total");
+});
+
+test("backend transcription: anti-masking, active backend with zero failures stays visible", () => {
+  const perBackendDays = { onlybackend: [{ day: "2026-07-15", dictations: 250, fails: 0 }] };
+  const evs = evaluateBackendTranscription(perBackendDays, "2026-07-15");
+  assert.equal(evs.length, 1);
+  assert.equal(evs[0].backend, "onlybackend");
+  assert.equal(evs[0].state, "evaluated-ok");
+  assert.equal(evs[0].fails, 0);
+});
+
+test("backend transcription: attribution drift, unknown backend with material volume -> alert", () => {
+  const perBackendDays = { unknown: [{ day: "2026-07-15", dictations: 250, fails: 20 }] };
+  const [ev] = evaluateBackendTranscription(perBackendDays, "2026-07-15");
+  assert.equal(ev.state, "alerting");
+  assert.equal(ev.attributionDrift, true);
+});
+
+test("backend transcription: unknown backend with trivial volume does NOT trip drift (below minAttempts)", () => {
+  const perBackendDays = { unknown: [{ day: "2026-07-15", dictations: 5, fails: 0 }] };
+  const [ev] = evaluateBackendTranscription(perBackendDays, "2026-07-15");
+  assert.notEqual(ev.attributionDrift, true);
+});
+
+// ---- message: Phase 10 additions ----
+test("message: H1 static pointer appears every run", () => {
+  const msg = buildMessage(results());
+  assert.match(msg, /Sentry's own alert rules/);
+  assert.match(msg, /Error Spike >5\/hr/);
+});
+
+test("message: onboarding-abandon alert renders and is not double-counted as evaluated", () => {
+  const msg = buildMessage(
+    results({
+      onboardingAbandon: {
+        state: "alerting", fastCrossing: true, fastStarted: 10, fastAbandoned: 6, fastShare: 0.6,
+        rollingShare: 0.145, totalStarted: 220, totalAbandoned: 32,
+      },
+    })
+  );
+  assert.match(msg, /onboarding abandon 60\.0%/);
+  assert.ok(!msg.includes("Evaluated: onboarding-abandon"));
+});
+
+test("message: onboarding-abandon fast crossing does not report the healthy rolling rate", () => {
+  const msg = buildMessage(
+    results({
+      onboardingAbandon: {
+        state: "alerting", fastCrossing: true, fastStarted: 10, fastAbandoned: 6, fastShare: 0.6,
+        rollingShare: 0.145, totalStarted: 220, totalAbandoned: 32,
+      },
+    })
+  );
+  assert.match(msg, /fast 2-day crossing/);
+  assert.ok(!msg.includes("14.5%"), "must not display the healthy rolling share when the fast path fired");
+});
+
+test("message: onboarding-abandon rolling crossing reports the rolling window", () => {
+  const msg = buildMessage(
+    results({
+      onboardingAbandon: { state: "alerting", fastCrossing: false, rollingShare: 0.6, totalStarted: 40, totalAbandoned: 24 },
+    })
+  );
+  assert.match(msg, /rolling crossing/);
+  assert.match(msg, /60\.0%/);
+});
+
+test("message: per-backend transcription alerts name the backend and skip clean backends", () => {
+  const msg = buildMessage(
+    results({
+      backendTranscription: [
+        { backend: "parakeet", state: "evaluated-ok", rollingShare: 0.02, fastCrossing: false, fails: 5, dictations: 300, attempts: 305 },
+        { backend: "whisperkit", state: "alerting", rollingShare: 0.3, fastCrossing: false, fails: 60, dictations: 140, attempts: 200 },
+      ],
+    })
+  );
+  assert.match(msg, /whisperkit transcription failure 30\.0%/);
+  assert.ok(!msg.includes("parakeet transcription failure"));
+  assert.match(msg, /Evaluated:.*transcription-parakeet/);
+});
+
+test("message: empty per-backend result during genuine low volume reports skipped, not silence (Codex r5 fix)", () => {
+  const msg = buildMessage(
+    results({ backendTranscription: [], backendAttributionBlackout: false })
+  );
+  assert.match(msg, /Skipped \(low volume\):.*transcription-backend/);
+  assert.ok(!msg.includes("attribution blackout"));
+});
+
+test("message: onboarding-blackout entry-point-down and terminal-drift render distinct wording", () => {
+  const entryDown = buildMessage(
+    results({ onboardingBlackout: { state: "alerting", entryPointDown: true, terminalDrift: false, recentStarted: 0, recentTerminals: 0, baselineAvg: 12 } })
+  );
+  assert.match(entryDown, /onboarding entry point down/);
+
+  const terminalDrift = buildMessage(
+    results({ onboardingBlackout: { state: "alerting", entryPointDown: false, terminalDrift: true, recentStarted: 10, recentTerminals: 0, baselineAvg: 12 } })
+  );
+  assert.match(terminalDrift, /onboarding terminal drift/);
+  assert.ok(!terminalDrift.includes("entry point down"));
+});
+
+test("message: many simultaneous alerts drop whole alerts from the end, never the dashboard link", () => {
+  // Manufacture enough alerting metrics that the naive character slice would
+  // have cut mid-alert (Codex review finding) — assert the dashboard link and
+  // heartbeat always survive, and any drop is announced, never silent.
+  const longVersion = "v9.9.9-a-very-long-version-identifier-to-pad-the-message-length-out";
+  const backendTranscription = Array.from({ length: 20 }, (_, i) => ({
+    backend: `backend-${i}-${longVersion}`,
+    state: "alerting",
+    fastCrossing: false,
+    rollingShare: 0.5,
+    fails: 500,
+    dictations: 500,
+    attempts: 1000,
+  }));
+  const msg = buildMessage(results({ backendTranscription }));
+  assert.ok(msg.length <= 2000, `message must respect the Discord cap, got ${msg.length}`);
+  assert.match(msg, /https:\/\/us\.posthog\.com\/project\/\d+\/dashboard\/\d+/, "dashboard link must always survive truncation");
+  if (msg.includes("more alert(s) omitted")) {
+    assert.match(msg, /\d+ more alert\(s\) omitted; see dashboard/);
+  }
+});
+
+test("message: onboarding screen-attribution drift renders distinct wording, no version attribution", () => {
+  const msg = buildMessage(
+    results({
+      onboardingAbandon: { state: "alerting", attributionDrift: true, fastCrossing: false, totalStarted: 100, totalAbandoned: 0, totalAbandonedRaw: 40, totalAbandonedMissingScreen: 40 },
+    }),
+    [], [{ ver: "v2.1.4", onboarding_abandon: 40 }]
+  );
+  assert.match(msg, /onboarding abandon attribution lost/);
+  assert.match(msg, /40 of 40 onboarding\.abandoned events/);
+  assert.ok(!msg.includes("v2.1.4"), "attribution-drift alert must not attach version data to a broken denominator");
+});
+
+test("message: backend attribution drift (unknown backend) renders distinct wording", () => {
+  const msg = buildMessage(
+    results({
+      backendTranscription: [
+        { backend: "unknown", state: "alerting", attributionDrift: true, fastCrossing: false, fails: 20, dictations: 250, attempts: 270 },
+      ],
+    })
+  );
+  assert.match(msg, /transcription backend attribution lost/);
+});
+
+test("message: backend attribution blackout (empty result set) renders and alerts", () => {
+  const msg = buildMessage(results({ backendTranscription: [], backendAttributionBlackout: true }));
+  assert.match(msg, /transcription backend attribution blackout/);
+  assert.match(msg, /health - ALERT/);
+});
+
+test("message: fast-crossing alerts omit version attribution (window mismatch, Codex review finding)", () => {
+  const onboardingMsg = buildMessage(
+    results({ onboardingAbandon: { state: "alerting", fastCrossing: true, fastStarted: 10, fastAbandoned: 6, fastShare: 0.6, rollingShare: 0.1, totalStarted: 300, totalAbandoned: 30 } }),
+    [], [{ ver: "v2.1.4", onboarding_abandon: 40 }]
+  );
+  assert.ok(!onboardingMsg.includes("v2.1.4"), "a fast (2-day) crossing must not attribute to a 21-day version query");
+
+  const backendMsg = buildMessage(
+    results({
+      backendTranscription: [
+        { backend: "parakeet", state: "alerting", fastCrossing: true, fastFails: 20, fastDictations: 10, fastAttempts: 30, fastShare: 0.67, rollingShare: 0.05, fails: 50, dictations: 950, attempts: 1000 },
+      ],
+    }),
+    [], [], [{ ver: "v2.1.4", backend: "parakeet", backend_trans_fail: 40 }]
+  );
+  assert.ok(!backendMsg.includes("v2.1.4"), "a fast (2-day) crossing must not attribute to a 14-day version query");
 });

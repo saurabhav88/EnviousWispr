@@ -13,6 +13,9 @@ import {
   evaluateAFM,
   evaluateTranscription,
   evaluateVolume,
+  evaluateOnboardingAbandon,
+  evaluateBackendTranscription,
+  evaluateOnboardingBlackout,
   buildMessage,
 } from "./src/index.js";
 
@@ -36,10 +39,13 @@ if (!data.latencyDays.length) fail("latency query returned no days");
 if (!data.volumeDays.length) fail("volume query returned no days");
 if (!(Number(data.seven.dictations_7d) > 0)) fail("7d dictations is zero - filter or window bug");
 if (!(Number(data.seven.paste_total) > 0)) fail("7d paste_total is zero - filter or window bug");
+if (!data.onboardingDays.length) fail("onboarding query returned no days");
+if (!Object.keys(data.backendTranscriptionDays).length) fail("backend transcription query returned no backends");
 // fallback_reason is expected all-null pre-release: afm_fr_rows may be 0.
 console.log("columns OK; denominators non-zero.");
 console.log("7d:", JSON.stringify(data.seven));
 console.log("latency days:", data.latencyDays.length, "volume days:", data.volumeDays.length);
+console.log("onboarding days:", data.onboardingDays.length, "backends:", Object.keys(data.backendTranscriptionDays));
 console.log("afm_fr_rows (expect 0 pre-release):", data.seven.afm_fr_rows);
 
 const results = {
@@ -48,8 +54,16 @@ const results = {
   afm: evaluateAFM(data.seven),
   transcription: evaluateTranscription(data.seven),
   volume: evaluateVolume(data.volumeDays, data.t1ref),
+  onboardingAbandon: evaluateOnboardingAbandon(data.onboardingDays, data.t1ref),
+  backendTranscription: evaluateBackendTranscription(data.backendTranscriptionDays, data.t1ref),
+  onboardingBlackout: evaluateOnboardingBlackout(data.onboardingDays, data.t1ref),
 };
 console.log("t1ref (PostHog clock):", data.t1ref);
-console.log("\nstates:", Object.fromEntries(Object.entries(results).map(([k, v]) => [k, v.state])));
+console.log(
+  "\nstates:",
+  Object.fromEntries(
+    Object.entries(results).map(([k, v]) => [k, Array.isArray(v) ? v.map((row) => `${row.backend}:${row.state}`) : v.state])
+  )
+);
 console.log("\n--- heartbeat preview (NOT posted) ---");
-console.log(buildMessage(results, data.versions));
+console.log(buildMessage(results, data.versions, data.onboardingVersions, data.backendVersions));
