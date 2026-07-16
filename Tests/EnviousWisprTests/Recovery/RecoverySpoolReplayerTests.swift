@@ -71,15 +71,20 @@ struct RecoverySpoolReplayerTests {
     func cancelInFlightLoad() {}
   }
 
-  /// Thread-safe telemetry capture (the hook is `@Sendable`, process-global).
-  final class TelemetryBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stored: [CapturedTelemetryEvent] = []
-    func add(_ e: CapturedTelemetryEvent) { lock.withLock { stored.append(e) } }
-    func recoveryEvents() -> [CapturedTelemetryEvent] {
-      lock.withLock { stored.filter { $0.name == "recovery.completed" } }
+  #if DEBUG
+    /// Thread-safe telemetry capture (the hook is `@Sendable`, process-global).
+    /// `CapturedTelemetryEvent` + `testEventHook` are DEBUG-only, so everything that
+    /// touches them is gated — the Release test-target compile (build-check,
+    /// ENABLE_TESTABILITY without DEBUG) must not reference them.
+    final class TelemetryBox: @unchecked Sendable {
+      private let lock = NSLock()
+      private var stored: [CapturedTelemetryEvent] = []
+      func add(_ e: CapturedTelemetryEvent) { lock.withLock { stored.append(e) } }
+      func recoveryEvents() -> [CapturedTelemetryEvent] {
+        lock.withLock { stored.filter { $0.name == "recovery.completed" } }
+      }
     }
-  }
+  #endif
 
   private static func tempDir() -> URL {
     let dir = FileManager.default.temporaryDirectory
@@ -161,17 +166,19 @@ struct RecoverySpoolReplayerTests {
     await withCheckedContinuation { c in writer.finalize(reason: .cleanFinalized) { c.resume() } }
   }
 
-  /// Set the process-global telemetry hook for the duration of `body`, capturing
-  /// every emission. Restores the hook after (the suite is `.serialized`).
-  private static func capturingTelemetry(
-    _ body: () async throws -> Void
-  ) async rethrows -> TelemetryBox {
-    let box = TelemetryBox()
-    TelemetryService.shared.testEventHook = { @Sendable e in box.add(e) }
-    defer { TelemetryService.shared.testEventHook = nil }
-    try await body()
-    return box
-  }
+  #if DEBUG
+    /// Set the process-global telemetry hook for the duration of `body`, capturing
+    /// every emission. Restores the hook after (the suite is `.serialized`).
+    private static func capturingTelemetry(
+      _ body: () async throws -> Void
+    ) async rethrows -> TelemetryBox {
+      let box = TelemetryBox()
+      TelemetryService.shared.testEventHook = { @Sendable e in box.add(e) }
+      defer { TelemetryService.shared.testEventHook = nil }
+      try await body()
+      return box
+    }
+  #endif
 
   @Test("happy path: orphan recovered → saved as isRecovered; replayer does NOT delete")
   func happyPath() async throws {
@@ -307,72 +314,79 @@ struct RecoverySpoolReplayerTests {
   }
 
   // MARK: - #1464 root-cause telemetry
+  // Gated on DEBUG: these read emissions through `testEventHook` (DEBUG-only), so
+  // the Release test-target compile (build-check) never references it.
+  #if DEBUG
 
-  @Test("missing-key failure emits key_missing and OMITS audio_decrypted / camp_b_candidate")
-  func telemetryKeyMissingOmitsDecrypt() async throws {
-    let h = Self.makeHarness()
-    let id = "tel-nokey-\(UUID().uuidString)"
-    try await Self.seedSpool(h, id: id, samples: [0.6])
-    try h.keyStore.delete(for: id)
-    let box = await Self.capturingTelemetry {
-      _ = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+    @Test("missing-key failure emits key_missing and OMITS audio_decrypted / camp_b_candidate")
+    func telemetryKeyMissingOmitsDecrypt() async throws {
+      let h = Self.makeHarness()
+      let id = "tel-nokey-\(UUID().uuidString)"
+      try await Self.seedSpool(h, id: id, samples: [0.6])
+      try h.keyStore.delete(for: id)
+      let box = await Self.capturingTelemetry {
+        _ = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+      }
+      let e = try #require(box.recoveryEvents().first)
+      #expect(e.stringProps["outcome"] == "failed")
+      #expect(e.stringProps["reason"] == "key_missing")
+      #expect(
+        e.boolProps["audio_decrypted"] == nil, "not reconstructed ⇒ never emit audio_decrypted")
+      #expect(e.boolProps["camp_b_candidate"] == nil)
+      #expect(e.stringProps["spool_seconds_bucket"] == nil)
     }
-    let e = try #require(box.recoveryEvents().first)
-    #expect(e.stringProps["outcome"] == "failed")
-    #expect(e.stringProps["reason"] == "key_missing")
-    #expect(e.boolProps["audio_decrypted"] == nil, "not reconstructed ⇒ never emit audio_decrypted")
-    #expect(e.boolProps["camp_b_candidate"] == nil)
-    #expect(e.stringProps["spool_seconds_bucket"] == nil)
-  }
 
-  @Test("transcribe failure on good audio is a Camp B candidate with a failure class")
-  func telemetryTranscribeFailIsCampBCandidate() async throws {
-    let h = Self.makeHarness()
-    let id = "tel-xpc-\(UUID().uuidString)"
-    try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
-    h.asr.transcribeError = XPCASRTransportError.serviceUnreachable
-    let box = await Self.capturingTelemetry {
-      _ = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+    @Test("transcribe failure on good audio is a Camp B candidate with a failure class")
+    func telemetryTranscribeFailIsCampBCandidate() async throws {
+      let h = Self.makeHarness()
+      let id = "tel-xpc-\(UUID().uuidString)"
+      try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
+      h.asr.transcribeError = XPCASRTransportError.serviceUnreachable
+      let box = await Self.capturingTelemetry {
+        _ = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+      }
+      let e = try #require(box.recoveryEvents().first)
+      #expect(e.stringProps["outcome"] == "failed")
+      #expect(e.stringProps["reason"] == "transcribe_error")
+      #expect(e.stringProps["failure_class"] == "xpc_unreachable")
+      #expect(e.boolProps["audio_decrypted"] == true, "reconstruction succeeded ⇒ audio_decrypted")
+      #expect(
+        e.boolProps["camp_b_candidate"] == true, "good audio, failed transcribe ⇒ camp B candidate")
+      #expect(
+        e.stringProps["spool_seconds_bucket"] != nil, "bucket derived from reconstructed count")
+      // Privacy: never a raw NSError domain/code/description on the wire.
+      #expect(e.stringProps["domain"] == nil && e.intProps["code"] == nil)
+      #expect(e.stringProps.values.allSatisfy { !$0.contains("serviceUnreachable") })
     }
-    let e = try #require(box.recoveryEvents().first)
-    #expect(e.stringProps["outcome"] == "failed")
-    #expect(e.stringProps["reason"] == "transcribe_error")
-    #expect(e.stringProps["failure_class"] == "xpc_unreachable")
-    #expect(e.boolProps["audio_decrypted"] == true, "reconstruction succeeded ⇒ audio_decrypted")
-    #expect(
-      e.boolProps["camp_b_candidate"] == true, "good audio, failed transcribe ⇒ camp B candidate")
-    #expect(e.stringProps["spool_seconds_bucket"] != nil, "bucket derived from reconstructed count")
-    // Privacy: never a raw NSError domain/code/description on the wire.
-    #expect(e.stringProps["domain"] == nil && e.intProps["code"] == nil)
-    #expect(e.stringProps.values.allSatisfy { !$0.contains("serviceUnreachable") })
-  }
 
-  @Test("deferred (attempt-marker write failed) emits marker_write_failed")
-  func telemetryDeferredEmitsMarkerWriteFailed() async throws {
-    // A spool dir whose PARENT is a regular FILE: the store's re-enforced mkdir is a
-    // soft no-op, but `writeAttemptMarker` can't open its temp file → the replay
-    // defers BEFORE any risky work, so no seeded spool is needed. (chmod-based
-    // read-only can't force this — the store re-chmods the dir to 0700 on init.)
-    let blocker = Self.tempDir().appendingPathComponent("blocker")
-    try Data([0]).write(to: blocker)
-    let badSpoolDir = blocker.appendingPathComponent("spools", isDirectory: true)
-    let transcriptStore = TranscriptStore(directory: Self.tempDir())
-    let replayer = RecoverySpoolReplayer(
-      asrManager: FakeBatchASR(),
-      keyStore: RecoveryKeyStore(backend: .file, fileDirectory: Self.tempDir()),
-      makeSpoolStore: { RecoverySpoolStore(directory: badSpoolDir) },
-      transcriptStore: transcriptStore,
-      transcriptCoordinator: TranscriptCoordinator(store: transcriptStore),
-      keychainManager: KeychainManager(),
-      outputClassifierHolder: OutputClassifierHolder(),
-      currentVocabulary: { (.empty, .empty) })
-    let id = "tel-defer-\(UUID().uuidString)"
-    let box = await Self.capturingTelemetry {
-      let outcome = await replayer.replay(recoverySessionID: id, isAborted: { false })
-      #expect(outcome == .deferred)
+    @Test("deferred (attempt-marker write failed) emits marker_write_failed")
+    func telemetryDeferredEmitsMarkerWriteFailed() async throws {
+      // A spool dir whose PARENT is a regular FILE: the store's re-enforced mkdir is a
+      // soft no-op, but `writeAttemptMarker` can't open its temp file → the replay
+      // defers BEFORE any risky work, so no seeded spool is needed. (chmod-based
+      // read-only can't force this — the store re-chmods the dir to 0700 on init.)
+      let blocker = Self.tempDir().appendingPathComponent("blocker")
+      try Data([0]).write(to: blocker)
+      let badSpoolDir = blocker.appendingPathComponent("spools", isDirectory: true)
+      let transcriptStore = TranscriptStore(directory: Self.tempDir())
+      let replayer = RecoverySpoolReplayer(
+        asrManager: FakeBatchASR(),
+        keyStore: RecoveryKeyStore(backend: .file, fileDirectory: Self.tempDir()),
+        makeSpoolStore: { RecoverySpoolStore(directory: badSpoolDir) },
+        transcriptStore: transcriptStore,
+        transcriptCoordinator: TranscriptCoordinator(store: transcriptStore),
+        keychainManager: KeychainManager(),
+        outputClassifierHolder: OutputClassifierHolder(),
+        currentVocabulary: { (.empty, .empty) })
+      let id = "tel-defer-\(UUID().uuidString)"
+      let box = await Self.capturingTelemetry {
+        let outcome = await replayer.replay(recoverySessionID: id, isAborted: { false })
+        #expect(outcome == .deferred)
+      }
+      let e = try #require(box.recoveryEvents().first)
+      #expect(e.stringProps["outcome"] == "deferred")
+      #expect(e.stringProps["reason"] == "marker_write_failed")
     }
-    let e = try #require(box.recoveryEvents().first)
-    #expect(e.stringProps["outcome"] == "deferred")
-    #expect(e.stringProps["reason"] == "marker_write_failed")
-  }
+
+  #endif
 }
