@@ -27,6 +27,13 @@ export const THRESHOLDS = {
   afm: { minFrRows: 50, minDiscards: 10, share: 0.15 },
   transcription: { minDictations: 200, share: 0.05 },
   volume: { activeBaselineAvg: 20 },
+  // Phase 10 (#1179): calibrated 2026-07-15 against real 21d/14d baselines
+  // (see plan section 1). onboardingAbandon/backendTranscription each carry a
+  // rolling share/minN pair AND a fast-path pair (2-day sustained crossing,
+  // checked first and independently — canonical contract O1/B1 in the plan).
+  onboardingAbandon: { minStarted: 30, share: 0.5, fastMinStarted: 8, fastDays: 2 },
+  backendTranscription: { minAttempts: 200, share: 0.08, fastMinAttempts: 20, fastDays: 2 },
+  onboardingBlackout: { recentDays: 2, baselineDays: 7, activeBaselineAvg: 8, terminalMinStarted: 8 },
 };
 
 export default {
@@ -144,13 +151,67 @@ export async function fetchHealth(env) {
   // must look T-1 up by date rather than trust the newest row.
   const refSql = `SELECT toString(toDate(toStartOfDay(now()) - INTERVAL 1 DAY)) AS t1`;
 
-  const [latency, seven, volume, versions, ref] = await Promise.all([
-    hogql(env, latencySql),
-    hogql(env, sevenDaySql),
-    hogql(env, volumeSql),
-    hogql(env, versionSql),
-    hogql(env, refSql),
-  ]);
+  // 5) Phase 10 (#1179): per-day onboarding funnel, 21 complete days (covers
+  //    the rolling baseline AND the fast path AND the blackout's 9-day need).
+  const onboardingSql = `
+    SELECT toDate(timestamp) AS day,
+           countIf(event = 'onboarding.started') AS started,
+           countIf(event = 'onboarding.completed') AS completed,
+           countIf(event = 'onboarding.abandoned') AS abandoned
+    FROM events
+    WHERE ${PROD}
+      AND event IN ('onboarding.started', 'onboarding.completed', 'onboarding.abandoned')
+      AND timestamp >= ${DAY} - INTERVAL 21 DAY AND timestamp < ${DAY}
+    GROUP BY day ORDER BY day DESC`;
+
+  // 6) Phase 10 (#1179): per-day, per-backend transcription attempts, 14
+  //    complete days. Backend enumeration comes from EITHER event's backend
+  //    tag (dictation.completed's asr_backend, pipeline.failed's backend) —
+  //    canonical contract B2: an active backend with zero matching failures
+  //    still gets a row (fails: 0), never silently drops.
+  const backendTranscriptionSql = `
+    SELECT toDate(timestamp) AS day,
+           coalesce(properties.asr_backend, properties.backend) AS backend,
+           countIf(event = 'dictation.completed') AS dictations,
+           countIf(event = 'pipeline.failed' AND properties.stage = 'transcription') AS fails
+    FROM events
+    WHERE ${PROD}
+      AND ((event = 'dictation.completed')
+        OR (event = 'pipeline.failed' AND properties.stage = 'transcription'))
+      AND timestamp >= ${DAY} - INTERVAL 14 DAY AND timestamp < ${DAY}
+    GROUP BY day, backend ORDER BY day DESC`;
+
+  // 7) Phase 10 (#1179) per-release segmentation, matching each metric's own
+  //    window (§3 Design "Per-release segmentation").
+  const onboardingVersionSql = `
+    SELECT properties.app_version AS ver,
+           countIf(event = 'onboarding.abandoned') AS onboarding_abandon
+    FROM events
+    WHERE ${PROD} AND event = 'onboarding.abandoned'
+      AND timestamp >= ${DAY} - INTERVAL 21 DAY AND timestamp < ${DAY}
+    GROUP BY ver ORDER BY onboarding_abandon DESC LIMIT 5`;
+
+  const backendVersionSql = `
+    SELECT properties.app_version AS ver,
+           properties.backend AS backend,
+           countIf(event = 'pipeline.failed' AND properties.stage = 'transcription') AS backend_trans_fail
+    FROM events
+    WHERE ${PROD} AND event = 'pipeline.failed' AND properties.stage = 'transcription'
+      AND timestamp >= ${DAY} - INTERVAL 14 DAY AND timestamp < ${DAY}
+    GROUP BY ver, backend ORDER BY backend_trans_fail DESC LIMIT 10`;
+
+  const [latency, seven, volume, versions, ref, onboarding, backendTranscription, onboardingVersions, backendVersions] =
+    await Promise.all([
+      hogql(env, latencySql),
+      hogql(env, sevenDaySql),
+      hogql(env, volumeSql),
+      hogql(env, versionSql),
+      hogql(env, refSql),
+      hogql(env, onboardingSql),
+      hogql(env, backendTranscriptionSql),
+      hogql(env, onboardingVersionSql),
+      hogql(env, backendVersionSql),
+    ]);
 
   return {
     latencyDays: rowsToObjects(latency),
@@ -158,7 +219,20 @@ export async function fetchHealth(env) {
     volumeDays: rowsToObjects(volume),
     versions: rowsToObjects(versions),
     t1ref: (rowsToObjects(ref)[0] || {}).t1,
+    onboardingDays: rowsToObjects(onboarding),
+    backendTranscriptionDays: groupByBackend(rowsToObjects(backendTranscription)),
+    onboardingVersions: rowsToObjects(onboardingVersions),
+    backendVersions: rowsToObjects(backendVersions),
   };
+}
+
+function groupByBackend(rows) {
+  const grouped = {};
+  for (const row of rows) {
+    const backend = row.backend || "unknown";
+    (grouped[backend] || (grouped[backend] = [])).push(row);
+  }
+  return grouped;
 }
 
 function rowsToObjects(res) {
@@ -249,6 +323,93 @@ export function evaluateVolume(days, expectedT1, TH = THRESHOLDS.volume) {
   };
 }
 
+// Reconstructs `count` TRUE calendar days ending at `expectedT1`, filling any
+// day with zero events (which emits no row at all — same gap evaluateVolume's
+// own t1ref lookup already works around) with an empty stub rather than
+// silently skipping it.
+function completeDayWindow(rows, expectedT1, count) {
+  const byDay = new Map(rows.map((row) => [String(row.day), row]));
+  const end = new Date(`${expectedT1}T00:00:00Z`);
+  return Array.from({ length: count }, (_, index) => {
+    const day = new Date(end);
+    day.setUTCDate(day.getUTCDate() - index);
+    const key = day.toISOString().slice(0, 10);
+    return byDay.get(key) || { day: key };
+  });
+}
+
+export function evaluateOnboardingAbandon(rows, expectedT1, TH = THRESHOLDS.onboardingAbandon) {
+  // rows: per-day {day, started, abandoned}, any order — mirrors evaluateLatency's `days` shape.
+  const totalStarted = rows.reduce((sum, row) => sum + num(row.started), 0);
+  const totalAbandoned = rows.reduce((sum, row) => sum + num(row.abandoned), 0);
+
+  // Fast path checked FIRST and independently — see canonical contract O1.
+  const fastRows = completeDayWindow(rows, expectedT1, TH.fastDays);
+  const fastCrossing = fastRows.every((row) => {
+    const started = num(row.started);
+    return started >= TH.fastMinStarted && num(row.abandoned) / started > TH.share;
+  });
+  if (fastCrossing) {
+    return { state: "alerting", rollingShare: totalStarted > 0 ? totalAbandoned / totalStarted : 0,
+      fastCrossing: true, totalStarted, totalAbandoned };
+  }
+
+  if (totalStarted < TH.minStarted) {
+    return { state: "skipped-low-volume", fastCrossing: false, totalStarted, totalAbandoned };
+  }
+  const rollingShare = totalAbandoned / totalStarted;
+  return { state: rollingShare > TH.share ? "alerting" : "evaluated-ok",
+    rollingShare, fastCrossing: false, totalStarted, totalAbandoned };
+}
+
+export function evaluateBackendTranscription(perBackendDays, expectedT1, TH = THRESHOLDS.backendTranscription) {
+  // perBackendDays: { [backend]: per-day {day, fails, dictations} rows } —
+  // backend enumeration: see canonical contract B2.
+  return Object.entries(perBackendDays).map(([backend, rows]) => {
+    const dictations = rows.reduce((sum, row) => sum + num(row.dictations), 0);
+    const fails = rows.reduce((sum, row) => sum + num(row.fails), 0);
+    const attempts = dictations + fails;
+
+    const fastRows = completeDayWindow(rows, expectedT1, TH.fastDays);
+    const fastCrossing = fastRows.every((row) => {
+      const dayDictations = num(row.dictations);
+      const dayFails = num(row.fails);
+      const dayAttempts = dayDictations + dayFails;
+      return dayAttempts >= TH.fastMinAttempts && dayFails / dayAttempts > TH.share;
+    });
+    const rollingShare = attempts > 0 ? fails / attempts : 0;
+    if (fastCrossing) {
+      return { backend, state: "alerting", rollingShare, fastCrossing: true, fails, dictations, attempts };
+    }
+
+    if (attempts < TH.minAttempts) {
+      return { backend, state: "skipped-low-volume", fastCrossing: false, fails, dictations, attempts };
+    }
+    return { backend, state: rollingShare > TH.share ? "alerting" : "evaluated-ok",
+      rollingShare, fastCrossing: false, fails, dictations, attempts };
+  }).sort((a, b) => a.backend.localeCompare(b.backend));
+}
+
+export function evaluateOnboardingBlackout(rows, expectedT1, TH = THRESHOLDS.onboardingBlackout) {
+  const recent = completeDayWindow(rows, expectedT1, TH.recentDays);
+  const baselineEnd = new Date(`${expectedT1}T00:00:00Z`);
+  baselineEnd.setUTCDate(baselineEnd.getUTCDate() - TH.recentDays);
+  const baseline = completeDayWindow(rows, baselineEnd.toISOString().slice(0, 10), TH.baselineDays);
+
+  const recentStarted = recent.reduce((sum, row) => sum + num(row.started), 0);
+  const recentTerminals = recent.reduce((sum, row) => sum + num(row.completed) + num(row.abandoned), 0);
+  const baselineAvg = baseline.reduce((sum, row) => sum + num(row.started), 0) / TH.baselineDays;
+
+  // (a) Entry point itself broke: zero starts against a real trailing baseline.
+  const entryPointDown = recentStarted === 0 && baselineAvg >= TH.activeBaselineAvg;
+  // (b) Terminal events stopped firing despite starts continuing (schema drift) —
+  // NOT "nobody abandoned" (a low/zero abandon count with healthy completions is GOOD).
+  const terminalDrift = recentStarted >= TH.terminalMinStarted && recentTerminals === 0;
+
+  return { state: entryPointDown || terminalDrift ? "alerting" : "evaluated-ok",
+    entryPointDown, terminalDrift, recentStarted, recentTerminals, baselineAvg };
+}
+
 function num(v) {
   const n = typeof v === "string" ? parseFloat(v) : v;
   return Number.isFinite(n) ? n : 0;
@@ -258,18 +419,19 @@ function pct(x) {
   return (x * 100).toFixed(1) + "%";
 }
 
-function topVersionsFor(versions, key) {
+function topVersionsFor(versions, key, { backend = null, limit = 3 } = {}) {
   return versions
-    .filter((v) => num(v[key]) > 0)
+    .filter((row) => backend == null || row.backend === backend)
+    .filter((row) => num(row[key]) > 0)
     .sort((a, b) => num(b[key]) - num(a[key]))
-    .slice(0, 3)
-    .map((v) => `${v.ver || "unknown"}: ${num(v[key])}`)
+    .slice(0, limit)
+    .map((row) => `${row.ver || "unknown"}: ${num(row[key])}`)
     .join(", ");
 }
 
 // ----- Message ------------------------------------------------------------
 
-export function buildMessage(r, versions = []) {
+export function buildMessage(r, versions = [], onboardingVersions = [], backendVersions = []) {
   const alerts = [];
   const evaluated = [];
   const skipped = [];
@@ -325,6 +487,60 @@ export function buildMessage(r, versions = []) {
   }
   note("transcription", r.transcription);
 
+  // Onboarding abandon (Phase 10, #1179)
+  if (r.onboardingAbandon) {
+    if (r.onboardingAbandon.state === "alerting") {
+      const tv = topVersionsFor(onboardingVersions, "onboarding_abandon");
+      const rate = pct(r.onboardingAbandon.rollingShare);
+      const via = r.onboardingAbandon.fastCrossing ? "fast 2-day crossing" : "rolling 21-day crossing";
+      alerts.push(
+        `onboarding abandon ${rate} (${r.onboardingAbandon.totalAbandoned}/${r.onboardingAbandon.totalStarted}, ` +
+        `prev 21d, via ${via}), threshold >${pct(THRESHOLDS.onboardingAbandon.share)}, baseline ~37%.` +
+        (tv ? ` Top versions ${tv}.` : "")
+      );
+    }
+    note("onboarding-abandon", r.onboardingAbandon);
+  }
+
+  // Per-backend transcription (Phase 10, #1179)
+  if (r.backendTranscription) {
+    for (const row of r.backendTranscription) {
+      if (row.state === "alerting") {
+        const tv = topVersionsFor(backendVersions, "backend_trans_fail", { backend: row.backend });
+        const rate = pct(row.rollingShare);
+        const via = row.fastCrossing ? "fast 2-day crossing" : "rolling 14-day crossing";
+        alerts.push(
+          `${row.backend} transcription failure ${rate} (${row.fails}/${row.attempts}, prev 14d, via ${via}), ` +
+          `threshold >${pct(THRESHOLDS.backendTranscription.share)}.` + (tv ? ` Top versions ${tv}.` : "")
+        );
+      }
+      note(`transcription-${row.backend}`, row);
+    }
+  }
+
+  // Onboarding blackout (Phase 10, #1179) — evaluated-ok/alerting only, no
+  // low-volume/dark states, so it participates in `note()`'s evaluated bucket
+  // like the rate metrics, but can never land in skipped/dark.
+  if (r.onboardingBlackout) {
+    if (r.onboardingBlackout.state === "alerting") {
+      if (r.onboardingBlackout.entryPointDown) {
+        alerts.push(
+          `onboarding entry point down: 0 starts over the trailing 48h while the 7-day ` +
+          `baseline average is ${r.onboardingBlackout.baselineAvg.toFixed(1)}/day ` +
+          `(possible onboarding-screen crash or telemetry blackout).`
+        );
+      }
+      if (r.onboardingBlackout.terminalDrift) {
+        alerts.push(
+          `onboarding terminal drift: ${r.onboardingBlackout.recentStarted} starts over the trailing 48h ` +
+          `but neither onboarding.completed nor onboarding.abandoned fired ` +
+          `(a terminal event may have stopped emitting).`
+        );
+      }
+    }
+    note("onboarding-blackout", r.onboardingBlackout);
+  }
+
   // Volume / integrity
   if (r.volume.state === "alerting") {
     if (r.volume.zeroAlert) {
@@ -354,7 +570,10 @@ export function buildMessage(r, versions = []) {
     (dark.length ? ` Dark: ${dark.join(", ")}.` : "") +
     (skipped.length ? ` Skipped (low volume): ${skipped.join(", ")}.` : "");
   const head = alerts.length ? "EnviousWispr health - ALERT" : "EnviousWispr health - OK";
-  const heartbeat = `${head}. T-1: ${t1d} dictations${ratioStr}. ${coverage}${driftStr}`;
+  // H1 (canonical contract H1): a static pointer, every run — this worker does
+  // NOT deliver crash-free-session-rate or per-version crash regression.
+  const h1Line = " Crash/error-rate monitoring lives in Sentry's own alert rules (see Error Spike >5/hr), not in this report.";
+  const heartbeat = `${head}. T-1: ${t1d} dictations${ratioStr}. ${coverage}${driftStr}${h1Line}`;
 
   let content = heartbeat;
   if (alerts.length) {
@@ -383,8 +602,11 @@ async function runHealth(env) {
     afm: evaluateAFM(data.seven),
     transcription: evaluateTranscription(data.seven),
     volume: evaluateVolume(data.volumeDays, data.t1ref),
+    onboardingAbandon: evaluateOnboardingAbandon(data.onboardingDays, data.t1ref),
+    backendTranscription: evaluateBackendTranscription(data.backendTranscriptionDays, data.t1ref),
+    onboardingBlackout: evaluateOnboardingBlackout(data.onboardingDays, data.t1ref),
   };
-  const message = buildMessage(results, data.versions);
+  const message = buildMessage(results, data.versions, data.onboardingVersions, data.backendVersions);
 
   const ok = await postToDiscord(env.DISCORD_WEBHOOK_URL, message);
   if (!ok) throw new Error("Discord post failed");
