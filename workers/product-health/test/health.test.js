@@ -305,18 +305,35 @@ test("onboarding abandon: fast regression only, healthy rolling average -> alert
   assert.equal(ev.fastShare, 0.6, "fast-window share must reflect only the crossing window, not the rolling total");
 });
 
-test("onboarding abandon: screen-attribution drift (real raw volume, zero passes the filter) -> alert", () => {
-  const rows = [{ day: "2026-07-15", started: 100, abandoned: 0, abandonedRaw: 40 }];
+test("onboarding abandon: screen-attribution drift (missing-screen volume crosses floor) -> alert", () => {
+  const rows = [
+    { day: "2026-07-15", started: 100, abandoned: 0, abandonedRaw: 40, abandonedMissingScreen: 40 },
+  ];
   const ev = evaluateOnboardingAbandon(rows, "2026-07-15");
   assert.equal(ev.state, "alerting");
   assert.equal(ev.attributionDrift, true);
   assert.equal(ev.totalAbandonedRaw, 40);
+  assert.equal(ev.totalAbandonedMissingScreen, 40);
 });
 
-test("onboarding abandon: low but real raw abandon volume with zero filtered does NOT trip drift (below floor)", () => {
-  const rows = [{ day: "2026-07-15", started: 100, abandoned: 0, abandonedRaw: 5 }];
+test("onboarding abandon: low but real missing-screen volume does NOT trip drift (below floor)", () => {
+  const rows = [
+    { day: "2026-07-15", started: 100, abandoned: 0, abandonedRaw: 5, abandonedMissingScreen: 5 },
+  ];
   const ev = evaluateOnboardingAbandon(rows, "2026-07-15");
   assert.notEqual(ev.attributionDrift, true);
+});
+
+test("onboarding abandon: legitimate all-welcome concentration does NOT trip drift (Codex r4 false-positive fix)", () => {
+  // Real raw volume, zero passes the "not welcome" filter, but every one of
+  // those events genuinely carries screen = 'welcome' (abandonedMissingScreen
+  // stays 0) — healthy, correctly-tagged data, not schema drift.
+  const rows = [
+    { day: "2026-07-15", started: 100, abandoned: 0, abandonedRaw: 40, abandonedMissingScreen: 0 },
+  ];
+  const ev = evaluateOnboardingAbandon(rows, "2026-07-15");
+  assert.notEqual(ev.attributionDrift, true);
+  assert.equal(ev.state, "evaluated-ok");
 });
 
 // ---- Phase 10 (#1179): onboarding blackout ----
@@ -542,11 +559,12 @@ test("message: many simultaneous alerts drop whole alerts from the end, never th
 test("message: onboarding screen-attribution drift renders distinct wording, no version attribution", () => {
   const msg = buildMessage(
     results({
-      onboardingAbandon: { state: "alerting", attributionDrift: true, fastCrossing: false, totalStarted: 100, totalAbandoned: 0, totalAbandonedRaw: 40 },
+      onboardingAbandon: { state: "alerting", attributionDrift: true, fastCrossing: false, totalStarted: 100, totalAbandoned: 0, totalAbandonedRaw: 40, totalAbandonedMissingScreen: 40 },
     }),
     [], [{ ver: "v2.1.4", onboarding_abandon: 40 }]
   );
   assert.match(msg, /onboarding abandon attribution lost/);
+  assert.match(msg, /40 of 40 onboarding\.abandoned events/);
   assert.ok(!msg.includes("v2.1.4"), "attribution-drift alert must not attach version data to a broken denominator");
 });
 

@@ -175,17 +175,24 @@ export async function fetchHealth(env) {
   // ambiguity `evaluateVolume` already accepts, #1130).
   // `abandonedRaw` (no screen filter) alongside the filtered `abandoned`:
   // ClickHouse's `!=` is NULL-unsafe, so if `properties.screen` ever stops
-  // emitting (schema drift, Codex review finding), every abandon silently
-  // reads as "welcome" and gets excluded — `abandoned` would read a healthy
-  // zero while abandon activity is actually still happening. Comparing the
-  // two catches that: real abandon volume with zero passing the filter is
-  // itself the drift signal.
+  // emitting (schema drift), every abandon silently reads as "welcome" and
+  // gets excluded — `abandoned` would read a healthy zero while abandon
+  // activity is actually still happening.
+  //
+  // `abandonedMissingScreen` counts the drift signal DIRECTLY (NULL/empty
+  // `properties.screen`) rather than inferring it from `abandonedRaw -
+  // abandoned` (Codex r4 review finding): a legitimate concentration of
+  // abandons on the real "welcome" screen also produces `abandonedRaw > 0`
+  // with `abandoned === 0`, which is healthy, correctly-tagged data, not
+  // drift, and the old raw-vs-filtered inference could not tell the two
+  // apart.
   const onboardingSql = `
     SELECT toDate(timestamp) AS day,
            countIf(event = 'onboarding.started') AS started,
            countIf(event = 'onboarding.completed') AS completed,
            countIf(event = 'onboarding.abandoned' AND properties.screen != 'welcome') AS abandoned,
-           countIf(event = 'onboarding.abandoned') AS abandonedRaw
+           countIf(event = 'onboarding.abandoned') AS abandonedRaw,
+           countIf(event = 'onboarding.abandoned' AND (properties.screen IS NULL OR properties.screen = '')) AS abandonedMissingScreen
     FROM events
     WHERE ${PROD}
       AND event IN ('onboarding.started', 'onboarding.completed', 'onboarding.abandoned')
@@ -374,21 +381,24 @@ function completeDayWindow(rows, expectedT1, count) {
 }
 
 export function evaluateOnboardingAbandon(rows, expectedT1, TH = THRESHOLDS.onboardingAbandon) {
-  // rows: per-day {day, started, abandoned, abandonedRaw}, any order — mirrors evaluateLatency's `days` shape.
+  // rows: per-day {day, started, abandoned, abandonedRaw, abandonedMissingScreen}, any order — mirrors evaluateLatency's `days` shape.
   const totalStarted = rows.reduce((sum, row) => sum + num(row.started), 0);
   const totalAbandoned = rows.reduce((sum, row) => sum + num(row.abandoned), 0);
   const totalAbandonedRaw = rows.reduce((sum, row) => sum + num(row.abandonedRaw), 0);
+  const totalAbandonedMissingScreen = rows.reduce(
+    (sum, row) => sum + num(row.abandonedMissingScreen), 0);
 
-  // Screen-attribution drift, checked FIRST (Codex review finding): if
-  // `properties.screen` stops emitting, ClickHouse's NULL-unsafe `!=` makes
-  // every abandon silently read as "welcome," so `abandoned` reads a healthy
-  // zero while real abandon volume (`abandonedRaw`) keeps happening. A
-  // drifted denominator makes every rate below meaningless, so this check
-  // runs before the fast path and the low-volume guard.
-  if (totalAbandonedRaw >= TH.minStarted && totalAbandoned === 0) {
+  // Screen-attribution drift, checked FIRST: alert directly on missing/empty
+  // `properties.screen` volume, not on `abandonedRaw - abandoned` (Codex r4
+  // review finding — that difference is also nonzero when abandons
+  // legitimately concentrate on the real "welcome" screen, which is healthy,
+  // correctly-tagged data, not drift). A drifted denominator makes every
+  // rate below meaningless, so this check runs before the fast path and the
+  // low-volume guard.
+  if (totalAbandonedMissingScreen >= TH.minStarted) {
     return {
       state: "alerting", attributionDrift: true, fastCrossing: false,
-      totalStarted, totalAbandoned, totalAbandonedRaw,
+      totalStarted, totalAbandoned, totalAbandonedRaw, totalAbandonedMissingScreen,
     };
   }
 
@@ -569,12 +579,14 @@ export function buildMessage(r, versions = [], onboardingVersions = [], backendV
   if (r.onboardingAbandon) {
     const ev = r.onboardingAbandon;
     if (ev.state === "alerting" && ev.attributionDrift) {
-      // Screen-attribution drift (Codex review finding): distinct wording,
-      // no version attribution (this is a schema-drift signal, not a rate).
+      // Screen-attribution drift: distinct wording, no version attribution
+      // (this is a schema-drift signal, not a rate). Names the missing-screen
+      // count directly (Codex r4 review finding), not the raw total, so the
+      // alert cannot fire on a legitimate all-welcome concentration.
       alerts.push(
-        `onboarding abandon attribution lost: ${ev.totalAbandonedRaw} onboarding.abandoned events ` +
-        `fired over the prev 21d but 0 carried a usable properties.screen (excluded as "welcome") ` +
-        `(properties.screen may have stopped emitting or been renamed).`
+        `onboarding abandon attribution lost: ${ev.totalAbandonedMissingScreen} of ` +
+        `${ev.totalAbandonedRaw} onboarding.abandoned events over the prev 21d had no usable ` +
+        `properties.screen (properties.screen may have stopped emitting or been renamed).`
       );
     } else if (ev.state === "alerting") {
       // Report the window that actually crossed (Codex review finding: a
