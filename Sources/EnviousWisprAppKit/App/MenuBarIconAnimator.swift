@@ -2,10 +2,13 @@ import AppKit
 
 /// Manages animated menu bar icon states using Core Graphics rendering.
 ///
-/// Five states: idle (static grey lips), recording (rainbow lips reacting to
-/// audio), processing (rotating rainbow spectrum wheel), error (static red
-/// lips), updatePending (grey lips with a gold wave travelling outward — the
-/// "update waiting" cue, #1019).
+/// Five states: idle (static grey lips), recording (static rainbow lips),
+/// processing (rotating rainbow spectrum wheel), error (static red lips),
+/// updatePending (grey lips with a gold wave travelling outward — the
+/// "update waiting" cue, #1019). Recording is static, not audio-reactive —
+/// the on-screen recording overlay already shows a legible audio-reactive
+/// meter; at menu-bar-icon size that reactivity only read as the icon
+/// randomly looking smaller.
 @MainActor
 final class MenuBarIconAnimator {
 
@@ -23,12 +26,10 @@ final class MenuBarIconAnimator {
 
   private weak var button: NSStatusBarButton?
   private var idleImage: NSImage?
+  private var recordingImage: NSImage?
   private var errorImage: NSImage?
   private var animationTimer: Timer?
   private(set) var currentState: IconState = .idle
-
-  /// Closure providing current mic audio level (0.0–1.0).
-  var audioLevelProvider: (() -> Float)?
 
   // Processing rotation angle (degrees)
   private var rotationAngle: Double = 0
@@ -48,6 +49,7 @@ final class MenuBarIconAnimator {
   func configure(button: NSStatusBarButton) {
     self.button = button
     self.idleImage = renderIdleLips()
+    self.recordingImage = renderRecordingLips()
     self.errorImage = renderErrorLips()
     button.image = self.idleImage
 
@@ -77,7 +79,7 @@ final class MenuBarIconAnimator {
     case .idle:
       button?.image = idleImage
     case .recording:
-      startRecordingAnimation()
+      button?.image = recordingImage
     case .processing:
       rotationAngle = 0
       startProcessingAnimation()
@@ -103,22 +105,6 @@ final class MenuBarIconAnimator {
   private func stopTimer() {
     animationTimer?.invalidate()
     animationTimer = nil
-  }
-
-  // MARK: - Recording Animation (rainbow lips, audio-reactive, ~20fps)
-
-  private func startRecordingAnimation() {
-    // Render one frame immediately
-    button?.image = renderRecordingLips(audioLevel: audioLevelProvider?() ?? 0)
-
-    animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) {
-      [weak self] _ in
-      MainActor.assumeIsolated {
-        guard let self, let button = self.button else { return }
-        let level = self.audioLevelProvider?() ?? 0
-        button.image = self.renderRecordingLips(audioLevel: level)
-      }
-    }
   }
 
   // MARK: - Processing Animation (spectrum wheel, rotating, ~15fps)
@@ -163,17 +149,18 @@ final class MenuBarIconAnimator {
 
   // MARK: - Core Graphics Rendering
 
-  /// Render rainbow lip bars with heights responding to audio level.
-  /// Bar geometry and colors match RainbowLipsIcon in RecordingOverlayPanel.swift.
-  private func renderRecordingLips(audioLevel: Float) -> NSImage {
-    let size = NSSize(width: 18, height: 18)
+  /// Render rainbow lip bars at full height (static — see class doc for why
+  /// this isn't audio-reactive). Bar geometry and colors match RainbowLipsIcon
+  /// in RecordingOverlayPanel.swift.
+  private func renderRecordingLips() -> NSImage {
+    let size = NSSize(width: 22, height: 22)
     return NSImage(size: size, flipped: true) { rect in
       guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
 
       let scale = rect.width / 64.0
       let barWidth: CGFloat = 4.5 * scale
       let cornerRadius: CGFloat = 1.5 * scale
-      let level = CGFloat(min(max(audioLevel, 0), 1))
+      ctx.translateBy(x: 0, y: Self.lipsVerticalCenteringOffset * scale)
 
       // Upper bars — v2 9-bar lip geometry (viewBox 0 0 64 64)
       let upperBars: [(x: CGFloat, y: CGFloat, h: CGFloat, r: CGFloat, g: CGFloat, b: CGFloat)] = [
@@ -201,31 +188,10 @@ final class MenuBarIconAnimator {
         (52, 30.25, 5, 0.541, 0.169, 0.886),
       ]
 
-      for (i, bar) in upperBars.enumerated() {
-        let groupCenter = CGFloat(upperBars.count - 1) / 2.0  // 4.0
-        let centerDistance = abs(CGFloat(i) - groupCenter) / groupCenter
-        let baseH = bar.h * scale
-        let h = baseH * (0.6 + 0.4 * level * (1.0 - centerDistance * 0.5))
-        let x = bar.x * scale
-        let y = (bar.y + bar.h) * scale - h  // anchor at bottom of original bar
+      for bar in upperBars + lowerBars {
         ctx.setFillColor(CGColor(red: bar.r, green: bar.g, blue: bar.b, alpha: 1))
-        let barRect = CGRect(x: x, y: y, width: barWidth, height: h)
-        let path = CGPath(
-          roundedRect: barRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius,
-          transform: nil)
-        ctx.addPath(path)
-        ctx.fillPath()
-      }
-
-      for (i, bar) in lowerBars.enumerated() {
-        let groupCenter = CGFloat(lowerBars.count - 1) / 2.0  // 4.0
-        let centerDistance = abs(CGFloat(i) - groupCenter) / groupCenter
-        let baseH = bar.h * scale
-        let h = baseH * (0.6 + 0.4 * level * (1.0 - centerDistance * 0.5))
-        let x = bar.x * scale
-        let y = bar.y * scale
-        ctx.setFillColor(CGColor(red: bar.r, green: bar.g, blue: bar.b, alpha: 1))
-        let barRect = CGRect(x: x, y: y, width: barWidth, height: h)
+        let barRect = CGRect(
+          x: bar.x * scale, y: bar.y * scale, width: barWidth, height: bar.h * scale)
         let path = CGPath(
           roundedRect: barRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius,
           transform: nil)
@@ -240,7 +206,7 @@ final class MenuBarIconAnimator {
   /// Render idle lips — same 9+9 bar geometry as recording/error lips, but monochrome.
   /// Uses black at 0.65 alpha so macOS template rendering inverts correctly for dark/light mode.
   private func renderIdleLips() -> NSImage {
-    let size = NSSize(width: 18, height: 18)
+    let size = NSSize(width: 22, height: 22)
     let image = NSImage(size: size, flipped: true) { rect in
       guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
 
@@ -248,6 +214,7 @@ final class MenuBarIconAnimator {
       let barWidth: CGFloat = 4.5 * scale
       let cornerRadius: CGFloat = 1.5 * scale
       let fill = CGColor(red: 0, green: 0, blue: 0, alpha: 0.65)
+      ctx.translateBy(x: 0, y: Self.lipsVerticalCenteringOffset * scale)
 
       let upperBars: [(x: CGFloat, y: CGFloat, h: CGFloat)] = [
         (4, 22.25, 5), (10, 17.6375, 8), (16, 12.04, 12),
@@ -291,7 +258,7 @@ final class MenuBarIconAnimator {
 
   /// Render error lips — same geometry as recording but all bars in red.
   private func renderErrorLips() -> NSImage {
-    let size = NSSize(width: 18, height: 18)
+    let size = NSSize(width: 22, height: 22)
     return NSImage(size: size, flipped: true) { rect in
       guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
 
@@ -299,6 +266,7 @@ final class MenuBarIconAnimator {
       let barWidth: CGFloat = 4.5 * scale
       let cornerRadius: CGFloat = 1.5 * scale
       let red = CGColor(red: 1.0, green: 0.165, blue: 0.251, alpha: 0.9)  // #ff2a40 at 0.9 opacity
+      ctx.translateBy(x: 0, y: Self.lipsVerticalCenteringOffset * scale)
 
       let upperBars: [(x: CGFloat, y: CGFloat, h: CGFloat)] = [
         (4, 22.25, 5), (10, 17.6375, 8), (16, 12.04, 12),
@@ -341,7 +309,7 @@ final class MenuBarIconAnimator {
   /// Render the processing spectrum wheel at the current rotation angle.
   /// Bar geometry and colors match SpectrumWheelIcon in RecordingOverlayPanel.swift.
   private func renderProcessingWheel() -> NSImage {
-    let size = NSSize(width: 18, height: 18)
+    let size = NSSize(width: 22, height: 22)
     let angle = rotationAngle
     return NSImage(size: size, flipped: false) { rect in
       guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
@@ -408,6 +376,13 @@ final class MenuBarIconAnimator {
     (40, 27.04, 12), (46, 28.6375, 9), (52, 30.25, 5),
   ]
 
+  /// The 9+9 bar geometry's own ink (y 12.04…47.5575 of the 0…64 viewBox) sits
+  /// above the viewBox's vertical center (32), so the drawn icon reads as
+  /// sitting slightly high in its menu-bar cell. Shift every draw down by this
+  /// much (in viewBox units) to recenter the ink, not the geometry itself —
+  /// RecordingOverlayPanel shares these bar arrays and must stay untouched.
+  private static let lipsVerticalCenteringOffset: CGFloat = 2.2
+
   /// Gold intensity (0…1) for a bar at column index `i` of `count` columns,
   /// given the wave front position. Distance is normalized (0 center, 1 edge);
   /// a narrow band → "near-together" wave; the front overshoots to 1.25 so
@@ -451,12 +426,13 @@ final class MenuBarIconAnimator {
   /// precomputed gold intensity. Only `[CGFloat]` (Sendable) crosses into the
   /// drawing block — colors are built inside it.
   private func renderLips(upperIntensities: [CGFloat], lowerIntensities: [CGFloat]) -> NSImage {
-    let size = NSSize(width: 18, height: 18)
+    let size = NSSize(width: 22, height: 22)
     return NSImage(size: size, flipped: true) { rect in
       guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
       let scale = rect.width / 64.0
       let barWidth: CGFloat = 4.5 * scale
       let cornerRadius: CGFloat = 1.5 * scale
+      ctx.translateBy(x: 0, y: Self.lipsVerticalCenteringOffset * scale)
 
       for (i, bar) in Self.upperLipBars.enumerated() {
         ctx.setFillColor(Self.blendGoldOverGrey(upperIntensities[i]))

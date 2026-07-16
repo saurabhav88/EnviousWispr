@@ -63,7 +63,6 @@ final class MenuBarController: NSObject {
     guard let button = statusItem?.button else { return }
 
     iconAnimator.configure(button: button)
-    iconAnimator.audioLevelProvider = { [weak self] in self?.liveRecordingState.audioLevel ?? 0 }
 
     let menu = NSMenu()
     menu.delegate = self
