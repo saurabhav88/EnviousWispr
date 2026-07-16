@@ -45,7 +45,7 @@ public enum AudioError: LocalizedError, CustomNSError, Sendable {
     case .formatCreationFailed: return "Failed to create audio format."
     case .alreadyCapturing: return "Audio capture is already active."
     // #1558: diagnostic-only text. The customer sentence ("No microphone
-    // found. Please connect one.") lives ONLY in `TerminalNoticePresenter`;
+    // found. Please connect one.") lives ONLY in `DictationNarrator`;
     // this description is Sentry / diagnostic copy, never shown on a pill.
     case .noBuiltInMicrophoneFound: return "No usable microphone device was found."
     }

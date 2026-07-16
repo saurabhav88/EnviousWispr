@@ -128,7 +128,7 @@ struct StatusView: View {
         VStack(spacing: 12) {
           ProgressView()
             .controlSize(.large)
-          Text("Transcribing...")
+          Text(DictationNarrator.copy(for: .transcribing))
             .font(.title2)
           if !asrManager.isModelLoaded {
             Text("This may take a moment on first run while the model loads.")
@@ -141,7 +141,7 @@ struct StatusView: View {
         VStack(spacing: 12) {
           ProgressView()
             .controlSize(.large)
-          Text("Polishing...")
+          Text(DictationNarrator.copy(for: .polishing))
             .font(.title2)
         }
 
@@ -174,8 +174,8 @@ struct StatusView: View {
         ContentUnavailableView {
           Label("Error", systemImage: "exclamationmark.triangle")
         } description: {
-          // #1558: the presenter is the sole author; no raw detail reaches here.
-          Text(TerminalNoticePresenter.copy(for: reason))
+          // #1558: the narrator is the sole author; no raw detail reaches here.
+          Text(DictationNarrator.copy(for: reason))
         } actions: {
           Button("Try Again") {
             dictationRuntime.resetActivePipeline()
@@ -301,10 +301,10 @@ struct StatusBadge: View {
         progressLabel("Loading model\u{2026}")
 
       case .transcribing:
-        progressLabel("Transcribing\u{2026}")
+        progressLabel(DictationNarrator.statusBadgeCopy(for: .transcribing))
 
       case .polishing:
-        progressLabel("Polishing\u{2026}")
+        progressLabel(DictationNarrator.statusBadgeCopy(for: .polishing))
 
       case .idle, .complete, .error:
         EmptyView()

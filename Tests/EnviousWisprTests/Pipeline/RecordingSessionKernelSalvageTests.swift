@@ -540,7 +540,7 @@ import Testing
   /// to the typed map (`KernelDictationDriver.terminalNoticeReason(for:)`) plus
   /// the AppKit presenter. These tests keep the claim honest at the TYPED-reason
   /// layer: only a verified device loss earns the disconnect reason; the
-  /// customer sentence itself is frozen in `TerminalNoticePresenterTests`.
+  /// customer sentence itself is frozen in `DictationNarratorTests`.
   @Suite("The interruption reason never claims more than we know (#1408 / #1558)")
   struct InterruptionReasonTests {
 

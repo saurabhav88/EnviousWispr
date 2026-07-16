@@ -7,7 +7,7 @@ import Foundation
 /// This is the "what happened" half of the one-voice split: the engine
 /// (Pipeline / AppKit-side start path) maps its internal outcomes into exactly
 /// one case here, and a single stateless presenter in AppKit
-/// (`TerminalNoticePresenter`) maps a case to the customer sentence. Keeping the
+/// (`DictationNarrator`) maps a case to the customer sentence. Keeping the
 /// fact separate from the sentence is the whole point — if the engine emitted
 /// the six customer buckets it would be making the presentation decision this
 /// refactor is centralising.

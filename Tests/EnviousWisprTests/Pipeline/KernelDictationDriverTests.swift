@@ -71,7 +71,7 @@ import Testing
 
   // #1558: the driver's `failureMessage` string-authoring was deleted. Reason
   // mapping is proven in `TerminalNoticeReasonMappingTests`; customer copy in
-  // `TerminalNoticePresenterTests`. What remains here is that the outcome map
+  // `DictationNarratorTests`. What remains here is that the outcome map
   // yields the correct TYPED reason (no raw detail).
   @Test("the failed-outcome map yields the typed reason, not an authored string")
   func failedOutcomeYieldsTypedReason() {
@@ -205,7 +205,7 @@ import Testing
       #expect(h.kernel.testForceTransition(to: .arming))
       h.kernel.testForceConclude(.failed(.modelLoadFailed))
       // The state and overlay carry the typed reason; no String detail exists to
-      // leak. Customer copy is proven in `TerminalNoticePresenterTests` (AppKit).
+      // leak. Customer copy is proven in `DictationNarratorTests` (AppKit).
       #expect(h.driver.state == .error(.modelLoadFailed))
       #expect(h.driver.overlayIntent == .error(reason: .modelLoadFailed))
     }
@@ -350,9 +350,9 @@ import Testing
       h.kernel.testSetDeliveringPhase(.finalizing(.transcribing))
       // The polish step's onWillProcess equivalent — flip to .polishing.
       h.kernel.testSetFinalizingSubStatus(.polishing)
-      await drainUntil { pushed.last == .processing(label: "Polishing...") }
+      await drainUntil { pushed.last == .processing(phase: .polishing) }
       #expect(
-        pushed.last == .processing(label: "Polishing..."),
+        pushed.last == .processing(phase: .polishing),
         "a .polishing sub-status while .finalizing must push the Polishing overlay")
     }
 
@@ -384,7 +384,7 @@ import Testing
       #expect(h.kernel.testForceTransition(to: .delivering))
       h.kernel.testSetDeliveringPhase(.finalizing(.transcribing))
       h.kernel.testSetFinalizingSubStatus(.polishing)
-      await drainUntil { pushed.last == .processing(label: "Polishing...") }
+      await drainUntil { pushed.last == .processing(phase: .polishing) }
       let afterSession1 = pushed.count
       #expect(afterSession1 >= 1)
       // End session 1 and reproduce the kill window: the delivering phase
@@ -405,11 +405,38 @@ import Testing
       h.kernel.testSetDeliveringPhase(.finalizing(.transcribing))
       h.kernel.testSetFinalizingSubStatus(.polishing)
       await drainUntil {
-        pushed.count > afterSession1 && pushed.last == .processing(label: "Polishing...")
+        pushed.count > afterSession1 && pushed.last == .processing(phase: .polishing)
       }
       #expect(
-        pushed.last == .processing(label: "Polishing..."),
+        pushed.last == .processing(phase: .polishing),
         "session 2's polish flip must still push — the observer survived the reset")
+    }
+
+    // #1564 (E2): the transcribing pill carries a TYPED `ProcessingPhase`; the
+    // driver selects `.transcribingMaxDurationReached` after a 60-minute
+    // auto-stop and `.transcribing` otherwise. `DictationNarrator` authors the
+    // words (proven byte-exact in `DictationNarratorTests`).
+    @Test("the stopping/transcribing pill emits the typed transcribing phase")
+    func stoppingEmitsTypedTranscribingPhase() {
+      let h = makeDriver()
+      #expect(h.kernel.testForceTransition(to: .arming))
+      #expect(h.kernel.testForceTransition(to: .live))
+      #expect(h.kernel.testForceTransition(to: .stopping))
+      // No stop reason set → plain transcribing.
+      #expect(h.driver.overlayIntent == .processing(phase: .transcribing))
+    }
+
+    @Test("a 60-minute auto-stop emits the max-duration transcribing phase")
+    func maxDurationStopEmitsMaxDurationPhase() {
+      let h = makeDriver()
+      #expect(h.kernel.testForceTransition(to: .arming))
+      #expect(h.kernel.testForceTransition(to: .live))
+      #expect(h.kernel.testForceTransition(to: .stopping))
+      h.kernel.testSetLastStopReason("max_duration")
+      #expect(h.driver.overlayIntent == .processing(phase: .transcribingMaxDurationReached))
+      // Any other stop reason is plain transcribing, not the cap variant.
+      h.kernel.testSetLastStopReason("user")
+      #expect(h.driver.overlayIntent == .processing(phase: .transcribing))
     }
 
     @Test(

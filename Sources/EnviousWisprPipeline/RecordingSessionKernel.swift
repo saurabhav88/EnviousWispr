@@ -2907,7 +2907,7 @@ final class RecordingSessionKernel {
   /// `.audioInterrupted` rendered "Microphone disconnected" unconditionally and
   /// that would have been a lie for a duration cap. The cause-aware sentence now
   /// lives at its own single authority (#1558: the driver stamps a typed
-  /// `TerminalNoticeReason` and `TerminalNoticePresenter` authors the copy), so
+  /// `TerminalNoticeReason` and `DictationNarrator` authors the copy), so
   /// the floor no longer has to encode a copy decision. What the terminal MEANS
   /// (the spool survives) and what the user READS are separate questions with
   /// separate owners — which is the same split `hasRecoverableAudio` and
@@ -3560,6 +3560,13 @@ final class RecordingSessionKernel {
     /// (`.transcribing` vs `.finalizing(_)`) to exercise the cancel safe point.
     func testSetDeliveringPhase(_ phase: DeliveringPhase) {
       deliveringPhase = phase
+    }
+
+    /// #1564 (E2): test-only `lastStopReason` setter so a driver test can prove
+    /// the transcribing pill maps to `.transcribingMaxDurationReached` after a
+    /// 60-minute auto-stop (`"max_duration"`) and `.transcribing` otherwise.
+    func testSetLastStopReason(_ reason: String?) {
+      lastStopReason = reason
     }
 
     /// #1408: surface the terminal floor as a pure function so a test can prove
