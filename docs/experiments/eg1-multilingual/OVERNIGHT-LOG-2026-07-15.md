@@ -1762,3 +1762,227 @@ Status: audit complete; no valid five-language ranking and no release claim
 The audit separates evidence by prompt, runtime, task, judge, and exposure instead of pooling incompatible scores. The only shared current-EG-1 diagnostic slice has eight cases per language: German polish 8/8, French 6/8, and Spanish 2/8, with wide Wilson intervals. Untouched Qwen3 varies sharply between the legacy and newer review paths on the same language families: German strict 0/8 versus 6/8, French 3/8 versus 6/8, and Spanish 1/8 versus 3/8. Russian changes from 3/16 to 7/16 under different prompts. English old Type B is excluded because 1,868/1,890 rows have conservative normalized-seeded family exposure, and English list mechanics remain a separate task-specific lane.
 
 The newer bakeoff aggregate is now preserved as an immutable tracked receipt that records its producing commit, Git blob, full-log hash, and section hash, so later additions to this living log cannot silently change the evidence. The audit recomputes retained case-level mechanics and confidence intervals but does not invent missing per-case semantic judgments. Focused validation passed 10/10; the related suite passed 76/76; the real private audit, exact coordinator replay, and depth-one shallow-clone replay all passed. Decision: the first valid language ranking must use the common, balanced, family-disjoint, native-reviewed five-language benchmark.
+
+### QWEN35-PREFLIGHT-002 - Exact 248-target source path repaired
+
+Timestamp: 2026-07-15 17:21 EDT
+
+Status: local source and synthetic compatibility complete; no new AlienSV invocation or quality evidence
+
+The 128/248 historical stop was traced to Unsloth 2026.6.9's automatic target selector, not to an inability in PEFT 0.19.1 to attach adapters to Qwen3.5's GDN linear layers. The future preflight now gives PEFT the exact full module paths derived from the hash-pinned Qwen3.5 config and loaded text model. The required set remains 248 paths: 128 standard attention/MLP placements plus all 120 GDN placements. It then strips only the known PEFT wrapper and requires exact path-set equality, zero vision or MTP targets, and exactly 32,464,896 trainable parameters before trainer construction.
+
+Local tests cover all 248 expected placements, missing/extra/duplicate/wrong-parent/wrong-layer attacks, vision/MTP leakage, and trainable-parameter drift. The isolated lane passed 41 focused tests, 325 broader unittests with two expected private-data skips, and 346 pytest tests with two skips plus 60 subtests; independent committed-diff review found no actionable defect. This is not a successful GPU preflight. The historical remote receipt remains 128/248, zero optimizer steps, and no adapter. A separately authorized AlienSV run must still produce a real 248/248 pre-trainer receipt before Qwen3.5 can enter training.
+
+### D1-SHARED-001 - Shared-concept metadata allocation sealed
+
+Timestamp: 2026-07-15 17:45 EDT
+
+Status: 80 metadata-only concept slots allocated across 400 rows; private briefs and native approvals remain unwritten
+
+The D1 shared-concept gate now allocates 80 language-neutral concept slots, each bound to one English, German, French, Spanish, and Russian family. That preserves all 400 shared-concept rows: 80 per language, split across 21 core concepts, 36 positive-list concepts, and 23 matched-restraint concepts. The coordinator-head allocation receipt SHA-256 is `76e477e4168dead7ad3c7396f98de08bf840c4202d4fceade5f4a6feb727fc19`; the slot file is `00aabb2dc45ca1bf1118e8bead06ebcfc28b17d9c3f9892400bf3d21687c9bd8`, the private completion template is `e93e4e6f32d2d53f323219d54be4634fc4bb0857049b39bf8e8c516ce8204461`, and the exact D1 slot-set identity is `a02ac920d0fc8c7b7692ae30453389f9ce2b242d534552be2c25d283ed10f300`.
+
+The published allocation contains no brief prose, person identity, approval, model output, or training/release eligibility. A later private seal requires a distinct author and reviewer for every concept, 80 unique review receipts that precede final approval, meaning/safety/family-separation approval, and proof that candidate output was unseen. Packet generation, authoring launch, final merge, and training evaluation all authenticate both the registry and its sibling seal receipt; coherent forgery, launch-receipt mutation, stale controls, and allocation/seal chronology drift fail closed. Independent review found no actionable defect. The isolated lane passed 42 focused tests, 331 unittests with two expected skips, 352 pytest tests with two skips, and a clean-archive gate. After integration, the 42 focused tests and an early combined 337-test evaluator run passed.
+
+### QWEN35-PREFLIGHT-003 - Real 248/248 AlienSV compatibility pass
+
+Timestamp: 2026-07-15 18:47 EDT
+
+Status: one-step compatibility preflight complete; no quality claim
+
+AlienSV was reachable and idle before launch: RTX 4090 at 0% utilization, 35 C, and 22,886 MiB free. The remote trainer was stale, so no model load began until the reviewed coordinator trainer was copied and rehashed to `474ceb6888dc5690169e348c373114530e6fd482a38985b3018fe892b0937cda`. The four private synthetic rows and shipped prompt rehashed to their script-owned values. The first post-run inventory command had a Windows-shell quoting error (`xargs` was interpreted by Windows) and exited 255 without changing the run; the replacement used WSL `find -exec` and completed.
+
+Run `qwen35_reserve_bf16_preflight_20260715_r2` passed the pinned stack, base-artifact, post-load rehash, exact target-placement, response-masking, one-step, and adapter-save gates. Actual and expected LoRA placement matched 248/248 with target-set SHA-256 `707ca9ad5e438a00d45d0625b82467881ba356ef73f1319b21baa5ddcbb9ace3`: 96 MLP, 32 full-attention, and all 120 GDN modules. Vision/MTP, unmatched, and duplicate target lists were empty. Trainable parameters were exactly 32,464,896.
+
+Exactly one optimizer step completed in 20.347 seconds with loss 0.1049 and 8,762,602,496 peak allocated CUDA bytes. The 129,927,008-byte adapter weights hash to `a0e6921d56f1067687784e2ece6aa9d6c66a7a2821185484a62c58f5be7c5b19`; the 39,166-byte terminal manifest hashes to `34a111b6c407cf102079b21c4be17578fe3fe1fc8908db8c6475f1e107aae93f`. The output totals 149,976,978 bytes. GPU state returned to 0% with 22,886 MiB free. The manifest was independently asserted for all required fields from a local ignored copy.
+
+Decision: the exact installed Qwen3.5 stack can now attach and train the full text-only LoRA placement. The adapter is compatibility evidence only (`quality_evidence=false`), was not merged or scored, and cannot enter a benchmark or release lane. Full Qwen3.5 training remains blocked until approved D1 data exists.
+
+### PROGRAM-ORDER-001 - Benchmark proof before productization
+
+Timestamp: 2026-07-15 19:01 EDT
+
+Status: founder priority locked
+
+Saurabh explicitly ordered that performance benchmarks must be hit before building the final usable product. The remaining sequence is therefore: finish model-blind development authoring and native review; run comparable vanilla/current/prompt development baselines; train only from approved data; power and run frozen evaluation; run leakage-clean Type B V2 once on the locked winner; then validate that winner through the exact shipped Mac path. User-facing app work, packaging, production architecture, or adapter-selection UX is deferred until the performance gates pass.
+
+The existing exact-Mac work is retained only as evaluation infrastructure and will be frozen after its current review/integration loop. Its existence does not authorize product implementation or substitute for benchmark evidence.
+
+### DEV-AUTHORING-REVIEW-001 - Initial 800-row gate rejected before integration
+
+Timestamp: 2026-07-15 19:20 EDT
+
+Status: commit `63932dfcb86894cfd08faffc88f475a4d16312ec` rejected pending repair; no corpus prose, model output, or score produced
+
+The first deterministic development-authoring implementation produced exactly 800 metadata-only slots across EN/DE/FR/ES/RU, 160 per language, with two rows in every language x behavior x domain cell. Its focused tests passed 19/19, its source-worktree evaluator suites passed 356 unittests with two private-data skips and 377 pytest tests with two skips plus 67 subtests, and a depth-one clean checkout reproduced the allocation. Those green tests were not treated as proof that the statistical design was sound.
+
+Independent statistical review found that 80 of 200 list/restraint contrast sets mixed `native_original` with `shared_concept_local_rewrite`, while 120 were native/native and none were shared/shared. That confounded paired contrast interpretation with provenance. The same audit found that difficulty was completely aliased with behavior because every behavior received only one difficulty level; the shared portion represented 32 five-language semantic-family clusters, so pooled inference had 672 independent family clusters rather than 800 independent rows; and paired contrast inference lacked a separately approved semantic-comparability brief.
+
+Custody review also rejected the initial gate. It allowed one author and one reviewer to cover all 800 rows, trusted self-asserted model-blind/native-review booleans, accepted arbitrary one-row historical sources plus hand-written fuzzy-pass values, rejected valid historical bundles after later commits, and did not reopen the complete upstream receipt chain during final verification. Its clean-archive end-to-end test mocked the critical allocation, launch, and control authentication paths.
+
+The required committed-diff review independently found three more defects: final verification trusted a self-asserted merge receipt; merge could accept validation-to-snapshot input mutation; and a coherently edited allocation could pass because the deterministic allocation was not recomputed. Decision: do not integrate or author against this commit. Repair the allocation, inference contract, diversity limits, authoritative source/scanner provenance, producing-commit verification, complete receipt-chain reopening, mutation defense, and unmocked production-path replay first.
+
+### EXACT-MAC-REVIEW-001 - Finalist gate held for two parity repairs
+
+Timestamp: 2026-07-15 19:20 EDT
+
+Status: commit `10d3501c65e4f0fe117335d6a9dee1d8082bf1f8` held pending repair; evaluation infrastructure only
+
+The locked Swift child-runtime repair passed 74/74 focused tests, 347 complete evaluator unittests with two skips, and 368 pytest tests with two skips plus 78 subtests. It proved that a non-default `DEVELOPER_DIR` and Swift executable remain pinned even when fallback `xcrun` resolves elsewhere, and that missing or tampered runtime pins fail before prompt I/O, network dispatch, or output creation. A delta-only independent review found no issue.
+
+The required full committed-diff review then found two integration/parity defects. The pre-existing tracked local A/B evaluator still invoked exact shipped mode without the now-mandatory Swift runtime contract, so that caller would stop before producing output. Separately, Python 3.13 Unicode punctuation categories lag the pinned macOS Swift `CharacterSet.punctuationCharacters` for newer code points such as U+1B4E, allowing rare question-classification differences between the mirror and the shipped app. Decision: do not integrate this commit until the A/B caller passes the pinned runtime contract and punctuation classification is owned by the same pinned Swift oracle with adversarial parity tests.
+
+### EXACT-MAC-002 - Evaluation-only finalist gate integrated and frozen
+
+Timestamp: 2026-07-15 19:51 EDT
+
+Status: integrated as coordinator commit `62ae3704`; no model run, benchmark score, product implementation, or release claim
+
+The final exact-Mac gate commit `970a7157a86fbdf77ee39b94f36506e35728199b` repaired every review finding. The tracked A/B caller resolves one standalone Swift and isolated Python runtime for both arms, passes their mandatory pins to the child, revalidates them after both arms, and records only path/byte/environment hashes under an explicit noncertifying scope. Both downstream A/B scoring and blind-review consumers now reject missing or tampered runtime identity fields through one shared validator.
+
+The long-lived lock-pinned Swift oracle now owns native grapheme count plus Swift/Foundation whitespace, lowercasing, and punctuation semantics used by the Python shipping mirror. Adversarial coverage includes decomposed accents, joined emoji, U+1B4E punctuation that Python 3.13 treats differently, U+1C89 lowercase behavior, U+001C whitespace differences, non-default `DEVELOPER_DIR`, a fallback `xcrun` that resolves elsewhere, and a 90 x U+0130 lowercase-expansion preamble. Missing, malformed, drifted, or underspecified runtime/oracle evidence fails before network or output publication.
+
+Two intermediate focused failures were retained as repair evidence: a missing `json` import caused two errors after the oracle protocol expanded, and one deliberately minimal fake-oracle fixture could not perform a newly required trim operation. Both were fixed before the final green runs. The final focused set passed 42/42 after the last downstream/lowercase repairs. Root full validation then passed 353 unittests with two expected skips and 374 pytest tests with two skips plus 82 subtests. The required final committed-diff review returned: `No actionable correctness issues were found`; its sandbox could not bind loopback sockets, while the unrestricted root suites above exercised those tests successfully.
+
+The gate remains deliberately narrower than its name: controlled language comes from the locked corpus, post-generation delivery is a Python mirror backed by native Swift text semantics, receipt signatures use exportable custodian key content, loaded executable/model bytes are not independently attested, independent signer/pin custody is not proven, and `may_claim_exact_mac_evidence_complete` remains false. Per founder order, this lane is now frozen as evaluation infrastructure until a benchmark winner exists.
+
+### DEV-AUTHORING-REVIEW-002 - Hardened gate still rejected on real provenance closure
+
+Timestamp: 2026-07-15 19:53 EDT
+
+Status: commit `1d1eff26f775` rejected pending second repair; no corpus prose, model output, score, or training eligibility produced
+
+The first repair implemented the earlier statistical and custody findings and passed 26/26 focused tests, a depth-one clean archive allocate-to-launch replay, and 384 evaluator tests with two expected skips plus 67 subtests. It added provenance-matched list/restraint contrasts, cell-varying difficulty, 672-family pooled clustering, author/reviewer clustering metadata, at least five authors and five reviewers per language with packet caps, independent contrast-comparability approval, deterministic allocation recomputation, producing-commit ancestry for controls, prevalidation snapshots, operator-attested nonrelease scope, leakage inventories/source receipts, blocked-registry validation, scanner provenance fields, and upstream file reopening.
+
+Those green tests still did not establish a trustworthy end-to-end authorization path. The required committed-diff review found that the Type B blocked-registry receipt's producing commit was not required to be an ancestor of the development gate's expected commit. Independent review then reproduced five additional defects: `.gitignore` could be presented as the alleged approved four-method scanner because no real canonical scanner was pinned; roster mutation between launch validation and its late snapshot still published a green launch receipt; merge/verify mutation closure omitted the blocked-registry bundle's four sibling artifacts and four fixed private corpora; three highly imbalanced comparability reviewers could cover 120/60/20 of the 200 sets despite reviewer-clustered inference; and the clean-archive replay stopped after launch while merge/verify tests mocked the core provenance validators.
+
+Decision: reject `1d1eff26` and do not integrate. The next revision must ship and pin a real exact/token-ngram/character-ngram/embedding scanner, reject unrelated scanner files, snapshot the roster before use, enforce blocked-receipt ancestry, derive and recheck the complete transitive blocked-registry dependency closure, balance/cap comparability reviewers and publish their clusters, and run an unmocked clean-archive CLI replay through allocate, launch, merge, and verify-eval.
+
+### DEV-AUTHORING-REPAIR-003 - Second repair checkpoint; integration still held
+
+Timestamp: 2026-07-15 20:05 EDT
+
+Status: four custody/statistical repairs green in the isolated worktree; real scanner and unmocked full lifecycle remain incomplete
+
+The resumed repair now snapshots and rehashes the launch roster before validation, rejects blocked-registry receipts whose producing commit is not an ancestor of the expected head, derives and rechecks the complete blocked-registry closure from its producing contract, and enforces comparability-review diversity of at least five reviewers per language with no more than eight contrast sets per reviewer-language. The merge and verify paths include the blocked receipt, its four sibling artifacts, and four raw corpora in their pre/post mutation closure. Receipt counts now expose reviewer identity clusters, per-language clusters, and sets per reviewer. A previously found candidate-output validation defect was also repaired.
+
+The current dirty revision passed 29/29 focused tests and the broader evaluator suite passed 387 tests with two expected skips plus 67 subtests. This is a checkpoint, not an integration candidate. The alleged scanner pin remains provisional, and the clean-archive replay still needs to exercise the real CLI sequence through allocate, launch, merge, and verify-eval without mocking the core validators. A separate branch is implementing the dedicated exact/token-ngram/character-ngram/embedding scanner with production thresholds explicitly marked calibration-required and noncertifying until a multilingual calibration set exists.
+
+The clean-archive test was subsequently extended with the full production-shaped replay skeleton: real temporary git controls, a real blocked-registry CLI bundle derived from the four fixed private corpora, real allocate and launch commands, generated 800-row corpus and custody artifacts, the dedicated scanner CLI boundary, then real merge and verify-eval commands. The private full replay is opt-in through `EG1_PRIVATE_EVAL_SOURCE_ROOT` and `EG1_MULTILINGUAL_SCANNER_MODEL_DIR`; the normal archive allocate-to-launch gate remains available without private inputs. At this checkpoint the skeleton is present but cannot be certified until the independent scanner implementation is integrated and the opt-in replay actually passes.
+
+### LEAKAGE-SCANNER-REVIEW-001 - Real scanner implemented but held for evidence hardening
+
+Timestamp: 2026-07-15 20:20 EDT
+
+Status: superseded scanner commit `5993e2d2` passed 15/15 focused tests but remains rejected pending receipt, custody, snapshot, and runtime repairs
+
+The dedicated scanner now performs normalized exact, true token n-gram Jaccard, true character n-gram Jaccard, and embedding cosine computations. Synthetic mode performs deterministic real computation but is labeled `synthetic_not_quality_evidence`; production mode remains `calibration_required_noncertifying`. It pins the Qwen3-Embedding-0.6B identity, revision, 10-file tree hash `087413375b109d83ccd69bff217f841ce9029e9a6d7d3804129d65a5f9bf319e`, 1,207,487,354 bytes, and an exact package/runtime contract. It also added threshold-boundary, Unicode normalization, cross-field, model-tree tamper, coherent receipt forgery, source-evidence, deterministic serialization, and mutation tests.
+
+Root and independent review still rejected this revision. The verifier compared selected fields rather than one exact expected receipt, did not fully authenticate scanner identity/path/status/scope fields, and accepted source inventories/receipts with schemas too weak to prove producing-head ancestry, operator scope, candidate-output blindness, or all four mandatory roles. Its snapshot logic hashed paths and later reparsed those paths instead of computing from one captured byte snapshot. The real embedding backend also needed to match the already approved replay component's max-token preflight, normalized-output checks, device/dtype/prompt/pooling identity, and four-axis evidence. The token/character implementation materialized every pair score, about 0.6 GB of Python floats per method at realistic scale, instead of streaming maximum and violation counts. Integration is held until all findings are repaired and a new independent review is explicitly clean.
+
+Runtime inventory found that the Mac already has the exact pinned 1.2 GB embedding model tree but not the exact offline packages. AlienSV is online with an RTX 4090 and ample free VRAM, but none of its environments has the required full package tuple and the model tree is absent. AlienSV remains the preferred calibration compute target after deliberate provisioning; the current canonical scanner contract itself is Mac/MPS-bound.
+
+### LEAKAGE-CALIBRATION-DESIGN-001 - Synthetic thresholds empirically rejected
+
+Timestamp: 2026-07-15 20:20 EDT
+
+Status: calibration design specified; current multilingual sample is insufficient to approve any production fuzzy threshold
+
+Existing source inventory found 5,656 English SFT rows, 2,790 historical Type B rows, and only 20 to 40 tracked teacher rows per non-English language. The Russian mixed file is excluded because it co-mingles development and frozen cases. Exact SFT/Type B overlap is 1,549 pairs, so Type B and Type B-derived SFT rows cannot be used to tune thresholds that Type B will later validate. A preliminary known-related probe showed why the synthetic cutoffs cannot be promoted: token-3 / character-5 detection at `0.80` was 14.9% / 49.0% for English Type B, 0% / 15.4% German, 0% / 28.6% French, 0% / 17.9% Spanish, and 0% / 35.7% Russian.
+
+The proposed approval design uses family-connected-component splits, never row splits. Wave A contains 180 independently native-confirmed families per language for calibration; Wave B contains 120 new-author, new-template, later-time families per language as a one-time sealed validation. The total is 300 families per language and 1,500 across EN/DE/FR/ES/RU. Each family supplies related pairs across input/input, output/output, input/output, and output/input. Negatives are different-family, same-language, length- and behavior-matched hard negatives scored against the full unrelated archive. The inferential unit is the semantic family, not augmented text pairs.
+
+For each method, the global review cutoff is the highest value whose family-clustered 10,000-bootstrap simultaneous lower sensitivity bound remains at least 95% for every language and comparison axis. A higher auto-block cutoff comes from the hard-negative extreme tail. Exact matches always block; scores between the review and auto-block cutoffs require blind native family review. If positive and negative score bands overlap, no automatic cutoff is approved. Thresholds freeze after Wave A and Wave B runs once. With 120 validation families per language, zero misses gives a one-sided Bonferroni-adjusted upper miss bound of about 4.64%; clustered bootstrap is primary, with Wilson or Clopper-Pearson intervals descriptive. Current non-English counts cannot support this approval, so production remains calibration-required.
+
+### LEAKAGE-CALIBRATION-RUNTIME-001 - AlienSV isolated CUDA runtime ready
+
+Timestamp: 2026-07-15 20:20 EDT
+
+Status: runtime compatibility proven; no calibration threshold or benchmark-quality claim
+
+AlienSV received a dedicated isolated calibration environment at `/home/saura/eg1-leakage-scanner-calibration-venv`; no existing EG-1 environment was modified. The 4.8 GB environment contains Python 3.12.3, sentence-transformers 5.6.0, transformers 5.12.1, torch 2.12.1+cu130, and NumPy 2.4.6, with `pip check` clean. The first import encountered one corrupt generated Torch `.pyc` and failed with `EOFError: marshal data too short`; deleting only generated `.pyc` files inside the new environment repaired it, after which imports passed.
+
+The dedicated 1.2 GB Hugging Face root contains the unauthenticated public Qwen3-Embedding-0.6B snapshot at revision `97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3`. Its 10-file tree exactly reproduces SHA-256 `087413375b109d83ccd69bff217f841ce9029e9a6d7d3804129d65a5f9bf319e` and 1,207,487,354 bytes. `model.safetensors` is 1,191,586,416 bytes with SHA-256 `0437e45c94563b09e13cb7a64478fc406947a93cb34a7e05870fc8dcd48e23fd`. An offline CUDA smoke load and two-string encode returned finite normalized `[2, 1024]` vectors using float16 on `cuda:0`, with about 1.20 GB allocated. The RTX 4090 returned to 22,886 MiB free. The ignored local readiness receipt hashes to `b361946f4a3603e21f4cb4b54e59534e76458c5abff00f3bdfd1d2cac230315e` and records the full isolation, version, model, GPU, smoke, failure, remediation, and calibration-only evidence.
+
+This environment is approved only for calibration compute. The canonical scanner is still Mac/MPS-bound and expects the literal Torch version `2.12.1`, whereas AlienSV reports `2.12.1+cu130`. A separate explicit CUDA runtime identity is required before AlienSV output can become canonical scanner evidence.
+
+### LEAKAGE-SCANNER-REVIEW-002 - Second hardened scanner still held
+
+Timestamp: 2026-07-15 20:20 EDT
+
+Status: commit `ea570eb2f664dd26a53d7b2e4c6a5aa2b17d7b34` passed 18/18 focused tests but remains rejected before integration
+
+The second repair added one canonical expected-receipt builder shared by publication and verification, exact whole-object equality, receipt-path mutation closure, captured-byte benchmark/source computation, strict four-role inventory and source-receipt schemas, producing-head ancestry, safe identifiers, exact pair violation counts, streaming Jaccard statistics, complete embedding-axis evidence, and a contract-pinned committed/live hash for the reused replay embedding backend. Intermediate commits `4bce4545` and `d32008e7` were superseded during self-audit and were never integrated.
+
+The full integration review still found seven issues. Verifier provenance required exact current HEAD rather than allowing an unchanged scanner receipt from an authenticated ancestor. Output-directory creation occurred before the cleanup transaction, so a final mutation failure could strand an empty directory. Empty token/character n-gram sets compared as similarity 1.0, causing unrelated very short texts to look identical. The standalone scanner did not independently require blocked-registry producing-head ancestry or safe source names. Its final blocked-registry validator still reopened live paths because the older V2 API has no captured-byte entry point. Finally, the scanner's new receipt schema is intentionally incompatible with the older frozen rating validator, which trusts a legacy `sources` receipt shape; the authoring/rating integration must invoke the canonical verifier instead of claiming end-to-end readiness.
+
+Decision: do not cherry-pick `ea570eb2`. Repair descendant verification, transaction cleanup, adaptive or noncomparable short-text n-grams, ancestry and safe-name checks, and explicitly test the live-path boundary. Then update the authoring/rating caller to pass the fixed scanner contract and model directory and to use canonical recomputation.
+
+### LEAKAGE-SCANNER-003 - Canonical scanner independently clean
+
+Timestamp: 2026-07-15 20:41 EDT
+
+Status: scanner commit `d518723b4dbfdbde134bf8c6dff672d8fc4f0f62` approved for authoring-gate integration; production remains calibration-required
+
+The final repair closed every prior scanner finding. It authenticates the complete local import closure before execution: multilingual V2 validator, replay normalizer, replay inventory helper, and replay embedding backend are each loaded by absolute path only after their exact SHA-256 matches the contract; all four paths and hashes are checked against producing-commit and live bytes and are included in exact receipt provenance. Verifier receipts may originate from an authenticated ancestor while main publication still requires exact HEAD. Output reservation is atomic and cleanup only removes a leaf this process successfully created. Raw sources accept both `input/output` and `asr_input/gold_output/expected_output` schema families, with nonzero counts for all four embedding axes.
+
+Short unrelated texts no longer become perfect matches through empty n-gram sets. Exact pair violations, streaming fuzzy counts, blocked-registry ancestry, safe source identities, captured-byte recomputation, model-tree/runtime identity, and transaction retry behavior all fail closed. Root and independent focused suites each passed 27/27; Python compilation and diff checks passed; the independent reviewer returned an explicit clean with no remaining P1/P2 findings. A canonical committed-diff review was invoked and resumed, but its sandbox transcript exhausted output on repository bootstrap/diff inspection without emitting a usable terminal verdict; it did not produce a contrary finding. The explicit independent clean is the approval used for integration.
+
+This approval is for scanner correctness and evidence integrity only. Production fuzzy thresholds remain `calibration_required`, synthetic output remains nonquality evidence, and the older frozen rating path still needs to be rewired to invoke this canonical verifier rather than trust its legacy receipt schema.
+
+### LEAKAGE-CALIBRATION-GATE-002 - Statistical pilot independently clean, production approval intentionally blocked
+
+Timestamp: 2026-07-15 20:55 EDT
+
+Status: commit `9aedea66` independently clean within an explicit noncertifying scope; no production threshold approved
+
+The calibration statistics lane now enforces whole-family splits across EN/DE/FR/ES/RU, four comparison axes, length and behavior coverage, 180-family calibration and sealed 120-family validation profiles, 10,000 deterministic family-cluster bootstrap replicates, maximum-neighbor hard negatives, threshold freezing before validation, and no validation-driven retuning. Score decisions use Decimal `ROUND_HALF_UP` at eight decimals and float64 arrays, so deployment `>=` boundary behavior is preserved. The chronology gate requires calibration-score sealing before freeze, freeze before validation-score sealing, validation-score sealing before or at custody, and custody before the validation execution head.
+
+The lane also ships an exact contract-pinned score generator. It loads the canonical scanner only at its pinned path/hash, requires the scanner verifier to reach the exact post-recomputation `calibration_required_noncertifying` stop, then recomputes token, character, and Qwen embedding scores from private pair/reference pools. Score bundles are exclusive, scores-first, receipt-last, fsynced, and cleaned only when the process owns the reservation. Focused tests passed 23/23 and independent review returned clean for this stated scope.
+
+Review correctly found that caller-supplied pair pools still cannot cryptographically prove native semantic relatedness or exhaustive same-language/different-family negatives. The repair therefore does not pretend they can. Every score, calibration, validation, and pilot receipt is `operator_attested_noncertifying`, carries `quality_evidence=false`, `production_thresholds_approved=false`, and `release_eligible=false`, and the `approve` command always fails closed until a future authenticated native pair-corpus owner exists. Duplicate reference pools are rejected. The tool supplies honest statistical experimentation, not deployable cutoffs.
+
+### DEV-AUTHORING-MAC-DEEP-001 - Full private expected-block lifecycle passed
+
+Timestamp: 2026-07-15 21:08 EDT
+
+Status: commit `1238494b` passed the full private Mac/MPS expected-block lifecycle in 1,137.053 seconds; rating-path repair still requires a confirming rerun
+
+An isolated 901 MB Mac runtime was provisioned at `~/.cache/eg1-leakage-scanner-mps-venv` without changing any existing environment. It contains Python 3.13.14, sentence-transformers 5.6.0, transformers 5.12.1, torch 2.12.1, and NumPy 2.4.6; `pip check` passed. The exact cached Qwen3-Embedding-0.6B tree matched SHA-256 `087413375b109d83ccd69bff217f841ce9029e9a6d7d3804129d65a5f9bf319e`, 10 files, and 1,207,487,354 bytes. MPS was available, and an offline two-string smoke produced finite, normalized `[2, 1024]` float32 vectors on `mps:0`. One reporting-only smoke expression incorrectly referenced `backend.device`; replacing it with `backend.model.device` produced the successful receipt.
+
+The required clean `git archive` lifecycle then used the generated 800-row private development corpus, all 5,656 shipping SFT rows, all 2,790 prior Type B rows, and both blocked registries. It ran real allocate and launch, the production four-method scanner, production merge verification, the deterministic synthetic four-method scanner, and synthetic merge verification. The production scanner truthfully returned `calibration_required_noncertifying`; merge rejected it and created no evaluation output. The synthetic scanner returned `synthetic_not_quality_evidence`; merge also rejected it and created no evaluation output. The one deep test passed with exit 0 after 18 minutes 57 seconds. This proves the fail-closed pre-calibration lifecycle on the canonical Mac runtime, not benchmark quality.
+
+The same builder revision passed 57/57 focused scanner-plus-authoring tests and 415 pytest tests with two expected private-data skips plus 67 subtests. Independent review nevertheless rejected `1238494b` because the older `validate-ratings` path could still accept a plain 800-row corpus/manifest without reopening the authoring chain, and because the deep test silently returned rather than reporting a skip when private environment variables were absent. The rating path is being rewired to require the full authenticated authoring bundle and upstream evidence; the missing-environment case is becoming an explicit skip. Because that changes the V2 dependency hash pinned by the scanner, the full deep lifecycle must confirm the final combined bytes again before integration.
+
+### DEV-AUTHORING-RATING-REPAIR-004 - Focused pass exposed a full-suite import collision
+
+Timestamp: 2026-07-15 23:10 EDT
+
+Status: commit `85b9e05775a2f39125e6d629e650932b361dc2ce` rejected pending a cache-safe authenticated-loader repair and complete rerun
+
+The rating repair now requires the complete authoring bundle and upstream evidence, authenticates the producing commit and transitive source closure before rating validation, byte-binds the supplied 800-row corpus and manifest to that bundle, rejects dirty or shadow evaluator files, and makes a missing private model environment an explicit test skip. Its focused scanner-plus-authoring run passed 56 tests with one expected skip. The final V2 SHA-256 was `57e7be4e49061ad5fcd6b22ad52bb2224e741695cf99cc127be06fd8ce880ea0`, and both the scanner constant and scanner contract matched it.
+
+The broad repository test run then found a cross-suite defect that the isolated focused run could not reveal. Earlier tests left replay-normalizer and multilingual-validator modules in Python's process-wide module cache without the new authentication marker; a later fresh scanner import rejected those preloaded modules during test collection. The broad run stopped with two collection errors rather than producing a green result. Decision: reject this commit as an integration candidate. Fresh scanner imports must replace unrelated cached modules from one read-once, hash-verified byte snapshot, while only the specifically rating-gate-preloaded V2 module may be reused when it carries the exact authenticated marker. A cross-suite-order regression, focused tests, broad tests, private 19-minute Mac lifecycle, and independent review are all required on the amended commit.
+
+The cache-safe amendment `515609a3d54a18120c95e1cececca40e24aa6d3f` replaced unauthenticated cached modules from captured pinned bytes without executing the cached object. It passed 105 focused tests with one explicit private skip, 487 pytest tests with three skips plus 67 subtests, and 400 unittest tests with three skips. Independent review returned clean on the loader, rating-chain, import-closure, dirty-shadow, mutation, and cleanup fixes. The canonical committed-diff review nevertheless found a separate P1: the 160 `shared_concept_local_rewrite` rows were grouped into 32 five-language families by opaque identifier, but the gate did not require one immutable, independently reviewed source brief and content hash for each family. Five unrelated rows could therefore be mislabeled as one cross-language family. The private Mac run was stopped after about seven minutes, during production scanning, rather than spending the remaining time on rejected bytes.
+
+Decision: do not integrate `515609a3`. Preserve the approved 800-row 80/20 matrix and add exactly 32 private shared-concept briefs, not 80. The 80-brief figure belongs to the separate 2,000-row D1 training design. Each development brief must be authored and independently reviewed without candidate output, sealed before local rewriting, bound to all five language slots by stable ID and content hash, and authenticated through launch, merge, verify, rating, full transitive mutation closure, and clean-archive replay. Missing, unrelated, duplicated, or mutated briefs must fail closed. Focused, broad, independent, canonical, and full private Mac checks must all rerun on the repaired commit.
+
+Two parallel read-only reviews found additional evidence-integrity defects to repair in the same amendment. First, scanner verification allowed a receipt's producing commit to be an ancestor but then compared that producing commit's control blobs against descendant live bytes and recomputed with descendant code. A legitimate historical receipt would fail after a later V2 or control change, while selectively weakening those checks would risk verifying old evidence with the wrong algorithm. The approved design is a stable dispatcher that snapshots all inputs, proves ancestry and clean controls, creates a disposable local shared clone detached at the producing commit, runs that exact historical scanner and contract, verifies the captured receipt/result identity, rechecks every external input and model-tree snapshot, and always removes the clone.
+
+Second, `validate-ratings` authenticated the development-authoring chain and then reopened mutable corpus, rating, power, generation, leakage, and private-evidence paths during later work. A file could therefore change after authentication and before the final manifest hash was built. The repair must capture every downstream input once into immutable bytes or private snapshot files, validate and hash only those captures, retain the complete authenticated authoring/model fingerprint, recheck all original evidence immediately before atomic publication, and leave no partial manifest on any mutation. Adversarial tests must cover after-parse mutation, swap-and-restore, private roster/seal/model mutation, historical-control changes, nonancestor receipts, dirty and untracked shadows, child-result mismatch, and temporary-clone cleanup.
+
+### DEV-AUTHORING-GATE-005 - Final reviewed code bytes; private Mac lifecycle live
+
+Timestamp: 2026-07-15 23:55 EDT
+
+Status: code commit `7d7f5fff88606ca70d7629f31d1967e8bc9ae6f1` independently and canonically clean; exact private Mac/MPS lifecycle in progress
+
+The final authoring gate preserves the 800-row development matrix: 640 native-original rows and 160 shared local rewrites derived from exactly 32 sealed language-neutral briefs, one rewrite per EN/DE/FR/ES/RU. The separate D1 training design still owns 80 briefs for 400 of its 2,000 rows. One private roster now authenticates four singular, disjoint roles through one identity-reference namespace: concept author, concept reviewer, local native author, and local native reviewer. At least five concept authors and five concept reviewers are required, no custodian may own more than eight briefs, and concept identities must remain disjoint from all five local author/reviewer pairs. Roster ID/SHA, brief IDs/hashes, native fidelity reviews, leakage evidence, and rating schema are reopened through seal, launch, merge, verify, and rating authentication.
+
+The scanner now verifies ancestor-produced receipts by authenticating the producing commit closure and running that exact historical scanner in a disposable detached local clone against private immutable evidence and model snapshots. Ratings now bind the exact authoring fingerprint to immutable copies of corpus, manifests, ratings, power plan, generation receipts, leakage evidence, and rating schema, then recheck originals immediately before atomic publication. Swap-and-restore, dirty/shadowed controls, nonancestor receipts, roster aliases/swaps, wrong roles, one-person custody, over-cap custody, candidate-output exposure, and mid-publication mutations fail closed.
+
+Final receipts before the private model run: focused tests passed 123 cases with one environment-dependent skip; the evaluator suite passed 438 tests plus 92 subtests with three expected private-data skips in 52.29 seconds; repository-wide pytest passed 505 tests plus 92 subtests with the same three skips in 52.22 seconds. The real clean archive executed allocate, shared-brief sealing, and roster-bound launch before the private skip. Independent review returned clean, and the canonical `codex-5.6-sol` committed-diff review reported no actionable defects. Final V2 SHA-256 is `0f2772b9b1d989a2c0f7a8b6898a182b2f6782bfdc397319b4bd9d73ac6a47d7`; final scanner SHA-256 is `ec9952c7c295f7ed5eb3733efd6d922bba7a1910aa1f484e60c941c89f8ba7f5`.
+
+The calibration pilot was repinned to those scanner bytes at commit `d66659a1de426a1a2bc07e61e6922908992f5731`; its generator SHA-256 is `22ca41d6477a79323018c3a1e8b0f932f356f46e9b57039e2f27424f15026329`. Independent delta review was clean and 23/23 tests passed. It remains explicitly noncertifying because no authenticated native calibration corpus exists.
+
+The full private Mac/MPS lifecycle then passed on the exact reviewed code commit `7d7f5fff88606ca70d7629f31d1967e8bc9ae6f1`: one test in 1,061.131 seconds, exit 0, `OK` (17 minutes 41 seconds). The clean archive ran real allocation, 32-brief sealing, four-role roster-bound launch, production four-method scanning against the 800 development rows plus 5,656 shipping SFT and 2,790 prior Type B rows, independent production merge-side recomputation, deterministic synthetic scanning, and independent synthetic merge-side recomputation. Production evidence reached `calibration_required_noncertifying` and was rejected with no evaluation bundle. Synthetic evidence reached `synthetic_not_quality_evidence` and was also rejected with no evaluation bundle. This is end-to-end proof of the final fail-closed pre-calibration lifecycle on the canonical Mac runtime; it is not multilingual benchmark quality, a model score, or a finalist promotion.

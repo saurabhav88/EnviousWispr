@@ -89,7 +89,7 @@ Simply increasing Qwen3.5 from 4B to 9B did not solve it either. The 9B control 
 
 The multilingual-specialist EuroLLM-9B control also failed before the full benchmark: two of five untouched Spanish smoke outputs exposed internal wrapper tags. The predeclared fail-closed rule stopped the lane immediately. This rejects that exact model, not the one-universal-model requirement.
 
-The Qwen3.5-4B reserve is also not ready to train. Its single authorized AlienSV compatibility preflight attached LoRA to all 128 standard attention/MLP targets but none of the 120 required GDN targets, so the exact 248-target gate stopped it at zero optimizer steps. No adapter, checkpoint, merged model, or quality score was produced. This is a compatibility blocker in the current training stack, not evidence that Qwen3.5 is good or bad at polishing.
+The Qwen3.5-4B reserve is now technically LoRA-compatible, but it has no quality evidence. A fresh AlienSV compatibility preflight used the reviewed trainer bytes and the pinned four-row private synthetic set. It attached LoRA to all 248 required text modules, including all 120 GDN placements, with zero vision/MTP leakage and exactly 32,464,896 trainable parameters. It completed the contract's single optimizer step in 20.347 seconds and saved a 129,927,008-byte adapter. The manifest explicitly marks this as compatibility-only, not a benchmark, candidate, checkpoint promotion, or reason to train before approved D1 data exists.
 
 ## The honest benchmark now being built
 
@@ -107,7 +107,11 @@ The frozen count is power-driven rather than fixed for convenience. First, one e
 
 No frozen model outputs have been opened. The real corpus cannot pass validation until native authorship, native review, leakage receipts, and manifest binding are complete.
 
-The D1 universal training-data contract separately allocates 2,000 families: 400 per priority language, balanced across core polishing, positive lists, and matched prose restraints. It cannot export training data until every row is independently native-approved and screened against training and benchmark families.
+The 800-row development authoring gate is now implemented and independently clean. Its 20% shared slice is exactly 32 language-neutral briefs rewritten once in each of the five languages, not the 80 briefs used by the separate 2,000-row D1 training design. One private roster owns four disjoint roles: concept author, concept reviewer, local native author, and local native reviewer. Every concept and local identity is resolved through that same private identity-reference registry; at least five concept authors and five concept reviewers are required, with no one handling more than eight briefs. The exact roster, brief content hashes, five-language bindings, native fidelity reviews, leakage evidence, and rating schema remain authenticated through launch, merge, evaluation verification, and final ratings. This closes the earlier loophole where five unrelated examples could be labeled as one shared multilingual family.
+
+The final private Mac/MPS proof passed in 17 minutes 41 seconds. It exercised the exact clean-archive allocation, brief sealing, roster-bound launch, production scanner, production merge recomputation, synthetic scanner, and synthetic merge recomputation. Both production and synthetic evidence were rejected before evaluation for the correct reasons: production thresholds are still calibration-required, and synthetic output is not quality evidence. This proves the gate fails closed; it does not supply the missing native benchmark content or make a model-quality claim.
+
+The D1 universal training-data contract separately allocates 2,000 families: 400 per priority language, balanced across core polishing, positive lists, and matched prose restraints. The 400 cross-language rows now have a sealed metadata-only allocation: 80 language-neutral concepts, each mapped once into English, German, French, Spanish, and Russian. No concept prose, identity, approval, or model output exists yet. D1 still cannot export training data until those private concepts and all 2,000 rows are independently approved and screened against training and benchmark families.
 
 The broad English Type B gate remains required, but its content must be rebuilt. A fresh audit found shipping training overlaps 1,549/1,890 old Type B rows exactly. ID/origin transitive components expose 1,866/1,890 rows; seeding that same family graph with conservative normalized-text matches exposes 1,868/1,890. The old gate cannot support a real-world accuracy claim. The 900 overflow rows have zero exact overlap but 899/900 share exposed families, so they cannot simply replace the training rows.
 
@@ -128,11 +132,11 @@ One selected adapter loaded offline and added about 79 MiB idle memory with sub-
 
 ## Work still in flight
 
-1. Supply a real private native author/reviewer roster. The reviewed launch gate can start 1,600 native-original D1 rows, 320 per language, while keeping at least 50% human-native authorship and a separate human-native reviewer for every row. The remaining 400 shared-concept rows require the sealed private concept registry.
+1. Supply the real private rosters. The development roster needs the four disjoint concept/local author-reviewer roles described above. The D1 launch gate can separately start 1,600 native-original training rows, 320 per language, while keeping at least 50% human-native authorship and a separate human-native reviewer for every row. Author and review the 80 private D1 language-neutral briefs that unlock its remaining 400 shared-concept rows; do not confuse those 80 D1 briefs with the development benchmark's 32.
 2. Author and independently review the 1,890 Type B assignments, then complete the D1, development, and frozen native-review gates without exposing candidate output.
-3. Train the Gemma 4 E4B primary only after the data is approved. Resolve the 248-target Qwen3.5 compatibility blocker before spending another Qwen reserve run on AlienSV.
+3. Train the Gemma 4 E4B primary only after the data is approved. Keep Qwen3.5 as the technically compatible reserve; do not spend a quality-training run until the same approved D1 export exists.
 4. Compare candidates on development panels. Stop each exact recipe after one smoke and one full benchmark if it does not improve without meaningful regressions.
-5. Run the leakage-clean Type B V2 gate only once on a locked finalist, then validate any survivor through the exact shipped Mac path.
+5. Run the leakage-clean Type B V2 gate only once on a locked finalist, then validate any survivor through the exact shipped Mac path. The current app build must first embed signed build provenance and an app-produced or compiled-Swift delivery receipt; a Python shipping-contract mirror is useful evidence but is not literal end-user delivery parity.
 
 ## Decisions that are not yet justified
 

@@ -136,3 +136,32 @@ The pinned `config.json` defines 32 text layers in an exact three-linear/one-ful
 Future runs also snapshot the training JSONL, prompt, `config.json`, and `model.safetensors.index.json` bytes exactly once for script-owned parsing and receipt hashing. Their hashes and parsed rows/text/metadata come from those same captured bytes, and later data formatting/training uses only the captured rows and prompt. Synthetic post-read file mutations preserve matching receipt hashes and consumed script-owned content, while invalid UTF-8/JSON fails before output creation or model loading. Multi-gigabyte weight shards remain streamed for hashing and are never copied into memory. The historical run and its hashes are unchanged; no remote retry occurred.
 
 Future runs now repeat the complete pinned base-artifact validation immediately after `FastModel.from_pretrained` returns and before target derivation, adapter injection, trainer construction, or optimization. The second pass must exactly match the startup receipt. It rereads the small config/index files and streams the two multi-gigabyte shards through SHA-256 without retaining their bytes. A synthetic loader-time shard mutation fails with durable status `blocked_post_load_artifact_revalidation_failed` and a hashed error receipt at phase `post_model_load_pre_adapter_injection`; adapter and trainer mocks remain untouched. Preflight learning rates must also be finite and positive, so `nan`, positive infinity, and negative infinity stop before output creation or model validation. This is future local fail-closed hardening only; the historical 0-step result is unchanged and no remote retry occurred.
+
+## Authorized 248/248 AlienSV retry
+
+Timestamp: 2026-07-15 18:47 EDT
+
+Status: compatibility preflight complete; explicitly not quality evidence
+
+The reviewed trainer from commit `d8d0556e47f9db6033efa6719a7f1bd952ce9832` was transferred to AlienSV and rehashed before execution. Its SHA-256 was `474ceb6888dc5690169e348c373114530e6fd482a38985b3018fe892b0937cda`; the private four-row input and shipped prompt retained their pinned hashes `0584d6d796ad2fe0e1f551c20fb175487e13a2440effdb71bae0acd69e057bb3` and `7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62`. The RTX 4090 was idle before launch with 22,886 MiB free.
+
+Run tag: `qwen35_reserve_bf16_preflight_20260715_r2`. The live audited stack matched Transformers 5.5.0, PEFT 0.19.1, and Unsloth 2026.6.9. The base revision and all seven model artifacts passed before load and matched again after load. The explicit full-path injection then passed every pre-training gate:
+
+| Live target family | Present | Required | Missing |
+|---|---:|---:|---:|
+| MLP `gate_proj`, `up_proj`, `down_proj` | 32 each | 32 each | 0 |
+| full attention `q_proj`, `k_proj`, `v_proj`, `o_proj` | 8 each | 8 each | 0 |
+| GDN `in_proj_a` | 24 | 24 | 0 |
+| GDN `in_proj_b` | 24 | 24 | 0 |
+| GDN `in_proj_qkv` | 24 | 24 | 0 |
+| GDN `in_proj_z` | 24 | 24 | 0 |
+| GDN `out_proj` | 24 | 24 | 0 |
+| Total | 248 | 248 | 0 |
+
+Expected and actual normalized target-set SHA-256 both equal `707ca9ad5e438a00d45d0625b82467881ba356ef73f1319b21baa5ddcbb9ace3`. Vision/MTP matches, unmatched modules, and duplicate modules were all empty. Rank-16 trainable parameters were exactly 32,464,896 of 4,238,216,192. Response-only masking left 25, 19, 24, and 25 labeled tokens on the four rows.
+
+The contract then completed exactly one optimizer step: loss `0.1049`, learning rate `5e-5`, 19.63-second trainer time, 20.347-second measured training time, 8,762,602,496 peak allocated CUDA bytes, and 8,912,896,000 peak reserved bytes. The saved adapter weights are 129,927,008 bytes with SHA-256 `a0e6921d56f1067687784e2ece6aa9d6c66a7a2821185484a62c58f5be7c5b19`. The full output directory is 149,976,978 bytes. GPU state returned to 0% utilization with 22,886 MiB free.
+
+The terminal manifest is 39,166 bytes with SHA-256 `34a111b6c407cf102079b21c4be17578fe3fe1fc8908db8c6475f1e107aae93f`. A local ignored copy is preserved under `artifacts/eg1-qwen35-preflight-20260715-r2/`; the authoritative remote output remains `/home/saura/tuning/out/qwen35_reserve_bf16_preflight_20260715_r2`. The manifest says `status=complete`, `completed_steps=1`, `quality_evidence=false`, and `evidence_class=compatibility_preflight_not_quality_evidence`.
+
+Decision: the 128/248 compatibility blocker is resolved for this exact stack. This run does not score Qwen3.5, justify full training, open frozen data, or promote the saved adapter. Quality training remains blocked on approved D1 data.
