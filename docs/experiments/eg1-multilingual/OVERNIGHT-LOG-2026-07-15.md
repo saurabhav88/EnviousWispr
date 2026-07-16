@@ -2047,3 +2047,11 @@ The completed source audit refined the initial web-speech draft. FLEURS plus MIN
 The audit also established two limitations that must survive the pause. FLEURS repeats shared FLORES concept IDs and sometimes has multiple recordings, so selection must use one recording per language/concept and inference must cluster by concept ID. MINDS-14 has no public speaker ID or official held-out split, so near-duplicate text grouping is mandatory and speaker separation cannot be claimed. Public-data leakage can be proven against Envious-held corpora, but absence from Qwen base pretraining cannot be proven.
 
 The durable work index is `docs/experiments/eg1-multilingual/WORK-INDEX-2026-07-15.md`. It records measured model/prompt results, benchmark and leakage assets, runtime/adapter proofs, engineering counts, validation receipts, unfinished scope, and the exact resume order. No public speech audio or row content was downloaded, no frozen selector was created, and no candidate output was generated after the pivot.
+
+### SALVAGE-HANDOFF-001 - Claude Code resume record created
+
+Timestamp: 2026-07-16 00:30 EDT
+
+Status: durable handoff authored; experiments remain paused
+
+Founder direction requires the complete technical salvage record to live under the EnviousWispr project `docs` tree and in a GitHub issue that Claude Code can find later. `CLAUDE-CODE-SALVAGE-HANDOFF-2026-07-16.md` is now the resume front door, with GitHub issue #1570 as the durable work owner. They separate evidence that may be reused as-is, development signals that require caveats, rejected claims and lanes that must not be repeated, missing deliverables, stop rules, and the shortest benchmark-first path to the next meaningful model result. The work index and Tier 2 EG-1 provenance router point to them. No experiment was resumed and no new quality claim was made during this documentation pass.

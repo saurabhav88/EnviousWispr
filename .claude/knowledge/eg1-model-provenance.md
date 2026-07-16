@@ -5,6 +5,8 @@ When to load: any question about how EG-1 was trained — "is it a full fine-tun
 
 Source of record: GitHub issue **#1265** (closed, founder-approved 2026-07-02) — its "Method of record" + results comments are authoritative; research + citations in `docs/competitive-analysis/2026-07-02-tune-base-model-vs-fluid1.md`. Training data lives (gitignored, Docs/dev-tooling lane) in `scripts/eval/runs/bakeoff-1265/train_sft_v{1,2}.jsonl`. Epic: **#1190**. Wiring into the app: **#1269 / #1271**.
 
+July 15-16 multilingual/list research resume point: `docs/experiments/eg1-multilingual/CLAUDE-CODE-SALVAGE-HANDOFF-2026-07-16.md` and GitHub issue **#1570**. They classify what is proven, reusable, rejected, and missing after the paused 24-hour run. Read them before resuming PR #1562 or the older running tracker #1364.
+
 ## FACT: eg1-headline-what-it-is
 | Question | Answer |
 |---|---|

@@ -2,6 +2,8 @@
 
 Status: paused checkpoint after the July 15-16 research run. This index separates measured results, infrastructure, and unfinished work.
 
+Claude Code resume front door: `CLAUDE-CODE-SALVAGE-HANDOFF-2026-07-16.md`; GitHub owner: issue #1570.
+
 ## Bottom line
 
 The run did not produce a release winner. It did establish that the old 93.7% headline is not a trustworthy real-world quality number, prompt-only list tuning is unsafe, the old 1,890-case Type B set is heavily contaminated, and the current training mixture is far too English-heavy and list-light to answer the multilingual question.
@@ -125,6 +127,7 @@ The volume is mostly reproducible evidence: prompts, manifests, per-run outputs,
 
 ## Durable pointers
 
+- Claude Code salvage handoff: `CLAUDE-CODE-SALVAGE-HANDOFF-2026-07-16.md`
 - Founder readout: `FOUNDER-READOUT-2026-07-15.md`
 - Complete chronological log: `OVERNIGHT-LOG-2026-07-15.md`
 - Qwen language audit: `QWEN3-LANGUAGE-EVIDENCE-AUDIT-2026-07-15.md`
