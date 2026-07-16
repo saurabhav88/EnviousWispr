@@ -22,13 +22,14 @@ enum ManifestFixture {
       ["id": "our_copy", "baseURL": "https://mirror.invalid.example/base/"],
       ["id": "backup", "baseURL": "https://upstream.invalid.example/base/"],
     ],
+    family: String = "parakeet",
     schemaVersion: Int = 1,
     mutate: ((inout [String: Any]) -> Void)? = nil
   ) throws -> Data {
     var object: [String: Any] = [
       "schemaVersion": schemaVersion,
       "identity": [
-        "family": "parakeet", "name": "fixture-model", "revision": "rev1",
+        "family": family, "name": "fixture-model", "revision": "rev1",
         "variant": "int8", "runtimeABI": "fluidAudio-test",
       ],
       "files": files.map {
@@ -120,6 +121,32 @@ enum ManifestFixture {
       object["totalBytes"] = 999
     }
     #expect(throws: (any Error).self) { try DeliveryManifest.load(from: badTotal) }
+  }
+
+  @Test func whisperKitCarveOutForNonOurCopyPrimarySource() throws {
+    // #1386 PR-2: the multilingual (WhisperKit) engine is the ONE licensed
+    // exception to mirror-first — its single source is HF-pinned, not our_copy.
+    let hfOnly = [["id": "hugging_face", "baseURL": "https://hf.invalid.example/base/"]]
+
+    // WhisperKit ACCEPTS a non-our_copy primary source.
+    let whisper = try ManifestFixture.manifestJSON(
+      files: ManifestFixture.smallFiles, sources: hfOnly, family: "whisper_kit")
+    #expect(throws: Never.self) { try DeliveryManifest.load(from: whisper) }
+
+    // The carve-out MUST NOT leak: every other family still hard-requires
+    // our_copy first (a non-our_copy primary is refused).
+    for family in ["parakeet", "eg_one"] {
+      let leaky = try ManifestFixture.manifestJSON(
+        files: ManifestFixture.smallFiles, sources: hfOnly, family: family)
+      #expect(throws: (any Error).self) { try DeliveryManifest.load(from: leaky) }
+    }
+
+    // WhisperKit still enforces every OTHER source rule (https + trailing slash).
+    let badScheme = try ManifestFixture.manifestJSON(
+      files: ManifestFixture.smallFiles,
+      sources: [["id": "hugging_face", "baseURL": "http://hf.invalid.example/base/"]],
+      family: "whisper_kit")
+    #expect(throws: (any Error).self) { try DeliveryManifest.load(from: badScheme) }
   }
 
   @Test func missingBundleResourceThrowsTyped() {
