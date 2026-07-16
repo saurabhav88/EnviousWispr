@@ -151,17 +151,23 @@ struct AIPolishSettingsView: View {
   @State private var geminiKey: String = ""
   @State private var validationStatus: String = ""
   /// #1455: whether a NON-EMPTY key is currently persisted in Keychain, for
-  /// the missing-key notice. Deliberately a cached flag updated only at the 3
-  /// real mutation points (onAppear load, successful save, successful clear)
-  /// rather than a live Keychain re-read inside the view body (Codex r4
-  /// finding: `retrieve()` does side-effecting legacy-key migration + file
-  /// I/O + telemetry, so calling it on every render, including every typed
+  /// the missing-key notice. Cached, updated only at the 3 real mutation
+  /// points (onAppear load, successful save, successful clear) rather than a
+  /// live Keychain re-read inside the view body (Codex r4 finding:
+  /// `retrieve()` does side-effecting legacy-key migration + file I/O +
+  /// telemetry, so calling it on every render, including every typed
   /// character, would re-run that work needlessly and could re-report a
-  /// failed legacy cleanup repeatedly). Defaults false only until `onAppear`
-  /// resolves, matching the existing `openAIKey`/`geminiKey` fields' own
-  /// fail-to-empty convention on the same read.
-  @State private var openAIKeySaved = false
-  @State private var geminiKeySaved = false
+  /// failed legacy cleanup repeatedly).
+  ///
+  /// THREE states, not two (Codex r5 finding): `nil` = not yet determined or
+  /// the read failed for ANY reason (locked Keychain, I/O error, the legacy-
+  /// migration fallback inside `retrieve()` failing its own separate way —
+  /// deliberately not narrowed to one specific thrown case, since a failure
+  /// anywhere in that path should read as "unknown," never as "confirmed
+  /// absent"). Only an explicit `false` (a successful read that came back
+  /// empty) is allowed to show the notice; `nil` and `true` both suppress it.
+  @State private var openAIKeySaved: Bool?
+  @State private var geminiKeySaved: Bool?
 
   private var isCloudProvider: Bool {
     settings.llmProvider == .openAI || settings.llmProvider == .gemini
@@ -324,7 +330,11 @@ struct AIPolishSettingsView: View {
       // Keychain would also read as a false "definitely no key" rather than
       // "couldn't check." `openAIKeySaved`/`geminiKeySaved` cache a CONFIRMED
       // read, updated only at the 3 real mutation points.
-      let savedKeyIsEmpty = settings.llmProvider == .openAI ? !openAIKeySaved : !geminiKeySaved
+      // Explicit `== false` (not `!x`): `nil` (unknown) and `true` (confirmed
+      // present) must both suppress the notice, only a confirmed-empty read
+      // shows it.
+      let savedKeyIsEmpty =
+        (settings.llmProvider == .openAI ? openAIKeySaved : geminiKeySaved) == false
       if savedKeyIsEmpty {
         InsetNotice(
           text:
@@ -457,12 +467,24 @@ struct AIPolishSettingsView: View {
       }
     }
     .onAppear {
-      let storedOpenAIKey = try? keychainManager.retrieve(key: KeychainManager.openAIKeyID)
-      openAIKey = storedOpenAIKey ?? ""
-      openAIKeySaved = !(storedOpenAIKey ?? "").isEmpty
-      let storedGeminiKey = try? keychainManager.retrieve(key: KeychainManager.geminiKeyID)
-      geminiKey = storedGeminiKey ?? ""
-      geminiKeySaved = !(storedGeminiKey ?? "").isEmpty
+      // A thrown read leaves `openAIKey`/`geminiKey` at their existing
+      // fail-to-empty convention (unchanged from before #1455), but
+      // deliberately does NOT touch `openAIKeySaved`/`geminiKeySaved` — a
+      // failed read is "unknown," not "confirmed absent" (Codex r5 finding).
+      do {
+        let stored = try keychainManager.retrieve(key: KeychainManager.openAIKeyID)
+        openAIKey = stored
+        openAIKeySaved = !stored.isEmpty
+      } catch {
+        openAIKey = ""
+      }
+      do {
+        let stored = try keychainManager.retrieve(key: KeychainManager.geminiKeyID)
+        geminiKey = stored
+        geminiKeySaved = !stored.isEmpty
+      } catch {
+        geminiKey = ""
+      }
       if settings.llmProvider == .ollama {
         llmDiscovery.loadCachedModels(for: .ollama)
         Task {
