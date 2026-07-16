@@ -69,6 +69,48 @@ def score_rows(
 class LeakageCalibrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        cls.git_patchers = []
+        try:
+            subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=MODULE.REPO_ROOT,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except subprocess.CalledProcessError:
+            fixture_head = "a" * 40
+
+            def archive_git_output(arguments):
+                if arguments == ["rev-parse", "HEAD"]:
+                    return fixture_head.encode()
+                if arguments == ["show", f"{fixture_head}:{MODULE.TOOL_REPO_PATH}"]:
+                    return MODULE.SCRIPT_PATH.read_bytes()
+                if arguments == ["show", f"{fixture_head}:{MODULE.CONTRACT_REPO_PATH}"]:
+                    return CONTRACT_BYTES
+                raise AssertionError(f"unexpected archive git command: {arguments}")
+
+            def archive_validate_provenance(receipt):
+                expected = {
+                    "producing_git_head": fixture_head,
+                    "tool_path": MODULE.TOOL_REPO_PATH,
+                    "tool_sha256": hashlib.sha256(MODULE.SCRIPT_PATH.read_bytes()).hexdigest(),
+                    "contract_path": MODULE.CONTRACT_REPO_PATH,
+                    "contract_sha256": hashlib.sha256(CONTRACT_BYTES).hexdigest(),
+                }
+                for field, value in expected.items():
+                    if receipt.get(field) != value:
+                        raise ValueError("threshold freeze archive provenance is invalid")
+
+            cls.git_patchers = [
+                mock.patch.object(MODULE, "current_git_head", return_value=fixture_head),
+                mock.patch.object(MODULE, "git_output", side_effect=archive_git_output),
+                mock.patch.object(
+                    MODULE, "validate_provenance", side_effect=archive_validate_provenance
+                ),
+            ]
+            for patcher in cls.git_patchers:
+                patcher.start()
         cls.calibration_bytes = score_rows(
             "calibration",
             180,
@@ -79,6 +121,11 @@ class LeakageCalibrationTests(unittest.TestCase):
         )
         cls.freeze = MODULE.build_freeze_receipt(CONTRACT_BYTES, cls.calibration_bytes)
         cls.freeze_bytes = MODULE.canonical_json(cls.freeze)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        for patcher in reversed(cls.git_patchers):
+            patcher.stop()
 
     def test_release_calibration_freezes_before_validation_with_10k_bootstrap(self) -> None:
         self.assertEqual(self.freeze["status"], "operator_attested_noncertifying_calibration")
