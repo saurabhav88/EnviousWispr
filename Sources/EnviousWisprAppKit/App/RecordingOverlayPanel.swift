@@ -138,13 +138,16 @@ final class RecordingOverlayPanel {
     else { return }
     self.isRecordingLocked = isRecordingLocked
     currentIntent = intent
+    // #1569 (E4): the narrator is the sole author of the spoken announcement;
+    // the panel keeps choosing the per-case AX priority + target element.
+    let spokenAnnouncement = DictationNarrator.announcement(for: intent)
     switch intent {
     case .hidden:
       NSAccessibility.post(
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
         userInfo: [
-          .announcement: "Recording complete",
+          .announcement: spokenAnnouncement,
           .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
         ])
       hide()
@@ -153,7 +156,7 @@ final class RecordingOverlayPanel {
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
         userInfo: [
-          .announcement: "Recording started",
+          .announcement: spokenAnnouncement,
           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
         ])
       show(
@@ -164,7 +167,7 @@ final class RecordingOverlayPanel {
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
         userInfo: [
-          .announcement: "Processing transcription",
+          .announcement: spokenAnnouncement,
           .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
         ])
       showPolishing(label: DictationNarrator.copy(for: phase))
@@ -173,7 +176,7 @@ final class RecordingOverlayPanel {
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
         userInfo: [
-          .announcement: "Text copied to clipboard",
+          .announcement: spokenAnnouncement,
           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
         ])
       showClipboardFallback()
@@ -182,7 +185,7 @@ final class RecordingOverlayPanel {
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
         userInfo: [
-          .announcement: "Accessibility permission needed for auto-paste",
+          .announcement: spokenAnnouncement,
           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
         ])
       if accessibilityToastShownThisSession || accessibilityWarningDismissedProvider() {
@@ -198,7 +201,7 @@ final class RecordingOverlayPanel {
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
         userInfo: [
-          .announcement: "Warning: \(message)",
+          .announcement: spokenAnnouncement,
           .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
         ])
       showWarning(message: message)
@@ -209,7 +212,7 @@ final class RecordingOverlayPanel {
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
         userInfo: [
-          .announcement: "Error: \(message)",
+          .announcement: spokenAnnouncement,
           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
         ])
       showError(message: message)
@@ -219,7 +222,7 @@ final class RecordingOverlayPanel {
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
         userInfo: [
-          .announcement: "Interruption: \(message)",
+          .announcement: spokenAnnouncement,
           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
         ])
       showNotification(message: message, style: .interruption)
@@ -228,7 +231,7 @@ final class RecordingOverlayPanel {
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
         userInfo: [
-          .announcement: "Detected \(payload.displayName)",
+          .announcement: spokenAnnouncement,
           .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
         ])
       showPassiveChip(payload: payload)
@@ -237,13 +240,13 @@ final class RecordingOverlayPanel {
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
         userInfo: [
-          .announcement: "Getting dictation ready, one moment",
+          .announcement: spokenAnnouncement,
           .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
         ])
       presentTransientNotice(
         content: ColdStartNoticeView(
-          title: "Getting dictation ready…",
-          subtitle: "\(engineLabel) is warming up after a restart",
+          title: DictationNarrator.coldStartTitle,
+          subtitle: DictationNarrator.coldStartSubtitle(engineLabel: engineLabel),
           icon: .spinner
         ).frame(width: 300, height: 56),
         width: 300, height: 56, dismissAfter: 2.0)
@@ -252,12 +255,12 @@ final class RecordingOverlayPanel {
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
         userInfo: [
-          .announcement: "Dictation ready. Press to start.",
+          .announcement: spokenAnnouncement,
           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
         ])
       presentTransientNotice(
         content: ColdStartNoticeView(
-          title: "Ready — press to dictate",
+          title: DictationNarrator.readyTitle,
           subtitle: nil,
           icon: .ready
         ).frame(width: 240, height: 44),
@@ -267,7 +270,7 @@ final class RecordingOverlayPanel {
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
         userInfo: [
-          .announcement: "Recovering your last recording. Press Discard to skip.",
+          .announcement: spokenAnnouncement,
           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
         ])
       presentTransientNotice(
@@ -281,8 +284,7 @@ final class RecordingOverlayPanel {
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
         userInfo: [
-          .announcement:
-            "Bluetooth microphone detected. Wait a moment before speaking on a cold start.",
+          .announcement: spokenAnnouncement,
           .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
         ])
       showBluetoothAwareness()
@@ -443,7 +445,7 @@ final class RecordingOverlayPanel {
   func showClipboardFallback() {
     guard panel == nil else {
       // Transition from existing panel (recording/polishing) to clipboard notice
-      transitionToPolishing(label: "Copied. Press \u{2318}V to paste")
+      transitionToPolishing(label: DictationNarrator.clipboardFallbackText)
       scheduleAutoDismiss()
       return
     }
@@ -455,7 +457,7 @@ final class RecordingOverlayPanel {
     let work = DispatchWorkItem { [weak self] in
       guard let self, self.generation == token else { return }
       self.pendingCreateWork = nil
-      self.createPolishingPanel(label: "Copied. Press \u{2318}V to paste")
+      self.createPolishingPanel(label: DictationNarrator.clipboardFallbackText)
       self.scheduleAutoDismiss()
     }
     pendingCreateWork = work
@@ -1521,7 +1523,7 @@ struct AccessibilityToastView: View {
       Image(systemName: "lock.shield.fill")
         .foregroundStyle(.orange)
         .font(.system(size: 16))
-      Text("Auto-paste needs Accessibility")
+      Text(DictationNarrator.accessibilityToastText)
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(.white)
       Spacer(minLength: 8)
@@ -1557,10 +1559,10 @@ struct RecoveryNoticeView: View {
         .controlSize(.small)
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 1) {
-        Text("Recovering your last recording…")
+        Text(DictationNarrator.recoveryTitle)
           .font(.system(size: 13, weight: .medium))
           .foregroundStyle(.white)
-        Text("Saved to History when it's done")
+        Text(DictationNarrator.recoverySubtitle)
           .font(.system(size: 11))
           .foregroundStyle(.white.opacity(0.7))
       }
@@ -1581,6 +1583,6 @@ struct RecoveryNoticeView: View {
     .padding(.vertical, 10)
     .background(OverlayCapsuleBackground())
     .accessibilityElement(children: .contain)
-    .accessibilityLabel("Recovering your last recording")
+    .accessibilityLabel(DictationNarrator.recoveryAccessibilityLabel)
   }
 }

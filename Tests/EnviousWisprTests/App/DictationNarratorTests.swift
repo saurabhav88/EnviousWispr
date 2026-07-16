@@ -205,4 +205,76 @@ import Testing
       DictationNarrator.copy(for: RecordingNoticeReason.autoStopUnavailable)
         == "Auto-stop on silence is unavailable right now")
   }
+
+  // MARK: - Spoken announcements + fixed status copy (E4, #1569)
+
+  /// Every `OverlayIntent` case maps to its exact spoken announcement — the words
+  /// VoiceOver reads, byte-identical to the panel's retired inline literals. The
+  /// three message-bearing cases compose the narrator's own reason copy.
+  @Test("every overlay intent maps to its exact spoken announcement")
+  func announcementsAreByteExact() {
+    let chip = LanguageChipPayload(
+      lang: "es", displayName: "Spanish", state: .askToLock, generation: 0)
+    let cases: [(OverlayIntent, String)] = [
+      (.hidden, "Recording complete"),
+      (.recording(audioLevel: 0.5), "Recording started"),
+      (.processing(phase: .transcribing), "Processing transcription"),
+      (.clipboardFallback, "Text copied to clipboard"),
+      (.accessibilityToast, "Accessibility permission needed for auto-paste"),
+      (.warning(reason: .polishFailed), "Warning: Polish failed. Using raw text."),
+      (.error(reason: .prepareFailed), "Error: Audio capture error. Try again."),
+      (.interruption(reason: .deviceRemoved), "Interruption: Microphone disconnected."),
+      (.passiveChip(payload: chip), "Detected Spanish"),
+      (.cachingModel(engineLabel: "Parakeet"), "Getting dictation ready, one moment"),
+      (.engineReady, "Dictation ready. Press to start."),
+      (
+        .recoveringLastRecording,
+        "Recovering your last recording. Press Discard to skip."
+      ),
+      (
+        .bluetoothAwareness,
+        "Bluetooth microphone detected. Wait a moment before speaking on a cold start."
+      ),
+    ]
+    for (intent, want) in cases {
+      #expect(DictationNarrator.announcement(for: intent) == want)
+    }
+  }
+
+  /// The fixed status-pill / window / badge / sidebar copy is byte-identical to
+  /// today's retired renderer literals (founder-locked 2026-07-15).
+  @Test("fixed status copy accessors are byte-exact")
+  func fixedStatusCopyByteExact() {
+    #expect(DictationNarrator.coldStartTitle == "Getting dictation ready…")
+    #expect(
+      DictationNarrator.coldStartSubtitle(engineLabel: "Parakeet")
+        == "Parakeet is warming up after a restart")
+    #expect(DictationNarrator.readyTitle == "Ready — press to dictate")
+    #expect(DictationNarrator.clipboardFallbackText == "Copied. Press \u{2318}V to paste")
+    #expect(DictationNarrator.accessibilityToastText == "Auto-paste needs Accessibility")
+    #expect(DictationNarrator.recoveryTitle == "Recovering your last recording…")
+    #expect(DictationNarrator.recoverySubtitle == "Saved to History when it's done")
+    #expect(DictationNarrator.recoveryAccessibilityLabel == "Recovering your last recording")
+    #expect(DictationNarrator.loadingModelStatus == "Loading model...")
+    #expect(DictationNarrator.loadingModelBadge == "Loading model\u{2026}")
+    #expect(DictationNarrator.loadingModelSidebar == "Loading Model")
+    #expect(DictationNarrator.recordingStatus == "Recording")
+    #expect(DictationNarrator.errorStatus == "Error")
+  }
+
+  /// The byte-distinct render forms must stay distinct: the main-window body uses
+  /// ASCII `...`, the toolbar badge uses the single Unicode ellipsis, and the
+  /// recovery container AX label drops the ellipsis the visible title carries.
+  @Test("the distinct render forms keep their exact byte differences")
+  func distinctRenderFormsStayDistinct() {
+    #expect(DictationNarrator.loadingModelStatus != DictationNarrator.loadingModelBadge)
+    #expect(DictationNarrator.loadingModelStatus.contains("..."))
+    #expect(DictationNarrator.loadingModelBadge.contains("\u{2026}"))
+    #expect(!DictationNarrator.loadingModelBadge.contains("..."))
+    // The sidebar form is title-case, distinct from the body form.
+    #expect(DictationNarrator.loadingModelSidebar != DictationNarrator.loadingModelStatus)
+    // The recovery AX label has no ellipsis; the visible title does.
+    #expect(DictationNarrator.recoveryAccessibilityLabel != DictationNarrator.recoveryTitle)
+    #expect(!DictationNarrator.recoveryAccessibilityLabel.contains("…"))
+  }
 }

@@ -56,18 +56,18 @@ final class BackendMetadata {
   func statusText(for state: PipelineState) -> String {
     if asrManager.activeBackendType == .whisperKit {
       switch state {
-      case .loadingModel: return "Loading Model"
-      case .recording: return "Recording"
+      case .loadingModel: return DictationNarrator.loadingModelSidebar
+      case .recording: return DictationNarrator.recordingStatus
       case .transcribing: return DictationNarrator.shortCopy(for: .transcribing)
       case .polishing: return DictationNarrator.shortCopy(for: .polishing)
-      case .error: return "Error"
+      case .error: return DictationNarrator.errorStatus
       default: break
       }
     } else {
-      if state == .recording { return "Recording" }
+      if state == .recording { return DictationNarrator.recordingStatus }
       if state == .transcribing { return DictationNarrator.shortCopy(for: .transcribing) }
       if state == .polishing { return DictationNarrator.shortCopy(for: .polishing) }
-      if case .error = state { return "Error" }
+      if case .error = state { return DictationNarrator.errorStatus }
     }
     return asrManager.isModelLoaded ? "Loaded" : "Unloaded"
   }
