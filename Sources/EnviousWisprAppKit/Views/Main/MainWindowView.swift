@@ -42,7 +42,7 @@ struct StatusView: View {
         VStack(spacing: 12) {
           ProgressView()
             .controlSize(.large)
-          Text("Loading model...")
+          Text(DictationNarrator.loadingModelStatus)
             .font(.title2)
           Text("This may take a moment on first run.")
             .font(.caption)
@@ -172,7 +172,7 @@ struct StatusView: View {
 
       case .error(let reason):
         ContentUnavailableView {
-          Label("Error", systemImage: "exclamationmark.triangle")
+          Label(DictationNarrator.errorStatus, systemImage: "exclamationmark.triangle")
         } description: {
           // #1558: the narrator is the sole author; no raw detail reaches here.
           Text(DictationNarrator.copy(for: reason))
@@ -292,13 +292,13 @@ struct StatusBadge: View {
           Image(systemName: "mic.fill")
             .foregroundStyle(.stError)
             .symbolEffect(.pulse)
-          Text("Recording")
+          Text(DictationNarrator.recordingStatus)
             .foregroundStyle(.secondary)
         }
         .font(.caption)
 
       case .loadingModel:
-        progressLabel("Loading model\u{2026}")
+        progressLabel(DictationNarrator.loadingModelBadge)
 
       case .transcribing:
         progressLabel(DictationNarrator.statusBadgeCopy(for: .transcribing))

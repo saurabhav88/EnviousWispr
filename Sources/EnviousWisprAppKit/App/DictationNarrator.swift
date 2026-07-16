@@ -28,8 +28,11 @@ enum RecordingNoticeReason: Equatable, Sendable {
 /// injected instance only if a test ever needs to swap the mapping.
 ///
 /// Renamed from `TerminalNoticePresenter` in E2 once it began authoring more
-/// than terminal notices. As later parts move their families here it becomes
-/// the SOLE voice (heartpath step 6, "one voice").
+/// than terminal notices. As of E4 (#1569) it is the SOLE voice (heartpath
+/// step 6, "one voice" COMPLETE): every recording-lifecycle status/notice
+/// literal — spoken announcements, status pills, the window/badge/sidebar status
+/// words, and the recovery container AX label — is authored here and nowhere
+/// else. The renderers (panel, main window, sidebar) are pure presenters.
 enum DictationNarrator {
 
   // MARK: - Terminal failures / interruptions (E1)
@@ -147,4 +150,49 @@ enum DictationNarrator {
       return "Auto-stop on silence is unavailable right now"
     }
   }
+
+  // MARK: - Spoken announcements (E4, #1569) — the app's VoiceOver voice.
+
+  /// The single authority for every VoiceOver announcement the recording overlay
+  /// posts. The panel keeps choosing the AX priority + target element; the words
+  /// live here. Words byte-identical to today (founder-locked 2026-07-15).
+  static func announcement(for intent: OverlayIntent) -> String {
+    switch intent {
+    case .hidden: return "Recording complete"
+    case .recording(audioLevel: _): return "Recording started"
+    case .processing(phase: _): return "Processing transcription"
+    case .clipboardFallback: return "Text copied to clipboard"
+    case .accessibilityToast: return "Accessibility permission needed for auto-paste"
+    case .warning(let reason): return "Warning: \(copy(for: reason))"
+    case .error(let reason): return "Error: \(copy(for: reason))"
+    case .interruption(let reason): return "Interruption: \(copy(for: reason))"
+    case .passiveChip(let payload): return "Detected \(payload.displayName)"
+    case .cachingModel(engineLabel: _): return "Getting dictation ready, one moment"
+    case .engineReady: return "Dictation ready. Press to start."
+    case .recoveringLastRecording: return "Recovering your last recording. Press Discard to skip."
+    case .bluetoothAwareness:
+      return "Bluetooth microphone detected. Wait a moment before speaking on a cold start."
+    }
+  }
+
+  // MARK: - Fixed status-pill + window/badge/sidebar copy (E4, #1569). Byte-identical.
+
+  static let coldStartTitle = "Getting dictation ready…"
+  static func coldStartSubtitle(engineLabel: String) -> String {
+    "\(engineLabel) is warming up after a restart"
+  }
+  static let readyTitle = "Ready — press to dictate"  // dash kept (founder 2026-07-15)
+  static let clipboardFallbackText = "Copied. Press \u{2318}V to paste"
+  static let accessibilityToastText = "Auto-paste needs Accessibility"
+  static let recoveryTitle = "Recovering your last recording…"
+  static let recoverySubtitle = "Saved to History when it's done"
+  /// The recovery pill's CONTAINER accessibility label (no ellipsis — distinct
+  /// bytes from `recoveryTitle`). VoiceOver reads it as the group's spoken status.
+  static let recoveryAccessibilityLabel = "Recovering your last recording"
+  static let loadingModelStatus = "Loading model..."  // main-window body (ASCII ellipsis)
+  static let loadingModelBadge = "Loading model\u{2026}"  // toolbar badge (Unicode ellipsis)
+  static let loadingModelSidebar = "Loading Model"  // sidebar row (title-case, no ellipsis)
+  /// Shared by the toolbar badge and the sidebar row — one word, one authority.
+  static let recordingStatus = "Recording"
+  static let errorStatus = "Error"  // sidebar row + main-window `.error` heading (single word)
 }
