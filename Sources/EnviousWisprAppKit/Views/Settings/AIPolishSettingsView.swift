@@ -298,10 +298,14 @@ struct AIPolishSettingsView: View {
       // engine's header chip already reads (`currentProviderStatus`, driven by
       // `llmDiscovery.keyValidationState` + whether a key is present) — so it
       // disappears the instant a key validates, with no separate state to keep
-      // in sync. Shown for every non-ready reason (no key / invalid / mid-
-      // validation), not just "no key at all": an invalid key also falls back
-      // to raw text and deserves the same explanation.
-      if currentProviderStatus.tone != .ready {
+      // in sync. Deliberately `.needsSetup`/`.error` only, NOT `.ready` negated
+      // (Codex r1 finding): a saved-but-not-yet-rechecked key on Settings open
+      // is `.idle` + keyPresent, which the SAME mapping reads as `.unavailable`
+      // ("Not checked"), not `.ready` — `!= .ready` would wrongly warn every
+      // returning user with a perfectly good key. `.needsSetup` covers both
+      // genuine absence (`.idle` + no key) and mid-validation; `.error` covers
+      // a confirmed-bad key — both cases genuinely fall back to raw text.
+      if currentProviderStatus.tone == .needsSetup || currentProviderStatus.tone == .error {
         InsetNotice(
           text:
             "Dictation still works, but without a key, cleanup falls back to your raw, unedited text every time.",
