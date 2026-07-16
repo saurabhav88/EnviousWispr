@@ -63,9 +63,13 @@ internal final class TextProcessingRunner {
   /// fired." Parameters: provider, model, reason tag, isTimeout.
   typealias RecordPolishFailed = @MainActor (String, String, String, Bool) -> Void
 
-  /// Durable record of a LIVE polish that was never ATTEMPTED — the AFM
-  /// context-window skips (#1055), EG-1 bypasses (#1271), and the Ollama readiness
-  /// preflight (#1305). Parameters: provider, skip reason.
+  /// Durable record that AI polish produced no accepted output under an
+  /// explicit skip contract (#1055, #1271, #1305, #1448) — the AFM
+  /// context-window skips, EG-1 bypasses, the Ollama readiness preflight, the
+  /// too-short bypass, and the AFM language/drift trio. Includes both
+  /// pre-attempt bypasses and post-generation rejection (`outputLanguageDrift`);
+  /// distinct from `llm.polish_failed` (attempted and threw). Parameters:
+  /// provider, skip reason — both sourced from `PolishSkipReason`.
   typealias RecordPolishSkipped = @MainActor (String, String) -> Void
 
   /// Every POLISH telemetry seam the runner owns, as ONE value (#1446).
@@ -114,20 +118,15 @@ internal final class TextProcessingRunner {
         TelemetryService.shared.polishSkipped(provider: provider, reason: reason)
       })
 
-    /// Crash recovery (#945, #1446): a recovered take that fails to polish still
-    /// returns its `polishError`, but the RUNNER reports nothing — no
-    /// `polish_provider_failed` Sentry event, no attempt-failed breadcrumb, no
-    /// `llm.polish_failed`, no `llm.polish_skipped`. Polish telemetry is a
-    /// LIVE-dictation metric.
+    /// Crash recovery (#945, #1446): a recovered take still returns its
+    /// `polishError`, but the runner emits no live-polish telemetry.
     ///
-    /// SCOPE, precisely: this silences the three seams the RUNNER owns. It cannot
-    /// reach `LLMPolishStep`'s own five emitters (`limbFailureObserved`, the
-    /// "LLM polish started" / "completed" breadcrumbs, its `captureError`, and
-    /// `captureAFMPolishError`), which fire from inside the step on a recovered
-    /// take exactly as they do live. Whether recovery should silence those too is a
-    /// separate question with a different owner — tracked in #1461, not papered
-    /// over here. (Cloud review of PR #1460 caught the earlier version of this
-    /// comment claiming recovery emitted "no Sentry event, no breadcrumb"; it does.)
+    /// This preset silences only runner-owned seams. `RecoveryTextProcessor`
+    /// separately constructs `LLMPolishStep` with the step's own `.silent`
+    /// preset so its breadcrumbs, captures, limb metric, and skip event are
+    /// also silent during recovery (#1461) — this was a real gap, closed by
+    /// giving `LLMPolishStep` the identical `.live`/`.silent` shape this type
+    /// already has.
     static let silent = TelemetrySeams(
       captureError: { _, _, _, _, _, _ in },
       recordPolishFailed: { _, _, _, _ in },
@@ -308,21 +307,14 @@ internal final class TextProcessingRunner {
         // (not ready / download pending / crashed / input too long), same
         // contract as the AFM family above. Locked by the adversarial
         // tests in TextProcessingRunnerTests.
-        let isSilentPolishSkip: Bool
-        var egOneSkipReason: String?
-        if let llmError = error as? LLMError {
-          switch llmError {
-          case .unsupportedInputLanguage, .outputLanguageDrift, .frameworkUnavailable:
-            isSilentPolishSkip = true
-          case .egOneSkipped(let skipReason):
-            isSilentPolishSkip = true
-            egOneSkipReason = skipReason.rawValue
-          default:
-            isSilentPolishSkip = false
-          }
-        } else {
-          isSilentPolishSkip = false
+        // #1448/#1461: one classification, `PolishSkipReason.init?(silentLLMError:)`,
+        // read here AND by `LLMPolishStep`'s AFM catch block — replaces the prior
+        // separate case-by-case switch plus a dedicated, untyped `egOneSkipReason`
+        // local. `isSilentPolishSkip` is retained only as this derived boolean.
+        let silentPolishSkipReason = (error as? LLMError).flatMap {
+          PolishSkipReason(silentLLMError: $0)
         }
+        let isSilentPolishSkip = silentPolishSkipReason != nil
         // #945: a raw `URLError.cancelled` from a torn-down request is not a real
         // failure — never surface a notice or fire a capture for it. Swift
         // `CancellationError` is already short-circuited above
@@ -408,22 +400,31 @@ internal final class TextProcessingRunner {
         // single analytics query captures every AFM-long-dictation skip mode:
         // predicted (preflight), caught (generation overflow), timeout (stall).
         if let cw = contextWindowSkip {
-          let skipReason =
-            cw.stage == .predicted ? "context_window_predicted" : "context_window_caught"
-          recordPolishSkipped(LLMProvider.appleIntelligence.rawValue, skipReason)
+          let reason: PolishSkipReason =
+            cw.stage == .predicted ? .contextWindowPredicted : .contextWindowCaught
+          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag)
         } else if isAppleIntelligencePolishTimeout {
-          recordPolishSkipped(LLMProvider.appleIntelligence.rawValue, "context_window_timeout")
+          let reason = PolishSkipReason.contextWindowTimeout
+          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag)
         } else if isEGOnePolishTimeout {
           // #1271: one `local_polish_` prefix family for every EG-1 skip mode.
-          recordPolishSkipped(LLMProvider.egOne.rawValue, "local_polish_timeout")
-        } else if let egOneSkipReason {
-          recordPolishSkipped(LLMProvider.egOne.rawValue, egOneSkipReason)
-        } else if let skipReason = localPolishSkipReason?.ollamaPreflightSkipTelemetryReason {
+          let reason = PolishSkipReason.localPolishTimeout
+          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag)
+        } else if let silentPolishSkipReason {
+          // #1448: covers all 3 AFM cases (frameworkUnavailable,
+          // unsupportedInputLanguage, outputLanguageDrift) AND .egOneSkipped in
+          // one branch — both tag and provider come from PolishSkipReason itself,
+          // never a separately-snapshotted value.
+          recordPolishSkipped(
+            silentPolishSkipReason.provider.rawValue, silentPolishSkipReason.telemetryTag)
+        } else if let localPolishSkipReason,
+          let reason = PolishSkipReason(ollamaPreflight: localPolishSkipReason)
+        {
           // #1305: preflight skips ride the same lightweight `local_polish_`
           // reason family as EG-1 — the observability split between "preflight
           // said not ready" (here) and "mid-flight failure on a running
           // server" (the capture path above) falls out of the reason strings.
-          recordPolishSkipped(LLMProvider.ollama.rawValue, skipReason)
+          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag)
         }
         // #657 (2026-05-05): emit cap-trip telemetry when WordCorrectionStep
         // exceeds its 3s `maxDuration`. The step's result was discarded; raw

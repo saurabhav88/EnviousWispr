@@ -226,7 +226,7 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
       return "LLM polish output drifted from expected language '\(expected)' to '\(actual)'."
     case .egOneSkipped(let reason):
       // Silent bypass — never an on-screen notice; log/debug reads only.
-      return "EG-1 polish skipped (\(reason.rawValue))."
+      return "EG-1 polish skipped (\(String(describing: reason)))."
     case .localPolishNotReady(let reason):
       // Surfaced skip (#1305) — the on-screen notice is the pinned copy in
       // `PolishFailureReason.ollamaPreflightSkipMessage`, composed by the
@@ -327,25 +327,26 @@ extension LLMError: StableSentryErrorIdentity {
   }
 }
 
-/// Why an EG-1 polish was silently bypassed (#1271). Raw values are the
-/// `llm.polish_skipped` telemetry reason strings — one `local_polish_`
-/// prefix so a single analytics query captures every EG-1 skip mode
-/// (mirrors the AFM `context_window_` prefix family).
-public enum EGOneSkipReason: String, Sendable, Equatable {
+/// Why an EG-1 polish was silently bypassed (#1271). This enum carries domain
+/// meaning only; `PolishSkipReason` in `EnviousWisprPipeline` solely owns
+/// telemetry serialization (#1448/#1461 — it used to double as the
+/// `llm.polish_skipped` reason string via `String` rawValue, which made it a
+/// second serialization authority alongside `PolishSkipReason`).
+public enum EGOneSkipReason: Sendable, Equatable {
   /// Provider selected but no runtime handle / server not ready (booting,
   /// paused for memory pressure, or failed).
-  case notReady = "local_polish_not_ready"
+  case notReady
   /// Model artifact not downloaded/verified yet.
-  case downloadPending = "local_polish_download_pending"
+  case downloadPending
   /// Server unreachable mid-request (crashed; connector already retried
   /// once to cover the restart window).
-  case crashed = "local_polish_crashed"
+  case crashed
   /// Input exceeds the manifest context budget — polish whole or not at
   /// all, never a silent truncation.
-  case inputTooLong = "local_polish_input_too_long"
+  case inputTooLong
   /// The server stopped generation at the max_tokens cap
   /// (finish_reason == length): the content is a PARTIAL rewrite, and
   /// pasting it would be exactly the silent truncation the contract
   /// forbids (#1271 cloud review). Skip whole → raw fallback.
-  case outputTruncated = "local_polish_output_truncated"
+  case outputTruncated
 }

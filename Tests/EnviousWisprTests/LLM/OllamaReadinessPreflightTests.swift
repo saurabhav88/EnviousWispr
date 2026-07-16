@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprPipeline
 
 /// #1305: the `OllamaConnector.preflightReadiness` probe — response
 /// classification (pure), transport-failure mapping, the empty-model
@@ -171,17 +172,17 @@ struct OllamaReadinessPreflightTests {
     for reason in PolishFailureReason.allCases
     where reason != .providerUnreachable && reason != .modelUnavailable {
       #expect(reason.ollamaPreflightSkipMessage == nil)
-      #expect(reason.ollamaPreflightSkipTelemetryReason == nil)
+      #expect(PolishSkipReason(ollamaPreflight: reason) == nil)
     }
   }
 
   @Test("preflight telemetry reasons join the local_polish_ family")
   func telemetryReasons() {
     #expect(
-      PolishFailureReason.providerUnreachable.ollamaPreflightSkipTelemetryReason
+      PolishSkipReason(ollamaPreflight: .providerUnreachable)?.telemetryTag
         == "local_polish_ollama_server_down")
     #expect(
-      PolishFailureReason.modelUnavailable.ollamaPreflightSkipTelemetryReason
+      PolishSkipReason(ollamaPreflight: .modelUnavailable)?.telemetryTag
         == "local_polish_ollama_model_missing")
   }
 

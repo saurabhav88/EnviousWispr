@@ -442,29 +442,114 @@ struct TextProcessingRunnerCaptureTests {
 
   /// The on-device skips that degrade quietly to raw text (#1080, #1055): a Mac
   /// that cannot run Apple Intelligence at all, and the per-request language gates.
-  nonisolated static let silentAFMSkips: [LLMError] = [
-    .frameworkUnavailable("pre-macOS-26"),
-    .unsupportedInputLanguage("de"),
-    .outputLanguageDrift(expected: "en", actual: "de"),
+  /// #1448: all three now ALSO emit a `llm.polish_skipped` tag (they previously
+  /// emitted nothing at all — the exact gap #1448 fixes).
+  nonisolated static let silentAFMSkips: [(LLMError, String)] = [
+    (.frameworkUnavailable("pre-macOS-26"), "framework_unavailable"),
+    (.unsupportedInputLanguage("de"), "unsupported_input_language"),
+    (.outputLanguageDrift(expected: "en", actual: "de"), "output_language_drift"),
   ]
 
   @Test(
-    "a SILENT Apple Intelligence skip is counted by nothing — it is not a failure",
+    "a SILENT Apple Intelligence skip is counted as a failure by nothing, but now emits its skip tag",
     arguments: silentAFMSkips)
-  func appleIntelligenceSilentSkipsAreNotCounted(error: LLMError) async throws {
+  func appleIntelligenceSilentSkipsAreNotCounted(error: LLMError, tag: String) async throws {
     let spy = CaptureSpy()
     let records = RecordSpy()
-    let runner = makeRunner(spy, records)
+    let skips = SkipSpy()
+    let runner = makeRunner(spy, records, skips)
     let step = makeStep(provider: .appleIntelligence, model: "apple-intelligence") { error }
 
     let result = try await runner.run(
       rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
 
-    // Raw deterministic text, no pill, and nothing reported: these degrade quietly
-    // by design (#1080, #1055). Counting them would inflate the failure rate.
+    // Raw deterministic text, no pill, and no FAILURE reported: these degrade
+    // quietly by design (#1080, #1055). Counting them as failures would inflate
+    // the failure rate.
     #expect(result.polishError == nil)
     #expect(spy.calls.isEmpty)
     #expect(records.calls.isEmpty)
+    // #1448: but a skip tag now DOES fire, so the previously-null
+    // `dictation.completed.llm_provider` for these dictations gets a reason.
+    #expect(skips.calls.count == 1)
+    #expect(skips.calls.first?.provider == "appleIntelligence")
+    #expect(skips.calls.first?.reason == tag)
+  }
+
+  @Test(
+    "provider attribution comes from PolishSkipReason, never a stale runner-side snapshot",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1448",
+      "a runner-side provider snapshot taken before the step's own, later snapshot could diverge from it"
+    )
+  )
+  func providerAttributionSurvivesRunnerToStepHandoff() async throws {
+    let spy = CaptureSpy()
+    let records = RecordSpy()
+    let skips = SkipSpy()
+    let runner = makeRunner(spy, records, skips)
+    // Configured as .openAI when the runner takes its pre-await snapshot
+    // (`polishProviderAtStart`); `onWillProcess` then flips it to `.egOne`
+    // BEFORE the step takes its OWN, later snapshot inside `process()`. With
+    // `egOneRuntime` nil, the step throws `.egOneSkipped(.notReady)`. If the
+    // emitted provider still came from the runner's stale snapshot, this would
+    // wrongly report "openAI" instead of "egOne".
+    let step = makeStep(provider: .openAI, model: "gpt-4o-mini") {
+      LLMError.egOneSkipped(.notReady)
+    }
+    step.llmProvider = .openAI
+    step.onWillProcess = { step.llmProvider = .egOne }
+
+    _ = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+
+    #expect(spy.calls.isEmpty)
+    #expect(records.calls.isEmpty)
+    #expect(skips.calls.count == 1)
+    #expect(skips.calls.first?.provider == "egOne")
+    #expect(skips.calls.first?.reason == "local_polish_not_ready")
+  }
+
+  // MARK: - Existing 11 tags unchanged after consolidation
+
+  @Test(
+    "context-window and Ollama-preflight skip tags are byte-identical after routing through PolishSkipReason"
+  )
+  func existingSkipTagsUnchanged() async throws {
+    // Context-window predicted / caught (#1055).
+    for (stage, tag) in [
+      (AFMContextWindowExceeded.Stage.predicted, "context_window_predicted"),
+      (.caught, "context_window_caught"),
+    ] {
+      let skips = SkipSpy()
+      let runner = makeRunner(CaptureSpy(), RecordSpy(), skips)
+      let step = makeStep(provider: .appleIntelligence, model: "apple-intelligence") {
+        AFMContextWindowExceeded(stage: stage)
+      }
+      _ = try await runner.run(
+        rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      #expect(skips.calls.count == 1)
+      #expect(skips.calls.first?.provider == "appleIntelligence")
+      #expect(skips.calls.first?.reason == tag)
+    }
+
+    // Ollama preflight not-ready (#1305): server down / model missing.
+    for (readiness, tag) in [
+      (OllamaReadiness.serverDown, "local_polish_ollama_server_down"),
+      (.modelMissing, "local_polish_ollama_model_missing"),
+    ] {
+      let skips = SkipSpy()
+      let runner = makeRunner(CaptureSpy(), RecordSpy(), skips)
+      let step = makeStep(provider: .ollama, model: "llama3.2") {
+        LLMError.requestFailed("unused")
+      }
+      step.ollamaReadinessProbe = { _ in readiness }
+      _ = try await runner.run(
+        rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      #expect(skips.calls.count == 1)
+      #expect(skips.calls.first?.provider == "ollama")
+      #expect(skips.calls.first?.reason == tag)
+    }
   }
 
   @Test(
@@ -518,11 +603,12 @@ struct TextProcessingRunnerCaptureTests {
     #expect(records.calls.isEmpty)
   }
 
-  @Test("a successful polish fires no telemetry")
+  @Test("a successful polish fires neither runner-owned skip nor failure telemetry")
   func successNoCapture() async throws {
     let spy = CaptureSpy()
     let records = RecordSpy()
-    let runner = makeRunner(spy, records)
+    let skips = SkipSpy()
+    let runner = makeRunner(spy, records, skips)
     let step = LLMPolishStep(keychainManager: KeychainManager())
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
@@ -534,6 +620,7 @@ struct TextProcessingRunnerCaptureTests {
     #expect(result.polishError == nil)
     #expect(spy.calls.isEmpty)
     #expect(records.calls.isEmpty)
+    #expect(skips.calls.isEmpty)
   }
 
   /// Polisher that returns clean text (no throw) for the success-path test.
