@@ -173,11 +173,19 @@ export async function fetchHealth(env) {
   // project's own precedent for telemetry-model ambiguities it cannot
   // perfectly resolve from existing events (e.g. the paste-only-copy
   // ambiguity `evaluateVolume` already accepts, #1130).
+  // `abandonedRaw` (no screen filter) alongside the filtered `abandoned`:
+  // ClickHouse's `!=` is NULL-unsafe, so if `properties.screen` ever stops
+  // emitting (schema drift, Codex review finding), every abandon silently
+  // reads as "welcome" and gets excluded — `abandoned` would read a healthy
+  // zero while abandon activity is actually still happening. Comparing the
+  // two catches that: real abandon volume with zero passing the filter is
+  // itself the drift signal.
   const onboardingSql = `
     SELECT toDate(timestamp) AS day,
            countIf(event = 'onboarding.started') AS started,
            countIf(event = 'onboarding.completed') AS completed,
-           countIf(event = 'onboarding.abandoned' AND properties.screen != 'welcome') AS abandoned
+           countIf(event = 'onboarding.abandoned' AND properties.screen != 'welcome') AS abandoned,
+           countIf(event = 'onboarding.abandoned') AS abandonedRaw
     FROM events
     WHERE ${PROD}
       AND event IN ('onboarding.started', 'onboarding.completed', 'onboarding.abandoned')
@@ -366,9 +374,23 @@ function completeDayWindow(rows, expectedT1, count) {
 }
 
 export function evaluateOnboardingAbandon(rows, expectedT1, TH = THRESHOLDS.onboardingAbandon) {
-  // rows: per-day {day, started, abandoned}, any order — mirrors evaluateLatency's `days` shape.
+  // rows: per-day {day, started, abandoned, abandonedRaw}, any order — mirrors evaluateLatency's `days` shape.
   const totalStarted = rows.reduce((sum, row) => sum + num(row.started), 0);
   const totalAbandoned = rows.reduce((sum, row) => sum + num(row.abandoned), 0);
+  const totalAbandonedRaw = rows.reduce((sum, row) => sum + num(row.abandonedRaw), 0);
+
+  // Screen-attribution drift, checked FIRST (Codex review finding): if
+  // `properties.screen` stops emitting, ClickHouse's NULL-unsafe `!=` makes
+  // every abandon silently read as "welcome," so `abandoned` reads a healthy
+  // zero while real abandon volume (`abandonedRaw`) keeps happening. A
+  // drifted denominator makes every rate below meaningless, so this check
+  // runs before the fast path and the low-volume guard.
+  if (totalAbandonedRaw >= TH.minStarted && totalAbandoned === 0) {
+    return {
+      state: "alerting", attributionDrift: true, fastCrossing: false,
+      totalStarted, totalAbandoned, totalAbandonedRaw,
+    };
+  }
 
   // Fast path checked FIRST and independently — see canonical contract O1.
   const fastRows = completeDayWindow(rows, expectedT1, TH.fastDays);
@@ -404,6 +426,19 @@ export function evaluateBackendTranscription(perBackendDays, expectedT1, TH = TH
     const dictations = rows.reduce((sum, row) => sum + num(row.dictations), 0);
     const fails = rows.reduce((sum, row) => sum + num(row.fails), 0);
     const attempts = dictations + fails;
+
+    // Backend-attribution drift, checked FIRST (Codex review finding): "unknown"
+    // is a synthetic bucket `groupByBackend` assigns when BOTH asr_backend and
+    // backend are absent — never a real backend name. Meaningful volume there
+    // means the attribution tag itself stopped emitting; the per-backend split
+    // this metric promises has silently degraded to an aggregate, which must
+    // alert rather than read as just another (possibly "evaluated-ok") backend.
+    if (backend === "unknown" && attempts >= TH.minAttempts) {
+      return {
+        backend, state: "alerting", attributionDrift: true, fastCrossing: false,
+        fails, dictations, attempts,
+      };
+    }
 
     const fastRows = completeDayWindow(rows, expectedT1, TH.fastDays);
     const fastCrossing = fastRows.every((row) => {
@@ -532,37 +567,70 @@ export function buildMessage(r, versions = [], onboardingVersions = [], backendV
 
   // Onboarding abandon (Phase 10, #1179)
   if (r.onboardingAbandon) {
-    if (r.onboardingAbandon.state === "alerting") {
-      const tv = topVersionsFor(onboardingVersions, "onboarding_abandon");
+    const ev = r.onboardingAbandon;
+    if (ev.state === "alerting" && ev.attributionDrift) {
+      // Screen-attribution drift (Codex review finding): distinct wording,
+      // no version attribution (this is a schema-drift signal, not a rate).
+      alerts.push(
+        `onboarding abandon attribution lost: ${ev.totalAbandonedRaw} onboarding.abandoned events ` +
+        `fired over the prev 21d but 0 carried a usable properties.screen (excluded as "welcome") ` +
+        `(properties.screen may have stopped emitting or been renamed).`
+      );
+    } else if (ev.state === "alerting") {
       // Report the window that actually crossed (Codex review finding: a
       // fast-only crossing must not display the healthy rolling total).
-      const ev = r.onboardingAbandon;
       const windowText = ev.fastCrossing
         ? `${pct(ev.fastShare)} (${ev.fastAbandoned}/${ev.fastStarted}, fast 2-day crossing)`
         : `${pct(ev.rollingShare)} (${ev.totalAbandoned}/${ev.totalStarted}, prev 21d, rolling crossing)`;
+      // Version attribution only matches the metric's own 21-day window —
+      // a fast (2-day) crossing must not misattribute to it (Codex review
+      // finding: an older high-volume release can otherwise be blamed for a
+      // regression confined to the last 2 days).
+      const tv = ev.fastCrossing ? "" : topVersionsFor(onboardingVersions, "onboarding_abandon");
       alerts.push(
         `onboarding abandon ${windowText}, threshold >${pct(THRESHOLDS.onboardingAbandon.share)}, ` +
         `baseline ~37%.` + (tv ? ` Top versions ${tv}.` : "")
       );
     }
-    note("onboarding-abandon", r.onboardingAbandon);
+    note("onboarding-abandon", ev);
   }
 
   // Per-backend transcription (Phase 10, #1179)
   if (r.backendTranscription) {
     for (const row of r.backendTranscription) {
-      if (row.state === "alerting") {
-        const tv = topVersionsFor(backendVersions, "backend_trans_fail", { backend: row.backend });
-        // Same fix: name the window that actually crossed.
+      if (row.state === "alerting" && row.attributionDrift) {
+        // Backend-attribution drift (Codex review finding): distinct wording,
+        // no version attribution.
+        alerts.push(
+          `transcription backend attribution lost: ${row.attempts} dictation/failure events ` +
+          `over the prev 14d carried no usable asr_backend or backend tag ` +
+          `(the per-backend split has degraded to an aggregate).`
+        );
+      } else if (row.state === "alerting") {
+        // Same fix as onboarding-abandon: name the window that actually
+        // crossed, and only attribute versions to a matching window.
         const windowText = row.fastCrossing
           ? `${pct(row.fastShare)} (${row.fastFails}/${row.fastAttempts}, fast 2-day crossing)`
           : `${pct(row.rollingShare)} (${row.fails}/${row.attempts}, prev 14d, rolling crossing)`;
+        const tv = row.fastCrossing
+          ? ""
+          : topVersionsFor(backendVersions, "backend_trans_fail", { backend: row.backend });
         alerts.push(
           `${row.backend} transcription failure ${windowText}, ` +
           `threshold >${pct(THRESHOLDS.backendTranscription.share)}.` + (tv ? ` Top versions ${tv}.` : "")
         );
       }
       note(`transcription-${row.backend}`, row);
+    }
+    if (r.backendAttributionBlackout) {
+      // Total backend-attribution blackout (Codex review finding): the query
+      // matched zero (day, backend) groups despite healthy overall dictation
+      // volume — the per-backend split vanished entirely rather than reading
+      // as merely quiet.
+      alerts.push(
+        `transcription backend attribution blackout: 0 backend rows over the prev 14d despite ` +
+        `healthy aggregate 7d dictation volume (asr_backend/backend may have stopped emitting entirely).`
+      );
     }
   }
 
@@ -652,6 +720,17 @@ async function runHealth(env) {
     throw err;
   }
 
+  const backendTranscription = evaluateBackendTranscription(data.backendTranscriptionDays, data.t1ref);
+  // Backend-attribution blackout (Codex review finding): an empty result here
+  // means the query matched zero (day, backend) groups at all — every row's
+  // backend tag AND every dictation/failure vanished together. The existing
+  // aggregate transcription metric's own 7-day dictation count is proof this
+  // worker already has of real activity; if it's healthy while this metric's
+  // per-backend split came back with nothing, that split has silently gone
+  // dark rather than merely being quiet, so it must alert, not disappear.
+  const backendAttributionBlackout =
+    backendTranscription.length === 0 && num(data.seven.dictations_7d) >= THRESHOLDS.transcription.minDictations;
+
   const results = {
     latency: evaluateLatency(data.latencyDays),
     paste: evaluatePaste(data.seven),
@@ -659,7 +738,8 @@ async function runHealth(env) {
     transcription: evaluateTranscription(data.seven),
     volume: evaluateVolume(data.volumeDays, data.t1ref),
     onboardingAbandon: evaluateOnboardingAbandon(data.onboardingDays, data.t1ref),
-    backendTranscription: evaluateBackendTranscription(data.backendTranscriptionDays, data.t1ref),
+    backendTranscription,
+    backendAttributionBlackout,
     onboardingBlackout: evaluateOnboardingBlackout(data.onboardingDays, data.t1ref),
   };
   const message = buildMessage(results, data.versions, data.onboardingVersions, data.backendVersions);

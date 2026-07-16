@@ -305,6 +305,20 @@ test("onboarding abandon: fast regression only, healthy rolling average -> alert
   assert.equal(ev.fastShare, 0.6, "fast-window share must reflect only the crossing window, not the rolling total");
 });
 
+test("onboarding abandon: screen-attribution drift (real raw volume, zero passes the filter) -> alert", () => {
+  const rows = [{ day: "2026-07-15", started: 100, abandoned: 0, abandonedRaw: 40 }];
+  const ev = evaluateOnboardingAbandon(rows, "2026-07-15");
+  assert.equal(ev.state, "alerting");
+  assert.equal(ev.attributionDrift, true);
+  assert.equal(ev.totalAbandonedRaw, 40);
+});
+
+test("onboarding abandon: low but real raw abandon volume with zero filtered does NOT trip drift (below floor)", () => {
+  const rows = [{ day: "2026-07-15", started: 100, abandoned: 0, abandonedRaw: 5 }];
+  const ev = evaluateOnboardingAbandon(rows, "2026-07-15");
+  assert.notEqual(ev.attributionDrift, true);
+});
+
 // ---- Phase 10 (#1179): onboarding blackout ----
 function baselineDays(startedPerDay) {
   return ["2026-07-13", "2026-07-12", "2026-07-11", "2026-07-10", "2026-07-09", "2026-07-08", "2026-07-07"].map(
@@ -420,6 +434,19 @@ test("backend transcription: anti-masking, active backend with zero failures sta
   assert.equal(evs[0].fails, 0);
 });
 
+test("backend transcription: attribution drift, unknown backend with material volume -> alert", () => {
+  const perBackendDays = { unknown: [{ day: "2026-07-15", dictations: 250, fails: 20 }] };
+  const [ev] = evaluateBackendTranscription(perBackendDays, "2026-07-15");
+  assert.equal(ev.state, "alerting");
+  assert.equal(ev.attributionDrift, true);
+});
+
+test("backend transcription: unknown backend with trivial volume does NOT trip drift (below minAttempts)", () => {
+  const perBackendDays = { unknown: [{ day: "2026-07-15", dictations: 5, fails: 0 }] };
+  const [ev] = evaluateBackendTranscription(perBackendDays, "2026-07-15");
+  assert.notEqual(ev.attributionDrift, true);
+});
+
 // ---- message: Phase 10 additions ----
 test("message: H1 static pointer appears every run", () => {
   const msg = buildMessage(results());
@@ -510,4 +537,50 @@ test("message: many simultaneous alerts drop whole alerts from the end, never th
   if (msg.includes("more alert(s) omitted")) {
     assert.match(msg, /\d+ more alert\(s\) omitted; see dashboard/);
   }
+});
+
+test("message: onboarding screen-attribution drift renders distinct wording, no version attribution", () => {
+  const msg = buildMessage(
+    results({
+      onboardingAbandon: { state: "alerting", attributionDrift: true, fastCrossing: false, totalStarted: 100, totalAbandoned: 0, totalAbandonedRaw: 40 },
+    }),
+    [], [{ ver: "v2.1.4", onboarding_abandon: 40 }]
+  );
+  assert.match(msg, /onboarding abandon attribution lost/);
+  assert.ok(!msg.includes("v2.1.4"), "attribution-drift alert must not attach version data to a broken denominator");
+});
+
+test("message: backend attribution drift (unknown backend) renders distinct wording", () => {
+  const msg = buildMessage(
+    results({
+      backendTranscription: [
+        { backend: "unknown", state: "alerting", attributionDrift: true, fastCrossing: false, fails: 20, dictations: 250, attempts: 270 },
+      ],
+    })
+  );
+  assert.match(msg, /transcription backend attribution lost/);
+});
+
+test("message: backend attribution blackout (empty result set) renders and alerts", () => {
+  const msg = buildMessage(results({ backendTranscription: [], backendAttributionBlackout: true }));
+  assert.match(msg, /transcription backend attribution blackout/);
+  assert.match(msg, /health - ALERT/);
+});
+
+test("message: fast-crossing alerts omit version attribution (window mismatch, Codex review finding)", () => {
+  const onboardingMsg = buildMessage(
+    results({ onboardingAbandon: { state: "alerting", fastCrossing: true, fastStarted: 10, fastAbandoned: 6, fastShare: 0.6, rollingShare: 0.1, totalStarted: 300, totalAbandoned: 30 } }),
+    [], [{ ver: "v2.1.4", onboarding_abandon: 40 }]
+  );
+  assert.ok(!onboardingMsg.includes("v2.1.4"), "a fast (2-day) crossing must not attribute to a 21-day version query");
+
+  const backendMsg = buildMessage(
+    results({
+      backendTranscription: [
+        { backend: "parakeet", state: "alerting", fastCrossing: true, fastFails: 20, fastDictations: 10, fastAttempts: 30, fastShare: 0.67, rollingShare: 0.05, fails: 50, dictations: 950, attempts: 1000 },
+      ],
+    }),
+    [], [], [{ ver: "v2.1.4", backend: "parakeet", backend_trans_fail: 40 }]
+  );
+  assert.ok(!backendMsg.includes("v2.1.4"), "a fast (2-day) crossing must not attribute to a 14-day version query");
 });
