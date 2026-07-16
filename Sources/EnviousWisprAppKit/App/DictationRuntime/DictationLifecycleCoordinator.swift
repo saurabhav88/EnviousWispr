@@ -91,18 +91,18 @@ final class DictationLifecycleCoordinator {
   /// default no-op keeps recovery-off behavior. Keeps the Pipeline recovery-unaware.
   var onDurableSave: (String) -> Void = { _ in }
 
-  /// #1063 PR2 — fires when a recording reaches a NON-`.completed` terminal,
-  /// carrying this session's `recoverySessionID` (or nil if recovery was off) and
-  /// the terminal KIND. `DictationRuntime` sets it to `RecoveryCoordinator
-  /// .handleRecordingEndedWithoutDurableSave(recoverySessionID:terminal:)`, which
-  /// deletes a DISCARD-terminal spool now and RETAINS a FAILURE-terminal spool for
-  /// next-launch recovery. Driven by the kernel's RAW terminal transition (via the
-  /// driver's `onSessionEndedWithoutSave`), NOT the externalError-pinnable published
-  /// state — so it never fires for `.completed` (whose save path runs `onDurableSave`)
-  /// and the error pin can't trigger an early delete. Off-cap `var` closure,
-  /// default no-op keeps recovery-off behavior. (PR1's published-state cleanup
-  /// branch is replaced by this signal.)
-  var onRecordingEndedWithoutDurableSave: (String?, RecordingTerminalKind) -> Void = { _, _ in }
+  /// #1063 PR2 / #1464 — fires when a recording reaches a NON-`.completed`
+  /// terminal, carrying this session's `recoverySessionID` (or nil if recovery was
+  /// off) and the narrow `RecordingRecoveryEnding` the driver projected.
+  /// `DictationRuntime` sets it to `RecoveryCoordinator
+  /// .handleRecordingEndedWithoutDurableSave(recoverySessionID:ending:)`, which
+  /// applies the sole delete-versus-retain predicate. Driven by the kernel's RAW
+  /// terminal transition (via the driver's `onSessionEndedWithoutSave`), NOT the
+  /// externalError-pinnable published state — so it never fires for `.completed`
+  /// (whose save path runs `onDurableSave`) and the error pin can't trigger an
+  /// early delete. Off-cap `var` closure, default no-op keeps recovery-off
+  /// behavior. (PR1's published-state cleanup branch is replaced by this signal.)
+  var onRecordingEndedWithoutDurableSave: (String?, RecordingRecoveryEnding) -> Void = { _, _ in }
 
   /// #1171 — fired on every pipeline state change (both drivers). The composition
   /// root binds it to `EngineCoordinator.poke(.driverStateChanged)` so the
@@ -163,11 +163,11 @@ final class DictationLifecycleCoordinator {
     // recovery id + terminal KIND. Routed to the recovery cleanup (discard deletes,
     // failure retains). Distinct from `onStateChange` (the pinnable published
     // state) — keyed off the kernel terminal so it never fires during `.finalizing`.
-    kernelDriver.onSessionEndedWithoutSave = { [weak self] id, kind in
-      self?.onRecordingEndedWithoutDurableSave(id, kind)
+    kernelDriver.onSessionEndedWithoutSave = { [weak self] id, ending in
+      self?.onRecordingEndedWithoutDurableSave(id, ending)
     }
-    whisperKitKernelDriver.onSessionEndedWithoutSave = { [weak self] id, kind in
-      self?.onRecordingEndedWithoutDurableSave(id, kind)
+    whisperKitKernelDriver.onSessionEndedWithoutSave = { [weak self] id, ending in
+      self?.onRecordingEndedWithoutDurableSave(id, ending)
     }
     // #930: the overlay-only sub-status channel. A `.transcribing` →
     // `.polishing` flip mid-`.finalizing` does NOT change the public

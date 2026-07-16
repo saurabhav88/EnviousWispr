@@ -102,6 +102,39 @@ struct RecoverySpoolStoreTests {
     #expect(recovered.truncated)
   }
 
+  /// #1464 §3.3 — a crash spool is torn BY DEFINITION. The existing tests tamper a
+  /// full final frame or gap the marker; this covers a LITERALLY truncated final
+  /// frame (the process died mid-write, leaving only the first bytes of the last
+  /// frame). Recovery must keep the valid prefix and report `truncated`.
+  @Test("a literally truncated final frame keeps the valid prefix (crash mid-write)")
+  func recoverKeepsPrefixOnTruncatedFinalFrame() throws {
+    let store = makeStore()
+    let cipher = RecoverySpoolCipher(mode: .aesGcm256, keyData: Self.key())
+    let c0: [Float] = [0.1, 0.2, 0.3]
+    let c1: [Float] = [0.4, 0.5]
+    let c2: [Float] = [0.6, 0.7, 0.8]
+
+    var data = try RecoverySpoolFileFormat.encodeHeader(
+      RecoverySpoolHeader(
+        cipher: .aesGcm256, recoverySessionID: "torn",
+        createdAt: Date(timeIntervalSince1970: 0), appVersion: "1.0",
+        encryptedSettings: try cipher.sealSettings(snapshot())))
+    data.append(
+      try cipher.encodeAudioFrame(samples: c0, chunkIndex: 0, startSample: 0, nonceCounter: 1))
+    data.append(
+      try cipher.encodeAudioFrame(samples: c1, chunkIndex: 1, startSample: 3, nonceCounter: 2))
+    // The crash cut the final frame mid-write: append only its first few bytes.
+    let full = try cipher.encodeAudioFrame(
+      samples: c2, chunkIndex: 2, startSample: 5, nonceCounter: 3)
+    data.append(full.prefix(4))
+    try data.write(to: store.spoolURL(for: "torn"))
+
+    let recovered = try store.recover(recoverySessionID: "torn", cipher: cipher)
+    #expect(recovered.samples == c0 + c1)
+    #expect(recovered.frameCount == 2)
+    #expect(recovered.truncated)
+  }
+
   @Test("an out-of-sequence terminal marker is truncation, not a clean stop")
   func outOfSequenceMarkerIsTruncation() throws {
     let store = makeStore()

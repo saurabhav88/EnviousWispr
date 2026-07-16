@@ -339,14 +339,20 @@ import Testing
   /// root itself (stored-property and method ceilings above are unchanged) —
   /// only the file's physical line count grows. Cap by deterministic rule
   /// (actual 1088 + ~2, rounded up to nearest 5 = 1090).
+  /// Ratcheted 1090→1100 in #1464 (2026-07-16, recovery telemetry-first Phase 1):
+  /// the composition root binds `recoveryCoordinator.onRecoverySucceeded` to post
+  /// the standalone green recovery-success overlay notice (the `.recovered` path
+  /// was silent before). No new stored property; a 4-line closure binding beside
+  /// the existing Discard-handler wiring. Cap by deterministic rule (actual 1094 +
+  /// ~2, rounded up to nearest 5 = 1100).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1090,
+      lineCount <= 1100,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1090. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1100. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

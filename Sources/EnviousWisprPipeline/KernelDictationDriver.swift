@@ -329,7 +329,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// keeps the Pipeline recovery-unaware. The first param is the optional
   /// `recoverySessionID` (nil when recovery was off for the take).
   @ObservationIgnored
-  public var onSessionEndedWithoutSave: (@MainActor (String?, RecordingTerminalKind) -> Void)?
+  public var onSessionEndedWithoutSave: (@MainActor (String?, RecordingRecoveryEnding) -> Void)?
 
   /// Fire-once latch for `onSessionEndedWithoutSave` (#1548 D1). Tracks the
   /// `currentSessionID` the ended-without-save check last fired for, so a
@@ -340,18 +340,19 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   private var lastEndedWithoutSaveSessionID: SessionID?
 
-  /// #1063 PR2 (Codex terminal-kind matrix) — disposition for the CURRENT
-  /// session's `.cancelled` terminal. `.cancelled` is reached by BOTH a genuine
-  /// user cancel (`RecordingFinalizer.cancel()` → `cancelRecording(disposition:
-  /// .discard)`) AND fault/system cancels that route through `kernel.cancel()`
-  /// (active `reset()`, `setTerminalReason()`, the settings-rebuild cancel). A user
-  /// cancel should DELETE the spool; a fault cancel should RETAIN recoverable
-  /// audio. Defaults to `.failure` (RETAIN) so any cancel NOT explicitly attributed
-  /// as a user discard conservatively keeps the audio. Set at the `cancelRecording`
-  /// call site, consumed + reset at the `.cancelled` signal fire, and reset on each
-  /// new session start.
+  /// #1063 PR2 / #1464 — the origin attributed to the CURRENT session's
+  /// `.cancelled` terminal. `.cancelled` is reached by BOTH a genuine user cancel
+  /// (`RecordingFinalizer.cancel()` → `cancelRecording(disposition: .user)`) AND
+  /// fault/system cancels that route through `kernel.cancel()` (active `reset()`,
+  /// `setTerminalReason()`, the settings-rebuild cancel). A user cancel should
+  /// DELETE the spool; a fault cancel should RETAIN recoverable audio. Defaults to
+  /// `.systemOrFault` (RETAIN) so any cancel NOT explicitly attributed as a user
+  /// discard conservatively keeps the audio. Set at the `cancelRecording` call
+  /// site, consumed + reset at the `.cancelled` signal fire, and reset on each new
+  /// session start. Projected into `RecordingRecoveryEnding.cancelled(_)` for the
+  /// coordinator's delete-versus-retain predicate.
   @ObservationIgnored
-  private var pendingCancelDisposition: RecordingTerminalKind = .failure
+  private var pendingCancelOrigin: RecordingCancelOrigin = .systemOrFault
 
   /// Fired by the finalizing-sub-status observer (`observeDisplayOnlyOverlay`)
   /// whenever the overlay's intent should refresh because of a `.transcribing`
@@ -680,12 +681,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// on its own is fire-and-latch: it triggers the recording-exit path or sets
   /// `cancelRequested`, but the actual transition to `.cancelled` /
   /// `.discarded` happens on the forward path's next yield.
-  /// `disposition` (#1063 PR2) attributes a `.cancelled` terminal for crash
-  /// recovery: `.discard` (genuine USER cancel — delete the spool) vs the
-  /// default `.failure` (a system cancel — RETAIN recoverable audio). The
-  /// user-cancel path passes `.discard`; system cancels use the retain default.
-  public func cancelRecording(disposition: RecordingTerminalKind = .failure) async {
-    pendingCancelDisposition = disposition
+  /// `disposition` (#1063 PR2 / #1464) attributes a `.cancelled` terminal for
+  /// crash recovery: `.user` (genuine USER cancel — delete the spool) vs the
+  /// default `.systemOrFault` (a system cancel — RETAIN recoverable audio). The
+  /// user-cancel path passes `.user`; system cancels use the retain default.
+  public func cancelRecording(disposition: RecordingCancelOrigin = .systemOrFault) async {
+    pendingCancelOrigin = disposition
     kernel.cancel()
     await awaitKernelTerminal()
   }
@@ -1005,11 +1006,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // closures to read at finalize time (the wiring's optional-chained
         // reads were always-nil in production until this PR — finding #6).
         lastTerminalReason = nil
-        // #1063 PR2: a fresh session starts with the conservative cancel
-        // disposition (RETAIN) — only a genuine user cancel during this session
-        // flips it to discard. Prevents a stale user-discard from a prior session
-        // leaking onto this session's fault-cancel.
-        pendingCancelDisposition = .failure
+        // #1063 PR2: a fresh session starts with the conservative cancel origin
+        // (RETAIN) — only a genuine user cancel during this session flips it to
+        // `.user`. Prevents a stale user-discard from a prior session leaking onto
+        // this session's fault-cancel.
+        pendingCancelOrigin = .systemOrFault
         outcome.transcript = nil
         outcome.polishError = nil
         outcome.rawText = nil
@@ -1246,38 +1247,52 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     guard let outcome = kernel.recordingOutcome else { return }
     guard kernel.currentSessionID != lastEndedWithoutSaveSessionID else { return }
     lastEndedWithoutSaveSessionID = kernel.currentSessionID
-    let kind: RecordingTerminalKind?
+    let ending: RecordingRecoveryEnding?
     if case .cancelled = outcome {
       // `.cancelled` is ambiguous (Codex terminal-kind matrix): a genuine user
       // cancel DELETES, but a fault/system cancel (active reset, external-error,
       // settings rebuild) RETAINS recoverable audio. Resolve via the per-cancel
-      // disposition attributed at the `kernel.cancel()` call site; consume + reset
-      // to the conservative default so a stale user-discard can't leak to a later
-      // fault cancel.
-      kind = pendingCancelDisposition
-      pendingCancelDisposition = .failure
+      // origin attributed at the `kernel.cancel()` call site; consume + reset to
+      // the conservative default so a stale user-discard can't leak to a later
+      // fault cancel. The delete-versus-retain decision itself lives in the
+      // coordinator's predicate (#1464) — the driver only projects the origin.
+      ending = .cancelled(pendingCancelOrigin)
+      pendingCancelOrigin = .systemOrFault
     } else {
-      kind = Self.endedWithoutSaveKind(for: outcome)
+      ending = Self.recoveryEnding(for: outcome)
     }
-    guard let kind else { return }
-    onSessionEndedWithoutSave?(context.config?.recoverySessionID, kind)
+    guard let ending else { return }
+    onSessionEndedWithoutSave?(context.config?.recoverySessionID, ending)
   }
 
-  /// Classify the UNAMBIGUOUS non-`.completed` outcomes for the crash-recovery
-  /// cleanup signal. `.cancelled` is EXCLUDED (returns nil) — it is ambiguous
-  /// (user discard vs fault/system retain) and resolved at the fire site via
-  /// `pendingCancelDisposition`. Also nil for `.completed` (durable save ran).
-  /// Exhaustive so a new `RecordingOutcome` forces a routing decision. Internal
-  /// (not private) so the split is unit-tested directly
-  /// (`matcher-set-adversarial-tests`). #1548 D1: keyed by outcome, not state.
-  static func endedWithoutSaveKind(for outcome: RecordingOutcome)
-    -> RecordingTerminalKind?
+  /// Project the non-`.completed` terminal `RecordingOutcome` into the narrow
+  /// public `RecordingRecoveryEnding` the crash-recovery cleanup signal crosses
+  /// into AppKit with (#1464). The kernel has ALREADY floored an interrupted
+  /// `.discarded`/`.noSpeech`/`.failed(.noAudioCaptured)` to `.audioInterrupted`
+  /// upstream (`RecordingSessionKernel.interruptedTerminalFloor`), so those reach
+  /// here already as `.audioInterrupted`. Payloads are dropped — the coordinator's
+  /// predicate keys only on the terminal FAMILY, never `DiscardReason`/
+  /// `NoSpeechSource`, keeping the internal enum inside Pipeline. `.cancelled` is
+  /// EXCLUDED (returns nil) — resolved at the fire site via `pendingCancelOrigin`.
+  /// Also nil for `.completed` (durable save ran). Exhaustive so a new
+  /// `RecordingOutcome` forces a routing decision. Internal (not private) so the
+  /// split is unit-tested directly (`matcher-set-adversarial-tests`).
+  static func recoveryEnding(for outcome: RecordingOutcome)
+    -> RecordingRecoveryEnding?
   {
     switch outcome {
-    case .discarded, .noSpeech:
-      return .discard
-    case .failed, .audioInterrupted, .asrInterrupted, .noTransport:
-      return .failure
+    case .discarded:
+      return .discarded
+    case .noSpeech:
+      return .noSpeech
+    case .failed:
+      return .failed
+    case .audioInterrupted:
+      return .audioInterrupted
+    case .asrInterrupted:
+      return .asrInterrupted
+    case .noTransport:
+      return .noTransport
     case .cancelled, .completed:
       return nil
     }

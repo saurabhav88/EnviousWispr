@@ -10,12 +10,17 @@ import Foundation
 /// - **Arm** a recording: mint a durable per-recording id, generate + DURABLY
 ///   store the per-session key, snapshot record-time settings, and produce the
 ///   opaque directive the in-process capture manager writes the encrypted spool from.
+/// - **Sole spool/key destructor (#1464):** every delete goes through the private
+///   `destroySpoolAndKey` helper. The replayer no longer deletes; the driver no
+///   longer classifies. Two exhaustive predicates decide delete-versus-retain —
+///   `shouldDeleteOnLiveEnding` (a live recording that ended without a durable
+///   save) and `shouldDeleteAfterReplay` (a launch replay attempt).
 /// - **Clean up on success:** once a recording's transcript is durably saved,
 ///   delete that session's spool file + key.
-/// - **Clean up on a non-saved ending (PR2):** route the kernel's terminal
-///   signal — a DISCARD terminal (cancel / no-speech / too-short) deletes the
-///   spool now; a FAILURE terminal (pipeline / audio / engine fault) RETAINS it
-///   so the audio is recovered on the next launch.
+/// - **Clean up on a non-saved ending:** apply `shouldDeleteOnLiveEnding` to the
+///   narrow `RecordingRecoveryEnding` — discard / no-speech / user-cancel delete
+///   now; a fault ending (pipeline / audio / engine / system-cancel) RETAINS the
+///   spool so the audio is recovered on the next launch.
 /// - **Scan + recover on launch (PR2):** find orphan spools, dedup any already
 ///   in History, then — behind a blocking "recovering your last recording" pill
 ///   that holds new recordings off the one shared engine — replay each orphan
@@ -66,6 +71,12 @@ final class RecoveryCoordinator {
   /// switch deferred because it arrived while recovery held the shared engine
   /// applies now. Set by the root.
   var onRecoveryComplete: (() -> Void)?
+
+  /// #1464 — fired after each `.recovered` replay result (a leftover recording
+  /// landed in History). The composition root binds it to the standalone
+  /// recovery-success overlay notice. Set by the root; nil in tests that don't
+  /// exercise the notice.
+  var onRecoverySucceeded: (() -> Void)?
 
   /// #1171 — whether an engine switch is in flight. The composition root binds
   /// this to `EngineCoordinator.isSwitching` (setter injection, like
@@ -195,48 +206,98 @@ final class RecoveryCoordinator {
     return (recoverySessionID, payload)
   }
 
+  /// The SOLE spool+key destructor (#1464). Deletes the spool file (which also
+  /// clears its attempt marker) SYNCHRONOUSLY — it is cheap local FS, and a
+  /// follow-up scan / the dedup + discard callers must see it gone at once — then
+  /// destroys the per-session key OFF the MainActor (the key store can be securityd
+  /// IPC, `keychain-not-mainactor`). Best-effort + idempotent (`try?`), so a
+  /// double-delete or a concurrently-removed spool is a harmless no-op. Returns the
+  /// detached key-delete work so tests can await completion; callers may discard it.
+  @discardableResult
+  private func destroySpoolAndKey(id: String) -> Task<Void, Never> {
+    try? makeSpoolStore().delete(recoverySessionID: id)
+    let keyStore = self.keyStore
+    return Task.detached(priority: .utility) {
+      try? keyStore.delete(for: id)
+    }
+  }
+
+  /// Delete-versus-retain for a live recording that ended without a durable save
+  /// (#1464). Reproduces the former driver `endedWithoutSaveKind` mapping EXACTLY:
+  /// delete when there is nothing worth keeping (discard / no-speech) or the user
+  /// asked to drop it; RETAIN when the captured audio is the user's words a fault
+  /// cut short. Static + internal so the split is unit-tested directly
+  /// (`matcher-set-adversarial-tests`).
+  static func shouldDeleteOnLiveEnding(_ ending: RecordingRecoveryEnding) -> Bool {
+    switch ending {
+    case .discarded, .noSpeech:
+      return true
+    case .failed, .audioInterrupted, .asrInterrupted, .noTransport:
+      return false
+    case .cancelled(.user):
+      return true
+    case .cancelled(.systemOrFault):
+      return false
+    }
+  }
+
+  /// Delete-versus-retain after a launch replay attempt (#1464). Delete a recovered
+  /// (saved) or unrecoverable orphan and a crash-loop `.abandoned` one; RETAIN a
+  /// History-save failure (the audio is still good, §3.3). `.aborted` (the user
+  /// discarded — already deleted by `discardActiveRecovery`) and `.deferred` (the
+  /// marker was never written — keep for a future launch) delete nothing here.
+  /// Static + internal for direct adversarial testing.
+  static func shouldDeleteAfterReplay(_ outcome: RecoveryReplayOutcome) -> Bool {
+    switch outcome {
+    case .recovered, .abandoned:
+      return true
+    case .failed(.unrecoverable):
+      return true
+    case .failed(.save), .failed(.saveMarkerClearFailed):
+      return false
+    case .aborted, .deferred:
+      return false
+    }
+  }
+
   /// A recording's transcript was durably saved — delete that session's spool +
   /// key. Best-effort, off the user's path, idempotent. Returns the detached
   /// work so tests can await it; callers discard it.
   @discardableResult
   func handleDurableSave(recoverySessionID id: String) -> Task<Void, Never> {
     if armedSessionID == id { armedSessionID = nil }
-    let keyStore = self.keyStore
-    let makeSpoolStore = self.makeSpoolStore
-    return Task.detached(priority: .utility) {
-      try? makeSpoolStore().delete(recoverySessionID: id)
-      try? keyStore.delete(for: id)
-    }
+    return destroySpoolAndKey(id: id)
   }
 
   /// A recording ended at a terminal state WITHOUT a durable transcript save
-  /// (#1063 PR2). Routes on the terminal KIND:
-  /// - `discard` (cancel / no-speech / too-short, or a pre-start abort): the app
-  ///   is alive and there is nothing worth recovering — delete the spool + key now
-  ///   instead of letting non-saved recordings accumulate on a long-running app.
-  /// - `failure` (pipeline / audio / engine fault): the captured audio is the
-  ///   user's words — RETAIN the spool so the next launch recovers it.
+  /// (#1063 PR2 / #1464). Applies `shouldDeleteOnLiveEnding` to the narrow
+  /// `RecordingRecoveryEnding` the driver projected: a delete ending (discard /
+  /// no-speech / user-cancel) destroys the spool + key now; a retain ending
+  /// (pipeline / audio / engine / system-cancel) keeps it for the next launch.
   /// Idempotent + best-effort; a no-op when `id` is nil. Always clears the live-
   /// recording protection (the recording is over). Returns the detached delete
-  /// work (discard only) so tests can await it.
+  /// work (delete endings only) so tests can await it.
   @discardableResult
   func handleRecordingEndedWithoutDurableSave(
-    recoverySessionID id: String?, terminal: RecordingTerminalKind
+    recoverySessionID id: String?, ending: RecordingRecoveryEnding
   ) -> Task<Void, Never>? {
     guard let id else { return nil }
     if armedSessionID == id { armedSessionID = nil }
-    switch terminal {
-    case .discard:
-      let keyStore = self.keyStore
-      let makeSpoolStore = self.makeSpoolStore
-      return Task.detached(priority: .utility) {
-        try? makeSpoolStore().delete(recoverySessionID: id)
-        try? keyStore.delete(for: id)
-      }
-    case .failure:
-      // Retain the spool + key — recovered on the next launch.
-      return nil
-    }
+    guard Self.shouldDeleteOnLiveEnding(ending) else { return nil }
+    return destroySpoolAndKey(id: id)
+  }
+
+  /// A record-press aborted BEFORE a kernel session was minted (a PTT release or
+  /// concurrent-toggle stop in the arm window, or a stale recovery gate) — no
+  /// `RecordingOutcome` fires, so this is the ONLY cleanup signal (#1464). Always a
+  /// discard: nothing was captured. Clears the live-recording protection and
+  /// destroys the just-armed spool/key through the sole destructor. Idempotent +
+  /// best-effort; a no-op when `id` is nil. Returns the detached work for tests.
+  @discardableResult
+  func handlePreStartAbort(recoverySessionID id: String?) -> Task<Void, Never>? {
+    guard let id else { return nil }
+    if armedSessionID == id { armedSessionID = nil }
+    return destroySpoolAndKey(id: id)
   }
 
   /// On launch, scan for orphan spools and recover them behind the blocking pill
@@ -307,9 +368,9 @@ final class RecoveryCoordinator {
       if alreadySaved.contains(id) {
         // Saved in a prior run's save→delete crash window: delete WITHOUT
         // re-transcribing (the dedup MUST precede any append — History forbids a
-        // duplicate id). Spool delete also clears the attempt marker.
-        try? store.delete(recoverySessionID: id)
-        Task.detached(priority: .utility) { try? keyStore.delete(for: id) }
+        // duplicate id). Routed through the sole destructor (#1464); these ids are
+        // never appended to `recoverable`, so the async delete never races a replay.
+        destroySpoolAndKey(id: id)
       } else {
         recoverable.append(id)
       }
@@ -343,6 +404,12 @@ final class RecoveryCoordinator {
         self?.recoveryGeneration != generationAtStart
       }
       activeRecoveryID = nil
+      // #1464: the coordinator is the sole destructor — the replayer no longer
+      // deletes, so apply the replay predicate now that `replay()` has returned.
+      // (`.aborted` deletes nothing here: `discardActiveRecovery` already did.)
+      if Self.shouldDeleteAfterReplay(outcome) { destroySpoolAndKey(id: id) }
+      // Post the standalone success notice for a recording that landed in History.
+      if case .recovered = outcome { onRecoverySucceeded?() }
       // A Discard ends the whole hold; remaining orphans (rare) wait for the next
       // launch. Every other outcome continues to the next orphan.
       if outcome == .aborted { break }
@@ -371,10 +438,9 @@ final class RecoveryCoordinator {
     guard isRecovering, let id = activeRecoveryID else { return }
     recoveryGeneration &+= 1
     resetEngine()
-    let store = makeSpoolStore()
-    try? store.delete(recoverySessionID: id)
-    let keyStore = self.keyStore
-    Task.detached(priority: .utility) { try? keyStore.delete(for: id) }
+    // Route through the sole destructor (#1464). The post-replay predicate sees
+    // `.aborted` for this id and does NO second delete.
+    destroySpoolAndKey(id: id)
     activeRecoveryID = nil
     TelemetryService.shared.recoveryCompleted(outcome: "discarded")
   }

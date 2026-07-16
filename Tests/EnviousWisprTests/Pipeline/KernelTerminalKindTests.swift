@@ -4,58 +4,58 @@ import Testing
 
 @testable import EnviousWisprPipeline
 
-/// #1063 PR2 / #1548 D1 — the crash-recovery cleanup signal classifies each
-/// concluded session's `RecordingOutcome` as DISCARD (delete the spool) or
-/// FAILURE (retain for next-launch recovery). `matcher-set-adversarial-tests`:
-/// every outcome is exercised in BOTH semantic classes, and `.completed` /
-/// `.cancelled` map to nil so the signal never fires for a saved take or is
-/// left to the dynamic cancel disposition.
+/// #1063 PR2 / #1548 D1 / #1464 — the driver projects each concluded session's
+/// internal `RecordingOutcome` into the narrow public `RecordingRecoveryEnding`
+/// that crosses into AppKit, where `RecoveryCoordinator` applies the sole
+/// delete-versus-retain predicate. This suite freezes the PROJECTION (the family
+/// mapping, payloads dropped); the delete/retain split is frozen separately in the
+/// coordinator predicate tests. `matcher-set-adversarial-tests`: every outcome is
+/// exercised, and `.completed` / `.cancelled` map to nil (a saved take never
+/// fires; a cancel is resolved dynamically via `pendingCancelOrigin`).
 @MainActor
-@Suite("Kernel terminal-kind split (#1063 PR2, #1548 D1)")
+@Suite("Kernel recovery-ending projection (#1063 PR2, #1548 D1, #1464)")
 struct KernelTerminalKindTests {
 
-  @Test("unambiguous discard outcomes → .discard (delete the spool)")
+  @Test("discard-family outcomes project to their narrow ending, payload dropped")
   func discardOutcomes() {
     #expect(
-      KernelDictationDriver.endedWithoutSaveKind(for: .discarded(.tooShort)) == .discard)
+      KernelDictationDriver.recoveryEnding(for: .discarded(.tooShort)) == .discarded)
     #expect(
-      KernelDictationDriver.endedWithoutSaveKind(for: .discarded(.releasedBeforeRecording))
-        == .discard)
-    #expect(KernelDictationDriver.endedWithoutSaveKind(for: .noSpeech(.vadGate)) == .discard)
+      KernelDictationDriver.recoveryEnding(for: .discarded(.releasedBeforeRecording))
+        == .discarded)
+    #expect(KernelDictationDriver.recoveryEnding(for: .noSpeech(.vadGate)) == .noSpeech)
     #expect(
-      KernelDictationDriver.endedWithoutSaveKind(for: .noSpeech(.asrEmptyNoSpeech)) == .discard)
+      KernelDictationDriver.recoveryEnding(for: .noSpeech(.asrEmptyNoSpeech)) == .noSpeech)
   }
 
-  @Test("failure outcomes → .failure (RETAIN the recoverable audio)")
+  @Test("fault-family outcomes project to their narrow ending, payload dropped")
   func failureOutcomes() {
     #expect(
-      KernelDictationDriver.endedWithoutSaveKind(for: .failed(.asrFailed)) == .failure)
+      KernelDictationDriver.recoveryEnding(for: .failed(.asrFailed)) == .failed)
     #expect(
-      KernelDictationDriver.endedWithoutSaveKind(for: .audioInterrupted(.engineLost))
-        == .failure)
+      KernelDictationDriver.recoveryEnding(for: .audioInterrupted(.engineLost))
+        == .audioInterrupted)
     #expect(
-      KernelDictationDriver.endedWithoutSaveKind(for: .audioInterrupted(nil)) == .failure)
+      KernelDictationDriver.recoveryEnding(for: .audioInterrupted(nil)) == .audioInterrupted)
     #expect(
-      KernelDictationDriver.endedWithoutSaveKind(for: .asrInterrupted(wasRecording: true))
-        == .failure)
+      KernelDictationDriver.recoveryEnding(for: .asrInterrupted(wasRecording: true))
+        == .asrInterrupted)
     #expect(
-      KernelDictationDriver.endedWithoutSaveKind(for: .asrInterrupted(wasRecording: false))
-        == .failure)
-    // #1548 D1: the new no-transport outcome RETAINS (parity with
-    // `.failed(.noAudioCaptured)`, its telemetry projection).
-    #expect(KernelDictationDriver.endedWithoutSaveKind(for: .noTransport) == .failure)
+      KernelDictationDriver.recoveryEnding(for: .asrInterrupted(wasRecording: false))
+        == .asrInterrupted)
+    #expect(KernelDictationDriver.recoveryEnding(for: .noTransport) == .noTransport)
   }
 
-  @Test(".cancelled is excluded from the STATIC map (ambiguous — resolved dynamically)")
+  @Test(".cancelled is excluded from the projection (resolved dynamically at the fire site)")
   func cancelledIsDynamic() {
-    // `.cancelled` is reached by both a user cancel (delete) and a fault/system
-    // cancel (retain), so the static map returns nil and the fire site resolves it
-    // via the per-cancel disposition (Codex terminal-kind matrix).
-    #expect(KernelDictationDriver.endedWithoutSaveKind(for: .cancelled) == nil)
+    // `.cancelled` is reached by both a user cancel and a fault/system cancel, so
+    // the static projection returns nil and the fire site injects the origin from
+    // `pendingCancelOrigin` into `.cancelled(_)` (Codex terminal-kind matrix).
+    #expect(KernelDictationDriver.recoveryEnding(for: .cancelled) == nil)
   }
 
   @Test(".completed never fires the signal (durable save ran)")
   func completedIsNil() {
-    #expect(KernelDictationDriver.endedWithoutSaveKind(for: .completed) == nil)
+    #expect(KernelDictationDriver.recoveryEnding(for: .completed) == nil)
   }
 }

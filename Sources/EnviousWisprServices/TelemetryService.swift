@@ -47,6 +47,39 @@ public enum ApiKeyValidationSource: String, Sendable {
   case modelDiscovery = "model_discovery"
 }
 
+/// #1464 — the root cause behind one crash-recovery attempt's `recovery.completed`
+/// event. Closed + typed so the retain-vs-delete-on-failure policy (deferred to
+/// Phase 3) can be chosen from real field data instead of a coarse stage. Privacy:
+/// a category only — the underlying `NSError` domain/code/description is classifier
+/// INPUT and is NEVER emitted (`sentry-operations.md` telemetry-privacy boundary).
+public enum RecoveryTelemetryReason: String, Sendable {
+  case keyMissing = "key_missing"
+  case keyReadFailed = "key_read_failed"
+  /// A spool file/header read THREW before a `RecoveredSpool` existed.
+  case reconstructionFailed = "reconstruction_failed"
+  /// Reconstruction returned no authenticated sample prefix.
+  case emptyOrUnreadableSamples = "empty_or_unreadable_samples"
+  case modelLoadFailed = "model_load_failed"
+  case transcribeError = "transcribe_error"
+  case emptyText = "empty_text"
+  case saveFailed = "save_failed"
+  case markerWriteFailed = "marker_write_failed"
+  case markerClearFailed = "marker_clear_failed"
+  case crashLoop = "crash_loop"
+}
+
+/// #1464 — the narrow failure CLASS behind a transcription-stage recovery failure,
+/// the prime Camp B (good audio, transient hiccup) suspects. Starts deliberately
+/// narrow (D-030 / plan §3.2): widen only when Phase 2 producer tests prove a new
+/// class stays distinguishable after the ASR XPC wrapper collapses decode errors.
+/// The `NSError` domain/code is the classifier INPUT, never emitted.
+public enum RecoveryFailureClass: String, Sendable {
+  case xpcUnreachable = "xpc_unreachable"
+  case cancelled
+  case notReady = "not_ready"
+  case other
+}
+
 /// Thin wrapper — type-safe event names, no business logic.
 /// Limb: observes facts from domain objects, publishes to PostHog.
 @MainActor
@@ -915,18 +948,48 @@ public final class TelemetryService {
   }
 
   /// One leftover recording finished its recovery attempt. `outcome` is one of
-  /// `recovered` / `discarded` / `failed` / `abandoned`; `reason` tags a failure
-  /// (`decrypt` / `transcribe` / `empty`); durations are bucketed; `polishFellBack`
-  /// is true when the recovered text landed raw (polish skipped/failed).
+  /// `recovered` / `discarded` / `failed` / `abandoned` / `deferred`. #1464:
+  /// `reason` is the TYPED root cause; `failureClass` narrows a transcription-stage
+  /// failure; `audioDecrypted` is emitted (true) ONLY once authenticated
+  /// reconstruction returned non-empty samples — its ABSENCE is the "not
+  /// reconstructed" signal, so it is NEVER emitted false; `campBCandidate` flags a
+  /// failure on good audio (a possible transient hiccup). Durations are bucketed;
+  /// `polishFellBack` is true when the recovered text landed raw.
   public func recoveryCompleted(
     outcome: String,
-    reason: String? = nil,
+    reason: RecoveryTelemetryReason? = nil,
+    failureClass: RecoveryFailureClass? = nil,
+    audioDecrypted: Bool? = nil,
+    campBCandidate: Bool? = nil,
     recoveredSeconds: Int? = nil,
     spoolSeconds: Int? = nil,
     polishFellBack: Bool? = nil
   ) {
+    #if DEBUG
+      // Mirror the PostHog property set below by exact production spelling so the
+      // typed threading is unit-testable through `testEventHook` (#1464).
+      var hookStringProps: [String: String] = ["outcome": outcome]
+      if let reason { hookStringProps["reason"] = reason.rawValue }
+      if let failureClass { hookStringProps["failure_class"] = failureClass.rawValue }
+      if let recoveredSeconds {
+        hookStringProps["recovered_seconds_bucket"] = Self.recoverySecondsBucket(recoveredSeconds)
+      }
+      if let spoolSeconds {
+        hookStringProps["spool_seconds_bucket"] = Self.recoverySecondsBucket(spoolSeconds)
+      }
+      var hookBoolProps: [String: Bool] = [:]
+      if let audioDecrypted { hookBoolProps["audio_decrypted"] = audioDecrypted }
+      if let campBCandidate { hookBoolProps["camp_b_candidate"] = campBCandidate }
+      if let polishFellBack { hookBoolProps["polish_fell_back"] = polishFellBack }
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "recovery.completed", stringProps: hookStringProps, boolProps: hookBoolProps))
+    #endif
     var properties: [String: Any] = ["outcome": outcome]
-    if let reason { properties["reason"] = reason }
+    if let reason { properties["reason"] = reason.rawValue }
+    if let failureClass { properties["failure_class"] = failureClass.rawValue }
+    if let audioDecrypted { properties["audio_decrypted"] = audioDecrypted }
+    if let campBCandidate { properties["camp_b_candidate"] = campBCandidate }
     if let recoveredSeconds {
       properties["recovered_seconds_bucket"] = Self.recoverySecondsBucket(recoveredSeconds)
     }

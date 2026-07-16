@@ -100,8 +100,8 @@ import Testing
     // #1063 PR2 (crash-recovery replay): raised 400 → 415. The published-state
     // `.idle`/`.error` cleanup branch was REPLACED by wiring the driver's
     // kernel-terminal signal (`onSessionEndedWithoutSave`, carrying the recovery
-    // id + terminal KIND) to the recovery-cleanup closure in `install()`; the
-    // closure type widened to `(String?, RecordingTerminalKind) -> Void`. No new
+    // id + the narrow ending) to the recovery-cleanup closure in `install()`; the
+    // closure type widened to `(String?, RecordingRecoveryEnding) -> Void`. No new
     // collaborator (count stays ≤ 11). Deterministic rule: actual 404 + 10 → 415.
     // #1171 (Telemetry Bible Phase 2): raised 415 → 430 for the two-line
     // `settingsSync.retryDeferredBackendSwitch(settings:)` call added to BOTH the

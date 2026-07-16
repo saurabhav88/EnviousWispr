@@ -231,6 +231,7 @@ import Testing
         .recoveringLastRecording,
         "Recovering your last recording. Press Discard to skip."
       ),
+      (.recoverySucceeded, "Recovered your last recording. Saved to History."),
       (
         .bluetoothAwareness,
         "Bluetooth microphone detected. Wait a moment before speaking on a cold start."
@@ -255,6 +256,10 @@ import Testing
     #expect(DictationNarrator.recoveryTitle == "Recovering your last recording…")
     #expect(DictationNarrator.recoverySubtitle == "Saved to History when it's done")
     #expect(DictationNarrator.recoveryAccessibilityLabel == "Recovering your last recording")
+    #expect(DictationNarrator.recoverySucceededTitle == "Recovered your last recording")
+    #expect(DictationNarrator.recoverySucceededSubtitle == "Saved to History")
+    #expect(
+      DictationNarrator.recoverySucceededText == "Recovered your last recording. Saved to History.")
     #expect(DictationNarrator.loadingModelStatus == "Loading model...")
     #expect(DictationNarrator.loadingModelBadge == "Loading model\u{2026}")
     #expect(DictationNarrator.loadingModelSidebar == "Loading Model")

@@ -10,17 +10,22 @@ import Testing
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
 
-/// The per-orphan `RecoverySpoolReplayer` (#1063 PR2): decrypt → transcribe →
-/// polish → save a non-auto-pasting "Recovered" transcript, ONE attempt with a
-/// crash-loop marker, and a generation guard that drops a discarded-but-in-flight
-/// result before saving. Driven against a real encrypted spool on disk + a fake
-/// batch ASR.
+/// The per-orphan `RecoverySpoolReplayer` (#1063 PR2 / #1464): decrypt →
+/// transcribe → polish → save a non-auto-pasting "Recovered" transcript, ONE
+/// attempt with a crash-loop marker, and a generation guard that drops a
+/// discarded-but-in-flight result before saving. #1464: the replayer NO LONGER
+/// destroys the spool/key — the coordinator (sole destructor) does that after
+/// `replay()` returns — so these tests assert the outcome + typed telemetry + that
+/// the spool/key REMAIN. The one exception is the §3.3 save-failure fix: the
+/// replayer clears its OWN attempt marker so a retained spool replays next launch.
+/// `.serialized` — the telemetry tests set the process-global `testEventHook`.
 @MainActor
-@Suite("Recovery spool replayer (#1063 PR2)")
+@Suite("Recovery spool replayer (#1063 PR2, #1464)", .serialized)
 struct RecoverySpoolReplayerTests {
 
-  /// Minimal batch-ASR fake: returns a canned result, counts calls, and runs an
-  /// optional hook when `transcribe` is entered (to simulate a mid-flight Discard).
+  /// Minimal batch-ASR fake: returns a canned result, counts calls, runs an
+  /// optional hook when `transcribe`/`loadModel` is entered (to simulate a
+  /// mid-flight Discard or a filesystem flip), and can throw a scripted error.
   final class FakeBatchASR: ASRManagerInterface {
     var activeBackendType: ASRBackendType = .parakeet
     var isModelLoaded = false
@@ -35,6 +40,8 @@ struct RecoverySpoolReplayerTests {
     var cannedText = "hello recovered world"
     var onTranscribe: (() -> Void)?
     var onLoadModel: (() -> Void)?
+    /// When set, `transcribe` throws it instead of returning a result.
+    var transcribeError: (any Error)?
 
     func loadModel() async throws {
       isModelLoaded = true
@@ -48,6 +55,7 @@ struct RecoverySpoolReplayerTests {
     {
       transcribeCallCount += 1
       onTranscribe?()
+      if let transcribeError { throw transcribeError }
       return ASRResult(
         text: cannedText, language: options.language, duration: 1, processingTime: 1,
         backendType: activeBackendType)
@@ -63,11 +71,30 @@ struct RecoverySpoolReplayerTests {
     func cancelInFlightLoad() {}
   }
 
+  /// Thread-safe telemetry capture (the hook is `@Sendable`, process-global).
+  final class TelemetryBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [CapturedTelemetryEvent] = []
+    func add(_ e: CapturedTelemetryEvent) { lock.withLock { stored.append(e) } }
+    func recoveryEvents() -> [CapturedTelemetryEvent] {
+      lock.withLock { stored.filter { $0.name == "recovery.completed" } }
+    }
+  }
+
   private static func tempDir() -> URL {
     let dir = FileManager.default.temporaryDirectory
       .appendingPathComponent("ew-replayer-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
+  }
+
+  /// A transcript directory whose PARENT is a regular FILE, so `TranscriptStore
+  /// .save` can never open its temp file — a deterministic save failure with no
+  /// timing (#1464 §3.3 tests).
+  private static func unwritableTranscriptDir() throws -> URL {
+    let blocker = tempDir().appendingPathComponent("blocker")
+    try Data([0]).write(to: blocker)
+    return blocker.appendingPathComponent("transcripts", isDirectory: true)
   }
 
   private static func key(_ byte: UInt8 = 7) -> Data {
@@ -93,19 +120,18 @@ struct RecoverySpoolReplayerTests {
     let replayer: RecoverySpoolReplayer
     let asr: FakeBatchASR
     let spoolStore: RecoverySpoolStore
+    let spoolDir: URL
     let keyStore: RecoveryKeyStore
     let transcriptStore: TranscriptStore
     let transcriptCoordinator: TranscriptCoordinator
-    let cleanupEvents: AsyncStream<String>
   }
 
-  private static func makeHarness() -> Harness {
+  private static func makeHarness(transcriptDir: URL? = nil) -> Harness {
     let spoolDir = tempDir()
     let keyStore = RecoveryKeyStore(backend: .file, fileDirectory: tempDir())
-    let transcriptStore = TranscriptStore(directory: tempDir())
+    let transcriptStore = TranscriptStore(directory: transcriptDir ?? tempDir())
     let transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
     let asr = FakeBatchASR()
-    let (cleanupEvents, cleanupContinuation) = AsyncStream.makeStream(of: String.self)
     let replayer = RecoverySpoolReplayer(
       asrManager: asr,
       keyStore: keyStore,
@@ -114,13 +140,11 @@ struct RecoverySpoolReplayerTests {
       transcriptCoordinator: transcriptCoordinator,
       keychainManager: KeychainManager(),
       outputClassifierHolder: OutputClassifierHolder(),
-      onCleanupFinished: { cleanupContinuation.yield($0) },
       currentVocabulary: { (.empty, .empty) })
     return Harness(
       replayer: replayer, asr: asr,
-      spoolStore: RecoverySpoolStore(directory: spoolDir), keyStore: keyStore,
-      transcriptStore: transcriptStore, transcriptCoordinator: transcriptCoordinator,
-      cleanupEvents: cleanupEvents)
+      spoolStore: RecoverySpoolStore(directory: spoolDir), spoolDir: spoolDir, keyStore: keyStore,
+      transcriptStore: transcriptStore, transcriptCoordinator: transcriptCoordinator)
   }
 
   /// Write a real encrypted spool + store its key, so the replayer can decrypt it.
@@ -137,14 +161,24 @@ struct RecoverySpoolReplayerTests {
     await withCheckedContinuation { c in writer.finalize(reason: .cleanFinalized) { c.resume() } }
   }
 
-  @Test("happy path: orphan recovered → saved as isRecovered, spool + key deleted")
+  /// Set the process-global telemetry hook for the duration of `body`, capturing
+  /// every emission. Restores the hook after (the suite is `.serialized`).
+  private static func capturingTelemetry(
+    _ body: () async throws -> Void
+  ) async rethrows -> TelemetryBox {
+    let box = TelemetryBox()
+    TelemetryService.shared.testEventHook = { @Sendable e in box.add(e) }
+    defer { TelemetryService.shared.testEventHook = nil }
+    try await body()
+    return box
+  }
+
+  @Test("happy path: orphan recovered → saved as isRecovered; replayer does NOT delete")
   func happyPath() async throws {
     let h = Self.makeHarness()
     let id = "ok-\(UUID().uuidString)"
     try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
-    var cleanupIterator = h.cleanupEvents.makeAsyncIterator()
-    #expect(await cleanupIterator.next() == id)
     #expect(outcome == .recovered)
     #expect(h.asr.transcribeCallCount == 1)
     let saved = h.transcriptCoordinator.transcripts
@@ -152,11 +186,13 @@ struct RecoverySpoolReplayerTests {
     #expect(saved.first?.isRecovered == true)
     #expect(saved.first?.recoverySessionID == id)
     #expect(saved.first?.displayText.contains("hello") == true)
-    #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
-    #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
+    // #1464: the replayer no longer destroys — the coordinator deletes after this
+    // returns, so the spool + key are STILL PRESENT here.
+    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    #expect((try? h.keyStore.retrieve(for: id)) != nil)
   }
 
-  @Test("one-attempt guard: a marker present on entry ABANDONS (no transcribe, deleted)")
+  @Test("one-attempt guard: a marker present on entry ABANDONS (no transcribe, no delete)")
   func markerPresentAbandons() async throws {
     let h = Self.makeHarness()
     let id = "loop-\(UUID().uuidString)"
@@ -167,7 +203,8 @@ struct RecoverySpoolReplayerTests {
     #expect(outcome == .abandoned)
     #expect(h.asr.transcribeCallCount == 0, "never re-transcribe a recording that crashed us")
     #expect(h.transcriptCoordinator.transcripts.isEmpty)
-    #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    // The coordinator deletes on `.abandoned`; the replayer leaves the spool.
+    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
   }
 
   @Test("the attempt marker is written BEFORE transcribe (crash-loop guard armed)")
@@ -183,7 +220,7 @@ struct RecoverySpoolReplayerTests {
     #expect(markerPresentAtTranscribe, "marker must exist before the risky transcribe runs")
   }
 
-  @Test("decrypt fail (missing key) → failed, deleted, no transcribe")
+  @Test("missing key → failed(.unrecoverable), no transcribe, spool retained")
   func missingKeyFails() async throws {
     let h = Self.makeHarness()
     let id = "nokey-\(UUID().uuidString)"
@@ -191,10 +228,10 @@ struct RecoverySpoolReplayerTests {
     // Destroy the key so decrypt fails closed.
     try h.keyStore.delete(for: id)
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
-    #expect(outcome == .failed)
+    #expect(outcome == .failed(.unrecoverable))
     #expect(h.asr.transcribeCallCount == 0)
     #expect(h.transcriptCoordinator.transcripts.isEmpty)
-    #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
   }
 
   @Test("Discard during transcribe drops the result — nothing saved (generation guard, R2)")
@@ -226,12 +263,6 @@ struct RecoverySpoolReplayerTests {
 
   @Test("a recovered transcript with NO polish output carries no provider/model stamp (#1305)")
   func nilPolishCarriesNoProviderStamp() async throws {
-    // The snapshot's llmProvider/llmModel describe what was CONFIGURED at
-    // record time, not what ran. This spool's snapshot disables polish
-    // (provider "none"), so `polishedText` is nil — the saved transcript must
-    // not be labeled with any provider, matching the live path's
-    // no-stamp-on-skip contract. Pre-#1305 the replayer stamped the snapshot
-    // values unconditionally.
     let h = Self.makeHarness()
     let id = "stamp-\(UUID().uuidString)"
     try await Self.seedSpool(h, id: id, samples: [0.3, 0.2])
@@ -241,5 +272,107 @@ struct RecoverySpoolReplayerTests {
     #expect(saved.polishedText == nil)
     #expect(saved.llmProvider == nil)
     #expect(saved.llmModel == nil)
+  }
+
+  // MARK: - #1464 §3.3 save-failure retains + clears marker
+
+  @Test("save failure RETAINS the spool + key and clears the marker → .failed(.save)")
+  func saveFailureRetainsAndClearsMarker() async throws {
+    let h = Self.makeHarness(transcriptDir: try Self.unwritableTranscriptDir())
+    let id = "savefail-\(UUID().uuidString)"
+    try await Self.seedSpool(h, id: id, samples: [0.2, 0.4])
+    let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+    #expect(outcome == .failed(.save(.other)))
+    // The audio is still good — RETAIN it for a next-launch retry, and the marker
+    // must be cleared so the retained spool replays (not read as abandoned).
+    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    #expect((try? h.keyStore.retrieve(for: id)) != nil)
+    #expect(!h.spoolStore.hasAttemptMarker(for: id), "marker cleared so next launch replays")
+  }
+
+  @Test("save failure whose marker-clear ALSO throws → .failed(.saveMarkerClearFailed), retained")
+  func saveFailureMarkerClearAlsoFails() async throws {
+    let h = Self.makeHarness(transcriptDir: try Self.unwritableTranscriptDir())
+    let id = "markerfail-\(UUID().uuidString)"
+    try await Self.seedSpool(h, id: id, samples: [0.5])
+    defer { _ = chmod(h.spoolDir.path, 0o700) }  // restore so temp cleanup/GC can proceed
+    // The marker is written before transcribe; flip the spool dir read-only DURING
+    // transcribe so the post-save `deleteAttemptMarker` (removeItem) throws EACCES.
+    h.asr.onTranscribe = { _ = chmod(h.spoolDir.path, 0o500) }
+    let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+    #expect(outcome == .failed(.saveMarkerClearFailed(.other)))
+    // Retained THIS launch even though next-launch durability is not guaranteed.
+    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    #expect((try? h.keyStore.retrieve(for: id)) != nil)
+  }
+
+  // MARK: - #1464 root-cause telemetry
+
+  @Test("missing-key failure emits key_missing and OMITS audio_decrypted / camp_b_candidate")
+  func telemetryKeyMissingOmitsDecrypt() async throws {
+    let h = Self.makeHarness()
+    let id = "tel-nokey-\(UUID().uuidString)"
+    try await Self.seedSpool(h, id: id, samples: [0.6])
+    try h.keyStore.delete(for: id)
+    let box = await Self.capturingTelemetry {
+      _ = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+    }
+    let e = try #require(box.recoveryEvents().first)
+    #expect(e.stringProps["outcome"] == "failed")
+    #expect(e.stringProps["reason"] == "key_missing")
+    #expect(e.boolProps["audio_decrypted"] == nil, "not reconstructed ⇒ never emit audio_decrypted")
+    #expect(e.boolProps["camp_b_candidate"] == nil)
+    #expect(e.stringProps["spool_seconds_bucket"] == nil)
+  }
+
+  @Test("transcribe failure on good audio is a Camp B candidate with a failure class")
+  func telemetryTranscribeFailIsCampBCandidate() async throws {
+    let h = Self.makeHarness()
+    let id = "tel-xpc-\(UUID().uuidString)"
+    try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
+    h.asr.transcribeError = XPCASRTransportError.serviceUnreachable
+    let box = await Self.capturingTelemetry {
+      _ = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+    }
+    let e = try #require(box.recoveryEvents().first)
+    #expect(e.stringProps["outcome"] == "failed")
+    #expect(e.stringProps["reason"] == "transcribe_error")
+    #expect(e.stringProps["failure_class"] == "xpc_unreachable")
+    #expect(e.boolProps["audio_decrypted"] == true, "reconstruction succeeded ⇒ audio_decrypted")
+    #expect(
+      e.boolProps["camp_b_candidate"] == true, "good audio, failed transcribe ⇒ camp B candidate")
+    #expect(e.stringProps["spool_seconds_bucket"] != nil, "bucket derived from reconstructed count")
+    // Privacy: never a raw NSError domain/code/description on the wire.
+    #expect(e.stringProps["domain"] == nil && e.intProps["code"] == nil)
+    #expect(e.stringProps.values.allSatisfy { !$0.contains("serviceUnreachable") })
+  }
+
+  @Test("deferred (attempt-marker write failed) emits marker_write_failed")
+  func telemetryDeferredEmitsMarkerWriteFailed() async throws {
+    // A spool dir whose PARENT is a regular FILE: the store's re-enforced mkdir is a
+    // soft no-op, but `writeAttemptMarker` can't open its temp file → the replay
+    // defers BEFORE any risky work, so no seeded spool is needed. (chmod-based
+    // read-only can't force this — the store re-chmods the dir to 0700 on init.)
+    let blocker = Self.tempDir().appendingPathComponent("blocker")
+    try Data([0]).write(to: blocker)
+    let badSpoolDir = blocker.appendingPathComponent("spools", isDirectory: true)
+    let transcriptStore = TranscriptStore(directory: Self.tempDir())
+    let replayer = RecoverySpoolReplayer(
+      asrManager: FakeBatchASR(),
+      keyStore: RecoveryKeyStore(backend: .file, fileDirectory: Self.tempDir()),
+      makeSpoolStore: { RecoverySpoolStore(directory: badSpoolDir) },
+      transcriptStore: transcriptStore,
+      transcriptCoordinator: TranscriptCoordinator(store: transcriptStore),
+      keychainManager: KeychainManager(),
+      outputClassifierHolder: OutputClassifierHolder(),
+      currentVocabulary: { (.empty, .empty) })
+    let id = "tel-defer-\(UUID().uuidString)"
+    let box = await Self.capturingTelemetry {
+      let outcome = await replayer.replay(recoverySessionID: id, isAborted: { false })
+      #expect(outcome == .deferred)
+    }
+    let e = try #require(box.recoveryEvents().first)
+    #expect(e.stringProps["outcome"] == "deferred")
+    #expect(e.stringProps["reason"] == "marker_write_failed")
   }
 }
