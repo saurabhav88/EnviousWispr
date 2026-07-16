@@ -150,6 +150,24 @@ struct AIPolishSettingsView: View {
   @State private var openAIKey: String = ""
   @State private var geminiKey: String = ""
   @State private var validationStatus: String = ""
+  /// #1455: whether a NON-EMPTY key is currently persisted in Keychain, for
+  /// the missing-key notice. Cached, updated only at the 3 real mutation
+  /// points (onAppear load, successful save, successful clear) rather than a
+  /// live Keychain re-read inside the view body (Codex r4 finding:
+  /// `retrieve()` does side-effecting legacy-key migration + file I/O +
+  /// telemetry, so calling it on every render, including every typed
+  /// character, would re-run that work needlessly and could re-report a
+  /// failed legacy cleanup repeatedly).
+  ///
+  /// THREE states, not two (Codex r5 finding): `nil` = not yet determined or
+  /// the read failed for ANY reason (locked Keychain, I/O error, the legacy-
+  /// migration fallback inside `retrieve()` failing its own separate way —
+  /// deliberately not narrowed to one specific thrown case, since a failure
+  /// anywhere in that path should read as "unknown," never as "confirmed
+  /// absent"). Only an explicit `false` (a successful read that came back
+  /// empty) is allowed to show the notice; `nil` and `true` both suppress it.
+  @State private var openAIKeySaved: Bool?
+  @State private var geminiKeySaved: Bool?
 
   private var isCloudProvider: Bool {
     settings.llmProvider == .openAI || settings.llmProvider == .gemini
@@ -294,6 +312,37 @@ struct AIPolishSettingsView: View {
   @ViewBuilder
   private var providerSubConfig: some View {
     if isCloudProvider {
+      // #1455: proactive nudge, not reactive, scoped narrowly to the one
+      // unambiguous case: nothing is actually SAVED yet. Deliberately NOT
+      // keyed off `currentProviderStatus.tone` (Codex r1 + r2 findings):
+      // `.needsSetup` also covers mid-validation and `.error` also covers a
+      // transient network/provider failure while checking a perfectly good
+      // saved key — this banner's flat "without a key" wording would be false
+      // in both. Also deliberately NOT keyed off the live `openAIKey`/
+      // `geminiKey` text (Codex r3 finding): those track what's TYPED, not
+      // what's PERSISTED, and polish reads only from Keychain — a user who
+      // types but never clicks Save, or whose save fails, would wrongly lose
+      // the warning before cleanup is actually usable. Also deliberately NOT a
+      // live Keychain re-read inside the body (Codex r4 finding): `retrieve()`
+      // does side-effecting legacy-key migration + file I/O + telemetry, so
+      // running it on every render (every keystroke) redoes that work and can
+      // re-report a failed legacy cleanup repeatedly; a locked/unavailable
+      // Keychain would also read as a false "definitely no key" rather than
+      // "couldn't check." `openAIKeySaved`/`geminiKeySaved` cache a CONFIRMED
+      // read, updated only at the 3 real mutation points.
+      // Explicit `== false` (not `!x`): `nil` (unknown) and `true` (confirmed
+      // present) must both suppress the notice, only a confirmed-empty read
+      // shows it.
+      let savedKeyIsEmpty =
+        (settings.llmProvider == .openAI ? openAIKeySaved : geminiKeySaved) == false
+      if savedKeyIsEmpty {
+        InsetNotice(
+          text:
+            "Dictation still works, but without a key, cleanup falls back to your raw, unedited text every time.",
+          systemImage: "exclamationmark.triangle",
+          tint: .stWarning
+        )
+      }
       apiKeyRow
       if settings.llmProvider == .openAI {
         Link(
@@ -418,8 +467,36 @@ struct AIPolishSettingsView: View {
       }
     }
     .onAppear {
-      openAIKey = (try? keychainManager.retrieve(key: KeychainManager.openAIKeyID)) ?? ""
-      geminiKey = (try? keychainManager.retrieve(key: KeychainManager.geminiKeyID)) ?? ""
+      // A thrown read leaves `openAIKey`/`geminiKey` at their existing
+      // fail-to-empty convention (unchanged from before #1455).
+      // `errSecItemNotFound` is `KeyStoreError`'s deliberate shared vocabulary
+      // for genuine absence across BOTH the Keychain and legacy-file paths
+      // (`FileLegacyKeyStore.retrieve`'s own comment: "callers can tell
+      // 'never saved a key' apart from 'saved a key we then failed to
+      // read'") — confirmed by reading both call sites, not assumed (Codex r6
+      // finding: r5's blanket catch left this case `nil` too, hiding the
+      // warning for exactly the fresh-install, never-entered-a-key user this
+      // feature exists for). Every OTHER thrown error stays `nil` (unknown).
+      do {
+        let stored = try keychainManager.retrieve(key: KeychainManager.openAIKeyID)
+        openAIKey = stored
+        openAIKeySaved = !stored.isEmpty
+      } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
+        openAIKey = ""
+        openAIKeySaved = false
+      } catch {
+        openAIKey = ""
+      }
+      do {
+        let stored = try keychainManager.retrieve(key: KeychainManager.geminiKeyID)
+        geminiKey = stored
+        geminiKeySaved = !stored.isEmpty
+      } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
+        geminiKey = ""
+        geminiKeySaved = false
+      } catch {
+        geminiKey = ""
+      }
       if settings.llmProvider == .ollama {
         llmDiscovery.loadCachedModels(for: .ollama)
         Task {
@@ -531,12 +608,14 @@ struct AIPolishSettingsView: View {
         Button("Save") {
           if isOpenAI {
             guard saveKey(key: openAIKey, keychainId: KeychainManager.openAIKeyID) else { return }
+            openAIKeySaved = !openAIKey.isEmpty
             Task {
               await llmDiscovery.validateKeyAndDiscoverModels(
                 provider: .openAI, settings: settings, source: .save)
             }
           } else {
             guard saveKey(key: geminiKey, keychainId: KeychainManager.geminiKeyID) else { return }
+            geminiKeySaved = !geminiKey.isEmpty
             Task {
               await llmDiscovery.validateKeyAndDiscoverModels(
                 provider: .gemini, settings: settings, source: .save)
@@ -551,9 +630,11 @@ struct AIPolishSettingsView: View {
           if isOpenAI {
             guard clearKey(keychainId: KeychainManager.openAIKeyID) else { return }
             openAIKey = ""
+            openAIKeySaved = false
           } else {
             guard clearKey(keychainId: KeychainManager.geminiKeyID) else { return }
             geminiKey = ""
+            geminiKeySaved = false
           }
           llmDiscovery.reset()
         }
