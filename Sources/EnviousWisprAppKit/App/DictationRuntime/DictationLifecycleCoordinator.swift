@@ -211,9 +211,10 @@ final class DictationLifecycleCoordinator {
   /// #1060: within the last minute before the cap. Show a PERSISTENT in-panel
   /// banner (no auto-dismiss) that stays until the recording stops; cleared by the
   /// transition out of recording. "Under a minute" reads accurately for the whole
-  /// window, so no countdown or late-fire guard is needed. Copy lives here.
+  /// window, so no countdown or late-fire guard is needed. `DictationNarrator`
+  /// owns the copy.
   private func showApproachingCapWarning(remainingSeconds: TimeInterval) {
-    recordingOverlay.flashRecordingNotice("Recording auto-stops in under a minute (60-minute cap)")
+    recordingOverlay.flashRecordingNotice(reason: .approachingCap)
     TelemetryService.shared.recordingCapWarningShown(
       backend: lastCapturingBackend == .whisperKit ? "whisperKit" : "parakeet",
       capSeconds: TimingConstants.maxRecordingDuration)
@@ -407,7 +408,7 @@ final class DictationLifecycleCoordinator {
     postCompletionWarningTask?.cancel()
   }
 
-  private func schedulePostCompletionWarning(message: String) {
+  private func schedulePostCompletionWarning(reason: RecordingWarningReason) {
     postCompletionWarningTask?.cancel()
     postCompletionWarningTask = Task { @MainActor [weak self] in
       try? await Task.sleep(for: .milliseconds(400))
@@ -416,15 +417,16 @@ final class DictationLifecycleCoordinator {
       let parakeetComplete = self.kernelDriver.state == .complete
       let whisperKitComplete = self.whisperKitKernelDriver.state == .complete
       guard parakeetComplete || whisperKitComplete else { return }
-      self.recordingOverlay.show(intent: .warning(message: message))
+      self.recordingOverlay.show(intent: .warning(reason: reason))
     }
   }
 
   // MARK: - State-handler factory
 
-  /// #1408: the closure bodies and every notice literal live in
-  /// `PipelineStateChangeHandlerFactory`; this hands it the coordinator-owned
-  /// seams they reach back into. Extracted rather than grown in place — the
+  /// #1408: the closure bodies live in `PipelineStateChangeHandlerFactory`; this
+  /// hands it the coordinator-owned seams they reach back into. #1567: the factory
+  /// now forwards typed `RecordingWarningReason` facts and `DictationNarrator`
+  /// owns every user-facing sentence. Extracted rather than grown in place — the
   /// coordinator sat at its line ceiling, which is exactly the signal that
   /// ceiling exists to send.
   private func makeStateChangeHandler(backendLabel: String) -> PipelineStateChangeHandler {
@@ -434,8 +436,8 @@ final class DictationLifecycleCoordinator {
       deps: .init(
         showOverlay: { [weak self] intent in self?.showOverlayIntent(intent) },
         cancelPendingWarning: { [weak self] in self?.postCompletionWarningTask?.cancel() },
-        schedulePostCompletionWarning: { [weak self] message in
-          self?.schedulePostCompletionWarning(message: message)
+        schedulePostCompletionWarning: { [weak self] reason in
+          self?.schedulePostCompletionWarning(reason: reason)
         },
         appendTranscript: { [weak self] t in self?.transcriptCoordinator.append(t) },
         onDurableSave: { [weak self] sid in self?.onDurableSave(sid) },

@@ -191,7 +191,9 @@ final class RecordingOverlayPanel {
         accessibilityToastShownThisSession = true
         showAccessibilityToast()
       }
-    case .warning(let message):
+    case .warning(let reason):
+      // #1567: the narrator is the sole author of the sentence.
+      let message = DictationNarrator.copy(for: reason)
       NSAccessibility.post(
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
@@ -410,12 +412,13 @@ final class RecordingOverlayPanel {
   /// #1060: flash a transient banner over the LIVE recording pill (a second line
   /// inside the same capsule), then auto-clear. No-op unless a recording panel is
   /// live — leaves `panel`, `currentIntent`, and `generation` untouched (no
-  /// teardown → no #930 flicker). The App layer owns the copy string.
-  func flashRecordingNotice(_ message: String, dismissAfter: Double? = nil) {
+  /// teardown → no #930 flicker). #1567: carries a typed `RecordingNoticeReason`;
+  /// `DictationNarrator` owns the copy.
+  func flashRecordingNotice(reason: RecordingNoticeReason, dismissAfter: Double? = nil) {
     guard panel != nil, case .recording = currentIntent else { return }
     noticeDismissWork?.cancel()
     noticeDismissWork = nil
-    noticeState.message = message
+    noticeState.message = DictationNarrator.copy(for: reason)
     // #1060: nil dismissAfter = persist until the recording ends. The cap warning
     // stays the whole final minute and is cleared by the transition out of
     // recording (transitionToPolishing) or hide(). A non-nil value auto-dismisses.

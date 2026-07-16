@@ -289,7 +289,7 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
   /// outcome rather than a hard failure. Keyed off the single `LeadIn.skipped.text`
   /// constant that `composedMessage` also uses, so it can never drift from the
   /// notice it inspects. The completion planner uses this to suppress the
-  /// transient "Polish failed -- using raw text" overlay for skips (the in-window
+  /// transient "Polish failed. Using raw text." overlay for skips (the in-window
   /// notice still shows the actionable "AI cleanup skipped: ..." message). A
   /// legacy raw message or the Apple Intelligence "AI polish failed: ..." string
   /// is correctly treated as NOT a skip, so its hard-failure toast still fires.

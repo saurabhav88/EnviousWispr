@@ -9,24 +9,21 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
 
-// MARK: - #1408 A1 — the post-completion interruption copy matrix
+// MARK: - #1408 A1 / #1567 E3 — the post-completion interruption REASON matrix
 
-/// The factory is the SINGLE copy authority for the interruption pill (plan
-/// §21.2 A1). These tests drive a factory-built handler end to end and pin the
-/// EXACT sentence for each (disclosure × lead-trim) cell, so the copy cannot
-/// drift and only a verified device removal can ever claim the microphone.
-///
-/// The two "Microphone disconnected" strings are founder-approved (2026-07-09).
-/// The two "Recording interrupted" strings are provisional pending founder
-/// sign-off (plan §21.3); when the wording lands, this file is the one place
-/// the tests change.
+/// The factory forwards a typed `RecordingWarningReason` for each planner effect;
+/// #1567 moved the sentence authoring to `DictationNarrator` (the copy oracle now
+/// lives in `DictationNarratorTests`). These tests drive a factory-built handler
+/// end to end and pin the EXACT reason for each (disclosure × lead-trim) cell, so
+/// the disclosure→reason mapping cannot drift and only a verified device removal
+/// can ever be forwarded as `.deviceRemoved`.
 @MainActor
-@Suite("PipelineStateChangeHandlerFactory — interruption copy matrix (#1408)")
+@Suite("PipelineStateChangeHandlerFactory — interruption reason matrix (#1408/#1567)")
 struct PipelineStateChangeHandlerFactoryCopyTests {
 
   @MainActor
   private final class WarningBox {
-    var messages: [String] = []
+    var reasons: [RecordingWarningReason] = []
   }
 
   /// A factory-built handler whose only live seam is the warning recorder.
@@ -62,7 +59,7 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
     let deps = PipelineStateChangeHandlerFactory.Deps(
       showOverlay: { _ in },
       cancelPendingWarning: {},
-      schedulePostCompletionWarning: { box.messages.append($0) },
+      schedulePostCompletionWarning: { box.reasons.append($0) },
       appendTranscript: { _ in },
       onDurableSave: { _ in },
       inputMode: { nil },
@@ -70,16 +67,16 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
     return PipelineStateChangeHandlerFactory.make(backendLabel: "parakeet", deps: deps)
   }
 
-  private static let expectedCopy: [(CompletionInterruptionDisclosure, Bool, String)] = [
-    (.deviceRemoved, false, "Microphone disconnected. Text may be cut short."),
-    (.deviceRemoved, true, "Microphone disconnected. Words may be missing."),
-    (.otherInterruption, false, "Recording interrupted. Text may be cut short."),
-    (.otherInterruption, true, "Recording interrupted. Words may be missing."),
+  private static let cells: [(CompletionInterruptionDisclosure, Bool)] = [
+    (.deviceRemoved, false),
+    (.deviceRemoved, true),
+    (.otherInterruption, false),
+    (.otherInterruption, true),
   ]
 
-  @Test("each (disclosure × lead-trim) cell schedules its exact sentence")
-  func copyMatrixIsExact() {
-    for (disclosure, alsoTrimmedLead, expected) in Self.expectedCopy {
+  @Test("each (disclosure × lead-trim) cell forwards its exact interruptedTail reason")
+  func reasonMatrixIsExact() {
+    for (disclosure, alsoTrimmedLead) in Self.cells {
       let box = WarningBox()
       let handler = makeHandler(recording: box)
       handler.handle(
@@ -92,29 +89,8 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
         salvagedLead: alsoTrimmedLead,
         interruptionDisclosure: disclosure)
       #expect(
-        box.messages == [expected],
+        box.reasons == [.interruptedTail(disclosure: disclosure, alsoTrimmedLead: alsoTrimmedLead)],
         "disclosure=\(disclosure) alsoTrimmedLead=\(alsoTrimmedLead)")
-    }
-  }
-
-  /// Only a VERIFIED removal may name the microphone. If this ever fails, a
-  /// user whose engine died with the mic still attached is being lied to.
-  @Test("the neutral family never mentions the microphone")
-  func neutralCopyNeverClaimsTheMicrophone() {
-    for (disclosure, alsoTrimmedLead, expected) in Self.expectedCopy
-    where disclosure == .otherInterruption {
-      _ = alsoTrimmedLead
-      #expect(!expected.localizedCaseInsensitiveContains("microphone"))
-      #expect(!expected.localizedCaseInsensitiveContains("mic"))
-    }
-  }
-
-  /// Rule 6: no em/en-dashes in user-facing copy.
-  @Test("no em or en dashes in any interruption sentence")
-  func noDashesInCopy() {
-    for (_, _, expected) in Self.expectedCopy {
-      #expect(!expected.contains("\u{2014}"))
-      #expect(!expected.contains("\u{2013}"))
     }
   }
 
@@ -132,6 +108,6 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
       historySaveReason: nil,
       salvagedLead: false,
       interruptionDisclosure: nil)
-    #expect(box.messages.isEmpty)
+    #expect(box.reasons.isEmpty)
   }
 }

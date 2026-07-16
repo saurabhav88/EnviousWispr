@@ -225,12 +225,11 @@ public final class WisprBootstrapper {
     let vadSource = KernelDictationDriverFactory.makeSharedVADSignalSource(
       audioCapture: audioCapture)
     // #1224 (#1543): the VAD source reports a typed readiness FACT when the
-    // bundled model can't load; the App shell authors the user-facing sentence
-    // via the existing in-panel notice (no-ops if no recording panel is
-    // showing). Same copy the deleted XPC path used.
+    // bundled model can't load. The App shell emits a typed in-panel notice and
+    // `DictationNarrator` owns the user-facing sentence (#1567). The notice
+    // no-ops when no recording panel is showing.
     vadSource.onAutoStopUnavailableNotice = { [weak recordingOverlay] in
-      recordingOverlay?.flashRecordingNotice(
-        "Auto-stop on silence is unavailable right now", dismissAfter: 4.0)
+      recordingOverlay?.flashRecordingNotice(reason: .autoStopUnavailable, dismissAfter: 4.0)
     }
 
     // PR-4b.4 of #827: Parakeet recordings flow through the kernel via the

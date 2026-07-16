@@ -38,10 +38,9 @@ public final class PipelineStateChangeHandler {
   private let scheduleHistorySaveFailedWarning: @MainActor (String) -> Void
   /// #1434: schedule the transient salvaged-lead disclosure pill.
   private let scheduleSalvagedLeadWarning: @MainActor () -> Void
-  /// #1408: schedule the transient interruption disclosure pill. The disclosure
-  /// picks the sentence family (mic-disconnect vs neutral) and the flag picks
-  /// between the tail-only and both-ends-lost copies; the caller owns all four
-  /// literals (the message is wired at the factory site, never in here).
+  /// #1408: schedule the transient interruption disclosure pill. The callback
+  /// carries the two typed facts (disclosure + also-trimmed-lead) unchanged;
+  /// #1567: `DictationNarrator` owns all four sentences.
   private let scheduleInterruptionWarning:
     @MainActor (_ disclosure: CompletionInterruptionDisclosure, _ alsoTrimmedLead: Bool) -> Void
 
