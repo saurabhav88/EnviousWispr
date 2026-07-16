@@ -521,6 +521,14 @@ test("message: per-backend transcription alerts name the backend and skip clean 
   assert.match(msg, /Evaluated:.*transcription-parakeet/);
 });
 
+test("message: empty per-backend result during genuine low volume reports skipped, not silence (Codex r5 fix)", () => {
+  const msg = buildMessage(
+    results({ backendTranscription: [], backendAttributionBlackout: false })
+  );
+  assert.match(msg, /Skipped \(low volume\):.*transcription-backend/);
+  assert.ok(!msg.includes("attribution blackout"));
+});
+
 test("message: onboarding-blackout entry-point-down and terminal-drift render distinct wording", () => {
   const entryDown = buildMessage(
     results({ onboardingBlackout: { state: "alerting", entryPointDown: true, terminalDrift: false, recentStarted: 0, recentTerminals: 0, baselineAvg: 12 } })

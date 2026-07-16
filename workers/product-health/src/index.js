@@ -634,6 +634,13 @@ export function buildMessage(r, versions = [], onboardingVersions = [], backendV
       }
       note(`transcription-${row.backend}`, row);
     }
+    if (r.backendTranscription.length === 0 && !r.backendAttributionBlackout) {
+      // Codex r5 review finding: an empty result during a genuinely
+      // low-volume period (not blackout, since aggregate volume is also
+      // low) never reaches the loop above, so the metric silently vanished
+      // from evaluated/skipped/alerts instead of reading as skipped.
+      note("transcription-backend", { state: "skipped-low-volume" });
+    }
     if (r.backendAttributionBlackout) {
       // Total backend-attribution blackout (Codex review finding): the query
       // matched zero (day, backend) groups despite healthy overall dictation
