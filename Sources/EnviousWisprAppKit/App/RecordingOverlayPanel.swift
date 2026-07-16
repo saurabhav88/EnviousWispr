@@ -159,7 +159,7 @@ final class RecordingOverlayPanel {
       show(
         audioLevelProvider: audioLevelProvider, recordingElapsedProvider: recordingElapsedProvider,
         isRecordingLocked: isRecordingLocked)
-    case .processing(let label):
+    case .processing(let phase):
       NSAccessibility.post(
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
@@ -167,7 +167,7 @@ final class RecordingOverlayPanel {
           .announcement: "Processing transcription",
           .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
         ])
-      showPolishing(label: label)
+      showPolishing(label: DictationNarrator.copy(for: phase))
     case .clipboardFallback:
       NSAccessibility.post(
         element: NSApp.mainWindow as Any,
@@ -201,8 +201,8 @@ final class RecordingOverlayPanel {
         ])
       showWarning(message: message)
     case .error(let reason):
-      // #1558: the presenter is the sole author of the sentence.
-      let message = TerminalNoticePresenter.copy(for: reason)
+      // #1558: the narrator is the sole author of the sentence.
+      let message = DictationNarrator.copy(for: reason)
       NSAccessibility.post(
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
@@ -212,7 +212,7 @@ final class RecordingOverlayPanel {
         ])
       showError(message: message)
     case .interruption(let reason):
-      let message = TerminalNoticePresenter.copy(for: reason)
+      let message = DictationNarrator.copy(for: reason)
       NSAccessibility.post(
         element: NSApp.mainWindow as Any,
         notification: .announcementRequested,
@@ -364,7 +364,7 @@ final class RecordingOverlayPanel {
   }
 
   /// Show a processing overlay with a custom label during model loading, transcription, or LLM polishing.
-  func showPolishing(label: String = "Polishing...") {
+  func showPolishing(label: String) {
     guard panel == nil else {
       // If recording overlay is showing, transition to polishing
       transitionToPolishing(label: label)
@@ -566,7 +566,7 @@ final class RecordingOverlayPanel {
     DispatchQueue.main.async(execute: work)
   }
 
-  private func createPolishingPanel(label: String = "Polishing...") {
+  private func createPolishingPanel(label: String) {
     guard panel == nil else { return }
 
     // #1064: size the pill to its content (one hugging line) so short labels
@@ -611,7 +611,7 @@ final class RecordingOverlayPanel {
   }
 
   /// Transition an existing panel from recording to polishing mode.
-  private func transitionToPolishing(label: String = "Polishing...") {
+  private func transitionToPolishing(label: String) {
     guard let existingPanel = panel else { return }
     clearRecordingNotice()  // #1060 (Codex P3): don't leak a cap notice into the next session.
     let y = existingPanel.frame.origin.y
@@ -1264,7 +1264,7 @@ struct RecordingOverlayView: View {
 
 /// Compact polishing indicator overlay shown during LLM processing.
 struct PolishingOverlayView: View {
-  var label: String = "Polishing..."
+  var label: String
 
   var body: some View {
     HStack(spacing: 10) {

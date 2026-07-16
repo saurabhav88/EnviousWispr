@@ -24,8 +24,8 @@ struct PipelineStateChangePlannerTests {
 
   private static let recordingIntent: OverlayIntent = .recording(audioLevel: 0)
   private static let hiddenIntent: OverlayIntent = .hidden
-  private static let polishingIntent: OverlayIntent = .processing(label: "Polishing...")
-  private static let transcribingIntent: OverlayIntent = .processing(label: "Transcribing...")
+  private static let polishingIntent: OverlayIntent = .processing(phase: .polishing)
+  private static let transcribingIntent: OverlayIntent = .processing(phase: .transcribing)
 
   // MARK: - Three-way .complete overlay priority
 
@@ -258,10 +258,14 @@ struct PipelineStateChangePlannerTests {
 
   @Test("pipeline overlay intent passes through verbatim for non-complete states")
   func pipelineOverlayIntentPassesThroughVerbatim() {
+    // #1564 (E2): the intent now carries a typed `ProcessingPhase`. This is a
+    // pass-through identity test — the state need not correspond to the intent;
+    // all three phases are exercised to prove the planner forwards distinct
+    // phases distinctly (no flattening).
     let pairs: [(PipelineState, OverlayIntent)] = [
-      (.loadingModel, .processing(label: "Loading model...")),
-      (.transcribing, .processing(label: "Transcribing...")),
-      (.polishing, .processing(label: "Polishing...")),
+      (.loadingModel, .processing(phase: .transcribingMaxDurationReached)),
+      (.transcribing, .processing(phase: .transcribing)),
+      (.polishing, .processing(phase: .polishing)),
       (.recording, .recording(audioLevel: 0)),
       (.error(.modelWedged), .error(reason: .modelWedged)),
     ]
@@ -302,7 +306,9 @@ struct PipelineStateChangePlannerTests {
       historySaved: true,
       historySaveReason: nil
     )
-    #expect(plan.effects.contains(.reportPipelineFailed(errorCode: TerminalNoticeReason.deviceRemoved.rawValue)))
+    #expect(
+      plan.effects.contains(
+        .reportPipelineFailed(errorCode: TerminalNoticeReason.deviceRemoved.rawValue)))
     #expect(plan.effects.contains(.cancelPendingWarning))
     #expect(plan.effects.contains(.showOverlay(.error(reason: .deviceRemoved))))
     // error must not trigger .complete-path effects.

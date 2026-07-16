@@ -910,16 +910,14 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   // MARK: Caller-facing event + overlay surface
 
-  /// #1060/#1064: the transcribing-pill label. After a max-duration auto-stop, make
-  /// the stop legible; otherwise the plain label. Tightened to "60-minute limit
-  /// reached. Transcribing..." (#1064) — plainer, one fewer word, and the trailing
-  /// "Transcribing..." matches the normal label so the pill reads consistently.
-  /// Transcribing/Polishing labels already live in the driver, so this stays
-  /// consistent with that precedent.
-  private var transcribingPillLabel: String {
+  /// #1060/#1064/#1564: the transcribing phase as a TYPED fact. After a
+  /// max-duration auto-stop the pill prefixes the cap notice (#1064) — the words
+  /// are authored by `DictationNarrator`, not here. E2 (#1564) replaced the
+  /// pre-authored String label with this typed `ProcessingPhase`.
+  private var transcribingProcessingPhase: ProcessingPhase {
     kernel.lastStopReason == "max_duration"
-      ? "60-minute limit reached. Transcribing..."
-      : "Transcribing..."
+      ? .transcribingMaxDurationReached
+      : .transcribing
   }
 
   public var overlayIntent: OverlayIntent {
@@ -967,15 +965,15 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       // pipeline returns 0 here, exactly as the old Parakeet pipeline did.
       return .recording(audioLevel: 0)
     case .stopping:
-      return .processing(label: transcribingPillLabel)
+      return .processing(phase: transcribingProcessingPhase)
     case .delivering:
-      // The transcribing/polishing label comes from the delivering sub-phase
+      // The transcribing/polishing phase comes from the delivering sub-phase
       // (nested `FinalizingSubStatus`), replacing the old `finalizingSubStatus`.
       switch kernel.deliveringPhase {
       case .transcribing, .finalizing(.transcribing):
-        return .processing(label: transcribingPillLabel)
+        return .processing(phase: transcribingProcessingPhase)
       case .finalizing(.polishing):
-        return .processing(label: "Polishing...")
+        return .processing(phase: .polishing)
       }
     }
   }

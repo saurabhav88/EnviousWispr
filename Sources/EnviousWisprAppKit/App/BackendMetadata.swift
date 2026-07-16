@@ -58,15 +58,15 @@ final class BackendMetadata {
       switch state {
       case .loadingModel: return "Loading Model"
       case .recording: return "Recording"
-      case .transcribing: return "Transcribing"
-      case .polishing: return "Polishing"
+      case .transcribing: return DictationNarrator.shortCopy(for: .transcribing)
+      case .polishing: return DictationNarrator.shortCopy(for: .polishing)
       case .error: return "Error"
       default: break
       }
     } else {
       if state == .recording { return "Recording" }
-      if state == .transcribing { return "Transcribing" }
-      if state == .polishing { return "Polishing" }
+      if state == .transcribing { return DictationNarrator.shortCopy(for: .transcribing) }
+      if state == .polishing { return DictationNarrator.shortCopy(for: .polishing) }
       if case .error = state { return "Error" }
     }
     return asrManager.isModelLoaded ? "Loaded" : "Unloaded"

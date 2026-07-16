@@ -12,7 +12,7 @@ import Foundation
 // #1558 (heartpath E1): `InterruptionMessages` — the former single authority
 // for interruption copy — was deleted. The driver now stamps a typed
 // `TerminalNoticeReason` (`.deviceRemoved` / `.engineLost` / `.unknownInterruption`)
-// and `TerminalNoticePresenter` in AppKit authors the sentence.
+// and `DictationNarrator` in AppKit authors the sentence.
 
 /// #1408 (grounded review A1): what a COMPLETED take discloses about the
 /// interruption that cut it short. Derived from the stamped
@@ -58,7 +58,9 @@ public enum PipelineEvent: Sendable {
 public enum OverlayIntent: Equatable, Sendable {
   case hidden
   case recording(audioLevel: Float)
-  case processing(label: String)
+  /// #1564 (heartpath E2): carries a TYPED `ProcessingPhase`; `DictationNarrator`
+  /// in AppKit authors the "Transcribing..." / "Polishing..." / max-duration words.
+  case processing(phase: ProcessingPhase)
   /// Transient notice shown when paste fell back to clipboard-only (Tier 3).
   /// Auto-dismissed by the overlay panel after a short delay.
   case clipboardFallback
@@ -70,7 +72,7 @@ public enum OverlayIntent: Equatable, Sendable {
   /// Orange icon, auto-dismissed by the overlay panel after 2.5 seconds.
   case warning(message: String)
   /// Transient error notice for a terminal capture / transcription failure.
-  /// #1558: carries a TYPED reason; `TerminalNoticePresenter` authors the
+  /// #1558: carries a TYPED reason; `DictationNarrator` authors the
   /// sentence. Auto-dismissed by the overlay panel after 3 seconds.
   case error(reason: TerminalNoticeReason)
   /// Transient interruption notice shown when the recording was cut short
