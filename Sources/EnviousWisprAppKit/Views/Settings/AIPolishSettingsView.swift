@@ -468,13 +468,22 @@ struct AIPolishSettingsView: View {
     }
     .onAppear {
       // A thrown read leaves `openAIKey`/`geminiKey` at their existing
-      // fail-to-empty convention (unchanged from before #1455), but
-      // deliberately does NOT touch `openAIKeySaved`/`geminiKeySaved` — a
-      // failed read is "unknown," not "confirmed absent" (Codex r5 finding).
+      // fail-to-empty convention (unchanged from before #1455).
+      // `errSecItemNotFound` is `KeyStoreError`'s deliberate shared vocabulary
+      // for genuine absence across BOTH the Keychain and legacy-file paths
+      // (`FileLegacyKeyStore.retrieve`'s own comment: "callers can tell
+      // 'never saved a key' apart from 'saved a key we then failed to
+      // read'") — confirmed by reading both call sites, not assumed (Codex r6
+      // finding: r5's blanket catch left this case `nil` too, hiding the
+      // warning for exactly the fresh-install, never-entered-a-key user this
+      // feature exists for). Every OTHER thrown error stays `nil` (unknown).
       do {
         let stored = try keychainManager.retrieve(key: KeychainManager.openAIKeyID)
         openAIKey = stored
         openAIKeySaved = !stored.isEmpty
+      } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
+        openAIKey = ""
+        openAIKeySaved = false
       } catch {
         openAIKey = ""
       }
@@ -482,6 +491,9 @@ struct AIPolishSettingsView: View {
         let stored = try keychainManager.retrieve(key: KeychainManager.geminiKeyID)
         geminiKey = stored
         geminiKeySaved = !stored.isEmpty
+      } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
+        geminiKey = ""
+        geminiKeySaved = false
       } catch {
         geminiKey = ""
       }
