@@ -294,18 +294,21 @@ struct AIPolishSettingsView: View {
   @ViewBuilder
   private var providerSubConfig: some View {
     if isCloudProvider {
-      // #1455: proactive nudge, not reactive. Reuses the SAME status this
-      // engine's header chip already reads (`currentProviderStatus`, driven by
-      // `llmDiscovery.keyValidationState` + whether a key is present) — so it
-      // disappears the instant a key validates, with no separate state to keep
-      // in sync. Deliberately `.needsSetup`/`.error` only, NOT `.ready` negated
-      // (Codex r1 finding): a saved-but-not-yet-rechecked key on Settings open
-      // is `.idle` + keyPresent, which the SAME mapping reads as `.unavailable`
-      // ("Not checked"), not `.ready` — `!= .ready` would wrongly warn every
-      // returning user with a perfectly good key. `.needsSetup` covers both
-      // genuine absence (`.idle` + no key) and mid-validation; `.error` covers
-      // a confirmed-bad key — both cases genuinely fall back to raw text.
-      if currentProviderStatus.tone == .needsSetup || currentProviderStatus.tone == .error {
+      // #1455: proactive nudge, not reactive, scoped narrowly to the one
+      // unambiguous case: the field is genuinely empty, nothing saved, nothing
+      // typed. Deliberately NOT keyed off `currentProviderStatus.tone` (Codex
+      // r1 + r2 findings): `.needsSetup` also covers mid-validation and
+      // `.error` also covers a transient network/provider failure while
+      // checking a perfectly good saved key — this banner's flat "without a
+      // key" wording would be false in both. Reading the live field text
+      // directly sidesteps every validation-state edge case: Save is disabled
+      // while the field is empty (see Save button below), so a non-empty
+      // field always means the user has typed or already has something saved,
+      // and the banner steps aside the instant that happens, valid or not
+      // (an invalid key still gets its own specific message from
+      // `validationBadge` right below).
+      let keyIsEmpty = settings.llmProvider == .openAI ? openAIKey.isEmpty : geminiKey.isEmpty
+      if keyIsEmpty {
         InsetNotice(
           text:
             "Dictation still works, but without a key, cleanup falls back to your raw, unedited text every time.",
