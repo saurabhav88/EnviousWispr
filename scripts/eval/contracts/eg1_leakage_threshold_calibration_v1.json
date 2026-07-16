@@ -1,0 +1,49 @@
+{
+  "schema_version": "eg1-leakage-threshold-calibration-contract-v1",
+  "languages": ["en", "de", "fr", "es", "ru"],
+  "axes": ["input_input", "output_output", "input_output", "output_input"],
+  "methods": ["token_ngram_jaccard", "character_ngram_jaccard", "embedding_cosine"],
+  "length_strata": ["1_7", "8_20", "21_50", "51_plus"],
+  "behaviors": [
+    "filler_removal",
+    "self_correction",
+    "native_morphology",
+    "punctuation_capitalization",
+    "entities_numbers_dates",
+    "names_code_switching",
+    "topic_shift_long_dictation",
+    "mixed_two_to_three_edits",
+    "explicit_two_item_list",
+    "scoped_two_item_list",
+    "natural_three_to_five_item_bullet_list",
+    "spoken_ordinals_numbered_list",
+    "two_item_prose_restraint",
+    "three_plus_item_prose_restraint",
+    "quoted_high_risk_instruction_restraint",
+    "clean_minimal_edit_restraint"
+  ],
+  "release_profile": {
+    "calibration_families_per_language": 180,
+    "validation_families_per_language": 120,
+    "minimum_families_per_length_stratum": {"calibration": 20, "validation": 12},
+    "minimum_families_per_behavior": {"calibration": 5, "validation": 3},
+    "minimum_distinct_waves": {"calibration": 2, "validation": 2}
+  },
+  "statistics": {
+    "bootstrap_replicates": 10000,
+    "bootstrap_seed": 1265,
+    "simultaneous_confidence": 0.95,
+    "minimum_simultaneous_sensitivity": 0.95,
+    "threshold_boundary": "score_greater_than_or_equal_is_detected",
+    "bootstrap_unit": "family_component_within_language_shared_across_axes"
+  },
+  "policy": {
+    "exact_normalized_always_blocks": true,
+    "hard_negative_rows_must_be_max_neighbor": true,
+    "overlapping_positive_negative_bands_disable_auto_cutoff": true,
+    "validation_may_select_or_change_thresholds": false,
+    "pilot_is_quality_evidence": false,
+    "candidate_model_output_allowed": false,
+    "output_contains_raw_text": false
+  }
+}
