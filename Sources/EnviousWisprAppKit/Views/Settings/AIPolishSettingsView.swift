@@ -294,6 +294,21 @@ struct AIPolishSettingsView: View {
   @ViewBuilder
   private var providerSubConfig: some View {
     if isCloudProvider {
+      // #1455: proactive nudge, not reactive. Reuses the SAME status this
+      // engine's header chip already reads (`currentProviderStatus`, driven by
+      // `llmDiscovery.keyValidationState` + whether a key is present) — so it
+      // disappears the instant a key validates, with no separate state to keep
+      // in sync. Shown for every non-ready reason (no key / invalid / mid-
+      // validation), not just "no key at all": an invalid key also falls back
+      // to raw text and deserves the same explanation.
+      if currentProviderStatus.tone != .ready {
+        InsetNotice(
+          text:
+            "Dictation still works, but without a key, cleanup falls back to your raw, unedited text every time.",
+          systemImage: "exclamationmark.triangle",
+          tint: .stWarning
+        )
+      }
       apiKeyRow
       if settings.llmProvider == .openAI {
         Link(
