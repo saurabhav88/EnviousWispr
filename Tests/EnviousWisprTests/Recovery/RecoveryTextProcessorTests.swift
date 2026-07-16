@@ -164,6 +164,40 @@ struct RecoveryTextProcessorTests {
     #expect(handRolledSeams.isEmpty, "recovery must name .silent, not per-seam closures")
   }
 
+  /// #1461: `TextProcessingRunner.TelemetrySeams.silent` only ever covered the
+  /// RUNNER's own three seams — it cannot reach `LLMPolishStep`'s own emitters,
+  /// which fired identically on a live take and a recovered replay until this
+  /// plan gave the step its own `.live`/`.silent` seam. Same static-source-check
+  /// pattern as `recoveryWiresTheSilentSeams` above, not a process-global hook
+  /// (`swift-patterns.md` RULE: tests-no-process-global-mutable-delegate) —
+  /// deliberately proving the real construction call site, not just that
+  /// `.silent` behaves correctly in isolation (that's `LLMPolishStepTelemetryTests`).
+  @Test(
+    "RecoveryTextProcessor silences LLMPolishStep's own telemetry via .silent, not per-seam closures",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1461",
+      "LLMPolishStep's own emitters must not leak into crash recovery")
+  )
+  func recoveryWiresLLMPolishStepSilent() throws {
+    let path = repoRoot().appending(
+      path: "Sources/EnviousWisprPipeline/RecoveryTextProcessor.swift")
+    let source = try String(contentsOf: path, encoding: .utf8)
+    let code = source.split(separator: "\n")
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .filter { !$0.hasPrefix("//") }
+      .joined(separator: " ")
+
+    let buildsStepFromSilent = code.contains(
+      "LLMPolishStep(keychainManager: keychainManager, telemetry: .silent)")
+    let handRolledSeams = [
+      "limbFailureObserved:", "breadcrumbStarted:", "captureProviderInitError:",
+      "captureAFMPolishError:", "breadcrumbCompleted:", "recordPolishSkipped:",
+    ].filter { code.contains($0) }
+
+    #expect(buildsStepFromSilent)
+    #expect(handRolledSeams.isEmpty, "recovery must name .silent, not per-seam closures")
+  }
+
   /// Repo root, anchored off `#filePath` — this file lives at
   /// `Tests/EnviousWisprTests/Recovery/`, four levels below the root.
   private func repoRoot() -> URL {

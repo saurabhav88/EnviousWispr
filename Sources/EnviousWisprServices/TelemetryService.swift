@@ -1068,12 +1068,13 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("llm.polish_completed", properties: props)
   }
 
-  /// #1055: AI polish was intentionally skipped (not failed). Dedicated event —
-  /// NOT `llm.polish_completed`, which requires a provider stamp and would
-  /// wrongly mark a skipped transcript as AI-polished. `reason` is one of the
-  /// AFM-long-dictation skip modes (shared `context_window_` prefix):
-  /// `context_window_predicted` (preflight), `context_window_caught` (generation
-  /// overflow), or `context_window_timeout` (the 10 s on-device budget stalled).
+  /// AI polish produced no accepted output under an explicit skip contract
+  /// (#1055, #1271, #1305, #1448). Includes pre-attempt bypasses (too-short,
+  /// context-window preflight, EG-1/Ollama not-ready) and post-generation
+  /// rejection (output-language drift). Distinct from `llm.polish_completed`
+  /// (an output was accepted) and from a surfaced attempted failure recorded
+  /// by `llm.polish_failed`. `reason` is a `PolishSkipReason.telemetryTag` —
+  /// a closed, content-free set (`EnviousWisprPipeline`).
   public func polishSkipped(provider: String, reason: String) {
     let props: [String: Any] = [
       "provider": provider,
@@ -1089,9 +1090,10 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("llm.polish_skipped", properties: props)
   }
 
-  /// #1446: AI polish was ATTEMPTED and threw. The third and last outcome, disjoint
-  /// from `llm.polish_completed` (attempted, succeeded) and `llm.polish_skipped`
-  /// (never attempted) — together the three partition every live polish outcome.
+  /// #1446: AI polish was ATTEMPTED and threw. Disjoint from
+  /// `llm.polish_completed` (an output was accepted) and `llm.polish_skipped`
+  /// (no polish output was accepted under an explicit skip contract). Together
+  /// the three events partition instrumented live polish outcomes.
   ///
   /// Fires for EVERY live attempted-polish failure, whether or not the reason also
   /// earns an alerting Sentry error. That makes this the durable, complete record

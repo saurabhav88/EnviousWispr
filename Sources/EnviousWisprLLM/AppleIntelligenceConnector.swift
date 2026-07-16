@@ -8,10 +8,17 @@ import NaturalLanguage
 
 /// Typed AFM polish error wrapping a generation-stage throw so `LLMPolishStep`
 /// can capture it to Sentry as `generationFailed`. Thrown by
-/// `AppleIntelligenceConnector.polish()` ONLY for errors that occur during the
-/// on-device generation attempt; pre-generation throws (preflight gate,
-/// framework unavailable, language gate) propagate untyped. (#429, #1072 — the
-/// router fields were dropped when the dual router was removed.)
+/// `AppleIntelligenceConnector.polish()` for errors that occur during the
+/// wrapped `do` block: the on-device generation attempt itself, post-generation
+/// output-language validation (`outputLanguageDrift`), AND `makeSession`'s
+/// defensive availability re-check (which can throw `frameworkUnavailable` from
+/// inside this block, not just from the earlier, unwrapped entry preflight).
+/// `unsupportedInputLanguage` is the only silent-skip case that is exclusively
+/// unwrapped — it is thrown before this block on every path. LLMPolishStep's
+/// catch site (#1448) consults the same silent-classification
+/// (`PolishSkipReason.init?(silentLLMError:)`) `TextProcessingRunner` uses
+/// before deciding whether a wrapped error alerts. (#429, #1072 — the router
+/// fields were dropped when the dual router was removed.)
 public struct AFMPolishError: Error, Sendable {
   public let underlying: Error
 
@@ -327,11 +334,10 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         )
       }
 
-      // Surface real provider-unavailability BEFORE the per-request
-      // language gate so users whose Apple Intelligence is disabled,
-      // downloading, or device-ineligible get a truthful error on their
-      // first attempt (instead of the gate silently masking it for
-      // unsupported languages).
+      // Check provider availability BEFORE the per-request language gate so the
+      // caller receives the provider-state error rather than an unsupported-language
+      // error. The runner surfaces transient `.modelNotReady`, but treats permanent
+      // `.frameworkUnavailable` as a silent raw fallback.
       try Self.throwIfAppleIntelligenceUnavailable()
 
       // Preflight language gate. For non-English supported langs we also
@@ -351,10 +357,14 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       }
 
       // Single-prompt on-device polish (#1072: the dual natural/technical router
-      // was collapsed into one unified prompt). Generation-stage throws are wrapped
-      // in AFMPolishError so LLMPolishStep can capture them to Sentry as
-      // generationFailed; pre-generation throws above (preflight/language gate)
-      // propagate untyped.
+      // was collapsed into one unified prompt). Everything inside this `do` block
+      // (generation, output-language validation, and makeSession's defensive
+      // availability re-check) gets wrapped in AFMPolishError so LLMPolishStep can
+      // capture it to Sentry as generationFailed — UNLESS the underlying LLMError
+      // is one of the silent-skip cases (frameworkUnavailable, outputLanguageDrift),
+      // which the step's catch site rethrows without alerting (#1448). The entry
+      // preflight above (unsupportedInputLanguage, the common frameworkUnavailable
+      // path) propagates untyped, never reaching this wrapping at all.
       do {
         let result = try await polishWithFoundationModels(
           text: text,
@@ -546,11 +556,11 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
   // MARK: - Shared session setup
 
   #if canImport(FoundationModels)
-    /// Probe the on-device model's availability and throw
-    /// `LLMError.frameworkUnavailable` with a human-readable reason if Apple
-    /// Intelligence is not usable. Runs before the per-request language gate
-    /// so setup/download failures are surfaced truthfully instead of being
-    /// masked by an unsupported-language silent-skip.
+    /// Probe the on-device model's availability. Throws `.modelNotReady` for
+    /// transient download or restriction states and `.frameworkUnavailable` for
+    /// permanent incapability. This runs before the per-request language gate so
+    /// an unsupported-language error cannot mask provider availability. The runner
+    /// surfaces only `.modelNotReady`; `.frameworkUnavailable` falls back silently.
     @available(macOS 26.0, *)
     private static func throwIfAppleIntelligenceUnavailable() throws {
       let model = SystemLanguageModel.default

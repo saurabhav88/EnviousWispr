@@ -49,7 +49,7 @@ public final class RecoveryTextProcessor {
     keychainManager: KeychainManager, outputClassifierHolder: OutputClassifierHolder? = nil,
     egOneRuntime: (any EGOneEndpointProviding)? = nil
   ) {
-    let llmPolish = LLMPolishStep(keychainManager: keychainManager)
+    let llmPolish = LLMPolishStep(keychainManager: keychainManager, telemetry: .silent)
     // Standalone (no live kernel attached): no streaming/lifecycle callbacks.
     llmPolish.onWillProcess = nil
     llmPolish.onToken = nil
@@ -67,13 +67,10 @@ public final class RecoveryTextProcessor {
       inverseTextNormalization: InverseTextNormalizationStep(),
       llmPolish: llmPolish,
       emojiRestore: EmojiRestoreStep())
-    // #945: crash-recovery polish failures stay silent in telemetry (this is a
-    // live-only metric). A recovered take that fails to polish still returns its
-    // `polishError` in the outcome, but the RUNNER reports nothing.
-    // #1446: `.silent` names every runner-owned seam at once, so a future seam
-    // cannot be added and left live here by accident. It does NOT reach
-    // `LLMPolishStep`'s own emitters, which still fire on a recovered take —
-    // see `TextProcessingRunner.TelemetrySeams.silent` and #1461.
+    // #945 / #1446 / #1461: crash recovery is invisible to live-polish
+    // telemetry. The runner and LLMPolishStep each own separate emitter sets,
+    // so recovery constructs both with their complete `.silent` presets.
+    // Recovery's own coarse result reporting remains owned by its replay flow.
     self.runner = TextProcessingRunner(telemetry: .silent)
   }
 

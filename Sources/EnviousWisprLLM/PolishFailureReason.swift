@@ -285,18 +285,6 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     }
   }
 
-  /// #1305: the `llm.polish_skipped` reason string for the Ollama preflight
-  /// path. Joins the existing `local_polish_` prefix family (EG-1's
-  /// `EGOneSkipReason`) so one analytics query prefix captures every local
-  /// polish skip mode. Content-free; nil for non-preflight reasons.
-  public var ollamaPreflightSkipTelemetryReason: String? {
-    switch self {
-    case .providerUnreachable: return "local_polish_ollama_server_down"
-    case .modelUnavailable: return "local_polish_ollama_model_missing"
-    default: return nil
-    }
-  }
-
   /// Whether a composed notice string represents a "skipped" (not-really-broken)
   /// outcome rather than a hard failure. Keyed off the single `LeadIn.skipped.text`
   /// constant that `composedMessage` also uses, so it can never drift from the

@@ -189,9 +189,9 @@ struct EGOnePipelineRoutingTests {
   @Test("skip reasons carry the local_polish_ telemetry prefix")
   func skipReasonPrefixes() {
     for reason in [
-      EGOneSkipReason.notReady, .downloadPending, .crashed, .inputTooLong,
+      EGOneSkipReason.notReady, .downloadPending, .crashed, .inputTooLong, .outputTruncated,
     ] {
-      #expect(reason.rawValue.hasPrefix("local_polish_"))
+      #expect(PolishSkipReason.egOne(reason).telemetryTag.hasPrefix("local_polish_"))
     }
   }
 }

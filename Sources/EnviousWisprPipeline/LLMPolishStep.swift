@@ -104,6 +104,62 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   public var onToken: (@Sendable (String) -> Void)?
 
   private let keychainManager: KeychainManager
+  private let telemetry: TelemetrySeams
+
+  /// Every telemetry signal this step owns, as ONE value (#1461) — mirrors
+  /// `TextProcessingRunner.TelemetrySeams` exactly (struct-of-closures,
+  /// `.live`/`.silent` static presets, memberwise init), deliberately kept as
+  /// a SEPARATE type: the two gate different call sites and different
+  /// failure domains, so merging them would couple unrelated owners.
+  ///
+  /// Before this type, `RecoveryTextProcessor` could silence the runner's own
+  /// three seams via `TextProcessingRunner.TelemetrySeams.silent` but had no
+  /// way to reach this step's own emitters (5 pre-existing, plus the too-short
+  /// skip event this plan adds) — they fired identically on a live take and a
+  /// recovered replay. This seam closes that gap.
+  struct TelemetrySeams {
+    let limbFailureObserved: @MainActor (String, String, String, String, Int?) -> Void
+    let breadcrumbStarted: @MainActor (String, [String: Any]?) -> Void
+    let captureProviderInitError: @MainActor (any Error) -> Void
+    let captureAFMPolishError: @MainActor (any Error) -> Void
+    let breadcrumbCompleted: @MainActor (String, [String: Any]?) -> Void
+    /// The too-short bypass's own emit — this path returns from `process()`
+    /// before `TextProcessingRunner` ever sees it, so the step must own this
+    /// emission itself (#1448). Every OTHER skip reason (the AFM trio,
+    /// EG-1, context-window, Ollama preflight) remains the runner's
+    /// responsibility, routed through its own, separate `recordPolishSkipped`
+    /// seam — this field does not duplicate that.
+    let recordPolishSkipped: @MainActor (String, String) -> Void
+
+    static let live = TelemetrySeams(
+      limbFailureObserved: { limb, op, result, cat, dur in
+        TelemetryService.shared.limbFailureObserved(
+          limb: limb, operation: op, result: result, errorCategory: cat, durationMs: dur)
+      },
+      breadcrumbStarted: { message, data in
+        SentryBreadcrumb.add(stage: "polish", message: message, data: data)
+      },
+      captureProviderInitError: { error in
+        SentryBreadcrumb.captureError(error, category: .providerInitFailed, stage: "polish")
+      },
+      captureAFMPolishError: { error in
+        SentryBreadcrumb.captureAFMPolishError(error)
+      },
+      breadcrumbCompleted: { message, data in
+        SentryBreadcrumb.add(stage: "polish", message: message, data: data)
+      },
+      recordPolishSkipped: { provider, reason in
+        TelemetryService.shared.polishSkipped(provider: provider, reason: reason)
+      })
+
+    static let silent = TelemetrySeams(
+      limbFailureObserved: { _, _, _, _, _ in },
+      breadcrumbStarted: { _, _ in },
+      captureProviderInitError: { _ in },
+      captureAFMPolishError: { _ in },
+      breadcrumbCompleted: { _, _ in },
+      recordPolishSkipped: { _, _ in })
+  }
 
   public var isEnabled: Bool {
     llmProvider != .none
@@ -127,6 +183,26 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
   public init(keychainManager: KeychainManager) {
     self.keychainManager = keychainManager
+    self.telemetry = .live
+  }
+
+  /// Internal-only overload (#1461) — used solely by `RecoveryTextProcessor`
+  /// to construct with `.silent`. Not `public`: no external caller should be
+  /// able to silence this step's telemetry, so the public API surface stays
+  /// exactly what it was before this plan.
+  init(keychainManager: KeychainManager, telemetry: TelemetrySeams) {
+    self.keychainManager = keychainManager
+    self.telemetry = telemetry
+  }
+
+  /// Test seam (round 6/7 grounded review) — `evictPreviousOllamaModel`
+  /// directly constructed a real `OllamaConnector()`, making a limb-failure
+  /// test's outcome depend on whether a local Ollama process happened to be
+  /// running. Defaulted to the real call so production is byte-identical;
+  /// tests inject a fixed `OllamaEvictOutcome`.
+  typealias EvictOllamaModel = @MainActor (String) async -> OllamaEvictOutcome
+  var evictOllamaModel: EvictOllamaModel = { modelName in
+    await OllamaConnector().evictModel(modelName)
   }
 
   /// Asks Ollama to unload the named model from memory (fire-and-forget).
@@ -137,15 +213,16 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// `modelName` is empty. Swallows all errors; only logs.
   public func evictPreviousOllamaModel(_ modelName: String) async {
     guard !modelName.isEmpty else { return }
-    let outcome = await OllamaConnector().evictModel(modelName)
+    let outcome = await evictOllamaModel(modelName)
     // #1177 (Telemetry Bible Phase 8): observe a quiet eviction FAILURE — a model that
     // won't unload lingers in VRAM and has disrupted CoreAudio BT audio (#286). The
     // eviction itself stays fire-and-forget; this only reports the outcome. @MainActor
-    // step → direct emit. Fire only on failure (success/skip are non-events).
+    // step → direct emit. Fire only on failure (success/skip are non-events). Not
+    // reachable from crash-recovery replay (`process()` never calls this), but
+    // still routed through the same `.live`/`.silent` seam for consistency.
     if outcome.result == "failed" {
-      TelemetryService.shared.limbFailureObserved(
-        limb: "ollama", operation: "evict", result: "failed",
-        errorCategory: outcome.reason, durationMs: outcome.durationMs)
+      telemetry.limbFailureObserved(
+        "ollama", "evict", "failed", outcome.reason, outcome.durationMs)
     }
   }
 
@@ -195,9 +272,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // read below uses these locals, never `self`, so reentrancy cannot tear it.
     let provider = llmProvider
     let model = llmModel
-    SentryBreadcrumb.add(
-      stage: "polish", message: "LLM polish started",
-      data: [
+    telemetry.breadcrumbStarted(
+      "LLM polish started",
+      [
         "provider": provider.rawValue,
         "model": model,
       ])
@@ -224,6 +301,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
             level: .info, category: "LLM"
           )
         }
+        let skipReason = PolishSkipReason.tooShort(provider)
+        telemetry.recordPolishSkipped(skipReason.provider.rawValue, skipReason.telemetryTag)
         return Self.bypassedContext(context)
       }
     } else {
@@ -235,6 +314,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
             level: .info, category: "LLM"
           )
         }
+        let skipReason = PolishSkipReason.tooShort(provider)
+        telemetry.recordPolishSkipped(skipReason.provider.rawValue, skipReason.telemetryTag)
         return Self.bypassedContext(context)
       }
     }
@@ -296,8 +377,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     {
       polisher = made
     } else {
-      SentryBreadcrumb.captureError(
-        LLMError.providerUnavailable, category: .providerInitFailed, stage: "polish")
+      telemetry.captureProviderInitError(LLMError.providerUnavailable)
       throw LLMError.providerUnavailable
     }
 
@@ -393,7 +473,20 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
           onToken: onToken
         )
       } catch let afmErr as AFMPolishError {
-        SentryBreadcrumb.captureAFMPolishError(afmErr.underlying)
+        // #1448/#1461: some AFM errors classified silent by TextProcessingRunner
+        // (outputLanguageDrift always; frameworkUnavailable when it reaches this
+        // wrapped path via AppleIntelligenceConnector.makeSession's defensive
+        // re-check) were STILL raising a live alerting Sentry event here,
+        // unconditionally, contradicting their own "silent" classification. Same
+        // check the runner uses (PolishSkipReason.init?(silentLLMError:)) — one
+        // authority, two readers — so this cannot drift out of agreement with the
+        // runner's classification the way a second hardcoded special case would.
+        if let llmError = afmErr.underlying as? LLMError,
+          PolishSkipReason(silentLLMError: llmError) != nil
+        {
+          throw llmError
+        }
+        telemetry.captureAFMPolishError(afmErr.underlying)
         throw afmErr.underlying
       }
       let llmEnd = CFAbsoluteTimeGetCurrent()
@@ -685,7 +778,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     ]
     data.merge(extraData) { _, new in new }
 
-    SentryBreadcrumb.add(stage: "polish", message: "LLM polish completed", data: data)
+    telemetry.breadcrumbCompleted("LLM polish completed", data)
     Task {
       await AppLogger.shared.log(
         "LLM polish complete: \(result.polishedText.count) chars in \(String(format: "%.3f", duration))s "
