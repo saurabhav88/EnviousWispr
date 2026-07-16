@@ -159,6 +159,20 @@ export async function fetchHealth(env) {
   // `begin()` runs at presentation, not at Get-Started) — that session never
   // emitted `started`. Excluding `screen = 'welcome'` abandons matches the
   // denominator to sessions that actually started (Codex review finding).
+  //
+  // Known residual limitation (Codex review, second round): a user who
+  // reopens the reused onboarding window after abandoning past `welcome` (via
+  // "Continue Setup...") gets a FRESH in-memory session per `begin()`
+  // (`OnboardingProgress.swift`) without a fresh `onboarding.started`, since
+  // that event fires only from the "Get Started" button and the reused
+  // window resumes at the last observed screen. Each such reopen-then-close
+  // adds one non-welcome abandon with no matching start. Fixing this fully
+  // requires either a new started-per-reopen event (violates this phase's
+  // explicit no-new-app-telemetry non-goal) or query-side session pairing
+  // this worker's HogQL has no other precedent for. Accepted, matching the
+  // project's own precedent for telemetry-model ambiguities it cannot
+  // perfectly resolve from existing events (e.g. the paste-only-copy
+  // ambiguity `evaluateVolume` already accepts, #1130).
   const onboardingSql = `
     SELECT toDate(timestamp) AS day,
            countIf(event = 'onboarding.started') AS started,
@@ -191,7 +205,7 @@ export async function fetchHealth(env) {
   //    window (§3 Design "Per-release segmentation").
   const onboardingVersionSql = `
     SELECT properties.app_version AS ver,
-           countIf(event = 'onboarding.abandoned') AS onboarding_abandon
+           countIf(event = 'onboarding.abandoned' AND properties.screen != 'welcome') AS onboarding_abandon
     FROM events
     WHERE ${PROD} AND event = 'onboarding.abandoned'
       AND timestamp >= ${DAY} - INTERVAL 21 DAY AND timestamp < ${DAY}
