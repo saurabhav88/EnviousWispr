@@ -300,6 +300,9 @@ test("onboarding abandon: fast regression only, healthy rolling average -> alert
   assert.equal(ev.state, "alerting");
   assert.equal(ev.fastCrossing, true);
   assert.ok(ev.rollingShare < THRESHOLDS.onboardingAbandon.share, "rolling share must stay healthy");
+  assert.equal(ev.fastStarted, 20);
+  assert.equal(ev.fastAbandoned, 12);
+  assert.equal(ev.fastShare, 0.6, "fast-window share must reflect only the crossing window, not the rolling total");
 });
 
 // ---- Phase 10 (#1179): onboarding blackout ----
@@ -403,6 +406,9 @@ test("backend transcription: fast-path regression, backend-scoped", () => {
   const [ev] = evaluateBackendTranscription(perBackendDays, "2026-07-15");
   assert.equal(ev.state, "alerting");
   assert.equal(ev.fastCrossing, true);
+  assert.equal(ev.fastAttempts, 50);
+  assert.equal(ev.fastFails, 30);
+  assert.equal(ev.fastShare, 0.6, "fast-window share must reflect only the crossing window, not the rolling total");
 });
 
 test("backend transcription: anti-masking, active backend with zero failures stays visible", () => {
@@ -423,10 +429,38 @@ test("message: H1 static pointer appears every run", () => {
 
 test("message: onboarding-abandon alert renders and is not double-counted as evaluated", () => {
   const msg = buildMessage(
-    results({ onboardingAbandon: { state: "alerting", rollingShare: 0.6, fastCrossing: true, totalStarted: 20, totalAbandoned: 12 } })
+    results({
+      onboardingAbandon: {
+        state: "alerting", fastCrossing: true, fastStarted: 10, fastAbandoned: 6, fastShare: 0.6,
+        rollingShare: 0.145, totalStarted: 220, totalAbandoned: 32,
+      },
+    })
   );
   assert.match(msg, /onboarding abandon 60\.0%/);
   assert.ok(!msg.includes("Evaluated: onboarding-abandon"));
+});
+
+test("message: onboarding-abandon fast crossing does not report the healthy rolling rate", () => {
+  const msg = buildMessage(
+    results({
+      onboardingAbandon: {
+        state: "alerting", fastCrossing: true, fastStarted: 10, fastAbandoned: 6, fastShare: 0.6,
+        rollingShare: 0.145, totalStarted: 220, totalAbandoned: 32,
+      },
+    })
+  );
+  assert.match(msg, /fast 2-day crossing/);
+  assert.ok(!msg.includes("14.5%"), "must not display the healthy rolling share when the fast path fired");
+});
+
+test("message: onboarding-abandon rolling crossing reports the rolling window", () => {
+  const msg = buildMessage(
+    results({
+      onboardingAbandon: { state: "alerting", fastCrossing: false, rollingShare: 0.6, totalStarted: 40, totalAbandoned: 24 },
+    })
+  );
+  assert.match(msg, /rolling crossing/);
+  assert.match(msg, /60\.0%/);
 });
 
 test("message: per-backend transcription alerts name the backend and skip clean backends", () => {
@@ -454,4 +488,26 @@ test("message: onboarding-blackout entry-point-down and terminal-drift render di
   );
   assert.match(terminalDrift, /onboarding terminal drift/);
   assert.ok(!terminalDrift.includes("entry point down"));
+});
+
+test("message: many simultaneous alerts drop whole alerts from the end, never the dashboard link", () => {
+  // Manufacture enough alerting metrics that the naive character slice would
+  // have cut mid-alert (Codex review finding) — assert the dashboard link and
+  // heartbeat always survive, and any drop is announced, never silent.
+  const longVersion = "v9.9.9-a-very-long-version-identifier-to-pad-the-message-length-out";
+  const backendTranscription = Array.from({ length: 20 }, (_, i) => ({
+    backend: `backend-${i}-${longVersion}`,
+    state: "alerting",
+    fastCrossing: false,
+    rollingShare: 0.5,
+    fails: 500,
+    dictations: 500,
+    attempts: 1000,
+  }));
+  const msg = buildMessage(results({ backendTranscription }));
+  assert.ok(msg.length <= 2000, `message must respect the Discord cap, got ${msg.length}`);
+  assert.match(msg, /https:\/\/us\.posthog\.com\/project\/\d+\/dashboard\/\d+/, "dashboard link must always survive truncation");
+  if (msg.includes("more alert(s) omitted")) {
+    assert.match(msg, /\d+ more alert\(s\) omitted; see dashboard/);
+  }
 });

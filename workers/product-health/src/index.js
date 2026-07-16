@@ -153,11 +153,17 @@ export async function fetchHealth(env) {
 
   // 5) Phase 10 (#1179): per-day onboarding funnel, 21 complete days (covers
   //    the rolling baseline AND the fast path AND the blackout's 9-day need).
+  // `onboarding.started` fires ONLY on the "Get Started" click
+  // (OnboardingV2View.swift:670); `onboarding.abandoned` can fire earlier, on
+  // a welcome-screen close BEFORE that click (OnboardingProgress.swift's
+  // `begin()` runs at presentation, not at Get-Started) — that session never
+  // emitted `started`. Excluding `screen = 'welcome'` abandons matches the
+  // denominator to sessions that actually started (Codex review finding).
   const onboardingSql = `
     SELECT toDate(timestamp) AS day,
            countIf(event = 'onboarding.started') AS started,
            countIf(event = 'onboarding.completed') AS completed,
-           countIf(event = 'onboarding.abandoned') AS abandoned
+           countIf(event = 'onboarding.abandoned' AND properties.screen != 'welcome') AS abandoned
     FROM events
     WHERE ${PROD}
       AND event IN ('onboarding.started', 'onboarding.completed', 'onboarding.abandoned')
@@ -191,6 +197,13 @@ export async function fetchHealth(env) {
       AND timestamp >= ${DAY} - INTERVAL 21 DAY AND timestamp < ${DAY}
     GROUP BY ver ORDER BY onboarding_abandon DESC LIMIT 5`;
 
+  // LIMIT is generous (not per-backend) headroom, not a per-backend cap: a
+  // global LIMIT 10 could let one high-volume backend's rows crowd out a
+  // second backend's rows entirely, since `topVersionsFor` filters BY backend
+  // only after this query returns (Codex review finding). Two backends today
+  // (Parakeet, WhisperKit) with `limit: 3` displayed each means 40 comfortably
+  // covers both without a per-backend-ranked subquery this codebase has no
+  // other precedent for.
   const backendVersionSql = `
     SELECT properties.app_version AS ver,
            properties.backend AS backend,
@@ -198,7 +211,7 @@ export async function fetchHealth(env) {
     FROM events
     WHERE ${PROD} AND event = 'pipeline.failed' AND properties.stage = 'transcription'
       AND timestamp >= ${DAY} - INTERVAL 14 DAY AND timestamp < ${DAY}
-    GROUP BY ver, backend ORDER BY backend_trans_fail DESC LIMIT 10`;
+    GROUP BY ver, backend ORDER BY backend_trans_fail DESC LIMIT 40`;
 
   const [latency, seven, volume, versions, ref, onboarding, backendTranscription, onboardingVersions, backendVersions] =
     await Promise.all([
@@ -350,8 +363,16 @@ export function evaluateOnboardingAbandon(rows, expectedT1, TH = THRESHOLDS.onbo
     return started >= TH.fastMinStarted && num(row.abandoned) / started > TH.share;
   });
   if (fastCrossing) {
+    // Report the fast-window's OWN rate, not the rolling total — the alert
+    // text must name the numbers that actually triggered it (Codex review
+    // finding: a healthy rolling share can otherwise read alongside a fast
+    // crossing and contradict the stated threshold).
+    const fastStarted = fastRows.reduce((sum, row) => sum + num(row.started), 0);
+    const fastAbandoned = fastRows.reduce((sum, row) => sum + num(row.abandoned), 0);
     return { state: "alerting", rollingShare: totalStarted > 0 ? totalAbandoned / totalStarted : 0,
-      fastCrossing: true, totalStarted, totalAbandoned };
+      fastCrossing: true, fastStarted, fastAbandoned,
+      fastShare: fastStarted > 0 ? fastAbandoned / fastStarted : 0,
+      totalStarted, totalAbandoned };
   }
 
   if (totalStarted < TH.minStarted) {
@@ -379,7 +400,15 @@ export function evaluateBackendTranscription(perBackendDays, expectedT1, TH = TH
     });
     const rollingShare = attempts > 0 ? fails / attempts : 0;
     if (fastCrossing) {
-      return { backend, state: "alerting", rollingShare, fastCrossing: true, fails, dictations, attempts };
+      // Same fix as evaluateOnboardingAbandon: report the fast-window's own
+      // rate, not the rolling 14-day rate, when the fast path is what fired.
+      const fastDictations = fastRows.reduce((sum, row) => sum + num(row.dictations), 0);
+      const fastFails = fastRows.reduce((sum, row) => sum + num(row.fails), 0);
+      const fastAttempts = fastDictations + fastFails;
+      return { backend, state: "alerting", rollingShare, fastCrossing: true,
+        fastDictations, fastFails, fastAttempts,
+        fastShare: fastAttempts > 0 ? fastFails / fastAttempts : 0,
+        fails, dictations, attempts };
     }
 
     if (attempts < TH.minAttempts) {
@@ -491,12 +520,15 @@ export function buildMessage(r, versions = [], onboardingVersions = [], backendV
   if (r.onboardingAbandon) {
     if (r.onboardingAbandon.state === "alerting") {
       const tv = topVersionsFor(onboardingVersions, "onboarding_abandon");
-      const rate = pct(r.onboardingAbandon.rollingShare);
-      const via = r.onboardingAbandon.fastCrossing ? "fast 2-day crossing" : "rolling 21-day crossing";
+      // Report the window that actually crossed (Codex review finding: a
+      // fast-only crossing must not display the healthy rolling total).
+      const ev = r.onboardingAbandon;
+      const windowText = ev.fastCrossing
+        ? `${pct(ev.fastShare)} (${ev.fastAbandoned}/${ev.fastStarted}, fast 2-day crossing)`
+        : `${pct(ev.rollingShare)} (${ev.totalAbandoned}/${ev.totalStarted}, prev 21d, rolling crossing)`;
       alerts.push(
-        `onboarding abandon ${rate} (${r.onboardingAbandon.totalAbandoned}/${r.onboardingAbandon.totalStarted}, ` +
-        `prev 21d, via ${via}), threshold >${pct(THRESHOLDS.onboardingAbandon.share)}, baseline ~37%.` +
-        (tv ? ` Top versions ${tv}.` : "")
+        `onboarding abandon ${windowText}, threshold >${pct(THRESHOLDS.onboardingAbandon.share)}, ` +
+        `baseline ~37%.` + (tv ? ` Top versions ${tv}.` : "")
       );
     }
     note("onboarding-abandon", r.onboardingAbandon);
@@ -507,10 +539,12 @@ export function buildMessage(r, versions = [], onboardingVersions = [], backendV
     for (const row of r.backendTranscription) {
       if (row.state === "alerting") {
         const tv = topVersionsFor(backendVersions, "backend_trans_fail", { backend: row.backend });
-        const rate = pct(row.rollingShare);
-        const via = row.fastCrossing ? "fast 2-day crossing" : "rolling 14-day crossing";
+        // Same fix: name the window that actually crossed.
+        const windowText = row.fastCrossing
+          ? `${pct(row.fastShare)} (${row.fastFails}/${row.fastAttempts}, fast 2-day crossing)`
+          : `${pct(row.rollingShare)} (${row.fails}/${row.attempts}, prev 14d, rolling crossing)`;
         alerts.push(
-          `${row.backend} transcription failure ${rate} (${row.fails}/${row.attempts}, prev 14d, via ${via}), ` +
+          `${row.backend} transcription failure ${windowText}, ` +
           `threshold >${pct(THRESHOLDS.backendTranscription.share)}.` + (tv ? ` Top versions ${tv}.` : "")
         );
       }
@@ -575,12 +609,20 @@ export function buildMessage(r, versions = [], onboardingVersions = [], backendV
   const h1Line = " Crash/error-rate monitoring lives in Sentry's own alert rules (see Error Spike >5/hr), not in this report.";
   const heartbeat = `${head}. T-1: ${t1d} dictations${ratioStr}. ${coverage}${driftStr}${h1Line}`;
 
-  let content = heartbeat;
-  if (alerts.length) {
-    content += "\n\n" + alerts.map((a) => "* " + a).join("\n") + `\n${DASHBOARD}`;
+  if (!alerts.length) return heartbeat;
+
+  // Discord content cap is 2000 chars. A blind character slice can cut mid-
+  // alert and silently drop the dashboard link, hiding the very alerts most
+  // worth seeing (Codex review finding) — drop whole alerts from the end
+  // instead, always keeping the heartbeat and the dashboard link.
+  for (let keep = alerts.length; keep > 0; keep--) {
+    const omitted = alerts.length - keep;
+    const trailer = omitted > 0 ? `\n(${omitted} more alert(s) omitted; see dashboard)` : "";
+    const trial =
+      heartbeat + "\n\n" + alerts.slice(0, keep).map((a) => "* " + a).join("\n") + trailer + `\n${DASHBOARD}`;
+    if (trial.length <= 1990) return trial;
   }
-  // Discord content cap is 2000 chars.
-  return content.length > 1990 ? content.slice(0, 1987) + "..." : content;
+  return `${heartbeat}\n\n${alerts.length} alert(s) triggered; see ${DASHBOARD}`.slice(0, 1990);
 }
 
 // ----- Run ----------------------------------------------------------------
