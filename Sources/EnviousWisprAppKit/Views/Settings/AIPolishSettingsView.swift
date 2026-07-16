@@ -295,20 +295,25 @@ struct AIPolishSettingsView: View {
   private var providerSubConfig: some View {
     if isCloudProvider {
       // #1455: proactive nudge, not reactive, scoped narrowly to the one
-      // unambiguous case: the field is genuinely empty, nothing saved, nothing
-      // typed. Deliberately NOT keyed off `currentProviderStatus.tone` (Codex
-      // r1 + r2 findings): `.needsSetup` also covers mid-validation and
-      // `.error` also covers a transient network/provider failure while
-      // checking a perfectly good saved key — this banner's flat "without a
-      // key" wording would be false in both. Reading the live field text
-      // directly sidesteps every validation-state edge case: Save is disabled
-      // while the field is empty (see Save button below), so a non-empty
-      // field always means the user has typed or already has something saved,
-      // and the banner steps aside the instant that happens, valid or not
-      // (an invalid key still gets its own specific message from
-      // `validationBadge` right below).
-      let keyIsEmpty = settings.llmProvider == .openAI ? openAIKey.isEmpty : geminiKey.isEmpty
-      if keyIsEmpty {
+      // unambiguous case: nothing is actually SAVED yet. Deliberately NOT
+      // keyed off `currentProviderStatus.tone` (Codex r1 + r2 findings):
+      // `.needsSetup` also covers mid-validation and `.error` also covers a
+      // transient network/provider failure while checking a perfectly good
+      // saved key — this banner's flat "without a key" wording would be false
+      // in both. Also deliberately NOT keyed off the live `openAIKey`/
+      // `geminiKey` text (Codex r3 finding): those track what's TYPED, not
+      // what's PERSISTED, and polish reads only from Keychain — a user who
+      // types but never clicks Save, or whose save fails, would wrongly lose
+      // the warning before cleanup is actually usable. Re-reading Keychain
+      // directly (the same call `.onAppear` already makes) is the one signal
+      // that can't drift from what polish will actually use; this re-evaluates
+      // on every body re-render, including the one `saveKey`/`clearKey`
+      // trigger via their own `validationStatus` state change.
+      let savedKeyIsEmpty =
+        (try? keychainManager.retrieve(
+          key: settings.llmProvider == .openAI
+            ? KeychainManager.openAIKeyID : KeychainManager.geminiKeyID))?.isEmpty ?? true
+      if savedKeyIsEmpty {
         InsetNotice(
           text:
             "Dictation still works, but without a key, cleanup falls back to your raw, unedited text every time.",
