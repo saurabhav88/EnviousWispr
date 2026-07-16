@@ -403,6 +403,108 @@ import Testing
     #expect(outcome == .nothingToCancel)
   }
 
+  // MARK: - Local-candidate import primitive (#1386 PR-2)
+
+  private func seedFiles(
+    _ files: [(path: String, content: Data, component: String)], at dir: URL
+  ) throws {
+    for f in files {
+      let url = dir.appendingPathComponent(f.path)
+      try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try f.content.write(to: url)
+    }
+  }
+
+  private func makeCandidate(
+    _ files: [(path: String, content: Data, component: String)]
+  ) throws -> URL {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("candidate-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    try seedFiles(files, at: dir)
+    return dir
+  }
+
+  @Test func importAdmitsByteMatchWithoutFetchAndPreservesSource() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    let controller = ModelDeliveryController(defaults: testDefaults())
+    let log = EventLog()
+    await controller.addEventObserver { _, e in log.append(e) }
+    let candidate = try makeCandidate(ManifestFixture.smallFiles)
+
+    let outcome = await controller.importLocalCandidate(registration, from: candidate)
+    #expect(outcome == .admitted)
+    #expect(await controller.isAdmitted(registration))
+    // No network fetch: the adopt signal fires, never attempt_started/completed.
+    #expect(!log.names.contains("started"))
+    #expect(!log.names.contains("completed"))
+    #expect(log.names.contains { $0.hasPrefix("admitted_no_fetch") })
+    // Bytes landed in the OWNED install dir.
+    for f in ManifestFixture.smallFiles {
+      #expect(
+        FileManager.default.fileExists(
+          atPath: registration.installDirectory.appendingPathComponent(f.path).path))
+    }
+    // The primitive NEVER deletes the source — the coordinator owns cleanup.
+    #expect(FileManager.default.fileExists(atPath: candidate.path))
+  }
+
+  @Test func importRejectsSymlinkComponentAndPreservesSource() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    let controller = ModelDeliveryController(defaults: testDefaults())
+
+    // Real Encoder.mlmodelc lives OUTSIDE the candidate; the candidate reaches
+    // it through a symlinked component — the escape guard must refuse it.
+    let outside = FileManager.default.temporaryDirectory
+      .appendingPathComponent("outside-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+    try seedFiles(
+      ManifestFixture.smallFiles.filter { $0.component == "Encoder.mlmodelc" }, at: outside)
+    let candidate = FileManager.default.temporaryDirectory
+      .appendingPathComponent("candidate-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: candidate, withIntermediateDirectories: true)
+    try seedFiles(ManifestFixture.smallFiles.filter { $0.component == "vocab.json" }, at: candidate)
+    try FileManager.default.createSymbolicLink(
+      at: candidate.appendingPathComponent("Encoder.mlmodelc"),
+      withDestinationURL: outside.appendingPathComponent("Encoder.mlmodelc"))
+
+    let outcome = await controller.importLocalCandidate(registration, from: candidate)
+    guard case .failed = outcome else {
+      Issue.record("expected typed refusal, got \(outcome)")
+      return
+    }
+    #expect(!(await controller.isAdmitted(registration)))
+    #expect(FileManager.default.fileExists(atPath: candidate.path))  // source preserved
+    #expect(FileManager.default.fileExists(atPath: outside.path))  // symlink target untouched
+  }
+
+  @Test func importRejectsMissingFileAndDoesNotAdmit() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    let controller = ModelDeliveryController(defaults: testDefaults())
+    // Candidate missing one manifest file (vocab.json).
+    let candidate = try makeCandidate(Array(ManifestFixture.smallFiles.dropLast()))
+
+    let outcome = await controller.importLocalCandidate(registration, from: candidate)
+    guard case .failed = outcome else {
+      Issue.record("expected typed refusal, got \(outcome)")
+      return
+    }
+    #expect(!(await controller.isAdmitted(registration)))
+    #expect(FileManager.default.fileExists(atPath: candidate.path))
+  }
+
+  @Test func sameVolumeIsTrueForSiblingTempPaths() {
+    // Two not-yet-existing siblings under the same temp root resolve to one
+    // volume (the atomic-promote guarantee). A true cross-volume refusal needs a
+    // second mounted volume and is covered by Live UAT, not a unit test.
+    let a = FileManager.default.temporaryDirectory
+      .appendingPathComponent("a-\(UUID().uuidString)", isDirectory: true)
+    let b = FileManager.default.temporaryDirectory
+      .appendingPathComponent("b-\(UUID().uuidString)", isDirectory: true)
+    #expect(ModelDeliveryController.sameVolume(a, b))
+  }
+
   @Test func telemetryBuckets() {
     #expect(ModelDeliveryController.bytesBucket(10 << 20) == "under_50mb")
     #expect(ModelDeliveryController.bytesBucket(100 << 20) == "50mb_200mb")
