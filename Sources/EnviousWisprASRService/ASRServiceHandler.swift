@@ -5,14 +5,16 @@ import Foundation
 
 /// XPC service handler for ASR transcription.
 ///
-/// Owns ParakeetBackend (and WhisperKitBackend in Stage D). All inference runs in this
-/// XPC service process — model memory is isolated from the main app.
+/// Owns ParakeetBackend. All inference runs in this XPC service process — model
+/// memory is isolated from the main app.
+///
+/// Parakeet-only, structurally, since #1386 PR-2: WhisperKit loads in-process
+/// behind its relocation gate and never crosses this boundary.
 final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable {
   weak var connection: NSXPCConnection?  // periphery:ignore - XPC connection lifecycle; set by delegate, prevents premature release
 
   /// The active ASR backend — only one loaded at a time.
   private var parakeetBackend: ParakeetBackend?
-  private var whisperKitBackend: WhisperKitBackend?
   private var activeBackendType: String?  // periphery:ignore - tracks loaded backend for diagnostics and unload routing
 
   /// Streaming state flag — only Parakeet supports streaming.
@@ -28,11 +30,10 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
   func ping(reply: @escaping (String) -> Void) {
     let fluidAudioPath = FileManager.default.homeDirectoryForCurrentUser
       .appendingPathComponent("Library/Application Support/FluidAudio/Models")
-    let whisperKitPath = FileManager.default.homeDirectoryForCurrentUser
-      .appendingPathComponent("Documents/huggingface/models/argmaxinc/whisperkit-coreml")
     let fluidAccess = FileManager.default.isReadableFile(atPath: fluidAudioPath.path)
-    let whisperAccess = FileManager.default.isReadableFile(atPath: whisperKitPath.path)
-    reply("pong — modelAccess: FluidAudio=\(fluidAccess), WhisperKit=\(whisperAccess)")
+    // #1386 PR-2 dropped the WhisperKit probe: it reached into ~/Documents from
+    // the helper — a TCC toucher reporting on a folder the app no longer uses.
+    reply("pong — modelAccess: FluidAudio=\(fluidAccess)")
   }
 
   // MARK: - Model Lifecycle
@@ -43,7 +44,6 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
       do {
         // Unload previous backend before loading new one
         self.parakeetBackend = nil
-        self.whisperKitBackend = nil
 
         switch backendType {
         case "parakeet":
@@ -74,16 +74,13 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
           progressFile.write(fraction: 1.0, phase: "", detail: "")
 
           self.parakeetBackend = backend
-        case "whisperKit":
-          let backend = WhisperKitBackend()
-          // NOTE: this branch is unreachable on current main — the XPC ASR
-          // service is Parakeet-only (architecture.md FACT:
-          // xpc-asr-service-is-parakeet-only). WhisperKit loads IN-PROCESS via
-          // `WhisperKitEngineAdapter` → `WhisperKitBackend`, never here. The real
-          // in-process load duration + hang signal are already observed by the
-          // `coldstart.warmup_*` telemetry (`TelemetryService` / `ensureEngineWarm`).
-          try await backend.prepare()
-          self.whisperKitBackend = backend
+        // #1386 PR-2 deleted the "whisperKit" branch. Its old note claimed the
+        // branch was unreachable; that was wrong — crash recovery and Diagnostics
+        // reached it through the default `ASRManagerProxy`, and it built a
+        // WhisperKit model inside THIS process, where the in-process relocation
+        // gate cannot reach. WhisperKit now loads only in-process behind that
+        // gate, so a whisperKit request here is a caller on a retired route and
+        // falls through to the unknown-backend refusal below.
         default:
           safeReply(
             NSError(
@@ -103,11 +100,7 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
   func unloadModel(reply: @escaping () -> Void) {
     nonisolated(unsafe) let safeReply = reply
     Task { @MainActor in
-      if let wk = self.whisperKitBackend {
-        await wk.unload()
-      }
       self.parakeetBackend = nil
-      self.whisperKitBackend = nil
       self.activeBackendType = nil
       safeReply()
     }
@@ -116,7 +109,7 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
   func getModelState(reply: @escaping (Bool, Bool) -> Void) {
     nonisolated(unsafe) let safeReply = reply
     Task { @MainActor in
-      let isLoaded = self.parakeetBackend != nil || self.whisperKitBackend != nil
+      let isLoaded = self.parakeetBackend != nil
       safeReply(isLoaded, self.isStreamingActive)
     }
   }
@@ -167,8 +160,6 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
         let result: EnviousWisprCore.ASRResult
         if let parakeet = self.parakeetBackend {
           result = try await parakeet.transcribe(audioSamples: samples, options: options)
-        } else if let whisperKit = self.whisperKitBackend {
-          result = try await whisperKit.transcribe(audioSamples: samples, options: options)
         } else {
           safeReply(
             nil,

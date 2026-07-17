@@ -21,6 +21,14 @@ public final class ModelDeliveryHome {
   private var parakeetIdentity: ModelIdentity?
   private var parakeetRegistration: DeliveryRegistration?
 
+  /// #1386 PR-2. Nil when the bundled multilingual manifest failed to load —
+  /// unlike Parakeet there is NO legacy fallback behind it (PR-2 retired
+  /// `WhisperKit.download()`), so a nil handle means the multilingual engine
+  /// honestly reports "not installed" rather than fetching by an unverified
+  /// route. Unit-tested against the bundled resource.
+  public private(set) var whisperKitHandle: WhisperKitDeliveryHandle?
+  public private(set) var whisperKitRegistration: DeliveryRegistration?
+
   /// Observable mirror of the Parakeet delivery state for SwiftUI renderers.
   public private(set) var parakeetState: DeliveryState = .notReady
   /// Monotonic apply guard (EG-1 `installStateSeqApplied` precedent, made
@@ -55,6 +63,34 @@ public final class ModelDeliveryHome {
       Task {
         await AppLogger.shared.log(
           "Model delivery manifest unavailable — Parakeet stays on the legacy path: \(error)",
+          level: .info, category: "Delivery")
+      }
+    }
+
+    // The multilingual (WhisperKit) registration, built beside the shared
+    // controller (#1386 PR-2). It needs NO second telemetry observer: the
+    // observers wired above are per-identity for Parakeet's mirror only, and the
+    // event bridge below them is already generic across every identity.
+    do {
+      let manifest = try DeliveryManifest.loadBundled(resource: "whisperkit-delivery-manifest")
+      let appSupport = FileManager.default.urls(
+        for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      let registration = DeliveryRegistration(
+        manifest: manifest,
+        installDirectory: appSupport.appendingPathComponent(
+          "EnviousWispr/Models/whisper", isDirectory: true),
+        metadataDirectory: appSupport.appendingPathComponent(
+          "EnviousWispr/ModelDelivery", isDirectory: true))
+      whisperKitRegistration = registration
+      whisperKitHandle = WhisperKitDeliveryHandle(
+        controller: controller, registration: registration)
+      let home = self
+      Task { await home.recordFirstRunBaseline(for: registration) }
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "Multilingual delivery manifest unavailable — the engine will report not-installed: "
+            + "\(error)",
           level: .info, category: "Delivery")
       }
     }

@@ -32,6 +32,29 @@ extension ASRLoadSupersededError: StableSentryErrorIdentity {
   public var sentrySemanticID: String { "asr.load_superseded" }
 }
 
+/// Thrown when the ASR manager is asked to load or transcribe on an engine it
+/// does not own (#1386 PR-2: WhisperKit). WhisperKit runs in-process behind its
+/// relocation gate via `WhisperKitEngineAdapter`; the manager and its XPC helper
+/// are Parakeet-only. This exists so the retired route fails loudly instead of
+/// quietly doing nothing — or mapping a model the gate never saw.
+public struct ASRManagerNotOwnedError: Error, Equatable {
+  public let backend: ASRBackendType
+  public init(backend: ASRBackendType) {
+    self.backend = backend
+  }
+}
+
+/// #1525 identity pin: a fixed wire identity, chosen (not measured — this type
+/// is new in #1386 PR-2) so any future capture site inherits a stable
+/// fingerprint. NEVER change this string once shipped.
+extension ASRManagerNotOwnedError: StableSentryErrorIdentity {
+  public var sentryFingerprintDescriptor: String {
+    "EnviousWisprASR.ASRManagerNotOwnedError#1"
+  }
+
+  public var sentrySemanticID: String { "asr.manager_backend_not_owned" }
+}
+
 // #1388: `ASRLoadCancelledError` (the deliberate-cancel resume for
 // `cancelInFlightLoad()`) lives in EnviousWisprCore beside
 // `ModelLoadWatchdog.WedgeError` — the pipeline driver classifies on it and

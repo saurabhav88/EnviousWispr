@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Testing
 
 @testable import EnviousWisprASR
@@ -13,7 +14,7 @@ private final class FakeModel: LoadedASRModel {}
 
 /// One-shot async gate (signal-based, no sleeps — test-timing discipline).
 private actor AsyncGate {
-  private var isOpen = false
+  private(set) var isOpen = false
   private var waiters: [CheckedContinuation<Void, Never>] = []
   func open() {
     isOpen = true
@@ -48,6 +49,48 @@ struct WhisperKitBackendLoadOrchestrationTests {
         await recorder.recordWarmup()
         return .completed(ms: 1)
       })
+  }
+
+  // MARK: #1386 PR-2 — this engine never fetches by itself
+
+  /// The repair path is GONE (Codex code-diff r6), and this is what replaces its
+  /// six tests. `repair()` deletes what it cannot verify and re-fetches it, so an
+  /// automatic repair here would turn a keypress into a silent multi-GB download
+  /// — the #1339 exposure this PR exists to delete — and it raced its own
+  /// deletion against the map site twice (r5, r6). The engine's policy is that a
+  /// download is the user's explicit choice, so an unloadable cache is an honest
+  /// failure, not a surprise. This freezes that: nothing the backend does on a
+  /// failed load reaches for the network or retries behind the user's back.
+  @Test("a failed load is terminal and silent — this engine never fetches or retries by itself")
+  func failedLoadNeverFetchesOrRetries() async throws {
+    struct BrokenCache: Error {}
+    let loads = CallRecorder()
+    let seams = WhisperKitBackend.TestSeams(
+      loadModel: { _ in
+        await loads.recordLoad()
+        throw BrokenCache()
+      },
+      runWarmup: { .completed(ms: 1) })
+    let backend = WhisperKitBackend(testSeams: seams, admittedModelFolder: { "/fake" })
+
+    await #expect(throws: BrokenCache.self) { try await backend.prepare() }
+
+    #expect(
+      await loads.loadCount == 1,
+      "exactly ONE load attempt: no repair pass, no second try, nothing automatic")
+    #expect(await backend.isReady == false)
+  }
+
+  @Test("no admitted model: prepare reports not-installed and never reaches a map")
+  func notInstalledIsHonestAndNeverMaps() async throws {
+    let loads = CallRecorder()
+    let backend = WhisperKitBackend(
+      testSeams: fastSeams(loads),
+      admittedModelFolder: { nil })
+
+    await #expect(throws: ASRError.self) { try await backend.prepare() }
+
+    #expect(await loads.loadCount == 0, "nothing admitted means nothing to map, and nothing to fetch")
   }
 
   // MARK: invariant #1 — single-flight

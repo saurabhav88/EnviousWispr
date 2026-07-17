@@ -53,28 +53,38 @@ public final class ASRManager: ASRManagerInterface {
   // that report `isReady=true` without a real model load, unblocking
   // reset-branch coverage in `setInitialBackendType` and `switchBackend`.
   private var parakeetBackend: any ASRBackend
-  private var whisperKitBackend: any ASRBackend
 
-  public init(
-    parakeetBackend: (any ASRBackend)? = nil,
-    whisperKitBackend: (any ASRBackend)? = nil
-  ) {
+  public init(parakeetBackend: (any ASRBackend)? = nil) {
     self.parakeetBackend = parakeetBackend ?? ParakeetBackend()
-    self.whisperKitBackend = whisperKitBackend ?? WhisperKitBackend()
   }
 
-  /// The currently active backend.
-  public var activeBackend: any ASRBackend {
-    switch activeBackendType {
-    case .parakeet: return parakeetBackend
-    case .whisperKit: return whisperKitBackend
-    }
+  /// The active backend WHEN THIS MANAGER OWNS IT — nil for WhisperKit.
+  ///
+  /// #1386 PR-2 made this manager Parakeet-only. It used to construct its own
+  /// `WhisperKitBackend`, which was never the instance real dictation used: the
+  /// kernel driver builds its own and drives it through `WhisperKitEngineAdapter`
+  /// (`WisprBootstrapper.swift:282`). So this was a duplicate model owner reachable
+  /// only from crash recovery and Diagnostics — and under the default
+  /// `ASRManagerProxy` those two crossed XPC and had the helper build a THIRD one
+  /// (`ASRServiceHandler.swift:77`), where no in-process relocation gate can reach
+  /// it. A model mapped behind the gate's back is exactly what PR-2 forbids, so
+  /// WhisperKit is gone from here entirely and both callers route through the
+  /// gated adapter instead. XPC stays Parakeet-only, as the architecture intends.
+  ///
+  /// `activeBackendType` still tracks BOTH engines: it is this manager's
+  /// bookkeeping/reporting answer (`EngineCoordinator`, `BackendMetadata`,
+  /// telemetry), not a claim of ownership.
+  private var activeBackend: (any ASRBackend)? {
+    activeBackendType == .parakeet ? parakeetBackend : nil
   }
 
-  /// Whether the active backend supports streaming ASR.
+  /// Whether the active backend supports streaming ASR. False when the active
+  /// engine is not this manager's — the honest answer to "can I stream through
+  /// YOU", which is what every caller here is actually asking.
   public var activeBackendSupportsStreaming: Bool {
     get async {
-      await activeBackend.supportsStreaming
+      guard let activeBackend else { return false }
+      return await activeBackend.supportsStreaming
     }
   }
 
@@ -86,7 +96,7 @@ public final class ASRManager: ASRManagerInterface {
     isStreaming = false
   }
 
-  /// Switch to a different backend. Unloads the previous one.
+  /// Switch to a different backend. Unloads the previous one if it is ours.
   public func switchBackend(to type: ASRBackendType) async {
     // #959: same-backend no-op guard FIRST so it never supersedes a valid load.
     guard type != activeBackendType else { return }
@@ -95,7 +105,10 @@ public final class ASRManager: ASRManagerInterface {
     // a later `loadModel()` for the new backend starts fresh, not joins the stale.
     inFlightLoadTask?.cancel()
     inFlightLoadTask = nil
-    await activeBackend.unload()
+    // Switching AWAY from WhisperKit unloads nothing here: the adapter owns that
+    // model's lifecycle, and the instance this manager used to unload was never
+    // the one holding real weights.
+    await activeBackend?.unload()
     activeBackendType = type
     isModelLoaded = false
     isStreaming = false
@@ -138,14 +151,18 @@ public final class ASRManager: ASRManagerInterface {
           try await self.parakeetBackend.prepare(progressCallback: progress)
         }
       } else {
-        try await self.activeBackend.prepare()
+        // #1386 PR-2: WhisperKit does not load here. Callers that reach this
+        // with WhisperKit active are on the retired route and must go through
+        // the gated adapter (`ASRManagerNotOwnedError` says so out loud rather
+        // than silently loading nothing or, worse, mapping past the gate).
+        throw ASRManagerNotOwnedError(backend: self.activeBackendType)
       }
       self.downloadProgress = 1.0
       self.downloadPhase = ""
       self.downloadDetail = ""
       // #959: read readiness first, THEN guard, so a cancel/unload/switch that
       // landed during the `isReady` await can't be overwritten by a stale write.
-      let ready = await self.activeBackend.isReady
+      let ready = await self.parakeetBackend.isReady
       guard gen == self.loadGeneration else { throw ASRLoadSupersededError() }
       self.isModelLoaded = ready
     }
@@ -170,7 +187,8 @@ public final class ASRManager: ASRManagerInterface {
   public func transcribe(audioSamples: [Float], options: TranscriptionOptions = .default)
     async throws -> ASRResult
   {
-    try await activeBackend.transcribe(audioSamples: audioSamples, options: options)
+    guard let activeBackend else { throw ASRManagerNotOwnedError(backend: activeBackendType) }
+    return try await activeBackend.transcribe(audioSamples: audioSamples, options: options)
   }
 
   // MARK: - Streaming ASR
@@ -178,7 +196,7 @@ public final class ASRManager: ASRManagerInterface {
   /// Start streaming ASR on the active backend. Falls back silently if unsupported.
   /// If a streaming session is already active, cancels it first to prevent double-session state.
   public func startStreaming(options: TranscriptionOptions = .default) async throws {
-    guard await activeBackend.supportsStreaming else { return }
+    guard let activeBackend, await activeBackend.supportsStreaming else { return }
     // Cancel any existing session before starting a new one
     if isStreaming {
       await activeBackend.cancelStreaming()
@@ -190,13 +208,13 @@ public final class ASRManager: ASRManagerInterface {
 
   /// Feed an audio buffer to the streaming ASR session.
   public func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {
-    guard isStreaming else { return }
+    guard isStreaming, let activeBackend else { return }
     try await activeBackend.feedAudio(buffer)
   }
 
   /// Finalize streaming and return the transcript. Throws `ASRError.streamingNotSupported` if no streaming session is active.
   public func finalizeStreaming() async throws -> ASRResult {
-    guard isStreaming else {
+    guard isStreaming, let activeBackend else {
       throw ASRError.streamingNotSupported
     }
     let result = try await activeBackend.finalizeStreaming()
@@ -206,7 +224,7 @@ public final class ASRManager: ASRManagerInterface {
 
   /// Cancel an active streaming session, discarding partial results.
   public func cancelStreaming() async {
-    guard isStreaming else { return }
+    guard isStreaming, let activeBackend else { return }
     await activeBackend.cancelStreaming()
     isStreaming = false
   }
@@ -238,7 +256,7 @@ public final class ASRManager: ASRManagerInterface {
     // is still false and the guard would early-return with the stale handle live.
     inFlightLoadTask?.cancel()
     inFlightLoadTask = nil
-    guard isModelLoaded else { return }
+    guard isModelLoaded, let activeBackend else { return }
     await activeBackend.unload()
     isModelLoaded = false
   }

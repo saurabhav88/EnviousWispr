@@ -28,8 +28,6 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
   /// (matches a fresh backend before any load's warm-up completes).
   var lastWarmupInferenceMs: Int?
   var prepareThrows: (any Error)?
-  var prepareIfCachedThrows: (any Error)?
-  var prepareIfCachedResult: Bool = true
   var transcribeThrows: (any Error)?
   var transcribeResult: ASRResult = ASRResult(
     text: "stub-transcribed",
@@ -50,7 +48,6 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
   // MARK: Observed counters
 
   var prepareCount = 0
-  var prepareIfCachedCount = 0
   var transcribeCount = 0
   var lastTranscribeSamples: [Float] = []
   var lastTranscribeOptions: TranscriptionOptions = .default
@@ -76,8 +73,6 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
     streamingSessionFactory = v
   }
   func setSlowTranscribe(_ v: Bool) { slowTranscribe = v }
-  func setPrepareIfCachedResult(_ v: Bool) { prepareIfCachedResult = v }
-  func setPrepareIfCachedThrows(_ v: (any Error)?) { prepareIfCachedThrows = v }
   func setPrepareThrows(_ v: (any Error)?) { prepareThrows = v }
 
   // MARK: WhisperKitBackendDriving
@@ -88,12 +83,6 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
     isReady = true
   }
 
-  func prepareIfCached() async throws -> Bool {
-    prepareIfCachedCount += 1
-    if let err = prepareIfCachedThrows { throw err }
-    if prepareIfCachedResult { isReady = true }
-    return prepareIfCachedResult
-  }
 
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws
     -> ASRResult

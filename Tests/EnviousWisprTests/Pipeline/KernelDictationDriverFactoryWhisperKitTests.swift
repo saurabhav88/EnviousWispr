@@ -54,7 +54,7 @@ import Testing
       let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(audioCapture: audio)
       let inputs = KernelDictationDriverFactory.WhisperKitInputs(
         audioCapture: audio,
-        whisperKitBackend: WhisperKitBackend(),
+        whisperKitBackend: WhisperKitBackend(admittedModelFolder: { nil }),
         languageDetector: LanguageDetector(),
         vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
@@ -82,7 +82,7 @@ import Testing
 
     @Test("makeForWhisperKit does not call backend.prepare() (factory is lazy)")
     func makeForWhisperKitDoesNotLoadModel() async {
-      let backend = WhisperKitBackend()
+      let backend = WhisperKitBackend(admittedModelFolder: { nil })
       let audio = FakeAudioCapture()
       let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(audioCapture: audio)
       let inputs = KernelDictationDriverFactory.WhisperKitInputs(

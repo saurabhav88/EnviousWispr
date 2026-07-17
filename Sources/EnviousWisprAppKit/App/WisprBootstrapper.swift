@@ -50,6 +50,11 @@ public final class WisprBootstrapper {
   /// #1176: in-flight onboarding session, read at app-quit to emit abandon.
   let onboardingProgress = OnboardingProgress()
   let asrManager: any ASRManagerInterface
+  /// #1386 PR-2: the one door to whichever engine is active. Shared plumbing —
+  /// crash recovery (constructed here) and the Diagnostics benchmark (via the
+  /// environment) both need the SAME routing, and `DiagnosticsCoordinator` is
+  /// capped at its single benchmark collaborator by design.
+  let activeEngine: ActiveEngineOperation
   let customWordsCoordinator: CustomWordsCoordinator
   let contactsImportCoordinator: ContactsImportCoordinator
   let setup: SetupCoordinator
@@ -96,7 +101,7 @@ public final class WisprBootstrapper {
     // composition root. This is the ONLY KeychainManager that gets `.live`; it carries
     // the sink for the legacy-key-cleanup (Q3.3) + cloud-prewarm (A6) quiet limbs.
     let keychainManager = KeychainManager(telemetrySink: .live)
-    let recordingOverlay = RecordingOverlayPanel(positionProvider: { settings.overlayPillPosition })
+    let recordingOverlay = RecordingOverlayPanel()
     let audioDeviceList = AudioDeviceList()
     let inputDevicePreferenceReconciler = InputDevicePreferenceReconciler(settings: settings)
     audioDeviceList.onDevicesChanged = { [weak inputDevicePreferenceReconciler] devices in
@@ -276,10 +281,17 @@ public final class WisprBootstrapper {
     // owned by `KernelFinalizationWiring.processText` via the
     // `ASREngineLanguageIdentifying` cast on the adapter; the launch warm-up
     // is owned by the shared `ensureEngineWarm(reason: .launch)` (#879).
+    // #1386 PR-2: the multilingual engine's delivery wiring (owned folder,
+    // relocation coordinator, one gated backend, setup surface). Detail lives in
+    // `WhisperKitDeliveryWiring`; the root just names it.
+    let whisperKit = WhisperKitDeliveryWiring.make(modelDelivery: modelDelivery)
+    let whisperKitBackend = whisperKit.backend
+    let whisperKitRetirement = whisperKit.retirement
+
     let whisperKitKernelDriver = KernelDictationDriverFactory.makeForWhisperKit(
       inputs: KernelDictationDriverFactory.WhisperKitInputs(
         audioCapture: audioCapture,
-        whisperKitBackend: WhisperKitBackend(),
+        whisperKitBackend: whisperKitBackend,
         languageDetector: languageDetector,
         vadSignalSource: vadSource,
         transcriptStore: transcriptStore,
@@ -299,6 +311,16 @@ public final class WisprBootstrapper {
     // an unprompted download for a non-opted-in user).
     let setup = SetupCoordinator(
       asrManager: asrManager,
+      whisperKitSetup: whisperKit.setupService,
+      // Fired from runDidFinishLaunching once the app is on screen, and that
+      // timing is the whole reason this is a closure rather than a call in the
+      // constructor: retirement reads `~/Documents`, which can raise the
+      // Files-and-Folders prompt. A permission dialog thrown at a user before the
+      // app has drawn is a bad first impression and an easy accidental "Don't
+      // Allow" — which would leave the copy unreadable and retirement declined.
+      runDocumentsMigration: { [weak whisperKitRetirement] in
+        await whisperKitRetirement?.runLaunch()
+      },
       preloadAction: { [weak whisperKitKernelDriver] in
         await whisperKitKernelDriver?.ensureEngineWarm(reason: .launch)
       }
@@ -425,12 +447,13 @@ public final class WisprBootstrapper {
         _ = await kernelDriver?.ensureEngineWarm(reason: .launch)
       }
     }
-    Task { [weak setup] in
-      await setup?.whisperKitSetup.detectState()
-      setup?.startPreloadObservation()
-    }
 
     let navigationCoordinator = NavigationCoordinator()
+    // #1386 PR-2: the one door to whichever engine is active, for the two callers
+    // that never used the normal dictation doors (crash recovery, Diagnostics).
+    let activeEngine = ActiveEngineOperation.live(
+      asrManager: asrManager, whisperKitBackend: whisperKitBackend)
+
     let diagnosticsCoordinator = DiagnosticsCoordinator()
 
     // PR4 of #763 construction-order constraint preserved: LanguageSuggestionPresenter
@@ -506,7 +529,7 @@ public final class WisprBootstrapper {
     let recoveryKeyStore = RecoveryKeyStore()
     let makeRecoverySpoolStore: @Sendable () -> RecoverySpoolStore = { RecoverySpoolStore() }
     let recoverySpoolReplayer = RecoverySpoolReplayer(
-      asrManager: asrManager,
+      activeEngine: activeEngine,
       keyStore: recoveryKeyStore,
       makeSpoolStore: makeRecoverySpoolStore,
       transcriptStore: transcriptStore,
@@ -538,11 +561,6 @@ public final class WisprBootstrapper {
     // #1063 PR2: the "recovering" pill's Discard action.
     recordingOverlay.setDiscardRecoveryHandler { [weak recoveryCoordinator] in
       recoveryCoordinator?.discardActiveRecovery()
-    }
-    // #1464: after a leftover recording lands in History, post the standalone green
-    // success notice (the `.recovered` path was silent before).
-    recoveryCoordinator.onRecoverySucceeded = { [weak recordingOverlay] in
-      recordingOverlay?.show(intent: .recoverySucceeded)
     }
     // #1171 — the single owner of ASR-engine selection, status, and switching.
     // Reads the user's choice + active engine + readiness LIVE (no stored "want"
@@ -751,6 +769,7 @@ public final class WisprBootstrapper {
     self.settings = settings
     self.permissions = permissions
     self.asrManager = asrManager
+    self.activeEngine = activeEngine
     self.customWordsCoordinator = customWordsCoordinator
     self.contactsImportCoordinator = contactsImportCoordinator
     self.setup = setup
@@ -949,6 +968,7 @@ private struct MainWindowRoot: View {
       .environment(b.llmDiscovery)
       .environment(b.vocabularyPackManager)
       .environment(\.asrManager, b.asrManager)
+      .environment(\.activeEngine, b.activeEngine)
       .environment(\.keychainManager, b.keychainManager)
       .background(
         ActionWirer(
@@ -984,6 +1004,7 @@ private struct OnboardingWindowRoot: View {
     .environment(b.aiAvailability)
     .environment(b.llmDiscovery)
     .environment(\.asrManager, b.asrManager)
+    .environment(\.activeEngine, b.activeEngine)
     .environment(\.keychainManager, b.keychainManager)
   }
 }

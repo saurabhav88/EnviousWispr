@@ -13,7 +13,9 @@ import Observation
 @Observable
 final class SetupCoordinator {
   let ollamaSetup = OllamaSetupService()
-  let whisperKitSetup = WhisperKitSetupService()
+  /// #1386 PR-2: injected, because its download/cancel/availability now come
+  /// from the delivery layer, which is built beside this coordinator.
+  let whisperKitSetup: WhisperKitSetupService
 
   @ObservationIgnored
   private var whisperKitPreloadTask: Task<Void, Never>?
@@ -27,17 +29,41 @@ final class SetupCoordinator {
   /// not the (test-unreachable) readiness gate — is what suppresses preload (#898).
   private let setupStateReader: @MainActor () -> WhisperKitSetupState
 
+  /// #1386 PR-2: the ~/Documents phase of the multilingual migration. Injected
+  /// (the coordinator that owns it is built beside this one) and fired from
+  /// `startWhisperKitMigrationThenDetect()` once the app has UI, because this is
+  /// the step that can raise a Files-and-Folders prompt. Defaults to a no-op.
+  private let runDocumentsMigration: @MainActor () async -> Void
+
   init(
     asrManager: any ASRManagerInterface,
+    whisperKitSetup: WhisperKitSetupService = WhisperKitSetupService(),
     setupStateReader: (@MainActor () -> WhisperKitSetupState)? = nil,
+    runDocumentsMigration: @escaping @MainActor () async -> Void = {},
     preloadAction: @escaping @MainActor () async -> Void
   ) {
     self.asrManager = asrManager
+    self.whisperKitSetup = whisperKitSetup
+    self.runDocumentsMigration = runDocumentsMigration
     self.preloadAction = preloadAction
     // Bind the default reader inside init capturing the owned service as a local
     // (a default parameter value cannot reference `self`).
     let service = whisperKitSetup
     self.setupStateReader = setupStateReader ?? { service.setupState }
+  }
+
+  /// #1386 PR-2: the post-UI launch step for the multilingual engine, in order —
+  /// migrate an existing ~/Documents copy, then read the resulting availability,
+  /// then start watching for readiness. Sequenced so setup never reports on a
+  /// half-migrated state, and called from `runDidFinishLaunching` so the
+  /// Documents read (and any permission prompt) happens with the app on screen.
+  func startWhisperKitMigrationThenDetect() {
+    Task { [weak self] in
+      guard let self else { return }
+      await self.runDocumentsMigration()
+      await self.whisperKitSetup.detectState()
+      self.startPreloadObservation()
+    }
   }
 
   /// Observe `whisperKitSetup.setupState` and invoke `preloadAction` when it becomes

@@ -93,6 +93,14 @@ public actor WhisperKitBackend: ASRBackend {
   }
   private let testSeams: TestSeams?
 
+  /// Resolves the ADMITTED owned model folder, or nil when no verified model is
+  /// available. Injected by the composition root over the delivery handle, for
+  /// the same reason the composition root wires it: ASR imports neither Pipeline nor
+  /// ModelDelivery. Availability truth is controller admission alone (§8/9) —
+  /// the old `~/Documents` artifact probe is NOT an availability source and this
+  /// backend no longer downloads anything.
+  private let admittedModelFolder: @Sendable () async -> String?
+
   /// Fail-open warm-up ceiling (seconds). Bounds an invisible background task,
   /// never a user-facing wait (founder-approved exception to
   /// timeout-numbers-need-distribution-evidence, #1275 Gate 2).
@@ -102,10 +110,24 @@ public actor WhisperKitBackend: ASRBackend {
   /// Read-only; used by telemetry to tag per-transcription events with the model in use.
   package var modelVariantName: String { modelVariant }
 
-  package init() { self.testSeams = nil }
+  /// `admittedModelFolder` has no default: every construction site must say where
+  /// a verified model comes from, and the compiler is the thing that makes that
+  /// unskippable.
+  package init(
+    admittedModelFolder: @escaping @Sendable () async -> String?
+  ) {
+    self.testSeams = nil
+    self.admittedModelFolder = admittedModelFolder
+  }
 
   /// Test-only initializer that injects fake load/warm-up operations.
-  init(testSeams: TestSeams) { self.testSeams = testSeams }
+  init(
+    testSeams: TestSeams,
+    admittedModelFolder: @escaping @Sendable () async -> String? = { nil }
+  ) {
+    self.testSeams = testSeams
+    self.admittedModelFolder = admittedModelFolder
+  }
 
   /// Snapshot of the current load phase, for tests to assert orchestration
   /// outcomes without touching private state.
@@ -133,35 +155,35 @@ public actor WhisperKitBackend: ASRBackend {
     "openai_whisper-large-v3-v20240930_turbo"
   }
 
+  /// Loads the admitted model, or throws `.notReady` when none is admitted.
+  ///
+  /// #1386 PR-2 retired the `WhisperKit.download()` fallback that used to fire
+  /// here: a first-record network fetch from a third-party downloader, into a
+  /// folder we do not own, with no source failover and no blocking integrity
+  /// check, is the #1339 exposure this epic exists to remove. Fetching is now
+  /// only ever an explicit user action, through the verified delivery path.
+  ///
+  /// That sentence is why there is no automatic load-miss repair here, and the
+  /// reason is worth keeping: an earlier draft of this PR grew one, ported from
+  /// Parakeet. But `repair()` DELETES the failed components and RE-FETCHES them
+  /// (`ModelDeliveryController`: "failed components leave the install dir before
+  /// re-fetch"), so on a corrupted cache it turned a keypress into a silent
+  /// multi-GB download — the very exposure above, wearing a different name. It
+  /// also raced its own deletion against this actor's map site, twice.
+  ///
+  /// Parakeet and EG-1 keep their repair, and that is not an inconsistency to fix
+  /// later: their policies genuinely differ. Parakeet is the primary engine and
+  /// auto-fetching a raced deletion is correct for it; EG-1 is a limb that falls
+  /// back to raw text. WhisperKit's policy is that a download is the user's
+  /// decision. A cache that is admitted but unloadable is therefore an honest,
+  /// visible load failure — not an automatic download, and never a map racing a
+  /// delete. If that case ever shows up in the field, the answer is an explicit
+  /// Remove/re-download the user chooses, not a surprise on a keypress.
   public func prepare() async throws {
-    let variant = modelVariant
-    try await loadIfNeeded {
-      // Use cached model path from WhisperKitSetupService (no network call).
-      // Falls back to WhisperKit.download() if path not found (handles edge cases
-      // like user-initiated record when cache was cleared).
-      if let cached = WhisperKitSetupService.getLocalModelPath(variant: variant) {
-        return cached
-      }
-      // TODO(#827): watchdog needs WhisperKit download progress wired into
-      // this fallback path if product keeps allowing first-record downloads.
-      let folder = try await WhisperKit.download(variant: variant, progressCallback: nil)
-      return folder.path
+    try await loadIfNeeded { [admittedModelFolder] in
+      guard let folder = await admittedModelFolder() else { throw ASRError.notReady }
+      return folder
     }
-  }
-
-  /// Load model from local cache only. Returns false if model is not cached
-  /// OR if the cached directory is incomplete (missing one of the required
-  /// `.mlmodelc` artifacts). Partial-download detection is enforced upstream in
-  /// `WhisperKitSetupService.getLocalModelPath`, so a non-nil path here implies
-  /// the artifacts are all present. Used by silent/background warmup paths
-  /// that must never trigger a network download.
-  package func prepareIfCached() async throws -> Bool {
-    if loadState.isReady { return true }
-    guard let cached = WhisperKitSetupService.getLocalModelPath(variant: modelVariant) else {
-      return false  // Model not cached or cache incomplete — skip silently.
-    }
-    try await loadIfNeeded { cached }
-    return true
   }
 
   // MARK: - Load-state orchestration (#1276 Step 1)
@@ -213,7 +235,7 @@ public actor WhisperKitBackend: ASRBackend {
   }
 
   /// Single owner of the load single-flight lifecycle for BOTH `prepare()` and
-  /// `prepareIfCached()` (#445 + #1275). Consults the state machine's
+  /// (#445 + #1275). Consults the state machine's
   /// `prepareRequested` decision: already-ready → return; a load in flight → join
   /// it (never a second CoreML load); idle → start one.
   private func loadIfNeeded(resolveModelPath: @escaping @Sendable () async throws -> String)
@@ -323,7 +345,7 @@ public actor WhisperKitBackend: ASRBackend {
     // Codex code-diff r1: if an `unload()` raced this warm-up await, the state
     // machine already ignored the (stale) resolve/timeout event and moved the
     // backend to `.idle`. Without this guard `runWarmupPhase` would return
-    // NORMALLY, so `prepare()`/`prepareIfCached()` would report success while the
+    // NORMALLY, so `prepare()` would report success while the
     // backend is actually unloaded (`isReady == false`). Mirror the old
     // post-warm-up generation guard: a load whose generation no longer matches
     // the live one throws superseded rather than falsely reporting ready.
@@ -369,45 +391,6 @@ public actor WhisperKitBackend: ASRBackend {
     }
   }
 
-  /// WhisperKit 0.12+ model folder artifacts required for a successful load.
-  /// Aligned with `WhisperKit.loadModels()` at
-  /// `.build/checkouts/argmax-oss-swift/Sources/WhisperKit/Core/WhisperKit.swift:372-381`
-  /// — it hard-fails when any of these three are missing. `TextDecoderContextPrefill`
-  /// is intentionally excluded: upstream loads it conditionally and tolerates its
-  /// absence, so requiring it here would over-reject otherwise-valid caches.
-  /// Scope: `.mlmodelc` layout only; our shipped variant is produced by
-  /// `WhisperKit.download` which emits this format. `.mlpackage` caches (not used
-  /// by our product) are not modeled here.
-  internal static let requiredArtifacts: [String] = [
-    "AudioEncoder.mlmodelc",
-    "MelSpectrogram.mlmodelc",
-    "TextDecoder.mlmodelc",
-  ]
-
-  /// Canonical inner-file marker that a CoreML compiled-model bundle is complete.
-  /// Hugging Face downloads each `.mlmodelc` subfile individually, so an interrupted
-  /// pull can leave the outer directory present but its contents partial. Checking
-  /// `coremldata.bin` (always the first write Apple's compiler emits at the root of
-  /// the bundle) rules out the common "outer dir created, inner files missing" state
-  /// without coupling to CoreML's full internal layout.
-  internal static let artifactCompletionMarker = "coremldata.bin"
-
-  /// Returns true iff every required `.mlmodelc` artifact exists and contains the
-  /// completion marker. Used as a proactive partial-download guard so silent
-  /// pre-load (and `detectState`) can distinguish "incomplete cache" from "ready."
-  internal static func hasRequiredArtifacts(at modelFolder: String) -> Bool {
-    let fm = FileManager.default
-    for name in requiredArtifacts {
-      let artifactPath = (modelFolder as NSString).appendingPathComponent(name)
-      var isDir: ObjCBool = false
-      guard fm.fileExists(atPath: artifactPath, isDirectory: &isDir), isDir.boolValue else {
-        return false
-      }
-      let markerPath = (artifactPath as NSString).appendingPathComponent(artifactCompletionMarker)
-      if !fm.fileExists(atPath: markerPath) { return false }
-    }
-    return true
-  }
 
   /// Single vend gate for the shared `WhisperKit` instance. Every
   /// shared-instance caller (`transcribe`, `observeLID`,
@@ -488,7 +471,6 @@ public actor WhisperKitBackend: ASRBackend {
   }
 
   // MARK: - Private
-
 
   // #1276 Step 2 (PR-2): vend the authoritative streaming session for the "Live
   // transcription" toggle's ON + locked-language path. Mirrors

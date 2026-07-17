@@ -147,13 +147,27 @@ import Testing
   ///   when connected devices or the system default input change. The decision
   ///   rule lives in a pure policy function; the bootstrapper stores only the
   ///   app-lifetime wiring object.
+  /// - 36 → 37 in #1386 PR-2 (2026-07-16): App-owned `activeEngine`, the one
+  ///   door to whichever engine is active. "Load the active engine" stopped
+  ///   being one call: WhisperKit must load in-process behind its relocation
+  ///   gate, while Parakeet still goes through the ASR manager (and its XPC
+  ///   helper). Two consumers need the SAME routing — crash recovery, which is
+  ///   constructed here, and the Diagnostics benchmark, which reaches it through
+  ///   the environment — which makes it composition-root plumbing by the same
+  ///   rule as `modelDelivery` above. A narrower home was tried and rejected by
+  ///   this suite's own design: `DiagnosticsCoordinator` is capped at exactly
+  ///   one collaborator (`benchmark`), zero methods, 14 lines, so parking shared
+  ///   engine routing there would have broken a TIGHTER, deliberate ceiling to
+  ///   dodge this one. The stored value is a struct of three closures — routing,
+  ///   no state, no policy — and its construction lives in
+  ///   `ActiveEngineOperation.live`, not in the root.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 36,
+      count <= 37,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 36. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 37. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -339,20 +353,28 @@ import Testing
   /// root itself (stored-property and method ceilings above are unchanged) —
   /// only the file's physical line count grows. Cap by deterministic rule
   /// (actual 1088 + ~2, rounded up to nearest 5 = 1090).
-  /// Ratcheted 1090→1100 in #1464 (2026-07-16, recovery telemetry-first Phase 1):
-  /// the composition root binds `recoveryCoordinator.onRecoverySucceeded` to post
-  /// the standalone green recovery-success overlay notice (the `.recovered` path
-  /// was silent before). No new stored property; a 4-line closure binding beside
-  /// the existing Discard-handler wiring. Cap by deterministic rule (actual 1094 +
-  /// ~2, rounded up to nearest 5 = 1100).
+  /// Ratcheted 1090→1120 in #1386 PR-2 (2026-07-16): the multilingual engine
+  /// joins the owned delivery layer, so the root must name one more subsystem.
+  /// What it names is deliberately small — this raise is what SURVIVED the
+  /// ceiling's first verdict, not a request to skip it. The gate failed at 1204;
+  /// the response was to move code to its right home, not to pick a bigger
+  /// number: `WhisperKitDeliveryWiring` now owns the coordinator/backend/setup/
+  /// projection construction, `ActiveEngineOperation.live` owns its own routing,
+  /// `DiagnosticsCoordinator` owns the engine door its benchmark consumes (which
+  /// also deleted an environment key), and `SetupCoordinator` owns the post-UI
+  /// migration step (which kept `AppLifecycleCoordinator`'s allowlist intact).
+  /// The residue is a handful of `let`s, two calls, and the `activeEngine`
+  /// plumbing the stored-property entry above justifies: the irreducible cost of
+  /// naming a subsystem. Cap by deterministic rule (actual 1117 + ~2, rounded up
+  /// to nearest 5 = 1120).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1100,
+      lineCount <= 1120,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1100. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1120. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }
