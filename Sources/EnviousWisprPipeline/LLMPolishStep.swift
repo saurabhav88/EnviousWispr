@@ -152,13 +152,24 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         TelemetryService.shared.polishSkipped(provider: provider, reason: reason)
       })
 
-    static let silent = TelemetrySeams(
-      limbFailureObserved: { _, _, _, _, _ in },
-      breadcrumbStarted: { _, _ in },
-      captureProviderInitError: { _ in },
-      captureAFMPolishError: { _ in },
-      breadcrumbCompleted: { _, _ in },
-      recordPolishSkipped: { _, _ in })
+    /// Returns a seam that discards every signal unconditionally — `seams` is
+    /// intentionally unused by the discarding closures, so the guarantee does
+    /// not depend on what's wrapped. Defaulted to `.live` so production call
+    /// sites keep the old `.silent` shape (`telemetry: .silent()`); this is
+    /// the ONLY definition of "silent" (#1593) — there is no separate hardcoded
+    /// no-op constant a future edit could let drift out of sync with it, and
+    /// a test can inject a spy-backed seam here and assert the spy recorded
+    /// zero calls, proving the discard mechanism itself rather than only
+    /// reading the closure bodies below by eye.
+    static func silent(wrapping seams: TelemetrySeams = .live) -> TelemetrySeams {
+      TelemetrySeams(
+        limbFailureObserved: { _, _, _, _, _ in },
+        breadcrumbStarted: { _, _ in },
+        captureProviderInitError: { _ in },
+        captureAFMPolishError: { _ in },
+        breadcrumbCompleted: { _, _ in },
+        recordPolishSkipped: { _, _ in })
+    }
   }
 
   public var isEnabled: Bool {

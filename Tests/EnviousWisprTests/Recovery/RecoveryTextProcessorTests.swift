@@ -188,7 +188,7 @@ struct RecoveryTextProcessorTests {
       .joined(separator: " ")
 
     let buildsStepFromSilent = code.contains(
-      "LLMPolishStep(keychainManager: keychainManager, telemetry: .silent)")
+      "LLMPolishStep(keychainManager: keychainManager, telemetry: .silent()")
     let handRolledSeams = [
       "limbFailureObserved:", "breadcrumbStarted:", "captureProviderInitError:",
       "captureAFMPolishError:", "breadcrumbCompleted:", "recordPolishSkipped:",
