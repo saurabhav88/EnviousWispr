@@ -105,15 +105,27 @@ final class RecordingOverlayPanel {
   /// fixed. `nil` when nothing is showing.
   private var activePanelPosition: OverlayPillPosition?
 
-  /// The origin WE last set programmatically, whether from a fresh appearance
-  /// or a prior Space-change reposition. The panel has `isMovableByWindowBackground
-  /// = true` (an existing, user-facing drag-to-relocate feature) — comparing
-  /// the panel's LIVE origin against this before an automatic reposition is
-  /// how `repositionForActiveSpaceChange()` tells "the user dragged this"
-  /// apart from "nothing has touched it since we last placed it," so a Space
-  /// swipe never silently undoes a manual drag (Codex grounded review r4,
-  /// 2026-07-17). `nil` when nothing is showing.
+  /// The origin WE last set programmatically. Used only to DETECT a manual
+  /// drag (`isMovableByWindowBackground = true`, an existing feature) by
+  /// comparing against the panel's live origin — `wasManuallyDragged` below
+  /// is the authoritative, sticky record of that fact once detected. `nil`
+  /// when nothing is showing.
   private var lastProgrammaticOrigin: NSPoint?
+
+  /// True once the user has manually dragged the panel during the CURRENT
+  /// presentation. Sticky and carried across inherited-`y` transitions (e.g.
+  /// recording -> polishing) on purpose: those transitions tear down and
+  /// recreate the `NSPanel` object, but from the user's perspective it's the
+  /// same pill continuing, so "I dragged this" must not be forgotten just
+  /// because a new window object got created underneath it. Checked BEFORE
+  /// `lastProgrammaticOrigin` comparison in both `repositionForActiveSpaceChange()`
+  /// and the inherited-`y` capture — a continuous origin-comparison alone was
+  /// tried first and broke twice (Codex grounded review r4 found the Space-
+  /// change path re-anchoring over a drag; r5 found the SAME root cause one
+  /// level up, an inherited-`y` transition silently re-baselining
+  /// `lastProgrammaticOrigin` to the dragged spot and erasing the signal).
+  /// Reset to `false` only on a genuine fresh appearance (`y == nil`).
+  private var wasManuallyDragged = false
 
   /// #1341 follow-up: fullscreen state is a per-Space property, and macOS
   /// treats going fullscreen as switching to a NEW Space/"desktop" rather than
@@ -169,6 +181,7 @@ final class RecordingOverlayPanel {
     // from wherever the window got repositioned to, reintroducing the
     // recording/polishing misalignment bug this same PR fixed.
     guard let panel, let position = activePanelPosition else { return }
+    if wasManuallyDragged { return }
     // The pill supports drag-to-relocate (`isMovableByWindowBackground`) —
     // if the panel's live origin no longer matches the spot WE last put it,
     // the user moved it since, and an automatic Space-change reposition must
@@ -176,6 +189,7 @@ final class RecordingOverlayPanel {
     // wherever the user left it for the rest of this presentation; the next
     // fresh appearance re-anchors normally.
     if let lastProgrammaticOrigin, !panel.frame.origin.isApproximately(lastProgrammaticOrigin) {
+      wasManuallyDragged = true
       return
     }
     guard
@@ -926,6 +940,17 @@ final class RecordingOverlayPanel {
       // inherited-y transition, desyncing `activePanelPosition` from the
       // edge the panel's SwiftUI content is actually aligned for, and the
       // next Space swipe would then jump the panel to the wrong edge.
+      //
+      // Same reasoning applies to drag detection (Codex grounded review r5,
+      // 2026-07-17): if the outgoing panel's Y no longer matches where WE
+      // last put it, the user dragged it, and that fact must survive into
+      // the new panel object this transition creates — check and latch
+      // `wasManuallyDragged` HERE, before `lastProgrammaticOrigin` gets
+      // rewritten below to the (possibly dragged) inherited position, or the
+      // mismatch that proves the drag happened is gone for good.
+      if let lastProgrammaticOrigin, abs(y - lastProgrammaticOrigin.y) > 0.5 {
+        wasManuallyDragged = true
+      }
     } else {
       // #1341: fresh appearance only — captures the edge for THIS panel's
       // lifetime. `repositionForActiveSpaceChange()` reuses it; an inherited
@@ -934,6 +959,10 @@ final class RecordingOverlayPanel {
       let position = positionProvider()
       activePanelPosition = position
       requestedY = computeRequestedY(on: targetScreen, position: position)
+      // A genuinely NEW presentation starts clean — any earlier drag doesn't
+      // carry over, matching the existing "position resets on next
+      // appearance" contract the settings copy already promises.
+      wasManuallyDragged = false
     }
     let panelY = clampedOriginY(
       requestedY: requestedY, resolvedHeight: resolvedHeight, on: targetScreen)
@@ -1158,6 +1187,7 @@ final class RecordingOverlayPanel {
     panel = nil
     activePanelPosition = nil
     lastProgrammaticOrigin = nil
+    wasManuallyDragged = false
 
     // Flush pending CA transactions before releasing the panel.
     // RecordingOverlayView has a running .task loop updating audioLevel every 50ms
