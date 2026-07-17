@@ -188,21 +188,89 @@ function tierASqlFor(activeIds, endTs) {
     LIMIT ${PER_USER_LIST_LIMIT}`;
 }
 
-async function hogql(env, sql) {
-  const res = await fetch(`${POSTHOG_HOST}/api/projects/${env.POSTHOG_PROJECT_ID}/query/`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.POSTHOG_PERSONAL_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query: { kind: "HogQLQuery", query: sql }, refresh: "blocking" }),
-  });
-  if (!res.ok) {
-    throw new Error(`PostHog query HTTP ${res.status}`);
+// PostHog's project-level rate limit allows only 3 concurrent queries and
+// queues/cancels/times-out (HTTP 502/503/504) anything beyond that (#1588,
+// posthog.com/docs/api/queries + posthog.com/docs/endpoints/rate-limits).
+// `runLimited` below caps our own concurrency under that ceiling; this retry
+// is the second, complementary layer for genuine transient contention (e.g.
+// the project is shared with EnviousStaging - analytics-operations.md FACT:
+// posthog-project-is-shared-with-enviousstaging). It retries exactly once,
+// only on the documented queue-timeout status class, and only ever before
+// any Discord post happens - unlike the deliberately-rejected outer
+// GitHub-Actions-level retry (see the comment in daily-report-ping.yml),
+// this cannot produce a duplicate or confusing failure notice.
+const RETRYABLE_POSTHOG_STATUSES = new Set([502, 503, 504]);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export async function hogql(
+  env,
+  sql,
+  queryName,
+  { fetchFn = fetch, sleepFn = sleep, retryDelayMs = 1500 } = {}
+) {
+  const url = `${POSTHOG_HOST}/api/projects/${env.POSTHOG_PROJECT_ID}/query/`;
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const res = await fetchFn(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.POSTHOG_PERSONAL_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: { kind: "HogQLQuery", query: sql },
+        refresh: "blocking",
+        name: `daily_report_${queryName}`,
+      }),
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      if (!json.results) throw new Error(`PostHog query ${queryName} returned no results array`);
+      return json;
+    }
+
+    const status = res.status;
+    if (res.body) {
+      try {
+        await res.body.cancel();
+      } catch (_) {
+        // Best effort: the status remains the authoritative failure, and a
+        // failed cancel must not mask it. Draining/cancelling the failed
+        // body here matters specifically because a retry immediately opens
+        // a NEW outbound request on the same wave - an uncancelled body can
+        // hold its Cloudflare subrequest connection open, and enough of
+        // those piling up across retries could exhaust Cloudflare's own
+        // outbound-connection ceiling and recreate the stall this change
+        // exists to fix (Codex code-diff review, round 2, #1588).
+      }
+    }
+
+    if (attempt === 2 || !RETRYABLE_POSTHOG_STATUSES.has(status)) {
+      throw new Error(`PostHog query ${queryName} HTTP ${status}`);
+    }
+    await sleepFn(retryDelayMs);
   }
-  const json = await res.json();
-  if (!json.results) throw new Error("PostHog query returned no results array");
-  return json;
+}
+
+// Runs `tasks` (zero-arg async thunks) in fixed waves of at most `limit`
+// concurrently, preserving input order in the returned results. Exists
+// because PostHog's project-level query-concurrency ceiling is 3 (#1588) -
+// firing more than that at once gets the excess queued for up to 30s before
+// PostHog cancels/times it out. A failed wave stops later waves from
+// starting, matching `Promise.all`'s existing all-or-nothing contract for
+// the whole batch (already-started requests within a wave still run to
+// completion; a new wave simply never starts).
+export async function runLimited(tasks, limit) {
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new TypeError("limit must be a positive integer");
+  }
+  const results = [];
+  for (let start = 0; start < tasks.length; start += limit) {
+    const wave = tasks.slice(start, start + limit);
+    results.push(...(await Promise.all(wave.map((task) => task()))));
+  }
+  return results;
 }
 
 function rowsToObjects(res) {
@@ -264,30 +332,35 @@ export async function fetchReportData(env, win, endUTC) {
     ORDER BY n DESC
     LIMIT 5`;
 
-  // The first 6 queries are fully independent and fire concurrently
-  // (plan §3.3, Gemini's CF-wall-clock-timeout finding). Polish tier-a
-  // (below) is the one exception: an EARLIER version embedded the
-  // active-user bound as a re-evaluated nested subquery inside a UNION and
-  // that measurably timed out against production PostHog (HTTP 504) - two
-  // nested re-scans of the whole PROD filter's dev-exclusion subquery,
-  // twice, inside a UNION, is too expensive. Fixed by resolving the
-  // active-user id list from `engineAndTierB` (already fetched, zero extra
-  // cost) and passing it to tier-a as a literal IN-list instead of a
-  // subquery - the exact pattern already validated empirically during
-  // planning. This is the one query that runs sequentially after the batch;
-  // still well within Cloudflare's execution ceiling (six ~1-3s concurrent
-  // queries, then one more).
-  const [installs, onboardActivate, totals, engineAndTierB, geo, top5] = await Promise.all([
-    hogql(env, installsSql),
-    hogql(env, onboardActivateSql),
-    hogql(env, totalsSql),
-    hogql(env, engineAndTierBSql),
-    hogql(env, geoSql),
-    hogql(env, top5Sql),
-  ]);
+  // These 6 queries are independent, but PostHog allows only 3 concurrent
+  // queries per project (#1588) - `runLimited(..., 2)` runs them in 3 fixed
+  // waves of 2, leaving one slot of headroom for the shared project's other
+  // traffic (EnviousStaging) rather than firing all 6 at once and getting
+  // the excess queued/timed-out. Polish tier-a (below) runs sequentially
+  // *after* all 3 waves finish - it does not need reserved concurrency.
+  // Tier-a has its own history: an EARLIER version embedded the active-user
+  // bound as a re-evaluated nested subquery inside a UNION and that
+  // measurably timed out against production PostHog (HTTP 504) - two nested
+  // re-scans of the whole PROD filter's dev-exclusion subquery, twice,
+  // inside a UNION, is too expensive. Fixed by resolving the active-user id
+  // list from `engineAndTierB` (already fetched, zero extra cost) and
+  // passing it to tier-a as a literal IN-list instead of a subquery.
+  const [installs, onboardActivate, totals, engineAndTierB, geo, top5] = await runLimited(
+    [
+      () => hogql(env, installsSql, "installs"),
+      () => hogql(env, onboardActivateSql, "onboard_activate"),
+      () => hogql(env, totalsSql, "totals"),
+      () => hogql(env, engineAndTierBSql, "engine_and_tier_b"),
+      () => hogql(env, geoSql, "geo"),
+      () => hogql(env, top5Sql, "top5"),
+    ],
+    2
+  );
 
   const activeIds = (engineAndTierB.results || []).map((row) => row[0]);
-  const tierA = activeIds.length ? await hogql(env, tierASqlFor(activeIds, endTs)) : { results: [], columns: [] };
+  const tierA = activeIds.length
+    ? await hogql(env, tierASqlFor(activeIds, endTs), "tier_a")
+    : { results: [], columns: [] };
 
   return {
     freshInstalls: installs.results[0][0],
