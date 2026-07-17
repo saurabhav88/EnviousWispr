@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// Telemetry Bible Phase 6 (#1175): the injection seam for hotkey/input-silence
@@ -93,4 +94,19 @@ public struct HotkeyRegistrationError: Error, CustomStringConvertible {
     return
       "hotkey registration failed: mechanism=\(mechanism) kind=\(hotkeyKind) os_status=\(status)"
   }
+}
+
+// MARK: - Sentry identity
+
+/// Pins the Sentry grouping key to the exact string this type has been
+/// sending in production (#1525 PR H), mirroring `HeartPathError`'s shipped
+/// pattern (#1524). One shape today (a struct, not an enum), so there is no
+/// ordinal-reorder risk yet — this pin closes the latent risk before a second
+/// shape is ever added. Fresh 90-day Sentry search found no matching issue, so
+/// this pin carries zero re-grouping risk against that window.
+extension HotkeyRegistrationError: StableSentryErrorIdentity {
+  public var sentryFingerprintDescriptor: String {
+    "EnviousWisprServices.HotkeyRegistrationError#1"
+  }
+  public var sentrySemanticID: String { "hotkey.registration_failed" }
 }

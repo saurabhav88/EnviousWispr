@@ -119,10 +119,27 @@ final class HotkeyController {
       extra: ["callback": callback])
   }
 
-  private struct NilCollaboratorError: Error, CustomStringConvertible {
+  // `internal` (widened from `private` in #1525 PR H, only after measuring —
+  // widening first would have corrupted the baseline). A `private`-or-narrower
+  // type's bridged domain falls back to the bare simple type name
+  // (`SentryBreadcrumb.structuredDescriptor`'s `(unknown context at ...)`
+  // branch), never the module- or class-qualified name — so this widening
+  // never changes what was already shipping.
+  internal struct NilCollaboratorError: Error, CustomStringConvertible {
     let callback: String
     var description: String {
       "HotkeyController callback \(callback) observed nil collaborator during app lifetime"
     }
   }
+}
+
+// MARK: - Sentry identity
+
+/// Pins the Sentry grouping key to the exact string this type has been
+/// sending in production (#1525 PR H), mirroring `HeartPathError`'s shipped
+/// pattern (#1524). Fresh 90-day Sentry search found no matching issue, so
+/// this pin carries zero re-grouping risk against that window.
+extension HotkeyController.NilCollaboratorError: StableSentryErrorIdentity {
+  var sentryFingerprintDescriptor: String { "NilCollaboratorError#1" }
+  var sentrySemanticID: String { "hotkey.nil_collaborator" }
 }
