@@ -9,7 +9,7 @@ import Testing
 struct WhisperKitBackendClipTimestampsTests {
   @Test("clipTimestamps empty when no speech segments")
   func clipTimestamps_emptyWhenNoSpeechSegments() async {
-    let backend = WhisperKitBackend()
+    let backend = WhisperKitBackend(admittedModelFolder: { nil })
     let opts = await backend.makeDecodeOptions(
       from: TranscriptionOptions(speechSegments: []),
       sampleCount: 16_000
@@ -20,7 +20,7 @@ struct WhisperKitBackendClipTimestampsTests {
 
   @Test("clipTimestamps pairs converted to seconds")
   func clipTimestamps_pairsConvertedToSeconds() async {
-    let backend = WhisperKitBackend()
+    let backend = WhisperKitBackend(admittedModelFolder: { nil })
     let sampleRate = Float(WhisperKit.sampleRate)
     let segments = [
       SpeechSegment(
@@ -45,7 +45,7 @@ struct WhisperKitBackendClipTimestampsTests {
 
   @Test("windowClipTime is still zero")
   func windowClipTime_isStillZero() async {
-    let backend = WhisperKitBackend()
+    let backend = WhisperKitBackend(admittedModelFolder: { nil })
     let opts = await backend.makeDecodeOptions(
       from: TranscriptionOptions(
         speechSegments: [SpeechSegment(startSample: 0, endSample: Int(WhisperKit.sampleRate))]
@@ -58,7 +58,7 @@ struct WhisperKitBackendClipTimestampsTests {
 
   @Test("chunking strategy unchanged for 30s boundary")
   func chunkingStrategyUnchangedFor30sBoundary() async {
-    let backend = WhisperKitBackend()
+    let backend = WhisperKitBackend(admittedModelFolder: { nil })
     let thirtySeconds = Int(WhisperKit.sampleRate) * 30
 
     let atBoundary = await backend.makeDecodeOptions(
@@ -78,7 +78,7 @@ struct WhisperKitBackendClipTimestampsTests {
 
   @Test("zero-width speech segment produces clip pair")
   func clipTimestamps_zeroWidthSegmentDoesNotCrash() async {
-    let backend = WhisperKitBackend()
+    let backend = WhisperKitBackend(admittedModelFolder: { nil })
     let segment = SpeechSegment(
       startSample: Int(WhisperKit.sampleRate),
       endSample: Int(WhisperKit.sampleRate)
@@ -94,7 +94,7 @@ struct WhisperKitBackendClipTimestampsTests {
 
   @Test("empty speechSegments produces same options as default")
   func emptySpeechSegments_producesSameOptionsAsToday() async {
-    let backend = WhisperKitBackend()
+    let backend = WhisperKitBackend(admittedModelFolder: { nil })
     let defaultOptions = await backend.makeDecodeOptions(
       from: .default,
       sampleCount: 16_000

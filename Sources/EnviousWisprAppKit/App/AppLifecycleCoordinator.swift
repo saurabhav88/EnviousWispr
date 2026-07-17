@@ -156,6 +156,14 @@ final class AppLifecycleCoordinator {
     // PR-B.3 of #763: the menu bar surface lives on `MenuBarController`.
     menuBarController.installStatusItem()
 
+    // #1386 PR-2: the app is now on screen, so the multilingual migration may
+    // look in ~/Documents — the one phase that can raise a Files-and-Folders
+    // prompt, which must never appear before there is an app behind it. Owned by
+    // `SetupCoordinator` (it already owns this engine's setup lifecycle), so no
+    // new dependency lands on this coordinator. A limb: never blocks launch, and
+    // a denied prompt leaves the user's copy untouched.
+    setup.startWhisperKitMigrationThenDetect()
+
     // Update menu bar icon whenever pipeline state changes. The closure is
     // composite — it also triggers the audio-environment snapshotter on
     // `.recording`. PR-B.4 of #763: both the snapshotter and this closure now

@@ -30,7 +30,19 @@ private struct KeychainManagerEnvironmentKey: EnvironmentKey {
   static let defaultValue: KeychainManager? = nil
 }
 
+private struct ActiveEngineEnvironmentKey: EnvironmentKey {
+  static let defaultValue: ActiveEngineOperation? = nil
+}
+
 extension EnvironmentValues {
+  /// #1386 PR-2: the active-engine door for Diagnostics. A plain struct of
+  /// closures, so like `asrManager` it needs a key rather than the object-based
+  /// modifier.
+  var activeEngine: ActiveEngineOperation? {
+    get { self[ActiveEngineEnvironmentKey.self] }
+    set { self[ActiveEngineEnvironmentKey.self] = newValue }
+  }
+
   var asrManager: (any ASRManagerInterface)? {
     get { self[ASRManagerEnvironmentKey.self] }
     set { self[ASRManagerEnvironmentKey.self] = newValue }

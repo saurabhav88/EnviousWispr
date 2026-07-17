@@ -30,11 +30,11 @@ final class BenchmarkSuite {
   private(set) var progress: String = ""
 
   /// Ensure model is loaded, returning false (and updating progress) if loading fails.
-  private func ensureModelLoaded(using asrManager: any ASRManagerInterface) async -> Bool {
-    guard !asrManager.isModelLoaded else { return true }
+  private func ensureModelLoaded(using activeEngine: ActiveEngineOperation) async -> Bool {
+    guard !(await activeEngine.isLoaded()) else { return true }
     progress = "Loading model..."
     do {
-      try await asrManager.loadModel()
+      try await activeEngine.load()
       return true
     } catch {
       progress = "Model load failed: \(error.localizedDescription)"
@@ -43,12 +43,12 @@ final class BenchmarkSuite {
   }
 
   /// Run ASR benchmarks with the given ASR manager.
-  func run(using asrManager: any ASRManagerInterface) async {
+  func run(using asrManager: any ASRManagerInterface, activeEngine: ActiveEngineOperation) async {
     guard !isRunning else { return }
     isRunning = true
     results = []
 
-    guard await ensureModelLoaded(using: asrManager) else {
+    guard await ensureModelLoaded(using: activeEngine) else {
       isRunning = false
       return
     }
@@ -60,7 +60,7 @@ final class BenchmarkSuite {
       let samples = generateTestAudio(duration: duration)
 
       let start = CFAbsoluteTimeGetCurrent()
-      _ = try? await asrManager.transcribe(audioSamples: samples, options: .default)
+      _ = try? await activeEngine.transcribe(samples, .default)
       let elapsed = CFAbsoluteTimeGetCurrent() - start
 
       results.append(
@@ -76,12 +76,14 @@ final class BenchmarkSuite {
   }
 
   /// Run pipeline benchmark: batch ASR, streaming ASR (if supported), and WER comparison.
-  func runPipelineBenchmark(using asrManager: any ASRManagerInterface) async {
+  func runPipelineBenchmark(
+    using asrManager: any ASRManagerInterface, activeEngine: ActiveEngineOperation
+  ) async {
     guard !isRunning else { return }
     isRunning = true
     pipelineResult = nil
 
-    guard await ensureModelLoaded(using: asrManager) else {
+    guard await ensureModelLoaded(using: activeEngine) else {
       isRunning = false
       return
     }
@@ -118,7 +120,7 @@ final class BenchmarkSuite {
     // Step 1: Batch ASR
     progress = "Running batch ASR..."
     let batchStart = CFAbsoluteTimeGetCurrent()
-    let batchResult = try? await asrManager.transcribe(audioSamples: testSamples, options: .default)
+    let batchResult = try? await activeEngine.transcribe(testSamples, .default)
     let batchTime = CFAbsoluteTimeGetCurrent() - batchStart
     let batchTranscript = batchResult?.text ?? ""
 

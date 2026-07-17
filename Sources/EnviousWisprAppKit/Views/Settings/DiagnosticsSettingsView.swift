@@ -6,6 +6,8 @@ import SwiftUI
 struct DiagnosticsSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(\.asrManager) private var asrManagerEnv
+  @Environment(EngineCoordinator.self) private var engineCoordinator: EngineCoordinator?
+  @Environment(\.activeEngine) private var activeEngineEnv
   @Environment(DiagnosticsCoordinator.self) private var diagnostics
   // PR7 of #763: live phase resolves through LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
@@ -21,6 +23,7 @@ struct DiagnosticsSettingsView: View {
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
   /// environment (see `AppEnvironmentKeys.swift`).
   private var asrManager: any ASRManagerInterface { asrManagerEnv! }
+  private var activeEngine: ActiveEngineOperation { activeEngineEnv! }
 
   #if DEBUG
     /// DEV-ONLY (AFM adapter PoC): surfaces whether EW_AFM_ADAPTER_PATH is set so
@@ -205,11 +208,15 @@ struct DiagnosticsSettingsView: View {
           BrandedRow {
             HStack {
               Button("Run ASR Benchmark") {
-                Task { await diagnostics.benchmark.run(using: asrManager) }
+                Task {
+                  await diagnostics.benchmark.run(
+                    using: asrManager, activeEngine: activeEngine)
+                }
               }
               Button("Run Pipeline Benchmark") {
                 Task {
-                  await diagnostics.benchmark.runPipelineBenchmark(using: asrManager)
+                  await diagnostics.benchmark.runPipelineBenchmark(
+                    using: asrManager, activeEngine: activeEngine)
                 }
               }
             }
@@ -280,8 +287,10 @@ struct DiagnosticsSettingsView: View {
           HStack {
             Text("Model status:")
             Spacer()
-            Text(asrManager.isModelLoaded ? "Loaded" : "Unloaded")
-              .foregroundStyle(asrManager.isModelLoaded ? .stSuccess : .stTextSecondary)
+            Text((engineCoordinator?.status.activeModelLoaded ?? false) ? "Loaded" : "Unloaded")
+              .foregroundStyle(
+                (engineCoordinator?.status.activeModelLoaded ?? false)
+                  ? .stSuccess : .stTextSecondary)
           }
         }
       }

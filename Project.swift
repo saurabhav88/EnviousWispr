@@ -363,6 +363,7 @@ let project = Project(
         // #1348 Phase 2: Parakeet delivery manifest — the bundled trust root
         // (contract 4a). Same Bundle.main route as eg1-manifest.json.
         "Sources/EnviousWispr/Resources/parakeet-delivery-manifest.json",
+        "Sources/EnviousWispr/Resources/whisperkit-delivery-manifest.json",
         // #1348 Phase 3: EG-1 delivery manifest — the DELIVERY trust root for
         // EG-1's convergence onto the shared engine (the runtime trust root
         // stays eg1-manifest.json). Same Bundle.main route.

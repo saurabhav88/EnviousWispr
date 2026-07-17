@@ -153,10 +153,15 @@ public enum LegacyRetirement {
     case .mismatch: return .mismatch
     }
 
-    // Walk every component with lstat before touching the leaf. Checking only the final
-    // file follows an escaping parent symlink — and unlike an import, which merely READS
-    // through such a link, we DELETE through it. This carries the guard out of
-    // `ModelDeliveryController.importLocalCandidate` before that primitive is retired.
+    // Walk every component with lstat before touching the leaf. Checking only the final file
+    // follows an escaping parent symlink — and where a read merely returns the wrong bytes,
+    // we DELETE through it.
+    //
+    // Provenance, because the obvious grep leads nowhere: this guard was worked out by the
+    // WITHDRAWN move/migrate design's review rounds (#1386, `b11ceaa2`'s import primitive,
+    // hardened across its Codex r1-r7). That branch never merged, so there is no shipped
+    // `importLocalCandidate` to compare against — the findings are all that survived it, and
+    // this is where they live now.
     var walk = root
     for component in file.relativePath.split(separator: "/").dropLast() {
       walk.appendPathComponent(String(component))
@@ -294,9 +299,11 @@ public enum LegacyRetirement {
 
   /// Is this an iCloud placeholder whose bytes are not on this Mac?
   ///
-  /// Ported from `ModelDeliveryController.importLocalCandidate`, which refuses these as
-  /// `.datalessPlaceholder`. It is the seventh of that primitive's guards and the one this
-  /// extraction had missed.
+  /// From the withdrawn move/migrate design's import primitive (#1386, `b11ceaa2`), which
+  /// refused these as `.datalessPlaceholder`. That branch never merged; this was the last of
+  /// its seven path guards still missing here, and it matters more in this design than it did
+  /// there — that primitive READ the foreign cache, while this one deletes from it, and the
+  /// cache sits under `~/Documents` where users sync.
   /// Asked of the descriptor we opened (via `F_GETPATH`), not the path we were handed, so a
   /// leaf swapped after `open` cannot make us answer about a different file.
   ///
@@ -346,6 +353,34 @@ public enum LegacyRetirement {
     // A symlink or a non-directory where the manifest says a directory belongs is not our
     // tree, whatever it points at.
     return info.isDirectoryNotLink ? .ok : .mismatch
+  }
+
+  /// Cheap `lstat` identity of each path, with no hashing and no reads.
+  ///
+  /// The classification half of this type answers "are these our bytes"; this answers the
+  /// narrower "are these the same bytes I looked at last time". A caller that persists a
+  /// refusal needs the second: a verdict alone cannot express it, because `.mismatch` and
+  /// `.unreadable` carry no identity — only `.match` does, and by definition a refused copy
+  /// is not a match.
+  ///
+  /// - Returns: one entry per requested path. `nil` means the identity could not be read at
+  ///   all, which is itself information worth persisting: it distinguishes "we could not
+  ///   look" from "it was not there", and a copy that becomes readable later is a copy worth
+  ///   re-examining.
+  public static func snapshotIdentities(
+    root: URL, relativePaths: [String]
+  ) -> [String: FileIdentity?] {
+    var snapshot: [String: FileIdentity?] = [:]
+    snapshot.reserveCapacity(relativePaths.count)
+    for relativePath in relativePaths {
+      guard isWalkablePath(relativePath) else {
+        snapshot[relativePath] = FileIdentity?.none
+        continue
+      }
+      let url = root.appendingPathComponent(relativePath)
+      snapshot[relativePath] = lstatIdentity(at: url)?.identity
+    }
+    return snapshot
   }
 
   // MARK: - Roll-up

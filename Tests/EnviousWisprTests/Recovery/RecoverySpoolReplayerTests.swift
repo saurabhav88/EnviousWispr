@@ -138,7 +138,13 @@ struct RecoverySpoolReplayerTests {
     let transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
     let asr = FakeBatchASR()
     let replayer = RecoverySpoolReplayer(
-      asrManager: asr,
+      activeEngine: ActiveEngineOperation(
+        isLoaded: { asr.isModelLoaded },
+        load: { try await asr.loadModel() },
+        transcribe: { samples, options in
+          try await asr.transcribe(audioSamples: samples, options: options)
+        },
+        hardCancel: {}),
       keyStore: keyStore,
       makeSpoolStore: { RecoverySpoolStore(directory: spoolDir) },
       transcriptStore: transcriptStore,
@@ -369,8 +375,15 @@ struct RecoverySpoolReplayerTests {
       try Data([0]).write(to: blocker)
       let badSpoolDir = blocker.appendingPathComponent("spools", isDirectory: true)
       let transcriptStore = TranscriptStore(directory: Self.tempDir())
+      let inlineASR = FakeBatchASR()
       let replayer = RecoverySpoolReplayer(
-        asrManager: FakeBatchASR(),
+        activeEngine: ActiveEngineOperation(
+          isLoaded: { inlineASR.isModelLoaded },
+          load: { try await inlineASR.loadModel() },
+          transcribe: { samples, options in
+            try await inlineASR.transcribe(audioSamples: samples, options: options)
+          },
+          hardCancel: {}),
         keyStore: RecoveryKeyStore(backend: .file, fileDirectory: Self.tempDir()),
         makeSpoolStore: { RecoverySpoolStore(directory: badSpoolDir) },
         transcriptStore: transcriptStore,

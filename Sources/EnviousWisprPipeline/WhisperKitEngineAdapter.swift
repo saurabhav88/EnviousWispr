@@ -321,22 +321,21 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
 
   /// Cache-only warm-up — intentionally a near no-op for WhisperKit.
   ///
-  /// Earlier drafts dispatched `prepareIfCached()` here on a detached `Task`
-  /// to silently load a cached model during the kernel's `preWarm` hop, but a
-  /// detached `prepareIfCached` racing the kernel's spawned `warmUp()`
-  /// (which calls `prepare()`) risked two concurrent CoreML loads. #1275
-  /// routed `prepareIfCached()` through the SAME `loadTask` single-flight
-  /// owner `prepare()` uses (`WhisperKitBackend.swift`'s `loadIfNeeded`), so
-  /// that specific race is now closed at the backend layer regardless of
-  /// caller. This adapter still does not dispatch a detached
-  /// `prepareIfCached` here, since it remains unnecessary:
+  /// Earlier drafts dispatched a detached cache-only load here during the
+  /// kernel's `preWarm` hop, which risked two concurrent CoreML loads racing the
+  /// kernel's own spawned `warmUp()`. #1386 PR-2 deleted that door outright:
+  /// `prepare()` is now the ONLY way this backend maps a model, so there is one
+  /// load path and one single-flight owner.
+  /// This adapter dispatches nothing here, and that remains unnecessary because:
   ///
   /// In the kernel-driven flow, the kernel's spawned `warmUp()` path
-  /// already calls `prepare()`, which internally checks
-  /// `WhisperKitSetupService.getLocalModelPath` and loads from cache when
-  /// the model is cached. So no `warmUpFromCache` work is needed here —
-  /// the cached-load optimization is preserved by `prepare()`'s own cache
-  /// branch, and the single-flight guard prevents duplicate loads.
+  /// already calls `prepare()`, which resolves the admitted owned model folder
+  /// and loads from it when one exists. (#1386 PR-2 replaced the old
+  /// `WhisperKitSetupService.getLocalModelPath` ~/Documents probe named here:
+  /// availability is controller admission now, and `prepare()` never fetches.)
+  /// So no `warmUpFromCache` work is needed here — the cached-load
+  /// optimization is preserved by `prepare()`'s own resolve branch, and the
+  /// single-flight guard prevents duplicate loads.
   ///
   /// Side effect: keep `cachedReadiness`/`cachedWarmupInferenceMs` refreshed
   /// against the backend's current state so a recently-unloaded model is
@@ -1370,8 +1369,6 @@ package protocol WhisperKitBackendDriving: Actor {
   /// state (completed/threw/timed-out — only `.completed` sets it).
   var lastWarmupInferenceMs: Int? { get }
   func prepare() async throws
-  // periphery:ignore - protocol requirement (witnessed by WhisperKitBackend)
-  func prepareIfCached() async throws -> Bool
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
   func observeLID(samples: [Float], maxWindows: Int) async -> LIDObservationBatch
   // #1276 Step 2 (PR-2): vend the authoritative streaming session
@@ -1384,7 +1381,7 @@ package protocol WhisperKitBackendDriving: Actor {
 
 // Retroactive conformance — `WhisperKitBackend` already has every requirement
 // at the right access level (`isReady` public, `modelVariantName` package,
-// `prepare()` public, `prepareIfCached()` package, `transcribe(...)` public,
+// `prepare()` public, `transcribe(...)` public,
 // `observeLID(...)` package, `makeStreamingSession(...)` package, `unload()`
 // public). No method additions needed in `EnviousWisprASR`.
 extension WhisperKitBackend: WhisperKitBackendDriving {}

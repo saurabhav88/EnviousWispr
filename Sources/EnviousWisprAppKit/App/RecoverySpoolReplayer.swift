@@ -71,7 +71,12 @@ protocol RecoverySpoolReplaying: AnyObject {
 /// abandoned (§3.3).
 @MainActor
 final class RecoverySpoolReplayer: RecoverySpoolReplaying {
-  private let asrManager: any ASRManagerInterface
+  /// #1386 PR-2: recovery used to call `ASRManagerInterface.loadModel()`, which for
+  /// WhisperKit crossed XPC and had the helper build its own backend — a model the app's
+  /// injected `admittedModelFolder` closure cannot reach, so it could not resolve the owned
+  /// folder and could only fall back to fetching. It now goes through the active-engine door,
+  /// which routes each engine to its own in-process loader.
+  private let activeEngine: ActiveEngineOperation
   private let keyStore: RecoveryKeyStore
   private let makeSpoolStore: @Sendable () -> RecoverySpoolStore
   private let transcriptStore: TranscriptStore
@@ -87,7 +92,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     @MainActor () -> (corrector: CorrectorVocabulary, polish: PolishVocabulary)
 
   init(
-    asrManager: any ASRManagerInterface,
+    activeEngine: ActiveEngineOperation,
     keyStore: RecoveryKeyStore,
     makeSpoolStore: @escaping @Sendable () -> RecoverySpoolStore,
     transcriptStore: TranscriptStore,
@@ -99,7 +104,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       corrector: CorrectorVocabulary, polish: PolishVocabulary
     )
   ) {
-    self.asrManager = asrManager
+    self.activeEngine = activeEngine
     self.keyStore = keyStore
     self.makeSpoolStore = makeSpoolStore
     self.transcriptStore = transcriptStore
@@ -202,7 +207,13 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // actually transcribed — so the metadata stays accurate either way.
     let options = Self.transcriptionOptions(for: recovered.settings)
     do {
-      try await asrManager.loadModel()
+      // A replay racing the #1386 launch migration can find no admitted model,
+      // fail, and delete the spool. ACCEPTED, not a defect (founder ruling,
+      // plan §2.4: "If we lose a recording, we lose a recording"): recovery is
+      // a limb, and a migration gate here is the crash-recovery coupling that
+      // ruling exists to forbid. Reviewers keep re-deriving this — do not
+      // "fix" it without a new founder decision.
+      try await activeEngine.load()
     } catch {
       // Discard hard-resets the engine, which can throw here — that's an abort,
       // not a recovery failure (don't log/emit; the coordinator owns cleanup).
@@ -215,7 +226,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     if isAborted() { return .aborted }
     let result: ASRResult
     do {
-      result = try await asrManager.transcribe(audioSamples: recovered.samples, options: options)
+      result = try await activeEngine.transcribe(recovered.samples, options)
     } catch {
       // A Discard-driven engine reset kills the in-flight transcribe and surfaces
       // here as a throw — treat it as an abort (the user discarded), not a failure.

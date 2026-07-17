@@ -1,22 +1,4 @@
 import Foundation
-@preconcurrency import WhisperKit
-
-/// Free function (nonisolated) that wraps WhisperKit.download() and relays progress
-/// via an AsyncStream continuation. The continuation is Sendable, so this avoids
-/// Swift 6 data-race diagnostics around sending a MainActor-captured closure
-/// to a nonisolated function.
-private func whisperKitDownload(
-  variant: String,
-  progressContinuation: AsyncStream<Double>.Continuation
-) async throws {
-  defer { progressContinuation.finish() }
-  _ = try await WhisperKit.download(
-    variant: variant,
-    progressCallback: { progress in
-      progressContinuation.yield(progress.fractionCompleted)
-    }
-  )
-}
 
 /// States in the WhisperKit model setup flow.
 public enum WhisperKitSetupState: Equatable {
@@ -27,8 +9,16 @@ public enum WhisperKitSetupState: Equatable {
   case error(String)
 }
 
-/// Guides users through WhisperKit model download.
-/// Downloads happen in Settings — NOT auto-triggered on first record.
+/// Presents WhisperKit model setup in Settings. Downloads happen there — NEVER
+/// auto-triggered on first record.
+///
+/// #1386 PR-2 hollowed this out. It used to own a `WhisperKit.download()` task
+/// pointed at a folder we do not control, and treat a 3-artifact directory probe
+/// as proof a model existed. Both are gone: availability is controller admission
+/// alone, and fetching goes through the verified delivery path. What remains is
+/// presentation — the same `downloadModel()` / `cancelDownload()` surface the
+/// Settings view already calls, now delegating to injected actions so this type
+/// holds no download task and no cache truth of its own.
 @MainActor
 @Observable
 public final class WhisperKitSetupService {
@@ -37,30 +27,44 @@ public final class WhisperKitSetupService {
 
   public private(set) var setupState: WhisperKitSetupState = .checking
 
-  /// Model variant to download. Source of truth: `WhisperKitBackend.defaultModelVariant()`.
+  /// Model variant. Source of truth: `WhisperKitBackend.defaultModelVariant()`.
   // BRAIN: gotcha id=model-name-format
   public let modelVariant: String = WhisperKitBackend.defaultModelVariant()
 
-  public init() {}
+  /// Reads current availability: `.ready` when an admitted verified model exists,
+  /// admission truth alone; a refused foreign copy is simply not an installed model.
+  /// `.notDownloaded` otherwise. Injected by the composition root over the
+  /// delivery handle + relocation coordinator — ASR imports neither Pipeline nor
+  /// ModelDelivery, so the dependency arrives as a closure.
+  private let readAvailability: @MainActor () async -> WhisperKitSetupState
+  /// The explicit Download action (controller-backed). Returns whether the
+  /// request was ACCEPTED — false means refused (kill switch off, no wiring)
+  /// and no delivery state will ever arrive for it.
+  private let startDownload: @MainActor () async -> Bool
+  /// The explicit Cancel action (controller-backed; drains the active fetch).
+  /// Returns whether the cancel was ACCEPTED — false means the coordinator
+  /// refused it (a failed marker clear, L1) and the fetch is still running.
+  private let cancelActiveDownload: @MainActor () async -> Bool
 
-  // MARK: - Private
-
-  private var downloadTask: Task<Void, Never>?
-
-  /// WhisperKit model storage directory.
-  /// WhisperKit 0.12+ downloads models to ~/Documents/huggingface/models/argmaxinc/whisperkit-coreml/
-  /// nonisolated(unsafe) is required: the class is @MainActor but nonisolated static methods reference this.
-  nonisolated(unsafe) private static let whisperKitModelRoot: URL? = FileManager.default
-    .homeDirectoryForCurrentUser
-    .appendingPathComponent("Documents/huggingface/models/argmaxinc/whisperkit-coreml")
+  /// The default wiring reports "not downloaded" and does nothing: a build with
+  /// no delivery wiring must offer no fetch at all rather than quietly resurrect
+  /// an unverified one.
+  public init(
+    readAvailability: @escaping @MainActor () async -> WhisperKitSetupState = { .notDownloaded },
+    startDownload: @escaping @MainActor () async -> Bool = { false },
+    cancelActiveDownload: @escaping @MainActor () async -> Bool = { false }
+  ) {
+    self.readAvailability = readAvailability
+    self.startDownload = startDownload
+    self.cancelActiveDownload = cancelActiveDownload
+  }
 
   // MARK: - Detection
 
   private var lastDetectTime: Date?
 
-  /// Check whether the model is already cached locally.
-  /// Sets setupState to .ready or .notDownloaded (never triggers a download).
-  /// Caches result for 5 seconds to avoid redundant file I/O on tab switches.
+  /// Refresh from delivery truth. Never downloads. Caches for 5s so tab switches
+  /// do not re-ask on every appearance.
   public func detectState() async {
     if let lastTime = lastDetectTime,
       Date().timeIntervalSince(lastTime) < 5.0,
@@ -68,119 +72,62 @@ public final class WhisperKitSetupService {
     {
       return
     }
-
     setupState = .checking
-    let isDownloaded = WhisperKitSetupService.isModelCached(variant: modelVariant)
-    setupState = isDownloaded ? .ready : .notDownloaded
+    setupState = await readAvailability()
     lastDetectTime = Date()
   }
 
-  /// Force a fresh state check, ignoring cache.
+  /// Force a fresh state check, ignoring the cache.
   public func forceDetectState() async {
     lastDetectTime = nil
     await detectState()
   }
 
-  /// Returns true if a folder matching the given model variant exists in the HF cache.
-  public nonisolated static func isModelCached(variant: String) -> Bool {
-    return getLocalModelPath(variant: variant) != nil
-  }
-
-  /// Returns the local path to a fully-cached WhisperKit model, or nil if not
-  /// downloaded OR if the cache is incomplete (missing one of the required
-  /// `.mlmodelc` artifacts — e.g. an interrupted download).
-  /// WhisperKit 0.12+ stores models as direct subdirectories like
-  /// `openai_whisper-large-v3`. Partial-download semantics (issue #329):
-  /// treating an incomplete folder as "not cached" keeps `detectState` →
-  /// `setupState` accurate (UI offers Download) and lets `prepare()` fall
-  /// back to `WhisperKit.download(...)` instead of trying to load a
-  /// corrupt path.
-  public nonisolated static func getLocalModelPath(variant: String) -> String? {
-    guard let root = whisperKitModelRoot else { return nil }
-
-    let fm = FileManager.default
-    guard fm.fileExists(atPath: root.path) else { return nil }
-
-    let variantLower = variant.lowercased()
-    let sanitizedLower = variant.replacingOccurrences(of: "-", with: "_").lowercased()
-
-    guard let contents = try? fm.contentsOfDirectory(atPath: root.path) else {
-      return nil
-    }
-
-    for dir in contents {
-      let lower = dir.lowercased()
-      if lower.contains(variantLower) || lower.contains(sanitizedLower) {
-        let fullPath = root.appendingPathComponent(dir).path
-        var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: fullPath, isDirectory: &isDir), isDir.boolValue else {
-          continue
-        }
-        guard WhisperKitBackend.hasRequiredArtifacts(at: fullPath) else { continue }
-        return fullPath
-      }
-    }
-    return nil
+  /// Apply a delivery-state projection pushed by the composition root (the
+  /// download's live progress). Kept separate from `detectState()` so a push
+  /// never fights the 5s read cache.
+  public func applyDeliveryState(_ state: WhisperKitSetupState) {
+    setupState = state
+    if case .ready = state { lastDetectTime = Date() }
   }
 
   // MARK: - Download
 
-  /// Start downloading the model with progress tracking.
+  /// Monotonic download intent. A Cancel bumps it, so a download task whose
+  /// body has not yet run notices its intent is stale and never starts the
+  /// multi-GB fetch (cloud review P2 on PR #1606: an instant Cancel could
+  /// outrun the untracked task and find nothing to cancel). MainActor-serial,
+  /// so the epoch comparison is deterministic.
+  private var downloadIntentEpoch = 0
+
+  /// The user asked for the model. Delegates to the verified delivery path; the
+  /// state projection drives progress from there. A REFUSED request re-detects
+  /// instead — no delivery state will ever arrive for it, and leaving the
+  /// optimistic "Starting download..." up would stick forever (Codex 2b-r1 P2).
   public func downloadModel() {
-    downloadTask?.cancel()
     setupState = .downloading(progress: 0, status: "Starting download...")
-
-    let variant = modelVariant
-    downloadTask = Task { [weak self] in
-      // Run the actual network download on a detached task (nonisolated context).
-      // Progress fractions are relayed back via an AsyncStream so there is no
-      // actor-isolated closure sent to a nonisolated function (Swift 6 safe).
-      let (progressStream, progressContinuation) = AsyncStream<Double>.makeStream()
-
-      let downloadResult: Task<Void, Error> = Task.detached {
-        // The progress callback runs on whatever thread URLSession uses.
-        // It feeds into the stream (safe — AsyncStream continuation is Sendable).
-        try await whisperKitDownload(
-          variant: variant,
-          progressContinuation: progressContinuation
-        )
-      }
-
-      // Consume progress updates on the MainActor while the download runs.
-      // If outer Task is cancelled, exit the loop and cancel the inner download.
-      for await fraction in progressStream {
-        if Task.isCancelled { break }
-        guard let self else { break }
-        self.setupState = .downloading(progress: fraction, status: "Downloading model files...")
-      }
-
-      // If the outer Task was cancelled, cancel the inner detached download too.
-      if Task.isCancelled {
-        downloadResult.cancel()
-        self?.setupState = .notDownloaded
-        return
-      }
-
-      do {
-        try await downloadResult.value
-        guard let self else { return }
-        self.lastDetectTime = Date()
-        self.setupState = .ready
-      } catch is CancellationError {
-        self?.setupState = .notDownloaded
-        downloadResult.cancel()
-      } catch {
-        self?.setupState = .error(
-          "Download failed — check your internet connection and try again."
-        )
+    downloadIntentEpoch += 1
+    let epoch = downloadIntentEpoch
+    Task { [startDownload, weak self] in
+      guard let self, self.downloadIntentEpoch == epoch else { return }
+      if await startDownload() == false {
+        await self.forceDetectState()
       }
     }
   }
 
-  /// Cancel an in-progress download.
+  /// Cancel an in-progress download. Acknowledgment is instant by design — the
+  /// controller's cancel resolves only after its drain. A REFUSED cancel (L1:
+  /// the owed marker would not clear) re-detects NOTHING: the fetch is still
+  /// running and the live state stream keeps showing it (Codex 2b-r3 P2).
   public func cancelDownload() {
-    downloadTask?.cancel()
-    downloadTask = nil
-    setupState = .notDownloaded
+    // Invalidate any download intent whose task has not run yet — cancelling
+    // downstream cannot reach a request that has not been made.
+    downloadIntentEpoch += 1
+    Task { [cancelActiveDownload, weak self] in
+      if await cancelActiveDownload() {
+        await self?.forceDetectState()
+      }
+    }
   }
 }

@@ -138,21 +138,17 @@ import Testing
     #expect(count == 0)
   }
 
-  @Test(
-    "warmUpFromCache() does NOT call prepareIfCached (avoids load-race with prepare(), Codex r5)"
-  )
+  @Test("warmUpFromCache() reads readiness and never triggers a load")
   func warmUpFromCacheDoesNotTriggerLoad() async throws {
     let backend = StubWhisperKitBackend()
-    await backend.setPrepareIfCachedResult(true)
     let adapter = WhisperKitEngineAdapter(backend: backend)
     try await adapter.warmUpFromCache()
-    // warmUpFromCache awaits its own work and (by design, Codex r5) spawns no
-    // background load task, so the counts are final the instant it returns —
-    // assert synchronously instead of yield-polling for a task that never
-    // exists (#875).
-    let pifCount = await backend.prepareIfCachedCount
+    // warmUpFromCache awaits its own work and spawns no background load task, so
+    // the count is final the instant it returns — assert synchronously instead
+    // of yield-polling for a task that never exists (#875). The cache-only load
+    // door it used to guard against is gone entirely: `prepare()` is now the one
+    // way this backend maps a model, and it goes through the relocation gate.
     let prepareCount = await backend.prepareCount
-    #expect(pifCount == 0, "warmUpFromCache must NOT call prepareIfCached")
     #expect(prepareCount == 0, "warmUpFromCache must NOT call prepare")
   }
 
@@ -508,7 +504,6 @@ import Testing
   }
 
   // MARK: Finalize — single clean batch (#1307: no incremental worker)
-
 
   @Test("lockedModeGoesStraightToBatch: .locked finalize runs one clean batch decode")
   func lockedModeGoesStraightToBatch() async throws {

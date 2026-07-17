@@ -23,12 +23,7 @@ struct ASRManagerBackendInjectionTests {
   @Test("switchBackend from a loaded state resets isModelLoaded to false")
   func switchBackendFromLoadedResetsIsModelLoaded() async throws {
     let parakeet = FakeASRBackend(initiallyReady: true)
-    let whisperKit = FakeASRBackend(initiallyReady: true)
-
-    let manager = ASRManager(
-      parakeetBackend: parakeet,
-      whisperKitBackend: whisperKit
-    )
+    let manager = ASRManager(parakeetBackend: parakeet)
 
     // Drive the manager to "loaded" via the public loadModel path. Because
     // FakeASRBackend reports ready, loadModel completes synchronously after
@@ -44,31 +39,19 @@ struct ASRManagerBackendInjectionTests {
   @Test("switchBackend unloads the previous backend exactly once")
   func switchBackendUnloadsPreviousBackend() async throws {
     let parakeet = FakeASRBackend(initiallyReady: true)
-    let whisperKit = FakeASRBackend(initiallyReady: true)
-
-    let manager = ASRManager(
-      parakeetBackend: parakeet,
-      whisperKitBackend: whisperKit
-    )
+    let manager = ASRManager(parakeetBackend: parakeet)
     try await manager.loadModel()
 
     await manager.switchBackend(to: .whisperKit)
 
     let parakeetUnloads = await parakeet.unloadCount
-    let whisperKitUnloads = await whisperKit.unloadCount
     #expect(parakeetUnloads == 1)
-    #expect(whisperKitUnloads == 0)
   }
 
   @Test("switchBackend to the same type is a no-op (no unload, flags preserved)")
   func switchBackendSameTypeIsNoOp() async throws {
     let parakeet = FakeASRBackend(initiallyReady: true)
-    let whisperKit = FakeASRBackend(initiallyReady: true)
-
-    let manager = ASRManager(
-      parakeetBackend: parakeet,
-      whisperKitBackend: whisperKit
-    )
+    let manager = ASRManager(parakeetBackend: parakeet)
     try await manager.loadModel()
 
     await manager.switchBackend(to: .parakeet)
@@ -84,12 +67,7 @@ struct ASRManagerBackendInjectionTests {
   @Test("setInitialBackendType after a load resets isModelLoaded and isStreaming")
   func setInitialBackendTypeAfterLoadResetsFlags() async throws {
     let parakeet = FakeASRBackend(initiallyReady: true)
-    let whisperKit = FakeASRBackend(initiallyReady: true)
-
-    let manager = ASRManager(
-      parakeetBackend: parakeet,
-      whisperKitBackend: whisperKit
-    )
+    let manager = ASRManager(parakeetBackend: parakeet)
     try await manager.loadModel()
     #expect(manager.isModelLoaded == true)
 
@@ -110,15 +88,14 @@ struct ASRManagerBackendInjectionTests {
 @MainActor
 struct ASRManagerLoadGenerationTests {
 
-  private func waitForPrepareEntered(_ backend: FakeASRBackend) async {
-    while await backend.prepareCount == 0 { await Task.yield() }
+  private func waitForPrepareEntered(_ backend: FakeASRBackend, count: Int = 1) async {
+    while await backend.prepareCount < count { await Task.yield() }
   }
 
   @Test("a load superseded by cancelInFlightLoad mid-flight throws and stays unloaded")
   func cancelInFlightLoadSupersedes() async throws {
     let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
-    let manager = ASRManager(
-      parakeetBackend: parakeet, whisperKitBackend: FakeASRBackend(initiallyReady: false))
+    let manager = ASRManager(parakeetBackend: parakeet)
 
     let loadTask = Task { @MainActor in
       await #expect(throws: ASRLoadSupersededError.self) { try await manager.loadModel() }
@@ -133,8 +110,7 @@ struct ASRManagerLoadGenerationTests {
   @Test("unloadModel during an in-flight load supersedes it (bump-before-guard, Codex r2)")
   func unloadDuringInFlightLoadSupersedes() async throws {
     let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
-    let manager = ASRManager(
-      parakeetBackend: parakeet, whisperKitBackend: FakeASRBackend(initiallyReady: false))
+    let manager = ASRManager(parakeetBackend: parakeet)
 
     let loadTask = Task { @MainActor in
       await #expect(throws: ASRLoadSupersededError.self) { try await manager.loadModel() }
@@ -151,8 +127,7 @@ struct ASRManagerLoadGenerationTests {
   @Test("same-backend switch during an in-flight load does NOT supersede it (Codex r3)")
   func sameBackendSwitchDoesNotSupersede() async throws {
     let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
-    let manager = ASRManager(
-      parakeetBackend: parakeet, whisperKitBackend: FakeASRBackend(initiallyReady: false))
+    let manager = ASRManager(parakeetBackend: parakeet)
 
     let loadTask = Task { @MainActor in try await manager.loadModel() }
     await waitForPrepareEntered(parakeet)
@@ -166,12 +141,11 @@ struct ASRManagerLoadGenerationTests {
   }
 
   @Test(
-    "a real backend switch during an in-flight load retires it so the new backend loads fresh (Codex P2)"
+    "a real backend switch during an in-flight load retires it so the next load starts fresh (Codex P2)"
   )
   func realSwitchDuringInFlightLoadStartsFresh() async throws {
     let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
-    let whisperKit = FakeASRBackend(initiallyReady: false)  // ungated — loads normally
-    let manager = ASRManager(parakeetBackend: parakeet, whisperKitBackend: whisperKit)
+    let manager = ASRManager(parakeetBackend: parakeet)
 
     let loadTask = Task { @MainActor in
       await #expect(throws: ASRLoadSupersededError.self) { try await manager.loadModel() }
@@ -181,13 +155,58 @@ struct ASRManagerLoadGenerationTests {
     await parakeet.releaseGate()
     await loadTask.value
 
-    // The next load must start FRESH for the new backend, not join the retired
-    // (superseded) parakeet task and receive ASRLoadSupersededError.
-    try await manager.loadModel()
+    // #1386 PR-2: the manager no longer owns a WhisperKit backend to load, so
+    // the invariant is now proven by switching BACK — the next load must start
+    // FRESH, not join the retired (superseded) task and inherit its throw.
+    // The gated fake parks EVERY prepare, so the retry needs its own release:
+    // run it as a task, wait for its park (prepareCount == 2), then open the
+    // gate again. Awaiting `loadModel()` inline here deadlocks the suite.
+    await manager.switchBackend(to: .parakeet)
+    let retryTask = Task { @MainActor in try await manager.loadModel() }
+    await waitForPrepareEntered(parakeet, count: 2)
+    await parakeet.releaseGate()
+    try await retryTask.value
     #expect(manager.isModelLoaded == true)
-    #expect(manager.activeBackendType == .whisperKit)
-    let wkPrepares = await whisperKit.prepareCount
-    #expect(wkPrepares == 1, "new backend loaded fresh, not via the stale task")
+    #expect(manager.activeBackendType == .parakeet)
+    let prepares = await parakeet.prepareCount
+    #expect(prepares == 2, "loaded fresh, not via the stale task")
+  }
+
+  // MARK: - #1386 PR-2: the manager is Parakeet-only
+
+  @Test("loadModel refuses an engine the manager does not own, loudly")
+  func loadModelRefusesNonOwnedBackend() async throws {
+    let parakeet = FakeASRBackend(initiallyReady: true)
+    let manager = ASRManager(parakeetBackend: parakeet)
+    manager.setInitialBackendType(.whisperKit)
+
+    // WhisperKit loads in-process behind its relocation gate, never here. A
+    // silent no-op would look like a successful warm-up of a model that isn't
+    // there; worse, the old code mapped one the gate never saw.
+    await #expect(throws: ASRManagerNotOwnedError(backend: .whisperKit)) {
+      try await manager.loadModel()
+    }
+    #expect(manager.isModelLoaded == false)
+    let prepares = await parakeet.prepareCount
+    #expect(prepares == 0, "the Parakeet backend must not be loaded for a WhisperKit request")
+  }
+
+  @Test("transcribe refuses an engine the manager does not own")
+  func transcribeRefusesNonOwnedBackend() async throws {
+    let parakeet = FakeASRBackend(initiallyReady: true)
+    let manager = ASRManager(parakeetBackend: parakeet)
+    manager.setInitialBackendType(.whisperKit)
+
+    await #expect(throws: ASRManagerNotOwnedError(backend: .whisperKit)) {
+      _ = try await manager.transcribe(audioSamples: [0.0], options: .default)
+    }
+  }
+
+  @Test("the manager reports no streaming support for an engine it does not own")
+  func noStreamingSupportForNonOwnedBackend() async throws {
+    let manager = ASRManager(parakeetBackend: FakeASRBackend(initiallyReady: true))
+    manager.setInitialBackendType(.whisperKit)
+    #expect(await manager.activeBackendSupportsStreaming == false)
   }
 
   @Test(
@@ -195,8 +214,7 @@ struct ASRManagerLoadGenerationTests {
   )
   func unloadDuringInFlightLoadRetiresTaskSoRetryStartsFresh() async throws {
     let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
-    let manager = ASRManager(
-      parakeetBackend: parakeet, whisperKitBackend: FakeASRBackend(initiallyReady: false))
+    let manager = ASRManager(parakeetBackend: parakeet)
 
     // Load A parks in prepare() holding generation G.
     let loadTask = Task { @MainActor in

@@ -204,7 +204,10 @@ struct BackendMetadataTests {
     return BackendMetadata(
       settings: settings,
       asrManager: asrManager,
-      llmDiscovery: llmDiscovery
+      llmDiscovery: llmDiscovery,
+      // Mirrors production's closure shape; the fixture manager never loads,
+      // so the idle fallback renders "Unloaded" exactly as before.
+      activeModelLoaded: { [weak asrManager] in asrManager?.isModelLoaded ?? false }
     )
   }
 }

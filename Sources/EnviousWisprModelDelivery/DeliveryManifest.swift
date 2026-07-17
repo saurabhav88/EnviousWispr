@@ -115,7 +115,18 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
     guard totalBytes == files.reduce(0, { $0 + $1.sizeBytes }) else {
       throw ManifestError.structurallyInvalid("totalBytes != sum(files)")
     }
-    guard let first = sources.first, first.id == "our_copy" else {
+    // The mirror-first invariant (contract §7): sources[0] is our_copy for
+    // every family EXCEPT the multilingual (WhisperKit) engine — the ONE
+    // documented exception (#1386 PR-2, contract §5b/§13). We are not licensed
+    // to re-host Argmax's CoreML bytes, so that family's single source is an
+    // HF-pinned entry. Every other family still hard-requires our_copy first;
+    // `DeliveryManifestTests` proves the carve-out does not leak to any other
+    // family. The https-ending-in-slash check below still applies to every
+    // source regardless of family.
+    guard let first = sources.first else {
+      throw ManifestError.structurallyInvalid("sources[] empty")
+    }
+    guard first.id == "our_copy" || identity.family == .whisperKit else {
       throw ManifestError.structurallyInvalid("sources[0] must be our_copy")
     }
     var seenInstallPaths = Set<String>()

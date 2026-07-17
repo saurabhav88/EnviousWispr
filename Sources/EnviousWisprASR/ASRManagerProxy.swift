@@ -151,7 +151,14 @@ public final class ASRManagerProxy: ASRManagerInterface {
   // MARK: - ASRManagerInterface: Model lifecycle
 
   /// Load the active backend's model. Single-flight: concurrent callers await the same task.
+  ///
+  /// Parakeet only (#1386 PR-2). A WhisperKit load must never leave this process:
+  /// the helper would construct its own backend, out of reach of the in-process
+  /// relocation gate, and map a model while its bytes may still be moving.
   public func loadModel() async throws {
+    guard activeBackendType == .parakeet else {
+      throw ASRManagerNotOwnedError(backend: activeBackendType)
+    }
     // If a load is already in progress, await it instead of starting a new one.
     if let existing = inFlightLoadTask {
       try await existing.value
@@ -375,9 +382,15 @@ public final class ASRManagerProxy: ASRManagerInterface {
 
   // MARK: - ASRManagerInterface: Batch transcription
 
+  /// Parakeet only (#1386 PR-2) — see `loadModel()`. The helper no longer has a
+  /// WhisperKit backend to transcribe with, so refuse here rather than round-trip
+  /// into an "Unknown backend" from across the process boundary.
   public func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws
     -> ASRResult
   {
+    guard activeBackendType == .parakeet else {
+      throw ASRManagerNotOwnedError(backend: activeBackendType)
+    }
     let data = audioSamples.withUnsafeBytes { Data($0) }
     let language = options.language ?? ""
     let speechSegmentsData =

@@ -120,3 +120,24 @@ public enum DeliveryEvent: Sendable, Equatable {
     case loadMiss = "load_miss"
   }
 }
+
+/// Monotonic sequence for delivery-state PUBLICATION order (#1386 PR-2b).
+/// Controller state observers run on the controller actor in publish order, but
+/// re-hopping each update to MainActor in its own Task loses that order — a
+/// delayed `.downloading` can overwrite a later `.admitted`. Mint a sequence
+/// inside the observer (publish order), then drop MainActor applications older
+/// than the last applied. One canonical type: `ModelDeliveryHome` (Parakeet/EG-1
+/// projections) and `WhisperKitModelDelivery.observeState` both use it.
+public final class DeliveryStateSequencer: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value: UInt64 = 0
+
+  public init() {}
+
+  public func next() -> UInt64 {
+    lock.withLock {
+      value &+= 1
+      return value
+    }
+  }
+}

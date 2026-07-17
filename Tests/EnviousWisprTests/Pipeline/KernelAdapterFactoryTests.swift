@@ -34,7 +34,7 @@ import Testing
     // `WhisperKitBackend()` is the lazy actor (no CoreML load until prepare()),
     // matching `KernelDictationDriverFactoryWhisperKitTests`.
     let adapter = KernelAdapterFactory.makeWhisperKitAdapter(
-      backend: WhisperKitBackend(),
+      backend: WhisperKitBackend(admittedModelFolder: { nil }),
       languageDetector: LanguageDetector(),
       audioCaptureSessionIDSource: { 0 })
     #expect(adapter.engineIdentity.backendType == .whisperKit)

@@ -13,15 +13,22 @@ final class BackendMetadata {
   let settings: SettingsManager
   let asrManager: any ASRManagerInterface
   let llmDiscovery: LLMModelDiscoveryCoordinator
+  /// Whether the ACTIVE engine's model is resident — the EngineCoordinator's
+  /// published truth, injected as a closure. The manager's own flag stopped
+  /// covering WhisperKit when #1386 made it Parakeet-only (cloud review P2:
+  /// a warmed multilingual model rendered "Unloaded").
+  let activeModelLoaded: @MainActor () -> Bool
 
   init(
     settings: SettingsManager,
     asrManager: any ASRManagerInterface,
-    llmDiscovery: LLMModelDiscoveryCoordinator
+    llmDiscovery: LLMModelDiscoveryCoordinator,
+    activeModelLoaded: @escaping @MainActor () -> Bool
   ) {
     self.settings = settings
     self.asrManager = asrManager
     self.llmDiscovery = llmDiscovery
+    self.activeModelLoaded = activeModelLoaded
   }
 
   var modelLabel: String {
@@ -69,6 +76,6 @@ final class BackendMetadata {
       if state == .polishing { return DictationNarrator.shortCopy(for: .polishing) }
       if case .error = state { return DictationNarrator.errorStatus }
     }
-    return asrManager.isModelLoaded ? "Loaded" : "Unloaded"
+    return activeModelLoaded() ? "Loaded" : "Unloaded"
   }
 }
