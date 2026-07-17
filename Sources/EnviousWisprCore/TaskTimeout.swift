@@ -11,6 +11,21 @@ public struct TimeoutError: Error, CustomStringConvertible {
   }
 }
 
+// MARK: - Sentry identity
+
+/// Pins the Sentry grouping key to the exact string this type has been
+/// sending in production (#1525 PR H), mirroring `HeartPathError`'s shipped
+/// pattern (#1524). One shape today, reused at two capture sites
+/// (`InverseTextNormalizationStep`'s ITN timeout, `TextProcessingRunner`'s
+/// polish timeout) — a struct, so no reorder risk exists yet, but this closes
+/// the latent risk before a second shape is ever added and preserves the live
+/// production issue (ENVIOUSWISPR-32, `polish_provider_failed:
+/// EnviousWisprCore.TimeoutError#1`) cross-checked before pinning.
+extension TimeoutError: StableSentryErrorIdentity {
+  public var sentryFingerprintDescriptor: String { "EnviousWisprCore.TimeoutError#1" }
+  public var sentrySemanticID: String { "core.timeout" }
+}
+
 /// Run an async operation with a timeout. If the operation doesn't complete
 /// within `seconds`, the child task is cancelled and `TimeoutError` is thrown.
 public func withThrowingTimeout<T: Sendable>(

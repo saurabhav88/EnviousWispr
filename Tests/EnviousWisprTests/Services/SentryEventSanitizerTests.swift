@@ -30,20 +30,23 @@ import Testing
 /// only need the full key-allowlist rebuild if a regulator-grade claim were
 /// required. So the sentinel below is transcript-SHAPED for denylist surfaces.
 
-/// File-scope `private` fixture reproducing the shape of `EmojiRestoreAnomaly`
-/// (`EmojiRestoreStep.swift`) — a file-scope `private` Swift error type. Its
-/// bridged `NSError.domain` carries the same `(unknown context at $ptr)`
-/// artifact as a nested `private` type (#1229; empirically verified via
-/// `swiftc` — the descriptor fix is type-shape-agnostic).
+/// File-scope `private` fixture reproducing `EmojiRestoreAnomaly`
+/// (`EmojiRestoreStep.swift`)'s pre-#1525-PR-H shape — a file-scope `private`
+/// Swift error type (PR H later widened it to `internal` so its pin can be
+/// tested directly, `PRHLeftoverErrorsSentryIdentityTests.swift`). Its bridged
+/// `NSError.domain` carries the same `(unknown context at $ptr)` artifact as a
+/// nested `private` type (#1229; empirically verified via `swiftc` — the
+/// descriptor fix is type-shape-agnostic).
 private enum FileScopeFixtureError: Error {
   case boom
 }
 
 /// Wrapper exposing a `private`-nested fixture that reproduces
-/// `RecoveryReplayError` / `RecoveryArmError`'s pre-#1525-PR-C shape (both
-/// were `private` nested inside their owning type; PR C later widened them
-/// to `internal` so their pins can be tested directly, `RecoverySentryIdentityTests.swift`)
-/// and `NilCollaboratorError`'s current shape (still `private`, unmigrated).
+/// `RecoveryReplayError` / `RecoveryArmError`'s pre-#1525-PR-C shape and
+/// `NilCollaboratorError`'s pre-#1525-PR-H shape — all three were `private`
+/// nested inside their owning type; PR C and PR H later widened them to
+/// `internal` so their pins can be tested directly
+/// (`RecoverySentryIdentityTests.swift`, `PRHLeftoverErrorsSentryIdentityTests.swift`).
 /// This fixture continues to cover the generic `(unknown context at $ptr)`
 /// normalization branch (#1229).
 private struct NestedFixtureWrapper {
