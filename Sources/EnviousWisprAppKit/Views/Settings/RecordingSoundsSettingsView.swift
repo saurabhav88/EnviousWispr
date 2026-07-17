@@ -7,6 +7,14 @@ import SwiftUI
 /// previewable.
 struct RecordingSoundsSettingsView: View {
   @Environment(SettingsManager.self) private var settings
+  // #1342 (Codex code-diff review r6): previews must not be tappable while a
+  // recording is in flight — an open Settings window during dictation would
+  // otherwise let a user inject an unbounded number of tones into someone
+  // else's active transcript, unlike the feature's own bounded start/stop
+  // cues. Reuses the existing dictation-activity signal already injected
+  // into other Settings pages (DiagnosticsSettingsView) rather than adding
+  // new state.
+  @Environment(LiveRecordingState.self) private var liveRecordingState
 
   private let columns = [GridItem(.adaptive(minimum: 210, maximum: .infinity), spacing: 12)]
 
@@ -36,7 +44,8 @@ struct RecordingSoundsSettingsView: View {
         ForEach(RecordingSoundPairing.allCases, id: \.self) { pairing in
           RecordingSoundPairingCard(
             pairing: pairing,
-            isSelected: settings.recordingSoundPairing == pairing
+            isSelected: settings.recordingSoundPairing == pairing,
+            previewDisabled: liveRecordingState.isDictationActive
           ) {
             settings.recordingSoundPairing = pairing
           }
@@ -56,6 +65,7 @@ struct RecordingSoundsSettingsView: View {
 private struct RecordingSoundPairingCard: View {
   let pairing: RecordingSoundPairing
   let isSelected: Bool
+  let previewDisabled: Bool
   let onSelect: () -> Void
 
   var body: some View {
@@ -92,6 +102,11 @@ private struct RecordingSoundPairingCard: View {
       .buttonStyle(.bordered)
       .controlSize(.small)
       .foregroundStyle(.stAccent)
+      .disabled(previewDisabled)
+      .help(
+        previewDisabled
+          ? "Preview is unavailable while a recording is in progress."
+          : "")
     }
     .padding(14)
     .background(Color.stSectionBg)
