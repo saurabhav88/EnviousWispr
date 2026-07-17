@@ -348,8 +348,7 @@ public final class WisprBootstrapper {
 
     // Restore persisted backend selection synchronously (no race with first record).
     asrManager.setInitialBackendType(settings.selectedBackend)
-    SentryBreadcrumb.updateASRBackend(
-      settings.selectedBackend == .whisperKit ? "whisperkit" : "parakeet")
+    SentryBreadcrumb.updateASRBackend(settings.selectedBackend.rawValue)
 
     // #1173: settings-change telemetry observer. `emitBaseline` re-emits the
     // comprehensive `settings.snapshot` at onboarding-completion (fixes the
@@ -569,7 +568,7 @@ public final class WisprBootstrapper {
         },
         performSwitch: { [asrManager] backend in
           await asrManager.switchBackend(to: backend)
-          SentryBreadcrumb.updateASRBackend(backend == .whisperKit ? "whisperkit" : "parakeet")
+          SentryBreadcrumb.updateASRBackend(backend.rawValue)
         },
         warm: { [kernelDriver, whisperKitKernelDriver] backend in
           await (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver)

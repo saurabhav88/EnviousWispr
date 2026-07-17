@@ -175,7 +175,8 @@ final class RecordingStarter {
   /// guard.
   func start() async {
     dictationLifecycleCoordinator?.cancelPendingWarning()
-    let isWhisperKit = asrManager.activeBackendType == .whisperKit
+    let backend = asrManager.activeBackendType
+    let isWhisperKit = backend == .whisperKit
     let active: KernelDictationDriver = isWhisperKit ? whisperKitKernelDriver : kernelDriver
     // PR-7 (#827): snapshot engine readiness BEFORE prewarm so the cold-start
     // log cohorts warm/cold/mid-flight; snapshot-at-entry avoids retro-labeling.
@@ -191,8 +192,7 @@ final class RecordingStarter {
     // using. Takes precedence over the cold-engine gate below (same shape).
     if isRecovering() {
       recordingOverlay.show(intent: .recoveringLastRecording)
-      TelemetryService.shared.recoveryPressBlocked(
-        asrBackend: isWhisperKit ? "whisperkit" : "parakeet")
+      TelemetryService.shared.recoveryPressBlocked(asrBackend: backend.rawValue)
       return
     }
     // #1171 — start-of-recording safety: never record on an engine other than the
@@ -213,7 +213,7 @@ final class RecordingStarter {
     if readinessAtEntry != .ready {
       let warmRespawn = ColdPressGuard.resolveNotReadyPress(
         overlay: recordingOverlay, active: active,
-        backendTag: isWhisperKit ? "whisperkit" : "parakeet",
+        backendTag: backend.rawValue,
         readiness: readinessAtEntry, modelUnloadPolicy: settings.modelUnloadPolicy)
       if !warmRespawn { return }
     }
@@ -368,7 +368,7 @@ final class RecordingStarter {
       SentryBreadcrumb.captureError(
         ModelLoadWatchdog.WedgeError(stage: "post_condition"),
         category: .pipelinePostConditionFailed, stage: "recording",
-        extra: ["backend": isWhisperKit ? "whisperkit" : "parakeet"]
+        extra: ["backend": backend.rawValue]
       )
       recordingOverlay.show(intent: .hidden)
       recordingLockedAccess.set(false)
@@ -382,7 +382,7 @@ final class RecordingStarter {
     }
     Task {
       await AppLogger.shared.log(
-        "COLD-START [RecordingStarter] PTT-to-recording: total=\(totalMs)ms preWarm=\(preWarmMs)ms startRecording=\(totalMs - preWarmMs)ms backend=\(isWhisperKit ? "whisperkit" : "parakeet") engineReadinessAtPTT=\(readinessAtEntry.coldStartCohortToken)",
+        "COLD-START [RecordingStarter] PTT-to-recording: total=\(totalMs)ms preWarm=\(preWarmMs)ms startRecording=\(totalMs - preWarmMs)ms backend=\(backend.rawValue) engineReadinessAtPTT=\(readinessAtEntry.coldStartCohortToken)",
         level: .info, category: "Pipeline"
       )
     }
@@ -394,7 +394,8 @@ final class RecordingStarter {
   /// snapshot picks up the right paste capability.
   func toggle(source: TriggerSource) async {
     dictationLifecycleCoordinator?.cancelPendingWarning()
-    let isWK = asrManager.activeBackendType == .whisperKit
+    let backend = asrManager.activeBackendType
+    let isWK = backend == .whisperKit
     let active: KernelDictationDriver = isWK ? whisperKitKernelDriver : kernelDriver
     let isStartingFromIdle =
       !(isWK ? whisperKitKernelDriver.state.isActive : kernelDriver.state.isActive)
@@ -406,7 +407,7 @@ final class RecordingStarter {
       // `isStartingFromIdle`).
       if isRecovering() {
         recordingOverlay.show(intent: .recoveringLastRecording)
-        TelemetryService.shared.recoveryPressBlocked(asrBackend: isWK ? "whisperkit" : "parakeet")
+        TelemetryService.shared.recoveryPressBlocked(asrBackend: backend.rawValue)
         return
       }
       // #1171 — start-of-recording safety, same as the PTT path: never record on
@@ -423,7 +424,7 @@ final class RecordingStarter {
         // #879 pill. Same decision helper as the PTT path.
         isWarmRespawn = ColdPressGuard.resolveNotReadyPress(
           overlay: recordingOverlay, active: active,
-          backendTag: isWK ? "whisperkit" : "parakeet",
+          backendTag: backend.rawValue,
           readiness: active.engineReadiness, modelUnloadPolicy: settings.modelUnloadPolicy)
         if !isWarmRespawn { return }
       }

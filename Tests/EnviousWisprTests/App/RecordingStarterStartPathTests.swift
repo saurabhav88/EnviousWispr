@@ -79,7 +79,7 @@ import Testing
     let hcr = HeartControlRecovery(
       hideOverlay: { overlay.show(intent: .hidden) },
       setLocked: { locked in lockAccess.set(locked) },
-      backend: { asr.activeBackendType == .whisperKit ? "whisperkit" : "parakeet" }
+      backend: { asr.activeBackendType.rawValue }
     )
     let finalizer = RecordingFinalizer(
       kernelDriver: pipeline,
