@@ -176,6 +176,8 @@ jobs:
             -configuration Debug \
             -derivedDataPath "$DERIVED_DATA_PATH" \
             -destination 'platform=macOS,arch=arm64' \
+            -resultBundlePath "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" \
+            -enableCodeCoverage YES \
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
             VALID_ARCHS=arm64 | tee xcode-test-debug.log
@@ -190,6 +192,46 @@ jobs:
             exit 1
           fi
           echo "==> Xcode executed $TESTS_RUN tests (debug)"
+
+      # #1600 (CI-test-audit finding): coverage was never measured anywhere in
+      # CI, so nobody could ask "which production branches actually execute"
+      # with a number. Informational only — no percentage gate; coverage
+      # measures execution, not assertion quality, so a threshold here would
+      # invite padding tests to hit a number rather than testing real behavior.
+      # Never allowed to fail the required build-debug lane: continue-on-error
+      # at the step level, plus internal fail-open logic with no `set -e`.
+      - name: Coverage summary (debug, informational only)
+        if: steps.changes.outputs.needs_build == 'true'
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          REPORT=$(xcrun xccov view --report --json "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" 2>/dev/null) || true
+          if [ -z "$REPORT" ]; then
+            echo "==> Coverage summary unavailable (xccov produced no output)"
+            exit 0
+          fi
+          # Codex review: the report's root `.lineCoverage` aggregates EVERY
+          # instrumented target, including the .xctest bundles themselves and
+          # third-party static libraries (FluidAudio alone carries ~45k
+          # executable lines) — inflating/diluting the number away from actual
+          # Sources/ coverage. Every first-party module is named
+          # `EnviousWispr*` 1:1 with its Sources/ directory (frameworks + the
+          # thin app shell + the ASR XPC service); filter to those and exclude
+          # .xctest/.bundle to isolate real production-code coverage.
+          FIRST_PARTY=$(echo "$REPORT" | jq '
+            [.targets[] | select(.name | startswith("EnviousWispr"))
+              | select((.name | endswith(".xctest")) or (.name | endswith(".bundle")) | not)]
+            | {covered: (map(.coveredLines) | add // 0), executable: (map(.executableLines) | add // 0)}
+          ' 2>/dev/null)
+          COVERED=$(echo "$FIRST_PARTY" | jq -r '.covered // empty' 2>/dev/null)
+          EXECUTABLE=$(echo "$FIRST_PARTY" | jq -r '.executable // empty' 2>/dev/null)
+          if [ -n "$COVERED" ] && [ -n "$EXECUTABLE" ] && [ "$EXECUTABLE" -gt 0 ]; then
+            PCT_DISPLAY=$(awk -v c="$COVERED" -v e="$EXECUTABLE" 'BEGIN{printf "%.1f", (c/e)*100}')
+            echo "==> Debug-lane first-party line coverage: ${PCT_DISPLAY}% (${COVERED}/${EXECUTABLE} lines)"
+            echo "Debug-lane first-party line coverage: **${PCT_DISPLAY}%** (${COVERED}/${EXECUTABLE} lines — Sources/ only, excludes test bundles and third-party deps; informational, no gate)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "==> Coverage summary unavailable (could not parse xccov JSON or no first-party targets found)"
+          fi
 
   # Release lane: Xcode release build + Release test-target compile +
   # FoundationModels compile probe. Runs in parallel with build-debug (issue
