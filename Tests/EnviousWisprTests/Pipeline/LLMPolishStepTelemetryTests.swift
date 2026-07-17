@@ -18,8 +18,16 @@ import Testing
 /// here, since driving `process()` requires `async` test bodies). The
 /// companion static-source-check proving the REAL `RecoveryTextProcessor` call
 /// site actually passes `.silent` lives in `RecoveryTextProcessorTests.swift`.
+///
+/// `.serialized` (#1593 cloud review): `silentNeverLeaksToRealGlobals` installs
+/// the process-wide `TelemetryService.testEventHook` /
+/// `SentryBreadcrumb.breadcrumbDelegate` / `captureErrorDelegate` — even though
+/// it does so with no `await` in between (immune to intra-suite interleaving
+/// per the rule above), `.serialized` also rules out any residual overlap with
+/// this suite's OTHER tests, matching `EngineCoordinatorTests.swift`'s
+/// precedent for the same globals.
 @MainActor
-@Suite("LLMPolishStep telemetry seam (#1461, #1448)")
+@Suite("LLMPolishStep telemetry seam (#1461, #1448)", .serialized)
 struct LLMPolishStepTelemetryTests {
 
   /// A 16-word sentence that clears the too-short short-circuit.
@@ -201,38 +209,50 @@ struct LLMPolishStepTelemetryTests {
 
   @Test("`.silent` construction silences the too-short skip event")
   func silentConstructionSilencesTooShort() async throws {
+    // #1593: wrap a spy-backed seam in `.silent(wrapping:)` instead of the
+    // bare `.silent` constant, so a regression that makes `.silent` forward
+    // to its wrapped seam (or a future refactor that breaks the discard)
+    // turns this test red instead of leaving it unfalsifiable.
     let spy = Spy()
-    let step = makeStep(provider: .openAI, telemetry: .silent)
-    // Route the spy through a second layer to prove NOTHING reaches it, not
-    // just that `.silent`'s own closures are no-ops.
-    _ = spy
+    let step = makeStep(provider: .openAI, telemetry: .silent(wrapping: spy.seams))
     _ = try await step.process(TextProcessingContext(text: "yeah", language: "en"))
-    // No spy assertions possible against `.silent` itself (it discards
-    // everything by construction) — this test's value is that `process()`
-    // completes without any live-seam side effect, i.e. it compiles and runs
-    // against `.silent` at all call sites the too-short path touches.
+    #expect(spy.skipCalls.isEmpty)
+    #expect(spy.startedCalls.isEmpty)
+    #expect(spy.completedCalls.isEmpty)
+    #expect(spy.providerInitErrorCalls.isEmpty)
+    #expect(spy.afmPolishErrorCalls.isEmpty)
+    #expect(spy.limbFailureCalls.isEmpty)
   }
 
   @Test("`.silent` construction silences success, provider-init failure, and AFM failure")
   func silentConstructionSilencesAllPaths() async throws {
     // Success path.
+    let successSpy = Spy()
     do {
-      let step = makeStep(provider: .openAI, telemetry: .silent)
+      let step = makeStep(provider: .openAI, telemetry: .silent(wrapping: successSpy.seams))
       step.makePolisher = { _, _, _ in SucceedingPolisher() }
       _ = try await step.process(TextProcessingContext(text: Self.longTranscript, language: "en"))
     }
+    #expect(successSpy.startedCalls.isEmpty)
+    #expect(successSpy.completedCalls.isEmpty)
+
     // Provider-init failure path.
+    let providerInitSpy = Spy()
     do {
-      let step = makeStep(provider: .openAI, telemetry: .silent)
+      let step = makeStep(provider: .openAI, telemetry: .silent(wrapping: providerInitSpy.seams))
       step.makePolisher = { _, _, _ in nil }
       await #expect(throws: LLMError.self) {
         _ = try await step.process(TextProcessingContext(text: Self.longTranscript, language: "en"))
       }
     }
+    #expect(providerInitSpy.providerInitErrorCalls.isEmpty)
+
     // AFM failure path.
+    let afmSpy = Spy()
     do {
       let step = makeStep(
-        provider: .appleIntelligence, model: "apple-intelligence", telemetry: .silent)
+        provider: .appleIntelligence, model: "apple-intelligence",
+        telemetry: .silent(wrapping: afmSpy.seams))
       step.makePolisher = { _, _, _ in
         ThrowingPolisher(makeError: { AFMPolishError(underlying: LLMError.modelNotReady("x")) })
       }
@@ -240,11 +260,96 @@ struct LLMPolishStepTelemetryTests {
         _ = try await step.process(TextProcessingContext(text: Self.longTranscript, language: "en"))
       }
     }
-    // None of the above can be asserted against a spy (that's the point of
-    // `.silent`); this test's value is that every path still compiles and
-    // completes normally when constructed with `.silent`, exercising the
-    // exact seam plumbing `RecoveryTextProcessor` uses.
+    #expect(afmSpy.afmPolishErrorCalls.isEmpty)
   }
+
+  /// Codex round-1 review of #1593: a spy-only test can't distinguish "correctly
+  /// discards" from "ignores its `wrapping:` argument and returns `.live`
+  /// unconditionally" — both leave an unrelated injected spy empty, but the
+  /// second one leaks every real telemetry call during crash-recovery replay
+  /// (the exact #1446 incident class this seam exists to prevent). Closes that
+  /// gap by calling `.silent(wrapping: .live)`'s closures directly and proving
+  /// they never reach the REAL global sinks `.live` forwards to, with a
+  /// positive control proving those same hooks DO fire for `.live` itself (so
+  /// a broken hook installation can't silently pass this test too).
+  ///
+  /// Installs the process-global test delegates synchronously, calls the
+  /// closures directly (no `await` in between), and restores them before
+  /// returning — the documented-safe shape per `swift-patterns.md`
+  /// RULE: tests-no-process-global-mutable-delegate.
+  // `TelemetryService.testEventHook` is `#if DEBUG`-only (TelemetryService.swift);
+  // an ungated reference here compiles fine in this Debug-config file but fails
+  // the required Release test-target build (Codex round-2 review, P1) — mirrors
+  // EngineCoordinatorTests.swift's existing `#if DEBUG` gate on its own
+  // testEventHook-using tests.
+  #if DEBUG
+    @Test("`.silent(wrapping: .live)` never reaches the real Sentry/Telemetry globals `.live` uses")
+    func silentNeverLeaksToRealGlobals() {
+      // The delegate hooks below are `@Sendable`, so the recorder needs
+      // reference semantics rather than captured `var`s. Everything in this
+      // test runs synchronously on one thread (install -> call closures
+      // directly -> read -> restore, no `await` anywhere), so `@unchecked
+      // Sendable` on this test-local box is a safe, narrow use, not a
+      // production concurrency claim.
+      final class Recorder: @unchecked Sendable {
+        var telemetryEvents: [String] = []
+        var breadcrumbMessages: [String] = []
+        var captureErrorCount = 0
+      }
+      let recorder = Recorder()
+
+      TelemetryService.shared.testEventHook = { recorder.telemetryEvents.append($0.name) }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      SentryBreadcrumb.breadcrumbDelegate = { _, message, _, _ in
+        recorder.breadcrumbMessages.append(message)
+      }
+      defer { SentryBreadcrumb.breadcrumbDelegate = nil }
+
+      SentryBreadcrumb.captureErrorDelegate = { _, _, _, _ in recorder.captureErrorCount += 1 }
+      defer { SentryBreadcrumb.captureErrorDelegate = nil }
+
+      // Positive control first: `.live` itself must reach every hook, or this
+      // test would pass vacuously against a broken/no-op delegate installation.
+      let live = LLMPolishStep.TelemetrySeams.live
+      live.limbFailureObserved("ollama", "evict", "failed", "http_500", 42)
+      live.breadcrumbStarted("live probe", nil)
+      live.captureProviderInitError(LLMError.modelNotReady("probe"))
+      live.captureAFMPolishError(LLMError.modelNotReady("probe"))
+      live.breadcrumbCompleted("live probe", nil)
+      live.recordPolishSkipped("openAI", "probe")
+      #expect(
+        recorder.telemetryEvents.count == 2, "live must fire limbFailureObserved + polishSkipped")
+      #expect(
+        recorder.breadcrumbMessages.count >= 2, "live must add breadcrumbs for started/completed")
+      #expect(
+        recorder.captureErrorCount == 2, "live must capture both provider-init and AFM errors")
+
+      recorder.telemetryEvents.removeAll()
+      recorder.breadcrumbMessages.removeAll()
+      recorder.captureErrorCount = 0
+
+      // Now the seam under test: silent(wrapping: .live) must reach NONE of them.
+      let silent = LLMPolishStep.TelemetrySeams.silent(wrapping: .live)
+      silent.limbFailureObserved("ollama", "evict", "failed", "http_500", 42)
+      silent.breadcrumbStarted("silent probe", nil)
+      silent.captureProviderInitError(LLMError.modelNotReady("probe"))
+      silent.captureAFMPolishError(LLMError.modelNotReady("probe"))
+      silent.breadcrumbCompleted("silent probe", nil)
+      silent.recordPolishSkipped("openAI", "probe")
+
+      #expect(
+        recorder.telemetryEvents.isEmpty,
+        "silent(wrapping: .live) leaked to TelemetryService: \(recorder.telemetryEvents)")
+      #expect(
+        recorder.breadcrumbMessages.isEmpty,
+        "silent(wrapping: .live) leaked breadcrumbs: \(recorder.breadcrumbMessages)"
+      )
+      #expect(
+        recorder.captureErrorCount == 0,
+        "silent(wrapping: .live) leaked \(recorder.captureErrorCount) captureError call(s)")
+    }
+  #endif  // DEBUG
 
   // MARK: - `limbFailureObserved` — deterministic via the injectable eviction seam
 
@@ -265,14 +370,10 @@ struct LLMPolishStepTelemetryTests {
     #expect(spy.limbFailureCalls.first?.dur == 42)
 
     let silentSpy = Spy()
-    let silentStep = makeStep(provider: .ollama, telemetry: .silent)
+    let silentStep = makeStep(provider: .ollama, telemetry: .silent(wrapping: silentSpy.seams))
     silentStep.evictOllamaModel = { _ in failedOutcome }
     await silentStep.evictPreviousOllamaModel("some-model")
-    // `.silent` discards everything; nothing to assert against `silentSpy`
-    // (it was never wired to `silentStep`) — the value here is that
-    // `.silent` construction + a failed eviction outcome together produce
-    // zero observable side effects, which is what `.silent` promises.
-    _ = silentSpy
+    #expect(silentSpy.limbFailureCalls.isEmpty)
   }
 
   @Test("a successful eviction never fires the limb metric, `.live` or `.silent`")

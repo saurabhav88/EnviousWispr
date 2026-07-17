@@ -49,7 +49,7 @@ public final class RecoveryTextProcessor {
     keychainManager: KeychainManager, outputClassifierHolder: OutputClassifierHolder? = nil,
     egOneRuntime: (any EGOneEndpointProviding)? = nil
   ) {
-    let llmPolish = LLMPolishStep(keychainManager: keychainManager, telemetry: .silent)
+    let llmPolish = LLMPolishStep(keychainManager: keychainManager, telemetry: .silent())
     // Standalone (no live kernel attached): no streaming/lifecycle callbacks.
     llmPolish.onWillProcess = nil
     llmPolish.onToken = nil
