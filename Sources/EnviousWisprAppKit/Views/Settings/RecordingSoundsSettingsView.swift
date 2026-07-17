@@ -87,15 +87,6 @@ struct RecordingSoundsSettingsView: View {
       // review r7, #1618).
       activePreviewTask?.cancel()
     }
-    .onChange(of: liveRecordingState.isDictationActive) { _, isActive in
-      // Closes the window rather than racing it: cancel the pending preview
-      // the MOMENT a real recording starts, so a real session that starts
-      // AND finishes entirely inside the 550ms delay can never leave a stale
-      // preview stop cue armed (Codex code-diff review r2).
-      if isActive {
-        activePreviewTask?.cancel()
-      }
-    }
   }
 
   private func startPreview() {
@@ -103,20 +94,29 @@ struct RecordingSoundsSettingsView: View {
     activePreviewTask?.cancel()
     activePreviewTask = Task { @MainActor in
       guard RecordingSoundCue.play(pairing: pairing, moment: .start) else { return }
-      do {
-        try await Task.sleep(for: .milliseconds(550))
-      } catch {
-        return  // cancelled mid-wait; do not play a stop half for a start that may be stale
+      // Poll in short increments rather than one long sleep plus a single
+      // check at the end: a real recording may start AND fully finish during
+      // the wait (the global hotkey works while Settings is open), and a
+      // SwiftUI `.onChange` observer cannot be trusted to catch that — SwiftUI
+      // coalesces rapid successive mutations into one observation fire, the
+      // same limitation this codebase's own KernelHeartPathTelemetryObserver
+      // documents for raw `withObservationTracking`, so watching for the
+      // transition would not have closed the gap either. Reading the live
+      // value directly, this often, sidesteps notification coalescing
+      // entirely — the only residual gap is a real recording starting AND
+      // finishing between two consecutive polls, ~25ms (Codex code-diff
+      // review r9, #1618). Firing the preview's stop cue into or right after
+      // a live recording would falsely signal that real dictation just
+      // stopped (council finding, 2026-07-17; both GPT-5.6 and Gemini-3.1
+      // independently caught the underlying race).
+      for _ in 0..<22 {  // 22 x 25ms = 550ms
+        do {
+          try await Task.sleep(for: .milliseconds(25))
+        } catch {
+          return  // cancelled mid-wait; do not play a stop half for a start that may be stale
+        }
+        guard !Task.isCancelled, !liveRecordingState.isDictationActive else { return }
       }
-      // Re-check immediately before firing stop, belt-and-suspenders
-      // alongside the .onChange cancellation above: a real recording may
-      // have started during the 550ms wait (the global hotkey works while
-      // Settings is open). Firing the preview's stop cue into a live
-      // recording would falsely signal that real dictation just stopped
-      // (council finding, 2026-07-17; both GPT-5.6 and Gemini-3.1
-      // independently caught this race). Reads the LIVE environment value
-      // here, not a render-time snapshot.
-      guard !Task.isCancelled, !liveRecordingState.isDictationActive else { return }
       RecordingSoundCue.play(pairing: pairing, moment: .stop)
     }
   }
