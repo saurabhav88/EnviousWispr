@@ -407,9 +407,9 @@ public final class SettingsManager {
     }
   }
 
-  /// #1342: which original sound pairing plays for the recording start/stop
-  /// cue. UI-only — no pipeline sync; snapshotted per-recording by
-  /// `RecordingSoundCue`, not read live mid-recording.
+  /// Which sound pairing plays for the recording start/stop cue. UI-only —
+  /// no pipeline sync; snapshotted per-recording by `RecordingSoundCue`,
+  /// not read live mid-recording.
   public var recordingSoundPairing: RecordingSoundPairing {
     didSet {
       defaults.set(recordingSoundPairing.rawValue, forKey: "recordingSoundPairing")

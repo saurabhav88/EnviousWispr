@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Generate original EnviousWispr recording start/stop earcon candidates (#1342).
+"""Generate original EnviousWispr recording start/stop earcon candidates
+(#1342, expanded to 12 pairings in #1618).
 
-Pure procedural synthesis (additive sine waves + amplitude envelopes) using
-ONLY the Python standard library — no numpy/scipy, matching every other
-committed script under scripts/. No sampled/recorded/licensed audio, no
-network access, no external inputs. Running this script reproduces the eight
-WAV files bundled at `Sources/EnviousWisprAppKit/Resources/` byte-for-byte.
+Pure procedural synthesis (additive sine/triangle waves + amplitude envelopes
++ filtered noise) using ONLY the Python standard library — no numpy/scipy,
+matching every other committed script under scripts/. No sampled/recorded/
+licensed audio, no network access, no external inputs. Running this script
+reproduces the 24 WAV files bundled at `Sources/EnviousWisprAppKit/Resources/`
+run-to-run (deterministic per fixed-seed noise calls; see
+recording-sounds-provenance.md for the exact reproducibility check).
 """
 
 import math
@@ -71,6 +74,18 @@ def oscillator_from_frequency(
     for f in frequency:
         acc += f
         out.append(math.sin(2.0 * math.pi * acc / SAMPLE_RATE + phase_offset))
+    return out
+
+
+def triangle_wave(frequency: list[float], phase_offset: float = 0.0) -> list[float]:
+    """Exact triangle wave via (2/pi)*asin(sin(phase)); same phase-accumulation
+    pattern as oscillator_from_frequency, closed-form so no extra harmonics."""
+    out = []
+    acc = 0.0
+    for f in frequency:
+        acc += f
+        phase = 2.0 * math.pi * acc / SAMPLE_RATE + phase_offset
+        out.append((2.0 / math.pi) * math.asin(math.sin(phase)))
     return out
 
 
@@ -189,18 +204,117 @@ def cloud_pop(start: bool) -> list[float]:
     return [s * e for s, e in zip(signal, env)]
 
 
+def dust_mote(start: bool) -> list[float]:
+    """A soft filtered puff of air, no tonal component at all."""
+    duration = 50.0
+    t = time_axis(duration)
+    window = 25 if start else 37
+    air = lowpass_noise(len(t), 701 if start else 809, window)
+    denom = max((abs(a) for a in air), default=0.0) or 1e-12
+    air = [a / denom for a in air]
+    env = fade_envelope(len(t), 5.0, 30.0 if start else 35.0)
+    return [a * e for a, e in zip(air, env)]
+
+
+def velvet_hush(start: bool) -> list[float]:
+    """Two close sine tones a few hertz apart, gently beating against each other."""
+    duration = 120.0
+    t = time_axis(duration)
+    base = 310.0 if start else 260.0
+    detune = 6.0
+    tone_a = oscillator_from_frequency([base] * len(t))
+    tone_b = oscillator_from_frequency([base + detune] * len(t))
+    signal = [a + b for a, b in zip(tone_a, tone_b)]
+    env = fade_envelope(len(t), 30.0, 55.0)
+    return [s * e for s, e in zip(signal, env)]
+
+
+def muted_confirm(start: bool) -> list[float]:
+    """A fixed-pitch sine acknowledgment; start and stop share the same tone."""
+    duration = 90.0 if start else 75.0
+    t = time_axis(duration)
+    tone = oscillator_from_frequency([360.0] * len(t))
+    env = fade_envelope(len(t), 40.0, 50.0 if start else 45.0)
+    return [s * e for s, e in zip(tone, env)]
+
+
+def whisper_tick(start: bool) -> list[float]:
+    """A near-inaudible tick: static pitch, tiny fade, gone in a beat."""
+    duration = 55.0
+    t = time_axis(duration)
+    freq = 480.0 if start else 400.0
+    tone = oscillator_from_frequency([freq] * len(t))
+    env = fade_envelope(len(t), 5.0, 30.0)
+    return [s * e for s, e in zip(tone, env)]
+
+
+def round_pebble(start: bool) -> list[float]:
+    """Sine and triangle blended at a fixed ratio for a rounder, less electronic timbre."""
+    duration = 140.0
+    t = time_axis(duration)
+    freq = 280.0 if start else 240.0
+    sine = oscillator_from_frequency([freq] * len(t))
+    tri = triangle_wave([freq] * len(t))
+    signal = [0.7 * s + 0.3 * tr for s, tr in zip(sine, tri)]
+    env = fade_envelope(len(t), 40.0, 60.0)
+    return [s * e for s, e in zip(signal, env)]
+
+
+def paper_tap(start: bool) -> list[float]:
+    """A soft triangle-wave tap, more body than a pure tone but still gentle."""
+    duration = 70.0
+    t = time_axis(duration)
+    freq = 300.0 if start else 260.0
+    tone = triangle_wave([freq] * len(t))
+    env = fade_envelope(len(t), 15.0, 40.0)
+    return [s * e for s, e in zip(tone, env)]
+
+
+def soft_hush(start: bool) -> list[float]:
+    """No hit at all: a sine that swells in and fades back out like a breath."""
+    duration = 130.0
+    t = time_axis(duration)
+    freq = 340.0 if start else 280.0
+    tone = oscillator_from_frequency([freq] * len(t))
+    env = fade_envelope(len(t), 60.0, 70.0)
+    return [s * e for s, e in zip(tone, env)]
+
+
+def low_nod(start: bool) -> list[float]:
+    """A low, warm sine, unhurried rather than bright and alerting."""
+    duration = 150.0
+    t = time_axis(duration)
+    freq = 240.0 if start else 200.0
+    tone = oscillator_from_frequency([freq] * len(t))
+    env = fade_envelope(len(t), 45.0, 60.0)
+    return [s * e for s, e in zip(tone, env)]
+
+
 def main() -> None:
+    # Declared in ascending-loudness order, matching RecordingSoundPairing's
+    # enum declaration order (SettingsEnums.swift) so the two stay visibly in
+    # sync; the exact order is founder-validated by ear, not derived from
+    # these peak values alone (plan §3a).
     pairings = [
-        ("airGlint", air_glint, 0.16),
+        ("dustMote", dust_mote, (0.045, 0.04)),
+        ("velvetHush", velvet_hush, 0.04),
+        ("mutedConfirm", muted_confirm, (0.045, 0.04)),
+        ("whisperTick", whisper_tick, 0.045),
+        ("roundPebble", round_pebble, 0.045),
+        ("paperTap", paper_tap, 0.05),
+        ("softHush", soft_hush, 0.05),
+        ("lowNod", low_nod, 0.055),
+        ("cloudPop", cloud_pop, 0.13),
         ("velvetTap", velvet_tap, 0.14),
         ("satinShift", satin_shift, 0.15),
-        ("cloudPop", cloud_pop, 0.13),
+        ("airGlint", air_glint, 0.16),
     ]
     for name, generator, peak in pairings:
         for state in ("start", "stop"):
             signal = generator(state == "start")
-            write_wav(f"{name}_{state}.wav", signal, peak)
-    print(f"Wrote 8 WAV files to {OUTPUT_DIR}")
+            moment_peak = peak[0 if state == "start" else 1] if isinstance(peak, tuple) else peak
+            write_wav(f"{name}_{state}.wav", signal, moment_peak)
+    print(f"Wrote {len(pairings) * 2} WAV files to {OUTPUT_DIR}")
 
 
 if __name__ == "__main__":

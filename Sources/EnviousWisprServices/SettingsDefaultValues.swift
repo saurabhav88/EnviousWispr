@@ -86,9 +86,9 @@ enum SettingsDefaultValues {
   // The permanent Microphone-settings guide stays regardless of this flag.
   static let showBluetoothTips = true
 
-  // #1342: recording start/stop sound cues default OFF — silent for every
-  // existing user until they opt in. The pairing default only matters once
-  // the toggle is on; airGlint is the first-listed candidate.
+  // Recording start/stop sounds default OFF — silent for every existing user
+  // until they opt in. The pairing default only matters once the toggle is
+  // on; Whisper Tick is the fresh-install choice (#1618).
   static let playRecordingSounds = false
-  static let recordingSoundPairing: RecordingSoundPairing = .airGlint
+  static let recordingSoundPairing: RecordingSoundPairing = .whisperTick
 }

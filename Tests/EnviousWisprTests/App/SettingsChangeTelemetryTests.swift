@@ -109,7 +109,7 @@ import Testing
 
       let pairingDeltas = deltas(box, setting: "recording_sound_pairing")
       #expect(pairingDeltas.count == 1)
-      #expect(pairingDeltas.first?.stringProps["from"] == "airGlint")
+      #expect(pairingDeltas.first?.stringProps["from"] == "whisperTick")
       #expect(pairingDeltas.first?.stringProps["to"] == "velvetTap")
 
       #expect(

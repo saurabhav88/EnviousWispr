@@ -127,11 +127,11 @@ struct SettingsDefaultsRoutingTests {
 
   // MARK: - Recording sound cues (#1342)
 
-  @Test("recording sounds default to off, airGlint pairing, on a fresh install")
+  @Test("recording sounds default to off, whisperTick pairing, on a fresh install")
   func recordingSoundsDefaults() {
     let settings = SettingsManager(defaults: Self.freshSuite())
     #expect(settings.playRecordingSounds == false)
-    #expect(settings.recordingSoundPairing == .airGlint)
+    #expect(settings.recordingSoundPairing == .whisperTick)
   }
 
   @Test("recording sound settings persist to the injected store and are in the unified key set")
@@ -150,11 +150,11 @@ struct SettingsDefaultsRoutingTests {
     #expect(SettingsManager.unifiedDefaultsKeys.contains("recordingSoundPairing"))
   }
 
-  @Test("an unparseable stored recording sound pairing falls back to .airGlint")
+  @Test("an unparseable stored recording sound pairing falls back to .whisperTick")
   func recordingSoundPairingUnparseableFallsBack() {
     let suite = Self.freshSuite()
     suite.set("nonexistentPairing", forKey: "recordingSoundPairing")
-    #expect(SettingsManager(defaults: suite).recordingSoundPairing == .airGlint)
+    #expect(SettingsManager(defaults: suite).recordingSoundPairing == .whisperTick)
   }
 
   #if DEBUG

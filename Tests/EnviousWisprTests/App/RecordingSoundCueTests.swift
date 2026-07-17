@@ -12,6 +12,17 @@ import Testing
 @Suite("Recording sound cue")
 struct RecordingSoundCueTests {
 
+  // MARK: - Catalog order
+
+  @Test("catalog declares all twelve pairings in the founder-approved loudest-last order (#1618)")
+  func pairingCatalogOrderMatchesApprovedSequence() {
+    #expect(
+      RecordingSoundPairing.allCases.map(\.rawValue) == [
+        "dustMote", "velvetHush", "mutedConfirm", "whisperTick", "roundPebble",
+        "paperTap", "softHush", "lowNod", "cloudPop", "velvetTap", "satinShift", "airGlint",
+      ])
+  }
+
   // MARK: - Asset validation
 
   @Test(
