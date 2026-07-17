@@ -143,7 +143,8 @@ struct RecoverySpoolReplayerTests {
         load: { try await asr.loadModel() },
         transcribe: { samples, options in
           try await asr.transcribe(audioSamples: samples, options: options)
-        }),
+        },
+        hardCancel: {}),
       keyStore: keyStore,
       makeSpoolStore: { RecoverySpoolStore(directory: spoolDir) },
       transcriptStore: transcriptStore,
@@ -381,7 +382,8 @@ struct RecoverySpoolReplayerTests {
           load: { try await inlineASR.loadModel() },
           transcribe: { samples, options in
             try await inlineASR.transcribe(audioSamples: samples, options: options)
-          }),
+          },
+          hardCancel: {}),
         keyStore: RecoveryKeyStore(backend: .file, fileDirectory: Self.tempDir()),
         makeSpoolStore: { RecoverySpoolStore(directory: badSpoolDir) },
         transcriptStore: transcriptStore,

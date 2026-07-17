@@ -26,6 +26,11 @@ struct ActiveEngineOperation {
   let transcribe:
     (_ audioSamples: [Float], _ options: TranscriptionOptions) async throws ->
       ASRResult
+  /// Hard-cancel whatever the active engine holds in flight (#445 Discard).
+  /// Best-effort by the same physics as the engines themselves: generation
+  /// bumps + task drops land instantly; a running Core ML load/decode cannot
+  /// be stopped cooperatively and finishes before the recovery gate opens.
+  let hardCancel: () async -> Void
 
   /// The production wiring. Lives beside the type rather than in the composition
   /// root: the root names subsystems, it does not spell out their routing.
@@ -52,6 +57,18 @@ struct ActiveEngineOperation {
           return try await whisperKitBackend.transcribe(audioSamples: samples, options: options)
         }
         return try await asrManager.transcribe(audioSamples: samples, options: options)
+      },
+      hardCancel: {
+        // Mirrors load/transcribe's routing. WhisperKit's `unload()` supersedes
+        // the in-flight load/warm-up (generation bump + task drop) so a joined
+        // recovery `prepare()` aborts instead of blocking dictation until the
+        // model finishes loading (Codex 2b-r2 P1). Engine switches defer while
+        // recovery replays, so the routing read here is stable.
+        if asrManager.activeBackendType == .whisperKit {
+          await whisperKitBackend.unload()
+        } else {
+          asrManager.cancelInFlightLoad()
+        }
       })
   }
 }

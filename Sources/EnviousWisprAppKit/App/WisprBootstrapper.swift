@@ -106,7 +106,7 @@ public final class WisprBootstrapper {
     // composition root. This is the ONLY KeychainManager that gets `.live`; it carries
     // the sink for the legacy-key-cleanup (Q3.3) + cloud-prewarm (A6) quiet limbs.
     let keychainManager = KeychainManager(telemetrySink: .live)
-    let recordingOverlay = RecordingOverlayPanel()
+    let recordingOverlay = RecordingOverlayPanel(positionProvider: { settings.overlayPillPosition })
     let audioDeviceList = AudioDeviceList()
     let inputDevicePreferenceReconciler = InputDevicePreferenceReconciler(settings: settings)
     audioDeviceList.onDevicesChanged = { [weak inputDevicePreferenceReconciler] devices in
@@ -559,13 +559,20 @@ public final class WisprBootstrapper {
         return Set(all.compactMap(\.recoverySessionID))
       },
       isDictationActive: { [liveRecordingState] in liveRecordingState.isDictationActive },
-      // Discard hard-resets the shared engine (#445 service-kill) so an in-flight,
-      // otherwise-uncancellable recovery transcribe returns at once and the next
-      // recording gets a clean engine.
-      resetEngine: { [asrManager] in asrManager.cancelInFlightLoad() })
+      // Discard hard-resets the ACTIVE engine (#445 service-kill) so an in-flight,
+      // otherwise-uncancellable recovery load/transcribe aborts and the next
+      // recording gets a clean engine. Routed through the active-engine door
+      // because recovery itself runs there: resetting only the Parakeet manager
+      // would leave a WhisperKit recovery uncancellable (Codex 2b-r2 P1).
+      resetEngine: { [activeEngine] in Task { await activeEngine.hardCancel() } })
     // #1063 PR2: the "recovering" pill's Discard action.
     recordingOverlay.setDiscardRecoveryHandler { [weak recoveryCoordinator] in
       recoveryCoordinator?.discardActiveRecovery()
+    }
+    // #1464: after a leftover recording lands in History, post the standalone green
+    // success notice (the `.recovered` path was silent before).
+    recoveryCoordinator.onRecoverySucceeded = { [weak recordingOverlay] in
+      recordingOverlay?.show(intent: .recoverySucceeded)
     }
     // #1171 — the single owner of ASR-engine selection, status, and switching.
     // Reads the user's choice + active engine + readiness LIVE (no stored "want"

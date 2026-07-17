@@ -70,6 +70,9 @@ enum WhisperKitDeliveryWiring {
         // off would strand a rollback user with neither model (Codex 2b-r1 P1).
         isDeliveryEnabled: { [weak handle] in handle?.isEnabled() == true })
     }
+    // The migration must not ship blind: retirement outcomes ride the shared
+    // delivery funnel, same wiring shape as EG-1's bridge (#1386 PR-2b).
+    retirement?.onEvent = WhisperKitRetirementTelemetryBridge.handler
 
     // Availability is controller admission, never a directory probe. A refused
     // foreign copy is simply not an installed model: it is preserved untouched

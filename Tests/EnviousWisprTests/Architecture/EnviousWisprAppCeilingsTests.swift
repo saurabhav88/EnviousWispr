@@ -375,16 +375,19 @@ import Testing
   /// naming a subsystem. Cap by deterministic rule (actual 1117 + ~2, rounded up
   /// to nearest 5 = 1120). #1386 PR-2b re-applied the rule after the
   /// `whisperKitRetirement` ownership fix (stored-property entry above) added
-  /// its declaration + assignment: actual 1121 + ~2, rounded up to nearest
-  /// 5 = 1125.
+  /// its declaration + assignment, then again after Codex 2b-r2 restored two
+  /// behaviors the branch had accidentally deleted (the overlay position
+  /// provider, #1583, and the recovery-success notice, #1464 — main's own
+  /// lines returning home) and routed Discard through the active-engine door:
+  /// actual 1128 + ~2, rounded up to nearest 5 = 1130.
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1125,
+      lineCount <= 1130,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1125. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1130. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }
