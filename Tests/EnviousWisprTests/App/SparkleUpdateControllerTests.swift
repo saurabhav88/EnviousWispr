@@ -617,11 +617,11 @@ struct SparkleUpdateControllerTests {
     }
 
     @Test("the 4 download/verify stage events fire with version + is_critical")
-    func stageEventsFire() async {
-      let box = EventBox()
+    func stageEventsFire() throws {
+      let waiter = TelemetryEventWaiter()
       let originalHook = TelemetryService.shared.testEventHook
       TelemetryService.shared.testEventHook = { @Sendable event in
-        Task { @MainActor in box.events.append(event) }
+        MainActor.assumeIsolated { waiter.record(event) }
       }
       defer { TelemetryService.shared.testEventHook = originalHook }
 
@@ -630,18 +630,27 @@ struct SparkleUpdateControllerTests {
       TelemetryService.shared.updateVerifyStarted(version: "2.1.4", isCritical: false)
       TelemetryService.shared.updateVerifyCompleted(version: "2.1.4", isCritical: false)
 
-      await Task.yield()
-      await Task.yield()
+      let expected: [(name: String, version: String, isCritical: Bool)] = [
+        ("update.download_started", "2.1.4", true),
+        ("update.download_completed", "2.1.4", true),
+        ("update.verify_started", "2.1.4", false),
+        ("update.verify_completed", "2.1.4", false),
+      ]
 
-      let names = Set(box.events.map { $0.name })
-      #expect(
-        names.isSuperset(of: [
-          "update.download_started", "update.download_completed",
-          "update.verify_started", "update.verify_completed",
-        ]))
-      let dl = box.events.first { $0.name == "update.download_started" }
-      #expect(dl?.stringProps["version"] == "2.1.4")
-      #expect(dl?.boolProps["is_critical"] == true)
+      for (name, version, isCritical) in expected {
+        let event = try #require(
+          waiter.events.first { $0.name == name },
+          "Missing telemetry event \(name)."
+        )
+        #expect(
+          event.stringProps["version"] == version,
+          "\(name) should carry version \(version)."
+        )
+        #expect(
+          event.boolProps["is_critical"] == isCritical,
+          "\(name) should carry is_critical=\(isCritical)."
+        )
+      }
     }
 
     @Test("the cycle event carries version_staleness_bucket")
