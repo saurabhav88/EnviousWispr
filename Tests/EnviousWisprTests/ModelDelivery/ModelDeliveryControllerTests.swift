@@ -403,6 +403,58 @@ import Testing
     #expect(outcome == .nothingToCancel)
   }
 
+  /// Cloud review (PR #1637): the public and private staged-partials checks
+  /// used to disagree — the public one (this PR's WhisperKit `.notReady` fix
+  /// depends on it) read a metadata-only staging shell as resumable, while
+  /// the private one `cancel()` already used correctly ignored it. Now one
+  /// implementation backs both.
+  @Test func hasStagedPartialsIgnoresMetadataOnlyStaging() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+
+    let staging = registration.metadataDirectory
+      .appendingPathComponent("staging", isDirectory: true)
+      .appendingPathComponent(registration.manifest.identity.cacheKey, isDirectory: true)
+    try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+
+    try Data().write(to: staging.appendingPathComponent("state.resume.json"))
+    #expect(
+      await controller.hasStagedPartials(registration) == false,
+      "a resume-tracking file alone is not resumable content")
+
+    try Data([0x01, 0x02, 0x03]).write(to: staging.appendingPathComponent("chunk.bin"))
+    #expect(
+      await controller.hasStagedPartials(registration) == true,
+      "real staged bytes alongside the metadata ARE resumable")
+  }
+
+  /// Cloud review round 2 (PR #1637): a nested model layout (e.g.
+  /// `Encoder.mlmodelc/` holding only its own sidecar) must not read as
+  /// resumable just because the directory itself is an entry, and a
+  /// zero-byte file proves nothing was actually downloaded either.
+  @Test func hasStagedPartialsIgnoresNestedDirectoriesAndEmptyFiles() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+
+    let staging = registration.metadataDirectory
+      .appendingPathComponent("staging", isDirectory: true)
+      .appendingPathComponent(registration.manifest.identity.cacheKey, isDirectory: true)
+    let nested = staging.appendingPathComponent("Encoder.mlmodelc", isDirectory: true)
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    try Data().write(to: nested.appendingPathComponent("file.resume.json"))
+    try Data().write(to: nested.appendingPathComponent("empty.bin"))
+    #expect(
+      await controller.hasStagedPartials(registration) == false,
+      "a nested directory holding only a sidecar and an empty file is not resumable content")
+
+    try Data([0x01]).write(to: nested.appendingPathComponent("chunk.bin"))
+    #expect(
+      await controller.hasStagedPartials(registration) == true,
+      "a nested real file with actual bytes IS resumable")
+  }
+
   @Test func telemetryBuckets() {
     #expect(ModelDeliveryController.bytesBucket(10 << 20) == "under_50mb")
     #expect(ModelDeliveryController.bytesBucket(100 << 20) == "50mb_200mb")
