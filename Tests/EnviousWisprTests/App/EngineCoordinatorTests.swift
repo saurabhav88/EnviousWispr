@@ -437,7 +437,7 @@ struct EngineCoordinatorTests {
     }
 
     @Test("a superseded switch emits engine.switch_superseded")
-    func telemetrySuperseded() async {
+    func telemetrySuperseded() async throws {
       let waiter = TelemetryEventWaiter()
       TelemetryService.shared.testEventHook = { @Sendable e in
         MainActor.assumeIsolated { waiter.record(e) }
@@ -456,7 +456,12 @@ struct EngineCoordinatorTests {
       _ = await enginePoll { c.isSwitching }
       latch.release()
       _ = await enginePoll { fake.active == .parakeet && !c.isSwitching }
-      #expect(waiter.events.contains { $0.name == "engine.switch_superseded" })
+      // #1599: the prior assertion only checked the event NAME occurred, so a
+      // reversed or missing from/to payload would still pass. `want` was
+      // whisperKit when the switch was superseded back to parakeet mid-await.
+      let event = try #require(waiter.events.first { $0.name == "engine.switch_superseded" })
+      #expect(event.stringProps["from"] == "whisperKit")
+      #expect(event.stringProps["to"] == "parakeet")
     }
 
     @Test("a failed warm emits engine.warm(failed) + engine.switch_failed")
