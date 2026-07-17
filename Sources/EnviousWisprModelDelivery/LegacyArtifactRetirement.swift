@@ -348,6 +348,34 @@ public enum LegacyRetirement {
     return info.isDirectoryNotLink ? .ok : .mismatch
   }
 
+  /// Cheap `lstat` identity of each path, with no hashing and no reads.
+  ///
+  /// The classification half of this type answers "are these our bytes"; this answers the
+  /// narrower "are these the same bytes I looked at last time". A caller that persists a
+  /// refusal needs the second: a verdict alone cannot express it, because `.mismatch` and
+  /// `.unreadable` carry no identity — only `.match` does, and by definition a refused copy
+  /// is not a match.
+  ///
+  /// - Returns: one entry per requested path. `nil` means the identity could not be read at
+  ///   all, which is itself information worth persisting: it distinguishes "we could not
+  ///   look" from "it was not there", and a copy that becomes readable later is a copy worth
+  ///   re-examining.
+  public static func snapshotIdentities(
+    root: URL, relativePaths: [String]
+  ) -> [String: FileIdentity?] {
+    var snapshot: [String: FileIdentity?] = [:]
+    snapshot.reserveCapacity(relativePaths.count)
+    for relativePath in relativePaths {
+      guard isWalkablePath(relativePath) else {
+        snapshot[relativePath] = FileIdentity?.none
+        continue
+      }
+      let url = root.appendingPathComponent(relativePath)
+      snapshot[relativePath] = lstatIdentity(at: url)?.identity
+    }
+    return snapshot
+  }
+
   // MARK: - Roll-up
 
   /// Reduce per-entry verdicts to one answer for the set. Deterministic and total.
