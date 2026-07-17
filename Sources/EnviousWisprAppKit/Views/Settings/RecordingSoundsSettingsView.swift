@@ -23,6 +23,9 @@ struct RecordingSoundsSettingsView: View {
     @Bindable var settings = settings
 
     SettingsContentView {
+      // Its own card, unchanged from before Preview existed — nesting the
+      // Preview row inside this same card read as one control bleeding into
+      // another (founder direction, 2026-07-17).
       BrandedSection(header: "Sounds") {
         BrandedRow(showDivider: false) {
           HStack(alignment: .top, spacing: 11) {
@@ -39,22 +42,32 @@ struct RecordingSoundsSettingsView: View {
             }
           }
         }
+      }
 
+      // A second, separate card for Preview — its own visual home, not a row
+      // tucked inside the toggle's card.
+      BrandedSection {
         BrandedRow(showDivider: false) {
-          HStack(spacing: 8) {
-            Text("Selected: \(displayName(for: settings.recordingSoundPairing))")
-              .settingsReadingCopy()
+          HStack(alignment: .center, spacing: 11) {
+            SettingsRowIcon(systemName: "play.circle.fill")
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Preview").settingsRowLabel()
+              Text("Selected: \(displayName(for: settings.recordingSoundPairing))")
+                .settingsReadingCopy()
+            }
             Spacer()
-            Button("Preview", action: startPreview)
-              .buttonStyle(.bordered)
-              .controlSize(.small)
-              .foregroundStyle(.stAccent)
-              .accessibilityLabel("Preview \(displayName(for: settings.recordingSoundPairing))")
-              .disabled(liveRecordingState.isDictationActive)
-              .help(
-                liveRecordingState.isDictationActive
-                  ? "Preview is unavailable while a recording is in progress."
-                  : "")
+            Button(action: startPreview) {
+              Label("Preview", systemImage: "play.fill")
+                .padding(.horizontal, 4)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .accessibilityLabel("Preview \(displayName(for: settings.recordingSoundPairing))")
+            .disabled(liveRecordingState.isDictationActive)
+            .help(
+              liveRecordingState.isDictationActive
+                ? "Preview is unavailable while a recording is in progress."
+                : "")
           }
         }
       }
