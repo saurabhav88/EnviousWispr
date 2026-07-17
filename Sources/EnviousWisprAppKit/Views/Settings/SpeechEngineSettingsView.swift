@@ -115,7 +115,23 @@ struct SpeechEngineSettingsView: View {
       if settings.selectedBackend == .whisperKit {
         BrandedSection(header: "Model Setup") {
           BrandedRow(showDivider: false) {
-            whisperKitSetupContent
+            VStack(alignment: .leading, spacing: 6) {
+              whisperKitSetupContent
+              // Inline, in the section the user is looking at — never an
+              // overlay. Rendered OUTSIDE the state switch: a failed removal
+              // can flip the state to error/not-downloaded, and the notice
+              // must survive that flip (Codex 2c-r1 P2).
+              if let notice = setup.whisperKitSetup.removeNotice {
+                Text(
+                  notice == .refusedDictationInFlight
+                    ? "Finish your current dictation first, then try again."
+                    : "The model could not be removed. Please try again."
+                )
+                .font(.stHelper)
+                .foregroundStyle(.stWarning)
+                .fixedSize(horizontal: false, vertical: true)
+              }
+            }
           }
         }
       }
@@ -376,7 +392,8 @@ struct SpeechEngineSettingsView: View {
       return nil
     case .preparing(let validating):
       return (
-        validating ? "Checking speech model files..." : "Preparing download...", nil, false, nil)
+        validating ? "Checking speech model files..." : "Preparing download...", nil, false, nil
+      )
     case .downloading(_, let bytesWritten, let totalBytes):
       let mb = Int(Double(bytesWritten) / 1_048_576)
       let totalMB = Int(Double(totalBytes) / 1_048_576)
@@ -389,10 +406,10 @@ struct SpeechEngineSettingsView: View {
       return (
         "Speech model download failed.",
         ModelDeliveryCopy.message(reason: failure.reason, detail: failure.detail),
-        false, "Try Again")
+        false, "Try Again"
+      )
     }
   }
-
 
   private func isAutoLanguage(_ mode: LanguageMode) -> Bool {
     if case .auto = mode { return true }
@@ -431,7 +448,7 @@ struct SpeechEngineSettingsView: View {
         whisperKitStepIndicator("Download Model")
 
         Text(
-          "WhisperKit requires a ~1.5 GB model download. It runs fully on your Mac — no internet needed after setup."
+          "WhisperKit requires a ~1.5 GB model download. It runs fully on your Mac, no internet needed after setup."
         )
         .settingsReadingCopy()
 
@@ -474,12 +491,53 @@ struct SpeechEngineSettingsView: View {
         }
       }
 
+    case .paused:
+      VStack(alignment: .leading, spacing: 8) {
+        whisperKitStepIndicator("Download Paused")
+        Text("Download paused. Resume anytime.")
+          .settingsReadingCopy()
+        HStack {
+          Button("Resume") {
+            setup.whisperKitSetup.downloadModel()
+          }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.small)
+          whisperKitRefreshButton
+        }
+      }
+
     case .ready:
-      HStack {
-        Label("Model Ready", systemImage: "checkmark.circle.fill")
-          .foregroundStyle(.stSuccess)
-        Spacer()
-        whisperKitRefreshButton
+      VStack(alignment: .leading, spacing: 6) {
+        HStack {
+          Label("Model Ready", systemImage: "checkmark.circle.fill")
+            .foregroundStyle(.stSuccess)
+          Spacer()
+          // 2c: the way out. An app that installs 1.5 GB must offer deletion.
+          // Removal does NOT switch the selected engine (founder ruling 2.5.5
+          // "no engine swap at all"; L7 freezes engine writes; plan arm 9:
+          // selectedBackend unchanged, next press gives L6's honest state).
+          // Reviewers keep proposing the EG-1-style auto-switch — that is the
+          // design the founder killed; do not restore it without a new ruling.
+          // While the removal drain runs, the button is REPLACED by progress
+          // (founder ruling 2026-07-17: visible, unspammable).
+          if setup.whisperKitSetup.isRemoving {
+            HStack(spacing: 6) {
+              ProgressView()
+                .controlSize(.small)
+              Text("Removing model...")
+                .font(.stHelper)
+                .foregroundStyle(.stTextSecondary)
+            }
+          } else {
+            Button("Remove Model") {
+              setup.whisperKitSetup.removeModel()
+            }
+            .controlSize(.small)
+            .buttonStyle(.borderless)
+            .foregroundStyle(.stError)
+            whisperKitRefreshButton
+          }
+        }
       }
 
     case .error(let message):

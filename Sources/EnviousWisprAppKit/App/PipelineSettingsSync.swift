@@ -240,6 +240,14 @@ final class PipelineSettingsSync {
     reconcileEGOneActivation(settings: settings)
   }
 
+  /// #1386 PR-2c: true while a WhisperKit dictation session is in flight —
+  /// the Remove refusal's one read (a session-state READ, not an engine
+  /// write; L7 untouched). Same authority pattern as the EG-1 twin below:
+  /// this class owns both drivers, so it owns the read.
+  func isWhisperKitDictationInFlight() -> Bool {
+    whisperKitKernelDriver.currentSessionConfig != nil
+  }
+
   /// True if either pipeline's frozen `DictationSessionConfig` targets EG-1.
   /// Single authority (#1271 matrix gap 3) — the runtime's Remove Model
   /// defer reads it through the closure the bootstrapper wires.

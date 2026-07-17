@@ -312,6 +312,36 @@ public actor ModelDeliveryController {
   /// marker + orphan rules (this actor + `CacheAdmission`), never a backend
   /// adapter. Generic — Parakeet has no first-class evict either; EG-1's
   /// adapter calls it after stopping its server.
+  /// 2c: whether a cancelled download left resumable partials in this
+  /// identity's staging area — the disk truth behind the "paused" presentation
+  /// (it survives relaunches, unlike any in-memory flag).
+  ///
+  /// Cloud review (PR #1637, two rounds): a metadata-only staging shell must
+  /// not read as resumable. Round 1 excluded `.resume.json` sidecars but
+  /// still counted directory entries as "content" — a nested model layout
+  /// (e.g. `Encoder.mlmodelc/` holding only its own sidecar) walked via
+  /// `subpathsOfDirectory` yields the directory name itself as an entry,
+  /// which passes the suffix filter and reads as resumable even though it
+  /// holds zero real bytes. This walks with resource values instead and
+  /// requires an actual REGULAR FILE with positive size — a directory or an
+  /// empty file proves nothing was downloaded.
+  public func hasStagedPartials(_ registration: DeliveryRegistration) -> Bool {
+    let staging = stagingDirectory(for: registration)
+    guard
+      let enumerator = FileManager.default.enumerator(
+        at: staging, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey])
+    else { return false }
+    for case let url as URL in enumerator {
+      guard !url.lastPathComponent.hasSuffix(".resume.json") else { continue }
+      guard
+        let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+        values.isRegularFile == true, let size = values.fileSize, size > 0
+      else { continue }
+      return true
+    }
+    return false
+  }
+
   public func remove(_ registration: DeliveryRegistration) async -> RemoveOutcome {
     let identity = registration.manifest.identity
     // Drain any live attempt first (reuses the cancel drain barrier); a
@@ -715,11 +745,7 @@ public actor ModelDeliveryController {
 
   private func hasStagedPartials(identity: ModelIdentity) -> Bool {
     guard let registration = registrationsByIdentity[identity] else { return false }
-    let staging = registration.metadataDirectory
-      .appendingPathComponent("staging", isDirectory: true)
-      .appendingPathComponent(identity.cacheKey, isDirectory: true)
-    let entries = (try? FileManager.default.subpathsOfDirectory(atPath: staging.path)) ?? []
-    return entries.contains { !$0.hasSuffix(".resume.json") }
+    return hasStagedPartials(registration)
   }
 
   private func phaseAtCancel(identity: ModelIdentity) -> String {

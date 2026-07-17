@@ -167,6 +167,14 @@ final class EngineCoordinator {
   /// (record-start is single-flight on the MainActor). Pairs with `endMinting()`.
   func beginMinting() { isMinting = true }
 
+  /// #1386 PR-2c: the Remove refusal's second read. `currentSessionConfig`
+  /// materializes only at kernel-active, so a start that has committed but not
+  /// yet frozen its config reads as "no session" — this gate covers exactly
+  /// that window (the same gate 5 uses to refuse engine switches mid-start).
+  /// Scoped to WhisperKit: a Parakeet start does not block removing the
+  /// multilingual model.
+  var isMintingWhisperKitSession: Bool { isMinting && status.active == .whisperKit }
+
   /// Called when the record-start path finishes (via `defer`, so it runs on every
   /// exit). Re-pokes so an engine switch deferred during the start window applies
   /// now (or stays deferred behind the live recording, which gate 5 still covers).

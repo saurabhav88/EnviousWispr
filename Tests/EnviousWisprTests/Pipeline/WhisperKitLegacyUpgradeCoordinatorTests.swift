@@ -33,6 +33,11 @@ import Testing
     var holdCancel = false
     var cancelRelease: CheckedContinuation<Void, Never>?
     var cancelCalls = 0
+    var unloadCalls = 0
+    var removeCalls = 0
+    var removeSucceeds = true
+    /// Collaborator-order log for the L1 ordering assertion.
+    var callOrder: [String] = []
     var events: [WhisperKitLegacyUpgradeCoordinator.Event] = []
 
     init() throws {
@@ -100,6 +105,7 @@ import Testing
       },
       cancelActiveFetch: {
         world.cancelCalls += 1
+        world.callOrder.append("cancelFetch")
         if world.holdCancel {
           await withCheckedContinuation { world.cancelRelease = $0 }
         }
@@ -108,6 +114,15 @@ import Testing
       },
       isDeliveryEnabled: { world.deliveryEnabled })
     coordinator.onEvent = { world.events.append($0) }
+    coordinator.unloadForRemoval = {
+      world.unloadCalls += 1
+      world.callOrder.append("unload")
+    }
+    coordinator.removeFromDelivery = {
+      world.removeCalls += 1
+      world.callOrder.append("remove")
+      return world.removeSucceeds
+    }
     return coordinator
   }
 
@@ -498,5 +513,143 @@ import Testing
     // a rising fetch count is attributable only to the honored Download).
     #expect(world.fetches == 2, "the Download pressed mid-drain is honored afterwards")
     #expect(world.admitted == false)
+  }
+
+  // MARK: - 2c: Remove (L1 order, L5 rows)
+
+  @Test func removeRunsL1VerbatimAndReportsRemoved() async throws {
+    let world = try World()
+    defer { world.cleanUp() }
+    try world.stageForeignCopy()
+    world.admitOnFetch = false
+    let coordinator = makeCoordinator(world)
+    await coordinator.runLaunch()  // leaves an owed marker (fetch failed)
+    world.callOrder.removeAll()
+
+    let outcome = await coordinator.remove()
+
+    #expect(outcome == .removed)
+    #expect(!FileManager.default.fileExists(atPath: world.markerURL.path), "marker cleared FIRST")
+    // L1: controller drain precedes unload precedes deletion.
+    #expect(world.callOrder == ["cancelFetch", "unload", "remove"],
+      "L1 order violated: \(world.callOrder)")
+  }
+
+  @Test func aFailedMarkerClearRefusesTheWholeRemove() async throws {
+    let world = try World()
+    defer { world.cleanUp() }
+    try world.stageForeignCopy()
+    world.admitOnFetch = false
+    let coordinator = makeCoordinator(world)
+    await coordinator.runLaunch()
+
+    let directory = world.markerURL.deletingLastPathComponent()
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o500], ofItemAtPath: directory.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: directory.path)
+    }
+    let fetchesBefore = world.fetches
+
+    let outcome = await coordinator.remove()
+
+    // Each of L1's no-clauses, positively: refused outcome, marker intact,
+    // no drain, no unload, no deletion, no new fetch.
+    #expect(outcome == .refusedMarkerClear)
+    #expect(FileManager.default.fileExists(atPath: world.markerURL.path))
+    #expect(world.unloadCalls == 0)
+    #expect(world.removeCalls == 0)
+    #expect(world.fetches == fetchesBefore)
+  }
+
+  @Test func duplicateRemoveJoinsAndDeletesOnce() async throws {
+    let world = try World()
+    defer { world.cleanUp() }
+    try world.stageForeignCopy()
+    world.admitOnFetch = false
+    world.holdCancel = true  // parks the remove drain inside cancelActiveFetch
+    let coordinator = makeCoordinator(world)
+    await coordinator.runLaunch()
+
+    let first = Task { await coordinator.remove() }
+    while world.cancelCalls == 0 { await Task.yield() }
+    let second = Task { await coordinator.remove() }
+    for _ in 0..<20 { await Task.yield() }
+    world.holdCancel = false
+    world.cancelRelease?.resume()
+    world.cancelRelease = nil
+
+    let o1 = await first.value
+    let o2 = await second.value
+    #expect(o1 == .removed)
+    #expect(o2 == .removed, "the join reads the world: model is gone")
+    #expect(world.removeCalls == 1, "one deletion, not two")
+    #expect(world.unloadCalls == 1)
+  }
+
+  @Test func cancelDuringRemoveJoinsAndCannotUndoTheDeletion() async throws {
+    let world = try World()
+    defer { world.cleanUp() }
+    try world.stageForeignCopy()
+    world.admitOnFetch = false
+    world.holdCancel = true
+    let coordinator = makeCoordinator(world)
+    await coordinator.runLaunch()
+
+    let removeTask = Task { await coordinator.remove() }
+    while world.cancelCalls == 0 { await Task.yield() }
+    let cancelTask = Task { try await coordinator.cancel() }
+    for _ in 0..<20 { await Task.yield() }
+    world.holdCancel = false
+    world.cancelRelease?.resume()
+    world.cancelRelease = nil
+
+    let outcome = await removeTask.value
+    try await cancelTask.value
+
+    #expect(outcome == .removed, "a joined Cancel cannot undo the accepted deletion")
+    #expect(world.removeCalls == 1)
+    #expect(world.cancelCalls == 1, "Cancel joined; it did not run its own drain")
+  }
+
+  @Test func duplicateRemoveJoinersReceiveTheDrainsRealOutcomeOnFailure() async throws {
+    let world = try World()
+    defer { world.cleanUp() }
+    try world.stageForeignCopy()
+    world.admitOnFetch = false
+    world.removeSucceeds = false  // deletion fails AFTER marker clear
+    world.holdCancel = true
+    let coordinator = makeCoordinator(world)
+    await coordinator.runLaunch()
+
+    let first = Task { await coordinator.remove() }
+    while world.cancelCalls == 0 { await Task.yield() }
+    let second = Task { await coordinator.remove() }
+    for _ in 0..<20 { await Task.yield() }
+    world.holdCancel = false
+    world.cancelRelease?.resume()
+    world.cancelRelease = nil
+
+    // Codex 2c-r1 P2: the joiner must get the drain's OWN verdict — a
+    // world-read here would say "not admitted, so removed" while bytes remain.
+    let o1 = await first.value
+    let o2 = await second.value
+    #expect(o1 == .failed)
+    #expect(o2 == .failed, "the joiner reports the real failure, not a success")
+  }
+
+  @Test func aFailedDeliveryDeletionReportsFailed() async throws {
+    let world = try World()
+    defer { world.cleanUp() }
+    try world.stageForeignCopy()
+    world.admitOnFetch = false
+    world.removeSucceeds = false
+    let coordinator = makeCoordinator(world)
+    await coordinator.runLaunch()
+
+    let outcome = await coordinator.remove()
+    #expect(outcome == .failed)
+    #expect(world.unloadCalls == 1, "the unload ran; only the deletion failed")
   }
 }

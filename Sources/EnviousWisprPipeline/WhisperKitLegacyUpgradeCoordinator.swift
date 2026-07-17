@@ -45,6 +45,19 @@ public final class WhisperKitLegacyUpgradeCoordinator {
   enum CommandKind: Sendable, Equatable {
     case ensure
     case cancel
+    /// 2c: the deliberate one-field seam L5 promised — Remove drains, unloads,
+    /// deletes. Distinguishable from `.cancel` so a duplicate Remove joins and
+    /// a Cancel-during-Remove joins rather than preempting an accepted deletion.
+    case remove
+  }
+
+  /// 2c: the outcome the Settings row renders inline.
+  public enum RemoveOutcome: Sendable, Equatable {
+    case removed
+    /// L1 refusal: the owed marker would not clear; nothing was touched.
+    case refusedMarkerClear
+    /// The delivery layer refused (kill switch off) or failed the deletion.
+    case failed
   }
 
   private let documentsDirectory: URL
@@ -55,6 +68,13 @@ public final class WhisperKitLegacyUpgradeCoordinator {
   private let ensureAvailable: @MainActor @Sendable () async -> Bool
   private let cancelActiveFetch: @MainActor @Sendable () async -> Void
   private let isAdmitted: @MainActor @Sendable () async -> Bool
+  /// 2c: full engine unload before deletion (adapter's `unloadForRemoval`).
+  /// Settable, not init-injected: the adapter is constructed AFTER this
+  /// coordinator (wiring precedes the driver in the composition root), so the
+  /// bootstrapper assigns it once the driver exists. nil-safe default no-ops.
+  public var unloadForRemoval: @MainActor @Sendable () async -> Void = {}
+  /// 2c: the delivery-layer deletion (marker + files + staging). Returns success.
+  public var removeFromDelivery: @MainActor @Sendable () async -> Bool = { false }
   /// The kill switch, read at the TOP of every retirement run — not only at the
   /// fetch door. A rollback (switch off) must refuse the whole operation before
   /// the first disk mutation: retiring the legacy copy and then refusing the
@@ -66,7 +86,8 @@ public final class WhisperKitLegacyUpgradeCoordinator {
   private let hashFile: (@Sendable (URL) async throws -> String)?
   private let removeItem: ((URL) throws -> Void)?
 
-  private var command: (kind: CommandKind, task: Task<Void, Never>, ticket: Int)?
+  private var command:
+    (kind: CommandKind, task: Task<Void, Never>, ticket: Int, removeOutcome: RemoveOutcomeCell?)?
   private var commandTicket = 0
   private var commandGeneration = 0
 
@@ -165,6 +186,12 @@ public final class WhisperKitLegacyUpgradeCoordinator {
   /// with nothing started (Codex 2b-r4 P2). The slot stays occupied until the superseded
   /// work has actually unwound, so "at most one command" holds through the drain too.
   public func cancel() async throws {
+    // L5: Cancel arriving during Remove JOINS it — an accepted deletion cannot
+    // be undone, so preempting the Remove drain would only corrupt its slot.
+    if let current = command, current.kind == .remove {
+      await current.task.value
+      return
+    }
     try LegacyRetirement.clearMarker(owedMarkerURL)
     commandGeneration += 1
     let superseded = command?.task
@@ -175,9 +202,54 @@ public final class WhisperKitLegacyUpgradeCoordinator {
       await cancelActiveFetch()
       if let superseded { _ = await superseded.value }
     }
-    command = (kind: .cancel, task: drain, ticket: ticket)
+    command = (kind: .cancel, task: drain, ticket: ticket, removeOutcome: nil)
     await drain.value
     if command?.ticket == ticket { command = nil }
+  }
+
+  /// 2c: the user pressed Remove (the in-flight dictation refusal happens at
+  /// the CALLER — this coordinator arbitrates delivery commands, not sessions).
+  /// L1 verbatim: marker clear first (refuse everything on failure), one
+  /// non-suspending slice bumps the generation and cancels the stored task,
+  /// then the drain awaits the controller's fetch stop, the superseded work's
+  /// unwind, the engine unload, and finally the deletion. Registered as the
+  /// current command (kind .remove): duplicates join; ensures wait it out.
+  public func remove() async -> RemoveOutcome {
+    // L5: duplicate Remove joins the one in flight and receives the DRAIN'S
+    // OWN outcome — reading the world instead lies when deletion partially
+    // failed (marker gone, bytes remaining reads as "removed"; Codex 2c-r1 P2).
+    if let current = command, current.kind == .remove {
+      let cell = current.removeOutcome
+      await current.task.value
+      // The cell was captured at JOIN time, so a third Remove starting after
+      // the slot clears cannot swap the verdict under this joiner
+      // (Codex 2c-r4 P2 — outcomes are per-drain, never shared state).
+      return cell?.value ?? .failed
+    }
+    do {
+      try LegacyRetirement.clearMarker(owedMarkerURL)
+    } catch {
+      return .refusedMarkerClear
+    }
+    commandGeneration += 1
+    let superseded = command?.task
+    superseded?.cancel()
+    commandTicket += 1
+    let ticket = commandTicket
+    let cell = RemoveOutcomeCell()
+    let drain = Task { [cancelActiveFetch, unloadForRemoval, removeFromDelivery] in
+      await cancelActiveFetch()
+      if let superseded { _ = await superseded.value }
+      await unloadForRemoval()
+      let ok = await removeFromDelivery()
+      // MainActor-serial, set BEFORE the drain completes: this drain's OWN
+      // cell, captured by every joiner at join time.
+      cell.value = ok ? .removed : .failed
+    }
+    command = (kind: .remove, task: drain, ticket: ticket, removeOutcome: cell)
+    await drain.value
+    if command?.ticket == ticket { command = nil }
+    return cell.value
   }
 
   private func joinOrStart(_ kind: CommandKind, _ work: @escaping @Sendable () async -> Void)
@@ -204,7 +276,7 @@ public final class WhisperKitLegacyUpgradeCoordinator {
     commandTicket += 1
     let ticket = commandTicket
     let task = Task { await work() }
-    command = (kind: kind, task: task, ticket: ticket)
+    command = (kind: kind, task: task, ticket: ticket, removeOutcome: nil)
     await task.value
     if command?.ticket == ticket { command = nil }
   }
@@ -414,4 +486,10 @@ public final class WhisperKitLegacyUpgradeCoordinator {
   private func emit(_ event: Event) {
     onEvent?(event)
   }
+}
+
+/// Per-drain removal verdict (MainActor-confined). Bound to its command so a
+/// joiner can never read a different removal's outcome.
+@MainActor final class RemoveOutcomeCell {
+  var value: WhisperKitLegacyUpgradeCoordinator.RemoveOutcome = .failed
 }

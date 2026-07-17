@@ -56,7 +56,8 @@ import Testing
     service.cancelDownload()
     for _ in 0..<50 { await Task.yield() }
 
-    if case .downloading = service.setupState {} else {
+    if case .downloading = service.setupState {
+    } else {
       Issue.record("refused cancel must not re-detect away: \(service.setupState)")
     }
   }
@@ -85,17 +86,200 @@ import Testing
     #expect(service.setupState == .notDownloaded)
   }
 
-  /// An ACCEPTED cancel re-detects to honest truth.
-  @Test func anAcceptedCancelReturnsTheRowToDetectedTruth() async throws {
+  /// An ACCEPTED cancel leaves the row to the delivery-state projection —
+  /// re-detecting here wiped the paused presentation (founder ruling
+  /// 2026-07-17; Codex 2c-r7 P2). The projection then publishes paused and it
+  /// STICKS.
+  @Test func anAcceptedCancelLeavesTheRowToTheProjection() async throws {
     let service = WhisperKitSetupService(
       readAvailability: { .notDownloaded },
       cancelActiveDownload: { true })
     service.applyDeliveryState(.downloading(progress: 0.5, status: "Downloading model files..."))
 
     service.cancelDownload()
+    for _ in 0..<100 { await Task.yield() }
+    if case .downloading = service.setupState {
+    } else {
+      Issue.record("cancel itself must not rewrite the row: \(service.setupState)")
+    }
+
+    service.applyDeliveryState(.paused)
+    #expect(service.setupState == .paused, "the projection's paused sticks")
+  }
+
+  // MARK: - 2c: Remove refusal (founder ruling 2.5.4 — refuse, never defer)
+
+  @Test func removeDuringADictationRefusesAndTouchesNothing() async throws {
+    final class Box: @unchecked Sendable { var actionCalls = 0 }
+    let box = Box()
+    let service = WhisperKitSetupService(
+      readAvailability: { .ready },
+      removeModelAction: {
+        box.actionCalls += 1
+        return nil
+      })
+    service.isDictationInFlight = { true }
+
+    service.removeModel()
+    for _ in 0..<50 { await Task.yield() }
+
+    #expect(service.removeNotice == .refusedDictationInFlight)
+    #expect(box.actionCalls == 0, "a refusal reaches NOTHING downstream")
+  }
+
+  @Test func endingTheDictationQueuesNoDeferredDeletion() async throws {
+    final class Box: @unchecked Sendable { var actionCalls = 0 }
+    let box = Box()
+    let service = WhisperKitSetupService(
+      readAvailability: { .ready },
+      removeModelAction: {
+        box.actionCalls += 1
+        return nil
+      })
+    final class Flag: @unchecked Sendable { var inFlight = true }
+    let flag = Flag()
+    service.isDictationInFlight = { flag.inFlight }
+
+    service.removeModel()
+    for _ in 0..<50 { await Task.yield() }
+    #expect(service.removeNotice == .refusedDictationInFlight)
+
+    // The dictation ends. NOTHING may fire on its own — the founder's
+    // "what the hell" case. A deliberate second press is required.
+    flag.inFlight = false
+    for _ in 0..<100 { await Task.yield() }
+    #expect(box.actionCalls == 0, "no deferred deletion after the dictation ends")
+
+    service.removeModel()
+    for _ in 0..<100 where box.actionCalls == 0 { await Task.yield() }
+    #expect(box.actionCalls == 1, "the second deliberate press works")
+    #expect(service.removeNotice == nil)
+  }
+
+  @Test func twoRefusalsInARowAccumulateNoState() async throws {
+    final class Box: @unchecked Sendable { var actionCalls = 0 }
+    let box = Box()
+    let service = WhisperKitSetupService(
+      readAvailability: { .ready },
+      removeModelAction: {
+        box.actionCalls += 1
+        return nil
+      })
+    service.isDictationInFlight = { true }
+
+    service.removeModel()
+    service.removeModel()
+    for _ in 0..<50 { await Task.yield() }
+
+    #expect(service.removeNotice == .refusedDictationInFlight)
+    #expect(box.actionCalls == 0)
+  }
+
+  @Test func anUnwiredSessionAuthorityRefusesFailSafe() async throws {
+    final class Box: @unchecked Sendable { var actionCalls = 0 }
+    let box = Box()
+    let service = WhisperKitSetupService(
+      readAvailability: { .ready },
+      removeModelAction: {
+        box.actionCalls += 1
+        return nil
+      })
+    // isDictationInFlight never wired (nil): Remove must refuse, not guess.
+
+    service.removeModel()
+    for _ in 0..<50 { await Task.yield() }
+
+    #expect(service.removeNotice == .refusedDictationInFlight)
+    #expect(box.actionCalls == 0)
+  }
+
+  @Test func aFailedRemovalShowsTheFailureNoticeAndReDetectsDiskTruth() async throws {
+    let service = WhisperKitSetupService(
+      readAvailability: { .notDownloaded },  // partial deletion: marker gone
+      removeModelAction: { .failed })
+    service.isDictationInFlight = { false }
+
+    service.removeModel()
+    for _ in 0..<200 where service.removeNotice == nil {
+      await Task.yield()
+    }
+    #expect(service.removeNotice == .failed)
+    // The row re-detects to DISK truth alongside the notice (Codex 2c-r1 P2):
+    // the notice explains the failure; the state shows what is actually there.
     for _ in 0..<200 where service.setupState != .notDownloaded {
       await Task.yield()
     }
     #expect(service.setupState == .notDownloaded)
+  }
+
+  /// Live bug (2026-07-17, found on the real dev app): a successful Remove
+  /// used to re-detect unconditionally, which called readAvailability() ->
+  /// adoptIfPresent() -> the delivery controller's own no-fetch probe ->
+  /// publishes .notReady through the SAME observer that re-detects on
+  /// .notReady -> an unbounded MainActor loop that pinned the app at 100%+
+  /// CPU. A successful removal is authoritative on its own: readAvailability
+  /// must never be called again as a side effect of Remove's own completion.
+  @Test func aSuccessfulRemovalNeverReProbesTheController() async throws {
+    final class Box: @unchecked Sendable { var readAvailabilityCalls = 0 }
+    let box = Box()
+    let service = WhisperKitSetupService(
+      readAvailability: {
+        box.readAvailabilityCalls += 1
+        return .ready  // if this fires again, the row would flicker back
+      },
+      removeModelAction: { nil })
+    service.isDictationInFlight = { false }
+
+    service.removeModel()
+    for _ in 0..<200 where service.setupState != .notDownloaded {
+      await Task.yield()
+    }
+    #expect(service.setupState == .notDownloaded)
+    #expect(service.removeNotice == nil)
+
+    // Give any errant re-probe a fair chance to fire before asserting absence.
+    for _ in 0..<200 { await Task.yield() }
+    #expect(
+      box.readAvailabilityCalls == 0,
+      "a successful remove must settle on its own terminal state, never re-probe")
+  }
+
+  // MARK: - 2c founder rulings (2026-07-17)
+
+  @Test func removeCannotBeSpammedWhileTheDrainRuns() async throws {
+    final class Box: @unchecked Sendable {
+      var calls = 0
+      var release: CheckedContinuation<Void, Never>?
+    }
+    let box = Box()
+    let service = WhisperKitSetupService(
+      readAvailability: { .notDownloaded },
+      removeModelAction: {
+        box.calls += 1
+        await withCheckedContinuation { box.release = $0 }
+        return nil
+      })
+    service.isDictationInFlight = { false }
+
+    service.removeModel()
+    for _ in 0..<50 where box.calls == 0 { await Task.yield() }
+    #expect(service.isRemoving, "the row shows Removing while the drain runs")
+
+    // The spam: pressing again while removing reaches NOTHING.
+    service.removeModel()
+    service.removeModel()
+    for _ in 0..<50 { await Task.yield() }
+    #expect(box.calls == 1, "one drain, however many presses")
+
+    box.release?.resume()
+    box.release = nil
+    for _ in 0..<200 where service.isRemoving { await Task.yield() }
+    #expect(service.isRemoving == false, "the Removing state clears when the drain ends")
+  }
+
+  @Test func aResumableCancelPresentsPausedNotNotDownloaded() async throws {
+    let service = WhisperKitSetupService(readAvailability: { .notDownloaded })
+    service.applyDeliveryState(.paused)
+    #expect(service.setupState == .paused, "paused survives as its own presentation")
   }
 }

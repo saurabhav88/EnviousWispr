@@ -73,6 +73,12 @@ enum WhisperKitDeliveryWiring {
     // The migration must not ship blind: retirement outcomes ride the shared
     // delivery funnel, same wiring shape as EG-1's bridge (#1386 PR-2b).
     retirement?.onEvent = WhisperKitRetirementTelemetryBridge.handler
+    // 2c: the delivery-layer deletion the Remove drain awaits LAST (L1). The
+    // engine-unload seam is assigned by the bootstrapper once the driver
+    // exists — the adapter is constructed after this wiring runs.
+    retirement?.removeFromDelivery = { [weak handle] in
+      await handle?.remove() ?? false
+    }
 
     // Availability is controller admission, never a directory probe. A refused
     // foreign copy is simply not an installed model: it is preserved untouched
@@ -88,6 +94,10 @@ enum WhisperKitDeliveryWiring {
         // to download 1.6 GB they already have. Absent files fail this check
         // instantly, so the common no-model path stays cheap.
         if await handle.adoptIfPresent() { return .ready }
+        // Resumable partials read as PAUSED, not not-downloaded (founder ruling
+        // 2026-07-17): derived from disk, so the paused row survives refreshes
+        // and relaunches alike (Codex 2c-r7 P2).
+        if await handle.hasStagedPartials() { return .paused }
         return .notDownloaded
       },
       // The kill switch is checked HERE, at the fetch door, not only in the copy
@@ -125,12 +135,32 @@ enum WhisperKitDeliveryWiring {
         }
         await handle?.cancelActiveFetch()
         return true
+      },
+      // 2c: Remove routes through the coordinator (L1 order: drain fetch ->
+      // unload -> delete). The dictation-in-flight refusal already happened in
+      // the presentation layer; a nil coordinator (no manifest) can delete
+      // nothing and reports failure honestly.
+      removeModelAction: { [weak retirement] in
+        guard let retirement else { return .failed }
+        switch await retirement.remove() {
+        case .removed: return nil
+        case .refusedMarkerClear, .failed: return .failed
+        }
       })
 
     // One delivery-state stream projected onto the ASR setup states the Settings
     // row already renders (D6: one stream, two renderers).
+    //
+    // Codex flicker-fix-r2 P2: the .notReady case below awaits a disk read
+    // before applying its result. If a NEWER event (a fresh download start,
+    // success, or failure) arrives and applies while that read is still in
+    // flight, the stale disk-check result must not land on top of it —
+    // `applyGate` bumps on every event and the pending read only applies if
+    // it is still the most recent one when it resolves.
+    let applyGate = NotReadyStaleReadGate()
     handle?.observeState { [weak setupService] state in
       guard let setupService else { return }
+      let generation = applyGate.bump()
       switch state {
       case .preparing:
         setupService.applyDeliveryState(.downloading(progress: 0, status: "Preparing..."))
@@ -144,11 +174,64 @@ enum WhisperKitDeliveryWiring {
       case .failed(let failure):
         setupService.applyDeliveryState(
           .error(ModelDeliveryCopy.message(reason: failure.reason, detail: failure.detail)))
-      case .cancelled, .notReady:
-        Task { await setupService.forceDetectState() }
+      case .cancelled(let resumable):
+        // Founder ruling 2026-07-17: a cancelled download PAUSES — the row says
+        // so and offers Resume (the controller keeps the staging partials).
+        // A non-resumable cancel is also terminal delivery truth on its own —
+        // see the .notReady case below for why re-probing here is the bug,
+        // not the fix.
+        if resumable {
+          setupService.applyDeliveryState(.paused)
+        } else {
+          setupService.applyDeliveryState(.notDownloaded)
+        }
+      case .notReady:
+        // .notReady is terminal delivery truth (nothing admitted, no fetch
+        // attempted) — apply it directly, never by re-probing the controller.
+        // The prior `forceDetectState()` re-probe called readAvailability()
+        // -> adoptIfPresent(), which itself republishes .preparing then
+        // .notReady through this SAME observer, re-entering this case
+        // forever: an unbounded MainActor task loop that pinned the app at
+        // 100%+ CPU and froze the Settings row the moment a real user (or
+        // Remove) reached a genuinely not-installed state. Never re-enter
+        // detection from a push notification the controller just sent —
+        // detection is for the PULL path (.onAppear / backend switch), not
+        // for reacting to the controller's own state stream.
+        //
+        // Codex flicker-fix-r1 P2: `.notReady` carries no resumable flag, so
+        // settling straight on `.notDownloaded` can overwrite a genuinely
+        // paused download shown moments earlier — a stale `.notReady` from
+        // this SAME probe chain can land after the pull path's own `.paused`
+        // read. `hasStagedPartials()` is a pure disk read (never calls
+        // `startAttempt`/`setState`), so checking it here cannot re-enter the
+        // loop above; it only decides which terminal presentation is honest.
+        //
+        // Codex flicker-fix-r2 P2: guard the result against `applyGate` — a
+        // newer event (fresh download start/success/failure) may already
+        // have applied by the time this read resolves, and this stale result
+        // must not overwrite it.
+        Task { @MainActor [weak handle, weak setupService] in
+          guard let handle, let setupService else { return }
+          let hasPartials = await handle.hasStagedPartials()
+          guard applyGate.isCurrent(generation) else { return }
+          setupService.applyDeliveryState(hasPartials ? .paused : .notDownloaded)
+        }
       }
     }
 
     return Wired(backend: backend, retirement: retirement, setupService: setupService)
   }
+}
+
+/// Monotonic freshness guard for the `.notReady` case's async disk read
+/// (Codex flicker-fix-r2 P2): every delivery event bumps the generation;
+/// the pending read only applies its result if no newer event has landed
+/// while it was in flight.
+@MainActor private final class NotReadyStaleReadGate {
+  private var generation = 0
+  func bump() -> Int {
+    generation += 1
+    return generation
+  }
+  func isCurrent(_ candidate: Int) -> Bool { candidate == generation }
 }

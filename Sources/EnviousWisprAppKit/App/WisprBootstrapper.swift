@@ -338,6 +338,12 @@ public final class WisprBootstrapper {
     // before `start()` runs any registration (heart-path + bootstrap ordering).
     let hotkeyService = HotkeyService(telemetry: .live)
 
+    // 2c: the Remove drain's engine-unload seam — assignable only now that the
+    // driver (and its adapter) exist; the wiring that built the coordinator ran
+    // before them. L1: the drain awaits this BEFORE the delivery deletion.
+    whisperKitRetirement?.unloadForRemoval = { [weak whisperKitKernelDriver] in
+      await whisperKitKernelDriver?.unloadEngineForRemoval()
+    }
     let settingsSync = PipelineSettingsSync(
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
@@ -685,6 +691,20 @@ public final class WisprBootstrapper {
       },
       isEngineSwitching: { [weak engineCoordinator] in engineCoordinator?.isSwitching ?? false },
       beginMinting: { [weak engineCoordinator] in engineCoordinator?.beginMinting() },
+      // #1386 PR-2c (founder): a press on a removed/never-installed model shows
+      // the honest not-installed pill — and a model MID-REMOVAL counts as
+      // removed (founder: no new dictations during a removal drain; the drain's
+      // first instants can still read installed+ready). Defaults OPEN on a
+      // missing authority.
+      isSelectedModelInstalled: { [weak engineCoordinator, weak setup] in
+        guard let engineCoordinator else { return true }
+        if engineCoordinator.status.selected == .whisperKit,
+          setup?.whisperKitSetup.isRemoving == true
+        {
+          return false
+        }
+        return engineCoordinator.status.selectedInstalled
+      },
       endMinting: { [weak engineCoordinator] in engineCoordinator?.endMinting() }
     )
 
@@ -808,6 +828,16 @@ public final class WisprBootstrapper {
     // recovery / driver-state pokes) is all set, so the worker drains correctly.
     // At boot active == selected (`setInitialBackendType` above), so the first
     // reconcile is a converged no-op.
+    // 2c: the Remove refusal reads BOTH session authorities from their owners
+    // (Codex 2c-r5 P2): the frozen-config read (PipelineSettingsSync, which
+    // owns both drivers) AND the minting gate (EngineCoordinator, gate 5's
+    // owner) — a start that has committed but not yet frozen its config would
+    // otherwise read as "no session" and let Remove delete under it. nil
+    // either way refuses, fail safe.
+    setup.whisperKitSetup.isDictationInFlight = { [weak settingsSync, weak engineCoordinator] in
+      (settingsSync?.isWhisperKitDictationInFlight() ?? true)
+        || (engineCoordinator?.isMintingWhisperKitSession ?? true)
+    }
     engineCoordinator.start()
 
     // Initialize observability (PostHog + Sentry) unconditionally at launch.
