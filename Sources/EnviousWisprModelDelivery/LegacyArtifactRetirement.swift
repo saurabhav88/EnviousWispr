@@ -275,12 +275,19 @@ public enum LegacyRetirement {
   }
 
   /// Map an `open`/`openat` failure to a verdict. Same errno vocabulary as the `lstat` walk:
-  /// only "nothing there" is `.absent`, only a link or a non-directory is a permanent
+  /// only "nothing there" is `.absent`, a link or a wrong-shaped component is a permanent
   /// `.mismatch`, and anything else — permission, TCC, I/O — is "we cannot tell".
+  ///
+  /// `ENOTDIR` is a mismatch, not an absence, and the distinction is not pedantic. It means
+  /// something IS occupying a component and it is not a directory — bytes we cannot identify,
+  /// sitting in the model path. Calling that `.absent` would let a whole set roll up to
+  /// "nothing here", so policy would fall silent instead of refusing, and unknown bytes would
+  /// read as an empty store. The static `lstat` classifier already answers `.mismatch` for
+  /// exactly this shape; only the race reaches here, and it must not answer differently.
   private static func verdict(forOpenErrno code: Int32) -> EntryVerdict {
     switch code {
-    case ENOENT, ENOTDIR: return .absent
-    case ELOOP, EINVAL: return .mismatch
+    case ENOENT: return .absent
+    case ENOTDIR, ELOOP, EINVAL: return .mismatch
     default: return .unreadable
     }
   }
@@ -331,7 +338,10 @@ public enum LegacyRetirement {
 
   private static func classifyIntermediate(at url: URL) -> IntermediateVerdict {
     guard let info = lstatIdentity(at: url) else {
-      return errno == ENOENT || errno == ENOTDIR ? .absent : .unreadable
+      // Same split as `verdict(forOpenErrno:)`: ENOTDIR means an ancestor exists and is not a
+      // directory, which is a shape we refuse, not an absence.
+      if errno == ENOENT { return .absent }
+      return errno == ENOTDIR ? .mismatch : .unreadable
     }
     // A symlink or a non-directory where the manifest says a directory belongs is not our
     // tree, whatever it points at.

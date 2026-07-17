@@ -148,6 +148,25 @@ import Testing
     #expect(verdicts["AudioEncoder.mlmodelc/coremldata.bin"] == .mismatch)
   }
 
+  @Test func aDeepPathUnderARegularFileIsMismatchNotAbsent() async throws {
+    let root = try makeRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    // A regular file occupies a component, and the manifest expects a directory two levels
+    // deeper -- so the stat/open fails with ENOTDIR, not ENOENT. Those are different facts:
+    // ENOENT is "nothing there", ENOTDIR is "something is there and it is the wrong shape".
+    // Calling it absent would let a whole set roll up to "nothing here", so policy would fall
+    // silent instead of refusing, and unknown bytes sitting in the model path would read as
+    // an empty store.
+    try stage(root, "AudioEncoder.mlmodelc", Data("a file, not a directory".utf8))
+
+    let verdicts = try await LegacyRetirement.fingerprint(
+      root: root,
+      files: [trusted("AudioEncoder.mlmodelc/analytics/coremldata.bin", Data("x".utf8))])
+
+    #expect(verdicts["AudioEncoder.mlmodelc/analytics/coremldata.bin"] == .mismatch)
+  }
+
   @Test func missingFileIsAbsentAndIsNeverHashed() async throws {
     let root = try makeRoot()
     defer { try? FileManager.default.removeItem(at: root) }
