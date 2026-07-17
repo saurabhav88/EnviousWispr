@@ -37,8 +37,10 @@ public final class WhisperKitSetupService {
   /// delivery handle + relocation coordinator — ASR imports neither Pipeline nor
   /// ModelDelivery, so the dependency arrives as a closure.
   private let readAvailability: @MainActor () async -> WhisperKitSetupState
-  /// The explicit Download action (controller-backed).
-  private let startDownload: @MainActor () async -> Void
+  /// The explicit Download action (controller-backed). Returns whether the
+  /// request was ACCEPTED — false means refused (kill switch off, no wiring)
+  /// and no delivery state will ever arrive for it.
+  private let startDownload: @MainActor () async -> Bool
   /// The explicit Cancel action (controller-backed; drains the active fetch).
   private let cancelActiveDownload: @MainActor () async -> Void
 
@@ -47,7 +49,7 @@ public final class WhisperKitSetupService {
   /// an unverified one.
   public init(
     readAvailability: @escaping @MainActor () async -> WhisperKitSetupState = { .notDownloaded },
-    startDownload: @escaping @MainActor () async -> Void = {},
+    startDownload: @escaping @MainActor () async -> Bool = { false },
     cancelActiveDownload: @escaping @MainActor () async -> Void = {}
   ) {
     self.readAvailability = readAvailability
@@ -90,10 +92,16 @@ public final class WhisperKitSetupService {
   // MARK: - Download
 
   /// The user asked for the model. Delegates to the verified delivery path; the
-  /// state projection drives progress from there.
+  /// state projection drives progress from there. A REFUSED request re-detects
+  /// instead — no delivery state will ever arrive for it, and leaving the
+  /// optimistic "Starting download..." up would stick forever (Codex 2b-r1 P2).
   public func downloadModel() {
     setupState = .downloading(progress: 0, status: "Starting download...")
-    Task { [startDownload] in await startDownload() }
+    Task { [startDownload, weak self] in
+      if await startDownload() == false {
+        await self?.forceDetectState()
+      }
+    }
   }
 
   /// Cancel an in-progress download. Acknowledgment is instant by design — the

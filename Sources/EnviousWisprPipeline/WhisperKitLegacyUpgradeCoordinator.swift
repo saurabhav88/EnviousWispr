@@ -55,13 +55,19 @@ public final class WhisperKitLegacyUpgradeCoordinator {
   private let ensureAvailable: @MainActor @Sendable () async -> Bool
   private let cancelActiveFetch: @MainActor @Sendable () async -> Void
   private let isAdmitted: @MainActor @Sendable () async -> Bool
+  /// The kill switch, read at the TOP of every retirement run — not only at the
+  /// fetch door. A rollback (switch off) must refuse the whole operation before
+  /// the first disk mutation: retiring the legacy copy and then refusing the
+  /// refetch would strand the user with neither model (Codex 2b-r1 P1).
+  private let isDeliveryEnabled: @MainActor @Sendable () -> Bool
 
   /// Seams. Production passes nil and gets `LegacyRetirement`'s real implementations —
   /// including its inode-bound hashing, which a URL-taking closure cannot express.
   private let hashFile: (@Sendable (URL) async throws -> String)?
   private let removeItem: ((URL) throws -> Void)?
 
-  private var command: (kind: CommandKind, task: Task<Void, Never>)?
+  private var command: (kind: CommandKind, task: Task<Void, Never>, ticket: Int)?
+  private var commandTicket = 0
   private var commandGeneration = 0
 
   public init(
@@ -74,6 +80,7 @@ public final class WhisperKitLegacyUpgradeCoordinator {
     isAdmitted: @escaping @MainActor @Sendable () async -> Bool,
     ensureAvailable: @escaping @MainActor @Sendable () async -> Bool,
     cancelActiveFetch: @escaping @MainActor @Sendable () async -> Void,
+    isDeliveryEnabled: @escaping @MainActor @Sendable () -> Bool,
     hashFile: (@Sendable (URL) async throws -> String)? = nil,
     removeItem: ((URL) throws -> Void)? = nil
   ) {
@@ -84,6 +91,7 @@ public final class WhisperKitLegacyUpgradeCoordinator {
     self.isAdmitted = isAdmitted
     self.ensureAvailable = ensureAvailable
     self.cancelActiveFetch = cancelActiveFetch
+    self.isDeliveryEnabled = isDeliveryEnabled
     self.hashFile = hashFile
     self.removeItem = removeItem
   }
@@ -160,10 +168,16 @@ public final class WhisperKitLegacyUpgradeCoordinator {
       await command.task.value
       return
     }
+    // The trailing clear is ticket-guarded: `cancel()` nils `command` while this call is
+    // still suspended on `task.value`, so a Download registered between that cancel and
+    // this resume must not be wiped by the OLD command's cleanup — a wiped registration
+    // would let a later press start a second concurrent run instead of joining.
+    commandTicket += 1
+    let ticket = commandTicket
     let task = Task { await work() }
-    command = (kind, task)
+    command = (kind: kind, task: task, ticket: ticket)
     await task.value
-    command = nil
+    if command?.ticket == ticket { command = nil }
   }
 
   // MARK: - The eight steps
@@ -171,6 +185,12 @@ public final class WhisperKitLegacyUpgradeCoordinator {
   private func retireAndRefetchIfNeeded() async {
     let generation = commandGeneration
     let fm = FileManager.default
+
+    // 0. The kill switch refuses the WHOLE run — before any read, marker write, or unlink.
+    //    A marker already owed stays owed: it survives untouched for a future launch where
+    //    the switch is back on. Deleting while disabled would strand a rollback user with
+    //    neither the legacy copy nor a fetchable replacement.
+    guard isDeliveryEnabled() else { return }
 
     // 1. Cheap exit. Existence checks, and — only if a declined record exists — one lstat per
     //    recorded entry to see whether it is still valid. Zero hashes either way (L4).

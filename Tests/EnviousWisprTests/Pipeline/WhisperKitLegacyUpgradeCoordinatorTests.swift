@@ -27,6 +27,7 @@ import Testing
     var fetches = 0
     var admitted = false
     var admitOnFetch = true
+    var deliveryEnabled = true
     var events: [WhisperKitLegacyUpgradeCoordinator.Event] = []
 
     init() throws {
@@ -89,7 +90,8 @@ import Testing
         if world.admitOnFetch { world.admitted = true }
         return world.admitted
       },
-      cancelActiveFetch: {})
+      cancelActiveFetch: {},
+      isDeliveryEnabled: { world.deliveryEnabled })
     coordinator.onEvent = { world.events.append($0) }
     return coordinator
   }
@@ -175,7 +177,7 @@ import Testing
         world.fetches += 1
         return false
       },
-      cancelActiveFetch: {}, hashFile: countingHash)
+      cancelActiveFetch: {}, isDeliveryEnabled: { true }, hashFile: countingHash)
     await first.runLaunch()
     let afterFirst = hashes
     #expect(afterFirst > 0, "the first pass must actually hash")
@@ -189,7 +191,7 @@ import Testing
         world.fetches += 1
         return false
       },
-      cancelActiveFetch: {}, hashFile: countingHash)
+      cancelActiveFetch: {}, isDeliveryEnabled: { true }, hashFile: countingHash)
     await second.runLaunch()
 
     // This is the forever-cost guard: §2.1 makes this run on every launch for the life of the
@@ -372,5 +374,53 @@ import Testing
       FileManager.default.fileExists(atPath: cacheRoot.path),
       "argmaxinc/ is never removed")
     #expect(world.events.contains(.legacyRetired))
+  }
+
+  // MARK: - The kill switch (Codex 2b-r1 P1)
+
+  @Test func aDisabledKillSwitchRefusesTheWholeRunBeforeAnyDiskMutation() async throws {
+    let world = try World()
+    defer { world.cleanUp() }
+    let payloads = try world.stageForeignCopy()
+    world.deliveryEnabled = false
+
+    await makeCoordinator(world).runLaunch()
+
+    // Rollback case: switch off means NOTHING happened — every legacy byte intact,
+    // no marker, no declined record, no fetch, no event. Deleting and then refusing
+    // the refetch would strand the user with neither model.
+    for relativePath in payloads.keys {
+      #expect(
+        FileManager.default.fileExists(
+          atPath: world.foreignDirectory.appendingPathComponent(relativePath).path),
+        "legacy file untouched: \(relativePath)")
+    }
+    #expect(!FileManager.default.fileExists(atPath: world.markerURL.path))
+    #expect(!FileManager.default.fileExists(atPath: world.declinedURL.path))
+    #expect(world.fetches == 0)
+    #expect(world.events.isEmpty)
+  }
+
+  @Test func aDisabledKillSwitchPreservesAnOwedMarkerForAFutureLaunch() async throws {
+    let world = try World()
+    defer { world.cleanUp() }
+    try world.stageForeignCopy()
+    world.admitOnFetch = false
+    await makeCoordinator(world).runLaunch()
+    #expect(FileManager.default.fileExists(atPath: world.markerURL.path), "debt recorded")
+
+    world.deliveryEnabled = false
+    await makeCoordinator(world).runLaunch()
+
+    // The debt is neither paid nor forgiven while the switch is off.
+    #expect(FileManager.default.fileExists(atPath: world.markerURL.path))
+    #expect(world.fetches == 1, "no fetch attempt while disabled")
+
+    world.deliveryEnabled = true
+    world.admitOnFetch = true
+    await makeCoordinator(world).runLaunch()
+
+    #expect(world.fetches == 2, "a re-enabled launch replays the owed fetch")
+    #expect(!FileManager.default.fileExists(atPath: world.markerURL.path))
   }
 }

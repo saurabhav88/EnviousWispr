@@ -88,8 +88,8 @@ struct ASRManagerBackendInjectionTests {
 @MainActor
 struct ASRManagerLoadGenerationTests {
 
-  private func waitForPrepareEntered(_ backend: FakeASRBackend) async {
-    while await backend.prepareCount == 0 { await Task.yield() }
+  private func waitForPrepareEntered(_ backend: FakeASRBackend, count: Int = 1) async {
+    while await backend.prepareCount < count { await Task.yield() }
   }
 
   @Test("a load superseded by cancelInFlightLoad mid-flight throws and stays unloaded")
@@ -158,8 +158,14 @@ struct ASRManagerLoadGenerationTests {
     // #1386 PR-2: the manager no longer owns a WhisperKit backend to load, so
     // the invariant is now proven by switching BACK — the next load must start
     // FRESH, not join the retired (superseded) task and inherit its throw.
+    // The gated fake parks EVERY prepare, so the retry needs its own release:
+    // run it as a task, wait for its park (prepareCount == 2), then open the
+    // gate again. Awaiting `loadModel()` inline here deadlocks the suite.
     await manager.switchBackend(to: .parakeet)
-    try await manager.loadModel()
+    let retryTask = Task { @MainActor in try await manager.loadModel() }
+    await waitForPrepareEntered(parakeet, count: 2)
+    await parakeet.releaseGate()
+    try await retryTask.value
     #expect(manager.isModelLoaded == true)
     #expect(manager.activeBackendType == .parakeet)
     let prepares = await parakeet.prepareCount

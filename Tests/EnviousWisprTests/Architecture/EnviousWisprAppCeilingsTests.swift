@@ -161,13 +161,20 @@ import Testing
   ///   dodge this one. The stored value is a struct of three closures — routing,
   ///   no state, no policy — and its construction lives in
   ///   `ActiveEngineOperation.live`, not in the root.
+  /// - 37 → 38 in #1386 PR-2b (2026-07-17): App-owned `whisperKitRetirement`,
+  ///   the launch retire-and-refetch coordinator. It is reached only through a
+  ///   closure `SetupCoordinator` calls once, and a closure capture cannot keep
+  ///   it alive — as a weakly-captured local it deallocated before the deferred
+  ///   phase ran and the retirement silently no-op'd (caught by Live UAT, not
+  ///   by any static review). Storing it here IS the fix: nothing narrower owns
+  ///   its lifetime, the same rule that placed `egOneRuntime` above.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 37,
+      count <= 38,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 37. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 38. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -366,15 +373,18 @@ import Testing
   /// The residue is a handful of `let`s, two calls, and the `activeEngine`
   /// plumbing the stored-property entry above justifies: the irreducible cost of
   /// naming a subsystem. Cap by deterministic rule (actual 1117 + ~2, rounded up
-  /// to nearest 5 = 1120).
+  /// to nearest 5 = 1120). #1386 PR-2b re-applied the rule after the
+  /// `whisperKitRetirement` ownership fix (stored-property entry above) added
+  /// its declaration + assignment: actual 1121 + ~2, rounded up to nearest
+  /// 5 = 1125.
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1120,
+      lineCount <= 1125,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1120. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1125. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

@@ -65,7 +65,10 @@ enum WhisperKitDeliveryWiring {
           if case .admitted = await handle?.ensureAvailable() { return true }
           return false
         },
-        cancelActiveFetch: { [weak handle] in await handle?.cancelActiveFetch() })
+        cancelActiveFetch: { [weak handle] in await handle?.cancelActiveFetch() },
+        // Read again at the TOP of every run: retiring bytes while the switch is
+        // off would strand a rollback user with neither model (Codex 2b-r1 P1).
+        isDeliveryEnabled: { [weak handle] in handle?.isEnabled() == true })
     }
 
     // Availability is controller admission, never a directory probe. A refused
@@ -79,12 +82,34 @@ enum WhisperKitDeliveryWiring {
       },
       // The kill switch is checked HERE, at the fetch door, not only in the copy
       // above: a stale Settings render (or a flag flipped after the row drew)
-      // must not still be able to start a multi-GB fetch.
-      startDownload: { [weak handle] in
-        guard handle?.isEnabled() == true else { return }
-        _ = await handle?.ensureAvailable()
+      // must not still be able to start a multi-GB fetch. Returns whether the
+      // request was ACCEPTED — a refusal must not leave the row on "Starting
+      // download..." forever (Codex 2b-r1 P2).
+      //
+      // Download routes through the coordinator, not straight to the handle: its
+      // join semantics (L5) make a press during the launch refetch join that
+      // fetch instead of racing it.
+      startDownload: { [weak handle, weak retirement] in
+        guard let handle, handle.isEnabled() else { return false }
+        if let retirement {
+          await retirement.download()
+        } else {
+          _ = await handle.ensureAvailable()
+        }
+        return true
       },
-      cancelActiveDownload: { [weak handle] in await handle?.cancelActiveFetch() })
+      // Cancel routes through the coordinator too: it clears the owed marker
+      // FIRST (L1), so a cancelled launch refetch stays cancelled instead of
+      // silently restarting next launch (Codex 2b-r1 P1). A failed marker clear
+      // refuses the whole command — the fetch keeps running and the row keeps
+      // showing it, which is the honest state.
+      cancelActiveDownload: { [weak handle, weak retirement] in
+        if let retirement {
+          try? await retirement.cancel()
+        } else {
+          await handle?.cancelActiveFetch()
+        }
+      })
 
     // One delivery-state stream projected onto the ASR setup states the Settings
     // row already renders (D6: one stream, two renderers).
