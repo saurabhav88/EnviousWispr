@@ -11,9 +11,11 @@ import Testing
 /// was collapsed into a single prompt).
 ///
 /// Coverage strategy: AppleIntelligenceConnector cannot be tested directly
-/// (requires AFM macOS 26+). LLMPolishStep does not expose an injectable
-/// polisher seam, so we cannot drive its catch path or `pipelineFellBackToRaw`
-/// computation end-to-end through the public surface. Instead this suite verifies:
+/// (requires AFM macOS 26+), but `LLMPolishStep.makePolisher` IS an injectable
+/// seam (#827 PR-8) that lets a canned polisher drive `process()` end-to-end
+/// on both the AFM and planner code paths without needing the real
+/// connector. #1624: `pipelineFellBackToRawIsOR` below now uses this seam.
+/// This suite also verifies:
 ///
 ///   1. PolishMetadata wraps cleanly into LLMResult (now filter-only fields).
 ///   2. ExecutionMetrics decodes old-shape records (Codable backward-compat).
@@ -217,57 +219,65 @@ struct DualModePolishTelemetryTests {
 
   // MARK: - 4b. PipelineFellBackToRaw OR semantics (LLMPolishStep §3.5)
 
-  /// `LLMPolishStep.process()` computes `pipelineFellBackToRaw =
-  /// filterFellBackToRaw || (validatedText == context.text)` on both the AFM and
-  /// cloud paths. The OR is conceptually verified here; the production formula is
-  /// now also locked against the `#1050` reason helper by
-  /// `fallbackReasonInvariantMatchesOR` below (section 7).
-  @Test("pipelineFellBackToRaw is OR of filter outcome and validator outcome")
-  func pipelineFellBackToRawIsOR() {
-    func computeOR(filterFellBack: Bool, validatorFellBack: Bool) -> Bool {
-      filterFellBack || validatorFellBack
+  /// The real OR formula is duplicated on two separate code paths in
+  /// `LLMPolishStep.process()` — the AFM branch and the planner/cloud branch
+  /// (#1624 grounded review) — so this drives BOTH providers through the real
+  /// `makePolisher` seam across all 4 filter-fallback x validator-rejection
+  /// combinations, rather than recomputing the OR locally.
+  private struct CannedResultPolisher: TranscriptPolisher {
+    let result: LLMResult
+
+    func polish(
+      text: String,
+      instructions: PolishInstructions,
+      config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      result
     }
-    #expect(computeOR(filterFellBack: false, validatorFellBack: false) == false)
-    #expect(computeOR(filterFellBack: true, validatorFellBack: false) == true)
-    #expect(computeOR(filterFellBack: false, validatorFellBack: true) == true)
-    #expect(computeOR(filterFellBack: true, validatorFellBack: true) == true)
   }
 
-  // MARK: - 4c. ExecutionMetrics nil-degrades-to-nil pattern (Pipelines §3.6)
-
-  /// Pipelines build `polishFellBackToRaw: metadata == nil ? nil : pipelineFellBackToRaw`.
-  /// When no AFM polish ran (cloud provider, or polish skipped), the field
-  /// must be NIL — not `false` — so PostHog filtering on `fell_back_to_raw IS
-  /// NOT NULL` correctly excludes non-AFM events.
-  @Test("ExecutionMetrics.polishFellBackToRaw is nil when polishMetadata is absent")
-  func executionMetricsFellBackIsNilWithoutMetadata() {
-    let metadata: PolishMetadata? = nil
-    let pipelineFellBackToRaw = false
-    let polishFellBackToRaw: Bool? =
-      metadata == nil ? nil : pipelineFellBackToRaw
-    #expect(polishFellBackToRaw == nil)
-
-    let metrics = ExecutionMetrics(
-      polishFilterTripped: metadata?.filterTripped,
-      polishFellBackToRaw: polishFellBackToRaw
+  @Test(
+    "pipelineFellBackToRaw uses the real OR on AFM and planner paths",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1624",
+      "fallback tests recomputed their own oracle"
     )
-    #expect(metrics.polishFilterTripped == nil)
-    #expect(metrics.polishFellBackToRaw == nil)
-  }
+  )
+  func pipelineFellBackToRawIsOR() async throws {
+    let original = "please clean up this sentence for the release notes"
+    let validPolish = "Please clean up this sentence for the release notes."
+    let rejectedPolish = String(repeating: "hallucinated expansion ", count: 40)
 
-  @Test("ExecutionMetrics.polishFellBackToRaw is false when AFM ran but pipeline did not fall back")
-  func executionMetricsFellBackIsFalseOnSuccessfulAFM() {
-    let metadata = PolishMetadata(filterTripped: nil, filterFellBackToRaw: false)
-    let pipelineFellBackToRaw = false  // validator did not trigger either
-    let polishFellBackToRaw: Bool? =
-      Optional<PolishMetadata>.some(metadata) == nil ? nil : pipelineFellBackToRaw
+    for provider in [LLMProvider.appleIntelligence, .openAI] {
+      for filterFellBack in [false, true] {
+        for validatorRejected in [false, true] {
+          let result = LLMResult(
+            polishedText: validatorRejected ? rejectedPolish : validPolish,
+            polishMetadata: PolishMetadata(
+              filterTripped: filterFellBack ? "test_guard" : nil,
+              filterFellBackToRaw: filterFellBack)
+          )
 
-    let metrics = ExecutionMetrics(
-      polishFilterTripped: metadata.filterTripped,
-      polishFellBackToRaw: polishFellBackToRaw
-    )
-    #expect(metrics.polishFilterTripped == nil)
-    #expect(metrics.polishFellBackToRaw == false)
+          let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
+          step.llmProvider = provider
+          step.llmModel = provider == .appleIntelligence ? "apple-intelligence" : "gpt-4o-mini"
+          step.makePolisher = { _, _, _ in CannedResultPolisher(result: result) }
+
+          let context = try await step.process(
+            TextProcessingContext(text: original, language: "en"))
+
+          #expect(
+            context.polishedText == (validatorRejected ? original : validPolish),
+            "provider \(provider), filterFellBack=\(filterFellBack), validatorRejected=\(validatorRejected)"
+          )
+          #expect(
+            context.pipelineFellBackToRaw == (filterFellBack || validatorRejected),
+            "provider \(provider), filterFellBack=\(filterFellBack), validatorRejected=\(validatorRejected)"
+          )
+        }
+      }
+    }
   }
 
   // MARK: - 7. #1050 polishFallbackReason — honest disaggregation
