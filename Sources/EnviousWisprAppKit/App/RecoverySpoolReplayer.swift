@@ -207,6 +207,12 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // actually transcribed — so the metadata stays accurate either way.
     let options = Self.transcriptionOptions(for: recovered.settings)
     do {
+      // A replay racing the #1386 launch migration can find no admitted model,
+      // fail, and delete the spool. ACCEPTED, not a defect (founder ruling,
+      // plan §2.4: "If we lose a recording, we lose a recording"): recovery is
+      // a limb, and a migration gate here is the crash-recovery coupling that
+      // ruling exists to forbid. Reviewers keep re-deriving this — do not
+      // "fix" it without a new founder decision.
       try await activeEngine.load()
     } catch {
       // Discard hard-resets the engine, which can throw here — that's an abort,
