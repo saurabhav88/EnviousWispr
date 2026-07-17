@@ -114,11 +114,11 @@ private struct RecordingSoundPairingCard: View {
 
   private var description: String {
     switch pairing {
-    case .airGlint: return "A clean, airy glint — lifts gently for start, settles lower for stop."
-    case .velvetTap: return "A muted, compact tap — brighter on start, lower and softer on stop."
+    case .airGlint: return "A clean, airy glint. Lifts gently for start, settles lower for stop."
+    case .velvetTap: return "A muted, compact tap. Brighter on start, lower and softer on stop."
     case .satinShift:
       return "A smooth two-tone texture shifting brighter for start, darker for stop."
-    case .cloudPop: return "A tiny filtered-air pop — crisp on start, subdued on stop."
+    case .cloudPop: return "A tiny filtered-air pop. Crisp on start, subdued on stop."
     }
   }
 }
