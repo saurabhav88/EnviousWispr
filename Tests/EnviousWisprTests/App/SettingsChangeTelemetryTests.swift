@@ -82,6 +82,18 @@ import Testing
       #expect(d.first?.stringProps["source"] == "user")
     }
 
+    @Test("overlay pill position emits a delta (#1341)")
+    func overlayPillPositionDelta() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+      settings.overlayPillPosition = .bottom
+      telemetry.flush()
+      let d = deltas(box, setting: "overlay_pill_position")
+      #expect(d.count == 1)
+      #expect(d.first?.stringProps["from"] == "top")
+      #expect(d.first?.stringProps["to"] == "bottom")
+    }
+
     @Test("Two settings in one window emit two deltas")
     func twoSettingsTwoDeltas() {
       let (settings, telemetry, box, _) = makeHarness()

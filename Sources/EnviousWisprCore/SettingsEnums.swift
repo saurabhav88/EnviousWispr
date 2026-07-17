@@ -17,3 +17,11 @@ public enum AppearancePreference: String, CaseIterable, Sendable {
   case light
   case dark
 }
+
+/// Where the recording pill (and every transient overlay sharing its window —
+/// polishing, warnings, cold-start notices, the Bluetooth card) appears on
+/// screen. Persisted by rawValue; unknown/missing values resolve to `.top`.
+public enum OverlayPillPosition: String, CaseIterable, Sendable {
+  case top
+  case bottom
+}

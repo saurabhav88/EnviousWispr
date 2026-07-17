@@ -99,6 +99,32 @@ struct SettingsDefaultsRoutingTests {
     #expect(SettingsManager(defaults: suite).appearancePreference == .system)
   }
 
+  // MARK: - Overlay pill position (#1341)
+
+  @Test("overlay pill position defaults to .top on a fresh install")
+  func overlayPillPositionDefaultsToTop() {
+    let settings = SettingsManager(defaults: Self.freshSuite())
+    #expect(settings.overlayPillPosition == .top)
+  }
+
+  @Test("overlay pill position persists to the injected store and is in the unified key set")
+  func overlayPillPositionPersists() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    settings.overlayPillPosition = .bottom
+    #expect(suite.string(forKey: "overlayPillPosition") == "bottom")
+    // Reload from the same store → the choice survives.
+    #expect(SettingsManager(defaults: suite).overlayPillPosition == .bottom)
+    #expect(SettingsManager.unifiedDefaultsKeys.contains("overlayPillPosition"))
+  }
+
+  @Test("an unparseable stored overlay pill position falls back to .top")
+  func overlayPillPositionUnparseableFallsBack() {
+    let suite = Self.freshSuite()
+    suite.set("sideways", forKey: "overlayPillPosition")
+    #expect(SettingsManager(defaults: suite).overlayPillPosition == .top)
+  }
+
   #if DEBUG
     // AFM adapter PoC dev knob — a per-build contract: writes to .standard (not
     // the injected store) and stays out of the unified key set. DEBUG-gated

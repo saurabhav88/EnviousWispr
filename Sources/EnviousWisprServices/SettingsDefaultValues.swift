@@ -16,6 +16,10 @@ enum SettingsDefaultValues {
   /// Default appearance follows the macOS system setting.
   static let appearancePreference: AppearancePreference = .system
 
+  // #1341: recording pill / status notices default to the top of the screen,
+  // matching the fixed position every existing install already sees.
+  static let overlayPillPosition: OverlayPillPosition = .top
+
   // #923: AI polish is ON by default, Apple Intelligence. Previously the cold
   // fallback was `.none` and onboarding wrote `.appleIntelligence` separately,
   // which made the real default ambiguous. Apple Intelligence is on-device; on

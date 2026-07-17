@@ -42,6 +42,7 @@ public final class SettingsManager {
     case useStreamingASR
     case warmEnginePolicy
     case appearance
+    case overlayPillPosition
     case showBluetoothTips
   }
 
@@ -77,7 +78,7 @@ public final class SettingsManager {
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
     "useExtendedThinking", "whisperKitLanguage", "languageMode",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride",
-    "useStreamingASR", "warmEnginePolicy", "appearancePreference",
+    "useStreamingASR", "warmEnginePolicy", "appearancePreference", "overlayPillPosition",
     "showBluetoothTips",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
   ]
@@ -370,6 +371,16 @@ public final class SettingsManager {
     didSet {
       defaults.set(appearancePreference.rawValue, forKey: "appearancePreference")
       onChange?(.appearance)
+    }
+  }
+
+  /// #1341: where the recording pill and status notices appear on screen.
+  /// UI-only — read once at fresh-panel-creation time by `RecordingOverlayPanel`,
+  /// never live-patched into an already-showing panel; pipeline sync is a no-op.
+  public var overlayPillPosition: OverlayPillPosition {
+    didSet {
+      defaults.set(overlayPillPosition.rawValue, forKey: "overlayPillPosition")
+      onChange?(.overlayPillPosition)
     }
   }
 
@@ -717,6 +728,11 @@ public final class SettingsManager {
       AppearancePreference(
         rawValue: defaults.string(forKey: "appearancePreference") ?? ""
       ) ?? SettingsDefaultValues.appearancePreference
+
+    overlayPillPosition =
+      OverlayPillPosition(
+        rawValue: defaults.string(forKey: "overlayPillPosition") ?? ""
+      ) ?? SettingsDefaultValues.overlayPillPosition
 
     showBluetoothTips =
       defaults.object(forKey: "showBluetoothTips") as? Bool
