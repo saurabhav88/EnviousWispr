@@ -92,6 +92,12 @@ private struct RecordingSoundPairingCard: View {
             .settingsReadingCopy()
             .frame(maxWidth: .infinity, minHeight: 20, alignment: .topLeading)
         }
+        // Without this, a plain-style button's tap target is only the
+        // rendered glyphs (the text), not the full card area — the Spacer
+        // and any empty space around short text becomes dead space you can
+        // click without anything happening. This makes the whole rectangle
+        // tappable (founder-reported, 2026-07-17).
+        .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
       .accessibilityLabel(name)
