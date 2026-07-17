@@ -80,7 +80,14 @@ enum WhisperKitDeliveryWiring {
     // honest answer for an engine whose model is not installed.
     let setupService = WhisperKitSetupService(
       readAvailability: { [weak handle] in
-        if await handle?.isAdmitted() == true { return .ready }
+        guard let handle else { return .notDownloaded }
+        if await handle.isAdmitted() { return .ready }
+        // A crash between the promote and the marker write leaves a complete,
+        // hash-valid cache with no marker (cloud review P2). Adopt it —
+        // revalidate and admit WITHOUT fetching — instead of telling the user
+        // to download 1.6 GB they already have. Absent files fail this check
+        // instantly, so the common no-model path stays cheap.
+        if await handle.adoptIfPresent() { return .ready }
         return .notDownloaded
       },
       // The kill switch is checked HERE, at the fetch door, not only in the copy
