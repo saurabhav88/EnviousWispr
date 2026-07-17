@@ -44,12 +44,10 @@ public final class EGOneLegacyUpgradeCoordinator {
 
   public var onEvent: (@MainActor @Sendable (Event) -> Void)?
 
-  private enum Fingerprint {
-    case absent
-    case match
-    case mismatch
-    case unreadable
-  }
+  /// EG-1's local vocabulary is now the shared one (#1386 PR-2a). The mechanism moved to
+  /// `LegacyRetirement`; this policy did not. Kept as an alias so this file's call sites and
+  /// its 29 tests read exactly as before.
+  private typealias Fingerprint = LegacyRetirement.SetVerdict
 
   private let appSupportDirectory: URL
   private let defaults: UserDefaults
@@ -59,7 +57,9 @@ public final class EGOneLegacyUpgradeCoordinator {
     @MainActor @Sendable () async -> ModelDeliveryController.DeliveryOutcome
   private let currentModelIsAdmitted: @MainActor @Sendable () async -> Bool
 
-  private let hashFile: @Sendable (URL) async throws -> String
+  /// nil in production: `LegacyRetirement` then hashes the descriptor it verified, so the
+  /// digest and the identity provably describe one inode. Tests inject a closure.
+  private let hashFile: (@Sendable (URL) async throws -> String)?
   private let writeMarker: @MainActor @Sendable (URL) -> Bool
   private let removeItem: @MainActor @Sendable (URL) throws -> Void
 
@@ -116,7 +116,7 @@ public final class EGOneLegacyUpgradeCoordinator {
     self.trustedArtifact = trustedArtifact
     self.ensureCurrentModel = ensureCurrentModel
     self.currentModelIsAdmitted = currentModelIsAdmitted
-    self.hashFile = hashFile ?? Self.streamingSHA256
+    self.hashFile = hashFile
     self.writeMarker = writeMarker ?? Self.atomicWriteMarker
     self.removeItem = removeItem ?? { try FileManager.default.removeItem(at: $0) }
   }
@@ -277,30 +277,23 @@ public final class EGOneLegacyUpgradeCoordinator {
     }
   }
 
+  /// Delegates to the shared mechanism (#1386 PR-2a). EG-1's artifact is a single flat file,
+  /// so it passes a one-element set and reads the roll-up.
+  ///
+  /// A thrown error here is a cancellation and nothing else: `LegacyRetirement.fingerprint`
+  /// classifies every other failure into a verdict and rethrows only `CancellationError`.
+  /// EG-1 exposes no cancellation path for its preparation task today, so this branch is
+  /// unreachable from EG-1 — but it must stay honest rather than fold a cancel into
+  /// `.unreadable`, which would write a permanent decline for a user who asked us to stop.
   private func fingerprintLegacyArtifact() async -> Fingerprint {
-    let url = legacyArtifactURL
-    let fm = FileManager.default
-
-    guard fm.fileExists(atPath: url.path) else { return .absent }
-
-    let values: URLResourceValues
+    let file = LegacyRetirement.TrustedFile(
+      relativePath: trustedArtifact.name,
+      sizeBytes: trustedArtifact.sizeBytes,
+      sha256: trustedArtifact.sha256)
     do {
-      values = try url.resourceValues(
-        forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
-    } catch {
-      return .unreadable
-    }
-
-    guard values.isSymbolicLink != true,
-      values.isRegularFile == true,
-      let fileSize = values.fileSize,
-      Int64(fileSize) == trustedArtifact.sizeBytes
-    else {
-      return .mismatch
-    }
-
-    do {
-      return try await hashFile(url) == trustedArtifact.sha256 ? .match : .mismatch
+      let verdicts = try await LegacyRetirement.fingerprint(
+        root: oldStoreDirectory, files: [file], hashFile: hashFile)
+      return LegacyRetirement.rollUp(verdicts)
     } catch {
       return .unreadable
     }
@@ -384,31 +377,7 @@ public final class EGOneLegacyUpgradeCoordinator {
   }
 
   private static func atomicWriteMarker(_ url: URL) -> Bool {
-    do {
-      try FileManager.default.createDirectory(
-        at: url.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-      )
-      try Data().write(to: url, options: .atomic)
-      return true
-    } catch {
-      return false
-    }
+    LegacyRetirement.writeMarkerAtomically(url)
   }
 
-  private nonisolated static func streamingSHA256(of url: URL) async throws -> String {
-    try await Task.detached(priority: .utility) {
-      let handle = try FileHandle(forReadingFrom: url)
-      defer { try? handle.close() }
-
-      var hasher = SHA256()
-      while true {
-        try Task.checkCancellation()
-        let chunk = try handle.read(upToCount: 4 * 1_024 * 1_024) ?? Data()
-        if chunk.isEmpty { break }
-        hasher.update(data: chunk)
-      }
-      return hasher.finalize().map { String(format: "%02x", $0) }.joined()
-    }.value
-  }
 }
