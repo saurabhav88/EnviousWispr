@@ -893,22 +893,26 @@ final class RecordingOverlayPanel {
     hostingView.frame = size
     p.contentView = hostingView
 
-    // Captured on EVERY call (fresh or inherited-`y`) so `activePanelPosition`
-    // always reflects whichever edge is governing the panel that's about to be
-    // visible — `repositionForActiveSpaceChange()` reuses this instead of
-    // re-reading `positionProvider()` live (Codex grounded review, 2026-07-17).
-    let position = positionProvider()
-    activePanelPosition = position
-
     let x = targetScreen.visibleFrame.midX - resolvedWidth / 2
     let requestedY: CGFloat
     if let y {
       requestedY = y
+      // #1341 follow-up: inherited `y` means this panel is CONTINUING the
+      // same on-screen presentation (e.g. recording -> polishing), not
+      // starting a new one — `activePanelPosition` is deliberately left
+      // untouched here. Re-reading `positionProvider()` on this path was a
+      // real bug (Codex grounded review r3, 2026-07-17): a setting change
+      // made while the panel was visible would get picked up on the NEXT
+      // inherited-y transition, desyncing `activePanelPosition` from the
+      // edge the panel's SwiftUI content is actually aligned for, and the
+      // next Space swipe would then jump the panel to the wrong edge.
     } else {
-      // #1341: fresh appearance only — an inherited `y` (mid-session
-      // transition) always keeps its current position regardless of setting.
-      // `repositionForActiveSpaceChange()` is what keeps an ALREADY-showing
-      // panel correct as the user swipes between Spaces mid-recording.
+      // #1341: fresh appearance only — captures the edge for THIS panel's
+      // lifetime. `repositionForActiveSpaceChange()` reuses it; an inherited
+      // `y` transition above leaves it alone; only a fresh appearance is
+      // allowed to change which edge `activePanelPosition` points at.
+      let position = positionProvider()
+      activePanelPosition = position
       requestedY = computeRequestedY(on: targetScreen, position: position)
     }
     let panelY = clampedOriginY(
