@@ -32,6 +32,22 @@ struct AppearanceSettingsView: View {
           }
         }
       }
+
+      // #1341: where the recording pill and status notices open on screen.
+      BrandedPanel(
+        icon: "rectangle.portrait.and.arrow.right",
+        header: "Recording Indicator Position",
+        description:
+          "Choose where the recording pill and status notices appear. Changes apply the next time one appears."
+      ) {
+        BrandedSegmentedPicker(
+          options: [
+            ("Top", "arrow.up.to.line", OverlayPillPosition.top),
+            ("Bottom", "arrow.down.to.line", OverlayPillPosition.bottom),
+          ],
+          selection: $settings.overlayPillPosition
+        )
+      }
     }
   }
 }

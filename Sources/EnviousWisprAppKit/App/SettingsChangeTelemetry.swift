@@ -36,6 +36,7 @@ enum SettingsProjection {
     case streamingASR = "streaming_asr"
     case warmEnginePolicy = "warm_engine_policy"
     case appearance = "appearance"
+    case overlayPillPosition = "overlay_pill_position"
     case toggleHotkeyShape = "toggle_hotkey_shape"
     case pushToTalkHotkeyShape = "push_to_talk_hotkey_shape"
     case cancelHotkeyShape = "cancel_hotkey_shape"
@@ -77,6 +78,7 @@ enum SettingsProjection {
     case .useStreamingASR: return .streamingASR
     case .warmEnginePolicy: return .warmEnginePolicy
     case .appearance: return .appearance
+    case .overlayPillPosition: return .overlayPillPosition
     case .toggleKeyCode, .toggleModifiers: return .toggleHotkeyShape
     case .pushToTalkKeyCode, .pushToTalkModifiers: return .pushToTalkHotkeyShape
     case .cancelKeyCode, .cancelModifiers: return .cancelHotkeyShape
@@ -117,6 +119,7 @@ enum SettingsProjection {
     case .streamingASR: return onOff(settings.useStreamingASR)
     case .warmEnginePolicy: return settings.warmEnginePolicy.rawValue
     case .appearance: return settings.appearancePreference.rawValue
+    case .overlayPillPosition: return settings.overlayPillPosition.rawValue
     case .toggleHotkeyShape: return hotkeyShape(settings.toggleKeyCode)
     case .pushToTalkHotkeyShape: return hotkeyShape(settings.pushToTalkKeyCode)
     case .cancelHotkeyShape: return hotkeyShape(settings.cancelKeyCode)

@@ -86,6 +86,16 @@ final class RecordingOverlayPanel {
   private var bluetoothAwarenessCloseHandler: (() -> Void)?
   private var bluetoothAwarenessAdjustSettingsHandler: (() -> Void)?
 
+  /// #1341: where a FRESH panel opens (Top or Bottom of the active screen).
+  /// Read once per fresh appearance inside `showPanel`; never live-patches an
+  /// already-showing panel. Injected via the initializer rather than a mutable
+  /// setter so the composition root cannot forget to wire it.
+  private let positionProvider: () -> OverlayPillPosition
+
+  init(positionProvider: @escaping () -> OverlayPillPosition = { .top }) {
+    self.positionProvider = positionProvider
+  }
+
   // MARK: - Intent-driven API
 
   func setGrantHandler(_ handler: @escaping () -> Void) {
@@ -669,8 +679,8 @@ final class RecordingOverlayPanel {
   }
 
   /// Transition an existing panel from polishing/processing to recording mode.
-  /// Mirrors transitionToPolishing() — tears down the current panel and creates
-  /// a recording panel at the same position on the next run loop cycle.
+  /// A fresh recording starts a new presentation and re-anchors to the user's
+  /// configured Top or Bottom position on the next run-loop cycle.
   private func transitionToRecording(
     audioLevelProvider: @escaping () -> Float,
     recordingElapsedProvider: @escaping () -> TimeInterval? = { nil },
@@ -678,11 +688,10 @@ final class RecordingOverlayPanel {
   ) {
     guard let existingPanel = panel else { return }
     clearRecordingNotice()  // #1060 (Codex P3): fresh session starts with no stale notice.
-    // The recording pill always appears at its canonical top slot — do NOT inherit
-    // the outgoing panel's origin. A taller panel (e.g. the #1480 Bluetooth card)
-    // sits lower, so reusing its origin would drop the pill to mid-screen (#1480
-    // live UAT). A fresh recording is a new lifecycle, not a continuation of the
-    // superseded panel, so it re-anchors to the default position.
+    // A fresh recording is a new lifecycle, so it does not inherit the outgoing
+    // panel's origin. `showPanel(y: nil)` re-anchors it to the user's configured
+    // Top or Bottom position. A taller panel (e.g. the #1480 Bluetooth card) sits
+    // lower, so reusing its origin would drop the pill to mid-screen (#1480 live UAT).
     panel = nil
     autoDismissTask?.cancel()
     autoDismissTask = nil
@@ -758,7 +767,17 @@ final class RecordingOverlayPanel {
     p.contentView = hostingView
 
     let x = targetScreen.visibleFrame.midX - resolvedWidth / 2
-    let requestedY = y ?? (targetScreen.visibleFrame.maxY - 60)
+    let requestedY: CGFloat
+    if let y {
+      requestedY = y
+    } else {
+      // #1341: fresh appearance only — an inherited `y` (mid-session
+      // transition) always keeps its current position regardless of setting.
+      switch positionProvider() {
+      case .top: requestedY = targetScreen.visibleFrame.maxY - 60
+      case .bottom: requestedY = targetScreen.visibleFrame.minY + 20
+      }
+    }
     // #1060 (Codex P2): keep the whole panel within the visible frame. The
     // recording pill's frame is tall enough to host the cap-warning banner, and
     // positioning by the bottom origin would push the top above the visible
