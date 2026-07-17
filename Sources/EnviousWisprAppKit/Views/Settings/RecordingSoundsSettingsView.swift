@@ -67,6 +67,13 @@ private struct RecordingSoundPairingCard: View {
   // value at the moment it fires, a Bool captured at tap time would be stale
   // for that later check (#1618 plan §3, Codex grounded review r1).
   @Environment(LiveRecordingState.self) private var liveRecordingState
+  // Retained so a real recording that starts AND finishes entirely within
+  // the 550ms preview delay can still be caught: a point-in-time check alone
+  // (isDictationActive read only when the delayed stop is about to fire)
+  // misses that case, since the real session may have already ended by
+  // then. The .onChange below cancels this the MOMENT any real recording
+  // starts, closing the window instead of racing it (Codex code-diff r2).
+  @State private var previewTask: Task<Void, Never>?
 
   let pairing: RecordingSoundPairing
   let isSelected: Bool
@@ -105,21 +112,24 @@ private struct RecordingSoundPairingCard: View {
       .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
 
       Button("Preview") {
-        Task { @MainActor in
+        previewTask?.cancel()
+        previewTask = Task { @MainActor in
           guard RecordingSoundCue.play(pairing: pairing, moment: .start) else { return }
           do {
             try await Task.sleep(for: .milliseconds(550))
           } catch {
             return  // cancelled mid-wait; do not play a stop half for a start that may be stale
           }
-          // Re-check immediately before firing stop: a real recording may have
-          // started during the 550ms wait (the global hotkey works while
-          // Settings is open). Firing the preview's stop cue into a live
-          // recording would falsely signal that real dictation just stopped
-          // (council finding, 2026-07-17; both GPT-5.6 and Gemini-3.1
-          // independently caught this race). Reads the LIVE environment
-          // value here, not the render-time `previewDisabled` snapshot.
-          guard !liveRecordingState.isDictationActive else { return }
+          // Re-check immediately before firing stop, belt-and-suspenders
+          // alongside the .onChange cancellation below: a real recording may
+          // have started during the 550ms wait (the global hotkey works
+          // while Settings is open). Firing the preview's stop cue into a
+          // live recording would falsely signal that real dictation just
+          // stopped (council finding, 2026-07-17; both GPT-5.6 and
+          // Gemini-3.1 independently caught this race). Reads the LIVE
+          // environment value here, not the render-time `previewDisabled`
+          // snapshot.
+          guard !Task.isCancelled, !liveRecordingState.isDictationActive else { return }
           RecordingSoundCue.play(pairing: pairing, moment: .stop)
         }
       }
@@ -141,6 +151,15 @@ private struct RecordingSoundPairingCard: View {
         .strokeBorder(isSelected ? Color.stAccent : Color.stDivider, lineWidth: isSelected ? 2 : 1)
     )
     .animation(.easeInOut(duration: 0.15), value: isSelected)
+    .onChange(of: liveRecordingState.isDictationActive) { _, isActive in
+      // Closes the window rather than racing it: cancel the pending preview
+      // the MOMENT a real recording starts, so a real session that starts
+      // AND finishes entirely inside the 550ms delay can never leave a
+      // stale preview stop cue armed (Codex code-diff review r2).
+      if isActive {
+        previewTask?.cancel()
+      }
+    }
   }
 
   private var name: String {
