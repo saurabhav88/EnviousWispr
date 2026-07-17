@@ -46,11 +46,19 @@ enum WhisperKitDeliveryWiring {
     // cannot load the foreign copy at all (`prepare()` resolves the admitted
     // folder or throws), and `unlink` does not invalidate an existing mapping.
     // No move, nothing to gate.
+    // #1386: the bundled, code-signed tokenizer resource. `Bundle.main.resourceURL`
+    // is never nil for a real app bundle; a nil here (test hosts, malformed
+    // bundle) fails OPEN to WhisperKit's own pre-existing tokenizer search
+    // rather than blocking dictation — the tokenizer is not a gated feature,
+    // same reasoning as the output classifier's resourceURL guard above.
+    let tokenizerFolderURL = Bundle.main.resourceURL?.appendingPathComponent("WhisperTokenizer")
+
     let backend = WhisperKitBackend(
       admittedModelFolder: { [weak handle] in
         guard let handle, let installDirectory, await handle.isAdmitted() else { return nil }
         return installDirectory.path
-      })
+      },
+      tokenizerFolderURL: tokenizerFolderURL)
 
     let retirement = handle.flatMap { handle -> WhisperKitLegacyUpgradeCoordinator? in
       guard let trustedFiles, !trustedFiles.isEmpty else { return nil }

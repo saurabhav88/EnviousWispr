@@ -354,6 +354,12 @@ let project = Project(
         "Sources/EnviousWispr/Resources/AppIcon.icns",
         .folderReference(path: "Sources/EnviousWisprLLM/Resources/OutputClassifier.mlpackage"),
         .folderReference(path: "Sources/EnviousWisprLLM/Resources/OutputClassifierTokenizer"),
+        // #1386: the bundled WhisperKit tokenizer (Apache-2.0, pinned to a
+        // frozen HF commit) — same Bundle.main folder-reference route as
+        // OutputClassifierTokenizer above, for the same reason (a resource the
+        // downstream module resolves via an injected resourceURL, not
+        // Bundle.module). EnviousWisprASR stays hasResources:false.
+        .folderReference(path: "Sources/EnviousWisprASR/Resources/WhisperTokenizer"),
         // #1271: EG-1 native polish — the model manifest and the bundled
         // llama-server inference binary ride the APP target (Bundle.main,
         // Contents/Resources), same route as the classifier above. The

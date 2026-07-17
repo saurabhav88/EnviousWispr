@@ -110,23 +110,35 @@ public actor WhisperKitBackend: ASRBackend {
   /// Read-only; used by telemetry to tag per-transcription events with the model in use.
   package var modelVariantName: String { modelVariant }
 
+  /// The bundled, code-signed tokenizer resource folder (#1386), or `nil` to
+  /// fall back to WhisperKit's own pre-existing tokenizer search (only ever the
+  /// case for test constructions that have no real app bundle). Defaulted
+  /// rather than compiler-enforced like `admittedModelFolder`: this value is
+  /// static per app bundle, not dynamic per call, so a missing injection is not
+  /// a design gap the way a missing model-folder resolver would be.
+  private let tokenizerFolderURL: URL?
+
   /// `admittedModelFolder` has no default: every construction site must say where
   /// a verified model comes from, and the compiler is the thing that makes that
   /// unskippable.
   package init(
-    admittedModelFolder: @escaping @Sendable () async -> String?
+    admittedModelFolder: @escaping @Sendable () async -> String?,
+    tokenizerFolderURL: URL? = nil
   ) {
     self.testSeams = nil
     self.admittedModelFolder = admittedModelFolder
+    self.tokenizerFolderURL = tokenizerFolderURL
   }
 
   /// Test-only initializer that injects fake load/warm-up operations.
   init(
     testSeams: TestSeams,
-    admittedModelFolder: @escaping @Sendable () async -> String? = { nil }
+    admittedModelFolder: @escaping @Sendable () async -> String? = { nil },
+    tokenizerFolderURL: URL? = nil
   ) {
     self.testSeams = testSeams
     self.admittedModelFolder = admittedModelFolder
+    self.tokenizerFolderURL = tokenizerFolderURL
   }
 
   /// Snapshot of the current load phase, for tests to assert orchestration
@@ -352,16 +364,28 @@ public actor WhisperKitBackend: ASRBackend {
     guard warmGeneration == generation else { throw ASRLoadSupersededError() }
   }
 
+  /// Builds the `WhisperKitConfig` production actually loads with — extracted so
+  /// a test can assert the real construction directly (#1386), without a second
+  /// parallel observation seam. `nonisolated static` because it touches no actor
+  /// instance state.
+  nonisolated static func makeWhisperKitConfig(
+    model: String, modelPath: String, tokenizerFolderURL: URL?
+  ) -> WhisperKitConfig {
+    WhisperKitConfig(
+      model: model,
+      modelFolder: modelPath,
+      tokenizerFolder: tokenizerFolderURL,
+      computeOptions: dictationComputeOptions,
+      download: false
+    )
+  }
+
   /// Builds the WhisperKit instance from a model path. Test seam overrides it so
   /// the load orchestration is exercisable without a real model.
   private func performLoad(_ modelPath: String) async throws -> any LoadedASRModel {
     if let seams = testSeams { return try await seams.loadModel(modelPath) }
-    let config = WhisperKitConfig(
-      model: modelVariant,
-      modelFolder: modelPath,
-      computeOptions: dictationComputeOptions,
-      download: false
-    )
+    let config = Self.makeWhisperKitConfig(
+      model: modelVariant, modelPath: modelPath, tokenizerFolderURL: tokenizerFolderURL)
     // Load-duration timing + the hang signal for this in-process WhisperKit load
     // already exist via `ensureEngineWarm`'s `coldstart.warmup_*` events; what is
     // missing is a FINE-GRAINED progress callback (upstream `WhisperKit(config)`
@@ -369,7 +393,24 @@ public actor WhisperKitBackend: ASRBackend {
     // deferred for lack of a defended-timeout distribution — NOT for lack of
     // timing data. Do NOT wrap this in a wall-clock timeout
     // (timeout-numbers-need-distribution-evidence).
-    return try await WhisperKit(config)
+    let kit = try await WhisperKit(config)
+    // #1386: prove what tokenizer WhisperKit actually resolved to, not merely
+    // what was requested — the same disk-based discriminator the bundled-
+    // tokenizer regression test uses (WhisperTokenizerBundleTests.swift). A
+    // completed Hub fallback would have staged files under this path; large-v3's
+    // real `<|nospeech|>` id (50363) is one higher than WhisperKit's hardcoded
+    // fallback default (50362), so a fallback-default tokenizer reads 50362 here.
+    let hubCache = tokenizerFolderURL?.appending(path: "models/openai/whisper-large-v3")
+    let hubCacheAbsent =
+      hubCache.map { FileManager.default.fileExists(atPath: $0.path) == false } ?? false
+    let resolvedFromBundle =
+      (tokenizerFolderURL != nil) && (kit.tokenizer?.specialTokens.noSpeechToken == 50363)
+      && hubCacheAbsent
+    await AppLogger.shared.log(
+      "WHISPER_TOKENIZER_RESOLVED source=\(resolvedFromBundle ? "bundle" : "unknown") "
+        + "path=\(tokenizerFolderURL?.path ?? "nil")",
+      level: .info, category: "WhisperKitBackend")
+    return kit
   }
 
   /// Runs one silent warm-up decode (1s of digital silence through the SAME
@@ -390,7 +431,6 @@ public actor WhisperKitBackend: ASRBackend {
       return .threw(desc: error.localizedDescription)
     }
   }
-
 
   /// Single vend gate for the shared `WhisperKit` instance. Every
   /// shared-instance caller (`transcribe`, `observeLID`,

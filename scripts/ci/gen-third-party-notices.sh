@@ -57,6 +57,11 @@ COMPONENTS=(
   # license text is the canonical one from the upstream silero-vad repo
   # (the CoreML conversion repo itself ships no separate LICENSE file).
   "Silero VAD (bundled CoreML model, converted by FluidInference)|v6.0.0|MIT|repo:Sources/EnviousWispr/Resources/silero-vad-coreml-LICENSE.txt|https://huggingface.co/FluidInference/silero-vad-coreml|"
+  # #1386: the bundled WhisperKit tokenizer, pinned to a frozen HF commit so
+  # WhisperKit never fetches it unverified over the network. Not a SwiftPM dep
+  # (a committed data asset, same shape as llama.cpp/Silero VAD above) —
+  # Apache-2.0, vendored license text lives beside the tokenizer files.
+  "OpenAI Whisper large-v3 tokenizer|06f233fe06e710322aca913c1bc4249a0d71fce1|Apache-2.0|repo:Sources/EnviousWisprASR/Resources/WhisperTokenizer/LICENSE|https://huggingface.co/openai/whisper-large-v3|"
 )
 
 # --- Cross-check the DIRECT-dep coverage against Package.resolved (Codex #2) ---
