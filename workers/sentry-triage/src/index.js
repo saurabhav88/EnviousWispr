@@ -109,7 +109,7 @@ async function verifyHmac(body, sigHeader, secret) {
 
 // ── Main triage handler (orchestration only) ───────────────────────────────────
 
-async function handleTriage(body, env) {
+export async function handleTriage(body, env) {
   let payload;
   try {
     payload = JSON.parse(body);
@@ -151,15 +151,16 @@ async function handleTriage(body, env) {
 
   const kvKey = `sentry:${issueId}`;
 
-  // Terminal actions are handled before any network lookup. Deleting the throttle
-  // key ensures a later regression does not inherit a stale notification throttle.
+  // Terminal actions post nothing and need no KV write. The throttle key is
+  // deliberately left alone: Rule 7's explicit regression bypass (`action ===
+  // "unresolved" && issue?.substatus === "regressed"`) already lets a genuine
+  // regression post regardless of a stored throttle, so clearing the key here
+  // served no purpose for that case — it only let a bare resolved -> unresolved
+  // flap (no substatus:regressed) read as `stored == null` at Rule 7 and re-buzz
+  // inside the throttle window (#1485). The stored entry's own TTL
+  // (KV_TTL_SECONDS) reclaims it once the window is long past.
   if (action === "resolved" || action === "archived") {
-    try {
-      await env.SENTRY_DEDUP.delete(kvKey);
-    } catch (err) {
-      console.error(`[sentry-triage] KV delete failed for ${issueId}:`, err.message);
-    }
-    console.log(`[sentry-triage] Issue ${issueId} ${action} — throttle cleared, no post`);
+    console.log(`[sentry-triage] Issue ${issueId} ${action} — no post`);
     return;
   }
 

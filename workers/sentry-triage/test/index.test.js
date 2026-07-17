@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  handleTriage,
   decideNotification,
   scoreFromEvents,
   normalizeRelease,
@@ -213,6 +214,49 @@ test("decideNotification: bare unresolved (not regressed) still respects an acti
   });
   assert.equal(r.post, false);
   assert.equal(r.reason, "throttled");
+});
+
+// The two tests above/below pair up to cover #1485: `decideNotification` only
+// respects a stored throttle if `handleTriage` actually leaves it in KV. A
+// resolved/archived webhook used to delete it unconditionally, which made a
+// later bare-unresolved flap read as `stored == null` and bypass rule 7 —
+// these confirm the KV entry now survives the terminal webhook.
+function fakeKV(initial = {}) {
+  const store = new Map(Object.entries(initial));
+  return {
+    store,
+    async get(key) {
+      return store.has(key) ? store.get(key) : null;
+    },
+    async put(key, value) {
+      store.set(key, value);
+    },
+    async delete(key) {
+      store.delete(key);
+    },
+  };
+}
+
+test("handleTriage: resolved leaves a stored throttle intact", async () => {
+  const kvKey = "sentry:123";
+  const stored = JSON.stringify({ lastNotifiedAt: NOW - 1000, priority: "P2" });
+  const kv = fakeKV({ [kvKey]: stored });
+  const body = JSON.stringify({ action: "resolved", data: { issue: { id: "123" } } });
+
+  await handleTriage(body, { SENTRY_DEDUP: kv });
+
+  assert.equal(kv.store.get(kvKey), stored);
+});
+
+test("handleTriage: archived leaves a stored throttle intact", async () => {
+  const kvKey = "sentry:456";
+  const stored = JSON.stringify({ lastNotifiedAt: NOW - 1000, priority: "P1" });
+  const kv = fakeKV({ [kvKey]: stored });
+  const body = JSON.stringify({ action: "archived", data: { issue: { id: "456" } } });
+
+  await handleTriage(body, { SENTRY_DEDUP: kv });
+
+  assert.equal(kv.store.get(kvKey), stored);
 });
 
 test("decideNotification: unsupported action -> suppress", () => {
