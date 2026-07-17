@@ -82,34 +82,22 @@ private struct RecordingSoundPairingCard: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Button(action: onSelect) {
-        VStack(alignment: .leading, spacing: 4) {
-          HStack(spacing: 8) {
-            Text(name)
-              .font(.stRowTitle)
-              .foregroundStyle(isSelected ? .stAccent : .stTextPrimary)
-            Spacer()
-            if isSelected {
-              Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.white, Color.stAccent)
-            }
+      VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 8) {
+          Text(name)
+            .font(.stRowTitle)
+            .foregroundStyle(isSelected ? .stAccent : .stTextPrimary)
+          Spacer()
+          if isSelected {
+            Image(systemName: "checkmark.circle.fill")
+              .font(.system(size: 16, weight: .semibold))
+              .foregroundStyle(Color.white, Color.stAccent)
           }
-          Text(description)
-            .settingsReadingCopy()
-            .frame(maxWidth: .infinity, minHeight: 20, alignment: .topLeading)
         }
-        // Without this, a plain-style button's tap target is only the
-        // rendered glyphs (the text), not the full card area — the Spacer
-        // and any empty space around short text becomes dead space you can
-        // click without anything happening. This makes the whole rectangle
-        // tappable (founder-reported, 2026-07-17).
-        .contentShape(Rectangle())
+        Text(description)
+          .settingsReadingCopy()
+          .frame(maxWidth: .infinity, minHeight: 20, alignment: .topLeading)
       }
-      .buttonStyle(.plain)
-      .accessibilityLabel(name)
-      .accessibilityValue(isSelected ? "Selected" : "")
-      .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
 
       Button("Preview") {
         previewTask?.cancel()
@@ -151,6 +139,26 @@ private struct RecordingSoundPairingCard: View {
         .strokeBorder(isSelected ? Color.stAccent : Color.stDivider, lineWidth: isSelected ? 2 : 1)
     )
     .animation(.easeInOut(duration: 0.15), value: isSelected)
+    // The WHOLE card selects the pairing, not just the name/description text
+    // above — previously only that inner block was wrapped in a `Button`, so
+    // clicking the Preview button's row (outside the button itself) did
+    // nothing (founder-reported, 2026-07-17: "only the top half of the card
+    // is clickable"). A `Button` wrapping this entire VStack would nest the
+    // Preview button inside it, which SwiftUI buttons must never do (Grounded
+    // Review r3, #1342); `.onTapGesture` on the card composes safely instead
+    // — Preview's own Button consumes taps that land on it first, so this
+    // gesture only fires for the rest of the card. `.accessibilityElement(
+    // children: .contain)` keeps the card itself as one VoiceOver-navigable
+    // element (with the manual `.accessibilityAction` below standing in for
+    // the activation a real Button would have provided for free) while
+    // leaving the Preview button separately reachable as its own element.
+    .contentShape(Rectangle())
+    .onTapGesture(perform: onSelect)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(name)
+    .accessibilityValue(isSelected ? "Selected" : "")
+    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    .accessibilityAction(.default, onSelect)
     .onChange(of: liveRecordingState.isDictationActive) { _, isActive in
       // Closes the window rather than racing it: cancel the pending preview
       // the MOMENT a real recording starts, so a real session that starts
