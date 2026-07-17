@@ -62,6 +62,17 @@ struct RecordingSoundsSettingsView: View {
         }
       }
     }
+    .onDisappear {
+      // A card's own .onChange (below) only guards the race while that card is
+      // still on screen. This is a plain Task in @State, not a `.task {}`
+      // modifier, so SwiftUI does NOT auto-cancel it when the page goes away:
+      // leaving Sounds mid-preview would otherwise let the delayed stop cue
+      // fire later, after a real recording that started and finished entirely
+      // during the 550ms wait, on a page nobody is looking at anymore (Codex
+      // code-diff review r7, #1618). Page-level, not per-card: a card
+      // scrolling out of the lazy grid must not cancel an in-progress preview.
+      activePreviewTask?.cancel()
+    }
   }
 }
 
