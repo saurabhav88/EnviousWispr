@@ -58,9 +58,14 @@ struct RecordingSoundsSettingsView: View {
 // MARK: - Pairing card
 
 /// One selectable sound pairing with a name, one-line description, and one
-/// Preview control. The selection button and Preview button are SIBLINGS,
-/// never nested inside one another (Grounded Review r3: SwiftUI buttons must
-/// not nest).
+/// Preview control. The WHOLE card is the selection target (a real `Button`);
+/// Preview is a smaller control layered inside it, so it cannot be a second
+/// `Button` (SwiftUI buttons must not nest, Grounded Review r3, #1342) and
+/// its tap priority cannot rely on default gesture-resolution order between
+/// an ancestor Button and a descendant control (unreliable — Codex code-diff
+/// review r5: "SwiftUI buttons do not reliably consume an ancestor's tap
+/// gesture"). Preview uses `.highPriorityGesture`, the documented, guaranteed
+/// mechanism for "this control's tap wins over any ancestor's," instead.
 private struct RecordingSoundPairingCard: View {
   // Own environment read (not just the parent's snapshotted `previewDisabled`
   // below): the delayed stop half inside the Preview action needs the LIVE
@@ -81,56 +86,34 @@ private struct RecordingSoundPairingCard: View {
   let onSelect: () -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      VStack(alignment: .leading, spacing: 4) {
-        HStack(spacing: 8) {
-          Text(name)
-            .font(.stRowTitle)
-            .foregroundStyle(isSelected ? .stAccent : .stTextPrimary)
-          Spacer()
-          if isSelected {
-            Image(systemName: "checkmark.circle.fill")
-              .font(.system(size: 16, weight: .semibold))
-              .foregroundStyle(Color.white, Color.stAccent)
+    Button(action: onSelect) {
+      VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 4) {
+          HStack(spacing: 8) {
+            Text(name)
+              .font(.stRowTitle)
+              .foregroundStyle(isSelected ? .stAccent : .stTextPrimary)
+            Spacer()
+            if isSelected {
+              Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.white, Color.stAccent)
+            }
           }
+          Text(description)
+            .settingsReadingCopy()
+            .frame(maxWidth: .infinity, minHeight: 20, alignment: .topLeading)
         }
-        Text(description)
-          .settingsReadingCopy()
-          .frame(maxWidth: .infinity, minHeight: 20, alignment: .topLeading)
-      }
 
-      Button("Preview") {
-        previewTask?.cancel()
-        previewTask = Task { @MainActor in
-          guard RecordingSoundCue.play(pairing: pairing, moment: .start) else { return }
-          do {
-            try await Task.sleep(for: .milliseconds(550))
-          } catch {
-            return  // cancelled mid-wait; do not play a stop half for a start that may be stale
-          }
-          // Re-check immediately before firing stop, belt-and-suspenders
-          // alongside the .onChange cancellation below: a real recording may
-          // have started during the 550ms wait (the global hotkey works
-          // while Settings is open). Firing the preview's stop cue into a
-          // live recording would falsely signal that real dictation just
-          // stopped (council finding, 2026-07-17; both GPT-5.6 and
-          // Gemini-3.1 independently caught this race). Reads the LIVE
-          // environment value here, not the render-time `previewDisabled`
-          // snapshot.
-          guard !Task.isCancelled, !liveRecordingState.isDictationActive else { return }
-          RecordingSoundCue.play(pairing: pairing, moment: .stop)
-        }
+        previewControl
       }
-      .buttonStyle(.bordered)
-      .controlSize(.small)
-      .foregroundStyle(.stAccent)
-      .accessibilityLabel("Preview \(name)")
-      .disabled(previewDisabled)
-      .help(
-        previewDisabled
-          ? "Preview is unavailable while a recording is in progress."
-          : "")
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .contentShape(Rectangle())
     }
+    .buttonStyle(.plain)
+    .accessibilityLabel(name)
+    .accessibilityValue(isSelected ? "Selected" : "")
+    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     .padding(14)
     .background(Color.stSectionBg)
     .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
@@ -139,26 +122,6 @@ private struct RecordingSoundPairingCard: View {
         .strokeBorder(isSelected ? Color.stAccent : Color.stDivider, lineWidth: isSelected ? 2 : 1)
     )
     .animation(.easeInOut(duration: 0.15), value: isSelected)
-    // The WHOLE card selects the pairing, not just the name/description text
-    // above — previously only that inner block was wrapped in a `Button`, so
-    // clicking the Preview button's row (outside the button itself) did
-    // nothing (founder-reported, 2026-07-17: "only the top half of the card
-    // is clickable"). A `Button` wrapping this entire VStack would nest the
-    // Preview button inside it, which SwiftUI buttons must never do (Grounded
-    // Review r3, #1342); `.onTapGesture` on the card composes safely instead
-    // — Preview's own Button consumes taps that land on it first, so this
-    // gesture only fires for the rest of the card. `.accessibilityElement(
-    // children: .contain)` keeps the card itself as one VoiceOver-navigable
-    // element (with the manual `.accessibilityAction` below standing in for
-    // the activation a real Button would have provided for free) while
-    // leaving the Preview button separately reachable as its own element.
-    .contentShape(Rectangle())
-    .onTapGesture(perform: onSelect)
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel(name)
-    .accessibilityValue(isSelected ? "Selected" : "")
-    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-    .accessibilityAction(.default, onSelect)
     .onChange(of: liveRecordingState.isDictationActive) { _, isActive in
       // Closes the window rather than racing it: cancel the pending preview
       // the MOMENT a real recording starts, so a real session that starts
@@ -167,6 +130,57 @@ private struct RecordingSoundPairingCard: View {
       if isActive {
         previewTask?.cancel()
       }
+    }
+  }
+
+  /// Styled to read as a small bordered button, but built from a plain
+  /// `Text` + `.highPriorityGesture`, not a real `Button` — see the type's
+  /// doc comment for why. `.highPriorityGesture` is what makes this reliably
+  /// win over the card's own selection `Button` for taps landing here.
+  private var previewControl: some View {
+    Text("Preview")
+      .font(.system(size: 12, weight: .medium))
+      .foregroundStyle(previewDisabled ? Color.stTextTertiary : Color.stAccent)
+      .padding(.horizontal, 10)
+      .padding(.vertical, 5)
+      .background(
+        RoundedRectangle(cornerRadius: 6)
+          .strokeBorder(previewDisabled ? Color.stDivider : Color.stAccent.opacity(0.4))
+      )
+      .contentShape(Rectangle())
+      .highPriorityGesture(TapGesture().onEnded(startPreview))
+      .accessibilityLabel("Preview \(name)")
+      .accessibilityAddTraits(.isButton)
+      .accessibilityAction(.default, startPreview)
+      .help(
+        previewDisabled
+          ? "Preview is unavailable while a recording is in progress."
+          : "")
+  }
+
+  /// Shared by the mouse-driven `.highPriorityGesture` and VoiceOver's
+  /// `.accessibilityAction` so the two activation paths can never drift out
+  /// of sync with each other.
+  private func startPreview() {
+    guard !previewDisabled else { return }
+    previewTask?.cancel()
+    previewTask = Task { @MainActor in
+      guard RecordingSoundCue.play(pairing: pairing, moment: .start) else { return }
+      do {
+        try await Task.sleep(for: .milliseconds(550))
+      } catch {
+        return  // cancelled mid-wait; do not play a stop half for a start that may be stale
+      }
+      // Re-check immediately before firing stop, belt-and-suspenders
+      // alongside the .onChange cancellation above: a real recording may
+      // have started during the 550ms wait (the global hotkey works while
+      // Settings is open). Firing the preview's stop cue into a live
+      // recording would falsely signal that real dictation just stopped
+      // (council finding, 2026-07-17; both GPT-5.6 and Gemini-3.1
+      // independently caught this race). Reads the LIVE environment value
+      // here, not a render-time snapshot.
+      guard !Task.isCancelled, !liveRecordingState.isDictationActive else { return }
+      RecordingSoundCue.play(pairing: pairing, moment: .stop)
     }
   }
 
