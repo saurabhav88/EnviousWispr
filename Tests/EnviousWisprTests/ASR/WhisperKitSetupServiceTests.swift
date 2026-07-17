@@ -43,4 +43,35 @@ import Testing
       Issue.record("accepted download must not re-detect away: \(service.setupState)")
     }
   }
+
+  /// Codex 2b-r3 P2: a REFUSED cancel (the coordinator could not clear the owed
+  /// marker) means the fetch is still running — re-detecting to "not downloaded"
+  /// would lie. The row must keep showing the live download.
+  @Test func aRefusedCancelKeepsShowingTheRunningFetch() async throws {
+    let service = WhisperKitSetupService(
+      readAvailability: { .notDownloaded },
+      cancelActiveDownload: { false })
+    service.applyDeliveryState(.downloading(progress: 0.5, status: "Downloading model files..."))
+
+    service.cancelDownload()
+    for _ in 0..<50 { await Task.yield() }
+
+    if case .downloading = service.setupState {} else {
+      Issue.record("refused cancel must not re-detect away: \(service.setupState)")
+    }
+  }
+
+  /// An ACCEPTED cancel re-detects to honest truth.
+  @Test func anAcceptedCancelReturnsTheRowToDetectedTruth() async throws {
+    let service = WhisperKitSetupService(
+      readAvailability: { .notDownloaded },
+      cancelActiveDownload: { true })
+    service.applyDeliveryState(.downloading(progress: 0.5, status: "Downloading model files..."))
+
+    service.cancelDownload()
+    for _ in 0..<200 where service.setupState != .notDownloaded {
+      await Task.yield()
+    }
+    #expect(service.setupState == .notDownloaded)
+  }
 }

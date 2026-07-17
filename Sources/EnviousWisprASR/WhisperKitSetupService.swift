@@ -42,7 +42,9 @@ public final class WhisperKitSetupService {
   /// and no delivery state will ever arrive for it.
   private let startDownload: @MainActor () async -> Bool
   /// The explicit Cancel action (controller-backed; drains the active fetch).
-  private let cancelActiveDownload: @MainActor () async -> Void
+  /// Returns whether the cancel was ACCEPTED — false means the coordinator
+  /// refused it (a failed marker clear, L1) and the fetch is still running.
+  private let cancelActiveDownload: @MainActor () async -> Bool
 
   /// The default wiring reports "not downloaded" and does nothing: a build with
   /// no delivery wiring must offer no fetch at all rather than quietly resurrect
@@ -50,7 +52,7 @@ public final class WhisperKitSetupService {
   public init(
     readAvailability: @escaping @MainActor () async -> WhisperKitSetupState = { .notDownloaded },
     startDownload: @escaping @MainActor () async -> Bool = { false },
-    cancelActiveDownload: @escaping @MainActor () async -> Void = {}
+    cancelActiveDownload: @escaping @MainActor () async -> Bool = { false }
   ) {
     self.readAvailability = readAvailability
     self.startDownload = startDownload
@@ -105,11 +107,14 @@ public final class WhisperKitSetupService {
   }
 
   /// Cancel an in-progress download. Acknowledgment is instant by design — the
-  /// controller's cancel resolves only after its drain.
+  /// controller's cancel resolves only after its drain. A REFUSED cancel (L1:
+  /// the owed marker would not clear) re-detects NOTHING: the fetch is still
+  /// running and the live state stream keeps showing it (Codex 2b-r3 P2).
   public func cancelDownload() {
     Task { [cancelActiveDownload, weak self] in
-      await cancelActiveDownload()
-      await self?.forceDetectState()
+      if await cancelActiveDownload() {
+        await self?.forceDetectState()
+      }
     }
   }
 }

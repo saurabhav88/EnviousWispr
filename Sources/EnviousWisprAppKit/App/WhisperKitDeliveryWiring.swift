@@ -104,14 +104,20 @@ enum WhisperKitDeliveryWiring {
       // Cancel routes through the coordinator too: it clears the owed marker
       // FIRST (L1), so a cancelled launch refetch stays cancelled instead of
       // silently restarting next launch (Codex 2b-r1 P1). A failed marker clear
-      // refuses the whole command — the fetch keeps running and the row keeps
-      // showing it, which is the honest state.
+      // refuses the whole command — returning false so the row does NOT
+      // re-detect to "not downloaded" while the fetch is in fact still running
+      // (Codex 2b-r3 P2); the live state stream keeps showing the truth.
       cancelActiveDownload: { [weak handle, weak retirement] in
         if let retirement {
-          try? await retirement.cancel()
-        } else {
-          await handle?.cancelActiveFetch()
+          do {
+            try await retirement.cancel()
+            return true
+          } catch {
+            return false
+          }
         }
+        await handle?.cancelActiveFetch()
+        return true
       })
 
     // One delivery-state stream projected onto the ASR setup states the Settings

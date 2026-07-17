@@ -28,6 +28,8 @@ import Testing
     var admitted = false
     var admitOnFetch = true
     var deliveryEnabled = true
+    var holdFetch = false
+    var fetchRelease: CheckedContinuation<Void, Never>?
     var events: [WhisperKitLegacyUpgradeCoordinator.Event] = []
 
     init() throws {
@@ -87,10 +89,16 @@ import Testing
       isAdmitted: { world.admitted },
       ensureAvailable: {
         world.fetches += 1
+        if world.holdFetch {
+          await withCheckedContinuation { world.fetchRelease = $0 }
+        }
         if world.admitOnFetch { world.admitted = true }
         return world.admitted
       },
-      cancelActiveFetch: {},
+      cancelActiveFetch: {
+        world.fetchRelease?.resume()
+        world.fetchRelease = nil
+      },
       isDeliveryEnabled: { world.deliveryEnabled })
     coordinator.onEvent = { world.events.append($0) }
     return coordinator
@@ -422,5 +430,28 @@ import Testing
 
     #expect(world.fetches == 2, "a re-enabled launch replays the owed fetch")
     #expect(!FileManager.default.fileExists(atPath: world.markerURL.path))
+  }
+
+  // MARK: - Cancel vs Download (Codex 2b-r3 P1)
+
+  @Test func aCancelDuringTheJoinedLaunchWorkDoesNotRestartTheFetch() async throws {
+    let world = try World()
+    defer { world.cleanUp() }
+    try world.stageForeignCopy()
+    world.admitOnFetch = false
+    world.holdFetch = true
+    let coordinator = makeCoordinator(world)
+
+    let downloadTask = Task { await coordinator.download() }
+    // Signal, not clock: the parked fetch IS the "mid-download" state.
+    while world.fetches == 0 { await Task.yield() }
+    try await coordinator.cancel()
+    await downloadTask.value
+
+    // Without the generation guard, download() falls through its admission
+    // re-check after the cancelled join and immediately starts fetch #2 —
+    // restarting the multi-GB download the user just cancelled.
+    #expect(world.fetches == 1, "the cancelled Download must not fall through to a second fetch")
+    #expect(!FileManager.default.fileExists(atPath: world.markerURL.path), "cancel cleared the debt")
   }
 }

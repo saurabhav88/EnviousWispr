@@ -140,9 +140,14 @@ public final class WhisperKitLegacyUpgradeCoordinator {
   /// L5: ensure-intent joins the stored task; an explicit Download re-checks admission after
   /// the join and fetches only if still absent, so two fetches of one identity are impossible.
   public func download() async {
+    let generation = commandGeneration
     await joinOrStart(.ensure) { [weak self] in
       await self?.retireAndRefetchIfNeeded()
     }
+    // A Cancel that landed during the join bumped the generation. Falling through
+    // to the admission re-check would immediately restart the multi-GB fetch the
+    // user just cancelled (Codex 2b-r3 P1) — the cancelled command wins.
+    guard commandGeneration == generation else { return }
     if await isAdmitted() == false {
       await joinOrStart(.ensure) { [weak self] in
         _ = await self?.ensureAvailable()
