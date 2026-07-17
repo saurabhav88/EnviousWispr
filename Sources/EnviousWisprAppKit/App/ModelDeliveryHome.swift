@@ -99,7 +99,7 @@ public final class ModelDeliveryHome {
   private func wireObservers(identity: ModelIdentity) {
     let home = self
     let registration = parakeetRegistration
-    let sequencer = StateSequencer()
+    let sequencer = DeliveryStateSequencer()
     Task {
       if let registration {
         let admitted = await controller.isAdmitted(registration)
@@ -261,14 +261,5 @@ enum ModelDeliveryTelemetryBridge {
 
 /// Lock-protected monotonic counter for the state observer's apply guard —
 /// minted on the controller actor's publish path, compared on MainActor.
-private final class StateSequencer: @unchecked Sendable {
-  private let lock = NSLock()
-  private var value: UInt64 = 0
-
-  func next() -> UInt64 {
-    lock.withLock {
-      value &+= 1
-      return value
-    }
-  }
-}
+// State-publication sequencing: canonical `DeliveryStateSequencer` lives in
+// EnviousWisprModelDelivery (one type, all family projections).

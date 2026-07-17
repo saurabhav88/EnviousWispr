@@ -56,12 +56,25 @@ public final class WhisperKitDeliveryHandle {
 
   /// Register a delivery-state observer scoped to THIS family — the injected
   /// projection (§3d) that maps `DeliveryState` into the ASR-local setup state.
+  ///
+  /// Sequenced (Codex 2b-r4 P2): each update re-hops to MainActor in its own
+  /// task, whose execution order is not guaranteed — a delayed `.downloading`
+  /// could overwrite a later `.admitted` and leave Settings reporting a
+  /// finished model as unavailable. Mint in the observer (publish order on the
+  /// controller actor), drop stale applications on MainActor — the same
+  /// contract `ModelDeliveryHome` applies to the other families.
   public func observeState(_ handler: @escaping @MainActor @Sendable (DeliveryState) -> Void) {
     let identity = registration.manifest.identity
+    let sequencer = DeliveryStateSequencer()
+    let gate = AppliedStateGate()
     Task {
       await controller.addStateObserver { [identity] observedIdentity, state in
         guard observedIdentity == identity else { return }
-        Task { @MainActor in handler(state) }
+        let seq = sequencer.next()
+        Task { @MainActor in
+          guard gate.admit(seq) else { return }
+          handler(state)
+        }
       }
     }
   }
@@ -99,4 +112,16 @@ public final class WhisperKitDeliveryHandle {
     _ = await controller.cancel(registration.manifest.identity)
   }
 
+}
+
+/// MainActor-serialized "apply only if newer" gate for the sequenced state
+/// projection above.
+@MainActor private final class AppliedStateGate {
+  private var last: UInt64 = 0
+
+  func admit(_ seq: UInt64) -> Bool {
+    guard seq > last else { return false }
+    last = seq
+    return true
+  }
 }

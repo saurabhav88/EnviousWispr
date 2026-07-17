@@ -30,6 +30,9 @@ import Testing
     var deliveryEnabled = true
     var holdFetch = false
     var fetchRelease: CheckedContinuation<Void, Never>?
+    var holdCancel = false
+    var cancelRelease: CheckedContinuation<Void, Never>?
+    var cancelCalls = 0
     var events: [WhisperKitLegacyUpgradeCoordinator.Event] = []
 
     init() throws {
@@ -96,6 +99,10 @@ import Testing
         return world.admitted
       },
       cancelActiveFetch: {
+        world.cancelCalls += 1
+        if world.holdCancel {
+          await withCheckedContinuation { world.cancelRelease = $0 }
+        }
         world.fetchRelease?.resume()
         world.fetchRelease = nil
       },
@@ -453,5 +460,43 @@ import Testing
     // restarting the multi-GB download the user just cancelled.
     #expect(world.fetches == 1, "the cancelled Download must not fall through to a second fetch")
     #expect(!FileManager.default.fileExists(atPath: world.markerURL.path), "cancel cleared the debt")
+  }
+
+  @Test func aDownloadDuringTheCancelDrainWaitsItOutThenFetchesFresh() async throws {
+    let world = try World()
+    defer { world.cleanUp() }
+    try world.stageForeignCopy()
+    world.admitOnFetch = false
+    world.holdFetch = true
+    world.holdCancel = true
+    let coordinator = makeCoordinator(world)
+
+    // A launch refetch is mid-flight (parked)...
+    let launchTask = Task { await coordinator.runLaunch() }
+    while world.fetches == 0 { await Task.yield() }
+
+    // ...the user cancels; the drain parks inside cancelActiveFetch...
+    let cancelTask = Task { try await coordinator.cancel() }
+    while world.cancelCalls == 0 { await Task.yield() }
+
+    // ...and presses Download while the drain is STILL running. L5: it must
+    // JOIN the drain, not race the controller cancellation (Codex 2b-r4 P2) —
+    // racing could join the dying fetch and end with nothing started.
+    let downloadTask = Task { await coordinator.download() }
+    for _ in 0..<20 { await Task.yield() }
+    #expect(world.fetches == 1, "no new fetch may start while the drain holds the slot")
+
+    world.holdFetch = false  // the honored Download's own fetch must not park
+    world.cancelRelease?.resume()
+    world.cancelRelease = nil
+    try await cancelTask.value
+    await downloadTask.value
+    await launchTask.value
+
+    // After the drain settles, the queued Download runs its OWN fresh attempt
+    // (the cancelled fetch stays failed — admitOnFetch is false throughout, so
+    // a rising fetch count is attributable only to the honored Download).
+    #expect(world.fetches == 2, "the Download pressed mid-drain is honored afterwards")
+    #expect(world.admitted == false)
   }
 }

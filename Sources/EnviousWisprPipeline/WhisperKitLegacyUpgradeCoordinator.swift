@@ -158,20 +158,44 @@ public final class WhisperKitLegacyUpgradeCoordinator {
   /// L1: clear the marker FIRST. If that fails, refuse the whole command — bumping the
   /// generation first would supersede the in-flight fetch without cancelling it, and it could
   /// still admit while its own completion is forbidden from clearing the marker.
+  ///
+  /// The drain is then REGISTERED as the current command (`.cancel` — the kind L5 defined
+  /// for exactly this): a Download pressed mid-drain joins it instead of racing the
+  /// controller cancellation, where it could join the very fetch being terminated and end
+  /// with nothing started (Codex 2b-r4 P2). The slot stays occupied until the superseded
+  /// work has actually unwound, so "at most one command" holds through the drain too.
   public func cancel() async throws {
     try LegacyRetirement.clearMarker(owedMarkerURL)
     commandGeneration += 1
-    command?.task.cancel()
-    command = nil
-    await cancelActiveFetch()
+    let superseded = command?.task
+    superseded?.cancel()
+    commandTicket += 1
+    let ticket = commandTicket
+    let drain = Task { [cancelActiveFetch] in
+      await cancelActiveFetch()
+      if let superseded { _ = await superseded.value }
+    }
+    command = (kind: .cancel, task: drain, ticket: ticket)
+    await drain.value
+    if command?.ticket == ticket { command = nil }
   }
 
   private func joinOrStart(_ kind: CommandKind, _ work: @escaping @Sendable () async -> Void)
     async
   {
-    if let command {
-      await command.task.value
-      return
+    // L5: the KIND decides what a join means. Joining the SAME kind is the work
+    // itself (two ensures are one fetch) — return. Waiting out a DIFFERENT kind
+    // (an ensure arriving during a Cancel drain) completes nothing of ours: free
+    // the finished command's slot OURSELVES and re-evaluate (Codex 2b-r4 P2 —
+    // without this, a Download pressed mid-drain silently did nothing). Clearing
+    // here, ticket-guarded, cannot spin: the slot either empties (loop exits) or
+    // holds a NEW command (loop legitimately waits on it). Awaiting a completed
+    // task does not yield, so waiting for the owner's own cleanup would busy-spin
+    // the MainActor — proven by this suite hanging before this clause existed.
+    while let current = command {
+      await current.task.value
+      if current.kind == kind { return }
+      if command?.ticket == current.ticket { command = nil }
     }
     // The trailing clear is ticket-guarded: `cancel()` nils `command` while this call is
     // still suspended on `task.value`, so a Download registered between that cancel and
