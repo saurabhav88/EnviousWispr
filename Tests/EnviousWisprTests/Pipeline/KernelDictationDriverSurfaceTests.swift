@@ -11,13 +11,31 @@ import Testing
 
 // MARK: - KernelDictationDriverSurfaceTests (epic #827, PR-4b.2 §11)
 //
-// Coverage for the 5 new direct surface methods + 1 property added to
-// `KernelDictationDriver`. Each test constructs the driver via the public
-// `KernelDictationDriverFactory.makeForParakeet(inputs:)` and exercises the method,
-// then observes the kernel side-effect.
+// Coverage for `reset()` and `currentSessionConfig`'s initial-nil contract.
 //
-// `#if DEBUG`-gated: factory uses the real kernel, and a few of these tests
-// drive state through `testForceTransition` (a `#if DEBUG`-only hook).
+// #1594 (2026-07-17): this file originally also carried one test each for
+// cancelRecording, stopAndTranscribe-at-terminal, handleEngineInterruption,
+// and handleASRServiceInterruption. All 4 called the method and asserted
+// nothing beyond "didn't crash/hang" — every one of them would have stayed
+// green even if the method were deleted. Removed rather than kept as
+// always-passing duplicates; real coverage for each already exists:
+//   - cancelRecording: `CancellationSilentUnwindTests.swift` drives an ACTIVE
+//     recording session into cancel and asserts state == .idle, zero ASR
+//     calls, and zero Sentry error breadcrumbs — strictly stronger than the
+//     idle-state no-op case this file used to check.
+//   - stopAndTranscribe / handleEngineInterruption / handleASRServiceInterruption:
+//     `KernelDictationDriverBridgeMatrixTests` freezes the exact no-op-at-idle
+//     case (plus the active-state bridging behavior this file never touched)
+//     with real state assertions, per that file's own "existing
+//     KernelDictationDriverSurfaceTests" coverage-scope comment — this was
+//     the half of that split that never actually landed.
+//
+// Each remaining test constructs the driver via the public
+// `KernelDictationDriverFactory.makeForParakeet(inputs:)` and exercises the
+// method, then observes the kernel side-effect.
+//
+// `#if DEBUG`-gated: factory uses the real kernel, and one test drives state
+// through `testForceTransition` (a `#if DEBUG`-only hook).
 
 #if DEBUG
 
@@ -40,20 +58,7 @@ import Testing
       return KernelDictationDriverFactory.makeForParakeet(inputs: inputs)
     }
 
-    // MARK: 1. cancelRecording forwards to kernel.cancel
-
-    @Test("cancelRecording() drives the kernel cancel path")
-    func cancelRecordingForwardsToKernel() async {
-      let driver = makeDriver()
-      driver.setTerminalReason(.modelWedged)  // parks kernel + flips external error
-      await driver.cancelRecording()
-      // After cancel, the kernel is idle or terminal. external error stays
-      // (only reset/start clears); the surface signal is "no exception, no
-      // hang." Re-call to verify idempotence.
-      await driver.cancelRecording()
-    }
-
-    // MARK: 2. reset clears external error + forwards to kernel.reset
+    // MARK: 1. reset clears external error + forwards to kernel.reset
 
     @Test("reset() clears the external-error surface")
     func resetClearsExternalError() {
@@ -69,51 +74,15 @@ import Testing
       #expect(driver.state == .idle)
     }
 
-    // MARK: 3. stopAndTranscribe — request stop and await terminal
+    // MARK: 2. currentSessionConfig reads context.config
 
-    @Test("stopAndTranscribe() returns immediately when kernel is already terminal")
-    func stopAndTranscribeIsNoOpAtTerminal() async {
-      let driver = makeDriver()
-      // Kernel starts at .idle (a terminal state per awaitKernelTerminal).
-      await driver.stopAndTranscribe()  // must not hang
-    }
-
-    // MARK: 4. handleEngineInterruption routes to kernel.externalEngineInterrupted
-
-    @Test("handleEngineInterruption() routes through the kernel external entry")
-    func engineInterruptionRoutesToKernel() {
-      let driver = makeDriver()
-      // The external entry is idempotent at idle (terminal guard). Calling it
-      // here proves the wire reaches the kernel — no exception thrown is the
-      // signal; deeper FSM coverage lives in the kernel external-entry tests.
-      driver.handleEngineInterruption(.engineLost)
-    }
-
-    // MARK: 5. handleASRServiceInterruption routes to kernel.externalASRInterrupted
-
-    @Test("handleASRServiceInterruption() routes through the kernel external entry")
-    func asrServiceInterruptionRoutesToKernel() {
-      let driver = makeDriver()
-      driver.handleASRServiceInterruption()
-    }
-
-    // MARK: 6. currentSessionConfig reads context.config
-
-    @Test("currentSessionConfig returns context.config — nil before any session")
-    func currentSessionConfigReadsContext() async throws {
+    @Test("currentSessionConfig returns nil before any session")
+    func currentSessionConfigNilBeforeSession() {
       let driver = makeDriver()
       #expect(driver.currentSessionConfig == nil)
-      // Drive a toggle to populate context.config. The kernel transitions
-      // through preparing → ... but we only need the SET on context.config,
-      // which happens in the synchronous toggle handler before kernel.start.
-      try await driver.handle(event: .toggleRecording(.testDefault()))
-      // After toggle, context.config is set. The next state-change tick will
-      // eventually clear it when the kernel reaches a terminal/idle state;
-      // we just need to prove the property reads through to context.config.
-      // The current value may be set (active) or nil (already drained to
-      // terminal in CI). Either way, the property compiles and returns the
-      // observable; behavioral coverage of the clearing rule lives in
-      // KernelDictationDriverConfigBindingTests.
+      // Post-toggle set/clear behavior is covered by
+      // KernelDictationDriverConfigBindingTests, which drains to a
+      // deterministic state instead of accepting either nil or non-nil.
     }
   }
 
