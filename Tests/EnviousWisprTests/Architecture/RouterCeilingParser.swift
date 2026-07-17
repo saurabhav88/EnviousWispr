@@ -79,6 +79,54 @@ enum RouterCeilingParser {
     throw POSIXError(.EILSEQ)
   }
 
+  /// Returns the body of the FIRST function/method named `functionName` in
+  /// the file at `path`. Same anchoring approach as `classBody`: the
+  /// declaration is located and brace-balanced over the `codeView` (so a
+  /// commented-out or string-quoted declaration/brace can't mis-anchor the
+  /// scan), and the returned body is sliced from the real source text.
+  static func functionBody(named functionName: String, at path: String) throws -> String {
+    let source = try String(contentsOf: RepoRoot.sourceURL(path), encoding: .utf8)
+    let code = codeView(source, blankBlockComments: true)
+    let sourceChars = Array(source)
+    let codeChars = Array(code)  // same Character count as sourceChars
+    let pattern =
+      #"^[[:space:]]*(?:(?:private|fileprivate|internal|package|public|open|"#
+      + #"static|class|nonisolated|mutating|nonmutating|override|final|required|"#
+      + #"convenience)[[:space:]]+)*func[[:space:]]+"#
+      + NSRegularExpression.escapedPattern(for: functionName)
+      + #"[[:space:]]*\("#
+    let regex = try NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines])
+    let codeRange = NSRange(code.startIndex..<code.endIndex, in: code)
+    guard
+      let match = regex.firstMatch(in: code, range: codeRange),
+      let declRange = Range(match.range, in: code)
+    else {
+      Issue.record("\(functionName) function declaration not found at \(path)")
+      throw POSIXError(.ENOENT)
+    }
+    let declOffset = code.distance(from: code.startIndex, to: declRange.upperBound)
+    guard let openBrace = (declOffset..<codeChars.count).first(where: { codeChars[$0] == "{" })
+    else {
+      Issue.record("Function declaration for \(functionName) has no opening brace")
+      throw POSIXError(.EILSEQ)
+    }
+    var depth = 0
+    var idx = openBrace
+    while idx < codeChars.count {
+      let c = codeChars[idx]
+      if c == "{" { depth += 1 }
+      if c == "}" {
+        depth -= 1
+        if depth == 0 {
+          return String(sourceChars[(openBrace + 1)..<idx])
+        }
+      }
+      idx += 1
+    }
+    Issue.record("Function body for \(functionName) has unbalanced braces")
+    throw POSIXError(.EILSEQ)
+  }
+
   /// Collaborator slot: non-primitive non-closure non-NSObjectProtocol `let`
   /// stored properties at brace-depth 0 inside the class body.
   static func collaboratorCount(in body: String) -> Int {
@@ -221,11 +269,24 @@ enum RouterCeilingParser {
   /// inside a string must not close a class body). Handles single-line `"..."`
   /// with `\` escapes; multi-line (`"""`) and raw (`#"..."#`) string literals
   /// are out of scope — no ceiling-tested class declaration uses them.
-  private static func codeView(_ buffer: String) -> String {
+  ///
+  /// `blankBlockComments`, when `true`, ALSO blanks `/* ... */` block comments
+  /// (nesting-aware). Defaulted `false` and left off for `braceCounts`'
+  /// per-LINE calls (PR #1634 cloud review r4, 2026-07-17): a multi-line
+  /// block comment spanning several lines would reset its depth to 0 at each
+  /// new per-line call, mis-tracking braces inside it for every OTHER
+  /// existing caller of `braceCounts` (`countTopLevelStoredProperties`,
+  /// `nonPrivateMethodCount`, `foldContinuationLines`). Safe to enable only
+  /// where a single call processes one COMPLETE contiguous buffer in one pass
+  /// (`functionBody`, `rangeOfStatement` below) — block comments are a real,
+  /// if rare, live pattern in this codebase (confirmed via
+  /// `grep -rn '/\*' Sources/EnviousWispr*/`, one hit outside test files).
+  private static func codeView(_ buffer: String, blankBlockComments: Bool = false) -> String {
     let chars = Array(buffer)
     var result: [Character] = []
     result.reserveCapacity(chars.count)
     var inString = false
+    var blockCommentDepth = 0
     var i = 0
     while i < chars.count {
       let c = chars[i]
@@ -254,6 +315,25 @@ enum RouterCeilingParser {
         i += 1
         continue
       }
+      if blankBlockComments, blockCommentDepth > 0 {
+        if i + 1 < chars.count, c == "/", chars[i + 1] == "*" {
+          blockCommentDepth += 1
+          result.append(" ")
+          result.append(" ")
+          i += 2
+          continue
+        }
+        if i + 1 < chars.count, c == "*", chars[i + 1] == "/" {
+          blockCommentDepth -= 1
+          result.append(" ")
+          result.append(" ")
+          i += 2
+          continue
+        }
+        result.append(c == "\n" ? "\n" : " ")
+        i += 1
+        continue
+      }
       if c == "\"" {
         inString = true
         result.append(" ")  // blank the opening quote
@@ -267,10 +347,51 @@ enum RouterCeilingParser {
         }
         continue
       }
+      if blankBlockComments, c == "/", i + 1 < chars.count, chars[i + 1] == "*" {
+        blockCommentDepth += 1
+        result.append(" ")
+        result.append(" ")
+        i += 2
+        continue
+      }
       result.append(c)
       i += 1
     }
     return String(result)
+  }
+
+  /// Returns the range of the FIRST occurrence of `statement` in `body`,
+  /// searched over `body`'s code view (comments/strings/block-comments
+  /// blanked, and a call passing `statement` as a full single buffer is safe
+  /// for `blankBlockComments`) so a commented-out or string-quoted occurrence
+  /// cannot satisfy the search — but the returned range indexes into the REAL
+  /// `body` text (cloud Codex review, PR #1634, 2026-07-17, 2 rounds: a plain
+  /// `body.range(of:)` substring search would let `// assertAttached()` or
+  /// `/* assertAttached() */` false-pass the same way the raw-count check
+  /// this file replaces once did). `codeView` preserves Character count 1:1,
+  /// so an offset into the view is the same offset into `body`.
+  ///
+  /// Requires an identifier boundary immediately before the match (round 2:
+  /// a plain substring search would let `preassertAttached()` satisfy a
+  /// search for `assertAttached()`). `statement` is always a caller-supplied
+  /// literal (call expressions like `assertAttached()`, not user input), so
+  /// `NSRegularExpression.escapedPattern` + a fixed lookbehind is safe.
+  static func rangeOfStatement(_ statement: String, in body: String) -> Range<String.Index>? {
+    let view = codeView(body, blankBlockComments: true)
+    let pattern = "(?<![A-Za-z0-9_])" + NSRegularExpression.escapedPattern(for: statement)
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+    let viewRange = NSRange(view.startIndex..<view.endIndex, in: view)
+    guard
+      let match = regex.firstMatch(in: view, range: viewRange),
+      let found = Range(match.range, in: view)
+    else { return nil }
+    let startOffset = view.distance(from: view.startIndex, to: found.lowerBound)
+    let endOffset = view.distance(from: view.startIndex, to: found.upperBound)
+    guard
+      let lower = body.index(body.startIndex, offsetBy: startOffset, limitedBy: body.endIndex),
+      let upper = body.index(body.startIndex, offsetBy: endOffset, limitedBy: body.endIndex)
+    else { return nil }
+    return lower..<upper
   }
 
   private static let storedPropertyPattern: String = {
