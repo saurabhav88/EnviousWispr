@@ -101,9 +101,7 @@ final class DictationRuntime {
     let heartControlRecovery = HeartControlRecovery(
       hideOverlay: { [recordingOverlay] in recordingOverlay.show(intent: .hidden) },
       setLocked: { locked in recordingLockedAccess.set(locked) },
-      backend: { [asrManager] in
-        asrManager.activeBackendType == .whisperKit ? "whisperkit" : "parakeet"
-      }
+      backend: { [asrManager] in asrManager.activeBackendType.rawValue }
     )
     let finalizer = RecordingFinalizer(
       kernelDriver: kernelDriver,

@@ -120,10 +120,20 @@ import Testing
     // Grounded Review round 1). No new collaborator or method; only the
     // paper-line ceiling moves. Deterministic rule: actual 522 + 10 → round
     // up to nearest 5 = 535.
+    // #1580: raised 535 → 550 for a `backend`/`isWhisperKit`-shape local in
+    // both `start()` and `toggle(source:)` (`let backend = asrManager.
+    // activeBackendType`), named so `backend.rawValue` reads the wire spelling
+    // once instead of nine call sites each re-typing a "whisperkit" : "parakeet"
+    // ternary that had drifted into two different casings. `start()`'s new
+    // local nets zero (it lets an already-wrapped call collapse back to one
+    // line); `toggle(source:)`'s has no such call to collapse against, so it
+    // adds one line net. No new collaborator or method; only the paper-line
+    // ceiling moves. Deterministic rule: actual 536 + 10 → round up to
+    // nearest 5 = 550.
     #expect(
-      count <= 535,
+      count <= 550,
       """
-      RecordingStarter line count exceeded: \(count) > 535. \
+      RecordingStarter line count exceeded: \(count) > 550. \
       Raise via Bible §30 only.
       """)
   }

@@ -79,7 +79,7 @@ public enum SentryBreadcrumb {
   /// Update recording state on global scope. Present on fatal crashes.
   /// - Parameters:
   ///   - active: Whether recording is in progress.
-  ///   - backend: "parakeet" or "whisperkit" (nil when stopping).
+  ///   - backend: "parakeet" or "whisperKit" (nil when stopping).
   ///   - isStreaming: Whether streaming ASR is active (nil when stopping).
   public static func updateRecordingState(
     active: Bool,
