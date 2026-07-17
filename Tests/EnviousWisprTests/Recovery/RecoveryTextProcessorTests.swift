@@ -41,7 +41,7 @@ struct RecoveryTextProcessorTests {
     let processor = RecoveryTextProcessor(keychainManager: KeychainManager())
     processor.applySettings(snapshot(fillerRemoval: true))
     let outcome = await processor.process(rawText: "the code is two zero three")
-    #expect(outcome.text.contains("203"))  // the chain demonstrably transformed the text
+    #expect(outcome.text == "the code is 203")
     #expect(outcome.polishedText == nil)  // provider .none ⇒ no polish
     #expect(outcome.polishError == nil)
   }
@@ -68,7 +68,7 @@ struct RecoveryTextProcessorTests {
     parakeet.applySettings(
       snapshot(fillerRemoval: false, backendType: .parakeet, lidCapable: false))
     let parakeetOut = await parakeet.process(rawText: spoken)
-    #expect(parakeetOut.text.contains("203"))
+    #expect(parakeetOut.text == "call me at 203")
 
     // LID engine (WhisperKit) with unknown language: ITN skips → text untouched.
     let whisperKit = RecoveryTextProcessor(keychainManager: KeychainManager())

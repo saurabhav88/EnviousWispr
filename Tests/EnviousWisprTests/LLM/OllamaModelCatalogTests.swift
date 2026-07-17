@@ -50,7 +50,7 @@ struct OllamaModelCatalogTests {
   @Test("handles case insensitivity")
   func parsesCaseInsensitive() {
     #expect(OllamaSetupService.parseParameterSize("3b") == 3.0)
-    #expect(OllamaSetupService.parseParameterSize("500m") != nil)
+    #expect(OllamaSetupService.parseParameterSize("500m") == 0.5)
   }
 
   // MARK: - EG-1 curated-private catalog visibility (#1269)
@@ -108,11 +108,15 @@ struct OllamaModelCatalogTests {
   }
 
   @Test("unknown custom model still gets inferred metadata (unchanged behavior)")
-  func unknownModelInferred() {
+  func unknownModelInferred() throws {
     let catalog = OllamaSetupService.dynamicCatalog(from: [downloaded("someones-finetune:7b")])
-    let row = catalog.first { $0.name == "someones-finetune:7b" }
-    #expect(row != nil)
-    #expect(row?.isDownloaded == true)
+    let row = try #require(catalog.first { $0.name == "someones-finetune:7b" })
+
+    #expect(row.displayName == "Someones Finetune")
+    #expect(row.parameterCount == "4B")
+    #expect(row.qualityTier == .medium)
+    #expect(row.downloadSize == "2.7 GB")
+    #expect(row.isDownloaded == true)
   }
 
   // MARK: - Canonical Name

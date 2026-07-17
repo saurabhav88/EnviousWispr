@@ -440,7 +440,7 @@ import Testing
       Issue.record("expected .failed(.decodeFailed), got \(outcome)")
       return
     }
-    #expect(adapter.lastFailureError != nil)
+    #expect((adapter.lastFailureError as? StubBackendError) == .decodeFailed)
   }
 
   // MARK: Finalize — LID

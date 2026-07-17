@@ -198,7 +198,7 @@ struct RecoverySpoolReplayerTests {
     #expect(saved.count == 1)
     #expect(saved.first?.isRecovered == true)
     #expect(saved.first?.recoverySessionID == id)
-    #expect(saved.first?.displayText.contains("hello") == true)
+    #expect(saved.first?.displayText == "hello recovered world")
     // #1464: the replayer no longer destroys — the coordinator deletes after this
     // returns, so the spool + key are STILL PRESENT here.
     #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
