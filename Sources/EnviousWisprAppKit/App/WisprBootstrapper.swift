@@ -65,6 +65,11 @@ public final class WisprBootstrapper {
   /// property is the plan's named cost (ceiling 34 -> 35, Bible entry in
   /// EnviousWisprAppCeilingsTests).
   let modelDelivery: ModelDeliveryHome
+
+  /// #1386 PR-2. Stored because nothing else owns it: it is reached only through a closure
+  /// `SetupCoordinator` calls once, and a closure capture cannot keep it alive. Held here, it
+  /// lives as long as the app — which is what "runs on every launch" requires.
+  let whisperKitRetirement: WhisperKitLegacyUpgradeCoordinator?
   let audioDeviceList: AudioDeviceList
   let inputDevicePreferenceReconciler: InputDevicePreferenceReconciler
   let aiAvailability: AIAvailabilityCoordinator
@@ -773,6 +778,7 @@ public final class WisprBootstrapper {
     self.customWordsCoordinator = customWordsCoordinator
     self.contactsImportCoordinator = contactsImportCoordinator
     self.setup = setup
+    self.whisperKitRetirement = whisperKitRetirement
     self.egOneRuntime = egOneRuntime
     self.modelDelivery = modelDelivery
     self.audioDeviceList = audioDeviceList
