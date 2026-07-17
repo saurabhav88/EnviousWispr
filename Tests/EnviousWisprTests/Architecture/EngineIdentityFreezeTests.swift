@@ -80,39 +80,170 @@ import Testing
   }
 
   /// PR-5 Rung 4: the factory's engine-agnostic assembler reads
-  /// `adapter.engineIdentity.backendType` at THREE sites (polish step stamp,
-  /// `HeartPathTelemetryEmitter` construction, `KernelLifecycleTelemetrySink`
-  /// construction). Council coverage review (GPT, 2026-05-27) asked that the
-  /// WhisperKit factory branch verify identity propagates to every
-  /// backend-stamped consumer; the polish stamp is directly readable at
-  /// runtime, but emitter + sink stamps are inside private collaborators.
-  /// This freeze enforces the per-consumer read count at source level —
-  /// stronger than runtime inspection because it catches any future refactor
-  /// that drops a consumer's identity read or routes one through a different
-  /// source.
+  /// `adapter.engineIdentity.backendType` at THREE sites: the polish step,
+  /// `HeartPathTelemetryEmitter`, and `KernelLifecycleTelemetrySink`.
+  /// Match each consumer separately so comments cannot inflate a raw count.
+  /// Whitespace-tolerant patterns keep harmless formatting changes green.
   @Test(
-    "KernelDictationDriverFactory reads adapter.engineIdentity at least three times (one per consumer: polish, emitter, sink)"
+    "KernelDictationDriverFactory stamps every backend consumer from adapter identity"
   )
   func factoryReadsIdentityForEveryBackendStampedConsumer() throws {
     let relative = "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift"
     let source = try Self.readSource(relative)
-    let needle = "adapter.engineIdentity"
-    var count = 0
-    var search = source[...]
-    while let range = search.range(of: needle) {
-      count += 1
-      search = search[range.upperBound...]
+    // Codex code-diff review (2026-07-17, 2 rounds): a statement hidden inside
+    // a `/* ... */` block comment OR a multiline `"""..."""` string literal
+    // would still match these line-anchored patterns, recreating the
+    // comment/string-based false positive this test replaces. Blank both
+    // (newlines preserved so line anchors stay meaningful) before matching.
+    // This codebase has no such usage in this file today, so this guards a
+    // future refactor, not a live gap.
+    let codeView = Self.blankingCommentsAndStrings(in: source)
+    let sourceRange = NSRange(codeView.startIndex..<codeView.endIndex, in: codeView)
+    let requiredConsumers: [(name: String, pattern: String)] = [
+      (
+        "polish step",
+        #"^[[:blank:]]*limbSteps\.llmPolish\.backend[[:blank:]]*=[[:blank:]]*adapter\.engineIdentity\.backendType[[:blank:]]*$"#
+      ),
+      (
+        "heart-path telemetry emitter",
+        #"^[[:blank:]]*let[[:blank:]]+emitter[[:blank:]]*=[[:blank:]]*HeartPathTelemetryEmitter[[:blank:]]*\(\s*backend:\s*adapter\.engineIdentity\.backendType,\s*captureTelemetry:"#
+      ),
+      (
+        "lifecycle telemetry sink",
+        #"^[[:blank:]]*let[[:blank:]]+lifecycleSink[[:blank:]]*=[[:blank:]]*KernelLifecycleTelemetrySink[[:blank:]]*\(\s*backend:\s*adapter\.engineIdentity\.backendType,\s*audioCapture:"#
+      ),
+    ]
+
+    for required in requiredConsumers {
+      let regex = try NSRegularExpression(
+        pattern: required.pattern,
+        options: [.anchorsMatchLines])
+      #expect(
+        regex.firstMatch(in: codeView, options: [], range: sourceRange) != nil,
+        "\(relative) must stamp the \(required.name) from adapter.engineIdentity.backendType")
     }
-    #expect(
-      count >= 3,
-      """
-      \(relative) reads `\(needle)` \(count) time(s) — expected ≥3.
-      The assembler stamps the polish step, the heart-path telemetry emitter,
-      and the lifecycle telemetry sink with `adapter.engineIdentity.backendType`.
-      If a future refactor drops one of those stamps or routes it through a
-      different identity source, downstream telemetry will mis-stamp the
-      backend for the second-engine branch.
-      """)
+  }
+
+  /// Blanks `/* ... */` block comments (nesting-aware, since Swift permits
+  /// nested block comments), `"""..."""` multiline string literals, and
+  /// single-line `"..."` string literals (backslash-escape aware) to spaces,
+  /// preserving newlines so line-anchored regex matching against the result
+  /// stays meaningful. Mirrors the comment/string blanking
+  /// `RouterCeilingParser`'s private code view already does for a different
+  /// scanner in this same test target.
+  ///
+  /// Known, accepted scope boundary (Codex code-diff review r4, 2026-07-17):
+  /// does not handle an ESCAPED `\"""` delimiter inside a multiline string, or
+  /// raw-string (`#"..."#`) delimiters. Verified empirically that neither
+  /// pattern exists anywhere in `Sources/EnviousWisprPipeline/` today (`grep
+  /// -rn '\\"""' Sources/EnviousWisprPipeline/*.swift` → 0 hits; the scanned
+  /// factory file has zero `"""` occurrences at all). This freeze test's
+  /// realistic threat model is an ordinary refactor accidentally dropping or
+  /// relocating one of the 3 identity stamps — not a deliberately obfuscated
+  /// multiline string built to defeat the scanner. Round 4 of local review
+  /// found this same residual-lexer-completeness class a fourth time;
+  /// stopping here rather than continuing to harden against constructs this
+  /// codebase does not use (`validation-discipline.md` RULE:
+  /// measure-with-the-real-tool-never-a-simulation — hardening stops at the
+  /// realistic threat model).
+  private static func blankingCommentsAndStrings(in source: String) -> String {
+    var result = ""
+    result.reserveCapacity(source.count)
+    let chars = Array(source)
+    var depth = 0  // block-comment nesting depth
+    var inTripleQuote = false
+    var inLineString = false
+    var i = 0
+    while i < chars.count {
+      let blank: (Int) -> Void = { n in
+        for _ in 0..<n { result.append(" ") }
+      }
+      if inLineString {
+        if chars[i] == "\\", i + 1 < chars.count {
+          blank(2)
+          i += 2
+          continue
+        }
+        if chars[i] == "\"" {
+          inLineString = false
+          result.append(" ")
+          i += 1
+          continue
+        }
+        if chars[i] == "\n" {
+          // Unterminated single-line string reaching EOL — stop treating as
+          // a string (Swift wouldn't compile this, but stay conservative).
+          inLineString = false
+          result.append("\n")
+          i += 1
+          continue
+        }
+        result.append(" ")
+        i += 1
+        continue
+      }
+      if inTripleQuote {
+        if i + 2 < chars.count, chars[i] == "\"", chars[i + 1] == "\"", chars[i + 2] == "\"" {
+          inTripleQuote = false
+          blank(3)
+          i += 3
+          continue
+        }
+        result.append(chars[i] == "\n" ? "\n" : " ")
+        i += 1
+        continue
+      }
+      if depth > 0 {
+        if i + 1 < chars.count, chars[i] == "/", chars[i + 1] == "*" {
+          depth += 1
+          blank(2)
+          i += 2
+          continue
+        }
+        if i + 1 < chars.count, chars[i] == "*", chars[i + 1] == "/" {
+          depth -= 1
+          blank(2)
+          i += 2
+          continue
+        }
+        result.append(chars[i] == "\n" ? "\n" : " ")
+        i += 1
+        continue
+      }
+      // depth == 0, not inside any string — look for something starting.
+      // Line comments consume to (not including) the newline FIRST, so a `//`
+      // comment that happens to contain `/*` or `"""` text never mis-starts a
+      // block-comment/string state that would blank the real code following
+      // it (Codex code-diff review r3, 2026-07-17).
+      if i + 1 < chars.count, chars[i] == "/", chars[i + 1] == "/" {
+        while i < chars.count, chars[i] != "\n" {
+          result.append(" ")
+          i += 1
+        }
+        continue
+      }
+      if i + 1 < chars.count, chars[i] == "/", chars[i + 1] == "*" {
+        depth += 1
+        blank(2)
+        i += 2
+        continue
+      }
+      if i + 2 < chars.count, chars[i] == "\"", chars[i + 1] == "\"", chars[i + 2] == "\"" {
+        inTripleQuote = true
+        blank(3)
+        i += 3
+        continue
+      }
+      if chars[i] == "\"" {
+        inLineString = true
+        result.append(" ")
+        i += 1
+        continue
+      }
+      result.append(chars[i])
+      i += 1
+    }
+    return result
   }
 
   // MARK: PR-5 Rung 4 — factory surface + production-unwired invariant
