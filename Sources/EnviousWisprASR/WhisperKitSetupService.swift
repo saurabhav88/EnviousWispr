@@ -93,15 +93,25 @@ public final class WhisperKitSetupService {
 
   // MARK: - Download
 
+  /// Monotonic download intent. A Cancel bumps it, so a download task whose
+  /// body has not yet run notices its intent is stale and never starts the
+  /// multi-GB fetch (cloud review P2 on PR #1606: an instant Cancel could
+  /// outrun the untracked task and find nothing to cancel). MainActor-serial,
+  /// so the epoch comparison is deterministic.
+  private var downloadIntentEpoch = 0
+
   /// The user asked for the model. Delegates to the verified delivery path; the
   /// state projection drives progress from there. A REFUSED request re-detects
   /// instead — no delivery state will ever arrive for it, and leaving the
   /// optimistic "Starting download..." up would stick forever (Codex 2b-r1 P2).
   public func downloadModel() {
     setupState = .downloading(progress: 0, status: "Starting download...")
+    downloadIntentEpoch += 1
+    let epoch = downloadIntentEpoch
     Task { [startDownload, weak self] in
+      guard let self, self.downloadIntentEpoch == epoch else { return }
       if await startDownload() == false {
-        await self?.forceDetectState()
+        await self.forceDetectState()
       }
     }
   }
@@ -111,6 +121,9 @@ public final class WhisperKitSetupService {
   /// the owed marker would not clear) re-detects NOTHING: the fetch is still
   /// running and the live state stream keeps showing it (Codex 2b-r3 P2).
   public func cancelDownload() {
+    // Invalidate any download intent whose task has not run yet — cancelling
+    // downstream cannot reach a request that has not been made.
+    downloadIntentEpoch += 1
     Task { [cancelActiveDownload, weak self] in
       if await cancelActiveDownload() {
         await self?.forceDetectState()

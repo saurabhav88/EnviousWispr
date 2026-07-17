@@ -61,6 +61,30 @@ import Testing
     }
   }
 
+  /// Cloud review P2 (PR #1606): an instant Cancel must beat a download task
+  /// that has not entered startDownload yet — otherwise the cancel finds
+  /// nothing to cancel and the multi-GB fetch starts AFTER it.
+  @Test func aCancelBeatingTheDownloadTaskPreventsTheStartEntirely() async throws {
+    final class Box: @unchecked Sendable { var started = 0 }
+    let box = Box()
+    let service = WhisperKitSetupService(
+      readAvailability: { .notDownloaded },
+      startDownload: {
+        box.started += 1
+        return true
+      },
+      cancelActiveDownload: { true })
+
+    service.downloadModel()
+    service.cancelDownload()  // same tick — before the download task body runs
+
+    for _ in 0..<200 where service.setupState != .notDownloaded {
+      await Task.yield()
+    }
+    #expect(box.started == 0, "the outrun download must never start")
+    #expect(service.setupState == .notDownloaded)
+  }
+
   /// An ACCEPTED cancel re-detects to honest truth.
   @Test func anAcceptedCancelReturnsTheRowToDetectedTruth() async throws {
     let service = WhisperKitSetupService(
