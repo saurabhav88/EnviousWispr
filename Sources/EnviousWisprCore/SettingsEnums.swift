@@ -26,13 +26,29 @@ public enum OverlayPillPosition: String, CaseIterable, Sendable {
   case bottom
 }
 
-/// Which original sound pairing plays for the recording start/stop cue
-/// (#1342). Each pairing is an original, procedurally synthesized start/stop
-/// pair — no sampled, recorded, licensed, or competitor audio. Persisted by
-/// rawValue; unknown/missing values resolve to `.airGlint`.
+/// Which sound pairing plays for the recording start/stop cue (#1342, grown
+/// to 12 pairings in #1618). Each pairing is an original, procedurally
+/// synthesized start/stop pair — no sampled, recorded, licensed, or
+/// competitor audio. Persisted by rawValue; unknown or missing values
+/// resolve to `.whisperTick`.
+///
+/// Declared in ascending-loudness order (founder-validated by ear, not
+/// derived from synthesis gain alone — see the #1618 plan §3a): the Settings
+/// picker renders `allCases` directly with no explicit sort, so THIS
+/// declaration order IS the display order. `pairingCatalogOrderMatchesApprovedSequence`
+/// (RecordingSoundCueTests.swift) asserts the exact sequence to catch
+/// accidental drift.
 public enum RecordingSoundPairing: String, CaseIterable, Sendable {
-  case airGlint
+  case dustMote
+  case velvetHush
+  case mutedConfirm
+  case whisperTick
+  case roundPebble
+  case paperTap
+  case softHush
+  case lowNod
+  case cloudPop
   case velvetTap
   case satinShift
-  case cloudPop
+  case airGlint
 }

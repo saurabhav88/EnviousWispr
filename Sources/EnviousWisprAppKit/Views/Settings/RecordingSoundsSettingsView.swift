@@ -2,12 +2,12 @@ import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
-/// Optional recording start/stop sound cue settings (#1342): a master toggle
-/// plus a picker among four original sound pairings, each independently
-/// previewable.
+/// Optional recording start/stop sound settings: a master toggle, an ordered
+/// picker of sound pairings (tap a card anywhere to select it), and one
+/// Preview control for the currently selected pairing.
 struct RecordingSoundsSettingsView: View {
   @Environment(SettingsManager.self) private var settings
-  // #1342 (Codex code-diff review r6): previews must not be tappable while a
+  // #1342 (Codex code-diff review r6): preview must not be tappable while a
   // recording is in flight — an open Settings window during dictation would
   // otherwise let a user inject an unbounded number of tones into someone
   // else's active transcript, unlike the feature's own bounded start/stop
@@ -15,6 +15,7 @@ struct RecordingSoundsSettingsView: View {
   // into other Settings pages (DiagnosticsSettingsView) rather than adding
   // new state.
   @Environment(LiveRecordingState.self) private var liveRecordingState
+  @State private var activePreviewTask: Task<Void, Never>?
 
   private let columns = [GridItem(.adaptive(minimum: 210, maximum: .infinity), spacing: 12)]
 
@@ -22,6 +23,9 @@ struct RecordingSoundsSettingsView: View {
     @Bindable var settings = settings
 
     SettingsContentView {
+      // Its own card, unchanged from before Preview existed — nesting the
+      // Preview row inside this same card read as one control bleeding into
+      // another (founder direction, 2026-07-17).
       BrandedSection(header: "Sounds") {
         BrandedRow(showDivider: false) {
           HStack(alignment: .top, spacing: 11) {
@@ -40,75 +44,147 @@ struct RecordingSoundsSettingsView: View {
         }
       }
 
+      // A second, separate card for Preview — its own visual home, not a row
+      // tucked inside the toggle's card.
+      BrandedSection {
+        BrandedRow(showDivider: false) {
+          HStack(alignment: .center, spacing: 11) {
+            SettingsRowIcon(systemName: "play.circle.fill")
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Preview").settingsRowLabel()
+              Text("Selected: \(displayName(for: settings.recordingSoundPairing))")
+                .settingsReadingCopy()
+            }
+            Spacer()
+            Button(action: startPreview) {
+              Label("Preview", systemImage: "play.fill")
+                .padding(.horizontal, 4)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .accessibilityLabel("Preview \(displayName(for: settings.recordingSoundPairing))")
+            .disabled(liveRecordingState.isDictationActive)
+            .help(
+              liveRecordingState.isDictationActive
+                ? "Preview is unavailable while a recording is in progress."
+                : "")
+          }
+        }
+      }
+
+      // Each card is ONE full-surface Button: tapping anywhere on it, edge to
+      // edge, selects that pairing. Preview lives outside the grid (above)
+      // instead of inside each card, deliberately — a card that has to
+      // support two different tap behaviors (select vs. preview) kept
+      // reintroducing dead zones and focus/gesture-priority bugs across three
+      // rounds of review (Codex code-diff reviews r5/r6, #1618). One surface,
+      // one behavior, removes that whole class of bug (founder direction,
+      // 2026-07-17).
       LazyVGrid(columns: columns, spacing: 12) {
         ForEach(RecordingSoundPairing.allCases, id: \.self) { pairing in
           RecordingSoundPairingCard(
             pairing: pairing,
-            isSelected: settings.recordingSoundPairing == pairing,
-            previewDisabled: liveRecordingState.isDictationActive
+            isSelected: settings.recordingSoundPairing == pairing
           ) {
             settings.recordingSoundPairing = pairing
           }
         }
       }
     }
+    .onDisappear {
+      // This is a plain Task in @State, not a `.task {}` modifier, so SwiftUI
+      // does NOT auto-cancel it when the page goes away: leaving Sounds
+      // mid-preview would otherwise let the delayed stop cue fire later,
+      // after a real recording that started and finished entirely during the
+      // 550ms wait, on a page nobody is looking at anymore (Codex code-diff
+      // review r7, #1618).
+      activePreviewTask?.cancel()
+    }
+    .onChange(of: liveRecordingState.isDictationActive) { _, isActive in
+      // Closes the window rather than racing it: cancel the pending preview
+      // the MOMENT a real recording starts, so a real session that starts
+      // AND finishes entirely inside the 550ms delay can never leave a stale
+      // preview stop cue armed (Codex code-diff review r2).
+      if isActive {
+        activePreviewTask?.cancel()
+      }
+    }
+  }
+
+  private func startPreview() {
+    let pairing = settings.recordingSoundPairing
+    activePreviewTask?.cancel()
+    activePreviewTask = Task { @MainActor in
+      // `.cancel()` only sets a flag; it does not stop this closure from
+      // starting. Dictation can start (or the page can disappear) in the gap
+      // between task creation and this first line running, so without this
+      // check the start cue could still play into a just-started real
+      // recording (Codex code-diff review r12, #1618).
+      guard !Task.isCancelled, !liveRecordingState.isDictationActive else { return }
+      guard RecordingSoundCue.play(pairing: pairing, moment: .start) else { return }
+      do {
+        try await Task.sleep(for: .milliseconds(550))
+      } catch {
+        return  // cancelled mid-wait; do not play a stop half for a start that may be stale
+      }
+      // Re-check immediately before firing stop, belt-and-suspenders
+      // alongside the .onChange cancellation above: a real recording may
+      // have started during the 550ms wait (the global hotkey works while
+      // Settings is open). Firing the preview's stop cue into a live
+      // recording would falsely signal that real dictation just stopped
+      // (council finding, 2026-07-17; both GPT-5.6 and Gemini-3.1
+      // independently caught this race). Reads the LIVE environment value
+      // here, not a render-time snapshot.
+      //
+      // Codex code-diff review r9 additionally flagged that SwiftUI can
+      // coalesce a real recording that starts AND fully finishes within this
+      // same wait, so neither guard above observes it, and the stop cue
+      // plays a moment after a real (already-finished) recording rather than
+      // during one. Explicitly NOT defended further (rejected a 25ms poll
+      // loop that would have run for the life of every preview): the
+      // consequence is one extra soft click after a recording that already
+      // ended cleanly, on an optional, off-by-default limb — founder called
+      // this disproportionate machinery for the residual risk, 2026-07-17.
+      guard !Task.isCancelled, !liveRecordingState.isDictationActive else { return }
+      RecordingSoundCue.play(pairing: pairing, moment: .stop)
+    }
   }
 }
 
 // MARK: - Pairing card
 
-/// One selectable sound pairing: name, one-line character description, and
-/// independent Preview Start / Preview Stop controls. The card itself is a
-/// non-interactive container — the selection `Button` and the two preview
-/// `Button`s are SIBLINGS, never nested inside one another (Grounded Review
-/// r3: SwiftUI buttons must not nest).
+/// One selectable sound pairing: name, one-line description, selection ring.
+/// The entire card is a single `Button` — no second interactive region
+/// inside it (see `RecordingSoundsSettingsView` for why Preview lives
+/// outside the grid instead).
 private struct RecordingSoundPairingCard: View {
   let pairing: RecordingSoundPairing
   let isSelected: Bool
-  let previewDisabled: Bool
   let onSelect: () -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Button(action: onSelect) {
-        VStack(alignment: .leading, spacing: 4) {
-          HStack(spacing: 8) {
-            Text(name)
-              .font(.stRowTitle)
-              .foregroundStyle(isSelected ? .stAccent : .stTextPrimary)
-            Spacer()
-            if isSelected {
-              Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.white, Color.stAccent)
-            }
+    Button(action: onSelect) {
+      VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 8) {
+          Text(displayName(for: pairing))
+            .font(.stRowTitle)
+            .foregroundStyle(isSelected ? .stAccent : .stTextPrimary)
+          Spacer()
+          if isSelected {
+            Image(systemName: "checkmark.circle.fill")
+              .font(.system(size: 16, weight: .semibold))
+              .foregroundStyle(Color.white, Color.stAccent)
           }
-          Text(description)
-            .settingsReadingCopy()
-            .frame(maxWidth: .infinity, minHeight: 32, alignment: .topLeading)
         }
+        Text(description(for: pairing))
+          .settingsReadingCopy()
+          .frame(maxWidth: .infinity, minHeight: 20, alignment: .topLeading)
       }
-      .buttonStyle(.plain)
-      .accessibilityLabel(name)
-      .accessibilityValue(isSelected ? "Selected" : "")
-      .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-
-      HStack(spacing: 6) {
-        Button("Preview Start") { RecordingSoundCue.play(pairing: pairing, moment: .start) }
-          .accessibilityLabel("Preview \(name) start sound")
-        Button("Preview Stop") { RecordingSoundCue.play(pairing: pairing, moment: .stop) }
-          .accessibilityLabel("Preview \(name) stop sound")
-      }
-      .buttonStyle(.bordered)
-      .controlSize(.small)
-      .foregroundStyle(.stAccent)
-      .disabled(previewDisabled)
-      .help(
-        previewDisabled
-          ? "Preview is unavailable while a recording is in progress."
-          : "")
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(14)
+      .contentShape(Rectangle())
     }
-    .padding(14)
+    .buttonStyle(.plain)
     .background(Color.stSectionBg)
     .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
     .overlay(
@@ -116,24 +192,44 @@ private struct RecordingSoundPairingCard: View {
         .strokeBorder(isSelected ? Color.stAccent : Color.stDivider, lineWidth: isSelected ? 2 : 1)
     )
     .animation(.easeInOut(duration: 0.15), value: isSelected)
+    .accessibilityLabel(displayName(for: pairing))
+    .accessibilityValue(isSelected ? "Selected" : "")
+    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
   }
+}
 
-  private var name: String {
-    switch pairing {
-    case .airGlint: return "Air Glint"
-    case .velvetTap: return "Velvet Tap"
-    case .satinShift: return "Satin Shift"
-    case .cloudPop: return "Cloud Pop"
-    }
+// MARK: - Catalog copy
+
+private func displayName(for pairing: RecordingSoundPairing) -> String {
+  switch pairing {
+  case .dustMote: return "Dust Mote"
+  case .velvetHush: return "Velvet Hush"
+  case .mutedConfirm: return "Muted Confirm"
+  case .whisperTick: return "Whisper Tick"
+  case .roundPebble: return "Round Pebble"
+  case .paperTap: return "Paper Tap"
+  case .softHush: return "Soft Hush"
+  case .lowNod: return "Low Nod"
+  case .cloudPop: return "Cloud Pop"
+  case .velvetTap: return "Velvet Tap"
+  case .satinShift: return "Satin Shift"
+  case .airGlint: return "Air Glint"
   }
+}
 
-  private var description: String {
-    switch pairing {
-    case .airGlint: return "A clean, airy glint. Lifts gently for start, settles lower for stop."
-    case .velvetTap: return "A muted, compact tap. Brighter on start, lower and softer on stop."
-    case .satinShift:
-      return "A smooth two-tone texture shifting brighter for start, darker for stop."
-    case .cloudPop: return "A tiny filtered-air pop. Crisp on start, subdued on stop."
-    }
+private func description(for pairing: RecordingSoundPairing) -> String {
+  switch pairing {
+  case .dustMote: return "Soft filtered air, no tone."
+  case .velvetHush: return "Two close tones, gentle warmth."
+  case .mutedConfirm: return "Same pitch both ways, plain."
+  case .whisperTick: return "Barely-there tick."
+  case .roundPebble: return "Rounded, no edge."
+  case .paperTap: return "Soft paper-like tap."
+  case .softHush: return "Slow fade, like a breath."
+  case .lowNod: return "Low, warm, unhurried."
+  case .cloudPop: return "Tiny filtered-air pop."
+  case .velvetTap: return "Muted, compact tap."
+  case .satinShift: return "Smooth two-tone shift."
+  case .airGlint: return "Clean, airy glint."
   }
 }
