@@ -153,6 +153,7 @@ scripts/*
 !scripts/validation-status.sh
 !scripts/lid-perf-bench.sh
 !scripts/lid-perf-bench.py
+!scripts/generate-recording-sounds.py
 # UAT helpers (per-PR Swift CLIs invoked during Live UAT, e.g. issue #845 keychain verifier)
 !scripts/uat/
 !scripts/uat/**

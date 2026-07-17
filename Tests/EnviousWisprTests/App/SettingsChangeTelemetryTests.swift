@@ -94,6 +94,31 @@ import Testing
       #expect(d.first?.stringProps["to"] == "bottom")
     }
 
+    @Test("recording sound settings emit deltas and project correctly (#1342)")
+    func recordingSoundsDelta() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+      settings.playRecordingSounds = true
+      settings.recordingSoundPairing = .velvetTap
+      telemetry.flush()
+
+      let enabledDeltas = deltas(box, setting: "play_recording_sounds")
+      #expect(enabledDeltas.count == 1)
+      #expect(enabledDeltas.first?.stringProps["from"] == "off")
+      #expect(enabledDeltas.first?.stringProps["to"] == "on")
+
+      let pairingDeltas = deltas(box, setting: "recording_sound_pairing")
+      #expect(pairingDeltas.count == 1)
+      #expect(pairingDeltas.first?.stringProps["from"] == "airGlint")
+      #expect(pairingDeltas.first?.stringProps["to"] == "velvetTap")
+
+      #expect(
+        SettingsProjection.value(for: .playRecordingSounds, settings: settings) == "on")
+      #expect(
+        SettingsProjection.value(for: .recordingSoundPairing, settings: settings)
+          == "velvetTap")
+    }
+
     @Test("Two settings in one window emit two deltas")
     func twoSettingsTwoDeltas() {
       let (settings, telemetry, box, _) = makeHarness()

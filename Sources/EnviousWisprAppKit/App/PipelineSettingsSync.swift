@@ -197,6 +197,8 @@ final class PipelineSettingsSync {
       break  // #1341: UI-only; read at fresh panel creation.
     case .showBluetoothTips:
       break  // #1480: UI-only; read by BluetoothAwarenessPresenter, no pipeline sync.
+    case .playRecordingSounds, .recordingSoundPairing:
+      break  // #1342: UI-only; read live by RecordingSoundCue, no pipeline sync.
     }
   }
 

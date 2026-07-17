@@ -125,6 +125,38 @@ struct SettingsDefaultsRoutingTests {
     #expect(SettingsManager(defaults: suite).overlayPillPosition == .top)
   }
 
+  // MARK: - Recording sound cues (#1342)
+
+  @Test("recording sounds default to off, airGlint pairing, on a fresh install")
+  func recordingSoundsDefaults() {
+    let settings = SettingsManager(defaults: Self.freshSuite())
+    #expect(settings.playRecordingSounds == false)
+    #expect(settings.recordingSoundPairing == .airGlint)
+  }
+
+  @Test("recording sound settings persist to the injected store and are in the unified key set")
+  func recordingSoundsPersist() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    settings.playRecordingSounds = true
+    settings.recordingSoundPairing = .cloudPop
+    #expect(suite.object(forKey: "playRecordingSounds") as? Bool == true)
+    #expect(suite.string(forKey: "recordingSoundPairing") == "cloudPop")
+    // Reload from the same store → the choice survives.
+    let reloaded = SettingsManager(defaults: suite)
+    #expect(reloaded.playRecordingSounds == true)
+    #expect(reloaded.recordingSoundPairing == .cloudPop)
+    #expect(SettingsManager.unifiedDefaultsKeys.contains("playRecordingSounds"))
+    #expect(SettingsManager.unifiedDefaultsKeys.contains("recordingSoundPairing"))
+  }
+
+  @Test("an unparseable stored recording sound pairing falls back to .airGlint")
+  func recordingSoundPairingUnparseableFallsBack() {
+    let suite = Self.freshSuite()
+    suite.set("nonexistentPairing", forKey: "recordingSoundPairing")
+    #expect(SettingsManager(defaults: suite).recordingSoundPairing == .airGlint)
+  }
+
   #if DEBUG
     // AFM adapter PoC dev knob — a per-build contract: writes to .standard (not
     // the injected store) and stays out of the unified key set. DEBUG-gated

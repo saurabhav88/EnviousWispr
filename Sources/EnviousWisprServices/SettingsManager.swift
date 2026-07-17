@@ -44,6 +44,8 @@ public final class SettingsManager {
     case appearance
     case overlayPillPosition
     case showBluetoothTips
+    case playRecordingSounds
+    case recordingSoundPairing
   }
 
   public var onChange: ((SettingKey) -> Void)?
@@ -79,7 +81,7 @@ public final class SettingsManager {
     "useExtendedThinking", "whisperKitLanguage", "languageMode",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride",
     "useStreamingASR", "warmEnginePolicy", "appearancePreference", "overlayPillPosition",
-    "showBluetoothTips",
+    "showBluetoothTips", "playRecordingSounds", "recordingSoundPairing",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
   ]
 
@@ -392,6 +394,26 @@ public final class SettingsManager {
     didSet {
       defaults.set(showBluetoothTips, forKey: "showBluetoothTips")
       onChange?(.showBluetoothTips)
+    }
+  }
+
+  /// #1342: play a short sound when recording starts and stops. UI-only —
+  /// no pipeline sync; read live by `RecordingSoundCue` at each cue moment.
+  /// Default OFF (`SettingsDefaultValues.playRecordingSounds`).
+  public var playRecordingSounds: Bool {
+    didSet {
+      defaults.set(playRecordingSounds, forKey: "playRecordingSounds")
+      onChange?(.playRecordingSounds)
+    }
+  }
+
+  /// #1342: which original sound pairing plays for the recording start/stop
+  /// cue. UI-only — no pipeline sync; snapshotted per-recording by
+  /// `RecordingSoundCue`, not read live mid-recording.
+  public var recordingSoundPairing: RecordingSoundPairing {
+    didSet {
+      defaults.set(recordingSoundPairing.rawValue, forKey: "recordingSoundPairing")
+      onChange?(.recordingSoundPairing)
     }
   }
 
@@ -737,6 +759,15 @@ public final class SettingsManager {
     showBluetoothTips =
       defaults.object(forKey: "showBluetoothTips") as? Bool
       ?? SettingsDefaultValues.showBluetoothTips
+
+    playRecordingSounds =
+      defaults.object(forKey: "playRecordingSounds") as? Bool
+      ?? SettingsDefaultValues.playRecordingSounds
+
+    recordingSoundPairing =
+      RecordingSoundPairing(
+        rawValue: defaults.string(forKey: "recordingSoundPairing") ?? ""
+      ) ?? SettingsDefaultValues.recordingSoundPairing
 
     // What's New: fresh install (nil) defaults to current version so new users aren't badged.
     let storedWhatsNew =

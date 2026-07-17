@@ -40,6 +40,8 @@ enum SettingsProjection {
     case toggleHotkeyShape = "toggle_hotkey_shape"
     case pushToTalkHotkeyShape = "push_to_talk_hotkey_shape"
     case cancelHotkeyShape = "cancel_hotkey_shape"
+    case playRecordingSounds = "play_recording_sounds"
+    case recordingSoundPairing = "recording_sound_pairing"
   }
 
   /// Logicals whose underlying control is a slider; they earn the longer
@@ -82,6 +84,8 @@ enum SettingsProjection {
     case .toggleKeyCode, .toggleModifiers: return .toggleHotkeyShape
     case .pushToTalkKeyCode, .pushToTalkModifiers: return .pushToTalkHotkeyShape
     case .cancelKeyCode, .cancelModifiers: return .cancelHotkeyShape
+    case .playRecordingSounds: return .playRecordingSounds
+    case .recordingSoundPairing: return .recordingSoundPairing
     // Not instrumented.
     case .selectedBackend, .onboardingState, .hasCompletedOnboarding,
       .isDebugModeEnabled, .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage,
@@ -123,6 +127,8 @@ enum SettingsProjection {
     case .toggleHotkeyShape: return hotkeyShape(settings.toggleKeyCode)
     case .pushToTalkHotkeyShape: return hotkeyShape(settings.pushToTalkKeyCode)
     case .cancelHotkeyShape: return hotkeyShape(settings.cancelKeyCode)
+    case .playRecordingSounds: return onOff(settings.playRecordingSounds)
+    case .recordingSoundPairing: return settings.recordingSoundPairing.rawValue
     }
   }
 
