@@ -68,6 +68,10 @@ final class DictationLifecycleCoordinator {
   private var prevParakeetActive: Bool = false
   private var prevWhisperKitActive: Bool = false
 
+  /// #1342: exact-once start/stop sound cue, tracked per backend. `var`, not
+  /// `let` — excluded from the collaborator ceiling by design.
+  private var recordingSoundCue = RecordingSoundCue()
+
   /// Cancellable Task for the deferred polish-failed warning overlay. Cancelled
   /// on every new recording start. Shared across both backends because the
   /// 400ms-delayed guard checks `.complete` on either driver — moving this
@@ -227,6 +231,9 @@ final class DictationLifecycleCoordinator {
     // #1171 — every transition refreshes engine status; the terminal ones apply a
     // switch deferred while this recording was active (coordinator-owned).
     onEngineRelevantStateChange()
+    recordingSoundCue.handle(
+      newState, backend: .parakeet,
+      enabled: settings.playRecordingSounds, selectedPairing: settings.recordingSoundPairing)
     switch newState {
     case .recording:
       hotkeyService.registerCancelHotkey()
@@ -297,6 +304,9 @@ final class DictationLifecycleCoordinator {
     onPipelineStateChange?(newState)
     // #1171 — see `handleParakeet`: refresh status + apply a deferred switch on terminal.
     onEngineRelevantStateChange()
+    recordingSoundCue.handle(
+      newState, backend: .whisperKit,
+      enabled: settings.playRecordingSounds, selectedPairing: settings.recordingSoundPairing)
     switch newState {
     case .recording:
       hotkeyService.registerCancelHotkey()

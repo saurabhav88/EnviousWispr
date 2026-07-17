@@ -25,3 +25,14 @@ public enum OverlayPillPosition: String, CaseIterable, Sendable {
   case top
   case bottom
 }
+
+/// Which original sound pairing plays for the recording start/stop cue
+/// (#1342). Each pairing is an original, procedurally synthesized start/stop
+/// pair — no sampled, recorded, licensed, or competitor audio. Persisted by
+/// rawValue; unknown/missing values resolve to `.airGlint`.
+public enum RecordingSoundPairing: String, CaseIterable, Sendable {
+  case airGlint
+  case velvetTap
+  case satinShift
+  case cloudPop
+}

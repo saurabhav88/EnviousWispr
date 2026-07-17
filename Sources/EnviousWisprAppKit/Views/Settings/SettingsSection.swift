@@ -21,6 +21,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   case appearance
   case speechEngine
   case audio
+  case recordingSounds
   case shortcuts
   case aiPolish
   case wordCorrection
@@ -41,6 +42,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .appearance: return "Appearance"
     case .speechEngine: return "Transcription"
     case .audio: return "Microphone"
+    case .recordingSounds: return "Sounds"
     case .shortcuts: return "Shortcuts"
     case .aiPolish: return "AI Polish"
     case .wordCorrection: return "Your Words"
@@ -61,6 +63,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .appearance: return "circle.lefthalf.filled"
     case .speechEngine: return "waveform"
     case .audio: return "speaker.wave.2"
+    case .recordingSounds: return "bell.and.waveform"
     case .shortcuts: return "keyboard"
     case .aiPolish: return "sparkles"
     case .wordCorrection: return "textformat.abc"
@@ -82,6 +85,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .appearance: return "Choose how EnviousWispr looks in light and dark."
     case .speechEngine: return "The speech engine that turns your voice into text."
     case .audio: return "Choose your input source and readiness behavior."
+    case .recordingSounds: return "Play a short sound when recording starts and stops."
     case .shortcuts: return "Set the hotkeys that start, stop, and cancel dictation."
     case .aiPolish: return "Clean up and rewrite your dictation with AI."
     case .wordCorrection:
@@ -100,7 +104,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   var group: SettingsGroup {
     switch self {
     case .history, .whatsNew, .appearance: return .app
-    case .speechEngine, .audio, .shortcuts: return .record
+    case .speechEngine, .audio, .recordingSounds, .shortcuts: return .record
     case .aiPolish, .wordCorrection: return .process
     case .clipboard: return .output
     case .permissions, .checkForUpdates, .openSourceLicenses: return .system
