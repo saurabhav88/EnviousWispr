@@ -108,21 +108,29 @@ import Testing
   /// `@main` shell strong-holds the bootstrapper via `@State` for the app's
   /// lifetime. Source-level check — booting AppKit in a unit test is not viable.
   @Test func assertAttachedGuardsLifecycleEntryPoints() throws {
-    let source = try String(
-      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
-    // One `private func assertAttached()` declaration + two call sites
-    // (applicationWillFinishLaunching, applicationDidFinishLaunching).
-    let occurrences = source.components(separatedBy: "assertAttached()").count - 1
+    for functionName in ["applicationWillFinishLaunching", "applicationDidFinishLaunching"] {
+      let body = try RouterCeilingParser.functionBody(named: functionName, at: Self.sourcePath)
+      // Comment/string-aware search (not plain `range(of:)`): a commented-out
+      // `// assertAttached()` must not satisfy this check.
+      let guardRange = RouterCeilingParser.rangeOfStatement("assertAttached()", in: body)
+      let forwardRange = RouterCeilingParser.rangeOfStatement(
+        "bootstrapper?.\(functionName)()", in: body)
+      #expect(guardRange != nil, "\(functionName) must call assertAttached()")
+      #expect(forwardRange != nil, "\(functionName) must forward into the bootstrapper")
+      if let guardRange, let forwardRange {
+        #expect(
+          guardRange.lowerBound < forwardRange.lowerBound,
+          """
+          \(functionName) must call assertAttached() before forwarding into \
+          the bootstrapper.
+          """)
+      }
+    }
+
+    let guardBody = try RouterCeilingParser.functionBody(
+      named: "assertAttached", at: Self.sourcePath)
     #expect(
-      occurrences >= 3,
-      """
-      applicationWillFinishLaunching + applicationDidFinishLaunching must each \
-      call assertAttached() before forwarding into the bootstrapper \
-      (found \(occurrences) occurrences of `assertAttached()`, expected the \
-      declaration + 2 call sites).
-      """)
-    #expect(
-      source.contains("assertionFailure("),
+      RouterCeilingParser.rangeOfStatement("assertionFailure(", in: guardBody) != nil,
       """
       assertAttached must keep its DEBUG `assertionFailure` arm so a wiring \
       regression is loud at development time.
