@@ -6,6 +6,8 @@ import {
   easternYesterdayWindowUTC,
   resolveBuckets,
   buildMessage,
+  hogql,
+  runLimited,
 } from "../src/index.js";
 
 // ---- easternYesterdayWindowUTC ----
@@ -219,3 +221,120 @@ test("source guardrail: every per-user GROUP BY query has an explicit LIMIT", as
 // without mocking the HogQL engine. It is verified by the pre-deploy
 // live-query smoke (live-query-smoke.mjs) against real production data, and
 // by code review of the tierASql query text in src/index.js.
+
+// ---- runLimited (#1588 - PostHog's 3-concurrent-query project limit) ----
+
+test("runLimited: never exceeds the given concurrency and preserves input order", async () => {
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const tasks = [1, 2, 3, 4, 5].map(
+    (n) => () =>
+      new Promise((resolve) => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        setTimeout(() => {
+          inFlight -= 1;
+          resolve(n);
+        }, 5);
+      })
+  );
+  const results = await runLimited(tasks, 2);
+  assert.deepEqual(results, [1, 2, 3, 4, 5]);
+  assert.ok(maxInFlight <= 2, `expected at most 2 concurrent tasks, saw ${maxInFlight}`);
+});
+
+test("runLimited: a failed wave rejects and never starts a later wave", async () => {
+  let laterWaveStarted = false;
+  const tasks = [
+    () => Promise.resolve("ok"),
+    () => Promise.reject(new Error("boom")),
+    () => {
+      laterWaveStarted = true;
+      return Promise.resolve("should not run");
+    },
+  ];
+  await assert.rejects(() => runLimited(tasks, 2), /boom/);
+  assert.equal(laterWaveStarted, false);
+});
+
+test("runLimited: rejects a non-positive-integer limit", async () => {
+  await assert.rejects(() => runLimited([() => Promise.resolve(1)], 0), TypeError);
+});
+
+// ---- hogql retry (#1588 - PostHog project concurrency limit / 504s) ----
+
+function fakeResponse(status, body, { onCancel } = {}) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+    body: onCancel ? { cancel: async () => onCancel() } : undefined,
+  };
+}
+
+test("hogql: retries once on 504 then succeeds, without a real delay", async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return calls === 1 ? fakeResponse(504) : fakeResponse(200, { results: [[1]] });
+  };
+  const sleeps = [];
+  const sleepFn = async (ms) => sleeps.push(ms);
+  const json = await hogql({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, "SELECT 1", "test_query", {
+    fetchFn,
+    sleepFn,
+  });
+  assert.deepEqual(json.results, [[1]]);
+  assert.equal(calls, 2);
+  assert.deepEqual(sleeps, [1500]);
+});
+
+// Codex code-diff review, round 2 (#1588): an earlier draft of the retry
+// path left the failed response body uncancelled, which could keep a
+// Cloudflare outbound subrequest connection occupied across retries.
+test("hogql: cancels the failed response body before retrying", async () => {
+  let cancelled = false;
+  const fetchFn = async () => fakeResponse(504, undefined, { onCancel: () => (cancelled = true) });
+  await assert.rejects(
+    () =>
+      hogql({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, "SELECT 1", "test_query", {
+        fetchFn,
+        sleepFn: async () => {
+          // Assert cancellation already happened by the time we'd be sleeping before a retry.
+          assert.equal(cancelled, true, "expected the failed body to be cancelled before the retry delay");
+        },
+      }),
+    /PostHog query test_query HTTP 504/
+  );
+  assert.equal(cancelled, true);
+});
+
+test("hogql: does not retry on a non-transient 4xx status", async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return fakeResponse(400);
+  };
+  await assert.rejects(
+    () => hogql({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, "SELECT 1", "test_query", { fetchFn }),
+    /PostHog query test_query HTTP 400/
+  );
+  assert.equal(calls, 1, "must not retry a non-transient status");
+});
+
+test("hogql: throws with the query name after exhausting retries on repeated 504", async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return fakeResponse(504);
+  };
+  await assert.rejects(
+    () =>
+      hogql({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, "SELECT 1", "engine_and_tier_b", {
+        fetchFn,
+        sleepFn: async () => {},
+      }),
+    /PostHog query engine_and_tier_b HTTP 504/
+  );
+  assert.equal(calls, 2, "expected exactly 2 attempts total");
+});
