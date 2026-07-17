@@ -107,6 +107,19 @@ import Testing
   /// imports `EnviousWisprServices`, and the nil path is unreachable because the
   /// `@main` shell strong-holds the bootstrapper via `@State` for the app's
   /// lifetime. Source-level check — booting AppKit in a unit test is not viable.
+  ///
+  /// Known, accepted scope boundary (cloud Codex review r4, 2026-07-17):
+  /// `rangeOfStatement`'s guard-before-forward ordering check compares text
+  /// offsets, not real control flow, so a call wrapped in an unexecuted
+  /// closure literal (e.g. `let guardLater = { assertAttached() }`, never
+  /// invoked) would still satisfy it. The real `applicationWillFinishLaunching`
+  /// / `applicationDidFinishLaunching` bodies this guards are 2-line functions
+  /// with zero nested braces today; this test's realistic threat model is an
+  /// ordinary edit dropping or reordering the guard call, not a deliberately
+  /// inert closure built to defeat a source-level scanner. Stopping here per
+  /// `validation-discipline.md` RULE: measure-with-the-real-tool-never-a-simulation
+  /// ("hardening stops at the realistic threat model") — the same call already
+  /// made once this session for `EngineIdentityFreezeTests.swift`.
   @Test func assertAttachedGuardsLifecycleEntryPoints() throws {
     for functionName in ["applicationWillFinishLaunching", "applicationDidFinishLaunching"] {
       let body = try RouterCeilingParser.functionBody(named: functionName, at: Self.sourcePath)
