@@ -22,6 +22,14 @@ import Testing
 /// ceiling's explicitly uncounted category (computed display label);
 /// stored-property, method, and import caps unchanged. The home
 /// remains display-only.
+///
+/// Bible §30 entry (#1386 PR-2b, 2026-07-17): stored properties 3→4 and
+/// line cap 75→85. Reason: `activeModelLoaded`, the EngineCoordinator's
+/// published truth injected as a closure — the manager's own flag became
+/// Parakeet-only when #1386 re-homed WhisperKit, so the "Loaded"/"Unloaded"
+/// fallback needed the cross-engine authority (cloud review P2 on PR #1606).
+/// The home remains display-only; a closure, not a coordinator reference,
+/// keeps the import set unchanged.
 @Suite struct BackendMetadataCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/BackendMetadata.swift"
@@ -32,10 +40,10 @@ import Testing
       named: "BackendMetadata", in: source)
     let total = bodies.reduce(0) { $0 + CeilingsTestSupport.countTopLevelLetCollaborators(in: $1) }
     #expect(
-      total == 3,
+      total == 4,
       """
-      BackendMetadata stored-property count mismatch: expected exactly 3 \
-      (settings + asrManager + llmDiscovery), found \(total). \
+      BackendMetadata stored-property count mismatch: expected exactly 4 \
+      (settings + asrManager + llmDiscovery + activeModelLoaded), found \(total). \
       Adding a stored property requires a Bible §30 entry; if this dropped, \
       ratchet down.
       """)
@@ -59,9 +67,9 @@ import Testing
     let source = try CeilingsTestSupport.source(at: Self.sourcePath)
     let count = CeilingsTestSupport.lineCount(in: source)
     #expect(
-      count <= 75,
+      count <= 85,
       """
-      BackendMetadata line count exceeded: \(count) > 75. \
+      BackendMetadata line count exceeded: \(count) > 85. \
       Ratchet down if implementation came in lower; raise only via Bible §30.
       """)
   }

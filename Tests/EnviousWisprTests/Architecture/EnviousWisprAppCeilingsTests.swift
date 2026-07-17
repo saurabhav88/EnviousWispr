@@ -379,15 +379,17 @@ import Testing
   /// behaviors the branch had accidentally deleted (the overlay position
   /// provider, #1583, and the recovery-success notice, #1464 — main's own
   /// lines returning home) and routed Discard through the active-engine door:
-  /// actual 1128 + ~2, rounded up to nearest 5 = 1130.
+  /// actual 1128 + ~2, rounded up to nearest 5 = 1130. Third application
+  /// (same PR, cloud review round 3): the engine-status closure handed to
+  /// BackendMetadata added one line — actual 1131 + ~2, rounded to 1135.
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1130,
+      lineCount <= 1135,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1130. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1135. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

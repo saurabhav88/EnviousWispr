@@ -14,12 +14,11 @@ struct StatusView: View {
   // PR10 of #763: recording-control surface (toggle, cancel, reset,
   // hotkey description) moved off the former root state onto DictationRuntime façade.
   @Environment(DictationRuntime.self) private var dictationRuntime
-  @Environment(\.asrManager) private var asrManagerEnv
+  @Environment(EngineCoordinator.self) private var engineCoordinator: EngineCoordinator?
   @State private var elapsed: TimeInterval = 0
 
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
   /// environment (see `AppEnvironmentKeys.swift`).
-  private var asrManager: any ASRManagerInterface { asrManagerEnv! }
 
   var body: some View {
     VStack(spacing: 16) {
@@ -130,7 +129,7 @@ struct StatusView: View {
             .controlSize(.large)
           Text(DictationNarrator.copy(for: .transcribing))
             .font(.title2)
-          if !asrManager.isModelLoaded {
+          if engineCoordinator?.status.activeModelLoaded != true {
             Text("This may take a moment on first run while the model loads.")
               .font(.caption)
               .foregroundStyle(.secondary)

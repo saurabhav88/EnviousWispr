@@ -8,11 +8,10 @@ struct SidebarStatsHeader: View {
   // PR7 of #763: live phase + display labels resolve through the three new homes.
   @Environment(LiveRecordingState.self) private var liveRecordingState
   @Environment(BackendMetadata.self) private var backendMetadata
-  @Environment(\.asrManager) private var asrManagerEnv
+  @Environment(EngineCoordinator.self) private var engineCoordinator: EngineCoordinator?
 
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
   /// environment (see `AppEnvironmentKeys.swift`).
-  private var asrManager: any ASRManagerInterface { asrManagerEnv! }
 
   private var isRecording: Bool {
     liveRecordingState.pipelineState == .recording
@@ -48,7 +47,7 @@ struct SidebarStatsHeader: View {
         statusText: backendMetadata.statusText(for: liveRecordingState.pipelineState),
         polishLabel: backendMetadata.polishLabel,
         isRecording: isRecording,
-        isLoaded: asrManager.isModelLoaded,
+        isLoaded: engineCoordinator?.status.activeModelLoaded ?? false,
         hasError: {
           if case .error = liveRecordingState.pipelineState { return true }
           return false

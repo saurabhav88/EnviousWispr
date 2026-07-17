@@ -622,7 +622,10 @@ public final class WisprBootstrapper {
     let backendMetadata = BackendMetadata(
       settings: settings,
       asrManager: asrManager,
-      llmDiscovery: llmDiscovery
+      llmDiscovery: llmDiscovery,
+      // The coordinator's published snapshot covers BOTH engines; the manager's
+      // own flag is Parakeet-only since #1386 (cloud review P2).
+      activeModelLoaded: { [engineCoordinator] in engineCoordinator.status.activeModelLoaded }
     )
     // PR9 of #763: construct the lifecycle home BEFORE DictationRuntime.
     // PR-C.3: the hands-free lock flag is rehomed onto `LiveRecordingState`.

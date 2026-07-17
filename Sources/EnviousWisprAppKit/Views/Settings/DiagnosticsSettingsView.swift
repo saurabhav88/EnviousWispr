@@ -6,6 +6,7 @@ import SwiftUI
 struct DiagnosticsSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(\.asrManager) private var asrManagerEnv
+  @Environment(EngineCoordinator.self) private var engineCoordinator: EngineCoordinator?
   @Environment(\.activeEngine) private var activeEngineEnv
   @Environment(DiagnosticsCoordinator.self) private var diagnostics
   // PR7 of #763: live phase resolves through LiveRecordingState.
@@ -286,8 +287,10 @@ struct DiagnosticsSettingsView: View {
           HStack {
             Text("Model status:")
             Spacer()
-            Text(asrManager.isModelLoaded ? "Loaded" : "Unloaded")
-              .foregroundStyle(asrManager.isModelLoaded ? .stSuccess : .stTextSecondary)
+            Text((engineCoordinator?.status.activeModelLoaded ?? false) ? "Loaded" : "Unloaded")
+              .foregroundStyle(
+                (engineCoordinator?.status.activeModelLoaded ?? false)
+                  ? .stSuccess : .stTextSecondary)
           }
         }
       }
