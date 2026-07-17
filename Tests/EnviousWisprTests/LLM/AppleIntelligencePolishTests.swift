@@ -246,6 +246,46 @@ struct OutputLanguageValidatorTests {
   }
 }
 
+// MARK: - Preflight allowlist decision (platform-independent)
+
+/// #1596: the 3 tests in `AppleIntelligencePreflightGateTests` below all
+/// `guard SystemLanguageModel.default.availability == .available else {
+/// return }` — on a CI runner without the on-device model, all 3 silently
+/// no-op and still report green, so a completely broken language gate would
+/// never be caught there. `unsupportedBaseCode` is the pure decision those
+/// tests exercise indirectly; it touches no FoundationModels type, so these
+/// tests run identically on every machine regardless of model availability.
+@Suite("Apple Intelligence: preflight language allowlist (platform-independent)")
+struct UnsupportedBaseCodeTests {
+  @Test("rejects a base code outside the allowlist")
+  func rejectsUnsupported() {
+    #expect(
+      AppleIntelligenceConnector.unsupportedBaseCode(
+        normalizedBase: "ar", supportedLanguages: ["en", "de"]) == "ar")
+  }
+
+  @Test("allows a base code inside the allowlist")
+  func allowsSupported() {
+    #expect(
+      AppleIntelligenceConnector.unsupportedBaseCode(
+        normalizedBase: "de", supportedLanguages: ["en", "de"]) == nil)
+  }
+
+  @Test("nil normalizedBase (Parakeet / no-detection path) is never rejected")
+  func allowsNilBase() {
+    #expect(
+      AppleIntelligenceConnector.unsupportedBaseCode(
+        normalizedBase: nil, supportedLanguages: ["en"]) == nil)
+  }
+
+  @Test("empty allowlist rejects every non-nil base code")
+  func emptyAllowlistRejectsAll() {
+    #expect(
+      AppleIntelligenceConnector.unsupportedBaseCode(
+        normalizedBase: "en", supportedLanguages: []) == "en")
+  }
+}
+
 // MARK: - Preflight gate (FoundationModels-conditional)
 
 #if canImport(FoundationModels)

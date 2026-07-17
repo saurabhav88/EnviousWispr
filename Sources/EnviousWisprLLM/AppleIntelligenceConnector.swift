@@ -320,6 +320,19 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     }
   #endif
 
+  /// Pure preflight decision: given an already-normalized base code and the
+  /// current allowlist, is this language rejected? No `FoundationModels` type
+  /// involved, so unlike the 3 preflight tests guarded by
+  /// `#available(macOS 26.0, *)` + `SystemLanguageModel.default.availability
+  /// == .available` (which silently no-op on a CI runner without the
+  /// on-device model), this runs identically on every machine (#1596).
+  internal static func unsupportedBaseCode(
+    normalizedBase: String?, supportedLanguages: Set<String>
+  ) -> String? {
+    guard let base = normalizedBase, !supportedLanguages.contains(base) else { return nil }
+    return base
+  }
+
   public func polish(
     text: String,
     instructions: PolishInstructions,
@@ -344,8 +357,8 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       // inject a language-aware prompt clause downstream; for unsupported
       // langs we throw before burning a round trip on an empty generation.
       let normalizedBase = LanguageNormalizer.baseCode(config.detectedLanguage)
-      if let base = normalizedBase,
-        !Self.supportedLanguageProvider().contains(base)
+      if let base = Self.unsupportedBaseCode(
+        normalizedBase: normalizedBase, supportedLanguages: Self.supportedLanguageProvider())
       {
         Task {
           await AppLogger.shared.log(
