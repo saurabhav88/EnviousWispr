@@ -30,11 +30,22 @@ struct ProviderLogoTests {
     #expect(ProviderLogoSVG.templateImage("") == nil)
   }
 
-  @Test("Monograms are non-empty for the SVG-backed providers")
-  func monogramsPresent() {
-    #expect(!ProviderLogoSVG.monogram(for: .openAI).isEmpty)
-    #expect(!ProviderLogoSVG.monogram(for: .gemini).isEmpty)
-    #expect(!ProviderLogoSVG.monogram(for: .ollama).isEmpty)
-    #expect(!ProviderLogoSVG.monogram(for: .egOne).isEmpty)
+  @Test("Monograms identify the correct provider (#1597)")
+  func monogramsMatchProviders() {
+    // #1597: the prior version only checked `.isEmpty`, so swapping two
+    // providers' monograms (or returning the same letter for every provider)
+    // would still pass. Assert the exact contract instead.
+    #expect(ProviderLogoSVG.monogram(for: .openAI) == "OA")
+    #expect(ProviderLogoSVG.monogram(for: .gemini) == "G")
+    #expect(ProviderLogoSVG.monogram(for: .ollama) == "OL")
+    #expect(ProviderLogoSVG.monogram(for: .egOne) == "EG")
+    // Codex review flagged this as codifying a broken empty Apple fallback --
+    // verified that's a DIFFERENT bug (#1613): `appleMark`'s SF-Symbol-unavailable
+    // branch hardcodes `monogram("")` directly and never calls this static
+    // function for `.appleIntelligence` at all, so this case is unreached by
+    // production today. Asserting its actual current value here doesn't lock in
+    // #1613's fix; that fix doesn't touch this function.
+    #expect(ProviderLogoSVG.monogram(for: .appleIntelligence) == "")
+    #expect(ProviderLogoSVG.monogram(for: .none) == "--")
   }
 }
