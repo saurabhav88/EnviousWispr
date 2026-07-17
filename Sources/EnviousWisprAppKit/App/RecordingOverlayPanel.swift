@@ -105,6 +105,16 @@ final class RecordingOverlayPanel {
   /// fixed. `nil` when nothing is showing.
   private var activePanelPosition: OverlayPillPosition?
 
+  /// The origin WE last set programmatically, whether from a fresh appearance
+  /// or a prior Space-change reposition. The panel has `isMovableByWindowBackground
+  /// = true` (an existing, user-facing drag-to-relocate feature) — comparing
+  /// the panel's LIVE origin against this before an automatic reposition is
+  /// how `repositionForActiveSpaceChange()` tells "the user dragged this"
+  /// apart from "nothing has touched it since we last placed it," so a Space
+  /// swipe never silently undoes a manual drag (Codex grounded review r4,
+  /// 2026-07-17). `nil` when nothing is showing.
+  private var lastProgrammaticOrigin: NSPoint?
+
   /// #1341 follow-up: fullscreen state is a per-Space property, and macOS
   /// treats going fullscreen as switching to a NEW Space/"desktop" rather than
   /// changing the current one. A panel that started in windowed mode and then
@@ -159,6 +169,15 @@ final class RecordingOverlayPanel {
     // from wherever the window got repositioned to, reintroducing the
     // recording/polishing misalignment bug this same PR fixed.
     guard let panel, let position = activePanelPosition else { return }
+    // The pill supports drag-to-relocate (`isMovableByWindowBackground`) —
+    // if the panel's live origin no longer matches the spot WE last put it,
+    // the user moved it since, and an automatic Space-change reposition must
+    // not silently undo that (Codex grounded review r4, 2026-07-17). Stays
+    // wherever the user left it for the rest of this presentation; the next
+    // fresh appearance re-anchors normally.
+    if let lastProgrammaticOrigin, !panel.frame.origin.isApproximately(lastProgrammaticOrigin) {
+      return
+    }
     guard
       let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
         ?? NSScreen.main
@@ -174,6 +193,7 @@ final class RecordingOverlayPanel {
       NSRect(x: x, y: panelY, width: resolvedWidth, height: resolvedHeight),
       display: true, animate: true
     )
+    lastProgrammaticOrigin = NSPoint(x: x, y: panelY)
   }
 
   /// Shared Top/Bottom position formula — used both when a panel first
@@ -918,6 +938,7 @@ final class RecordingOverlayPanel {
     let panelY = clampedOriginY(
       requestedY: requestedY, resolvedHeight: resolvedHeight, on: targetScreen)
     p.setFrameOrigin(NSPoint(x: x, y: panelY))
+    lastProgrammaticOrigin = NSPoint(x: x, y: panelY)
 
     p.orderFrontRegardless()
     self.panel = p
@@ -1136,6 +1157,7 @@ final class RecordingOverlayPanel {
     guard let panelToClose = panel else { return }
     panel = nil
     activePanelPosition = nil
+    lastProgrammaticOrigin = nil
 
     // Flush pending CA transactions before releasing the panel.
     // RecordingOverlayView has a running .task loop updating audioLevel every 50ms
@@ -1149,6 +1171,16 @@ final class RecordingOverlayPanel {
     // The local `panelToClose` retain keeps the panel alive through the flush.
     CATransaction.flush()
     panelToClose.close()
+  }
+}
+
+extension NSPoint {
+  /// #1341: origin comparison for drag detection — a strict `==` would false-
+  /// positive on the sub-point floating-point noise `setFrame`/display-scale
+  /// rounding can introduce between what we requested and what AppKit reports
+  /// back, reading as "the user dragged it" when nothing moved.
+  fileprivate func isApproximately(_ other: NSPoint, tolerance: CGFloat = 0.5) -> Bool {
+    abs(x - other.x) <= tolerance && abs(y - other.y) <= tolerance
   }
 }
 
