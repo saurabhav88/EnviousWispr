@@ -61,6 +61,7 @@ struct RecordingSoundCueTests {
       var events: [String] = []
       var cue = RecordingSoundCue { pairing, moment in
         events.append("\(pairing.rawValue):\(moment.rawValue)")
+        return true
       }
 
       cue.handle(.idle, backend: backend, enabled: true, selectedPairing: .airGlint)
@@ -85,6 +86,7 @@ struct RecordingSoundCueTests {
     var events: [String] = []
     var cue = RecordingSoundCue { pairing, moment in
       events.append("\(pairing.rawValue):\(moment.rawValue)")
+      return true
     }
 
     cue.handle(.recording, backend: .parakeet, enabled: true, selectedPairing: .cloudPop)
@@ -100,6 +102,7 @@ struct RecordingSoundCueTests {
     var events: [String] = []
     var cue = RecordingSoundCue { pairing, moment in
       events.append("\(pairing.rawValue):\(moment.rawValue)")
+      return true
     }
 
     cue.handle(.recording, backend: .whisperKit, enabled: false, selectedPairing: .airGlint)
@@ -116,6 +119,7 @@ struct RecordingSoundCueTests {
     var events: [String] = []
     var cue = RecordingSoundCue { pairing, moment in
       events.append("\(pairing.rawValue):\(moment.rawValue)")
+      return true
     }
 
     cue.handle(.loadingModel, backend: backend, enabled: true, selectedPairing: .airGlint)
@@ -123,6 +127,22 @@ struct RecordingSoundCueTests {
     cue.handle(.transcribing, backend: backend, enabled: true, selectedPairing: .velvetTap)
 
     #expect(events.map(\.self) == ["airGlint:start", "airGlint:stop"])
+  }
+
+  @Test("a start cue that fails to play never arms an orphaned stop cue")
+  func failedStartDoesNotArmAnOrphanedStop() {
+    var events: [String] = []
+    var cue = RecordingSoundCue { pairing, moment in
+      events.append("\(pairing.rawValue):\(moment.rawValue)")
+      return false  // simulates no audio output available
+    }
+
+    cue.handle(.recording, backend: .parakeet, enabled: true, selectedPairing: .airGlint)
+    cue.handle(.transcribing, backend: .parakeet, enabled: true, selectedPairing: .airGlint)
+
+    // The start attempt is observed (it was tried), but since it failed, no
+    // stop cue may follow — an unmatched stop is worse than silence.
+    #expect(events == ["airGlint:start"])
   }
 
   @Test(
@@ -133,6 +153,7 @@ struct RecordingSoundCueTests {
     var events: [String] = []
     var cue = RecordingSoundCue { pairing, moment in
       events.append("\(pairing.rawValue):\(moment.rawValue)")
+      return true
     }
 
     cue.handle(.recording, backend: backend, enabled: true, selectedPairing: .airGlint)

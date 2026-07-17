@@ -37,13 +37,13 @@ struct RecordingSoundCue {
   typealias Playback = @MainActor (
     _ pairing: RecordingSoundPairing,
     _ moment: RecordingSoundMoment
-  ) -> Void
+  ) -> Bool
 
   private var activePairingByBackend: [Backend: RecordingSoundPairing] = [:]
   private let playback: Playback
 
   init() {
-    playback = { pairing, moment in _ = Self.play(pairing: pairing, moment: moment) }
+    playback = { pairing, moment in Self.play(pairing: pairing, moment: moment) }
   }
 
   /// Test seam — inject a spy instead of real `NSSound` playback.
@@ -68,11 +68,15 @@ struct RecordingSoundCue {
     switch state {
     case .recording:
       guard activePairingByBackend[backend] == nil, enabled else { return }
+      // Only arm the matching stop cue if the start cue actually played — a
+      // failed start (e.g. no audio output available) must never leave a
+      // "phantom" session that plays an unmatched stop cue later (Codex
+      // code-diff review r3).
+      guard playback(selectedPairing, .start) else { return }
       activePairingByBackend[backend] = selectedPairing
-      playback(selectedPairing, .start)
     case .idle, .loadingModel, .transcribing, .polishing, .complete, .error:
       guard let pairing = activePairingByBackend.removeValue(forKey: backend) else { return }
-      playback(pairing, .stop)
+      _ = playback(pairing, .stop)
     }
   }
 
