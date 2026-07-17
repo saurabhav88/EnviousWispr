@@ -15,6 +15,15 @@ struct RecordingSoundsSettingsView: View {
   // into other Settings pages (DiagnosticsSettingsView) rather than adding
   // new state.
   @Environment(LiveRecordingState.self) private var liveRecordingState
+  // Shared across every card in the grid (#1618, Codex code-diff review r6):
+  // each card previously owned its own preview task, so previewing card B
+  // while card A's delayed stop was still pending only cancelled A's task
+  // from WITHIN card A — B never knew A existed, producing an interleaved
+  // A-start/B-start/A-stop/B-stop sequence instead of a clean switch. One
+  // shared slot, passed down by binding, means starting any card's preview
+  // always cancels whatever the grid's previous preview was, regardless of
+  // which card it belonged to.
+  @State private var activePreviewTask: Task<Void, Never>?
 
   private let columns = [GridItem(.adaptive(minimum: 210, maximum: .infinity), spacing: 12)]
 
@@ -45,7 +54,8 @@ struct RecordingSoundsSettingsView: View {
           RecordingSoundPairingCard(
             pairing: pairing,
             isSelected: settings.recordingSoundPairing == pairing,
-            previewDisabled: liveRecordingState.isDictationActive
+            previewDisabled: liveRecordingState.isDictationActive,
+            activePreviewTask: $activePreviewTask
           ) {
             settings.recordingSoundPairing = pairing
           }
@@ -58,36 +68,40 @@ struct RecordingSoundsSettingsView: View {
 // MARK: - Pairing card
 
 /// One selectable sound pairing with a name, one-line description, and one
-/// Preview control. The WHOLE card is the selection target (a real `Button`);
-/// Preview is a smaller control layered inside it, so it cannot be a second
-/// `Button` (SwiftUI buttons must not nest, Grounded Review r3, #1342) and
-/// its tap priority cannot rely on default gesture-resolution order between
-/// an ancestor Button and a descendant control (unreliable — Codex code-diff
-/// review r5: "SwiftUI buttons do not reliably consume an ancestor's tap
-/// gesture"). Preview uses `.highPriorityGesture`, the documented, guaranteed
-/// mechanism for "this control's tap wins over any ancestor's," instead.
+/// Preview control. Selection and Preview are two REAL, independent,
+/// non-overlapping `Button`s stacked vertically — never nested inside one
+/// another (SwiftUI buttons must not nest, Grounded Review r3, #1342), and
+/// never geometrically overlapping (a wider, single interactive region
+/// covering both was tried and reverted twice: once because a plain gesture
+/// cannot be assumed to lose priority to a nested Button, Codex code-diff
+/// review r5, and once because a custom Text+gesture control loses keyboard
+/// focusability and reintroduces cross-card preview bleed, Codex code-diff
+/// review r6). Both risks are structurally impossible when the two controls
+/// are real, disjoint Buttons: there is no shared touch point for gesture
+/// priority to arbitrate, and each keeps native focus/VoiceOver for free.
+/// The trade-off, accepted: the outer card's padding margin and the small
+/// gap between the two buttons are not part of either button's hit area.
 private struct RecordingSoundPairingCard: View {
   // Own environment read (not just the parent's snapshotted `previewDisabled`
   // below): the delayed stop half inside the Preview action needs the LIVE
   // value at the moment it fires, a Bool captured at tap time would be stale
   // for that later check (#1618 plan §3, Codex grounded review r1).
   @Environment(LiveRecordingState.self) private var liveRecordingState
-  // Retained so a real recording that starts AND finishes entirely within
-  // the 550ms preview delay can still be caught: a point-in-time check alone
-  // (isDictationActive read only when the delayed stop is about to fire)
-  // misses that case, since the real session may have already ended by
-  // then. The .onChange below cancels this the MOMENT any real recording
-  // starts, closing the window instead of racing it (Codex code-diff r2).
-  @State private var previewTask: Task<Void, Never>?
 
   let pairing: RecordingSoundPairing
   let isSelected: Bool
   let previewDisabled: Bool
+  // Shared across the whole grid via binding (Codex code-diff review r6),
+  // not a per-card @State: starting ANY card's preview must cancel whatever
+  // the grid's previous preview was, even if it belonged to a different
+  // card, or switching cards mid-preview produces two interleaved,
+  // overlapping start/stop sequences instead of a clean handoff.
+  @Binding var activePreviewTask: Task<Void, Never>?
   let onSelect: () -> Void
 
   var body: some View {
-    Button(action: onSelect) {
-      VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: 10) {
+      Button(action: onSelect) {
         VStack(alignment: .leading, spacing: 4) {
           HStack(spacing: 8) {
             Text(name)
@@ -104,16 +118,25 @@ private struct RecordingSoundPairingCard: View {
             .settingsReadingCopy()
             .frame(maxWidth: .infinity, minHeight: 20, alignment: .topLeading)
         }
-
-        previewControl
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
       }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .contentShape(Rectangle())
+      .buttonStyle(.plain)
+      .accessibilityLabel(name)
+      .accessibilityValue(isSelected ? "Selected" : "")
+      .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+
+      Button("Preview", action: startPreview)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .foregroundStyle(.stAccent)
+        .accessibilityLabel("Preview \(name)")
+        .disabled(previewDisabled)
+        .help(
+          previewDisabled
+            ? "Preview is unavailable while a recording is in progress."
+            : "")
     }
-    .buttonStyle(.plain)
-    .accessibilityLabel(name)
-    .accessibilityValue(isSelected ? "Selected" : "")
-    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     .padding(14)
     .background(Color.stSectionBg)
     .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
@@ -128,43 +151,14 @@ private struct RecordingSoundPairingCard: View {
       // AND finishes entirely inside the 550ms delay can never leave a
       // stale preview stop cue armed (Codex code-diff review r2).
       if isActive {
-        previewTask?.cancel()
+        activePreviewTask?.cancel()
       }
     }
   }
 
-  /// Styled to read as a small bordered button, but built from a plain
-  /// `Text` + `.highPriorityGesture`, not a real `Button` — see the type's
-  /// doc comment for why. `.highPriorityGesture` is what makes this reliably
-  /// win over the card's own selection `Button` for taps landing here.
-  private var previewControl: some View {
-    Text("Preview")
-      .font(.system(size: 12, weight: .medium))
-      .foregroundStyle(previewDisabled ? Color.stTextTertiary : Color.stAccent)
-      .padding(.horizontal, 10)
-      .padding(.vertical, 5)
-      .background(
-        RoundedRectangle(cornerRadius: 6)
-          .strokeBorder(previewDisabled ? Color.stDivider : Color.stAccent.opacity(0.4))
-      )
-      .contentShape(Rectangle())
-      .highPriorityGesture(TapGesture().onEnded(startPreview))
-      .accessibilityLabel("Preview \(name)")
-      .accessibilityAddTraits(.isButton)
-      .accessibilityAction(.default, startPreview)
-      .help(
-        previewDisabled
-          ? "Preview is unavailable while a recording is in progress."
-          : "")
-  }
-
-  /// Shared by the mouse-driven `.highPriorityGesture` and VoiceOver's
-  /// `.accessibilityAction` so the two activation paths can never drift out
-  /// of sync with each other.
   private func startPreview() {
-    guard !previewDisabled else { return }
-    previewTask?.cancel()
-    previewTask = Task { @MainActor in
+    activePreviewTask?.cancel()
+    activePreviewTask = Task { @MainActor in
       guard RecordingSoundCue.play(pairing: pairing, moment: .start) else { return }
       do {
         try await Task.sleep(for: .milliseconds(550))
