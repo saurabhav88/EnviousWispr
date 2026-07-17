@@ -158,12 +158,28 @@ import Testing
     fx.hotkeyService.stop()
   }
 
-  @Test func suspendAndResumeAreSafeToCallRepeatedly() {
+  @Test func suspendAndResumeAreIdempotentAndObservable() {
+    // #1592: the prior version of this test called suspend()/resume() with
+    // zero #expect calls, and after only install() (never startIfEnabled()),
+    // isEnabled stayed false — HotkeyService.suspend()/resume() both guard on
+    // isEnabled, so every call silently no-op'd. It passed regardless of
+    // whether suspend/resume worked, were inverted, or were deleted.
     let fx = Self.makeFixture()
-    fx.controller.install()
+    fx.settings.hotkeyEnabled = true
+    fx.controller.startIfEnabled()
+    #expect(fx.hotkeyService.isEnabled == true)
+    #expect(fx.hotkeyService.isSuspended == false)
+
     fx.controller.suspend()
-    fx.controller.suspend()
+    #expect(fx.hotkeyService.isSuspended == true)
+    fx.controller.suspend()  // idempotent: already suspended, must stay suspended
+    #expect(fx.hotkeyService.isSuspended == true)
+
     fx.controller.resume()
-    fx.controller.resume()
+    #expect(fx.hotkeyService.isSuspended == false)
+    fx.controller.resume()  // idempotent: already resumed, must stay resumed
+    #expect(fx.hotkeyService.isSuspended == false)
+
+    fx.hotkeyService.stop()
   }
 }
