@@ -90,9 +90,13 @@ struct RecordingSoundCue {
     // `NSSound.play()` is asynchronous; a purely local `sound` would be
     // deallocated the instant this function returns, truncating or silently
     // dropping playback (Codex code-diff review r1). The retainer holds it
-    // until the delegate reports completion.
+    // until the delegate reports completion — but only once playback has
+    // actually started: if `.play()` returns false (e.g. no audio output
+    // available), no completion callback will ever fire, so retaining first
+    // would leak the instance forever (Codex code-diff review r2).
+    guard sound.play() else { return false }
     RecordingSoundPlaybackRetainer.shared.retain(sound)
-    return sound.play()
+    return true
   }
 }
 
