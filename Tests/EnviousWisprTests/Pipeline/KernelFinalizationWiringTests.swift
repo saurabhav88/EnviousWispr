@@ -372,6 +372,62 @@ import Testing
       currentTime: currentTime,
       telemetryState: telemetryState)
   }
+
+  // MARK: Fallback metrics gate (#1624)
+  //
+  // `KernelFinalizationWiring`'s real gate is `emitFallbackFields =
+  // outcome.polishMetadata != nil || outcome.polishFallbackReason ==
+  // "empty_output_floor"` — drive it end to end (store, THEN deliver, since
+  // deliver is what calls updateTranscriptMetrics) rather than recomputing a
+  // simplified version of the condition inside the test.
+
+  @Test(
+    "non-AFM fallback reasons remain suppressed from metrics",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1624",
+      "fallback metrics gate was recomputed inside its test"
+    )
+  )
+  func nonAFMFallbackReasonIsSuppressed() async throws {
+    let outcome = KernelFinalizationOutcome()
+    outcome.rawText = "original transcript text"
+    outcome.polishMetadata = nil
+    outcome.pipelineFellBackToRaw = true
+    outcome.polishFallbackReason = "validator_discard"
+
+    let wiring = makeWiring(outcome: outcome)
+    try await wiring.store("original transcript text", UUID())
+    _ = await wiring.deliver("original transcript text")
+
+    let metrics = try #require(outcome.transcript?.metrics)
+    #expect(metrics.polishFellBackToRaw == nil)
+    #expect(metrics.polishFallbackReason == nil)
+  }
+
+  @Test(
+    "AFM metadata emits explicit false when polish did not fall back",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1624",
+      "fallback metrics gate was recomputed inside its test"
+    )
+  )
+  func successfulAFMEmitsFalseFallback() async throws {
+    let outcome = KernelFinalizationOutcome()
+    outcome.rawText = "original transcript text"
+    outcome.polishedText = "Polished transcript text."
+    outcome.polishMetadata = PolishMetadata(filterTripped: nil, filterFellBackToRaw: false)
+    outcome.pipelineFellBackToRaw = false
+    outcome.polishFallbackReason = nil
+
+    let wiring = makeWiring(outcome: outcome)
+    try await wiring.store("Polished transcript text.", UUID())
+    _ = await wiring.deliver("Polished transcript text.")
+
+    let metrics = try #require(outcome.transcript?.metrics)
+    #expect(metrics.polishFilterTripped == nil)
+    #expect(metrics.polishFellBackToRaw == false)
+    #expect(metrics.polishFallbackReason == nil)
+  }
 }
 
 /// Hand-advanced logical clock for the tick-rate test. Local `@MainActor` copy:
