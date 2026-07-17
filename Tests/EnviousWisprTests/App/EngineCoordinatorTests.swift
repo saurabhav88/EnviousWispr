@@ -481,10 +481,22 @@ struct EngineCoordinatorTests {
       // `engine.switch_failed` are emitted after the warm attempt returns, while
       // switchPhase flips inside it — the signal mismatch (#1283). History makes
       // the two waits order-independent.
-      _ = try await waiter.waitForEvent(named: "engine.switch_failed")
-      _ = try await waiter.waitForEvent(
+      let failed = try await waiter.waitForEvent(named: "engine.switch_failed")
+      #expect(
+        failed.stringProps == [
+          "engine": "whisperKit",
+          "reason": "warm_failed",
+        ])
+
+      let warm = try await waiter.waitForEvent(
         matching: { $0.name == "engine.warm" && $0.stringProps["outcome"] == "failed" },
         describedAs: "engine.warm(outcome: failed)")
+      #expect(
+        warm.stringProps == [
+          "engine": "whisperKit",
+          "outcome": "failed",
+        ])
+      #expect(warm.intProps["duration_ms"] != nil)
     }
   #endif
 }
