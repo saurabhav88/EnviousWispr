@@ -94,6 +94,17 @@ final class RecordingOverlayPanel {
   /// forget to wire it.
   private let positionProvider: () -> OverlayPillPosition
 
+  /// The Top/Bottom edge actually chosen for the CURRENT panel, captured once
+  /// at fresh-appearance time. `repositionForActiveSpaceChange()` reuses this
+  /// — never re-reads `positionProvider()` — so that changing the setting
+  /// while a panel is visible can't retroactively snap it to the other edge
+  /// mid-Space-swipe (Codex grounded review, 2026-07-17); the SwiftUI content
+  /// alignment baked in at creation time (`createPanel`'s `.frame(alignment:)`)
+  /// would otherwise mismatch the edge the panel got repositioned to,
+  /// reintroducing the recording/polishing misalignment bug this same PR
+  /// fixed. `nil` when nothing is showing.
+  private var activePanelPosition: OverlayPillPosition?
+
   /// #1341 follow-up: fullscreen state is a per-Space property, and macOS
   /// treats going fullscreen as switching to a NEW Space/"desktop" rather than
   /// changing the current one. A panel that started in windowed mode and then
@@ -140,7 +151,14 @@ final class RecordingOverlayPanel {
   /// appearance in `showPanel` stays instant on purpose: there is no "old
   /// position" for a brand-new panel to visibly jump from.
   private func repositionForActiveSpaceChange() {
-    guard let panel else { return }
+    // Reuses whichever edge THIS panel was actually created with — never
+    // `positionProvider()` live — so a settings change made while the panel
+    // is already visible can't retroactively snap it to the other edge on
+    // the next Space swipe (Codex grounded review, 2026-07-17). Doing so
+    // would also desync the SwiftUI content's baked-in `.frame(alignment:)`
+    // from wherever the window got repositioned to, reintroducing the
+    // recording/polishing misalignment bug this same PR fixed.
+    guard let panel, let position = activePanelPosition else { return }
     guard
       let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
         ?? NSScreen.main
@@ -150,19 +168,22 @@ final class RecordingOverlayPanel {
     let resolvedHeight = panel.frame.height
     let x = targetScreen.visibleFrame.midX - resolvedWidth / 2
     let panelY = clampedOriginY(
-      requestedY: computeRequestedY(on: targetScreen), resolvedHeight: resolvedHeight,
-      on: targetScreen)
+      requestedY: computeRequestedY(on: targetScreen, position: position),
+      resolvedHeight: resolvedHeight, on: targetScreen)
     panel.setFrame(
       NSRect(x: x, y: panelY, width: resolvedWidth, height: resolvedHeight),
       display: true, animate: true
     )
   }
 
-  /// Shared Top/Bottom fresh-position formula — used both when a panel first
+  /// Shared Top/Bottom position formula — used both when a panel first
   /// appears and when `repositionForActiveSpaceChange()` re-anchors a panel
-  /// that is already showing.
-  private func computeRequestedY(on screen: NSScreen) -> CGFloat {
-    switch positionProvider() {
+  /// that is already showing. Takes `position` explicitly (never reads
+  /// `positionProvider()` itself) so callers control whether they want the
+  /// live setting (fresh appearance) or the edge already committed to the
+  /// current panel (Space-change reposition).
+  private func computeRequestedY(on screen: NSScreen, position: OverlayPillPosition) -> CGFloat {
+    switch position {
     case .top: return screen.visibleFrame.maxY - 60
     // #1341 follow-up: `visibleFrame` is Dock-reserved space as this
     // background app sees it — it does NOT shrink when a DIFFERENT app is in
@@ -872,6 +893,13 @@ final class RecordingOverlayPanel {
     hostingView.frame = size
     p.contentView = hostingView
 
+    // Captured on EVERY call (fresh or inherited-`y`) so `activePanelPosition`
+    // always reflects whichever edge is governing the panel that's about to be
+    // visible — `repositionForActiveSpaceChange()` reuses this instead of
+    // re-reading `positionProvider()` live (Codex grounded review, 2026-07-17).
+    let position = positionProvider()
+    activePanelPosition = position
+
     let x = targetScreen.visibleFrame.midX - resolvedWidth / 2
     let requestedY: CGFloat
     if let y {
@@ -881,7 +909,7 @@ final class RecordingOverlayPanel {
       // transition) always keeps its current position regardless of setting.
       // `repositionForActiveSpaceChange()` is what keeps an ALREADY-showing
       // panel correct as the user swipes between Spaces mid-recording.
-      requestedY = computeRequestedY(on: targetScreen)
+      requestedY = computeRequestedY(on: targetScreen, position: position)
     }
     let panelY = clampedOriginY(
       requestedY: requestedY, resolvedHeight: resolvedHeight, on: targetScreen)
@@ -904,8 +932,22 @@ final class RecordingOverlayPanel {
   /// keyboard-focused window) so a fullscreen Space on one display never
   /// pushes the pill into Dock territory on a different, non-fullscreen
   /// display.
+  ///
+  /// KNOWN SCOPE BOUNDARY (Codex grounded review, 2026-07-17): without
+  /// Accessibility trust this always returns `false`, so Bottom keeps the
+  /// pre-existing Dock-safe `visibleFrame.minY` position in fullscreen for
+  /// those users — same as before this fix, not worse. EnviousWispr already
+  /// treats an Accessibility-denied user as a first-class supported flow
+  /// (`PasteCascadeExecutor`'s clipboard-only fallback), so this doesn't
+  /// regress anyone; it just doesn't reach that subset yet. The other two
+  /// permission-free signals investigated (`CGWindowListCopyWindowInfo`,
+  /// `NSApplication.currentSystemPresentationOptions`) don't reliably work
+  /// either (see the two paragraphs above and 2026-07-17 session notes) — a
+  /// real permission-independent fix would mean requesting Screen Recording
+  /// access, which is a product scope decision, not something to fold into
+  /// a positioning bug fix.
   private func isFrontmostAppFullScreen(on screen: NSScreen) -> Bool {
-    guard screen == NSScreen.main,
+    guard screen == NSScreen.main, AXIsProcessTrusted(),
       let frontApp = NSWorkspace.shared.frontmostApplication
     else { return false }
     let axApp = AXUIElementCreateApplication(frontApp.processIdentifier)
@@ -1089,6 +1131,7 @@ final class RecordingOverlayPanel {
 
     guard let panelToClose = panel else { return }
     panel = nil
+    activePanelPosition = nil
 
     // Flush pending CA transactions before releasing the panel.
     // RecordingOverlayView has a running .task loop updating audioLevel every 50ms
