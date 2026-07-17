@@ -83,7 +83,6 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
     isReady = true
   }
 
-
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws
     -> ASRResult
   {
@@ -245,7 +244,7 @@ extension IncrementalResult {
   }
 }
 
-enum StubBackendError: Error, Sendable {
+enum StubBackendError: Error, Sendable, Equatable {
   case prepareFailed
   case decodeFailed
 }
