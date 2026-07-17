@@ -20,7 +20,9 @@ import Testing
 //
 // What these tests assert:
 // 1. Adapter init takes an `audioCaptureSessionIDSource` closure and reads
-//    it ONCE per `beginSession`.
+//    it ONCE, at finalize entry (NOT at `beginSession` -- the closure is
+//    read zero times right after `beginSession` and exactly once by the
+//    time `finalize` returns; #1626 corrected this stale claim).
 // 2. `KernelASRAdapterDiagnostics.lidCaptureSessionID` carries the captured
 //    value through to wiring after finalize.
 // 3. The same diagnostics carry voiced duration, LID window count, and clip
@@ -77,7 +79,7 @@ import Testing
       AudioBufferHandoff(buffer: buf, frameCount: 16000, sequence: 1, sessionID: SessionID()))
 
     _ = await adapter.finalize(batchSamples: nil)
-    #expect(readCount >= 1, "finalize reads the source at least once")
+    #expect(readCount == 1, "finalize reads the source exactly once")
 
     let diag = try #require(adapter.lastASRDiagnostics)
     #expect(diag.lidCaptureSessionID == 555)
@@ -123,10 +125,14 @@ import Testing
 
     let diag = try #require(adapter.lastASRDiagnostics)
     #expect(diag.lidCaptureSessionID == capturedID)
-    // LID-shape transport fields populated alongside the captured id.
-    #expect(diag.lidVoicedDurationSec != nil)
-    #expect(diag.lidWindowCount != nil)
-    #expect(diag.lidClipKind != nil)
+    // LID-shape transport fields populated alongside the captured id. This
+    // test never calls `observeSpeechSegments`, so `speechSegments` is empty
+    // and `voicedDurationSec` computes to 0.0 (not the fed sample count) --
+    // 0.0 < the 3.0s single-window threshold still yields 1 window / "short"
+    // (traced against the real adapter finalize path, #1626 grounded review).
+    #expect(diag.lidVoicedDurationSec == 0.0)
+    #expect(diag.lidWindowCount == 1)
+    #expect(diag.lidClipKind == "short")
   }
 
   @Test("KernelASRAdapterDiagnostics defaults: LID fields all nil before finalize")
