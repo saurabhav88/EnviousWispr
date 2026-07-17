@@ -24,30 +24,42 @@ struct OllamaReadinessGateTests {
 
   /// Polisher that records invocations; the gate contract is that it is never
   /// constructed (factory never called), let alone invoked, on a not-ready probe.
+  /// Counts polisher invocations on an actor so the read after `process()`
+  /// returns is race-free (`polish` is not main-actor isolated — see
+  /// `TranscriptPolisher.polish`).
+  private actor InvocationCounter {
+    private(set) var count = 0
+    func increment() { count += 1 }
+  }
+
   private struct CannedPolisher: TranscriptPolisher {
+    let invocationCounter: InvocationCounter
+
     func polish(
       text: String,
       instructions: PolishInstructions,
       config: LLMProviderConfig,
       onToken: (@Sendable (String) -> Void)?
     ) async throws -> LLMResult {
-      LLMResult(polishedText: "Quick email to the ethics committee chair about it.")
+      await invocationCounter.increment()
+      return LLMResult(polishedText: "Quick email to the ethics committee chair about it.")
     }
   }
 
   private func makeStep(
-    probe: @escaping @MainActor (String) async -> OllamaReadiness
+    probe: @escaping @MainActor (String) async -> OllamaReadiness,
+    invocationCounter: InvocationCounter = InvocationCounter()
   ) -> (step: LLMPolishStep, factoryCalls: () -> Int) {
     let step = LLMPolishStep(keychainManager: KeychainManager())
     step.llmProvider = .ollama
     step.llmModel = "llama3.2"
     step.ollamaReadinessProbe = probe
-    let counter = Counter()
+    let factoryCounter = Counter()
     step.makePolisher = { _, _, _ in
-      counter.value += 1
-      return CannedPolisher()
+      factoryCounter.value += 1
+      return CannedPolisher(invocationCounter: invocationCounter)
     }
-    return (step, { counter.value })
+    return (step, { factoryCounter.value })
   }
 
   @MainActor
@@ -89,12 +101,15 @@ struct OllamaReadinessGateTests {
 
   @Test("ready proceeds to the polisher exactly as before")
   func readyProceedsToPolisher() async throws {
-    let (step, factoryCalls) = makeStep(probe: { _ in .ready })
+    let invocationCounter = InvocationCounter()
+    let (step, factoryCalls) = makeStep(
+      probe: { _ in .ready }, invocationCounter: invocationCounter)
 
     let result = try await step.process(context())
 
     #expect(factoryCalls() == 1)
-    #expect(result.polishedText != nil)
+    #expect(await invocationCounter.count == 1)
+    #expect(result.polishedText == "Quick email to the ethics committee chair about it.")
     #expect(result.llmProvider == "ollama")
   }
 
