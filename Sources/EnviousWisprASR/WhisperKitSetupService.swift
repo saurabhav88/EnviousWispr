@@ -202,12 +202,22 @@ public final class WhisperKitSetupService {
       guard let self else { return }
       self.isRemoving = false
       self.removeNotice = notice
-      // Re-detect on EVERY outcome: success lands on Download; a failure may
-      // have partially deleted (marker gone, bytes remaining), and the row
-      // must show disk truth while the notice above it explains the failure
-      // (Codex 2c-r1 P2 — the notice now survives state flips by rendering
-      // outside the state switch).
-      await self.forceDetectState()
+      if notice == nil {
+        // Successful removal is authoritative terminal delivery truth on its
+        // own — probing the controller again would call adoptIfPresent(),
+        // which republishes .notReady and re-enters this exact removal
+        // completion through the delivery observer (the live infinite-loop
+        // bug: Remove -> .notReady -> forceDetectState -> adoptIfPresent ->
+        // .notReady -> repeat forever, pinning the main actor). Apply the
+        // known terminal state directly instead.
+        self.applyDeliveryState(.notDownloaded)
+      } else {
+        // A failure may have partially deleted (marker gone, bytes
+        // remaining), and the row must show disk truth while the notice
+        // above it explains the failure (Codex 2c-r1 P2 — the notice now
+        // survives state flips by rendering outside the state switch).
+        await self.forceDetectState()
+      }
     }
   }
 }

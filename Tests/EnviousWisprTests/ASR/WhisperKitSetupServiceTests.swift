@@ -56,7 +56,8 @@ import Testing
     service.cancelDownload()
     for _ in 0..<50 { await Task.yield() }
 
-    if case .downloading = service.setupState {} else {
+    if case .downloading = service.setupState {
+    } else {
       Issue.record("refused cancel must not re-detect away: \(service.setupState)")
     }
   }
@@ -97,7 +98,8 @@ import Testing
 
     service.cancelDownload()
     for _ in 0..<100 { await Task.yield() }
-    if case .downloading = service.setupState {} else {
+    if case .downloading = service.setupState {
+    } else {
       Issue.record("cancel itself must not rewrite the row: \(service.setupState)")
     }
 
@@ -208,6 +210,38 @@ import Testing
       await Task.yield()
     }
     #expect(service.setupState == .notDownloaded)
+  }
+
+  /// Live bug (2026-07-17, found on the real dev app): a successful Remove
+  /// used to re-detect unconditionally, which called readAvailability() ->
+  /// adoptIfPresent() -> the delivery controller's own no-fetch probe ->
+  /// publishes .notReady through the SAME observer that re-detects on
+  /// .notReady -> an unbounded MainActor loop that pinned the app at 100%+
+  /// CPU. A successful removal is authoritative on its own: readAvailability
+  /// must never be called again as a side effect of Remove's own completion.
+  @Test func aSuccessfulRemovalNeverReProbesTheController() async throws {
+    final class Box: @unchecked Sendable { var readAvailabilityCalls = 0 }
+    let box = Box()
+    let service = WhisperKitSetupService(
+      readAvailability: {
+        box.readAvailabilityCalls += 1
+        return .ready  // if this fires again, the row would flicker back
+      },
+      removeModelAction: { nil })
+    service.isDictationInFlight = { false }
+
+    service.removeModel()
+    for _ in 0..<200 where service.setupState != .notDownloaded {
+      await Task.yield()
+    }
+    #expect(service.setupState == .notDownloaded)
+    #expect(service.removeNotice == nil)
+
+    // Give any errant re-probe a fair chance to fire before asserting absence.
+    for _ in 0..<200 { await Task.yield() }
+    #expect(
+      box.readAvailabilityCalls == 0,
+      "a successful remove must settle on its own terminal state, never re-probe")
   }
 
   // MARK: - 2c founder rulings (2026-07-17)
