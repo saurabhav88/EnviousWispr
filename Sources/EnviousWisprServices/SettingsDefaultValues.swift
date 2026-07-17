@@ -88,7 +88,11 @@ enum SettingsDefaultValues {
 
   // Recording start/stop sounds default OFF — silent for every existing user
   // until they opt in. The pairing default only matters once the toggle is
-  // on; Whisper Tick is the fresh-install choice (#1618).
+  // on; Whisper Tick is the fresh-install choice (#1618). No migration for
+  // users who enabled sounds under the prior Air Glint default: no tagged
+  // release has ever shipped recording sound cues (v2.3.1 predates #1342
+  // merging), so no installed base has an implicit old default to protect —
+  // #1342 and #1618 ship together, for the first time, in the same release.
   static let playRecordingSounds = false
   static let recordingSoundPairing: RecordingSoundPairing = .whisperTick
 }
