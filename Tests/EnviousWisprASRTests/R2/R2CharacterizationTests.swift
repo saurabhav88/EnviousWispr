@@ -1,5 +1,5 @@
-import EnviousWisprCore
 import Darwin
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -350,12 +350,18 @@ struct R2CharacterizationTests {
       windowProbs: ["de": 0.90, "en": 0.30], voicedDuration: 4.0, mode: .auto
     )
     let events = received.snapshot()
-    // At least one flip event from en->de; PR 2 must keep this contract alive.
-    #expect(events.count >= 1)
-    if let firstFlip = events.first {
-      #expect(firstFlip.fromLang == "en")
-      #expect(firstFlip.toLang == "de")
-    }
+    // #1598: the prior version asserted `count >= 1` (tolerates a duplicate
+    // emission) and only checked the first event's fromLang/toLang, ignoring
+    // confidenceBoth entirely. Empirically confirmed (not derived by hand):
+    // exactly ONE event fires, from the second call — the third call re-accepts
+    // "de" and does not emit a second flip (registerFlipFlopCandidate's
+    // `prior.lang != lang` guard blocks same-lang re-accepts). Asserting the
+    // full Equatable event list catches a duplicate emitter or a wrong
+    // confidenceBoth that the old count/partial-field check could not.
+    #expect(
+      events == [
+        LanguageFlipEvent(fromLang: "en", toLang: "de", confidenceBoth: 0.92)
+      ])
   }
 
   /// `evaluateForTesting` does NOT call `emitPassiveChipIfNeeded`. The passive
