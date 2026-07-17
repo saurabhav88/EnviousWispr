@@ -85,6 +85,11 @@ final class RecordingStarter {
   /// `EngineCoordinator.beginMinting`/`.endMinting`; default no-ops keep legacy/test
   /// construction unchanged.
   let beginMinting: @MainActor () -> Void
+  /// #1386 PR-2c: the selected engine's model-on-disk truth (EngineCoordinator's
+  /// `status.selectedInstalled`), read at press time so a removed model presses
+  /// into the honest not-installed pill. Defaults open (true) — a missing
+  /// authority must not block dictation.
+  var isSelectedModelInstalled: @MainActor () -> Bool = { true }
   let endMinting: @MainActor () -> Void
 
   var heartControlRecovery: HeartControlRecovery
@@ -200,6 +205,17 @@ final class RecordingStarter {
     // applied yet). Show the reactive #879 pill for the selected engine and bail;
     // the user re-presses on the now-correct engine. Recovery precedence above.
     if reconcileSelectedBackendIfNeeded() { return }
+    // #1386 PR-2c (founder): a press while the selected model is REMOVED or
+    // mid-removal mints nothing and shows the honest not-installed pill. One
+    // gate, before any readiness/warm logic — a removal's first instants can
+    // still read "ready", so the readiness path alone cannot cover this.
+    guard isSelectedModelInstalled() else {
+      recordingOverlay.show(
+        intent: .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
+      TelemetryService.shared.coldStartPressBlocked(
+        asrBackend: backend.rawValue, warmupInFlight: false)
+      return
+    }
     lastRecordingResult?.polishError = nil
     // #879 — cold-boot press safety. A press on a not-ready engine must NOT mint
     // a recording session (no audio captured → none discarded). Hand off to the
@@ -419,6 +435,14 @@ final class RecordingStarter {
       // would START on a not-ready engine shows the pill + warms instead of
       // minting a session (the toggle-hotkey is a user press too). A toggle that
       // STOPS an active session is unaffected (guarded by `isStartingFromIdle`).
+      // #1386 PR-2c (founder): same removal/not-installed gate as the PTT path.
+      guard isSelectedModelInstalled() else {
+        recordingOverlay.show(
+          intent: .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
+        TelemetryService.shared.coldStartPressBlocked(
+          asrBackend: backend.rawValue, warmupInFlight: false)
+        return
+      }
       if active.engineReadiness != .ready {
         // #959: warm-respawn falls through to record; genuine cold keeps the
         // #879 pill. Same decision helper as the PTT path.

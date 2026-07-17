@@ -312,6 +312,18 @@ public actor ModelDeliveryController {
   /// marker + orphan rules (this actor + `CacheAdmission`), never a backend
   /// adapter. Generic — Parakeet has no first-class evict either; EG-1's
   /// adapter calls it after stopping its server.
+  /// 2c: whether a cancelled download left resumable partials in this
+  /// identity's staging area — the disk truth behind the "paused" presentation
+  /// (it survives relaunches, unlike any in-memory flag).
+  public func hasStagedPartials(_ registration: DeliveryRegistration) -> Bool {
+    let staging = stagingDirectory(for: registration)
+    guard
+      let entries = try? FileManager.default.contentsOfDirectory(
+        at: staging, includingPropertiesForKeys: nil)
+    else { return false }
+    return !entries.isEmpty
+  }
+
   public func remove(_ registration: DeliveryRegistration) async -> RemoveOutcome {
     let identity = registration.manifest.identity
     // Drain any live attempt first (reuses the cancel drain barrier); a

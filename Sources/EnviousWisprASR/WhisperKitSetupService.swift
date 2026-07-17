@@ -5,8 +5,22 @@ public enum WhisperKitSetupState: Equatable {
   case checking  // initial detection
   case notDownloaded  // model not on disk
   case downloading(progress: Double, status: String)  // actively downloading
+  /// Cancelled mid-download with resumable partials on disk (founder ruling
+  /// 2026-07-17: mirror the Parakeet row — paused, Resume anytime; the shared
+  /// controller keeps the staging partials either way).
+  case paused
   case ready  // model cached locally, ready to use
   case error(String)
+}
+
+/// 2c: the Remove press's inline outcome, rendered in the Settings row that
+/// owns the button (never an overlay — gotchas-audio RULE:
+/// in-panel-notice-not-new-overlay-intent).
+public enum WhisperKitRemoveNotice: Equatable {
+  /// Founder ruling 2.5.4: Remove REFUSES during a dictation — no defer, no
+  /// queue; the user presses again after the dictation ends.
+  case refusedDictationInFlight
+  case failed
 }
 
 /// Presents WhisperKit model setup in Settings. Downloads happen there — NEVER
@@ -45,6 +59,9 @@ public final class WhisperKitSetupService {
   /// Returns whether the cancel was ACCEPTED — false means the coordinator
   /// refused it (a failed marker clear, L1) and the fetch is still running.
   private let cancelActiveDownload: @MainActor () async -> Bool
+  /// 2c: the explicit Remove action. nil notice = removed; a notice = refused
+  /// or failed, rendered inline.
+  private let removeModelAction: @MainActor () async -> WhisperKitRemoveNotice?
 
   /// The default wiring reports "not downloaded" and does nothing: a build with
   /// no delivery wiring must offer no fetch at all rather than quietly resurrect
@@ -52,11 +69,13 @@ public final class WhisperKitSetupService {
   public init(
     readAvailability: @escaping @MainActor () async -> WhisperKitSetupState = { .notDownloaded },
     startDownload: @escaping @MainActor () async -> Bool = { false },
-    cancelActiveDownload: @escaping @MainActor () async -> Bool = { false }
+    cancelActiveDownload: @escaping @MainActor () async -> Bool = { false },
+    removeModelAction: @escaping @MainActor () async -> WhisperKitRemoveNotice? = { .failed }
   ) {
     self.readAvailability = readAvailability
     self.startDownload = startDownload
     self.cancelActiveDownload = cancelActiveDownload
+    self.removeModelAction = removeModelAction
   }
 
   // MARK: - Detection
@@ -105,11 +124,18 @@ public final class WhisperKitSetupService {
   /// instead — no delivery state will ever arrive for it, and leaving the
   /// optimistic "Starting download..." up would stick forever (Codex 2b-r1 P2).
   public func downloadModel() {
+    removeNotice = nil
     setupState = .downloading(progress: 0, status: "Starting download...")
     downloadIntentEpoch += 1
     let epoch = downloadIntentEpoch
     Task { [startDownload, weak self] in
-      guard let self, self.downloadIntentEpoch == epoch else { return }
+      guard let self, self.downloadIntentEpoch == epoch else {
+        // A Cancel outran this task: the download never starts, so no delivery
+        // state will arrive — re-detect to disk truth (paused when partials
+        // exist) instead of leaving "Starting download..." up.
+        await self?.forceDetectState()
+        return
+      }
       if await startDownload() == false {
         await self.forceDetectState()
       }
@@ -124,10 +150,64 @@ public final class WhisperKitSetupService {
     // Invalidate any download intent whose task has not run yet — cancelling
     // downstream cannot reach a request that has not been made.
     downloadIntentEpoch += 1
-    Task { [cancelActiveDownload, weak self] in
-      if await cancelActiveDownload() {
-        await self?.forceDetectState()
-      }
+    Task { [cancelActiveDownload] in
+      // No re-detect on an accepted cancel: the delivery-state projection
+      // publishes the terminal (paused/cancelled) state, and detection would
+      // wipe it back to not-downloaded (Codex 2c-r7 P2). A REFUSED cancel
+      // changes nothing either way.
+      _ = await cancelActiveDownload()
+    }
+  }
+
+  // MARK: - Remove (2c)
+
+  /// The Remove press's inline notice; cleared on the next Remove/Download.
+  public private(set) var removeNotice: WhisperKitRemoveNotice?
+
+  /// True while a removal drain runs (founder ruling 2026-07-17): the row shows
+  /// "Removing model..." and the button is gone, so Remove cannot be spammed at
+  /// the UI (the coordinator already joins duplicates mechanically).
+  public private(set) var isRemoving = false
+
+  /// 2c: session authority, wired by the composition root from the class that
+  /// owns both kernel drivers. nil (not yet wired) REFUSES — fail safe: a
+  /// Remove that cannot prove no dictation is running does not run.
+  public var isDictationInFlight: (@MainActor () -> Bool)?
+
+  /// The user pressed Remove. The refusal check and L1 ordering live behind
+  /// the injected action (wiring -> coordinator); this method only renders:
+  /// success re-detects to Download, refusal/failure shows the inline notice
+  /// and changes nothing else.
+  public func removeModel() {
+    removeNotice = nil
+    // Founder ruling 2.5.4: REFUSE during a dictation — no defer, no queue,
+    // nothing else changes; the user presses again after it ends.
+    //
+    // The check-then-act window is ACCEPTED, not a gap (plan §5c.3, founder-
+    // ruled twice — reviewers keep re-deriving this; do not "fix" it without a
+    // new founder decision). Re-checking at the destructive boundary or an
+    // atomic reservation is a press-path gate: the thing L7 removed. The
+    // seconds-long drain case cannot host a session at all — a live fetch
+    // implies no admitted model, so a press lands on the honest cold-press
+    // pill and never mints a WhisperKit session. What remains is a
+    // milliseconds window no human can aim at.
+    if isDictationInFlight?() != false {
+      removeNotice = .refusedDictationInFlight
+      return
+    }
+    guard !isRemoving else { return }
+    isRemoving = true
+    Task { [removeModelAction, weak self] in
+      let notice = await removeModelAction()
+      guard let self else { return }
+      self.isRemoving = false
+      self.removeNotice = notice
+      // Re-detect on EVERY outcome: success lands on Download; a failure may
+      // have partially deleted (marker gone, bytes remaining), and the row
+      // must show disk truth while the notice above it explains the failure
+      // (Codex 2c-r1 P2 — the notice now survives state flips by rendering
+      // outside the state switch).
+      await self.forceDetectState()
     }
   }
 }

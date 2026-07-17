@@ -382,14 +382,23 @@ import Testing
   /// actual 1128 + ~2, rounded up to nearest 5 = 1130. Third application
   /// (same PR, cloud review round 3): the engine-status closure handed to
   /// BackendMetadata added one line — actual 1131 + ~2, rounded to 1135.
+  /// #1386 PR-2c: the two Remove seam assignments (the adapter unload hook,
+  /// assignable only after the driver exists, and the dictation-in-flight
+  /// authority for the refusal) — actual 1142 + ~2, rounded to 1145. Then the
+  /// refusal grew its second authority (the minting gate, Codex 2c-r5 P2):
+  /// actual 1146 + ~2, rounded to 1150. Then the founder's honest-pill ruling
+  /// wired the install read into the press path (isSelectedModelInstalled):
+  /// actual 1151 + ~2, rounded to 1155. Then that read became removal-aware
+  /// (founder: a model mid-removal accepts no dictations; Codex 2c-r7 P1):
+  /// actual 1160 + ~2, rounded to 1165.
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1135,
+      lineCount <= 1165,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1135. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1165. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

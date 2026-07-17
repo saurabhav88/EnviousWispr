@@ -73,6 +73,12 @@ enum WhisperKitDeliveryWiring {
     // The migration must not ship blind: retirement outcomes ride the shared
     // delivery funnel, same wiring shape as EG-1's bridge (#1386 PR-2b).
     retirement?.onEvent = WhisperKitRetirementTelemetryBridge.handler
+    // 2c: the delivery-layer deletion the Remove drain awaits LAST (L1). The
+    // engine-unload seam is assigned by the bootstrapper once the driver
+    // exists — the adapter is constructed after this wiring runs.
+    retirement?.removeFromDelivery = { [weak handle] in
+      await handle?.remove() ?? false
+    }
 
     // Availability is controller admission, never a directory probe. A refused
     // foreign copy is simply not an installed model: it is preserved untouched
@@ -88,6 +94,10 @@ enum WhisperKitDeliveryWiring {
         // to download 1.6 GB they already have. Absent files fail this check
         // instantly, so the common no-model path stays cheap.
         if await handle.adoptIfPresent() { return .ready }
+        // Resumable partials read as PAUSED, not not-downloaded (founder ruling
+        // 2026-07-17): derived from disk, so the paused row survives refreshes
+        // and relaunches alike (Codex 2c-r7 P2).
+        if await handle.hasStagedPartials() { return .paused }
         return .notDownloaded
       },
       // The kill switch is checked HERE, at the fetch door, not only in the copy
@@ -125,6 +135,17 @@ enum WhisperKitDeliveryWiring {
         }
         await handle?.cancelActiveFetch()
         return true
+      },
+      // 2c: Remove routes through the coordinator (L1 order: drain fetch ->
+      // unload -> delete). The dictation-in-flight refusal already happened in
+      // the presentation layer; a nil coordinator (no manifest) can delete
+      // nothing and reports failure honestly.
+      removeModelAction: { [weak retirement] in
+        guard let retirement else { return .failed }
+        switch await retirement.remove() {
+        case .removed: return nil
+        case .refusedMarkerClear, .failed: return .failed
+        }
       })
 
     // One delivery-state stream projected onto the ASR setup states the Settings
@@ -144,7 +165,16 @@ enum WhisperKitDeliveryWiring {
       case .failed(let failure):
         setupService.applyDeliveryState(
           .error(ModelDeliveryCopy.message(reason: failure.reason, detail: failure.detail)))
-      case .cancelled, .notReady:
+      case .cancelled(let resumable):
+        // Founder ruling 2026-07-17: a cancelled download PAUSES — the row says
+        // so and offers Resume (the controller keeps the staging partials).
+        // Non-resumable cancels fall back to detection.
+        if resumable {
+          setupService.applyDeliveryState(.paused)
+        } else {
+          Task { await setupService.forceDetectState() }
+        }
+      case .notReady:
         Task { await setupService.forceDetectState() }
       }
     }

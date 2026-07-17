@@ -112,6 +112,21 @@ public final class WhisperKitDeliveryHandle {
     _ = await controller.cancel(registration.manifest.identity)
   }
 
+  /// 2c: resumable partials on disk (the paused-row truth).
+  public func hasStagedPartials() async -> Bool {
+    await controller.hasStagedPartials(registration)
+  }
+
+  /// 2c: the user's explicit Remove — marker + files + staging via the shared
+  /// primitive. Kill-switch gated like every delivery mutation (EG-1 §16.6
+  /// precedent: the flag stands down the WHOLE delivery layer, deletions
+  /// included).
+  public func remove() async -> Bool {
+    guard isEnabled() else { return false }
+    if case .removed = await controller.remove(registration) { return true }
+    return false
+  }
+
 }
 
 /// MainActor-serialized "apply only if newer" gate for the sequenced state

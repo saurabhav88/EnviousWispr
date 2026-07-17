@@ -960,6 +960,27 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     cachedReadiness = .notReady
   }
 
+  /// #1386 PR-2c. The EXPLICIT user-Remove unload: cancels session/load work
+  /// and any pending policy unload, then AWAITS a full backend unload.
+  /// Deliberately NOT `recoverFromWedge()`: that path is deadline-bounded and
+  /// fail-open — an abandoned unload is acceptable for wedge recovery, but a
+  /// Remove must have the model genuinely released (inference stopped, memory
+  /// and disk reclaimable) before deletion proceeds.
+  ///
+  /// It does NOT drain a wedged CoreML task beyond `unload()`'s own semantics
+  /// (ACCEPTED, plan §5c.2/§6.3 — reviewers re-derive this): deleting under a
+  /// surviving mapping is safe (unlink keeps the inode until the last holder
+  /// exits; no SIGBUS), so the worst case is disk space lingering until the
+  /// wedged task dies. Blocking Remove on an unbounded CoreML drain would
+  /// trade that bounded delay for an unbounded UI hang.
+  package func unloadForRemoval() async {
+    await cancel()
+    modelUnloadTask?.cancel()
+    modelUnloadTask = nil
+    await backend.unload()
+    cachedReadiness = .notReady
+  }
+
   // MARK: ASREngineAdapter — cleanup
 
   /// Apply the model-unload policy. Mirrors

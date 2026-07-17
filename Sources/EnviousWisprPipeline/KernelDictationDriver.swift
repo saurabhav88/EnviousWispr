@@ -270,6 +270,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// internal-test code in the same module.
   package let adapter: any ASREngineAdapter
 
+  /// 2c: the explicit user-Remove unload, reached through the driver so the
+  /// adapter TYPE stays module-internal. No-op for engines without one
+  /// (Parakeet's removal story is not this PR's).
+  package func unloadEngineForRemoval() async {
+    await (adapter as? WhisperKitEngineAdapter)?.unloadForRemoval()
+  }
+
   /// The per-session context the wiring's closures read (PR-4 §3.3 — "captured
   /// by the driver and threaded into the wiring"). PR-4a holds it; PR-4b's
   /// `handle(.toggleRecording)` is the writer — it records the frozen config

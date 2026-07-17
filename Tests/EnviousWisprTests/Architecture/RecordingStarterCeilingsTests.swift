@@ -130,10 +130,13 @@ import Testing
     // adds one line net. No new collaborator or method; only the paper-line
     // ceiling moves. Deterministic rule: actual 536 + 10 → round up to
     // nearest 5 = 550.
+    // #1386 PR-2c: 550 → 565 for the founder's removal gate — the honest
+    // not-installed pill on BOTH press paths before any readiness logic (a
+    // removal's first instants can still read ready). Actual 560 + ~2 → 565.
     #expect(
-      count <= 550,
+      count <= 565,
       """
-      RecordingStarter line count exceeded: \(count) > 550. \
+      RecordingStarter line count exceeded: \(count) > 565. \
       Raise via Bible §30 only.
       """)
   }

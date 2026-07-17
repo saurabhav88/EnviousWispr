@@ -71,6 +71,7 @@ final class DictationRuntime {
       },
     isEngineSwitching: @escaping @MainActor () -> Bool = { false },
     beginMinting: @escaping @MainActor () -> Void = {},
+    isSelectedModelInstalled: @escaping @MainActor () -> Bool = { true },
     endMinting: @escaping @MainActor () -> Void = {}
   ) {
     self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
@@ -152,6 +153,7 @@ final class DictationRuntime {
       beginMinting: beginMinting,
       endMinting: endMinting
     )
+    starter.isSelectedModelInstalled = isSelectedModelInstalled
     self.starter = starter
     // #1063 PR1: on a durable transcript save, delete that session's spool + key.
     // Keeps the Pipeline recovery-unaware — the host observes the saved transcript.
