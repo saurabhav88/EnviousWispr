@@ -115,6 +115,12 @@ struct RecordingSoundsSettingsView: View {
     let pairing = settings.recordingSoundPairing
     activePreviewTask?.cancel()
     activePreviewTask = Task { @MainActor in
+      // `.cancel()` only sets a flag; it does not stop this closure from
+      // starting. Dictation can start (or the page can disappear) in the gap
+      // between task creation and this first line running, so without this
+      // check the start cue could still play into a just-started real
+      // recording (Codex code-diff review r12, #1618).
+      guard !Task.isCancelled, !liveRecordingState.isDictationActive else { return }
       guard RecordingSoundCue.play(pairing: pairing, moment: .start) else { return }
       do {
         try await Task.sleep(for: .milliseconds(550))
