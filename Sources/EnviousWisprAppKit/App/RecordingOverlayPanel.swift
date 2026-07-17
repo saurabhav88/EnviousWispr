@@ -87,13 +87,109 @@ final class RecordingOverlayPanel {
   private var bluetoothAwarenessAdjustSettingsHandler: (() -> Void)?
 
   /// #1341: where a FRESH panel opens (Top or Bottom of the active screen).
-  /// Read once per fresh appearance inside `showPanel`; never live-patches an
-  /// already-showing panel. Injected via the initializer rather than a mutable
-  /// setter so the composition root cannot forget to wire it.
+  /// The Top/Bottom SETTING itself is read once per fresh appearance inside
+  /// `showPanel` — flipping the setting mid-recording does not retroactively
+  /// move an already-showing panel between Top and Bottom. Injected via the
+  /// initializer rather than a mutable setter so the composition root cannot
+  /// forget to wire it.
   private let positionProvider: () -> OverlayPillPosition
+
+  /// #1341 follow-up: fullscreen state is a per-Space property, and macOS
+  /// treats going fullscreen as switching to a NEW Space/"desktop" rather than
+  /// changing the current one. A panel that started in windowed mode and then
+  /// follows the user (`.canJoinAllSpaces`) into a fullscreen Space — or back
+  /// out — keeps its ORIGINAL Y forever unless something re-runs the position
+  /// math. Observing Space changes and repositioning the live panel (same
+  /// Top/Bottom setting, freshly evaluated fullscreen state) is what makes the
+  /// pill track the user across a trackpad swipe between Spaces mid-recording
+  /// instead of freezing at whatever was correct for the Space it started in.
+  /// Written once in `init` before any other access is possible, read once in
+  /// `deinit` after which nothing else can touch it — a single-touch lifecycle
+  /// handoff, not a shared-mutation risk. `deinit` is nonisolated even on a
+  /// `@MainActor` class, so the property needs this to be readable there.
+  private nonisolated(unsafe) var spaceChangeObserver: NSObjectProtocol?
 
   init(positionProvider: @escaping () -> OverlayPillPosition = { .top }) {
     self.positionProvider = positionProvider
+    // Same `queue: .main` + `MainActor.assumeIsolated` shape as
+    // `UpdateTriggerCoordinator.start()`'s wake observer — the notification
+    // center guarantees this callback runs on the main thread, so hopping
+    // through a `Task` first only adds a scheduling round-trip and delays how
+    // fast the pill can react to the Space switch.
+    spaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated { self?.repositionForActiveSpaceChange() }
+    }
+  }
+
+  deinit {
+    if let spaceChangeObserver {
+      NSWorkspace.shared.notificationCenter.removeObserver(spaceChangeObserver)
+    }
+  }
+
+  /// Recompute and apply the current panel's frame using the same formula as
+  /// a fresh appearance. No-op when nothing is showing. Only geometry moves —
+  /// elapsed timer, audio level, and every other piece of live state are
+  /// untouched. Animated (`animate: true`): repositioning a panel that is
+  /// ALREADY visible and settled needs to read as an intentional glide, not a
+  /// snap-to-new-spot jump — the panel is already on-screen at its old
+  /// position by the time this notification fires, so an instant jump reads
+  /// as a glitch (founder feedback, live-tested 2026-07-17). A fresh
+  /// appearance in `showPanel` stays instant on purpose: there is no "old
+  /// position" for a brand-new panel to visibly jump from.
+  private func repositionForActiveSpaceChange() {
+    guard let panel else { return }
+    guard
+      let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
+        ?? NSScreen.main
+        ?? NSScreen.screens.first
+    else { return }
+    let resolvedWidth = panel.frame.width
+    let resolvedHeight = panel.frame.height
+    let x = targetScreen.visibleFrame.midX - resolvedWidth / 2
+    let panelY = clampedOriginY(
+      requestedY: computeRequestedY(on: targetScreen), resolvedHeight: resolvedHeight,
+      on: targetScreen)
+    panel.setFrame(
+      NSRect(x: x, y: panelY, width: resolvedWidth, height: resolvedHeight),
+      display: true, animate: true
+    )
+  }
+
+  /// Shared Top/Bottom fresh-position formula — used both when a panel first
+  /// appears and when `repositionForActiveSpaceChange()` re-anchors a panel
+  /// that is already showing.
+  private func computeRequestedY(on screen: NSScreen) -> CGFloat {
+    switch positionProvider() {
+    case .top: return screen.visibleFrame.maxY - 60
+    // #1341 follow-up: `visibleFrame` is Dock-reserved space as this
+    // background app sees it — it does NOT shrink when a DIFFERENT app is in
+    // native fullscreen and the Dock is actually hidden from view. Confirmed
+    // empirically (2026-07-17): `visibleFrame` stayed identical between
+    // windowed and fullscreen, leaving an ~85pt unused gap between the pill
+    // and the true screen bottom during fullscreen. When the frontmost app is
+    // genuinely fullscreen on this screen, drop all the way to the true
+    // screen edge instead; otherwise keep the existing Dock-safe flush
+    // position.
+    case .bottom:
+      return isFrontmostAppFullScreen(on: screen) ? screen.frame.minY : screen.visibleFrame.minY
+    }
+  }
+
+  /// #1060 (Codex P2): keep the whole panel within the visible frame. The
+  /// recording pill's frame is tall enough to host the cap-warning banner, and
+  /// positioning by the bottom origin would push the top above the visible
+  /// frame (clipping under the menu bar) on a normal recording start. Clamp so
+  /// the top never exceeds the frame — small panels (≤ the default 60pt
+  /// offset) are unaffected. Shared by fresh appearance and by
+  /// `repositionForActiveSpaceChange()` so the guard can't drift between them.
+  private func clampedOriginY(requestedY: CGFloat, resolvedHeight: CGFloat, on screen: NSScreen)
+    -> CGFloat
+  {
+    let maxOriginY = screen.visibleFrame.maxY - resolvedHeight - 8
+    return min(requestedY, maxOriginY)
   }
 
   // MARK: - Intent-driven API
@@ -432,10 +528,20 @@ final class RecordingOverlayPanel {
       noticeState: noticeState
     )
     // Fixed frame accommodating normal (185x44), locked (120x64), and the #1060
-    // notice-banner expansion (a 2-line banner under the pill). Content is
-    // centered and the capsule self-sizes; showPanel clamps the origin so the
-    // taller frame never clips under the menu bar (Codex P2).
-    .frame(width: 185, height: 92)
+    // notice-banner expansion (a 2-line banner under the pill); showPanel clamps
+    // the origin so the taller frame never clips under the menu bar (Codex P2).
+    // #1341 follow-up: in Top position content stays centered (unchanged
+    // behavior). In Bottom position content is bottom-aligned so the panel's Y
+    // origin IS the pill's visible bottom edge — without this, the 92pt frame
+    // centered a ~44pt capsule, leaving 24pt of invisible space below it, which
+    // both muted the Bottom offset change and made the polishing pill (which has
+    // no such gap) visibly misaligned with the recording pill it replaces. A
+    // notice banner now grows upward from the stable bottom edge instead of
+    // pushing the capsule down.
+    .frame(
+      width: 185, height: 92,
+      alignment: positionProvider() == .bottom ? .bottom : .center
+    )
     showPanel(content: overlayView, width: 185, height: 92, y: y)
   }
 
@@ -773,23 +879,55 @@ final class RecordingOverlayPanel {
     } else {
       // #1341: fresh appearance only — an inherited `y` (mid-session
       // transition) always keeps its current position regardless of setting.
-      switch positionProvider() {
-      case .top: requestedY = targetScreen.visibleFrame.maxY - 60
-      case .bottom: requestedY = targetScreen.visibleFrame.minY + 20
-      }
+      // `repositionForActiveSpaceChange()` is what keeps an ALREADY-showing
+      // panel correct as the user swipes between Spaces mid-recording.
+      requestedY = computeRequestedY(on: targetScreen)
     }
-    // #1060 (Codex P2): keep the whole panel within the visible frame. The
-    // recording pill's frame is tall enough to host the cap-warning banner, and
-    // positioning by the bottom origin would push the top above the visible
-    // frame (clipping under the menu bar) on a normal recording start. Clamp the
-    // origin so the top never exceeds the frame. Small panels (≤ the default
-    // 60 pt offset) are unaffected.
-    let maxOriginY = targetScreen.visibleFrame.maxY - resolvedHeight - 8
-    let panelY = min(requestedY, maxOriginY)
+    let panelY = clampedOriginY(
+      requestedY: requestedY, resolvedHeight: resolvedHeight, on: targetScreen)
     p.setFrameOrigin(NSPoint(x: x, y: panelY))
 
     p.orderFrontRegardless()
     self.panel = p
+  }
+
+  /// #1341: is the CURRENT frontmost app genuinely in native macOS fullscreen
+  /// on `screen`? `NSScreen.visibleFrame` does not answer this for a
+  /// background/accessory app — it keeps reporting the regular-desktop
+  /// Dock reservation regardless of another app's fullscreen state (confirmed
+  /// empirically 2026-07-17; `NSApplication.currentSystemPresentationOptions`
+  /// also does not update for `LSUIElement` apps — a known AppKit limitation).
+  /// The Accessibility attribute on the frontmost app's own focused window is
+  /// the one signal that actually flips correctly, and is available to us
+  /// because EnviousWispr is non-sandboxed and already holds Accessibility
+  /// trust for paste. Gated to `screen == .main` (the screen holding the
+  /// keyboard-focused window) so a fullscreen Space on one display never
+  /// pushes the pill into Dock territory on a different, non-fullscreen
+  /// display.
+  private func isFrontmostAppFullScreen(on screen: NSScreen) -> Bool {
+    guard screen == NSScreen.main,
+      let frontApp = NSWorkspace.shared.frontmostApplication
+    else { return false }
+    let axApp = AXUIElementCreateApplication(frontApp.processIdentifier)
+    var focusedWindow: AnyObject?
+    guard
+      AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &focusedWindow)
+        == .success,
+      let focusedWindow
+    else { return false }
+    // `AXUIElement` is a CFTypeRef-family type: neither `as!` nor `as?` performs
+    // a real dynamic type check here (verified empirically — both silently
+    // "succeed" on a wrong CF type instead of crashing or returning nil), so a
+    // checked cast would only be misleading. `kAXFocusedWindowAttribute` is
+    // documented to always yield an AXUIElement on `.success`; the subsequent
+    // AX call is what actually fails gracefully if that contract is ever broken.
+    let window = focusedWindow as! AXUIElement
+    var fullScreenValue: AnyObject?
+    guard
+      AXUIElementCopyAttributeValue(window, "AXFullScreen" as CFString, &fullScreenValue)
+        == .success
+    else { return false }
+    return (fullScreenValue as? Bool) ?? false
   }
 
   /// Update the lock state reactively. Called by the former root state when
