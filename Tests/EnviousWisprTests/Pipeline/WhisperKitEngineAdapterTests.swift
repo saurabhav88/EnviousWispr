@@ -509,7 +509,6 @@ import Testing
 
   // MARK: Finalize — single clean batch (#1307: no incremental worker)
 
-
   @Test("lockedModeGoesStraightToBatch: .locked finalize runs one clean batch decode")
   func lockedModeGoesStraightToBatch() async throws {
     let backend = StubWhisperKitBackend()
@@ -787,13 +786,33 @@ import Testing
 
   // MARK: Adversarial / stale guards
 
-  @Test("cancelPendingUnload is idempotent — multiple calls do not crash")
-  func cancelPendingUnloadIdempotent() {
-    let adapter = WhisperKitEngineAdapter(backend: StubWhisperKitBackend())
+  @Test(
+    "cancelPendingUnload is idempotent — repeated calls after arming still clear the task and no unload fires (#1595)"
+  )
+  func cancelPendingUnloadIdempotent() async throws {
+    // #1595: the prior version called cancelPendingUnload() on an adapter with
+    // NO unload armed and asserted nothing — it passed whether or not
+    // cancellation worked, was inverted, or was deleted. Arms a real unload
+    // first (mirroring cancelPendingUnloadCancelsArmed below) so repeated
+    // cancellation has something real to cancel.
+    let backend = StubWhisperKitBackend()
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    try await adapter.warmUp()
+    adapter.applyUnloadPolicy(.twoMinutes)
+    // Codex review (#1595): an optional `armed?.value` lets this test pass
+    // vacuously if applyUnloadPolicy never arms anything at all — require it.
+    let armed = try #require(
+      adapter.modelUnloadTaskForUnitTests, "applyUnloadPolicy(.twoMinutes) must arm an unload task"
+    )
     adapter.cancelPendingUnload()
     adapter.cancelPendingUnload()
     adapter.cancelPendingUnload()
-    // No crash, no observable effect — passes if it returns.
+    await armed.value
+    #expect(
+      adapter.modelUnloadTaskForUnitTests == nil,
+      "repeated cancelPendingUnload calls must still leave no armed task")
+    let count = await backend.unloadCount
+    #expect(count == 0, "repeated cancels must not let an unload slip through")
   }
 
   @Test(
@@ -917,9 +936,13 @@ import Testing
     // sleep throws on cancellation and the task returns without unloading, so
     // the await is bounded (no fixed yield). Assert the inspector cleared and
     // no unload fired (#875).
-    let armed = adapter.modelUnloadTaskForUnitTests
+    // #1595 (Codex review on a sibling test): require non-nil so this can't
+    // pass vacuously if applyUnloadPolicy never arms anything.
+    let armed = try #require(
+      adapter.modelUnloadTaskForUnitTests, "applyUnloadPolicy(.twoMinutes) must arm an unload task"
+    )
     adapter.cancelPendingUnload()
-    await armed?.value
+    await armed.value
     #expect(
       adapter.modelUnloadTaskForUnitTests == nil, "cancelPendingUnload clears the armed task")
     let count = await backend.unloadCount
