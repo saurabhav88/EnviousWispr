@@ -14,6 +14,19 @@ enum RecordingSoundMoment: String, CaseIterable {
 /// cannot do this — the FSM notifications this reads from can repeat or chain
 /// (`.transcribing` then later `.complete`), so exact-once needs a snapshot,
 /// not a stateless read at each call site.
+///
+/// **Capture-overlap tradeoff (Codex code-diff review r1).** The start cue
+/// necessarily plays WHILE capture is active — that is the point, instant
+/// confirmation — and the stop cue can play just before
+/// `audioCapture.stopCapture()` finishes, since no public `PipelineState`
+/// marks capture teardown complete (traced in the #1342 plan's grounded
+/// review). Accepted, not overlooked: both cues are short (90-220ms) and
+/// quiet relative to speech, matching how other apps' record start/stop
+/// chimes behave; kernel-level teardown-complete plumbing to close this
+/// window was evaluated and rejected as unneeded for an "instant
+/// acknowledgement" cue. Verified empirically, not just asserted, via the
+/// Live UAT cue-contamination check (`docs/feature-requests/issue-1342-*.md`
+/// §11.1).
 @MainActor
 struct RecordingSoundCue {
   enum Backend: CaseIterable, Hashable {
@@ -74,6 +87,31 @@ struct RecordingSoundCue {
       let url = Bundle.module.url(forResource: name, withExtension: "wav"),
       let sound = NSSound(contentsOf: url, byReference: true)
     else { return false }
+    // `NSSound.play()` is asynchronous; a purely local `sound` would be
+    // deallocated the instant this function returns, truncating or silently
+    // dropping playback (Codex code-diff review r1). The retainer holds it
+    // until the delegate reports completion.
+    RecordingSoundPlaybackRetainer.shared.retain(sound)
     return sound.play()
+  }
+}
+
+/// Keeps an `NSSound` alive for the duration of its own asynchronous
+/// playback, then releases it. `NSSound` has no owner of its own once
+/// `.play()` returns, so without this a locally-scoped instance is
+/// deallocated mid-playback.
+@MainActor
+private final class RecordingSoundPlaybackRetainer: NSObject, NSSoundDelegate {
+  static let shared = RecordingSoundPlaybackRetainer()
+
+  private var active: [NSSound] = []
+
+  func retain(_ sound: NSSound) {
+    sound.delegate = self
+    active.append(sound)
+  }
+
+  func sound(_ sound: NSSound, didFinishPlaying flag: Bool) {
+    active.removeAll { $0 === sound }
   }
 }

@@ -231,6 +231,7 @@ final class DictationLifecycleCoordinator {
     // #1171 — every transition refreshes engine status; the terminal ones apply a
     // switch deferred while this recording was active (coordinator-owned).
     onEngineRelevantStateChange()
+    // #1342: capture-overlap tradeoff documented on `RecordingSoundCue`.
     recordingSoundCue.handle(
       newState, backend: .parakeet,
       enabled: settings.playRecordingSounds, selectedPairing: settings.recordingSoundPairing)

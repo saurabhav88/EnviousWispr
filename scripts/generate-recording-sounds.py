@@ -14,7 +14,12 @@ import numpy as np
 
 
 SAMPLE_RATE = 44_100
-OUTPUT_DIR = Path(__file__).resolve().parent
+# Writes directly into the bundled resources directory (not beside this
+# script) so the documented regeneration command actually updates the
+# shipped assets, not an ignored throwaway copy (Codex code-diff review r1).
+OUTPUT_DIR = (
+    Path(__file__).resolve().parent.parent / "Sources" / "EnviousWisprAppKit" / "Resources"
+)
 
 
 def sample_count(duration_ms: float) -> int:
