@@ -172,6 +172,21 @@ final class RecordingOverlayPanel {
   /// as a glitch (founder feedback, live-tested 2026-07-17). A fresh
   /// appearance in `showPanel` stays instant on purpose: there is no "old
   /// position" for a brand-new panel to visibly jump from.
+  ///
+  /// SCOPE: Bottom only (founder decision, 2026-07-17). Top's fresh-Y formula
+  /// is a fixed offset from the menu bar, so it was never affected by the
+  /// bug this feature exists to fix (the Dock-reservation gap only shows up
+  /// at the BOTTOM of a fullscreen Space). Reacting for Top too surfaced a
+  /// real but narrow bug: Top's origin gets height-clamped so a tall panel
+  /// (the 92pt recording capsule) doesn't poke above the screen, and an
+  /// inherited-y transition to a SHORTER panel (the ~44pt polishing pill)
+  /// carries that taller clamp forward — a later Space change would then
+  /// recompute the clamp for the shorter height and visibly jump the panel
+  /// (Codex grounded review r6). Rather than chase that height/clamp
+  /// interaction through more rounds for an edge that was never broken,
+  /// Top is excluded from reactive repositioning entirely; the founder
+  /// explicitly asked not to touch Top's existing behavior in the first
+  /// place.
   private func repositionForActiveSpaceChange() {
     // Reuses whichever edge THIS panel was actually created with — never
     // `positionProvider()` live — so a settings change made while the panel
@@ -180,7 +195,7 @@ final class RecordingOverlayPanel {
     // would also desync the SwiftUI content's baked-in `.frame(alignment:)`
     // from wherever the window got repositioned to, reintroducing the
     // recording/polishing misalignment bug this same PR fixed.
-    guard let panel, let position = activePanelPosition else { return }
+    guard let panel, let position = activePanelPosition, position == .bottom else { return }
     if wasManuallyDragged { return }
     // The pill supports drag-to-relocate (`isMovableByWindowBackground`) —
     // if the panel's live origin no longer matches the spot WE last put it,
