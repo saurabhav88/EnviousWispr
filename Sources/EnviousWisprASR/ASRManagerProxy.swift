@@ -219,7 +219,17 @@ public final class ASRManagerProxy: ASRManagerInterface {
           let cacheOnly = self.parakeetCacheOnly && self.activeBackendType == .parakeet
           proxy.loadModel(backendType: self.activeBackendType.rawValue, cacheOnly: cacheOnly) {
             nsError in
-            if let error = nsError { guard_.resume(throwing: error) } else { guard_.resume() }
+            // #1525 PR I-B: reconstruct the typed, conforming error from the
+            // surviving NSError domain/code before throwing to the adapter.
+            if let error = nsError {
+              let reconstructed: any Error =
+                ParakeetModelLoadSentryError(reconstructingFrom: error).map { $0 as any Error }
+                ?? XPCASRTransportError(reconstructingFrom: error).map { $0 as any Error }
+                ?? error
+              guard_.resume(throwing: reconstructed)
+            } else {
+              guard_.resume()
+            }
           }
         } onProxyError: {
           // #1348: force a helper recycle so the next attempt reconnects to
@@ -393,8 +403,19 @@ public final class ASRManagerProxy: ASRManagerInterface {
     }
     let data = audioSamples.withUnsafeBytes { Data($0) }
     let language = options.language ?? ""
-    let speechSegmentsData =
-      options.speechSegments.isEmpty ? nil : try JSONEncoder().encode(options.speechSegments)
+    let speechSegmentsData: Data?
+    if options.speechSegments.isEmpty {
+      speechSegmentsData = nil
+    } else {
+      do {
+        speechSegmentsData = try JSONEncoder().encode(options.speechSegments)
+      } catch {
+        // #1525 PR I-B: a request-encoding failure never reaches the service
+        // at all — pin its own identity rather than bridging via the raw
+        // JSONEncoder error's ordinal-derived NSError.
+        throw XPCASRTransportError.requestEncodingFailed(error.localizedDescription)
+      }
+    }
 
     let (resultData, error): (Data?, NSError?) = try await withCheckedThrowingContinuation {
       (cont: CheckedContinuation<(Data?, NSError?), any Error>) in
@@ -413,14 +434,25 @@ public final class ASRManagerProxy: ASRManagerInterface {
     }
 
     if let error {
-      throw error
+      // #1525 PR I-B: reconstruct the typed, conforming error from the
+      // surviving NSError domain/code before throwing to the adapter.
+      let reconstructed: any Error =
+        ParakeetTranscriptionSentryError(reconstructingFrom: error).map { $0 as any Error }
+        ?? XPCASRTransportError(reconstructingFrom: error).map { $0 as any Error }
+        ?? error
+      throw reconstructed
     }
-    guard let resultData,
-      let result = try? PropertyListDecoder().decode(ASRResult.self, from: resultData)
-    else {
-      throw ASRError.transcriptionFailed("Failed to decode ASR result from XPC service")
+    guard let resultData else {
+      throw XPCASRTransportError.responseDecodingFailed("XPC ASR service returned no result data.")
     }
-    return result
+    do {
+      return try PropertyListDecoder().decode(ASRResult.self, from: resultData)
+    } catch {
+      // #1525 PR I-B (§3.3c): a response-CODEC failure, not "the ASR backend
+      // failed to transcribe" — belongs on the transport authority, not
+      // ASRError.transcriptionFailed's bridged group.
+      throw XPCASRTransportError.responseDecodingFailed(error.localizedDescription)
+    }
   }
 
   // MARK: - ASRManagerInterface: Streaming
@@ -450,7 +482,16 @@ public final class ASRManagerProxy: ASRManagerInterface {
           language: language,
           enableTimestamps: enableTimestamps
         ) { nsError in
-          if let error = nsError { guard_.resume(throwing: error) } else { guard_.resume() }
+          // #1525 PR I-B (Codex cloud review): reconstruct the typed,
+          // conforming error before throwing to the adapter, matching
+          // loadModel/transcribe/finalizeStreaming's reconstruction.
+          if let error = nsError {
+            let reconstructed: any Error =
+              XPCASRTransportError(reconstructingFrom: error).map { $0 as any Error } ?? error
+            guard_.resume(throwing: reconstructed)
+          } else {
+            guard_.resume()
+          }
         }
       } onProxyError: {
         guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
@@ -486,14 +527,25 @@ public final class ASRManagerProxy: ASRManagerInterface {
     isStreaming = false
 
     if let error {
-      throw error
+      // #1525 PR I-B: reconstruct the typed, conforming error from the
+      // surviving NSError domain/code before throwing to the adapter.
+      let reconstructed: any Error =
+        ParakeetTranscriptionSentryError(reconstructingFrom: error).map { $0 as any Error }
+        ?? XPCASRTransportError(reconstructingFrom: error).map { $0 as any Error }
+        ?? error
+      throw reconstructed
     }
-    guard let resultData,
-      let result = try? PropertyListDecoder().decode(ASRResult.self, from: resultData)
-    else {
-      throw ASRError.transcriptionFailed("Failed to decode ASR result from XPC service")
+    guard let resultData else {
+      throw XPCASRTransportError.responseDecodingFailed("XPC ASR service returned no result data.")
     }
-    return result
+    do {
+      return try PropertyListDecoder().decode(ASRResult.self, from: resultData)
+    } catch {
+      // #1525 PR I-B (§3.3c): a response-CODEC failure, not "the ASR backend
+      // failed to transcribe" — belongs on the transport authority, not
+      // ASRError.transcriptionFailed's bridged group.
+      throw XPCASRTransportError.responseDecodingFailed(error.localizedDescription)
+    }
   }
 
   public func cancelStreaming() async {
@@ -862,31 +914,139 @@ extension OneShotContinuationASR where T == Void {
 // `package` (#1348 Phase 2): ParakeetEngineAdapter's one-shot stale-helper
 // retry matches on this type — narrowest visibility that crosses the module
 // (architecture-rules minimize-visibility).
-package enum XPCASRTransportError: LocalizedError {
+//
+// #1525 PR I-B: widened from the single `.serviceUnreachable` case to cover
+// every XPC/codec transport failure — a physically different failure class
+// from "the ASR backend itself failed to transcribe" (which belongs on
+// `ParakeetTranscriptionSentryError`/`ParakeetModelLoadSentryError` instead).
+// `CustomNSError` conforms because some of these cases originate service-side
+// and must survive the XPC round-trip, unlike `.serviceUnreachable` (purely
+// client-local, never crosses XPC).
+package enum XPCASRTransportError: LocalizedError, CustomNSError, Sendable, Equatable {
   case serviceUnreachable
+  /// `ASRManagerProxy`'s client-side `speechSegments` JSONEncoder failure —
+  /// never crosses XPC (fails before the send).
+  case requestEncodingFailed(String)
+  /// Service's "Data size mismatch" early guard (was a raw `NSError(domain:
+  /// "ASRService", code: -2, ...)`).
+  case invalidSamplePayload(String)
+  /// Service's JSONDecoder failure decoding the incoming request.
+  case requestDecodingFailed(String)
+  /// Service's "No model loaded" early guard (was a raw `NSError(domain:
+  /// "ASRService", code: -3, ...)`). LIVE: ENVIOUSWISPR-3S.
+  case modelNotLoaded
+  /// Service's PropertyListEncoder failure encoding the outgoing response.
+  case responseEncodingFailed(String)
+  /// Client's XPC result-decode failure (§3.3c) — never crosses XPC itself;
+  /// the decode happens AFTER the XPC round-trip completes.
+  case responseDecodingFailed(String)
+
+  package static let errorDomain = "EnviousWisprASR.XPCASRTransportError"
+
+  /// Wire-level NSError/XPC-bridge identity only — does NOT control Sentry
+  /// grouping (`sentryFingerprintDescriptor` below is the sole authority for
+  /// that). `.serviceUnreachable` keeps its already-pinned `0`;
+  /// `.invalidSamplePayload`/`.modelNotLoaded` keep the exact codes their
+  /// predecessor raw NSErrors used, for wire-level continuity.
+  package var errorCode: Int {
+    switch self {
+    case .serviceUnreachable: return 0
+    case .requestEncodingFailed: return 1
+    case .invalidSamplePayload: return -2
+    case .requestDecodingFailed: return 2
+    case .modelNotLoaded: return -3
+    case .responseEncodingFailed: return 3
+    case .responseDecodingFailed: return 4
+    }
+  }
 
   package var errorDescription: String? {
     switch self {
     case .serviceUnreachable: return "XPC ASR service is unreachable."
+    case .requestEncodingFailed(let d): return d
+    case .invalidSamplePayload(let d): return d
+    case .requestDecodingFailed(let d): return d
+    case .modelNotLoaded: return "No model loaded."
+    case .responseEncodingFailed(let d): return d
+    case .responseDecodingFailed(let d): return d
+    }
+  }
+
+  /// #1525 PR I-B (Codex cloud review): `CustomNSError`'s default `errorUserInfo`
+  /// is empty, and an empty `userInfo` does not survive the XPC boundary's
+  /// NSSecureCoding archive round-trip with `errorDescription` intact — the
+  /// receiving process's `(error as NSError).localizedDescription` falls back to
+  /// Foundation's generic "operation couldn't be completed" message. Populating
+  /// `NSLocalizedDescriptionKey` here bakes the description directly into
+  /// `userInfo`, which IS preserved through the round-trip (confirmed via a
+  /// direct `NSKeyedArchiver`/`NSKeyedUnarchiver` probe this session).
+  package var errorUserInfo: [String: Any] {
+    [NSLocalizedDescriptionKey: errorDescription ?? ""]
+  }
+
+  /// Codex r2 finding #1: two EXISTING callers (`ParakeetEngineAdapter`'s
+  /// stale-helper retry, `RecoverySpoolReplayer`'s recovery classification)
+  /// type-check `is XPCASRTransportError` and assume it means "the XPC
+  /// service is unreachable" — widening this enum with 6 new codec/transport
+  /// cases silently breaks that assumption. Both narrow to this instead.
+  package var isServiceUnreachable: Bool {
+    if case .serviceUnreachable = self { return true }
+    return false
+  }
+
+  /// Reconstructs the typed, conforming error from an NSError that survived
+  /// the XPC round-trip. Returns `nil` if the domain doesn't match.
+  package init?(reconstructingFrom error: NSError) {
+    guard error.domain == Self.errorDomain else { return nil }
+    let d = error.localizedDescription
+    switch error.code {
+    case 0: self = .serviceUnreachable
+    case 1: self = .requestEncodingFailed(d)
+    case -2: self = .invalidSamplePayload(d)
+    case 2: self = .requestDecodingFailed(d)
+    case -3: self = .modelNotLoaded
+    case 3: self = .responseEncodingFailed(d)
+    case 4: self = .responseDecodingFailed(d)
+    default: return nil
     }
   }
 }
 
-/// #1525 PR G. Pins the single case's exact measured current wire identity
-/// (`docs/audits/2026-07-14-1525-pr-g-preflight.md` §1). `package` matches
-/// this type's own package visibility (mirrors `KeyStoreError`'s PR-F
-/// pattern — a bare `var` would default to `internal` and fail to compile
-/// against a `package` enclosing type). NEVER change this string once shipped.
+/// #1525 PR G/PR I-B. Pins each case's exact wire identity.
+/// `.serviceUnreachable`'s string is measured
+/// (`docs/audits/2026-07-14-1525-pr-g-preflight.md` §1); `.modelNotLoaded`'s
+/// is measured live (§3.5: ENVIOUSWISPR-3S, `"ASRService#-3"` — MUST NOT
+/// change). `package` matches this type's own package visibility (mirrors
+/// `KeyStoreError`'s PR-F pattern — a bare `var` would default to `internal`
+/// and fail to compile against a `package` enclosing type). NEVER change
+/// these strings once shipped.
 extension XPCASRTransportError: StableSentryErrorIdentity {
   package var sentryFingerprintDescriptor: String {
     switch self {
     case .serviceUnreachable: return "EnviousWisprASR.XPCASRTransportError#0"
+    case .requestEncodingFailed: return "EnviousWisprASR.XPCASRTransportError#1"
+    // No live history found for "ASRService#-2" — safe to pin defensively.
+    case .invalidSamplePayload: return "ASRService#-2"
+    case .requestDecodingFailed: return "EnviousWisprASR.XPCASRTransportError#2"
+    // LIVE: ENVIOUSWISPR-3S, 1u/1e, production — must not change.
+    case .modelNotLoaded: return "ASRService#-3"
+    case .responseEncodingFailed: return "EnviousWisprASR.XPCASRTransportError#3"
+    // §3.3c: a genuine grouping SPLIT out of ASRError.transcriptionFailed's
+    // bridged group — no live measurement run against this specific
+    // descriptor yet (§3.5's "remaining work"), so this is a fresh pin.
+    case .responseDecodingFailed: return "EnviousWisprASR.XPCASRTransportError#4"
     }
   }
 
   package var sentrySemanticID: String {
     switch self {
     case .serviceUnreachable: return "xpc.asr_service_unreachable"
+    case .requestEncodingFailed: return "xpc.request_encoding_failed"
+    case .invalidSamplePayload: return "xpc.invalid_sample_payload"
+    case .requestDecodingFailed: return "xpc.request_decoding_failed"
+    case .modelNotLoaded: return "xpc.model_not_loaded"
+    case .responseEncodingFailed: return "xpc.response_encoding_failed"
+    case .responseDecodingFailed: return "xpc.response_decoding_failed"
     }
   }
 }

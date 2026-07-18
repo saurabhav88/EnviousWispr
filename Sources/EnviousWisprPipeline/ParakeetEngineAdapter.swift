@@ -221,7 +221,10 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   private func loadModelWithTransportRecovery() async throws {
     do {
       try await asrManager.loadModel()
-    } catch is XPCASRTransportError {
+    } catch let error as XPCASRTransportError where error.isServiceUnreachable {
+      // #1525 PR I-B: narrowed from a bare type-check — the 6 new
+      // codec/transport cases are not stale-helper-retry-eligible; retrying
+      // a reload for, say, `.requestDecodingFailed` would mask a real bug.
       try await asrManager.loadModel()
     }
   }

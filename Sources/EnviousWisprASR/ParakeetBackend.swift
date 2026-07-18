@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import EnviousWisprCore
+import EnviousWisprFluidAudioBridge
 @preconcurrency import FluidAudio
 
 // Disambiguate from FluidAudio.ASRResult — we always mean our own type.
@@ -105,21 +106,32 @@ public actor ParakeetBackend: ASRBackend {
     }
 
     Self.configureOfflineMode(cacheOnly: cacheOnly)
-    let loadedModels: AsrModels
-    if cacheOnly {
-      // Delivery-managed: the default cache was admitted by the host's hash
-      // gate before this call; enforceOffline (armed above) turns any gap
-      // into a typed throw the host maps to its repair path.
-      loadedModels = try await AsrModels.loadFromCache(version: .v3, progressHandler: handler)
-    } else {
-      loadedModels = try await AsrModels.downloadAndLoad(version: .v3, progressHandler: handler)
-    }
-    self.fluidModels = loadedModels
+    do {
+      let loadedModels: AsrModels
+      if cacheOnly {
+        // Delivery-managed: the default cache was admitted by the host's hash
+        // gate before this call; enforceOffline (armed above) turns any gap
+        // into a typed throw the host maps to its repair path.
+        loadedModels = try await AsrModels.loadFromCache(version: .v3, progressHandler: handler)
+      } else {
+        loadedModels = try await AsrModels.downloadAndLoad(version: .v3, progressHandler: handler)
+      }
+      self.fluidModels = loadedModels
 
-    let manager = AsrManager(config: .default)
-    // v0.15.4 API: initialize(models:) became loadModels(_:).
-    try await manager.loadModels(loadedModels)
-    self.fluidAsrManager = manager
+      let manager = AsrManager(config: .default)
+      // v0.15.4 API: initialize(models:) became loadModels(_:).
+      try await manager.loadModels(loadedModels)
+      self.fluidAsrManager = manager
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      // #1525 PR I-B: unlike `transcribe`'s catch below, a non-recognized error
+      // here does NOT stay raw — model loading's own genuinely-non-vendor
+      // errors (a plain CocoaError/CoreML error from inside AsrModels'
+      // own loading calls) are still model-load failures, not a different
+      // physical class, so they normalize to `.unknownLoadFailure` too.
+      throw ParakeetModelLoadSentryError(normalizingLoadError: error)
+    }
 
     isReady = true
   }
@@ -135,17 +147,31 @@ public actor ParakeetBackend: ASRBackend {
     // `source:` parameter is gone. Language hint intentionally NOT passed in PR-2
     // (parity with the d5fcca4 behavior); G7 language propagation ships in PR-4.
     var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
-    let fluidResult = try await manager.transcribe(audioSamples, decoderState: &decoderState)
-    let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+    do {
+      let fluidResult = try await manager.transcribe(audioSamples, decoderState: &decoderState)
+      let elapsed = CFAbsoluteTimeGetCurrent() - startTime
 
-    return ASRResult(
-      text: fluidResult.text,
-      language: "en",
-      duration: fluidResult.duration,
-      processingTime: elapsed,
-      backendType: .parakeet,
-      tokenTimingSummary: Self.tokenTimingSummary(from: fluidResult.tokenTimings)
-    )
+      return ASRResult(
+        text: fluidResult.text,
+        language: "en",
+        duration: fluidResult.duration,
+        processingTime: elapsed,
+        backendType: .parakeet,
+        tokenTimingSummary: Self.tokenTimingSummary(from: fluidResult.tokenTimings)
+      )
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      // #1525 PR I-B: pin a stable identity for a recognized FluidAudio error;
+      // a non-FluidAudio error (e.g. a raw CoreML failure) stays raw and
+      // unchanged, still bridging via today's default NSError path — it is a
+      // different physical failure class this PR does not touch (§3.5:
+      // com.apple.CoreML#0, confirmed live and unaffected).
+      if let kind = classifyFluidAudioASRError(error) {
+        throw ParakeetTranscriptionSentryError(mapping: kind)
+      }
+      throw error
+    }
   }
 
   /// Numbers-only summary of FluidAudio token timings for tail-clip diagnostics (#1232).

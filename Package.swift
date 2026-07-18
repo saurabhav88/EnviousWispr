@@ -94,11 +94,27 @@ let package = Package(
       ],
       path: "Sources/EnviousWisprServices"
     ),
+    // #1525 PR I-B: isolates FluidAudio's raw error-classification behind a
+    // small, internal-only target. `FluidAudio` exports a struct literally
+    // named `FluidAudio` that shadows module-qualified lookup, and a bare
+    // unqualified `ASRError` inside `EnviousWisprASR` silently resolves to the
+    // app's OWN `ASRError` type instead (`swift-patterns.md` RULE:
+    // fluidaudio-unqualified-symbols) — this target is the one place that
+    // safely names FluidAudio's error types. No library product: nothing
+    // outside this package needs to import it.
+    .target(
+      name: "EnviousWisprFluidAudioBridge",
+      dependencies: [
+        "FluidAudio"
+      ],
+      path: "Sources/EnviousWisprFluidAudioBridge"
+    ),
     .target(
       name: "EnviousWisprASR",
       dependencies: [
         "EnviousWisprCore",
         "EnviousWisprAudio",
+        "EnviousWisprFluidAudioBridge",
         .product(name: "WhisperKit", package: "argmax-oss-swift"),
         "FluidAudio",
       ],
@@ -193,6 +209,9 @@ let package = Package(
         "EnviousWisprPipeline",
         "EnviousWisprStorage",
         "EnviousWisprAudio",
+        // #1525 PR I-B (Codex cloud review): ParakeetTranscriptionSentryErrorTests /
+        // ParakeetModelLoadSentryErrorTests import this directly.
+        "EnviousWisprFluidAudioBridge",
         // #919: link the app-shell code from the library, NOT the app target,
         // so `swift test` / `xcodebuild test` never launch the app.
         "EnviousWisprAppKit",
@@ -205,6 +224,9 @@ let package = Package(
       dependencies: [
         "EnviousWisprCore",
         "EnviousWisprASR",
+        // #1525 PR I-B: the bridge classification tests import this directly,
+        // not transitively through EnviousWisprASR.
+        "EnviousWisprFluidAudioBridge",
         "FluidAudio",
       ],
       path: "Tests/EnviousWisprASRTests"

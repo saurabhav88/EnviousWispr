@@ -355,7 +355,12 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// in-process producer (`ASRError` is ASR-module-internal, kept isolated per
   /// D-028); an unrecognized error is `.other`.
   private static func classify(_ error: any Error) -> RecoveryFailureClass {
-    if error is XPCASRTransportError { return .xpcUnreachable }
+    // #1525 PR I-B: narrowed from a bare type-check — the 6 new
+    // codec/transport cases are transport/codec failures, not "XPC
+    // unreachable," and mislabeling them would corrupt recovery telemetry.
+    if let transport = error as? XPCASRTransportError, transport.isServiceUnreachable {
+      return .xpcUnreachable
+    }
     if error is ASRLoadSupersededError { return .cancelled }
     return .other
   }

@@ -123,16 +123,16 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
   ) {
     nonisolated(unsafe) let safeReply = reply
 
-    // Validate input
+    // Validate input. Stays exactly here — synchronous, before the Task —
+    // only its payload normalizes (#1525 PR I-B, Codex r2: moving this into
+    // the `do` block would delay the reply onto the main actor, a real
+    // scheduling change this PR must not make).
     guard data.count == sampleCount * MemoryLayout<Float>.size else {
-      safeReply(
-        nil,
-        NSError(
-          domain: "ASRService", code: -2,
-          userInfo: [
-            NSLocalizedDescriptionKey:
-              "Data size mismatch: expected \(sampleCount * MemoryLayout<Float>.size), got \(data.count)"
-          ]))
+      let error = XPCASRTransportError.invalidSamplePayload(
+        "Data size mismatch: expected \(sampleCount * MemoryLayout<Float>.size), got \(data.count)"
+      )
+      // XPC error sanitization boundary.
+      safeReply(nil, XPCErrorSanitizer.sanitizeForXPC(error))
       return
     }
 
@@ -144,33 +144,42 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
           return Array(raw.bindMemory(to: Float.self))
         }
 
-        let speechSegments =
-          if let speechSegmentsData {
-            try JSONDecoder().decode([SpeechSegment].self, from: speechSegmentsData)
-          } else {
-            [SpeechSegment]()
+        let speechSegments: [SpeechSegment]
+        if let speechSegmentsData {
+          do {
+            speechSegments = try JSONDecoder().decode(
+              [SpeechSegment].self, from: speechSegmentsData)
+          } catch {
+            // #1525 PR I-B: a request-decoding failure, not a transcription
+            // failure — belongs on the transport authority.
+            throw XPCASRTransportError.requestDecodingFailed(error.localizedDescription)
           }
+        } else {
+          speechSegments = []
+        }
         let options = TranscriptionOptions(
           language: language.isEmpty ? nil : language,
           enableTimestamps: enableTimestamps,
           speechSegments: speechSegments
         )
 
-        // Route to the active backend
-        let result: EnviousWisprCore.ASRResult
-        if let parakeet = self.parakeetBackend {
-          result = try await parakeet.transcribe(audioSamples: samples, options: options)
-        } else {
-          safeReply(
-            nil,
-            NSError(
-              domain: "ASRService", code: -3,
-              userInfo: [NSLocalizedDescriptionKey: "No model loaded"]))
-          return
+        // Route to the active backend. Already inside the `do` block, so
+        // converting this to a throw is a legitimate in-place normalization
+        // — no scheduling change (#1525 PR I-B).
+        guard let parakeet = self.parakeetBackend else {
+          throw XPCASRTransportError.modelNotLoaded
         }
+        let result = try await parakeet.transcribe(audioSamples: samples, options: options)
 
         // Encode ASRResult → Data via PropertyListEncoder
-        let encoded = try PropertyListEncoder().encode(result)
+        let encoded: Data
+        do {
+          encoded = try PropertyListEncoder().encode(result)
+        } catch {
+          // #1525 PR I-B: a response-encoding failure, not a transcription
+          // failure — belongs on the transport authority.
+          throw XPCASRTransportError.responseEncodingFailed(error.localizedDescription)
+        }
         safeReply(encoded, nil)
       } catch {
         // XPC error sanitization boundary.
@@ -191,10 +200,10 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
     signal.emit(stage: "asr.start_streaming.received")
     guard let parakeet = parakeetBackend else {
       signal.emit(stage: "asr.start_streaming.failed", detail: "no_parakeet_model")
-      reply(
-        NSError(
-          domain: "ASRService", code: -3,
-          userInfo: [NSLocalizedDescriptionKey: "No Parakeet model loaded for streaming"]))
+      // #1525 PR I-B (Codex cloud review): same "no model loaded" condition
+      // transcribeSamples already normalizes — reuse its pinned identity
+      // rather than a raw NSError.
+      reply(XPCErrorSanitizer.sanitizeForXPC(XPCASRTransportError.modelNotLoaded))
       return
     }
 
@@ -239,11 +248,10 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
 
   func finalizeStreaming(reply: @escaping (Data?, NSError?) -> Void) {
     guard isStreamingActive, let parakeet = parakeetBackend else {
-      reply(
-        nil,
-        NSError(
-          domain: "ASRService", code: -3,
-          userInfo: [NSLocalizedDescriptionKey: "No active streaming session"]))
+      // #1525 PR I-B (Codex cloud review): reuse the same pinned "no model
+      // loaded" identity as transcribeSamples/startStreaming — a caller
+      // reaching this guard has no active session to finalize either way.
+      reply(nil, XPCErrorSanitizer.sanitizeForXPC(XPCASRTransportError.modelNotLoaded))
       return
     }
 
@@ -252,7 +260,15 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
       do {
         let result = try await parakeet.finalizeStreaming()
         self.isStreamingActive = false
-        let encoded = try PropertyListEncoder().encode(result)
+        let encoded: Data
+        do {
+          encoded = try PropertyListEncoder().encode(result)
+        } catch {
+          // #1525 PR I-B (Codex cloud review): a response-encoding failure,
+          // not a transcription failure — belongs on the transport authority,
+          // same as transcribeSamples's encode site.
+          throw XPCASRTransportError.responseEncodingFailed(error.localizedDescription)
+        }
         safeReply(encoded, nil)
       } catch {
         self.isStreamingActive = false

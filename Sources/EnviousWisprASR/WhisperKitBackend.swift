@@ -393,7 +393,16 @@ public actor WhisperKitBackend: ASRBackend {
     // deferred for lack of a defended-timeout distribution — NOT for lack of
     // timing data. Do NOT wrap this in a wall-clock timeout
     // (timeout-numbers-need-distribution-evidence).
-    let kit = try await WhisperKit(config)
+    let kit: WhisperKit
+    do {
+      kit = try await WhisperKit(config)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      // #1525 PR I-B: pin a stable Sentry identity for this raw throw instead
+      // of bridging via Swift's ordinal-derived NSError.
+      throw WhisperKitModelLoadSentryError(normalizingLoadError: error)
+    }
     // #1386: prove what tokenizer WhisperKit actually resolved to, not merely
     // what was requested — the same disk-based discriminator the bundled-
     // tokenizer regression test uses (WhisperTokenizerBundleTests.swift). A
