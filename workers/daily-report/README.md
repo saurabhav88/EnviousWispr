@@ -61,20 +61,59 @@ The optional date argument overrides "yesterday" — useful for testing
 against a known day, and mirrors the deployed worker's `?date=` recovery
 parameter (see below).
 
-## Deploy (one-time)
+## Deploy — REQUIRED after every source change
+
+**Merging to `main` does NOT deploy this worker.** There is no deploy workflow;
+`.github/workflows/daily-report-ping.yml` only *triggers* the already-deployed
+script on a schedule. A merged-but-undeployed fix looks exactly like a fix that
+did not work — verified live on 2026-07-18 (#1655), where the worker had to be
+deployed by hand after the PR merged and CI went green.
+
+Deploy, then verify the LIVE worker, before calling any worker change done:
+
+```bash
+# 1. pre-deploy smoke (posts nothing) - see the section above
+# 2. deploy
+cd workers/daily-report
+npx wrangler deploy
+
+# 3. verify the deployed code actually runs (this DOES post a real report).
+# -f is load-bearing: without it curl exits 0 on a 401/500, so a failed verify
+# reads as a passed one - the exact false-success this section exists to stop.
+# Matches daily-report-ping.yml, which also uses -fsS.
+~/.claude/bin/get-key launch daily-report-trigger-secret TOK -- sh -c \
+  'curl -fsS -H "x-trigger-secret: $TOK" "https://enviouswispr-daily-report.saurabhav.workers.dev/?date=YYYY-MM-DD"' \
+  && echo "VERIFIED: live worker ran the deployed code"
+```
+
+A non-zero exit here means the deployed worker is broken even though
+`wrangler deploy` succeeded — treat the deploy as incomplete, not done.
+
+If `wrangler` reports it is not authenticated, it needs the account credentials:
+
+```bash
+CLOUDFLARE_EMAIL=saurabhav@gmail.com \
+  ~/.claude/bin/get-key launch cloudflare-global-api-key CLOUDFLARE_API_KEY -- \
+  ~/.claude/bin/get-key launch cloudflare-account-id CLOUDFLARE_ACCOUNT_ID -- \
+  npx wrangler deploy
+```
+
+### One-time setup (secrets)
 
 ```bash
 cd workers/daily-report
-npx wrangler deploy
 
 # secrets (never committed):
 ~/.claude/bin/get-key launch posthog-personal-api-key V -- sh -c 'printf "%s" "$V" | npx wrangler secret put POSTHOG_PERSONAL_API_KEY'
 security find-generic-password -w -a m4pro_sv -s enviouswispr.discord-webhook-session-logs | npx wrangler secret put DISCORD_WEBHOOK_URL
-# TRIGGER_SECRET gates the public trigger; stored in Keychain for the GitHub Action:
-security find-generic-password -w -a m4pro_sv -s enviouswispr.daily-report-trigger-secret | npx wrangler secret put TRIGGER_SECRET
+# TRIGGER_SECRET gates the public trigger. Source of truth is GCP Secret
+# Manager (`daily-report-trigger-secret`) + the GitHub repo secret - NOT the
+# local Keychain. An earlier version of this file said Keychain; that item does
+# not exist on the machine (verified 2026-07-18, #1655).
+~/.claude/bin/get-key launch daily-report-trigger-secret V -- sh -c 'printf "%s" "$V" | npx wrangler secret put TRIGGER_SECRET'
 
 # verify (posts a REAL report to EnviousNotes) - needs the token:
-curl "https://enviouswispr-daily-report.saurabhav.workers.dev/?token=<TRIGGER_SECRET>"
+curl -fsS "https://enviouswispr-daily-report.saurabhav.workers.dev/?token=<TRIGGER_SECRET>"
 ```
 
 The `fetch` trigger fails closed with 401 if the token is missing or wrong,
@@ -104,8 +143,8 @@ cron trigger time. Same secret lives as repo secret
 `DAILY_REPORT_TRIGGER_SECRET`:
 
 ```bash
-security find-generic-password -w -a m4pro_sv -s enviouswispr.daily-report-trigger-secret \
-  | gh secret set DAILY_REPORT_TRIGGER_SECRET --repo saurabhav88/EnviousWispr
+~/.claude/bin/get-key launch daily-report-trigger-secret V -- sh -c \
+  'printf "%s" "$V" | gh secret set DAILY_REPORT_TRIGGER_SECRET --repo saurabhav88/EnviousWispr'
 # run on demand: gh workflow run "Daily Report" --repo saurabhav88/EnviousWispr
 ```
 
@@ -141,7 +180,7 @@ Two independent signals, matching `workers/product-health`'s posture:
    has no automatic backfill. Recover manually with the `?date=` override
    once you notice the gap:
    ```bash
-   curl "https://enviouswispr-daily-report.saurabhav.workers.dev/?token=<TRIGGER_SECRET>&date=2026-07-08"
+   curl -fsS "https://enviouswispr-daily-report.saurabhav.workers.dev/?token=<TRIGGER_SECRET>&date=2026-07-08"
    ```
 
 **Duplicate posts are expected, not a bug.** A manual `workflow_dispatch` or
