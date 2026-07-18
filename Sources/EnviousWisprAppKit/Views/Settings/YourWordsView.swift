@@ -3,6 +3,15 @@ import EnviousWisprPostProcessing
 import EnviousWisprServices
 import SwiftUI
 
+/// Which sheet Your Words is presenting (#1657): the Add-term editor or the
+/// Custom Words import shell. One route + `.sheet(item:)` because the view
+/// now presents two different sheets.
+private enum YourWordsSheetRoute: String, Identifiable {
+  case addTerm
+  case importWords
+  var id: Self { self }
+}
+
 /// Phase 4 (#634) — Your Words settings tab. Replaces the monolithic
 /// `WordFixSettingsView` with a 3-section hub matching the founder-approved
 /// 2026-05-04 mockup. Bible §10.
@@ -14,7 +23,7 @@ import SwiftUI
 struct YourWordsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
-  @State private var addingNewTerm = false
+  @State private var sheetRoute: YourWordsSheetRoute?
 
   var body: some View {
     @Bindable var settings = settings
@@ -30,10 +39,20 @@ struct YourWordsView: View {
       HStack {
         Spacer()
         Button {
-          addingNewTerm = true
+          sheetRoute = .addTerm
         } label: {
           Label("Add term", systemImage: "plus")
         }
+        #if DEBUG
+          // Import shell fixture walk (#1657). DEBUG-only until a real import
+          // source ships — a release-visible entry whose screens only show
+          // fixtures would ship a broken promise.
+          Button {
+            sheetRoute = .importWords
+          } label: {
+            Label("Preview import", systemImage: "square.and.arrow.down")
+          }
+        #endif
       }
 
       // Master toggle (preserves the Enable custom words switch from the old view)
@@ -59,21 +78,29 @@ struct YourWordsView: View {
       VocabPacksSection()
       CustomTermsSection()
     }
-    .sheet(isPresented: $addingNewTerm) {
-      CustomWordEditSheet(
-        word: CustomWord(canonical: ""),
-        wordSuggestionService: customWordsCoordinator.suggestionService
-      ) { newWord in
-        let trimmedCanonical = newWord.canonical.trimmingCharacters(in: .whitespaces)
-        guard !trimmedCanonical.isEmpty else { return nil }
-        var wordToSave = newWord
-        wordToSave.canonical = trimmedCanonical
-        if let error = customWordsCoordinator.add(wordToSave) {
-          return error
-        }
-        return nil
+    .sheet(item: $sheetRoute) { route in
+      switch route {
+      case .addTerm:
+        CustomWordEditSheet(
+          word: CustomWord(canonical: ""),
+          wordSuggestionService: customWordsCoordinator.suggestionService,
+          onSave: saveNewWord
+        )
+      case .importWords:
+        CustomWordsImportSheet()
       }
     }
+  }
+
+  private func saveNewWord(_ newWord: CustomWord) -> String? {
+    let trimmedCanonical = newWord.canonical.trimmingCharacters(in: .whitespaces)
+    guard !trimmedCanonical.isEmpty else { return nil }
+    var wordToSave = newWord
+    wordToSave.canonical = trimmedCanonical
+    if let error = customWordsCoordinator.add(wordToSave) {
+      return error
+    }
+    return nil
   }
 }
 
