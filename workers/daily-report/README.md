@@ -77,10 +77,17 @@ Deploy, then verify the LIVE worker, before calling any worker change done:
 cd workers/daily-report
 npx wrangler deploy
 
-# 3. verify the deployed code actually runs (this DOES post a real report):
+# 3. verify the deployed code actually runs (this DOES post a real report).
+# -f is load-bearing: without it curl exits 0 on a 401/500, so a failed verify
+# reads as a passed one - the exact false-success this section exists to stop.
+# Matches daily-report-ping.yml, which also uses -fsS.
 ~/.claude/bin/get-key launch daily-report-trigger-secret TOK -- sh -c \
-  'curl -sS -H "x-trigger-secret: $TOK" "https://enviouswispr-daily-report.saurabhav.workers.dev/?date=YYYY-MM-DD"'
+  'curl -fsS -H "x-trigger-secret: $TOK" "https://enviouswispr-daily-report.saurabhav.workers.dev/?date=YYYY-MM-DD"' \
+  && echo "VERIFIED: live worker ran the deployed code"
 ```
+
+A non-zero exit here means the deployed worker is broken even though
+`wrangler deploy` succeeded — treat the deploy as incomplete, not done.
 
 If `wrangler` reports it is not authenticated, it needs the account credentials:
 
@@ -106,7 +113,7 @@ security find-generic-password -w -a m4pro_sv -s enviouswispr.discord-webhook-se
 ~/.claude/bin/get-key launch daily-report-trigger-secret V -- sh -c 'printf "%s" "$V" | npx wrangler secret put TRIGGER_SECRET'
 
 # verify (posts a REAL report to EnviousNotes) - needs the token:
-curl "https://enviouswispr-daily-report.saurabhav.workers.dev/?token=<TRIGGER_SECRET>"
+curl -fsS "https://enviouswispr-daily-report.saurabhav.workers.dev/?token=<TRIGGER_SECRET>"
 ```
 
 The `fetch` trigger fails closed with 401 if the token is missing or wrong,
@@ -173,7 +180,7 @@ Two independent signals, matching `workers/product-health`'s posture:
    has no automatic backfill. Recover manually with the `?date=` override
    once you notice the gap:
    ```bash
-   curl "https://enviouswispr-daily-report.saurabhav.workers.dev/?token=<TRIGGER_SECRET>&date=2026-07-08"
+   curl -fsS "https://enviouswispr-daily-report.saurabhav.workers.dev/?token=<TRIGGER_SECRET>&date=2026-07-08"
    ```
 
 **Duplicate posts are expected, not a bug.** A manual `workflow_dispatch` or
