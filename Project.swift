@@ -242,11 +242,22 @@ let project = Project(
         .package(product: "PostHog"),
         .package(product: "Sentry"),
       ]),
+    // #1525 PR I-B: isolates FluidAudio's raw error-classification behind a
+    // small, internal-only leaf. Consumed only by EnviousWisprASR and its
+    // test target, so it is declared explicitly there rather than added to
+    // the shared `firstPartyTargetDeps` engine set (same pattern as
+    // EnviousWisprContacts above).
+    firstPartyLibrary(
+      "EnviousWisprFluidAudioBridge",
+      dependencies: [
+        .package(product: "FluidAudio")
+      ]),
     firstPartyLibrary(
       "EnviousWisprASR",
       dependencies: [
         .target(name: "EnviousWisprCore"),
         .target(name: "EnviousWisprAudio"),
+        .target(name: "EnviousWisprFluidAudioBridge"),
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
       ]),
@@ -439,6 +450,9 @@ let project = Project(
       dependencies: [
         .target(name: "EnviousWisprCore"),
         .target(name: "EnviousWisprASR"),
+        // #1525 PR I-B: the bridge classification tests import this
+        // directly, not transitively through EnviousWisprASR.
+        .target(name: "EnviousWisprFluidAudioBridge"),
         .package(product: "WhisperKit"),
         // Static-link FluidAudio: the test bundle links EnviousWisprASR (a
         // static framework that uses FluidAudio), so its symbols must be

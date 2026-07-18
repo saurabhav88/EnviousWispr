@@ -70,6 +70,43 @@ import Testing
     #expect(manager.loadModelCount == 0)
   }
 
+  // MARK: Stale-helper transport recovery (#1525 PR I-B)
+
+  @Test("warmUp() retries once and succeeds after XPCASRTransportError.serviceUnreachable")
+  func warmUpRetriesOnServiceUnreachable() async throws {
+    let manager = StubParakeetASRManager()
+    manager.loadModelError = XPCASRTransportError.serviceUnreachable
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    try await adapter.warmUp()
+    #expect(manager.loadModelCount == 2)
+    #expect(manager.isModelLoaded)
+  }
+
+  /// #1525 PR I-B narrowing-regression: `XPCASRTransportError`'s 6 new
+  /// codec/transport cases are NOT "the XPC service is unreachable" — a bare
+  /// `catch is XPCASRTransportError` would have retried a reload for, say,
+  /// `.requestDecodingFailed`, masking a real codec bug.
+  @Test(
+    "warmUp() does NOT retry on the new XPCASRTransportError cases — they propagate",
+    arguments: [
+      XPCASRTransportError.requestEncodingFailed("x"),
+      .invalidSamplePayload("x"),
+      .requestDecodingFailed("x"),
+      .modelNotLoaded,
+      .responseEncodingFailed("x"),
+      .responseDecodingFailed("x"),
+    ]
+  )
+  func warmUpDoesNotRetryOnNewTransportCases(error: XPCASRTransportError) async throws {
+    let manager = StubParakeetASRManager()
+    manager.loadModelError = error
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    await #expect(throws: XPCASRTransportError.self) {
+      try await adapter.warmUp()
+    }
+    #expect(manager.loadModelCount == 1)
+  }
+
   // MARK: Streaming finalize + batch rescue (§3.2a)
 
   @Test("finalize: streaming success returns the streaming transcript")
@@ -521,8 +558,17 @@ final class StubParakeetASRManager: ASRManagerInterface {
   // yield-polling (#875).
   private var finalizeStreamingWaiters = CountWaiters("finalizeStreamingCount")
 
+  /// #1525 PR I-B: when set, `loadModel()` throws it on the NEXT call only,
+  /// then clears itself — lets a test exercise `loadModelWithTransportRecovery`'s
+  /// one-shot retry (a retry that SUCCEEDS second time) without looping forever.
+  var loadModelError: (any Error)?
+
   func loadModel() async throws {
     loadModelCount += 1
+    if let error = loadModelError {
+      loadModelError = nil
+      throw error
+    }
     if gateLoadModel {
       await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in loadGate = c }
     }

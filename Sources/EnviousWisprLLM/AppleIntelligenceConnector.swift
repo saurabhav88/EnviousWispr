@@ -700,7 +700,9 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
           }
           throw AFMContextWindowExceeded(stage: .caught)
         }
-        throw genErr
+        // #1525 PR I-B: every other GenerationError case gets a pinned Sentry
+        // identity instead of bridging via Swift's ordinal-derived NSError.
+        throw AFMGenerationSentryError(mapping: genErr)
       }
     }
 

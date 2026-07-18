@@ -365,6 +365,33 @@ struct RecoverySpoolReplayerTests {
       #expect(e.stringProps.values.allSatisfy { !$0.contains("serviceUnreachable") })
     }
 
+    /// #1525 PR I-B narrowing-regression: `XPCASRTransportError`'s 6 new
+    /// codec/transport cases are NOT "XPC unreachable" — a bare `is
+    /// XPCASRTransportError` type-check would have misclassified them,
+    /// corrupting recovery telemetry.
+    @Test(
+      "the new XPCASRTransportError cases classify as .other, not .xpcUnreachable",
+      arguments: [
+        XPCASRTransportError.requestEncodingFailed("x"),
+        .invalidSamplePayload("x"),
+        .requestDecodingFailed("x"),
+        .modelNotLoaded,
+        .responseEncodingFailed("x"),
+        .responseDecodingFailed("x"),
+      ]
+    )
+    func telemetryNewTransportCasesClassifyAsOther(error: XPCASRTransportError) async throws {
+      let h = Self.makeHarness()
+      let id = "tel-xpc-new-\(UUID().uuidString)"
+      try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
+      h.asr.transcribeError = error
+      let box = await Self.capturingTelemetry {
+        _ = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+      }
+      let e = try #require(box.recoveryEvents().first)
+      #expect(e.stringProps["failure_class"] == "other")
+    }
+
     @Test("deferred (attempt-marker write failed) emits marker_write_failed")
     func telemetryDeferredEmitsMarkerWriteFailed() async throws {
       // A spool dir whose PARENT is a regular FILE: the store's re-enforced mkdir is a

@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprASR
+@testable import EnviousWisprPipeline
 @testable import EnviousWisprServices
 
 /// #1525 PR G — `ASRError`, `XPCASRTransportError`, and `ASRLoadSupersededError`'s
@@ -65,6 +66,77 @@ struct ASRClusterSentryIdentityTests {
     #expect(
       SentryBreadcrumb.structuredDescriptor(error) == "EnviousWisprASR.XPCASRTransportError#0")
     #expect(error.sentrySemanticID == "xpc.asr_service_unreachable")
+  }
+
+  /// #1525 PR I-B: `.modelNotLoaded`'s descriptor is measured LIVE
+  /// (ENVIOUSWISPR-3S) — MUST NOT change. The other 5 are fresh, defensive
+  /// pins (`.invalidSamplePayload` measured as a type-level "no history"
+  /// negative result, §3.5).
+  private static let xpcTransportPins: [(XPCASRTransportError, String, String)] = [
+    (.serviceUnreachable, "EnviousWisprASR.XPCASRTransportError#0", "xpc.asr_service_unreachable"),
+    (
+      .requestEncodingFailed("x"), "EnviousWisprASR.XPCASRTransportError#1",
+      "xpc.request_encoding_failed"
+    ),
+    (.invalidSamplePayload("x"), "ASRService#-2", "xpc.invalid_sample_payload"),
+    (
+      .requestDecodingFailed("x"), "EnviousWisprASR.XPCASRTransportError#2",
+      "xpc.request_decoding_failed"
+    ),
+    (.modelNotLoaded, "ASRService#-3", "xpc.model_not_loaded"),
+    (
+      .responseEncodingFailed("x"), "EnviousWisprASR.XPCASRTransportError#3",
+      "xpc.response_encoding_failed"
+    ),
+    (
+      .responseDecodingFailed("x"), "EnviousWisprASR.XPCASRTransportError#4",
+      "xpc.response_decoding_failed"
+    ),
+  ]
+
+  @Test("every XPCASRTransportError case keeps its exact pinned fingerprint")
+  func xpcTransportErrorAllCasesPinLock() {
+    for (error, descriptor, semanticID) in Self.xpcTransportPins {
+      #expect(SentryBreadcrumb.structuredDescriptor(error) == descriptor)
+      #expect(error.sentrySemanticID == semanticID)
+    }
+  }
+
+  @Test("all 7 declared XPCASRTransportError identities are unique")
+  func xpcTransportErrorIdentitiesAreUnique() {
+    let errors = Self.xpcTransportPins.map(\.0)
+    #expect(Set(errors.map(\.sentryFingerprintDescriptor)).count == 7)
+    #expect(Set(errors.map(\.sentrySemanticID)).count == 7)
+  }
+
+  @Test("only .serviceUnreachable is isServiceUnreachable")
+  func onlyServiceUnreachableIsServiceUnreachable() {
+    for (error, _, _) in Self.xpcTransportPins {
+      if case .serviceUnreachable = error {
+        #expect(error.isServiceUnreachable)
+      } else {
+        #expect(!error.isServiceUnreachable)
+      }
+    }
+  }
+
+  @Test("XPCASRTransportError round-trips through its NSError bridge for every case")
+  func xpcTransportErrorNSErrorRoundTrip() {
+    for (error, _, _) in Self.xpcTransportPins {
+      let bridged = error as NSError
+      #expect(bridged.domain == XPCASRTransportError.errorDomain)
+      guard let reconstructed = XPCASRTransportError(reconstructingFrom: bridged) else {
+        Issue.record("reconstruction failed for \(error)")
+        continue
+      }
+      #expect(reconstructed == error)
+    }
+  }
+
+  @Test("reconstructingFrom returns nil for an unrelated NSError domain")
+  func xpcTransportErrorReconstructionRejectsForeignDomain() {
+    let foreign = NSError(domain: "SomeOtherDomain", code: 0)
+    #expect(XPCASRTransportError(reconstructingFrom: foreign) == nil)
   }
 
   @Test("ASRLoadSupersededError keeps its exact measured fingerprint")
@@ -145,5 +217,23 @@ struct ASRClusterSentryIdentityTests {
     #expect(
       event.fingerprint == ["handled_error", "asr_failed", "EnviousWispr#-3", Self.env])
     #expect(event.tags?["error.identity"] == nil)
+  }
+
+  /// #1525 PR I-B: `.modelNotLoaded` is the one confirmed-live new
+  /// XPCASRTransportError case (ENVIOUSWISPR-3S) — its event must preserve
+  /// the exact `"ASRService#-3"` descriptor.
+  @MainActor
+  @Test(
+    "the confirmed-live .modelNotLoaded case's event carries the exact preserved production fingerprint"
+  )
+  func modelNotLoadedEventShape() {
+    let error = XPCASRTransportError.modelNotLoaded
+
+    let event = SentryBreadcrumb.makeHandledErrorEvent(
+      error, category: Self.category, stage: "transcription", environment: Self.env)
+
+    #expect(
+      event.fingerprint == ["handled_error", "asr_failed", "ASRService#-3", Self.env])
+    #expect(event.tags?["error.identity"] == "xpc.model_not_loaded")
   }
 }
