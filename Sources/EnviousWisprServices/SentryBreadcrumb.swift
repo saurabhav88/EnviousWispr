@@ -249,11 +249,7 @@ public enum SentryBreadcrumb {
     if let stable = error as? any StableSentryErrorIdentity {
       return stable.sentryFingerprintDescriptor
     }
-    let ns = error as NSError
-    if ns.domain.contains("(unknown context at ") {
-      return "\(type(of: error))#\(ns.code)"
-    }
-    return "\(ns.domain)#\(ns.code)"
+    return SentryErrorDescriptor.bridged(error)
   }
 
   /// Stable Sentry grouping key for a handled error: namespace + category + the

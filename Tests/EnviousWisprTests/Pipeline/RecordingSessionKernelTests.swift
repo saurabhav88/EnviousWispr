@@ -204,22 +204,24 @@ import Testing
       context.clock.drainPending()
     }
 
-    // MARK: #1525 PR J-1 — modelLoadError cast-miss falls back to KernelFallbackSentryError
+    // MARK: #1658 PR J-2 — a non-conforming modelLoadError keeps its own bridged identity
 
     @Test(
-      "a genuine load failure with a non-conforming error leaves modelLoadError nil and the lifecycle sink still fires exactly one event under the fixed fallback identity"
+      "a genuine load failure with a raw NSError normalizes at the write site and the lifecycle sink fires exactly one event under the raw error's own domain#code identity"
     )
-    func modelLoadFailedNonConformingFallsBackToKernelFallbackIdentity() async {
-      struct OpaqueLoadError: Error, Sendable {}
-      let (_, wrapper) = makeWrapper(behavior: .failLoad(OpaqueLoadError()))
+    func modelLoadFailedRawNSErrorNormalizesToUnrecognizedModelLoad() async {
+      let raw = NSError(domain: "com.acme.vendor", code: 42)
+      let (_, wrapper) = makeWrapper(behavior: .failLoad(raw))
       let kernel = wrapper.testKernel
 
       await apply(.start, to: wrapper)
 
       #expect(kernel.recordingOutcome == .failed(.modelLoadFailed))
-      // The cast at the write site misses (OpaqueLoadError does not conform to
-      // StableSentryErrorIdentity) — the property stays nil by design (§4).
-      #expect(wrapper.telemetryState.modelLoadError == nil)
+      // The write site normalizes the non-conforming error instead of dropping
+      // it to nil — its bridged domain#code survives as the Sentry identity.
+      #expect(
+        wrapper.telemetryState.modelLoadError?.sentryFingerprintDescriptor
+          == "com.acme.vendor#42")
 
       var capturedIdentity: String?
       var capturedDescriptor: String?
@@ -238,8 +240,8 @@ import Testing
       sink.emit(.failed(.modelLoadFailed))
 
       #expect(captureCount == 1)
-      #expect(capturedDescriptor == "EnviousWispr#-10")
-      #expect(capturedIdentity == "kernel.model_load_failed")
+      #expect(capturedDescriptor == "com.acme.vendor#42")
+      #expect(capturedIdentity == "asr.unrecognized_model_load_failure")
     }
 
     // MARK: #959 — seam routing: ordinary terminal uses cheap cancel(), wedge uses recoverFromWedge()

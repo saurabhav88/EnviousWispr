@@ -82,6 +82,9 @@ struct SentryCaptureBoundaryErrorTests {
     #expect(
       SentryCaptureBoundaryError.normalizingHeartControlFailure(error).sentrySemanticID
         == "already.conforming")
+    #expect(
+      SentryCaptureBoundaryError.normalizingModelLoadFailure(error).sentrySemanticID
+        == "already.conforming")
   }
 
   // MARK: - D. Non-conforming, unrecognized misses fall to the fixed `.unexpected*` identity
@@ -143,5 +146,59 @@ struct SentryCaptureBoundaryErrorTests {
     #expect(
       event.fingerprint == ["handled_error", "asr_failed", "com.apple.CoreML#0", Self.env])
     #expect(event.tags?["error.identity"] == "asr.external_coreml")
+  }
+
+  // MARK: - F. #1658 PR J-2 — .normalizingModelLoadFailure preserves the raw bridged identity
+
+  @Test("normalizingModelLoadFailure(raw NSError) matches the raw error's own fingerprint")
+  func modelLoadRawNSErrorMatchesBridgedFingerprint() {
+    let raw = NSError(domain: "com.acme.vendor", code: 42)
+    let normalized = SentryCaptureBoundaryError.normalizingModelLoadFailure(raw)
+    #expect(normalized.sentryFingerprintDescriptor == SentryBreadcrumb.structuredDescriptor(raw))
+    #expect(normalized.sentryFingerprintDescriptor == "com.acme.vendor#42")
+    #expect(normalized.sentrySemanticID == "asr.unrecognized_model_load_failure")
+  }
+
+  @Test("normalizingModelLoadFailure(second domain/code pair) matches the raw fingerprint")
+  func modelLoadRawNSErrorSecondPairMatchesBridgedFingerprint() {
+    let raw = NSError(domain: "NSCocoaErrorDomain", code: 260)
+    let normalized = SentryCaptureBoundaryError.normalizingModelLoadFailure(raw)
+    #expect(normalized.sentryFingerprintDescriptor == SentryBreadcrumb.structuredDescriptor(raw))
+    #expect(normalized.sentryFingerprintDescriptor == "NSCocoaErrorDomain#260")
+    #expect(normalized.sentrySemanticID == "asr.unrecognized_model_load_failure")
+  }
+
+  @Test(
+    "normalizingModelLoadFailure on a mangled-domain Swift error keeps structuredDescriptor parity")
+  func modelLoadMangledDomainSwiftErrorKeepsParity() {
+    let raw = Opaque()
+    let normalized = SentryCaptureBoundaryError.normalizingModelLoadFailure(raw)
+    #expect(normalized.sentryFingerprintDescriptor == SentryBreadcrumb.structuredDescriptor(raw))
+    #expect(normalized.sentryFingerprintDescriptor == "Opaque#1")
+    #expect(normalized.sentrySemanticID == "asr.unrecognized_model_load_failure")
+  }
+
+  @Test("UnrecognizedModelLoadSentryError equality follows the stored descriptor")
+  func unrecognizedModelLoadEquality() {
+    let a = UnrecognizedModelLoadSentryError(NSError(domain: "com.acme.vendor", code: 42))
+    let b = UnrecognizedModelLoadSentryError(NSError(domain: "com.acme.vendor", code: 42))
+    let c = UnrecognizedModelLoadSentryError(NSError(domain: "com.acme.vendor", code: 43))
+    #expect(a == b)
+    #expect(a != c)
+  }
+
+  @MainActor
+  @Test(
+    "a normalized model-load event carries the production title, fingerprint, and identity tag")
+  func unrecognizedModelLoadEventShape() {
+    let normalized = SentryCaptureBoundaryError.normalizingModelLoadFailure(
+      NSError(domain: "com.acme.vendor", code: 42))
+    let event = SentryBreadcrumb.makeHandledErrorEvent(
+      normalized, category: .modelLoadFailed, stage: "model_load", environment: Self.env)
+    #expect(event.message?.formatted == "model_load_failed: com.acme.vendor#42")
+    #expect(
+      event.fingerprint
+        == ["handled_error", "model_load_failed", "com.acme.vendor#42", Self.env])
+    #expect(event.tags?["error.identity"] == "asr.unrecognized_model_load_failure")
   }
 }
