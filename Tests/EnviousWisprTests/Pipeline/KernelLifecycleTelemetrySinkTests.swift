@@ -739,6 +739,32 @@ import Testing
       recorder.captureErrors.first?.errorDescription == "CoreML model failed to compile")
   }
 
+  /// #1658 PR J-2: pins the defensive nil-property fallback identity. Both current
+  /// production adapters enforce ready-or-throw, so a nil `modelLoadError` at
+  /// `.loadFailed` is not a demonstrated production path — but the sink's fallback
+  /// must keep its shipped identity if one ever reaches it.
+  @Test(".failed(.modelLoadFailed) with modelLoadError nil emits the fixed fallback identity")
+  func failedModelLoadFailedNilPropertyUsesFallbackIdentity() {
+    var capturedIdentity: String?
+    var capturedDescriptor: String?
+    var captureCount = 0
+    let sink = KernelLifecycleTelemetrySink(
+      backend: .parakeet,
+      audioCapture: FakeAudioCapture(),
+      context: KernelSessionContext(),
+      captureTelemetry: CaptureTelemetryState(),
+      telemetryState: KernelTelemetryState(),
+      captureError: { error, _, _, _ in
+        captureCount += 1
+        capturedIdentity = error.sentrySemanticID
+        capturedDescriptor = error.sentryFingerprintDescriptor
+      })
+    sink.emit(.failed(.modelLoadFailed))
+    #expect(captureCount == 1)
+    #expect(capturedDescriptor == "EnviousWispr#-10")
+    #expect(capturedIdentity == "kernel.model_load_failed")
+  }
+
   @Test(".failed(.captureStartFailed) emits .audioCaptureFailed captureError")
   func failedCaptureStartFailedEmission() {
     let recorder = Recorder()

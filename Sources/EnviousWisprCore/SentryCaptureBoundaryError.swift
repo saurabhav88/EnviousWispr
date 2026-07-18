@@ -98,4 +98,33 @@ extension SentryCaptureBoundaryError {
     (error as? any Error & StableSentryErrorIdentity)
       ?? SentryCaptureBoundaryError.unexpectedHeartControlFailure
   }
+
+  /// Row 7 (#1658): the kernel's `modelLoadError` write site. A non-conforming
+  /// model-load error — in practice the XPC last-resort raw `NSError`
+  /// (`ASRManagerProxy`, reached when neither typed reconstructor recognizes the
+  /// bridged domain/code) — keeps its own bridged identity instead of falling to
+  /// the generic `KernelFallbackSentryError.modelLoadFailed` read-side fallback.
+  package static func normalizingModelLoadFailure(
+    _ error: any Error
+  ) -> any Error & StableSentryErrorIdentity {
+    if let stable = error as? any Error & StableSentryErrorIdentity {
+      return stable
+    }
+    return UnrecognizedModelLoadSentryError(error)
+  }
+}
+
+/// Preserves the legacy bridged identity for a model-load failure that reached the
+/// kernel without its own `StableSentryErrorIdentity` (#1658). A struct, not a
+/// `SentryCaptureBoundaryError` case: the descriptor carries the raw error's own
+/// dynamic `domain#code`, which would break that enum's fixed-literal charter.
+package struct UnrecognizedModelLoadSentryError:
+  Error, StableSentryErrorIdentity, Sendable, Equatable
+{
+  package let sentryFingerprintDescriptor: String
+  package let sentrySemanticID = "asr.unrecognized_model_load_failure"
+
+  package init(_ error: any Error) {
+    sentryFingerprintDescriptor = SentryErrorDescriptor.bridged(error)
+  }
 }

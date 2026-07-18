@@ -2303,13 +2303,12 @@ final class RecordingSessionKernel {
     if stopLatched { return .stopped }
     if cancelRequested { return .cancelled }
     if adapter.readiness == .ready { return .ready }
-    // #1525 PR J-1: identical cast pattern to `captureFailureError` above
-    // (§4) — a miss (the rare XPC last-resort raw error,
-    // `ASRManagerProxy.swift:222-229`) leaves the property nil and the
-    // read-side `KernelFallbackSentryError.modelLoadFailed` fallback fires.
-    // Restoring that rare case's own identity is PR J-2 (#1658).
+    // #1658 PR J-2: preserve an already-stable model-load error unchanged;
+    // normalize the XPC last-resort raw NSError into an explicit stable
+    // identity so its own domain#code survives to Sentry.
     if let thrownError {
-      telemetryState.modelLoadError = thrownError as? (any Error & StableSentryErrorIdentity)
+      telemetryState.modelLoadError =
+        SentryCaptureBoundaryError.normalizingModelLoadFailure(thrownError)
     }
     return .loadFailed
   }

@@ -29,3 +29,19 @@ public protocol StableSentryErrorIdentity {
   /// it never enters the fingerprint, so it is safe to rename.
   var sentrySemanticID: String { get }
 }
+
+/// The legacy descriptor for errors without an explicit `StableSentryErrorIdentity` —
+/// the single authority for the bridged `domain#code` rule described above, including
+/// the guard that swaps a Swift local-scope type's mangled bridge domain for its bare
+/// type name. `SentryBreadcrumb.structuredDescriptor` delegates its non-conforming
+/// branch here; `UnrecognizedModelLoadSentryError` pins its descriptor from it
+/// (#1658). **PINNED behaviour — shipped fingerprints depend on this exact output.**
+package enum SentryErrorDescriptor {
+  package static func bridged(_ error: any Error) -> String {
+    let ns = error as NSError
+    if ns.domain.contains("(unknown context at ") {
+      return "\(type(of: error))#\(ns.code)"
+    }
+    return "\(ns.domain)#\(ns.code)"
+  }
+}
