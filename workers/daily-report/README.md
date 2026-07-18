@@ -118,6 +118,22 @@ Two independent signals, matching `workers/product-health`'s posture:
    (EnviousNotes) AND makes the worker return a non-2xx status, which turns
    the GitHub Actions job red. You will see BOTH the Discord notice and a
    GitHub Actions failure.
+
+   **One deliberate exception: `tier_a` degrades instead of failing (#1655).**
+   It is the polish-provider *settings* lookup, and `resolveBuckets` already
+   falls back per user (settings → actual dictation → shipped default), so an
+   empty `tier_a` still yields a complete breakdown. If it exhausts its retry
+   on a transient PostHog status (502/503/504), the report is still posted with
+   a note near the top: "today's polish-provider breakdown is approximate
+   because the settings lookup was temporarily unavailable." Read that note as
+   "this day's provider split leans on runtime signal rather than configured
+   choice," not as "the report is wrong."
+
+   This exception is scoped tightly. Only `tier_a`, and only on an exhausted
+   502/503/504 — an auth failure, a malformed query, a bad response shape, or
+   any ordinary programming error still fails the whole report loudly, because
+   a silently "approximate" report that hides a real defect is worse than no
+   report at all. Every other query remains fail-loud.
 2. **If Discord itself is unreachable/erroring**, the GitHub Actions job
    still goes red (the one failure mode with no Discord-side notice —
    GitHub's own failure-run email is the signal here).

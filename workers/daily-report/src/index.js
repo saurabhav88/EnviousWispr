@@ -160,27 +160,31 @@ function sqlIdList(ids) {
   return ids.map((id) => `'${String(id).replace(/'/g, "''")}'`).join(", ");
 }
 
-/** Polish tier-a: latest value across the UNION of settings.snapshot and
- * settings.changed{setting='llm_provider'}, bounded to a LITERAL list of
- * already-known active-user ids (plan §3.3 row 4, r2 precision fix) rather
- * than a re-evaluated subquery - the subquery form (distinct_id IN
- * (activeUsersSubquery)) repeated twice inside this UNION timed out (HTTP
- * 504) against production PostHog; the literal-list form is the exact
- * pattern already validated empirically during planning. */
+/** Polish tier-a: latest llm_provider across settings.snapshot and
+ * settings.changed, restricted to a literal list of already-known active-user
+ * ids (rather than a re-evaluated subquery, which timed out).
+ *
+ * Deliberately uses the production-environment predicate rather than full PROD.
+ * Every active id came from engineAndTierBSql, which already applied full PROD,
+ * including the whole-history dev-ID exclusion. Repeating that exclusion twice
+ * inside this UNION adds substantial work without changing results. Live A/B
+ * verification found identical provider attribution for all active users.
+ * This argument is local to tier-a; every other query keeps full PROD. */
 function tierASqlFor(activeIds, endTs) {
   const ids = sqlIdList(activeIds);
+  const envOnly = "properties.environment = 'production'";
   return `
     SELECT distinct_id, argMax(value, ts) AS provider
     FROM (
       SELECT distinct_id, properties.llm_provider AS value, timestamp AS ts
       FROM events
-      WHERE event = 'settings.snapshot' AND ${PROD}
+      WHERE event = 'settings.snapshot' AND ${envOnly}
         AND distinct_id IN (${ids})
         AND timestamp < '${endTs}'
       UNION ALL
       SELECT distinct_id, properties.to AS value, timestamp AS ts
       FROM events
-      WHERE event = 'settings.changed' AND properties.setting = 'llm_provider' AND ${PROD}
+      WHERE event = 'settings.changed' AND properties.setting = 'llm_provider' AND ${envOnly}
         AND distinct_id IN (${ids})
         AND timestamp < '${endTs}'
     )
@@ -201,6 +205,21 @@ function tierASqlFor(activeIds, endTs) {
 // this cannot produce a duplicate or confusing failure notice.
 const RETRYABLE_POSTHOG_STATUSES = new Set([502, 503, 504]);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Carries the query name and HTTP status alongside the message, so a caller
+ * can distinguish an exhausted transient failure (which tier-a is allowed to
+ * degrade on) from an auth failure, a malformed query, or a bad response
+ * shape (which must stay loud). Message text is unchanged from the plain
+ * Error it replaces - existing assertions and the production failure notice
+ * both depend on it (#1655). */
+export class PostHogQueryError extends Error {
+  constructor(queryName, status) {
+    super(`PostHog query ${queryName} HTTP ${status}`);
+    this.name = "PostHogQueryError";
+    this.queryName = queryName;
+    this.status = status;
+  }
+}
 
 export async function hogql(
   env,
@@ -247,7 +266,7 @@ export async function hogql(
     }
 
     if (attempt === 2 || !RETRYABLE_POSTHOG_STATUSES.has(status)) {
-      throw new Error(`PostHog query ${queryName} HTTP ${status}`);
+      throw new PostHogQueryError(queryName, status);
     }
     await sleepFn(retryDelayMs);
   }
@@ -282,7 +301,10 @@ function rowsToObjects(res) {
   });
 }
 
-export async function fetchReportData(env, win, endUTC) {
+// `hogqlOpts` forwards the same injection bag `hogql` already accepts, so tests
+// can drive the retry path without a real 1.5s delay per retry - the pattern
+// the hogql unit tests already use. Production passes nothing.
+export async function fetchReportData(env, win, endUTC, hogqlOpts = {}) {
   const endTs = sqlTimestamp(endUTC);
   const activeUsers = activeUsersSubquery(win);
 
@@ -347,20 +369,42 @@ export async function fetchReportData(env, win, endUTC) {
   // passing it to tier-a as a literal IN-list instead of a subquery.
   const [installs, onboardActivate, totals, engineAndTierB, geo, top5] = await runLimited(
     [
-      () => hogql(env, installsSql, "installs"),
-      () => hogql(env, onboardActivateSql, "onboard_activate"),
-      () => hogql(env, totalsSql, "totals"),
-      () => hogql(env, engineAndTierBSql, "engine_and_tier_b"),
-      () => hogql(env, geoSql, "geo"),
-      () => hogql(env, top5Sql, "top5"),
+      () => hogql(env, installsSql, "installs", hogqlOpts),
+      () => hogql(env, onboardActivateSql, "onboard_activate", hogqlOpts),
+      () => hogql(env, totalsSql, "totals", hogqlOpts),
+      () => hogql(env, engineAndTierBSql, "engine_and_tier_b", hogqlOpts),
+      () => hogql(env, geoSql, "geo", hogqlOpts),
+      () => hogql(env, top5Sql, "top5", hogqlOpts),
     ],
     2
   );
 
   const activeIds = (engineAndTierB.results || []).map((row) => row[0]);
-  const tierA = activeIds.length
-    ? await hogql(env, tierASqlFor(activeIds, endTs), "tier_a")
-    : { results: [], columns: [] };
+  // tier-a is an ENRICHMENT: resolveBuckets already falls back
+  // tierA -> tier_b_provider -> DEFAULT_PROVIDER per user, so an empty tier-a
+  // still yields a complete breakdown. A tier-a failure must therefore degrade
+  // that one attribution tier rather than discard an otherwise-complete report.
+  // On 2026-07-18 all six batched queries succeeded and were discarded because
+  // tier-a timed out (#1655).
+  //
+  // ONLY an exhausted retryable status degrades. Anything else - auth, bad SQL,
+  // a malformed response, a programming error - stays loud: a silently
+  // "approximate" report that hides a real defect is worse than no report.
+  let tierA = { results: [], columns: [] };
+  let tierADegraded = false;
+  if (activeIds.length) {
+    try {
+      tierA = await hogql(env, tierASqlFor(activeIds, endTs), "tier_a", hogqlOpts);
+    } catch (err) {
+      const isExpectedTransientFailure =
+        err instanceof PostHogQueryError &&
+        err.queryName === "tier_a" &&
+        RETRYABLE_POSTHOG_STATUSES.has(err.status);
+      if (!isExpectedTransientFailure) throw err;
+      tierADegraded = true;
+      console.log(`daily-report tier_a degraded after retries: HTTP ${err.status}`);
+    }
+  }
 
   return {
     freshInstalls: installs.results[0][0],
@@ -370,6 +414,7 @@ export async function fetchReportData(env, win, endUTC) {
     totalUsers: rowsToObjects(totals)[0]?.total_users ?? 0,
     engineAndTierB: rowsToObjects(engineAndTierB),
     tierA: rowsToObjects(tierA),
+    tierADegraded,
     geo: rowsToObjects(geo),
     top5: rowsToObjects(top5),
   };
@@ -453,6 +498,16 @@ function formatWeekdayDate(dateStr) {
 
 export function buildMessage(dateStr, data, buckets) {
   const lines = [`EnviousWispr Daily Report, ${formatWeekdayDate(dateStr)}`, ""];
+
+  // Near the TOP deliberately: the tail is truncated at 1990 chars below, so a
+  // note appended at the end could be silently cut off on exactly the busy days
+  // when the report is longest (#1655).
+  if (data.tierADegraded) {
+    lines.push(
+      "Note: today's polish-provider breakdown is approximate because the settings lookup was temporarily unavailable.",
+      ""
+    );
+  }
 
   lines.push(
     `New installs: ${data.freshInstalls}. People who finished setup today: ${data.onboarded}. Of those, ${data.activated} also dictated today.`,
