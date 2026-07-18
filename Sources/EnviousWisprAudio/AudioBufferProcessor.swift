@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import EnviousWisprCore
 
 /// Handles audio format conversion and buffer processing.
 enum AudioBufferProcessor {
@@ -57,6 +58,27 @@ public enum AudioError: LocalizedError, CustomNSError, Sendable {
       return source
     case .alreadyCapturing, .noBuiltInMicrophoneFound:
       return nil
+    }
+  }
+}
+
+// MARK: - Sentry identity
+
+/// Adds explicit Sentry identity using the EXISTING `CustomNSError`
+/// `errorDomain` and exhaustive `errorCode` switch. `AudioError`'s NSError
+/// bridge, localized behavior, Sentry title, and grouping fingerprint remain
+/// unchanged. The only new Sentry wire field is the readable `error.identity`
+/// metadata tag required by PR J's future compile-time guard.
+extension AudioError: StableSentryErrorIdentity {
+  public var sentryFingerprintDescriptor: String {
+    "\(Self.errorDomain)#\(errorCode)"
+  }
+
+  public var sentrySemanticID: String {
+    switch self {
+    case .formatCreationFailed: return "audio.format_creation_failed"
+    case .alreadyCapturing: return "audio.already_capturing"
+    case .noBuiltInMicrophoneFound: return "audio.no_built_in_microphone_found"
     }
   }
 }
