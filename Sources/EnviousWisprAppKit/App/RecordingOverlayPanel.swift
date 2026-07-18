@@ -496,7 +496,7 @@ final class RecordingOverlayPanel {
     content: V, width: CGFloat, height: CGFloat, dismissAfter: Double
   ) {
     let existingPanel = panel
-    let y = existingPanel?.frame.origin.y
+    let inheritedFrame = existingPanel?.frame
     panel = nil
     autoDismissTask?.cancel()
     autoDismissTask = nil
@@ -512,7 +512,7 @@ final class RecordingOverlayPanel {
     let work = DispatchWorkItem { [weak self] in
       guard let self, self.generation == token else { return }
       self.pendingCreateWork = nil
-      self.showPanel(content: content, width: width, height: height, y: y)
+      self.showPanel(content: content, width: width, height: height, inheritedFrame: inheritedFrame)
       self.scheduleAutoDismiss(seconds: dismissAfter)
     }
     pendingCreateWork = work
@@ -586,7 +586,7 @@ final class RecordingOverlayPanel {
   private func createPanel(
     audioLevelProvider: @escaping () -> Float,
     recordingElapsedProvider: @escaping () -> TimeInterval? = { nil },
-    isRecordingLocked: Bool = false, y: CGFloat? = nil
+    isRecordingLocked: Bool = false
   ) {
     guard panel == nil else { return }
 
@@ -612,7 +612,7 @@ final class RecordingOverlayPanel {
       width: 185, height: 92,
       alignment: positionProvider() == .bottom ? .bottom : .center
     )
-    showPanel(content: overlayView, width: 185, height: 92, y: y)
+    showPanel(content: overlayView, width: 185, height: 92)
   }
 
   /// #1060: flash a transient banner over the LIVE recording pill (a second line
@@ -748,7 +748,7 @@ final class RecordingOverlayPanel {
   /// Transition an existing panel to a notification display.
   private func transitionToNotification(message: String, style: NotificationStyle) {
     guard let existingPanel = panel else { return }
-    let y = existingPanel.frame.origin.y
+    let inheritedFrame = existingPanel.frame
 
     panel = nil
     autoDismissTask?.cancel()
@@ -768,7 +768,7 @@ final class RecordingOverlayPanel {
         content: NotificationOverlayView(message: message, style: style).frame(
           width: 280, height: 44),
         width: 280,
-        y: y
+        inheritedFrame: inheritedFrame
       )
     }
     pendingCreateWork = work
@@ -789,7 +789,7 @@ final class RecordingOverlayPanel {
   /// Transition an existing panel to the Accessibility permission notice.
   private func transitionToAccessibilityToast() {
     guard let existingPanel = panel else { return }
-    let y = existingPanel.frame.origin.y
+    let inheritedFrame = existingPanel.frame
 
     panel = nil
     autoDismissTask?.cancel()
@@ -812,7 +812,7 @@ final class RecordingOverlayPanel {
         }).frame(width: 300, height: 56),
         width: 300,
         height: 56,
-        y: y
+        inheritedFrame: inheritedFrame
       )
     }
     pendingCreateWork = work
@@ -823,7 +823,7 @@ final class RecordingOverlayPanel {
   private func transitionToPolishing(label: String) {
     guard let existingPanel = panel else { return }
     clearRecordingNotice()  // #1060 (Codex P3): don't leak a cap notice into the next session.
-    let y = existingPanel.frame.origin.y
+    let inheritedFrame = existingPanel.frame
 
     panel = nil
     // Cancel any stale auto-dismiss timer from a transient notification
@@ -848,7 +848,8 @@ final class RecordingOverlayPanel {
       guard let self, self.generation == token else { return }
       self.pendingCreateWork = nil
       self.showPanel(
-        content: PolishingOverlayView(label: label), width: 230, y: y, fitToContent: true)
+        content: PolishingOverlayView(label: label), width: 230, inheritedFrame: inheritedFrame,
+        fitToContent: true)
     }
     pendingCreateWork = work
     DispatchQueue.main.async(execute: work)
@@ -865,9 +866,10 @@ final class RecordingOverlayPanel {
     guard let existingPanel = panel else { return }
     clearRecordingNotice()  // #1060 (Codex P3): fresh session starts with no stale notice.
     // A fresh recording is a new lifecycle, so it does not inherit the outgoing
-    // panel's origin. `showPanel(y: nil)` re-anchors it to the user's configured
-    // Top or Bottom position. A taller panel (e.g. the #1480 Bluetooth card) sits
-    // lower, so reusing its origin would drop the pill to mid-screen (#1480 live UAT).
+    // panel's frame. `createPanel()` (no inheritedFrame param) re-anchors it to
+    // the user's configured Top or Bottom position. A taller panel (e.g. the
+    // #1480 Bluetooth card) sits lower, so reusing its origin would drop the
+    // pill to mid-screen (#1480 live UAT).
     panel = nil
     autoDismissTask?.cancel()
     autoDismissTask = nil
@@ -899,7 +901,7 @@ final class RecordingOverlayPanel {
   /// cap-end message). A fixed frame strands short labels in empty space (the
   /// #1060 regression). `width`/`height` are ignored when set.
   private func showPanel<V: View>(
-    content: V, width: CGFloat, height: CGFloat = 44, y: CGFloat? = nil,
+    content: V, width: CGFloat, height: CGFloat = 44, inheritedFrame: NSRect? = nil,
     fitToContent: Bool = false
   ) {
     // Guard against the edge case where no screen is available (C3).
@@ -944,33 +946,51 @@ final class RecordingOverlayPanel {
 
     let x = targetScreen.visibleFrame.midX - resolvedWidth / 2
     let requestedY: CGFloat
-    if let y {
-      requestedY = y
-      // #1341 follow-up: inherited `y` means this panel is CONTINUING the
-      // same on-screen presentation (e.g. recording -> polishing), not
-      // starting a new one — `activePanelPosition` is deliberately left
-      // untouched here. Re-reading `positionProvider()` on this path was a
-      // real bug (Codex grounded review r3, 2026-07-17): a setting change
-      // made while the panel was visible would get picked up on the NEXT
-      // inherited-y transition, desyncing `activePanelPosition` from the
-      // edge the panel's SwiftUI content is actually aligned for, and the
-      // next Space swipe would then jump the panel to the wrong edge.
-      //
+    if let inheritedFrame {
+      let inheritedY = inheritedFrame.origin.y
+      // #1341 follow-up: inherited `inheritedFrame` means this panel is
+      // CONTINUING the same on-screen presentation (e.g. recording ->
+      // polishing), not starting a new one — `activePanelPosition` is
+      // deliberately left untouched here. Re-reading `positionProvider()` on
+      // this path was a real bug (Codex grounded review r3, 2026-07-17): a
+      // setting change made while the panel was visible would get picked up
+      // on the NEXT inherited transition, desyncing `activePanelPosition`
+      // from the edge the panel's SwiftUI content is actually aligned for,
+      // and the next Space swipe would then jump the panel to the wrong edge.
+      if activePanelPosition == .top {
+        // #1650: Top-positioned content is `.center`-aligned inside its
+        // frame (createPanel), so the visible pill's vertical CENTER always
+        // equals the frame's center regardless of the frame's own height.
+        // Preserving the outgoing panel's frame center — not its raw bottom
+        // origin — keeps the visible pill's on-screen position
+        // pixel-identical across a panel-height change (e.g. the 92pt
+        // recording frame -> the ~44pt fitToContent polishing pill), closing
+        // the ~24pt drop. clampedOriginY below remains authoritative when
+        // the incoming panel is too tall to fit below the menu bar at the
+        // preserved center. Bottom is unaffected: its content is
+        // `.bottom`-aligned (#1341), so the outgoing frame's bottom edge
+        // already IS the visible bottom with no gap, and preserving it
+        // unchanged (below) is already correct.
+        requestedY = inheritedFrame.midY - resolvedHeight / 2
+      } else {
+        requestedY = inheritedY
+      }
       // Same reasoning applies to drag detection (Codex grounded review r5,
       // 2026-07-17): if the outgoing panel's Y no longer matches where WE
       // last put it, the user dragged it, and that fact must survive into
       // the new panel object this transition creates — check and latch
       // `wasManuallyDragged` HERE, before `lastProgrammaticOrigin` gets
       // rewritten below to the (possibly dragged) inherited position, or the
-      // mismatch that proves the drag happened is gone for good.
-      if let lastProgrammaticOrigin, abs(y - lastProgrammaticOrigin.y) > 0.5 {
+      // mismatch that proves the drag happened is gone for good. Unaffected
+      // by the branch above: this always compares the raw bottom origin.
+      if let lastProgrammaticOrigin, abs(inheritedY - lastProgrammaticOrigin.y) > 0.5 {
         wasManuallyDragged = true
       }
     } else {
       // #1341: fresh appearance only — captures the edge for THIS panel's
       // lifetime. `repositionForActiveSpaceChange()` reuses it; an inherited
-      // `y` transition above leaves it alone; only a fresh appearance is
-      // allowed to change which edge `activePanelPosition` points at.
+      // transition above leaves it alone; only a fresh appearance is allowed
+      // to change which edge `activePanelPosition` points at.
       let position = positionProvider()
       activePanelPosition = position
       requestedY = computeRequestedY(on: targetScreen, position: position)
@@ -1080,7 +1100,7 @@ final class RecordingOverlayPanel {
     DispatchQueue.main.async(execute: work)
   }
 
-  private func createPassiveChipPanel(payload: LanguageChipPayload, y: CGFloat? = nil) {
+  private func createPassiveChipPanel(payload: LanguageChipPayload, inheritedFrame: NSRect? = nil) {
     guard panel == nil else { return }
     let onLock = passiveChipLockHandler
     let onDismiss = passiveChipDismissHandler
@@ -1092,12 +1112,12 @@ final class RecordingOverlayPanel {
       onAutoDismiss: { onAutoDismiss?(payload.generation) }
     )
     .frame(width: 340, height: 56)
-    showPanel(content: view, width: 340, height: 56, y: y)
+    showPanel(content: view, width: 340, height: 56, inheritedFrame: inheritedFrame)
   }
 
   private func transitionToPassiveChip(payload: LanguageChipPayload) {
     guard let existingPanel = panel else { return }
-    let y = existingPanel.frame.origin.y
+    let inheritedFrame = existingPanel.frame
 
     panel = nil
     autoDismissTask?.cancel()
@@ -1113,7 +1133,7 @@ final class RecordingOverlayPanel {
     let work = DispatchWorkItem { [weak self] in
       guard let self, self.generation == token else { return }
       self.pendingCreateWork = nil
-      self.createPassiveChipPanel(payload: payload, y: y)
+      self.createPassiveChipPanel(payload: payload, inheritedFrame: inheritedFrame)
     }
     pendingCreateWork = work
     DispatchQueue.main.async(execute: work)
@@ -1143,7 +1163,7 @@ final class RecordingOverlayPanel {
     DispatchQueue.main.async(execute: work)
   }
 
-  private func createBluetoothAwarenessPanel(y: CGFloat? = nil) {
+  private func createBluetoothAwarenessPanel(inheritedFrame: NSRect? = nil) {
     guard panel == nil else { return }
     let onGotIt = bluetoothAwarenessGotItHandler
     let onClose = bluetoothAwarenessCloseHandler
@@ -1155,12 +1175,13 @@ final class RecordingOverlayPanel {
     )
     // Fixed width, content-driven height (`fitToContent`) so the multi-row card
     // is never clipped and adapts to copy length in either appearance.
-    showPanel(content: view, width: 320, height: 0, y: y, fitToContent: true)
+    showPanel(
+      content: view, width: 320, height: 0, inheritedFrame: inheritedFrame, fitToContent: true)
   }
 
   private func transitionToBluetoothAwareness() {
     guard let existingPanel = panel else { return }
-    let y = existingPanel.frame.origin.y
+    let inheritedFrame = existingPanel.frame
 
     panel = nil
     autoDismissTask?.cancel()
@@ -1176,7 +1197,7 @@ final class RecordingOverlayPanel {
     let work = DispatchWorkItem { [weak self] in
       guard let self, self.generation == token else { return }
       self.pendingCreateWork = nil
-      self.createBluetoothAwarenessPanel(y: y)
+      self.createBluetoothAwarenessPanel(inheritedFrame: inheritedFrame)
     }
     pendingCreateWork = work
     DispatchQueue.main.async(execute: work)
