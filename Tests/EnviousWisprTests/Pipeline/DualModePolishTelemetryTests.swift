@@ -545,6 +545,38 @@ struct DualModePolishTelemetryTests {
     #expect(cancellationCrumbs.count == 1)
   }
 
+  @Test(
+    "captureAFMPolishError normalizes a non-conforming error to .unexpectedGenerationFailure (#1525 PR J-1)"
+  )
+  func afmPolishErrorNormalizesNonConformingToUnexpected() {
+    struct OpaqueAFMError: Error {}
+    final class CaptureBox: @unchecked Sendable {
+      private let lock = NSLock()
+      private var _identity: String?
+      var identity: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return _identity
+      }
+      func record(_ identity: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        _identity = identity
+      }
+    }
+
+    let box = CaptureBox()
+    let prior = SentryBreadcrumb.captureErrorDelegate
+    SentryBreadcrumb.captureErrorDelegate = { error, _, _, _ in
+      box.record((error as? any StableSentryErrorIdentity)?.sentrySemanticID)
+    }
+    defer { SentryBreadcrumb.captureErrorDelegate = prior }
+
+    SentryBreadcrumb.captureAFMPolishError(OpaqueAFMError())
+
+    #expect(box.identity == "boundary.unexpected_generation_failure")
+  }
+
   // MARK: - 6. PolishMetadata Codable roundtrip
 
   @Test("PolishMetadata roundtrips through Codable")

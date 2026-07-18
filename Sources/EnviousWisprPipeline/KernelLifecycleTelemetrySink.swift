@@ -47,14 +47,14 @@ final class KernelLifecycleTelemetrySink {
   ) -> Void
 
   typealias CaptureErrorSink = @MainActor (
-    _ error: any Error,
+    _ error: any Error & StableSentryErrorIdentity,
     _ category: SentryBreadcrumb.ErrorCategory,
     _ stage: String,
     _ extra: [String: Any]?
   ) -> Void
 
   typealias SnapshotCaptureErrorSink = @MainActor (
-    _ error: any Error,
+    _ error: any Error & StableSentryErrorIdentity,
     _ category: SentryBreadcrumb.ErrorCategory,
     _ stage: String,
     _ extra: [String: Any]?,
@@ -536,7 +536,7 @@ final class KernelLifecycleTelemetrySink {
   }
 
   private func emitCaptureError(
-    _ error: any Error,
+    _ error: any Error & StableSentryErrorIdentity,
     _ category: SentryBreadcrumb.ErrorCategory,
     _ stage: String,
     _ extra: [String: Any]?,
@@ -635,11 +635,17 @@ final class KernelLifecycleTelemetrySink {
           "capture_session_id": Int(audioCapture.currentCaptureSessionID),
         ])
     case .asrFailed, .asrWedged:
+      // Row 8 (#1525 PR J-1): `transcriptionFailureError` stays `(any Error)?`
+      // because Parakeet's raw-vendor passthrough can be a non-conforming
+      // CoreML error (the recognized FluidAudio path already conforms). A
+      // conforming value (including the `KernelFallbackSentryError` default)
+      // passes through unchanged; a genuine miss becomes `.coreML`/
+      // `.unexpectedTranscriptionFailure` — never a silent drop.
       let error =
         telemetryState.transcriptionFailureError
         ?? KernelFallbackSentryError.transcriptionFailed
       emitCaptureError(
-        error,
+        SentryCaptureBoundaryError.normalizingTranscriptionFailure(error),
         .asrFailed, "transcription",
         ["backend": backend.rawValue],
         snapshot: recordingSnapshot())

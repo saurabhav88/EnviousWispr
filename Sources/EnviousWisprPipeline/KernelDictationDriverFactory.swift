@@ -48,7 +48,7 @@ public enum KernelDictationDriverFactory {
   /// cancellation "zero Sentry errors" test catches a regression through any
   /// path — not only the emitter (Codex review #875).
   package typealias HeartPathCaptureErrorSink = @MainActor (
-    _ error: any Error,
+    _ error: any Error & StableSentryErrorIdentity,
     _ category: SentryBreadcrumb.ErrorCategory,
     _ stage: String,
     _ extra: [String: Any]?,

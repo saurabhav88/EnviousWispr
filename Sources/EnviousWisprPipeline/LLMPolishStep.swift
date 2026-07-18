@@ -120,7 +120,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   struct TelemetrySeams {
     let limbFailureObserved: @MainActor (String, String, String, String, Int?) -> Void
     let breadcrumbStarted: @MainActor (String, [String: Any]?) -> Void
-    let captureProviderInitError: @MainActor (any Error) -> Void
+    let captureProviderInitError: @MainActor (any Error & StableSentryErrorIdentity) -> Void
     let captureAFMPolishError: @MainActor (any Error) -> Void
     let breadcrumbCompleted: @MainActor (String, [String: Any]?) -> Void
     /// The too-short bypass's own emit — this path returns from `process()`

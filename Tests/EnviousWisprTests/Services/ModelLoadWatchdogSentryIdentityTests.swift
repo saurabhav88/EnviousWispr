@@ -119,17 +119,16 @@ struct ModelLoadWatchdogSentryIdentityTests {
     #expect(event.tags?["error.identity"] == Self.semanticID)
   }
 
-  @MainActor
-  @Test("a non-conforming error's event is unchanged and carries no identity tag")
+  @Test(
+    "a non-conforming error's descriptor and fingerprint are unchanged (#1525 PR J-1: makeHandledErrorEvent narrowed — structuredDescriptor/handledErrorFingerprint stay generic)"
+  )
   func nonConformingErrorEventUnchanged() {
     let error = NSError(domain: "EnviousWispr", code: -3)
 
-    let event = SentryBreadcrumb.makeHandledErrorEvent(
-      error, category: .modelLoadFailed, stage: "asr", environment: Self.env)
-
-    #expect(event.message?.formatted == "model_load_failed: EnviousWispr#-3")
+    #expect(SentryBreadcrumb.structuredDescriptor(error) == "EnviousWispr#-3")
     #expect(
-      event.fingerprint == ["handled_error", "model_load_failed", "EnviousWispr#-3", Self.env])
-    #expect(event.tags?["error.identity"] == nil)
+      SentryBreadcrumb.handledErrorFingerprint(
+        for: .modelLoadFailed, error: error, environment: Self.env)
+        == ["handled_error", "model_load_failed", "EnviousWispr#-3", Self.env])
   }
 }

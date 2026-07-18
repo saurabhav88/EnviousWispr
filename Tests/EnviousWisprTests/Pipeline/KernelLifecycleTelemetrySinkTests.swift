@@ -714,13 +714,21 @@ import Testing
     #expect(recorder.captureErrors.first?.stage == "asr")
   }
 
+  /// #1525 PR J-1: `modelLoadError` narrowed to `(any Error & StableSentryErrorIdentity)?`
+  /// — a bare `NSError` no longer type-checks here. This fixture preserves the test's
+  /// intent (assert the real thrown error's message reaches the captured event, not a
+  /// synthesized placeholder) while conforming.
+  private struct FixtureModelLoadError: Error, LocalizedError, StableSentryErrorIdentity {
+    let sentryFingerprintDescriptor = "WhisperKit#42"
+    let sentrySemanticID = "test.fixture_model_load_error"
+    var errorDescription: String? { "CoreML model failed to compile" }
+  }
+
   @Test(".failed(.modelLoadFailed) surfaces the real thrown error (Pass 2 #2)")
   func failedModelLoadFailedUsesRealError() {
     let recorder = Recorder()
     let state = KernelTelemetryState()
-    state.modelLoadError = NSError(
-      domain: "WhisperKit", code: 42,
-      userInfo: [NSLocalizedDescriptionKey: "CoreML model failed to compile"])
+    state.modelLoadError = FixtureModelLoadError()
     let sink = makeSink(recorder: recorder, telemetryState: state)
     sink.emit(.failed(.modelLoadFailed))
     #expect(recorder.captureErrors.count == 1)
@@ -834,6 +842,34 @@ import Testing
     #expect(recorder.captureErrors.count == 1)
     #expect(recorder.captureErrors.first?.category == .asrFailed)
     #expect(recorder.captureErrors.first?.stage == "transcription")
+  }
+
+  /// Row 8 (#1525 PR J-1): `transcriptionFailureError` stays `(any Error)?` because
+  /// Parakeet's raw-vendor passthrough can be a non-conforming, non-CoreML error too.
+  /// A miss must still fire exactly one event under the fixed `.unexpectedTranscriptionFailure`
+  /// identity — never silently drop the alert.
+  @Test(
+    ".failed(.asrFailed) with a non-CoreML raw transcription error normalizes to .unexpectedTranscriptionFailure"
+  )
+  func failedASRFailedNonCoreMLNormalizesToUnexpected() {
+    struct OpaqueTranscriptionError: Error {}
+    var capturedIdentity: String?
+    var captureCount = 0
+    let state = KernelTelemetryState()
+    state.transcriptionFailureError = OpaqueTranscriptionError()
+    let sink = KernelLifecycleTelemetrySink(
+      backend: .parakeet,
+      audioCapture: FakeAudioCapture(),
+      context: KernelSessionContext(),
+      captureTelemetry: CaptureTelemetryState(),
+      telemetryState: state,
+      captureError: { error, _, _, _ in
+        captureCount += 1
+        capturedIdentity = error.sentrySemanticID
+      })
+    sink.emit(.failed(.asrFailed))
+    #expect(captureCount == 1)
+    #expect(capturedIdentity == "boundary.unexpected_transcription_failure")
   }
 
   @Test(".failed(.permissionDenied) emits .audioCaptureFailed captureError")

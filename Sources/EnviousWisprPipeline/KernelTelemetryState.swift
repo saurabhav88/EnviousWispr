@@ -12,7 +12,7 @@ final class KernelTelemetryState {
   var noSpeechTelemetry: KernelNoSpeechTelemetry?
   var asrEmptyDiagnostics: ASREmptyResultDiagnostics?
   var asrCompletedTelemetry: KernelASRCompletedTelemetry?
-  var captureFailureError: (any Error)?
+  var captureFailureError: (any Error & StableSentryErrorIdentity)?
   /// #1167: set by the best-effort `store` closure when the durable history save
   /// throws. The lifecycle sink reads it to withhold the "transcript durably
   /// saved" success marker on a degraded-save completion. The operational source
@@ -20,7 +20,7 @@ final class KernelTelemetryState {
   /// NOT this telemetry mirror.
   var historySaveFailed = false
   var transcriptionFailureError: (any Error)?
-  var modelLoadError: (any Error)?
+  var modelLoadError: (any Error & StableSentryErrorIdentity)?
   /// #1434: the ONE capture-health record every post-stop consumer reads.
   /// Stamped immediately after `stopCapture()` returns + the stale-session
   /// guard passes — BEFORE the too-short / no-audio / dead-air early

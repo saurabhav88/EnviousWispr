@@ -24,7 +24,9 @@ struct LLMTelemetrySinkLiveTests {
   }
 
   private struct CapturedHandledError {
-    let error: any Error
+    // #1525 PR J-1: `HandledErrorReporter` narrowed — the stored field must
+    // match so the value can be replayed into `makeHandledErrorEvent` below.
+    let error: any Error & StableSentryErrorIdentity
     let category: SentryBreadcrumb.ErrorCategory
     let stage: String
     let extra: [String: Any]?
@@ -154,5 +156,38 @@ struct LLMTelemetrySinkLiveTests {
           "EnviousWisprLLM.KeyStoreError#2", "test-account", "test",
         ])
     #expect(event.tags?["error.identity"] == "keystore.delete_failed")
+  }
+
+  /// Row 10 (#1525 PR J-1): the production conformer always converts (`legacyStore
+  /// .delete(key:)`'s only real implementation throws `KeyStoreError`), but the write-site
+  /// static type is `any Error` (untyped `throws`) — a genuine miss must still alert under
+  /// the fixed `.unexpectedLegacyKeyCleanupFailure` identity, never drop silently.
+  @Test(
+    "a non-conforming cleanup error still reports both effects, normalized to .unexpectedLegacyKeyCleanupFailure"
+  )
+  func legacyKeyCleanupFailedNonConformingNormalizesToUnexpected() async throws {
+    struct OpaqueCleanupError: Error {}
+    let box = ResultBox()
+    let sink = LLMTelemetrySink.makeLive(
+      limbFailureReporter: { limb, operation, result, errorCategory, durationMs in
+        box.recordLimb(
+          CapturedLimbFailure(
+            limb: limb, operation: operation, result: result,
+            errorCategory: errorCategory, durationMs: durationMs))
+      },
+      handledErrorReporter: { error, category, stage, extra, fingerprintDetail in
+        box.recordHandled(
+          CapturedHandledError(
+            error: error, category: category, stage: stage, extra: extra,
+            fingerprintDetail: fingerprintDetail))
+      })
+
+    sink.legacyKeyCleanupFailed(OpaqueCleanupError(), "test-account")
+
+    try await box.awaitHandled()
+    let (_, handled) = box.snapshot()
+
+    let handledError = try #require(handled)
+    #expect(handledError.error.sentrySemanticID == "boundary.unexpected_legacy_key_cleanup_failure")
   }
 }

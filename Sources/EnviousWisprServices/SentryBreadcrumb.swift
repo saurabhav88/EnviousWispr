@@ -143,7 +143,7 @@ public enum SentryBreadcrumb {
   ///     without this they would all merge into one issue). Pass the stable reason
   ///     tag so each cause gets its own Sentry issue (#945).
   public static func captureError(
-    _ error: any Error,
+    _ error: any Error & StableSentryErrorIdentity,
     category: ErrorCategory,
     stage: String,
     extra: [String: Any]? = nil,
@@ -189,7 +189,7 @@ public enum SentryBreadcrumb {
   /// Stays `@MainActor` (unlike the pure fingerprint helpers): `mergedExtra` invokes
   /// the `@MainActor` audio-environment provider.
   static func makeHandledErrorEvent(
-    _ error: any Error,
+    _ error: any Error & StableSentryErrorIdentity,
     category: ErrorCategory,
     stage: String,
     extra: [String: Any]? = nil,
@@ -206,10 +206,10 @@ public enum SentryBreadcrumb {
       "error.category": category.rawValue,
     ]
     // Readable name for the pinned identity. Metadata only — never in the
-    // fingerprint, so renaming it can never re-group an issue (#1524).
-    if let stable = error as? any StableSentryErrorIdentity {
-      eventTags["error.identity"] = stable.sentrySemanticID
-    }
+    // fingerprint, so renaming it can never re-group an issue (#1524). The
+    // parameter is already narrowed to a conforming type (#1525 PR J-1), so no
+    // cast is needed here.
+    eventTags["error.identity"] = error.sentrySemanticID
     for (key, value) in tags {
       eventTags[key] = value
     }
@@ -319,7 +319,9 @@ public enum SentryBreadcrumb {
       )
       return
     }
-    captureError(error, category: .generationFailed, stage: "polish")
+    captureError(
+      SentryCaptureBoundaryError.normalizingGenerationFailure(error),
+      category: .generationFailed, stage: "polish")
   }
 
   // MARK: - Apple Intelligence Diagnostics

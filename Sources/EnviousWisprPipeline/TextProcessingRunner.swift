@@ -98,8 +98,12 @@ internal final class TextProcessingRunner {
     /// Production: alerting Sentry events plus the counted `llm.polish_*` events.
     static let live = TelemetrySeams(
       captureError: { error, category, stage, extra, tags, fingerprintDetail in
+        // Row 5 (#1525 PR J-1): the seam stays generic (a raw `URLError` from
+        // cloud polish is a proven, genuinely-reachable non-conforming value)
+        // — normalize before calling the narrowed `SentryBreadcrumb.captureError`.
         SentryBreadcrumb.captureError(
-          error, category: category, stage: stage, extra: extra, tags: tags,
+          SentryCaptureBoundaryError.normalizingGenerationFailure(error),
+          category: category, stage: stage, extra: extra, tags: tags,
           fingerprintDetail: fingerprintDetail)
       },
       recordPolishFailed: { provider, model, reason, isTimeout in

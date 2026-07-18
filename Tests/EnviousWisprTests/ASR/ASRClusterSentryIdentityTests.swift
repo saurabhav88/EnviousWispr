@@ -222,17 +222,17 @@ struct ASRClusterSentryIdentityTests {
     #expect(event.tags?["error.identity"] == "asr.transcription_failed")
   }
 
-  @MainActor
-  @Test("a non-conforming error's event is unchanged and carries no identity tag")
+  @Test(
+    "a non-conforming error's descriptor and fingerprint are unchanged (#1525 PR J-1: makeHandledErrorEvent narrowed — structuredDescriptor/handledErrorFingerprint stay generic)"
+  )
   func nonConformingErrorEventUnchanged() {
     let error = NSError(domain: "EnviousWispr", code: -3)
 
-    let event = SentryBreadcrumb.makeHandledErrorEvent(
-      error, category: Self.category, stage: "transcription", environment: Self.env)
-
+    #expect(SentryBreadcrumb.structuredDescriptor(error) == "EnviousWispr#-3")
     #expect(
-      event.fingerprint == ["handled_error", "asr_failed", "EnviousWispr#-3", Self.env])
-    #expect(event.tags?["error.identity"] == nil)
+      SentryBreadcrumb.handledErrorFingerprint(
+        for: Self.category, error: error, environment: Self.env)
+        == ["handled_error", "asr_failed", "EnviousWispr#-3", Self.env])
   }
 
   /// #1525 PR I-B: `.modelNotLoaded` is the one confirmed-live new

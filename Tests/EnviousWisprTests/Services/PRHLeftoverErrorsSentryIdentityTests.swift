@@ -231,20 +231,19 @@ struct PRHLeftoverErrorsSentryIdentityTests {
     #expect(event.tags?["error.identity"] == "emoji.restore_under_restore")
   }
 
-  @MainActor
-  @Test("a non-conforming error's event is unchanged and carries no identity tag")
+  @Test(
+    "a non-conforming error's descriptor and fingerprint are unchanged (#1525 PR J-1: makeHandledErrorEvent narrowed — structuredDescriptor/handledErrorFingerprint stay generic)"
+  )
   func nonConformingErrorEventUnchanged() {
     let error = NSError(domain: "EnviousWispr", code: -3)
 
-    let event = SentryBreadcrumb.makeHandledErrorEvent(
-      error, category: .pipelineDispatchFailed, stage: "recording", environment: Self.env)
-
-    #expect(event.message?.formatted == "pipeline_dispatch_failed: EnviousWispr#-3")
+    #expect(SentryBreadcrumb.structuredDescriptor(error) == "EnviousWispr#-3")
     #expect(
-      event.fingerprint == [
-        "handled_error", "pipeline_dispatch_failed", "EnviousWispr#-3", Self.env,
-      ]
+      SentryBreadcrumb.handledErrorFingerprint(
+        for: .pipelineDispatchFailed, error: error, environment: Self.env)
+        == [
+          "handled_error", "pipeline_dispatch_failed", "EnviousWispr#-3", Self.env,
+        ]
     )
-    #expect(event.tags?["error.identity"] == nil)
   }
 }

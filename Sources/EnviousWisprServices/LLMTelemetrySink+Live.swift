@@ -19,7 +19,8 @@ extension LLMTelemetrySink {
   ) -> Void
 
   package typealias HandledErrorReporter = @MainActor (
-    _ error: any Error, _ category: SentryBreadcrumb.ErrorCategory, _ stage: String,
+    _ error: any Error & StableSentryErrorIdentity, _ category: SentryBreadcrumb.ErrorCategory,
+    _ stage: String,
     _ extra: [String: Any]?, _ fingerprintDetail: String?
   ) -> Void
 
@@ -63,8 +64,12 @@ extension LLMTelemetrySink {
             // handled error (per-incident detail). Account name only, never key material.
             limbFailureReporter(
               "keychain", "legacy_cleanup", "failed", "delete_failed", nil)
+            // Row 10 (#1525 PR J-1): normalize before calling the narrowed
+            // reporter — the production conformer always converts, but the
+            // write-site static type is `any Error` (untyped `throws`).
             handledErrorReporter(
-              error, .legacyKeyCleanupFailed, "keychain", ["account": account], account)
+              SentryCaptureBoundaryError.normalizingLegacyKeyCleanupFailure(error),
+              .legacyKeyCleanupFailed, "keychain", ["account": account], account)
           }
         }
       })
