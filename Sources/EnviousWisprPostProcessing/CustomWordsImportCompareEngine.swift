@@ -459,52 +459,65 @@ package actor CustomWordsImportCompareEngine {
   /// key. Using the stronger matching key here would flag pairs that never
   /// actually collide at runtime.
   ///
-  /// The corrected algorithm (plan rounds 5-7):
-  /// 1. One canonical-ownership set from every existing word's canonical AND
-  ///    every incoming candidate's canonical; existing-library ownership
-  ///    always sorts first, then incoming plan order.
-  /// 2. Each candidate's SOURCE aliases in plan order (never
-  ///    `suggestedAliases` — enrichment has not run at compare time; a
-  ///    colliding suggestion is enforced-and-receipted at commit instead).
-  ///    An alias equal to its OWN candidate's canonical is redundant, not a
-  ///    collision — silently normalized away, never reported.
-  /// 3. Canonical ownership is checked FIRST; a match records the WINNING
-  ///    canonical owner and the alias is never registered below.
-  /// 4. Alias-ownership: incumbent (existing-library) aliases always win over
-  ///    any import; among two incumbents sharing an alias the LATER one wins
-  ///    (mirroring `WordCorrector`'s last-write-wins map build); among
-  ///    imported aliases, first-in-plan-order wins. Only the LOSING candidate
-  ///    is flagged — the winner's alias is not at risk.
-  /// 5. Otherwise the candidate owns that alias surface for the batch.
+  /// `heldBy` must name the word that ACTUALLY holds the trigger, because it
+  /// drives both the inline note ("X already uses it") and F2c's suppression
+  /// check. So ownership mirrors `WordCorrector.buildLookups`
+  /// (WordCorrector.swift:176-215) rather than any convention of this file's
+  /// own — two rounds of review found invented conventions disagreeing with
+  /// runtime, in opposite directions:
+  ///
+  /// - Among two EXISTING words sharing an alias, the corrector assigns
+  ///   unconditionally, so the LATER word wins (its own debug line reads
+  ///   "using <later canonical>").
+  /// - When a key is held by an existing ALIAS *and* an existing CANONICAL,
+  ///   the ALIAS wins: the corrector builds every alias first, then SKIPS any
+  ///   canonical whose key an alias already owns ("Canonical 'X' skipped: key
+  ///   already maps to..."). A canonical-first order would name a word whose
+  ///   own spelling the corrector never even reaches.
+  ///
+  /// Lookup order for an imported alias, first match wins:
+  /// 1. existing alias owner (the runtime holder), 2. existing canonical
+  /// owner, 3. an incoming candidate's canonical, 4. an earlier imported
+  /// alias. Otherwise this candidate claims the surface for the batch.
+  ///
+  /// A candidate's SOURCE aliases only, in plan order — never
+  /// `suggestedAliases`, since enrichment has not run at compare time and a
+  /// colliding suggestion is enforced-and-receipted at commit instead. An
+  /// alias equal to its OWN candidate's canonical is redundant, not a
+  /// collision, and is dropped silently. Only the LOSING side is ever
+  /// flagged; a winner's alias is not at risk.
   static func detectAliasCollisions(
     coalesced: [CustomWordsImportCandidate],
     existingWords: [CustomWord]
   ) throws -> [UUID: [CustomWordsImportAliasCollision]] {
-    var canonicalOwners: [String: UUID] = [:]
-    for word in existingWords {
-      let key = persistenceKey(word.canonical)
-      if canonicalOwners[key] == nil { canonicalOwners[key] = word.id }
-    }
-    for candidate in coalesced {
-      let key = persistenceKey(candidate.canonical)
-      if canonicalOwners[key] == nil { canonicalOwners[key] = candidate.id }
-    }
-
-    // Incumbent aliases: LAST writer wins, mirroring runtime rather than
-    // this function's own first-wins convention. When two existing words
-    // share an alias, `WordCorrector.buildLookups` assigns unconditionally
-    // (`singleAliasMap[key] = word.canonical`, WordCorrector.swift:180-214,
-    // whose own debug line reads "using <later canonical>"), so the later
-    // word is the one that actually claims the trigger. Reporting the
-    // earlier one would name a word that is not really holding the alias,
-    // and F2c's Replace-target suppression compares against this exact id.
-    var aliasOwners: [String: UUID] = [:]
+    // Existing aliases: last writer wins, per the corrector's unconditional
+    // assignment.
+    var existingAliasOwners: [String: UUID] = [:]
     for word in existingWords {
       for alias in word.aliases {
         let key = persistenceKey(alias)
-        if key.isEmpty == false { aliasOwners[key] = word.id }
+        if key.isEmpty == false { existingAliasOwners[key] = word.id }
       }
     }
+    var existingCanonicalOwners: [String: UUID] = [:]
+    for word in existingWords {
+      let key = persistenceKey(word.canonical)
+      if existingCanonicalOwners[key] == nil { existingCanonicalOwners[key] = word.id }
+    }
+    // Incoming canonicals are not in the library yet, so they rank below every
+    // incumbent surface — but still above another candidate's alias, since all
+    // canonicals are registered before any imported alias is checked.
+    var candidateCanonicalOwners: [String: UUID] = [:]
+    for candidate in coalesced {
+      let key = persistenceKey(candidate.canonical)
+      if candidateCanonicalOwners[key] == nil { candidateCanonicalOwners[key] = candidate.id }
+    }
+
+    func incumbentOwner(of key: String) -> UUID? {
+      existingAliasOwners[key] ?? existingCanonicalOwners[key]
+    }
+
+    var importedAliasOwners: [String: UUID] = [:]
 
     var collisions: [UUID: [CustomWordsImportAliasCollision]] = [:]
     for candidate in coalesced {
@@ -514,25 +527,31 @@ package actor CustomWordsImportCompareEngine {
       for alias in sourceAliases {
         let key = persistenceKey(alias)
         if key.isEmpty || key == ownCanonicalKey { continue }
-        // A candidate only ever owns its OWN canonical surface, which the
-        // `key == ownCanonicalKey` guard above already consumed — so any
-        // canonical owner found here is necessarily a different word.
-        if let canonicalOwner = canonicalOwners[key] {
+        // Incumbents first — an existing alias outranks an existing canonical,
+        // mirroring the corrector's build order. Neither can be this candidate.
+        if let owner = incumbentOwner(of: key) {
           collisions[candidate.id, default: []].append(
-            CustomWordsImportAliasCollision(alias: alias, heldBy: canonicalOwner))
+            CustomWordsImportAliasCollision(alias: alias, heldBy: owner))
           continue
         }
-        // Likewise, a candidate can only already own an alias surface via an
-        // earlier alias of its own, which is a duplicate spelling rather than
-        // a collision — skip it without flagging.
-        if let aliasOwner = aliasOwners[key] {
-          if aliasOwner != candidate.id {
+        // A candidate only ever owns its OWN canonical surface, which the
+        // `key == ownCanonicalKey` guard already consumed, so any candidate
+        // canonical found here belongs to a different row.
+        if let owner = candidateCanonicalOwners[key] {
+          collisions[candidate.id, default: []].append(
+            CustomWordsImportAliasCollision(alias: alias, heldBy: owner))
+          continue
+        }
+        // A candidate can already own an alias surface only via an earlier
+        // alias of its own — a duplicate spelling, not a collision.
+        if let owner = importedAliasOwners[key] {
+          if owner != candidate.id {
             collisions[candidate.id, default: []].append(
-              CustomWordsImportAliasCollision(alias: alias, heldBy: aliasOwner))
+              CustomWordsImportAliasCollision(alias: alias, heldBy: owner))
           }
           continue
         }
-        aliasOwners[key] = candidate.id
+        importedAliasOwners[key] = candidate.id
       }
     }
     return collisions

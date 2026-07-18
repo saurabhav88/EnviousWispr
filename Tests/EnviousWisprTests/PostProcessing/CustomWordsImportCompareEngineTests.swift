@@ -441,6 +441,24 @@ struct CustomWordsImportCompareEngineTests {
       ])
   }
 
+  @Test("a key held by both an existing alias and an existing canonical names the alias owner")
+  func keyHeldByBothAnExistingAliasAndCanonicalReportsTheAliasOwner() async throws {
+    // The corrector builds every alias into the lookup FIRST, then skips any
+    // canonical whose key an alias already owns (WordCorrector.swift:176-215,
+    // "Canonical 'X' skipped: key already maps to..."). So when both kinds of
+    // owner exist, the alias owner is the real holder — naming the canonical
+    // owner would point at a word the corrector never reaches for that key.
+    let canonicalHolder = CustomWord(canonical: "Annie")
+    let aliasHolder = CustomWord(canonical: "Anika", aliases: ["annie"])
+    let results = try await compare(
+      [candidate("Zed", aliases: .supplied(["Annie"]))],
+      against: [canonicalHolder, aliasHolder])
+    #expect(
+      results[0].collidingAliases == [
+        CustomWordsImportAliasCollision(alias: "Annie", heldBy: aliasHolder.id)
+      ])
+  }
+
   @Test("aliases that differ only by internal whitespace do not collide")
   func aliasesDifferingOnlyByInternalWhitespaceAreNotFlagged() async throws {
     // Collisions are a claim about the stored/correction-map slot, which uses
