@@ -575,6 +575,37 @@ struct CustomWordsImportCommitTests {
     #expect(live.contains { $0.canonical == builtin.canonical } == false)
   }
 
+  @Test("an import survives a library where a renamed built-in duplicates its own ID")
+  func importSurvivesDuplicateIDsFromARenamedBuiltin() throws {
+    let (manager, _) = makeManager()
+    var live = try #require(manager.load())
+    let builtin = try #require(live.first)
+
+    // Renaming a built-in stores a user override carrying the built-in's OWN
+    // UUID, while `mergedWords` keeps showing the built-in (its canonical no
+    // longer matches any user word). Within this process the two therefore
+    // share an id. A later re-read is what surfaces the pair to a caller.
+    //
+    // That duplicate is itself the bug in #1670, so the `count == 2` guard
+    // below is a precondition, not a desired outcome: fixing #1670 will make
+    // it fail. When that lands, keep the commit assertions and build the
+    // duplicate directly instead — this test defends commitImport against a
+    // non-unique list, whatever produced it.
+    var renamed = builtin
+    renamed.canonical = "\(builtin.canonical) Renamed"
+    try manager.update(word: renamed, in: &live)
+
+    let reloaded = try #require(manager.load())
+    #expect(reloaded.filter { $0.id == builtin.id }.count == 2)
+
+    var working = reloaded
+    let receipt = try manager.commitImport(
+      plan(baseline: reloaded, additions: [candidate("Kubernetes")]), to: &working)
+
+    #expect(receipt.addedIDs.count == 1)
+    #expect(working.contains { $0.canonical == "Kubernetes" })
+  }
+
   // MARK: - Backup
 
   @Test("a changing commit writes a backup first")

@@ -733,8 +733,15 @@ public final class CustomWordsManager {
 
     var result = words
     var dropped: [CustomWordsImportAliasCollision] = []
+    // Last wins, and the list must not be assumed id-unique. Renaming a
+    // built-in stores a user override carrying the built-in's OWN id while
+    // `mergedWords` keeps showing the built-in (its canonical no longer
+    // matches any user word), so within one process the two share an id and
+    // `uniqueKeysWithValues` would trap on a state the manager itself creates.
+    // `mergedWords` returns built-ins first, so last-wins resolves to the
+    // user's own word — the one an import can legitimately touch.
     let indexByID = Dictionary(
-      uniqueKeysWithValues: result.indices.map { (result[$0].id, $0) })
+      result.indices.map { (result[$0].id, $0) }, uniquingKeysWith: { _, last in last })
     for id in touchedOrder {
       guard let index = indexByID[id] else { continue }
       let word = result[index]
