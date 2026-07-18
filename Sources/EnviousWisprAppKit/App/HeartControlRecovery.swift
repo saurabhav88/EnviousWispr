@@ -23,8 +23,12 @@ struct HeartControlRecovery {
 
   func logDispatchFailure(_ error: any Error, op: String) {
     guard !(error is CancellationError) else { return }
+    // Row 11 (#1525 PR J-1): production-inert today (only `.preWarm` can
+    // actually throw here) — normalize anyway so a future implementation
+    // change that starts throwing something real still alerts.
     SentryBreadcrumb.captureError(
-      error, category: .pipelineDispatchFailed, stage: "recording",
+      SentryCaptureBoundaryError.normalizingHeartControlFailure(error),
+      category: .pipelineDispatchFailed, stage: "recording",
       extra: ["op": op, "backend": backend()])
   }
 
@@ -35,7 +39,8 @@ struct HeartControlRecovery {
     let isCancellation = error is CancellationError
     if !isCancellation {
       SentryBreadcrumb.captureError(
-        error, category: .pipelineDispatchFailed, stage: "recording",
+        SentryCaptureBoundaryError.normalizingHeartControlFailure(error),
+        category: .pipelineDispatchFailed, stage: "recording",
         extra: ["op": op, "backend": backend()])
     }
     hideOverlay()

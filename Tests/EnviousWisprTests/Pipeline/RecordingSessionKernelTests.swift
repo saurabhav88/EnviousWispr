@@ -1,3 +1,6 @@
+import EnviousWisprAudio
+import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 import Testing
 
@@ -199,6 +202,44 @@ import Testing
       #expect(kernel.testActiveTaskCount == 0)
 
       context.clock.drainPending()
+    }
+
+    // MARK: #1525 PR J-1 — modelLoadError cast-miss falls back to KernelFallbackSentryError
+
+    @Test(
+      "a genuine load failure with a non-conforming error leaves modelLoadError nil and the lifecycle sink still fires exactly one event under the fixed fallback identity"
+    )
+    func modelLoadFailedNonConformingFallsBackToKernelFallbackIdentity() async {
+      struct OpaqueLoadError: Error, Sendable {}
+      let (_, wrapper) = makeWrapper(behavior: .failLoad(OpaqueLoadError()))
+      let kernel = wrapper.testKernel
+
+      await apply(.start, to: wrapper)
+
+      #expect(kernel.recordingOutcome == .failed(.modelLoadFailed))
+      // The cast at the write site misses (OpaqueLoadError does not conform to
+      // StableSentryErrorIdentity) — the property stays nil by design (§4).
+      #expect(wrapper.telemetryState.modelLoadError == nil)
+
+      var capturedIdentity: String?
+      var capturedDescriptor: String?
+      var captureCount = 0
+      let sink = KernelLifecycleTelemetrySink(
+        backend: .parakeet,
+        audioCapture: FakeAudioCapture(),
+        context: KernelSessionContext(),
+        captureTelemetry: CaptureTelemetryState(),
+        telemetryState: wrapper.telemetryState,
+        captureError: { error, _, _, _ in
+          captureCount += 1
+          capturedIdentity = error.sentrySemanticID
+          capturedDescriptor = error.sentryFingerprintDescriptor
+        })
+      sink.emit(.failed(.modelLoadFailed))
+
+      #expect(captureCount == 1)
+      #expect(capturedDescriptor == "EnviousWispr#-10")
+      #expect(capturedIdentity == "kernel.model_load_failed")
     }
 
     // MARK: #959 — seam routing: ordinary terminal uses cheap cancel(), wedge uses recoverFromWedge()

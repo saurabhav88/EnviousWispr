@@ -385,14 +385,39 @@ struct TextProcessingRunnerCaptureTests {
     // boxing `URLError` as `any Error` produces an `NSError` dynamic value, so a
     // `StableSentryErrorIdentity` conformance is unreachable through this path.
     // The existing `NSError` fallback already produces the stable descriptor.
+    //
+    // #1525 PR J-1: `makeHandledErrorEvent` is now narrowed, so the spy-captured
+    // raw error must go through the SAME normalization the runner's `.live` seam
+    // applies before calling it — proving the boundary preserves this exact
+    // historical fingerprint, not a fresh assumption about what it does.
+    let normalized = SentryCaptureBoundaryError.normalizingGenerationFailure(call.error)
     let event = SentryBreadcrumb.makeHandledErrorEvent(
-      call.error, category: call.category, stage: call.stage, extra: call.extra,
+      normalized, category: call.category, stage: call.stage, extra: call.extra,
       tags: call.tags, fingerprintDetail: call.fingerprintDetail, environment: "test")
     #expect(
       event.fingerprint == [
         "handled_error", "polish_provider_failed", "NSURLErrorDomain#-1000", "unknown", "test",
       ])
-    #expect(event.tags?["error.identity"] == nil)
+    #expect(event.tags?["error.identity"] == "polish.external_url_transport")
+  }
+
+  @Test(
+    "an unrecognized non-URLError error normalizes to .unexpectedGenerationFailure (#1525 PR J-1)"
+  )
+  func unrecognizedNonURLErrorNormalizesToUnexpectedGenerationFailure() async throws {
+    let spy = CaptureSpy()
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
+    struct OpaqueError: Error {}
+    let step = makeStep(provider: .openAI, model: "gpt-4o-mini") { OpaqueError() }
+
+    _ = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+
+    #expect(spy.calls.count == 1)
+    let call = try #require(spy.calls.first)
+    let normalized = SentryCaptureBoundaryError.normalizingGenerationFailure(call.error)
+    #expect(normalized.sentrySemanticID == "boundary.unexpected_generation_failure")
   }
 
   // MARK: - Timeout

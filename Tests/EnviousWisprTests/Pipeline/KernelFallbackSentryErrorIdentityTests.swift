@@ -174,17 +174,16 @@ struct KernelFallbackSentryErrorIdentityTests {
     #expect(event.tags?["error.identity"] == "audio.no_built_in_microphone_found")
   }
 
-  @MainActor
-  @Test("a non-conforming error's event is unchanged and carries no identity tag")
+  @Test(
+    "a non-conforming error's descriptor and fingerprint are unchanged (#1525 PR J-1: makeHandledErrorEvent narrowed — structuredDescriptor/handledErrorFingerprint stay generic)"
+  )
   func nonConformingErrorEventUnchanged() {
     let error = NSError(domain: "EnviousWispr", code: -99)
 
-    let event = SentryBreadcrumb.makeHandledErrorEvent(
-      error, category: .xpcServiceError, stage: "asr", environment: Self.env)
-
-    #expect(event.message?.formatted == "xpc_service_error: EnviousWispr#-99")
+    #expect(SentryBreadcrumb.structuredDescriptor(error) == "EnviousWispr#-99")
     #expect(
-      event.fingerprint == ["handled_error", "xpc_service_error", "EnviousWispr#-99", Self.env])
-    #expect(event.tags?["error.identity"] == nil)
+      SentryBreadcrumb.handledErrorFingerprint(
+        for: .xpcServiceError, error: error, environment: Self.env)
+        == ["handled_error", "xpc_service_error", "EnviousWispr#-99", Self.env])
   }
 }

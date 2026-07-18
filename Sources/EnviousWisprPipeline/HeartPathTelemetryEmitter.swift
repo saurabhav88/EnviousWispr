@@ -30,7 +30,7 @@ final class HeartPathTelemetryEmitter {
   // MARK: - Sinks (closure-based; default wires SentryBreadcrumb)
 
   typealias CaptureErrorSink = @MainActor (
-    _ error: any Error,
+    _ error: any Error & StableSentryErrorIdentity,
     _ category: SentryBreadcrumb.ErrorCategory,
     _ stage: String,
     _ extra: [String: Any]?

@@ -136,6 +136,40 @@ struct HeartControlRecoveryTests {
       "cancellation must NOT surface a user-facing error")
   }
 
+  /// Row 11 (#1525 PR J-1): production-inert today (only `.preWarm` can throw here), but a
+  /// miss must still normalize to the fixed `.unexpectedHeartControlFailure` identity so a
+  /// future implementation change that starts throwing something real still alerts.
+  @Test("logDispatchFailure normalizes a non-conforming error to .unexpectedHeartControlFailure")
+  func logDispatchFailureNormalizesNonConformingToUnexpected() {
+    struct OpaqueError: Error {}
+    let hide = HideCallCounter()
+    let locked = LockedCallCounter()
+    let recovery = makeRecovery(hideCalls: hide, lockedCalls: locked)
+    withSentrySpy { spy in
+      recovery.logDispatchFailure(OpaqueError(), op: "stop")
+      #expect(
+        (spy.calls.first?.error as? any StableSentryErrorIdentity)?.sentrySemanticID
+          == "boundary.unexpected_heart_control_failure")
+    }
+  }
+
+  @Test("recover normalizes a non-conforming error to .unexpectedHeartControlFailure")
+  func recoverNormalizesNonConformingToUnexpected() {
+    struct OpaqueError: Error {}
+    let hide = HideCallCounter()
+    let locked = LockedCallCounter()
+    let sink = ErrorSurfaceSpy()
+    let recovery = makeRecovery(hideCalls: hide, lockedCalls: locked)
+    withSentrySpy { spy in
+      recovery.recover(
+        error: OpaqueError(), op: "toggle", reason: .modelWedged,
+        setTerminalReason: sink.setTerminalReason)
+      #expect(
+        (spy.calls.first?.error as? any StableSentryErrorIdentity)?.sentrySemanticID
+          == "boundary.unexpected_heart_control_failure")
+    }
+  }
+
   @Test("recover passes op string verbatim — distinguishes call sites at triage time")
   func recoverPassesOpVerbatim() {
     let hide = HideCallCounter()

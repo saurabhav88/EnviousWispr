@@ -998,7 +998,11 @@ final class RecordingSessionKernel {
       try await audioCapture.startEnginePhase()
     } catch {
       guard isCurrent(sid) else { return }
-      telemetryState.captureFailureError = error
+      // #1525 PR J-1: the write-site static type is `any Error` (an untyped
+      // `throws` surface), so an intersection cast is required before
+      // narrowing — a miss leaves the property nil and the read-side
+      // `KernelFallbackSentryError` fallback fires (§4).
+      telemetryState.captureFailureError = error as? (any Error & StableSentryErrorIdentity)
       finishTerminal(.failed(Self.classifyCaptureStartError(error)), sid: sid)
       return
     }
@@ -1033,7 +1037,9 @@ final class RecordingSessionKernel {
         try await audioCapture.startEnginePhase()
       } catch {
         guard isCurrent(sid) else { return }
-        telemetryState.captureFailureError = error
+        // #1525 PR J-1: see the identical cast note at the first
+        // `startEnginePhase()` catch above.
+        telemetryState.captureFailureError = error as? (any Error & StableSentryErrorIdentity)
         finishTerminal(.failed(Self.classifyCaptureStartError(error)), sid: sid)
         return
       }
@@ -1139,7 +1145,9 @@ final class RecordingSessionKernel {
     } catch {
       guard isCurrent(sid) else { return }
       audioCapture.onBufferCaptured = nil
-      telemetryState.captureFailureError = error
+      // #1525 PR J-1: see the identical cast note at the capture-start
+      // catches above.
+      telemetryState.captureFailureError = error as? (any Error & StableSentryErrorIdentity)
       finishTerminal(.failed(.captureStartFailed), sid: sid)
       return
     }
@@ -2295,7 +2303,14 @@ final class RecordingSessionKernel {
     if stopLatched { return .stopped }
     if cancelRequested { return .cancelled }
     if adapter.readiness == .ready { return .ready }
-    if let thrownError { telemetryState.modelLoadError = thrownError }
+    // #1525 PR J-1: identical cast pattern to `captureFailureError` above
+    // (§4) — a miss (the rare XPC last-resort raw error,
+    // `ASRManagerProxy.swift:222-229`) leaves the property nil and the
+    // read-side `KernelFallbackSentryError.modelLoadFailed` fallback fires.
+    // Restoring that rare case's own identity is PR J-2 (#1658).
+    if let thrownError {
+      telemetryState.modelLoadError = thrownError as? (any Error & StableSentryErrorIdentity)
+    }
     return .loadFailed
   }
 
