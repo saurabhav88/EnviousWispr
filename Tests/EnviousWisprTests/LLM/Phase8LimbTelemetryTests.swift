@@ -67,7 +67,7 @@ import Testing
     func noopSinkSilent() {
       let box = capture {
         LLMTelemetrySink.noop.limbFailure("x", "y", "failed", "z", 1)
-        LLMTelemetrySink.noop.legacyKeyCleanupFailed(URLError(.timedOut), "acct")
+        LLMTelemetrySink.noop.legacyKeyCleanupFailed(TestStableSentryError(), "acct")
       }
       #expect(box.named("limb.failure_observed").isEmpty)
     }
@@ -77,7 +77,7 @@ import Testing
       let spy = SinkSpy()
       let sink = spy.makeSink()
       sink.limbFailure("llm_prewarm", "prewarm", "failed", "openAI_-1001", 10)
-      sink.legacyKeyCleanupFailed(URLError(.timedOut), "openai-api-key")
+      sink.legacyKeyCleanupFailed(TestStableSentryError(), "openai-api-key")
       #expect(spy.limbs == ["llm_prewarm"])
       #expect(spy.cleanups == ["openai-api-key"])
     }
