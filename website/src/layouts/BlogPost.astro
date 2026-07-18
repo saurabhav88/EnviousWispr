@@ -228,11 +228,6 @@ const breadcrumbJsonLd = JSON.stringify({
         </section>
       )}
 
-      <section class="blog-comments" aria-label="Comments">
-        <h2 class="comments-heading">Comments</h2>
-        <div id="remark42"></div>
-      </section>
-
       <nav class="blog-post-nav" aria-label="Post navigation">
         <a href="/blog/" class="back-link back-link-bottom">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
@@ -748,33 +743,6 @@ const breadcrumbJsonLd = JSON.stringify({
     }
   }
 
-  /* Comments */
-  .blog-comments {
-    margin-top: 64px;
-    padding-top: 48px;
-    border-top: 1px solid var(--border);
-  }
-
-  .comments-heading {
-    font-size: 13px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-3);
-    margin-bottom: 24px;
-  }
-
-  /* Remark42 overrides */
-  #remark42 {
-    min-height: 100px;
-  }
-
-  #remark42 iframe {
-    border-radius: var(--radius-card);
-    border: 1px solid var(--border);
-    background: var(--surface);
-  }
-
   /* Bottom nav */
   .blog-post-nav {
     margin-top: 64px;
@@ -912,35 +880,4 @@ const breadcrumbJsonLd = JSON.stringify({
       });
     });
   })();
-</script>
-
-<script is:inline>
-  // Remark42 comments - only load on production, only when reader scrolls near the comments section
-  if (window.location.hostname === 'enviouswispr.com') {
-    var remark_config = {
-      host: 'https://comments.enviouswispr.com',
-      site_id: 'enviouswispr',
-      url: window.location.origin + window.location.pathname,
-      max_shown_comments: 15,
-      theme: 'light',
-      page_title: document.title,
-    };
-
-    var loadRemark42 = function () {
-      !function(e,n){for(var o=0;o<e.length;o++){var r=n.createElement("script"),c=".js",d=n.head||n.body;"noModule"in r?(r.type="module",c=".mjs"):r.async=!0,r.defer=!0,r.src=remark_config.host+"/web/"+e[o]+c,d.appendChild(r)}}(remark_config.components||["embed"],document);
-    };
-
-    var mount = document.getElementById('remark42');
-    if (mount && 'IntersectionObserver' in window) {
-      var io = new IntersectionObserver(function (entries) {
-        if (entries.some(function (e) { return e.isIntersecting; })) {
-          io.disconnect();
-          loadRemark42();
-        }
-      }, { rootMargin: '400px 0px' });
-      io.observe(mount);
-    } else {
-      loadRemark42();
-    }
-  }
 </script>
