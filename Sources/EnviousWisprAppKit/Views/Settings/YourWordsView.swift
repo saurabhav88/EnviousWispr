@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprPostProcessing
 import EnviousWisprServices
 import SwiftUI
 
@@ -19,6 +20,12 @@ struct YourWordsView: View {
     @Bindable var settings = settings
 
     SettingsContentView {
+      // Launch-time load failure (#1646): honest banner instead of a silent
+      // empty list. Two distinct situations, two distinct messages.
+      if let failure = customWordsCoordinator.wordsLoadFailureAtLaunch {
+        WordsLoadFailureBanner(failure: failure)
+      }
+
       // "Add term" action (the page title + description now live in the page header).
       HStack {
         Spacer()
@@ -67,5 +74,44 @@ struct YourWordsView: View {
         return nil
       }
     }
+  }
+}
+
+/// Warning-tinted page banner for a failed launch-time words load (#1646).
+/// Mirrors `FrozenPerRecordingBanner`'s shape with the warning palette.
+private struct WordsLoadFailureBanner: View {
+  let failure: CustomWordsInitialLoadFailure
+
+  private var message: String {
+    switch failure {
+    case .unreadable:
+      return
+        "Your saved words couldn't be read this time. Nothing was changed or deleted. Try relaunching."
+    case .corrupted:
+      return
+        "Your saved words file was damaged and moved aside for recovery. EnviousWispr started with an empty saved list."
+    }
+  }
+
+  var body: some View {
+    HStack(spacing: 9) {
+      Image(systemName: "exclamationmark.triangle")
+        .font(.system(size: 14, weight: .medium))
+        .foregroundStyle(.stWarning)
+        .accessibilityHidden(true)
+      Text(message)
+        .font(.stHelper)
+        .foregroundStyle(.stTextBody)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 11)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.stWarningSoft, in: RoundedRectangle(cornerRadius: 10))
+    .overlay(
+      RoundedRectangle(cornerRadius: 10)
+        .strokeBorder(Color.stWarning.opacity(0.25), lineWidth: 1)
+    )
   }
 }

@@ -8,6 +8,34 @@ public struct BuiltinWord: Sendable {
   public let word: CustomWord
 }
 
+/// Thrown by the CRUD mutation methods when an EXISTING custom-words file
+/// cannot be read (#1646). Failing closed here is what prevents a mutation
+/// from silently substituting an empty library and writing it over the
+/// user's real one.
+package enum CustomWordsPersistenceError: LocalizedError, Sendable, Equatable {
+  case unreadableExistingFile
+  case corruptedExistingFile
+
+  package var errorDescription: String? {
+    switch self {
+    case .unreadableExistingFile:
+      return "Your saved words could not be read. Nothing was changed. Try again."
+    case .corruptedExistingFile:
+      return
+        "Your saved words file was damaged and moved aside for recovery. No edit or import was applied."
+    }
+  }
+}
+
+/// Why the launch-time `load()` came back nil (#1646), exposed so the
+/// coordinator can show an honest banner instead of a silent empty list.
+/// `.unreadable` means the file is intact but temporarily unreadable;
+/// `.corrupted` means it was undecodable and archived aside for recovery.
+package enum CustomWordsInitialLoadFailure: Sendable, Equatable {
+  case unreadable
+  case corrupted
+}
+
 /// Persists custom words to disk with a two-tier architecture:
 /// - **Built-in defaults**: hardcoded in the app, updatable via app updates
 /// - **User words**: persisted to `custom-words.json`
@@ -167,13 +195,58 @@ public final class CustomWordsManager {
     var words: [CustomWord] = []
   }
 
+  /// `loadFile()`'s result (#1646) — distinguishes the three conditions the
+  /// old `CustomWordsFile?` collapsed into one `nil`, so callers can fail
+  /// closed instead of treating every failure as "the library is empty".
+  private enum CustomWordsLoadResult {
+    case missing  // path does not exist — legitimate first-run state
+    case loaded(CustomWordsFile)  // decoded (current or migrated legacy format)
+    case unreadable(underlying: Error)  // exists, but the I/O read itself failed
+    case corrupted  // exists, readable, undecodable — archived aside
+  }
+
   // MARK: - Public API
 
+  /// Why the most recent `load()` returned nil; nil after a successful load
+  /// or a legitimate first run (#1646). The coordinator reads this once at
+  /// launch to show an honest banner instead of a silent empty list.
+  package private(set) var lastLoadFailure: CustomWordsInitialLoadFailure?
+
   /// Load the effective word list: built-in defaults (minus tombstones) + user words.
-  /// Returns nil only on unrecoverable I/O failure.
+  /// Returns nil only on unrecoverable I/O failure or a corrupted (archived)
+  /// file — `lastLoadFailure` says which (#1646).
   public func load() -> [CustomWord]? {
-    let file = loadFile() ?? CustomWordsFile()
-    return mergedWords(file: file)
+    switch loadFile() {
+    case .missing:
+      lastLoadFailure = nil
+      return mergedWords(file: CustomWordsFile())
+    case .loaded(let file):
+      lastLoadFailure = nil
+      return mergedWords(file: file)
+    case .unreadable:
+      lastLoadFailure = .unreadable
+      return nil
+    case .corrupted:
+      lastLoadFailure = .corrupted
+      return nil
+    }
+  }
+
+  /// The strict read every explicit CRUD mutation uses (#1646). `.missing` is
+  /// a legitimate first run (fresh empty file); an unreadable or corrupted
+  /// existing file throws so the mutation writes nothing and the caller's
+  /// in-memory list stays untouched.
+  private func loadFileForMutation() throws -> CustomWordsFile {
+    switch loadFile() {
+    case .missing:
+      return CustomWordsFile()
+    case .loaded(let file):
+      return file
+    case .unreadable:
+      throw CustomWordsPersistenceError.unreadableExistingFile
+    case .corrupted:
+      throw CustomWordsPersistenceError.corruptedExistingFile
+    }
   }
 
   /// Phase 3b (#631): debounced writer that bumps `frequencyUsed` and
@@ -242,7 +315,35 @@ public final class CustomWordsManager {
     pendingIncrements.removeAll()
     guard !snapshot.isEmpty else { return }
 
-    var file = loadFile() ?? CustomWordsFile()
+    var file: CustomWordsFile
+    switch loadFile() {
+    case .missing:
+      file = CustomWordsFile()
+    case .loaded(let loaded):
+      file = loaded
+    case .unreadable, .corrupted:
+      // Best-effort writer (#1646): requeue instead of dropping so the
+      // increments survive to the next flush attempt — and reschedule the
+      // debounce timer, since this method already cancelled it on entry;
+      // without that, a quiet session would strand the requeued increments
+      // in memory until app exit (cloud review, PR #1647).
+      for (id, increment) in snapshot {
+        var entry =
+          pendingIncrements[id]
+          ?? PendingIncrement(count: 0, lastTimestamp: increment.lastTimestamp)
+        entry.count += increment.count
+        entry.lastTimestamp = max(entry.lastTimestamp, increment.lastTimestamp)
+        pendingIncrements[id] = entry
+      }
+      schedulePendingFlush()
+      Task {
+        await AppLogger.shared.log(
+          "CustomWordsManager: flush skipped — words file unreadable; increments requeued",
+          level: .info, category: "CustomWords"
+        )
+      }
+      return
+    }
     var changed = false
     for (id, increment) in snapshot {
       guard let idx = file.words.firstIndex(where: { $0.id == id }) else { continue }
@@ -276,7 +377,7 @@ public final class CustomWordsManager {
       })
     else { return }
 
-    var file = loadFile() ?? CustomWordsFile()
+    var file = try loadFileForMutation()
 
     // If this matches a deleted built-in, restore it instead of adding a user word
     if let builtin = Self.builtinDefaults.first(where: {
@@ -313,7 +414,7 @@ public final class CustomWordsManager {
   public func addBatch(_ incoming: [CustomWord], to words: inout [CustomWord]) throws
     -> [UUID]
   {
-    var file = loadFile() ?? CustomWordsFile()
+    var file = try loadFileForMutation()
     // Seed dedupe from BOTH the in-memory merged list and the on-disk file so a
     // stale `words` snapshot can't produce a duplicate at batch scale.
     var seen = Set(words.map { $0.canonical.lowercased() })
@@ -355,7 +456,7 @@ public final class CustomWordsManager {
 
   public func remove(id: UUID, from words: inout [CustomWord]) throws {
     let word = words.first { $0.id == id }
-    var file = loadFile() ?? CustomWordsFile()
+    var file = try loadFileForMutation()
 
     // If this matches a built-in, tombstone it
     if let word = word,
@@ -381,7 +482,7 @@ public final class CustomWordsManager {
   public func removeBatch(ids: [UUID], from words: inout [CustomWord]) throws {
     guard !ids.isEmpty else { return }
     let idSet = Set(ids)
-    var file = loadFile() ?? CustomWordsFile()
+    var file = try loadFileForMutation()
 
     // Tombstone any built-ins whose canonical matches a removed word (mirror
     // remove(id:)). Import-created words are user words, so this is normally
@@ -410,7 +511,7 @@ public final class CustomWordsManager {
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty }
 
-    var file = loadFile() ?? CustomWordsFile()
+    var file = try loadFileForMutation()
 
     // Check if this is a built-in word being edited — store as user override
     if let existingIdx = file.words.firstIndex(where: { $0.id == word.id }) {
@@ -439,7 +540,7 @@ public final class CustomWordsManager {
   /// with `words` untouched if nothing matched.
   public func updateBatch(_ updates: [CustomWord], to words: inout [CustomWord]) throws {
     guard !updates.isEmpty else { return }
-    var file = loadFile() ?? CustomWordsFile()
+    var file = try loadFileForMutation()
     var changed = false
     for word in updates {
       let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -461,22 +562,27 @@ public final class CustomWordsManager {
   // MARK: - Private File I/O
 
   /// Single read path — normalizes legacy formats to CustomWordsFile.
-  /// All callers (load, add, remove, save) go through this.
-  private func loadFile() -> CustomWordsFile? {
-    guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
-    guard let data = try? Data(contentsOf: fileURL) else {
+  /// All callers (load, flush, CRUD mutations) go through this. The result
+  /// distinguishes missing / loaded / unreadable / corrupted (#1646) so
+  /// callers can fail closed instead of treating every failure as "empty".
+  private func loadFile() -> CustomWordsLoadResult {
+    guard FileManager.default.fileExists(atPath: fileURL.path) else { return .missing }
+    let data: Data
+    do {
+      data = try Data(contentsOf: fileURL)
+    } catch {
       Task {
         await AppLogger.shared.log(
-          "Failed to read custom words file — returning nil to prevent data loss",
+          "Failed to read custom words file — failing closed to prevent data loss",
           level: .info, category: "CustomWords"
         )
       }
-      return nil
+      return .unreadable(underlying: error)
     }
 
     // Try new versioned wrapper first
     if let file = try? JSONDecoder().decode(CustomWordsFile.self, from: data) {
-      return file
+      return .loaded(file)
     }
 
     // Migrate from old [CustomWord] array format
@@ -489,7 +595,7 @@ public final class CustomWordsManager {
           level: .info, category: "CustomWords"
         )
       }
-      return file
+      return .loaded(file)
     }
 
     // Migrate from old [String] array format
@@ -507,20 +613,35 @@ public final class CustomWordsManager {
           level: .info, category: "CustomWords"
         )
       }
-      return file
+      return .loaded(file)
     }
 
-    // Corrupted — backup and start fresh
+    // Corrupted — archive to a unique sidecar so the next read starts fresh.
+    // `.corrupted` is reported only when the archive actually succeeded; a
+    // failed archive leaves the original bytes in place, so the caller keeps
+    // failing closed (`.unreadable`) instead of being promised a self-heal
+    // that can't happen. Unique name: a second, later corruption event must
+    // not collide with an earlier sidecar (#1646).
     let backup = fileURL.deletingLastPathComponent()
-      .appendingPathComponent("custom-words.json.corrupted")
-    try? FileManager.default.moveItem(at: fileURL, to: backup)
+      .appendingPathComponent("custom-words.json.corrupted-\(UUID().uuidString)")
+    do {
+      try FileManager.default.moveItem(at: fileURL, to: backup)
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "Custom words file corrupted and archive failed — failing closed",
+          level: .info, category: "CustomWords"
+        )
+      }
+      return .unreadable(underlying: error)
+    }
     Task {
       await AppLogger.shared.log(
         "Custom words file corrupted, backed up to \(backup.lastPathComponent)",
         level: .info, category: "CustomWords"
       )
     }
-    return nil
+    return .corrupted
   }
 
   /// Persist the custom-words file at 0600.
