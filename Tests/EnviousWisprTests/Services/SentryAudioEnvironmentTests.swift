@@ -6,10 +6,6 @@ import Testing
 @Suite("SentryBreadcrumb audio environment")
 @MainActor
 struct SentryAudioEnvironmentTests {
-  private struct DummyError: LocalizedError {
-    var errorDescription: String? { "dummy" }
-  }
-
   private final class ExtraBox: @unchecked Sendable {
     private let lock = NSLock()
     private var extra: [String: Any]?
@@ -41,7 +37,7 @@ struct SentryAudioEnvironmentTests {
       defer { SentryBreadcrumb.captureErrorDelegate = prior }
 
       SentryBreadcrumb.captureError(
-        DummyError(),
+        TestStableSentryError(),
         category: .audioCaptureFailed,
         stage: "audio",
         extra: ["caller": "kept"]
@@ -69,7 +65,7 @@ struct SentryAudioEnvironmentTests {
       defer { SentryBreadcrumb.captureErrorDelegate = prior }
 
       SentryBreadcrumb.captureError(
-        DummyError(),
+        TestStableSentryError(),
         category: .audioCaptureFailed,
         stage: "audio",
         extra: ["audio_environment": ["snapshot_status": "caller"]]
@@ -92,7 +88,7 @@ struct SentryAudioEnvironmentTests {
       defer { SentryBreadcrumb.captureErrorDelegate = prior }
 
       SentryBreadcrumb.captureError(
-        DummyError(),
+        TestStableSentryError(),
         category: .audioCaptureFailed,
         stage: "audio",
         extra: ["caller": "kept"]
@@ -116,7 +112,7 @@ struct SentryAudioEnvironmentTests {
       defer { SentryBreadcrumb.captureErrorDelegate = prior }
 
       SentryBreadcrumb.captureError(
-        DummyError(),
+        TestStableSentryError(),
         category: .audioCaptureFailed,
         stage: "audio",
         extra: ["caller": "kept"]
@@ -136,7 +132,8 @@ struct SentryAudioEnvironmentTests {
     SentryBreadcrumb.withAudioEnvironmentProvider({
       ["snapshot_status": "inner"]
     }) {
-      #expect(SentryBreadcrumb.audioEnvironmentProvider?()?["snapshot_status"] as? String == "inner")
+      #expect(
+        SentryBreadcrumb.audioEnvironmentProvider?()?["snapshot_status"] as? String == "inner")
     }
 
     #expect(SentryBreadcrumb.audioEnvironmentProvider?()?["snapshot_status"] as? String == "outer")

@@ -1,10 +1,10 @@
 import EnviousWisprCore
 import EnviousWisprLLM
-import EnviousWisprServices
 import Foundation
 import Testing
 
 @testable import EnviousWisprPipeline
+@testable import EnviousWisprServices
 
 /// #945: the runner's classify -> composed-notice + telemetry path. These run a
 /// REAL `LLMPolishStep` (with an injected throwing polisher) through the runner,
@@ -27,6 +27,7 @@ struct TextProcessingRunnerCaptureTests {
   @MainActor
   final class CaptureSpy {
     struct Call {
+      let error: any Error
       let category: SentryBreadcrumb.ErrorCategory
       let stage: String
       let extra: [String: Any]?
@@ -41,7 +42,7 @@ struct TextProcessingRunnerCaptureTests {
     ) {
       calls.append(
         Call(
-          category: category, stage: stage, extra: extra, tags: tags,
+          error: error, category: category, stage: stage, extra: extra, tags: tags,
           fingerprintDetail: fingerprintDetail))
     }
   }
@@ -356,6 +357,42 @@ struct TextProcessingRunnerCaptureTests {
     #expect(call.stage == "polish")
     #expect(call.fingerprintDetail == "bad_request")
     #expect(records.calls.first?.reason == "bad_request")
+  }
+
+  @Test(
+    "an unrecognized URLError pages us with a stable fingerprint through the real capture path (#1525 PR I-C)"
+  )
+  func unrecognizedURLErrorAlertsWithStableFingerprint() async throws {
+    let spy = CaptureSpy()
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
+    // .badURL is not in PolishFailureReason.from's recognized connectivity-code
+    // set (PolishFailureReason.swift:345-352), so it falls to `.unknown` — the
+    // alerting channel, unlike .notConnectedToInternet's `.providerUnreachable`
+    // in `cloudUnreachableIsCountedNotPaged` above.
+    let step = makeStep(provider: .openAI, model: "gpt-4o-mini") { URLError(.badURL) }
+
+    _ = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+
+    #expect(spy.calls.count == 1)
+    let call = try #require(spy.calls.first)
+    #expect(call.category == .polishProviderFailed)
+    #expect(call.fingerprintDetail == "unknown")
+    #expect(records.calls.first?.reason == "unknown")
+
+    // Runtime proof on the supported macOS Swift/Foundation toolchain (#1525 PR I-C):
+    // boxing `URLError` as `any Error` produces an `NSError` dynamic value, so a
+    // `StableSentryErrorIdentity` conformance is unreachable through this path.
+    // The existing `NSError` fallback already produces the stable descriptor.
+    let event = SentryBreadcrumb.makeHandledErrorEvent(
+      call.error, category: call.category, stage: call.stage, extra: call.extra,
+      tags: call.tags, fingerprintDetail: call.fingerprintDetail, environment: "test")
+    #expect(
+      event.fingerprint == [
+        "handled_error", "polish_provider_failed", "NSURLErrorDomain#-1000", "unknown", "test",
+      ])
+    #expect(event.tags?["error.identity"] == nil)
   }
 
   // MARK: - Timeout

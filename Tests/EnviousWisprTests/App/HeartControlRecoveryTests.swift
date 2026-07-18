@@ -69,8 +69,7 @@ struct HeartControlRecoveryTests {
     let locked = LockedCallCounter()
     let recovery = makeRecovery(hideCalls: hide, lockedCalls: locked, backend: "whisperkit")
     withSentrySpy { spy in
-      struct E: Error {}
-      recovery.logDispatchFailure(E(), op: "stop")
+      recovery.logDispatchFailure(TestStableSentryError(), op: "stop")
       #expect(spy.calls.count == 1)
       #expect(spy.calls.first?.category == .pipelineDispatchFailed)
       #expect(spy.calls.first?.stage == "recording")
@@ -105,9 +104,8 @@ struct HeartControlRecoveryTests {
     let sink = ErrorSurfaceSpy()
     let recovery = makeRecovery(hideCalls: hide, lockedCalls: locked, backend: "parakeet")
     withSentrySpy { spy in
-      struct BoomError: Error {}
       recovery.recover(
-        error: BoomError(), op: "toggle", reason: .modelWedged,
+        error: TestStableSentryError(), op: "toggle", reason: .modelWedged,
         setTerminalReason: sink.setTerminalReason)
       #expect(spy.calls.count == 1)
       #expect(spy.calls.first?.extra?["op"] as? String == "toggle")
@@ -145,9 +143,8 @@ struct HeartControlRecoveryTests {
     let sink = ErrorSurfaceSpy()
     let recovery = makeRecovery(hideCalls: hide, lockedCalls: locked)
     withSentrySpy { spy in
-      struct E: Error {}
       recovery.recover(
-        error: E(), op: "toggle-from-prewarm", reason: .modelWedged,
+        error: TestStableSentryError(), op: "toggle-from-prewarm", reason: .modelWedged,
         setTerminalReason: sink.setTerminalReason)
       #expect(spy.calls.first?.extra?["op"] as? String == "toggle-from-prewarm")
     }
