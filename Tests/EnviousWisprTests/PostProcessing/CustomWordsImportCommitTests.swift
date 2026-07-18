@@ -575,6 +575,77 @@ struct CustomWordsImportCommitTests {
     #expect(live.contains { $0.canonical == builtin.canonical } == false)
   }
 
+  @Test("replacing an existing built-in override that moves the canonical retires the built-in")
+  func replacingAnExistingOverrideThatRenamesRetiresTheBuiltin() throws {
+    let (manager, _) = makeManager()
+    var live = try #require(manager.load())
+    let builtin = try #require(live.first)
+    let originalCount = live.count
+
+    // Edit the built-in WITHOUT renaming it. `update` stores a user override
+    // in `file.words` and no tombstone, because the unchanged canonical still
+    // hides the built-in — so the list stays the same size.
+    var edited = builtin
+    edited.aliases = builtin.aliases + ["extra alias"]
+    try manager.update(word: edited, in: &live)
+    let reloaded = try #require(manager.load())
+    #expect(reloaded.count == originalCount)
+
+    // Now a reviewed Replace moves the canonical away. The override already
+    // lives in `file.words`, so this takes the indexed branch rather than the
+    // create-an-override branch — the built-in must still be retired.
+    var working = reloaded
+    let existing = try #require(reloaded.first { $0.id == builtin.id })
+    _ = try manager.commitImport(
+      plan(
+        baseline: reloaded,
+        replacements: [
+          CustomWordsImportReplacement(
+            existingID: existing.id,
+            candidate: candidate("\(builtin.canonical) Renamed"))
+        ]),
+      to: &working)
+
+    #expect(working.count == originalCount)
+    #expect(working.contains { $0.canonical == "\(builtin.canonical) Renamed" })
+    #expect(working.contains { $0.canonical == builtin.canonical } == false)
+  }
+
+  @Test("a replace that keeps the built-in's canonical does not retire the built-in")
+  func replacingABuiltinWithoutRenamingLeavesItRestorable() throws {
+    let (manager, url) = makeManager()
+    var live = try #require(manager.load())
+    let builtin = try #require(live.first)
+    let originalCount = live.count
+
+    // Same canonical, new aliases: the override keeps hiding the built-in on
+    // its own, so recording a tombstone would persist a deletion the user
+    // never performed. Retiring is reserved for a canonical that MOVES away,
+    // which is the only case where the built-in would otherwise resurface.
+    _ = try manager.commitImport(
+      plan(
+        baseline: live,
+        replacements: [
+          CustomWordsImportReplacement(
+            existingID: builtin.id,
+            candidate: candidate(builtin.canonical, aliases: .supplied(["fresh alias"])))
+        ]),
+      to: &live)
+
+    #expect(live.count == originalCount)
+
+    let file = try #require(
+      try? JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+    let tombstones = file["deletedBuiltinIds"] as? [String] ?? []
+    #expect(tombstones.isEmpty)
+
+    // The override carries the new aliases and is the only word with this
+    // canonical — the built-in is hidden, not duplicated and not retired.
+    let matching = live.filter { $0.canonical == builtin.canonical }
+    #expect(matching.count == 1)
+    #expect(matching.first?.aliases.contains("fresh alias") == true)
+  }
+
   @Test("an import survives a library where a renamed built-in duplicates its own ID")
   func importSurvivesDuplicateIDsFromARenamedBuiltin() throws {
     let (manager, _) = makeManager()

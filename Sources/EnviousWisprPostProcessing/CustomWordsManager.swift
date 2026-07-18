@@ -552,19 +552,28 @@ public final class CustomWordsManager {
       let merged = Self.applyReplace(existing: existing, candidate: replacement.candidate)
       guard !merged.canonical.isEmpty else { throw CustomWordsImportCommitError.invalidPlan }
 
+      // A built-in stays hidden only while some user word still carries its
+      // canonical, so a Replace that MOVES the canonical away has to retire the
+      // built-in too — otherwise it reappears beside the replacement and the
+      // user gets two words where they approved one.
+      //
+      // This is checked before the branch on purpose: it applies whether the
+      // override is being created now (built-in never edited) or already exists
+      // in `file.words` (built-in edited earlier, which is why the canonical
+      // still matches). Guarding only the create case leaves the identical bug
+      // reachable through the update case.
+      if let builtin = Self.builtinDefaults.first(where: {
+        $0.word.canonical.caseInsensitiveCompare(existing.canonical) == .orderedSame
+      }),
+        builtin.word.canonical.caseInsensitiveCompare(merged.canonical) != .orderedSame,
+        !file.deletedBuiltinIds.contains(builtin.id)
+      {
+        file.deletedBuiltinIds.append(builtin.id)
+      }
+
       if let index = file.words.firstIndex(where: { $0.id == existing.id }) {
         file.words[index] = merged
       } else {
-        // Replacing a built-in: store a user override AND tombstone the
-        // built-in. `mergedWords` only hides a built-in whose canonical still
-        // matches a user word, so without the tombstone a Replace that CHANGES
-        // the canonical would leave the original built-in visible alongside the
-        // override — two words where the user approved one.
-        if let builtin = Self.builtinDefaults.first(where: {
-          $0.word.canonical.caseInsensitiveCompare(existing.canonical) == .orderedSame
-        }), !file.deletedBuiltinIds.contains(builtin.id) {
-          file.deletedBuiltinIds.append(builtin.id)
-        }
         file.words.append(merged)
       }
       replacedIDs.append(existing.id)
