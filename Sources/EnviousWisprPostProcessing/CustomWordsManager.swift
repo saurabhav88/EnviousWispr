@@ -323,7 +323,10 @@ public final class CustomWordsManager {
       file = loaded
     case .unreadable, .corrupted:
       // Best-effort writer (#1646): requeue instead of dropping so the
-      // increments survive to the next flush attempt.
+      // increments survive to the next flush attempt — and reschedule the
+      // debounce timer, since this method already cancelled it on entry;
+      // without that, a quiet session would strand the requeued increments
+      // in memory until app exit (cloud review, PR #1647).
       for (id, increment) in snapshot {
         var entry =
           pendingIncrements[id]
@@ -332,6 +335,7 @@ public final class CustomWordsManager {
         entry.lastTimestamp = max(entry.lastTimestamp, increment.lastTimestamp)
         pendingIncrements[id] = entry
       }
+      schedulePendingFlush()
       Task {
         await AppLogger.shared.log(
           "CustomWordsManager: flush skipped — words file unreadable; increments requeued",
