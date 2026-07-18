@@ -501,6 +501,301 @@ public final class CustomWordsManager {
     words = mergedWords(file: file)
   }
 
+  // MARK: - Import commit (#1665, epic #1619 PR-F2b)
+
+  /// Apply a reviewed import — additions AND replacements — in ONE atomic
+  /// write, or write nothing at all. Built on PR-P0's strict loader: an
+  /// existing-but-unreadable file fails closed, touching neither disk nor the
+  /// caller's list.
+  ///
+  /// Every key comparison here is a PERSISTENCE question, so it uses
+  /// `importPersistenceKey` (this type's own `trimmed.lowercased()` dedup
+  /// rule), never the compare engine's stronger matching key (PR-F2a).
+  package func commitImport(
+    _ plan: CustomWordsImportCommitPlan, to words: inout [CustomWord]
+  ) throws -> CustomWordsImportCommitReceipt {
+    // (1) Strict read — fail closed on an unreadable/corrupted existing file.
+    var file: CustomWordsFile
+    do {
+      file = try loadFileForMutation()
+    } catch {
+      throw CustomWordsImportCommitError.unreadableLibrary
+    }
+
+    // (2) Stale check against the EFFECTIVE list Review was built from.
+    let effective = mergedWords(file: file)
+    guard plan.baseline.semanticallyMatches(effective) else {
+      throw CustomWordsImportCommitError.staleLibrary
+    }
+
+    // An all-Skip confirm changes nothing: no backup, no write.
+    guard !plan.isEmpty else {
+      return CustomWordsImportCommitReceipt(
+        addedIDs: [], replacedIDs: [], droppedAliasCollisions: [])
+    }
+
+    // (3) Replacements. `existingID` may name a built-in, which lives in
+    // `builtinDefaults` rather than `file.words`.
+    //
+    // Two replacements aimed at the SAME existing word are rejected, not
+    // silently resolved: both would apply against the original entry and the
+    // later one would quietly win, so the user would get an import they did
+    // not approve while the receipt claimed both landed.
+    guard Set(plan.replacements.map(\.existingID)).count == plan.replacements.count else {
+      throw CustomWordsImportCommitError.invalidPlan
+    }
+    var replacedIDs: [UUID] = []
+    for replacement in plan.replacements {
+      guard let existing = effective.first(where: { $0.id == replacement.existingID }) else {
+        throw CustomWordsImportCommitError.invalidPlan
+      }
+      let merged = Self.applyReplace(existing: existing, candidate: replacement.candidate)
+      guard !merged.canonical.isEmpty else { throw CustomWordsImportCommitError.invalidPlan }
+
+      if let index = file.words.firstIndex(where: { $0.id == existing.id }) {
+        file.words[index] = merged
+      } else {
+        // Replacing a built-in: store a user override AND tombstone the
+        // built-in. `mergedWords` only hides a built-in whose canonical still
+        // matches a user word, so without the tombstone a Replace that CHANGES
+        // the canonical would leave the original built-in visible alongside the
+        // override — two words where the user approved one.
+        if let builtin = Self.builtinDefaults.first(where: {
+          $0.word.canonical.caseInsensitiveCompare(existing.canonical) == .orderedSame
+        }), !file.deletedBuiltinIds.contains(builtin.id) {
+          file.deletedBuiltinIds.append(builtin.id)
+        }
+        file.words.append(merged)
+      }
+      replacedIDs.append(existing.id)
+    }
+
+    // (4) Additions — fresh UUID each; unspecified fields take type defaults,
+    // since there is no existing word to preserve from.
+    var addedIDs: [UUID] = []
+    for candidate in plan.additions {
+      let word = Self.makeAddition(from: candidate)
+      guard !word.canonical.isEmpty else { throw CustomWordsImportCommitError.invalidPlan }
+      file.words.append(word)
+      addedIDs.append(word.id)
+    }
+
+    let touchedIDs = Set(addedIDs + replacedIDs)
+
+    // (5) Canonical uniqueness, and no imported canonical may land on an alias
+    // held by a different word this import did not replace. F2c never offers a
+    // decision that produces either shape, so reaching here means a bad plan.
+    var resulting = mergedWords(file: file)
+    var seenCanonicals: [String: UUID] = [:]
+    for word in resulting {
+      let key = Self.importPersistenceKey(word.canonical)
+      if let owner = seenCanonicals[key], owner != word.id {
+        throw CustomWordsImportCommitError.invalidPlan
+      }
+      seenCanonicals[key] = word.id
+    }
+    for word in resulting where touchedIDs.contains(word.id) {
+      let canonicalKey = Self.importPersistenceKey(word.canonical)
+      for other in resulting where other.id != word.id && !touchedIDs.contains(other.id) {
+        if other.aliases.contains(where: { Self.importPersistenceKey($0) == canonicalKey }) {
+          throw CustomWordsImportCommitError.invalidPlan
+        }
+      }
+    }
+
+    // (6) Alias enforcement on the APPLIED result, so two replacements in one
+    // plan are covered, not just additions. Only words this import touched can
+    // lose an alias — an untouched word is not this import's to edit.
+    // Touched words are resolved in APPLY order (replacements in plan order,
+    // then additions), not the merged library's own order — otherwise which of
+    // two claimants keeps a shared alias would depend on incidental storage
+    // order rather than on the plan the user approved.
+    let (filtered, dropped) = Self.enforceAliases(
+      on: resulting, touchedOrder: replacedIDs + addedIDs)
+    for word in filtered where touchedIDs.contains(word.id) {
+      if let index = file.words.firstIndex(where: { $0.id == word.id }) {
+        file.words[index].aliases = word.aliases
+      }
+    }
+
+    // (7) Best-effort backup, then ONE save. A backup failure logs and
+    // proceeds: correctness comes from the atomic write and the strict loader,
+    // not from the backup existing.
+    writePreImportBackup()
+    try saveFile(file)
+
+    // (8) Publish only after the write succeeded.
+    resulting = mergedWords(file: file)
+    words = resulting
+    return CustomWordsImportCommitReceipt(
+      addedIDs: addedIDs, replacedIDs: replacedIDs, droppedAliasCollisions: dropped)
+  }
+
+  /// This type's own dedup rule, named so the import path cannot accidentally
+  /// reach for the compare engine's stronger matching key (PR-F2a).
+  static func importPersistenceKey(_ s: String) -> String {
+    s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+  }
+
+  /// Field-level Replace, per the adopted plan's table. `id`, `frequencyUsed`,
+  /// and `lastUsed` are always preserved; `canonical` is always taken; every
+  /// other field is taken ONLY when the source actually supplied it, so a
+  /// source with no opinion can never blank hand-tuned configuration.
+  /// `suggestedAliases` are never applied on Replace — a machine guess must
+  /// not overwrite hand-tuned aliases.
+  static func applyReplace(
+    existing: CustomWord, candidate: CustomWordsImportCandidate
+  ) -> CustomWord {
+    func supplied<Value>(_ field: CustomWordsImportField<Value>, else fallback: Value) -> Value {
+      if case .supplied(let value) = field { return value }
+      return fallback
+    }
+    let aliases = supplied(candidate.aliases, else: existing.aliases)
+    return CustomWord(
+      id: existing.id,
+      canonical: candidate.canonical.trimmingCharacters(in: .whitespacesAndNewlines),
+      aliases: Self.sanitizeAliases(aliases),
+      category: supplied(candidate.category, else: existing.category),
+      priority: supplied(candidate.priority, else: existing.priority),
+      forceReplace: supplied(candidate.forceReplace, else: existing.forceReplace),
+      caseSensitive: supplied(candidate.caseSensitive, else: existing.caseSensitive),
+      source: .user,
+      frequencyUsed: existing.frequencyUsed,
+      lastUsed: existing.lastUsed,
+      minSimilarityOverride: supplied(
+        candidate.minSimilarityOverride, else: existing.minSimilarityOverride)
+    )
+  }
+
+  /// A new word from a candidate. Unspecified fields fall back to the type's
+  /// own defaults — there is no existing word to preserve from. Add is the ONE
+  /// place AI `suggestedAliases` are persisted, after the source's own spellings.
+  static func makeAddition(from candidate: CustomWordsImportCandidate) -> CustomWord {
+    func supplied<Value>(_ field: CustomWordsImportField<Value>, else fallback: Value) -> Value {
+      if case .supplied(let value) = field { return value }
+      return fallback
+    }
+    let sourceAliases = supplied(candidate.aliases, else: [])
+    var union = sanitizeAliases(sourceAliases)
+    var seen = Set(union.map(importPersistenceKey))
+    for suggestion in sanitizeAliases(candidate.suggestedAliases)
+    where seen.insert(importPersistenceKey(suggestion)).inserted {
+      union.append(suggestion)
+    }
+    return CustomWord(
+      canonical: candidate.canonical.trimmingCharacters(in: .whitespacesAndNewlines),
+      aliases: union,
+      category: supplied(candidate.category, else: .general),
+      priority: supplied(candidate.priority, else: 0),
+      forceReplace: supplied(candidate.forceReplace, else: false),
+      caseSensitive: supplied(candidate.caseSensitive, else: false),
+      source: .user,
+      minSimilarityOverride: supplied(candidate.minSimilarityOverride, else: nil)
+    )
+  }
+
+  private static func sanitizeAliases(_ aliases: [String]) -> [String] {
+    aliases
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+  }
+
+  /// Guarantees no alias this import touched is left ambiguous, whatever
+  /// Review believed. Precedence, in order: a word's own canonical beats its
+  /// own redundant alias (dropped silently, it is not ambiguity); any other
+  /// word's canonical beats an alias; an untouched incumbent's alias beats any
+  /// imported one; among touched words, earlier in `touchedOrder` wins.
+  ///
+  /// `touchedOrder` is the APPLY order, so a shared alias resolves by the plan
+  /// the user approved rather than by incidental storage order.
+  static func enforceAliases(
+    on words: [CustomWord], touchedOrder: [UUID]
+  ) -> (words: [CustomWord], dropped: [CustomWordsImportAliasCollision]) {
+    let touchedIDs = Set(touchedOrder)
+    var canonicalOwners: [String: UUID] = [:]
+    for word in words {
+      let key = importPersistenceKey(word.canonical)
+      if canonicalOwners[key] == nil { canonicalOwners[key] = word.id }
+    }
+
+    // Untouched words register first and are never modified, so an incumbent
+    // alias always outranks an imported one. Among two untouched words sharing
+    // an alias the LAST one wins, mirroring `WordCorrector.buildLookups`'s
+    // unconditional assignment (WordCorrector.swift:180-205) — the receipt's
+    // `heldBy` has to name the word that really holds the trigger.
+    var aliasOwners: [String: UUID] = [:]
+    for word in words where !touchedIDs.contains(word.id) {
+      for alias in word.aliases {
+        let key = importPersistenceKey(alias)
+        if !key.isEmpty { aliasOwners[key] = word.id }
+      }
+    }
+
+    var result = words
+    var dropped: [CustomWordsImportAliasCollision] = []
+    let indexByID = Dictionary(
+      uniqueKeysWithValues: result.indices.map { (result[$0].id, $0) })
+    for id in touchedOrder {
+      guard let index = indexByID[id] else { continue }
+      let word = result[index]
+      let canonicalKey = importPersistenceKey(word.canonical)
+      var kept: [String] = []
+      for alias in word.aliases {
+        let key = importPersistenceKey(alias)
+        if key.isEmpty { continue }
+        // Redundant with the word's own canonical: silently removed, never
+        // reported — it is not an ambiguity anyone needs to hear about.
+        if key == canonicalKey { continue }
+        if let owner = canonicalOwners[key], owner != word.id {
+          dropped.append(CustomWordsImportAliasCollision(alias: alias, heldBy: owner))
+          continue
+        }
+        if let owner = aliasOwners[key] {
+          if owner != word.id {
+            dropped.append(CustomWordsImportAliasCollision(alias: alias, heldBy: owner))
+          }
+          continue
+        }
+        aliasOwners[key] = word.id
+        kept.append(alias)
+      }
+      result[index].aliases = kept
+    }
+    return (result, dropped)
+  }
+
+  /// Timestamped copy of the current file before a changing commit. Purely a
+  /// convenience recovery path — failures are logged, never fatal. No retention
+  /// policy in v1; an accumulating set of backups is an accepted, named scope cut.
+  ///
+  /// Never overwrites an existing backup. Two commits inside the same second
+  /// would otherwise collide on the filename, and destroying the earlier
+  /// pre-import state is the one thing this recovery path must not do.
+  private func writePreImportBackup() {
+    let fm = FileManager.default
+    guard fm.fileExists(atPath: fileURL.path) else { return }
+    let stamp = ISO8601DateFormatter().string(from: Date())
+      .replacingOccurrences(of: ":", with: "-")
+    let directory = fileURL.deletingLastPathComponent()
+    var backupURL = directory.appendingPathComponent("custom-words.backup-\(stamp).json")
+    var suffix = 2
+    while fm.fileExists(atPath: backupURL.path), suffix < 1000 {
+      backupURL = directory.appendingPathComponent(
+        "custom-words.backup-\(stamp)-\(suffix).json")
+      suffix += 1
+    }
+    do {
+      try fm.copyItem(at: fileURL, to: backupURL)
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "CustomWordsManager: pre-import backup failed: \(error.localizedDescription)",
+          level: .info, category: "CustomWords"
+        )
+      }
+    }
+  }
+
   public func update(word: CustomWord, in words: inout [CustomWord]) throws {
     guard let index = words.firstIndex(where: { $0.id == word.id }) else { return }
     let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)

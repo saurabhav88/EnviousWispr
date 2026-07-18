@@ -51,6 +51,34 @@ final class CustomWordsCoordinator {
     }
   }
 
+  /// Outcome of a reviewed Custom Words import (#1665). `.stale` is not a
+  /// failure the user caused — the list changed while Review was open, so the
+  /// sheet re-compares against the current list instead of writing.
+  enum CustomWordsImportCommitOutcome: Sendable, Equatable {
+    case committed(CustomWordsImportCommitReceipt)
+    case stale
+    case failed(message: String)
+  }
+
+  /// Apply a reviewed import in one atomic write. Fires `onWordsChanged`
+  /// exactly once, and only when something actually changed.
+  func commitImport(_ plan: CustomWordsImportCommitPlan) -> CustomWordsImportCommitOutcome {
+    do {
+      let receipt = try manager.commitImport(plan, to: &customWords)
+      if !plan.isEmpty {
+        onWordsChanged?(customWords)
+      }
+      customWordError = nil
+      return .committed(receipt)
+    } catch CustomWordsImportCommitError.staleLibrary {
+      customWordError = nil
+      return .stale
+    } catch {
+      customWordError = error.localizedDescription
+      return .failed(message: error.localizedDescription)
+    }
+  }
+
   /// Bulk-add for the contacts import (#636). Returns the IDs actually created
   /// (for the import log), or nil on failure (check `customWordError`).
   func addBatch(_ words: [CustomWord]) -> [UUID]? {
