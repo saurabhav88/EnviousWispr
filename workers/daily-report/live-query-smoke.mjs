@@ -46,6 +46,7 @@ console.log({
   totalUsers: data.totalUsers,
   engineAndTierBRowCount: data.engineAndTierB.length,
   tierARowCount: data.tierA.length,
+  tierADegraded: data.tierADegraded, // true => tier-a exhausted its retry; breakdown is approximate (#1655)
   geo: data.geo,
   top5Counts: data.top5.map((u) => u.n), // values only, no distinct_id
 });
