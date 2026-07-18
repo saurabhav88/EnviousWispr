@@ -13,6 +13,73 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.4.0
+
+    Entry(
+      id: "model-download-improvements",
+      icon: "arrow.down.circle",
+      title: "Download improvements",
+      description:
+        "We revamped how the speech and polish models download, and where they are stored on disk. Downloads are faster, resume on their own if your connection drops, and can be cancelled if they stall.",
+      version: "2.4.0"
+    ),
+    Entry(
+      id: "bluetooth-usb-audio-support",
+      icon: "waveform.badge.mic",
+      title: "Proper Bluetooth and USB audio support",
+      description:
+        "EnviousWispr now properly supports Bluetooth and USB microphones, including on Mac mini. We also rebuilt the entire infrastructure around our sound capture engine to be far more robust, so recording no longer fails quietly when a microphone misbehaves.",
+      version: "2.4.0"
+    ),
+    Entry(
+      id: "recording-sound-cues",
+      icon: "speaker.wave.2",
+      title: "Customizable sound cues",
+      description:
+        "Optional chimes when recording starts and stops. Twelve to choose from, soft to loud. Off by default.",
+      version: "2.4.0"
+    ),
+    Entry(
+      id: "recording-pill-position",
+      icon: "rectangle.topthird.inset.filled",
+      title: "Choose your recording pill location",
+      description:
+        "Move the recording pill to the top or bottom of your screen and it remembers.",
+      version: "2.4.0"
+    ),
+    Entry(
+      id: "larger-menu-bar-icon",
+      icon: "menubar.arrow.up.rectangle",
+      title: "Larger menu bar icon",
+      description:
+        "The menu bar icon is now larger and easier to spot.",
+      version: "2.4.0"
+    ),
+    Entry(
+      id: "open-source-licenses",
+      icon: "doc.text",
+      title: "Open Source Licenses",
+      description:
+        "A new screen in Settings so the open source licenses EnviousWispr is built on are always available to read in the app.",
+      version: "2.4.0"
+    ),
+    Entry(
+      id: "openai-model-support",
+      icon: "sparkles",
+      title: "All OpenAI models now properly supported",
+      description:
+        "OpenAI changed how its API calls work. We fixed them so their full library of models can be used for cloud polishing. This also includes smaller fixes, such as making sure you are notified if you forget to enter your API key.",
+      version: "2.4.0"
+    ),
+    Entry(
+      id: "recording-timer-reset",
+      icon: "timer",
+      title: "Timer bug addressed",
+      description:
+        "The timer no longer resets when you swap between screens.",
+      version: "2.4.0"
+    ),
+
     // MARK: - v2.3.2
 
     Entry(
