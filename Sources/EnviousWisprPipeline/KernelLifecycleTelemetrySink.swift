@@ -305,11 +305,7 @@ final class KernelLifecycleTelemetrySink {
       let bv = backend.rawValue
       let backendLabel = backend == .whisperKit ? "WhisperKit" : "Parakeet"
       emitCaptureError(
-        NSError(
-          domain: "EnviousWispr", code: -3,
-          userInfo: [
-            NSLocalizedDescriptionKey: "ASR XPC service crashed (\(backendLabel))"
-          ]),
+        KernelFallbackSentryError.xpcServiceError(backendLabel: backendLabel),
         .xpcServiceError, "asr",
         ["was_recording": wasRecording, "backend": bv],
         snapshot: recordingSnapshot())
@@ -586,9 +582,7 @@ final class KernelLifecycleTelemetrySink {
       // the error is somehow absent.
       let modelError =
         telemetryState.modelLoadError
-        ?? NSError(
-          domain: "EnviousWispr", code: -10,
-          userInfo: [NSLocalizedDescriptionKey: "Model load failed"])
+        ?? KernelFallbackSentryError.modelLoadFailed
       emitCaptureError(
         modelError,
         .modelLoadFailed, "asr",
@@ -596,9 +590,7 @@ final class KernelLifecycleTelemetrySink {
     case .captureStartFailed:
       let error =
         telemetryState.captureFailureError
-        ?? NSError(
-          domain: "EnviousWispr", code: -11,
-          userInfo: [NSLocalizedDescriptionKey: "Recording failed"])
+        ?? KernelFallbackSentryError.captureStartFailed
       emitCaptureError(
         error,
         .audioCaptureFailed, "recording",
@@ -609,9 +601,7 @@ final class KernelLifecycleTelemetrySink {
       // held-release drop can still be watched post-ship.
       let error =
         telemetryState.captureFailureError
-        ?? NSError(
-          domain: "EnviousWispr", code: -16,
-          userInfo: [NSLocalizedDescriptionKey: "No usable microphone device was found"])
+        ?? KernelFallbackSentryError.noMicrophoneFound
       emitCaptureError(
         error,
         .audioCaptureFailed, "recording",
@@ -647,9 +637,7 @@ final class KernelLifecycleTelemetrySink {
     case .asrFailed, .asrWedged:
       let error =
         telemetryState.transcriptionFailureError
-        ?? NSError(
-          domain: "EnviousWispr", code: -13,
-          userInfo: [NSLocalizedDescriptionKey: "Transcription failed"])
+        ?? KernelFallbackSentryError.transcriptionFailed
       emitCaptureError(
         error,
         .asrFailed, "transcription",
@@ -658,9 +646,7 @@ final class KernelLifecycleTelemetrySink {
     case .permissionDenied:
       let error =
         telemetryState.captureFailureError
-        ?? NSError(
-          domain: "EnviousWispr", code: -14,
-          userInfo: [NSLocalizedDescriptionKey: "Microphone permission denied"])
+        ?? KernelFallbackSentryError.permissionDenied
       emitCaptureError(
         error,
         .audioCaptureFailed, "recording",
@@ -668,9 +654,7 @@ final class KernelLifecycleTelemetrySink {
     case .prepareFailed:
       let error =
         telemetryState.captureFailureError
-        ?? NSError(
-          domain: "EnviousWispr", code: -15,
-          userInfo: [NSLocalizedDescriptionKey: "Prepare failed"])
+        ?? KernelFallbackSentryError.prepareFailed
       emitCaptureError(
         error,
         .audioCaptureFailed, "recording",

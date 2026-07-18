@@ -859,11 +859,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       // comment-aware, so this comment must avoid the banned token too.)
       let backendLabel = adapter.engineIdentity.displayName
       captureErrorSink(
-        NSError(
-          domain: "EnviousWispr", code: -3,
-          userInfo: [
-            NSLocalizedDescriptionKey: "ASR XPC service crashed (\(backendLabel))"
-          ]),
+        KernelFallbackSentryError.xpcServiceError(backendLabel: backendLabel),
         .xpcServiceError, "asr",
         ["was_recording": false, "backend": backendID], nil)
       setTerminalReason(.asrInterrupted)
