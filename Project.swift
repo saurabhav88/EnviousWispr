@@ -434,6 +434,9 @@ let project = Project(
         // HelperObservabilityConfigTests imports the module directly; Xcode test
         // targets need every direct import as a declared edge (#1174).
         .target(name: "EnviousWisprObservabilityCore"),
+        // #1525 PR I-B (Codex cloud review): ParakeetTranscriptionSentryErrorTests /
+        // ParakeetModelLoadSentryErrorTests import this directly.
+        .target(name: "EnviousWisprFluidAudioBridge"),
         .package(product: "FluidAudio"),
         .package(product: "Sparkle"),
       ],

@@ -49,6 +49,18 @@ enum ParakeetModelLoadSentryError: Error, LocalizedError, CustomNSError, Sendabl
     }
   }
 
+  /// #1525 PR I-B (Codex cloud review): `CustomNSError`'s default `errorUserInfo`
+  /// is empty, and an empty `userInfo` does not survive the XPC boundary's
+  /// NSSecureCoding archive round-trip with `errorDescription` intact — the
+  /// receiving process's `(error as NSError).localizedDescription` falls back to
+  /// Foundation's generic "operation couldn't be completed" message. Populating
+  /// `NSLocalizedDescriptionKey` here bakes the description directly into
+  /// `userInfo`, which IS preserved through the round-trip (confirmed via a
+  /// direct `NSKeyedArchiver`/`NSKeyedUnarchiver` probe this session).
+  var errorUserInfo: [String: Any] {
+    [NSLocalizedDescriptionKey: errorDescription ?? ""]
+  }
+
   init(mapping kind: FluidAudioModelLoadErrorKind) {
     switch kind {
     case .modelsModelNotFound(let d): self = .modelsModelNotFound(d)

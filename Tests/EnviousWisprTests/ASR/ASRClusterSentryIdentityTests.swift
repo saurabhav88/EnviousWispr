@@ -139,6 +139,22 @@ struct ASRClusterSentryIdentityTests {
     #expect(XPCASRTransportError(reconstructingFrom: foreign) == nil)
   }
 
+  /// #1525 PR I-B (Codex cloud review): a plain `as NSError` cast is not enough —
+  /// Foundation's special "boxed Swift LocalizedError" bridging survives a same-
+  /// process cast but NOT an actual XPC-style archive round-trip (confirmed via a
+  /// direct `NSKeyedArchiver`/`NSKeyedUnarchiver` probe this session). Only
+  /// `errorUserInfo` populating `NSLocalizedDescriptionKey` survives that.
+  @Test("localizedDescription survives an actual NSSecureCoding archive round-trip")
+  func xpcTransportErrorLocalizedDescriptionSurvivesArchiveRoundTrip() throws {
+    let error = XPCASRTransportError.responseDecodingFailed("a real transport description")
+    let bridged = error as NSError
+    let data = try NSKeyedArchiver.archivedData(
+      withRootObject: bridged, requiringSecureCoding: true)
+    let decoded = try #require(
+      try NSKeyedUnarchiver.unarchivedObject(ofClass: NSError.self, from: data))
+    #expect(decoded.localizedDescription == "a real transport description")
+  }
+
   @Test("ASRLoadSupersededError keeps its exact measured fingerprint")
   func asrLoadSupersededErrorPinLock() {
     let error = ASRLoadSupersededError()

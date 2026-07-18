@@ -209,6 +209,9 @@ let package = Package(
         "EnviousWisprPipeline",
         "EnviousWisprStorage",
         "EnviousWisprAudio",
+        // #1525 PR I-B (Codex cloud review): ParakeetTranscriptionSentryErrorTests /
+        // ParakeetModelLoadSentryErrorTests import this directly.
+        "EnviousWisprFluidAudioBridge",
         // #919: link the app-shell code from the library, NOT the app target,
         // so `swift test` / `xcodebuild test` never launch the app.
         "EnviousWisprAppKit",

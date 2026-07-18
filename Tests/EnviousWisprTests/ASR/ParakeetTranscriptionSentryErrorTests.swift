@@ -94,6 +94,23 @@ struct ParakeetTranscriptionSentryErrorTests {
     }
   }
 
+  /// #1525 PR I-B (Codex cloud review): a plain `as NSError` cast is not enough —
+  /// Foundation's special "boxed Swift LocalizedError" bridging survives a same-
+  /// process cast but NOT an actual XPC-style archive round-trip (confirmed via a
+  /// direct `NSKeyedArchiver`/`NSKeyedUnarchiver` probe this session). Only
+  /// `errorUserInfo` populating `NSLocalizedDescriptionKey` survives that. This
+  /// test proves the fix, not just the same-process cast.
+  @Test("localizedDescription survives an actual NSSecureCoding archive round-trip")
+  func localizedDescriptionSurvivesArchiveRoundTrip() throws {
+    let error = ParakeetTranscriptionSentryError.processingFailed("a real vendor description")
+    let bridged = error as NSError
+    let data = try NSKeyedArchiver.archivedData(
+      withRootObject: bridged, requiringSecureCoding: true)
+    let decoded = try #require(
+      try NSKeyedUnarchiver.unarchivedObject(ofClass: NSError.self, from: data))
+    #expect(decoded.localizedDescription == "a real vendor description")
+  }
+
   @Test("reconstructingFrom returns nil for an unrelated NSError domain")
   func reconstructionRejectsForeignDomain() {
     let foreign = NSError(domain: "SomeOtherDomain", code: 0)
