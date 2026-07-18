@@ -8,6 +8,10 @@ import Observation
 final class CustomWordsCoordinator {
   var customWords: [CustomWord] = []
   var customWordError: String?
+  /// Set when the launch-time load failed (#1646) so Your Words can show an
+  /// honest banner instead of a silent empty list. `.unreadable`: the file is
+  /// intact, nothing was changed. `.corrupted`: it was archived for recovery.
+  private(set) var wordsLoadFailureAtLaunch: CustomWordsInitialLoadFailure?
   let suggestionService = WordSuggestionService()
   /// The reused on-device alias generator, exposed as the narrow protocol so the
   /// composition root can wire it into the contacts-import coordinator without
@@ -22,6 +26,7 @@ final class CustomWordsCoordinator {
   init() {
     self.manager = CustomWordsManager()
     customWords = manager.load() ?? []
+    wordsLoadFailureAtLaunch = manager.lastLoadFailure
   }
 
   /// Test seam (#636): inject a temp-file-backed manager so hermetic tests of
@@ -30,6 +35,7 @@ final class CustomWordsCoordinator {
   package init(manager: CustomWordsManager) {
     self.manager = manager
     customWords = manager.load() ?? []
+    wordsLoadFailureAtLaunch = manager.lastLoadFailure
   }
 
   @discardableResult
