@@ -94,8 +94,14 @@ package enum CustomWordsImportTextPolicy {
   /// but disallowed: those have to reach the validator so the user is told
   /// (cloud review, #1683).
   package static func hasVisibleContent(_ value: String) -> Bool {
+    // Asks Unicode which scalars are invisible instead of listing them.
+    // A hand-rolled list of "the invisible ones" named the two joiners and
+    // missed variation selectors and every other default-ignorable scalar, so
+    // a word made only of U+FE0F still counted as visible (cloud review,
+    // #1683) — the same hand-rolled-range mistake as the C1 controls, one
+    // property over.
     value.unicodeScalars.contains {
-      !wordFormingInvisibles.contains($0.value)
+      !$0.properties.isDefaultIgnorableCodePoint
         && !CharacterSet.whitespacesAndNewlines.contains($0)
     }
   }

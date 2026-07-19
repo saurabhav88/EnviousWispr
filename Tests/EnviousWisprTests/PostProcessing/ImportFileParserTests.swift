@@ -1021,4 +1021,31 @@ struct ImportFileParserTests {
     #expect(candidates.map { $0.canonical } == ["Good", "AlsoGood"])
   }
 
+
+  @Test("a word of only invisible marks is refused, whichever mark it is")
+  func invisibleOnlyValuesAreRefused() async throws {
+    // Listing "the invisible ones" by hand named the two joiners and missed
+    // variation selectors and every other default-ignorable scalar, so a word
+    // made only of U+FE0F counted as visible and could be stored blank.
+    for blank in ["\u{FE0F}", "\u{200D}\u{FE0F}", "\u{2060}", "\u{FE00}\u{200C}"] {
+      let word = CustomWord(canonical: blank, aliases: [], category: .general)
+      let url = try write(try CustomWordsTransferDocument(words: [word]).encoded(), as: "w.json")
+      await #expect(throws: CustomWordsImportValidationError.self) {
+        try await FileImportSource(url: url).loadCandidates()
+      }
+    }
+  }
+
+  @Test("an emoji with a variation selector is still a real word")
+  func emojiWithVariationSelectorSurvives() async throws {
+    // The check must reject values that are ONLY invisible, never strip
+    // invisibles from words that have visible content.
+    let url = try write("\u{2764}\u{FE0F}\nKubernetes", as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.count == 2)
+    #expect(candidates[0].canonical.unicodeScalars.contains { $0.value == 0xFE0F })
+  }
+
 }
