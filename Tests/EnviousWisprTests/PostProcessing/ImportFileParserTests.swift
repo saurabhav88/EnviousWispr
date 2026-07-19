@@ -773,4 +773,41 @@ struct ImportFileParserTests {
     }
   }
 
+
+  @Test("few words with millions of aliases is refused")
+  func aliasSurfaceIsBounded() async throws {
+    // Bounding words alone bounded one dimension of the wrong thing: the work
+    // tracks total stored strings, so a handful of words each carrying a huge
+    // alias list fits under both the word and byte ceilings while flooding
+    // validation, comparison, and the collision index.
+    let perWord = 5_000
+    let wordCount =
+      (CustomWordsImportLimits.maximumExportedStoredValues / perWord) + 2
+    let words = (0..<wordCount).map { index in
+      CustomWord(
+        canonical: "Term\(index)",
+        aliases: (0..<perWord).map { "a\(index)_\($0)" },
+        category: .general)
+    }
+    let document = CustomWordsTransferDocument(words: words)
+    #expect(document.words.count < CustomWordsImportLimits.maximumExportedCandidates)
+    let url = try write(try document.encoded(), as: "words.json")
+
+    await #expect(throws: ImportFileError.self) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
+  @Test("a normal library with aliases is unaffected by the surface ceiling")
+  func normalAliasSurfacePasses() async throws {
+    let words = (0..<500).map {
+      CustomWord(canonical: "Term\($0)", aliases: ["a\($0)", "b\($0)"], category: .general)
+    }
+    let url = try write(try CustomWordsTransferDocument(words: words).encoded(), as: "words.json")
+
+    let batch = try await FileImportSource(url: url).loadCandidates()
+
+    #expect(batch.candidates.count == 500)
+  }
+
 }

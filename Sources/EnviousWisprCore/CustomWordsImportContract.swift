@@ -168,6 +168,16 @@ package enum CustomWordsImportLimits {
   /// larger than most complete English dictionaries — while keeping the
   /// compare engine and review list inside a worst case we have reasoned about.
   package static let maximumExportedCandidates = 100_000
+
+  /// Total stored strings — every canonical PLUS every alias — an exported
+  /// file may carry.
+  ///
+  /// Bounding words alone bounded one dimension of the wrong thing: 100,000
+  /// words each carrying hundreds of aliases fits inside both the word and
+  /// byte ceilings while producing millions of strings to validate, compare,
+  /// and index (Codex review, #1683). The cost of an import tracks the stored
+  /// SURFACE, so that is what has a ceiling.
+  package static let maximumExportedStoredValues = 400_000
 }
 
 package protocol CustomWordsImportSource: Sendable {

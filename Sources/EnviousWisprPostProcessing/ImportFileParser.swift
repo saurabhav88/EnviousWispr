@@ -132,6 +132,15 @@ package struct ExportedWordsFileParser: ImportFileParser {
       guard document.words.count <= ceiling else {
         throw ImportFileError.tooManyWords(found: document.words.count, limit: ceiling)
       }
+      // Words are one dimension; the work is proportional to the total stored
+      // SURFACE. Few words carrying millions of aliases fits under both the
+      // word and byte ceilings and still floods validation, comparison, and
+      // the collision index (Codex review, #1683).
+      let surface = document.words.reduce(0) { $0 + 1 + $1.aliases.count }
+      let surfaceCeiling = CustomWordsImportLimits.maximumExportedStoredValues
+      guard surface <= surfaceCeiling else {
+        throw ImportFileError.tooManyWords(found: surface, limit: surfaceCeiling)
+      }
       return try document.candidatesForImport()
     } catch let error as CustomWordsTransferError {
       throw ImportFileError.exportedWords(error)

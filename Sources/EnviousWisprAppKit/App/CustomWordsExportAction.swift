@@ -58,10 +58,12 @@ enum CustomWordsExportAction {
     //    document a second time. One encode, off-main, and the same bytes are
     //    both measured and written.
     do {
-      let encoded = try await Self.encoded(document)
-      if let refusal = Self.refusalIfUnimportable(document: document, encoded: encoded) {
-        return .failed(message: refusal)
-      }
+      // The WHOLE preflight runs off-main, not just the encode. Moving only
+      // the encode left a pass that mints a candidate per word and validates
+      // every word and alias running on the main actor — at the ceiling that
+      // is still enough to freeze the settings window (Codex review, #1683).
+      let (encoded, refusal) = try await Self.encodedAndChecked(document)
+      if let refusal { return .failed(message: refusal) }
       try await write(encoded, destination)
       return .exported
     } catch {
@@ -69,10 +71,11 @@ enum CustomWordsExportAction {
     }
   }
 
-  @concurrent private static func encoded(
+  @concurrent private static func encodedAndChecked(
     _ document: CustomWordsTransferDocument
-  ) async throws -> Data {
-    try document.encoded()
+  ) async throws -> (Data, String?) {
+    let encoded = try document.encoded()
+    return (encoded, refusalIfUnimportable(document: document, encoded: encoded))
   }
 
   /// The one place export and import agree on what fits — and on what is
@@ -84,7 +87,7 @@ enum CustomWordsExportAction {
   /// wholesale (Codex review, #1683). It therefore runs the importer's OWN
   /// validation rather than a second description of it, which is what stops
   /// the two from drifting apart again.
-  static func refusalIfUnimportable(
+  nonisolated static func refusalIfUnimportable(
     document: CustomWordsTransferDocument, encoded: Data
   ) -> String? {
     let words = document.words.count
