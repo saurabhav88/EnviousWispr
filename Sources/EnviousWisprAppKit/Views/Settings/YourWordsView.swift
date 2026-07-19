@@ -132,6 +132,19 @@ struct YourWordsView: View {
     /// Built-ins are excluded; what ships is what the user authored or edited,
     /// which is the only scope whose restore path this app can actually honor.
     private func exportWords() {
+      // Refuse to export what we could not read (code review r3). When the
+      // launch-time load fails the coordinator holds an empty list while the
+      // real file may still be on disk or archived for recovery. Exporting
+      // then writes a VALID EMPTY backup — and can overwrite a good one — so
+      // the failure would destroy the very thing the user came here to save.
+      // The banner already explains the load failure; this says why the button
+      // did nothing.
+      if customWordsCoordinator.wordsLoadFailureAtLaunch != nil {
+        exportError =
+          "Your saved words couldn't be read this time, so there's nothing safe to export. "
+          + "Relaunch EnviousWispr and try again."
+        return
+      }
       guard let destination = CustomWordsExportPanel.chooseDestination() else { return }
       let userWords = customWordsCoordinator.customWords.filter { $0.source == .user }
       do {

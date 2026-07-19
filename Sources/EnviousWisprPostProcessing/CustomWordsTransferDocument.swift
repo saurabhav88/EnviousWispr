@@ -66,16 +66,27 @@ package struct CustomWordsTransferDocument: Codable, Sendable, Equatable {
     self.words = words.map(PortableCustomWord.init)
   }
 
+  /// Just the envelope. Decoded first and alone so the format and version can
+  /// be judged before any version-specific payload is parsed.
+  private struct Header: Decodable {
+    let format: String
+    let version: Int
+  }
+
   /// Decode path. Rejects anything that isn't this format, and refuses a
-  /// version from the future rather than guessing at fields it doesn't know.
+  /// version it cannot interpret rather than guessing at fields it doesn't know.
   package init(data: Data) throws {
-    let decoded: CustomWordsTransferDocument
+    // Header FIRST (code review r3). A future format could rename a word field
+    // or add an enum case; decoding the whole document up front would throw on
+    // that payload before the version guard ran, and the user would be told
+    // their backup is damaged when the truth is "made by a newer version —
+    // update the app." Judge the envelope, then read the contents.
+    let header: Header
     do {
-      decoded = try JSONDecoder().decode(CustomWordsTransferDocument.self, from: data)
+      header = try JSONDecoder().decode(Header.self, from: data)
     } catch {
-      // A valid JSON object that simply isn't ours decodes as a key mismatch,
-      // same as damaged bytes; distinguish them so the user gets the right
-      // sentence rather than "damaged" for a perfectly fine unrelated file.
+      // A perfectly valid JSON file that simply isn't ours reads the same as
+      // damaged bytes at this layer; separate them so the message is true.
       if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
         object["format"] as? String != Self.formatIdentifier
       {
@@ -83,15 +94,24 @@ package struct CustomWordsTransferDocument: Codable, Sendable, Equatable {
       }
       throw CustomWordsTransferError.malformed
     }
-    guard decoded.format == Self.formatIdentifier else {
+    guard header.format == Self.formatIdentifier else {
       throw CustomWordsTransferError.notAnEnviousWisprBackup
     }
     // A RANGE, not an upper bound. Version 1 is the first format and nothing
     // earlier ever existed, so `0` or a negative version is a malformed or
     // tampered file claiming a schema that was never defined — not something
     // to import on the strength of the current fields happening to parse.
-    guard (1...Self.currentVersion).contains(decoded.version) else {
-      throw CustomWordsTransferError.unsupportedVersion(decoded.version)
+    guard (1...Self.currentVersion).contains(header.version) else {
+      throw CustomWordsTransferError.unsupportedVersion(header.version)
+    }
+
+    let decoded: CustomWordsTransferDocument
+    do {
+      decoded = try JSONDecoder().decode(CustomWordsTransferDocument.self, from: data)
+    } catch {
+      // The envelope is ours and its version is supported, so a payload that
+      // still won't parse is genuinely damaged.
+      throw CustomWordsTransferError.malformed
     }
     self = decoded
   }

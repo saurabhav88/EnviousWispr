@@ -99,6 +99,21 @@ struct CustomWordsTransferDocumentTests {
     }
   }
 
+  @Test("a future version is reported as newer, not as damaged")
+  func futureVersionWithUnknownPayloadReportsVersionNotDamage() throws {
+    // The header is judged before the payload (review r3), so a future format
+    // that changed a word field still gets the honest "update the app"
+    // message instead of "your backup is damaged".
+    let future = Data(
+      """
+      {"format":"com.enviouswispr.custom-words","version":99,
+       "words":[{"somethingNew":true}]}
+      """.utf8)
+    #expect(throws: CustomWordsTransferError.unsupportedVersion(99)) {
+      _ = try CustomWordsTransferDocument(data: future)
+    }
+  }
+
   @Test("damaged bytes read as damaged")
   func decoderRejectsMalformedData() throws {
     #expect(throws: CustomWordsTransferError.malformed) {
