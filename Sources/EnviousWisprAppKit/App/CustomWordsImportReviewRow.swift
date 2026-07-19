@@ -135,6 +135,22 @@ struct CustomWordsImportReviewRow: Identifiable, Sendable, Equatable {
     }
   }
 
+  /// Unreachable in v1, deliberately kept: the compare engine only records a
+  /// collision for a candidate whose aliases are `.supplied`
+  /// (`CustomWordsImportCompareEngine.detectAliasCollisions`), and no v1
+  /// source supplies any — every candidate's alias field is `.unspecified`.
+  /// The first real producer is backup restore (PR-E1/U1), which is also when
+  /// this copy first reaches a user. It is written here rather than deferred
+  /// because F2a already ships the detection and the display is a plain
+  /// rendering of it, not new machinery for a hypothetical state.
+  ///
+  /// The wording is deliberately conditional ("may not be"). Whether a given
+  /// alias actually lands depends on which rows the user approves — a
+  /// candidate that lost an alias to another *incoming* candidate wins it back
+  /// if that other row is skipped. Recomputing this per decision change would
+  /// be decision-aware display logic for a case v1 cannot produce; honest
+  /// conditional copy is correct in every future instead. PR-F2b's receipt
+  /// reports what was actually dropped, and the result screen shows that count.
   private static func collisionNote(
     for collisions: [CustomWordsImportAliasCollision],
     namesByID: [UUID: String]
@@ -144,11 +160,11 @@ struct CustomWordsImportReviewRow: Identifiable, Sendable, Equatable {
     // candidate rather than an existing word, in which case there is no name
     // to look up and the honest line just states the outcome.
     if collisions.count == 1, let owner = namesByID[collisions[0].heldBy] {
-      return "The spelling \"\(collisions[0].alias)\" won't be added, "
+      return "The spelling \"\(collisions[0].alias)\" may not be added, "
         + "because \(owner) already uses it."
     }
     let count = collisions.count
     let noun = count == 1 ? "spelling" : "spellings"
-    return "\(count) alternate \(noun) won't be added, because other words already use them."
+    return "\(count) alternate \(noun) may not be added, because other words already use them."
   }
 }

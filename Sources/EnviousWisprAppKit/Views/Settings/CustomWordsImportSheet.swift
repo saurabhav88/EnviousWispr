@@ -73,6 +73,10 @@ struct CustomWordsImportSheet: View {
     }
     .padding(24)
     .frame(width: 480)
+    // The footer's Cancel is not the only way out: closing the settings window
+    // or clearing the sheet route dismisses without it, and an in-flight load
+    // or comparison would otherwise keep running against a sheet that is gone.
+    .onDisappear { model.cancel() }
   }
 
   private var header: some View {

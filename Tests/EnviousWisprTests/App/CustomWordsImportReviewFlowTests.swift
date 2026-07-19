@@ -353,6 +353,10 @@ struct CustomWordsImportReviewFlowTests {
     let note = try! #require(rows[0].collisionNote)
     #expect(note.contains("Annie"))
     #expect(note.contains("Anika"))
+    // Conditional by design: whether the alias actually lands depends on which
+    // rows are approved, and the commit receipt reports what was really
+    // dropped. Asserting the wording freezes that honesty (code review r1).
+    #expect(note.contains("may not be added"))
     // Informational only: it must not change what the user may do.
     #expect(rows[0].allowedDecisions == [.add, .skip])
     #expect(rows[0].decision == .add)
