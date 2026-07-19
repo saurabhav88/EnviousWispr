@@ -83,7 +83,10 @@ async function main() {
 
   console.log("\n2. Retrying the SAME event resumes instead of re-incrementing");
   const eventId = uniqueId("retry");
-  const original = smokeEvent({ eventId });
+  // Distinct IP from section 1's default (203.0.113.1): sections run within the
+  // same 30s dedup window, so sharing an IP here would suppress attempt1 as a
+  // duplicate of section 1's event and break this test deterministically.
+  const original = smokeEvent({ eventId, ip: "203.0.113.2" });
   const attempt1 = await postCount(original);
   const attempt2 = await postCount(original);
   check("first attempt counted", attempt1.json?.counted === true);
@@ -109,7 +112,11 @@ async function main() {
     (statuses[0] === 200 && statuses[1] === 503) || (statuses[0] === 200 && statuses[1] === 200),
   );
   if (statuses[0] === 200 && statuses[1] === 200) {
-    check("if both eventually succeeded, they report the SAME total (no double count)", concA.json?.total === concB.json?.total);
+    const reasons = [concA.json?.reason, concB.json?.reason].sort();
+    check(
+      "if both returned 200, exactly one is the original delivery and the other reused it (never two independent posts)",
+      concA.json?.total === concB.json?.total && reasons[0] === "already-delivered" && reasons[1] === undefined,
+    );
   }
 
   console.log(`\n${failures === 0 ? "ALL CHECKS PASSED" : `${failures} CHECK(S) FAILED`}`);

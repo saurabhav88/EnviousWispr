@@ -205,7 +205,7 @@ export class DownloadCounter {
       await storage.put(batch);
     }
 
-    const content = formatMessage({
+    let content = formatMessage({
       total: record.total,
       isOffsite: event === "download_redirect",
       city,
@@ -218,6 +218,12 @@ export class DownloadCounter {
       lang,
       sourceBucket,
     });
+    // The smoke environment shares the production Discord webhook (README) so
+    // it can prove a real post lands; every post it makes must be visually
+    // unmistakable from a real download in the shared channel.
+    if (this.env.SMOKE === "true") {
+      content = `🧪 SMOKE TEST — ignore\n${content}`;
+    }
 
     const result = await postToDiscord(this.env.DISCORD_WEBHOOK_URL, content, {
       timeoutMs: DISCORD_ATTEMPT_TIMEOUT_MS,

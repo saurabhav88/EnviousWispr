@@ -44,6 +44,9 @@ new_sqlite_classes = ["DownloadCounter"]
 [env.smoke]
 name = "enviouswispr-download-counter-smoke"
 
+[env.smoke.vars]
+SMOKE = "true"
+
 [[env.smoke.durable_objects.bindings]]
 name = "DOWNLOAD_COUNTER"
 class_name = "DownloadCounter"

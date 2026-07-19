@@ -372,6 +372,30 @@ test("an unrecognized sourceBucket falls back to a generic off-site label", asyn
   }
 });
 
+test("SMOKE env prefixes the Discord message so a test post is never mistaken for a real download", async () => {
+  const { counter } = makeCounter({ SMOKE: "true" });
+  const mock = mockFetch(() => new Response(null, { status: 204 }));
+  try {
+    await counter.fetch(countRequest(onSiteEvent()));
+    const sent = JSON.parse(mock.calls[0].init.body).content;
+    assert.ok(sent.startsWith("🧪 SMOKE TEST — ignore\n"));
+  } finally {
+    mock.restore();
+  }
+});
+
+test("without SMOKE set, the message carries no test marker", async () => {
+  const { counter } = makeCounter();
+  const mock = mockFetch(() => new Response(null, { status: 204 }));
+  try {
+    await counter.fetch(countRequest(onSiteEvent()));
+    const sent = JSON.parse(mock.calls[0].init.body).content;
+    assert.ok(!sent.includes("SMOKE TEST"));
+  } finally {
+    mock.restore();
+  }
+});
+
 test("/seed succeeds once on a cold counter, then refuses with 409", async () => {
   const { counter, storage } = makeCounter();
   const first = await counter.fetch(seedRequest(756));
