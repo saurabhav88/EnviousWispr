@@ -117,16 +117,33 @@ struct CustomWordsImportReviewFlowTests {
   ) async {
     model.select(.paste)
     model.begin(with: StubSource(candidates: candidates))
-    await Self.settle(model) { $0.step == .review || $0.step.isResult }
+    await Self.settle(model, waitingFor: "the review or result screen") {
+      $0.step == .review || $0.step.isResult
+    }
   }
 
   /// Signal-based settle: yield until the model reaches the state the caller
   /// is waiting for. No clock is involved, so a slow CI host cannot flake it.
-  static func settle(_ model: Model, until condition: (Model) -> Bool) async {
+  ///
+  /// Giving up is a FAILURE, never a quiet return (code review r2). A helper
+  /// that times out silently turns "the flow never got there" into a pass —
+  /// the cancellation test in particular would then cancel before the compare
+  /// call started and still go green without ever exercising mid-flight
+  /// cancellation.
+  static func settle(
+    _ model: Model,
+    waitingFor label: String,
+    until condition: (Model) -> Bool,
+    sourceLocation: SourceLocation = #_sourceLocation
+  ) async {
     for _ in 0..<1000 {
       if condition(model) { return }
       await Task.yield()
     }
+    Issue.record(
+      "Timed out waiting for \(label); the model never reached that state.",
+      sourceLocation: sourceLocation
+    )
   }
 
   // MARK: - Decision gating
@@ -294,7 +311,7 @@ struct CustomWordsImportReviewFlowTests {
     #expect(model.rows[0].decision == .add)
 
     model.confirm()
-    await Self.settle(model) { $0.step == .review }
+    await Self.settle(model, waitingFor: "the rebuilt review screen") { $0.step == .review }
 
     #expect(model.rows.count == 1)
     #expect(model.rows[0].decision == .skip, "the rebuilt row must not inherit the old Add")
@@ -319,7 +336,9 @@ struct CustomWordsImportReviewFlowTests {
     model.begin(with: StubSource(candidates: [Self.candidate("Kubernetes")]))
     // Wait for the flow to actually reach the gated compare call, so the
     // cancellation lands mid-flight rather than before the work started.
-    await Self.settle(model) { _ in compare.policies.isEmpty == false }
+    await Self.settle(model, waitingFor: "the compare call to start") { _ in
+      compare.policies.isEmpty == false
+    }
 
     model.cancel()
     continuation.yield()
@@ -327,7 +346,9 @@ struct CustomWordsImportReviewFlowTests {
     // Wait for the gated call to actually finish. Without this the assertions
     // below could pass because the work never ran, which is indistinguishable
     // from working cancellation and would make this test worthless.
-    await Self.settle(model) { _ in compare.completedCalls == 1 }
+    await Self.settle(model, waitingFor: "the gated compare call to finish") { _ in
+      compare.completedCalls == 1
+    }
     // Then give the completed task every chance to publish; it must not.
     for _ in 0..<50 { await Task.yield() }
 
@@ -411,7 +432,7 @@ struct CustomWordsImportReviewFlowTests {
 
     model.select(.paste)
     model.begin(with: StubSource(candidates: []))
-    await Self.settle(model) { $0.step.isResult }
+    await Self.settle(model, waitingFor: "a terminal result") { $0.step.isResult }
 
     #expect(model.step == .result(.nothingFound))
     #expect(compare.callCount == 0, "an empty batch must not reach the compare engine")
