@@ -144,7 +144,14 @@ struct YourWordsView: View {
       // list stayed the empty launch fallback, so export wrote a valid empty
       // file over a real one (cloud review, #1682). A corrupted-and-archived
       // library refuses here rather than exporting the empty shell left behind.
-      guard customWordsCoordinator.refreshFromDiskIfPossible() else {
+      // Adopt what is on disk, THEN judge whether it is safe to write out.
+      // Two separate questions: the reload must always adopt (the import path
+      // depends on it), while export additionally refuses the empty shell left
+      // behind by a corrupted-and-archived library.
+      guard
+        customWordsCoordinator.refreshFromDiskIfPossible(),
+        customWordsCoordinator.canExportCurrentWords
+      else {
         exportError =
           "Your saved words couldn't be read this time, so there's nothing safe to export. "
           + "Relaunch EnviousWispr and try again."

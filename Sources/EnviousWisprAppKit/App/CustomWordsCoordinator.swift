@@ -76,27 +76,30 @@ final class CustomWordsCoordinator {
   @discardableResult
   func refreshFromDiskIfPossible() -> Bool {
     guard let refreshed = manager.load() else { return false }
-
-    // Judge BEFORE publishing (code review r3). A corrupted file was ARCHIVED
-    // aside at launch, so this reload sees a legitimately missing file and
-    // reports a clean, empty library — which reads as success while the user's
-    // real words sit in the archive. Assigning first meant a refresh that
-    // returns false had already mutated live state and fired onWordsChanged,
-    // so "this failed" and "this changed everything" were both true at once.
-    //
-    // Once they have authored a word since, they have visibly accepted the
-    // fresh start and the list is theirs again.
-    if wordsLoadFailureAtLaunch == .corrupted,
-      !refreshed.contains(where: { $0.source == .user })
-    {
-      return false
-    }
-
     if refreshed != customWords {
       customWords = refreshed
       onWordsChanged?(customWords)
     }
     return true
+  }
+
+  /// Whether the current list is a safe thing to WRITE OUT (#1683).
+  ///
+  /// Deliberately separate from `refreshFromDiskIfPossible`, which answers a
+  /// different question — "can I read the library" — and must always adopt
+  /// what it reads. Folding export's refusal into that method re-created the
+  /// stale-commit loop it was written to fix: the import path stopped adopting
+  /// the current library, so every re-comparison saw the same old list and
+  /// Confirm could never succeed (code review r4). Two questions, two answers.
+  ///
+  /// A corrupted file is ARCHIVED aside at launch, so a reload afterwards sees
+  /// a legitimately missing file and reports a clean, empty library. Exporting
+  /// then would write an empty file over the one the user picked while their
+  /// real words sit in the archive. Once they have authored a word since, they
+  /// have visibly accepted the fresh start and the list is theirs again.
+  var canExportCurrentWords: Bool {
+    guard wordsLoadFailureAtLaunch == .corrupted else { return true }
+    return customWords.contains { $0.source == .user }
   }
 
   /// Apply a reviewed import in one atomic write. Fires `onWordsChanged`
