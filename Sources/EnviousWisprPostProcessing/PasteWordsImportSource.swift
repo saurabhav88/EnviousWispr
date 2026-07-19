@@ -22,21 +22,51 @@ package enum PasteWordsParser {
   /// silently invents words nobody typed.
   private static let separators = CharacterSet(charactersIn: ",\n\r")
 
-  package static func parse(_ text: String) -> [String] {
+  /// Scans the text ONCE, emitting words as it goes, and stops at `limit` + 1.
+  ///
+  /// The previous shape built every component first and checked the ceiling
+  /// afterwards, so a 16 MB list of separators materialised millions of
+  /// entries to then reject the file — spending exactly the memory the ceiling
+  /// exists to save, with cancellation unobserved until it finished (Codex
+  /// review, #1683).
+  ///
+  /// `split`/`components(separatedBy:)` cannot fix that: both build the whole
+  /// array before any early exit can run. Only a character-by-character scan
+  /// with its own buffer is genuinely incremental.
+  ///
+  /// One entry past the limit is enough for the caller to tell "at the limit"
+  /// from "over" it.
+  package static func parse(_ text: String, limit: Int? = nil) throws -> [String] {
     var seen = Set<String>()
     var results: [String] = []
+    var buffer = ""
+    let ceiling = limit.map { $0 + 1 }
+    var scanned = 0
 
-    for piece in text.components(separatedBy: separators) {
-      let trimmed = piece.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !trimmed.isEmpty else { continue }
+    func flush() -> Bool {
+      defer { buffer.removeAll(keepingCapacity: true) }
+      let trimmed = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmed.isEmpty else { return true }
       // Deduplicate on the compare engine's own key, so "GitHub" and "github"
       // in one paste collapse the same way they would against the library —
       // and the FIRST spelling wins, because that is the one the user typed
       // first and has no reason to see replaced by a later casing.
       let key = CustomWordsImportCompareEngine.normalize(trimmed)
-      guard !key.isEmpty, seen.insert(key).inserted else { continue }
+      guard !key.isEmpty, seen.insert(key).inserted else { return true }
       results.append(trimmed)
+      return ceiling.map { results.count < $0 } ?? true
     }
+
+    for scalar in text.unicodeScalars {
+      scanned += 1
+      if scanned.isMultiple(of: 100_000) { try Task.checkCancellation() }
+      if separators.contains(scalar) {
+        guard flush() else { return results }
+        continue
+      }
+      buffer.unicodeScalars.append(scalar)
+    }
+    _ = flush()
     return results
   }
 }
@@ -68,7 +98,8 @@ package struct PasteWordsImportSource: CustomWordsImportSource {
   /// `@concurrent` so a very large paste is parsed off the caller's actor
   /// rather than on the main one (code review r2).
   @concurrent package func loadCandidates() async throws -> CustomWordsImportBatch {
-    let canonicals = PasteWordsParser.parse(text)
+    let canonicals = try PasteWordsParser.parse(
+      text, limit: CustomWordsImportLimits.maximumCandidates)
     // The same ceiling file import enforces. A limit that applied to one door
     // and not the other would just be a bug with a longer fuse.
     guard canonicals.count <= CustomWordsImportLimits.maximumCandidates else {

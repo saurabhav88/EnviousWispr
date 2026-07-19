@@ -129,9 +129,11 @@ package struct PlainTextImportFileParser: ImportFileParser {
 
   package func parse(data: Data) throws -> [CustomWordsImportCandidate] {
     guard let text = Self.decode(data) else { throw ImportFileError.unreadable }
-    return PasteWordsParser.parse(text).map {
-      CustomWordsImportCandidate(canonical: $0)
-    }
+    // Bounded at the parse itself, so a huge list is refused without first
+    // building every entry (Codex review, #1683).
+    return try PasteWordsParser.parse(
+      text, limit: CustomWordsImportLimits.maximumCandidates
+    ).map { CustomWordsImportCandidate(canonical: $0) }
   }
 
   /// Turns file bytes into text, or refuses.

@@ -90,7 +90,8 @@ struct ImportFileParserTests {
     let url = try write(text, as: "words.txt")
     let batch = try await FileImportSource(url: url).loadCandidates()
 
-    #expect(batch.candidates.map { $0.canonical } == PasteWordsParser.parse(text))
+    let viaPaste = try PasteWordsParser.parse(text)
+    #expect(batch.candidates.map { $0.canonical } == viaPaste)
     #expect(
       batch.candidates.map { $0.canonical }
         == ["Envious Labs", "C++", "and/or", "Smith; Jones", "GitHub"])
@@ -578,6 +579,39 @@ struct ImportFileParserTests {
     await #expect(throws: ImportFileError.unreadable) {
       try await FileImportSource(url: url).loadCandidates()
     }
+  }
+
+
+  @Test("a huge word list is refused without building every entry")
+  func hugeListStopsAtTheCeiling() async throws {
+    // Parsing everything and checking afterwards spent exactly the memory the
+    // ceiling exists to save, and ignored cancellation until it finished.
+    let limit = CustomWordsImportLimits.maximumCandidates
+    let words = (0...(limit + 10)).map { "Term\($0)" }.joined(separator: "\n")
+
+    let parsed = try PasteWordsParser.parse(words, limit: limit)
+
+    // Stops one past the limit: enough to tell "at the limit" from "over".
+    #expect(parsed.count == limit + 1)
+
+    let url = try write(words, as: "words.txt")
+    await #expect(
+      throws: ImportFileError.tooManyWords(found: limit + 1, limit: limit)
+    ) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
+  @Test("an exactly-at-the-limit list still imports")
+  func exactlyAtLimitImports() async throws {
+    // The off-by-one that a "+1" sentinel invites.
+    let limit = CustomWordsImportLimits.maximumCandidates
+    let words = (0..<limit).map { "Term\($0)" }.joined(separator: "\n")
+    let url = try write(words, as: "words.txt")
+
+    let batch = try await FileImportSource(url: url).loadCandidates()
+
+    #expect(batch.candidates.count == limit)
   }
 
 }

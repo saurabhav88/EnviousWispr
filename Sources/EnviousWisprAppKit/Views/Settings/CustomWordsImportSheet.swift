@@ -359,10 +359,12 @@ private struct ImportPasteScreen: View {
       isEditorFocused = true
       // Back from Review returns to an existing draft, so the count has to be
       // right on arrival, not only after the next keystroke.
-      wordCount = PasteWordsParser.parse(model.pasteDraft).count
+      wordCount = (try? PasteWordsParser.parse(
+        model.pasteDraft, limit: CustomWordsImportLimits.maximumCandidates))?.count ?? 0
     }
     .onChange(of: model.pasteDraft) { _, draft in
-      wordCount = PasteWordsParser.parse(draft).count
+      wordCount = (try? PasteWordsParser.parse(
+        draft, limit: CustomWordsImportLimits.maximumCandidates))?.count ?? 0
     }
   }
 

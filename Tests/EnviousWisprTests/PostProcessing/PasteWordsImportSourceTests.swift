@@ -24,8 +24,8 @@ struct PasteWordsImportSourceTests {
       ("Kubernetes\rAnthropic", ["Kubernetes", "Anthropic"]),
       ("Kubernetes, Anthropic,\n Qualtrics", ["Kubernetes", "Anthropic", "Qualtrics"]),
     ])
-  func supportedSeparatorsSplit(input: String, expected: [String]) {
-    #expect(PasteWordsParser.parse(input) == expected)
+  func supportedSeparatorsSplit(input: String, expected: [String]) throws {
+    #expect(try PasteWordsParser.parse(input) == expected)
   }
 
   @Test(
@@ -43,49 +43,49 @@ struct PasteWordsImportSourceTests {
       ("Smith; Jones", ["Smith; Jones"]),
       ("node.js", ["node.js"]),
     ])
-  func nonSeparatorsAreLeftIntact(input: String, expected: [String]) {
-    #expect(PasteWordsParser.parse(input) == expected)
+  func nonSeparatorsAreLeftIntact(input: String, expected: [String]) throws {
+    #expect(try PasteWordsParser.parse(input) == expected)
   }
 
   // MARK: - Trimming and empties
 
   @Test("surrounding whitespace is trimmed, inner spacing is kept")
-  func whitespaceIsTrimmedButNotCollapsed() {
-    #expect(PasteWordsParser.parse("  Envious Labs  ") == ["Envious Labs"])
+  func whitespaceIsTrimmedButNotCollapsed() throws {
+    #expect(try PasteWordsParser.parse("  Envious Labs  ") == ["Envious Labs"])
   }
 
   @Test("empty and whitespace-only pieces are dropped")
-  func emptyPiecesAreDropped() {
-    #expect(PasteWordsParser.parse("Kubernetes,,  ,\n\n,Anthropic") == ["Kubernetes", "Anthropic"])
+  func emptyPiecesAreDropped() throws {
+    #expect(try PasteWordsParser.parse("Kubernetes,,  ,\n\n,Anthropic") == ["Kubernetes", "Anthropic"])
   }
 
   @Test(
     "input with no words yields nothing rather than a blank row",
     arguments: ["", "   ", "\n\n", ",,,", " , \n , "])
-  func inputWithoutWordsYieldsNothing(input: String) {
-    #expect(PasteWordsParser.parse(input).isEmpty)
+  func inputWithoutWordsYieldsNothing(input: String) throws {
+    #expect(try PasteWordsParser.parse(input).isEmpty)
   }
 
   // MARK: - Deduplication
 
   @Test("a repeated word appears once, in its first spelling")
-  func withinPasteDedupPreservesFirstSpelling() {
-    #expect(PasteWordsParser.parse("GitHub\ngithub\nGITHUB") == ["GitHub"])
+  func withinPasteDedupPreservesFirstSpelling() throws {
+    #expect(try PasteWordsParser.parse("GitHub\ngithub\nGITHUB") == ["GitHub"])
   }
 
   @Test("dedup uses the same normalization the compare engine uses")
-  func dedupMatchesCompareEngineNormalization() {
+  func dedupMatchesCompareEngineNormalization() throws {
     // Both collapse to one key in the engine, so they must collapse here too;
     // otherwise the review screen would show two rows that persistence would
     // then refuse as duplicates.
-    let parsed = PasteWordsParser.parse("Claude Code\nClaude  Code")
+    let parsed = try PasteWordsParser.parse("Claude Code\nClaude  Code")
     #expect(parsed == ["Claude Code"])
   }
 
   @Test("distinct words are all kept, in paste order")
-  func distinctWordsKeepPasteOrder() {
+  func distinctWordsKeepPasteOrder() throws {
     #expect(
-      PasteWordsParser.parse("Qualtrics\nKubernetes\nAnthropic")
+      try PasteWordsParser.parse("Qualtrics\nKubernetes\nAnthropic")
         == ["Qualtrics", "Kubernetes", "Anthropic"])
   }
 
