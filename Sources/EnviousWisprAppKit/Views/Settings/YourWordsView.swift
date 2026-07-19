@@ -24,6 +24,10 @@ struct YourWordsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
   @State private var sheetRoute: YourWordsSheetRoute?
+  #if DEBUG
+    /// Set when an export failed, so the failure is stated rather than silent.
+    @State private var exportError: String?
+  #endif
 
   var body: some View {
     @Bindable var settings = settings
@@ -52,6 +56,13 @@ struct YourWordsView: View {
           } label: {
             Label("Preview import", systemImage: "square.and.arrow.down")
           }
+          // Export (#1680). Also DEBUG-only: the whole import/export feature is
+          // compiled out of release builds until the founder ships it, and a
+          // release-visible Export whose companion Import is invisible would be
+          // half a promise.
+          Button(action: exportWords) {
+            Label("Export your words", systemImage: "square.and.arrow.up")
+          }
         #endif
       }
 
@@ -78,6 +89,19 @@ struct YourWordsView: View {
       VocabPacksSection()
       CustomTermsSection()
     }
+    #if DEBUG
+      .alert(
+        "Export didn't finish",
+        isPresented: Binding(
+          get: { exportError != nil },
+          set: { if !$0 { exportError = nil } }
+        )
+      ) {
+        Button("OK", role: .cancel) { exportError = nil }
+      } message: {
+        Text(exportError ?? "")
+      }
+    #endif
     .sheet(item: $sheetRoute) { route in
       switch route {
       case .addTerm:
@@ -99,6 +123,26 @@ struct YourWordsView: View {
       }
     }
   }
+
+  #if DEBUG
+    /// Export the user's own words (#1680).
+    ///
+    /// Order matters: the destination is chosen first, and only then is the
+    /// word list snapshotted — so cancelling reads nothing and writes nothing.
+    /// Built-ins are excluded; what ships is what the user authored or edited,
+    /// which is the only scope whose restore path this app can actually honor.
+    private func exportWords() {
+      guard let destination = CustomWordsExportPanel.chooseDestination() else { return }
+      let userWords = customWordsCoordinator.customWords.filter { $0.source == .user }
+      do {
+        try CustomWordsExportWriter.write(
+          CustomWordsTransferDocument(words: userWords), to: destination)
+        exportError = nil
+      } catch {
+        exportError = error.localizedDescription
+      }
+    }
+  #endif
 
   private func saveNewWord(_ newWord: CustomWord) -> String? {
     let trimmedCanonical = newWord.canonical.trimmingCharacters(in: .whitespaces)
