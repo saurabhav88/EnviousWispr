@@ -146,10 +146,8 @@ package struct FileImportSource: CustomWordsImportSource {
   /// a mistaken selection (a video, a database, a disk image), and reading it
   /// into memory to discover that is the expensive way to find out.
   package static let maximumFileBytes = 16 * 1024 * 1024
-  /// The compare engine documents this ceiling for uploads. Enforced here, at
-  /// the door, rather than after every row has been parsed, compared and
-  /// rendered into a review the user cannot meaningfully read anyway.
-  package static let maximumCandidates = 25_000
+  /// Shared with every other import source, so no door has a different limit.
+  package static var maximumCandidates: Int { CustomWordsImportLimits.maximumCandidates }
 
   private let url: URL
   private let registry: ImportFileRegistry

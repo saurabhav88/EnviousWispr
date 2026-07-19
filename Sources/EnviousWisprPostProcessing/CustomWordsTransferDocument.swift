@@ -10,13 +10,13 @@ package enum CustomWordsTransferError: LocalizedError, Sendable, Equatable {
   package var errorDescription: String? {
     switch self {
     case .notAnEnviousWisprBackup:
-      return "That file isn't an EnviousWispr word backup."
+      return "That file didn't come from EnviousWispr."
     case .unsupportedVersion(let version):
       return
-        "That backup was made by a newer version of EnviousWispr (format \(version)). "
+        "That file was exported by a newer version of EnviousWispr (format \(version)). "
         + "Update the app, then try again."
     case .malformed:
-      return "That backup file is damaged and can't be read."
+      return "That file is damaged and can't be read."
     }
   }
 }
@@ -87,10 +87,21 @@ package struct CustomWordsTransferDocument: Codable, Sendable, Equatable {
     } catch {
       // A perfectly valid JSON file that simply isn't ours reads the same as
       // damaged bytes at this layer; separate them so the message is true.
-      if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-        object["format"] as? String != Self.formatIdentifier
+      //
+      // "Valid JSON" includes a top-level array, string, or number — a config
+      // file, an API dump, a word list someone saved as JSON. Those are
+      // healthy documents that just aren't ours, and calling them damaged
+      // sends the user hunting for corruption that isn't there (review r2).
+      if let json = try? JSONSerialization.jsonObject(
+        with: data, options: [.fragmentsAllowed])
       {
-        throw CustomWordsTransferError.notAnEnviousWisprBackup
+        let claimsOurFormat =
+          (json as? [String: Any])?["format"] as? String == Self.formatIdentifier
+        // Only a document claiming to BE ours can be damaged goods; anything
+        // else is simply a different file.
+        throw claimsOurFormat
+          ? CustomWordsTransferError.malformed
+          : CustomWordsTransferError.notAnEnviousWisprBackup
       }
       throw CustomWordsTransferError.malformed
     }

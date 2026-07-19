@@ -172,6 +172,29 @@ struct ImportFileParserTests {
     }
   }
 
+  @Test(
+    "healthy JSON that isn't ours reads as a different file, not a damaged one",
+    arguments: ["[1,2,3]", "\"just a string\"", "42", "[]"])
+  func nonObjectJSONReportsForeignRatherThanDamaged(payload: String) async throws {
+    // A config file, an API dump, a list saved as JSON — all valid documents
+    // that simply aren't ours. Calling them damaged sends the user hunting for
+    // corruption that isn't there (review r2).
+    let url = try write(payload, as: "other.json")
+    await #expect(throws: ImportFileError.exportedWords(.notAnEnviousWisprBackup)) {
+      _ = try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
+  @Test("a file claiming to be ours but broken still reads as damaged")
+  func ourFormatWithBrokenPayloadStillReadsAsDamaged() async throws {
+    let url = try write(
+      #"{"format":"com.enviouswispr.custom-words","version":1,"words":"not-an-array"}"#,
+      as: "broken.json")
+    await #expect(throws: ImportFileError.exportedWords(.malformed)) {
+      _ = try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
   // MARK: - Limits
 
   @Test("an absurdly large file is refused before it is read into memory")
