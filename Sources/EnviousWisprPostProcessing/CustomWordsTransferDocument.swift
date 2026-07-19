@@ -156,8 +156,16 @@ package struct CustomWordsTransferDocument: Codable, Sendable, Equatable {
   /// genuinely has no alternate spellings" and `.supplied(nil)` means "this
   /// word genuinely uses the global strictness". A backup is a full round-trip
   /// of a real word, so silence here would be a lie, not an absence of opinion.
-  package func candidatesForImport() -> [CustomWordsImportCandidate] {
-    words.map { word in
+  /// Throws on cancellation, because this is the expensive half of reading a
+  /// large export and the sheet can be dismissed mid-flight. Without a check
+  /// here the work carried on burning CPU and memory after the UI was gone
+  /// (Codex review, #1683).
+  package func candidatesForImport() throws -> [CustomWordsImportCandidate] {
+    try words.enumerated().map { index, word in
+      // Cancellation is cheap to observe but not free, so check per batch
+      // rather than per word.
+      if index.isMultiple(of: 1_000) { try Task.checkCancellation() }
+      return
       CustomWordsImportCandidate(
         id: UUID(),
         canonical: word.canonical,

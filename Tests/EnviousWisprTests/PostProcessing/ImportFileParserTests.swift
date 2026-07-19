@@ -535,4 +535,36 @@ struct ImportFileParserTests {
     }
   }
 
+
+  @Test("an exported file's word ceiling is raised, not removed")
+  func exportedFileCeilingIsFiniteNotAbsent() async throws {
+    // The "this is an EnviousWispr export" marker is self-declared and
+    // unsigned, so any JSON can claim it. Removing the ceiling outright would
+    // hand a crafted file an unbounded budget and hang the review screen; the
+    // round trip only needs the ceiling RAISED above any real library.
+    let ceiling = try #require(ExportedWordsFileParser().maximumCandidates)
+    #expect(ceiling > CustomWordsImportLimits.maximumCandidates)
+    #expect(ceiling == CustomWordsImportLimits.maximumExportedCandidates)
+    // And the bytes are bounded too, so the two cannot drift apart again.
+    #expect(
+      ExportedWordsFileParser().maximumBytes
+        == CustomWordsImportLimits.maximumExportedFileBytes)
+  }
+
+  @Test("reading a large export stops when the sheet is dismissed")
+  func candidateConversionHonoursCancellation() async throws {
+    // Decoding and converting is the expensive half of reading a big export.
+    // Without a check inside it, the work carried on burning CPU and memory
+    // after the user had closed the sheet.
+    let words = (0..<5_000).map {
+      CustomWord(canonical: "Term\($0)", aliases: [], category: .general)
+    }
+    let document = CustomWordsTransferDocument(words: words)
+
+    let task = Task { try document.candidatesForImport() }
+    task.cancel()
+
+    await #expect(throws: CancellationError.self) { try await task.value }
+  }
+
 }

@@ -130,9 +130,19 @@ package enum CustomWordsImportLimits {
   package static let maximumImportFileBytes = 16 * 1024 * 1024
 
   /// Our OWN exported file, which must always be readable back — an export you
-  /// cannot import is not an export. Far above any real library (over a
-  /// million terms), while still refusing a mistakenly chosen disk image.
-  package static let maximumExportedFileBytes = 256 * 1024 * 1024
+  /// cannot import is not an export.
+  ///
+  /// Higher than the untrusted cap, but still FINITE, because the
+  /// "this is an EnviousWispr export" marker is self-declared and unsigned:
+  /// any JSON claiming it would otherwise get an unbounded budget (Codex
+  /// review, #1683). Bounded means a crafted or damaged file has a known worst
+  /// case instead of hanging the review screen.
+  package static let maximumExportedFileBytes = 64 * 1024 * 1024
+
+  /// Words an exported file may carry. Comfortably past any real library —
+  /// larger than most complete English dictionaries — while keeping the
+  /// compare engine and review list inside a worst case we have reasoned about.
+  package static let maximumExportedCandidates = 100_000
 }
 
 package protocol CustomWordsImportSource: Sendable {

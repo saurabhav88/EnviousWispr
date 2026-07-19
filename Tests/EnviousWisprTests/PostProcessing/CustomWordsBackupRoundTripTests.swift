@@ -50,7 +50,7 @@ struct CustomWordsBackupRoundTripTests {
     #expect(fresh.contains { $0.source == .user } == false)
     #expect(fresh.isEmpty == false)
 
-    let candidates = backup.candidatesForImport()
+    let candidates = try backup.candidatesForImport()
     let comparisons = try await CustomWordsImportCompareEngine().compare(
       candidates: candidates,
       against: fresh,

@@ -131,7 +131,7 @@ struct CustomWordsTransferDocumentTests {
     // source that can say "genuinely none" rather than "no opinion", and on a
     // Replace that difference decides whether hand-tuned values are cleared.
     let bare = word("Kubernetes", aliases: [], minSimilarityOverride: nil)
-    let candidates = CustomWordsTransferDocument(words: [bare]).candidatesForImport()
+    let candidates = try CustomWordsTransferDocument(words: [bare]).candidatesForImport()
     let candidate = try #require(candidates.first)
 
     #expect(candidate.aliases == .supplied([]))
@@ -146,7 +146,7 @@ struct CustomWordsTransferDocumentTests {
   func candidatesForImportResetsUsageHistory() throws {
     let used = word("Kubernetes", frequencyUsed: 9, lastUsed: Date())
     let candidate = try #require(
-      CustomWordsTransferDocument(words: [used]).candidatesForImport().first)
+      try CustomWordsTransferDocument(words: [used]).candidatesForImport().first)
     // The candidate type structurally cannot carry usage history; this asserts
     // the suggestion channel is also empty, so nothing machine-generated rides
     // in on a restore.
@@ -168,7 +168,7 @@ struct CustomWordsTransferDocumentTests {
 
   @Test("two candidates from one backup have distinct review identities")
   func candidatesForImportGivesEachRowItsOwnIdentity() throws {
-    let candidates = CustomWordsTransferDocument(
+    let candidates = try CustomWordsTransferDocument(
       words: [word("Kubernetes"), word("Anthropic")]
     ).candidatesForImport()
     #expect(Set(candidates.map(\.id)).count == 2)

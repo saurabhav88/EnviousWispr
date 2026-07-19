@@ -93,10 +93,14 @@ package struct ExportedWordsFileParser: ImportFileParser {
   /// check runs BEFORE the parser is consulted (cloud review, #1683). Fixing
   /// the word count alone was a fix to the instance, not to the rule.
   ///
-  /// Still bounded, just far above any real library: a words file this large
-  /// would hold over a million terms, so a mistakenly chosen disk image is
-  /// still refused rather than read into memory.
-  package let maximumCandidates: Int? = nil
+  /// Raised, NOT removed. The "this is an EnviousWispr export" marker is
+  /// self-declared and unsigned, so treating it as a licence for an unbounded
+  /// candidate set trusts a claim anyone can make: a crafted 64 MB file could
+  /// otherwise produce hundreds of thousands of rows and hang the review
+  /// screen (Codex review, #1683). A ceiling far above any real library still
+  /// keeps the round trip whole while giving a hostile file a known worst
+  /// case.
+  package let maximumCandidates: Int? = CustomWordsImportLimits.maximumExportedCandidates
   package let maximumBytes = CustomWordsImportLimits.maximumExportedFileBytes
 
   package init() {}
