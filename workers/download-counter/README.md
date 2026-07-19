@@ -36,21 +36,37 @@ Discord) — no network calls, no PostHog, no real Discord posts.
 
 ## Deploy (one-time)
 
+Cloudflare secrets are write-only — `wrangler secret put` accepts a value but
+there is no way to read it back later. `TRIGGER_SECRET` is needed again by
+the smoke script and the PostHog Hog relay's `workerSecret` input, so it must
+be generated into Keychain FIRST (same pattern as the existing
+`enviouswispr.discord-webhook-*` items — see
+`~/.claude/knowledge/secrets-management.md` RULE: webhooks-read-from-keychain),
+then read from Keychain into `wrangler secret put`, never generated and
+piped away in one step:
+
 ```bash
 cd workers/download-counter
 npx wrangler deploy
 
-# secrets (never committed):
+# secrets (never committed; generate into Keychain first, THEN set on Cloudflare):
+security add-generic-password -U -A -a m4pro_sv -s enviouswispr.download-counter-trigger-secret -w "$(openssl rand -hex 32)"
+security add-generic-password -U -A -a m4pro_sv -s enviouswispr.download-counter-ip-hash-secret -w "$(openssl rand -hex 32)"
+
 security find-generic-password -w -a m4pro_sv -s enviouswispr.discord-webhook-downloads | npx wrangler secret put DISCORD_WEBHOOK_URL
-openssl rand -hex 32 | npx wrangler secret put TRIGGER_SECRET
-openssl rand -hex 32 | npx wrangler secret put IP_HASH_SECRET
+security find-generic-password -w -a m4pro_sv -s enviouswispr.download-counter-trigger-secret | npx wrangler secret put TRIGGER_SECRET
+security find-generic-password -w -a m4pro_sv -s enviouswispr.download-counter-ip-hash-secret | npx wrangler secret put IP_HASH_SECRET
 
 # smoke environment (separate deployment, separate Durable Object namespace by
-# construction — see wrangler.toml comment):
+# construction — see wrangler.toml comment). Distinct secrets from
+# production, so a leaked smoke secret can't authenticate against it:
 npx wrangler deploy --env smoke
+security add-generic-password -U -A -a m4pro_sv -s enviouswispr.download-counter-smoke-trigger-secret -w "$(openssl rand -hex 32)"
+security add-generic-password -U -A -a m4pro_sv -s enviouswispr.download-counter-smoke-ip-hash-secret -w "$(openssl rand -hex 32)"
+
 security find-generic-password -w -a m4pro_sv -s enviouswispr.discord-webhook-downloads | npx wrangler secret put DISCORD_WEBHOOK_URL --env smoke
-openssl rand -hex 32 | npx wrangler secret put TRIGGER_SECRET --env smoke
-openssl rand -hex 32 | npx wrangler secret put IP_HASH_SECRET --env smoke
+security find-generic-password -w -a m4pro_sv -s enviouswispr.download-counter-smoke-trigger-secret | npx wrangler secret put TRIGGER_SECRET --env smoke
+security find-generic-password -w -a m4pro_sv -s enviouswispr.download-counter-smoke-ip-hash-secret | npx wrangler secret put IP_HASH_SECRET --env smoke
 ```
 
 ## Pre-cutover smoke test
@@ -62,7 +78,7 @@ out the real `/seed` call):
 
 ```bash
 DOWNLOAD_COUNTER_SMOKE_URL="https://enviouswispr-download-counter-smoke.saurabhav.workers.dev" \
-DOWNLOAD_COUNTER_SMOKE_SECRET="<the smoke env's TRIGGER_SECRET>" \
+DOWNLOAD_COUNTER_SMOKE_SECRET="$(security find-generic-password -w -a m4pro_sv -s enviouswispr.download-counter-smoke-trigger-secret)" \
 node workers/download-counter/live-endpoint-smoke.mjs
 ```
 
@@ -91,9 +107,12 @@ both post (the one check an in-memory mock can't reproduce).
 2. `POST /seed` on the PRODUCTION deployment with that number (secret-gated, refuses any call once the counter is initialized):
    ```bash
    curl -X POST https://enviouswispr-download-counter.saurabhav.workers.dev/seed \
-     -H "x-trigger-secret: <production TRIGGER_SECRET>" -H "Content-Type: application/json" \
+     -H "x-trigger-secret: $(security find-generic-password -w -a m4pro_sv -s enviouswispr.download-counter-trigger-secret)" \
+     -H "Content-Type: application/json" \
      -d '{"total": <N>}'
    ```
 3. Verify the persisted value in the response.
-4. PATCH the PostHog Hog relay script (see plan §3/§10) to the new thin relay, saving a rollback backup first.
-5. Send one real PostHog destination test event; confirm the Discord post carries `<N>+1`.
+4. In the PostHog CDP destination editor for "Discord: Download Notification" (`019d35b0-c128-0000-30a8-5fc2570a8a88`), send a real test event and confirm `event.uuid` is populated in the test payload — the relay's retry-safety depends on it being a stable per-event id, not assumed. If it is ever absent, use `event.properties.$insert_id` instead and update `hog-relay.hog` accordingly before proceeding.
+5. Save a rollback backup of the CURRENT live `hog`/`inputs`/`inputs_schema` fields (`GET /api/projects/354235/hog_functions/019d35b0-c128-0000-30a8-5fc2570a8a88/`) before mutating anything.
+6. PATCH the destination's `hog` field to the contents of `hog-relay.hog` (this file, committed) and `inputs_schema` to `[workerUrl (string, required), workerSecret (string, secret, required)]` — dropping `webhookUrl`/`phApiKey`. Set `workerUrl` to the production Worker's URL and `workerSecret` to the value in `enviouswispr.download-counter-trigger-secret`.
+7. Send one more real PostHog destination test event; confirm the Discord post carries `<N>+1`.
