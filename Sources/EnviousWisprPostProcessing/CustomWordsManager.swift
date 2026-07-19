@@ -861,6 +861,18 @@ public final class CustomWordsManager {
 
     var file = try loadFileForMutation()
 
+    // If editing a built-in word and changing its canonical form, tombstone the built-in
+    // to prevent it from appearing alongside the user override.
+    let originalWord = words[index]
+    if let builtin = Self.builtinDefaults.first(where: {
+      $0.word.canonical.caseInsensitiveCompare(originalWord.canonical) == .orderedSame
+    }),
+       builtin.word.canonical.caseInsensitiveCompare(word.canonical) != .orderedSame,
+       !file.deletedBuiltinIds.contains(builtin.id)
+    {
+      file.deletedBuiltinIds.append(builtin.id)
+    }
+
     // Check if this is a built-in word being edited — store as user override
     if let existingIdx = file.words.firstIndex(where: { $0.id == word.id }) {
       file.words[existingIdx] = sanitized
