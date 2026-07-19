@@ -88,6 +88,17 @@ struct CustomWordsTransferDocumentTests {
     }
   }
 
+  @Test("a version below the first supported format is refused")
+  func decoderRejectsVersionBelowTheFirstSupportedFormat() throws {
+    // Version 1 is the first format; nothing earlier ever existed, so a file
+    // claiming 0 is malformed or tampered rather than merely old (review r2).
+    let ancient = Data(
+      #"{"format":"com.enviouswispr.custom-words","version":0,"words":[]}"#.utf8)
+    #expect(throws: CustomWordsTransferError.unsupportedVersion(0)) {
+      _ = try CustomWordsTransferDocument(data: ancient)
+    }
+  }
+
   @Test("damaged bytes read as damaged")
   func decoderRejectsMalformedData() throws {
     #expect(throws: CustomWordsTransferError.malformed) {

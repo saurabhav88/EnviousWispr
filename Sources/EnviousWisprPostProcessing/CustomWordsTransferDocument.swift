@@ -86,7 +86,11 @@ package struct CustomWordsTransferDocument: Codable, Sendable, Equatable {
     guard decoded.format == Self.formatIdentifier else {
       throw CustomWordsTransferError.notAnEnviousWisprBackup
     }
-    guard decoded.version <= Self.currentVersion else {
+    // A RANGE, not an upper bound. Version 1 is the first format and nothing
+    // earlier ever existed, so `0` or a negative version is a malformed or
+    // tampered file claiming a schema that was never defined — not something
+    // to import on the strength of the current fields happening to parse.
+    guard (1...Self.currentVersion).contains(decoded.version) else {
       throw CustomWordsTransferError.unsupportedVersion(decoded.version)
     }
     self = decoded

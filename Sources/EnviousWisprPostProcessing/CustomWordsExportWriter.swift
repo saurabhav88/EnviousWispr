@@ -46,6 +46,18 @@ package enum CustomWordsExportWriter {
       do {
         try fm.moveItem(at: tmpURL, to: destination)
       } catch {
+        // Replace ONLY a pre-existing regular file. The first version of this
+        // fallback replaced on ANY move failure, which meant that if the
+        // destination path had become a directory, Foundation would replace
+        // the directory with the export file and delete its contents — a
+        // destructive answer to an unrelated error. Anything that is not a
+        // plain file is not ours to overwrite; rethrow the real failure.
+        var isDirectory: ObjCBool = false
+        guard fm.fileExists(atPath: destination.path, isDirectory: &isDirectory),
+          !isDirectory.boolValue
+        else {
+          throw error
+        }
         _ = try fm.replaceItemAt(
           destination, withItemAt: tmpURL, options: [.usingNewMetadataOnly])
       }

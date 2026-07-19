@@ -105,6 +105,30 @@ struct CustomWordsExportWriterTests {
     #expect(try Data(contentsOf: destination) == original)
   }
 
+  @Test("a directory at the destination is never replaced or emptied")
+  func writerRefusesToReplaceADirectory() throws {
+    // The bug this freezes (code review r2): the move-then-replace fallback
+    // originally replaced on ANY move failure, so a directory sitting at the
+    // destination path would be replaced by the export file and its contents
+    // deleted — a destructive answer to an unrelated error.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let destination = dir.appendingPathComponent("words.json", isDirectory: true)
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    let inhabitant = destination.appendingPathComponent("keep-me.txt")
+    try Data("precious".utf8).write(to: inhabitant)
+
+    #expect(throws: (any Error).self) {
+      try CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
+    }
+
+    var isDirectory: ObjCBool = false
+    #expect(
+      FileManager.default.fileExists(atPath: destination.path, isDirectory: &isDirectory))
+    #expect(isDirectory.boolValue)
+    #expect(try Data(contentsOf: inhabitant) == Data("precious".utf8))
+  }
+
   @Test("two exports to one destination leave a single complete document")
   func concurrentWritesLeaveOneCompleteDecodableDocument() async throws {
     let dir = makeDirectory()
