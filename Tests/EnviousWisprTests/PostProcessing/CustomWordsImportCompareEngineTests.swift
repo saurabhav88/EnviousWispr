@@ -606,4 +606,54 @@ struct CustomWordsImportCompareEngineTests {
       _ = try await task.value
     }
   }
+
+  // MARK: - Skip never rewrites an existing word
+
+  @Test("re-importing a word you already have cannot touch its aliases")
+  func skippingAnExistingWordPreservesItsAliases() async throws {
+    // Founder's exact scenario (2026-07-19): GitHub ships with 3 aliases, the
+    // user adds 3 more, exports, then re-imports the SAME file on the SAME
+    // Mac. "Skip" has to mean nothing is written for that word — NOT that it
+    // is rewritten with the importing file's shorter alias list. Their words
+    // stay their words.
+    let mine = word("GitHub", aliases: ["git hub", "get hub", "gh", "git-hub", "githib", "guthub"])
+    let engine = CustomWordsImportCompareEngine()
+
+    // A plain list carries no alias opinion at all — the strongest case,
+    // because there is nothing for a Replace to even be built from.
+    let comparisons = try await engine.compare(
+      candidates: [candidate("GitHub")], against: [mine], fuzzyPolicy: .disabled)
+
+    let row = try #require(comparisons.first)
+    guard case .exact(let matched) = row.classification else {
+      Issue.record("expected an exact match, got \(row.classification)")
+      return
+    }
+    // The matched word is the user's, with all six alternates intact...
+    #expect(matched.aliases.count == 6)
+    #expect(matched.aliases.contains("gh"))
+    // ...and the candidate carries no authority to overwrite them with.
+    #expect(row.candidate.aliases == .unspecified)
+  }
+
+  @Test("even an exported file's aliases cannot overwrite the word you have")
+  func exportedFileAliasesCannotOverwriteExistingWord() async throws {
+    // An exported file DOES carry aliases, so this is the case where a Replace
+    // would be constructible. It must still classify as already-present: v1
+    // never modifies an existing word or its alternates.
+    let mine = word("GitHub", aliases: ["git hub", "get hub", "gh"])
+    let engine = CustomWordsImportCompareEngine()
+
+    let fromExport = candidate("GitHub", aliases: .supplied(["totally", "different"]))
+    let comparisons = try await engine.compare(
+      candidates: [fromExport], against: [mine], fuzzyPolicy: .disabled)
+
+    let row = try #require(comparisons.first)
+    guard case .exact(let matched) = row.classification else {
+      Issue.record("expected an exact match, got \(row.classification)")
+      return
+    }
+    #expect(matched.aliases == ["git hub", "get hub", "gh"])
+  }
+
 }
