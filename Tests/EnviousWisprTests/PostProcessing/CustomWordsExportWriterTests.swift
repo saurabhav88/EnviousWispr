@@ -161,4 +161,42 @@ struct CustomWordsExportWriterTests {
     #expect(["Kubernetes", "Anthropic"].contains(try #require(decoded.words.first).canonical))
     #expect(decoded.words.count == 1)
   }
+
+  @Test("exporting onto EnviousWispr's own words file is refused")
+  func exportRefusesToOverwriteTheLiveWordsFile() async throws {
+    // The worst possible outcome of an export: choosing the app's own storage
+    // as the destination would atomically replace the live dictionary with the
+    // transfer format, the next launch would find a file it cannot parse and
+    // archive it as corrupt, and the user would have destroyed their words BY
+    // EXPORTING THEM (code review r5).
+    let live = try #require(CustomWordsManager.liveFileURL)
+
+    await #expect(
+      throws: CustomWordsExportWriter.ExportDestinationError.wouldOverwriteLiveWords
+    ) {
+      try await CustomWordsExportWriter.write(document(["Kubernetes"]), to: live)
+    }
+  }
+
+  @Test("the refusal cannot be walked around with a relative path")
+  func exportRefusalResolvesPathsBeforeComparing() async throws {
+    let live = try #require(CustomWordsManager.liveFileURL)
+    // Same file, spelled the long way round.
+    let indirect = live
+      .deletingLastPathComponent()
+      .appendingPathComponent("..")
+      .appendingPathComponent(live.deletingLastPathComponent().lastPathComponent)
+      .appendingPathComponent(live.lastPathComponent)
+
+    #expect(CustomWordsExportWriter.wouldOverwriteLiveWords(indirect))
+  }
+
+  @Test("an ordinary destination is still allowed")
+  func exportAllowsAnOrdinaryDestination() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    #expect(
+      !CustomWordsExportWriter.wouldOverwriteLiveWords(
+        dir.appendingPathComponent("EnviousWispr Words.json")))
+  }
 }
