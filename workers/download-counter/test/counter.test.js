@@ -31,7 +31,33 @@ class FakeStorage {
 
 function makeCounter(env = {}) {
   const storage = new FakeStorage();
-  const ctx = { storage };
+  // Sufficient for sequential tests: no other request is ever actually
+  // in flight, so a pass-through is equivalent to the real serialized
+  // behavior. The dedicated concurrency test below uses a genuinely
+  // serializing implementation instead.
+  const ctx = { storage, blockConcurrencyWhile: (fn) => fn() };
+  const counter = new DownloadCounter(ctx, {
+    DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/test",
+    IP_HASH_SECRET: "test-secret",
+    ...env,
+  });
+  return { counter, storage };
+}
+
+function makeSerializingCounter(env = {}) {
+  const storage = new FakeStorage();
+  let chain = Promise.resolve();
+  const ctx = {
+    storage,
+    blockConcurrencyWhile(fn) {
+      const result = chain.then(() => fn());
+      chain = result.then(
+        () => {},
+        () => {},
+      );
+      return result;
+    },
+  };
   const counter = new DownloadCounter(ctx, {
     DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/test",
     IP_HASH_SECRET: "test-secret",
@@ -367,6 +393,67 @@ test("an unrecognized sourceBucket falls back to a generic off-site label", asyn
     );
     const sent = JSON.parse(mock.calls[0].init.body).content;
     assert.ok(sent.includes("an off-site link"));
+  } finally {
+    mock.restore();
+  }
+});
+
+test("two genuinely concurrent DIFFERENT new events never reserve the same total", async () => {
+  const { counter } = makeSerializingCounter();
+  const mock = mockFetch(() => new Response(null, { status: 204 }));
+  try {
+    const [resA, resB] = await Promise.all([
+      counter.fetch(countRequest(onSiteEvent({ eventId: "evt-race-a", ip: "10.0.0.1" }))),
+      counter.fetch(countRequest(onSiteEvent({ eventId: "evt-race-b", ip: "10.0.0.2" }))),
+    ]);
+    const totalA = (await resA.json()).total;
+    const totalB = (await resB.json()).total;
+    assert.notEqual(totalA, totalB, "two different concurrent events must never reserve the same total");
+    assert.deepEqual([totalA, totalB].sort(), [1, 2]);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("two genuinely concurrent events sharing an IP: exactly one is counted, never both", async () => {
+  const { counter } = makeSerializingCounter();
+  const mock = mockFetch(() => new Response(null, { status: 204 }));
+  try {
+    const [resA, resB] = await Promise.all([
+      counter.fetch(countRequest(onSiteEvent({ eventId: "evt-race-c", ip: "10.0.0.9" }))),
+      counter.fetch(countRequest(onSiteEvent({ eventId: "evt-race-d", ip: "10.0.0.9" }))),
+    ]);
+    const bodies = [await resA.json(), await resB.json()];
+    const countedTrue = bodies.filter((b) => b.counted === true);
+    const duplicates = bodies.filter((b) => b.reason === "duplicate");
+    assert.equal(countedTrue.length, 1, "exactly one of the two concurrent same-IP events must count");
+    assert.equal(duplicates.length, 1, "the other must be suppressed as a duplicate, not silently double-counted");
+  } finally {
+    mock.restore();
+  }
+});
+
+test("an oversized Discord message is truncated to Discord's 2000-char limit, not rejected", async () => {
+  const { counter } = makeCounter();
+  const mock = mockFetch(() => new Response(null, { status: 204 }));
+  try {
+    const res = await counter.fetch(countRequest(onSiteEvent({ referrer: "https://example.com/?x=" + "a".repeat(3000) })));
+    const body = await res.json();
+    assert.equal(body.counted, true);
+    const sent = JSON.parse(mock.calls[0].init.body).content;
+    assert.ok(sent.length <= 2000, `expected <=2000 chars, got ${sent.length}`);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("Discord posts disable mention parsing so attacker-controlled fields can never ping the channel", async () => {
+  const { counter } = makeCounter();
+  const mock = mockFetch(() => new Response(null, { status: 204 }));
+  try {
+    await counter.fetch(countRequest(onSiteEvent({ referrer: "https://evil.example/?x=@everyone" })));
+    const sentBody = JSON.parse(mock.calls[0].init.body);
+    assert.deepEqual(sentBody.allowed_mentions, { parse: [] });
   } finally {
     mock.restore();
   }

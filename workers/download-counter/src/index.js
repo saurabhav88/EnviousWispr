@@ -28,6 +28,16 @@ const DISCORD_ATTEMPT_TIMEOUT_MS = 4_000;
 const MAX_RETRY_DELAY_MS = 2_000;
 const DEDUP_WINDOW_MS = 30_000;
 
+// Discord webhook `content` hard-fails with 400 above 2000 characters
+// (discord-webhooks.md FACT: posting-contract). Every field folded into the
+// message is forwarded, attacker-influenceable request data (referrer, page,
+// source), so both a length cap and disabling mention parsing are required —
+// not just a formatting nicety. Without a cap, an oversized field would
+// permanently mark a real download's delivery "failed" (never retried) even
+// though the counter had already advanced; without allowed_mentions, a
+// crafted "@everyone" in a referrer would actually ping the channel.
+const DISCORD_CONTENT_MAX_LEN = 2000;
+
 // Off-site source_bucket -> human label, ported verbatim from the live Hog
 // script (pulled via the PostHog API, 2026-07-19) so the Discord message text
 // is byte-identical after the cutover.
@@ -164,46 +174,75 @@ export class DownloadCounter {
     }
 
     const storage = this.ctx.storage;
-    const now = Date.now();
     const deliveryKey = `delivery:${eventId}`;
-    let record = await storage.get(deliveryKey);
 
-    if (record) {
-      if (record.status === "delivered") {
-        return Response.json({ counted: true, total: record.total, reason: "already-delivered" });
+    // The read (does this event/IP already have state?), the decision (is it
+    // excluded/duplicate/already-resolved?), and the reservation write must
+    // all happen as one indivisible step. A Durable Object's storage.put is
+    // atomic, but storage.get + a decision + a later storage.put is NOT —
+    // Durable Objects are single-threaded but can still interleave two
+    // DIFFERENT requests across `await` points (confirmed: Cloudflare's own
+    // docs state "multiple request events may still be processed
+    // out-of-order"). Without blockConcurrencyWhile, two genuinely different
+    // new events overlapping here could both read the same stale counter and
+    // both reserve the same total, and two events sharing an IP could both
+    // pass the dedup check before either had written its `seen:` marker.
+    // blockConcurrencyWhile defers every OTHER request to this Durable Object
+    // instance until this callback resolves; the (potentially slow) Discord
+    // POST below stays outside it on purpose, since overlapping requests
+    // there are expected and already handled by the posting lease.
+    const decision = await this.ctx.blockConcurrencyWhile(async () => {
+      const now = Date.now();
+      let record = await storage.get(deliveryKey);
+
+      if (record) {
+        if (record.status === "delivered") {
+          return {
+            respond: Response.json({ counted: true, total: record.total, reason: "already-delivered" }),
+          };
+        }
+        if (record.status === "failed") {
+          return {
+            respond: Response.json({ counted: true, total: record.total, reason: "discord-rejected" }),
+          };
+        }
+        // status === "pending": either a legitimate retry to resume, or a
+        // genuinely concurrent overlapping request for the same event (a
+        // Durable Object yields control on `await fetch()`, so two requests
+        // for the same eventId can interleave around the Discord call).
+        if (record.leaseUntil > now) {
+          return { respond: new Response(null, { status: 503, headers: { "Retry-After": "2" } }) };
+        }
+        record = { ...record, leaseUntil: now + LEASE_MS };
+        await storage.put(deliveryKey, record);
+        return { record };
       }
-      if (record.status === "failed") {
-        return Response.json({ counted: true, total: record.total, reason: "discord-rejected" });
-      }
-      // status === "pending": either a legitimate retry to resume, or a
-      // genuinely concurrent overlapping request for the same event (a
-      // Durable Object yields control on `await fetch()`, so two requests
-      // for the same eventId can interleave around the Discord call).
-      if (record.leaseUntil > now) {
-        return new Response(null, { status: 503, headers: { "Retry-After": "2" } });
-      }
-      record = { ...record, leaseUntil: now + LEASE_MS };
-      await storage.put(deliveryKey, record);
-    } else {
+
       // Genuinely new event.
       let ipHmac = null;
       if (ip) {
         ipHmac = await hmacIp(ip, this.env.IP_HASH_SECRET);
         const seenAt = await storage.get(`seen:${ipHmac}`);
         if (seenAt !== undefined && now - seenAt < DEDUP_WINDOW_MS) {
-          return Response.json({ counted: false, reason: "duplicate" });
+          return { respond: Response.json({ counted: false, reason: "duplicate" }) };
         }
       }
       const storedCounter = (await storage.get("counter")) ?? 0;
       const total = storedCounter + 1;
-      record = { status: "pending", total, leaseUntil: now + LEASE_MS, createdAt: now };
-      const batch = { counter: total, [deliveryKey]: record };
+      const newRecord = { status: "pending", total, leaseUntil: now + LEASE_MS, createdAt: now };
+      const batch = { counter: total, [deliveryKey]: newRecord };
       if (ipHmac) batch[`seen:${ipHmac}`] = now;
       // Atomic: counter, seen marker, and delivery record commit together or
       // not at all — the counter is never persisted separately from its
       // reservation.
       await storage.put(batch);
+      return { record: newRecord };
+    });
+
+    if (decision.respond) {
+      return decision.respond;
     }
+    const record = decision.record;
 
     let content = formatMessage({
       total: record.total,
@@ -300,7 +339,16 @@ function formatMessage({ total, isOffsite, city, country, countryCode, referrer,
   return content;
 }
 
+function truncateForDiscord(content) {
+  if (content.length <= DISCORD_CONTENT_MAX_LEN) {
+    return content;
+  }
+  const suffix = "\n> …(truncated)";
+  return content.slice(0, DISCORD_CONTENT_MAX_LEN - suffix.length) + suffix;
+}
+
 async function postToDiscord(webhookUrl, content, { timeoutMs, maxRetryDelayMs }) {
+  const safeContent = truncateForDiscord(content);
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -308,7 +356,7 @@ async function postToDiscord(webhookUrl, content, { timeoutMs, maxRetryDelayMs }
       const res = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content: safeContent, allowed_mentions: { parse: [] } }),
         signal: controller.signal,
       });
       clearTimeout(timer);
