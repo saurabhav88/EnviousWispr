@@ -450,4 +450,36 @@ struct ImportFileParserTests {
     }
   }
 
+
+  @Test("an exported words file larger than the untrusted byte cap still imports")
+  func oversizedExportedFileStillImports() async throws {
+    // Capping the WORDS but not the BYTES left the same round-trip hole one
+    // layer down: the size check runs before the parser is consulted, so the
+    // app could still write a words file it then refused as .tooLarge.
+    // Padded via alias text so the file genuinely exceeds the untrusted cap.
+    let filler = String(repeating: "x", count: 512)
+    let words = (0..<40_000).map {
+      CustomWord(canonical: "Term\($0)", aliases: ["\(filler)\($0)"], category: .general)
+    }
+    let data = try CustomWordsTransferDocument(words: words).encoded()
+    #expect(data.count > CustomWordsImportLimits.maximumImportFileBytes)
+    let url = try write(data, as: "words.json")
+
+    let batch = try await FileImportSource(url: url).loadCandidates()
+
+    #expect(batch.candidates.count == words.count)
+  }
+
+  @Test("an untrusted text file is still held to the smaller byte cap")
+  func oversizedTextFileStillRefused() async throws {
+    // The cap is scoped, not removed.
+    let big = String(
+      repeating: "Term\n", count: CustomWordsImportLimits.maximumImportFileBytes / 4)
+    let url = try write(big, as: "words.txt")
+
+    await #expect(throws: ImportFileError.tooLarge) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
 }

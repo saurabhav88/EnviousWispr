@@ -53,12 +53,19 @@ package protocol ImportFileParser: Sendable {
   /// of unknown provenance. It is a property of the format, not of importing
   /// in general, which is why it lives here rather than at the one call site.
   var maximumCandidates: Int? { get }
+  /// How many BYTES a file of this format may be.
+  ///
+  /// Same reasoning as the word ceiling, and it has to move with it: capping
+  /// the words but not the bytes left the identical round-trip hole one layer
+  /// down, since the byte check runs BEFORE the parser is consulted.
+  var maximumBytes: Int { get }
   func parse(data: Data) throws -> [CustomWordsImportCandidate]
 }
 
 extension ImportFileParser {
-  /// Formats default to the shared ceiling; a format opts OUT deliberately.
+  /// Formats default to the shared ceilings; a format opts out deliberately.
   package var maximumCandidates: Int? { CustomWordsImportLimits.maximumCandidates }
+  package var maximumBytes: Int { CustomWordsImportLimits.maximumImportFileBytes }
 }
 
 /// The file EnviousWispr itself exports.
@@ -81,9 +88,16 @@ package struct ExportedWordsFileParser: ImportFileParser {
   /// to split a JSON file by hand (cloud review, #1683). An export you cannot
   /// import is not an export.
   ///
-  /// Still bounded, just by the honest limit: `maximumFileBytes`, which is
-  /// checked before parsing.
+  /// The byte ceiling moves with it, for the same reason: capping the words
+  /// but not the bytes left the identical hole one layer down, since the size
+  /// check runs BEFORE the parser is consulted (cloud review, #1683). Fixing
+  /// the word count alone was a fix to the instance, not to the rule.
+  ///
+  /// Still bounded, just far above any real library: a words file this large
+  /// would hold over a million terms, so a mistakenly chosen disk image is
+  /// still refused rather than read into memory.
   package let maximumCandidates: Int? = nil
+  package let maximumBytes = CustomWordsImportLimits.maximumExportedFileBytes
 
   package init() {}
 
@@ -273,7 +287,7 @@ package struct FileImportSource: CustomWordsImportSource {
   /// Refuse before allocating. A word list is small; anything of this size is
   /// a mistaken selection (a video, a database, a disk image), and reading it
   /// into memory to discover that is the expensive way to find out.
-  package static let maximumFileBytes = 16 * 1024 * 1024
+  package static var maximumFileBytes: Int { CustomWordsImportLimits.maximumImportFileBytes }
   /// Shared with every other import source, so no door has a different limit.
   package static var maximumCandidates: Int { CustomWordsImportLimits.maximumCandidates }
 
@@ -316,7 +330,7 @@ package struct FileImportSource: CustomWordsImportSource {
     // miss that the file exceeds the limit. Accumulating until the file says
     // it is done makes "how much is there" a fact rather than a guess.
     var data = Data()
-    let ceiling = Self.maximumFileBytes + 1
+    let ceiling = parser.maximumBytes + 1
     while data.count < ceiling {
       try Task.checkCancellation()
       // `read(upToCount:)` signals EOF with NIL, and a genuine failure by
@@ -332,7 +346,7 @@ package struct FileImportSource: CustomWordsImportSource {
       guard let chunk, !chunk.isEmpty else { break }  // EOF
       data.append(chunk)
     }
-    guard data.count <= Self.maximumFileBytes else {
+    guard data.count <= parser.maximumBytes else {
       throw ImportFileError.tooLarge
     }
 

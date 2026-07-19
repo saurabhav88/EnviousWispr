@@ -123,6 +123,16 @@ package enum CustomWordsImportLimits {
   /// The compare engine's documented upload ceiling. Beyond this the review
   /// screen is not something a person can meaningfully read anyway.
   package static let maximumCandidates = 25_000
+
+  /// Untrusted files: a word list is small, so anything larger is a mistaken
+  /// selection (a video, a database, a disk image) and reading it into memory
+  /// to find that out is the expensive way to learn it.
+  package static let maximumImportFileBytes = 16 * 1024 * 1024
+
+  /// Our OWN exported file, which must always be readable back — an export you
+  /// cannot import is not an export. Far above any real library (over a
+  /// million terms), while still refusing a mistakenly chosen disk image.
+  package static let maximumExportedFileBytes = 256 * 1024 * 1024
 }
 
 package protocol CustomWordsImportSource: Sendable {
