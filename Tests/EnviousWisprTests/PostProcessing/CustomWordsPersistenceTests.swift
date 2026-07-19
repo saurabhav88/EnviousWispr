@@ -446,6 +446,50 @@ struct CustomWordsCoordinatorLaunchFailureTests {
     #expect(try Data(contentsOf: url) == bytesBefore)
   }
 
+  // MARK: - Export readability is a live question, not a launch snapshot (#1682)
+
+  @Test("an unreadable file reports as not readable")
+  func savedWordsAreNotReadableWhileTheFileIsUnreadable() throws {
+    let url = Self.tempURL()
+    defer { Self.cleanup(url) }
+    let mgr = CustomWordsManager(fileURL: url)
+    var words = try #require(mgr.load())
+    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o000], ofItemAtPath: url.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    let coordinator = CustomWordsCoordinator(manager: mgr)
+    #expect(coordinator.wordsLoadFailureAtLaunch == .unreadable)
+    #expect(coordinator.savedWordsAreReadable == false)
+  }
+
+  @Test("readability recovers within the session even though the launch flag does not")
+  func savedWordsBecomeReadableAgainAfterTheFileRecovers() throws {
+    let url = Self.tempURL()
+    defer { Self.cleanup(url) }
+    let mgr = CustomWordsManager(fileURL: url)
+    var words = try #require(mgr.load())
+    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o000], ofItemAtPath: url.path)
+
+    let coordinator = CustomWordsCoordinator(manager: mgr)
+    #expect(coordinator.savedWordsAreReadable == false)
+
+    // The file becomes readable again mid-session.
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o600], ofItemAtPath: url.path)
+
+    // The launch flag is a snapshot and stays set — that is what makes it the
+    // wrong thing to gate export on.
+    #expect(coordinator.wordsLoadFailureAtLaunch == .unreadable)
+    #expect(coordinator.savedWordsAreReadable)
+  }
+
   // MARK: - Stale import commit refreshes the in-memory list (#1679 cloud review)
 
   @Test("a stale import commit refreshes the coordinator's list from disk")

@@ -12,6 +12,17 @@ final class CustomWordsCoordinator {
   /// honest banner instead of a silent empty list. `.unreadable`: the file is
   /// intact, nothing was changed. `.corrupted`: it was archived for recovery.
   private(set) var wordsLoadFailureAtLaunch: CustomWordsInitialLoadFailure?
+
+  /// Whether the saved-words file can be read RIGHT NOW (#1680).
+  ///
+  /// `wordsLoadFailureAtLaunch` is a snapshot of one moment and stays set for
+  /// the session, so it cannot answer this: a file that was temporarily
+  /// unreadable may be readable again, and a corrupted one has since been
+  /// archived and replaced by a valid empty file the user may have added to.
+  /// Export asks the live question, because refusing forever on a stale flag
+  /// is its own kind of wrong (cloud review, #1682).
+  var savedWordsAreReadable: Bool { manager.load() != nil }
+
   let suggestionService = WordSuggestionService()
   /// The reused on-device alias generator, exposed as the narrow protocol so the
   /// composition root can wire it into the contacts-import coordinator without
