@@ -353,7 +353,11 @@ private struct ImportPasteScreen: View {
         }
         .keyboardShortcut(.defaultAction)
         .buttonStyle(.borderedProminent)
-        .disabled(wordCount == 0)
+        // Over-limit is a refusal, not a warning: Confirm would throw and land
+        // the user on the terminal failure screen, which has no Back, so the
+        // draft they could have split is gone. Block it where they can still
+        // edit it (cloud review, #1683).
+        .disabled(wordCount == 0 || wordCount > CustomWordsImportLimits.maximumCandidates)
       }
     }
     .onAppear {

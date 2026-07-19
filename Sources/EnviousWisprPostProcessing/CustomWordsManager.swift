@@ -42,6 +42,7 @@ public struct BuiltinWord: Sendable {
 package enum CustomWordsPersistenceError: LocalizedError, Sendable, Equatable {
   case unreadableExistingFile
   case corruptedExistingFile
+  case unusableValue
 
   package var errorDescription: String? {
     switch self {
@@ -50,6 +51,9 @@ package enum CustomWordsPersistenceError: LocalizedError, Sendable, Equatable {
     case .corruptedExistingFile:
       return
         "Your saved words file was damaged and moved aside for recovery. No edit or import was applied."
+    case .unusableValue:
+      return
+        "That word or spelling can't be saved. It may be too long, or contain characters that aren't part of a word."
     }
   }
 }
@@ -400,7 +404,15 @@ public final class CustomWordsManager {
     guard !trimmed.isEmpty else { return }
     // The same rule importing enforces, applied where words are AUTHORED, so
     // the library can never hold what export refuses (cloud review, #1683).
-    guard Self.isStorable(trimmed) else { return }
+    //
+    // THROWS rather than returning, unlike the batch doors below. A user typed
+    // this one value and is watching for the result: a silent return dismisses
+    // the sheet on a nil error, so the app reports a save it did not make. The
+    // batch doors keep skipping because per-item skip IS their contract.
+    guard Self.isStorable(trimmed) else { throw CustomWordsPersistenceError.unusableValue }
+    guard Self.everyAliasIsStorable(word.aliases) else {
+      throw CustomWordsPersistenceError.unusableValue
+    }
     guard
       !words.contains(where: {
         $0.canonical.caseInsensitiveCompare(trimmed) == .orderedSame
@@ -744,6 +756,19 @@ public final class CustomWordsManager {
     return CustomWordsImportTextPolicy.isAcceptableStoredValue(trimmed)
   }
 
+  /// True when every alias the user actually authored can be stored.
+  ///
+  /// Blank aliases are not a refusal — the editor leaves empty rows behind and
+  /// dropping those is ordinary trimming, not a lost edit. A NON-blank alias
+  /// that the policy refuses is the lie this catches: `sanitizeAliases` would
+  /// filter it out and the save would report success without it.
+  private static func everyAliasIsStorable(_ aliases: [String]) -> Bool {
+    aliases
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+      .allSatisfy { isStorable($0) }
+  }
+
   private static func sanitizeAliases(_ aliases: [String]) -> [String] {
     aliases
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -858,7 +883,11 @@ public final class CustomWordsManager {
   public func update(word: CustomWord, in words: inout [CustomWord]) throws {
     guard let index = words.firstIndex(where: { $0.id == word.id }) else { return }
     let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard Self.isStorable(trimmed) else { return }
+    // Same authoring door as `add`, same reason it throws: see there.
+    guard Self.isStorable(trimmed) else { throw CustomWordsPersistenceError.unusableValue }
+    guard Self.everyAliasIsStorable(word.aliases) else {
+      throw CustomWordsPersistenceError.unusableValue
+    }
     var edited = word
     edited.canonical = trimmed
     edited.aliases = Self.sanitizeAliases(edited.aliases)

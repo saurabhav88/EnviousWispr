@@ -183,7 +183,6 @@ struct CustomWordsExportActionTests {
         document: document, encoded: try document.encoded()) == nil)
   }
 
-
   @Test("a word the importer would refuse blocks the export")
   func unstorableWordBlocksExport() throws {
     // Size was not the only way to write an unimportable file. A word authored
@@ -215,7 +214,6 @@ struct CustomWordsExportActionTests {
       CustomWordsExportAction.refusalIfUnimportable(
         document: document, encoded: try document.encoded()) == nil)
   }
-
 
   @Test("export refuses a library that trips the stored-surface ceiling")
   func exportRefusesOnStoredSurface() throws {
@@ -269,13 +267,13 @@ struct CustomWordsExportActionTests {
       } catch {
         importerRefuses = true
       }
-      let exportRefuses = CustomWordsExportAction.refusalIfUnimportable(
-        document: document, encoded: encoded) != nil
+      let exportRefuses =
+        CustomWordsExportAction.refusalIfUnimportable(
+          document: document, encoded: encoded) != nil
 
       #expect(importerRefuses == exportRefuses)
     }
   }
-
 
   @Test("the app cannot author a word it would then refuse to export")
   func authoringCannotCreateAnUnexportableLibrary() throws {
@@ -293,14 +291,31 @@ struct CustomWordsExportActionTests {
     let deceptive = "Kub\u{202E}ernetes"
     let invisible = "\u{200D}"
 
+    // Refused LOUDLY, not silently. A silent return dismissed the edit sheet
+    // on a nil error, so the user was shown a save that never happened
+    // (cloud review, #1683).
     for bad in [tooLong, deceptive, invisible] {
-      try manager.add(word: CustomWord(canonical: bad), to: &live)
-      #expect(!live.contains { $0.canonical == bad }, "authored an unstorable word: \(bad.debugDescription)")
+      #expect(throws: CustomWordsPersistenceError.unusableValue) {
+        try manager.add(word: CustomWord(canonical: bad), to: &live)
+      }
+      #expect(
+        !live.contains { $0.canonical == bad },
+        "authored an unstorable word: \(bad.debugDescription)")
     }
-    try manager.add(
-      word: CustomWord(canonical: "Kubernetes", aliases: [deceptive, tooLong, "k8s"]),
-      to: &live)
 
+    // An unstorable ALIAS is the same lie one layer down: dropping it quietly
+    // reports a save that lost part of what the user typed.
+    #expect(throws: CustomWordsPersistenceError.unusableValue) {
+      try manager.add(
+        word: CustomWord(canonical: "Kubernetes", aliases: [deceptive, tooLong, "k8s"]),
+        to: &live)
+    }
+    #expect(!live.contains { $0.canonical == "Kubernetes" })
+
+    // Blank alias rows are not a refusal — the editor leaves them behind and
+    // trimming them away loses nothing the user meant.
+    try manager.add(
+      word: CustomWord(canonical: "Kubernetes", aliases: ["k8s", "  ", ""]), to: &live)
     #expect(live.contains { $0.canonical == "Kubernetes" && $0.aliases == ["k8s"] })
 
     // Whatever the library holds after all that, export accepts it.
@@ -309,6 +324,5 @@ struct CustomWordsExportActionTests {
       CustomWordsExportAction.refusalIfUnimportable(
         document: document, encoded: try document.encoded()) == nil)
   }
-
 
 }
