@@ -97,11 +97,15 @@ package struct CustomWordsTransferDocument: Codable, Sendable, Equatable {
     guard header.format == Self.formatIdentifier else {
       throw CustomWordsTransferError.notAnEnviousWisprBackup
     }
-    // A RANGE, not an upper bound. Version 1 is the first format and nothing
-    // earlier ever existed, so `0` or a negative version is a malformed or
-    // tampered file claiming a schema that was never defined — not something
-    // to import on the strength of the current fields happening to parse.
-    guard (1...Self.currentVersion).contains(header.version) else {
+    // A RANGE, not an upper bound — but the two ends mean different things and
+    // must not share a message (review r4). Below 1 is a schema that never
+    // existed, so the file is malformed or tampered; telling that user to
+    // "update the app" is advice that cannot help them. Above current is a
+    // genuine future format, where updating is exactly the fix.
+    guard header.version >= 1 else {
+      throw CustomWordsTransferError.malformed
+    }
+    guard header.version <= Self.currentVersion else {
       throw CustomWordsTransferError.unsupportedVersion(header.version)
     }
 

@@ -88,13 +88,15 @@ struct CustomWordsTransferDocumentTests {
     }
   }
 
-  @Test("a version below the first supported format is refused")
-  func decoderRejectsVersionBelowTheFirstSupportedFormat() throws {
+  @Test("a version below the first supported format reads as damaged, not as newer")
+  func decoderRejectsVersionBelowTheFirstSupportedFormatAsMalformed() throws {
     // Version 1 is the first format; nothing earlier ever existed, so a file
     // claiming 0 is malformed or tampered rather than merely old (review r2).
+    // It must NOT say "made by a newer version — update the app" (review r4):
+    // that is advice which cannot help this user.
     let ancient = Data(
       #"{"format":"com.enviouswispr.custom-words","version":0,"words":[]}"#.utf8)
-    #expect(throws: CustomWordsTransferError.unsupportedVersion(0)) {
+    #expect(throws: CustomWordsTransferError.malformed) {
       _ = try CustomWordsTransferDocument(data: ancient)
     }
   }
