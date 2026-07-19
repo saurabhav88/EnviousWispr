@@ -151,7 +151,8 @@ package struct CustomWordsImportBatch: Sendable, Equatable {
               limit: CustomWordsImportLimits.maximumStoredValueScalars)
           }
           guard CustomWordsImportTextPolicy.isAcceptableStoredValue(alias) else {
-            throw CustomWordsImportValidationError.unusableWord(canonical: candidate.canonical)
+            throw CustomWordsImportValidationError.unusableAlias(
+              alias: alias, canonical: candidate.canonical)
           }
         }
       }
@@ -235,6 +236,7 @@ extension CustomWordsImportSource {
 /// A candidate that cannot be stored, and why (#1683).
 package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatable {
   case unusableWord(canonical: String)
+  case unusableAlias(alias: String, canonical: String)
   case wordTooLong(limit: Int)
 
   /// Replaces anything the policy refuses with a visible `U+XXXX` label, so a
@@ -254,6 +256,14 @@ package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatab
       return
         "That contains an entry longer than \(limit) characters, which is too "
         + "long to be a word. Nothing was imported."
+    case .unusableAlias(let alias, let canonical):
+      // Names the ALIAS, not the word that owns it. Reporting the canonical
+      // quoted an innocent value and hid the one that has to be fixed (Codex
+      // review, #1683).
+      return
+        "That contains an alternate spelling EnviousWispr can't store "
+        + "(\"\(Self.displayable(alias))\", for \"\(Self.displayable(canonical))\"). "
+        + "Nothing was imported."
     case .unusableWord(let canonical):
       // Source-neutral: this validator now runs for pasted text and files
       // alike, so naming a file was wrong half the time (Codex review, #1683).

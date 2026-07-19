@@ -944,4 +944,24 @@ struct ImportFileParserTests {
     #expect(candidates.map { $0.canonical } == [long])
   }
 
+
+  @Test("a bad alias is named, not the innocent word that owns it")
+  func aliasErrorNamesTheAlias() async throws {
+    // Reporting the canonical quoted a value that was fine and hid the one
+    // that has to be fixed.
+    let word = CustomWord(
+      canonical: "Kubernetes", aliases: ["k8s", "kube\u{202E}rnetes"], category: .general)
+    let url = try write(try CustomWordsTransferDocument(words: [word]).encoded(), as: "words.json")
+
+    do {
+      _ = try await FileImportSource(url: url).loadCandidates()
+      Issue.record("expected the alias to be refused")
+    } catch let error as CustomWordsImportValidationError {
+      let message = try #require(error.errorDescription)
+      #expect(message.contains("alternate spelling"))
+      #expect(message.contains("<U+202E>"))
+      #expect(message.contains("Kubernetes"))
+    }
+  }
+
 }

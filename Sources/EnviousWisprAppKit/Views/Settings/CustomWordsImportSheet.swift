@@ -319,6 +319,7 @@ private struct ImportPasteScreen: View {
   /// update, on the main actor — so a large pasted list made the editor
   /// progressively less responsive the more it contained.
   @State private var wordCount = 0
+  @State private var parseProblem: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -359,18 +360,34 @@ private struct ImportPasteScreen: View {
       isEditorFocused = true
       // Back from Review returns to an existing draft, so the count has to be
       // right on arrival, not only after the next keystroke.
-      wordCount =
-        (try? PasteWordsParser.parse(
-          model.pasteDraft, limit: CustomWordsImportLimits.maximumCandidates))?.count ?? 0
+      recount(model.pasteDraft)
     }
     .onChange(of: model.pasteDraft) { _, draft in
-      wordCount =
-        (try? PasteWordsParser.parse(
-          draft, limit: CustomWordsImportLimits.maximumCandidates))?.count ?? 0
+      recount(draft)
+    }
+  }
+
+  /// Keeps the parse failure rather than collapsing it to a zero count.
+  ///
+  /// `try?` here turned a real, actionable error — an entry longer than the
+  /// limit — into "No words found", which is false and left the user stuck
+  /// with Continue disabled and nothing to act on (Codex review, #1683). A
+  /// counter must not surface a crash, but it must not invent an answer
+  /// either.
+  private func recount(_ draft: String) {
+    do {
+      wordCount = try PasteWordsParser.parse(
+        draft, limit: CustomWordsImportLimits.maximumCandidates
+      ).count
+      parseProblem = nil
+    } catch {
+      wordCount = 0
+      parseProblem = error.localizedDescription
     }
   }
 
   private var summary: String {
+    if let parseProblem { return parseProblem }
     let count = wordCount
     switch count {
     case 0 where model.pasteDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
