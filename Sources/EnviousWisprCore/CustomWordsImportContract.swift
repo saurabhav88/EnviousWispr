@@ -67,6 +67,24 @@ package struct CustomWordsImportCandidate: Identifiable, Sendable, Hashable {
     return values
   }
 
+  /// The candidate as it would be STORED: every stored value trimmed.
+  ///
+  /// Pairs with `storedValues` — that property says which fields reach the
+  /// library, this one puts them in the form the library keeps. A field added
+  /// to one must be added to the other, or validation measures a value nobody
+  /// stores while the real one goes downstream untouched.
+  package func trimmed() -> CustomWordsImportCandidate {
+    var copy = self
+    copy.canonical = canonical.trimmingCharacters(in: .whitespacesAndNewlines)
+    if case .supplied(let values) = aliases {
+      copy.aliases = .supplied(values.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+    }
+    copy.suggestedAliases = suggestedAliases.map {
+      $0.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return copy
+  }
+
   package init(
     id: UUID = UUID(),
     canonical: String,
@@ -156,14 +174,13 @@ package struct CustomWordsImportBatch: Sendable, Equatable {
         // apply. Counting padding here refused a short word in a structured
         // file for whitespace that would never have been saved (cloud review,
         // #1683).
-        guard
-          value.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.count
-            <= CustomWordsImportLimits.maximumStoredValueScalars
+        let stored = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard stored.unicodeScalars.count <= CustomWordsImportLimits.maximumStoredValueScalars
         else {
           throw CustomWordsImportValidationError.wordTooLong(
             limit: CustomWordsImportLimits.maximumStoredValueScalars)
         }
-        guard CustomWordsImportTextPolicy.isAcceptableStoredValue(value) else {
+        guard CustomWordsImportTextPolicy.isAcceptableStoredValue(stored) else {
           throw value == candidate.canonical
             ? CustomWordsImportValidationError.unusableWord(canonical: candidate.canonical)
             : CustomWordsImportValidationError.unusableAlias(
@@ -171,7 +188,19 @@ package struct CustomWordsImportBatch: Sendable, Equatable {
         }
       }
     }
-    return self
+    // Returns what it validated, not what it was handed.
+    //
+    // Measuring the trimmed value while passing the raw one downstream would
+    // enforce the ceiling and then hand the compare engine and the review
+    // screen a value the ceiling never applied to — tens of megabytes of
+    // padding around a short word, normalized and rendered, with trimming
+    // deferred to commit (Codex review, #1683). One boundary decides what a
+    // stored value is, and everything after it sees only that.
+    return CustomWordsImportBatch(
+      sourceID: sourceID,
+      sourceDisplayName: sourceDisplayName,
+      candidates: candidates.map { $0.trimmed() },
+      notices: notices)
   }
 }
 

@@ -1088,7 +1088,13 @@ struct ImportFileParserTests {
     let batch = CustomWordsImportBatch(
       sourceID: "test", sourceDisplayName: "test", candidates: [candidate])
 
-    #expect(throws: Never.self) { try batch.validated() }
+    // Validation returns what it VALIDATED. Measuring the trimmed value and
+    // then handing the raw one to the compare engine and the review screen
+    // would enforce the ceiling on a value nobody downstream ever sees
+    // (Codex review, #1683).
+    let validated = try batch.validated()
+    #expect(validated.candidates.map(\.canonical) == ["Kubernetes"])
+    #expect(validated.candidates.first?.aliases == .supplied(["k8s"]))
 
     // And still refused when the CONTENT is what exceeds the ceiling.
     let genuinelyLong = CustomWordsImportBatch(

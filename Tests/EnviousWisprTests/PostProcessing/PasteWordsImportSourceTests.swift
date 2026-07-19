@@ -89,6 +89,20 @@ struct PasteWordsImportSourceTests {
         == ["Claude Code", "Anthropic"])
   }
 
+  /// Excluding padding from the LENGTH must not move the unbounded growth into
+  /// the hold: a term followed by an enormous whitespace run would otherwise
+  /// retain every scalar (Codex review, #1683). Refused when real content
+  /// follows the run, ignored as trailing padding when none does.
+  @Test("an enormous interior whitespace run is bounded, not retained")
+  func interiorWhitespaceRunIsBounded() throws {
+    let hugeRun = String(repeating: " ", count: 40_000)
+
+    #expect(throws: (any Error).self) { try PasteWordsParser.parse("x" + hugeRun + "y") }
+    // Nothing follows it, so it was trailing padding all along.
+    #expect(try PasteWordsParser.parse("x" + hugeRun) == ["x"])
+    #expect(try PasteWordsParser.parse("x" + hugeRun + ",y") == ["x", "y"])
+  }
+
   /// The ceiling still applies to real content, so relaxing the padding rule
   /// cannot become "no limit at all" — including when interior spacing is what
   /// carries the entry past it.

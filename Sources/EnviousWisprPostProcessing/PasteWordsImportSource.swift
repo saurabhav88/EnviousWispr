@@ -49,6 +49,10 @@ package enum PasteWordsParser {
     // Whitespace seen since the last real character, held rather than buffered
     // so padding never counts toward a length. See the scan loop below.
     var pendingWhitespace: [Unicode.Scalar] = []
+    var pendingWhitespaceOverflowed = false
+    // One bound for both the buffer and the held whitespace: neither may grow
+    // toward the size of the file.
+    let memoryBound = CustomWordsImportLimits.maximumStoredValueScalars * 4
     let ceiling = limit.map { $0 + 1 }
     var scanned = 0
     // flush() reports "stop" for both success-with-ceiling-reached and a real
@@ -61,6 +65,7 @@ package enum PasteWordsParser {
       defer {
         buffer.removeAll(keepingCapacity: true)
         pendingWhitespace.removeAll(keepingCapacity: true)
+        pendingWhitespaceOverflowed = false
       }
       let trimmed = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
       // Skipped like any other blank line. A piece made only of invisible
@@ -115,9 +120,29 @@ package enum PasteWordsParser {
       // ("Claude Code"). Without this, a file of 3000 spaces — which should
       // import nothing — tripped the buffer bound below and failed the whole
       // paste as "too long" (cloud review, #1683).
+      //
+      // The hold is BOUNDED, or excluding padding from the length would just
+      // move the unbounded growth somewhere the limit no longer watches: `x`
+      // followed by millions of spaces would retain every one of them (Codex
+      // review, #1683). Past the bound the run stops being kept and is only
+      // remembered as overflowed — enough, because interior spacing that long
+      // can only produce an entry the ceiling refuses anyway, and if no real
+      // character follows, it was trailing padding and is discarded.
       if scalar.properties.isWhitespace {
-        if !buffer.isEmpty { pendingWhitespace.append(scalar) }
+        guard !buffer.isEmpty else { continue }
+        if pendingWhitespace.count < memoryBound {
+          pendingWhitespace.append(scalar)
+        } else {
+          pendingWhitespaceOverflowed = true
+        }
         continue
+      }
+      // A real character after an overflowed run: the entry now contains that
+      // whole run, so it is over-length by construction. Refuse it here rather
+      // than materialising it to measure it.
+      if pendingWhitespaceOverflowed {
+        throw CustomWordsImportValidationError.wordTooLong(
+          limit: CustomWordsImportLimits.maximumStoredValueScalars)
       }
       buffer.unicodeScalars.append(contentsOf: pendingWhitespace)
       pendingWhitespace.removeAll(keepingCapacity: true)
