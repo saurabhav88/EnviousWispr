@@ -161,7 +161,7 @@ private struct ImportMethodPickerScreen: View {
       ImportMethodCard(
         icon: "square.and.arrow.down",
         title: "Upload a file",
-        subtitle: "Import a backup or a spreadsheet of words."
+        subtitle: "Import words from a file you exported, or a list."
       ) {
         model.select(.upload)
       }
@@ -372,13 +372,23 @@ private struct ImportPasteScreen: View {
 
 // MARK: - Upload a file (PR-U1)
 
+/// Deliberately never says "restore" (founder, 2026-07-19).
+///
+/// v1 import ADDS words you don't have and SKIPS ones you do, leaving existing
+/// words and their alternate spellings completely untouched. "Restore" would
+/// promise that a word you had edited comes back as it was, which is exactly
+/// the overwriting this scope rules out. The screen says what it does.
 private struct ImportUploadScreen: View {
   let model: CustomWordsImportFlowModel
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Text("Choose an EnviousWispr backup to restore, or a plain text list of words.")
+      Text("Choose a file you exported from EnviousWispr, or a plain text list of words.")
         .settingsReadingCopy()
+
+      Text("Words you already have are left exactly as they are.")
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
 
       Button {
         // The panel is opened first and the file read only after a choice, so

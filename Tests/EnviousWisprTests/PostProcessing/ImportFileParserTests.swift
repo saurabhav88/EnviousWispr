@@ -27,10 +27,10 @@ struct ImportFileParserTests {
     try write(Data(text.utf8), as: name)
   }
 
-  // MARK: - Backup format
+  // MARK: - Exported words file
 
-  @Test("an exported backup restores every portable field")
-  func backupParserRestoresEveryPortableField() async throws {
+  @Test("an exported words file brings back every portable field")
+  func exportedWordsFileBringsBackEveryPortableField() async throws {
     let original = CustomWord(
       canonical: "Kubernetes", aliases: ["k8s"], category: .brand, priority: 3,
       forceReplace: true, caseSensitive: true, minSimilarityOverride: 0.8)
@@ -40,9 +40,10 @@ struct ImportFileParserTests {
     let batch = try await FileImportSource(url: url).loadCandidates()
     let candidate = try #require(batch.candidates.first)
 
-    #expect(batch.sourceID == "backup")
+    #expect(batch.sourceID == "exported-words")
     #expect(candidate.canonical == "Kubernetes")
-    // Backup is the one source with real authority over every field.
+    // An exported file is the one source with real authority over every
+    // field: it is the user's own data going out and coming back.
     #expect(candidate.aliases == .supplied(["k8s"]))
     #expect(candidate.category == .supplied(.brand))
     #expect(candidate.priority == .supplied(3))
@@ -52,19 +53,19 @@ struct ImportFileParserTests {
   }
 
   @Test("a JSON file that isn't ours says so, rather than reading as damaged")
-  func foreignJSONReportsItIsNotABackup() async throws {
+  func foreignJSONReportsItDidNotComeFromEnviousWispr() async throws {
     let url = try write(#"{"format":"com.example.other","version":1,"words":[]}"#, as: "other.json")
-    await #expect(throws: ImportFileError.backup(.notAnEnviousWisprBackup)) {
+    await #expect(throws: ImportFileError.exportedWords(.notAnEnviousWisprBackup)) {
       _ = try await FileImportSource(url: url).loadCandidates()
     }
   }
 
-  @Test("a backup from a newer version says to update, not that it is damaged")
-  func futureBackupReportsVersionRatherThanDamage() async throws {
+  @Test("a file from a newer version says to update, not that it is damaged")
+  func futureFileReportsVersionRatherThanDamage() async throws {
     let url = try write(
       #"{"format":"com.enviouswispr.custom-words","version":99,"words":[]}"#,
       as: "future.json")
-    await #expect(throws: ImportFileError.backup(.unsupportedVersion(99))) {
+    await #expect(throws: ImportFileError.exportedWords(.unsupportedVersion(99))) {
       _ = try await FileImportSource(url: url).loadCandidates()
     }
   }
@@ -171,6 +172,41 @@ struct ImportFileParserTests {
     }
   }
 
+  // MARK: - Limits
+
+  @Test("an absurdly large file is refused before it is read into memory")
+  func oversizedFileIsRefusedBeforeReading() async throws {
+    // Refusing by size beats discovering it after allocating: a word list is
+    // small, so anything this big is a mistaken selection.
+    let url = try write(Data(count: FileImportSource.maximumFileBytes + 1), as: "huge.txt")
+    await #expect(throws: ImportFileError.tooLarge) {
+      _ = try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
+  @Test("a file with more words than the limit is refused with both numbers")
+  func tooManyWordsIsRefusedWithCounts() async throws {
+    let limit = FileImportSource.maximumCandidates
+    let words = (0...limit).map { "word\($0)" }.joined(separator: "\n")
+    let url = try write(words, as: "many.txt")
+
+    await #expect(
+      throws: ImportFileError.tooManyWords(found: limit + 1, limit: limit)
+    ) {
+      _ = try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
+  @Test("a file exactly at the limit is accepted")
+  func fileAtExactlyTheLimitIsAccepted() async throws {
+    let limit = FileImportSource.maximumCandidates
+    let words = (1...limit).map { "word\($0)" }.joined(separator: "\n")
+    let url = try write(words, as: "atlimit.txt")
+
+    let batch = try await FileImportSource(url: url).loadCandidates()
+    #expect(batch.candidates.count == limit)
+  }
+
   // MARK: - Registry
 
   @Test("the picker offers exactly what the registry can read")
@@ -188,7 +224,7 @@ struct ImportFileParserTests {
     let json = try write("{}", as: "a.json")
     let text = try write("a", as: "a.txt")
 
-    #expect(ImportFileRegistry.v1.parser(for: json)?.identifier == "backup")
+    #expect(ImportFileRegistry.v1.parser(for: json)?.identifier == "exported-words")
     #expect(ImportFileRegistry.v1.parser(for: text)?.identifier == "plain-text")
     #expect(ImportFileRegistry.v1.parser(for: try write("a", as: "a.csv")) == nil)
   }

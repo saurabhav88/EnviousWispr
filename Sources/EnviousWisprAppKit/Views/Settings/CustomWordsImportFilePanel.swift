@@ -13,7 +13,7 @@ enum CustomWordsImportFilePanel {
     let panel = NSOpenPanel()
     panel.title = "Choose a file to import"
     panel.prompt = "Import"
-    panel.message = "Choose an EnviousWispr backup or a plain text list of words."
+    panel.message = "Choose a file you exported from EnviousWispr, or a plain text list of words."
     panel.allowedContentTypes = registry.acceptedContentTypes
     panel.allowsMultipleSelection = false
     panel.canChooseDirectories = false
