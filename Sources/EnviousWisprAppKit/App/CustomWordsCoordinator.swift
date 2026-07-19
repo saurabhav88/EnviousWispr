@@ -13,16 +13,6 @@ final class CustomWordsCoordinator {
   /// intact, nothing was changed. `.corrupted`: it was archived for recovery.
   private(set) var wordsLoadFailureAtLaunch: CustomWordsInitialLoadFailure?
 
-  /// Whether the saved-words file can be read RIGHT NOW (#1680).
-  ///
-  /// `wordsLoadFailureAtLaunch` is a snapshot of one moment and stays set for
-  /// the session, so it cannot answer this: a file that was temporarily
-  /// unreadable may be readable again, and a corrupted one has since been
-  /// archived and replaced by a valid empty file the user may have added to.
-  /// Export asks the live question, because refusing forever on a stale flag
-  /// is its own kind of wrong (cloud review, #1682).
-  var savedWordsAreReadable: Bool { manager.load() != nil }
-
   let suggestionService = WordSuggestionService()
   /// The reused on-device alias generator, exposed as the narrow protocol so the
   /// composition root can wire it into the contacts-import coordinator without
@@ -71,6 +61,28 @@ final class CustomWordsCoordinator {
     case failed(message: String)
   }
 
+  /// Re-read the saved words from disk and adopt them, reporting whether the
+  /// list can now be trusted.
+  ///
+  /// One owner for "reload and adopt", used by both callers that need it: the
+  /// stale-commit path (#1679) and the export guard (#1680). Reading without
+  /// adopting is the trap — a readability check that discards what it read
+  /// leaves the caller believing the list is good while it still holds the
+  /// empty launch fallback, which is how export came to overwrite a real
+  /// backup with an empty file (cloud review, #1682).
+  ///
+  /// Fails closed: an unreadable file returns `false` and leaves the current
+  /// list untouched rather than substituting an empty one.
+  @discardableResult
+  func refreshFromDiskIfPossible() -> Bool {
+    guard let refreshed = manager.load() else { return false }
+    if refreshed != customWords {
+      customWords = refreshed
+      onWordsChanged?(customWords)
+    }
+    return true
+  }
+
   /// Apply a reviewed import in one atomic write. Fires `onWordsChanged`
   /// exactly once, and only when something actually changed.
   func commitImport(_ plan: CustomWordsImportCommitPlan) -> CustomWordsImportCommitOutcome {
@@ -92,10 +104,7 @@ final class CustomWordsCoordinator {
       // Fail closed on an unreadable file: keep the current list rather than
       // clobbering it with an empty one. The commit still reports `.stale`,
       // which is honest either way — nothing was written.
-      if let refreshed = manager.load(), refreshed != customWords {
-        customWords = refreshed
-        onWordsChanged?(customWords)
-      }
+      refreshFromDiskIfPossible()
       customWordError = nil
       return .stale
     } catch {

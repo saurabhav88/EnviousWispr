@@ -139,7 +139,11 @@ struct YourWordsView: View {
       // the failure would destroy the very thing the user came here to save.
       // The banner already explains the load failure; this says why the button
       // did nothing.
-      if !customWordsCoordinator.savedWordsAreReadable {
+      // Reload AND adopt before deciding. Merely checking that the file is
+      // readable was worse than refusing outright: the check passed while the
+      // list stayed the empty launch fallback, so export wrote a valid empty
+      // backup over a real one (cloud review, #1682).
+      if !customWordsCoordinator.refreshFromDiskIfPossible() {
         exportError =
           "Your saved words couldn't be read this time, so there's nothing safe to export. "
           + "Relaunch EnviousWispr and try again."

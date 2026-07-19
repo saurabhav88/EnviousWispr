@@ -448,8 +448,8 @@ struct CustomWordsCoordinatorLaunchFailureTests {
 
   // MARK: - Export readability is a live question, not a launch snapshot (#1682)
 
-  @Test("an unreadable file reports as not readable")
-  func savedWordsAreNotReadableWhileTheFileIsUnreadable() throws {
+  @Test("an unreadable file refuses the refresh and keeps the current list")
+  func refreshFailsClosedWhileTheFileIsUnreadable() throws {
     let url = Self.tempURL()
     defer { Self.cleanup(url) }
     let mgr = CustomWordsManager(fileURL: url)
@@ -464,11 +464,16 @@ struct CustomWordsCoordinatorLaunchFailureTests {
 
     let coordinator = CustomWordsCoordinator(manager: mgr)
     #expect(coordinator.wordsLoadFailureAtLaunch == .unreadable)
-    #expect(coordinator.savedWordsAreReadable == false)
+    #expect(coordinator.refreshFromDiskIfPossible() == false)
+    #expect(coordinator.customWords.isEmpty)
   }
 
-  @Test("readability recovers within the session even though the launch flag does not")
-  func savedWordsBecomeReadableAgainAfterTheFileRecovers() throws {
+  @Test("a recovered file is ADOPTED, not merely reported readable")
+  func refreshAdoptsTheRecoveredWordsRatherThanJustReportingReadable() throws {
+    // The bug this freezes (cloud review, #1682): a readability check that
+    // discarded what it read let export proceed while `customWords` was still
+    // the empty launch fallback, so it wrote a valid EMPTY backup over a real
+    // one. Reporting "readable" is not enough; the words have to arrive.
     let url = Self.tempURL()
     defer { Self.cleanup(url) }
     let mgr = CustomWordsManager(fileURL: url)
@@ -478,16 +483,19 @@ struct CustomWordsCoordinatorLaunchFailureTests {
       [.posixPermissions: 0o000], ofItemAtPath: url.path)
 
     let coordinator = CustomWordsCoordinator(manager: mgr)
-    #expect(coordinator.savedWordsAreReadable == false)
+    #expect(coordinator.customWords.isEmpty, "launch fallback while unreadable")
 
     // The file becomes readable again mid-session.
     try FileManager.default.setAttributes(
       [.posixPermissions: 0o600], ofItemAtPath: url.path)
 
-    // The launch flag is a snapshot and stays set — that is what makes it the
-    // wrong thing to gate export on.
+    #expect(coordinator.refreshFromDiskIfPossible())
+    // The launch flag is a snapshot and stays set — which is exactly why it
+    // was the wrong thing to gate on.
     #expect(coordinator.wordsLoadFailureAtLaunch == .unreadable)
-    #expect(coordinator.savedWordsAreReadable)
+    // The part that matters: the real words are now in hand, so an export
+    // taken at this moment carries them instead of nothing.
+    #expect(coordinator.customWords.contains { $0.canonical == "Kubernetes" })
   }
 
   // MARK: - Stale import commit refreshes the in-memory list (#1679 cloud review)
