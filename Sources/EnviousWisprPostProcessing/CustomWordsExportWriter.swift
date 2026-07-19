@@ -2,10 +2,10 @@ import Foundation
 
 /// Writes a backup file to a destination the user chose (#1680, PR-E1).
 ///
-/// Mirrors `CustomWordsManager.saveFile`'s guards — exclusive create, mode
-/// 0600, atomic replace, cleanup on failure — with one deliberate difference:
-/// the temp filename is **unique**, not fixed. The live `custom-words.json`
-/// has exactly one writer, so a fixed `.tmp` sibling is safe there. An export
+/// Same guards as `CustomWordsManager.saveFile` — exclusive create, mode 0600,
+/// atomic publish, cleanup on failure — with one deliberate difference: the
+/// temp filename is **unique**, not fixed. The live `custom-words.json` has
+/// exactly one writer, so a fixed `.tmp` sibling is safe there. An export
 /// destination is a folder the user picked, and two exports can target it at
 /// once; a shared temp name would let them overwrite each other's partial
 /// bytes and produce one corrupt file.
@@ -39,41 +39,34 @@ package enum CustomWordsExportWriter {
       try handle.write(contentsOf: data)
       try handle.close()
 
-      // Deliberately NOT `if fileExists { replace } else { move }`. That is a
-      // check-then-act across a window another export can land in: both see no
-      // file, both move, and the loser fails with "already exists". The
-      // concurrency test caught exactly that. Attempt the move, and treat any
-      // failure as "something is there now" and replace it.
+      // Publish with a single `rename(2)`, which does in ONE atomic step what
+      // three earlier revisions of this function each got partly wrong
+      // (code reviews r1-r6):
       //
-      // `.usingNewMetadataOnly` is load-bearing, not tidiness (code review):
-      // the default preserves the DESTINATION's metadata, so overwriting an
-      // existing world-readable file would silently discard this temp file's
-      // 0600 and leave a backup full of personal names at 0644.
-      do {
-        try fm.moveItem(at: tmpURL, to: destination)
-      } catch {
-        // Replace ONLY a pre-existing regular file. The first version of this
-        // fallback replaced on ANY move failure, which meant that if the
-        // destination path had become a directory, Foundation would replace
-        // the directory with the export file and delete its contents — a
-        // destructive answer to an unrelated error. Anything that is not a
-        // plain file is not ours to overwrite; rethrow the real failure.
-        var isDirectory: ObjCBool = false
-        guard fm.fileExists(atPath: destination.path, isDirectory: &isDirectory),
-          !isDirectory.boolValue
-        else {
-          throw error
-        }
-        _ = try fm.replaceItemAt(
-          destination, withItemAt: tmpURL, options: [.usingNewMetadataOnly])
+      //  - Atomic replace of an existing regular file — no check-then-act
+      //    window where a second export sees "no file" and both try to move.
+      //  - Refuses a directory outright (EISDIR), by the kernel, with no
+      //    gap between deciding and acting. The previous fileExists-then-
+      //    replace guard was correct but not atomic: a cloud-sync client that
+      //    swapped the path to a directory in between could still have had it
+      //    deleted along with its contents.
+      //  - Keeps the temp file's own 0600 rather than inheriting a
+      //    world-readable destination's mode, so a backup full of personal
+      //    names cannot be published readable by everything on the machine.
+      //
+      // Same-directory temp file means same filesystem, which is what makes
+      // rename legal here.
+      guard Foundation.rename(tmpURL.path, destination.path) == 0 else {
+        throw NSError(
+          domain: NSPOSIXErrorDomain, code: Int(errno),
+          userInfo: [
+            NSLocalizedDescriptionKey: String(cString: strerror(errno)),
+            NSFilePathErrorKey: destination.path,
+          ])
       }
-      // Belt and braces: the privacy promise is stated in the save panel, so
-      // enforce it on the final file rather than trusting the replace options
-      // to behave identically on every filesystem (network, external, FAT).
-      try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
     } catch {
-      // Best-effort cleanup. An existing destination is left untouched: the
-      // replace either happened completely or not at all.
+      // Best-effort cleanup. An existing destination is untouched unless the
+      // rename succeeded, and a failed rename changes nothing at all.
       try? fm.removeItem(at: tmpURL)
       throw error
     }
