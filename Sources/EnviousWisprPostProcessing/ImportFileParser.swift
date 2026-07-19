@@ -175,10 +175,10 @@ package struct PlainTextImportFileParser: ImportFileParser {
   private static func decodeUsingByteOrderMark(_ data: Data) -> String? {
     let bom = Array(data.prefix(3))
     if bom.starts(with: [0xFF, 0xFE]) {
-      return String(data: data, encoding: .utf16LittleEndian).map(strippingBOM)
+      return decodeUTF16(data, as: .utf16LittleEndian)
     }
     if bom.starts(with: [0xFE, 0xFF]) {
-      return String(data: data, encoding: .utf16BigEndian).map(strippingBOM)
+      return decodeUTF16(data, as: .utf16BigEndian)
     }
     if bom.starts(with: [0xEF, 0xBB, 0xBF]) {
       return String(data: data, encoding: .utf8).map(strippingBOM)
@@ -214,6 +214,16 @@ package struct PlainTextImportFileParser: ImportFileParser {
         return false
       }
     }
+  }
+
+  /// UTF-16 needs an even byte count, and Foundation does NOT enforce it: a
+  /// partially written file with a dangling byte decodes silently to its
+  /// prefix, so a truncated list imported as if complete (Codex review,
+  /// #1683). Same principle as reading to EOF rather than trusting one read —
+  /// a partial answer must be recognisable as partial.
+  private static func decodeUTF16(_ data: Data, as encoding: String.Encoding) -> String? {
+    guard data.count.isMultiple(of: 2) else { return nil }
+    return String(data: data, encoding: encoding).map(strippingBOM)
   }
 
   /// The mark itself is metadata, not a character the user typed. Left in, it

@@ -567,4 +567,17 @@ struct ImportFileParserTests {
     await #expect(throws: CancellationError.self) { try await task.value }
   }
 
+
+  @Test("a truncated UTF-16 file is refused, not imported as its prefix")
+  func truncatedUTF16IsRefused() async throws {
+    // Foundation ignores a dangling byte, so a partial write decoded to its
+    // prefix and imported as if complete.
+    let full = Data([0xFF, 0xFE]) + "Kubernetes\nPostgreSQL".data(using: .utf16LittleEndian)!
+    let url = try write(full.dropLast(), as: "words.txt")
+
+    await #expect(throws: ImportFileError.unreadable) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
 }
