@@ -123,17 +123,24 @@ package struct CustomWordsImportBatch: Sendable, Equatable {
   /// every source, which is the gap that let exported JSON skip the character
   /// rules the text path enforced.
   package func validated() throws -> CustomWordsImportBatch {
-    for (index, candidate) in candidates.enumerated() {
-      // The ceiling allows 400,000 stored values, so this loop is long enough
-      // to outlive a dismissed sheet (Codex review, #1683).
-      if index.isMultiple(of: 1_000) { try Task.checkCancellation() }
+    // Counted across BOTH loops, because the work is proportional to total
+    // stored values and one candidate may carry hundreds of thousands of
+    // aliases — checking only the outer loop left the inner one uninterruptible
+    // (Codex review, #1683).
+    var scanned = 0
+    for candidate in candidates {
+      scanned += 1
+      if scanned.isMultiple(of: 1_000) { try Task.checkCancellation() }
       guard CustomWordsImportTextPolicy.isAcceptableStoredValue(candidate.canonical) else {
         throw CustomWordsImportValidationError.unusableWord(canonical: candidate.canonical)
       }
       if case .supplied(let aliases) = candidate.aliases {
-        for alias in aliases
-        where !CustomWordsImportTextPolicy.isAcceptableStoredValue(alias) {
-          throw CustomWordsImportValidationError.unusableWord(canonical: candidate.canonical)
+        for alias in aliases {
+          scanned += 1
+          if scanned.isMultiple(of: 1_000) { try Task.checkCancellation() }
+          guard CustomWordsImportTextPolicy.isAcceptableStoredValue(alias) else {
+            throw CustomWordsImportValidationError.unusableWord(canonical: candidate.canonical)
+          }
         }
       }
     }
@@ -212,7 +219,7 @@ package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatab
   static func displayable(_ value: String) -> String {
     String(
       value.unicodeScalars.map { scalar -> String in
-        CustomWordsImportTextPolicy.isAcceptableStoredValue(String(scalar))
+        CustomWordsImportTextPolicy.isAcceptableInStoredValue(scalar)
           ? String(scalar)
           : "<U+" + String(format: "%04X", scalar.value) + ">"
       }.joined())

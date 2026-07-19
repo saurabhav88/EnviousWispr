@@ -57,14 +57,23 @@ package enum CustomWordsImportTextPolicy {
   /// Line breaks and tabs are separators BETWEEN words, never content within
   /// one, so they are refused here even though `isPlausiblyText` allows them
   /// while scanning a whole file.
+  /// Scalar-level form of `isAcceptableStoredValue`, for callers inspecting
+  /// one character at a time.
+  ///
+  /// Needed because the whole-value check also rejects blank values, so
+  /// testing a single space through it reports the space as rejected — which
+  /// made the error sanitiser label ordinary spaces as bad characters (Codex
+  /// review, #1683).
+  package static func isAcceptableInStoredValue(_ scalar: Unicode.Scalar) -> Bool {
+    guard scalar != "\n", scalar != "\r", scalar != "\t" else { return false }
+    return isAcceptable(scalar)
+  }
+
   package static func isAcceptableStoredValue(_ value: String) -> Bool {
     guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       return false
     }
-    return value.unicodeScalars.allSatisfy { scalar in
-      guard scalar != "\n", scalar != "\r", scalar != "\t" else { return false }
-      return isAcceptable(scalar)
-    }
+    return value.unicodeScalars.allSatisfy(isAcceptableInStoredValue)
   }
 
   private static func isAcceptable(_ scalar: Unicode.Scalar) -> Bool {

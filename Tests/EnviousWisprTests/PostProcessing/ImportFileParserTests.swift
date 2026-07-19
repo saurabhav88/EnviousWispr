@@ -873,4 +873,35 @@ struct ImportFileParserTests {
     await #expect(throws: CancellationError.self) { try await task.value }
   }
 
+
+  @Test("sanitising an error keeps ordinary spaces intact")
+  func sanitisedErrorKeepsSpaces() throws {
+    // Testing each scalar through the whole-VALUE check treated a standalone
+    // space as blank, so a multi-word entry rendered as Foo<U+0020>Bar and
+    // told the user their spaces were bad characters.
+    let message = try #require(
+      CustomWordsImportValidationError.unusableWord(canonical: "Foo Bar\u{202E}")
+        .errorDescription)
+
+    #expect(message.contains("Foo Bar"))
+    #expect(!message.contains("<U+0020>"))
+    #expect(message.contains("<U+202E>"))
+  }
+
+  @Test("validation stops mid-aliases when the sheet is dismissed")
+  func aliasValidationHonoursCancellation() async throws {
+    // One candidate can carry hundreds of thousands of aliases, so checking
+    // only the outer loop left the inner one uninterruptible.
+    let candidate = CustomWordsImportCandidate(
+      canonical: "Kubernetes",
+      aliases: .supplied((0..<20_000).map { "alias\($0)" }))
+    let batch = CustomWordsImportBatch(
+      sourceID: "test", sourceDisplayName: "test", candidates: [candidate])
+
+    let task = Task { try batch.validated() }
+    task.cancel()
+
+    await #expect(throws: CancellationError.self) { try await task.value }
+  }
+
 }
