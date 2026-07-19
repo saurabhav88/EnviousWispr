@@ -85,8 +85,10 @@ package enum PasteWordsImportError: LocalizedError, Sendable, Equatable {
     switch self {
     case .tooManyWords(let found, let limit):
       return
-        "That's \(found) words, which is more than EnviousWispr can import at once "
-        + "(\(limit)). Try pasting a smaller batch."
+        // See ImportFileError.tooManyWords: `found` is a stop-sentinel, not a
+        // total.
+        "That's more than \(limit) words, which is more than EnviousWispr can "
+        + "import at once. Try pasting a smaller batch."
     }
   }
 }

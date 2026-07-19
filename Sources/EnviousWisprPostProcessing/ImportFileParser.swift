@@ -16,10 +16,15 @@ package enum ImportFileError: LocalizedError, Sendable, Equatable {
       return "That file couldn't be read."
     case .tooLarge:
       return "That file is too big to be a word list. Check you picked the right one."
-    case .tooManyWords(let found, let limit):
+    case .tooManyWords(_, let limit):
+      // Says "more than", never an exact figure. On the text path the count is
+      // a stop-sentinel — scanning halts one past the limit rather than
+      // counting a file it is going to refuse — so printing it would state a
+      // number nobody measured (Codex review, #1683). The associated value is
+      // kept for tests and telemetry, which can tell the two cases apart.
       return
-        "That file has \(found) words, which is more than EnviousWispr can import "
-        + "at once (\(limit)). Try splitting it into smaller files."
+        "That file has more than \(limit) words, which is more than EnviousWispr "
+        + "can import at once. Try splitting it into smaller files."
     case .unsupportedType(let name):
       return
         "EnviousWispr can't read \(name) files yet. "
@@ -186,7 +191,14 @@ package struct PlainTextImportFileParser: ImportFileParser {
   /// look like WORDS rather than merely printable characters, which is what
   /// stops un-recognised encodings from landing there as `qg¬N`.
   static func decode(_ data: Data) -> String? {
-    if let marked = decodeUsingByteOrderMark(data), isPlausiblyText(marked) {
+    // A recognised mark is AUTHORITATIVE: if it says UTF-16 and the bytes then
+    // fail to decode, the file is broken, not secretly something else. Falling
+    // through on failure re-created the bug the alignment check was added to
+    // fix — `[FF FE E9]` is a truncated UTF-16 file, and Latin-1 turned it
+    // into the plausible-looking word `ÿþé` (Codex review, #1683).
+    if hasByteOrderMark(data) {
+      guard let marked = decodeUsingByteOrderMark(data), isPlausiblyText(marked)
+      else { return nil }
       return strippingBOM(marked)
     }
     if let utf8 = String(data: data, encoding: .utf8), isPlausiblyText(utf8) {
@@ -196,6 +208,12 @@ package struct PlainTextImportFileParser: ImportFileParser {
       looksLikeWords(latin1)
     else { return nil }
     return strippingBOM(latin1)
+  }
+
+  private static func hasByteOrderMark(_ data: Data) -> Bool {
+    let bom = Array(data.prefix(3))
+    return bom.starts(with: [0xFF, 0xFE]) || bom.starts(with: [0xFE, 0xFF])
+      || bom.starts(with: [0xEF, 0xBB, 0xBF])
   }
 
   private static func decodeUsingByteOrderMark(_ data: Data) -> String? {

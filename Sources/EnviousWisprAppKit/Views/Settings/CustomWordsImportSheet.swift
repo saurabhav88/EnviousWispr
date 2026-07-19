@@ -359,12 +359,14 @@ private struct ImportPasteScreen: View {
       isEditorFocused = true
       // Back from Review returns to an existing draft, so the count has to be
       // right on arrival, not only after the next keystroke.
-      wordCount = (try? PasteWordsParser.parse(
-        model.pasteDraft, limit: CustomWordsImportLimits.maximumCandidates))?.count ?? 0
+      wordCount =
+        (try? PasteWordsParser.parse(
+          model.pasteDraft, limit: CustomWordsImportLimits.maximumCandidates))?.count ?? 0
     }
     .onChange(of: model.pasteDraft) { _, draft in
-      wordCount = (try? PasteWordsParser.parse(
-        draft, limit: CustomWordsImportLimits.maximumCandidates))?.count ?? 0
+      wordCount =
+        (try? PasteWordsParser.parse(
+          draft, limit: CustomWordsImportLimits.maximumCandidates))?.count ?? 0
     }
   }
 
@@ -377,6 +379,14 @@ private struct ImportPasteScreen: View {
       return "No words found in that text."
     case 1:
       return "1 word ready to review."
+    case let n where n > CustomWordsImportLimits.maximumCandidates:
+      // The scan stops one past the limit, so this count is a sentinel rather
+      // than a total — and none of these words are "ready to review", because
+      // Confirm will refuse the batch. Saying so here beats letting the user
+      // find out at the end (Codex review, #1683).
+      return
+        "That's more than \(CustomWordsImportLimits.maximumCandidates) words. "
+        + "Paste a smaller batch."
     default:
       return "\(count) words ready to review."
     }

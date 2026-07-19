@@ -664,4 +664,31 @@ struct ImportFileParserTests {
     #expect(candidates.allSatisfy { !$0.canonical.contains("\t") })
   }
 
+
+  @Test("a truncated UTF-16 file is refused, not read as Latin-1")
+  func markedButBrokenFileDoesNotFallThrough() async throws {
+    // A recognised mark is authoritative: if it says UTF-16 and the bytes fail
+    // to decode, the file is broken, not secretly something else. Falling
+    // through re-created the very bug the alignment check was added to fix —
+    // [FF FE E9] became the plausible-looking word "ÿþé".
+    let url = try write(Data([0xFF, 0xFE, 0xE9]), as: "words.txt")
+
+    await #expect(throws: ImportFileError.unreadable) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
+  @Test("an over-limit file never states an exact word count")
+  func overLimitMessageDoesNotInventACount() async throws {
+    // The scan stops one past the limit rather than counting a file it is
+    // going to refuse, so printing that figure would state a number nobody
+    // measured.
+    let limit = CustomWordsImportLimits.maximumCandidates
+    let message = try #require(
+      ImportFileError.tooManyWords(found: limit + 1, limit: limit).errorDescription)
+
+    #expect(message.contains("more than \(limit)"))
+    #expect(!message.contains("\(limit + 1)"))
+  }
+
 }
