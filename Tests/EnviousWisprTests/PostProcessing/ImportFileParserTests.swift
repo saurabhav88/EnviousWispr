@@ -310,29 +310,6 @@ struct ImportFileParserTests {
   }
 
 
-  @Test("UTF-16 without a byte-order mark still imports real words")
-  func utf16WithoutByteOrderMarkDecodes() async throws {
-    // NUL is a legal UTF-8 byte, so these bytes decode "successfully" as UTF-8
-    // to "K\0u\0b\0…". Gating only the Latin-1 path let that straight
-    // through — the plausibility check has to guard EVERY decode step.
-    let url = try write(
-      "Kubernetes\nPostgreSQL".data(using: .utf16LittleEndian)!, as: "words.txt")
-
-    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
-
-    #expect(candidates.map { $0.canonical } == ["Kubernetes", "PostgreSQL"])
-  }
-
-  @Test("big-endian UTF-16 without a byte-order mark decodes too")
-  func utf16BigEndianWithoutByteOrderMarkDecodes() async throws {
-    let url = try write("Kubernetes".data(using: .utf16BigEndian)!, as: "words.txt")
-
-    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
-
-    #expect(candidates.map { $0.canonical } == ["Kubernetes"])
-  }
-
-
   @Test("word lists in other scripts import intact")
   func internationalWordListsImportIntact() async throws {
     // Japanese, Hindi, Arabic, Korean, Russian, Greek, accented Latin, and a
@@ -390,30 +367,6 @@ struct ImportFileParserTests {
   }
 
 
-  @Test("a multi-word CJK list in UTF-16 imports correctly")
-  func multiWordCJKUTF16Imports() async throws {
-    // The realistic shape: line breaks supply the NUL bytes the detector
-    // reads, so a Japanese word list saved as UTF-16 works.
-    let url = try write("東京\n大阪\n京都".data(using: .utf16LittleEndian)!, as: "words.txt")
-
-    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
-
-    #expect(candidates.map { $0.canonical } == ["東京", "大阪", "京都"])
-  }
-
-  @Test("a single CJK word in UTF-16 with no mark is refused, not corrupted")
-  func singleCJKWordWithoutMarkIsRefused() async throws {
-    // Genuinely ambiguous: these four bytes are a valid Latin-1 word list AND
-    // valid UTF-16. Guessing UTF-16 here would corrupt real Latin-1 files
-    // (Beyoncé/Jalapeño decodes to plausible-looking CJK), so refusing is the
-    // honest answer. Refused beats "qg¬N" imported as a word.
-    let url = try write("東京".data(using: .utf16LittleEndian)!, as: "words.txt")
-
-    await #expect(throws: ImportFileError.unreadable) {
-      try await FileImportSource(url: url).loadCandidates()
-    }
-  }
-
   @Test("a single CJK word WITH a byte-order mark imports fine")
   func singleCJKWordWithMarkImports() async throws {
     // Which is why the mark matters, and why real UTF-16 writers emit one.
@@ -458,5 +411,43 @@ struct ImportFileParserTests {
   }
 
 
+
+
+  @Test("UTF-16 without a byte-order mark is refused, never guessed at")
+  func unmarkedUTF16IsRefused() async throws {
+    // With no mark, BOTH byte orders decode to something for any even-length
+    // input, so nothing in the bytes can settle which was meant: UTF-16LE 一
+    // is 00 4E, identical to big-endian N. Guessing here corrupted data in
+    // four separate review rounds. Refusing is the honest answer.
+    for data in [
+      "Kubernetes\nPostgreSQL".data(using: .utf16LittleEndian)!,
+      "Kubernetes".data(using: .utf16BigEndian)!,
+      "東京\n大阪".data(using: .utf16LittleEndian)!,
+      Data([0x00, 0x4E]),
+    ] {
+      let url = try write(data, as: "words.txt")
+      await #expect(throws: ImportFileError.unreadable) {
+        try await FileImportSource(url: url).loadCandidates()
+      }
+    }
+  }
+
+  @Test("UTF-16 WITH a byte-order mark imports, including CJK")
+  func markedUTF16Imports() async throws {
+    // Which is the whole point of the mark, and why real UTF-16 writers emit
+    // one. The supported path stays supported.
+    let cases: [(Data, [String])] = [
+      (Data([0xFF, 0xFE]) + "Kubernetes\nPostgreSQL".data(using: .utf16LittleEndian)!,
+        ["Kubernetes", "PostgreSQL"]),
+      (Data([0xFE, 0xFF]) + "Kubernetes".data(using: .utf16BigEndian)!, ["Kubernetes"]),
+      (Data([0xFF, 0xFE]) + "東京\n大阪".data(using: .utf16LittleEndian)!, ["東京", "大阪"]),
+      (Data([0xFF, 0xFE]) + "一".data(using: .utf16LittleEndian)!, ["一"]),
+    ]
+    for (data, expected) in cases {
+      let url = try write(data, as: "words.txt")
+      let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+      #expect(candidates.map { $0.canonical } == expected)
+    }
+  }
 
 }
