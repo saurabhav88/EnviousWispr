@@ -53,6 +53,20 @@ package struct CustomWordsImportCandidate: Identifiable, Sendable, Hashable {
   /// round-trip); `.unspecified` = the source knows nothing about strictness.
   package var minSimilarityOverride: CustomWordsImportField<Double?>
 
+  /// Every string this candidate could put into the library.
+  ///
+  /// Enumerated in ONE place so validation cannot check some of them: it
+  /// covered canonical and aliases while `suggestedAliases` — which the commit
+  /// path also persists — went unchecked (cloud review, #1683). A field added
+  /// here is validated automatically; a field added anywhere else is not, so
+  /// this is the list to extend.
+  package var storedValues: [String] {
+    var values = [canonical]
+    if case .supplied(let aliases) = aliases { values.append(contentsOf: aliases) }
+    values.append(contentsOf: suggestedAliases)
+    return values
+  }
+
   package init(
     id: UUID = UUID(),
     canonical: String,
@@ -123,37 +137,31 @@ package struct CustomWordsImportBatch: Sendable, Equatable {
   /// every source, which is the gap that let exported JSON skip the character
   /// rules the text path enforced.
   package func validated() throws -> CustomWordsImportBatch {
-    // Counted across BOTH loops, because the work is proportional to total
-    // stored values and one candidate may carry hundreds of thousands of
-    // aliases — checking only the outer loop left the inner one uninterruptible
-    // (Codex review, #1683).
+    // Walks `storedValues` rather than naming fields here, so a field added to
+    // the candidate is validated by existing. Naming them individually is what
+    // let `suggestedAliases` — which the commit path persists — go unchecked
+    // while canonical and aliases were covered (cloud review, #1683).
+    //
+    // Counted across the whole walk, because the work is proportional to total
+    // stored values: one candidate may carry hundreds of thousands of aliases,
+    // so a per-candidate check leaves that uninterruptible.
     var scanned = 0
     for candidate in candidates {
-      scanned += 1
-      if scanned.isMultiple(of: 1_000) { try Task.checkCancellation() }
-      guard candidate.canonical.unicodeScalars.count
-        <= CustomWordsImportLimits.maximumStoredValueScalars
-      else {
-        throw CustomWordsImportValidationError.wordTooLong(
-          limit: CustomWordsImportLimits.maximumStoredValueScalars)
-      }
-      guard CustomWordsImportTextPolicy.isAcceptableStoredValue(candidate.canonical) else {
-        throw CustomWordsImportValidationError.unusableWord(canonical: candidate.canonical)
-      }
-      if case .supplied(let aliases) = candidate.aliases {
-        for alias in aliases {
-          scanned += 1
-          if scanned.isMultiple(of: 1_000) { try Task.checkCancellation() }
-          guard alias.unicodeScalars.count
-            <= CustomWordsImportLimits.maximumStoredValueScalars
-          else {
-            throw CustomWordsImportValidationError.wordTooLong(
-              limit: CustomWordsImportLimits.maximumStoredValueScalars)
-          }
-          guard CustomWordsImportTextPolicy.isAcceptableStoredValue(alias) else {
-            throw CustomWordsImportValidationError.unusableAlias(
-              alias: alias, canonical: candidate.canonical)
-          }
+      for value in candidate.storedValues {
+        scanned += 1
+        if scanned.isMultiple(of: 1_000) { try Task.checkCancellation() }
+
+        guard value.unicodeScalars.count
+          <= CustomWordsImportLimits.maximumStoredValueScalars
+        else {
+          throw CustomWordsImportValidationError.wordTooLong(
+            limit: CustomWordsImportLimits.maximumStoredValueScalars)
+        }
+        guard CustomWordsImportTextPolicy.isAcceptableStoredValue(value) else {
+          throw value == candidate.canonical
+            ? CustomWordsImportValidationError.unusableWord(canonical: candidate.canonical)
+            : CustomWordsImportValidationError.unusableAlias(
+              alias: value, canonical: candidate.canonical)
         }
       }
     }

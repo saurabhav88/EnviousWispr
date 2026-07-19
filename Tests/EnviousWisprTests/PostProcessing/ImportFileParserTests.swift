@@ -1048,4 +1048,30 @@ struct ImportFileParserTests {
     #expect(candidates[0].canonical.unicodeScalars.contains { $0.value == 0xFE0F })
   }
 
+
+  @Test("a suggested alias is validated like every other stored value")
+  func suggestedAliasesAreValidated() throws {
+    // The commit path persists suggestedAliases as aliases, but validation
+    // named canonical and .aliases only — so this third stored field went
+    // unchecked. Validation now walks storedValues, so a field is covered by
+    // being in that list.
+    var candidate = CustomWordsImportCandidate(canonical: "Kubernetes")
+    candidate.suggestedAliases = ["k8s", "kube\u{202E}rnetes"]
+    let batch = CustomWordsImportBatch(
+      sourceID: "test", sourceDisplayName: "test", candidates: [candidate])
+
+    #expect(throws: CustomWordsImportValidationError.self) { try batch.validated() }
+  }
+
+  @Test("every stored field is reachable from storedValues")
+  func storedValuesCoversEveryStoredField() throws {
+    // The property that keeps this fixed: if a field can be persisted, it must
+    // appear here, or validation silently stops covering it.
+    var candidate = CustomWordsImportCandidate(
+      canonical: "Kubernetes", aliases: .supplied(["k8s"]))
+    candidate.suggestedAliases = ["kube"]
+
+    #expect(candidate.storedValues == ["Kubernetes", "k8s", "kube"])
+  }
+
 }
