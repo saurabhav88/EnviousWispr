@@ -80,6 +80,20 @@ final class CustomWordsCoordinator {
       customWords = refreshed
       onWordsChanged?(customWords)
     }
+
+    // A corrupted file was ARCHIVED aside at launch, so this reload sees a
+    // legitimately missing file and reports a clean, empty library. That reads
+    // as success but the user's real words are sitting in the archive — and an
+    // export taken now would write an empty backup over the one they picked,
+    // destroying the copy they still had (code review, #1683).
+    //
+    // Once they have authored a word since, they have visibly accepted the
+    // fresh start and are building on it, so the list is theirs again.
+    if wordsLoadFailureAtLaunch == .corrupted,
+      !refreshed.contains(where: { $0.source == .user })
+    {
+      return false
+    }
     return true
   }
 

@@ -6,18 +6,26 @@ import UniformTypeIdentifiers
 package enum ImportFileError: LocalizedError, Sendable, Equatable {
   case unreadable
   case unsupportedType(String)
-  case backup(CustomWordsTransferError)
+  case tooLarge
+  case tooManyWords(found: Int, limit: Int)
+  case exportedWords(CustomWordsTransferError)
 
   package var errorDescription: String? {
     switch self {
     case .unreadable:
       return "That file couldn't be read."
+    case .tooLarge:
+      return "That file is too big to be a word list. Check you picked the right one."
+    case .tooManyWords(let found, let limit):
+      return
+        "That file has \(found) words, which is more than EnviousWispr can import "
+        + "at once (\(limit)). Try splitting it into smaller files."
     case .unsupportedType(let name):
       return
         "EnviousWispr can't read \(name) files yet. "
-        + "Try an EnviousWispr backup or a plain text list."
-    case .backup(let underlying):
-      // The backup decoder already distinguishes "not ours", "from a newer
+        + "Try a file you exported from EnviousWispr, or a plain text list."
+    case .exportedWords(let underlying):
+      // The decoder already distinguishes "not ours", "from a newer
       // version", and "damaged"; passing its sentence through keeps the user
       // from being told something less true by a wrapper.
       return underlying.errorDescription
@@ -41,13 +49,16 @@ package protocol ImportFileParser: Sendable {
   func parse(data: Data) throws -> [CustomWordsImportCandidate]
 }
 
-/// The EnviousWispr backup format — what PR-E1 writes.
+/// The file EnviousWispr itself exports.
 ///
-/// Without this, an export could be produced but never restored, which would
-/// make the export feature a promise the app could not keep.
-package struct BackupImportFileParser: ImportFileParser {
-  package let identifier = "backup"
-  package let displayName = "EnviousWispr backup"
+/// Deliberately not called a "backup": the product has two ideas, import and
+/// export, and naming the exported file a third thing invented a concept the
+/// user never asked for (founder, 2026-07-19). Without this parser an export
+/// could be produced but never read back, which would make Export a promise
+/// the app could not keep.
+package struct ExportedWordsFileParser: ImportFileParser {
+  package let identifier = "exported-words"
+  package let displayName = "EnviousWispr words file"
   package let contentTypes: [UTType] = [.json]
 
   package init() {}
@@ -56,7 +67,7 @@ package struct BackupImportFileParser: ImportFileParser {
     do {
       return try CustomWordsTransferDocument(data: data).candidatesForImport()
     } catch let error as CustomWordsTransferError {
-      throw ImportFileError.backup(error)
+      throw ImportFileError.exportedWords(error)
     }
   }
 }
@@ -93,12 +104,12 @@ package struct PlainTextImportFileParser: ImportFileParser {
 package struct ImportFileRegistry: Sendable {
   package let parsers: [any ImportFileParser]
 
-  /// v1 registers the two formats that need no parsing decisions: the backup
-  /// format we author ourselves, and a plain word list. CSV is deliberately
+  /// v1 registers the two formats that need no parsing decisions: the file we
+  /// author ourselves, and a plain word list. CSV is deliberately
   /// absent — it is the only format that needs the quoted-field state machine
   /// (or a dependency to supply one), and that call is the founder's to make.
   package static let v1 = ImportFileRegistry(
-    parsers: [BackupImportFileParser(), PlainTextImportFileParser()])
+    parsers: [ExportedWordsFileParser(), PlainTextImportFileParser()])
 
   package init(parsers: [any ImportFileParser]) {
     self.parsers = parsers
@@ -131,6 +142,15 @@ package struct ImportFileRegistry: Sendable {
 
 /// Reads a user-chosen file and turns it into a batch.
 package struct FileImportSource: CustomWordsImportSource {
+  /// Refuse before allocating. A word list is small; anything of this size is
+  /// a mistaken selection (a video, a database, a disk image), and reading it
+  /// into memory to discover that is the expensive way to find out.
+  package static let maximumFileBytes = 16 * 1024 * 1024
+  /// The compare engine documents this ceiling for uploads. Enforced here, at
+  /// the door, rather than after every row has been parsed, compared and
+  /// rendered into a review the user cannot meaningfully read anyway.
+  package static let maximumCandidates = 25_000
+
   private let url: URL
   private let registry: ImportFileRegistry
 
@@ -139,18 +159,38 @@ package struct FileImportSource: CustomWordsImportSource {
     self.registry = registry
   }
 
-  package func loadCandidates() async throws -> CustomWordsImportBatch {
+  /// `@concurrent` so reading and parsing always leave the caller's actor.
+  /// The import model is `@MainActor`, and a plain `async` witness would
+  /// inherit that isolation — a large, network-mounted, or cloud-backed file
+  /// would then freeze the settings window while it was read (code review).
+  @concurrent package func loadCandidates() async throws -> CustomWordsImportBatch {
     guard let parser = registry.parser(for: url) else {
       let name = url.pathExtension.isEmpty ? "those" : ".\(url.pathExtension.lowercased())"
       throw ImportFileError.unsupportedType(name)
     }
+
+    let size =
+      (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? nil
+    if let size, size > Self.maximumFileBytes {
+      throw ImportFileError.tooLarge
+    }
+
+    try Task.checkCancellation()
     guard let data = try? Data(contentsOf: url) else {
       throw ImportFileError.unreadable
     }
+    try Task.checkCancellation()
+
+    let candidates = try parser.parse(data: data)
+    guard candidates.count <= Self.maximumCandidates else {
+      throw ImportFileError.tooManyWords(
+        found: candidates.count, limit: Self.maximumCandidates)
+    }
+
     return CustomWordsImportBatch(
       sourceID: parser.identifier,
       sourceDisplayName: parser.displayName,
-      candidates: try parser.parse(data: data)
+      candidates: candidates
     )
   }
 }
