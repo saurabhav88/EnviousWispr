@@ -429,8 +429,8 @@ struct CustomWordsImportCompareEngineTests {
     // `WordCorrector.buildLookups` assigns the alias map unconditionally
     // (WordCorrector.swift:180-214), so the LATER word claims the trigger at
     // runtime — its own collision log says "using <later canonical>". The
-    // reported owner has to match that, or F2c's Replace-target suppression
-    // compares against a word that is not really holding the alias.
+    // reported owner has to match that, or the Review screen names a word
+    // that is not really holding the alias.
     let earlier = CustomWord(canonical: "Anika", aliases: ["annie"])
     let later = CustomWord(canonical: "Annabelle", aliases: ["annie"])
     let results = try await compare(
@@ -478,18 +478,17 @@ struct CustomWordsImportCompareEngineTests {
     #expect(results[0].collidingAliases.isEmpty)
   }
 
-  @Test("an alias owned by the candidate's own exact match IS still flagged here, by design")
-  func aliasOwnedByTheCandidatesOwnExactMatchIsFlaggedForF2cToSuppress() async throws {
+  @Test("an alias owned by the candidate's own exact match remains disclosed")
+  func aliasOwnedByTheCandidatesOwnExactMatchRemainsDisclosed() async throws {
     // DELIBERATE, per the adopted plan (PR-F2a §alias-collision detection):
-    // F2a is decision-agnostic — it runs before any Review decision exists,
-    // so it cannot know the user will pick Replace and make this harmless.
-    // It records the collision naming the matched word; **F2c** suppresses
-    // the inline note when the row's Decision is Replace and `heldBy` is the
-    // word being replaced, and F2b's enforcement evaluates the applied
-    // result (where the word owns its own alias and nothing is dropped).
-    // This test exists so the behavior reads as a design assignment rather
-    // than an oversight — a reviewer flagged it as a false positive, which
-    // it is at the DISPLAY layer, and the display layer is F2c's.
+    // this engine is decision-agnostic — it runs before any Review decision
+    // exists — so it records the collision naming the matched word and the
+    // Review screen owns display policy. Under the two-decision v1 scope
+    // (Add/Skip; founder 2026-07-18) every non-empty collision is displayed:
+    // the Replace-target suppression an earlier plan draft assigned to the
+    // Review screen is unreachable, because Replace is not a v1 decision.
+    // The commit step remains the persistence guarantee regardless, since it
+    // evaluates the fully-applied result.
     let existing = CustomWord(canonical: "Parvati", aliases: ["Pavarthi"])
     let results = try await compare(
       [candidate("Parvati", aliases: .supplied(["Pavarthi"]))], against: [existing])

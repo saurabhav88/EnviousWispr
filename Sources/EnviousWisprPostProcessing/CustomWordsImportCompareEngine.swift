@@ -459,9 +459,9 @@ package actor CustomWordsImportCompareEngine {
   /// key. Using the stronger matching key here would flag pairs that never
   /// actually collide at runtime.
   ///
-  /// `heldBy` must name the word that ACTUALLY holds the trigger, because it
-  /// drives both the inline note ("X already uses it") and F2c's suppression
-  /// check. So ownership mirrors `WordCorrector.buildLookups`
+  /// `heldBy` must name the word that ACTUALLY holds the trigger, because the
+  /// Review screen names that owner in its inline note ("X already uses it").
+  /// So ownership mirrors `WordCorrector.buildLookups`
   /// (WordCorrector.swift:176-215) rather than any convention of this file's
   /// own — two rounds of review found invented conventions disagreeing with
   /// runtime, in opposite directions:

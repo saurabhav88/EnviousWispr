@@ -87,7 +87,15 @@ struct YourWordsView: View {
           onSave: saveNewWord
         )
       case .importWords:
-        CustomWordsImportSheet()
+        // The import flow reads the live list and commits through the same
+        // coordinator every other Your Words mutation uses (#1669) — two
+        // narrow closures rather than handing the sheet the coordinator.
+        CustomWordsImportSheet(
+          dependencies: .live(
+            existingWords: { customWordsCoordinator.customWords },
+            commit: { customWordsCoordinator.commitImport($0) }
+          )
+        )
       }
     }
   }

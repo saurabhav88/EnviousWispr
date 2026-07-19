@@ -1,24 +1,30 @@
+import EnviousWisprCore
+import EnviousWisprPostProcessing
 import SwiftUI
 
-/// The Custom Words import sheet shell (#1657, epic #1619 PR-F1).
+/// The Custom Words import sheet (#1657 PR-F1 shell, #1669 PR-F2c review).
 ///
 /// One observable model, one root `switch`, one container-level `.animation()`
 /// — the `OnboardingV2View` root-switch pattern without its timers or
-/// permissions logic. Every screen below the method picker is a fixture
-/// placeholder until the real pieces land (F2c wires review/commit; P1/U1/4a
-/// bring real inputs); the sheet is reachable only through the DEBUG-only
-/// "Preview import" button in Your Words, so no release user can see these
-/// placeholders. Deliberately zero `Task`, adapters, compare logic, manager
-/// calls, telemetry, or persistence — dismissing at any point discards the
-/// model and touches nothing.
+/// permissions logic. The three input screens are still placeholders until
+/// their real sources land (P1 paste, U1 upload, 4a smart import); Review and
+/// the commit path are real from F2c on.
+///
+/// The sheet is reachable only through the DEBUG-only "Preview import" button
+/// in Your Words, so no release user can see the remaining placeholders.
+/// Dismissing at any point cancels in-flight work and writes nothing.
 struct CustomWordsImportSheet: View {
   private static let screenTransition: AnyTransition = .asymmetric(
     insertion: .opacity.combined(with: .offset(y: 20)),
     removal: .opacity
   )
 
-  @State private var model = CustomWordsImportFlowModel()
+  @State private var model: CustomWordsImportFlowModel
   @Environment(\.dismiss) private var dismiss
+
+  init(dependencies: CustomWordsImportFlowModel.Dependencies) {
+    _model = State(initialValue: CustomWordsImportFlowModel(dependencies: dependencies))
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -48,14 +54,17 @@ struct CustomWordsImportSheet: View {
           )
           .transition(Self.screenTransition)
         case .review:
-          ImportReviewPlaceholderScreen(model: model)
+          ImportReviewScreen(model: model)
             .transition(Self.screenTransition)
         case .working(let work):
-          ImportWorkingScreen(work: work, model: model)
+          ImportWorkingScreen(work: work)
             .transition(Self.screenTransition)
         case .result(let result):
-          ImportResultScreen(result: result)
-            .transition(Self.screenTransition)
+          ImportResultScreen(
+            result: result,
+            droppedAliasCollisionCount: model.droppedAliasCollisionCount
+          )
+          .transition(Self.screenTransition)
         }
       }
       .animation(.easeInOut(duration: 0.25), value: model.step)
@@ -82,14 +91,37 @@ struct CustomWordsImportSheet: View {
   private var footer: some View {
     HStack {
       Spacer()
-      if case .result = model.step {
+      switch model.step {
+      case .result:
         Button("Done") { dismiss() }
           .keyboardShortcut(.defaultAction)
           .buttonStyle(.borderedProminent)
-      } else {
-        Button("Cancel") { dismiss() }
-          .keyboardShortcut(.cancelAction)
+      case .review:
+        Button("Cancel") {
+          model.cancel()
+          dismiss()
+        }
+        .keyboardShortcut(.cancelAction)
+        Button(confirmTitle) { model.confirm() }
+          .keyboardShortcut(.defaultAction)
+          .buttonStyle(.borderedProminent)
+      case .methodPicker, .paste, .upload, .smartImportAppPicker, .working:
+        Button("Cancel") {
+          model.cancel()
+          dismiss()
+        }
+        .keyboardShortcut(.cancelAction)
       }
+    }
+  }
+
+  /// Names the actual consequence, so Confirm is never a mystery button.
+  private var confirmTitle: String {
+    let count = model.approvedRows.count
+    switch count {
+    case 0: return "Add nothing"
+    case 1: return "Add 1 word"
+    default: return "Add \(count) words"
     }
   }
 
@@ -105,6 +137,7 @@ struct CustomWordsImportSheet: View {
     case .working(.committing): return "Saving"
     case .result(.completed): return "Import complete"
     case .result(.nothingFound): return "Nothing to import"
+    case .result(.nothingApproved): return "Nothing added"
     case .result(.failed): return "Import didn't finish"
     }
   }
@@ -183,10 +216,104 @@ private struct ImportMethodCard: View {
   }
 }
 
-// MARK: - Fixture placeholders (replaced wholesale by later PRs)
+// MARK: - Review & Merge (PR-F2c)
 
-/// Shared placeholder for the three input screens. The "Preview" button walks
-/// the fixture flow the way the real source will: input → working → review.
+private struct ImportReviewScreen: View {
+  let model: CustomWordsImportFlowModel
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      if let staleNotice = model.staleNotice {
+        InsetNotice(text: staleNotice)
+      }
+
+      Text(summary)
+        .settingsReadingCopy()
+
+      ScrollView {
+        LazyVStack(alignment: .leading, spacing: 8) {
+          ForEach(model.rows) { row in
+            ImportReviewRowView(row: row) { decision in
+              model.setDecision(decision, forRow: row.id)
+            }
+          }
+        }
+      }
+      .frame(maxHeight: 280)
+    }
+  }
+
+  private var summary: String {
+    let addable = model.rows.filter(\.isAddable).count
+    let existing = model.rows.count - addable
+    switch (addable, existing) {
+    case (0, 0):
+      return "Nothing to review."
+    case (let new, 0):
+      return "\(new) new \(new == 1 ? "word" : "words") found."
+    case (0, let have):
+      return "You already have all \(have) of these."
+    case (let new, let have):
+      return "\(new) new \(new == 1 ? "word" : "words") found. "
+        + "\(have) you already have."
+    }
+  }
+}
+
+private struct ImportReviewRowView: View {
+  let row: CustomWordsImportReviewRow
+  let setDecision: (CustomWordsImportDecision) -> Void
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 11) {
+      VStack(alignment: .leading, spacing: 3) {
+        Text(row.canonical)
+          .font(.stRowLabel)
+          .foregroundStyle(.stTextPrimary)
+        if let matchSummary = row.matchSummary {
+          Text(matchSummary)
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+        }
+        if let collisionNote = row.collisionNote {
+          Text(collisionNote)
+            .font(.stHelper)
+            .foregroundStyle(.stWarning)
+        }
+      }
+      Spacer(minLength: 0)
+
+      if row.isAddable {
+        Toggle(
+          "Add",
+          isOn: Binding(
+            get: { row.decision == .add },
+            set: { setDecision($0 ? .add : .skip) }
+          )
+        )
+        .toggleStyle(.checkbox)
+        .accessibilityLabel("Add \(row.canonical)")
+      } else {
+        Text("Skipped")
+          .font(.stHelper)
+          .foregroundStyle(.stTextTertiary)
+      }
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 10))
+    .overlay(
+      RoundedRectangle(cornerRadius: 10).strokeBorder(Color.stDivider, lineWidth: 1)
+    )
+  }
+}
+
+// MARK: - Input placeholders (replaced wholesale by the real source PRs)
+
+/// Shared placeholder for the three input screens. In DEBUG it walks the real
+/// pipeline using a fixture source, so the whole flow is exercisable before
+/// any real source exists; in a release build there is no way to reach it.
 private struct ImportPlaceholderScreen: View {
   let notice: String
   let model: CustomWordsImportFlowModel
@@ -194,48 +321,25 @@ private struct ImportPlaceholderScreen: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       InsetNotice(text: notice)
-      Button("Preview finding words") {
-        model.beginWork(.loadingCandidates)
-      }
-    }
-  }
-}
-
-private struct ImportReviewPlaceholderScreen: View {
-  let model: CustomWordsImportFlowModel
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      InsetNotice(text: "Review & Merge arrives with the compare engine.")
-      Button("Preview saving") {
-        model.beginWork(.committing)
-      }
+      #if DEBUG
+        Button("Preview with sample words") {
+          model.begin(with: CustomWordsImportFixtureSource())
+        }
+      #endif
     }
   }
 }
 
 private struct ImportWorkingScreen: View {
   let work: CustomWordsImportFlowModel.Work
-  let model: CustomWordsImportFlowModel
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack(spacing: 10) {
-        ProgressView()
-          .controlSize(.small)
-        Text(label)
-          .settingsReadingCopy()
-      }
-
-      // Fixture-walk controls: real work drives these transitions from F2c on.
-      VStack(alignment: .leading, spacing: 8) {
-        Button("Preview review") { model.showReview() }
-        Button("Preview success") { model.showResult(.completed(added: 3, replaced: 1)) }
-        Button("Preview nothing found") { model.showResult(.nothingFound) }
-        Button("Preview failure") {
-          model.showResult(.failed(message: "We found their data, but couldn't read it this time."))
-        }
-      }
+    HStack(spacing: 10) {
+      ProgressView()
+        .controlSize(.small)
+      Text(label)
+        .settingsReadingCopy()
+      Spacer(minLength: 0)
     }
   }
 
@@ -250,23 +354,32 @@ private struct ImportWorkingScreen: View {
 
 private struct ImportResultScreen: View {
   let result: CustomWordsImportFlowModel.Result
+  let droppedAliasCollisionCount: Int
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Image(systemName: icon)
-        .font(.system(size: 14, weight: .medium))
-        .foregroundStyle(tint)
-        .accessibilityHidden(true)
-      Text(message)
-        .settingsReadingCopy()
-      Spacer(minLength: 0)
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        Image(systemName: icon)
+          .font(.system(size: 14, weight: .medium))
+          .foregroundStyle(tint)
+          .accessibilityHidden(true)
+        Text(message)
+          .settingsReadingCopy()
+        Spacer(minLength: 0)
+      }
+
+      if droppedAliasCollisionCount > 0, case .completed = result {
+        Text(droppedCollisionMessage)
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+      }
     }
   }
 
   private var icon: String {
     switch result {
     case .completed: return "checkmark.circle.fill"
-    case .nothingFound: return "info.circle"
+    case .nothingFound, .nothingApproved: return "info.circle"
     case .failed: return "exclamationmark.triangle"
     }
   }
@@ -274,19 +387,39 @@ private struct ImportResultScreen: View {
   private var tint: Color {
     switch result {
     case .completed: return .stSuccess
-    case .nothingFound: return .stAccent
+    case .nothingFound, .nothingApproved: return .stAccent
     case .failed: return .stWarning
     }
   }
 
-  private var message: String {
-    switch result {
-    case .completed(let added, let replaced):
-      return "Added \(added), replaced \(replaced). Your words are ready to use."
-    case .nothingFound:
-      return "No new words were found, and nothing was changed."
-    case .failed(let message):
-      return message
-    }
+  private var message: String { CustomWordsImportResultCopy.message(for: result) }
+
+  private var droppedCollisionMessage: String {
+    CustomWordsImportResultCopy.droppedCollisionMessage(count: droppedAliasCollisionCount)
   }
 }
+
+// MARK: - DEBUG fixture source
+
+#if DEBUG
+  /// Sample words for the DEBUG preview walk, so the real load → compare →
+  /// review → commit path is exercisable before any production source ships.
+  ///
+  /// Carries main words only, matching the v1 import contract: every authority
+  /// field stays `.unspecified`, so this fixture cannot smuggle in behavior a
+  /// real v1 source would not have.
+  struct CustomWordsImportFixtureSource: CustomWordsImportSource {
+    func loadCandidates() async throws -> CustomWordsImportBatch {
+      CustomWordsImportBatch(
+        sourceID: "debug-fixture",
+        sourceDisplayName: "Sample words",
+        candidates: [
+          CustomWordsImportCandidate(canonical: "Kubernetes"),
+          CustomWordsImportCandidate(canonical: "Anthropic"),
+          CustomWordsImportCandidate(canonical: "EnviousWispr"),
+          CustomWordsImportCandidate(canonical: "Saurabh"),
+        ]
+      )
+    }
+  }
+#endif
