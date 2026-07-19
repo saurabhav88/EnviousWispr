@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import worker, { DownloadCounter } from "../src/index.js";
+import worker, { DownloadCounter, pruneOldDeliveryRecords } from "../src/index.js";
 
 class FakeStorage {
   constructor() {
@@ -26,6 +26,12 @@ class FakeStorage {
       if (limit && result.size >= limit) break;
     }
     return result;
+  }
+  async delete(keyOrKeys) {
+    const keys = Array.isArray(keyOrKeys) ? keyOrKeys : [keyOrKeys];
+    for (const k of keys) {
+      this.map.delete(k);
+    }
   }
 }
 
@@ -517,6 +523,34 @@ test("without SMOKE set, the message carries no test marker", async () => {
   } finally {
     mock.restore();
   }
+});
+
+test("pruneOldDeliveryRecords deletes only records past the retention window", async () => {
+  const storage = new FakeStorage();
+  const now = Date.now();
+  const NINETY_ONE_DAYS_MS = 91 * 24 * 60 * 60 * 1000;
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  await storage.put("delivery:old", { status: "delivered", total: 1, createdAt: now - NINETY_ONE_DAYS_MS });
+  await storage.put("delivery:recent", { status: "delivered", total: 2, createdAt: now - ONE_DAY_MS });
+
+  await pruneOldDeliveryRecords(storage, now);
+
+  assert.equal(storage.map.get("delivery:old"), undefined, "a record past the 90-day retention window must be pruned");
+  assert.ok(storage.map.get("delivery:recent"), "a recent record must survive pruning");
+});
+
+test("pruneOldDeliveryRecords never touches counter or seen: keys", async () => {
+  const storage = new FakeStorage();
+  const now = Date.now();
+  await storage.put("counter", 42);
+  await storage.put("seen:abc", now - 999_999_999);
+  await storage.put("delivery:ancient", { status: "delivered", total: 1, createdAt: 0 });
+
+  await pruneOldDeliveryRecords(storage, now);
+
+  assert.equal(storage.map.get("counter"), 42);
+  assert.equal(storage.map.get("seen:abc"), now - 999_999_999);
+  assert.equal(storage.map.get("delivery:ancient"), undefined);
 });
 
 test("/seed succeeds once on a cold counter, then refuses with 409", async () => {

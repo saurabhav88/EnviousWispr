@@ -44,6 +44,34 @@ const DISCORD_CONTENT_MAX_LEN = 2000;
 // retry). See postToDiscord's classification.
 const WEBHOOK_CONFIG_ERROR_STATUSES = new Set([401, 403, 404]);
 
+// Delivery records are retained (not pruned after minutes) specifically to
+// preserve retry-safety — see the design note at their write site. But
+// "retained" must not mean "forever, unbounded": 90 days is far longer than
+// any realistic PostHog retry/replay window (observed retries resolve in
+// seconds), so pruning past it is pure storage hygiene, not a replay-safety
+// change. A small opportunistic, bounded sweep (not a scheduled job — none
+// is needed at real volume, ~1-5 downloads/day) keeps the singleton
+// Durable Object's storage from growing without bound over years.
+const DELIVERY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+const PRUNE_SAMPLE_SIZE = 50;
+const PRUNE_PROBABILITY = 0.02;
+
+// Exported for direct unit testing — the real call site is probability-gated
+// (PRUNE_PROBABILITY), so a behavioral test through handleCount would be
+// flaky without this.
+export async function pruneOldDeliveryRecords(storage, now) {
+  const entries = await storage.list({ prefix: "delivery:", limit: PRUNE_SAMPLE_SIZE });
+  const staleKeys = [];
+  for (const [key, value] of entries) {
+    if (value && typeof value.createdAt === "number" && now - value.createdAt > DELIVERY_RETENTION_MS) {
+      staleKeys.push(key);
+    }
+  }
+  if (staleKeys.length > 0) {
+    await storage.delete(staleKeys);
+  }
+}
+
 // Off-site source_bucket -> human label, ported verbatim from the live Hog
 // script (pulled via the PostHog API, 2026-07-19) so the Discord message text
 // is byte-identical after the cutover.
@@ -248,6 +276,9 @@ export class DownloadCounter {
       // not at all — the counter is never persisted separately from its
       // reservation.
       await storage.put(batch);
+      if (Math.random() < PRUNE_PROBABILITY) {
+        await pruneOldDeliveryRecords(storage, now);
+      }
       return { record: newRecord };
     });
 
