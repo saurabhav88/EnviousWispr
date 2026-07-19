@@ -136,6 +136,16 @@ package struct ImportFileRegistry: Sendable {
     // rather than being read on a guess. That is the honest answer, and CSV
     // becomes supported by registering a real CSV parser — the seam this
     // registry exists for — not by widening this match.
+    //
+    // Reviewed twice (r4, r5) as "UTType returns a dynamic dyn.* type here, so
+    // every .json and .txt upload is rejected; 19 tests fail." Not reproduced
+    // in either environment: a direct probe resolves json → public.json and
+    // txt → public.plain-text, both non-dynamic and both matching, and the
+    // 19-test suite passes under BOTH scripts/xcode-test.sh and swift test.
+    // Left as-is deliberately rather than trading verified behaviour for an
+    // unverified claim. If some future environment genuinely yields dynamic
+    // types, the fix is an explicit extension→parser mapping here, keeping the
+    // CSV/TSV refusal intact.
     return parsers.first { $0.contentTypes.contains(type) }
   }
 }
