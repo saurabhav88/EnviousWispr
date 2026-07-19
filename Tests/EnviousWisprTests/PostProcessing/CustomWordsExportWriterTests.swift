@@ -199,4 +199,30 @@ struct CustomWordsExportWriterTests {
       !CustomWordsExportWriter.wouldOverwriteLiveWords(
         dir.appendingPathComponent("EnviousWispr Words.json")))
   }
+
+  @Test("a shouty spelling of the live file is still refused")
+  func exportRefusalIsCaseInsensitive() throws {
+    // macOS is case-insensitive by default, so CUSTOM-WORDS.JSON and
+    // custom-words.json are ONE file that string equality calls two. Picking
+    // the loud spelling would otherwise walk straight past the guard into the
+    // data loss it exists to prevent (code review r6).
+    let live = try #require(CustomWordsManager.liveFileURL)
+    let shouty = live
+      .deletingLastPathComponent()
+      .appendingPathComponent(live.lastPathComponent.uppercased())
+
+    #expect(CustomWordsExportWriter.wouldOverwriteLiveWords(shouty))
+  }
+
+  @Test("a different file in the same folder is still allowed")
+  func exportAllowsASiblingOfTheLiveFile() throws {
+    // The guard must be narrow: refusing the whole folder would stop someone
+    // legitimately exporting next to it.
+    let live = try #require(CustomWordsManager.liveFileURL)
+    let sibling = live
+      .deletingLastPathComponent()
+      .appendingPathComponent("my-words-export.json")
+
+    #expect(!CustomWordsExportWriter.wouldOverwriteLiveWords(sibling))
+  }
 }
