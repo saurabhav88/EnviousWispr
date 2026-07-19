@@ -219,15 +219,33 @@ package struct PlainTextImportFileParser: ImportFileParser {
     text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text
   }
 
+  /// Whether decoded text is plausibly text at all.
+  ///
+  /// Asks Unicode rather than hand-rolling ranges, which is what the previous
+  /// version did wrong: it checked below U+0020 plus DEL and so let the C1
+  /// block through, meaning `C2 85` imported an invisible control character as
+  /// part of a word (cloud review, #1683). The general category knows about
+  /// every control, in every block, without a range to keep in sync.
+  ///
+  /// Deliberately NOT rejected: the format category (zero-width joiners and
+  /// non-joiners). Those are load-bearing in Hindi, Persian, and emoji
+  /// sequences, so refusing them would break exactly the international word
+  /// lists this feature is meant to support.
+  ///
   /// Real word lists do not contain NULs or stray control characters. This is
   /// what stops ANY decode step from laundering binary — or text in an
   /// encoding we guessed wrong — into candidates. It is the single check that
   /// makes trying several encodings safe: a wrong guess fails it and the next
   /// encoding gets its turn, rather than the first lucky decode winning.
   private static func isPlausiblyText(_ text: String) -> Bool {
-    !text.unicodeScalars.contains { scalar in
-      guard scalar.value < 0x20 || scalar.value == 0x7F else { return false }
-      return scalar != "\n" && scalar != "\r" && scalar != "\t"
+    text.unicodeScalars.allSatisfy { scalar in
+      if scalar == "\n" || scalar == "\r" || scalar == "\t" { return true }
+      switch scalar.properties.generalCategory {
+      case .control, .surrogate, .privateUse, .unassigned:
+        return false
+      default:
+        return true
+      }
     }
   }
 }

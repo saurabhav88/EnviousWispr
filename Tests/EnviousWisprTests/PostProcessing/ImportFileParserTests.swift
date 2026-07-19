@@ -482,4 +482,38 @@ struct ImportFileParserTests {
     }
   }
 
+
+  @Test("invisible control characters never become part of a word")
+  func controlCharactersAreRefused() async throws {
+    // The old check hand-rolled a range (below U+0020 plus DEL) and so missed
+    // the C1 block: bytes C2 85 are valid UTF-8 for U+0085, which nothing
+    // downstream splits or strips, so it imported as an invisible character
+    // inside a custom word. Asking Unicode's category covers every control in
+    // every block without a range to keep in sync.
+    for bytes in [
+      Data([0x4B, 0xC2, 0x85, 0x75]),  // C1 NEL inside a word
+      Data([0x4B, 0xC2, 0x9B, 0x75]),  // C1 CSI
+      Data([0x4B, 0x00, 0x75]),  // C0 NUL
+    ] {
+      let url = try write(bytes, as: "words.txt")
+      await #expect(throws: ImportFileError.unreadable) {
+        try await FileImportSource(url: url).loadCandidates()
+      }
+    }
+  }
+
+  @Test("zero-width joiners survive, because real scripts need them")
+  func zeroWidthJoinersSurvive() async throws {
+    // Rejecting the whole format category would have been the easy fix and
+    // would have broken Hindi, Persian, and emoji sequences — the exact
+    // international lists this is meant to support.
+    let url = try write("क्‍ष\nحرف‌ها", as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.count == 2)
+    #expect(candidates[0].canonical.unicodeScalars.contains { $0.value == 0x200D })
+    #expect(candidates[1].canonical.unicodeScalars.contains { $0.value == 0x200C })
+  }
+
 }
