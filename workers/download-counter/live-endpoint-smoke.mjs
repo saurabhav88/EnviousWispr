@@ -39,6 +39,18 @@ function uniqueId(label) {
   return `smoke-${label}-${process.pid}-${Math.floor(performance.now() * 1000)}`;
 }
 
+// Fresh octet per run (not a fixed literal): if this script is re-run within
+// the 30s dedup window, reusing the same hardcoded IPs would make the FIRST
+// request of several sections look like a duplicate of the PRIOR run's
+// event on that same IP, failing the smoke test on a healthy deployment.
+// Each call returns a distinct octet for one run, so cross-run collisions
+// require the exact same octet to be drawn twice inside the same window —
+// negligible, and irrelevant to correctness (a false, rare re-run collision
+// is a flaky smoke run, not a production defect).
+function freshOctet() {
+  return 1 + Math.floor(Math.random() * 254);
+}
+
 async function postCount(body) {
   const res = await fetch(`${BASE_URL}/count`, {
     method: "POST",
@@ -59,7 +71,6 @@ function smokeEvent(overrides = {}) {
   return {
     eventId: uniqueId("evt"),
     event: "download_clicked",
-    ip: "203.0.113.1",
     city: "Nowhere",
     country: "Testland",
     countryCode: "US",
@@ -76,17 +87,14 @@ async function main() {
   console.log(`Smoke-testing ${BASE_URL}\n`);
 
   console.log("1. A real new event posts to Discord and returns a total");
-  const first = await postCount(smokeEvent());
+  const first = await postCount(smokeEvent({ ip: `203.0.113.${freshOctet()}` }));
   check("status 200", first.status === 200);
   check("counted true", first.json?.counted === true);
   check("total is a number", typeof first.json?.total === "number");
 
   console.log("\n2. Retrying the SAME event resumes instead of re-incrementing");
   const eventId = uniqueId("retry");
-  // Distinct IP from section 1's default (203.0.113.1): sections run within the
-  // same 30s dedup window, so sharing an IP here would suppress attempt1 as a
-  // duplicate of section 1's event and break this test deterministically.
-  const original = smokeEvent({ eventId, ip: "203.0.113.2" });
+  const original = smokeEvent({ eventId, ip: `203.0.114.${freshOctet()}` });
   const attempt1 = await postCount(original);
   const attempt2 = await postCount(original);
   check("first attempt counted", attempt1.json?.counted === true);
@@ -94,7 +102,7 @@ async function main() {
   check("retry reason is already-delivered", attempt2.json?.reason === "already-delivered");
 
   console.log("\n3. A second distinct event from the same IP within the dedup window is suppressed");
-  const sharedIp = "203.0.113.55";
+  const sharedIp = `203.0.115.${freshOctet()}`;
   const dupA = await postCount(smokeEvent({ eventId: uniqueId("dup-a"), ip: sharedIp }));
   const dupB = await postCount(smokeEvent({ eventId: uniqueId("dup-b"), ip: sharedIp }));
   check("first counts", dupA.json?.counted === true);
@@ -102,9 +110,10 @@ async function main() {
 
   console.log("\n4. Two genuinely concurrent requests for the SAME event never both post");
   const concurrentId = uniqueId("concurrent");
+  const concurrentIp = `203.0.116.${freshOctet()}`;
   const [concA, concB] = await Promise.all([
-    postCount(smokeEvent({ eventId: concurrentId, ip: "203.0.113.77" })),
-    postCount(smokeEvent({ eventId: concurrentId, ip: "203.0.113.77" })),
+    postCount(smokeEvent({ eventId: concurrentId, ip: concurrentIp })),
+    postCount(smokeEvent({ eventId: concurrentId, ip: concurrentIp })),
   ]);
   const statuses = [concA.status, concB.status].sort();
   check(

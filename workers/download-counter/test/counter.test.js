@@ -204,6 +204,42 @@ test("retry of a failed (permanent 4xx) eventId returns discord-rejected without
   }
 });
 
+test("a webhook config error (401/403/404) is treated as retryable, never marked permanently failed", async () => {
+  for (const status of [401, 403, 404]) {
+    const { counter, storage } = makeCounter();
+    const mock = mockFetch(() => new Response(null, { status }));
+    try {
+      const res = await counter.fetch(countRequest(onSiteEvent()));
+      assert.equal(res.status, 502, `status ${status} should return 502 (retryable), not a terminal 200`);
+      const record = storage.map.get("delivery:evt-1");
+      assert.equal(record.status, "pending", `status ${status} must stay pending, not become "failed"`);
+      assert.equal(record.leaseUntil, 0);
+    } finally {
+      mock.restore();
+    }
+  }
+});
+
+test("once a webhook config error clears (e.g. secret fixed), a resumed retry can still deliver", async () => {
+  const { counter, storage } = makeCounter();
+  let attempt = 0;
+  const mock = mockFetch(() => {
+    attempt += 1;
+    return new Response(null, { status: attempt === 1 ? 401 : 204 });
+  });
+  try {
+    const first = await counter.fetch(countRequest(onSiteEvent()));
+    assert.equal(first.status, 502);
+    const second = await counter.fetch(countRequest(onSiteEvent()));
+    const body = await second.json();
+    assert.equal(body.counted, true);
+    assert.equal(body.total, 1, "must resume with the original total, not re-increment");
+    assert.equal(storage.map.get("delivery:evt-1").status, "delivered");
+  } finally {
+    mock.restore();
+  }
+});
+
 test("a genuinely concurrent request for the same eventId gets 503 while the lease is held", async () => {
   const { counter, storage } = makeCounter();
   const mock = mockFetch(() => new Response(null, { status: 204 }));

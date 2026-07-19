@@ -38,6 +38,12 @@ const DEDUP_WINDOW_MS = 30_000;
 // crafted "@everyone" in a referrer would actually ping the channel.
 const DISCORD_CONTENT_MAX_LEN = 2000;
 
+// Discord responses indicating the webhook URL/token itself is wrong, stale,
+// or revoked (a config problem, recoverable by fixing the secret) rather than
+// a defect in this specific event's content (which would never resolve on
+// retry). See postToDiscord's classification.
+const WEBHOOK_CONFIG_ERROR_STATUSES = new Set([401, 403, 404]);
+
 // Off-site source_bucket -> human label, ported verbatim from the live Hog
 // script (pulled via the PostHog API, 2026-07-19) so the Discord message text
 // is byte-identical after the cutover.
@@ -137,13 +143,19 @@ export class DownloadCounter {
 
   async handleSeed(payload) {
     const storage = this.ctx.storage;
-    const existingCounter = await storage.get("counter");
-    const existingDeliveries = await storage.list({ prefix: "delivery:", limit: 1 });
-    if (existingCounter !== undefined || existingDeliveries.size > 0) {
-      return Response.json({ error: "already_seeded" }, { status: 409 });
-    }
-    await storage.put("counter", payload.total);
-    return Response.json({ total: payload.total });
+    // Same reasoning as handleCount: the check-then-write must be one
+    // indivisible step, or two overlapping /seed calls (or a /seed racing
+    // the very first real /count) could both observe "uninitialized" and
+    // both write, silently corrupting the one-time bootstrap contract.
+    return this.ctx.blockConcurrencyWhile(async () => {
+      const existingCounter = await storage.get("counter");
+      const existingDeliveries = await storage.list({ prefix: "delivery:", limit: 1 });
+      if (existingCounter !== undefined || existingDeliveries.size > 0) {
+        return Response.json({ error: "already_seeded" }, { status: 409 });
+      }
+      await storage.put("counter", payload.total);
+      return Response.json({ total: payload.total });
+    });
   }
 
   async handleCount(payload) {
@@ -363,6 +375,16 @@ async function postToDiscord(webhookUrl, content, { timeoutMs, maxRetryDelayMs }
 
       if (res.status === 200 || res.status === 204) {
         return { outcome: "delivered" };
+      }
+      // 401/403/404 mean the webhook URL/token itself is wrong, stale, or
+      // revoked — a config problem, not a defect in THIS event's content.
+      // Retrying the same request won't help immediately, but the config can
+      // be fixed later, and a permanently-"failed" delivery record would
+      // never resume even after that fix. Treat these as retryable (same
+      // outcome as an exhausted network/5xx attempt) rather than a permanent
+      // per-event rejection.
+      if (WEBHOOK_CONFIG_ERROR_STATUSES.has(res.status)) {
+        return { outcome: "exhausted" };
       }
       if (res.status !== 429 && res.status < 500) {
         return { outcome: "rejected", status: res.status };
