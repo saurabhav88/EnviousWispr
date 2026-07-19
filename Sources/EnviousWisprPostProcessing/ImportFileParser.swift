@@ -44,8 +44,17 @@ package protocol ImportFileParser: Sendable {
   var identifier: String { get }
   /// What the user sees.
   var displayName: String { get }
-  /// Content types this parser claims.
+  /// Content types this parser claims. Used ONLY to populate the open panel.
   var contentTypes: [UTType] { get }
+  /// Filename extensions this parser claims, lowercased and without the dot.
+  ///
+  /// Dispatch reads THIS, not `contentTypes`, so routing never depends on
+  /// Launch Services resolving an extension to the same static `UTType`. In a
+  /// restricted environment it resolves to `dyn.*` instead and every supported
+  /// upload was rejected before the file was read (Codex review, #1683).
+  /// A literal map is also simply less machinery than round-tripping a
+  /// filename through system services to get back a fact we already know.
+  var fileExtensions: [String] { get }
   /// How many words this format may carry, or nil for "as many as the file
   /// size allows".
   ///
@@ -79,6 +88,7 @@ package struct ExportedWordsFileParser: ImportFileParser {
   package let identifier = "exported-words"
   package let displayName = "EnviousWispr words file"
   package let contentTypes: [UTType] = [.json]
+  package let fileExtensions = ["json"]
 
   /// No word ceiling, because this file is the user's OWN library coming home.
   ///
@@ -124,6 +134,10 @@ package struct PlainTextImportFileParser: ImportFileParser {
   package let identifier = "plain-text"
   package let displayName = "Plain text"
   package let contentTypes: [UTType] = [.plainText, .utf8PlainText, .text]
+  /// Deliberately NOT csv/tsv: those conform to plain text but a comma is a
+  /// COLUMN separator there, so the plain-text parser would read one row as
+  /// several words, header included.
+  package let fileExtensions = ["txt", "text", "md", "list"]
 
   package init() {}
 
@@ -295,33 +309,14 @@ package struct ImportFileRegistry: Sendable {
   }
 
   package func parser(for url: URL) -> (any ImportFileParser)? {
-    guard
-      let type = UTType(filenameExtension: url.pathExtension.lowercased())
-    else { return nil }
-    // EXACT match, deliberately not conformance.
-    //
-    // CSV and TSV conform to `public.plain-text`, so a conformance match hands
-    // a spreadsheet to the plain-text parser — which splits on commas, and
-    // would silently turn one row of `GitHub,git hub,brand` into three words,
-    // header rows and category names included. Quietly corrupting a
-    // dictionary is far worse than refusing a file, so a format is readable
-    // only when a parser claims it by name.
-    //
-    // The cost is that an unrecognised text subtype reports "unsupported"
-    // rather than being read on a guess. That is the honest answer, and CSV
-    // becomes supported by registering a real CSV parser — the seam this
-    // registry exists for — not by widening this match.
-    //
-    // Reviewed twice (r4, r5) as "UTType returns a dynamic dyn.* type here, so
-    // every .json and .txt upload is rejected; 19 tests fail." Not reproduced
-    // in either environment: a direct probe resolves json → public.json and
-    // txt → public.plain-text, both non-dynamic and both matching, and the
-    // 19-test suite passes under BOTH scripts/xcode-test.sh and swift test.
-    // Left as-is deliberately rather than trading verified behaviour for an
-    // unverified claim. If some future environment genuinely yields dynamic
-    // types, the fix is an explicit extension→parser mapping here, keeping the
-    // CSV/TSV refusal intact.
-    return parsers.first { $0.contentTypes.contains(type) }
+    // Matched on the extension itself. EXACT membership, deliberately not
+    // UTType conformance: csv and tsv conform to plain text, so a conformance
+    // match handed a spreadsheet to the plain-text parser and one row of
+    // `canonical,alias,category` imported as THREE words, header included.
+    // Unclaimed extensions are refused, which is what keeps that structural.
+    let ext = url.pathExtension.lowercased()
+    guard !ext.isEmpty else { return nil }
+    return parsers.first { $0.fileExtensions.contains(ext) }
   }
 }
 

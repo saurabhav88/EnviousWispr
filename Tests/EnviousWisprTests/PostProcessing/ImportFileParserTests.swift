@@ -614,4 +614,22 @@ struct ImportFileParserTests {
     #expect(batch.candidates.count == limit)
   }
 
+
+  @Test("routing does not depend on the system resolving extensions")
+  func routingUsesExtensionsNotSystemTypes() async throws {
+    // Dispatch previously round-tripped the filename through Launch Services;
+    // in a restricted environment that returns dyn.* and EVERY supported
+    // upload was rejected before the file was read.
+    let registry = ImportFileRegistry.v1
+    #expect(registry.parser(for: URL(fileURLWithPath: "/tmp/a.json"))?.identifier == "exported-words")
+    #expect(registry.parser(for: URL(fileURLWithPath: "/tmp/a.txt"))?.identifier == "plain-text")
+    // Case and path shape are irrelevant to the decision.
+    #expect(registry.parser(for: URL(fileURLWithPath: "/tmp/A.JSON"))?.identifier == "exported-words")
+    // Spreadsheets stay refused: the CSV split bug was the reason dispatch is
+    // exact-match in the first place, and that must survive the mechanism change.
+    #expect(registry.parser(for: URL(fileURLWithPath: "/tmp/a.csv")) == nil)
+    #expect(registry.parser(for: URL(fileURLWithPath: "/tmp/a.tsv")) == nil)
+    #expect(registry.parser(for: URL(fileURLWithPath: "/tmp/noextension")) == nil)
+  }
+
 }
