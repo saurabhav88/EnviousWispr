@@ -332,6 +332,18 @@ package struct SmartImportSource: CustomWordsImportSource {
     let words = try adapter.loadWords(at: path)
     try Task.checkCancellation()
 
+    // Check the RAW row count, before deduplication (code review r10).
+    //
+    // The adapters read one past the ceiling so that "too many" is knowable.
+    // But dedup shrinks the list, so a source whose first 25,001 rows contain
+    // duplicates would fall back under the limit and report a successful
+    // import that had silently dropped everything beyond it. Every ceiling
+    // needs a signal for having been reached; counting after the shrink loses
+    // that signal — the same mistake the pasted-text parser made.
+    guard words.count <= CustomWordsImportLimits.maximumCandidates else {
+      throw ImportFileError.tooManyWords(limit: CustomWordsImportLimits.maximumCandidates)
+    }
+
     // Reuse the shared splitter's normalization so a competitor's list dedups
     // exactly the way a pasted one does, and trim/blank handling is identical.
     var seen = Set<String>()
@@ -342,10 +354,6 @@ package struct SmartImportSource: CustomWordsImportSource {
       let key = CustomWordsImportCompareEngine.normalize(trimmed)
       guard !key.isEmpty, seen.insert(key).inserted else { continue }
       canonicals.append(trimmed)
-    }
-
-    guard canonicals.count <= CustomWordsImportLimits.maximumCandidates else {
-      throw ImportFileError.tooManyWords(limit: CustomWordsImportLimits.maximumCandidates)
     }
 
     return CustomWordsImportBatch(

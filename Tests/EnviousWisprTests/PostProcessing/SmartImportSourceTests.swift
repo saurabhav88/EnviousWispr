@@ -313,4 +313,32 @@ struct SmartImportSourceTests {
     let url = try write(#"{ "terms": [ { "text": "Kubernetes" } ] }"#, to: dir, as: "v.json")
     #expect(try FluidVoiceAdapter().loadWords(at: url) == ["Kubernetes"])
   }
+
+  @Test("a truncated read is refused even when duplicates hide it")
+  func truncatedReadIsRefusedEvenWhenDedupHidesIt() async throws {
+    // The trap (code review r10): the adapter reads one past the ceiling so
+    // "too many" is knowable, but deduplication SHRINKS the list — so a source
+    // whose overflowing rows are duplicates would fall back under the limit
+    // and report a successful import that had silently dropped the rest.
+    // Every ceiling needs a signal for having been reached, and counting after
+    // the shrink loses it.
+    struct Flood: SmartImportAdapter {
+      let identifier = "flood"
+      let displayName = "Flood"
+      var candidatePaths: [URL] { [URL(fileURLWithPath: "/dev/null")] }
+      func loadWords(at url: URL) throws -> [String] {
+        // One past the ceiling, and all identical: dedup collapses this to a
+        // single word, which would look like a tiny successful import.
+        Array(
+          repeating: "duplicate",
+          count: CustomWordsImportLimits.maximumCandidates + 1)
+      }
+    }
+
+    await #expect(
+      throws: ImportFileError.tooManyWords(limit: CustomWordsImportLimits.maximumCandidates)
+    ) {
+      _ = try await SmartImportSource(adapter: Flood()).loadCandidates()
+    }
+  }
 }
