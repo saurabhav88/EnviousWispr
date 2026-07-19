@@ -56,7 +56,8 @@ struct PasteWordsImportSourceTests {
 
   @Test("empty and whitespace-only pieces are dropped")
   func emptyPiecesAreDropped() throws {
-    #expect(try PasteWordsParser.parse("Kubernetes,,  ,\n\n,Anthropic") == ["Kubernetes", "Anthropic"])
+    #expect(
+      try PasteWordsParser.parse("Kubernetes,,  ,\n\n,Anthropic") == ["Kubernetes", "Anthropic"])
   }
 
   @Test(
@@ -64,6 +65,43 @@ struct PasteWordsImportSourceTests {
     arguments: ["", "   ", "\n\n", ",,,", " , \n , "])
   func inputWithoutWordsYieldsNothing(input: String) throws {
     #expect(try PasteWordsParser.parse(input).isEmpty)
+  }
+
+  /// The bug this freezes (cloud review, #1683): padding is not part of the
+  /// word, but the scan buffer counted it, so whitespace alone could exceed a
+  /// LENGTH ceiling and fail the whole paste as "too long". Spaces are not
+  /// separators — they have to survive inside a term like "Claude Code" — so
+  /// they accumulated. Every case here is padding a trim would erase.
+  @Test("padding is never mistaken for word length")
+  func paddingIsNotCountedTowardWordLength() throws {
+    let farPastTheCeiling = CustomWordsImportLimits.maximumStoredValueScalars * 6
+
+    // Whitespace alone imports nothing; it must not throw.
+    #expect(try PasteWordsParser.parse(String(repeating: " ", count: farPastTheCeiling)).isEmpty)
+
+    // A short word keeps its meaning however it is padded.
+    let pad = String(repeating: " ", count: farPastTheCeiling)
+    #expect(try PasteWordsParser.parse(pad + "Kubernetes") == ["Kubernetes"])
+    #expect(try PasteWordsParser.parse("Kubernetes" + pad) == ["Kubernetes"])
+    #expect(try PasteWordsParser.parse(pad + "Kubernetes" + pad) == ["Kubernetes"])
+    #expect(
+      try PasteWordsParser.parse(pad + "Claude Code" + pad + ",\n" + pad + "Anthropic")
+        == ["Claude Code", "Anthropic"])
+  }
+
+  /// The ceiling still applies to real content, so relaxing the padding rule
+  /// cannot become "no limit at all" — including when interior spacing is what
+  /// carries the entry past it.
+  @Test("a genuinely over-long entry is still refused")
+  func overLongEntryStillThrows() throws {
+    let tooLong = String(
+      repeating: "x", count: CustomWordsImportLimits.maximumStoredValueScalars + 1)
+    #expect(throws: (any Error).self) { try PasteWordsParser.parse(tooLong) }
+
+    let spacedOut = (0...CustomWordsImportLimits.maximumStoredValueScalars)
+      .map { _ in "x" }
+      .joined(separator: " ")
+    #expect(throws: (any Error).self) { try PasteWordsParser.parse(spacedOut) }
   }
 
   // MARK: - Deduplication

@@ -207,7 +207,8 @@ struct ImportFileParserTests {
   func oversizedFileIsRefusedBeforeReading() async throws {
     // Refusing by size beats discovering it after allocating: a word list is
     // small, so anything this big is a mistaken selection.
-    let url = try write(Data(count: CustomWordsImportLimits.maximumImportFileBytes + 1), as: "huge.txt")
+    let url = try write(
+      Data(count: CustomWordsImportLimits.maximumImportFileBytes + 1), as: "huge.txt")
     await #expect(throws: ImportFileError.tooLarge) {
       _ = try await FileImportSource(url: url).loadCandidates()
     }
@@ -329,7 +330,6 @@ struct ImportFileParserTests {
     }
   }
 
-
   @Test("word lists in other scripts import intact")
   func internationalWordListsImportIntact() async throws {
     // Japanese, Hindi, Arabic, Korean, Russian, Greek, accented Latin, and a
@@ -364,7 +364,6 @@ struct ImportFileParserTests {
         != CustomWordsImportCompareEngine.normalize("resume"))
   }
 
-
   @Test("a non-English custom word actually corrects a transcript")
   func nonEnglishCustomWordCorrectsTranscript() async throws {
     // Import is only half the promise. If correction is ASCII-only, an
@@ -386,7 +385,6 @@ struct ImportFileParserTests {
     #expect(accented.contains("Jalapeño"))
   }
 
-
   @Test("a single CJK word WITH a byte-order mark imports fine")
   func singleCJKWordWithMarkImports() async throws {
     // Which is why the mark matters, and why real UTF-16 writers emit one.
@@ -397,7 +395,6 @@ struct ImportFileParserTests {
 
     #expect(candidates.map { $0.canonical } == ["東京"])
   }
-
 
   @Test("a library larger than the paste ceiling still exports and imports back")
   func oversizedLibraryRoundTrips() async throws {
@@ -430,9 +427,6 @@ struct ImportFileParserTests {
     }
   }
 
-
-
-
   @Test("UTF-16 without a byte-order mark is refused, never guessed at")
   func unmarkedUTF16IsRefused() async throws {
     // With no mark, BOTH byte orders decode to something for any even-length
@@ -457,8 +451,10 @@ struct ImportFileParserTests {
     // Which is the whole point of the mark, and why real UTF-16 writers emit
     // one. The supported path stays supported.
     let cases: [(Data, [String])] = [
-      (Data([0xFF, 0xFE]) + "Kubernetes\nPostgreSQL".data(using: .utf16LittleEndian)!,
-        ["Kubernetes", "PostgreSQL"]),
+      (
+        Data([0xFF, 0xFE]) + "Kubernetes\nPostgreSQL".data(using: .utf16LittleEndian)!,
+        ["Kubernetes", "PostgreSQL"]
+      ),
       (Data([0xFE, 0xFF]) + "Kubernetes".data(using: .utf16BigEndian)!, ["Kubernetes"]),
       (Data([0xFF, 0xFE]) + "東京\n大阪".data(using: .utf16LittleEndian)!, ["東京", "大阪"]),
       (Data([0xFF, 0xFE]) + "一".data(using: .utf16LittleEndian)!, ["一"]),
@@ -469,7 +465,6 @@ struct ImportFileParserTests {
       #expect(candidates.map { $0.canonical } == expected)
     }
   }
-
 
   @Test("an exported words file larger than the untrusted byte cap still imports")
   func oversizedExportedFileStillImports() async throws {
@@ -501,7 +496,6 @@ struct ImportFileParserTests {
       try await FileImportSource(url: url).loadCandidates()
     }
   }
-
 
   @Test("invisible control characters never become part of a word")
   func controlCharactersAreRefused() async throws {
@@ -536,7 +530,6 @@ struct ImportFileParserTests {
     #expect(candidates[1].canonical.unicodeScalars.contains { $0.value == 0x200C })
   }
 
-
   @Test("invisible and deceptive format characters are refused")
   func deceptiveFormatCharactersAreRefused() async throws {
     // Allowing the whole format category to protect joiners also admitted
@@ -557,7 +550,6 @@ struct ImportFileParserTests {
       }
     }
   }
-
 
   @Test("an exported file's word ceiling is raised, not removed")
   func exportedFileCeilingIsFiniteNotAbsent() async throws {
@@ -590,7 +582,6 @@ struct ImportFileParserTests {
     await #expect(throws: CancellationError.self) { try await task.value }
   }
 
-
   @Test("a truncated UTF-16 file is refused, not imported as its prefix")
   func truncatedUTF16IsRefused() async throws {
     // Foundation ignores a dangling byte, so a partial write decoded to its
@@ -602,7 +593,6 @@ struct ImportFileParserTests {
       try await FileImportSource(url: url).loadCandidates()
     }
   }
-
 
   @Test("a huge word list is refused without building every entry")
   func hugeListStopsAtTheCeiling() async throws {
@@ -636,24 +626,24 @@ struct ImportFileParserTests {
     #expect(batch.candidates.count == limit)
   }
 
-
   @Test("routing does not depend on the system resolving extensions")
   func routingUsesExtensionsNotSystemTypes() async throws {
     // Dispatch previously round-tripped the filename through Launch Services;
     // in a restricted environment that returns dyn.* and EVERY supported
     // upload was rejected before the file was read.
     let registry = ImportFileRegistry.v1
-    #expect(registry.parser(for: URL(fileURLWithPath: "/tmp/a.json"))?.identifier == "exported-words")
+    #expect(
+      registry.parser(for: URL(fileURLWithPath: "/tmp/a.json"))?.identifier == "exported-words")
     #expect(registry.parser(for: URL(fileURLWithPath: "/tmp/a.txt"))?.identifier == "plain-text")
     // Case and path shape are irrelevant to the decision.
-    #expect(registry.parser(for: URL(fileURLWithPath: "/tmp/A.JSON"))?.identifier == "exported-words")
+    #expect(
+      registry.parser(for: URL(fileURLWithPath: "/tmp/A.JSON"))?.identifier == "exported-words")
     // Spreadsheets stay refused: the CSV split bug was the reason dispatch is
     // exact-match in the first place, and that must survive the mechanism change.
     #expect(registry.parser(for: URL(fileURLWithPath: "/tmp/a.csv")) == nil)
     #expect(registry.parser(for: URL(fileURLWithPath: "/tmp/a.tsv")) == nil)
     #expect(registry.parser(for: URL(fileURLWithPath: "/tmp/noextension")) == nil)
   }
-
 
   @Test("an oversized export is refused before candidates are built")
   func oversizedExportRefusedBeforeExpanding() async throws {
@@ -686,7 +676,6 @@ struct ImportFileParserTests {
     #expect(candidates.allSatisfy { !$0.canonical.contains("\t") })
   }
 
-
   @Test("a truncated UTF-16 file is refused, not read as Latin-1")
   func markedButBrokenFileDoesNotFallThrough() async throws {
     // A recognised mark is authoritative: if it says UTF-16 and the bytes fail
@@ -713,7 +702,6 @@ struct ImportFileParserTests {
     #expect(!message.contains("\(limit + 1)"))
   }
 
-
   // MARK: - One policy for every door (#1683 taxonomy P0s)
 
   @Test("an exported file cannot smuggle invisible characters into a word")
@@ -724,7 +712,8 @@ struct ImportFileParserTests {
     // property of the STORE, so it now runs for every source.
     for hostile in ["Kub\u{202E}ernetes", "Kub\u{0000}ernetes", "Kub\u{FEFF}ernetes", "   "] {
       let word = CustomWord(canonical: hostile, aliases: [], category: .general)
-      let url = try write(try CustomWordsTransferDocument(words: [word]).encoded(), as: "words.json")
+      let url = try write(
+        try CustomWordsTransferDocument(words: [word]).encoded(), as: "words.json")
 
       await #expect(throws: CustomWordsImportValidationError.self) {
         try await FileImportSource(url: url).loadCandidates()
@@ -760,7 +749,6 @@ struct ImportFileParserTests {
     #expect(candidates[0].aliases == .supplied(["k8s"]))
   }
 
-
   @Test("line and paragraph separators cannot hide inside a stored word")
   func lineSeparatorsAreRefused() async throws {
     // U+2028 and U+2029 have their OWN Unicode categories, so a control-only
@@ -768,14 +756,14 @@ struct ImportFileParserTests {
     // separator policy saying otherwise.
     for hidden in ["Kub\u{2028}ernetes", "Kub\u{2029}ernetes"] {
       let word = CustomWord(canonical: hidden, aliases: [], category: .general)
-      let url = try write(try CustomWordsTransferDocument(words: [word]).encoded(), as: "words.json")
+      let url = try write(
+        try CustomWordsTransferDocument(words: [word]).encoded(), as: "words.json")
 
       await #expect(throws: CustomWordsImportValidationError.self) {
         try await FileImportSource(url: url).loadCandidates()
       }
     }
   }
-
 
   @Test("few words with millions of aliases is refused")
   func aliasSurfaceIsBounded() async throws {
@@ -813,7 +801,6 @@ struct ImportFileParserTests {
     #expect(batch.candidates.count == 500)
   }
 
-
   @Test("the picker offers every extension the registry claims")
   func pickerCoversEveryRegisteredExtension() throws {
     // Declared types alone could hide a file the registry accepts: on a system
@@ -845,7 +832,6 @@ struct ImportFileParserTests {
     #expect(message.contains("Nothing was imported"))
   }
 
-
   @Test("a rejected character is named, never rendered, in the error")
   func rejectedCharacterIsNotEchoedIntoTheError() throws {
     // Echoing the raw value meant the very character rejected for rendering
@@ -876,7 +862,6 @@ struct ImportFileParserTests {
     await #expect(throws: CancellationError.self) { try await task.value }
   }
 
-
   @Test("sanitising an error keeps ordinary spaces intact")
   func sanitisedErrorKeepsSpaces() throws {
     // Testing each scalar through the whole-VALUE check treated a standalone
@@ -906,7 +891,6 @@ struct ImportFileParserTests {
 
     await #expect(throws: CancellationError.self) { try await task.value }
   }
-
 
   @Test("one enormous line is refused, not stored as a single word")
   func oneEnormousLineIsRefused() async throws {
@@ -947,7 +931,6 @@ struct ImportFileParserTests {
     #expect(candidates.map { $0.canonical } == [long])
   }
 
-
   @Test("a bad alias is named, not the innocent word that owns it")
   func aliasErrorNamesTheAlias() async throws {
     // Reporting the canonical quoted a value that was fine and hid the one
@@ -966,7 +949,6 @@ struct ImportFileParserTests {
       #expect(message.contains("Kubernetes"))
     }
   }
-
 
   @Test("a word made only of invisible joiners is refused")
   func joinerOnlyValueIsRefused() async throws {
@@ -997,7 +979,6 @@ struct ImportFileParserTests {
     #expect(candidates[0].canonical.unicodeScalars.contains { $0.value == 0x200D })
   }
 
-
   @Test("a pasted word with a bad character is reported, not silently dropped")
   func badPastedEntryIsReportedNotDropped() async throws {
     // Skipping everything the policy rejects was too broad: a visible entry
@@ -1020,7 +1001,6 @@ struct ImportFileParserTests {
 
     #expect(candidates.map { $0.canonical } == ["Good", "AlsoGood"])
   }
-
 
   @Test("a word of only invisible marks is refused, whichever mark it is")
   func invisibleOnlyValuesAreRefused() async throws {
@@ -1048,7 +1028,6 @@ struct ImportFileParserTests {
     #expect(candidates[0].canonical.unicodeScalars.contains { $0.value == 0xFE0F })
   }
 
-
   @Test("a suggested alias is validated like every other stored value")
   func suggestedAliasesAreValidated() throws {
     // The commit path persists suggestedAliases as aliases, but validation
@@ -1074,12 +1053,12 @@ struct ImportFileParserTests {
     #expect(candidate.storedValues == ["Kubernetes", "k8s", "kube"])
   }
 
-
   @Test("padding is not part of the word")
   func paddingDoesNotCountTowardWordLength() async throws {
     // Judging the raw buffer counted whitespace as part of the word, so a
     // heavily padded short entry — a fixed-width list — failed as "too long".
-    let padded = String(repeating: " ", count: 600) + "Kubernetes"
+    let padded =
+      String(repeating: " ", count: 600) + "Kubernetes"
       + String(repeating: " ", count: 600)
     let url = try write(padded, as: "words.txt")
 
@@ -1095,6 +1074,27 @@ struct ImportFileParserTests {
     let batch = try await FileImportSource(url: url).loadCandidates()
 
     #expect(batch.candidates.isEmpty)
+  }
+
+  @Test("padding does not count toward length in a structured file either")
+  func validatorJudgesLengthOnTheTrimmedValue() throws {
+    // Same rule, second door. The validator measured the value as written,
+    // but the manager stores it TRIMMED — so a short word padded inside a
+    // JSON file was refused for whitespace that would never have been saved.
+    let pad = String(repeating: " ", count: 600)
+    let candidate = CustomWordsImportCandidate(
+      canonical: pad + "Kubernetes" + pad,
+      aliases: .supplied([pad + "k8s" + pad]))
+    let batch = CustomWordsImportBatch(
+      sourceID: "test", sourceDisplayName: "test", candidates: [candidate])
+
+    #expect(throws: Never.self) { try batch.validated() }
+
+    // And still refused when the CONTENT is what exceeds the ceiling.
+    let genuinelyLong = CustomWordsImportBatch(
+      sourceID: "test", sourceDisplayName: "test",
+      candidates: [CustomWordsImportCandidate(canonical: pad + String(repeating: "x", count: 600))])
+    #expect(throws: CustomWordsImportValidationError.self) { try genuinelyLong.validated() }
   }
 
   @Test("a genuinely over-long word is still refused")

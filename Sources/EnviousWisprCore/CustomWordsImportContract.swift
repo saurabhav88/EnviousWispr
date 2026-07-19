@@ -151,8 +151,14 @@ package struct CustomWordsImportBatch: Sendable, Equatable {
         scanned += 1
         if scanned.isMultiple(of: 1_000) { try Task.checkCancellation() }
 
-        guard value.unicodeScalars.count
-          <= CustomWordsImportLimits.maximumStoredValueScalars
+        // Judged on the TRIMMED value, because trimmed is what gets stored —
+        // the same rule the paste scanner and the manager's write boundary
+        // apply. Counting padding here refused a short word in a structured
+        // file for whitespace that would never have been saved (cloud review,
+        // #1683).
+        guard
+          value.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.count
+            <= CustomWordsImportLimits.maximumStoredValueScalars
         else {
           throw CustomWordsImportValidationError.wordTooLong(
             limit: CustomWordsImportLimits.maximumStoredValueScalars)

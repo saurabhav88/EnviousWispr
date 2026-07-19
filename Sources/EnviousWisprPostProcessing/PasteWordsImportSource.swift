@@ -46,6 +46,9 @@ package enum PasteWordsParser {
     var seen = Set<String>()
     var results: [String] = []
     var buffer = ""
+    // Whitespace seen since the last real character, held rather than buffered
+    // so padding never counts toward a length. See the scan loop below.
+    var pendingWhitespace: [Unicode.Scalar] = []
     let ceiling = limit.map { $0 + 1 }
     var scanned = 0
     // flush() reports "stop" for both success-with-ceiling-reached and a real
@@ -53,7 +56,12 @@ package enum PasteWordsParser {
     var lengthFailure: CustomWordsImportValidationError?
 
     func flush() -> Bool {
-      defer { buffer.removeAll(keepingCapacity: true) }
+      // Whatever whitespace was being held is trailing padding at a boundary,
+      // and trailing padding is not part of the entry.
+      defer {
+        buffer.removeAll(keepingCapacity: true)
+        pendingWhitespace.removeAll(keepingCapacity: true)
+      }
       let trimmed = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
       // Skipped like any other blank line. A piece made only of invisible
       // joiners is noise in a pasted list, not a word the user meant — and
@@ -72,8 +80,9 @@ package enum PasteWordsParser {
       // Length is judged on the TRIMMED value, matching the validator. Judging
       // the raw buffer counted padding as part of the word, so 513 spaces or a
       // heavily padded short entry failed as "too long" (cloud review, #1683).
-      guard trimmed.unicodeScalars.count
-        <= CustomWordsImportLimits.maximumStoredValueScalars
+      guard
+        trimmed.unicodeScalars.count
+          <= CustomWordsImportLimits.maximumStoredValueScalars
       else {
         lengthFailure = CustomWordsImportValidationError.wordTooLong(
           limit: CustomWordsImportLimits.maximumStoredValueScalars)
@@ -99,12 +108,26 @@ package enum PasteWordsParser {
         }
         continue
       }
-      // A MEMORY bound, not the word-length rule: it exists so one enormous
-      // line cannot grow the buffer to the whole file. The rule itself is
-      // applied to the trimmed value in flush(), because padding is not part
-      // of the word. Generous multiple so trimming always gets its say first.
-      guard buffer.unicodeScalars.count
-        < CustomWordsImportLimits.maximumStoredValueScalars * 4
+      // Padding never reaches the buffer, so it can never count toward a
+      // length. Whitespace is HELD until a real character follows it: leading
+      // padding is then dropped, trailing padding is discarded at flush, and
+      // interior spacing survives because a term may legitimately contain it
+      // ("Claude Code"). Without this, a file of 3000 spaces — which should
+      // import nothing — tripped the buffer bound below and failed the whole
+      // paste as "too long" (cloud review, #1683).
+      if scalar.properties.isWhitespace {
+        if !buffer.isEmpty { pendingWhitespace.append(scalar) }
+        continue
+      }
+      buffer.unicodeScalars.append(contentsOf: pendingWhitespace)
+      pendingWhitespace.removeAll(keepingCapacity: true)
+      // A MEMORY bound so one enormous line cannot grow the buffer to the
+      // whole file. Now that padding is excluded, anything reaching it really
+      // is an over-length entry, so wordTooLong is the honest error. The rule
+      // itself still lives in flush(), applied to the trimmed value.
+      guard
+        buffer.unicodeScalars.count
+          < CustomWordsImportLimits.maximumStoredValueScalars * 4
       else {
         throw CustomWordsImportValidationError.wordTooLong(
           limit: CustomWordsImportLimits.maximumStoredValueScalars)
