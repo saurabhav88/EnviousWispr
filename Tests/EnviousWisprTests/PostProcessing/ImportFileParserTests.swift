@@ -332,4 +332,97 @@ struct ImportFileParserTests {
     #expect(candidates.map { $0.canonical } == ["Kubernetes"])
   }
 
+
+  @Test("word lists in other scripts import intact")
+  func internationalWordListsImportIntact() async throws {
+    // Japanese, Hindi, Arabic, Korean, Russian, Greek, accented Latin, and a
+    // word with a combining mark. If any script silently dropped or mangled,
+    // custom words would be an English-only feature (founder question).
+    let words = [
+      "東京", "こんにちは", "नमस्ते", "مرحبا", "서울",
+      "Москва", "Αθήνα", "Beyoncé", "Ångström", "Jalapeño",
+    ]
+    let url = try write(words.joined(separator: "\n"), as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.map { $0.canonical } == words)
+  }
+
+  @Test("words in other scripts are matched, not duplicated, on re-import")
+  func internationalWordsCompareAgainstExistingLibrary() async throws {
+    // Import equality runs through the compare engine's normalize(). If that
+    // were ASCII-only, a re-import would add a SECOND "東京" every time.
+    let normalized = CustomWordsImportCompareEngine.normalize("東京")
+    #expect(normalized == CustomWordsImportCompareEngine.normalize("東京"))
+    #expect(!normalized.isEmpty)
+
+    // Case folding must still work for scripts that HAVE case...
+    #expect(
+      CustomWordsImportCompareEngine.normalize("Москва")
+        == CustomWordsImportCompareEngine.normalize("МОСКВА"))
+    // ...and accents must stay meaningful: "resume" is not "résumé".
+    #expect(
+      CustomWordsImportCompareEngine.normalize("résumé")
+        != CustomWordsImportCompareEngine.normalize("resume"))
+  }
+
+
+  @Test("a non-English custom word actually corrects a transcript")
+  func nonEnglishCustomWordCorrectsTranscript() async throws {
+    // Import is only half the promise. If correction is ASCII-only, an
+    // imported Japanese or Russian term would sit in the list and never fire
+    // (founder question: does this work internationally?).
+    let corrector = WordCorrector()
+    let words = [
+      CustomWord(canonical: "東京", aliases: ["とうきょう"], category: .general),
+      CustomWord(canonical: "Москва", aliases: ["москва"], category: .general),
+      CustomWord(canonical: "Jalapeño", aliases: ["jalapeno"], category: .general),
+    ]
+
+    let (japanese, _) = corrector.correct("とうきょう に行きます", against: words)
+    let (russian, _) = corrector.correct("я живу в москва", against: words)
+    let (accented, _) = corrector.correct("I ate a jalapeno", against: words)
+
+    #expect(japanese.contains("東京"))
+    #expect(russian.contains("Москва"))
+    #expect(accented.contains("Jalapeño"))
+  }
+
+
+  @Test("a multi-word CJK list in UTF-16 imports correctly")
+  func multiWordCJKUTF16Imports() async throws {
+    // The realistic shape: line breaks supply the NUL bytes the detector
+    // reads, so a Japanese word list saved as UTF-16 works.
+    let url = try write("東京\n大阪\n京都".data(using: .utf16LittleEndian)!, as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.map { $0.canonical } == ["東京", "大阪", "京都"])
+  }
+
+  @Test("a single CJK word in UTF-16 with no mark is refused, not corrupted")
+  func singleCJKWordWithoutMarkIsRefused() async throws {
+    // Genuinely ambiguous: these four bytes are a valid Latin-1 word list AND
+    // valid UTF-16. Guessing UTF-16 here would corrupt real Latin-1 files
+    // (Beyoncé/Jalapeño decodes to plausible-looking CJK), so refusing is the
+    // honest answer. Refused beats "qg¬N" imported as a word.
+    let url = try write("東京".data(using: .utf16LittleEndian)!, as: "words.txt")
+
+    await #expect(throws: ImportFileError.unreadable) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
+  @Test("a single CJK word WITH a byte-order mark imports fine")
+  func singleCJKWordWithMarkImports() async throws {
+    // Which is why the mark matters, and why real UTF-16 writers emit one.
+    let data = Data([0xFF, 0xFE]) + "東京".data(using: .utf16LittleEndian)!
+    let url = try write(data, as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.map { $0.canonical } == ["東京"])
+  }
+
 }

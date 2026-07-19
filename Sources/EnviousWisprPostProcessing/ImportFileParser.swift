@@ -131,9 +131,12 @@ package struct PlainTextImportFileParser: ImportFileParser {
       return strippingBOM(utf8)
     }
     // Latin-1 last, because it accepts every byte: anything arriving here has
-    // already failed every encoding capable of refusing it honestly.
+    // already failed every encoding capable of refusing it honestly. It must
+    // therefore look like WORDS, not merely like printable characters —
+    // otherwise it is where un-recognised UTF-16 lands and becomes `qg¬N`
+    // (cloud review, #1683).
     guard let latin1 = String(data: data, encoding: .isoLatin1),
-      isPlausiblyText(latin1)
+      looksLikeWords(latin1)
     else { return nil }
     return strippingBOM(latin1)
   }
@@ -150,6 +153,36 @@ package struct PlainTextImportFileParser: ImportFileParser {
       return String(data: data, encoding: .utf8).map(strippingBOM)
     }
     return nil
+  }
+
+  /// Whether text read through the catch-all encoding is plausibly a WORD
+  /// LIST, rather than some other encoding misread as Latin-1.
+  ///
+  /// Non-ASCII characters must be letters, marks, or digits — the things words
+  /// are made of. Symbols are the tell: UTF-16 misread as Latin-1 produces
+  /// runs like `qg¬N`, where `¬` is a maths symbol no one puts in a
+  /// vocabulary entry, while a real Latin-1 list (`Beyoncé`, `Jalapeño`)
+  /// contains only accented letters. ASCII passes freely so `C++` and `.NET`
+  /// are unaffected.
+  ///
+  /// This is a REFUSAL, not a repair: a single CJK word saved as UTF-16 with
+  /// no byte-order mark and no line break is genuinely ambiguous — the same
+  /// bytes are a valid Latin-1 list — and the wrong guess would corrupt real
+  /// data either way. Refusing says so honestly instead of importing nonsense.
+  /// (Multi-word CJK lists are unaffected: the line breaks supply the NUL
+  /// bytes the detector above reads.)
+  private static func looksLikeWords(_ text: String) -> Bool {
+    guard !text.isEmpty, isPlausiblyText(text) else { return false }
+    return text.unicodeScalars.allSatisfy { scalar in
+      if scalar.isASCII { return true }
+      switch scalar.properties.generalCategory {
+      case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter,
+        .otherLetter, .nonspacingMark, .spacingMark, .decimalNumber, .otherNumber:
+        return true
+      default:
+        return false
+      }
+    }
   }
 
   /// Reads the NUL layout to tell UTF-16 apart from UTF-8, and one byte order
