@@ -78,7 +78,7 @@ struct ImportFileParserTests {
     let batch = try await FileImportSource(url: url).loadCandidates()
 
     #expect(batch.sourceID == "plain-text")
-    #expect(batch.candidates.map(\.canonical) == ["Kubernetes", "Anthropic", "Qualtrics"])
+    #expect(batch.candidates.map { $0.canonical } == ["Kubernetes", "Anthropic", "Qualtrics"])
   }
 
   @Test("a file list splits exactly like the paste box does")
@@ -90,9 +90,9 @@ struct ImportFileParserTests {
     let url = try write(text, as: "words.txt")
     let batch = try await FileImportSource(url: url).loadCandidates()
 
-    #expect(batch.candidates.map(\.canonical) == PasteWordsParser.parse(text))
+    #expect(batch.candidates.map { $0.canonical } == PasteWordsParser.parse(text))
     #expect(
-      batch.candidates.map(\.canonical)
+      batch.candidates.map { $0.canonical }
         == ["Envious Labs", "C++", "and/or", "Smith; Jones", "GitHub"])
   }
 
@@ -121,7 +121,7 @@ struct ImportFileParserTests {
   func latin1TextIsAccepted() async throws {
     let url = try write(try #require("Beyoncé".data(using: .isoLatin1)), as: "legacy.txt")
     let batch = try await FileImportSource(url: url).loadCandidates()
-    #expect(batch.candidates.map(\.canonical) == ["Beyoncé"])
+    #expect(batch.candidates.map { $0.canonical } == ["Beyoncé"])
   }
 
   // MARK: - Unsupported and unreadable
@@ -251,4 +251,62 @@ struct ImportFileParserTests {
     #expect(ImportFileRegistry.v1.parser(for: text)?.identifier == "plain-text")
     #expect(ImportFileRegistry.v1.parser(for: try write("a", as: "a.csv")) == nil)
   }
+
+  // MARK: - Text encodings
+
+  @Test("a UTF-16 file imports its real words, not mojibake")
+  func utf16FileDecodesToRealWords() async throws {
+    // Latin-1 accepts every byte, so before the BOM check this decoded to
+    // "ÿþK\0u\0b\0…" and imported NUL-laden garbage as words.
+    let data = "Kubernetes\nPostgreSQL".data(using: .utf16LittleEndian)!
+    let withBOM = Data([0xFF, 0xFE]) + data
+    let url = try write(withBOM, as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.map { $0.canonical } == ["Kubernetes", "PostgreSQL"])
+  }
+
+  @Test("a big-endian UTF-16 file decodes too")
+  func utf16BigEndianDecodes() async throws {
+    let data = "Kubernetes".data(using: .utf16BigEndian)!
+    let url = try write(Data([0xFE, 0xFF]) + data, as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.map { $0.canonical } == ["Kubernetes"])
+  }
+
+  @Test("a UTF-8 byte-order mark is not imported as part of the first word")
+  func utf8ByteOrderMarkIsStripped() async throws {
+    // Left in, the mark rides along invisibly and "Kubernetes" imports as a
+    // DIFFERENT term than the same word typed anywhere else.
+    let url = try write(
+      Data([0xEF, 0xBB, 0xBF]) + Data("Kubernetes".utf8), as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.map { $0.canonical } == ["Kubernetes"])
+  }
+
+  @Test("a legacy Latin-1 file still imports")
+  func latin1FileStillImports() async throws {
+    // The fallback must keep working for its real case; the fix narrows WHEN
+    // it is reached, it does not remove it.
+    let url = try write("Beyoncé\nJalapeño".data(using: .isoLatin1)!, as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.map { $0.canonical } == ["Beyoncé", "Jalapeño"])
+  }
+
+  @Test("binary content is refused rather than laundered into words")
+  func binaryContentIsRefused() async throws {
+    let url = try write(Data([0x00, 0x01, 0x02, 0xFF, 0x00, 0x7F]), as: "words.txt")
+
+    await #expect(throws: ImportFileError.unreadable) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
 }

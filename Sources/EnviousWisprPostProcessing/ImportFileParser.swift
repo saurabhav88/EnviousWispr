@@ -86,16 +86,61 @@ package struct PlainTextImportFileParser: ImportFileParser {
   package init() {}
 
   package func parse(data: Data) throws -> [CustomWordsImportCandidate] {
-    // Accept UTF-8 first, then fall back to the platform's legacy encoding
-    // rather than refusing a file a user exported from an older tool.
-    guard
-      let text = String(data: data, encoding: .utf8)
-        ?? String(data: data, encoding: .isoLatin1)
-    else {
-      throw ImportFileError.unreadable
-    }
+    guard let text = Self.decode(data) else { throw ImportFileError.unreadable }
     return PasteWordsParser.parse(text).map {
       CustomWordsImportCandidate(canonical: $0)
+    }
+  }
+
+  /// Turns file bytes into text, or refuses.
+  ///
+  /// Order matters, because Latin-1 **cannot fail**: every byte is a valid
+  /// Latin-1 character, so it accepts anything handed to it. Reached too
+  /// early it is not a fallback but a catch-all that turns text it does not
+  /// understand into convincing garbage. A UTF-16 file decoded that way
+  /// becomes `ÿþK\0u\0b\0…` — which then imports as WORDS, so the user's
+  /// dictionary silently fills with mojibake (cloud review, #1683).
+  ///
+  /// So: a byte-order mark names its own encoding and is trusted first; UTF-8
+  /// is tried next because it is what everything modern writes; Latin-1 stays
+  /// last and now has to prove the result is plausibly text before it counts.
+  static func decode(_ data: Data) -> String? {
+    if let marked = decodeUsingByteOrderMark(data) { return marked }
+    if let utf8 = String(data: data, encoding: .utf8) { return utf8 }
+    guard let latin1 = String(data: data, encoding: .isoLatin1),
+      isPlausiblyText(latin1)
+    else { return nil }
+    return latin1
+  }
+
+  private static func decodeUsingByteOrderMark(_ data: Data) -> String? {
+    let bom = Array(data.prefix(3))
+    if bom.starts(with: [0xFF, 0xFE]) {
+      return String(data: data, encoding: .utf16LittleEndian).map(strippingBOM)
+    }
+    if bom.starts(with: [0xFE, 0xFF]) {
+      return String(data: data, encoding: .utf16BigEndian).map(strippingBOM)
+    }
+    if bom.starts(with: [0xEF, 0xBB, 0xBF]) {
+      return String(data: data, encoding: .utf8).map(strippingBOM)
+    }
+    return nil
+  }
+
+  /// The mark itself is metadata, not a character the user typed. Left in, it
+  /// rides along on the first word and imports as a different term than the
+  /// same word further down the file.
+  private static func strippingBOM(_ text: String) -> String {
+    text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text
+  }
+
+  /// Real word lists do not contain NULs or stray control characters. This is
+  /// what stops Latin-1 from laundering binary — or any encoding we failed to
+  /// recognise — into candidates.
+  private static func isPlausiblyText(_ text: String) -> Bool {
+    !text.unicodeScalars.contains { scalar in
+      guard scalar.value < 0x20 || scalar.value == 0x7F else { return false }
+      return scalar != "\n" && scalar != "\r" && scalar != "\t"
     }
   }
 }
