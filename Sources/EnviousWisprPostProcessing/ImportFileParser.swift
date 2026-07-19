@@ -167,16 +167,29 @@ package struct FileImportSource: CustomWordsImportSource {
       throw ImportFileError.unsupportedType(name)
     }
 
-    let size =
-      (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? nil
-    if let size, size > Self.maximumFileBytes {
+    try Task.checkCancellation()
+
+    // Bound the READ itself, rather than checking the size and then reading
+    // separately (code review r3). Between a stat and a load the file can grow
+    // or be replaced — by a sync client, by whatever wrote it — and the ceiling
+    // would be bypassed on exactly the input it exists to refuse. Reading one
+    // byte past the limit from a single open handle answers "is this too big"
+    // and "give me the bytes" as one operation, so there is no window between
+    // the question and the answer.
+    guard let handle = try? FileHandle(forReadingFrom: url) else {
+      throw ImportFileError.unreadable
+    }
+    defer { try? handle.close() }
+
+    guard
+      let data = try? handle.read(upToCount: Self.maximumFileBytes + 1)
+    else {
+      throw ImportFileError.unreadable
+    }
+    guard data.count <= Self.maximumFileBytes else {
       throw ImportFileError.tooLarge
     }
 
-    try Task.checkCancellation()
-    guard let data = try? Data(contentsOf: url) else {
-      throw ImportFileError.unreadable
-    }
     try Task.checkCancellation()
 
     let candidates = try parser.parse(data: data)
