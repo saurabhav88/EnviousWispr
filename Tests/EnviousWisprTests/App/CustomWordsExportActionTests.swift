@@ -276,4 +276,32 @@ struct CustomWordsExportActionTests {
     }
   }
 
+
+  @Test("the app cannot author a word it would then refuse to export")
+  func authoringCannotCreateAnUnexportableLibrary() throws {
+    // Import capped stored values; the editor did not. A hand-typed entry over
+    // the ceiling therefore made the user's own words unexportable — the
+    // round-trip asymmetry again, with authoring as the third door.
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-author-\(UUID().uuidString).json")
+    let manager = CustomWordsManager(fileURL: url)
+    var live = manager.load() ?? []
+
+    let tooLong = String(repeating: "x", count: CustomWordsImportLimits.maximumStoredValueScalars + 1)
+    try manager.add(word: CustomWord(canonical: tooLong), to: &live)
+    try manager.add(
+      word: CustomWord(canonical: "Kubernetes", aliases: [tooLong, "k8s"]), to: &live)
+
+    // Neither the over-long word nor the over-long alias was stored...
+    #expect(!live.contains { $0.canonical == tooLong })
+    #expect(!live.contains { $0.aliases.contains(tooLong) })
+    #expect(live.contains { $0.canonical == "Kubernetes" && $0.aliases == ["k8s"] })
+
+    // ...so whatever the library holds, export accepts it.
+    let document = CustomWordsTransferDocument(words: live.filter { $0.source == .user })
+    #expect(
+      CustomWordsExportAction.refusalIfUnimportable(
+        document: document, encoded: try document.encoded()) == nil)
+  }
+
 }

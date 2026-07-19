@@ -398,6 +398,15 @@ public final class CustomWordsManager {
   public func add(word: CustomWord, to words: inout [CustomWord]) throws {
     let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return }
+    // The same ceiling importing enforces, applied where words are AUTHORED.
+    // Without it the app could create a library it then refused to export:
+    // import capped stored values, the editor did not, so a hand-typed entry
+    // over the ceiling made the user's own words unexportable (cloud review,
+    // #1683). Real entries are nowhere near this — the founder's longest word
+    // is 14 characters — so it only ever catches something pasted by mistake.
+    guard trimmed.unicodeScalars.count
+      <= CustomWordsImportLimits.maximumStoredValueScalars
+    else { return }
     guard
       !words.contains(where: {
         $0.canonical.caseInsensitiveCompare(trimmed) == .orderedSame
@@ -418,9 +427,7 @@ public final class CustomWordsManager {
 
     var sanitized = word
     sanitized.canonical = trimmed
-    sanitized.aliases = sanitized.aliases
-      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      .filter { !$0.isEmpty }
+    sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
     file.words.append(sanitized)
     try saveFile(file)
     words = mergedWords(file: file)
@@ -450,7 +457,9 @@ public final class CustomWordsManager {
 
     for word in incoming {
       let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !trimmed.isEmpty else { continue }
+      guard !trimmed.isEmpty,
+        trimmed.unicodeScalars.count <= CustomWordsImportLimits.maximumStoredValueScalars
+      else { continue }
       let key = trimmed.lowercased()
       guard !seen.contains(key) else { continue }
 
@@ -468,9 +477,7 @@ public final class CustomWordsManager {
 
       var sanitized = word
       sanitized.canonical = trimmed
-      sanitized.aliases = sanitized.aliases
-        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        .filter { !$0.isEmpty }
+      sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
       file.words.append(sanitized)
       createdIDs.append(sanitized.id)
       seen.insert(key)
@@ -734,6 +741,11 @@ public final class CustomWordsManager {
     aliases
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty }
+      // Same ceiling as canonicals, for the same reason: an alias the app
+      // stores but cannot export breaks the round trip just as thoroughly.
+      .filter {
+        $0.unicodeScalars.count <= CustomWordsImportLimits.maximumStoredValueScalars
+      }
   }
 
   /// Guarantees no alias this import touched is left ambiguous, whatever
@@ -842,12 +854,12 @@ public final class CustomWordsManager {
   public func update(word: CustomWord, in words: inout [CustomWord]) throws {
     guard let index = words.firstIndex(where: { $0.id == word.id }) else { return }
     let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return }
+    guard !trimmed.isEmpty,
+      trimmed.unicodeScalars.count <= CustomWordsImportLimits.maximumStoredValueScalars
+    else { return }
     var edited = word
     edited.canonical = trimmed
-    edited.aliases = edited.aliases
-      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      .filter { !$0.isEmpty }
+    edited.aliases = Self.sanitizeAliases(edited.aliases)
 
     // An edit makes the word the user's, whatever it started as (#1680).
     // Editing a built-in produces a user override, but the value still carries
@@ -892,13 +904,13 @@ public final class CustomWordsManager {
     var changed = false
     for word in updates {
       let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !trimmed.isEmpty else { continue }
+      guard !trimmed.isEmpty,
+        trimmed.unicodeScalars.count <= CustomWordsImportLimits.maximumStoredValueScalars
+      else { continue }
       guard let idx = file.words.firstIndex(where: { $0.id == word.id }) else { continue }
       var sanitized = word
       sanitized.canonical = trimmed
-      sanitized.aliases = sanitized.aliases
-        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        .filter { !$0.isEmpty }
+      sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
       file.words[idx] = sanitized
       changed = true
     }
