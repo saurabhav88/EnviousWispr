@@ -15,12 +15,18 @@ import Foundation
 package enum PasteWordsParser {
   /// Separators, and only these.
   ///
+  /// Tab IS a separator, by the same reasoning that excludes the others: it
+  /// never appears inside a word. Treating it as ordinary whitespace instead
+  /// stored it INSIDE a canonical term, where it is invisible — and comparison
+  /// normalises it to a space, so the saved word could never match a
+  /// transcript (Codex review, #1683).
+  ///
   /// Semicolon, slash, hyphen, and plain space are deliberately NOT separators:
   /// "Envious Labs" is one word, "C++"/"C#"/".NET" must survive intact, and a
   /// hyphenated surname is not two people. Being conservative here is why the
   /// user can paste a messy list and still get what they meant — a wrong split
   /// silently invents words nobody typed.
-  private static let separators = CharacterSet(charactersIn: ",\n\r")
+  private static let separators = CharacterSet(charactersIn: ",\n\r\t")
 
   /// Scans the text ONCE, emitting words as it goes, and stops at `limit` + 1.
   ///

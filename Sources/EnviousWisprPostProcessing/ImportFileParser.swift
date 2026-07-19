@@ -117,7 +117,17 @@ package struct ExportedWordsFileParser: ImportFileParser {
 
   package func parse(data: Data) throws -> [CustomWordsImportCandidate] {
     do {
-      return try CustomWordsTransferDocument(data: data).candidatesForImport()
+      let document = try CustomWordsTransferDocument(data: data)
+      // Checked on the DECODED count, before expanding into candidates and
+      // minting a UUID for each. Checking afterwards spends the CPU and memory
+      // the ceiling exists to save — the same parse-then-check shape already
+      // fixed on the plain-text side, which is why both parsers now bound
+      // their own output (Codex review, #1683).
+      let ceiling = CustomWordsImportLimits.maximumExportedCandidates
+      guard document.words.count <= ceiling else {
+        throw ImportFileError.tooManyWords(found: document.words.count, limit: ceiling)
+      }
+      return try document.candidatesForImport()
     } catch let error as CustomWordsTransferError {
       throw ImportFileError.exportedWords(error)
     }

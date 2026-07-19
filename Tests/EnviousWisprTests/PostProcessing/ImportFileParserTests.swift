@@ -632,4 +632,36 @@ struct ImportFileParserTests {
     #expect(registry.parser(for: URL(fileURLWithPath: "/tmp/noextension")) == nil)
   }
 
+
+  @Test("an oversized export is refused before candidates are built")
+  func oversizedExportRefusedBeforeExpanding() async throws {
+    // Same parse-then-check shape as the plain-text side: converting every
+    // word and minting a UUID each, THEN checking, spends what the ceiling
+    // exists to save. Both parsers now bound their own output.
+    let ceiling = CustomWordsImportLimits.maximumExportedCandidates
+    let words = (0...ceiling).map {
+      CustomWord(canonical: "Term\($0)", aliases: [], category: .general)
+    }
+    let url = try write(try CustomWordsTransferDocument(words: words).encoded(), as: "words.json")
+
+    await #expect(
+      throws: ImportFileError.tooManyWords(found: ceiling + 1, limit: ceiling)
+    ) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
+  @Test("a tab separates words instead of hiding inside one")
+  func tabSeparatesWords() async throws {
+    // Accepted as whitespace but never split on, a tab was stored INSIDE a
+    // canonical term where it is invisible — and comparison normalises it to a
+    // space, so the saved word could never match a transcript.
+    let url = try write("Kubernetes\tPostgreSQL\nGitHub", as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.map { $0.canonical } == ["Kubernetes", "PostgreSQL", "GitHub"])
+    #expect(candidates.allSatisfy { !$0.canonical.contains("\t") })
+  }
+
 }
