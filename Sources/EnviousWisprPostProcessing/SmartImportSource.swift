@@ -41,6 +41,35 @@ package protocol SmartImportAdapter: Sendable {
 }
 
 extension SmartImportAdapter {
+  /// Refuse an implausibly large vocabulary file before decoding it.
+  ///
+  /// A word list is small. Reading an arbitrarily large or corrupted file into
+  /// memory to discover it is too big is the expensive way to find out, and
+  /// can end the app before the intended error is ever shown (code review r9).
+  static var maximumVocabularyBytes: Int { 8 * 1024 * 1024 }
+
+  /// Read a vocabulary file with that ceiling applied to the READ itself.
+  func boundedData(at url: URL, appName: String) throws -> Data {
+    guard let handle = try? FileHandle(forReadingFrom: url) else {
+      throw SmartImportError.unreadable(appName)
+    }
+    defer { try? handle.close() }
+    let ceiling = Self.maximumVocabularyBytes + 1
+    var data = Data()
+    while data.count < ceiling {
+      let chunk: Data?
+      do { chunk = try handle.read(upToCount: ceiling - data.count) } catch {
+        throw SmartImportError.unreadable(appName)
+      }
+      guard let chunk, !chunk.isEmpty else { break }
+      data.append(chunk)
+    }
+    guard data.count <= Self.maximumVocabularyBytes else {
+      throw SmartImportError.unreadable(appName)
+    }
+    return data
+  }
+
   /// The first location that actually exists, or nil.
   package var installedPath: URL? {
     candidatePaths.first { FileManager.default.fileExists(atPath: $0.path) }
@@ -72,9 +101,7 @@ package struct FluidVoiceAdapter: SmartImportAdapter {
   package init() {}
 
   package func loadWords(at url: URL) throws -> [String] {
-    guard let data = try? Data(contentsOf: url) else {
-      throw SmartImportError.unreadable(displayName)
-    }
+    let data = try boundedData(at: url, appName: displayName)
     guard let vocabulary = try? JSONDecoder().decode(Vocabulary.self, from: data) else {
       throw SmartImportError.unreadable(displayName)
     }
@@ -114,9 +141,7 @@ package struct SuperwhisperAdapter: SmartImportAdapter {
   package init() {}
 
   package func loadWords(at url: URL) throws -> [String] {
-    guard let data = try? Data(contentsOf: url) else {
-      throw SmartImportError.unreadable(displayName)
-    }
+    let data = try boundedData(at: url, appName: displayName)
     guard let settings = try? JSONDecoder().decode(Settings.self, from: data) else {
       throw SmartImportError.unreadable(displayName)
     }
@@ -155,6 +180,7 @@ package struct WisprFlowAdapter: SmartImportAdapter {
       SELECT COALESCE(NULLIF(TRIM(replacement), ''), phrase)
       FROM Dictionary
       WHERE isDeleted = 0 AND isSnippet = 0
+      LIMIT \(CustomWordsImportLimits.maximumCandidates + 1)
       """
 
     // Choose the connection mode from the WAL sidecar, rather than trying one

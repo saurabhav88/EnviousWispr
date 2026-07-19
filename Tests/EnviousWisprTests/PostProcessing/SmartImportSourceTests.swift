@@ -290,4 +290,27 @@ struct SmartImportSourceTests {
     // has seen populated.
     #expect(!ids.contains("typewhisper"))
   }
+
+  @Test("an implausibly large vocabulary file is refused before decoding")
+  func oversizedVocabularyFileIsRefusedBeforeDecoding() throws {
+    // Reading an arbitrary file into memory to discover it is too big can end
+    // the app before the intended error is ever shown (code review r9).
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("v.json")
+    let huge = Data(count: FluidVoiceAdapter.maximumVocabularyBytes + 1)
+    try huge.write(to: url)
+
+    #expect(throws: SmartImportError.unreadable("FluidVoice")) {
+      _ = try FluidVoiceAdapter().loadWords(at: url)
+    }
+  }
+
+  @Test("a normal-sized vocabulary file is still read")
+  func normalSizedVocabularyFileIsAccepted() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try write(#"{ "terms": [ { "text": "Kubernetes" } ] }"#, to: dir, as: "v.json")
+    #expect(try FluidVoiceAdapter().loadWords(at: url) == ["Kubernetes"])
+  }
 }
