@@ -71,6 +71,20 @@ final class CustomWordsCoordinator {
       customWordError = nil
       return .committed(receipt)
     } catch CustomWordsImportCommitError.staleLibrary {
+      // Stale means the on-disk list no longer matches what Review was built
+      // from, and the commit threw WITHOUT touching `customWords` — so the
+      // in-memory list is exactly the stale copy that caused this. Refresh it
+      // from disk before returning, or the sheet rebuilds its comparison from
+      // the same stale data, produces identical rows, and fails stale again on
+      // the next confirm: a loop the user cannot escape (cloud review, #1679).
+      //
+      // Fail closed on an unreadable file: keep the current list rather than
+      // clobbering it with an empty one. The commit still reports `.stale`,
+      // which is honest either way — nothing was written.
+      if let refreshed = manager.load(), refreshed != customWords {
+        customWords = refreshed
+        onWordsChanged?(customWords)
+      }
       customWordError = nil
       return .stale
     } catch {

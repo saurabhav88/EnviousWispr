@@ -445,4 +445,73 @@ struct CustomWordsCoordinatorLaunchFailureTests {
       [.posixPermissions: 0o600], ofItemAtPath: url.path)
     #expect(try Data(contentsOf: url) == bytesBefore)
   }
+
+  // MARK: - Stale import commit refreshes the in-memory list (#1679 cloud review)
+
+  @Test("a stale import commit refreshes the coordinator's list from disk")
+  func staleImportCommitRefreshesTheCoordinatorsListFromDisk() throws {
+    let url = Self.tempURL()
+    defer { Self.cleanup(url) }
+    let mgr = CustomWordsManager(fileURL: url)
+    var seeded = try #require(mgr.load())
+    try mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &seeded)
+
+    let coordinator = CustomWordsCoordinator(manager: mgr)
+    let baseline = coordinator.customWords
+    #expect(baseline.contains { $0.canonical == "Qualtrics" })
+
+    // Something outside this coordinator changes the file after Review was
+    // built — another window, a restored backup, a second process.
+    let outside = CustomWordsManager(fileURL: url)
+    var outsideWords = try #require(outside.load())
+    try outside.add(word: CustomWord(canonical: "Interloper"), to: &outsideWords)
+    #expect(coordinator.customWords.contains { $0.canonical == "Interloper" } == false)
+
+    let outcome = coordinator.commitImport(
+      CustomWordsImportCommitPlan(
+        baseline: CustomWordsImportLibrarySnapshot(words: baseline),
+        additions: [CustomWordsImportCandidate(canonical: "Kubernetes")],
+        replacements: []))
+
+    #expect(outcome == .stale)
+    // The whole point: the in-memory list must now match disk, so a rebuilt
+    // review compares against reality instead of looping on the same stale copy.
+    #expect(coordinator.customWords.contains { $0.canonical == "Interloper" })
+    #expect(coordinator.customWords.contains { $0.canonical == "Kubernetes" } == false)
+  }
+
+  @Test("a stale commit against an unreadable file keeps the current list")
+  func staleCommitAgainstAnUnreadableFileKeepsTheCurrentList() throws {
+    let url = Self.tempURL()
+    defer { Self.cleanup(url) }
+    let mgr = CustomWordsManager(fileURL: url)
+    var seeded = try #require(mgr.load())
+    try mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &seeded)
+
+    let coordinator = CustomWordsCoordinator(manager: mgr)
+    let before = coordinator.customWords
+    #expect(before.isEmpty == false)
+
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o000], ofItemAtPath: url.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    let outcome = coordinator.commitImport(
+      CustomWordsImportCommitPlan(
+        baseline: CustomWordsImportLibrarySnapshot(words: []),
+        additions: [CustomWordsImportCandidate(canonical: "Kubernetes")],
+        replacements: []))
+
+    // Fails closed: an unreadable file must never clobber the live list with
+    // an empty one on the way out of a failed commit.
+    #expect(
+      outcome
+        != .committed(
+          CustomWordsImportCommitReceipt(
+            addedIDs: [], replacedIDs: [], droppedAliasCollisions: [])))
+    #expect(coordinator.customWords == before)
+  }
 }
