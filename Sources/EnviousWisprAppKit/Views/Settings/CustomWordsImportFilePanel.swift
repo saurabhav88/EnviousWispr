@@ -19,6 +19,39 @@ enum CustomWordsImportFilePanel {
     panel.canChooseDirectories = false
     panel.canChooseFiles = true
 
-    return panel.runModal() == .OK ? panel.url : nil
+    // `allowedContentTypes` filters by CONFORMANCE, but the registry parses by
+    // EXACT extension — so on its own the panel would offer a `.csv` (which
+    // conforms to plain text) and the import would then refuse it. The user
+    // would have picked a file the app had just told them was acceptable
+    // (cloud review, #1683).
+    //
+    // The delegate closes that gap by asking the registry the SAME question
+    // the import will ask. Selectability is therefore defined in one place: a
+    // format is offered exactly when a parser claims it, so the two can never
+    // drift apart as formats are added.
+    let delegate = RegistryFilter(registry: registry)
+    panel.delegate = delegate
+
+    let choice = panel.runModal() == .OK ? panel.url : nil
+    // The panel holds its delegate weakly; keep it alive until the modal ends.
+    withExtendedLifetime(delegate) {}
+    return choice
+  }
+
+  /// Enables only the files the import can actually read.
+  private final class RegistryFilter: NSObject, NSOpenSavePanelDelegate {
+    private let registry: ImportFileRegistry
+
+    init(registry: ImportFileRegistry) {
+      self.registry = registry
+    }
+
+    func panel(_ sender: Any, shouldEnable url: URL) -> Bool {
+      // Directories stay enabled or the user cannot navigate to their file.
+      let isDirectory =
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+      if isDirectory { return true }
+      return registry.parser(for: url) != nil
+    }
   }
 }
