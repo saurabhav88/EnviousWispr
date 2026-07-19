@@ -181,10 +181,28 @@ package struct FileImportSource: CustomWordsImportSource {
     }
     defer { try? handle.close() }
 
-    guard
-      let data = try? handle.read(upToCount: Self.maximumFileBytes + 1)
-    else {
-      throw ImportFileError.unreadable
+    // Loop until EOF or one byte past the ceiling (code review r4). A single
+    // `read(upToCount:)` may return FEWER bytes without having reached the end
+    // — routine for network-mounted and cloud-backed files — which would have
+    // silently imported a truncated prefix of the user's list and could also
+    // miss that the file exceeds the limit. Accumulating until the file says
+    // it is done makes "how much is there" a fact rather than a guess.
+    var data = Data()
+    let ceiling = Self.maximumFileBytes + 1
+    while data.count < ceiling {
+      try Task.checkCancellation()
+      // `read(upToCount:)` signals EOF with NIL, and a genuine failure by
+      // throwing. Collapsing those two with `try?` turned every successful
+      // read-to-completion into "unreadable" — caught immediately by the
+      // existing tests, which is what they are for.
+      let chunk: Data?
+      do {
+        chunk = try handle.read(upToCount: ceiling - data.count)
+      } catch {
+        throw ImportFileError.unreadable
+      }
+      guard let chunk, !chunk.isEmpty else { break }  // EOF
+      data.append(chunk)
     }
     guard data.count <= Self.maximumFileBytes else {
       throw ImportFileError.tooLarge
