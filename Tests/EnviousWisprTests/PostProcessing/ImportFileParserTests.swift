@@ -477,7 +477,7 @@ struct ImportFileParserTests {
     // layer down: the size check runs before the parser is consulted, so the
     // app could still write a words file it then refused as .tooLarge.
     // Padded via alias text so the file genuinely exceeds the untrusted cap.
-    let filler = String(repeating: "x", count: 512)
+    let filler = String(repeating: "x", count: 400)
     let words = (0..<40_000).map {
       CustomWord(canonical: "Term\($0)", aliases: ["\(filler)\($0)"], category: .general)
     }
@@ -902,6 +902,46 @@ struct ImportFileParserTests {
     task.cancel()
 
     await #expect(throws: CancellationError.self) { try await task.value }
+  }
+
+
+  @Test("one enormous line is refused, not stored as a single word")
+  func oneEnormousLineIsRefused() async throws {
+    // A minified file or log picked by mistake passes the candidate ceiling as
+    // ONE entry, so without a length cap it became a multi-megabyte "word":
+    // copied through normalisation and comparison, rendered in Review, and
+    // persisted.
+    let huge = String(repeating: "x", count: 2_000_000)
+    let url = try write(huge, as: "words.txt")
+
+    await #expect(throws: CustomWordsImportValidationError.self) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
+  @Test("an exported file cannot smuggle an enormous word past the text cap")
+  func exportedFileLengthIsCappedToo() async throws {
+    // Both doors: the cap on the text scan means nothing if JSON can carry the
+    // same value straight through.
+    let word = CustomWord(
+      canonical: String(repeating: "x", count: 5_000), aliases: [], category: .general)
+    let url = try write(try CustomWordsTransferDocument(words: [word]).encoded(), as: "words.json")
+
+    await #expect(throws: CustomWordsImportValidationError.self) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
+  @Test("a long but realistic word still imports")
+  func longRealisticWordImports() async throws {
+    // The cap must clear real terms, including long compounds in scripts that
+    // do not space-separate.
+    let long = String(repeating: "り", count: 200)
+    let url = try write(long, as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.map { $0.canonical } == [long])
   }
 
 }

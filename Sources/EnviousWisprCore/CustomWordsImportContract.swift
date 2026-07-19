@@ -131,6 +131,12 @@ package struct CustomWordsImportBatch: Sendable, Equatable {
     for candidate in candidates {
       scanned += 1
       if scanned.isMultiple(of: 1_000) { try Task.checkCancellation() }
+      guard candidate.canonical.unicodeScalars.count
+        <= CustomWordsImportLimits.maximumStoredValueScalars
+      else {
+        throw CustomWordsImportValidationError.wordTooLong(
+          limit: CustomWordsImportLimits.maximumStoredValueScalars)
+      }
       guard CustomWordsImportTextPolicy.isAcceptableStoredValue(candidate.canonical) else {
         throw CustomWordsImportValidationError.unusableWord(canonical: candidate.canonical)
       }
@@ -138,6 +144,12 @@ package struct CustomWordsImportBatch: Sendable, Equatable {
         for alias in aliases {
           scanned += 1
           if scanned.isMultiple(of: 1_000) { try Task.checkCancellation() }
+          guard alias.unicodeScalars.count
+            <= CustomWordsImportLimits.maximumStoredValueScalars
+          else {
+            throw CustomWordsImportValidationError.wordTooLong(
+              limit: CustomWordsImportLimits.maximumStoredValueScalars)
+          }
           guard CustomWordsImportTextPolicy.isAcceptableStoredValue(alias) else {
             throw CustomWordsImportValidationError.unusableWord(canonical: candidate.canonical)
           }
@@ -188,6 +200,16 @@ package enum CustomWordsImportLimits {
   /// and index (Codex review, #1683). The cost of an import tracks the stored
   /// SURFACE, so that is what has a ceiling.
   package static let maximumExportedStoredValues = 400_000
+
+  /// Longest a single canonical or alias may be, in Unicode scalars.
+  ///
+  /// A custom word is a word or short phrase. Without this, one enormous line
+  /// — a minified file or a log picked by mistake — passes the candidate
+  /// ceiling as a SINGLE entry and becomes a multi-megabyte "word" that is
+  /// copied through normalisation and comparison, rendered in Review, and
+  /// persisted (Codex review, #1683). Generous enough for any real term,
+  /// including long compounds in scripts that do not space-separate.
+  package static let maximumStoredValueScalars = 512
 }
 
 package protocol CustomWordsImportSource: Sendable {
@@ -213,6 +235,7 @@ extension CustomWordsImportSource {
 /// A candidate that cannot be stored, and why (#1683).
 package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatable {
   case unusableWord(canonical: String)
+  case wordTooLong(limit: Int)
 
   /// Replaces anything the policy refuses with a visible `U+XXXX` label, so a
   /// deceptive scalar cannot act on the UI that reports it.
@@ -227,6 +250,10 @@ package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatab
 
   package var errorDescription: String? {
     switch self {
+    case .wordTooLong(let limit):
+      return
+        "That contains an entry longer than \(limit) characters, which is too "
+        + "long to be a word. Nothing was imported."
     case .unusableWord(let canonical):
       // Source-neutral: this validator now runs for pasted text and files
       // alike, so naming a file was wrong half the time (Codex review, #1683).

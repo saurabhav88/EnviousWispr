@@ -70,6 +70,15 @@ package enum PasteWordsParser {
         guard flush() else { return results }
         continue
       }
+      // Stop BUILDING an over-long entry rather than assembling megabytes and
+      // rejecting it afterwards — the same reason the candidate ceiling stops
+      // the scan rather than trimming the result (Codex review, #1683).
+      guard buffer.unicodeScalars.count
+        < CustomWordsImportLimits.maximumStoredValueScalars
+      else {
+        throw CustomWordsImportValidationError.wordTooLong(
+          limit: CustomWordsImportLimits.maximumStoredValueScalars)
+      }
       buffer.unicodeScalars.append(scalar)
     }
     _ = flush()
