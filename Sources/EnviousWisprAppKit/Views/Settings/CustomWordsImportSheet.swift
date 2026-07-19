@@ -39,11 +39,8 @@ struct CustomWordsImportSheet: View {
           ImportPasteScreen(model: model)
             .transition(Self.screenTransition)
         case .upload:
-          ImportPlaceholderScreen(
-            notice: "File import arrives with a later update.",
-            model: model
-          )
-          .transition(Self.screenTransition)
+          ImportUploadScreen(model: model)
+            .transition(Self.screenTransition)
         case .smartImportAppPicker:
           ImportPlaceholderScreen(
             notice: "Importing from other apps arrives with a later update.",
@@ -369,6 +366,34 @@ private struct ImportPasteScreen: View {
       return "1 word ready to review."
     default:
       return "\(count) words ready to review."
+    }
+  }
+}
+
+// MARK: - Upload a file (PR-U1)
+
+private struct ImportUploadScreen: View {
+  let model: CustomWordsImportFlowModel
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text("Choose an EnviousWispr backup to restore, or a plain text list of words.")
+        .settingsReadingCopy()
+
+      Button {
+        // The panel is opened first and the file read only after a choice, so
+        // cancelling reads nothing and starts no work.
+        if let url = CustomWordsImportFilePanel.chooseFile() {
+          model.begin(with: FileImportSource(url: url))
+        }
+      } label: {
+        Label("Choose a file", systemImage: "folder")
+      }
+      .buttonStyle(.borderedProminent)
+
+      Text("Spreadsheets aren't supported yet.")
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
     }
   }
 }
