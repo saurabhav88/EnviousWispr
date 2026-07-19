@@ -106,6 +106,14 @@ final class CustomWordsImportFlowModel {
   private(set) var staleNotice: String?
   /// Surfaced on the result screen when PR-F2b dropped colliding aliases.
   private(set) var droppedAliasCollisionCount = 0
+  /// What the user typed on the Paste screen (#1681).
+  ///
+  /// Lives here rather than in the screen's own `@State` because the sheet
+  /// rebuilds each screen on every step change: Back from Review would
+  /// otherwise recreate the editor empty and silently discard a list the user
+  /// may have spent real effort assembling. Back exists precisely so they can
+  /// edit it, so the text has to outlive the screen.
+  var pasteDraft = ""
 
   private let dependencies: Dependencies
   /// The library the open review was built against — PR-F2b re-validates it at
@@ -206,6 +214,7 @@ final class CustomWordsImportFlowModel {
     rows = []
     staleNotice = nil
     droppedAliasCollisionCount = 0
+    pasteDraft = ""
     selectedMethod = nil
     step = .methodPicker
   }

@@ -169,4 +169,34 @@ struct CustomWordsImportFlowModelTests {
     #expect(failed.step == .result(.failed(message: "could not read the file")))
     #expect(nothingFound.step != failed.step)
   }
+
+  // MARK: - Paste draft (#1681)
+
+  @Test("the pasted draft survives going back from review")
+  func pasteDraftSurvivesBackFromReview() {
+    // Back from Review exists so the user can EDIT what they pasted. Holding
+    // the draft in the screen's own state meant the sheet rebuilt an empty
+    // editor and silently discarded the list (code review r1).
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Kubernetes\nAnthropic"
+    model.beginWork(.comparing)
+    model.showReview()
+    #expect(model.step == .review)
+
+    model.goBack()
+
+    #expect(model.step == .paste)
+    #expect(model.pasteDraft == "Kubernetes\nAnthropic")
+  }
+
+  @Test("resetting the sheet clears the pasted draft")
+  func resetClearsThePasteDraft() {
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Kubernetes"
+    model.reset()
+    #expect(model.pasteDraft.isEmpty)
+    #expect(model.step == .methodPicker)
+  }
 }
