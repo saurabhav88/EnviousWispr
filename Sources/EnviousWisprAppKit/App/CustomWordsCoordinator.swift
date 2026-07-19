@@ -111,19 +111,16 @@ final class CustomWordsCoordinator {
       onWordsChanged?(customWords)
     }
 
-    // A corrupted file was ARCHIVED aside at launch, so this reload sees a
-    // legitimately missing file and reports a clean, empty library. That reads
-    // as success but the user's real words are sitting in the archive — and an
-    // export taken now would write an empty backup over the one they picked,
-    // destroying the copy they still had (code review, #1683).
+    // NOTE: the corrupted-library refusal deliberately does NOT live here.
+    // An earlier version put it inside this reload and that re-created the
+    // stale-import loop it was meant to prevent: the import path stopped
+    // adopting the current library, so every re-comparison saw the same old
+    // list and Confirm could never succeed. This method answers "can I read
+    // it", and must always adopt what it reads; `canExportCurrentWords`
+    // answers "is it safe to write out". Two questions, two answers.
     //
-    // Once they have authored a word since, they have visibly accepted the
-    // fresh start and are building on it, so the list is theirs again.
-    if wordsLoadFailureAtLaunch == .corrupted,
-      !refreshed.contains(where: { $0.source == .user })
-    {
-      return false
-    }
+    // A rebase reintroduced the old inline refusal alongside the new one, and
+    // the export test caught the contradiction immediately.
     return true
   }
 
