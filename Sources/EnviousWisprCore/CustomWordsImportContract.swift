@@ -123,7 +123,10 @@ package struct CustomWordsImportBatch: Sendable, Equatable {
   /// every source, which is the gap that let exported JSON skip the character
   /// rules the text path enforced.
   package func validated() throws -> CustomWordsImportBatch {
-    for candidate in candidates {
+    for (index, candidate) in candidates.enumerated() {
+      // The ceiling allows 400,000 stored values, so this loop is long enough
+      // to outlive a dismissed sheet (Codex review, #1683).
+      if index.isMultiple(of: 1_000) { try Task.checkCancellation() }
       guard CustomWordsImportTextPolicy.isAcceptableStoredValue(candidate.canonical) else {
         throw CustomWordsImportValidationError.unusableWord(canonical: candidate.canonical)
       }
@@ -204,12 +207,30 @@ extension CustomWordsImportSource {
 package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatable {
   case unusableWord(canonical: String)
 
+  /// Replaces anything the policy refuses with a visible `U+XXXX` label, so a
+  /// deceptive scalar cannot act on the UI that reports it.
+  static func displayable(_ value: String) -> String {
+    String(
+      value.unicodeScalars.map { scalar -> String in
+        CustomWordsImportTextPolicy.isAcceptableStoredValue(String(scalar))
+          ? String(scalar)
+          : "<U+" + String(format: "%04X", scalar.value) + ">"
+      }.joined())
+  }
+
   package var errorDescription: String? {
     switch self {
     case .unusableWord(let canonical):
       // Source-neutral: this validator now runs for pasted text and files
       // alike, so naming a file was wrong half the time (Codex review, #1683).
-      let shown = canonical.isEmpty ? "a blank entry" : "\"\(canonical)\""
+      //
+      // The value is SANITISED before display. Echoing it raw meant the very
+      // character rejected for rendering deceptively — a bidi override, a line
+      // separator — got rendered into the message explaining its rejection,
+      // where it can reorder or break the error text itself. Naming the
+      // offending scalar is more useful to the user than showing it.
+      let shown =
+        canonical.isEmpty ? "a blank entry" : "\"\(Self.displayable(canonical))\""
       return
         "That contains a word EnviousWispr can't store (\(shown)). "
         + "Nothing was imported."

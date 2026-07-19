@@ -842,4 +842,35 @@ struct ImportFileParserTests {
     #expect(message.contains("Nothing was imported"))
   }
 
+
+  @Test("a rejected character is named, never rendered, in the error")
+  func rejectedCharacterIsNotEchoedIntoTheError() throws {
+    // Echoing the raw value meant the very character rejected for rendering
+    // deceptively got rendered into the message explaining its rejection,
+    // where it can reorder the error text itself.
+    let message = try #require(
+      CustomWordsImportValidationError.unusableWord(canonical: "Kub\u{202E}ernetes")
+        .errorDescription)
+
+    #expect(!message.unicodeScalars.contains { $0.value == 0x202E })
+    #expect(message.contains("<U+202E>"))
+    // The readable part still survives, so the user can find the entry.
+    #expect(message.contains("Kub"))
+  }
+
+  @Test("validation stops when the sheet is dismissed")
+  func validationHonoursCancellation() async throws {
+    // 400,000 stored values is long enough to outlive a dismissed sheet.
+    let candidates = (0..<5_000).map {
+      CustomWordsImportCandidate(canonical: "Term\($0)")
+    }
+    let batch = CustomWordsImportBatch(
+      sourceID: "test", sourceDisplayName: "test", candidates: candidates)
+
+    let task = Task { try batch.validated() }
+    task.cancel()
+
+    await #expect(throws: CancellationError.self) { try await task.value }
+  }
+
 }
