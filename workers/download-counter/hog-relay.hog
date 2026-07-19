@@ -16,7 +16,11 @@ if (not match(inputs.workerUrl, '^https://.*')) {
     throw Error('Invalid worker URL. Must start with https://')
 }
 
-let res := fetch(inputs.workerUrl, {
+// inputs.workerUrl is the Worker's base URL (as documented in the README's
+// deploy/cutover steps); the actual route is appended here, not left to the
+// operator to remember — a bare POST to the base URL 404s, since the Worker
+// only serves /count and /seed.
+let res := fetch(f'{inputs.workerUrl}/count', {
     'method': 'POST',
     'headers': {
         'Content-Type': 'application/json',
