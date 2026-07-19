@@ -46,7 +46,19 @@ package protocol ImportFileParser: Sendable {
   var displayName: String { get }
   /// Content types this parser claims.
   var contentTypes: [UTType] { get }
+  /// How many words this format may carry, or nil for "as many as the file
+  /// size allows".
+  ///
+  /// The ceiling exists to bound UNTRUSTED input — a pasted or hand-made list
+  /// of unknown provenance. It is a property of the format, not of importing
+  /// in general, which is why it lives here rather than at the one call site.
+  var maximumCandidates: Int? { get }
   func parse(data: Data) throws -> [CustomWordsImportCandidate]
+}
+
+extension ImportFileParser {
+  /// Formats default to the shared ceiling; a format opts OUT deliberately.
+  package var maximumCandidates: Int? { CustomWordsImportLimits.maximumCandidates }
 }
 
 /// The file EnviousWispr itself exports.
@@ -60,6 +72,18 @@ package struct ExportedWordsFileParser: ImportFileParser {
   package let identifier = "exported-words"
   package let displayName = "EnviousWispr words file"
   package let contentTypes: [UTType] = [.json]
+
+  /// No word ceiling, because this file is the user's OWN library coming home.
+  ///
+  /// Nothing caps how many words a library may accumulate — contacts import
+  /// and hand-added terms both grow it freely — so the shared ceiling made the
+  /// app able to WRITE a file it would then refuse to read, advising the user
+  /// to split a JSON file by hand (cloud review, #1683). An export you cannot
+  /// import is not an export.
+  ///
+  /// Still bounded, just by the honest limit: `maximumFileBytes`, which is
+  /// checked before parsing.
+  package let maximumCandidates: Int? = nil
 
   package init() {}
 
@@ -356,9 +380,8 @@ package struct FileImportSource: CustomWordsImportSource {
     try Task.checkCancellation()
 
     let candidates = try parser.parse(data: data)
-    guard candidates.count <= Self.maximumCandidates else {
-      throw ImportFileError.tooManyWords(
-        found: candidates.count, limit: Self.maximumCandidates)
+    if let ceiling = parser.maximumCandidates, candidates.count > ceiling {
+      throw ImportFileError.tooManyWords(found: candidates.count, limit: ceiling)
     }
 
     return CustomWordsImportBatch(

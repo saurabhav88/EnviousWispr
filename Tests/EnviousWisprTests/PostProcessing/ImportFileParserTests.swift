@@ -425,4 +425,36 @@ struct ImportFileParserTests {
     #expect(candidates.map { $0.canonical } == ["東京"])
   }
 
+
+  @Test("a library larger than the paste ceiling still exports and imports back")
+  func oversizedLibraryRoundTrips() async throws {
+    // Nothing caps how many words a library accumulates, so the app could
+    // WRITE a file it then refused to read — telling the user to split a JSON
+    // file by hand. An export you cannot import is not an export.
+    let words = (0..<(CustomWordsImportLimits.maximumCandidates + 500)).map {
+      CustomWord(canonical: "Term\($0)", aliases: [], category: .general)
+    }
+    let url = try write(try CustomWordsTransferDocument(words: words).encoded(), as: "words.json")
+
+    let batch = try await FileImportSource(url: url).loadCandidates()
+
+    #expect(batch.candidates.count == words.count)
+  }
+
+  @Test("a pasted-style text list is still held to the ceiling")
+  func plainTextListStillCapped() async throws {
+    // The ceiling is not gone, it is scoped: untrusted input still has one.
+    let many = (0..<(CustomWordsImportLimits.maximumCandidates + 1))
+      .map { "Term\($0)" }.joined(separator: "\n")
+    let url = try write(many, as: "words.txt")
+
+    await #expect(
+      throws: ImportFileError.tooManyWords(
+        found: CustomWordsImportLimits.maximumCandidates + 1,
+        limit: CustomWordsImportLimits.maximumCandidates)
+    ) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
 }
