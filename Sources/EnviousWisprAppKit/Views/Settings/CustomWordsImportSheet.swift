@@ -42,11 +42,8 @@ struct CustomWordsImportSheet: View {
           ImportUploadScreen(model: model)
             .transition(Self.screenTransition)
         case .smartImportAppPicker:
-          ImportPlaceholderScreen(
-            notice: "Importing from other apps arrives with a later update.",
-            model: model
-          )
-          .transition(Self.screenTransition)
+          ImportSmartAppPickerScreen(model: model)
+            .transition(Self.screenTransition)
         case .review:
           ImportReviewScreen(model: model)
             .transition(Self.screenTransition)
@@ -448,6 +445,67 @@ private struct ImportUploadScreen: View {
       Text("Spreadsheets aren't supported yet.")
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
+    }
+  }
+}
+
+// MARK: - From another app (PR-4a/b/c)
+
+private struct ImportSmartAppPickerScreen: View {
+  let model: CustomWordsImportFlowModel
+  /// Detection runs when this screen appears, not at launch or when the sheet
+  /// opens: an installed competitor is never quietly inspected in the
+  /// background, only when the user has asked to see this list.
+  @State private var installed: [String] = []
+  @State private var didLookForApps = false
+
+  private var registry: SmartImportRegistry { .v1 }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text("Bring the words across from another dictation app you use.")
+        .settingsReadingCopy()
+
+      if !didLookForApps {
+        HStack(spacing: 8) {
+          ProgressView().controlSize(.small)
+          Text("Looking for apps on this Mac.").settingsReadingCopy()
+        }
+      } else if installed.isEmpty {
+        InsetNotice(
+          text: "No supported dictation apps found on this Mac. "
+            + "EnviousWispr can read Wispr Flow, FluidVoice, and Superwhisper.")
+      } else {
+        ForEach(registry.adapters.filter { installed.contains($0.identifier) }, id: \.identifier) {
+          adapter in
+          ImportMethodCard(
+            icon: "app.badge",
+            title: adapter.displayName,
+            subtitle: "Read your words from \(adapter.displayName)."
+          ) {
+            model.begin(with: SmartImportSource(adapter: adapter))
+          }
+        }
+      }
+
+      // Says the honest shape of the migration before they commit to it: this
+      // brings words across, not the corrections that map onto them.
+      Text(
+        "Words come across on their own. Alternate spellings you set up in the other app stay there."
+      )
+      .font(.stHelper)
+      .foregroundStyle(.stTextSecondary)
+    }
+    .task {
+      // Off the main actor: this touches the filesystem.
+      let found = await Task.detached { () -> [String] in
+        // Detached rather than a plain Task: a plain Task inherits MainActor
+        // from this view, and these are disk existence checks across several
+        // locations. Nothing here needs actor context.
+        SmartImportRegistry.v1.adapters.filter(\.isInstalled).map(\.identifier)
+      }.value
+      installed = found
+      didLookForApps = true
     }
   }
 }
