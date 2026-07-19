@@ -1074,4 +1074,38 @@ struct ImportFileParserTests {
     #expect(candidate.storedValues == ["Kubernetes", "k8s", "kube"])
   }
 
+
+  @Test("padding is not part of the word")
+  func paddingDoesNotCountTowardWordLength() async throws {
+    // Judging the raw buffer counted whitespace as part of the word, so a
+    // heavily padded short entry — a fixed-width list — failed as "too long".
+    let padded = String(repeating: " ", count: 600) + "Kubernetes"
+      + String(repeating: " ", count: 600)
+    let url = try write(padded, as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.map { $0.canonical } == ["Kubernetes"])
+  }
+
+  @Test("a file of nothing but spaces imports nothing, rather than erroring")
+  func whitespaceOnlyFileIsEmptyNotAnError() async throws {
+    let url = try write(String(repeating: " ", count: 600), as: "words.txt")
+
+    let batch = try await FileImportSource(url: url).loadCandidates()
+
+    #expect(batch.candidates.isEmpty)
+  }
+
+  @Test("a genuinely over-long word is still refused")
+  func genuinelyLongWordStillRefused() async throws {
+    // The rule still bites on real content, just not on padding.
+    let url = try write(
+      "  " + String(repeating: "x", count: 600) + "  ", as: "words.txt")
+
+    await #expect(throws: CustomWordsImportValidationError.self) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
 }

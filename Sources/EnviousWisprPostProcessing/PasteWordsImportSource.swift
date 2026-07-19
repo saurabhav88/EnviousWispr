@@ -48,6 +48,9 @@ package enum PasteWordsParser {
     var buffer = ""
     let ceiling = limit.map { $0 + 1 }
     var scanned = 0
+    // flush() reports "stop" for both success-with-ceiling-reached and a real
+    // failure, so the failure is carried out rather than inferred.
+    var lengthFailure: CustomWordsImportValidationError?
 
     func flush() -> Bool {
       defer { buffer.removeAll(keepingCapacity: true) }
@@ -66,6 +69,16 @@ package enum PasteWordsParser {
       guard !trimmed.isEmpty,
         CustomWordsImportTextPolicy.hasVisibleContent(trimmed)
       else { return true }
+      // Length is judged on the TRIMMED value, matching the validator. Judging
+      // the raw buffer counted padding as part of the word, so 513 spaces or a
+      // heavily padded short entry failed as "too long" (cloud review, #1683).
+      guard trimmed.unicodeScalars.count
+        <= CustomWordsImportLimits.maximumStoredValueScalars
+      else {
+        lengthFailure = CustomWordsImportValidationError.wordTooLong(
+          limit: CustomWordsImportLimits.maximumStoredValueScalars)
+        return false
+      }
       // Deduplicate on the compare engine's own key, so "GitHub" and "github"
       // in one paste collapse the same way they would against the library —
       // and the FIRST spelling wins, because that is the one the user typed
@@ -80,14 +93,18 @@ package enum PasteWordsParser {
       scanned += 1
       if scanned.isMultiple(of: 100_000) { try Task.checkCancellation() }
       if separators.contains(scalar) {
-        guard flush() else { return results }
+        guard flush() else {
+          if let lengthFailure { throw lengthFailure }
+          return results
+        }
         continue
       }
-      // Stop BUILDING an over-long entry rather than assembling megabytes and
-      // rejecting it afterwards — the same reason the candidate ceiling stops
-      // the scan rather than trimming the result (Codex review, #1683).
+      // A MEMORY bound, not the word-length rule: it exists so one enormous
+      // line cannot grow the buffer to the whole file. The rule itself is
+      // applied to the trimmed value in flush(), because padding is not part
+      // of the word. Generous multiple so trimming always gets its say first.
       guard buffer.unicodeScalars.count
-        < CustomWordsImportLimits.maximumStoredValueScalars
+        < CustomWordsImportLimits.maximumStoredValueScalars * 4
       else {
         throw CustomWordsImportValidationError.wordTooLong(
           limit: CustomWordsImportLimits.maximumStoredValueScalars)
@@ -95,6 +112,7 @@ package enum PasteWordsParser {
       buffer.unicodeScalars.append(scalar)
     }
     _ = flush()
+    if let lengthFailure { throw lengthFailure }
     return results
   }
 }
