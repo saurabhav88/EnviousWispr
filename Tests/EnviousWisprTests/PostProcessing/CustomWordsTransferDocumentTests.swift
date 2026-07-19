@@ -125,16 +125,25 @@ struct CustomWordsTransferDocumentTests {
     #expect(candidate.suggestedAliases.isEmpty)
   }
 
-  @Test("a foreign id is review identity only")
-  func candidatesForImportPreservesForeignIDAsReviewIdentityOnly() throws {
+  @Test("a candidate never carries the exported persistence id")
+  func candidatesForImportMintsFreshReviewIdentities() throws {
     let original = word("Kubernetes")
     let data = try CustomWordsTransferDocument(words: [original]).encoded()
     let candidate = try #require(
       try CustomWordsTransferDocument(data: data).candidatesForImport().first)
-    // It round-trips so the review row is stable, but the commit path mints a
-    // fresh UUID on add and keeps the local word's UUID on replace — this id
-    // never becomes a persisted local identity.
-    #expect(candidate.id == original.id)
+
+    // Restoring onto the Mac that wrote the backup would otherwise make the
+    // candidate id equal the live word's id, and the collision detector would
+    // report each word's own aliases as colliding with itself (code review).
+    #expect(candidate.id != original.id)
+  }
+
+  @Test("two candidates from one backup have distinct review identities")
+  func candidatesForImportGivesEachRowItsOwnIdentity() throws {
+    let candidates = CustomWordsTransferDocument(
+      words: [word("Kubernetes"), word("Anthropic")]
+    ).candidatesForImport()
+    #expect(Set(candidates.map(\.id)).count == 2)
   }
 
   // MARK: - Built-in tagging (the export-scope prerequisite)

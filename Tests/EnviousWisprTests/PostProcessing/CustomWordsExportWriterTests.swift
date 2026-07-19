@@ -46,6 +46,26 @@ struct CustomWordsExportWriterTests {
     #expect(decoded.words.map(\.canonical) == ["Kubernetes"])
   }
 
+  @Test("overwriting a world-readable file still lands at owner-only")
+  func writerOverwritingAWorldReadableFileEnforcesMode0600() throws {
+    // The bug this freezes (code review): `replaceItemAt` preserves the
+    // DESTINATION's metadata by default, so overwriting an existing 0644 file
+    // silently discarded the temp file's 0600 and left a backup full of
+    // personal names world-readable. The new-file test could never catch it.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let destination = dir.appendingPathComponent("words.json")
+    try Data("previous contents".utf8).write(to: destination)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o644], ofItemAtPath: destination.path)
+
+    try CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
+
+    let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)
+    let permissions = try #require(attributes[.posixPermissions] as? NSNumber)
+    #expect(permissions.int16Value == 0o600)
+  }
+
   @Test("no temporary file is left behind after a successful write")
   func writerLeavesNoTemporaryFile() throws {
     let dir = makeDirectory()

@@ -100,10 +100,17 @@ package struct CustomWordsTransferDocument: Codable, Sendable, Equatable {
 
   /// Hand the decoded words to the shared import pipeline.
   ///
-  /// Never returns `[CustomWord]`: an exported `id` is foreign to this Mac and
-  /// must not become a local persisted UUID. It survives only as review-row
-  /// identity — a committed addition mints a fresh UUID, and a committed
-  /// replacement keeps the *existing local* word's UUID.
+  /// Never returns `[CustomWord]`: an exported `id` is a persistence UUID from
+  /// whichever Mac wrote the file, and must not become a local persisted UUID.
+  ///
+  /// The exported id is **not reused as review identity either** (code review).
+  /// Restoring a backup onto the Mac that wrote it makes every candidate id
+  /// equal to the live word's id, and the collision detector — which seeds
+  /// ownership from the existing library first — then reports each word's own
+  /// aliases as colliding with itself. Review would warn that spellings "may
+  /// not be added" when replacement keeps them. A fresh transient id per
+  /// candidate keeps review rows distinct from library entries, which is the
+  /// only thing this id is for.
   ///
   /// Every authority field is `.supplied`, including the two authoritative
   /// clears no other source can express: `.supplied([])` means "this word
@@ -113,7 +120,7 @@ package struct CustomWordsTransferDocument: Codable, Sendable, Equatable {
   package func candidatesForImport() -> [CustomWordsImportCandidate] {
     words.map { word in
       CustomWordsImportCandidate(
-        id: word.id,
+        id: UUID(),
         canonical: word.canonical,
         aliases: .supplied(word.aliases),
         suggestedAliases: [],
