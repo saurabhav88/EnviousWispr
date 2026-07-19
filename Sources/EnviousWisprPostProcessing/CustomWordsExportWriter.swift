@@ -10,9 +10,15 @@ import Foundation
 /// once; a shared temp name would let them overwrite each other's partial
 /// bytes and produce one corrupt file.
 package enum CustomWordsExportWriter {
-  package static func write(_ document: CustomWordsTransferDocument, to destination: URL)
-    throws
-  {
+  /// `@concurrent` so this always runs OFF the caller's actor (code review r5).
+  /// The caller is a SwiftUI button action on the main actor, and a plain
+  /// `async` here would inherit that isolation — an export to a network,
+  /// cloud-synced, or external destination would then block the settings
+  /// window until the filesystem finished. It also makes the cancellation
+  /// check below meaningful, which it could not be in a synchronous call.
+  @concurrent package static func write(
+    _ document: CustomWordsTransferDocument, to destination: URL
+  ) async throws {
     let data = try document.encoded()
     let fm = FileManager.default
     let tmpURL =

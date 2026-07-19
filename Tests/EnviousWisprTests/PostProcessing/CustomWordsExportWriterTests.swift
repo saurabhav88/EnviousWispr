@@ -21,12 +21,12 @@ struct CustomWordsExportWriterTests {
   }
 
   @Test("a new file is created with owner-only permissions")
-  func writerCreatesNewFileWithMode0600() throws {
+  func writerCreatesNewFileWithMode0600() async throws {
     let dir = makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
     let destination = dir.appendingPathComponent("words.json")
 
-    try CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
+    try await CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
 
     let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)
     let permissions = try #require(attributes[.posixPermissions] as? NSNumber)
@@ -34,20 +34,20 @@ struct CustomWordsExportWriterTests {
   }
 
   @Test("an existing file is replaced atomically")
-  func writerAtomicallyReplacesExistingFile() throws {
+  func writerAtomicallyReplacesExistingFile() async throws {
     let dir = makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
     let destination = dir.appendingPathComponent("words.json")
     try Data("previous contents".utf8).write(to: destination)
 
-    try CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
+    try await CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
 
     let decoded = try CustomWordsTransferDocument(data: Data(contentsOf: destination))
     #expect(decoded.words.map(\.canonical) == ["Kubernetes"])
   }
 
   @Test("overwriting a world-readable file still lands at owner-only")
-  func writerOverwritingAWorldReadableFileEnforcesMode0600() throws {
+  func writerOverwritingAWorldReadableFileEnforcesMode0600() async throws {
     // The bug this freezes (code review): `replaceItemAt` preserves the
     // DESTINATION's metadata by default, so overwriting an existing 0644 file
     // silently discarded the temp file's 0600 and left a backup full of
@@ -59,7 +59,7 @@ struct CustomWordsExportWriterTests {
     try FileManager.default.setAttributes(
       [.posixPermissions: 0o644], ofItemAtPath: destination.path)
 
-    try CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
+    try await CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
 
     let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)
     let permissions = try #require(attributes[.posixPermissions] as? NSNumber)
@@ -67,11 +67,11 @@ struct CustomWordsExportWriterTests {
   }
 
   @Test("no temporary file is left behind after a successful write")
-  func writerLeavesNoTemporaryFile() throws {
+  func writerLeavesNoTemporaryFile() async throws {
     let dir = makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    try CustomWordsExportWriter.write(
+    try await CustomWordsExportWriter.write(
       document(["Kubernetes"]), to: dir.appendingPathComponent("words.json"))
 
     let leftovers = try FileManager.default
@@ -81,7 +81,7 @@ struct CustomWordsExportWriterTests {
   }
 
   @Test("an unwritable destination leaves any existing file intact")
-  func writerLeavesExistingFileIntactOnFailure() throws {
+  func writerLeavesExistingFileIntactOnFailure() async throws {
     let dir = makeDirectory()
     defer {
       try? FileManager.default.setAttributes(
@@ -96,8 +96,8 @@ struct CustomWordsExportWriterTests {
     try FileManager.default.setAttributes(
       [.posixPermissions: 0o500], ofItemAtPath: dir.path)
 
-    #expect(throws: (any Error).self) {
-      try CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
+    await #expect(throws: (any Error).self) {
+      try await CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
     }
 
     try FileManager.default.setAttributes(
@@ -106,7 +106,7 @@ struct CustomWordsExportWriterTests {
   }
 
   @Test("a directory at the destination is never replaced or emptied")
-  func writerRefusesToReplaceADirectory() throws {
+  func writerRefusesToReplaceADirectory() async throws {
     // The bug this freezes (code review r2): the move-then-replace fallback
     // originally replaced on ANY move failure, so a directory sitting at the
     // destination path would be replaced by the export file and its contents
@@ -118,8 +118,8 @@ struct CustomWordsExportWriterTests {
     let inhabitant = destination.appendingPathComponent("keep-me.txt")
     try Data("precious".utf8).write(to: inhabitant)
 
-    #expect(throws: (any Error).self) {
-      try CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
+    await #expect(throws: (any Error).self) {
+      try await CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
     }
 
     var isDirectory: ObjCBool = false
@@ -138,12 +138,12 @@ struct CustomWordsExportWriterTests {
     // The reason the temp filename is unique rather than fixed: a shared temp
     // name would let these two interleave into one corrupt file.
     async let first: Void = Task.detached {
-      try CustomWordsExportWriter.write(
+      try await CustomWordsExportWriter.write(
         CustomWordsTransferDocument(words: [CustomWord(canonical: "Kubernetes")]),
         to: destination)
     }.value
     async let second: Void = Task.detached {
-      try CustomWordsExportWriter.write(
+      try await CustomWordsExportWriter.write(
         CustomWordsTransferDocument(words: [CustomWord(canonical: "Anthropic")]),
         to: destination)
     }.value

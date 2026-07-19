@@ -146,13 +146,20 @@ struct YourWordsView: View {
         return
       }
       guard let destination = CustomWordsExportPanel.chooseDestination() else { return }
-      let userWords = customWordsCoordinator.customWords.filter { $0.source == .user }
-      do {
-        try CustomWordsExportWriter.write(
-          CustomWordsTransferDocument(words: userWords), to: destination)
-        exportError = nil
-      } catch {
-        exportError = error.localizedDescription
+      // Snapshot on the main actor, write off it (code review r5). The list is
+      // read here, synchronously, so the file reflects the moment the user
+      // confirmed rather than whenever the write happened to run; only the
+      // filesystem work moves off, so a slow network or cloud destination
+      // cannot freeze the settings window.
+      let document = CustomWordsTransferDocument(
+        words: customWordsCoordinator.customWords.filter { $0.source == .user })
+      Task {
+        do {
+          try await CustomWordsExportWriter.write(document, to: destination)
+          exportError = nil
+        } catch {
+          exportError = error.localizedDescription
+        }
       }
     }
   #endif
