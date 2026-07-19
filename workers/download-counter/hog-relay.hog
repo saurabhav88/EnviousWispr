@@ -1,0 +1,54 @@
+// PostHog Hog script for the "Discord: Download Notification" CDP
+// destination (id 019d35b0-c128-0000-30a8-5fc2570a8a88). PATCH this in via
+// the PostHog API to replace the old live-query script, alongside
+// inputs_schema: [workerUrl (string, required), workerSecret (string,
+// secret, required)] — drops webhookUrl/phApiKey entirely, since the Worker
+// now owns the real Discord webhook and never queries PostHog itself.
+//
+// Trigger filter stays unchanged: fires on download_clicked and
+// download_redirect (see analytics-operations.md FACT:
+// download-notification-cdp for the live filters.events bytecode).
+//
+// Field mapping matches workers/download-counter/src/index.js's expected
+// /count body exactly (see REQUIRED_EVENT_TYPES / handleCount destructure).
+
+if (not match(inputs.workerUrl, '^https://.*')) {
+    throw Error('Invalid worker URL. Must start with https://')
+}
+if (match(inputs.workerUrl, '/$')) {
+    // A trailing slash here would make the /count append below build "//count",
+    // which the Worker does not serve — reject explicitly rather than
+    // silently constructing a URL that 404s every real download.
+    throw Error('Invalid worker URL. Must not end with a trailing slash')
+}
+
+// inputs.workerUrl is the Worker's base URL (as documented in the README's
+// deploy/cutover steps); the actual route is appended here, not left to the
+// operator to remember — a bare POST to the base URL 404s, since the Worker
+// only serves /count and /seed.
+let res := fetch(f'{inputs.workerUrl}/count', {
+    'method': 'POST',
+    'headers': {
+        'Content-Type': 'application/json',
+        'x-trigger-secret': inputs.workerSecret
+    },
+    'body': {
+        'eventId': event.uuid,
+        'event': event.event,
+        'ip': event.properties.$ip ?? '',
+        'city': event.properties.$geoip_city_name ?? '',
+        'country': event.properties.$geoip_country_name ?? '',
+        'countryCode': event.properties.$geoip_country_code ?? '',
+        'referrer': event.properties.$referrer ?? '',
+        'page': event.properties.page ?? '',
+        'browser': event.properties.$browser ?? '',
+        'os': event.properties.$os ?? '',
+        'lang': event.properties.$browser_language ?? '',
+        'excludedReason': event.properties.excluded_reason ?? '',
+        'sourceBucket': event.properties.source_bucket ?? ''
+    }
+})
+
+if (res.status >= 400) {
+    throw Error(f'Download counter Worker call failed: {res.status}')
+}

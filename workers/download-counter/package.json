@@ -1,0 +1,8 @@
+{
+  "name": "enviouswispr-download-counter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

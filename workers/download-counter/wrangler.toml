@@ -1,0 +1,56 @@
+# Download-notification counter (#1691): replaces the brittle Hog-script live
+# PostHog query with an owned, always-fast counter. PostHog's "Discord: Download
+# Notification" CDP destination becomes a thin relay that POSTs event fields
+# here; this Worker owns counting, IP-based rage-click dedup, retry-safe
+# Discord delivery, and formatting. Plan: docs/feature-requests/issue-1691-2026-07-19-download-counter-worker.md
+#
+# Durable Object `DownloadCounter` (instance name always "global" for real
+# traffic, hardcoded in src/index.js — never taken from the request) owns the
+# counter, IP-dedup markers, and per-event Discord-delivery state.
+#
+# No [triggers] cron here: this worker is a pure request/response relay, no
+# scheduled trigger needed (and the account is already at its 5-cron
+# free-plan limit, #1092).
+
+name = "enviouswispr-download-counter"
+main = "src/index.js"
+compatibility_date = "2026-07-19"
+
+[[durable_objects.bindings]]
+name = "DOWNLOAD_COUNTER"
+class_name = "DownloadCounter"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DownloadCounter"]
+
+# Secrets (set via `npx wrangler secret put <NAME>`, never in this file):
+#   DISCORD_WEBHOOK_URL  - Keychain `enviouswispr.discord-webhook-downloads`
+#   TRIGGER_SECRET       - gates /count and /seed; sent by the PostHog Hog
+#                          relay as the `x-trigger-secret` header
+#   IP_HASH_SECRET       - keyed HMAC secret for IP dedup; new random value,
+#                          not reused from any other secret
+
+# Isolated smoke-test deployment (`wrangler deploy --env smoke`). Cloudflare
+# environments get independently namespaced Durable Object storage even with
+# an identical binding name and idFromName() string, so this environment's
+# "global" DownloadCounter instance is a structurally separate object from
+# production's — the smoke script can never touch real counter state, no
+# matter what it sends. Shares the production DISCORD_WEBHOOK_URL (so the
+# smoke script can prove a real Discord post lands; its message is always
+# prefixed "🧪 SMOKE TEST — ignore") but uses its OWN TRIGGER_SECRET and
+# IP_HASH_SECRET, so a leaked smoke secret can't authenticate against
+# production.
+[env.smoke]
+name = "enviouswispr-download-counter-smoke"
+
+[env.smoke.vars]
+SMOKE = "true"
+
+[[env.smoke.durable_objects.bindings]]
+name = "DOWNLOAD_COUNTER"
+class_name = "DownloadCounter"
+
+[[env.smoke.migrations]]
+tag = "v1"
+new_sqlite_classes = ["DownloadCounter"]
