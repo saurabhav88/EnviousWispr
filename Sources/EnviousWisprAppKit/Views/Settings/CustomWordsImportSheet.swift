@@ -36,11 +36,8 @@ struct CustomWordsImportSheet: View {
           ImportMethodPickerScreen(model: model)
             .transition(Self.screenTransition)
         case .paste:
-          ImportPlaceholderScreen(
-            notice: "Paste import arrives with a later update.",
-            model: model
-          )
-          .transition(Self.screenTransition)
+          ImportPasteScreen(model: model)
+            .transition(Self.screenTransition)
         case .upload:
           ImportPlaceholderScreen(
             notice: "File import arrives with a later update.",
@@ -310,6 +307,67 @@ private struct ImportReviewRowView: View {
     .overlay(
       RoundedRectangle(cornerRadius: 10).strokeBorder(Color.stDivider, lineWidth: 1)
     )
+  }
+}
+
+// MARK: - Paste words (PR-P1)
+
+private struct ImportPasteScreen: View {
+  let model: CustomWordsImportFlowModel
+  @State private var text = ""
+  @FocusState private var isEditorFocused: Bool
+
+  /// Parsed live so the button can name the real outcome instead of promising
+  /// something the parser might not agree with.
+  private var wordCount: Int { PasteWordsParser.parse(text).count }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text("Paste your words, one per line or separated by commas.")
+        .settingsReadingCopy()
+
+      TextEditor(text: $text)
+        .focused($isEditorFocused)
+        .font(.body)
+        .scrollContentBackground(.hidden)
+        .padding(8)
+        .frame(height: 200)
+        .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+          RoundedRectangle(cornerRadius: 10).strokeBorder(Color.stDivider, lineWidth: 1)
+        )
+        .accessibilityLabel("Words to import")
+
+      HStack {
+        // Says what will actually happen, including the two cases people trip
+        // on: nothing typed yet, and duplicates collapsing to fewer words.
+        Text(summary)
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+        Spacer(minLength: 0)
+        Button("Continue") {
+          model.begin(with: PasteWordsImportSource(text: text))
+        }
+        .keyboardShortcut(.defaultAction)
+        .buttonStyle(.borderedProminent)
+        .disabled(wordCount == 0)
+      }
+    }
+    .onAppear { isEditorFocused = true }
+  }
+
+  private var summary: String {
+    let count = wordCount
+    switch count {
+    case 0 where text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+      return "Nothing pasted yet."
+    case 0:
+      return "No words found in that text."
+    case 1:
+      return "1 word ready to review."
+    default:
+      return "\(count) words ready to review."
+    }
   }
 }
 
