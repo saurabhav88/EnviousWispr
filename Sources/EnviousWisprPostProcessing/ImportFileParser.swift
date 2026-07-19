@@ -227,10 +227,13 @@ package struct PlainTextImportFileParser: ImportFileParser {
   /// part of a word (cloud review, #1683). The general category knows about
   /// every control, in every block, without a range to keep in sync.
   ///
-  /// Deliberately NOT rejected: the format category (zero-width joiners and
-  /// non-joiners). Those are load-bearing in Hindi, Persian, and emoji
-  /// sequences, so refusing them would break exactly the international word
-  /// lists this feature is meant to support.
+  /// Deliberately allowed: the zero-width joiner and non-joiner, and ONLY
+  /// those. They are load-bearing in Hindi, Persian, and emoji sequences, so
+  /// refusing them would break exactly the international word lists this
+  /// feature exists to support. Naming the two beats accepting the whole
+  /// format category, which also admits invisible and deceptive scalars —
+  /// a mid-file byte-order mark, or a bidi override that makes a word render
+  /// as something other than what it is.
   ///
   /// Real word lists do not contain NULs or stray control characters. This is
   /// what stops ANY decode step from laundering binary — or text in an
@@ -240,8 +243,14 @@ package struct PlainTextImportFileParser: ImportFileParser {
   private static func isPlausiblyText(_ text: String) -> Bool {
     text.unicodeScalars.allSatisfy { scalar in
       if scalar == "\n" || scalar == "\r" || scalar == "\t" { return true }
+      // Two format scalars are word-forming and must survive; the rest of the
+      // category must not. Allowing all of `.format` to protect these also
+      // admitted a mid-file byte-order mark and bidi overrides like U+202E,
+      // which nothing downstream strips — so they would have been saved INSIDE
+      // a custom word, invisibly (cloud review, #1683).
+      if scalar.value == 0x200C || scalar.value == 0x200D { return true }
       switch scalar.properties.generalCategory {
-      case .control, .surrogate, .privateUse, .unassigned:
+      case .control, .surrogate, .privateUse, .unassigned, .format:
         return false
       default:
         return true
@@ -302,10 +311,6 @@ package struct ImportFileRegistry: Sendable {
 
 /// Reads a user-chosen file and turns it into a batch.
 package struct FileImportSource: CustomWordsImportSource {
-  /// Refuse before allocating. A word list is small; anything of this size is
-  /// a mistaken selection (a video, a database, a disk image), and reading it
-  /// into memory to discover that is the expensive way to find out.
-  package static var maximumFileBytes: Int { CustomWordsImportLimits.maximumImportFileBytes }
   /// Shared with every other import source, so no door has a different limit.
   package static var maximumCandidates: Int { CustomWordsImportLimits.maximumCandidates }
 

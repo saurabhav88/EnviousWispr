@@ -201,7 +201,7 @@ struct ImportFileParserTests {
   func oversizedFileIsRefusedBeforeReading() async throws {
     // Refusing by size beats discovering it after allocating: a word list is
     // small, so anything this big is a mistaken selection.
-    let url = try write(Data(count: FileImportSource.maximumFileBytes + 1), as: "huge.txt")
+    let url = try write(Data(count: CustomWordsImportLimits.maximumImportFileBytes + 1), as: "huge.txt")
     await #expect(throws: ImportFileError.tooLarge) {
       _ = try await FileImportSource(url: url).loadCandidates()
     }
@@ -514,6 +514,25 @@ struct ImportFileParserTests {
     #expect(candidates.count == 2)
     #expect(candidates[0].canonical.unicodeScalars.contains { $0.value == 0x200D })
     #expect(candidates[1].canonical.unicodeScalars.contains { $0.value == 0x200C })
+  }
+
+
+  @Test("invisible and deceptive format characters are refused")
+  func deceptiveFormatCharactersAreRefused() async throws {
+    // Allowing the whole format category to protect joiners also admitted
+    // these. Nothing downstream strips them, so they would be saved INSIDE a
+    // word: a mid-file byte-order mark is invisible, and a bidi override makes
+    // a word render as something other than what it is.
+    for text in [
+      "Kub\u{FEFF}ernetes",  // mid-file byte-order mark
+      "Kub\u{202E}ernetes",  // right-to-left override
+      "Kub\u{00AD}ernetes",  // soft hyphen
+    ] {
+      let url = try write(text, as: "words.txt")
+      await #expect(throws: ImportFileError.unreadable) {
+        try await FileImportSource(url: url).loadCandidates()
+      }
+    }
   }
 
 }
