@@ -11,7 +11,7 @@ enum CustomWordsExportPanel {
     let panel = NSSavePanel()
     panel.title = "Export your words"
     panel.prompt = "Export"
-    panel.nameFieldStringValue = "EnviousWispr Custom Words.json"
+    panel.nameFieldStringValue = "EnviousWispr Words.json"
     panel.allowedContentTypes = [.json]
     panel.canCreateDirectories = true
     panel.isExtensionHidden = false

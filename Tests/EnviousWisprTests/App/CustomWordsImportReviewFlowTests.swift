@@ -53,7 +53,7 @@ struct CustomWordsImportReviewFlowTests {
 
   struct StubSource: CustomWordsImportSource {
     let candidates: [CustomWordsImportCandidate]
-    func loadCandidates() async throws -> CustomWordsImportBatch {
+    func loadRawCandidates() async throws -> CustomWordsImportBatch {
       CustomWordsImportBatch(
         sourceID: "test", sourceDisplayName: "Test", candidates: candidates)
     }

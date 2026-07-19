@@ -33,7 +33,7 @@ enum CustomWordsExportAction {
   static func run(
     coordinator: CustomWordsCoordinator,
     chooseDestination: () -> URL?,
-    write: @escaping @Sendable (CustomWordsTransferDocument, URL) async throws -> Void
+    write: @escaping @Sendable (Data, URL) async throws -> Void
   ) async -> Outcome {
     // 1. Ask first. Refreshing before this made cancelling mutate state.
     guard let destination = chooseDestination() else { return .cancelled }
@@ -49,11 +49,65 @@ enum CustomWordsExportAction {
     let document = CustomWordsTransferDocument(
       words: coordinator.customWords.filter { $0.source == .user })
 
+    // 5. Refuse to write a file our own importer would reject. The exporter
+    //    and importer are one round trip, so a limit enforced on only one side
+    //    is a promise the pair cannot keep.
+    //
+    //    Encoding happens OFF the main actor: at the 64 MB ceiling doing it
+    //    here froze the settings window, and the writer then encoded the same
+    //    document a second time. One encode, off-main, and the same bytes are
+    //    both measured and written.
     do {
-      try await write(document, destination)
+      // The WHOLE preflight runs off-main, not just the encode. Moving only
+      // the encode left a pass that mints a candidate per word and validates
+      // every word and alias running on the main actor — at the ceiling that
+      // is still enough to freeze the settings window (Codex review, #1683).
+      let (encoded, refusal) = try await Self.encodedAndChecked(document)
+      if let refusal { return .failed(message: refusal) }
+      try await write(encoded, destination)
       return .exported
     } catch {
       return .failed(message: error.localizedDescription)
+    }
+  }
+
+  @concurrent private static func encodedAndChecked(
+    _ document: CustomWordsTransferDocument
+  ) async throws -> (Data, String?) {
+    let encoded = try document.encoded()
+    return (encoded, refusalIfUnimportable(document: document, encoded: encoded))
+  }
+
+  /// Asks the IMPORTER whether it can read these bytes, rather than keeping a
+  /// second list of what "importable" means.
+  ///
+  /// Five separate review rounds found the same defect here: a constraint
+  /// added to import and not to export (word ceiling, then byte ceiling, then
+  /// character policy, then stored-surface ceiling). Every fix was a promise
+  /// to remember the other side next time, and every next time forgot. So the
+  /// preflight no longer describes importability at all — it runs the actual
+  /// import path over the actual bytes. A ceiling added to the parser from now
+  /// on is enforced here the moment it exists, with nothing to keep in sync.
+  nonisolated static func refusalIfUnimportable(
+    document: CustomWordsTransferDocument, encoded: Data
+  ) -> String? {
+    // The byte ceiling belongs to the READER, not the parser, so it is the one
+    // check that has to be stated here. It mirrors FileImportSource.
+    if encoded.count > CustomWordsImportLimits.maximumExportedFileBytes {
+      return
+        "Your words are too large to fit in one file EnviousWispr could read "
+        + "back. Nothing was exported."
+    }
+    do {
+      let candidates = try ExportedWordsFileParser().parse(data: encoded)
+      _ = try CustomWordsImportBatch(
+        sourceID: "exported-words",
+        sourceDisplayName: "EnviousWispr words file",
+        candidates: candidates
+      ).validated()
+      return nil
+    } catch {
+      return "\(error.localizedDescription) Nothing was exported."
     }
   }
 }

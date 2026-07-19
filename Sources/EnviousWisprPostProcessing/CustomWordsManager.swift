@@ -42,6 +42,7 @@ public struct BuiltinWord: Sendable {
 package enum CustomWordsPersistenceError: LocalizedError, Sendable, Equatable {
   case unreadableExistingFile
   case corruptedExistingFile
+  case unusableValue
 
   package var errorDescription: String? {
     switch self {
@@ -50,6 +51,9 @@ package enum CustomWordsPersistenceError: LocalizedError, Sendable, Equatable {
     case .corruptedExistingFile:
       return
         "Your saved words file was damaged and moved aside for recovery. No edit or import was applied."
+    case .unusableValue:
+      return
+        "That word or spelling can't be saved. It may be too long, or contain characters that aren't part of a word."
     }
   }
 }
@@ -398,6 +402,17 @@ public final class CustomWordsManager {
   public func add(word: CustomWord, to words: inout [CustomWord]) throws {
     let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return }
+    // The same rule importing enforces, applied where words are AUTHORED, so
+    // the library can never hold what export refuses (cloud review, #1683).
+    //
+    // THROWS rather than returning, unlike the batch doors below. A user typed
+    // this one value and is watching for the result: a silent return dismisses
+    // the sheet on a nil error, so the app reports a save it did not make. The
+    // batch doors keep skipping because per-item skip IS their contract.
+    guard Self.isStorable(trimmed) else { throw CustomWordsPersistenceError.unusableValue }
+    guard Self.everyAliasIsStorable(word.aliases) else {
+      throw CustomWordsPersistenceError.unusableValue
+    }
     guard
       !words.contains(where: {
         $0.canonical.caseInsensitiveCompare(trimmed) == .orderedSame
@@ -418,9 +433,7 @@ public final class CustomWordsManager {
 
     var sanitized = word
     sanitized.canonical = trimmed
-    sanitized.aliases = sanitized.aliases
-      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      .filter { !$0.isEmpty }
+    sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
     file.words.append(sanitized)
     try saveFile(file)
     words = mergedWords(file: file)
@@ -450,7 +463,7 @@ public final class CustomWordsManager {
 
     for word in incoming {
       let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !trimmed.isEmpty else { continue }
+      guard Self.isStorable(trimmed) else { continue }
       let key = trimmed.lowercased()
       guard !seen.contains(key) else { continue }
 
@@ -468,9 +481,7 @@ public final class CustomWordsManager {
 
       var sanitized = word
       sanitized.canonical = trimmed
-      sanitized.aliases = sanitized.aliases
-        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        .filter { !$0.isEmpty }
+      sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
       file.words.append(sanitized)
       createdIDs.append(sanitized.id)
       seen.insert(key)
@@ -730,10 +741,40 @@ public final class CustomWordsManager {
     )
   }
 
-  private static func sanitizeAliases(_ aliases: [String]) -> [String] {
+  /// Whether a value may enter the library AT ALL, from any authoring path.
+  ///
+  /// The same question importing asks, asked here — because "what may be
+  /// stored" is one rule and the library is what it protects. Applying only
+  /// PART of it here (length, but not the character policy) let the editor
+  /// author a word that export then refused, which is the round-trip
+  /// asymmetry again with authoring as the door (cloud review, #1683).
+  static func isStorable(_ value: String) -> Bool {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty,
+      trimmed.unicodeScalars.count <= CustomWordsImportLimits.maximumStoredValueScalars
+    else { return false }
+    return CustomWordsImportTextPolicy.isAcceptableStoredValue(trimmed)
+  }
+
+  /// True when every alias the user actually authored can be stored.
+  ///
+  /// Blank aliases are not a refusal — the editor leaves empty rows behind and
+  /// dropping those is ordinary trimming, not a lost edit. A NON-blank alias
+  /// that the policy refuses is the lie this catches: `sanitizeAliases` would
+  /// filter it out and the save would report success without it.
+  private static func everyAliasIsStorable(_ aliases: [String]) -> Bool {
     aliases
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty }
+      .allSatisfy { isStorable($0) }
+  }
+
+  private static func sanitizeAliases(_ aliases: [String]) -> [String] {
+    aliases
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      // The whole rule, not a piece of it: an alias the app stores but cannot
+      // export breaks the round trip just as thoroughly as a canonical does.
+      .filter { isStorable($0) }
   }
 
   /// Guarantees no alias this import touched is left ambiguous, whatever
@@ -842,12 +883,14 @@ public final class CustomWordsManager {
   public func update(word: CustomWord, in words: inout [CustomWord]) throws {
     guard let index = words.firstIndex(where: { $0.id == word.id }) else { return }
     let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return }
+    // Same authoring door as `add`, same reason it throws: see there.
+    guard Self.isStorable(trimmed) else { throw CustomWordsPersistenceError.unusableValue }
+    guard Self.everyAliasIsStorable(word.aliases) else {
+      throw CustomWordsPersistenceError.unusableValue
+    }
     var edited = word
     edited.canonical = trimmed
-    edited.aliases = edited.aliases
-      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      .filter { !$0.isEmpty }
+    edited.aliases = Self.sanitizeAliases(edited.aliases)
 
     // An edit makes the word the user's, whatever it started as (#1680).
     // Editing a built-in produces a user override, but the value still carries
@@ -892,13 +935,11 @@ public final class CustomWordsManager {
     var changed = false
     for word in updates {
       let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !trimmed.isEmpty else { continue }
+      guard Self.isStorable(trimmed) else { continue }
       guard let idx = file.words.firstIndex(where: { $0.id == word.id }) else { continue }
       var sanitized = word
       sanitized.canonical = trimmed
-      sanitized.aliases = sanitized.aliases
-        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        .filter { !$0.isEmpty }
+      sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
       file.words[idx] = sanitized
       changed = true
     }

@@ -20,7 +20,10 @@ struct CustomWordsExportActionTests {
   /// is the thing this codebase already learned not to do.
   @MainActor
   final class WriteSpy {
-    var document: CustomWordsTransferDocument?
+    /// Captures the BYTES now, which is what actually reaches disk — so
+    /// assertions decode what would have been written rather than trusting an
+    /// object that was never serialised.
+    var written: Data?
     var writeCount = 0
   }
 
@@ -74,11 +77,11 @@ struct CustomWordsExportActionTests {
     let outcome = await CustomWordsExportAction.run(
       coordinator: coordinator,
       chooseDestination: { self.tempURL() },
-      write: { document, _ in await MainActor.run { spy.document = document } }
+      write: { data, _ in await MainActor.run { spy.written = data } }
     )
 
     #expect(outcome == .refusedUnsafeLibrary)
-    #expect(spy.document == nil, "an empty export must never reach the writer")
+    #expect(spy.written == nil, "an empty export must never reach the writer")
   }
 
   @Test("a healthy library exports exactly the user's own words")
@@ -91,11 +94,11 @@ struct CustomWordsExportActionTests {
     let outcome = await CustomWordsExportAction.run(
       coordinator: coordinator,
       chooseDestination: { self.tempURL() },
-      write: { document, _ in await MainActor.run { spy.document = document } }
+      write: { data, _ in await MainActor.run { spy.written = data } }
     )
 
     #expect(outcome == .exported)
-    let document = try #require(spy.document)
+    let document = try CustomWordsTransferDocument(data: try #require(spy.written))
     #expect(document.words.map(\.canonical).sorted() == ["Kubernetes", "Qualtrics"])
     // Built-ins are excluded: this is "your words", not "everything".
     #expect(!document.words.contains { $0.canonical == "GitHub" })
@@ -144,10 +147,182 @@ struct CustomWordsExportActionTests {
     let outcome = await CustomWordsExportAction.run(
       coordinator: coordinator,
       chooseDestination: { self.tempURL() },
-      write: { document, _ in await MainActor.run { spy.document = document } }
+      write: { data, _ in await MainActor.run { spy.written = data } }
     )
 
     #expect(outcome == .refusedUnsafeLibrary)
-    #expect(spy.document == nil, "an empty export must never reach the writer")
+    #expect(spy.written == nil, "an empty export must never reach the writer")
   }
+
+  @Test("export refuses to write a file the importer would reject")
+  func exportRefusesUnimportableFile() throws {
+    // The exporter and importer are one round trip. Raising the IMPORT
+    // ceilings while export kept no preflight left the same "writes a file it
+    // then refuses" hole open from the other direction.
+    let over = (0...CustomWordsImportLimits.maximumExportedCandidates).map {
+      CustomWord(canonical: "Term\($0)", aliases: [], category: .general)
+    }
+    let document = CustomWordsTransferDocument(words: over)
+
+    let refusal = CustomWordsExportAction.refusalIfUnimportable(
+      document: document, encoded: try document.encoded())
+
+    #expect(refusal != nil)
+    #expect(refusal?.contains("Nothing was exported") == true)
+  }
+
+  @Test("an export at the limit is allowed through")
+  func exportAtLimitAllowed() throws {
+    let atLimit = (0..<CustomWordsImportLimits.maximumExportedCandidates).map {
+      CustomWord(canonical: "T\($0)", aliases: [], category: .general)
+    }
+    let document = CustomWordsTransferDocument(words: atLimit)
+
+    #expect(
+      CustomWordsExportAction.refusalIfUnimportable(
+        document: document, encoded: try document.encoded()) == nil)
+  }
+
+  @Test("a word the importer would refuse blocks the export")
+  func unstorableWordBlocksExport() throws {
+    // Size was not the only way to write an unimportable file. A word authored
+    // in the editor can hold a scalar the import policy refuses, so a
+    // count-and-bytes preflight still produced a file that import rejected
+    // wholesale. The preflight runs the importer's OWN validation now, so the
+    // two cannot describe "storable" differently.
+    let document = CustomWordsTransferDocument(words: [
+      CustomWord(canonical: "Kub\u{202E}ernetes", aliases: [], category: .general)
+    ])
+
+    let refusal = CustomWordsExportAction.refusalIfUnimportable(
+      document: document, encoded: try document.encoded())
+
+    #expect(refusal?.contains("Nothing was exported") == true)
+  }
+
+  @Test("a normal library is not blocked by the storability check")
+  func normalLibraryPassesStorabilityCheck() throws {
+    // The check must not become a wall: real words, including non-Latin ones
+    // and joiners, export fine.
+    let document = CustomWordsTransferDocument(words: [
+      CustomWord(canonical: "Kubernetes", aliases: ["k8s"], category: .brand),
+      CustomWord(canonical: "東京", aliases: [], category: .general),
+      CustomWord(canonical: "क्\u{200D}ष", aliases: [], category: .general),
+    ])
+
+    #expect(
+      CustomWordsExportAction.refusalIfUnimportable(
+        document: document, encoded: try document.encoded()) == nil)
+  }
+
+  @Test("export refuses a library that trips the stored-surface ceiling")
+  func exportRefusesOnStoredSurface() throws {
+    // The fifth instance of one defect: a ceiling added to import and not to
+    // export. This library has an acceptable WORD count and byte size, and
+    // trips only the surface ceiling — which the previous preflight, holding
+    // its own list of checks, did not know about.
+    let perWord = 5_000
+    let count = (CustomWordsImportLimits.maximumExportedStoredValues / perWord) + 2
+    let words = (0..<count).map { index in
+      CustomWord(
+        canonical: "Term\(index)",
+        aliases: (0..<perWord).map { "a\(index)_\($0)" },
+        category: .general)
+    }
+    let document = CustomWordsTransferDocument(words: words)
+    #expect(document.words.count < CustomWordsImportLimits.maximumExportedCandidates)
+
+    let refusal = CustomWordsExportAction.refusalIfUnimportable(
+      document: document, encoded: try document.encoded())
+
+    #expect(refusal?.contains("Nothing was exported") == true)
+    // Reported as words AND alternate spellings, not as a word count the user
+    // cannot see anywhere.
+    #expect(refusal?.contains("alternate spellings") == true)
+  }
+
+  @Test("whatever the importer refuses, export refuses — by construction")
+  func exportRefusalTracksTheImporter() throws {
+    // The property that matters is not that today's ceilings are checked, but
+    // that a ceiling added to the parser LATER is enforced here with no change
+    // to this file. Proven by driving the real parser: anything it rejects,
+    // the preflight rejects, because the preflight IS the parser.
+    let unstorable = CustomWordsTransferDocument(words: [
+      CustomWord(canonical: "Kub\u{202E}ernetes", aliases: [], category: .general)
+    ])
+    let overWordCeiling = CustomWordsTransferDocument(
+      words: (0...CustomWordsImportLimits.maximumExportedCandidates).map {
+        CustomWord(canonical: "T\($0)", aliases: [], category: .general)
+      })
+
+    for document in [unstorable, overWordCeiling] {
+      let encoded = try document.encoded()
+      let importerRefuses: Bool
+      do {
+        let candidates = try ExportedWordsFileParser().parse(data: encoded)
+        _ = try CustomWordsImportBatch(
+          sourceID: "exported-words", sourceDisplayName: "x", candidates: candidates
+        ).validated()
+        importerRefuses = false
+      } catch {
+        importerRefuses = true
+      }
+      let exportRefuses =
+        CustomWordsExportAction.refusalIfUnimportable(
+          document: document, encoded: encoded) != nil
+
+      #expect(importerRefuses == exportRefuses)
+    }
+  }
+
+  @Test("the app cannot author a word it would then refuse to export")
+  func authoringCannotCreateAnUnexportableLibrary() throws {
+    // "What may be stored" is ONE rule, and the library is what it protects.
+    // Applying part of it here — length but not the character policy — let the
+    // editor author a word export then refused. Both halves now come from the
+    // same predicate every authoring path shares.
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-author-\(UUID().uuidString).json")
+    let manager = CustomWordsManager(fileURL: url)
+    var live = manager.load() ?? []
+
+    let tooLong = String(
+      repeating: "x", count: CustomWordsImportLimits.maximumStoredValueScalars + 1)
+    let deceptive = "Kub\u{202E}ernetes"
+    let invisible = "\u{200D}"
+
+    // Refused LOUDLY, not silently. A silent return dismissed the edit sheet
+    // on a nil error, so the user was shown a save that never happened
+    // (cloud review, #1683).
+    for bad in [tooLong, deceptive, invisible] {
+      #expect(throws: CustomWordsPersistenceError.unusableValue) {
+        try manager.add(word: CustomWord(canonical: bad), to: &live)
+      }
+      #expect(
+        !live.contains { $0.canonical == bad },
+        "authored an unstorable word: \(bad.debugDescription)")
+    }
+
+    // An unstorable ALIAS is the same lie one layer down: dropping it quietly
+    // reports a save that lost part of what the user typed.
+    #expect(throws: CustomWordsPersistenceError.unusableValue) {
+      try manager.add(
+        word: CustomWord(canonical: "Kubernetes", aliases: [deceptive, tooLong, "k8s"]),
+        to: &live)
+    }
+    #expect(!live.contains { $0.canonical == "Kubernetes" })
+
+    // Blank alias rows are not a refusal — the editor leaves them behind and
+    // trimming them away loses nothing the user meant.
+    try manager.add(
+      word: CustomWord(canonical: "Kubernetes", aliases: ["k8s", "  ", ""]), to: &live)
+    #expect(live.contains { $0.canonical == "Kubernetes" && $0.aliases == ["k8s"] })
+
+    // Whatever the library holds after all that, export accepts it.
+    let document = CustomWordsTransferDocument(words: live.filter { $0.source == .user })
+    #expect(
+      CustomWordsExportAction.refusalIfUnimportable(
+        document: document, encoded: try document.encoded()) == nil)
+  }
+
 }

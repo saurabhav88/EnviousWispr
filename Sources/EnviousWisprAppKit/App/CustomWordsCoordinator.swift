@@ -110,6 +110,17 @@ final class CustomWordsCoordinator {
       customWords = refreshed
       onWordsChanged?(customWords)
     }
+
+    // NOTE: the corrupted-library refusal deliberately does NOT live here.
+    // An earlier version put it inside this reload and that re-created the
+    // stale-import loop it was meant to prevent: the import path stopped
+    // adopting the current library, so every re-comparison saw the same old
+    // list and Confirm could never succeed. This method answers "can I read
+    // it", and must always adopt what it reads; `canExportCurrentWords`
+    // answers "is it safe to write out". Two questions, two answers.
+    //
+    // A rebase reintroduced the old inline refusal alongside the new one, and
+    // the export test caught the contradiction immediately.
     return true
   }
 

@@ -17,9 +17,8 @@ package enum CustomWordsExportWriter {
   /// window until the filesystem finished. It also makes the cancellation
   /// check below meaningful, which it could not be in a synchronous call.
   @concurrent package static func write(
-    _ document: CustomWordsTransferDocument, to destination: URL
+    _ data: Data, to destination: URL
   ) async throws {
-    let data = try document.encoded()
     let fm = FileManager.default
     let tmpURL =
       destination

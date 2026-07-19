@@ -53,6 +53,38 @@ package struct CustomWordsImportCandidate: Identifiable, Sendable, Hashable {
   /// round-trip); `.unspecified` = the source knows nothing about strictness.
   package var minSimilarityOverride: CustomWordsImportField<Double?>
 
+  /// Every string this candidate could put into the library.
+  ///
+  /// Enumerated in ONE place so validation cannot check some of them: it
+  /// covered canonical and aliases while `suggestedAliases` — which the commit
+  /// path also persists — went unchecked (cloud review, #1683). A field added
+  /// here is validated automatically; a field added anywhere else is not, so
+  /// this is the list to extend.
+  package var storedValues: [String] {
+    var values = [canonical]
+    if case .supplied(let aliases) = aliases { values.append(contentsOf: aliases) }
+    values.append(contentsOf: suggestedAliases)
+    return values
+  }
+
+  /// The candidate as it would be STORED: every stored value trimmed.
+  ///
+  /// Pairs with `storedValues` — that property says which fields reach the
+  /// library, this one puts them in the form the library keeps. A field added
+  /// to one must be added to the other, or validation measures a value nobody
+  /// stores while the real one goes downstream untouched.
+  package func trimmed() -> CustomWordsImportCandidate {
+    var copy = self
+    copy.canonical = canonical.trimmingCharacters(in: .whitespacesAndNewlines)
+    if case .supplied(let values) = aliases {
+      copy.aliases = .supplied(values.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+    }
+    copy.suggestedAliases = suggestedAliases.map {
+      $0.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return copy
+  }
+
   package init(
     id: UUID = UUID(),
     canonical: String,
@@ -111,8 +143,204 @@ package struct CustomWordsImportBatch: Sendable, Equatable {
     self.candidates = candidates
     self.notices = notices
   }
+
+  /// Refuses the WHOLE batch if any candidate is unstorable.
+  ///
+  /// All-or-nothing on purpose: silently dropping bad rows would show the user
+  /// a review screen that quietly disagrees with their file, and importing
+  /// them would put invisible characters inside stored words. A refusal names
+  /// the offending entry so the file can be fixed.
+  ///
+  /// Checks the values that actually get STORED — canonical and aliases — for
+  /// every source, which is the gap that let exported JSON skip the character
+  /// rules the text path enforced.
+  package func validated() throws -> CustomWordsImportBatch {
+    // Walks `storedValues` rather than naming fields here, so a field added to
+    // the candidate is validated by existing. Naming them individually is what
+    // let `suggestedAliases` — which the commit path persists — go unchecked
+    // while canonical and aliases were covered (cloud review, #1683).
+    //
+    // Counted across the whole walk, because the work is proportional to total
+    // stored values: one candidate may carry hundreds of thousands of aliases,
+    // so a per-candidate check leaves that uninterruptible.
+    var scanned = 0
+    for candidate in candidates {
+      for value in candidate.storedValues {
+        scanned += 1
+        if scanned.isMultiple(of: 1_000) { try Task.checkCancellation() }
+
+        // Judged on the TRIMMED value, because trimmed is what gets stored —
+        // the same rule the paste scanner and the manager's write boundary
+        // apply. Counting padding here refused a short word in a structured
+        // file for whitespace that would never have been saved (cloud review,
+        // #1683).
+        let stored = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard stored.unicodeScalars.count <= CustomWordsImportLimits.maximumStoredValueScalars
+        else {
+          throw CustomWordsImportValidationError.wordTooLong(
+            limit: CustomWordsImportLimits.maximumStoredValueScalars)
+        }
+        guard CustomWordsImportTextPolicy.isAcceptableStoredValue(stored) else {
+          throw value == candidate.canonical
+            ? CustomWordsImportValidationError.unusableWord(canonical: candidate.canonical)
+            : CustomWordsImportValidationError.unusableAlias(
+              alias: value, canonical: candidate.canonical)
+        }
+      }
+    }
+    // Returns what it validated, not what it was handed.
+    //
+    // Measuring the trimmed value while passing the raw one downstream would
+    // enforce the ceiling and then hand the compare engine and the review
+    // screen a value the ceiling never applied to — tens of megabytes of
+    // padding around a short word, normalized and rendered, with trimming
+    // deferred to commit (Codex review, #1683). One boundary decides what a
+    // stored value is, and everything after it sees only that.
+    return CustomWordsImportBatch(
+      sourceID: sourceID,
+      sourceDisplayName: sourceDisplayName,
+      candidates: candidates.map { $0.trimmed() },
+      notices: notices)
+  }
+}
+
+/// Shared ceilings every import source honours (#1683).
+///
+/// One home so paste and file import cannot drift apart: the compare engine,
+/// the review list, and the commit all pay the same cost per candidate no
+/// matter which door the words came through, so a limit that applies to one
+/// source and not another is an accident waiting to be found by a user.
+package enum CustomWordsImportLimits {
+  /// The compare engine's documented upload ceiling. Beyond this the review
+  /// screen is not something a person can meaningfully read anyway.
+  package static let maximumCandidates = 25_000
+
+  /// Untrusted files: a word list is small, so anything larger is a mistaken
+  /// selection (a video, a database, a disk image) and reading it into memory
+  /// to find that out is the expensive way to learn it.
+  package static let maximumImportFileBytes = 16 * 1024 * 1024
+
+  /// Our OWN exported file, which must always be readable back — an export you
+  /// cannot import is not an export.
+  ///
+  /// Higher than the untrusted cap, but still FINITE, because the
+  /// "this is an EnviousWispr export" marker is self-declared and unsigned:
+  /// any JSON claiming it would otherwise get an unbounded budget (Codex
+  /// review, #1683). Bounded means a crafted or damaged file has a known worst
+  /// case instead of hanging the review screen.
+  package static let maximumExportedFileBytes = 64 * 1024 * 1024
+
+  /// Words an exported file may carry. Comfortably past any real library —
+  /// larger than most complete English dictionaries — while keeping the
+  /// compare engine and review list inside a worst case we have reasoned about.
+  package static let maximumExportedCandidates = 100_000
+
+  /// Total stored strings — every canonical PLUS every alias — an exported
+  /// file may carry.
+  ///
+  /// Bounding words alone bounded one dimension of the wrong thing: 100,000
+  /// words each carrying hundreds of aliases fits inside both the word and
+  /// byte ceilings while producing millions of strings to validate, compare,
+  /// and index (Codex review, #1683). The cost of an import tracks the stored
+  /// SURFACE, so that is what has a ceiling.
+  package static let maximumExportedStoredValues = 400_000
+
+  /// Longest a single canonical or alias may be, in Unicode scalars.
+  ///
+  /// A custom word is a word or short phrase. Without this, one enormous line
+  /// — a minified file or a log picked by mistake — passes the candidate
+  /// ceiling as a SINGLE entry and becomes a multi-megabyte "word" that is
+  /// copied through normalisation and comparison, rendered in Review, and
+  /// persisted (Codex review, #1683). Generous enough for any real term,
+  /// including long compounds in scripts that do not space-separate.
+  package static let maximumStoredValueScalars = 512
 }
 
 package protocol CustomWordsImportSource: Sendable {
-  func loadCandidates() async throws -> CustomWordsImportBatch
+  /// Produce candidates. Callers do NOT call this — they call
+  /// `loadCandidates()`, which validates what this returns.
+  func loadRawCandidates() async throws -> CustomWordsImportBatch
+}
+
+extension CustomWordsImportSource {
+  /// The only entry point callers use, so domain validation cannot be
+  /// forgotten by a new source (#1683).
+  ///
+  /// Validation used to live inside one parser, which meant it protected the
+  /// door it was written for and no other: words from an exported file
+  /// bypassed every character rule the pasted-text path enforced. Putting it
+  /// HERE makes it a property of importing rather than of one importer — a new
+  /// source gets it by existing, and cannot opt out by forgetting.
+  package func loadCandidates() async throws -> CustomWordsImportBatch {
+    try await loadRawCandidates().validated()
+  }
+}
+
+/// A candidate that cannot be stored, and why (#1683).
+package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatable {
+  case unusableWord(canonical: String)
+  case unusableAlias(alias: String, canonical: String)
+  case wordTooLong(limit: Int)
+
+  /// Replaces anything the policy refuses with a visible `U+XXXX` label, so a
+  /// deceptive scalar cannot act on the UI that reports it.
+  static func displayable(_ value: String) -> String {
+    String(
+      value.unicodeScalars.map { scalar -> String in
+        // Escapes the INVISIBLE as well as the disallowed. A value refused for
+        // having no visible content — an exported word made only of a joiner
+        // or a variation selector — is built from scalars that are individually
+        // acceptable, so echoing them raw rendered the error as empty quotes
+        // and left the user hunting for an entry the message could not name
+        // (cloud review, #1683).
+        let mustEscape =
+          !CustomWordsImportTextPolicy.isAcceptableInStoredValue(scalar)
+          || scalar.properties.isDefaultIgnorableCodePoint
+        return mustEscape
+          ? "<U+" + String(format: "%04X", scalar.value) + ">"
+          : String(scalar)
+      }.joined())
+  }
+
+  /// How to refer to a rejected value in a sentence.
+  ///
+  /// Quotes escape into something identifiable when there is anything to name,
+  /// and steps aside when there is not: a whitespace-only entry has no scalar
+  /// worth printing, and `"   "` is the same dead end as `""` was.
+  static func describe(_ value: String) -> String {
+    let hasSomethingToName = value.unicodeScalars.contains {
+      !CharacterSet.whitespacesAndNewlines.contains($0)
+    }
+    return hasSomethingToName ? "\"\(displayable(value))\"" : "a blank entry"
+  }
+
+  package var errorDescription: String? {
+    switch self {
+    case .wordTooLong(let limit):
+      return
+        "That contains an entry longer than \(limit) characters, which is too "
+        + "long to be a word. Nothing was imported."
+    case .unusableAlias(let alias, let canonical):
+      // Names the ALIAS, not the word that owns it. Reporting the canonical
+      // quoted an innocent value and hid the one that has to be fixed (Codex
+      // review, #1683).
+      return
+        "That contains an alternate spelling EnviousWispr can't store "
+        + "(\(Self.describe(alias)), for \(Self.describe(canonical))). "
+        + "Nothing was imported."
+    case .unusableWord(let canonical):
+      // Source-neutral: this validator now runs for pasted text and files
+      // alike, so naming a file was wrong half the time (Codex review, #1683).
+      //
+      // The value is SANITISED before display. Echoing it raw meant the very
+      // character rejected for rendering deceptively — a bidi override, a line
+      // separator — got rendered into the message explaining its rejection,
+      // where it can reorder or break the error text itself. Naming the
+      // offending scalar is more useful to the user than showing it.
+      let shown = Self.describe(canonical)
+      return
+        "That contains a word EnviousWispr can't store (\(shown)). "
+        + "Nothing was imported."
+    }
+  }
 }

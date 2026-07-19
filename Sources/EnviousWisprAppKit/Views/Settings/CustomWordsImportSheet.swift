@@ -39,11 +39,8 @@ struct CustomWordsImportSheet: View {
           ImportPasteScreen(model: model)
             .transition(Self.screenTransition)
         case .upload:
-          ImportPlaceholderScreen(
-            notice: "File import arrives with a later update.",
-            model: model
-          )
-          .transition(Self.screenTransition)
+          ImportUploadScreen(model: model)
+            .transition(Self.screenTransition)
         case .smartImportAppPicker:
           ImportPlaceholderScreen(
             notice: "Importing from other apps arrives with a later update.",
@@ -164,7 +161,7 @@ private struct ImportMethodPickerScreen: View {
       ImportMethodCard(
         icon: "square.and.arrow.down",
         title: "Upload a file",
-        subtitle: "Import a backup or a spreadsheet of words."
+        subtitle: "Import words from a file you exported, or a list."
       ) {
         model.select(.upload)
       }
@@ -316,9 +313,13 @@ private struct ImportPasteScreen: View {
   @Bindable var model: CustomWordsImportFlowModel
   @FocusState private var isEditorFocused: Bool
 
-  /// Parsed live so the button can name the real outcome instead of promising
-  /// something the parser might not agree with.
-  private var wordCount: Int { PasteWordsParser.parse(model.pasteDraft).count }
+  /// Recomputed when the draft changes, NOT on every render (code review r2).
+  ///
+  /// As a computed property this re-parsed the entire draft on every view
+  /// update, on the main actor — so a large pasted list made the editor
+  /// progressively less responsive the more it contained.
+  @State private var wordCount = 0
+  @State private var parseProblem: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -352,13 +353,45 @@ private struct ImportPasteScreen: View {
         }
         .keyboardShortcut(.defaultAction)
         .buttonStyle(.borderedProminent)
-        .disabled(wordCount == 0)
+        // Over-limit is a refusal, not a warning: Confirm would throw and land
+        // the user on the terminal failure screen, which has no Back, so the
+        // draft they could have split is gone. Block it where they can still
+        // edit it (cloud review, #1683).
+        .disabled(wordCount == 0 || wordCount > CustomWordsImportLimits.maximumCandidates)
       }
     }
-    .onAppear { isEditorFocused = true }
+    .onAppear {
+      isEditorFocused = true
+      // Back from Review returns to an existing draft, so the count has to be
+      // right on arrival, not only after the next keystroke.
+      recount(model.pasteDraft)
+    }
+    .onChange(of: model.pasteDraft) { _, draft in
+      recount(draft)
+    }
+  }
+
+  /// Keeps the parse failure rather than collapsing it to a zero count.
+  ///
+  /// `try?` here turned a real, actionable error — an entry longer than the
+  /// limit — into "No words found", which is false and left the user stuck
+  /// with Continue disabled and nothing to act on (Codex review, #1683). A
+  /// counter must not surface a crash, but it must not invent an answer
+  /// either.
+  private func recount(_ draft: String) {
+    do {
+      wordCount = try PasteWordsParser.parse(
+        draft, limit: CustomWordsImportLimits.maximumCandidates
+      ).count
+      parseProblem = nil
+    } catch {
+      wordCount = 0
+      parseProblem = error.localizedDescription
+    }
   }
 
   private var summary: String {
+    if let parseProblem { return parseProblem }
     let count = wordCount
     switch count {
     case 0 where model.pasteDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
@@ -367,8 +400,54 @@ private struct ImportPasteScreen: View {
       return "No words found in that text."
     case 1:
       return "1 word ready to review."
+    case let n where n > CustomWordsImportLimits.maximumCandidates:
+      // The scan stops one past the limit, so this count is a sentinel rather
+      // than a total — and none of these words are "ready to review", because
+      // Confirm will refuse the batch. Saying so here beats letting the user
+      // find out at the end (Codex review, #1683).
+      return
+        "That's more than \(CustomWordsImportLimits.maximumCandidates) words. "
+        + "Paste a smaller batch."
     default:
       return "\(count) words ready to review."
+    }
+  }
+}
+
+// MARK: - Upload a file (PR-U1)
+
+/// Deliberately never says "restore" (founder, 2026-07-19).
+///
+/// v1 import ADDS words you don't have and SKIPS ones you do, leaving existing
+/// words and their alternate spellings completely untouched. "Restore" would
+/// promise that a word you had edited comes back as it was, which is exactly
+/// the overwriting this scope rules out. The screen says what it does.
+private struct ImportUploadScreen: View {
+  let model: CustomWordsImportFlowModel
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text("Choose a file you exported from EnviousWispr, or a plain text list of words.")
+        .settingsReadingCopy()
+
+      Text("Words you already have are left exactly as they are.")
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+
+      Button {
+        // The panel is opened first and the file read only after a choice, so
+        // cancelling reads nothing and starts no work.
+        if let url = CustomWordsImportFilePanel.chooseFile() {
+          model.begin(with: FileImportSource(url: url))
+        }
+      } label: {
+        Label("Choose a file", systemImage: "folder")
+      }
+      .buttonStyle(.borderedProminent)
+
+      Text("Spreadsheets aren't supported yet.")
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
     }
   }
 }
@@ -473,7 +552,7 @@ private struct ImportResultScreen: View {
   /// field stays `.unspecified`, so this fixture cannot smuggle in behavior a
   /// real v1 source would not have.
   struct CustomWordsImportFixtureSource: CustomWordsImportSource {
-    func loadCandidates() async throws -> CustomWordsImportBatch {
+    func loadRawCandidates() async throws -> CustomWordsImportBatch {
       CustomWordsImportBatch(
         sourceID: "debug-fixture",
         sourceDisplayName: "Sample words",

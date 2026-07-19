@@ -24,8 +24,8 @@ struct PasteWordsImportSourceTests {
       ("Kubernetes\rAnthropic", ["Kubernetes", "Anthropic"]),
       ("Kubernetes, Anthropic,\n Qualtrics", ["Kubernetes", "Anthropic", "Qualtrics"]),
     ])
-  func supportedSeparatorsSplit(input: String, expected: [String]) {
-    #expect(PasteWordsParser.parse(input) == expected)
+  func supportedSeparatorsSplit(input: String, expected: [String]) throws {
+    #expect(try PasteWordsParser.parse(input) == expected)
   }
 
   @Test(
@@ -43,49 +43,101 @@ struct PasteWordsImportSourceTests {
       ("Smith; Jones", ["Smith; Jones"]),
       ("node.js", ["node.js"]),
     ])
-  func nonSeparatorsAreLeftIntact(input: String, expected: [String]) {
-    #expect(PasteWordsParser.parse(input) == expected)
+  func nonSeparatorsAreLeftIntact(input: String, expected: [String]) throws {
+    #expect(try PasteWordsParser.parse(input) == expected)
   }
 
   // MARK: - Trimming and empties
 
   @Test("surrounding whitespace is trimmed, inner spacing is kept")
-  func whitespaceIsTrimmedButNotCollapsed() {
-    #expect(PasteWordsParser.parse("  Envious Labs  ") == ["Envious Labs"])
+  func whitespaceIsTrimmedButNotCollapsed() throws {
+    #expect(try PasteWordsParser.parse("  Envious Labs  ") == ["Envious Labs"])
   }
 
   @Test("empty and whitespace-only pieces are dropped")
-  func emptyPiecesAreDropped() {
-    #expect(PasteWordsParser.parse("Kubernetes,,  ,\n\n,Anthropic") == ["Kubernetes", "Anthropic"])
+  func emptyPiecesAreDropped() throws {
+    #expect(
+      try PasteWordsParser.parse("Kubernetes,,  ,\n\n,Anthropic") == ["Kubernetes", "Anthropic"])
   }
 
   @Test(
     "input with no words yields nothing rather than a blank row",
     arguments: ["", "   ", "\n\n", ",,,", " , \n , "])
-  func inputWithoutWordsYieldsNothing(input: String) {
-    #expect(PasteWordsParser.parse(input).isEmpty)
+  func inputWithoutWordsYieldsNothing(input: String) throws {
+    #expect(try PasteWordsParser.parse(input).isEmpty)
+  }
+
+  /// The bug this freezes (cloud review, #1683): padding is not part of the
+  /// word, but the scan buffer counted it, so whitespace alone could exceed a
+  /// LENGTH ceiling and fail the whole paste as "too long". Spaces are not
+  /// separators — they have to survive inside a term like "Claude Code" — so
+  /// they accumulated. Every case here is padding a trim would erase.
+  @Test("padding is never mistaken for word length")
+  func paddingIsNotCountedTowardWordLength() throws {
+    let farPastTheCeiling = CustomWordsImportLimits.maximumStoredValueScalars * 6
+
+    // Whitespace alone imports nothing; it must not throw.
+    #expect(try PasteWordsParser.parse(String(repeating: " ", count: farPastTheCeiling)).isEmpty)
+
+    // A short word keeps its meaning however it is padded.
+    let pad = String(repeating: " ", count: farPastTheCeiling)
+    #expect(try PasteWordsParser.parse(pad + "Kubernetes") == ["Kubernetes"])
+    #expect(try PasteWordsParser.parse("Kubernetes" + pad) == ["Kubernetes"])
+    #expect(try PasteWordsParser.parse(pad + "Kubernetes" + pad) == ["Kubernetes"])
+    #expect(
+      try PasteWordsParser.parse(pad + "Claude Code" + pad + ",\n" + pad + "Anthropic")
+        == ["Claude Code", "Anthropic"])
+  }
+
+  /// Excluding padding from the LENGTH must not move the unbounded growth into
+  /// the hold: a term followed by an enormous whitespace run would otherwise
+  /// retain every scalar (Codex review, #1683). Refused when real content
+  /// follows the run, ignored as trailing padding when none does.
+  @Test("an enormous interior whitespace run is bounded, not retained")
+  func interiorWhitespaceRunIsBounded() throws {
+    let hugeRun = String(repeating: " ", count: 40_000)
+
+    #expect(throws: (any Error).self) { try PasteWordsParser.parse("x" + hugeRun + "y") }
+    // Nothing follows it, so it was trailing padding all along.
+    #expect(try PasteWordsParser.parse("x" + hugeRun) == ["x"])
+    #expect(try PasteWordsParser.parse("x" + hugeRun + ",y") == ["x", "y"])
+  }
+
+  /// The ceiling still applies to real content, so relaxing the padding rule
+  /// cannot become "no limit at all" — including when interior spacing is what
+  /// carries the entry past it.
+  @Test("a genuinely over-long entry is still refused")
+  func overLongEntryStillThrows() throws {
+    let tooLong = String(
+      repeating: "x", count: CustomWordsImportLimits.maximumStoredValueScalars + 1)
+    #expect(throws: (any Error).self) { try PasteWordsParser.parse(tooLong) }
+
+    let spacedOut = (0...CustomWordsImportLimits.maximumStoredValueScalars)
+      .map { _ in "x" }
+      .joined(separator: " ")
+    #expect(throws: (any Error).self) { try PasteWordsParser.parse(spacedOut) }
   }
 
   // MARK: - Deduplication
 
   @Test("a repeated word appears once, in its first spelling")
-  func withinPasteDedupPreservesFirstSpelling() {
-    #expect(PasteWordsParser.parse("GitHub\ngithub\nGITHUB") == ["GitHub"])
+  func withinPasteDedupPreservesFirstSpelling() throws {
+    #expect(try PasteWordsParser.parse("GitHub\ngithub\nGITHUB") == ["GitHub"])
   }
 
   @Test("dedup uses the same normalization the compare engine uses")
-  func dedupMatchesCompareEngineNormalization() {
+  func dedupMatchesCompareEngineNormalization() throws {
     // Both collapse to one key in the engine, so they must collapse here too;
     // otherwise the review screen would show two rows that persistence would
     // then refuse as duplicates.
-    let parsed = PasteWordsParser.parse("Claude Code\nClaude  Code")
+    let parsed = try PasteWordsParser.parse("Claude Code\nClaude  Code")
     #expect(parsed == ["Claude Code"])
   }
 
   @Test("distinct words are all kept, in paste order")
-  func distinctWordsKeepPasteOrder() {
+  func distinctWordsKeepPasteOrder() throws {
     #expect(
-      PasteWordsParser.parse("Qualtrics\nKubernetes\nAnthropic")
+      try PasteWordsParser.parse("Qualtrics\nKubernetes\nAnthropic")
         == ["Qualtrics", "Kubernetes", "Anthropic"])
   }
 
