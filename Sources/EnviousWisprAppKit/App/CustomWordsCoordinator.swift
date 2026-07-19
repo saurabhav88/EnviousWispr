@@ -12,6 +12,10 @@ final class CustomWordsCoordinator {
   /// honest banner instead of a silent empty list. `.unreadable`: the file is
   /// intact, nothing was changed. `.corrupted`: it was archived for recovery.
   private(set) var wordsLoadFailureAtLaunch: CustomWordsInitialLoadFailure?
+  /// Set when a load DURING the session found the file corrupt and archived it
+  /// aside. Separate from the launch flag because corruption does not only
+  /// happen at startup, and the archive makes the next read look clean.
+  private(set) var didDiscoverCorruptionThisSession = false
 
   let suggestionService = WordSuggestionService()
   /// The reused on-device alias generator, exposed as the narrow protocol so the
@@ -75,12 +79,38 @@ final class CustomWordsCoordinator {
   /// list untouched rather than substituting an empty one.
   @discardableResult
   func refreshFromDiskIfPossible() -> Bool {
-    guard let refreshed = manager.load() else { return false }
+    guard let refreshed = manager.load() else {
+      // Corruption found DURING the session is still corruption, and it must
+      // be remembered: the load archives the damaged file aside, so the NEXT
+      // attempt sees a legitimately missing file and reports success.
+      if manager.lastLoadFailure == .corrupted {
+        didDiscoverCorruptionThisSession = true
+      }
+      return false
+    }
     if refreshed != customWords {
       customWords = refreshed
       onWordsChanged?(customWords)
     }
     return true
+  }
+
+  /// Whether the current list is a safe thing to WRITE OUT (cloud review, #1682).
+  ///
+  /// A corrupted file is ARCHIVED aside, so a reload afterwards sees a
+  /// legitimately missing file and reports a clean, empty library. Exporting
+  /// then would write an empty file over the one the user picked while their
+  /// real words sit in the archive — destroying the copy they still had.
+  ///
+  /// Deliberately separate from `refreshFromDiskIfPossible`, which answers
+  /// "can I read the library" and must always adopt what it reads. Once the
+  /// user has authored a word since, they have visibly accepted the fresh
+  /// start and the list is theirs again.
+  var canExportCurrentWords: Bool {
+    let sawCorruption =
+      wordsLoadFailureAtLaunch == .corrupted || didDiscoverCorruptionThisSession
+    guard sawCorruption else { return true }
+    return customWords.contains { $0.source == .user }
   }
 
   /// Apply a reviewed import in one atomic write. Fires `onWordsChanged`
