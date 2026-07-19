@@ -15,6 +15,12 @@
 if (not match(inputs.workerUrl, '^https://.*')) {
     throw Error('Invalid worker URL. Must start with https://')
 }
+if (match(inputs.workerUrl, '/$')) {
+    // A trailing slash here would make the /count append below build "//count",
+    // which the Worker does not serve — reject explicitly rather than
+    // silently constructing a URL that 404s every real download.
+    throw Error('Invalid worker URL. Must not end with a trailing slash')
+}
 
 // inputs.workerUrl is the Worker's base URL (as documented in the README's
 // deploy/cutover steps); the actual route is appended here, not left to the

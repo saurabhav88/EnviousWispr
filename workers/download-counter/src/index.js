@@ -56,6 +56,14 @@ const DELIVERY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 const PRUNE_SAMPLE_SIZE = 50;
 const PRUNE_PROBABILITY = 0.02;
 
+// seen:<hmac> markers are functionally useless after DEDUP_WINDOW_MS (30s) —
+// the dedup check already ignores an expired one via the timestamp compare —
+// but nothing previously deleted the key itself, so it persisted forever.
+// 5 minutes gives generous headroom past the functional window before actual
+// deletion (deleting exactly at 30s would work too; the margin is just
+// slack, not a correctness requirement).
+const IP_MARKER_RETENTION_MS = 5 * 60 * 1000;
+
 // Exported for direct unit testing — the real call site is probability-gated
 // (PRUNE_PROBABILITY), so a behavioral test through handleCount would be
 // flaky without this.
@@ -64,6 +72,20 @@ export async function pruneOldDeliveryRecords(storage, now) {
   const staleKeys = [];
   for (const [key, value] of entries) {
     if (value && typeof value.createdAt === "number" && now - value.createdAt > DELIVERY_RETENTION_MS) {
+      staleKeys.push(key);
+    }
+  }
+  if (staleKeys.length > 0) {
+    await storage.delete(staleKeys);
+  }
+}
+
+// Exported for direct unit testing, same reasoning as pruneOldDeliveryRecords.
+export async function pruneStaleIpMarkers(storage, now) {
+  const entries = await storage.list({ prefix: "seen:", limit: PRUNE_SAMPLE_SIZE });
+  const staleKeys = [];
+  for (const [key, value] of entries) {
+    if (typeof value === "number" && now - value > IP_MARKER_RETENTION_MS) {
       staleKeys.push(key);
     }
   }
@@ -278,6 +300,7 @@ export class DownloadCounter {
       await storage.put(batch);
       if (Math.random() < PRUNE_PROBABILITY) {
         await pruneOldDeliveryRecords(storage, now);
+        await pruneStaleIpMarkers(storage, now);
       }
       return { record: newRecord };
     });

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import worker, { DownloadCounter, pruneOldDeliveryRecords } from "../src/index.js";
+import worker, { DownloadCounter, pruneOldDeliveryRecords, pruneStaleIpMarkers } from "../src/index.js";
 
 class FakeStorage {
   constructor() {
@@ -551,6 +551,24 @@ test("pruneOldDeliveryRecords never touches counter or seen: keys", async () => 
   assert.equal(storage.map.get("counter"), 42);
   assert.equal(storage.map.get("seen:abc"), now - 999_999_999);
   assert.equal(storage.map.get("delivery:ancient"), undefined);
+});
+
+test("pruneStaleIpMarkers deletes seen: markers past their retention window, never delivery: or counter", async () => {
+  const storage = new FakeStorage();
+  const now = Date.now();
+  const SIX_MINUTES_MS = 6 * 60 * 1000;
+  const ONE_MINUTE_MS = 60 * 1000;
+  await storage.put("counter", 7);
+  await storage.put("seen:old", now - SIX_MINUTES_MS);
+  await storage.put("seen:recent", now - ONE_MINUTE_MS);
+  await storage.put("delivery:keep-forever", { status: "delivered", total: 1, createdAt: now });
+
+  await pruneStaleIpMarkers(storage, now);
+
+  assert.equal(storage.map.get("seen:old"), undefined, "a seen: marker past its retention window must be pruned");
+  assert.equal(storage.map.get("seen:recent"), now - ONE_MINUTE_MS, "a recent marker must survive pruning");
+  assert.equal(storage.map.get("counter"), 7);
+  assert.ok(storage.map.get("delivery:keep-forever"), "pruneStaleIpMarkers must never touch delivery: records");
 });
 
 test("/seed succeeds once on a cold counter, then refuses with 409", async () => {
