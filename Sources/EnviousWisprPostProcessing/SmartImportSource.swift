@@ -157,46 +157,52 @@ package struct WisprFlowAdapter: SmartImportAdapter {
       WHERE isDeleted = 0 AND isSnippet = 0
       """
 
-    // Plain read-only FIRST, immutable only as a fallback — and the order is
-    // load-bearing in both directions (code review, then measured).
+    // Choose the connection mode from the WAL sidecar, rather than trying one
+    // and falling back (code reviews r1 + r2, both measured).
     //
-    // Review asked for plain read-only, because `immutable=1` promises SQLite
-    // the file cannot change and lets it skip WAL handling: with Wispr Flow
-    // open and writing, that can read stale or torn rows. Correct concern.
+    // r1 asked for plain read-only, because `immutable=1` lets SQLite skip WAL
+    // handling and can return stale or torn rows while Wispr Flow writes. Real
+    // concern. But measured on a real install with the app NOT running, plain
+    // read-only opens and then fails to prepare with SQLITE_CANTOPEN: the
+    // database is WAL and a read-only connection needs the `-shm` sidecar,
+    // which a cleanly closed app does not leave behind.
     //
-    // But plain read-only alone does not work here. This database uses WAL,
-    // and a read-only connection needs the `-shm` sidecar; when the app is
-    // closed cleanly that file does not exist and read-only mode may not
-    // create it. Measured on a real install with the app NOT running: plain
-    // read-only opens and then fails to prepare with SQLITE_CANTOPEN, while
-    // immutable succeeds.
+    // r2 then caught what try-and-fallback risks: `SQLITE_OPEN_READONLY`
+    // protects the main database only. A read-only connection CAN create
+    // `-wal`/`-shm` in a writable directory, so merely attempting it can
+    // leave files inside another app's data folder — which is not read-only
+    // in any sense the user would recognise. It did not happen here (the
+    // attempt failed first), but "it happens to fail safely" is not a
+    // guarantee worth shipping.
     //
-    // So: try the WAL-aware connection first, which is what succeeds while the
-    // other app is live and holds its sidecars. Fall back to immutable only
-    // when that fails — which is precisely the cleanly-closed case, where
-    // there is no uncommitted WAL content to miss and the committed file IS
-    // the whole truth.
-    for uri in ["file:\(url.path)", "file:\(url.path)?immutable=1"] {
-      var db: OpaquePointer?
-      guard
-        sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
-        let db
-      else {
-        sqlite3_close(db)
-        continue
-      }
-      defer { sqlite3_close(db) }
+    // So decide up front, from a fact already on disk:
+    //   WAL present  → the other app has uncommitted content, so read it
+    //                  WAL-aware. Its sidecars already exist; we create nothing.
+    //   WAL absent   → nothing uncommitted, the committed file IS the whole
+    //                  truth, and immutable reads it without ever creating a
+    //                  sidecar.
+    let walURL = URL(fileURLWithPath: url.path + "-wal")
+    let hasWAL = FileManager.default.fileExists(atPath: walURL.path)
+    let uri = hasWAL ? "file:\(url.path)" : "file:\(url.path)?immutable=1"
 
-      var statement: OpaquePointer?
-      guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-        sqlite3_finalize(statement)
-        continue
-      }
-      defer { sqlite3_finalize(statement) }
-
-      return try readWords(from: statement)
+    var db: OpaquePointer?
+    guard
+      sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
+      let db
+    else {
+      sqlite3_close(db)
+      throw SmartImportError.unreadable(displayName)
     }
-    throw SmartImportError.unreadable(displayName)
+    defer { sqlite3_close(db) }
+
+    var statement: OpaquePointer?
+    guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+      sqlite3_finalize(statement)
+      throw SmartImportError.unreadable(displayName)
+    }
+    defer { sqlite3_finalize(statement) }
+
+    return try readWords(from: statement)
   }
 
   private func readWords(from statement: OpaquePointer?) throws -> [String] {
@@ -275,8 +281,7 @@ package struct SmartImportSource: CustomWordsImportSource {
     }
 
     guard canonicals.count <= CustomWordsImportLimits.maximumCandidates else {
-      throw ImportFileError.tooManyWords(
-        found: canonicals.count, limit: CustomWordsImportLimits.maximumCandidates)
+      throw ImportFileError.tooManyWords(limit: CustomWordsImportLimits.maximumCandidates)
     }
 
     return CustomWordsImportBatch(

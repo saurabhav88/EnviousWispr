@@ -220,9 +220,7 @@ struct ImportFileParserTests {
     let words = (0...limit).map { "word\($0)" }.joined(separator: "\n")
     let url = try write(words, as: "many.txt")
 
-    await #expect(
-      throws: ImportFileError.tooManyWords(found: limit + 1, limit: limit)
-    ) {
+    await #expect(throws: ImportFileError.tooManyWords(limit: limit)) {
       _ = try await FileImportSource(url: url).loadCandidates()
     }
   }
