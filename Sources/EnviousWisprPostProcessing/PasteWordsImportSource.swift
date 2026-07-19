@@ -58,8 +58,13 @@ package enum PasteWordsParser {
       // what is effectively an empty line (cloud review, #1683). A structured
       // file is different: there a blank word is a defect, and the validator
       // refuses it.
+      // Skips only what is BLANK — an empty line, or a piece made of nothing
+      // but joiners — the way this has always skipped whitespace. Deliberately
+      // NOT the full acceptability check: a visible entry carrying a
+      // disallowed character must reach the validator and be REPORTED, not
+      // vanish from a list the user pasted (cloud review, #1683).
       guard !trimmed.isEmpty,
-        CustomWordsImportTextPolicy.isAcceptableStoredValue(trimmed)
+        CustomWordsImportTextPolicy.hasVisibleContent(trimmed)
       else { return true }
       // Deduplicate on the compare engine's own key, so "GitHub" and "github"
       // in one paste collapse the same way they would against the library —

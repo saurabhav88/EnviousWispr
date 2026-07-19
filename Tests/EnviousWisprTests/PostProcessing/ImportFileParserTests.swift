@@ -549,7 +549,10 @@ struct ImportFileParserTests {
       "Kub\u{00AD}ernetes",  // soft hyphen
     ] {
       let url = try write(text, as: "words.txt")
-      await #expect(throws: ImportFileError.unreadable) {
+      // Refused as CONTENT, naming the word, rather than as "that file
+      // couldn't be read" — these decode perfectly well, they just cannot be
+      // stored.
+      await #expect(throws: CustomWordsImportValidationError.self) {
         try await FileImportSource(url: url).loadCandidates()
       }
     }
@@ -992,6 +995,30 @@ struct ImportFileParserTests {
 
     #expect(candidates.count == 1)
     #expect(candidates[0].canonical.unicodeScalars.contains { $0.value == 0x200D })
+  }
+
+
+  @Test("a pasted word with a bad character is reported, not silently dropped")
+  func badPastedEntryIsReportedNotDropped() async throws {
+    // Skipping everything the policy rejects was too broad: a visible entry
+    // carrying a bidi override vanished from the list, and the user saw a
+    // successful import of the OTHER words with no hint one was missing.
+    let url = try write("Good\nKub\u{202E}ernetes\nAlsoGood", as: "words.txt")
+
+    await #expect(throws: CustomWordsImportValidationError.self) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
+  @Test("blank pieces are still skipped quietly")
+  func blankPiecesStillSkipped() async throws {
+    // The narrow case that SHOULD be skipped: empty lines and joiner-only
+    // noise, exactly as whitespace has always been skipped.
+    let url = try write("Good\n\n\u{200D}\n   \nAlsoGood", as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.map { $0.canonical } == ["Good", "AlsoGood"])
   }
 
 }

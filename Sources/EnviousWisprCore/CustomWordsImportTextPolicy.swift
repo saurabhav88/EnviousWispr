@@ -27,8 +27,25 @@ package enum CustomWordsImportTextPolicy {
   /// Asks Unicode rather than hand-rolling ranges: a numeric approximation
   /// (`< 0x20 || == 0x7F`) missed the entire C1 block, so `C2 85` imported an
   /// invisible character inside a word.
+  /// Decode-level check: does this look like text at all, or like bytes read
+  /// in the wrong encoding?
+  ///
+  /// Deliberately NARROWER than the content policy. Mojibake announces itself
+  /// as controls, surrogates, private-use, and unassigned scalars, so those
+  /// are the tell. A bidi override or a stray byte-order mark in otherwise
+  /// valid UTF-8 is not a decoding failure — it is a CONTENT problem, and
+  /// treating it as one lets the validator name the offending word instead of
+  /// the whole file being reported as unreadable (cloud review, #1683).
   package static func isPlausiblyText(_ text: String) -> Bool {
-    text.unicodeScalars.allSatisfy(isAcceptable)
+    text.unicodeScalars.allSatisfy { scalar in
+      if scalar == "\n" || scalar == "\r" || scalar == "\t" { return true }
+      switch scalar.properties.generalCategory {
+      case .control, .surrogate, .privateUse, .unassigned:
+        return false
+      default:
+        return true
+      }
+    }
   }
 
   /// Whether text looks like WORDS rather than merely printable characters.
@@ -69,20 +86,28 @@ package enum CustomWordsImportTextPolicy {
     return isAcceptable(scalar)
   }
 
+  /// Whether a value contains anything the user could SEE.
+  ///
+  /// Separate from acceptability on purpose. A scan uses this to skip blank
+  /// pieces — an empty line, or one made only of joiners — the way it always
+  /// skipped whitespace. It must NOT be used to skip values that are visible
+  /// but disallowed: those have to reach the validator so the user is told
+  /// (cloud review, #1683).
+  package static func hasVisibleContent(_ value: String) -> Bool {
+    value.unicodeScalars.contains {
+      !wordFormingInvisibles.contains($0.value)
+        && !CharacterSet.whitespacesAndNewlines.contains($0)
+    }
+  }
+
   package static func isAcceptableStoredValue(_ value: String) -> Bool {
     guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       return false
     }
-    // "Not empty" is not the same as "visible". A value made only of joiners
-    // — which are legitimately allowed INSIDE words — passed the emptiness
-    // check and every scalar check, so a blank-looking word could be stored
-    // and shown in Review as nothing at all (cloud review, #1683).
-    guard
-      value.unicodeScalars.contains(where: {
-        !wordFormingInvisibles.contains($0.value)
-          && !CharacterSet.whitespacesAndNewlines.contains($0)
-      })
-    else { return false }
+    // "Not empty" is not the same as "visible": a value made only of joiners
+    // — legitimately allowed INSIDE words — passed the emptiness check and
+    // every scalar check, so a blank-looking word could be stored.
+    guard hasVisibleContent(value) else { return false }
     return value.unicodeScalars.allSatisfy(isAcceptableInStoredValue)
   }
 
