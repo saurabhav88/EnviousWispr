@@ -200,6 +200,19 @@ package struct WisprFlowAdapter: SmartImportAdapter {
     }
     let uri = hasWAL ? "file:\(url.path)" : "file:\(url.path)?immutable=1"
 
+    // The check above and the open below are two moments, and Wispr Flow can
+    // start or stop writing in between (code review r4). Two ways that hurts:
+    // a WAL created after an immutable decision is ignored, silently importing
+    // stale words; a WAL that disappears makes the read-only path recreate
+    // sidecars in the competitor's directory.
+    //
+    // A snapshot copy would close the window completely, but the real database
+    // here is 151 MB — copying it to read a handful of words is a poor trade.
+    // Instead the state is re-checked after the read (see below): if it moved,
+    // the import is refused rather than reported. That turns an invisible
+    // wrong answer into a visible "try again", which is the honest failure.
+    let sidecarStateAtStart = hasWAL
+
     var db: OpaquePointer?
     guard
       sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
@@ -217,7 +230,17 @@ package struct WisprFlowAdapter: SmartImportAdapter {
     }
     defer { sqlite3_finalize(statement) }
 
-    return try readWords(from: statement)
+    let words = try readWords(from: statement)
+
+    // Re-check the sidecar state the mode was chosen from. If Wispr Flow began
+    // or finished writing while this read was in flight, the connection mode no
+    // longer matches the database and these words may be a stale view. Refuse
+    // rather than hand back something that looks complete — the error already
+    // tells the user to quit the other app and try again.
+    guard fm.fileExists(atPath: url.path + "-wal") == sidecarStateAtStart else {
+      throw SmartImportError.unreadable(displayName)
+    }
+    return words
   }
 
   private func readWords(from statement: OpaquePointer?) throws -> [String] {
