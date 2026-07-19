@@ -223,15 +223,20 @@ package struct PlainTextImportFileParser: ImportFileParser {
     // through on failure re-created the bug the alignment check was added to
     // fix — `[FF FE E9]` is a truncated UTF-16 file, and Latin-1 turned it
     // into the plausible-looking word `ÿþé` (Codex review, #1683).
+    // Decoders strip the mark themselves, so what comes back here is already
+    // clean. Stripping again at this level read as if it were the only place
+    // it happened — a reviewer took the redundant call for the real one and
+    // reported valid UTF-16 as broken. One stripping site, no ambiguity.
     if hasByteOrderMark(data) {
-      guard let marked = decodeUsingByteOrderMark(data), CustomWordsImportTextPolicy.isPlausiblyText(marked)
+      guard let marked = decodeUsingByteOrderMark(data),
+        CustomWordsImportTextPolicy.isPlausiblyText(marked)
       else { return nil }
-      return strippingBOM(marked)
+      return marked
     }
     guard let utf8 = String(data: data, encoding: .utf8),
       CustomWordsImportTextPolicy.isPlausiblyText(utf8)
     else { return nil }
-    return strippingBOM(utf8)
+    return utf8
   }
 
   private static func hasByteOrderMark(_ data: Data) -> Bool {
