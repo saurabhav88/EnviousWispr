@@ -22,9 +22,16 @@ struct CustomWordsImportReviewFlowTests {
   // MARK: - Fakes
 
   /// Records what the flow asked for and returns what the test scripted.
-  final class CompareSpy: @unchecked Sendable {
-    // Single-touch handoff: the test writes before the flow runs, the flow
-    // writes once during the run, and the test reads after it completes.
+  ///
+  /// `@MainActor`-isolated rather than `@unchecked Sendable` (code review r3).
+  /// The compare dependency is a nonisolated `@Sendable async` closure, so it
+  /// runs on the generic executor while `settle` reads this spy on the
+  /// MainActor — an unsynchronized cross-executor race that `@unchecked` would
+  /// only have hidden from the compiler. The closure hops to the MainActor for
+  /// every touch instead, which is also what this project's
+  /// no-new-unchecked-sendable rule requires.
+  @MainActor
+  final class CompareSpy {
     var policies: [CustomWordsImportFuzzyPolicy] = []
     var existingSeen: [[CustomWord]] = []
     var results: [[CustomWordsImportComparison]] = []
@@ -52,7 +59,10 @@ struct CustomWordsImportReviewFlowTests {
     }
   }
 
-  final class CommitSpy: @unchecked Sendable {
+  /// `@MainActor`-isolated: the commit dependency is already a `@MainActor`
+  /// closure, so no hop is needed and no unchecked conformance is warranted.
+  @MainActor
+  final class CommitSpy {
     var plans: [CustomWordsImportCommitPlan] = []
     var outcomes: [CustomWordsCoordinator.CustomWordsImportCommitOutcome] = []
     var callCount = 0
@@ -97,15 +107,23 @@ struct CustomWordsImportReviewFlowTests {
         existingWords: { existing },
         commit: { commit.record($0) },
         compare: { _, seen, policy in
-          compare.policies.append(policy)
-          compare.existingSeen.append(seen)
-          if let stream = compare.gateStream {
+          // Every spy touch hops to the MainActor; the gate wait deliberately
+          // happens outside it so the test can hold the call mid-flight
+          // without blocking the actor it needs to make assertions on.
+          let stream = await MainActor.run { () -> AsyncStream<Void>? in
+            compare.policies.append(policy)
+            compare.existingSeen.append(seen)
+            return compare.gateStream
+          }
+          if let stream {
             var iterator = stream.makeAsyncIterator()
             _ = await iterator.next()
           }
-          let result = compare.nextResult()
-          compare.completedCalls += 1
-          return result
+          return await MainActor.run { () -> [CustomWordsImportComparison] in
+            let result = compare.nextResult()
+            compare.completedCalls += 1
+            return result
+          }
         }
       )
     )
