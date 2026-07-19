@@ -847,6 +847,34 @@ struct ImportFileParserTests {
     #expect(message.contains("Kub"))
   }
 
+  /// A refusal must name the entry it is asking the user to fix. An entry made
+  /// only of invisible characters is built from scalars that are individually
+  /// acceptable, so the message rendered as empty quotes and named nothing
+  /// (cloud review, #1683) — and whitespace-only is the same dead end.
+  @Test(
+    "an entry with nothing visible is still identifiable in the error",
+    arguments: [
+      ("\u{200D}", "<U+200D>"),
+      ("\u{FE0F}", "<U+FE0F>"),
+      ("Kub\u{200D}ernetes", "<U+200D>"),
+    ])
+  func invisibleOnlyEntriesAreNamed(value: String, expectedCodePoint: String) throws {
+    let message = try #require(
+      CustomWordsImportValidationError.unusableWord(canonical: value).errorDescription)
+
+    #expect(message.contains(expectedCodePoint))
+    #expect(!message.contains("(\"\")"))
+  }
+
+  @Test("a whitespace-only entry is described rather than quoted as blank")
+  func whitespaceOnlyEntryIsDescribed() throws {
+    let message = try #require(
+      CustomWordsImportValidationError.unusableWord(canonical: "   ").errorDescription)
+
+    #expect(message.contains("a blank entry"))
+    #expect(!message.contains("\"   \""))
+  }
+
   @Test("validation stops when the sheet is dismissed")
   func validationHonoursCancellation() async throws {
     // 400,000 stored values is long enough to outlive a dismissed sheet.

@@ -287,10 +287,31 @@ package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatab
   static func displayable(_ value: String) -> String {
     String(
       value.unicodeScalars.map { scalar -> String in
-        CustomWordsImportTextPolicy.isAcceptableInStoredValue(scalar)
-          ? String(scalar)
-          : "<U+" + String(format: "%04X", scalar.value) + ">"
+        // Escapes the INVISIBLE as well as the disallowed. A value refused for
+        // having no visible content — an exported word made only of a joiner
+        // or a variation selector — is built from scalars that are individually
+        // acceptable, so echoing them raw rendered the error as empty quotes
+        // and left the user hunting for an entry the message could not name
+        // (cloud review, #1683).
+        let mustEscape =
+          !CustomWordsImportTextPolicy.isAcceptableInStoredValue(scalar)
+          || scalar.properties.isDefaultIgnorableCodePoint
+        return mustEscape
+          ? "<U+" + String(format: "%04X", scalar.value) + ">"
+          : String(scalar)
       }.joined())
+  }
+
+  /// How to refer to a rejected value in a sentence.
+  ///
+  /// Quotes escape into something identifiable when there is anything to name,
+  /// and steps aside when there is not: a whitespace-only entry has no scalar
+  /// worth printing, and `"   "` is the same dead end as `""` was.
+  static func describe(_ value: String) -> String {
+    let hasSomethingToName = value.unicodeScalars.contains {
+      !CharacterSet.whitespacesAndNewlines.contains($0)
+    }
+    return hasSomethingToName ? "\"\(displayable(value))\"" : "a blank entry"
   }
 
   package var errorDescription: String? {
@@ -305,7 +326,7 @@ package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatab
       // review, #1683).
       return
         "That contains an alternate spelling EnviousWispr can't store "
-        + "(\"\(Self.displayable(alias))\", for \"\(Self.displayable(canonical))\"). "
+        + "(\(Self.describe(alias)), for \(Self.describe(canonical))). "
         + "Nothing was imported."
     case .unusableWord(let canonical):
       // Source-neutral: this validator now runs for pasted text and files
@@ -316,8 +337,7 @@ package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatab
       // separator — got rendered into the message explaining its rejection,
       // where it can reorder or break the error text itself. Naming the
       // offending scalar is more useful to the user than showing it.
-      let shown =
-        canonical.isEmpty ? "a blank entry" : "\"\(Self.displayable(canonical))\""
+      let shown = Self.describe(canonical)
       return
         "That contains a word EnviousWispr can't store (\(shown)). "
         + "Nothing was imported."
