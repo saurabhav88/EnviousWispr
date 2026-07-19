@@ -446,6 +446,58 @@ struct CustomWordsCoordinatorLaunchFailureTests {
     #expect(try Data(contentsOf: url) == bytesBefore)
   }
 
+  // MARK: - Export readability is a live question, not a launch snapshot (#1682)
+
+  @Test("an unreadable file refuses the refresh and keeps the current list")
+  func refreshFailsClosedWhileTheFileIsUnreadable() throws {
+    let url = Self.tempURL()
+    defer { Self.cleanup(url) }
+    let mgr = CustomWordsManager(fileURL: url)
+    var words = try #require(mgr.load())
+    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o000], ofItemAtPath: url.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    let coordinator = CustomWordsCoordinator(manager: mgr)
+    #expect(coordinator.wordsLoadFailureAtLaunch == .unreadable)
+    #expect(coordinator.refreshFromDiskIfPossible() == false)
+    #expect(coordinator.customWords.isEmpty)
+  }
+
+  @Test("a recovered file is ADOPTED, not merely reported readable")
+  func refreshAdoptsTheRecoveredWordsRatherThanJustReportingReadable() throws {
+    // The bug this freezes (cloud review, #1682): a readability check that
+    // discarded what it read let export proceed while `customWords` was still
+    // the empty launch fallback, so it wrote a valid EMPTY backup over a real
+    // one. Reporting "readable" is not enough; the words have to arrive.
+    let url = Self.tempURL()
+    defer { Self.cleanup(url) }
+    let mgr = CustomWordsManager(fileURL: url)
+    var words = try #require(mgr.load())
+    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o000], ofItemAtPath: url.path)
+
+    let coordinator = CustomWordsCoordinator(manager: mgr)
+    #expect(coordinator.customWords.isEmpty, "launch fallback while unreadable")
+
+    // The file becomes readable again mid-session.
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o600], ofItemAtPath: url.path)
+
+    #expect(coordinator.refreshFromDiskIfPossible())
+    // The launch flag is a snapshot and stays set — which is exactly why it
+    // was the wrong thing to gate on.
+    #expect(coordinator.wordsLoadFailureAtLaunch == .unreadable)
+    // The part that matters: the real words are now in hand, so an export
+    // taken at this moment carries them instead of nothing.
+    #expect(coordinator.customWords.contains { $0.canonical == "Kubernetes" })
+  }
+
   // MARK: - Stale import commit refreshes the in-memory list (#1679 cloud review)
 
   @Test("a stale import commit refreshes the coordinator's list from disk")
@@ -513,5 +565,41 @@ struct CustomWordsCoordinatorLaunchFailureTests {
           CustomWordsImportCommitReceipt(
             addedIDs: [], replacedIDs: [], droppedAliasCollisions: [])))
     #expect(coordinator.customWords == before)
+  }
+
+  @Test("a corrupted-and-archived library is not safe to export")
+  func corruptedLibraryIsNotExportable() throws {
+    // The scenario: the file is damaged at launch, so the manager archives it
+    // aside. A later reload then sees a legitimately MISSING file and reports
+    // a clean, empty library — which reads as success while the user's real
+    // words sit in the archive. Exporting there writes an empty file over
+    // whatever the user picked (cloud review, #1682).
+    let url = Self.tempURL()
+    defer { Self.cleanup(url) }
+    try Data("not valid json at all {{{".utf8).write(to: url)
+
+    let coordinator = CustomWordsCoordinator(manager: CustomWordsManager(fileURL: url))
+    #expect(coordinator.wordsLoadFailureAtLaunch == .corrupted)
+
+    // The reload succeeds — the damaged file is gone — and that is exactly why
+    // readability alone cannot be the gate.
+    #expect(coordinator.refreshFromDiskIfPossible())
+    #expect(coordinator.canExportCurrentWords == false)
+  }
+
+  @Test("authoring a word after corruption makes the list exportable again")
+  func authoringAWordAfterCorruptionRestoresExportability() throws {
+    let url = Self.tempURL()
+    defer { Self.cleanup(url) }
+    try Data("not valid json at all {{{".utf8).write(to: url)
+
+    let coordinator = CustomWordsCoordinator(manager: CustomWordsManager(fileURL: url))
+    #expect(coordinator.canExportCurrentWords == false)
+
+    // Once they have written something since, they have visibly accepted the
+    // fresh start and the list is theirs again — blocking forever would be its
+    // own kind of wrong.
+    #expect(coordinator.add(CustomWord(canonical: "Kubernetes")) == nil)
+    #expect(coordinator.canExportCurrentWords)
   }
 }

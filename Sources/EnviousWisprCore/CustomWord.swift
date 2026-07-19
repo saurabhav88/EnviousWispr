@@ -73,6 +73,31 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
     self.minSimilarityOverride = minSimilarityOverride
   }
 
+  /// The same word, re-tagged as user-authored (#1680).
+  ///
+  /// `source` is a `let`, so re-tagging means reconstructing. Needed where a
+  /// built-in becomes a user override — editing one, or replacing one through
+  /// import — because the value still carries `.builtin` from `builtinDefaults`
+  /// until a relaunch decodes it as `.user`. Export filters on `source ==
+  /// .user`, so without this an override would be missing from its own backup
+  /// until the app restarted.
+  public func ownedByUser() -> CustomWord {
+    guard source != .user else { return self }
+    return CustomWord(
+      id: id,
+      canonical: canonical,
+      aliases: aliases,
+      category: category,
+      priority: priority,
+      forceReplace: forceReplace,
+      caseSensitive: caseSensitive,
+      source: .user,
+      frequencyUsed: frequencyUsed,
+      lastUsed: lastUsed,
+      minSimilarityOverride: minSimilarityOverride
+    )
+  }
+
   // `source` deliberately omitted — keeps persisted JSON byte-equivalent to the
   // pre-Phase-0 schema for the source field. Bible §6.5.
   // `frequencyUsed` + `lastUsed` ARE persisted (Phase 3a, bible §9.2). Forward-

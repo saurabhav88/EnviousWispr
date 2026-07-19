@@ -6,6 +6,33 @@ import Foundation
 public struct BuiltinWord: Sendable {
   public let id: String
   public let word: CustomWord
+
+  /// Stamps `source: .builtin` centrally (#1680), so a built-in cannot ship
+  /// untagged no matter how its `CustomWord` was written. Export filters on
+  /// `source == .user`; an untagged built-in would silently export as if the
+  /// user had authored it. Tagging at the one construction point makes the
+  /// correct thing automatic rather than a rule every future entry must
+  /// remember — the tag is not spelled at any call site, so it cannot be
+  /// forgotten at one.
+  ///
+  /// Runtime-only: `source` is excluded from `CustomWord.CodingKeys`, and
+  /// decode always yields `.user`. Nothing on disk changes.
+  public init(id: String, word: CustomWord) {
+    self.id = id
+    self.word = CustomWord(
+      id: word.id,
+      canonical: word.canonical,
+      aliases: word.aliases,
+      category: word.category,
+      priority: word.priority,
+      forceReplace: word.forceReplace,
+      caseSensitive: word.caseSensitive,
+      source: .builtin,
+      frequencyUsed: word.frequencyUsed,
+      lastUsed: word.lastUsed,
+      minSimilarityOverride: word.minSimilarityOverride
+    )
+  }
 }
 
 /// Thrown by the CRUD mutation methods when an EXISTING custom-words file
@@ -816,11 +843,21 @@ public final class CustomWordsManager {
     guard let index = words.firstIndex(where: { $0.id == word.id }) else { return }
     let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return }
-    var sanitized = word
-    sanitized.canonical = trimmed
-    sanitized.aliases = sanitized.aliases
+    var edited = word
+    edited.canonical = trimmed
+    edited.aliases = edited.aliases
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty }
+
+    // An edit makes the word the user's, whatever it started as (#1680).
+    // Editing a built-in produces a user override, but the value still carries
+    // `source: .builtin` from `builtinDefaults` and `source` is a `let`, so it
+    // is reconstructed here. Applied ONCE, before both the file write and the
+    // in-memory publish: re-tagging only the file copy leaves the live list
+    // still claiming `.builtin`, and an export taken right after the edit —
+    // which filters on `source == .user` — would silently omit the user's own
+    // change until the next launch decoded it. (No-op for words already `.user`.)
+    let sanitized = edited.ownedByUser()
 
     var file = try loadFileForMutation()
 
@@ -828,7 +865,7 @@ public final class CustomWordsManager {
     if let existingIdx = file.words.firstIndex(where: { $0.id == word.id }) {
       file.words[existingIdx] = sanitized
     } else {
-      // Editing a built-in: add as user word (overrides built-in by canonical match)
+      // Editing a built-in: add as user word (overrides built-in by canonical match).
       file.words.append(sanitized)
     }
     try saveFile(file)

@@ -12,6 +12,11 @@ final class CustomWordsCoordinator {
   /// honest banner instead of a silent empty list. `.unreadable`: the file is
   /// intact, nothing was changed. `.corrupted`: it was archived for recovery.
   private(set) var wordsLoadFailureAtLaunch: CustomWordsInitialLoadFailure?
+  /// Set when a load DURING the session found the file corrupt and archived it
+  /// aside. Separate from the launch flag because corruption does not only
+  /// happen at startup, and the archive makes the next read look clean.
+  private(set) var didDiscoverCorruptionThisSession = false
+
   let suggestionService = WordSuggestionService()
   /// The reused on-device alias generator, exposed as the narrow protocol so the
   /// composition root can wire it into the contacts-import coordinator without
@@ -46,8 +51,7 @@ final class CustomWordsCoordinator {
       customWordError = nil
       return nil
     } catch {
-      customWordError = error.localizedDescription
-      return customWordError
+      return note(error)
     }
   }
 
@@ -58,6 +62,73 @@ final class CustomWordsCoordinator {
     case committed(CustomWordsImportCommitReceipt)
     case stale
     case failed(message: String)
+  }
+
+  /// Re-read the saved words from disk and adopt them, reporting whether the
+  /// list can now be trusted.
+  ///
+  /// One owner for "reload and adopt", used by both callers that need it: the
+  /// stale-commit path (#1679) and the export guard (#1680). Reading without
+  /// adopting is the trap — a readability check that discards what it read
+  /// leaves the caller believing the list is good while it still holds the
+  /// empty launch fallback, which is how export came to overwrite a real
+  /// backup with an empty file (cloud review, #1682).
+  ///
+  /// Fails closed: an unreadable file returns `false` and leaves the current
+  /// list untouched rather than substituting an empty one.
+  /// Record a failure, latching corruption whichever operation discovered it.
+  ///
+  /// Corruption has SEVERAL discoverers, not one (cloud review): any mutation
+  /// can hit it first, and `loadFileForMutation` archives the damaged file and
+  /// throws without touching the launch flag. The next read then sees a
+  /// legitimately missing file and looks perfectly healthy — so export would
+  /// write an empty file over the user's real one while their words sat in
+  /// the archive. Routing every failure through one place means a future
+  /// mutation cannot forget to say so.
+  private func note(_ error: Error) -> String {
+    if let persistence = error as? CustomWordsPersistenceError,
+      persistence == .corruptedExistingFile
+    {
+      didDiscoverCorruptionThisSession = true
+    }
+    customWordError = error.localizedDescription
+    return error.localizedDescription
+  }
+
+  @discardableResult
+  func refreshFromDiskIfPossible() -> Bool {
+    guard let refreshed = manager.load() else {
+      // Corruption found DURING the session is still corruption, and it must
+      // be remembered: the load archives the damaged file aside, so the NEXT
+      // attempt sees a legitimately missing file and reports success.
+      if manager.lastLoadFailure == .corrupted {
+        didDiscoverCorruptionThisSession = true
+      }
+      return false
+    }
+    if refreshed != customWords {
+      customWords = refreshed
+      onWordsChanged?(customWords)
+    }
+    return true
+  }
+
+  /// Whether the current list is a safe thing to WRITE OUT (cloud review, #1682).
+  ///
+  /// A corrupted file is ARCHIVED aside, so a reload afterwards sees a
+  /// legitimately missing file and reports a clean, empty library. Exporting
+  /// then would write an empty file over the one the user picked while their
+  /// real words sit in the archive — destroying the copy they still had.
+  ///
+  /// Deliberately separate from `refreshFromDiskIfPossible`, which answers
+  /// "can I read the library" and must always adopt what it reads. Once the
+  /// user has authored a word since, they have visibly accepted the fresh
+  /// start and the list is theirs again.
+  var canExportCurrentWords: Bool {
+    let sawCorruption =
+      wordsLoadFailureAtLaunch == .corrupted || didDiscoverCorruptionThisSession
+    guard sawCorruption else { return true }
+    return customWords.contains { $0.source == .user }
   }
 
   /// Apply a reviewed import in one atomic write. Fires `onWordsChanged`
@@ -81,15 +152,11 @@ final class CustomWordsCoordinator {
       // Fail closed on an unreadable file: keep the current list rather than
       // clobbering it with an empty one. The commit still reports `.stale`,
       // which is honest either way — nothing was written.
-      if let refreshed = manager.load(), refreshed != customWords {
-        customWords = refreshed
-        onWordsChanged?(customWords)
-      }
+      refreshFromDiskIfPossible()
       customWordError = nil
       return .stale
     } catch {
-      customWordError = error.localizedDescription
-      return .failed(message: error.localizedDescription)
+      return .failed(message: note(error))
     }
   }
 
@@ -102,7 +169,7 @@ final class CustomWordsCoordinator {
       customWordError = nil
       return created
     } catch {
-      customWordError = error.localizedDescription
+      _ = note(error)
       return nil
     }
   }
@@ -115,8 +182,7 @@ final class CustomWordsCoordinator {
       customWordError = nil
       return nil
     } catch {
-      customWordError = error.localizedDescription
-      return customWordError
+      return note(error)
     }
   }
 
@@ -129,8 +195,7 @@ final class CustomWordsCoordinator {
       customWordError = nil
       return nil
     } catch {
-      customWordError = error.localizedDescription
-      return customWordError
+      return note(error)
     }
   }
 
@@ -142,8 +207,7 @@ final class CustomWordsCoordinator {
       customWordError = nil
       return nil
     } catch {
-      customWordError = error.localizedDescription
-      return customWordError
+      return note(error)
     }
   }
 
@@ -158,8 +222,7 @@ final class CustomWordsCoordinator {
       customWordError = nil
       return nil
     } catch {
-      customWordError = error.localizedDescription
-      return customWordError
+      return note(error)
     }
   }
 }
