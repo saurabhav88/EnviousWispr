@@ -98,9 +98,12 @@ final class CustomWordsCoordinator {
   @discardableResult
   func refreshFromDiskIfPossible() -> Bool {
     guard let refreshed = manager.load() else {
-      // Corruption found DURING the session is still corruption, and it must
-      // be remembered: the load archives the damaged file aside, so the NEXT
-      // attempt sees a legitimately missing file and reports success.
+      // Corruption found DURING the session, not at launch, is still
+      // corruption — and it must be remembered (code review r3). The load
+      // archives the damaged file aside, so the NEXT attempt sees a
+      // legitimately missing file, adopts the built-ins, and reports success.
+      // Without latching this, a retry would sail past the export guard, find
+      // zero user words, and write an empty file over the user's existing one.
       if manager.lastLoadFailure == .corrupted {
         didDiscoverCorruptionThisSession = true
       }
@@ -136,6 +139,10 @@ final class CustomWordsCoordinator {
   /// user has authored a word since, they have visibly accepted the fresh
   /// start and the list is theirs again.
   var canExportCurrentWords: Bool {
+    // Either origin of corruption counts: at launch, or discovered mid-session
+    // (code review r3). Checking only the launch flag meant a file that went
+    // bad while the app was open passed the guard on the second attempt and
+    // exported nothing over something.
     let sawCorruption =
       wordsLoadFailureAtLaunch == .corrupted || didDiscoverCorruptionThisSession
     guard sawCorruption else { return true }

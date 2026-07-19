@@ -177,6 +177,39 @@ struct SmartImportSourceTests {
     #expect(try WisprFlowAdapter().loadWords(at: url).contains("blank replacement"))
   }
 
+  @Test("a half-recovered database is refused rather than written into")
+  func walWithoutShmIsRefused() throws {
+    // -wal present but -shm missing means a crashed or mid-recovery Wispr
+    // Flow. A plain read-only connection would CREATE the missing -shm inside
+    // that app's directory, and immutable would skip real uncommitted content
+    // and call a stale view complete. Neither is honest, so refuse and let the
+    // error tell them to quit the app — which flushes the WAL and makes the
+    // next attempt both safe and complete.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try makeWisprFlowDatabase(in: dir)
+    try Data("pretend wal".utf8).write(to: URL(fileURLWithPath: url.path + "-wal"))
+
+    #expect(throws: SmartImportError.unreadable("Wispr Flow")) {
+      _ = try WisprFlowAdapter().loadWords(at: url)
+    }
+    // And nothing was created on the way out.
+    #expect(!FileManager.default.fileExists(atPath: url.path + "-shm"))
+  }
+
+  @Test("a cleanly closed database is read without creating sidecars")
+  func cleanDatabaseLeavesNoSidecarsBehind() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try makeWisprFlowDatabase(in: dir)
+
+    _ = try WisprFlowAdapter().loadWords(at: url)
+
+    // Reading another app's data must never write into its folder.
+    #expect(!FileManager.default.fileExists(atPath: url.path + "-wal"))
+    #expect(!FileManager.default.fileExists(atPath: url.path + "-shm"))
+  }
+
   // MARK: - Source contract
 
   @Test("an app that isn't installed reports not found rather than failing oddly")

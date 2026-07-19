@@ -181,8 +181,23 @@ package struct WisprFlowAdapter: SmartImportAdapter {
     //   WAL absent   → nothing uncommitted, the committed file IS the whole
     //                  truth, and immutable reads it without ever creating a
     //                  sidecar.
-    let walURL = URL(fileURLWithPath: url.path + "-wal")
-    let hasWAL = FileManager.default.fileExists(atPath: walURL.path)
+    // BOTH sidecars, not just the WAL (code review r3). If `-wal` exists but
+    // `-shm` does not — a crashed or mid-recovery Wispr Flow — a plain
+    // read-only connection will CREATE the missing `-shm` in a writable
+    // directory, which is the exact thing the previous round removed. And
+    // immutable is not a safe substitute here either: with real uncommitted
+    // WAL content, skipping it would import a stale view and call it complete.
+    //
+    // Neither option is honest, so refuse and say what would fix it. Quitting
+    // the other app flushes its WAL and makes the next attempt both safe and
+    // complete — which is exactly what the error message already tells the
+    // user to do.
+    let fm = FileManager.default
+    let hasWAL = fm.fileExists(atPath: url.path + "-wal")
+    let hasSHM = fm.fileExists(atPath: url.path + "-shm")
+    if hasWAL && !hasSHM {
+      throw SmartImportError.unreadable(displayName)
+    }
     let uri = hasWAL ? "file:\(url.path)" : "file:\(url.path)?immutable=1"
 
     var db: OpaquePointer?
