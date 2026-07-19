@@ -216,4 +216,64 @@ struct CustomWordsExportActionTests {
         document: document, encoded: try document.encoded()) == nil)
   }
 
+
+  @Test("export refuses a library that trips the stored-surface ceiling")
+  func exportRefusesOnStoredSurface() throws {
+    // The fifth instance of one defect: a ceiling added to import and not to
+    // export. This library has an acceptable WORD count and byte size, and
+    // trips only the surface ceiling — which the previous preflight, holding
+    // its own list of checks, did not know about.
+    let perWord = 5_000
+    let count = (CustomWordsImportLimits.maximumExportedStoredValues / perWord) + 2
+    let words = (0..<count).map { index in
+      CustomWord(
+        canonical: "Term\(index)",
+        aliases: (0..<perWord).map { "a\(index)_\($0)" },
+        category: .general)
+    }
+    let document = CustomWordsTransferDocument(words: words)
+    #expect(document.words.count < CustomWordsImportLimits.maximumExportedCandidates)
+
+    let refusal = CustomWordsExportAction.refusalIfUnimportable(
+      document: document, encoded: try document.encoded())
+
+    #expect(refusal?.contains("Nothing was exported") == true)
+    // Reported as words AND alternate spellings, not as a word count the user
+    // cannot see anywhere.
+    #expect(refusal?.contains("alternate spellings") == true)
+  }
+
+  @Test("whatever the importer refuses, export refuses — by construction")
+  func exportRefusalTracksTheImporter() throws {
+    // The property that matters is not that today's ceilings are checked, but
+    // that a ceiling added to the parser LATER is enforced here with no change
+    // to this file. Proven by driving the real parser: anything it rejects,
+    // the preflight rejects, because the preflight IS the parser.
+    let unstorable = CustomWordsTransferDocument(words: [
+      CustomWord(canonical: "Kub\u{202E}ernetes", aliases: [], category: .general)
+    ])
+    let overWordCeiling = CustomWordsTransferDocument(
+      words: (0...CustomWordsImportLimits.maximumExportedCandidates).map {
+        CustomWord(canonical: "T\($0)", aliases: [], category: .general)
+      })
+
+    for document in [unstorable, overWordCeiling] {
+      let encoded = try document.encoded()
+      let importerRefuses: Bool
+      do {
+        let candidates = try ExportedWordsFileParser().parse(data: encoded)
+        _ = try CustomWordsImportBatch(
+          sourceID: "exported-words", sourceDisplayName: "x", candidates: candidates
+        ).validated()
+        importerRefuses = false
+      } catch {
+        importerRefuses = true
+      }
+      let exportRefuses = CustomWordsExportAction.refusalIfUnimportable(
+        document: document, encoded: encoded) != nil
+
+      #expect(importerRefuses == exportRefuses)
+    }
+  }
+
 }

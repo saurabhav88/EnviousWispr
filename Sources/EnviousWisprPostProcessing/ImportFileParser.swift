@@ -8,6 +8,7 @@ package enum ImportFileError: LocalizedError, Sendable, Equatable {
   case unsupportedType(String)
   case tooLarge
   case tooManyWords(found: Int, limit: Int)
+  case tooManyStoredValues(found: Int, limit: Int)
   case exportedWords(CustomWordsTransferError)
 
   package var errorDescription: String? {
@@ -25,6 +26,14 @@ package enum ImportFileError: LocalizedError, Sendable, Equatable {
       return
         "That file has more than \(limit) words, which is more than EnviousWispr "
         + "can import at once. Try splitting it into smaller files."
+    case .tooManyStoredValues(_, let limit):
+      // Distinct from tooManyWords on purpose: this file trips the ceiling on
+      // total words PLUS alternate spellings, so reporting it as a word count
+      // would state a number the user cannot see anywhere and advise splitting
+      // a file whose word count is fine (Codex review, #1683).
+      return
+        "That file has more than \(limit) words and alternate spellings "
+        + "combined, which is more than EnviousWispr can import at once."
     case .unsupportedType(let name):
       return
         "EnviousWispr can't read \(name) files yet. "
@@ -139,7 +148,7 @@ package struct ExportedWordsFileParser: ImportFileParser {
       let surface = document.words.reduce(0) { $0 + 1 + $1.aliases.count }
       let surfaceCeiling = CustomWordsImportLimits.maximumExportedStoredValues
       guard surface <= surfaceCeiling else {
-        throw ImportFileError.tooManyWords(found: surface, limit: surfaceCeiling)
+        throw ImportFileError.tooManyStoredValues(found: surface, limit: surfaceCeiling)
       }
       return try document.candidatesForImport()
     } catch let error as CustomWordsTransferError {

@@ -78,42 +78,36 @@ enum CustomWordsExportAction {
     return (encoded, refusalIfUnimportable(document: document, encoded: encoded))
   }
 
-  /// The one place export and import agree on what fits — and on what is
-  /// storable at all.
+  /// Asks the IMPORTER whether it can read these bytes, rather than keeping a
+  /// second list of what "importable" means.
   ///
-  /// Size was not the only way to write an unimportable file: a word or alias
-  /// authored in the editor can hold a scalar the import policy refuses, so a
-  /// count-and-bytes preflight still produced a file that import rejected
-  /// wholesale (Codex review, #1683). It therefore runs the importer's OWN
-  /// validation rather than a second description of it, which is what stops
-  /// the two from drifting apart again.
+  /// Five separate review rounds found the same defect here: a constraint
+  /// added to import and not to export (word ceiling, then byte ceiling, then
+  /// character policy, then stored-surface ceiling). Every fix was a promise
+  /// to remember the other side next time, and every next time forgot. So the
+  /// preflight no longer describes importability at all — it runs the actual
+  /// import path over the actual bytes. A ceiling added to the parser from now
+  /// on is enforced here the moment it exists, with nothing to keep in sync.
   nonisolated static func refusalIfUnimportable(
     document: CustomWordsTransferDocument, encoded: Data
   ) -> String? {
-    let words = document.words.count
-    let wordCeiling = CustomWordsImportLimits.maximumExportedCandidates
-    if words > wordCeiling {
-      return
-        "You have \(words) words, which is more than EnviousWispr can read back "
-        + "in one file (\(wordCeiling)). Nothing was exported."
-    }
-    let byteCeiling = CustomWordsImportLimits.maximumExportedFileBytes
-    if encoded.count > byteCeiling {
+    // The byte ceiling belongs to the READER, not the parser, so it is the one
+    // check that has to be stated here. It mirrors FileImportSource.
+    if encoded.count > CustomWordsImportLimits.maximumExportedFileBytes {
       return
         "Your words are too large to fit in one file EnviousWispr could read "
         + "back. Nothing was exported."
     }
     do {
+      let candidates = try ExportedWordsFileParser().parse(data: encoded)
       _ = try CustomWordsImportBatch(
         sourceID: "exported-words",
         sourceDisplayName: "EnviousWispr words file",
-        candidates: try document.candidatesForImport()
+        candidates: candidates
       ).validated()
+      return nil
     } catch {
-      return
-        "One of your words can't be written to a file EnviousWispr could read "
-        + "back (\(error.localizedDescription)) Nothing was exported."
+      return "\(error.localizedDescription) Nothing was exported."
     }
-    return nil
   }
 }
