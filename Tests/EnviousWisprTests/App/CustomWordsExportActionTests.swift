@@ -20,7 +20,10 @@ struct CustomWordsExportActionTests {
   /// is the thing this codebase already learned not to do.
   @MainActor
   final class WriteSpy {
-    var document: CustomWordsTransferDocument?
+    /// Captures the BYTES now, which is what actually reaches disk — so
+    /// assertions decode what would have been written rather than trusting an
+    /// object that was never serialised.
+    var written: Data?
     var writeCount = 0
   }
 
@@ -74,11 +77,11 @@ struct CustomWordsExportActionTests {
     let outcome = await CustomWordsExportAction.run(
       coordinator: coordinator,
       chooseDestination: { self.tempURL() },
-      write: { document, _ in await MainActor.run { spy.document = document } }
+      write: { data, _ in await MainActor.run { spy.written = data } }
     )
 
     #expect(outcome == .refusedUnsafeLibrary)
-    #expect(spy.document == nil, "an empty export must never reach the writer")
+    #expect(spy.written == nil, "an empty export must never reach the writer")
   }
 
   @Test("a healthy library exports exactly the user's own words")
@@ -91,11 +94,11 @@ struct CustomWordsExportActionTests {
     let outcome = await CustomWordsExportAction.run(
       coordinator: coordinator,
       chooseDestination: { self.tempURL() },
-      write: { document, _ in await MainActor.run { spy.document = document } }
+      write: { data, _ in await MainActor.run { spy.written = data } }
     )
 
     #expect(outcome == .exported)
-    let document = try #require(spy.document)
+    let document = try CustomWordsTransferDocument(data: try #require(spy.written))
     #expect(document.words.map(\.canonical).sorted() == ["Kubernetes", "Qualtrics"])
     // Built-ins are excluded: this is "your words", not "everything".
     #expect(!document.words.contains { $0.canonical == "GitHub" })
@@ -144,11 +147,11 @@ struct CustomWordsExportActionTests {
     let outcome = await CustomWordsExportAction.run(
       coordinator: coordinator,
       chooseDestination: { self.tempURL() },
-      write: { document, _ in await MainActor.run { spy.document = document } }
+      write: { data, _ in await MainActor.run { spy.written = data } }
     )
 
     #expect(outcome == .refusedUnsafeLibrary)
-    #expect(spy.document == nil, "an empty export must never reach the writer")
+    #expect(spy.written == nil, "an empty export must never reach the writer")
   }
 
   @Test("export refuses to write a file the importer would reject")
@@ -174,6 +177,39 @@ struct CustomWordsExportActionTests {
       CustomWord(canonical: "T\($0)", aliases: [], category: .general)
     }
     let document = CustomWordsTransferDocument(words: atLimit)
+
+    #expect(
+      CustomWordsExportAction.refusalIfUnimportable(
+        document: document, encoded: try document.encoded()) == nil)
+  }
+
+
+  @Test("a word the importer would refuse blocks the export")
+  func unstorableWordBlocksExport() throws {
+    // Size was not the only way to write an unimportable file. A word authored
+    // in the editor can hold a scalar the import policy refuses, so a
+    // count-and-bytes preflight still produced a file that import rejected
+    // wholesale. The preflight runs the importer's OWN validation now, so the
+    // two cannot describe "storable" differently.
+    let document = CustomWordsTransferDocument(words: [
+      CustomWord(canonical: "Kub\u{202E}ernetes", aliases: [], category: .general)
+    ])
+
+    let refusal = CustomWordsExportAction.refusalIfUnimportable(
+      document: document, encoded: try document.encoded())
+
+    #expect(refusal?.contains("Nothing was exported") == true)
+  }
+
+  @Test("a normal library is not blocked by the storability check")
+  func normalLibraryPassesStorabilityCheck() throws {
+    // The check must not become a wall: real words, including non-Latin ones
+    // and joiners, export fine.
+    let document = CustomWordsTransferDocument(words: [
+      CustomWord(canonical: "Kubernetes", aliases: ["k8s"], category: .brand),
+      CustomWord(canonical: "東京", aliases: [], category: .general),
+      CustomWord(canonical: "क्\u{200D}ष", aliases: [], category: .general),
+    ])
 
     #expect(
       CustomWordsExportAction.refusalIfUnimportable(

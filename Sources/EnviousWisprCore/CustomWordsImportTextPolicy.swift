@@ -71,7 +71,12 @@ package enum CustomWordsImportTextPolicy {
     if scalar == "\n" || scalar == "\r" || scalar == "\t" { return true }
     if wordFormingInvisibles.contains(scalar.value) { return true }
     switch scalar.properties.generalCategory {
-    case .control, .surrogate, .privateUse, .unassigned, .format:
+    case .control, .surrogate, .privateUse, .unassigned, .format,
+      // U+2028 and U+2029 are line and paragraph breaks with their OWN
+      // categories, so a control-only check let them through — invisible,
+      // inside a stored word, despite the separator policy saying otherwise
+      // (Codex review, #1683).
+      .lineSeparator, .paragraphSeparator:
       return false
     default:
       return true

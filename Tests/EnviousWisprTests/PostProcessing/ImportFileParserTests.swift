@@ -757,4 +757,20 @@ struct ImportFileParserTests {
     #expect(candidates[0].aliases == .supplied(["k8s"]))
   }
 
+
+  @Test("line and paragraph separators cannot hide inside a stored word")
+  func lineSeparatorsAreRefused() async throws {
+    // U+2028 and U+2029 have their OWN Unicode categories, so a control-only
+    // check let them through — invisible, inside a stored word, despite the
+    // separator policy saying otherwise.
+    for hidden in ["Kub\u{2028}ernetes", "Kub\u{2029}ernetes"] {
+      let word = CustomWord(canonical: hidden, aliases: [], category: .general)
+      let url = try write(try CustomWordsTransferDocument(words: [word]).encoded(), as: "words.json")
+
+      await #expect(throws: CustomWordsImportValidationError.self) {
+        try await FileImportSource(url: url).loadCandidates()
+      }
+    }
+  }
+
 }

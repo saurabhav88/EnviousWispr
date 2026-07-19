@@ -33,7 +33,7 @@ enum CustomWordsExportAction {
   static func run(
     coordinator: CustomWordsCoordinator,
     chooseDestination: () -> URL?,
-    write: @escaping @Sendable (CustomWordsTransferDocument, URL) async throws -> Void
+    write: @escaping @Sendable (Data, URL) async throws -> Void
   ) async -> Outcome {
     // 1. Ask first. Refreshing before this made cancelling mutate state.
     guard let destination = chooseDestination() else { return .cancelled }
@@ -51,26 +51,39 @@ enum CustomWordsExportAction {
 
     // 5. Refuse to write a file our own importer would reject. The exporter
     //    and importer are one round trip, so a limit enforced on only one side
-    //    is a promise the pair cannot keep: raising the IMPORT ceilings while
-    //    export kept no preflight left the same "writes a file it then
-    //    refuses" hole open, just from the other direction (Codex import
-    //    taxonomy audit, #1683 — class C08).
+    //    is a promise the pair cannot keep.
     //
-    //    Checked against the encoded bytes, not an estimate, because the byte
-    //    ceiling is enforced on encoded bytes at read time.
+    //    Encoding happens OFF the main actor: at the 64 MB ceiling doing it
+    //    here froze the settings window, and the writer then encoded the same
+    //    document a second time. One encode, off-main, and the same bytes are
+    //    both measured and written.
     do {
-      let encoded = try document.encoded()
+      let encoded = try await Self.encoded(document)
       if let refusal = Self.refusalIfUnimportable(document: document, encoded: encoded) {
         return .failed(message: refusal)
       }
-      try await write(document, destination)
+      try await write(encoded, destination)
       return .exported
     } catch {
       return .failed(message: error.localizedDescription)
     }
   }
 
-  /// The one place export and import agree on what fits.
+  @concurrent private static func encoded(
+    _ document: CustomWordsTransferDocument
+  ) async throws -> Data {
+    try document.encoded()
+  }
+
+  /// The one place export and import agree on what fits — and on what is
+  /// storable at all.
+  ///
+  /// Size was not the only way to write an unimportable file: a word or alias
+  /// authored in the editor can hold a scalar the import policy refuses, so a
+  /// count-and-bytes preflight still produced a file that import rejected
+  /// wholesale (Codex review, #1683). It therefore runs the importer's OWN
+  /// validation rather than a second description of it, which is what stops
+  /// the two from drifting apart again.
   static func refusalIfUnimportable(
     document: CustomWordsTransferDocument, encoded: Data
   ) -> String? {
@@ -86,6 +99,17 @@ enum CustomWordsExportAction {
       return
         "Your words are too large to fit in one file EnviousWispr could read "
         + "back. Nothing was exported."
+    }
+    do {
+      _ = try CustomWordsImportBatch(
+        sourceID: "exported-words",
+        sourceDisplayName: "EnviousWispr words file",
+        candidates: try document.candidatesForImport()
+      ).validated()
+    } catch {
+      return
+        "One of your words can't be written to a file EnviousWispr could read "
+        + "back (\(error.localizedDescription)) Nothing was exported."
     }
     return nil
   }

@@ -20,13 +20,19 @@ struct CustomWordsExportWriterTests {
     CustomWordsTransferDocument(words: canonicals.map { CustomWord(canonical: $0) })
   }
 
+  /// The writer takes bytes now, so encoding happens once, off the main actor,
+  /// and the same bytes are measured and written.
+  private func encoded(_ canonicals: [String]) throws -> Data {
+    try document(canonicals).encoded()
+  }
+
   @Test("a new file is created with owner-only permissions")
   func writerCreatesNewFileWithMode0600() async throws {
     let dir = makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
     let destination = dir.appendingPathComponent("words.json")
 
-    try await CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
+    try await CustomWordsExportWriter.write(try encoded(["Kubernetes"]), to: destination)
 
     let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)
     let permissions = try #require(attributes[.posixPermissions] as? NSNumber)
@@ -40,7 +46,7 @@ struct CustomWordsExportWriterTests {
     let destination = dir.appendingPathComponent("words.json")
     try Data("previous contents".utf8).write(to: destination)
 
-    try await CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
+    try await CustomWordsExportWriter.write(try encoded(["Kubernetes"]), to: destination)
 
     let decoded = try CustomWordsTransferDocument(data: Data(contentsOf: destination))
     #expect(decoded.words.map(\.canonical) == ["Kubernetes"])
@@ -59,7 +65,7 @@ struct CustomWordsExportWriterTests {
     try FileManager.default.setAttributes(
       [.posixPermissions: 0o644], ofItemAtPath: destination.path)
 
-    try await CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
+    try await CustomWordsExportWriter.write(try encoded(["Kubernetes"]), to: destination)
 
     let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)
     let permissions = try #require(attributes[.posixPermissions] as? NSNumber)
@@ -71,8 +77,7 @@ struct CustomWordsExportWriterTests {
     let dir = makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    try await CustomWordsExportWriter.write(
-      document(["Kubernetes"]), to: dir.appendingPathComponent("words.json"))
+    try await CustomWordsExportWriter.write(try encoded(["Kubernetes"]), to: dir.appendingPathComponent("words.json"))
 
     let leftovers = try FileManager.default
       .contentsOfDirectory(atPath: dir.path)
@@ -97,7 +102,7 @@ struct CustomWordsExportWriterTests {
       [.posixPermissions: 0o500], ofItemAtPath: dir.path)
 
     await #expect(throws: (any Error).self) {
-      try await CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
+      try await CustomWordsExportWriter.write(try encoded(["Kubernetes"]), to: destination)
     }
 
     try FileManager.default.setAttributes(
@@ -119,7 +124,7 @@ struct CustomWordsExportWriterTests {
     try Data("precious".utf8).write(to: inhabitant)
 
     await #expect(throws: (any Error).self) {
-      try await CustomWordsExportWriter.write(document(["Kubernetes"]), to: destination)
+      try await CustomWordsExportWriter.write(try encoded(["Kubernetes"]), to: destination)
     }
 
     var isDirectory: ObjCBool = false
@@ -139,12 +144,14 @@ struct CustomWordsExportWriterTests {
     // name would let these two interleave into one corrupt file.
     async let first: Void = Task.detached {
       try await CustomWordsExportWriter.write(
-        CustomWordsTransferDocument(words: [CustomWord(canonical: "Kubernetes")]),
+        try CustomWordsTransferDocument(words: [CustomWord(canonical: "Kubernetes")])
+          .encoded(),
         to: destination)
     }.value
     async let second: Void = Task.detached {
       try await CustomWordsExportWriter.write(
-        CustomWordsTransferDocument(words: [CustomWord(canonical: "Anthropic")]),
+        try CustomWordsTransferDocument(words: [CustomWord(canonical: "Anthropic")])
+          .encoded(),
         to: destination)
     }.value
     _ = try await (first, second)
