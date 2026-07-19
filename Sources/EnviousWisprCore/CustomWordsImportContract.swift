@@ -113,6 +113,18 @@ package struct CustomWordsImportBatch: Sendable, Equatable {
   }
 }
 
+/// Shared ceilings every import source honours (#1683).
+///
+/// One home so paste and file import cannot drift apart: the compare engine,
+/// the review list, and the commit all pay the same cost per candidate no
+/// matter which door the words came through, so a limit that applies to one
+/// source and not another is an accident waiting to be found by a user.
+package enum CustomWordsImportLimits {
+  /// The compare engine's documented upload ceiling. Beyond this the review
+  /// screen is not something a person can meaningfully read anyway.
+  package static let maximumCandidates = 25_000
+}
+
 package protocol CustomWordsImportSource: Sendable {
   func loadCandidates() async throws -> CustomWordsImportBatch
 }

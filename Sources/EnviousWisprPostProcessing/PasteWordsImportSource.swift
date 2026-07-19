@@ -41,6 +41,20 @@ package enum PasteWordsParser {
   }
 }
 
+/// Pasting more than the shared ceiling allows (#1683).
+package enum PasteWordsImportError: LocalizedError, Sendable, Equatable {
+  case tooManyWords(found: Int, limit: Int)
+
+  package var errorDescription: String? {
+    switch self {
+    case .tooManyWords(let found, let limit):
+      return
+        "That's \(found) words, which is more than EnviousWispr can import at once "
+        + "(\(limit)). Try pasting a smaller batch."
+    }
+  }
+}
+
 /// The pasted-text import source.
 package struct PasteWordsImportSource: CustomWordsImportSource {
   package static let sourceID = "paste"
@@ -51,8 +65,16 @@ package struct PasteWordsImportSource: CustomWordsImportSource {
     self.text = text
   }
 
-  package func loadCandidates() async throws -> CustomWordsImportBatch {
+  /// `@concurrent` so a very large paste is parsed off the caller's actor
+  /// rather than on the main one (code review r2).
+  @concurrent package func loadCandidates() async throws -> CustomWordsImportBatch {
     let canonicals = PasteWordsParser.parse(text)
+    // The same ceiling file import enforces. A limit that applied to one door
+    // and not the other would just be a bug with a longer fuse.
+    guard canonicals.count <= CustomWordsImportLimits.maximumCandidates else {
+      throw PasteWordsImportError.tooManyWords(
+        found: canonicals.count, limit: CustomWordsImportLimits.maximumCandidates)
+    }
     return CustomWordsImportBatch(
       sourceID: Self.sourceID,
       sourceDisplayName: "Pasted words",

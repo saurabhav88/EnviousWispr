@@ -313,9 +313,12 @@ private struct ImportPasteScreen: View {
   @Bindable var model: CustomWordsImportFlowModel
   @FocusState private var isEditorFocused: Bool
 
-  /// Parsed live so the button can name the real outcome instead of promising
-  /// something the parser might not agree with.
-  private var wordCount: Int { PasteWordsParser.parse(model.pasteDraft).count }
+  /// Recomputed when the draft changes, NOT on every render (code review r2).
+  ///
+  /// As a computed property this re-parsed the entire draft on every view
+  /// update, on the main actor — so a large pasted list made the editor
+  /// progressively less responsive the more it contained.
+  @State private var wordCount = 0
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -352,7 +355,15 @@ private struct ImportPasteScreen: View {
         .disabled(wordCount == 0)
       }
     }
-    .onAppear { isEditorFocused = true }
+    .onAppear {
+      isEditorFocused = true
+      // Back from Review returns to an existing draft, so the count has to be
+      // right on arrival, not only after the next keystroke.
+      wordCount = PasteWordsParser.parse(model.pasteDraft).count
+    }
+    .onChange(of: model.pasteDraft) { _, draft in
+      wordCount = PasteWordsParser.parse(draft).count
+    }
   }
 
   private var summary: String {
