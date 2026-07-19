@@ -44,9 +44,21 @@ struct YourWordsView: View {
           Label("Add term", systemImage: "plus")
         }
         #if DEBUG
-          // Import shell fixture walk (#1657). DEBUG-only until a real import
-          // source ships — a release-visible entry whose screens only show
-          // fixtures would ship a broken promise.
+          // The ONLY doorway into Custom Words import, and deliberately
+          // DEBUG-only.
+          //
+          // This is founder policy, not an oversight or an unfinished edge
+          // (epic #1619, restated 2026-07-19): the whole import feature is
+          // compiled out of release builds until the founder decides it ships,
+          // and every import PR carries "adds no second entry point" in its
+          // definition of done. The mechanism is compile-time exclusion rather
+          // than a runtime toggle precisely because a runtime toggle ships in
+          // release and is user-discoverable — the exact bleed being avoided.
+          //
+          // Reviewers reasonably read a real, working, unreachable feature as
+          // a bug — it was raised as a P1 on #1681 — so the reason lives here,
+          // next to the gate, rather than only in the issue tracker. Removing
+          // this gate is a founder decision, not a code-review one.
           Button {
             sheetRoute = .importWords
           } label: {
