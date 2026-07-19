@@ -51,8 +51,7 @@ final class CustomWordsCoordinator {
       customWordError = nil
       return nil
     } catch {
-      customWordError = error.localizedDescription
-      return customWordError
+      return note(error)
     }
   }
 
@@ -77,6 +76,25 @@ final class CustomWordsCoordinator {
   ///
   /// Fails closed: an unreadable file returns `false` and leaves the current
   /// list untouched rather than substituting an empty one.
+  /// Record a failure, latching corruption whichever operation discovered it.
+  ///
+  /// Corruption has SEVERAL discoverers, not one (cloud review): any mutation
+  /// can hit it first, and `loadFileForMutation` archives the damaged file and
+  /// throws without touching the launch flag. The next read then sees a
+  /// legitimately missing file and looks perfectly healthy — so export would
+  /// write an empty file over the user's real one while their words sat in
+  /// the archive. Routing every failure through one place means a future
+  /// mutation cannot forget to say so.
+  private func note(_ error: Error) -> String {
+    if let persistence = error as? CustomWordsPersistenceError,
+      persistence == .corruptedExistingFile
+    {
+      didDiscoverCorruptionThisSession = true
+    }
+    customWordError = error.localizedDescription
+    return error.localizedDescription
+  }
+
   @discardableResult
   func refreshFromDiskIfPossible() -> Bool {
     guard let refreshed = manager.load() else {
@@ -138,8 +156,7 @@ final class CustomWordsCoordinator {
       customWordError = nil
       return .stale
     } catch {
-      customWordError = error.localizedDescription
-      return .failed(message: error.localizedDescription)
+      return .failed(message: note(error))
     }
   }
 
@@ -152,7 +169,7 @@ final class CustomWordsCoordinator {
       customWordError = nil
       return created
     } catch {
-      customWordError = error.localizedDescription
+      _ = note(error)
       return nil
     }
   }
@@ -165,8 +182,7 @@ final class CustomWordsCoordinator {
       customWordError = nil
       return nil
     } catch {
-      customWordError = error.localizedDescription
-      return customWordError
+      return note(error)
     }
   }
 
@@ -179,8 +195,7 @@ final class CustomWordsCoordinator {
       customWordError = nil
       return nil
     } catch {
-      customWordError = error.localizedDescription
-      return customWordError
+      return note(error)
     }
   }
 
@@ -192,8 +207,7 @@ final class CustomWordsCoordinator {
       customWordError = nil
       return nil
     } catch {
-      customWordError = error.localizedDescription
-      return customWordError
+      return note(error)
     }
   }
 
@@ -208,8 +222,7 @@ final class CustomWordsCoordinator {
       customWordError = nil
       return nil
     } catch {
-      customWordError = error.localizedDescription
-      return customWordError
+      return note(error)
     }
   }
 }

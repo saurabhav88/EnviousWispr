@@ -117,4 +117,37 @@ struct CustomWordsExportActionTests {
       return
     }
   }
+
+  @Test("corruption discovered by an EDIT still blocks a later export")
+  func corruptionFoundByAMutationBlocksExport() async throws {
+    // A fourth door into the same data loss (cloud review): when a mutation is
+    // what first hits the damaged file, the manager archives it and throws
+    // WITHOUT touching the launch flag. The next read then sees a legitimately
+    // missing file and looks perfectly healthy — so export would write an
+    // empty file over the user's real one while their words sat in the
+    // archive. Corruption has several discoverers, not one.
+    let url = tempURL()
+    let manager = CustomWordsManager(fileURL: url)
+    var live = manager.load() ?? []
+    try manager.add(word: CustomWord(canonical: "Kubernetes"), to: &live)
+
+    // The app is running with a healthy library — launch flag clean.
+    let coordinator = CustomWordsCoordinator(manager: manager)
+    #expect(coordinator.wordsLoadFailureAtLaunch == nil)
+    #expect(coordinator.customWords.contains { $0.canonical == "Kubernetes" })
+
+    // The file goes bad underneath it, and an EDIT is what finds out.
+    try Data("not valid json at all {{{".utf8).write(to: url)
+    #expect(coordinator.add(CustomWord(canonical: "Qualtrics")) != nil, "the edit must fail")
+
+    let spy = WriteSpy()
+    let outcome = await CustomWordsExportAction.run(
+      coordinator: coordinator,
+      chooseDestination: { self.tempURL() },
+      write: { document, _ in await MainActor.run { spy.document = document } }
+    )
+
+    #expect(outcome == .refusedUnsafeLibrary)
+    #expect(spy.document == nil, "an empty export must never reach the writer")
+  }
 }
