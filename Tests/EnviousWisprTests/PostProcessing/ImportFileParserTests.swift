@@ -964,4 +964,34 @@ struct ImportFileParserTests {
     }
   }
 
+
+  @Test("a word made only of invisible joiners is refused")
+  func joinerOnlyValueIsRefused() async throws {
+    // Joiners are legitimate INSIDE a word, so "not empty" and "every scalar
+    // allowed" both passed — and a visually blank word could be stored and
+    // shown in Review as nothing at all.
+    for blank in ["\u{200D}", "\u{200C}\u{200D}", " \u{200D} "] {
+      let url = try write(blank, as: "words.txt")
+      let batch = try await FileImportSource(url: url).loadCandidates()
+      #expect(batch.candidates.isEmpty, "a joiner-only entry must not become a word")
+    }
+
+    // And the same value cannot arrive through an exported file either.
+    let word = CustomWord(canonical: "\u{200D}", aliases: [], category: .general)
+    let url = try write(try CustomWordsTransferDocument(words: [word]).encoded(), as: "words.json")
+    await #expect(throws: CustomWordsImportValidationError.self) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
+  @Test("a real word containing a joiner still imports")
+  func joinerInsideRealWordSurvives() async throws {
+    let url = try write("क्\u{200D}ष", as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.count == 1)
+    #expect(candidates[0].canonical.unicodeScalars.contains { $0.value == 0x200D })
+  }
+
 }

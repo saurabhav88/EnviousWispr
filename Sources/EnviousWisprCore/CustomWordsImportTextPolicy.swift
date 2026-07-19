@@ -73,6 +73,16 @@ package enum CustomWordsImportTextPolicy {
     guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       return false
     }
+    // "Not empty" is not the same as "visible". A value made only of joiners
+    // — which are legitimately allowed INSIDE words — passed the emptiness
+    // check and every scalar check, so a blank-looking word could be stored
+    // and shown in Review as nothing at all (cloud review, #1683).
+    guard
+      value.unicodeScalars.contains(where: {
+        !wordFormingInvisibles.contains($0.value)
+          && !CharacterSet.whitespacesAndNewlines.contains($0)
+      })
+    else { return false }
     return value.unicodeScalars.allSatisfy(isAcceptableInStoredValue)
   }
 

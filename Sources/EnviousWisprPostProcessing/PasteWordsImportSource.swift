@@ -52,7 +52,15 @@ package enum PasteWordsParser {
     func flush() -> Bool {
       defer { buffer.removeAll(keepingCapacity: true) }
       let trimmed = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !trimmed.isEmpty else { return true }
+      // Skipped like any other blank line. A piece made only of invisible
+      // joiners is noise in a pasted list, not a word the user meant — and
+      // refusing the whole paste over one would be a strange way to treat
+      // what is effectively an empty line (cloud review, #1683). A structured
+      // file is different: there a blank word is a defect, and the validator
+      // refuses it.
+      guard !trimmed.isEmpty,
+        CustomWordsImportTextPolicy.isAcceptableStoredValue(trimmed)
+      else { return true }
       // Deduplicate on the compare engine's own key, so "GitHub" and "github"
       // in one paste collapse the same way they would against the library —
       // and the FIRST spelling wins, because that is the one the user typed
