@@ -566,4 +566,40 @@ struct CustomWordsCoordinatorLaunchFailureTests {
             addedIDs: [], replacedIDs: [], droppedAliasCollisions: [])))
     #expect(coordinator.customWords == before)
   }
+
+  @Test("a corrupted-and-archived library is not safe to export")
+  func corruptedLibraryIsNotExportable() throws {
+    // The scenario: the file is damaged at launch, so the manager archives it
+    // aside. A later reload then sees a legitimately MISSING file and reports
+    // a clean, empty library — which reads as success while the user's real
+    // words sit in the archive. Exporting there writes an empty file over
+    // whatever the user picked (cloud review, #1682).
+    let url = Self.tempURL()
+    defer { Self.cleanup(url) }
+    try Data("not valid json at all {{{".utf8).write(to: url)
+
+    let coordinator = CustomWordsCoordinator(manager: CustomWordsManager(fileURL: url))
+    #expect(coordinator.wordsLoadFailureAtLaunch == .corrupted)
+
+    // The reload succeeds — the damaged file is gone — and that is exactly why
+    // readability alone cannot be the gate.
+    #expect(coordinator.refreshFromDiskIfPossible())
+    #expect(coordinator.canExportCurrentWords == false)
+  }
+
+  @Test("authoring a word after corruption makes the list exportable again")
+  func authoringAWordAfterCorruptionRestoresExportability() throws {
+    let url = Self.tempURL()
+    defer { Self.cleanup(url) }
+    try Data("not valid json at all {{{".utf8).write(to: url)
+
+    let coordinator = CustomWordsCoordinator(manager: CustomWordsManager(fileURL: url))
+    #expect(coordinator.canExportCurrentWords == false)
+
+    // Once they have written something since, they have visibly accepted the
+    // fresh start and the list is theirs again — blocking forever would be its
+    // own kind of wrong.
+    #expect(coordinator.add(CustomWord(canonical: "Kubernetes")) == nil)
+    #expect(coordinator.canExportCurrentWords)
+  }
 }
