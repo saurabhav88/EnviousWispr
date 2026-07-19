@@ -80,12 +80,32 @@ struct SmartImportSourceTests {
     #expect(try SuperwhisperAdapter().loadWords(at: url).isEmpty)
   }
 
-  @Test("Superwhisper probes both the current and legacy locations")
-  func superwhisperProbesBothLocations() {
+  @Test("Superwhisper probes the current location before the legacy one")
+  func superwhisperProbesCurrentLocationFirst() {
     let paths = SuperwhisperAdapter().candidatePaths.map(\.path)
-    // Checking only one silently reports "not found" for half the install base.
-    #expect(paths.contains { $0.contains("Documents/superwhisper") })
-    #expect(paths.contains { !$0.contains("Documents") && $0.contains("superwhisper") })
+    // Checking only one silently reports "not found" for half the install
+    // base — and ORDER matters just as much: an upgraded install can retain
+    // both files, and probing legacy first reads vocabulary the user stopped
+    // editing months ago while ignoring the file the app actually uses.
+    #expect(paths.count == 2)
+    #expect(!paths[0].contains("Documents"))
+    #expect(paths[1].contains("Documents/superwhisper"))
+  }
+
+  @Test("a corrupt database is refused rather than importing whatever was read")
+  func corruptDatabaseIsRefusedRatherThanPartiallyImported() throws {
+    // A partial read presented as a complete import is the same false-pass
+    // shape as a test that never runs: the user would see "imported 3 words"
+    // and never learn the other forty were unreachable.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("flow.sqlite")
+    // A file that opens as a database but whose table cannot be read.
+    try Data("SQLite format 3\u{0}garbage-not-a-real-database".utf8).write(to: url)
+
+    #expect(throws: SmartImportError.unreadable("Wispr Flow")) {
+      _ = try WisprFlowAdapter().loadWords(at: url)
+    }
   }
 
   // MARK: - Wispr Flow

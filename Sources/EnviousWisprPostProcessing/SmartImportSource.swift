@@ -99,12 +99,15 @@ package struct SuperwhisperAdapter: SmartImportAdapter {
 
   package var candidatePaths: [URL] {
     let home = FileManager.default.homeDirectoryForCurrentUser
-    // Probe BOTH: the app's current default is directly under home, while
-    // older installs keep it under Documents. Checking only one silently
-    // reports "not found" for half the installed base.
+    // Probe BOTH, CURRENT FIRST. The app's current default is directly under
+    // home; older installs keep it under Documents. Checking only one silently
+    // reports "not found" for half the installed base — but order matters just
+    // as much: an upgraded install can retain BOTH files, and probing the
+    // legacy path first would read vocabulary the user stopped editing months
+    // ago while ignoring the file the app is actually using (code review).
     return [
-      home.appendingPathComponent("Documents/superwhisper/settings/settings.json"),
       home.appendingPathComponent("superwhisper/settings/settings.json"),
+      home.appendingPathComponent("Documents/superwhisper/settings/settings.json"),
     ]
   }
 
@@ -142,21 +145,6 @@ package struct WisprFlowAdapter: SmartImportAdapter {
   package init() {}
 
   package func loadWords(at url: URL) throws -> [String] {
-    // `immutable=1` plus READONLY: this belongs to another running app. We
-    // promise never to write to it, and immutable avoids taking locks or
-    // touching its journal, so importing cannot disturb or corrupt a database
-    // the user still depends on.
-    var db: OpaquePointer?
-    let uri = "file:\(url.path)?immutable=1"
-    guard
-      sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
-      let db
-    else {
-      sqlite3_close(db)
-      throw SmartImportError.unreadable(displayName)
-    }
-    defer { sqlite3_close(db) }
-
     // isDeleted: a soft-delete flag. Importing unfiltered would resurrect
     // words the user deliberately removed — the single worst thing this
     // adapter could do.
@@ -168,17 +156,67 @@ package struct WisprFlowAdapter: SmartImportAdapter {
       FROM Dictionary
       WHERE isDeleted = 0 AND isSnippet = 0
       """
-    var statement: OpaquePointer?
-    guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-      throw SmartImportError.unreadable(displayName)
+
+    // Plain read-only FIRST, immutable only as a fallback — and the order is
+    // load-bearing in both directions (code review, then measured).
+    //
+    // Review asked for plain read-only, because `immutable=1` promises SQLite
+    // the file cannot change and lets it skip WAL handling: with Wispr Flow
+    // open and writing, that can read stale or torn rows. Correct concern.
+    //
+    // But plain read-only alone does not work here. This database uses WAL,
+    // and a read-only connection needs the `-shm` sidecar; when the app is
+    // closed cleanly that file does not exist and read-only mode may not
+    // create it. Measured on a real install with the app NOT running: plain
+    // read-only opens and then fails to prepare with SQLITE_CANTOPEN, while
+    // immutable succeeds.
+    //
+    // So: try the WAL-aware connection first, which is what succeeds while the
+    // other app is live and holds its sidecars. Fall back to immutable only
+    // when that fails — which is precisely the cleanly-closed case, where
+    // there is no uncommitted WAL content to miss and the committed file IS
+    // the whole truth.
+    for uri in ["file:\(url.path)", "file:\(url.path)?immutable=1"] {
+      var db: OpaquePointer?
+      guard
+        sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
+        let db
+      else {
+        sqlite3_close(db)
+        continue
+      }
+      defer { sqlite3_close(db) }
+
+      var statement: OpaquePointer?
+      guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+        sqlite3_finalize(statement)
+        continue
+      }
+      defer { sqlite3_finalize(statement) }
+
+      return try readWords(from: statement)
     }
-    defer { sqlite3_finalize(statement) }
+    throw SmartImportError.unreadable(displayName)
+  }
+
+  private func readWords(from statement: OpaquePointer?) throws -> [String] {
 
     var words: [String] = []
-    while sqlite3_step(statement) == SQLITE_ROW {
+    var result = sqlite3_step(statement)
+    while result == SQLITE_ROW {
       if let text = sqlite3_column_text(statement, 0) {
         words.append(String(cString: text))
       }
+      result = sqlite3_step(statement)
+    }
+    // Only SQLITE_DONE means "that was all of them" (code review). The first
+    // version treated every non-ROW result as the end, so SQLITE_BUSY on a
+    // database Wispr Flow was writing — or IOERR, or CORRUPT — returned
+    // whatever prefix had been read so far, possibly nothing at all, and the
+    // import reported success. A partial read presented as a complete one is
+    // the same false-pass shape as a test that never runs.
+    guard result == SQLITE_DONE else {
+      throw SmartImportError.unreadable(displayName)
     }
     return words
   }
