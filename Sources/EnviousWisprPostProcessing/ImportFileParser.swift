@@ -101,16 +101,41 @@ package struct PlainTextImportFileParser: ImportFileParser {
   /// becomes `ÿþK\0u\0b\0…` — which then imports as WORDS, so the user's
   /// dictionary silently fills with mojibake (cloud review, #1683).
   ///
-  /// So: a byte-order mark names its own encoding and is trusted first; UTF-8
-  /// is tried next because it is what everything modern writes; Latin-1 stays
-  /// last and now has to prove the result is plausibly text before it counts.
+  /// So: a byte-order mark names its own encoding and is trusted first, then
+  /// each remaining encoding is TRIED — and every one of them, including the
+  /// mark-named path, must prove the result is plausibly text before it
+  /// counts.
+  ///
+  /// Applying that proof to Latin-1 alone was not enough, and the gap is worth
+  /// naming: UTF-16 **without** a mark is valid UTF-8, because NUL is a legal
+  /// UTF-8 byte. So the UTF-8 branch succeeded and returned `K\0u\0b\0…`
+  /// without the check ever running (cloud review, #1683 — the same defect a
+  /// second time, in the one path the first fix left ungated). A decode step
+  /// that can succeed on garbage needs the check; that is every step here, so
+  /// the check belongs in the loop rather than at any single call site.
   static func decode(_ data: Data) -> String? {
-    if let marked = decodeUsingByteOrderMark(data) { return marked }
-    if let utf8 = String(data: data, encoding: .utf8) { return utf8 }
+    if let marked = decodeUsingByteOrderMark(data), isPlausiblyText(marked) {
+      return marked
+    }
+    // Detect UTF-16 STRUCTURALLY rather than by trying it and seeing whether
+    // the result looks like text. Trying encodings in turn is not safe here:
+    // big-endian bytes read as little-endian produce `䬀甀戀攀爀渀攀琀攀猀`
+    // — real characters, no control characters — so a "does it look like
+    // text?" test accepts it confidently and the correct encoding never gets
+    // its turn. Guessing cannot be rescued by a stronger-looking check; the
+    // byte layout has to be read directly.
+    if let utf16 = decodeUTF16WithoutByteOrderMark(data), isPlausiblyText(utf16) {
+      return strippingBOM(utf16)
+    }
+    if let utf8 = String(data: data, encoding: .utf8), isPlausiblyText(utf8) {
+      return strippingBOM(utf8)
+    }
+    // Latin-1 last, because it accepts every byte: anything arriving here has
+    // already failed every encoding capable of refusing it honestly.
     guard let latin1 = String(data: data, encoding: .isoLatin1),
       isPlausiblyText(latin1)
     else { return nil }
-    return latin1
+    return strippingBOM(latin1)
   }
 
   private static func decodeUsingByteOrderMark(_ data: Data) -> String? {
@@ -127,6 +152,36 @@ package struct PlainTextImportFileParser: ImportFileParser {
     return nil
   }
 
+  /// Reads the NUL layout to tell UTF-16 apart from UTF-8, and one byte order
+  /// from the other.
+  ///
+  /// A word list is overwhelmingly ASCII, and ASCII in UTF-16 pairs every
+  /// character with a NUL: little-endian puts it at ODD offsets (`K\0u\0`),
+  /// big-endian at EVEN ones (`\0K\0u`). That layout is a fact about the
+  /// bytes, so it decides the encoding instead of leaving it to whichever
+  /// guess happens to produce printable characters first.
+  ///
+  /// Returns nil when the NULs fit neither pattern — which is what binary
+  /// looks like, and refusing it is the honest answer.
+  private static func decodeUTF16WithoutByteOrderMark(_ data: Data) -> String? {
+    let bytes = Array(data)
+    guard bytes.count >= 2, bytes.count.isMultiple(of: 2), bytes.contains(0) else {
+      return nil
+    }
+    var nulsAtOddOffsets = 0
+    var nulsAtEvenOffsets = 0
+    for (offset, byte) in bytes.enumerated() where byte == 0 {
+      if offset.isMultiple(of: 2) { nulsAtEvenOffsets += 1 } else { nulsAtOddOffsets += 1 }
+    }
+    if nulsAtOddOffsets > 0, nulsAtEvenOffsets == 0 {
+      return String(data: data, encoding: .utf16LittleEndian)
+    }
+    if nulsAtEvenOffsets > 0, nulsAtOddOffsets == 0 {
+      return String(data: data, encoding: .utf16BigEndian)
+    }
+    return nil
+  }
+
   /// The mark itself is metadata, not a character the user typed. Left in, it
   /// rides along on the first word and imports as a different term than the
   /// same word further down the file.
@@ -135,8 +190,10 @@ package struct PlainTextImportFileParser: ImportFileParser {
   }
 
   /// Real word lists do not contain NULs or stray control characters. This is
-  /// what stops Latin-1 from laundering binary — or any encoding we failed to
-  /// recognise — into candidates.
+  /// what stops ANY decode step from laundering binary — or text in an
+  /// encoding we guessed wrong — into candidates. It is the single check that
+  /// makes trying several encodings safe: a wrong guess fails it and the next
+  /// encoding gets its turn, rather than the first lucky decode winning.
   private static func isPlausiblyText(_ text: String) -> Bool {
     !text.unicodeScalars.contains { scalar in
       guard scalar.value < 0x20 || scalar.value == 0x7F else { return false }

@@ -309,4 +309,27 @@ struct ImportFileParserTests {
     }
   }
 
+
+  @Test("UTF-16 without a byte-order mark still imports real words")
+  func utf16WithoutByteOrderMarkDecodes() async throws {
+    // NUL is a legal UTF-8 byte, so these bytes decode "successfully" as UTF-8
+    // to "K\0u\0b\0…". Gating only the Latin-1 path let that straight
+    // through — the plausibility check has to guard EVERY decode step.
+    let url = try write(
+      "Kubernetes\nPostgreSQL".data(using: .utf16LittleEndian)!, as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.map { $0.canonical } == ["Kubernetes", "PostgreSQL"])
+  }
+
+  @Test("big-endian UTF-16 without a byte-order mark decodes too")
+  func utf16BigEndianWithoutByteOrderMarkDecodes() async throws {
+    let url = try write("Kubernetes".data(using: .utf16BigEndian)!, as: "words.txt")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.map { $0.canonical } == ["Kubernetes"])
+  }
+
 }
