@@ -150,4 +150,34 @@ struct CustomWordsExportActionTests {
     #expect(outcome == .refusedUnsafeLibrary)
     #expect(spy.document == nil, "an empty export must never reach the writer")
   }
+
+  @Test("export refuses to write a file the importer would reject")
+  func exportRefusesUnimportableFile() throws {
+    // The exporter and importer are one round trip. Raising the IMPORT
+    // ceilings while export kept no preflight left the same "writes a file it
+    // then refuses" hole open from the other direction.
+    let over = (0...CustomWordsImportLimits.maximumExportedCandidates).map {
+      CustomWord(canonical: "Term\($0)", aliases: [], category: .general)
+    }
+    let document = CustomWordsTransferDocument(words: over)
+
+    let refusal = CustomWordsExportAction.refusalIfUnimportable(
+      document: document, encoded: try document.encoded())
+
+    #expect(refusal != nil)
+    #expect(refusal?.contains("Nothing was exported") == true)
+  }
+
+  @Test("an export at the limit is allowed through")
+  func exportAtLimitAllowed() throws {
+    let atLimit = (0..<CustomWordsImportLimits.maximumExportedCandidates).map {
+      CustomWord(canonical: "T\($0)", aliases: [], category: .general)
+    }
+    let document = CustomWordsTransferDocument(words: atLimit)
+
+    #expect(
+      CustomWordsExportAction.refusalIfUnimportable(
+        document: document, encoded: try document.encoded()) == nil)
+  }
+
 }

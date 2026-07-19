@@ -49,11 +49,44 @@ enum CustomWordsExportAction {
     let document = CustomWordsTransferDocument(
       words: coordinator.customWords.filter { $0.source == .user })
 
+    // 5. Refuse to write a file our own importer would reject. The exporter
+    //    and importer are one round trip, so a limit enforced on only one side
+    //    is a promise the pair cannot keep: raising the IMPORT ceilings while
+    //    export kept no preflight left the same "writes a file it then
+    //    refuses" hole open, just from the other direction (Codex import
+    //    taxonomy audit, #1683 — class C08).
+    //
+    //    Checked against the encoded bytes, not an estimate, because the byte
+    //    ceiling is enforced on encoded bytes at read time.
     do {
+      let encoded = try document.encoded()
+      if let refusal = Self.refusalIfUnimportable(document: document, encoded: encoded) {
+        return .failed(message: refusal)
+      }
       try await write(document, destination)
       return .exported
     } catch {
       return .failed(message: error.localizedDescription)
     }
+  }
+
+  /// The one place export and import agree on what fits.
+  static func refusalIfUnimportable(
+    document: CustomWordsTransferDocument, encoded: Data
+  ) -> String? {
+    let words = document.words.count
+    let wordCeiling = CustomWordsImportLimits.maximumExportedCandidates
+    if words > wordCeiling {
+      return
+        "You have \(words) words, which is more than EnviousWispr can read back "
+        + "in one file (\(wordCeiling)). Nothing was exported."
+    }
+    let byteCeiling = CustomWordsImportLimits.maximumExportedFileBytes
+    if encoded.count > byteCeiling {
+      return
+        "Your words are too large to fit in one file EnviousWispr could read "
+        + "back. Nothing was exported."
+    }
+    return nil
   }
 }

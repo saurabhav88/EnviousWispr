@@ -111,6 +111,31 @@ package struct CustomWordsImportBatch: Sendable, Equatable {
     self.candidates = candidates
     self.notices = notices
   }
+
+  /// Refuses the WHOLE batch if any candidate is unstorable.
+  ///
+  /// All-or-nothing on purpose: silently dropping bad rows would show the user
+  /// a review screen that quietly disagrees with their file, and importing
+  /// them would put invisible characters inside stored words. A refusal names
+  /// the offending entry so the file can be fixed.
+  ///
+  /// Checks the values that actually get STORED — canonical and aliases — for
+  /// every source, which is the gap that let exported JSON skip the character
+  /// rules the text path enforced.
+  package func validated() throws -> CustomWordsImportBatch {
+    for candidate in candidates {
+      guard CustomWordsImportTextPolicy.isAcceptableStoredValue(candidate.canonical) else {
+        throw CustomWordsImportValidationError.unusableWord(canonical: candidate.canonical)
+      }
+      if case .supplied(let aliases) = candidate.aliases {
+        for alias in aliases
+        where !CustomWordsImportTextPolicy.isAcceptableStoredValue(alias) {
+          throw CustomWordsImportValidationError.unusableWord(canonical: candidate.canonical)
+        }
+      }
+    }
+    return self
+  }
 }
 
 /// Shared ceilings every import source honours (#1683).
@@ -146,5 +171,36 @@ package enum CustomWordsImportLimits {
 }
 
 package protocol CustomWordsImportSource: Sendable {
-  func loadCandidates() async throws -> CustomWordsImportBatch
+  /// Produce candidates. Callers do NOT call this — they call
+  /// `loadCandidates()`, which validates what this returns.
+  func loadRawCandidates() async throws -> CustomWordsImportBatch
+}
+
+extension CustomWordsImportSource {
+  /// The only entry point callers use, so domain validation cannot be
+  /// forgotten by a new source (#1683).
+  ///
+  /// Validation used to live inside one parser, which meant it protected the
+  /// door it was written for and no other: words from an exported file
+  /// bypassed every character rule the pasted-text path enforced. Putting it
+  /// HERE makes it a property of importing rather than of one importer — a new
+  /// source gets it by existing, and cannot opt out by forgetting.
+  package func loadCandidates() async throws -> CustomWordsImportBatch {
+    try await loadRawCandidates().validated()
+  }
+}
+
+/// A candidate that cannot be stored, and why (#1683).
+package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatable {
+  case unusableWord(canonical: String)
+
+  package var errorDescription: String? {
+    switch self {
+    case .unusableWord(let canonical):
+      let shown = canonical.isEmpty ? "a blank entry" : "\"\(canonical)\""
+      return
+        "That file contains a word EnviousWispr can't store (\(shown)). "
+        + "Nothing was imported. Check the file and try again."
+    }
+  }
 }

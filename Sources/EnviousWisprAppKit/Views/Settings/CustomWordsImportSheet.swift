@@ -531,7 +531,7 @@ private struct ImportResultScreen: View {
   /// field stays `.unspecified`, so this fixture cannot smuggle in behavior a
   /// real v1 source would not have.
   struct CustomWordsImportFixtureSource: CustomWordsImportSource {
-    func loadCandidates() async throws -> CustomWordsImportBatch {
+    func loadRawCandidates() async throws -> CustomWordsImportBatch {
       CustomWordsImportBatch(
         sourceID: "debug-fixture",
         sourceDisplayName: "Sample words",

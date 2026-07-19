@@ -118,11 +118,16 @@ struct ImportFileParserTests {
     #expect(batch.candidates.isEmpty)
   }
 
-  @Test("text that isn't UTF-8 still reads rather than being refused")
-  func latin1TextIsAccepted() async throws {
+  @Test("text in an unknowable encoding is refused rather than guessed at")
+  func latin1TextIsRefused() async throws {
+    // Superseded contract (#1683). This previously asserted that Latin-1 text
+    // "still reads" — which sounds generous and was in fact the catch-all that
+    // imported mojibake as words, since Latin-1 accepts every byte and can
+    // never report failure. Refusing beats storing a wrong word.
     let url = try write(try #require("Beyoncé".data(using: .isoLatin1)), as: "legacy.txt")
-    let batch = try await FileImportSource(url: url).loadCandidates()
-    #expect(batch.candidates.map { $0.canonical } == ["Beyoncé"])
+    await #expect(throws: ImportFileError.unreadable) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
   }
 
   // MARK: - Unsupported and unreadable
@@ -290,17 +295,31 @@ struct ImportFileParserTests {
     #expect(candidates.map { $0.canonical } == ["Kubernetes"])
   }
 
-  @Test("a legacy Latin-1 file still imports")
-  func latin1FileStillImports() async throws {
-    // The fallback must keep working for its real case; the fix narrows WHEN
-    // it is reached, it does not remove it.
+  @Test("a legacy Latin-1 file is refused rather than guessed at")
+  func latin1FileIsRefused() async throws {
+    // Latin-1 CANNOT fail — every byte is valid — so as a fallback it is a
+    // catch-all that renames "I could not read this" to a confident wrong
+    // answer. A "looks like words" guard only narrowed which wrong answers
+    // survived; Windows-1252 and mixed-encoding files still landed as
+    // plausible mojibake. Supported set is now exactly UTF-8 and marked
+    // UTF-16, and anything else is refused.
     let url = try write("Beyoncé\nJalapeño".data(using: .isoLatin1)!, as: "words.txt")
+
+    await #expect(throws: ImportFileError.unreadable) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
+  @Test("the same words as UTF-8 import fine")
+  func sameWordsAsUTF8Import() async throws {
+    // The accented words themselves were never the problem — the ENCODING
+    // was. Saved as UTF-8, which is what everything modern writes, they import.
+    let url = try write("Beyoncé\nJalapeño", as: "words.txt")
 
     let candidates = try await FileImportSource(url: url).loadCandidates().candidates
 
     #expect(candidates.map { $0.canonical } == ["Beyoncé", "Jalapeño"])
   }
-
   @Test("binary content is refused rather than laundered into words")
   func binaryContentIsRefused() async throws {
     let url = try write(Data([0x00, 0x01, 0x02, 0xFF, 0x00, 0x7F]), as: "words.txt")
@@ -689,6 +708,53 @@ struct ImportFileParserTests {
 
     #expect(message.contains("more than \(limit)"))
     #expect(!message.contains("\(limit + 1)"))
+  }
+
+
+  // MARK: - One policy for every door (#1683 taxonomy P0s)
+
+  @Test("an exported file cannot smuggle invisible characters into a word")
+  func exportedFileIsHeldToTheSameCharacterPolicy() async throws {
+    // The character rules lived inside the plain-text parser, so words
+    // arriving from JSON skipped every one of them: the same bidi override
+    // refused from a pasted list was accepted from a file. The policy is a
+    // property of the STORE, so it now runs for every source.
+    for hostile in ["Kub\u{202E}ernetes", "Kub\u{0000}ernetes", "Kub\u{FEFF}ernetes", "   "] {
+      let word = CustomWord(canonical: hostile, aliases: [], category: .general)
+      let url = try write(try CustomWordsTransferDocument(words: [word]).encoded(), as: "words.json")
+
+      await #expect(throws: CustomWordsImportValidationError.self) {
+        try await FileImportSource(url: url).loadCandidates()
+      }
+    }
+  }
+
+  @Test("an exported alias is held to the policy too, not just the word")
+  func exportedAliasesAreValidated() async throws {
+    let word = CustomWord(
+      canonical: "Kubernetes", aliases: ["k8s", "kube\u{202E}rnetes"], category: .general)
+    let url = try write(try CustomWordsTransferDocument(words: [word]).encoded(), as: "words.json")
+
+    await #expect(throws: CustomWordsImportValidationError.self) {
+      try await FileImportSource(url: url).loadCandidates()
+    }
+  }
+
+  @Test("a clean exported file still imports, aliases intact")
+  func cleanExportedFileStillImports() async throws {
+    // The validator must not become a wall: real exports keep working, and
+    // international words are not collateral damage.
+    let words = [
+      CustomWord(canonical: "Kubernetes", aliases: ["k8s"], category: .brand),
+      CustomWord(canonical: "東京", aliases: ["とうきょう"], category: .general),
+      CustomWord(canonical: "क्‍ष", aliases: [], category: .general),
+    ]
+    let url = try write(try CustomWordsTransferDocument(words: words).encoded(), as: "words.json")
+
+    let candidates = try await FileImportSource(url: url).loadCandidates().candidates
+
+    #expect(candidates.map { $0.canonical } == ["Kubernetes", "東京", "क्‍ष"])
+    #expect(candidates[0].aliases == .supplied(["k8s"]))
   }
 
 }

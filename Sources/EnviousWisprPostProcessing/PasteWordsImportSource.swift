@@ -105,7 +105,7 @@ package struct PasteWordsImportSource: CustomWordsImportSource {
 
   /// `@concurrent` so a very large paste is parsed off the caller's actor
   /// rather than on the main one (code review r2).
-  @concurrent package func loadCandidates() async throws -> CustomWordsImportBatch {
+  @concurrent package func loadRawCandidates() async throws -> CustomWordsImportBatch {
     let canonicals = try PasteWordsParser.parse(
       text, limit: CustomWordsImportLimits.maximumCandidates)
     // The same ceiling file import enforces. A limit that applied to one door

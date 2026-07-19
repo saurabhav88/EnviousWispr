@@ -187,9 +187,18 @@ package struct PlainTextImportFileParser: ImportFileParser {
   /// rather than guessed at. Real UTF-16 writers emit a mark — that is what it
   /// is for — and refusing a file beats silently importing the wrong word.
   ///
-  /// Latin-1 survives as the last resort for genuinely legacy lists, but must
-  /// look like WORDS rather than merely printable characters, which is what
-  /// stops un-recognised encodings from landing there as `qg¬N`.
+  /// There is deliberately NO legacy fallback. Latin-1 cannot fail — every
+  /// byte is a valid Latin-1 character — so as a last resort it is not a
+  /// fallback at all but a catch-all that renames "I could not read this" to
+  /// a confident wrong answer. It let `qg¬N` through as a word, and a
+  /// "does it look like words" guard only narrowed which wrong answers
+  /// survived: a Windows-1252 or mixed-encoding file still lands as plausible
+  /// mojibake (Codex import taxonomy audit, #1683 — class C01).
+  ///
+  /// So the supported set is exactly what can be known: UTF-8, and UTF-16 or
+  /// UTF-8 carrying a byte-order mark. Anything else is refused. If a real
+  /// legacy list ever needs importing, the answer is an explicit user choice
+  /// of encoding — evidence from the person who has it — not a guess.
   static func decode(_ data: Data) -> String? {
     // A recognised mark is AUTHORITATIVE: if it says UTF-16 and the bytes then
     // fail to decode, the file is broken, not secretly something else. Falling
@@ -197,17 +206,14 @@ package struct PlainTextImportFileParser: ImportFileParser {
     // fix — `[FF FE E9]` is a truncated UTF-16 file, and Latin-1 turned it
     // into the plausible-looking word `ÿþé` (Codex review, #1683).
     if hasByteOrderMark(data) {
-      guard let marked = decodeUsingByteOrderMark(data), isPlausiblyText(marked)
+      guard let marked = decodeUsingByteOrderMark(data), CustomWordsImportTextPolicy.isPlausiblyText(marked)
       else { return nil }
       return strippingBOM(marked)
     }
-    if let utf8 = String(data: data, encoding: .utf8), isPlausiblyText(utf8) {
-      return strippingBOM(utf8)
-    }
-    guard let latin1 = String(data: data, encoding: .isoLatin1),
-      looksLikeWords(latin1)
+    guard let utf8 = String(data: data, encoding: .utf8),
+      CustomWordsImportTextPolicy.isPlausiblyText(utf8)
     else { return nil }
-    return strippingBOM(latin1)
+    return strippingBOM(utf8)
   }
 
   private static func hasByteOrderMark(_ data: Data) -> Bool {
@@ -230,36 +236,6 @@ package struct PlainTextImportFileParser: ImportFileParser {
     return nil
   }
 
-  /// Whether text read through the catch-all encoding is plausibly a WORD
-  /// LIST, rather than some other encoding misread as Latin-1.
-  ///
-  /// Non-ASCII characters must be letters, marks, or digits — the things words
-  /// are made of. Symbols are the tell: UTF-16 misread as Latin-1 produces
-  /// runs like `qg¬N`, where `¬` is a maths symbol no one puts in a
-  /// vocabulary entry, while a real Latin-1 list (`Beyoncé`, `Jalapeño`)
-  /// contains only accented letters. ASCII passes freely so `C++` and `.NET`
-  /// are unaffected.
-  ///
-  /// This is a REFUSAL, not a repair: a single CJK word saved as UTF-16 with
-  /// no byte-order mark and no line break is genuinely ambiguous — the same
-  /// bytes are a valid Latin-1 list — and the wrong guess would corrupt real
-  /// data either way. Refusing says so honestly instead of importing nonsense.
-  /// (Multi-word CJK lists are unaffected: the line breaks supply the NUL
-  /// bytes the detector above reads.)
-  private static func looksLikeWords(_ text: String) -> Bool {
-    guard !text.isEmpty, isPlausiblyText(text) else { return false }
-    return text.unicodeScalars.allSatisfy { scalar in
-      if scalar.isASCII { return true }
-      switch scalar.properties.generalCategory {
-      case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter,
-        .otherLetter, .nonspacingMark, .spacingMark, .decimalNumber, .otherNumber:
-        return true
-      default:
-        return false
-      }
-    }
-  }
-
   /// UTF-16 needs an even byte count, and Foundation does NOT enforce it: a
   /// partially written file with a dangling byte decodes silently to its
   /// prefix, so a truncated list imported as if complete (Codex review,
@@ -275,45 +251,6 @@ package struct PlainTextImportFileParser: ImportFileParser {
   /// same word further down the file.
   private static func strippingBOM(_ text: String) -> String {
     text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text
-  }
-
-  /// Whether decoded text is plausibly text at all.
-  ///
-  /// Asks Unicode rather than hand-rolling ranges, which is what the previous
-  /// version did wrong: it checked below U+0020 plus DEL and so let the C1
-  /// block through, meaning `C2 85` imported an invisible control character as
-  /// part of a word (cloud review, #1683). The general category knows about
-  /// every control, in every block, without a range to keep in sync.
-  ///
-  /// Deliberately allowed: the zero-width joiner and non-joiner, and ONLY
-  /// those. They are load-bearing in Hindi, Persian, and emoji sequences, so
-  /// refusing them would break exactly the international word lists this
-  /// feature exists to support. Naming the two beats accepting the whole
-  /// format category, which also admits invisible and deceptive scalars —
-  /// a mid-file byte-order mark, or a bidi override that makes a word render
-  /// as something other than what it is.
-  ///
-  /// Real word lists do not contain NULs or stray control characters. This is
-  /// what stops ANY decode step from laundering binary — or text in an
-  /// encoding we guessed wrong — into candidates. It is the single check that
-  /// makes trying several encodings safe: a wrong guess fails it and the next
-  /// encoding gets its turn, rather than the first lucky decode winning.
-  private static func isPlausiblyText(_ text: String) -> Bool {
-    text.unicodeScalars.allSatisfy { scalar in
-      if scalar == "\n" || scalar == "\r" || scalar == "\t" { return true }
-      // Two format scalars are word-forming and must survive; the rest of the
-      // category must not. Allowing all of `.format` to protect these also
-      // admitted a mid-file byte-order mark and bidi overrides like U+202E,
-      // which nothing downstream strips — so they would have been saved INSIDE
-      // a custom word, invisibly (cloud review, #1683).
-      if scalar.value == 0x200C || scalar.value == 0x200D { return true }
-      switch scalar.properties.generalCategory {
-      case .control, .surrogate, .privateUse, .unassigned, .format:
-        return false
-      default:
-        return true
-      }
-    }
   }
 }
 
@@ -365,7 +302,7 @@ package struct FileImportSource: CustomWordsImportSource {
   /// The import model is `@MainActor`, and a plain `async` witness would
   /// inherit that isolation — a large, network-mounted, or cloud-backed file
   /// would then freeze the settings window while it was read (code review).
-  @concurrent package func loadCandidates() async throws -> CustomWordsImportBatch {
+  @concurrent package func loadRawCandidates() async throws -> CustomWordsImportBatch {
     guard let parser = registry.parser(for: url) else {
       let name = url.pathExtension.isEmpty ? "those" : ".\(url.pathExtension.lowercased())"
       throw ImportFileError.unsupportedType(name)
