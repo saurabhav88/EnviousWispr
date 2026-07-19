@@ -207,10 +207,12 @@ package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatab
   package var errorDescription: String? {
     switch self {
     case .unusableWord(let canonical):
+      // Source-neutral: this validator now runs for pasted text and files
+      // alike, so naming a file was wrong half the time (Codex review, #1683).
       let shown = canonical.isEmpty ? "a blank entry" : "\"\(canonical)\""
       return
-        "That file contains a word EnviousWispr can't store (\(shown)). "
-        + "Nothing was imported. Check the file and try again."
+        "That contains a word EnviousWispr can't store (\(shown)). "
+        + "Nothing was imported."
     }
   }
 }

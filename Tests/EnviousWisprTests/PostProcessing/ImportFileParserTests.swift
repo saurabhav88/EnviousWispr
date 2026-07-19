@@ -810,4 +810,36 @@ struct ImportFileParserTests {
     #expect(batch.candidates.count == 500)
   }
 
+
+  @Test("the picker offers every extension the registry claims")
+  func pickerCoversEveryRegisteredExtension() throws {
+    // Declared types alone could hide a file the registry accepts: on a system
+    // where an extension resolves to an unregistered dynamic type it conforms
+    // to no generic text type, so the panel greyed out a file the parser
+    // claims and the delegate never got the chance to enable it.
+    let registry = ImportFileRegistry.v1
+    let offered = Set(registry.acceptedContentTypes)
+
+    for parser in registry.parsers {
+      for ext in parser.fileExtensions {
+        guard let type = UTType(filenameExtension: ext) else { continue }
+        #expect(
+          offered.contains(type) || offered.contains { type.conforms(to: $0) },
+          "the picker hides .\(ext), which \(parser.identifier) claims")
+      }
+    }
+  }
+
+  @Test("a rejected pasted word does not blame a file")
+  func validationCopyIsSourceNeutral() throws {
+    // The validator runs for pasted text and files alike now, so naming a file
+    // was wrong half the time.
+    let message = try #require(
+      CustomWordsImportValidationError.unusableWord(canonical: "Kub\u{202E}ernetes")
+        .errorDescription)
+
+    #expect(!message.lowercased().contains("file"))
+    #expect(message.contains("Nothing was imported"))
+  }
+
 }

@@ -287,8 +287,21 @@ package struct ImportFileRegistry: Sendable {
     self.parsers = parsers
   }
 
+  /// Content types for the open panel, built from the registered EXTENSIONS
+  /// as well as the declared types.
+  ///
+  /// Declared types alone could hide a file the registry actually accepts: on
+  /// a system where `.list` resolves to an unregistered dynamic type it
+  /// conforms to no generic text type, so the panel greyed out a file the
+  /// parser claims (Codex review, #1683). Routing still reads extensions only;
+  /// this is the panel's view of the same set.
   package var acceptedContentTypes: [UTType] {
-    parsers.flatMap(\.contentTypes)
+    let declared = parsers.flatMap(\.contentTypes)
+    let fromExtensions = parsers
+      .flatMap(\.fileExtensions)
+      .compactMap { UTType(filenameExtension: $0) }
+    var seen = Set<UTType>()
+    return (declared + fromExtensions).filter { seen.insert($0).inserted }
   }
 
   package func parser(for url: URL) -> (any ImportFileParser)? {
