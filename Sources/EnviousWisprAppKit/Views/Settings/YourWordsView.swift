@@ -132,24 +132,25 @@ struct YourWordsView: View {
     /// Built-ins are excluded; what ships is what the user authored or edited,
     /// which is the only scope whose restore path this app can actually honor.
     private func exportWords() {
-      // Refuse to export what we could not read (code review r3). When the
-      // launch-time load fails the coordinator holds an empty list while the
-      // real file may still be on disk or archived for recovery. Exporting
-      // then writes a VALID EMPTY backup — and can overwrite a good one — so
-      // the failure would destroy the very thing the user came here to save.
-      // The banner already explains the load failure; this says why the button
-      // did nothing.
-      // Reload AND adopt before deciding. Merely checking that the file is
+      // Ask WHERE first, and only then touch anything (code review r3).
+      // Refreshing before the panel meant that opening Export and cancelling
+      // still reloaded the list and fired onWordsChanged — a "clean no-op"
+      // that quietly changed live state, which is the opposite of what
+      // cancelling should mean.
+      guard let destination = CustomWordsExportPanel.chooseDestination() else { return }
+
+      // Reload AND adopt before writing. Merely checking that the file is
       // readable was worse than refusing outright: the check passed while the
       // list stayed the empty launch fallback, so export wrote a valid empty
-      // backup over a real one (cloud review, #1682).
-      if !customWordsCoordinator.refreshFromDiskIfPossible() {
+      // file over a real one (cloud review, #1682). A corrupted-and-archived
+      // library refuses here rather than exporting the empty shell left behind.
+      guard customWordsCoordinator.refreshFromDiskIfPossible() else {
         exportError =
           "Your saved words couldn't be read this time, so there's nothing safe to export. "
           + "Relaunch EnviousWispr and try again."
         return
       }
-      guard let destination = CustomWordsExportPanel.chooseDestination() else { return }
+
       // Snapshot on the main actor, write off it (code review r5). The list is
       // read here, synchronously, so the file reflects the moment the user
       // confirmed rather than whenever the write happened to run; only the

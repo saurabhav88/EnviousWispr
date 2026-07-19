@@ -76,23 +76,25 @@ final class CustomWordsCoordinator {
   @discardableResult
   func refreshFromDiskIfPossible() -> Bool {
     guard let refreshed = manager.load() else { return false }
-    if refreshed != customWords {
-      customWords = refreshed
-      onWordsChanged?(customWords)
-    }
 
-    // A corrupted file was ARCHIVED aside at launch, so this reload sees a
-    // legitimately missing file and reports a clean, empty library. That reads
-    // as success but the user's real words are sitting in the archive — and an
-    // export taken now would write an empty backup over the one they picked,
-    // destroying the copy they still had (code review, #1683).
+    // Judge BEFORE publishing (code review r3). A corrupted file was ARCHIVED
+    // aside at launch, so this reload sees a legitimately missing file and
+    // reports a clean, empty library — which reads as success while the user's
+    // real words sit in the archive. Assigning first meant a refresh that
+    // returns false had already mutated live state and fired onWordsChanged,
+    // so "this failed" and "this changed everything" were both true at once.
     //
     // Once they have authored a word since, they have visibly accepted the
-    // fresh start and are building on it, so the list is theirs again.
+    // fresh start and the list is theirs again.
     if wordsLoadFailureAtLaunch == .corrupted,
       !refreshed.contains(where: { $0.source == .user })
     {
       return false
+    }
+
+    if refreshed != customWords {
+      customWords = refreshed
+      onWordsChanged?(customWords)
     }
     return true
   }
