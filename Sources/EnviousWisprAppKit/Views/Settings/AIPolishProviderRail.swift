@@ -541,9 +541,17 @@ struct ProviderDetailHeader: View {
   let status: ProviderStatus
 
   private var privacyLine: String {
+    // "only" is dropped for cloud providers, not just Claude's: all three
+    // (OpenAI/Gemini/Claude) route through the shared `.cloudFixed` prompt
+    // family, which conditionally includes the active app name and custom
+    // word list alongside the transcript (CloudFixedPromptBuilder) — "text
+    // only" was never accurate here, this terse header line just hadn't
+    // been caught by #158's earlier fix to the fuller privacy sentences in
+    // AIPolishSettingsView.swift (a different string, missed by that
+    // round's grep; Codex r8 found it).
     entry.isLocal
       ? "Nothing you dictate leaves this Mac"
-      : "Sends transcribed text only, never audio"
+      : "Sends transcribed text, never audio"
   }
 
   var body: some View {
