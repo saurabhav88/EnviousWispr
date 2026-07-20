@@ -6,9 +6,11 @@ import Testing
 /// #158: request-body shape and status-code classification for the Claude
 /// connector. Mirrors `GeminiRequestBodyTests.swift`'s scope — neither Gemini
 /// nor Claude has an injectable transport seam (only `OpenAIConnector` does),
-/// so response-parse and network round-trip coverage for both comes from the
-/// compatibility sweep and Live UAT (plan §11.4/§11.1), not synthetic HTTP
-/// fixtures here.
+/// so full network round-trip coverage comes from the compatibility sweep
+/// and Live UAT (plan §11.4/§11.1), not synthetic HTTP fixtures here.
+/// `extractResponseText` IS a pure success-body parser, though (Codex r6),
+/// so response-parsing edge cases (whitespace-only, truncation) are
+/// unit-testable directly against `Data` literals without a transport seam.
 @Suite("Claude request body and classification")
 struct ClaudeConnectorTests {
 
@@ -79,6 +81,58 @@ struct ClaudeConnectorTests {
     }
     #expect(production["system"] != nil)
     #expect(probe["system"] == nil)
+  }
+
+  // MARK: - Response text extraction (#158, Codex r6)
+
+  private func responseJSON(text: String, stopReason: String = "end_turn") -> Data {
+    let payload: [String: Any] = [
+      "content": [["type": "text", "text": text]],
+      "stop_reason": stopReason,
+    ]
+    return try! JSONSerialization.data(withJSONObject: payload)
+  }
+
+  @Test func extractResponseTextReturnsCleanText() throws {
+    let data = responseJSON(text: "Cleaned up dictation.")
+    let result = try ClaudeConnector.extractResponseText(from: data)
+    #expect(result.text == "Cleaned up dictation.")
+    #expect(result.truncated == false)
+  }
+
+  @Test func extractResponseTextFlagsMaxTokensTruncation() throws {
+    let data = responseJSON(text: "This got cut off mid", stopReason: "max_tokens")
+    let result = try ClaudeConnector.extractResponseText(from: data)
+    #expect(result.text == "This got cut off mid")
+    #expect(result.truncated == true)
+  }
+
+  @Test func extractResponseTextThrowsOnWhitespaceOnlyContent() {
+    // The raw joined text is non-empty ("   \n  "), so a check against the
+    // UNTRIMMED string would incorrectly treat this as success — this is
+    // exactly the case the Codex r6 fix targets.
+    let data = responseJSON(text: "   \n  ")
+    #expect(throws: LLMError.self) {
+      try ClaudeConnector.extractResponseText(from: data)
+    }
+  }
+
+  @Test func extractResponseTextThrowsOnNoTextBlocks() {
+    let payload: [String: Any] = [
+      "content": [["type": "tool_use", "id": "x"]],
+      "stop_reason": "end_turn",
+    ]
+    let data = try! JSONSerialization.data(withJSONObject: payload)
+    #expect(throws: LLMError.self) {
+      try ClaudeConnector.extractResponseText(from: data)
+    }
+  }
+
+  @Test func extractResponseTextThrowsOnMissingContentKey() {
+    let data = try! JSONSerialization.data(withJSONObject: ["stop_reason": "end_turn"])
+    #expect(throws: LLMError.self) {
+      try ClaudeConnector.extractResponseText(from: data)
+    }
   }
 
   // MARK: - Status classification (#945 pattern)

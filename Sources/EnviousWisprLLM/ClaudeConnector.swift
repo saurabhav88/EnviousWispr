@@ -151,19 +151,23 @@ public struct ClaudeConnector: TranscriptPolisher {
         try handleHTTPError(statusCode: httpResponse.statusCode, body: body)
       }
 
-      let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-      guard let content = json?["content"] as? [[String: Any]] else {
-        throw LLMError.emptyResponse
+      let extracted = try Self.extractResponseText(from: data)
+      responseText = extracted.text
+      // A max_tokens-truncated response is still a real (if partial) answer
+      // — Gemini/OpenAI's existing precedent logs a warning rather than
+      // rejecting it, so Claude matches that instead of diverging into a
+      // stricter reject-and-fall-back-to-raw policy this PR never designed
+      // or reviewed. Whether ALL THREE providers should instead reject a
+      // truncated response is a real, separate cross-provider question,
+      // tracked as a follow-up (#1710) rather than decided here for Claude alone.
+      if extracted.truncated {
+        Task {
+          await AppLogger.shared.log(
+            "WARNING: Claude response truncated (stop_reason=max_tokens, model=\(config.model), max_tokens=\(config.maxTokens))",
+            level: .info, category: "LLM"
+          )
+        }
       }
-      let text =
-        content
-        .filter { $0["type"] as? String == "text" }
-        .compactMap { $0["text"] as? String }
-        .joined()
-      guard !text.isEmpty else {
-        throw LLMError.emptyResponse
-      }
-      responseText = text
     } catch {
       statusForLog = "error_after_\(httpResponse.statusCode):\(Self.shortError(error))"
       throw error
@@ -221,6 +225,34 @@ public struct ClaudeConnector: TranscriptPolisher {
     default:
       return (400...499).contains(statusCode) ? .badRequest : .unknown
     }
+  }
+
+  /// Pure success-body parser (#158, Codex r6). Extracts and validates the
+  /// text content of a 200 Claude response, and reports whether Anthropic
+  /// truncated it (`stop_reason == "max_tokens"`). Unit-testable without
+  /// network mocking, mirroring `makeRequestBody`/`classify`'s pattern.
+  ///
+  /// Emptiness is checked on the TRIMMED text, not the raw joined text: a
+  /// whitespace/newline-only response has a non-empty raw string but is a
+  /// successful-looking empty result once `polishBatch` trims it into the
+  /// final `LLMResult` — checking the untrimmed value here would let that
+  /// case through as a false "success" and hide a real provider failure
+  /// from the pipeline's fallback logic.
+  static func extractResponseText(from data: Data) throws -> (text: String, truncated: Bool) {
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    guard let content = json?["content"] as? [[String: Any]] else {
+      throw LLMError.emptyResponse
+    }
+    let text =
+      content
+      .filter { $0["type"] as? String == "text" }
+      .compactMap { $0["text"] as? String }
+      .joined()
+    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw LLMError.emptyResponse
+    }
+    let truncated = (json?["stop_reason"] as? String) == "max_tokens"
+    return (text, truncated)
   }
 
   /// Short error token for diagnostic log lines. Mirrors
