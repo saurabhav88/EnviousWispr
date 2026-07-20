@@ -250,6 +250,14 @@ public struct ClaudeConnector: TranscriptPolisher {
       return .badRequest
     case 401:
       return .apiKeyRejected
+    case 402:
+      // Documented, not guessed (GitHub cloud review r3, PR #1712,
+      // confirmed against https://platform.claude.com/docs/en/api/errors):
+      // 402 is Anthropic's dedicated `billing_error` status for a billing
+      // or payment problem (e.g. no prepaid credits) — the same real-world
+      // condition `.outOfCredits` already exists to name, not a generic
+      // client-error/configuration-problem case.
+      return .outOfCredits
     case 403:
       return .accessDenied
     case 404:

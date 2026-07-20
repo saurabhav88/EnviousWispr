@@ -167,6 +167,14 @@ struct ClaudeConnectorTests {
     #expect(ClaudeConnector.classify(statusCode: 401, bodyString: "") == .apiKeyRejected)
   }
 
+  @Test func classify402IsOutOfCredits() {
+    // Documented, not guessed (Codex r3, PR #1712): Anthropic's dedicated
+    // billing_error status, confirmed against
+    // https://platform.claude.com/docs/en/api/errors.
+    let body = #"{"type":"error","error":{"type":"billing_error","message":"..."}}"#
+    #expect(ClaudeConnector.classify(statusCode: 402, bodyString: body) == .outOfCredits)
+  }
+
   @Test func classify403IsAccessDenied() {
     #expect(ClaudeConnector.classify(statusCode: 403, bodyString: "") == .accessDenied)
   }
