@@ -1058,25 +1058,53 @@ public final class CustomWordsManager {
   /// then renames into place. Mirrors `KeychainManager.store` to avoid the
   /// brief world-readable window that `Data.write(.atomic)` + post-write
   /// chmod creates. (V3 audit #561.)
+  ///
+  /// The guard set here is `CustomWordsExportWriter`'s, ported whole rather
+  /// than piecemeal (#1690). That writer had already paid for each one; this
+  /// one kept an older shape on the belief — written into that file's own
+  /// header — that "the live custom-words.json has exactly one writer, so a
+  /// fixed .tmp sibling is safe there." Two instances of the app break that,
+  /// and the cost is the user's entire vocabulary:
+  ///
+  ///  - **Unique temp name**, not a fixed `.custom-words.json.tmp`. With a
+  ///    shared name plus `O_TRUNC`, a second writer wipes the first's partial
+  ///    bytes and whichever publish lands last wins. That is not a torn file;
+  ///    it is one instance's library silently replacing another's, which is
+  ///    exactly what the artifact quarantined on 2026-07-19 looked like —
+  ///    valid JSON containing one word that did not belong there.
+  ///  - **`O_EXCL`**, so a colliding temp fails loudly instead of truncating
+  ///    somebody else's write in progress.
+  ///  - **One `rename(2)`** instead of `fileExists` then
+  ///    `replaceItemAt`/`moveItem`. That branch was check-then-act, and
+  ///    `replaceItemAt` also preserves the DESTINATION's metadata, so a live
+  ///    file that had become 0644 would stay world-readable through every
+  ///    subsequent save. `rename` is atomic, refuses a directory by the kernel
+  ///    (EISDIR), and keeps the temp file's own 0600.
   private func saveFile(_ file: CustomWordsFile) throws {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     let data = try encoder.encode(file)
-    let tmpURL = fileURL.deletingLastPathComponent().appendingPathComponent(
-      ".custom-words.json.tmp")
+    let tmpURL = fileURL.deletingLastPathComponent()
+      .appendingPathComponent(".custom-words.json.\(UUID().uuidString).tmp")
     let fm = FileManager.default
     do {
-      let fd = Foundation.open(tmpURL.path, O_CREAT | O_WRONLY | O_TRUNC, 0o600)
+      let fd = Foundation.open(tmpURL.path, O_CREAT | O_EXCL | O_WRONLY, 0o600)
       guard fd >= 0 else {
         throw CocoaError(.fileWriteUnknown)
       }
       let fh = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
       try fh.write(contentsOf: data)
       try fh.close()
-      if fm.fileExists(atPath: fileURL.path) {
-        _ = try fm.replaceItemAt(fileURL, withItemAt: tmpURL)
-      } else {
-        try fm.moveItem(at: tmpURL, to: fileURL)
+
+      // Same-directory temp file means same filesystem, which is what makes
+      // rename legal here.
+      guard Foundation.rename(tmpURL.path, fileURL.path) == 0 else {
+        throw NSError(
+          domain: NSPOSIXErrorDomain, code: Int(errno),
+          userInfo: [
+            NSLocalizedDescriptionKey: String(cString: strerror(errno)),
+            NSFilePathErrorKey: fileURL.path,
+          ])
       }
     } catch {
       try? fm.removeItem(at: tmpURL)

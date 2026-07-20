@@ -176,4 +176,86 @@ struct CustomWordsManagerDiskRoundTripTests {
     let after = try Self.readWords(at: path)
     #expect(after.first?.frequencyUsed == 4, "1 + 2 + 1 = 4 across three flushes")
   }
+
+  // MARK: - Concurrent writers (#1690)
+
+  /// The bug this freezes, made DETERMINISTIC.
+  ///
+  /// `saveFile` wrote through a FIXED temp filename with `O_TRUNC`, on the
+  /// belief — stated in `CustomWordsExportWriter`'s own header — that the live
+  /// file has exactly one writer. Two running instances are two writers: the
+  /// second truncated the first's partial bytes in the shared temp file, and
+  /// whichever publish landed last became the user's whole library.
+  ///
+  /// Racing two real saves does NOT prove this — both orderings usually
+  /// produce a readable file, so such a test passes on the broken writer too
+  /// (measured: it did). What discriminates is the shared path itself. A file
+  /// already sitting at the fixed temp name stands in for another instance's
+  /// write in progress: the old writer truncates it and renames it away, the
+  /// fixed name being the whole mechanism. A writer using a unique name plus
+  /// `O_EXCL` cannot touch it.
+  @Test("a save never writes through another instance's scratch file")
+  func saveDoesNotClobberAForeignTemporaryFile() throws {
+    let path = Self.tempFileURL()
+    defer { Self.cleanup(path) }
+    try Self.seed(path: path, words: [])
+
+    // What the OLD code used, byte for byte.
+    let sharedTemp = path.deletingLastPathComponent()
+      .appendingPathComponent(".custom-words.json.tmp")
+    let otherInstanceBytes = Data("another instance was writing here".utf8)
+    try otherInstanceBytes.write(to: sharedTemp)
+
+    let manager = CustomWordsManager(fileURL: path)
+    var words = manager.load() ?? []
+    try manager.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+
+    // Untouched: not truncated, not renamed away, not adopted as our publish.
+    #expect(
+      FileManager.default.fileExists(atPath: sharedTemp.path),
+      "the other writer's scratch file was renamed away")
+    #expect(
+      try Data(contentsOf: sharedTemp) == otherInstanceBytes,
+      "the other writer's bytes were overwritten")
+
+    // And our own save still landed correctly.
+    #expect(try Self.readWords(at: path).map(\.canonical) == ["Kubernetes"])
+  }
+
+  /// A save must never leave its scratch file behind, and never a shared one:
+  /// a fixed name is what let two writers collide in the first place.
+  @Test("a save leaves no temp file, and never a fixed shared name")
+  func saveLeavesNoTemporaryFile() throws {
+    let path = Self.tempFileURL()
+    defer { Self.cleanup(path) }
+    try Self.seed(path: path, words: [])
+
+    let manager = CustomWordsManager(fileURL: path)
+    var words = manager.load() ?? []
+    try manager.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+
+    let leftovers = try FileManager.default
+      .contentsOfDirectory(atPath: path.deletingLastPathComponent().path)
+      .filter { $0.hasPrefix(".custom-words.json") }
+    #expect(leftovers.isEmpty, "left behind: \(leftovers)")
+  }
+
+  /// `replaceItemAt` preserved the DESTINATION's metadata, so a live file that
+  /// had become world-readable stayed that way through every later save — a
+  /// file full of personal names. `rename` keeps the temp file's own 0600.
+  @Test("saving over a world-readable file restores owner-only permissions")
+  func saveEnforcesOwnerOnlyPermissions() throws {
+    let path = Self.tempFileURL()
+    defer { Self.cleanup(path) }
+    try Self.seed(path: path, words: [])
+    try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path.path)
+
+    let manager = CustomWordsManager(fileURL: path)
+    var words = manager.load() ?? []
+    try manager.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+
+    let attributes = try FileManager.default.attributesOfItem(atPath: path.path)
+    let permissions = try #require(attributes[.posixPermissions] as? NSNumber)
+    #expect(permissions.int16Value == 0o600)
+  }
 }
