@@ -104,6 +104,24 @@ public struct ClaudeConnector: TranscriptPolisher {
     system: String?,
     userText: String
   ) -> [String: Any] {
+    // Known, verified exception (GitHub cloud review r2, PR #1712):
+    // `claude-fable-5` rejects `thinking: {"type":"disabled"}` with a real
+    // HTTP 400 (`"thinking.type.disabled" is not supported for this
+    // model`), confirmed live — despite sharing the identical catalog
+    // `capabilities.thinking` shape (`enabled: false, adaptive: true`) as
+    // `claude-sonnet-5`/`claude-opus-4-8`/`claude-opus-4-7`, which all
+    // accept `disabled` fine (also verified live). The catalog's declared
+    // capability shape is therefore NOT a reliable predictor of which
+    // exact `thinking.type` values a model accepts — this is a per-model
+    // API quirk, not a pattern to hardcode around. No special-case branch
+    // here: the resulting 400 already falls through the EXISTING generic
+    // non-200 path in `probeClaude` (returns `false`, correctly excluding
+    // Fable 5 from the offered picker) and `classify` (`.badRequest` if a
+    // stale selection somehow reaches production, which the settings
+    // canonicalization fallback already prevents on the next discovery
+    // pass) — this is the "filtered out" resolution, not a locked/broken
+    // state. Confirmed live: 9/10 catalog models offered and passing with
+    // Fable 5 excluded, zero broken dictations.
     var body: [String: Any] = [
       "model": model,
       "max_tokens": maxTokens,

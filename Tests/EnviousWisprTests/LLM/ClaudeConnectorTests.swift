@@ -204,6 +204,17 @@ struct ClaudeConnectorTests {
     #expect(ClaudeConnector.classify(statusCode: 400, bodyString: body) == .inputTooLong)
   }
 
+  @Test func classify400ForFable5ThinkingRejectionIsBadRequestNotCrash() {
+    // Real observed body, 2026-07-20 (live call to claude-fable-5 with
+    // thinking: disabled, GitHub cloud review r2, PR #1712): confirms the
+    // generic 400 path handles this known per-model quirk safely (falls to
+    // .badRequest, no special-case needed) rather than crashing or
+    // misclassifying it as something actionable it is not.
+    let body =
+      #"{"type":"error","error":{"type":"invalid_request_error","message":"\"thinking.type.disabled\" is not supported for this model. Thinking defaults to adaptive mode when not specified; use \"thinking.type.enabled\" with \"budget_tokens\" for extended thinking."}}"#
+    #expect(ClaudeConnector.classify(statusCode: 400, bodyString: body) == .badRequest)
+  }
+
   @Test(arguments: [500, 502, 503, 529])
   func classify5xxIsProviderServerError(statusCode: Int) {
     // 529 is Anthropic's documented "overloaded" extension inside the 5xx
