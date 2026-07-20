@@ -82,6 +82,80 @@ struct KernelSalvageRetryTests {
     #expect((500...1600).contains(trimMs))
   }
 
+  @Test(
+    "#1707 GitHub cloud review: a streaming session recovered from an ASR crash still engages the ladder"
+  )
+  func recoveredStreamingSessionStillEngagesLadder() async {
+    // The session requests streaming ASR (the config default) and the fake
+    // reports `supportsStreaming` for `.streamingSuccess` — so the kernel's
+    // `shouldStream` gate at session start sets `isStreamingSession = true`,
+    // exactly like a real Parakeet streaming take.
+    let ctx = makeContext(behavior: .streamingSuccess(partials: ["hel"], final: "hello"))
+    await ctx.wrapper.apply(.start)
+    await ctx.wrapper.drainReadyWork()
+    deliverFailureShapedCapture(ctx)
+    await ctx.wrapper.drainReadyWork()
+    let kernel = ctx.wrapper.testKernel
+    #expect(kernel.isStreamingSession, "precondition: this session must start streaming")
+
+    // The XPC helper crashes mid-recording. Recovery (FakeEngine's default
+    // `.readyForBatchDecode`) forces the decode down the batch path, scripted
+    // here to fail once — a degraded Bluetooth lead — before succeeding on
+    // retry. Before the fix, the kernel never cleared `isStreamingSession`
+    // after recovery, so the ladder's `!isStreamingSession` gate stayed
+    // false and this retry never fired.
+    ctx.engine.behavior = .emptyThenScripted(text: "salvaged streaming take", emptyCalls: 1)
+    kernel.externalASRInterrupted()
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(
+      kernel.recordingOutcome == .completed,
+      "reached \(String(describing: kernel.recordingOutcome)) — the ladder must still rescue this decode even though the session started streaming"
+    )
+    #expect(kernel.deliveredTranscript == "salvaged streaming take")
+    #expect(kernel.lastSalvagedLeadTrimMs != nil)
+  }
+
+  @Test(
+    "#1707 GitHub cloud review r16: a recovered streaming session still gets the #950 tail-preserve rescue"
+  )
+  func recoveredStreamingSessionStillGetsTailPreservation() async {
+    // Shaped so VAD's own segment ends 2 s before the raw capture actually
+    // does, even though the whole buffer is uniformly voiced — models a VAD
+    // end-of-speech boundary lagging genuine trailing speech. `tailEligible`
+    // (RecordingSessionKernel.swift, computed BEFORE the interruption-recovery
+    // switch resolves) must treat this as effectively batch, or the rescue
+    // never engages for a session that started streaming: sustained speech
+    // in the tail would be silently dropped instead of recovered.
+    // rawCount=200_000 stays > SoftOnset.maxRawSamples (8s=128_000) so the
+    // soft-onset raw-fallback path (a different rescue) never competes here.
+    let ctx = makeContext(behavior: .streamingSuccess(partials: ["hel"], final: "hello"))
+    await ctx.wrapper.apply(.start)
+    await ctx.wrapper.drainReadyWork()
+    ctx.capture.deliverBuffer(frameCount: 200_000, amplitude: 0.3)
+    ctx.vad.evidence = .voiced
+    ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 166_400)]
+    await ctx.wrapper.drainReadyWork()
+    let kernel = ctx.wrapper.testKernel
+    #expect(kernel.isStreamingSession, "precondition: this session must start streaming")
+
+    // The XPC helper crashes; recovery (FakeEngine's default
+    // `.readyForBatchDecode`) forces the decode to batch. The scripted
+    // decode succeeds immediately — no ladder retry needed — so this
+    // isolates the EARLIER conditioning-time fix from the later
+    // salvage-ladder fix already covered above.
+    ctx.engine.behavior = .batchSuccess(text: "recovered take")
+    kernel.externalASRInterrupted()
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(kernel.recordingOutcome == .completed)
+    #expect(kernel.deliveredTranscript == "recovered take")
+    #expect(
+      ctx.wrapper.telemetryState.asrCompletedTelemetry?.usedTailPreservation == true,
+      "the trailing voiced audio VAD didn't segment must be recovered, not silently dropped")
+    #expect(ctx.wrapper.telemetryState.asrCompletedTelemetry?.mode == "batch")
+  }
+
   @Test("all retries empty → today's asrEmpty terminal, ladder bounded by the candidate count")
   func allRetriesEmptyFallsThrough() async {
     let ctx = makeContext(behavior: .emptyThenScripted(text: "never", emptyCalls: 99))

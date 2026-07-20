@@ -1684,13 +1684,27 @@ final class RecordingSessionKernel {
       rawSamples: captureResult.samples, vadSegments: vadSegments)
     let vadSpeechDurationMs = Self.speechDurationMs(vadSegments)
 
+    // #1707 GitHub Codex code-diff r16: an ASR-interruption recovery always
+    // decodes in batch mode — `readyForBatchDecode` is the only recovery
+    // outcome that ever reaches a real decode below (`.failed`/`.cancelled`
+    // both terminate before `finalize()` runs, so a wrongly-batch
+    // conditioning result on those paths is simply discarded, never
+    // decoded). `isStreamingSession` itself isn't corrected until the
+    // recovery switch resolves (further down this function), which is AFTER
+    // this conditioning block already ran — so conditioning must consult
+    // the salvage source directly, not wait for that later correction, or a
+    // streaming session recovered from a crash skips the #950 tail-preserve
+    // rescue entirely and can permanently lose genuine speech VAD trimmed
+    // off the tail.
+    let effectivelyBatch =
+      !isStreamingSession || telemetryState.interruptedSalvageSource == .asr
     // #950 tail-trim diagnostic. Eligible = the engine decodes the conditioned
     // (VAD-trimmed) batch buffer (Parakeet, via capability) AND this is a batch
     // session; only then does "trailing audio the VAD trim dropped before ASR"
     // mean anything (WhisperKit decodes the raw capture, so the trim does not
     // touch its ASR input). Metadata only; never gates the heart path.
     let tailEligible =
-      adapter.capabilities.decodesConditionedBatchSamples && !isStreamingSession
+      adapter.capabilities.decodesConditionedBatchSamples && effectivelyBatch
     let droppedTailSamples = tailEligible ? conditioned.droppedTailSampleCount : 0
     // Always set (incl. 0) for eligible batch so the analytics denominator holds;
     // nil (omitted) for streaming / non-conditioned-batch engines.
@@ -1776,7 +1790,11 @@ final class RecordingSessionKernel {
     }
     telemetryState.asrEmptyDiagnostics = ASREmptyResultDiagnostics(
       backend: adapter.engineIdentity.rawValue,
-      mode: isStreamingSession ? "streaming" : "batch",
+      // #1707 GitHub Codex code-diff r16: `effectivelyBatch`, not the
+      // not-yet-corrected `isStreamingSession` — an asr-empty diagnostic for
+      // a recovered-streaming session must not mislabel itself "streaming"
+      // when the decode it describes is actually batch.
+      mode: effectivelyBatch ? "batch" : "streaming",
       hasSpeechEvidence: speechEvidence != .confirmedNoSpeech,
       rawSampleCount: captureResult.samples.count,
       vadSegmentCount: vadSegments.count,
@@ -1847,6 +1865,19 @@ final class RecordingSessionKernel {
         // `.decodeFailed` — the floor is the one place that sees the FINAL
         // outcome regardless of which terminal call site produced it.
         telemetryState.asrSalvageOutcome = .rewarmSucceeded
+        // #1707 GitHub Codex cloud review: `readyForBatchDecode` means
+        // exactly what it says — the finalize below always decodes in
+        // batch mode now, regardless of whether THIS session originally
+        // started streaming. `isStreamingSession` is a session-start-time
+        // flag (set once in `beginSession`) that a mid-session ASR crash
+        // never revisits; left stale at `true` for an originally-streaming
+        // session, it would wrongly skip the #1434 degraded-lead salvage
+        // ladder below (gated on `!isStreamingSession`) for exactly the
+        // Bluetooth-poisoned-lead failure that ladder exists to rescue.
+        // The adapter's own `streamingActive = false` (set at the top of
+        // `recoverFromASRInterruption()`) already made this same correction
+        // one layer down; this is the kernel-level twin of that fix.
+        isStreamingSession = false
       case .failed:
         telemetryState.asrSalvageOutcome = .rewarmFailed
         finishTerminal(.asrInterrupted(wasRecording: true), sid: sid)
