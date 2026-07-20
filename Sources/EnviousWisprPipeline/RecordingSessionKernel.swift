@@ -2206,6 +2206,22 @@ final class RecordingSessionKernel {
       // Idempotent: a plain overwrite.
       markASRTimingEnd()
       guard isCurrent(sid), recordingOutcome == nil else { return }
+      // Codex r5: a TIMEOUT (`nil`) is NOT a confirmed second failure — the
+      // real decode call is still running in the background (no genuine
+      // in-flight cancellation exists on either backend, per the comment
+      // above) and could still succeed after our still-unmeasured placeholder
+      // deadline (§11.1) gave up waiting, especially for a long recording.
+      // Conflating "we stopped waiting" with "the decode genuinely produced
+      // nothing" would delete recoverable user audio. Leave
+      // `asrRetryOutcome` at `.attempted` (never promote to
+      // `.retryExhausted`) so `recoveryEnding`/`shouldDeleteOnLiveEnding`
+      // retain the spool exactly as a plain `.failed` — only a retry that
+      // ACTUALLY resolved (success, or a genuine `.empty`/`.cancelled`/
+      // `.failed`) is exhausted.
+      guard let retryOutcome else {
+        finishTerminal(.failed(.asrFailed), sid: sid)
+        return
+      }
       switch retryOutcome {
       case .transcript(let retryResult):
         telemetryState.asrRetryOutcome = .retrySucceeded
@@ -2247,7 +2263,7 @@ final class RecordingSessionKernel {
           (adapter as? ASREngineTelemetryProviding)?.lastFailureError ?? retryError
         telemetryState.asrRetryOutcome = .retryExhausted
         finishTerminal(.failed(.asrFailed), sid: sid)
-      default:  // nil (timed out), .empty, .cancelled — discard identically, primary error stands
+      default:  // .empty, .cancelled — genuinely resolved with nothing useful; exhausted
         telemetryState.asrRetryOutcome = .retryExhausted
         finishTerminal(.failed(.asrFailed), sid: sid)
       }

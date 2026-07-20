@@ -87,6 +87,38 @@ struct KernelPhase2RetryTests {
   }
 
   @Test(
+    "#1707 Codex r5: a retry that times out (never resolves) still terminates as .asrFailed but retains the spool, distinct from a genuinely exhausted retry"
+  )
+  func timedOutRetryTerminatesButRetainsSpool() async {
+    let ctx = makeContext(behavior: .crashOnFinalize)
+    // A real, tiny wall-clock deadline — the retry never resolves within it
+    // (the fake-clock delay is never advanced during this test), so
+    // `withOrderedDeadline`'s `onTimeout` fires for real.
+    ctx.engine.retryDecodeTimeoutSeconds = 0.05
+    ctx.engine.retryDecodeDelayTicks = 1
+    await runToTerminal(ctx)
+    let kernel = ctx.wrapper.testKernel
+
+    // `drainReadyWork()`'s epoch-stability heuristic settles immediately
+    // here since nothing in the kernel produces work while it awaits a REAL
+    // wall-clock sleep — poll the real signal (recordingOutcome actually
+    // publishing) instead, bounded well past the 50ms deadline configured
+    // above.
+    for _ in 0..<200 where kernel.recordingOutcome == nil {
+      try? await Task.sleep(for: .milliseconds(5))  // settle: poll recordingOutcome around the real 50ms deadline configured above
+    }
+
+    #expect(kernel.recordingOutcome == .failed(.asrFailed))
+    #expect(ctx.engine.bumpRetryGenerationCallCount == 1)
+    // The distinguishing assertion (Codex r5): NOT .retryExhausted. A mere
+    // timeout must never be conflated with a confirmed second failure — the
+    // underlying decode call is still running with no genuine cancellation,
+    // and deleting the spool now could discard audio a slower-but-healthy
+    // retry would have recovered.
+    #expect(ctx.wrapper.telemetryState.asrRetryOutcome == .attempted)
+  }
+
+  @Test(
     "retry succeeds but polish then empties the result -> falls through to the noSpeech empty path")
   func retrySucceedsThenPolishEmpties() async {
     let ctx = makeContext(behavior: .crashOnFinalize)
