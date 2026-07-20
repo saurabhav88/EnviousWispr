@@ -323,7 +323,12 @@ package struct SmartImportSource: CustomWordsImportSource {
 
   /// `@concurrent` so a SQLite read of another app's database never runs on
   /// the main actor.
-  @concurrent package func loadCandidates() async throws -> CustomWordsImportBatch {
+  ///
+  /// Returns RAW candidates: the protocol's `loadCandidates()` validates what
+  /// this produces, so a competitor's vocabulary goes through exactly the same
+  /// character and length rules as a pasted list or an uploaded file. A source
+  /// cannot opt out of that by forgetting to call it (#1683).
+  @concurrent package func loadRawCandidates() async throws -> CustomWordsImportBatch {
     guard let path = adapter.installedPath else {
       throw SmartImportError.appNotFound(adapter.displayName)
     }
@@ -341,7 +346,12 @@ package struct SmartImportSource: CustomWordsImportSource {
     // needs a signal for having been reached; counting after the shrink loses
     // that signal — the same mistake the pasted-text parser made.
     guard words.count <= CustomWordsImportLimits.maximumCandidates else {
-      throw ImportFileError.tooManyWords(limit: CustomWordsImportLimits.maximumCandidates)
+      // `found` is a real count here, not a stop-sentinel: the adapters read
+      // exactly one past the ceiling, so this is what was actually seen. The
+      // message says "more than" either way, so it never states a figure it
+      // cannot stand behind.
+      throw ImportFileError.tooManyWords(
+        found: words.count, limit: CustomWordsImportLimits.maximumCandidates)
     }
 
     // Reuse the shared splitter's normalization so a competitor's list dedups

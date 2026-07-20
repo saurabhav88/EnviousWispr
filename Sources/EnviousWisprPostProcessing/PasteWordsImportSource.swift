@@ -170,8 +170,12 @@ package enum PasteWordsParser {
   /// bounded but not free — at the ceiling it is still 25,000 words of work on
   /// whatever actor asked. `@concurrent` keeps that off the main one, so a
   /// large paste cannot make typing feel heavy.
-  @concurrent package static func countWords(_ text: String, limit: Int) async -> Int {
-    parse(text, limit: limit).count
+  /// Throws what `parse` throws rather than collapsing it to a count. A
+  /// counter must not surface a crash, but it must not invent an answer
+  /// either: swallowing an over-length entry as "0 words" told the user
+  /// nothing was found and left them with no way to act (#1683).
+  @concurrent package static func countWords(_ text: String, limit: Int) async throws -> Int {
+    try parse(text, limit: limit).count
   }
 }
 

@@ -174,7 +174,7 @@ struct CustomWordsExportWriterTests {
     await #expect(
       throws: CustomWordsExportWriter.ExportDestinationError.wouldOverwriteLiveWords
     ) {
-      try await CustomWordsExportWriter.write(document(["Kubernetes"]), to: live)
+      try await CustomWordsExportWriter.write(try encoded(["Kubernetes"]), to: live)
     }
   }
 

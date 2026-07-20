@@ -317,6 +317,8 @@ private struct ImportPasteScreen: View {
   /// progressively less responsive the more it contained.
   @State private var wordCount = 0
   @State private var parseProblem: String?
+  /// The in-flight count, so the next edit can cancel it.
+  @State private var countingTask: Task<Void, Never>?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -368,22 +370,37 @@ private struct ImportPasteScreen: View {
     }
   }
 
-  /// Keeps the parse failure rather than collapsing it to a zero count.
+  /// Counts OFF the main actor, and keeps the parse failure rather than
+  /// collapsing it to a zero count.
   ///
-  /// `try?` here turned a real, actionable error — an entry longer than the
-  /// limit — into "No words found", which is false and left the user stuck
-  /// with Continue disabled and nothing to act on (Codex review, #1683). A
-  /// counter must not surface a crash, but it must not invent an answer
-  /// either.
+  /// Two separate lessons, one function. `try?` here turned a real, actionable
+  /// error — an entry longer than the limit — into "No words found", which is
+  /// false and left the user stuck with Continue disabled and nothing to act
+  /// on (Codex review, #1683). And counting on the main actor made typing feel
+  /// heavy: bounded work is still work, and at the ceiling it is 25,000 words
+  /// per keystroke (code review r5, #1686).
+  ///
+  /// Off-main means results can land out of order, so each edit cancels the
+  /// previous count and a result is applied only while its draft is still the
+  /// current one — otherwise a slow count of a long list could finish after
+  /// the user cleared the box and re-enable Continue for text that no longer
+  /// exists (code review r6, #1686).
   private func recount(_ draft: String) {
-    do {
-      wordCount = try PasteWordsParser.parse(
-        draft, limit: CustomWordsImportLimits.maximumCandidates
-      ).count
-      parseProblem = nil
-    } catch {
-      wordCount = 0
-      parseProblem = error.localizedDescription
+    countingTask?.cancel()
+    countingTask = Task {
+      do {
+        let counted = try await PasteWordsParser.countWords(
+          draft, limit: CustomWordsImportLimits.maximumCandidates)
+        guard !Task.isCancelled, draft == model.pasteDraft else { return }
+        wordCount = counted
+        parseProblem = nil
+      } catch is CancellationError {
+        return
+      } catch {
+        guard !Task.isCancelled, draft == model.pasteDraft else { return }
+        wordCount = 0
+        parseProblem = error.localizedDescription
+      }
     }
   }
 

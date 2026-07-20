@@ -186,19 +186,19 @@ struct PasteWordsImportSourceTests {
   }
 
   @Test("a huge duplicate-only paste stops scanning instead of grinding")
-  func duplicateHeavyInputIsBoundedByScanNotOnlyByDistinctWords() {
+  func duplicateHeavyInputIsBoundedByScanNotOnlyByDistinctWords() throws {
     // "a,a,a,a…" never grows the distinct-word count, so a ceiling expressed
     // only in results would keep tokenizing millions of duplicates before
     // producing an answer (code review r7). Whichever ceiling comes first
     // ends the work.
     let duplicates = Array(repeating: "a", count: 200_000).joined(separator: ",")
-    let parsed = PasteWordsParser.parse(duplicates, limit: 10)
+    let parsed = try PasteWordsParser.parse(duplicates, limit: 10)
     #expect(parsed == ["a"])
   }
 
   @Test("a bounded parse still returns everything under the limit")
-  func boundedParseIsExactUnderTheLimit() {
+  func boundedParseIsExactUnderTheLimit() throws {
     let words = (1...50).map { "word\($0)" }.joined(separator: "\n")
-    #expect(PasteWordsParser.parse(words, limit: 25_000).count == 50)
+    #expect(try PasteWordsParser.parse(words, limit: 25_000).count == 50)
   }
 }

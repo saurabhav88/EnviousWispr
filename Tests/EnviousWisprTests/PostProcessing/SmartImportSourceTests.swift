@@ -336,7 +336,9 @@ struct SmartImportSourceTests {
     }
 
     await #expect(
-      throws: ImportFileError.tooManyWords(limit: CustomWordsImportLimits.maximumCandidates)
+      throws: ImportFileError.tooManyWords(
+        found: CustomWordsImportLimits.maximumCandidates + 1,
+        limit: CustomWordsImportLimits.maximumCandidates)
     ) {
       _ = try await SmartImportSource(adapter: Flood()).loadCandidates()
     }
