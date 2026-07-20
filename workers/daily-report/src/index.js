@@ -137,20 +137,33 @@ const PROD = `properties.environment = 'production'
     SELECT distinct_id FROM events
     WHERE properties.app_version LIKE '%-dev%' )`;
 
+// Environment only, no whole-history dev-ID exclusion. Safe ONLY where the
+// caller separately applies full PROD to whichever set is being COUNTED -
+// see each call site's local comment for why (the #1655 doubled-subquery
+// class; never copy this constant in without re-deriving the argument).
+const ENV_ONLY = "properties.environment = 'production'";
+
 function windowClause(startUTC, endUTC) {
   return `timestamp >= '${sqlTimestamp(startUTC)}' AND timestamp < '${sqlTimestamp(endUTC)}'`;
 }
 
-/** The day's active-user population (successful dictators) as a reusable
- * subquery fragment - used once, for the onboarded->activated intersection
- * (a single subquery evaluation, cheap). NOT reused for polish tier-a: an
- * earlier version nested this same subquery twice inside a UNION, which
- * measurably timed out against production PostHog - see the comment above
- * `tierASqlFor` below for why tier-a instead takes a literal id list. */
+/** The day's active-user population (successful dictators), used once as an
+ * IN-membership test inside onboardActivateSql's `activated` column - see
+ * that query below. Deliberately ${ENV_ONLY}, not full PROD: every row this
+ * set is tested against already came from onboardActivateSql's own outer
+ * `WHERE ... AND ${PROD}` on onboarding.completed, so a dev-tainted id can
+ * never appear on the outer side to begin with - whether this inner set is
+ * ALSO dev-filtered cannot change which outer ids match it. Full PROD here
+ * would evaluate the same whole-history dev-exclusion subquery a second time
+ * for no change in result, which is exactly the doubled-subquery shape that
+ * measurably timed out production PostHog for polish tier-a (#1655) - fixed
+ * here the same way, after #1655's fix didn't cover this sibling query and
+ * it 504'd for real on 2026-07-20. This argument is local to this one call
+ * site; a new caller must re-derive it, not assume it. */
 function activeUsersSubquery(win) {
   return `SELECT DISTINCT distinct_id FROM events
     WHERE event = 'dictation.completed' AND properties.result = 'success'
-      AND ${PROD} AND ${win}`;
+      AND ${ENV_ONLY} AND ${win}`;
 }
 
 /** Escapes a distinct_id for a HogQL string literal (single-quote doubling,
@@ -164,27 +177,28 @@ function sqlIdList(ids) {
  * settings.changed, restricted to a literal list of already-known active-user
  * ids (rather than a re-evaluated subquery, which timed out).
  *
- * Deliberately uses the production-environment predicate rather than full PROD.
- * Every active id came from engineAndTierBSql, which already applied full PROD,
- * including the whole-history dev-ID exclusion. Repeating that exclusion twice
- * inside this UNION adds substantial work without changing results. Live A/B
+ * Deliberately uses ${ENV_ONLY} rather than full PROD. Every active id came
+ * from engineAndTierBSql, which already applied full PROD, including the
+ * whole-history dev-ID exclusion. Repeating that exclusion twice inside this
+ * UNION adds substantial work without changing results. Live A/B
  * verification found identical provider attribution for all active users.
- * This argument is local to tier-a; every other query keeps full PROD. */
+ * This argument is local to tier-a and to activeUsersSubquery's own,
+ * separately-derived use of ${ENV_ONLY} below; every other query keeps full
+ * PROD. */
 function tierASqlFor(activeIds, endTs) {
   const ids = sqlIdList(activeIds);
-  const envOnly = "properties.environment = 'production'";
   return `
     SELECT distinct_id, argMax(value, ts) AS provider
     FROM (
       SELECT distinct_id, properties.llm_provider AS value, timestamp AS ts
       FROM events
-      WHERE event = 'settings.snapshot' AND ${envOnly}
+      WHERE event = 'settings.snapshot' AND ${ENV_ONLY}
         AND distinct_id IN (${ids})
         AND timestamp < '${endTs}'
       UNION ALL
       SELECT distinct_id, properties.to AS value, timestamp AS ts
       FROM events
-      WHERE event = 'settings.changed' AND properties.setting = 'llm_provider' AND ${envOnly}
+      WHERE event = 'settings.changed' AND properties.setting = 'llm_provider' AND ${ENV_ONLY}
         AND distinct_id IN (${ids})
         AND timestamp < '${endTs}'
     )
