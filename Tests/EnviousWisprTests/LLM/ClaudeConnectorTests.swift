@@ -42,16 +42,28 @@ struct ClaudeConnectorTests {
 
   /// The load-bearing assertion (plan §3 R1 correction): Claude generations
   /// released after Opus 4.6 reject a non-default `temperature` with an HTTP
-  /// 400, so v1 never sends `temperature`, `thinking`, `top_p`, or `top_k` —
+  /// 400, so v1 never sends `temperature`, `top_p`, or `top_k` —
   /// unconditionally, not just for newer models.
   @Test func requestBodyNeverContainsSamplingParameters() {
     let body = ClaudeConnector.makeRequestBody(
       model: "claude-opus-4-8", maxTokens: 1024, system: "system prompt", userText: "text")
 
     #expect(body["temperature"] == nil)
-    #expect(body["thinking"] == nil)
     #expect(body["top_p"] == nil)
     #expect(body["top_k"] == nil)
+  }
+
+  /// GitHub cloud review P2 (PR #1712): several current models (e.g.
+  /// claude-sonnet-5) default to Anthropic's "adaptive" thinking mode when
+  /// `thinking` is omitted, silently spending thinking tokens the "no
+  /// extended thinking, ever" design rules out. `thinking` must be sent,
+  /// explicitly disabled — never omitted like the other sampling params.
+  @Test func requestBodyExplicitlyDisablesThinking() {
+    let body = ClaudeConnector.makeRequestBody(
+      model: "claude-sonnet-5", maxTokens: 1024, system: "system prompt", userText: "text")
+
+    let thinking = body["thinking"] as? [String: String]
+    #expect(thinking?["type"] == "disabled")
   }
 
   /// Probe/production shared-builder parity (plan §3 R1 correction): the
@@ -66,15 +78,16 @@ struct ClaudeConnectorTests {
       model: "claude-haiku-4-5", maxTokens: 5, system: nil, userText: "Hi")
 
     // Both bodies come from the same builder, so both are free of any
-    // sampling parameter and both carry exactly the same key SHAPE (module
-    // membership of `model`/`max_tokens`/`messages`, `system` only when
+    // omitted sampling parameter, both explicitly disable thinking, and
+    // both carry exactly the same key SHAPE (module membership of
+    // `model`/`max_tokens`/`messages`/`thinking`, `system` only when
     // supplied) — a probe/production divergence would show up as a key
     // present in one but not accounted for by this shared contract.
     for body in [production, probe] {
       #expect(body["temperature"] == nil)
-      #expect(body["thinking"] == nil)
       #expect(body["top_p"] == nil)
       #expect(body["top_k"] == nil)
+      #expect((body["thinking"] as? [String: String])?["type"] == "disabled")
       #expect(body["model"] != nil)
       #expect(body["max_tokens"] != nil)
       #expect(body["messages"] != nil)

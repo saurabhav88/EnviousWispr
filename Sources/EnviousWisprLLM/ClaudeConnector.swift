@@ -4,15 +4,25 @@ import Foundation
 /// Anthropic Claude Messages API connector for transcript polishing.
 ///
 /// v1: no extended thinking, ever (`LLMModelCapabilities.supportsReasoning`
-/// is `false` for every Claude model), and no sampling parameter of any
-/// kind — `temperature`/`thinking`/`top_p`/`top_k` are all omitted from the
-/// request body. Claude generations released after Opus 4.6 reject a
-/// non-default `temperature`, including 0, with an HTTP 400; omitting it
-/// unconditionally is the same shape #1330 established for OpenAI's
-/// reasoning family, applied here so a future catalog model doesn't
-/// silently break. No streaming (`onToken` accepted but unused, matching
-/// OpenAI's precedent) and no unsupported-param strip-and-retry (the v1
-/// request body has nothing left to strip).
+/// is `false` for every Claude model). `temperature`/`top_p`/`top_k` are
+/// omitted from the request body — Claude generations released after Opus
+/// 4.6 reject a non-default `temperature`, including 0, with an HTTP 400;
+/// omitting them unconditionally is the same shape #1330 established for
+/// OpenAI's reasoning family, applied here so a future catalog model
+/// doesn't silently break. `thinking` is the one exception: it IS sent,
+/// explicitly disabled (GitHub cloud review P2, PR #1712) — several
+/// current models (`claude-sonnet-5`, `claude-fable-5`, `claude-opus-4-8`,
+/// `claude-opus-4-7`) default to Anthropic's "adaptive" thinking mode when
+/// `thinking` is omitted entirely, which would silently spend thinking
+/// tokens the "no extended thinking, ever" design explicitly rules out and
+/// could push a polish call past its latency budget. `{"type":"disabled"}`
+/// is confirmed accepted (HTTP 200, `thinking_tokens: 0` in the response)
+/// across every current model's capability shape (adaptive-only,
+/// enabled-only, and both), verified live against the real catalog before
+/// landing this. No streaming (`onToken` accepted but unused, matching
+/// OpenAI's precedent) and no unsupported-param strip-and-retry (`thinking`
+/// is the only sampling-adjacent param sent, and every current model
+/// accepts disabling it).
 public struct ClaudeConnector: TranscriptPolisher {
   private let keychainManager: KeychainManager
   private let baseURL = "https://api.anthropic.com/v1/messages"
@@ -98,6 +108,7 @@ public struct ClaudeConnector: TranscriptPolisher {
       "model": model,
       "max_tokens": maxTokens,
       "messages": [["role": "user", "content": userText]],
+      "thinking": ["type": "disabled"],
     ]
     if let system, !system.isEmpty {
       body["system"] = system
