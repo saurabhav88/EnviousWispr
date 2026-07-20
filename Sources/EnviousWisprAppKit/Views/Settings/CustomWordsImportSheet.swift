@@ -144,21 +144,26 @@ struct CustomWordsImportSheet: View {
         // Routed through requestCancel() (#1700): a `.nothingFound`/`.failed`
         // result still holds an uncommitted draft, so Done confirms first in
         // that case; `.completed`/`.nothingApproved` proceed silently, same
-        // as before. The overlaid hidden button gives Escape the same route:
-        // without it, this screen has no `.cancelAction` button at all, so
-        // Escape would dismiss the system sheet directly and reach
+        // as before. The overlaid, zero-opacity button gives Escape the same
+        // route: without it, this screen has no `.cancelAction` button at
+        // all, so Escape would dismiss the system sheet directly and reach
         // `.onDisappear`'s unconfirmed cleanup — the exact bug this issue is
         // about, left open on the one screen this change touches (Codex
         // code-diff review). `.overlay` rather than a second sibling button:
-        // `.hidden()` on a sibling still reserves its layout footprint,
-        // visibly shifting Done off the trailing edge (Codex, round 3).
+        // a sibling would reserve its own layout footprint, visibly shifting
+        // Done off the trailing edge (Codex, round 3). `.opacity(0)` rather
+        // than `.hidden()`: `.hidden()` views cannot receive or respond to
+        // interactions at all per Apple's own documentation, which would
+        // silently reintroduce the exact Escape bug this button exists to
+        // fix (Codex, round 4) — `.opacity` only affects rendering, not hit
+        // testing or shortcut dispatch.
         Button("Done") { requestCancel() }
           .keyboardShortcut(.defaultAction)
           .buttonStyle(.borderedProminent)
           .overlay {
             Button("Done") { requestCancel() }
               .keyboardShortcut(.cancelAction)
-              .hidden()
+              .opacity(0)
           }
       case .review:
         Button("Cancel") { requestCancel() }
