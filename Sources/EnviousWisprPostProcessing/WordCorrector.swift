@@ -150,6 +150,154 @@ public struct WordCorrector: Sendable {
     public let nonPackExactKeys: Set<String>
   }
 
+  // MARK: - Exact-trigger authority (#1667)
+
+  /// The one place that answers "what exact keys does this value claim, and at
+  /// what precedence" (#1667).
+  ///
+  /// Import collision detection used to re-derive this by hand and mirrored only
+  /// two of the surfaces. That partial mirror was found wrong three separate
+  /// times — first-wins vs last-wins among two alias owners, canonical-first vs
+  /// alias-first, then the no-space surface it never modelled at all. A fourth
+  /// divergence was latent: the detector trimmed its keys, this does not, so on
+  /// malformed or legacy data the two disagreed about what a key even was.
+  ///
+  /// The fix is not a fourth patch. `buildLookups` and `detectAliasCollisions`
+  /// now BOTH construct claims here, so there is nothing left to drift.
+  package enum ExactTriggerNamespace: Sendable, Equatable {
+    case single
+    case multi
+    case nospace
+
+    /// Correction-pass order, used to pick which owner a single collision
+    /// receipt names when one alias is blocked on several surfaces at once.
+    /// Pass 0 (no-space compound) runs before the ordinary exact passes.
+    package var passPriority: Int {
+      switch self {
+      case .nospace: return 0
+      case .multi: return 1
+      case .single: return 3
+      }
+    }
+  }
+
+  package struct ExactTriggerClaim: Sendable, Equatable {
+    package let key: String
+    package let namespace: ExactTriggerNamespace
+  }
+
+  package struct TriggerOwner: Sendable, Equatable {
+    package let wordID: UUID
+    package let canonical: String
+  }
+
+  /// Effective incumbent ownership, after every overwrite and gap-fill rule has
+  /// already been applied. Consumers read winners; they never replay precedence.
+  package struct ExactTriggerIndex: Sendable {
+    package var single: [String: TriggerOwner] = [:]
+    package var multi: [String: TriggerOwner] = [:]
+    package var nospace: [String: TriggerOwner] = [:]
+
+    package func owner(of claim: ExactTriggerClaim) -> TriggerOwner? {
+      switch claim.namespace {
+      case .single: return single[claim.key]
+      case .multi: return multi[claim.key]
+      case .nospace: return nospace[claim.key]
+      }
+    }
+  }
+
+  /// Keys an ALIAS claims. Ordinary surface first, then its no-space form when
+  /// that differs. Deduplicated, so a space-free alias yields one ordinary claim
+  /// plus its identical-key no-space claim only when the namespaces differ.
+  package static func exactClaims(forAlias alias: String) -> [ExactTriggerClaim] {
+    let key = alias.lowercased()
+    guard !key.isEmpty else { return [] }
+    var claims = [
+      ExactTriggerClaim(key: key, namespace: alias.contains(" ") ? .multi : .single)
+    ]
+    let nospaceKey = alias.replacingOccurrences(of: " ", with: "").lowercased()
+    if !nospaceKey.isEmpty {
+      claims.append(ExactTriggerClaim(key: nospaceKey, namespace: .nospace))
+    }
+    return claims
+  }
+
+  /// Keys a CANONICAL claims. The self-entry exists only for a space-free
+  /// canonical; the no-space claim is unconditional.
+  package static func exactClaims(forCanonical canonical: String) -> [ExactTriggerClaim] {
+    let key = canonical.lowercased()
+    guard !key.isEmpty else { return [] }
+    var claims: [ExactTriggerClaim] = []
+    if !key.contains(" ") { claims.append(ExactTriggerClaim(key: key, namespace: .single)) }
+    let nospaceKey = canonical.replacingOccurrences(of: " ", with: "").lowercased()
+    if !nospaceKey.isEmpty {
+      claims.append(ExactTriggerClaim(key: nospaceKey, namespace: .nospace))
+    }
+    return claims
+  }
+
+  /// Resolve effective ownership across a whole vocabulary, applying the same
+  /// rules `buildLookups` has always applied — which is why `buildLookups` now
+  /// projects from this rather than repeating them.
+  package static func buildExactTriggerIndex(words: [CustomWord]) -> ExactTriggerIndex {
+    let packWords = words.filter { $0.source == .pack }
+    let nonPackWords = words.filter { $0.source != .pack }
+    var index = ExactTriggerIndex()
+
+    // Non-pack aliases: last writer wins in the ordinary namespaces.
+    for word in nonPackWords {
+      let owner = TriggerOwner(wordID: word.id, canonical: word.canonical)
+      for alias in word.aliases {
+        let key = alias.lowercased()
+        guard !key.isEmpty else { continue }
+        if alias.contains(" ") { index.multi[key] = owner } else { index.single[key] = owner }
+      }
+    }
+
+    // Non-pack canonical self-entry: space-free only, and it YIELDS to an alias.
+    for word in nonPackWords {
+      let key = word.canonical.lowercased()
+      guard !key.isEmpty, !key.contains(" "), index.single[key] == nil else { continue }
+      index.single[key] = TriggerOwner(wordID: word.id, canonical: word.canonical)
+    }
+
+    // No-space namespace, non-pack only. Canonical is unconditional and last
+    // writer wins; an alias fills only an empty slot. So alias-vs-alias is
+    // FIRST-wins here while canonical-vs-canonical is last-wins, and a later
+    // canonical can overwrite an earlier alias. Three rules, one map — the
+    // reason a hand-rolled mirror kept getting this wrong.
+    for word in nonPackWords {
+      let owner = TriggerOwner(wordID: word.id, canonical: word.canonical)
+      let nospace = word.canonical.replacingOccurrences(of: " ", with: "").lowercased()
+      if !nospace.isEmpty { index.nospace[nospace] = owner }
+      for alias in word.aliases {
+        let aliasNospace = alias.replacingOccurrences(of: " ", with: "").lowercased()
+        guard !aliasNospace.isEmpty, index.nospace[aliasNospace] == nil else { continue }
+        index.nospace[aliasNospace] = owner
+      }
+    }
+
+    // Pack aliases gap-fill the ordinary namespaces only, and never claim a key
+    // any non-pack canonical owns. Pack canonicals get no self-entry, and pack
+    // terms never enter the no-space namespace.
+    let nonPackCanonicalKeys = Set(nonPackWords.map { $0.canonical.lowercased() })
+    for word in packWords {
+      let owner = TriggerOwner(wordID: word.id, canonical: word.canonical)
+      for alias in word.aliases {
+        let key = alias.lowercased()
+        guard !key.isEmpty, !nonPackCanonicalKeys.contains(key) else { continue }
+        if alias.contains(" ") {
+          if index.multi[key] == nil { index.multi[key] = owner }
+        } else {
+          if index.single[key] == nil { index.single[key] = owner }
+        }
+      }
+    }
+
+    return index
+  }
+
   /// Build the lookup structures for a given vocabulary. Pure function.
   /// `WordCorrectionStep` calls this once per generation change and reuses
   /// the result across many `correct(...)` calls.
