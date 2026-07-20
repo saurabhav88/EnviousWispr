@@ -807,8 +807,6 @@ public final class CustomWordsManager {
   static func enforceAliases(
     on words: [CustomWord], touchedOrder: [UUID]
   ) -> (words: [CustomWord], dropped: [CustomWordsImportAliasCollision]) {
-    let touchedIDs = Set(touchedOrder)
-
     // Ownership comes from `WordCorrector`, not from a third copy of its rules
     // (#1667). This function used to mirror them itself, keyed on
     // `importPersistenceKey`, which has no no-space surface at all — so an
@@ -816,9 +814,6 @@ public final class CustomWordsManager {
     // form was KEPT here even once the compare screen had learned to disclose
     // it. The screen said one thing and the commit did another; the alias was
     // saved and then never fired.
-    //
-    // Untouched words register first and are never modified, so an incumbent
-    // always outranks an imported alias.
     var result = words
     // Last wins, and the list must not be assumed id-unique. Renaming a
     // built-in stores a user override carrying the built-in's OWN id while
@@ -839,10 +834,11 @@ public final class CustomWordsManager {
     // it runs for real on the saved file. Apply order can name a winner the
     // corrector itself would never produce (grounded review r7, #1667).
     //
-    // Touched words' OLD aliases are stripped from this seed, because their
-    // real aliases are re-decided by the loop below in the plan's approved
-    // order — that precedence is a genuinely separate, already-established
-    // rule this pass must not disturb.
+    // Touched words' proposed final aliases are stripped from this seed,
+    // because their surviving aliases are decided by the loop below in the
+    // plan's approved order — that precedence is a genuinely separate,
+    // already-established rule this pass must not disturb. Canonicals stay,
+    // so ownership is still resolved from the complete final vocabulary.
     let touchedIndices = Set(touchedOrder.compactMap { indexByID[$0] })
     let ownershipSeed = result.indices.map { wordIndex -> CustomWord in
       var word = result[wordIndex]
