@@ -2,13 +2,16 @@ import Foundation
 
 /// Writes a backup file to a destination the user chose (#1680, PR-E1).
 ///
-/// Same guards as `CustomWordsManager.saveFile` — exclusive create, mode 0600,
-/// atomic publish, cleanup on failure — with one deliberate difference: the
-/// temp filename is **unique**, not fixed. The live `custom-words.json` has
-/// exactly one writer, so a fixed `.tmp` sibling is safe there. An export
-/// destination is a folder the user picked, and two exports can target it at
-/// once; a shared temp name would let them overwrite each other's partial
-/// bytes and produce one corrupt file.
+/// Same guards as `CustomWordsManager.saveFile` — unique temp filename,
+/// exclusive create, mode 0600, atomic publish, cleanup on failure.
+///
+/// This file used to claim the live `custom-words.json` "has exactly one
+/// writer, so a fixed `.tmp` sibling is safe there," and that sentence is why
+/// the manager kept the weaker shape. It is not true: two running instances
+/// are two writers, and a shared temp name plus `O_TRUNC` let one silently
+/// overwrite the other's partial bytes, publishing whichever landed last as
+/// the user's whole library (#1690). Both writers now use the same guards,
+/// because the reason for them was never the destination.
 package enum CustomWordsExportWriter {
   /// `@concurrent` so this always runs OFF the caller's actor (code review r5).
   /// The caller is a SwiftUI button action on the main actor, and a plain
