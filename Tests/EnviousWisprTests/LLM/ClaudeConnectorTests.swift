@@ -135,6 +135,19 @@ struct ClaudeConnectorTests {
     }
   }
 
+  @Test func extractResponseTextClassifiesRefusalAsContentBlocked() {
+    // stop_reason: "refusal" still carries explanatory TEXT (unlike a
+    // moderation refusal on other providers, which tends to leave content
+    // empty and falls through to .emptyResponse) — without this check the
+    // refusal text would pass every check above and be pasted as if it
+    // were legitimate cleaned-up dictation (Codex r7).
+    let data = responseJSON(
+      text: "I can't help with that request.", stopReason: "refusal")
+    #expect(throws: LLMError.classified(.contentBlocked)) {
+      try ClaudeConnector.extractResponseText(from: data)
+    }
+  }
+
   // MARK: - Status classification (#945 pattern)
 
   @Test func classify401IsApiKeyRejected() {
@@ -167,6 +180,15 @@ struct ClaudeConnectorTests {
     #expect(
       ClaudeConnector.classify(statusCode: 400, bodyString: "invalid_request_error")
         == .badRequest)
+  }
+
+  @Test func classify400WithPromptTooLongIsInputTooLong() {
+    // Real observed body, 2026-07-20 (a live 250k-token overrun against the
+    // founder's account): {"type":"error","error":{"type":"invalid_request_error",
+    // "message":"prompt is too long: 250024 tokens > 200000 maximum"}} (Codex r7).
+    let body =
+      #"{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 250024 tokens > 200000 maximum"}}"#
+    #expect(ClaudeConnector.classify(statusCode: 400, bodyString: body) == .inputTooLong)
   }
 
   @Test(arguments: [500, 502, 503, 529])

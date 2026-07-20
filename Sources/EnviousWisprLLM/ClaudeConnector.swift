@@ -211,6 +211,13 @@ public struct ClaudeConnector: TranscriptPolisher {
     switch statusCode {
     case 400:
       if bodyString.contains("credit balance") { return .outOfCredits }
+      // Real observed body (2026-07-20, live 250k-token overrun against the
+      // founder's account): {"type":"error","error":{"type":"invalid_request_error",
+      // "message":"prompt is too long: 250024 tokens > 200000 maximum"}} — matches
+      // OpenAI/Gemini's existing `.inputTooLong` classification for the same
+      // real-world failure (Codex r7), not left as a generic `.badRequest`
+      // that would misread a too-long dictation as a configuration defect.
+      if bodyString.contains("prompt is too long") { return .inputTooLong }
       return .badRequest
     case 401:
       return .apiKeyRejected
@@ -250,6 +257,17 @@ public struct ClaudeConnector: TranscriptPolisher {
       .joined()
     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw LLMError.emptyResponse
+    }
+    // `stop_reason: "refusal"` is a documented Anthropic value for a model
+    // declining to continue — unlike a moderation refusal on other
+    // providers (which tends to leave `content` empty/null and falls
+    // through to the generic `.emptyResponse` case), Claude's refusal still
+    // carries explanatory TEXT, so without this check it would pass every
+    // check above and get pasted as if it were legitimate cleaned-up
+    // dictation (Codex r7) — classify it the same way OpenAI/Gemini's
+    // existing `.contentBlocked` case handles a moderation refusal.
+    if (json?["stop_reason"] as? String) == "refusal" {
+      throw LLMError.classified(.contentBlocked)
     }
     let truncated = (json?["stop_reason"] as? String) == "max_tokens"
     return (text, truncated)
