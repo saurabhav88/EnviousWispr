@@ -204,11 +204,14 @@ struct YourWordsView: View {
               + "Vocabulary packs are not included.")
         case .libraryChanged:
           exportNotice = .info(
-            // Not "review the updated count": there is no count on this screen
-            // to review any more (#1715). Export again and the dialog shows the
-            // new number.
-            "Your word list changed while you were choosing a folder. "
-              + "Nothing was exported. Try Export again.")
+            // Says nothing about WHEN or WHERE the list moved, because two
+            // different paths land here: the drift check after a folder was
+            // chosen, and a stale empty count that never opened a dialog at
+            // all. Naming folder selection would describe a step the second
+            // user never took (cloud review, #1715). It also can't say "review
+            // the updated count" any more — there is no count on this screen.
+            "Your word list changed, so nothing was exported. "
+              + "Try Export again.")
         case .failed(let message):
           exportNotice = .failure(message)
         }
