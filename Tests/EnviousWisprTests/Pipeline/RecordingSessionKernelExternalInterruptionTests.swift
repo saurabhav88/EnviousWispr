@@ -79,9 +79,15 @@ import Testing
       #expect(kernel.recordingOutcome == .audioInterrupted(.engineLost))
     }
 
-    @Test("externalASRInterrupted routes to the ASR-interrupted terminal")
+    @Test("externalASRInterrupted floors a failed salvage to the ASR-interrupted terminal")
     func asrInterruptedRoutes() async {
+      // #1707: `.asrInterruption` now falls through into the salvage tail
+      // (same shape as `.audioInterruption`, see `engineInterruptedRoutes`
+      // above) — force the recovery capability to fail so this test proves
+      // routing to the floor's failure target, not a successful salvage
+      // (which has its own dedicated coverage in the salvage suite).
       let (context, wrapper) = makeWrapper()
+      context.engine.asrInterruptionRecoveryResult = .failed
       let kernel = wrapper.testKernel
 
       await startToRecording(context)
@@ -94,6 +100,31 @@ import Testing
       // not just the category, so the kernel can't silently drop/invert it
       // (#1548 D1; the observer-side pass-through is proven separately).
       #expect(kernel.recordingOutcome == .asrInterrupted(wasRecording: true))
+      #expect(context.engine.recoverFromASRInterruptionCallCount == 1)
+      #expect(
+        kernel.lastASRSalvageOutcome == .rewarmFailed,
+        "Codex code-diff r2: telemetry must distinguish a rewarm failure from a decode failure")
+    }
+
+    @Test("externalASRInterrupted salvage succeeds and completes normally")
+    func asrInterruptedSalvageSucceeds() async {
+      // #1707: the counterpart to the routing test above — recovery succeeds
+      // (the `FakeEngine` default) and decode succeeds, so the session
+      // completes exactly like any ordinary recording, proving the new
+      // fall-through actually reaches delivery, not just the right enum case.
+      let (context, wrapper) = makeWrapper(behavior: .batchSuccess(text: "hello"))
+      let kernel = wrapper.testKernel
+
+      await startToRecording(context)
+      #expect(kernel.state == .live)
+
+      kernel.externalASRInterrupted()
+      await wrapper.drainReadyWork()
+
+      #expect(kernel.recordingOutcome == .completed)
+      #expect(context.paste.pasteCount == 1)
+      #expect(context.engine.recoverFromASRInterruptionCallCount == 1)
+      #expect(kernel.lastASRSalvageOutcome == .rewarmSucceeded)
     }
 
     @Test("externalASRInterrupted while delivering(.transcribing) records wasRecording false")
@@ -110,6 +141,43 @@ import Testing
       kernel.externalASRInterrupted()
 
       #expect(kernel.recordingOutcome == .asrInterrupted(wasRecording: false))
+    }
+
+    @Test(
+      "a genuine user cancel while ASR recovery is in flight stamps the salvage outcome cancelled")
+    func cancelDuringASRRecoveryStampsSalvageOutcome() async {
+      // Codex code-diff r3: a user cancelling before recovery has returned must
+      // NOT leave `lastASRSalvageOutcome` nil (misreporting an unresolved
+      // salvage as an ordinary cancel). Hold recovery in flight on the fake
+      // clock so the test can interleave a real `cancel()` mid-await, exactly
+      // the race the floor's `.asr` `.cancelled` branch now covers.
+      let (context, wrapper) = makeWrapper()
+      context.engine.asrInterruptionRecoveryDelayTicks = 1
+      let kernel = wrapper.testKernel
+
+      await startToRecording(context)
+      #expect(kernel.state == .live)
+
+      kernel.externalASRInterrupted()
+      await wrapper.drainReadyWork()
+      // Recovery is parked on the fake clock — the session must still be
+      // in flight, not yet concluded, for this test to prove anything.
+      #expect(kernel.recordingOutcome == nil)
+      #expect(kernel.state == .delivering)
+
+      kernel.cancel()
+
+      #expect(kernel.recordingOutcome == .cancelled)
+      #expect(
+        kernel.lastASRSalvageOutcome == .cancelled,
+        "a user cancel while recovery is in flight must overwrite the salvage signal, got \(String(describing: kernel.lastASRSalvageOutcome))"
+      )
+
+      // Release the parked recovery task so its continuation doesn't leak;
+      // the kernel's own `recordingOutcome != nil` guard makes its resumption
+      // a no-op (RecordingSessionKernelTests.swift established idiom).
+      context.clock.drainPending()
+      await wrapper.drainReadyWork()
     }
 
     @Test("externalCaptureStalled routes to the capture-stalled failed terminal")
@@ -146,7 +214,11 @@ import Testing
 
     @Test("a second externalASRInterrupted after the first reached terminal is a no-op")
     func asrInterruptedIdempotent() async {
+      // #1707: force a failed salvage (mirrors `engineInterruptedIdempotent`
+      // above using a non-salvageable engine) so this test observes the
+      // `.asrInterrupted` terminal it's pinning, not a successful salvage.
       let (context, wrapper) = makeWrapper()
+      context.engine.asrInterruptionRecoveryResult = .failed
       let kernel = wrapper.testKernel
 
       await startToRecording(context)

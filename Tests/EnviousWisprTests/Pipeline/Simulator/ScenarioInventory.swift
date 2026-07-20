@@ -366,12 +366,18 @@ enum ScenarioInventory {
       expected: ExpectedOutcome(
         terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,
         transcript: .nonEmpty, userVisibleError: nil)),
+    // #1707: the ASR helper dies mid-sentence, but capture (in-process, #1543)
+    // is completely unaffected and still holds every sample. We now confirm
+    // the engine is ready (reconnect/reload if needed) and transcribe+paste
+    // instead of throwing the take away. This scenario asserted
+    // `.asrInterrupted` / pasteCount 0 until the salvage landed — the flip IS
+    // the feature, same shape as C5's #1408 flip.
     Scenario(
-      id: "C6", name: "XPC capture crash / reconnect",
+      id: "C6", name: "XPC capture crash / reconnect (salvaged)",
       steps: [.trigger(.start), .capture(.deliverBuffer), .capture(.xpcCrash)],
       expected: ExpectedOutcome(
-        terminalState: .asrInterrupted, pasteCount: 0, pasteOutcome: .none,
-        transcript: .none, userVisibleError: .recoverableError)),
+        terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,
+        transcript: .nonEmpty, userVisibleError: nil)),
     // #1548 D2: with the first-buffer gate gone, capture establishes straight to
     // `.live`, so a device that dies before the first buffer now routes through the
     // ONE `.live` interruption path (§3.7) — not the old Arming no-transport

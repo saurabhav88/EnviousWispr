@@ -157,6 +157,24 @@ public enum ASREngineOutcome: Sendable {
   case failed(ASREngineError)
 }
 
+/// #1707: the outcome of `ASREngineAdapter.recoverFromASRInterruption()` —
+/// confirming (rebuilding if necessary) that THIS adapter's engine can decode
+/// right now, after an ASR-interruption signal arrived mid-recording. Not a
+/// `Failure` in the `ASREngineOutcome` sense — it precedes any decode
+/// attempt, so there is nothing to retry, only a readiness confirmation to
+/// make before the FIRST (and only) decode attempt over the salvaged audio.
+public enum ASRInterruptionRecoveryOutcome: Equatable, Sendable {
+  /// The engine is confirmed ready; the kernel may proceed to `finalize`.
+  case readyForBatchDecode
+  /// Recovery could not confirm readiness (reconnect/reload failed, or the
+  /// engine reports not-ready after the attempt completes).
+  case failed
+  /// The attempt was superseded — a newer session/load, an explicit
+  /// cancellation, or a bounded deadline expired before readiness could be
+  /// confirmed.
+  case cancelled
+}
+
 /// A wedge-detection progress tick emitted during model warm-up (PR-1 §B.1.7,
 /// §B.2.1). The kernel watches *cadence* — absence of ticks, not absence of
 /// completion-within-a-deadline — so there is no wall-clock timeout.
@@ -359,6 +377,22 @@ package protocol ASREngineAdapter: AnyObject {
   /// setup and routes it to the `asrInterrupted` terminal. An adapter whose
   /// engine has no mid-recording crash signal leaves it nil.
   var onEngineInterrupted: (@MainActor () -> Void)? { get set }
+
+  /// #1707: confirm (rebuilding if necessary) that THIS adapter's engine can
+  /// decode right now, after an ASR-interruption signal arrived while a
+  /// recording was still `.live`. Called by the kernel exactly once per
+  /// salvage attempt, before the one decode attempt over the already-captured
+  /// audio — never as a retry of a prior decode.
+  ///
+  /// Deliberately NO protocol-extension default: an adapter whose engine
+  /// cannot have been this signal's source (any adapter but the one with a
+  /// real out-of-process connection to lose) must still decide its own
+  /// answer explicitly, so a future adapter cannot silently inherit
+  /// behavior that is wrong for it. An adapter that was never actually
+  /// touched by the signal returns `.readyForBatchDecode` after a real (if
+  /// cheap) confirmation that its own engine is genuinely ready — never an
+  /// unconditional stub.
+  func recoverFromASRInterruption() async -> ASRInterruptionRecoveryOutcome
 
   // MARK: Cleanup
 

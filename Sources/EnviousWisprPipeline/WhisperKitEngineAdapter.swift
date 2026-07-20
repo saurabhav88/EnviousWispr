@@ -241,6 +241,21 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// this remains settable but unused inside the adapter.
   var onEngineInterrupted: (@MainActor () -> Void)?
 
+  /// #1707: WhisperKit is never the SOURCE of an ASR-interruption signal (no
+  /// out-of-process connection to lose), but the shared `ASREventRouter` can
+  /// still forward a stale Parakeet-origin signal to this adapter's kernel if
+  /// WhisperKit happens to be the actively recording driver. Since this
+  /// adapter's own engine was never touched, confirming readiness is a real
+  /// (not stubbed) but normally near-instant check: `await backend.isReady`
+  /// is the SAME actor-isolated authority `warmUp()` itself consults — never
+  /// the synchronous `cachedReadiness` mirror alone, which can be stale after
+  /// an unload. Refreshes the cache from the awaited value either way.
+  func recoverFromASRInterruption() async -> ASRInterruptionRecoveryOutcome {
+    let ready = await backend.isReady
+    cachedReadiness = ready ? .ready : .notReady
+    return ready ? .readyForBatchDecode : .failed
+  }
+
   // MARK: Init
 
   init(

@@ -32,6 +32,7 @@ Each scenario function carries metadata via the `@scenario` decorator so
 from __future__ import annotations
 
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -113,8 +114,59 @@ def run_scenario(name: str, **kwargs) -> dict:
 # ──────────────────────────── endpoint client ────────────────────────────
 
 
+def _try_endpoint_token(token: str, timeout: float = 2.0) -> bool:
+    """Attempt one raw round-trip against the DEBUG socket with a GIVEN
+    token, bypassing `_find_app_pid`/`_read_token` entirely (used to
+    disambiguate — calling `send()` here would recurse). Returns True only
+    on a genuine `OK` reply; `ERR auth` (wrong token) and any connection
+    failure both return False."""
+    payload = f"{token}\nquery_state\n".encode("utf-8")
+    try:
+        with socket.create_connection((ENDPOINT_HOST, ENDPOINT_PORT), timeout=timeout) as sock:
+            sock.sendall(payload)
+            sock.settimeout(timeout)
+            chunks: list[bytes] = []
+            while True:
+                try:
+                    buf = sock.recv(4096)
+                except socket.timeout:
+                    break
+                if not buf:
+                    break
+                chunks.append(buf)
+                if b"\n" in buf:
+                    break
+        return b"".join(chunks).decode("utf-8").strip().startswith("OK")
+    except OSError:
+        return False
+
+
 def _find_app_pid() -> int:
-    """Locate the running EnviousWispr process. Raises if not running."""
+    """Locate the running EnviousWispr process under fault-injection test
+    (the one with a live per-launch token — see `_read_token`), not just
+    the first `pgrep -x` match. On a shared machine, multiple `EnviousWispr`
+    processes can be running at once (dev + production, or another
+    worktree's dev build): a bare `pids[0]` pick is ambiguous, and callers
+    that only read/write state through the DEBUG socket are protected by
+    `_read_token` raising on a token mismatch — but callers that derive a
+    real SIGKILL target from this PID (`_app_bundle_path`,
+    `force_xpc_process_kill`) need the RIGHT pid up front, not a
+    fail-loud-after-the-fact guard.
+
+    Codex code-diff r13: two DIFFERENT debug worktrees can each have their
+    own live fault token at once (this project's single-dev-instance policy
+    is a tooling convention, `build-dev-app.sh` killing prior instances
+    before launching — not something macOS enforces, so two independently
+    invoked dev builds CAN run concurrently). Picking the first token-
+    bearing PID in that case can silently target the wrong instance. Since
+    the endpoint listens on one fixed loopback port shared by whichever
+    process actually bound it, and rejects a mismatched token with
+    `ERR auth` (`DebugFaultEndpoint.swift`), a real connection attempt with
+    each candidate's own token reliably identifies the one instance the
+    listener actually accepts — no guessing required. Raises if no running
+    instance has a fault token, or if more than one candidate's token is
+    (implausibly) BOTH accepted, since that would mean two listeners
+    somehow share one token."""
     try:
         out = subprocess.check_output(["pgrep", "-x", APP_NAME], text=True)
     except subprocess.CalledProcessError as e:
@@ -122,7 +174,50 @@ def _find_app_pid() -> int:
     pids = [int(p.strip()) for p in out.split() if p.strip()]
     if not pids:
         raise RuntimeError(f"{APP_NAME} not found via pgrep")
-    return pids[0]
+    candidates = [pid for pid in pids if (TOKEN_DIR / f"fault-token-{pid}").exists()]
+    if not candidates:
+        raise RuntimeError(
+            f"none of the running {APP_NAME} processes ({pids}) has a fault token — "
+            "invoke the `wispr-rebuild-debug` skill to launch with EW_FAULT_INJECTION=1 set."
+        )
+    if len(candidates) == 1:
+        return candidates[0]
+    accepted = [
+        pid for pid in candidates
+        if _try_endpoint_token((TOKEN_DIR / f"fault-token-{pid}").read_text(encoding="utf-8").strip())
+    ]
+    if len(accepted) != 1:
+        raise RuntimeError(
+            f"ambiguous fault-injection target: {len(candidates)} running {APP_NAME} "
+            f"processes have a live token ({candidates}), and the endpoint accepted "
+            f"{len(accepted)} of them ({accepted}) — expected exactly 1. Quit the "
+            "unrelated instance(s) before running fault-injection scenarios."
+        )
+    return accepted[0]
+
+
+def _app_bundle_path() -> str:
+    """The `.app` bundle path of the SPECIFIC EnviousWispr instance under
+    fault-injection test (resolved via `_find_app_pid`'s token-verified
+    PID), e.g. `/Users/.../EnviousWispr-recovery-v2-p1/build/EnviousWispr
+    Local.app`. Used to scope real-process-kill fault injection
+    (`force_xpc_process_kill`) to THIS instance's own XPC helper only —
+    `EnviousWisprASRService` is reparented to launchd (PPID 1) on spawn, not
+    the requesting app, so process-tree ancestry can't be used to scope it;
+    each app bundle carries its own copy of the service under
+    `Contents/XPCServices/`, so the bundle path prefix is the reliable
+    discriminator between instances (Codex code-diff r12: a bare
+    `pgrep -f "EnviousWispr.*Service"` match kills every running instance's
+    helper, dev and production alike)."""
+    pid = _find_app_pid()
+    command = subprocess.check_output(
+        ["ps", "-o", "command=", "-p", str(pid)], text=True
+    ).strip()
+    marker = ".app/"
+    idx = command.find(marker)
+    if idx == -1:
+        raise RuntimeError(f"could not find '.app/' in command for pid {pid}: {command!r}")
+    return command[: idx + len(".app")]
 
 
 def _read_token(pid: int) -> str:
@@ -171,6 +266,56 @@ def force_cancel() -> str:
 
 def force_xpc_kill() -> str:
     return send("force_xpc_kill")
+
+
+def _scoped_xpc_service_pids(bundle_path: str) -> list[str]:
+    """PIDs of `EnviousWisprASRService` processes whose executable lives
+    INSIDE `bundle_path` — the properly-scoped counterpart to
+    `list_xpc_service_pids()` (which matches every running instance
+    system-wide) for callers that are about to SIGKILL, not just count."""
+    try:
+        out = subprocess.check_output(
+            ["pgrep", "-f", "EnviousWispr.*Service"], text=True, stderr=subprocess.DEVNULL
+        )
+    except subprocess.CalledProcessError:
+        return []
+    matched = []
+    for pid_str in out.split():
+        pid = pid_str.strip()
+        if not pid:
+            continue
+        try:
+            command = subprocess.check_output(
+                ["ps", "-o", "command=", "-p", pid], text=True
+            ).strip()
+        except subprocess.CalledProcessError:
+            continue  # process exited between pgrep and ps — not a match either way
+        if command.startswith(bundle_path):
+            matched.append(pid)
+    return matched
+
+
+def force_xpc_process_kill() -> list[str]:
+    """Kill the REAL ASR XPC helper process(es) with SIGKILL — a genuine
+    crash, distinct from `force_xpc_kill()`'s connection-only invalidation
+    (`forceConnectionTerminationNow`, which leaves the helper process alive
+    and the model resident). #1707 Codex code-diff r11: the connection-only
+    fault was measured at 99-127ms recovery and produced a 2.0s deadline
+    that then failed 4-of-5 real crash trials — a real process kill forces
+    launchd to respawn a genuinely fresh process and reload the model cold,
+    the actual ~4.2s p99 scenario the corrected 8.0s deadline protects.
+
+    Codex code-diff r12: scoped to THIS app instance's own XPC helper via
+    `_scoped_xpc_service_pids` — a bare `list_xpc_service_pids()` match
+    would SIGKILL every running instance's helper system-wide (another
+    worktree's dev build, or a production install running alongside it on
+    a shared machine), interrupting a real, unrelated dictation in
+    progress. Returns the PIDs that were killed (macOS respawns under new
+    PIDs)."""
+    pids = _scoped_xpc_service_pids(_app_bundle_path())
+    for pid in pids:
+        subprocess.run(["kill", "-9", pid], check=False)
+    return pids
 
 
 # #1543: audio capture is in-process now — the audio-boundary DEBUG commands
@@ -837,48 +982,180 @@ def A2_esc_cancel(**_) -> dict:
     return result
 
 
+# #1707 Codex code-diff r5/r11: the poll below must outlast the production
+# recovery deadline (`ParakeetEngineAdapter.asrInterruptionRecoveryDeadlineSec`,
+# measured 2026-07-20 at 8.0s against a REAL helper-process crash — 27/30
+# real trials recovered in 4159-4215ms, p99=4215ms;
+# `docs/audits/2026-07-20-recovery-v2-phase1-asr-recovery-latency.txt`) PLUS
+# normal decode/finalize/paste time — otherwise a legitimately slow-but-
+# successful salvage near the deadline polls out before reaching `.complete`
+# and the scenario wrongly reports a regression. Keep this ahead of that
+# constant by a healthy margin.
+_ASR_RECOVERY_POLL_TIMEOUT_S = 15.0
+
+# The kernel's own precomputed recovery-latency line
+# (RecordingSessionKernel.swift, recoverFromASRInterruption call site) is the
+# single source of truth for whether the SALVAGE MECHANISM itself succeeded
+# — distinct from whether the ultimate dictation completed with real text,
+# which also depends on the captured audio's VAD-detectable content quality
+# (a test-environment confound, not something #1707 controls: verified
+# directly with real OpenAI TTS speech — not just the say/Evan fallback —
+# and the interrupted take STILL floored to `.asrInterrupted` on a "zero
+# segments, near-silent peak" VAD read, pointing at a mic/system-volume
+# level issue on this machine/session rather than TTS voice quality; the
+# widened floor in RecordingSessionKernel.interruptedTerminalFloor correctly
+# maps a successful recovery whose decode legitimately finds no speech to
+# `.asrInterrupted` either way).
+_ASR_RECOVERY_LOG_RE = re.compile(r"ASR recovery latency: (\d+)ms outcome=(\w+) sid=")
+
+
+def _read_asr_recovery_outcome(start_pos: int, timeout_s: float = 10.0) -> Optional[dict]:
+    """Poll `app.log` from `start_pos` for the kernel's own recovery-outcome
+    line. Returns `{"elapsed_ms": int, "outcome": str}` or `None` if it never
+    appears (recovery was never attempted at all — a different, worse bug).
+
+    Codex code-diff r8/r11: app.log rotates at 5x10MB (AppLogger); if it
+    rotates mid-poll, the new file is smaller than `start_pos` and a blind
+    `seek` would silently skip the line forever. Detect a shrink (current
+    size < last-seen size) and reset to the start of the new file instead.
+    r11: rotation can also have already happened BEFORE this function is
+    even called (between the caller capturing `start_pos` and this poll
+    loop starting) — comparing only against a `last_size` initialized here
+    can never see that, since both start from the same already-rotated
+    file. Compare against `pos` (the caller's own offset) too, not just the
+    previous iteration's own tracked size."""
+    deadline = time.monotonic() + timeout_s
+    pos = start_pos
+    last_size = APP_LOG_PATH.stat().st_size if APP_LOG_PATH.exists() else 0
+    if last_size < pos:
+        pos = 0  # already rotated/truncated before polling even began
+    while time.monotonic() < deadline:
+        current_size = APP_LOG_PATH.stat().st_size if APP_LOG_PATH.exists() else 0
+        if current_size < last_size or current_size < pos:
+            pos = 0  # rotated/truncated since the last poll — start over
+        last_size = current_size
+        with open(APP_LOG_PATH, encoding="utf-8", errors="replace") as fh:
+            fh.seek(pos)
+            lines = fh.readlines()
+            pos = fh.tell()
+        for line in lines:
+            m = _ASR_RECOVERY_LOG_RE.search(line)
+            if m:
+                return {"elapsed_ms": int(m.group(1)), "outcome": m.group(2)}
+        # deadline-fallback: poll cadence while waiting for the kernel's log line; `timeout_s` above bounds total time.
+        time.sleep(0.1)
+    return None
+
+
 @scenario(
     ScenarioMeta(
         name="A3_asr_xpc_kill",
         lane="A",
         family="xpc",
         backends=["parakeet"],
-        runtime_budget_seconds=8.0,
+        runtime_budget_seconds=30.0,
         founder_required=False,
-        negative_control="Remove ASR-crash handler at WhisperKitPipeline.swift / TranscriptionPipeline equivalent; pipeline gets stuck",
-        description="ASR XPC connection invalidated mid-stream while TTS audio is flowing — pipeline must reach a terminal error state, no XPC helper leak",
+        negative_control="Remove ASREngineAdapter.recoverFromASRInterruption() / revert #1707; the dictation is discarded instead of salvaged",
+        description="ASR XPC connection invalidated mid-stream while TTS audio is flowing — #1707: the already-captured audio is salvaged (reconnect + decode) rather than the dictation being discarded; falls back to a terminal error only if reconnect genuinely fails, no XPC helper leak",
     )
 )
 def A3_asr_xpc_kill(**_) -> dict:
     """User behavior: dictation in progress with audio flowing, the ASR
-    XPC connection drops (helper crashed, sandbox revoked, kernel
-    pressure). The pipeline must surface an error and recover — the user
-    sees a "service crashed" message instead of a stuck spinner.
+    XPC helper process crashes. #1707: the pipeline now salvages the
+    recording — it reconnects (through a genuinely respawned process, cold
+    model reload included) and decodes the audio already captured before
+    the crash, so the user gets their text pasted instead of losing the
+    dictation. Only a genuine reconnect failure surfaces a "service
+    crashed" message.
 
-    Notes 2026-05-02:
-    - "Kill" here means `forceConnectionTerminationNow()` — invalidates
-      the NSXPCConnection. The launchd-managed service helper itself
-      stays alive; macOS XPC respawns it on next connect. So the leak
-      assertion compares helper counts before/after, not "any helper
+    Notes 2026-07-20 (#1707 Codex code-diff r11):
+    - "Kill" means a real `kill -9` on the actual
+      `EnviousWisprASRService` process (`force_xpc_process_kill`), NOT
+      `force_xpc_kill()`'s `forceConnectionTerminationNow()` (which only
+      invalidates the connection object and leaves the helper process,
+      and its resident model, alive). An earlier version of this scenario
+      used the connection-only kill — recovery completed in ~100ms every
+      time, which never exercises the slow path a genuine crash takes
+      (~4.2s p99, cold model reload in a freshly-spawned process,
+      `docs/audits/2026-07-20-recovery-v2-phase1-asr-recovery-latency.txt`)
+      and would have silently let a regression in THAT path ship
+      undetected. macOS/launchd respawns the process under a new PID; the
+      leak assertion compares helper counts before/after, not "any helper
       survives" (that would always be true and silently pass).
-    - TTS audio must be flowing so the connection drops while the ASR
-      side is actually streaming. Without audio, the connection sits
-      idle and the kill exercises only the disconnect path, not the
-      mid-stream error wiring this scenario claims to test.
+    - TTS audio must be flowing so the crash lands while the ASR side is
+      actually streaming. Without audio, the kill exercises only the
+      disconnect path, not the mid-stream error wiring this scenario
+      claims to test.
+    - `assert_terminated`'s `_TERMINAL_TOKENS` accept both "complete" and
+      "error" as terminal, so reaching a terminal state alone no longer
+      proves the fix — a build that regressed back to the old discard
+      behavior would still pass that check.
+    - `salvage_succeeded` reads the kernel's own precomputed
+      "ASR recovery latency: ...outcome=..." log line
+      (`_read_asr_recovery_outcome`), not the final pipeline state. The
+      final RecordingOutcome can floor to `.asrInterrupted` even after a
+      genuinely SUCCESSFUL recovery if the captured audio's VAD-detectable
+      content quality is poor — verified directly (r11) with real OpenAI
+      TTS speech, not just the say/Evan fallback, and the interrupted take
+      still floored on a near-silent VAD read (peak ~0.006-0.009),
+      pointing at a mic/system-volume level issue on this machine/session
+      rather than TTS voice quality. Either way, the widened floor
+      (RecordingSessionKernel.interruptedTerminalFloor) correctly maps a
+      successful recovery whose decode legitimately finds no speech to
+      `.asrInterrupted`. That is a test-audio-capture confound, not a
+      recovery-mechanism regression, and gating on the final state alone
+      (an earlier version of this scenario, Codex code-diff r7) produced
+      exactly that false failure live.
+    - The poll budget (`_ASR_RECOVERY_POLL_TIMEOUT_S`) is deliberately wider
+      than the production recovery deadline (Codex code-diff r5): a legit
+      slow-but-successful salvage near that deadline still needs time to
+      decode/finalize/paste afterward, and a poll that expires mid-decode
+      would misreport a real success as a failure.
     """
     pre_helpers = list_xpc_service_pids()
     if not _start_recording_locked():
         return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
+    with open(APP_LOG_PATH, encoding="utf-8", errors="replace") as fh:
+        fh.seek(0, 2)
+        log_start_pos = fh.tell()
     with _TTSAudio():
         time.sleep(1.0)  # let audio stream into ASR
-        reply = force_xpc_kill()
-        terminated = assert_terminated(timeout_s=5.0)
+        killed_pids = force_xpc_process_kill()
+        terminated = assert_terminated(timeout_s=_ASR_RECOVERY_POLL_TIMEOUT_S)
     leak = assert_no_xpc_leak(pre_helpers)
+    # #1707: the recovery mechanism's own verdict — see the docstring note
+    # above for why this, not the final pipeline state, is the gate.
+    recovery_log = _read_asr_recovery_outcome(log_start_pos)
+    salvage_succeeded = bool(recovery_log) and recovery_log["outcome"] == "readyForBatchDecode"
     # Recovery check: a graceful failure that wedges the next dictation
     # is indistinguishable from a crash. Confirm the user can actually
     # keep dictating after the fault.
     recovery = _assert_dictation_recovers()
-    return {"reply": reply, **terminated, **leak, **recovery}
+    outcome = {
+        "killed_pids": killed_pids, **terminated, **leak,
+        "recovery_log": recovery_log,
+        "salvage_succeeded": salvage_succeeded,
+        **recovery,
+    }
+    # A3 predates the evidence_valid/assertions schema (`evaluate_trial`
+    # passes any scenario missing that key unconditionally, "legacy scenario
+    # (no evidence schema)"), so the only way this scenario can fail is to
+    # raise — a returned `False` field is otherwise silently discarded and a
+    # regression would still report PASS (Codex code-diff r4). r8: gate on
+    # ALL three real invariants, not just recovery — a reconnect that
+    # succeeds but then leaks an XPC helper, or leaves the next dictation
+    # wedged, is still a real #1707 regression that `salvage_succeeded`
+    # alone would miss.
+    failures = []
+    if not salvage_succeeded:
+        failures.append("recoverFromASRInterruption() did not reach readyForBatchDecode")
+    if leak.get("leaked"):
+        failures.append("an XPC helper leaked after the salvage")
+    if not recovery.get("recovered"):
+        failures.append("the next dictation did not recover after the fault")
+    if failures:
+        raise AssertionError(f"A3 failed: {'; '.join(failures)}. {outcome}")
+    return outcome
 
 
 # #1543: scenarios A4_audio_xpc_kill and A5_proxy_buffer_drop_watchdog were

@@ -31,26 +31,20 @@ final class ASREventRouter {
       }
       if pState == .loadingModel || pState == .recording || pState == .transcribing {
         self.kernelDriver.handleASRServiceInterruption()
-      } else if wkState == .recording || wkState == .transcribing {
-        self.whisperKitKernelDriver.handleASRServiceInterruption()
       } else if pState == .polishing || wkState == .polishing {
-        // Codex PR #990 P2 (#959): a crash/reap during the post-ASR polishing
-        // window is NOT an idle reap — a session is still finalizing. The
-        // kernel deliberately treats `.finalizing` as a safe point (see the
-        // WONTFIX note in `KernelDictationDriver.pipelineState(for:)`), and
-        // the marker is part of that safe-point contract: setting it here
-        // would let the next not-ready press consume a stale marker, bypass
-        // the #879 cold pill after a genuine mid-session crash, and pollute
-        // `coldstart.service_reclaimed` telemetry. Log-only (the line above
-        // already records both driver states).
+        // Codex PR #990 P2 (#959): a crash/reap during polishing is not an
+        // idle reap (session still finalizing, see WONTFIX in
+        // `KernelDictationDriver.pipelineState(for:)`) — log-only.
       } else {
-        // #959: the Parakeet ASR service (this `asrManager`) was reaped while
-        // idle — `onServiceInterrupted` only fires when a resident model was
-        // loaded (`wasLoaded || wasStreaming`), and neither driver is active, so
-        // this is the reap-while-idle case that drops readiness to `.notReady`.
-        // Mark the Parakeet driver so the next press warm-respawns (re-warm ~0.2s
-        // + record) instead of showing the #879 cold pill. The driver owns the
-        // marker + reclaim telemetry (keeps this router's import set minimal).
+        // #959: this `asrManager` (Parakeet's) service was reaped while
+        // Parakeet itself is idle — mark it so the next Parakeet press
+        // warm-respawns instead of showing the #879 cold pill. #1707 Codex
+        // r12: fires on Parakeet's own idle state ONLY, regardless of
+        // `wkState` — Parakeet's XPC crash cannot affect WhisperKit's
+        // separate in-process engine. A prior version forwarded this to
+        // `whisperKitKernelDriver` whenever WhisperKit was recording,
+        // silently truncating a healthy dictation (WhisperKit's own
+        // readiness always reports fine, so recovery falsely "succeeded").
         self.kernelDriver.markResidentModelLostWhileIdle()
       }
     }

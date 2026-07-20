@@ -96,6 +96,55 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   private let loadContinuation: AsyncStream<ASRLoadProgressTick>.Continuation
   private var loadMarker: UInt64 = 0
 
+  // MARK: ASR-interruption recovery (#1707)
+
+  /// Wall-clock ceiling on `recoverFromASRInterruption()`'s reconnect+reload
+  /// attempt. Measured 2026-07-20 against the live dev app
+  /// (`validation-discipline.md` RULE: timeout-numbers-need-distribution-
+  /// evidence) — corrected once, see history below.
+  ///
+  /// AUTHORITATIVE number (Codex code-diff r11): 30 trials of a REAL helper
+  /// crash — `kill -9` on the actual `EnviousWisprASRService` process,
+  /// confirmed respawned under a new PID — not just a connection
+  /// invalidation. 27/30 landed in a tight 4159-4215ms band (p50=4182ms,
+  /// p99=4215ms); the other 3 (154ms/161ms/3195ms) were each the first
+  /// trial after a fresh dev-app launch and almost certainly benefited from
+  /// launch-time OS file-cache warmth on the model/delivery-validation
+  /// files — not representative of a crash landing mid-session on an
+  /// otherwise idle cache. `8.0` is ~1.9x the measured p99, headroom for a
+  /// slower disk/CPU/Mac model. Raw trial data (both measurement passes):
+  /// `docs/audits/2026-07-20-recovery-v2-phase1-asr-recovery-latency.txt`.
+  ///
+  /// SUPERSEDED number (Codex code-diff r6-r10): an earlier measurement
+  /// used `force_xpc_kill` (`ASRManagerProxy.forceConnectionTerminationNow`)
+  /// — this invalidates the XPC connection but the helper PROCESS stays
+  /// alive, so the model is never actually unloaded. That gave a real but
+  /// wrong-scenario 99-127ms (p99=127ms), which produced a `2.0` deadline.
+  /// Codex r11 correctly identified that this doesn't represent a genuine
+  /// crash; verifying with a real process kill (above) showed the true
+  /// cold-reload cost is over 30x higher — with the `2.0` deadline in
+  /// place, a direct rerun of the real-crash trial showed 4 of 5 attempts
+  /// hit the deadline and reported `.failed`, discarding the very
+  /// dictations this whole mechanism exists to save.
+  ///
+  /// Construction parameter (not `TimingConstants`) — Parakeet reconnect
+  /// duration is backend-specific policy, not a Core primitive.
+  private let asrInterruptionRecoveryDeadlineSec: Double
+
+  /// Monotonic generation for `recoverFromASRInterruption()` attempts.
+  /// Bumped at the start of every attempt AND by every method that can start
+  /// replacement session/load work (`beginSession`, `discardSession` — shared
+  /// by `cancel()`/`recoverFromWedge()`/transitively `cancelSessionlessWarmup()`)
+  /// — so a stale attempt's post-await checks always see a mismatch and can
+  /// never mutate state a newer attempt or an ordinary session lifecycle owns.
+  private var recoveryGeneration = 0
+
+  /// #1707 Codex code-diff r1: a SEPARATE, narrower generation scoped entirely
+  /// to `warmUp()`'s own reentrancy — bumped at the top of every `warmUp()`
+  /// call (not just recovery-triggered ones), so an abandoned call's `defer`
+  /// cannot clear a newer call's shared tracking fields after it unwinds late.
+  private var warmUpGeneration = 0
+
   // MARK: ASREngineAdapter — engine interruption
 
   /// Optional adapter-local interruption hook. Parakeet leaves
@@ -103,11 +152,78 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// shared ASR callback has one owner.
   var onEngineInterrupted: (@MainActor () -> Void)?
 
+  /// #1707: real, attempt-scoped recovery — this adapter IS the one whose
+  /// out-of-process connection can die mid-recording, so this is where the
+  /// actual reconnect/reload work lives.
+  ///
+  /// 1. Retires the stale `streamingActive` flag: the crash handlers already
+  ///    forced `asrManager.isStreaming` false, but this adapter's own flag
+  ///    survives the crash untouched (Premise 3) — left uncorrected, a later
+  ///    `finalize()` would try `finalizeStreamingWithRescue()` first against
+  ///    a manager that no longer thinks it's streaming.
+  /// 2. Reuses `warmUp()` unchanged — it already IS the factored model-load
+  ///    path (delivery admission, cache-only config, one-shot transport
+  ///    recovery, readiness recheck); no separate path is invented. `warmUp()`
+  ///    touches none of this session's own bookkeeping (`sessionID`,
+  ///    `retainedPCM`, `decodeOptions`, `isTerminal`, `isCancelled`), so
+  ///    calling it a second time mid-session is safe.
+  /// 3. Bounds the attempt with `withOrderedDeadline`, NOT bare `withDeadline`
+  ///    — on timeout, `onTimeout` actively invalidates this attempt's token
+  ///    and calls the SYNCHRONOUS `cancelInFlightLoad()` (never an async
+  ///    cleanup hook), guaranteeing that cleanup completes before this
+  ///    function can return `.failed`/`.cancelled` to the kernel.
+  /// 4. The generation token, bumped ONLY by `beginSession`/`discardSession`
+  ///    (covering `cancel`/`recoverFromWedge`/`cancelSessionlessWarmup`) — never
+  ///    by this function itself — is checked both inside `onTimeout` (skip the
+  ///    active cancel if a lifecycle op already superseded this attempt) and
+  ///    after the awaited attempt returns (report `.cancelled` instead of
+  ///    trusting a result that no longer belongs to the current session).
+  func recoverFromASRInterruption() async -> ASRInterruptionRecoveryOutcome {
+    streamingActive = false
+    recoveryGeneration &+= 1
+    let myGeneration = recoveryGeneration
+    let mySession = sessionID
+
+    let succeeded = await withOrderedDeadline(
+      seconds: asrInterruptionRecoveryDeadlineSec,
+      operation: { [weak self] in
+        guard let self else { return false }
+        do {
+          try await self.warmUp()
+          return true
+        } catch {
+          return false
+        }
+      },
+      onTimeout: { [weak self] in
+        // Do NOT bump `recoveryGeneration` here — that would corrupt THIS
+        // attempt's own outer check below (a real bug caught by
+        // `recoverFromASRInterruptionTimesOutAndSupersedes`: it made a
+        // genuine timeout report `.cancelled` instead of `.failed`).
+        // `withOrderedDeadline`'s own single-winner `claim()` already
+        // guarantees the operation's late completion can never resume this
+        // continuation after timeout wins; the generation check exists to
+        // catch a DIFFERENT caller (`beginSession`/`discardSession`)
+        // superseding this attempt, not to protect against itself.
+        guard let self, self.recoveryGeneration == myGeneration else { return }
+        self.asrManager.cancelInFlightLoad()
+      }
+    )
+
+    guard sessionID == mySession, recoveryGeneration == myGeneration else { return .cancelled }
+    guard succeeded == true else { return .failed }
+    return asrManager.isModelLoaded ? .readyForBatchDecode : .failed
+  }
+
   // MARK: Init
 
-  init(asrManager: any ASRManagerInterface, delivery: ParakeetDeliveryHandle? = nil) {
+  init(
+    asrManager: any ASRManagerInterface, delivery: ParakeetDeliveryHandle? = nil,
+    asrInterruptionRecoveryDeadlineSec: Double = 8.0
+  ) {
     self.asrManager = asrManager
     self.delivery = delivery
+    self.asrInterruptionRecoveryDeadlineSec = asrInterruptionRecoveryDeadlineSec
     (loadStream, loadContinuation) = AsyncStream.makeStream(of: ASRLoadProgressTick.self)
     // ASR service interruption is single-owner at the App router. Installing
     // here races `ASREventRouter`'s handler and loses by last-writer-wins.
@@ -139,6 +255,16 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// detection (D5) sees progress ticks; clears it after the load resolves.
   func warmUp() async throws {
     if asrManager.isModelLoaded { return }
+    // #1707 Codex code-diff r1: `warmUp()` was only ever called once per
+    // session before `recoverFromASRInterruption()` started calling it a
+    // second time mid-session. A timed-out, abandoned call's `defer` can
+    // unwind LATE (Swift task cancellation is cooperative — `cancel()` alone
+    // does not stop an in-flight XPC await) and unconditionally clear
+    // `loadProgressTickReporter`/`isLoadInFlight`, clobbering a genuinely
+    // NEWER `warmUp()` call's own in-flight tracking. This local generation
+    // makes the defer a no-op for any call that is no longer the most recent.
+    warmUpGeneration &+= 1
+    let myWarmUpGeneration = warmUpGeneration
     isLoadInFlight = true
     asrManager.loadProgressTickReporter = { [weak self] _, phase in
       // Capture the phase string for the kernel's model-load-wedge payload
@@ -149,8 +275,10 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       self?.emitLoadTick()
     }
     defer {
-      asrManager.loadProgressTickReporter = nil
-      isLoadInFlight = false
+      if warmUpGeneration == myWarmUpGeneration {
+        asrManager.loadProgressTickReporter = nil
+        isLoadInFlight = false
+      }
     }
 
     // #1348 Phase 2: delivery stage BEFORE any load. The host admits a
@@ -175,6 +303,28 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       delivery?.noteLegacyPathActive()
     }
 
+    // #1707 Codex code-diff r9/r10: `delivery.ensureAvailable()` above is a
+    // long, separately-owned await (cache fetch/validate/repair, epic #1348)
+    // whose own internal cancellation responsiveness this call has no
+    // visibility into. If a timeout's `operationTask.cancel()` fires while
+    // this call is still stuck inside that await, `cancelInFlightLoad()`
+    // (`recoverFromASRInterruption`'s `onTimeout`) is a no-op — no ASR load
+    // exists yet to cancel — so an abandoned call could still resume here,
+    // stale, after the kernel already reported recovery failure. r9's
+    // `warmUpGeneration` check alone is insufficient (r10 finding): it only
+    // detects a NEWER `warmUp()` call having started, not THIS call having
+    // been individually cancelled — if no newer call has started yet,
+    // `warmUpGeneration` is unchanged and that guard alone passes even though
+    // `onTimeout` already ran. `operationTask.cancel()` propagates into this
+    // call's own execution context, so `Task.checkCancellation()` is the
+    // correct, direct signal for that; the generation check stays alongside
+    // it to also catch the "a newer call already superseded me" case, which
+    // cancellation alone would not (a fresh `beginSession()`/`discardSession()`
+    // never calls `operationTask.cancel()` on an old attempt — it only bumps
+    // the generation).
+    try Task.checkCancellation()
+    guard warmUpGeneration == myWarmUpGeneration else { throw CancellationError() }
+
     do {
       try await loadModelWithTransportRecovery()
     } catch let error
@@ -198,6 +348,11 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       // repair pass. deliveryActive guarantees the handle exists; a nil here
       // would be a logic error, so fail the warm-up rather than crash.
       guard let delivery, case .admitted = await delivery.repair() else { throw error }
+      // Same staleness window as the guard above, at `delivery.repair()`'s
+      // own long, separately-owned await instead of `ensureAvailable()`'s —
+      // same two-signal reasoning (r10): cancellation first, then generation.
+      try Task.checkCancellation()
+      guard warmUpGeneration == myWarmUpGeneration else { throw CancellationError() }
       try await loadModelWithTransportRecovery()
     }
     // #959: a superseded load throws from `loadModel()`, but recheck readiness
@@ -259,6 +414,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// (old Parakeet pipeline). `streaming == false` (the user
   /// disabled live transcription) means batch decode after stop only.
   func beginSession(_ id: SessionID, options: TranscriptionOptions, streaming: Bool) async throws {
+    // #1707: a new session invalidates any recovery attempt still pending
+    // from a prior one — its post-await checks compare against this.
+    recoveryGeneration &+= 1
     sessionID = id
     decodeOptions = options
     isTerminal = false
@@ -389,6 +547,11 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// `recoverFromWedge()`: cancel streaming, clear per-session state. Touches
   /// neither the model load nor the XPC connection.
   private func discardSession() async {
+    // #1707: covers `cancel()`, `recoverFromWedge()`, and transitively
+    // `cancelSessionlessWarmup()` (which calls `cancel()`) — every heavy
+    // lifecycle op that can start replacement work invalidates any pending
+    // recovery attempt in one place.
+    recoveryGeneration &+= 1
     isCancelled = true
     isTerminal = true
     lastResult = nil

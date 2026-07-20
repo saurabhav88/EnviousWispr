@@ -46,7 +46,10 @@ enum DictationCompletedReporting {
       salvagedLeadTrimMs: driver.lastSalvagedLeadTrimMs,
       // #1408: which interruption cut this dictation short. `stop_reason` already
       // says one did; this names it. Absent on an uninterrupted completion.
-      interruptedBy: driver.lastAudioInterruptionCause?.rawValue)
+      interruptedBy: driver.lastAudioInterruptionCause?.rawValue,
+      // #1707: which ASR/XPC-helper salvage outcome preceded this completion.
+      // Absent unless a live ASR crash was salvaged during this session.
+      asrSalvageOutcome: driver.lastASRSalvageOutcome?.rawValue)
   }
 
   private static func positive(_ value: Int?) -> Int? {

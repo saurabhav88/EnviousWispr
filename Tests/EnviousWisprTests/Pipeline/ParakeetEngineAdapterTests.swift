@@ -481,6 +481,156 @@ import Testing
     #expect(!fired)
   }
 
+  // MARK: #1707 — recoverFromASRInterruption
+
+  @Test("recoverFromASRInterruption(): confirms readiness when the reload succeeds")
+  func recoverFromASRInterruptionSucceeds() async {
+    let manager = StubParakeetASRManager()
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, asrInterruptionRecoveryDeadlineSec: 2.0)
+    let outcome = await adapter.recoverFromASRInterruption()
+    #expect(outcome == .readyForBatchDecode)
+    #expect(manager.loadModelCount == 1, "recovery reuses warmUp()'s real load path, not a stub")
+  }
+
+  @Test("recoverFromASRInterruption(): returns .failed when the reload throws")
+  func recoverFromASRInterruptionFailsOnThrow() async {
+    struct SimulatedReloadFailure: Error {}
+    let manager = StubParakeetASRManager()
+    manager.loadModelError = SimulatedReloadFailure()
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, asrInterruptionRecoveryDeadlineSec: 2.0)
+    let outcome = await adapter.recoverFromASRInterruption()
+    #expect(outcome == .failed)
+  }
+
+  @Test(
+    "recoverFromASRInterruption(): deadline expiry returns .failed and ACTIVELY cancels the stale load"
+  )
+  func recoverFromASRInterruptionTimesOutAndSupersedes() async {
+    // #1707 — the grounded-review r3/r4 fix: a bare abandoned `withDeadline`
+    // would leave `cancelInFlightLoadCount == 0` (the load just keeps running
+    // in the background); the ordered executor's synchronous `onTimeout`
+    // must actively call `cancelInFlightLoad()` before this returns.
+    let manager = StubParakeetASRManager()
+    manager.gateLoadModel = true  // never released — forces the deadline to win
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, asrInterruptionRecoveryDeadlineSec: 0.05)
+    let outcome = await adapter.recoverFromASRInterruption()
+    #expect(outcome == .failed)
+    #expect(
+      manager.cancelInFlightLoadCount == 1,
+      "timeout must actively supersede the stale load, not just abandon it")
+  }
+
+  @Test("recoverFromASRInterruption(): succeeds when the reload completes just before the deadline")
+  func recoverFromASRInterruptionSlowButSuccessful() async {
+    let manager = StubParakeetASRManager()
+    manager.gateLoadModel = true
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, asrInterruptionRecoveryDeadlineSec: 2.0)
+    let task = Task { await adapter.recoverFromASRInterruption() }
+    while manager.loadModelCount == 0 { await Task.yield() }
+    manager.releaseLoadGate()
+    let outcome = await task.value
+    #expect(outcome == .readyForBatchDecode)
+    #expect(
+      manager.cancelInFlightLoadCount == 0,
+      "a successful reload must never trigger the timeout's active-cancel path")
+  }
+
+  @Test(
+    "recoverFromASRInterruption(): a new session starting mid-attempt supersedes it — returns .cancelled"
+  )
+  func recoverFromASRInterruptionSupersededByNewSession() async {
+    // #1707 — the attempt-scoped token's whole purpose: a stale recovery must
+    // never report readiness for a session it no longer belongs to.
+    let manager = StubParakeetASRManager()
+    manager.gateLoadModel = true
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, asrInterruptionRecoveryDeadlineSec: 2.0)
+    let task = Task { await adapter.recoverFromASRInterruption() }
+    while manager.loadModelCount == 0 { await Task.yield() }
+    try? await adapter.beginSession(SessionID(), options: .default, streaming: false)
+    manager.releaseLoadGate()
+    let outcome = await task.value
+    #expect(outcome == .cancelled)
+  }
+
+  @Test(
+    "recoverFromASRInterruption(): a timed-out attempt's late-unwinding warmUp() does not clobber a legitimate successor warmUp() still in flight"
+  )
+  func recoverFromASRInterruptionStaleCleanupDoesNotClobberSuccessor() async {
+    // Codex code-diff review r1 (P2): cancellation is cooperative — the
+    // abandoned `warmUp()` behind a timed-out recovery attempt does not stop
+    // just because its Task was `.cancel()`ed; it can unwind LATE, and its
+    // `defer` would (without the `warmUpGeneration` fix) unconditionally
+    // clear `loadProgressTickReporter`/`isLoadInFlight` out from under a
+    // genuinely newer `warmUp()` call — e.g. the NEXT dictation's own
+    // pre-recording warm-up starting immediately after the timeout.
+    let manager = StubParakeetASRManager()
+    manager.gateLoadModel = true
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, asrInterruptionRecoveryDeadlineSec: 0.05)
+
+    // Attempt #1 (stale): times out, but its own `warmUp()` Task stays parked
+    // on the gate — the deadline firing does not unstick it.
+    let recoveryOutcome = await adapter.recoverFromASRInterruption()
+    #expect(recoveryOutcome == .failed)
+    #expect(manager.loadModelCount == 1)
+
+    // Attempt #2 (legitimate successor): genuinely in flight, its own
+    // `loadProgressTickReporter` now installed.
+    let task2 = Task { try? await adapter.warmUp() }
+    while manager.loadModelCount < 2 { await Task.yield() }
+    #expect(
+      manager.loadProgressTickReporter != nil, "attempt #2 must have installed its own reporter")
+
+    // Release ONLY attempt #1's (oldest, stale) gate — its `warmUp()` finally
+    // unwinds and its `defer` runs while attempt #2 is STILL parked.
+    manager.releaseLoadGate()
+    for _ in 0..<20 { await Task.yield() }  // let attempt #1's Task actually unwind
+
+    #expect(
+      manager.loadProgressTickReporter != nil,
+      "attempt #1's stale defer must not clear the reporter attempt #2 (still in flight) owns")
+
+    manager.releaseLoadGate()  // release attempt #2, clean up
+    _ = await task2.value
+    #expect(
+      manager.loadProgressTickReporter == nil,
+      "attempt #2's OWN defer correctly clears it once IT concludes")
+  }
+
+  @Test(
+    "recoverFromASRInterruption(): retires stale streamingActive so finalize does not try the streaming path first"
+  )
+  func recoverFromASRInterruptionRetiresStreamingState() async throws {
+    // Premise 3: the crash handlers force `asrManager.isStreaming` false, but
+    // this adapter's OWN `streamingActive` survives untouched — left
+    // uncorrected, `finalize()` would try `finalizeStreamingWithRescue()`
+    // first against a manager that no longer thinks it's streaming.
+    let manager = StubParakeetASRManager()
+    manager.finalizeStreamingResult = makeResult("streamed text")
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: true)
+    feed(adapter, samples: [0.1, 0.2, 0.3], session: sid)
+
+    _ = await adapter.recoverFromASRInterruption()
+
+    let outcome = await adapter.finalize(batchSamples: nil)
+    #expect(
+      manager.finalizeStreamingCount == 0,
+      "recovery must retire streamingActive so finalize takes the batch path")
+    #expect(manager.transcribeCount == 1, "finalize must decode via the batch path instead")
+    if case .transcript(let result) = outcome {
+      #expect(result.text == manager.transcribeResult.text)
+    } else {
+      Issue.record("expected .transcript via batch decode, got \(outcome)")
+    }
+  }
+
   // MARK: Helpers
 
   /// Feed one synthetic buffer stamped with `session` — the kernel always
@@ -537,8 +687,13 @@ final class StubParakeetASRManager: ASRManagerInterface {
   var slowFinalizeStreaming = false
   /// #959: when set, `loadModel()` parks until `releaseLoadGate()` so a test can
   /// drive `cancel()` while a cold load is genuinely in flight (`isLoadInFlight`).
+  /// #1707: a QUEUE (not a single slot) — lets a test park two independent
+  /// overlapping `loadModel()` calls (e.g. a timed-out recovery attempt and a
+  /// legitimate successor `warmUp()`) and release them in a specific order,
+  /// which single-slot semantics could not represent (the second call would
+  /// silently orphan the first's continuation).
   var gateLoadModel = false
-  private var loadGate: CheckedContinuation<Void, Never>?
+  private var loadGates: [CheckedContinuation<Void, Never>] = []
 
   // Observed counters
   var loadModelCount = 0
@@ -570,14 +725,17 @@ final class StubParakeetASRManager: ASRManagerInterface {
       throw error
     }
     if gateLoadModel {
-      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in loadGate = c }
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in loadGates.append(c) }
     }
     isModelLoaded = true
   }
 
+  /// Releases the OLDEST still-parked `loadModel()` call (FIFO) — with one
+  /// gated call in flight this is exactly the original single-slot behavior;
+  /// with two, it lets a test control release order explicitly.
   func releaseLoadGate() {
-    loadGate?.resume()
-    loadGate = nil
+    guard !loadGates.isEmpty else { return }
+    loadGates.removeFirst().resume()
   }
   func unloadModel() async {}
   func setInitialBackendType(_ type: ASRBackendType) { activeBackendType = type }

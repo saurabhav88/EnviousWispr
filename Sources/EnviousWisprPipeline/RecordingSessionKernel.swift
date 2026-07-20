@@ -342,6 +342,14 @@ final class RecordingSessionKernel {
     telemetryState.interruptionCause
   }
 
+  /// #1707: read-through to this session's ASR-interruption salvage outcome
+  /// (Codex code-diff r2) — distinct from `lastStopReason`, which only ever
+  /// records the ORIGINAL exit regardless of whether the salvage that
+  /// followed succeeded.
+  var lastASRSalvageOutcome: ASRSalvageOutcome? {
+    telemetryState.asrSalvageOutcome
+  }
+
   /// #1317: which zero-signal failure mode this session was classified as, or
   /// `nil` if it never was. Stamped once by the winning classification
   /// (reactive `.zeroSignal` exit OR STOP-time), cleared per session in
@@ -1207,9 +1215,15 @@ final class RecordingSessionKernel {
       }
       break
     case .asrInterruption:
-      // Concluding from `.live` — `wasRecording: true` (§3.7).
-      finishTerminal(.asrInterrupted(wasRecording: true), sid: sid)
-      return
+      // #1707: the ASR helper died, but capture (in-process, #1543) is
+      // unaffected and still holds every captured sample — fall through into
+      // the normal stop tail, same shape as `.audioInterruption` above. The
+      // stop tail's own recovery-capability check (before `finalize`) is what
+      // actually confirms the engine can decode; on failure it floors to
+      // exactly this session's ORIGINAL terminal (`wasRecording: true`, since
+      // the interruption genuinely happened at `.live`), so a failed salvage
+      // is byte-identical to pre-#1707 behavior.
+      break
     case .captureStall:
       finishTerminal(.failed(.captureStalled), sid: sid)
       return
@@ -1808,6 +1822,41 @@ final class RecordingSessionKernel {
     markASRTimingStart(isStreamingSession)
     deliveringPhase = .transcribing
     transition(to: .delivering)
+    // #1707: an ASR-interruption salvage must confirm the engine is actually
+    // ready before decoding — the connection that crashed is the SAME one
+    // `finalize` would otherwise call into. For every other exit the adapter
+    // was never touched, so this check is a no-op cost (WhisperKit) or is
+    // skipped entirely (the guard below is false).
+    if telemetryState.interruptedSalvageSource == .asr {
+      // #1707 Codex code-diff r6: the app.log file sink only carries
+      // second-granularity ISO8601 timestamps, and the nearby
+      // "Pipeline timing: ASR started" line fires from `markASRTimingStart`
+      // above, BEFORE this await even begins — neither can bracket the
+      // recovery window. Measure it directly with a high-resolution Swift
+      // clock and log the precomputed elapsed value so no external timing
+      // (log-scraping or state-polling) has to infer it.
+      let recoveryStart = CFAbsoluteTimeGetCurrent()
+      let recovery = await adapter.recoverFromASRInterruption()
+      let recoveryMs = Int((CFAbsoluteTimeGetCurrent() - recoveryStart) * 1000)
+      log("ASR recovery latency: \(recoveryMs)ms outcome=\(recovery) sid=\(sid.raw)")
+      guard isCurrent(sid), recordingOutcome == nil else { return }
+      switch recovery {
+      case .readyForBatchDecode:
+        // #1707 Codex code-diff r2: stamped optimistically here; if decode
+        // then fails, `interruptedTerminalFloor` upgrades this to
+        // `.decodeFailed` — the floor is the one place that sees the FINAL
+        // outcome regardless of which terminal call site produced it.
+        telemetryState.asrSalvageOutcome = .rewarmSucceeded
+      case .failed:
+        telemetryState.asrSalvageOutcome = .rewarmFailed
+        finishTerminal(.asrInterrupted(wasRecording: true), sid: sid)
+        return
+      case .cancelled:
+        telemetryState.asrSalvageOutcome = .cancelled
+        finishTerminal(.asrInterrupted(wasRecording: true), sid: sid)
+        return
+      }
+    }
     let outcome = await finalize(sid, batchSamples: asrSamples)
     guard isCurrent(sid), recordingOutcome == nil else { return }
     let asrEnd = CFAbsoluteTimeGetCurrent()
@@ -2750,6 +2799,13 @@ final class RecordingSessionKernel {
     log("ASR interruption routed sid=\(sid.raw) state=\(state)/\(deliveringPhase)")
     switch state {
     case .live:
+      // #1707: stamp the salvage source ONLY if this call is the winning
+      // exit (mirrors `externalEngineInterrupted`'s first-wins guard) — a
+      // second interruption arriving in the post-latch window must not
+      // overwrite an already-stamped `.engine(cause)` with `.asr`.
+      if !recordingExitLatched {
+        telemetryState.interruptedSalvageSource = .asr
+      }
       freezeRecordingSnapshot()
       deliverRecordingExit(.asrInterruption)
     case .delivering where deliveringPhase == .transcribing:
@@ -2862,30 +2918,50 @@ final class RecordingSessionKernel {
         return true
       case .asrInterrupted(wasRecording: false):
         return true
-      case .asrInterrupted(wasRecording: true), .completed, .noTransport:
+      case .asrInterrupted(wasRecording: true):
+        // #1707: legal here ONLY for the typed ASR-interruption salvage this
+        // session is actually running (the floor emits this exact payload
+        // when the recovery capability fails before decode even starts) —
+        // never for an ordinary caller forging the live-time payload from a
+        // later phase.
+        return telemetryState.interruptedSalvageSource == .asr
+      case .completed, .noTransport:
         return false
       }
     case .delivering:
       switch phase {
       case .transcribing:
-        // Old transcribing terminal edges. `.asrInterrupted` here is
-        // `wasRecording: false` (routed from `delivering(.transcribing)`).
+        // Old transcribing terminal edges. `.asrInterrupted(false)` is the
+        // pre-existing direct producer (routed from `delivering(.transcribing)`
+        // by a genuinely NEW interruption at that phase); `.asrInterrupted(true)`
+        // is #1707's salvage-recovery-failure floor target, typed-gated below.
         switch outcome {
         case .failed, .noSpeech, .cancelled, .audioInterrupted:
           return true
         case .asrInterrupted(wasRecording: false):
           return true
-        case .asrInterrupted(wasRecording: true), .completed, .discarded, .noTransport:
+        case .asrInterrupted(wasRecording: true):
+          return telemetryState.interruptedSalvageSource == .asr
+        case .completed, .discarded, .noTransport:
           return false
         }
       case .finalizing:
         // Old finalizing terminal edges — the SAFE POINT: no `.cancelled`, no
-        // `.asrInterrupted`. Only a delivery outcome or a legitimate
-        // no-delivery discovery, and the floored `.audioInterrupted`.
+        // fresh `.asrInterrupted` signal can reach here (kernel routing
+        // ignores an interruption arriving at this phase, §5.2). #1707: the
+        // ONE typed exception — `runFinalizing`'s own empty-after-processing
+        // path can still call `finishTerminal(.noSpeech(...))` from here even
+        // after a successful salvage decode, and the floor (applied inside
+        // `finishTerminal`, BEFORE this check) remaps that to
+        // `.asrInterrupted(wasRecording: true)` for the `.asr` source — so
+        // this phase must accept exactly that remapped outcome, still gated
+        // on the typed source, never a raw new interruption.
         switch outcome {
         case .completed, .failed, .noSpeech, .audioInterrupted:
           return true
-        case .cancelled, .discarded, .asrInterrupted, .noTransport:
+        case .asrInterrupted(wasRecording: true):
+          return telemetryState.interruptedSalvageSource == .asr
+        case .cancelled, .discarded, .asrInterrupted(wasRecording: false), .noTransport:
           return false
         }
       }
@@ -2931,15 +3007,62 @@ final class RecordingSessionKernel {
   /// retain/delete disposition belongs to the driver's `pendingCancelOrigin`. Every other
   /// `.failed(reason)` (`.asrEmpty`, `.asrFailed`, `.captureStartFailed`,
   /// `.modelLoadFailed`) keeps its own honest reason and is already spool-retaining.
+  /// #1707: extended for the ASR-interruption salvage source. `.engine`
+  /// keeps the original, narrower protection (deletion-class outcomes only —
+  /// every other `.failed(reason)` already retains the spool on its own
+  /// honest terminal). `.asr` is WIDER by design: the salvage promises the
+  /// SAME terminal every failure mode already produced before salvage
+  /// existed, not just the deletion-class subset — restoring
+  /// `.asrInterrupted(wasRecording: true)` for any outcome that isn't a
+  /// genuine delivery or an explicit user cancel, including reasons (a later,
+  /// independent stop-tail failure) that have nothing to do with the
+  /// recovery attempt itself. Exhaustive switches (no `default`) so a future
+  /// `RecordingOutcome` case forces a deliberate choice here.
   private func interruptedTerminalFloor(
     _ outcome: RecordingOutcome
   ) -> RecordingOutcome {
-    guard let cause = lastAudioInterruptionCause else { return outcome }
-    switch outcome {
-    case .discarded, .noSpeech, .failed(.noAudioCaptured):
-      return .audioInterrupted(cause)
-    default:
+    switch telemetryState.interruptedSalvageSource {
+    case nil:
       return outcome
+    case .engine(let cause):
+      switch outcome {
+      case .discarded, .noSpeech, .failed(.noAudioCaptured):
+        return .audioInterrupted(cause)
+      case .completed, .cancelled, .failed, .audioInterrupted, .asrInterrupted, .noTransport:
+        return outcome
+      }
+    case .asr:
+      switch outcome {
+      case .completed:
+        return outcome
+      case .cancelled:
+        // #1707 Codex code-diff r3: a genuine user cancel while recovery or
+        // decode is still in flight must overwrite whatever the salvage
+        // signal held so far — nil (recovery hadn't returned yet) or
+        // `.rewarmSucceeded` (readiness was already confirmed, decode never
+        // ran) both misclassify a user-initiated stop as an ASR outcome.
+        // Codex code-diff r8: this stamps the queryable signal
+        // (`KernelDictationDriver.lastASRSalvageOutcome`) but this `.cancelled`
+        // RecordingOutcome itself reaches no production telemetry emitter —
+        // `KernelLifecycleTelemetrySink`'s `.cancelled` case deliberately emits
+        // nothing (r7, PR-1 §B.7.4's only-one-new-event rule), and that has
+        // applied uniformly to every salvage source since before #1707, not
+        // just this one. Extending it would mean revisiting that cross-cutting
+        // policy, out of scope here.
+        telemetryState.asrSalvageOutcome = .cancelled
+        return outcome
+      case .discarded, .noSpeech, .failed, .audioInterrupted, .asrInterrupted, .noTransport:
+        // #1707 Codex code-diff r2: only UPGRADE the telemetry signal — a
+        // recovery that already failed/cancelled (stamped at the call site
+        // before decode was ever attempted) must not be overwritten here;
+        // this branch is reached for BOTH that case (a no-op re-floor of the
+        // terminal the call site already chose) and the genuinely new case
+        // (recovery succeeded, decode/delivery is what failed).
+        if telemetryState.asrSalvageOutcome == .rewarmSucceeded {
+          telemetryState.asrSalvageOutcome = .decodeFailed
+        }
+        return .asrInterrupted(wasRecording: true)
+      }
     }
   }
 

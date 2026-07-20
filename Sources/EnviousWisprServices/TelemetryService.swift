@@ -115,7 +115,13 @@ public final class TelemetryService {
     // #1408: present only on a salvaged completion — WHICH interruption cut the
     // recording short. `stop_reason` already says an interruption ended it; this
     // says which one. Low-cardinality reason string.
-    interruptedBy: String? = nil
+    interruptedBy: String? = nil,
+    // #1707: present only when this dictation survived a live ASR/XPC-helper
+    // crash — always `rewarm_succeeded` here, since a failed/cancelled salvage
+    // never reaches a completed transcript (it floors to `.asrInterrupted` or
+    // `.cancelled` instead, reported via the Sentry capture in
+    // `KernelLifecycleTelemetrySink`, not this PostHog event).
+    asrSalvageOutcome: String? = nil
   ) {
     #if DEBUG
       var hookStringProps: [String: String] = [
@@ -123,6 +129,7 @@ public final class TelemetryService {
         "asr_backend": t.backendType.rawValue,
       ]
       if let ib = interruptedBy { hookStringProps["interrupted_by"] = ib }
+      if let aso = asrSalvageOutcome { hookStringProps["asr_salvage_outcome"] = aso }
       // #1376: mirror the emitted route keys' presence-only semantics so the
       // App → Telemetry threading is unit-testable.
       if let st = selectedTransport { hookStringProps["selected_transport"] = st }
@@ -186,7 +193,8 @@ public final class TelemetryService {
       captureRebuiltForFormat: captureRebuiltForFormat,
       captureNativeChannelCount: captureNativeChannelCount,
       salvagedLeadTrimMs: salvagedLeadTrimMs,
-      interruptedBy: interruptedBy
+      interruptedBy: interruptedBy,
+      asrSalvageOutcome: asrSalvageOutcome
     )
     if let asrLat = m?.asrLatencySeconds {
       asrCompleted(
@@ -657,7 +665,8 @@ public final class TelemetryService {
     captureRateDivergenceDetected: Bool? = nil, captureFormatStabilized: Bool? = nil,
     captureRebuiltForFormat: Bool? = nil, captureNativeChannelCount: Int? = nil,
     salvagedLeadTrimMs: Int? = nil,
-    interruptedBy: String? = nil
+    interruptedBy: String? = nil,
+    asrSalvageOutcome: String? = nil
   ) {
     var props: [String: Any] = [
       "result": result,
@@ -674,6 +683,9 @@ public final class TelemetryService {
     // #1408: which interruption cut this dictation short. Present only when the
     // recording was salvaged after the mic died or the duration cap fired.
     if let ib = interruptedBy { props["interrupted_by"] = ib }
+    // #1707: which ASR/XPC-helper salvage outcome preceded this completion.
+    // Present only for a dictation that survived a live-recording ASR crash.
+    if let aso = asrSalvageOutcome { props["asr_salvage_outcome"] = aso }
     // #1434: capture-health facts + salvage marker (fleet visibility across
     // Bluetooth device models; counters omitted when zero at the call site).
     if let rate = captureNativeRateHz { props["capture_native_rate_hz"] = Int(rate) }

@@ -121,6 +121,13 @@ final class StubRecordingSession: RecordingSessionDriving {
 final class LimbInjectionBox {
   var degradeToRaw = false
   var storageWriteFails = false
+  /// #1707: forces `processText` to collapse a non-empty decode to empty —
+  /// the deterministic stand-in for a real filler-only/polish-collapsed
+  /// result, so a test can drive `runFinalizing`'s
+  /// `finishTerminal(.noSpeech(.emptyAfterProcessing))` path from `.finalizing`
+  /// without depending on this harness's identity `processText` running real
+  /// text-processing logic (it does not — PR-3's fake polish is identity).
+  var forceEmptyAfterProcessing = false
 }
 
 /// #1317: reference-type holder so `stopTimeZeroSignalTelemetry`'s closure
@@ -205,6 +212,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
         // way so the kernel's polish-signal observation point is covered.
         onPolishStarted()
         _ = limb.degradeToRaw
+        if limb.forceEmptyAfterProcessing { return "" }
         return raw
       },
       store: { _, _ in
@@ -307,6 +315,14 @@ final class KernelRecordingSession: RecordingSessionDriving {
     case .storageWriteFails:
       limb.storageWriteFails = true
     }
+  }
+
+  /// #1707: direct test-only knob (not a `LimbDirective` — this is not a
+  /// realistic limb failure, it's a deterministic stand-in for "polish
+  /// collapsed a real decode to nothing," used to drive the
+  /// `runFinalizing`-from-`.finalizing` empty path).
+  func testForceEmptyAfterProcessing() {
+    limb.forceEmptyAfterProcessing = true
   }
 
   /// Yield until the kernel's `workEpoch` stops advancing — the FSM has settled
