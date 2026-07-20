@@ -233,6 +233,17 @@ public struct WordCorrector: Sendable {
       }
     }
 
+    /// Assign a claim unconditionally. For consumers that resolve ownership
+    /// incrementally — the import commit path decides one word at a time, in
+    /// the order the user approved — rather than over a whole vocabulary.
+    package mutating func register(_ claim: ExactTriggerClaim, to owner: TriggerOwner) {
+      switch claim.namespace {
+      case .single: single[claim.key] = owner
+      case .multi: multi[claim.key] = owner
+      case .nospace: nospace[claim.key] = owner
+      }
+    }
+
     /// The ordinary-namespace maps in `buildLookups`' shape, optionally limited
     /// to non-pack owners for the fuzzy pools that must exclude pack terms.
     func canonicalsByKey(

@@ -355,6 +355,60 @@ struct CustomWordsImportCommitTests {
     #expect(receipt.droppedAliasCollisions.map(\.alias) == ["Annie"])
   }
 
+  @Test("an alias matching a multi-word canonical's space-free form is dropped with a receipt")
+  func aliasCollidingOnTheNoSpaceSurfaceIsDroppedOnCommit() throws {
+    // #1667's acceptance criterion, and the half the compare screen cannot
+    // deliver on its own. `Claude Code` claims `claudecode` on the compound
+    // surface, so this alias could never fire. Enforcement here used to key on
+    // `importPersistenceKey`, which has no compound surface at all, so the
+    // alias was KEPT — the review screen disclosed a collision and the commit
+    // saved the alias anyway. Both sides now read one authority.
+    let (manager, _) = makeManager()
+    var live = try seed(manager, [CustomWord(canonical: "Claude Code")])
+
+    let receipt = try manager.commitImport(
+      plan(
+        baseline: live,
+        additions: [candidate("Zed", aliases: .supplied(["claudecode", "zeddy"]))]),
+      to: &live)
+
+    let added = try #require(live.first { $0.canonical == "Zed" })
+    #expect(added.aliases == ["zeddy"], "the inert alias must not be persisted")
+    #expect(receipt.droppedAliasCollisions.map(\.alias) == ["claudecode"])
+    let owner = try #require(live.first { $0.canonical == "Claude Code" })
+    #expect(receipt.droppedAliasCollisions.map(\.heldBy) == [owner.id])
+  }
+
+  @Test("a newly imported multi-word canonical takes the compound key from an older alias")
+  func importedCanonicalOverwritesAnIncumbentCompoundAlias() throws {
+    // The compound namespace is the one place a canonical is written
+    // UNCONDITIONALLY, so it takes the key from an existing alias. Registering
+    // touched canonicals as gap-fill instead named the older word as owner,
+    // which is not who holds the trigger once the import lands (grounded
+    // review r4).
+    //
+    // Anika's alias claims "claudecode". Importing the word `Claude Code`
+    // overwrites that slot, so a second imported alias of the same spelling
+    // must be refused in the NAME OF THE NEW WORD, not Anika's.
+    let (manager, _) = makeManager()
+    var live = try seed(manager, [CustomWord(canonical: "Anika", aliases: ["claudecode"])])
+
+    let receipt = try manager.commitImport(
+      plan(
+        baseline: live,
+        additions: [
+          candidate("Claude Code"),
+          candidate("Zed", aliases: .supplied(["claudecode"])),
+        ]),
+      to: &live)
+
+    let newOwner = try #require(live.first { $0.canonical == "Claude Code" })
+    #expect(receipt.droppedAliasCollisions.map(\.alias) == ["claudecode"])
+    #expect(
+      receipt.droppedAliasCollisions.map(\.heldBy) == [newOwner.id],
+      "the incoming canonical owns the compound key, not the older alias")
+  }
+
   @Test("an untouched incumbent alias always beats an imported one")
   func incumbentLibraryAliasAlwaysWinsOverImportedAlias() throws {
     let (manager, _) = makeManager()
@@ -500,15 +554,22 @@ struct CustomWordsImportCommitTests {
         CustomWord(canonical: "Earlier", aliases: ["annie"]),
         CustomWord(canonical: "Later", aliases: ["annie"]),
       ])
-    let later = try #require(live.first { $0.canonical == "Later" })
+    let earlier = try #require(live.first { $0.canonical == "Earlier" })
 
     let receipt = try manager.commitImport(
       plan(baseline: live, additions: [candidate("Zed", aliases: .supplied(["Annie"]))]),
       to: &live)
 
-    // WordCorrector assigns aliases unconditionally, so the LATER word holds
-    // the trigger at runtime — naming the earlier one would misinform.
-    #expect(receipt.droppedAliasCollisions.map(\.heldBy) == [later.id])
+    // Corrected in #1667. This expected the LATER word, reasoning that aliases
+    // are assigned unconditionally so the last writer wins. That reads one
+    // surface and stops. The compound pass runs FIRST and takes single tokens,
+    // and aliases are FIRST-wins there — so the earlier word intercepts before
+    // the alias map is consulted.
+    //
+    // Verified against the real corrector, which turns "Annie" into "Earlier"
+    // for exactly this pair. Naming Later told the user a word that never
+    // touches their text holds the alias.
+    #expect(receipt.droppedAliasCollisions.map(\.heldBy) == [earlier.id])
   }
 
   @Test("commit failures carry an honest user-facing message")
