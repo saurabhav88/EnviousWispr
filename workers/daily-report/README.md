@@ -183,8 +183,9 @@ Two independent signals, matching `workers/product-health`'s posture:
    primary queries — `installs`, `onboard_activate`, `engineAndTierB`, `geo`,
    `top5` — can each independently degrade on an exhausted transient PostHog
    status (429/502/503/504). `tier_a` degrading still yields a full report
-   with a near-top note ("today's polish-provider breakdown is approximate
-   because the settings lookup was temporarily unavailable"), because
+   with a near-top note ("the polish-provider breakdown is approximate
+   because the settings lookup was temporarily unavailable when this report
+   ran"), because
    `resolveBuckets` already falls back per user (settings → actual dictation
    → shipped default). The other 5 have no such fallback data — a degraded
    section is OMITTED with inline "temporarily unavailable" wording in its

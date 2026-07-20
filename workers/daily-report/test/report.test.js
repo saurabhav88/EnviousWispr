@@ -177,10 +177,10 @@ test("buildMessage: golden fixture matches the founder-approved report shape", (
   const msg = buildMessage("2026-07-08", GOLDEN_DATA, GOLDEN_BUCKETS);
 
   assert.match(msg, /^EnviousWispr Daily Report, Wednesday, July 8, 2026/);
-  assert.match(msg, /New installs: 90\. People who finished setup today: 82\. Of those, 60 also dictated today\./);
+  assert.match(msg, /New installs: 90\. People who finished setup that day: 82\. Of those, 60 also dictated that day\./);
   assert.doesNotMatch(msg, /for the first time/);
   assert.doesNotMatch(msg, /out of 90/); // no funnel-bleed wording (r1 fix)
-  assert.match(msg, /Total users: 110 people used the app today\./);
+  assert.match(msg, /Total users: 110 people used the app that day\./);
   // Percentages are against total_users (110), not net_dictations (1868).
   assert.match(msg, /Parakeet 100 \(91%\)/);
   assert.match(msg, /WhisperKit 10 \(9%\)/);
@@ -208,7 +208,7 @@ test("buildMessage: zero total_users omits the engine/polish section entirely (n
   const msg = buildMessage("2026-07-08", { ...GOLDEN_DATA, totalUsers: 0 }, { engineBuckets: {}, polishBuckets: {} });
   assert.doesNotMatch(msg, /Transcription engine/);
   assert.doesNotMatch(msg, /AI polishing/);
-  assert.match(msg, /Total users: 0 people used the app today\./);
+  assert.match(msg, /Total users: 0 people used the app that day\./);
 });
 
 // ---- buildMessage: per-section fail-soft degradation (#1720) ----
@@ -222,7 +222,7 @@ test("buildMessage: installsDegraded omits the freshInstalls number, keeps onboa
   const msg = buildMessage("2026-07-08", { ...GOLDEN_DATA, installsDegraded: true }, GOLDEN_BUCKETS);
   assert.match(msg, /New installs: temporarily unavailable\./);
   assert.doesNotMatch(msg, /New installs: 90/);
-  assert.match(msg, /People who finished setup today: 82\. Of those, 60 also dictated today\./);
+  assert.match(msg, /People who finished setup that day: 82\. Of those, 60 also dictated that day\./);
   assert.match(msg, /Note: .*new installs/);
 });
 
@@ -230,7 +230,7 @@ test("buildMessage: onboardActivateDegraded omits onboarding, keeps installs int
   const msg = buildMessage("2026-07-08", { ...GOLDEN_DATA, onboardActivateDegraded: true }, GOLDEN_BUCKETS);
   assert.match(msg, /New installs: 90\./);
   assert.match(msg, /Onboarding and activation: temporarily unavailable\./);
-  assert.doesNotMatch(msg, /People who finished setup today/);
+  assert.doesNotMatch(msg, /People who finished setup that day/);
   assert.match(msg, /Note: .*onboarding\/activation/);
 });
 
@@ -755,7 +755,7 @@ test("degraded note appears near the top, above the truncation point", () => {
 
   assert.match(msg, /polish-provider breakdown is approximate/);
   assert.ok(msg.length <= 1990, "message must respect the Discord cap");
-  const noteIndex = msg.indexOf("Note: today's polish-provider breakdown");
+  const noteIndex = msg.indexOf("Note: the polish-provider breakdown is approximate");
   assert.ok(noteIndex >= 0 && noteIndex < 200, `note must be near the top, was at ${noteIndex}`);
 });
 

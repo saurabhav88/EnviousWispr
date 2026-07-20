@@ -621,11 +621,11 @@ export function buildMessage(dateStr, data, buckets) {
   // section (#1720).
   const notes = [];
   if (data.tierADegraded) {
-    notes.push("today's polish-provider breakdown is approximate because the settings lookup was temporarily unavailable");
+    notes.push("the polish-provider breakdown is approximate because the settings lookup was temporarily unavailable when this report ran");
   }
   const degradedSections = DEGRADED_SECTION_LABELS.filter(([key]) => data[key]).map(([, label]) => label);
   if (degradedSections.length) {
-    notes.push(`some sections were temporarily unavailable today: ${degradedSections.join(", ")}`);
+    notes.push(`some sections were temporarily unavailable when this report ran: ${degradedSections.join(", ")}`);
   }
   if (notes.length) {
     lines.push(`Note: ${notes.join("; ")}.`, "");
@@ -636,10 +636,10 @@ export function buildMessage(dateStr, data, buckets) {
     : `New installs: ${data.freshInstalls}.`;
   const onboardPart = data.onboardActivateDegraded
     ? "Onboarding and activation: temporarily unavailable."
-    : `People who finished setup today: ${data.onboarded}. Of those, ${data.activated} also dictated today.`;
+    : `People who finished setup that day: ${data.onboarded}. Of those, ${data.activated} also dictated that day.`;
   lines.push(`${installsPart} ${onboardPart}`, "");
 
-  lines.push(`Total users: ${data.totalUsers} people used the app today.`, "");
+  lines.push(`Total users: ${data.totalUsers} people used the app that day.`, "");
 
   if (data.engineAndTierBDegraded) {
     lines.push("Transcription engine and AI-polish breakdown: temporarily unavailable.", "");
