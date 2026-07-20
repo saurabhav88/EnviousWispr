@@ -130,4 +130,46 @@ struct SettingsManagerOllamaTruthTests {
 
     #expect(settings.llmModel == LLMProvider.defaultModel(for: .openAI))
   }
+
+  // MARK: - Cross-cloud-provider model bleed (#158, Codex r4)
+
+  @Test("a live provider switch away from a cloud provider sweeps that provider's model id")
+  func liveSwitchSweepsForeignCloudModel() {
+    let settings = freshSettings()
+    settings.llmProvider = .openAI
+    settings.llmModel = "gpt-4o"
+
+    settings.llmProvider = .claude
+
+    // Without the sweep, "gpt-4o" would survive the switch unchanged and
+    // every Claude prewarm/polish request would fail until async discovery
+    // happens to repair it (or persist broken across relaunches if
+    // discovery never runs, e.g. offline or no key saved yet).
+    #expect(settings.llmModel == LLMProvider.defaultModel(for: .claude))
+  }
+
+  @Test("a persisted foreign-cloud model id is swept at launch too")
+  func launchSweepsForeignCloudModel() {
+    let settings = freshSettings { suite in
+      suite.set("claude", forKey: "llmProvider")
+      suite.set("gemini-2.0-flash", forKey: "llmModel")
+    }
+
+    #expect(settings.llmModel == LLMProvider.defaultModel(for: .claude))
+  }
+
+  @Test("a model id that already belongs to the currently selected cloud provider is left alone")
+  func ownProviderModelSurvivesCanonicalization() {
+    let settings = freshSettings()
+    settings.llmProvider = .claude
+    settings.llmModel = "claude-opus-4-8"
+
+    // Re-selecting the SAME provider (the didSet still fires, still
+    // re-canonicalizes) must not disturb a model id that already belongs
+    // to it -- this is a user's real, deliberately picked non-default
+    // model, not a stale foreign one the sweep should touch.
+    settings.llmProvider = .claude
+
+    #expect(settings.llmModel == "claude-opus-4-8")
+  }
 }

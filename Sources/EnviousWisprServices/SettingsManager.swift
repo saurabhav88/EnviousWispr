@@ -142,7 +142,11 @@ public final class SettingsManager {
   /// must sweep that literal too, or a cloud provider inherits it as its
   /// model name and every polish request fails until discovery repairs it
   /// (#1271 Codex r7: only "apple-intelligence" was swept, so "eg-1"
-  /// leaked into OpenAI/Gemini).
+  /// leaked into OpenAI/Gemini). The same class of bug applies BETWEEN
+  /// cloud providers too — switching OpenAI→Gemini→Claude with a real
+  /// model already selected left it unswept, so every request failed
+  /// until async discovery happened to repair it (#158, Codex r4):
+  /// `modelIDLooksLikeCloudProvider` catches that case as well.
   private func canonicalizeLLMModelForProvider() {
     let fixedLiterals = ["apple-intelligence", LLMProvider.egOneModelName]
     switch llmProvider {
@@ -159,7 +163,9 @@ public final class SettingsManager {
         llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
       }
     case .openAI, .gemini, .claude, .none:
-      if fixedLiterals.contains(llmModel) || llmModel.isEmpty {
+      if fixedLiterals.contains(llmModel) || llmModel.isEmpty
+        || !LLMProvider.modelIDLooksLikeCloudProvider(llmModel, llmProvider)
+      {
         llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
       }
     }

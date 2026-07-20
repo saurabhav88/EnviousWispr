@@ -45,6 +45,34 @@ extension LLMProvider {
     case .none: return ""
     }
   }
+
+  /// Coarse "does this model id look like it could belong to `provider`"
+  /// check for the three CLOUD providers only. Used to canonicalize
+  /// `llmModel` on a provider switch: without it, a leftover OpenAI/Gemini
+  /// /Claude model id from the PREVIOUS cloud selection survives the
+  /// switch unchanged (only fixed literals and empty were swept), and
+  /// every prewarm/polish request fails until async discovery repairs it
+  /// -- or persists broken indefinitely if discovery never runs (offline,
+  /// no key yet). Deliberately coarse prefix-only matching, not the fuller
+  /// published-model allowlist `SettingsChangeTelemetry` maintains in a
+  /// higher module -- good enough to catch "wrong provider entirely,"
+  /// which is the only thing this call site needs (#158, Codex r4).
+  public static func modelIDLooksLikeCloudProvider(_ modelID: String, _ provider: LLMProvider)
+    -> Bool
+  {
+    switch provider {
+    case .openAI:
+      return modelID.hasPrefix("gpt-") || modelID.hasPrefix("o1") || modelID.hasPrefix("o3")
+        || modelID.hasPrefix("o4") || modelID.hasPrefix("chatgpt-")
+    case .gemini:
+      return modelID.hasPrefix("gemini-")
+    case .claude:
+      return modelID.hasPrefix("claude-")
+    case .ollama, .appleIntelligence, .egOne, .none:
+      // Not a cloud provider -- this check does not apply to these arms.
+      return true
+    }
+  }
 }
 
 /// Per-polish telemetry sidecar produced by AFM polish (#429; single-prompt since #1072).
