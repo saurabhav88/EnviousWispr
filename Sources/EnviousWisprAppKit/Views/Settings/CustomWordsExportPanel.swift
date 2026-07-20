@@ -26,7 +26,31 @@ enum CustomWordsExportPanel {
     searchResults.first
   }
 
-  static func chooseDestination() -> URL? {
+  /// Says what Export will actually produce, read in the dialog that produces it
+  /// (#1715).
+  ///
+  /// #1697 put this sentence on the Your Words screen instead, on the reasoning
+  /// that a panel message must exist before the panel opens and the count could
+  /// only come from a refresh the panel is not allowed to trigger. Half of that
+  /// is true: the refresh must stay after the ask. But the count never needed
+  /// one — it is read from the in-memory coordinator and handed in. Knowing the
+  /// number and refreshing the library are independent, and conflating them put
+  /// a paragraph on a screen of controls.
+  ///
+  /// There is no zero case: `CustomWordsExportAction.run` returns before opening
+  /// a panel when the proposal is empty, so an empty export cannot be described
+  /// here. That is enforced by the action, not defended by a branch here.
+  static func exportSummary(exportableCount: Int) -> String {
+    exportableCount == 1
+      ? "Exporting 1 word of your own. Vocabulary packs aren't included."
+      : "Exporting \(exportableCount) words of your own. Vocabulary packs aren't included."
+  }
+
+  /// - Parameter exportableCount: the size of the proposed snapshot the file
+  ///   will be built from. The action re-derives and compares the whole payload
+  ///   after a destination is chosen, so this number is what gets written or
+  ///   nothing is.
+  static func chooseDestination(exportableCount: Int) -> URL? {
     let panel = NSSavePanel()
     panel.title = "Export your words"
     panel.prompt = "Export"
@@ -42,13 +66,9 @@ enum CustomWordsExportPanel {
       searchResults: FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask))
     // Said before the choice, not after: the file lands wherever the user
     // points it, including a synced folder, and it can contain real names.
-    //
-    // The word COUNT deliberately does not live here. It is shown on the Your
-    // Words screen before Export is pressed, because the count must come from
-    // the same snapshot the file is built from, and building that snapshot here
-    // would need a refresh this panel is not allowed to trigger (#1697).
     panel.message =
-      "Exported files may contain personal names and other private terms. "
+      exportSummary(exportableCount: exportableCount) + "\n\n"
+      + "Exported files may contain personal names and other private terms. "
       + "Usage history is not included."
 
     return panel.runModal() == .OK ? panel.url : nil

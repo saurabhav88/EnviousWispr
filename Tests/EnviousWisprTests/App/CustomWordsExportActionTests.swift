@@ -335,8 +335,7 @@ struct CustomWordsExportActionTests {
         document: document, encoded: try document.encoded()) == nil)
   }
 
-
-  // MARK: - #1697: the count on screen and the bytes on disk are one fact
+  // MARK: - #1697: the count the user is shown and the bytes on disk are one fact
 
   /// The oracle here is an INDEPENDENTLY enumerated set, not `exportableWords`.
   ///
@@ -544,5 +543,21 @@ struct CustomWordsExportActionTests {
     // Two literals would let the exporter rename the file and leave the import
     // copy describing one that no longer exists.
     #expect(CustomWordsExportPanel.defaultFilename == "EnviousWispr Words.json")
+  }
+
+  // MARK: - #1715: the count reads in the dialog that produces the file
+
+  @Test("the dialog counts one word in the singular and the rest in the plural")
+  func exportSummaryAgreesWithItsNumber() {
+    #expect(
+      CustomWordsExportPanel.exportSummary(exportableCount: 1)
+        == "Exporting 1 word of your own. Vocabulary packs aren't included.")
+    #expect(
+      CustomWordsExportPanel.exportSummary(exportableCount: 33)
+        == "Exporting 33 words of your own. Vocabulary packs aren't included.")
+    // No zero case is asserted because none exists: `run` returns before opening
+    // a panel when the proposal is empty. That impossibility is proven by
+    // `emptyLibraryReportsNothingToExportAndNeverAsksForAFolder`, not by a
+    // branch in the summary.
   }
 }
