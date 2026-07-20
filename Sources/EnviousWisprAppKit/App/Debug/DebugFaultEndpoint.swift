@@ -29,9 +29,10 @@
   ///   the in-process `AudioCaptureManager` — #1543); `fail_batch_decode(backend)`,
   ///   `fail_every_batch_decode(backend)`, `clear_batch_decode_fault(backend,trialID)`,
   ///   `hold_batch_decode(backend,trialID)`, `release_batch_decode(backend,trialID)`,
-  ///   `query_batch_decode_fault(backend,trialID)` (#1707 Phase 2 — the
-  ///   shared-backend overlap Live UAT oracle, §3.2a-i; all six route to the
-  ///   ONE `BatchDecodeFaultController`).
+  ///   `query_batch_decode_fault(backend,trialID)`, `query_batch_decode_attempts(backend)`
+  ///   (#1707 Phase 2 — the shared-backend overlap Live UAT oracle, §3.2a-i,
+  ///   plus the content-free attempt-identity check, Codex r4; all seven
+  ///   route to the ONE `BatchDecodeFaultController`).
   /// - Each command dispatches to `@MainActor` via `Task { @MainActor in ... }`
   ///   so command handling matches the actor isolation of the seams it drives.
   ///
@@ -263,10 +264,11 @@
             + "source_incarnation=\(status.sourceIncarnation) "
             + "capture_source=\(status.captureSourceType)"
         }
-        // #1707 Phase 2 (§11.1/§3.2a-i): the six batch-decode fault commands,
-        // all routing to the ONE `BatchDecodeFaultController` — adapter-
-        // boundary forced failures (`fail_batch_decode`/`fail_every_batch_decode`/
-        // `clear_batch_decode_fault`) and the real-engine-boundary overlap
+        // #1707 Phase 2 (§11.1/§3.2a-i): the seven batch-decode fault
+        // commands, all routing to the ONE `BatchDecodeFaultController` —
+        // adapter-boundary forced failures (`fail_batch_decode`/
+        // `fail_every_batch_decode`/`clear_batch_decode_fault`/
+        // `query_batch_decode_attempts`) and the real-engine-boundary overlap
         // oracle (`hold_batch_decode`/`release_batch_decode`/
         // `query_batch_decode_fault`).
         if let backend = parseBackendArgCommand(cmd, prefix: "fail_batch_decode(") {
@@ -316,6 +318,16 @@
           let r = await batchDecodeFaultController.queryBatchDecodeFault(
             backend: backend, trialID: trialID)
           return Self.formatBatchDecodeFaultQueryReply(r)
+        }
+        // #1707 Phase 2 (Codex r4): content-free sample counts for every real
+        // batch-decode attempt this backend has issued, oldest first — lets a
+        // Live UAT test confirm the retry decoded the SAME captured audio as
+        // the failed attempt (never a synthetic stand-in), without exposing
+        // any transcript text.
+        if let backend = parseBackendArgCommand(cmd, prefix: "query_batch_decode_attempts(") {
+          guard let batchDecodeFaultController else { return "ERR no_dependency" }
+          let counts = batchDecodeFaultController.attemptSampleCounts(backend: backend)
+          return "OK " + counts.map { (n: Int) in String(n) }.joined(separator: ",")
         }
         return "ERR unknown_command"
       }

@@ -1310,7 +1310,9 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // prepared by the caller — proving the retry genuinely re-decodes real,
     // already-captured audio, not a synthetic stand-in. `nil` controller
     // (production, and every test that doesn't opt in) never forces a failure.
-    if batchDecodeFaultController?.shouldForceFailBatchDecode(backend: .whisperKit) == true {
+    if batchDecodeFaultController?.shouldForceFailBatchDecode(
+      backend: .whisperKit, sampleCount: samples.count) == true
+    {
       return .failed(ASREngineError.decodeFailed)
     }
     do {

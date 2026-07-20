@@ -822,6 +822,20 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         outcome: .empty(hadSpeechEvidence: true), diagnostics: diagnostics, failureError: nil)
       return commitAttempt(attempt, session: session, generation: generation)
     }
+    // Codex r4: this real decode call bypassed the §11.1 fault check entirely
+    // — `fail_batch_decode(parakeet)`/`fail_every_batch_decode(parakeet)` must
+    // cover EVERY real batch-decode call this adapter issues, not just the
+    // one `attemptBatchDecode` makes, or a Live UAT test targeting a
+    // streaming session's rescue path would silently never exercise the
+    // Phase-2 retry it's trying to test.
+    if batchDecodeFaultController?.shouldForceFailBatchDecode(
+      backend: .parakeet, sampleCount: samples.count) == true
+    {
+      let error = ASREngineError.decodeFailed
+      let attempt = DecodeAttemptResult(
+        outcome: .failed(error), diagnostics: diagnostics, failureError: error)
+      return commitAttempt(attempt, session: session, generation: generation)
+    }
     do {
       let result = try await asrManager.transcribe(
         audioSamples: samples, options: decodeOptions)
@@ -891,7 +905,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // the retry genuinely re-decodes real, already-captured audio. `nil`
     // controller (production, and every test that doesn't opt in) never
     // forces a failure.
-    if batchDecodeFaultController?.shouldForceFailBatchDecode(backend: .parakeet) == true {
+    if batchDecodeFaultController?.shouldForceFailBatchDecode(
+      backend: .parakeet, sampleCount: samples.count) == true
+    {
       let error = ASREngineError.decodeFailed
       return DecodeAttemptResult(
         outcome: .failed(error), diagnostics: diagnostics, failureError: error)

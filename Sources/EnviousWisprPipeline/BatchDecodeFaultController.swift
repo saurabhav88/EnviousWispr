@@ -50,6 +50,7 @@ package final class BatchDecodeFaultController {
 
   package func clearBatchDecodeFault(backend: ASRBackendType) {
     setPendingFailure(.none, backend: backend)
+    clearAttemptSampleCounts(backend: backend)
   }
 
   private func setPendingFailure(_ value: PendingFailure, backend: ASRBackendType) {
@@ -65,7 +66,15 @@ package final class BatchDecodeFaultController {
   /// retry genuinely re-decodes real, already-captured audio. Returns `true`
   /// (and consumes a one-shot `.next`) if this attempt should force-fail;
   /// `.every` fires on every subsequent call until explicitly cleared.
-  package func shouldForceFailBatchDecode(backend: ASRBackendType) -> Bool {
+  ///
+  /// `sampleCount` is unconditionally recorded as this backend's most recent
+  /// attempt identity (Codex r4: a Live UAT test needs a content-free way to
+  /// confirm the retry actually re-decoded the SAME captured audio as the
+  /// failed attempt, not a synthetic stand-in — `lastAttemptSampleCount`
+  /// exposes exactly that, for both the failed attempt and the retry, in
+  /// call order).
+  package func shouldForceFailBatchDecode(backend: ASRBackendType, sampleCount: Int) -> Bool {
+    recordAttemptSampleCount(backend: backend, sampleCount: sampleCount)
     switch backend {
     case .parakeet:
       switch parakeetPendingFailure {
@@ -84,6 +93,28 @@ package final class BatchDecodeFaultController {
       case .every: return true
       }
     }
+  }
+
+  /// Every real batch-decode attempt this backend has issued, oldest first —
+  /// content-free (sample counts only, never transcript text). A Live UAT
+  /// test compares the failed attempt's entry against the retry's to confirm
+  /// they decoded the same audio.
+  private var attemptSampleCounts: [ASRBackendType: [Int]] = [:]
+
+  private func recordAttemptSampleCount(backend: ASRBackendType, sampleCount: Int) {
+    attemptSampleCounts[backend, default: []].append(sampleCount)
+  }
+
+  /// This backend's recorded attempt sample counts, oldest first. Empty if
+  /// `shouldForceFailBatchDecode` was never consulted for this backend.
+  package func attemptSampleCounts(backend: ASRBackendType) -> [Int] {
+    attemptSampleCounts[backend] ?? []
+  }
+
+  /// Clears the recorded attempt identity for a backend, so a forgotten
+  /// trial cannot leak sample counts into the next.
+  package func clearAttemptSampleCounts(backend: ASRBackendType) {
+    attemptSampleCounts[backend] = nil
   }
 
   // MARK: Real-engine-boundary hold/release/query (§3.2a-i)
