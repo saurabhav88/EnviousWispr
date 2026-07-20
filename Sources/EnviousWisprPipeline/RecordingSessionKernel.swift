@@ -2199,15 +2199,21 @@ final class RecordingSessionKernel {
           adapter?.bumpRetryGeneration()
         }
       )
-      // Codex r2 finding: `markASRTimingEnd()` already froze the end
-      // timestamp for the FAILED primary decode before this retry started.
-      // Mirrors the salvage ladder's identical re-stamp (`:2101`) — called
-      // unconditionally (success or exhaustion) because real wall-clock time
-      // elapsed either way, and BEFORE the currency guard below since the
-      // elapsed time is real even if this session turns out to be stale.
-      // Idempotent: a plain overwrite.
-      markASRTimingEnd()
+      // GitHub cloud review (PR #1725): moved AFTER the currency guard —
+      // `markASRTimingEnd()` writes into the kernel's single shared
+      // `KernelFinalizationOutcome` instance (`outcome.asrEndedAtSeconds`),
+      // not a per-session value. The original pre-guard placement (Codex
+      // r2) meant an abandoned session A's retry, resolving after session B
+      // has already started and stamped its OWN `asrStartedAtSeconds`,
+      // would overwrite B's `asrEndedAtSeconds` with A's stale timestamp
+      // before this guard could reject A as stale — corrupting B's ASR
+      // latency telemetry even though B's own terminal state stays correct.
+      // Only the CURRENT session's telemetry ever reads this field (a
+      // stale session's own `finishTerminal` never runs), so stamping it
+      // only once currency is confirmed loses nothing for the live case
+      // and eliminates the cross-session write for the stale one.
       guard isCurrent(sid), recordingOutcome == nil else { return }
+      markASRTimingEnd()
       // Codex r5: a TIMEOUT (`nil`) is NOT a confirmed second failure — the
       // real decode call is still running in the background (no genuine
       // in-flight cancellation exists on either backend, per the comment

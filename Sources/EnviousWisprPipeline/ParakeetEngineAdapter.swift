@@ -261,15 +261,25 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// seconds / audio seconds) observed 0.0056-0.0572, HIGHEST at the
   /// shortest clips (fixed per-call overhead dominates) and settling near
   /// 0.006-0.009 by 15-59s — i.e. Parakeet does not get slower per second of
-  /// audio as recordings grow. `3.0` fixed floor covers per-call/XPC
-  /// overhead with headroom over the worst short-clip observation; `0.15`
-  /// per second is ~2.6x the highest RTF seen at any length. At the 3600s
-  /// (60-minute) recording cap this budgets 543s — generous given the
-  /// measured trend, never the bottleneck for a genuinely succeeding decode.
-  /// Raw samples: `docs/audits/2026-07-20-recovery-v2-phase2-retry-decode-latency.md`.
+  /// audio as recordings grow. `0.15` per second is ~2.6x the highest RTF
+  /// seen at any length. Raw samples:
+  /// `docs/audits/2026-07-20-recovery-v2-phase2-retry-decode-latency.md`.
+  ///
+  /// GitHub cloud review (PR #1725): the fixed floor is
+  /// `asrInterruptionRecoveryDeadlineSec` (this SAME file's own measured,
+  /// headroom-inclusive helper-reload deadline, `8.0` — see its doc comment
+  /// above), NOT an ad-hoc `3.0`. `retryDecode`'s readiness-gated repair
+  /// calls `warmUp()` before it can even attempt the second decode when the
+  /// XPC helper died — the whole call, repair included, is bounded by this
+  /// ONE deadline (§3.2). An ad-hoc floor tuned only from measured DECODE
+  /// time (never exercising the repair path) would budget less than the
+  /// ~4.2s p99 real reload cost for any recording under ~8s, timing out
+  /// during warm-up itself before the retry could transcribe anything — the
+  /// opposite of what this mechanism exists to do. At the 3600s (60-minute)
+  /// recording cap this budgets 548s.
   func retryDecodeTimeoutSeconds(forSampleCount sampleCount: Int) -> Double {
     let audioDurationSec = Double(sampleCount) / AudioConstants.sampleRate
-    return 3.0 + audioDurationSec * 0.15
+    return asrInterruptionRecoveryDeadlineSec + audioDurationSec * 0.15
   }
 
   /// Parakeet decodes incrementally and detects no language (D2, D15). Static —

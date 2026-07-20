@@ -795,16 +795,21 @@ import Testing
   )
   func retryDecodeTimeoutScalesWithSampleCount() {
     let manager = StubParakeetASRManager()
+    // Default asrInterruptionRecoveryDeadlineSec (8.0) is the fixed floor —
+    // GitHub cloud review (PR #1725): reused directly since retryDecode's
+    // readiness-gated repair calls warmUp() before the second decode, and
+    // the whole call (repair included) is bounded by this ONE deadline.
     let adapter = ParakeetEngineAdapter(asrManager: manager)
     // 16kHz mono — 16_000 samples/sec (AudioConstants.sampleRate).
     let zero = adapter.retryDecodeTimeoutSeconds(forSampleCount: 0)
     let oneMinute = adapter.retryDecodeTimeoutSeconds(forSampleCount: 16_000 * 60)
     let oneHour = adapter.retryDecodeTimeoutSeconds(forSampleCount: 16_000 * 3600)
-    #expect(zero == 3.0, "the fixed floor with zero audio")
+    #expect(
+      zero == 8.0, "the fixed floor with zero audio matches asrInterruptionRecoveryDeadlineSec")
     #expect(oneMinute > zero, "a longer recording must get a longer budget")
     #expect(oneHour > oneMinute, "budget keeps scaling for the longest supported recording")
-    #expect(abs(oneMinute - 12.0) < 0.01)
-    #expect(abs(oneHour - 543.0) < 0.01)
+    #expect(abs(oneMinute - 17.0) < 0.01)
+    #expect(abs(oneHour - 548.0) < 0.01)
   }
 
   // MARK: Helpers
