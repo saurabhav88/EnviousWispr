@@ -1173,29 +1173,40 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       if trimmed.isEmpty {
         return .empty(hadSpeechEvidence: true)
       }
-      lastResult = result
+      // GitHub cloud review: rebuild the result with the corrected duration
+      // BEFORE committing to `lastResult` — `KernelFinalizationWiring`
+      // reads `adapter.lastResult?.duration` straight into saved History
+      // metadata, so storing the backend's own `result.duration` as-is
+      // would persist a wrong/zero duration for a retry-rescued dictation
+      // whenever `WhisperKitBackend.mapResults` derived it from the LAST
+      // DECODED SEGMENT's end time (short on trailing silence, or zero
+      // when text exists without segment timestamps). Mirrors the normal
+      // finalize path's identical rebuild (`:914-921` above), which
+      // constructs its own `ASRResult` from `rawSamples.count` (`:882`)
+      // rather than trusting the backend's own duration field.
+      let audioDurationSec = Double(inputSamples.count) / AudioConstants.sampleRate
+      let correctedResult = ASRResult(
+        text: result.text,
+        language: result.language,
+        duration: audioDurationSec,
+        processingTime: result.processingTime,
+        backendType: result.backendType
+      )
+      lastResult = correctedResult
       // #1707 Codex r9/r10: mirror the normal finalize path's per-
       // transcription latency telemetry (`:930` above) — without this,
       // every Phase-2 retry-rescued dictation silently drops out of the
-      // model/language latency metric. Duration is derived from the
-      // retry's own INPUT sample count, matching the normal path's
-      // `rawSamples.count` (`:882`) — NOT `result.duration`:
-      // `WhisperKitBackend.mapResults` sets that to the LAST DECODED
-      // SEGMENT's end time, which can be shorter than the real capture
-      // (trailing silence) or even zero when text exists without segment
-      // timestamps, silently dropping exactly the retry telemetry this
-      // fix exists to restore.
-      let audioDurationSec = Double(inputSamples.count) / AudioConstants.sampleRate
+      // model/language latency metric.
       if audioDurationSec > 0, let modelName = modelNameForTelemetry {
-        let msPerAudioSec = (result.processingTime * 1000.0) / audioDurationSec
+        let msPerAudioSec = (correctedResult.processingTime * 1000.0) / audioDurationSec
         TelemetryService.shared.trackTranscriptionLatency(
-          lang: result.language,
+          lang: correctedResult.language,
           model: modelName,
-          durationSeconds: result.processingTime,
+          durationSeconds: correctedResult.processingTime,
           msPerAudioSecond: msPerAudioSec
         )
       }
-      return .transcript(result)
+      return .transcript(correctedResult)
     case .cancelled:
       return .cancelled
     case .failed(let error):

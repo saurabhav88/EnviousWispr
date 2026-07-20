@@ -1226,6 +1226,40 @@ import Testing
   }
 
   @Test(
+    "GitHub cloud review: a retry-rescued result whose backend duration is short (trailing silence) or zero (no segment timestamps) still commits the FULL capture duration to lastResult, since KernelFinalizationWiring saves History metadata straight from it"
+  )
+  func retryDecodeCorrectsBackendDurationBeforeCommitting() async throws {
+    let backend = StubWhisperKitBackend()
+    // Simulates WhisperKitBackend.mapResults deriving duration from the last
+    // decoded segment's end time — 0 here models "text exists without
+    // segment timestamps," the case that would otherwise silently skip
+    // telemetry AND persist a zero-duration History entry.
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "retried text", language: "en", duration: 0, processingTime: 0.1,
+        backendType: .whisperKit))
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: "en"), streaming: false)
+
+    // 4 seconds of real captured audio at 16kHz.
+    let outcome = await adapter.retryDecode(inputSamples: speechSamples(count: 16_000 * 4))
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(
+      abs(result.duration - 4.0) < 0.001,
+      "the returned result must carry the real capture duration, not the backend's own (short/zero) value"
+    )
+    #expect(
+      abs((adapter.lastResult?.duration ?? -1) - 4.0) < 0.001,
+      "lastResult is what KernelFinalizationWiring saves to History — it must never persist the backend's raw duration"
+    )
+  }
+
+  @Test(
     "an adapter's own internal streaming-then-clean-batch-fallback and an explicit Phase-2 retryDecode are two distinct decode calls, never one shared budget"
   )
   func internalFallbackAndPhase2RetryAreDistinctDecodeCalls() async throws {
