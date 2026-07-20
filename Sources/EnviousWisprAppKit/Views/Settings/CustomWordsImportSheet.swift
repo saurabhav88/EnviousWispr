@@ -157,17 +157,25 @@ private struct ImportMethodPickerScreen: View {
       }
       // "Upload" implied a cloud destination for a purely local file read,
       // which fights the local-and-private positioning this whole feature is
-      // built on. The copy also names the actual file and BOTH journeys —
-      // moving Macs and restoring a backup. Six later phases treat the export
-      // as their safety net, so the person most likely to be on this screen is
-      // recovering on the same Mac, not migrating (#1699).
+      // built on. The copy also names the actual file and BOTH journeys, since
+      // six later phases treat the export as their safety net and the person on
+      // this screen is often recovering on the same Mac, not migrating (#1699).
+      //
+      // It deliberately does NOT say "restore". Import is additive: an existing
+      // word is reported and skipped, and its aliases and settings are never
+      // touched (D15; `confirmWithAllSkippedWritesNothing`). So importing a
+      // backup over a library that still has those words restores nothing, and
+      // promising otherwise would let someone believe their old settings came
+      // back when they did not (Codex review r2, P2). "Bringing your words
+      // back" is true of the additive behaviour; the second sentence states the
+      // limit rather than leaving the user to discover it.
       ImportMethodCard(
         icon: "square.and.arrow.down",
         title: "Open a file",
         subtitle:
-          "Moving Macs or restoring a backup? Pick the "
-          + "\(CustomWordsExportPanel.defaultFilename) you exported. "
-          + "Plain text lists work too."
+          "Moving Macs, or bringing your words back? Pick the "
+          + "\(CustomWordsExportPanel.defaultFilename) you exported, or a plain "
+          + "list. Words you already have are left as they are."
       ) {
         model.select(.upload)
       }
