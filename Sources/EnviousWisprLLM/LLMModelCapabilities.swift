@@ -85,6 +85,18 @@ extension LLMProvider {
         supportsChatCompletions: false
       )
 
+    case .claude:
+      // v1: no extended thinking, ever. `.omit` (not `.include`) because
+      // Claude generations released after Opus 4.6 reject a non-default
+      // `temperature`, including 0, with an HTTP 400 — the same
+      // unconditional-omit shape #1330 established for OpenAI's reasoning
+      // family, applied here so a future catalog model doesn't silently break.
+      return LLMModelCapabilities(
+        supportsReasoning: false,
+        temperaturePolicy: .omit,
+        supportsChatCompletions: false
+      )
+
     case .ollama, .appleIntelligence, .egOne, .none:
       return LLMModelCapabilities(
         supportsReasoning: false,

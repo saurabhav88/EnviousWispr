@@ -150,6 +150,308 @@ public struct WordCorrector: Sendable {
     public let nonPackExactKeys: Set<String>
   }
 
+  // MARK: - Exact-trigger authority (#1667)
+
+  /// The one place that answers "what exact keys does this value claim, and at
+  /// what precedence" (#1667).
+  ///
+  /// Import collision detection used to re-derive this by hand and mirrored only
+  /// two of the surfaces. That partial mirror was found wrong three separate
+  /// times — first-wins vs last-wins among two alias owners, canonical-first vs
+  /// alias-first, then the no-space surface it never modelled at all. A fourth
+  /// divergence was latent: the detector trimmed its keys, this does not, so on
+  /// malformed or legacy data the two disagreed about what a key even was.
+  ///
+  /// The fix is not a fourth patch. `buildLookups` and `detectAliasCollisions`
+  /// now BOTH construct claims here, so there is nothing left to drift.
+  package enum ExactTriggerNamespace: Sendable, Equatable {
+    case single
+    case multi
+    case nospace
+
+    /// Correction-pass order, used to pick which owner a single collision
+    /// receipt names when one alias is blocked on several surfaces at once.
+    /// Pass 0 (no-space compound) runs before the ordinary exact passes.
+    package var passPriority: Int {
+      switch self {
+      case .nospace: return 0
+      case .multi: return 1
+      case .single: return 3
+      }
+    }
+  }
+
+  package struct ExactTriggerClaim: Sendable, Equatable {
+    package let key: String
+    package let namespace: ExactTriggerNamespace
+  }
+
+  package struct TriggerOwner: Sendable, Equatable {
+    package let wordID: UUID
+    package let canonical: String
+    /// Pack terms are a lower authority: they only ever gap-fill the ordinary
+    /// namespaces, and the fuzzy pools must be built from non-pack owners alone.
+    /// Carried here so `buildLookups` can separate the two populations without
+    /// rebuilding either map.
+    package let isPack: Bool
+  }
+
+  /// A key claimed twice in an ordinary namespace, recorded rather than logged.
+  ///
+  /// The builder stays pure so both consumers can call it freely — the import
+  /// detector builds an index too, and a builder that logged would narrate a
+  /// preview as if the vocabulary had just been rebuilt. `buildLookups` remains
+  /// the one place these are reported.
+  package struct ExactTriggerCollision: Sendable, Equatable {
+    package let key: String
+    package let existingCanonical: String
+    package let winningCanonical: String
+  }
+
+  /// A canonical self-entry that yielded to an alias already owning its key.
+  package struct ExactTriggerCanonicalSkip: Sendable, Equatable {
+    package let key: String
+    package let canonical: String
+    package let existingCanonical: String
+  }
+
+  /// Effective incumbent ownership, after every overwrite and gap-fill rule has
+  /// already been applied. Consumers read winners; they never replay precedence.
+  package struct ExactTriggerIndex: Sendable {
+    package var single: [String: TriggerOwner] = [:]
+    package var multi: [String: TriggerOwner] = [:]
+    package var nospace: [String: TriggerOwner] = [:]
+    /// Diagnostics only, in construction order. Never consulted for precedence.
+    package var collisions: [ExactTriggerCollision] = []
+    package var canonicalSkips: [ExactTriggerCanonicalSkip] = []
+
+    package func owner(of claim: ExactTriggerClaim) -> TriggerOwner? {
+      switch claim.namespace {
+      case .single: return single[claim.key]
+      case .multi: return multi[claim.key]
+      case .nospace: return nospace[claim.key]
+      }
+    }
+
+    /// Assign a claim unconditionally. For consumers that resolve ownership
+    /// incrementally — the import commit path decides one word at a time, in
+    /// the order the user approved — rather than over a whole vocabulary.
+    package mutating func register(_ claim: ExactTriggerClaim, to owner: TriggerOwner) {
+      switch claim.namespace {
+      case .single: single[claim.key] = owner
+      case .multi: multi[claim.key] = owner
+      case .nospace: nospace[claim.key] = owner
+      }
+    }
+
+    /// Apply a WORD'S OWN canonical claims to an incrementally-resolved index.
+    ///
+    /// The two per-namespace rules do not read the same: an ordinary self-entry
+    /// yields to whoever already holds the key, while the compound form is
+    /// written unconditionally and can overwrite an earlier alias. This is that
+    /// rule stated once. Two import consumers — the compare screen and the
+    /// commit path — used to restate it inline, and diverged when only one of
+    /// them was corrected (grounded review r5/r6, #1667).
+    package mutating func applyCanonical(_ canonical: String, owner: TriggerOwner) {
+      for claim in WordCorrector.exactClaims(forCanonical: canonical) {
+        switch claim.namespace {
+        case .nospace: register(claim, to: owner)
+        case .single, .multi: if self.owner(of: claim) == nil { register(claim, to: owner) }
+        }
+      }
+    }
+
+    /// Register every claim in `claims` that nobody already holds. Never
+    /// overwrites: a claim already held — including by a compound owner that
+    /// declines to intercept this exact surface — keeps its existing owner,
+    /// because that is what the corrector's own gap-fill rule does at runtime.
+    package mutating func gapFill(_ claims: [ExactTriggerClaim], owner: TriggerOwner) {
+      for claim in claims where self.owner(of: claim) == nil {
+        register(claim, to: owner)
+      }
+    }
+
+    /// The ordinary-namespace maps in `buildLookups`' shape, optionally limited
+    /// to non-pack owners for the fuzzy pools that must exclude pack terms.
+    func canonicalsByKey(
+      _ namespace: ExactTriggerNamespace, nonPackOnly: Bool = false
+    ) -> [String: String] {
+      let source: [String: TriggerOwner]
+      switch namespace {
+      case .single: source = single
+      case .multi: source = multi
+      case .nospace: source = nospace
+      }
+      return source.reduce(into: [String: String]()) { result, entry in
+        guard !nonPackOnly || !entry.value.isPack else { return }
+        result[entry.key] = entry.value.canonical
+      }
+    }
+  }
+
+  /// Whether an owner would actually INTERCEPT this surface, as opposed to
+  /// merely holding the key.
+  ///
+  /// Pass 0 declines to substitute when the spoken text already concatenates to
+  /// the owner's own canonical (`rawConcat == canonicalNospace`), so the text
+  /// falls through to the ordinary passes and a DIFFERENT word corrects it. A
+  /// consumer asking "who beats me here" has to know that, or it names a word
+  /// that never touches the text: existing `Annie` and existing `Anika`/alias
+  /// `annie`, spoken "Annie", is corrected by Anika even though `Annie` holds
+  /// the no-space key. Empirically confirmed against the real corrector, not
+  /// reasoned about (#1667).
+  ///
+  /// The ordinary namespaces have no such guard: holding the key is
+  /// intercepting it.
+  /// Every gate below is Pass 0's, in Pass 0's order. A first cut modelled only
+  /// the "already correct" short-circuit and let unreachable surfaces outrank
+  /// real ordinary claims — a four-token alias, a two-character one, a
+  /// punctuated one, or one containing a reserved trigger word can never be
+  /// consumed here, so a no-space holder is not blocking anything (grounded
+  /// review, #1667).
+  package static func ownerIntercepts(
+    claim: ExactTriggerClaim, rawSurface: String, owner: TriggerOwner
+  ) -> Bool {
+    guard claim.namespace == .nospace else { return true }
+
+    // Pass 0 only ever concatenates 1-3 adjacent tokens. Trim the ends, but do
+    // NOT drop interior empty tokens: a doubled internal space really is an
+    // extra token to the tokenizer, and "one   two" genuinely overflows the
+    // three-token window. Filtering all empties said it fit (grounded review r2).
+    let tokens =
+      rawSurface
+      .trimmingCharacters(in: .whitespaces)
+      .components(separatedBy: .whitespaces)
+    guard (1...3).contains(tokens.count) else { return false }
+
+    let slice = tokens[...]
+    guard !sliceContainsReservedTriggerWord(slice) else { return false }
+
+    let stripped = slice.map { stripPunctuationStatic($0) }
+    let ngram = stripped.map { $0.lowercased() }.joined()
+    // Below three characters Pass 0 skips the lookup entirely; and if the
+    // stripped form is not this claim's key, this is not the surface that
+    // would reach the owner.
+    guard ngram.count >= 3, ngram == claim.key else { return false }
+
+    // The "already correct" short-circuit, case-sensitive exactly as Pass 0
+    // compares it.
+    let rawConcat = stripped.joined()
+    return rawConcat != owner.canonical.replacingOccurrences(of: " ", with: "")
+  }
+
+  /// Keys an ALIAS claims. Ordinary surface first, then its no-space form when
+  /// that differs. Deduplicated, so a space-free alias yields one ordinary claim
+  /// plus its identical-key no-space claim only when the namespaces differ.
+  package static func exactClaims(forAlias alias: String) -> [ExactTriggerClaim] {
+    let key = alias.lowercased()
+    guard !key.isEmpty else { return [] }
+    var claims = [
+      ExactTriggerClaim(key: key, namespace: alias.contains(" ") ? .multi : .single)
+    ]
+    let nospaceKey = alias.replacingOccurrences(of: " ", with: "").lowercased()
+    if !nospaceKey.isEmpty {
+      claims.append(ExactTriggerClaim(key: nospaceKey, namespace: .nospace))
+    }
+    return claims
+  }
+
+  /// Keys a CANONICAL claims. The self-entry exists only for a space-free
+  /// canonical; the no-space claim is unconditional.
+  package static func exactClaims(forCanonical canonical: String) -> [ExactTriggerClaim] {
+    let key = canonical.lowercased()
+    guard !key.isEmpty else { return [] }
+    var claims: [ExactTriggerClaim] = []
+    if !key.contains(" ") { claims.append(ExactTriggerClaim(key: key, namespace: .single)) }
+    let nospaceKey = canonical.replacingOccurrences(of: " ", with: "").lowercased()
+    if !nospaceKey.isEmpty {
+      claims.append(ExactTriggerClaim(key: nospaceKey, namespace: .nospace))
+    }
+    return claims
+  }
+
+  /// Resolve effective ownership across a whole vocabulary, applying the same
+  /// rules `buildLookups` has always applied — which is why `buildLookups` now
+  /// projects from this rather than repeating them.
+  package static func buildExactTriggerIndex(words: [CustomWord]) -> ExactTriggerIndex {
+    let packWords = words.filter { $0.source == .pack }
+    let nonPackWords = words.filter { $0.source != .pack }
+    var index = ExactTriggerIndex()
+
+    // Non-pack aliases: last writer wins in the ordinary namespaces.
+    for word in nonPackWords {
+      let owner = TriggerOwner(wordID: word.id, canonical: word.canonical, isPack: false)
+      // Empty keys are NOT filtered, here or below. The construction this
+      // replaces inserted them, and a refactor that quietly drops entries is
+      // not a refactor. They are inert at runtime (Pass 0 requires three
+      // characters, and the ordinary passes only look up non-empty tokens), so
+      // preserving them costs nothing and keeps the diagnostics identical
+      // (grounded review, #1667).
+      for alias in word.aliases {
+        let key = alias.lowercased()
+        let namespace: ExactTriggerNamespace = alias.contains(" ") ? .multi : .single
+        if let existing = index.owner(of: ExactTriggerClaim(key: key, namespace: namespace)),
+          existing.canonical != word.canonical
+        {
+          index.collisions.append(
+            ExactTriggerCollision(
+              key: key, existingCanonical: existing.canonical, winningCanonical: word.canonical))
+        }
+        if namespace == .multi { index.multi[key] = owner } else { index.single[key] = owner }
+      }
+    }
+
+    // Non-pack canonical self-entry: space-free only, and it YIELDS to an alias.
+    for word in nonPackWords {
+      let key = word.canonical.lowercased()
+      guard !key.contains(" ") else { continue }
+      if let existing = index.single[key] {
+        if existing.canonical != word.canonical {
+          index.canonicalSkips.append(
+            ExactTriggerCanonicalSkip(
+              key: key, canonical: word.canonical, existingCanonical: existing.canonical))
+        }
+        continue
+      }
+      index.single[key] = TriggerOwner(wordID: word.id, canonical: word.canonical, isPack: false)
+    }
+
+    // No-space namespace, non-pack only. Canonical is unconditional and last
+    // writer wins; an alias fills only an empty slot. So alias-vs-alias is
+    // FIRST-wins here while canonical-vs-canonical is last-wins, and a later
+    // canonical can overwrite an earlier alias. Three rules, one map — the
+    // reason a hand-rolled mirror kept getting this wrong.
+    for word in nonPackWords {
+      let owner = TriggerOwner(wordID: word.id, canonical: word.canonical, isPack: false)
+      let nospace = word.canonical.replacingOccurrences(of: " ", with: "").lowercased()
+      index.nospace[nospace] = owner
+      for alias in word.aliases {
+        let aliasNospace = alias.replacingOccurrences(of: " ", with: "").lowercased()
+        guard index.nospace[aliasNospace] == nil else { continue }
+        index.nospace[aliasNospace] = owner
+      }
+    }
+
+    // Pack aliases gap-fill the ordinary namespaces only, and never claim a key
+    // any non-pack canonical owns. Pack canonicals get no self-entry, and pack
+    // terms never enter the no-space namespace.
+    let nonPackCanonicalKeys = Set(nonPackWords.map { $0.canonical.lowercased() })
+    for word in packWords {
+      let owner = TriggerOwner(wordID: word.id, canonical: word.canonical, isPack: true)
+      for alias in word.aliases {
+        let key = alias.lowercased()
+        guard !nonPackCanonicalKeys.contains(key) else { continue }
+        if alias.contains(" ") {
+          if index.multi[key] == nil { index.multi[key] = owner }
+        } else {
+          if index.single[key] == nil { index.single[key] = owner }
+        }
+      }
+    }
+
+    return index
+  }
+
   /// Build the lookup structures for a given vocabulary. Pure function.
   /// `WordCorrectionStep` calls this once per generation change and reuses
   /// the result across many `correct(...)` calls.
@@ -167,9 +469,6 @@ public struct WordCorrector: Sendable {
     let packWords = words.filter { $0.source == .pack }
     let nonPackWords = words.filter { $0.source != .pack }
 
-    var singleAliasMap: [String: String] = [:]
-    var multiAliasMap: [String: String] = [:]
-    var collisionCount = 0
     var canonicalToID: [String: UUID] = [:]
     var canonicalToWord: [String: CustomWord] = [:]
     for word in nonPackWords {
@@ -177,53 +476,37 @@ public struct WordCorrector: Sendable {
       canonicalToWord[word.canonical.lowercased()] = word
     }
 
-    for word in nonPackWords {
-      for alias in word.aliases {
-        let key = alias.lowercased()
-        if alias.contains(" ") {
-          if let existing = multiAliasMap[key], existing != word.canonical {
-            collisionCount += 1
-            #if DEBUG
-              Self.logger.debug(
-                "Alias collision #\(collisionCount): '\(key)' claimed by '\(existing)' and '\(word.canonical)', using '\(word.canonical)'"
-              )
-            #endif
-          }
-          multiAliasMap[key] = word.canonical
-        } else {
-          if let existing = singleAliasMap[key], existing != word.canonical {
-            collisionCount += 1
-            #if DEBUG
-              Self.logger.debug(
-                "Alias collision #\(collisionCount): '\(key)' claimed by '\(existing)' and '\(word.canonical)', using '\(word.canonical)'"
-              )
-            #endif
-          }
-          singleAliasMap[key] = word.canonical
-        }
-      }
-    }
+    // The three exact maps are PROJECTED from the one authority rather than
+    // rebuilt here (#1667). Every precedence rule they encode — alias last-wins,
+    // canonical self-entry yielding to an alias, pack gap-fill only, and the
+    // three-rules-in-one-map no-space namespace — now lives in exactly one
+    // place, which the import collision detector reads too. It had drifted from
+    // this construction three separate times, each time as a fresh instance
+    // patch; the fix is that there is no longer a second construction to drift.
+    let triggerIndex = buildExactTriggerIndex(words: words)
 
-    for word in nonPackWords {
-      let key = word.canonical.lowercased()
-      if !key.contains(" ") {
-        if let existing = singleAliasMap[key] {
-          if existing != word.canonical {
-            #if DEBUG
-              Self.logger.debug(
-                "Canonical '\(word.canonical)' skipped: key '\(key)' already maps to '\(existing)'")
-            #endif
-          }
-        } else {
-          singleAliasMap[key] = word.canonical
-        }
+    #if DEBUG
+      // The builder is pure so the detector can call it without narrating; the
+      // reporting stays here, where a vocabulary rebuild actually happened.
+      for (offset, collision) in triggerIndex.collisions.enumerated() {
+        Self.logger.debug(
+          "Alias collision #\(offset + 1): '\(collision.key)' claimed by '\(collision.existingCanonical)' and '\(collision.winningCanonical)', using '\(collision.winningCanonical)'"
+        )
       }
-    }
+      for skip in triggerIndex.canonicalSkips {
+        Self.logger.debug(
+          "Canonical '\(skip.canonical)' skipped: key '\(skip.key)' already maps to '\(skip.existingCanonical)'"
+        )
+      }
+    #endif
 
-    // Snapshot the NON-PACK exact maps. The fuzzy/compound pools derive from
-    // these so pack terms can never become fuzzy candidates.
-    let nonPackSingleAliasMap = singleAliasMap
-    let nonPackMultiAliasMap = multiAliasMap
+    let singleAliasMap = triggerIndex.canonicalsByKey(.single)
+    let multiAliasMap = triggerIndex.canonicalsByKey(.multi)
+
+    // The NON-PACK exact maps. The fuzzy/compound pools derive from these so
+    // pack terms can never become fuzzy candidates.
+    let nonPackSingleAliasMap = triggerIndex.canonicalsByKey(.single, nonPackOnly: true)
+    let nonPackMultiAliasMap = triggerIndex.canonicalsByKey(.multi, nonPackOnly: true)
 
     // Every non-pack canonical key (INCLUDING multi-word canonicals, which get
     // no exact-map self-entry). A pack term must never claim one of these keys,
@@ -231,20 +514,11 @@ public struct WordCorrector: Sendable {
     // though it isn't present in the alias maps. (Codex diff-review edge.)
     let nonPackCanonicalKeys = Set(nonPackWords.map { $0.canonical.lowercased() })
 
-    // Pack exact entries: fill ONLY keys not already claimed by a non-pack term
-    // (non-pack wins, for all clash shapes incl. multi-word canonicals). Pack
-    // canonicals also get an attribution id so applied pack replacements report
-    // `hadPackTerm`.
+    // Pack exact entries are already in the projected maps: the authority fills
+    // ONLY keys no non-pack term claimed, for every clash shape including
+    // multi-word canonicals (#1667 moved that rule there). What remains here is
+    // pack ATTRIBUTION, which is not trigger ownership and stays local.
     for word in packWords {
-      for alias in word.aliases {
-        let key = alias.lowercased()
-        if nonPackCanonicalKeys.contains(key) { continue }  // user canonical wins
-        if alias.contains(" ") {
-          if multiAliasMap[key] == nil { multiAliasMap[key] = word.canonical }
-        } else {
-          if singleAliasMap[key] == nil { singleAliasMap[key] = word.canonical }
-        }
-      }
       // #992: pack canonical self-entries are NOT added to singleAliasMap. They
       // only ever normalized casing — unreliable for packs (lowercase
       // canonicals) and the source of the live casing harm (correct
@@ -273,17 +547,11 @@ public struct WordCorrector: Sendable {
         Lookups.AliasCanonical(alias: alias, canonical: canonical))
     }
 
-    var nospaceCanonicalMap: [String: String] = [:]
-    for word in nonPackWords {
-      let nospace = word.canonical.replacingOccurrences(of: " ", with: "").lowercased()
-      nospaceCanonicalMap[nospace] = word.canonical
-      for alias in word.aliases {
-        let aliasNospace = alias.replacingOccurrences(of: " ", with: "").lowercased()
-        if nospaceCanonicalMap[aliasNospace] == nil {
-          nospaceCanonicalMap[aliasNospace] = word.canonical
-        }
-      }
-    }
+    // Projected too (#1667). This map is the one the detector missed entirely:
+    // an imported alias equal to an existing multi-word canonical's space-free
+    // form was reported collision-free, persisted, and then never fired,
+    // because Pass 0 resolved the n-gram here first.
+    let nospaceCanonicalMap = triggerIndex.canonicalsByKey(.nospace)
 
     // #992 pack fuzzy tier (LOWER authority). Single-word pack terms whose
     // scored surface length ≥ packFuzzyMinLength, built from the SAME lowercased

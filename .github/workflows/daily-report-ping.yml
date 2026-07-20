@@ -18,6 +18,29 @@ on:
         required: false
         type: string
 
+# Serializes scheduled and manual runs of this workflow instead of letting
+# them overlap. queue: max is required alongside cancel-in-progress: false:
+# GitHub's default (queue: single) would silently CANCEL an already-pending
+# run when a new one is queued, even with cancel-in-progress: false (that
+# flag only governs already-RUNNING jobs) - a queued manual recovery run
+# could otherwise be dropped by the next scheduled cron firing before it
+# starts. Does not cover a direct curl to the public Worker endpoint; see
+# README for the procedural mitigation (#1720).
+#
+# `queue` IS valid current GitHub Actions syntax - do not "fix" this by
+# removing it. `actionlint` v1.7.12 (2026-03-30, the latest release as of
+# this writing) does not yet recognize it and reports "unexpected key" -
+# its bundled schema predates this feature. Verified against the
+# community-maintained schema at schemastore.org/github-workflow.json
+# (which documents `queue: single|max` and cites live docs.github.com
+# pages) and independently against context7 `/websites/github_en_actions`.
+# A Codex code-diff review round flagged this as a P1 based on actionlint's
+# false negative; rejected with this evidence, not reverted (#1720).
+concurrency:
+  group: daily-report
+  cancel-in-progress: false
+  queue: max
+
 permissions:
   contents: read
 

@@ -1,9 +1,9 @@
-import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+@testable import EnviousWisprLLM
 
 #if DEBUG
 
@@ -65,6 +65,54 @@ import Testing
       // presence rather than a fixed value.
       #expect(event.stringProps["microphone_status"] != nil)
       #expect(event.boolProps["accessibility_warning_dismissed"] != nil)
+    }
+
+    /// A per-key-id in-memory store standing in for the real legacy-file
+    /// backend, so `has_api_keys` can be tested deterministically instead of
+    /// asserting mere presence against the machine's real Keychain state.
+    private final class SingleKeyStore: LegacyKeyFileStorage, @unchecked Sendable {
+      let key: String
+      let value: String
+      init(key: String, value: String) {
+        self.key = key
+        self.value = value
+      }
+      func store(key: String, value: String) throws {}
+      func retrieve(key: String) throws -> String {
+        guard key == self.key else { throw KeyStoreError.retrieveFailed(errSecItemNotFound) }
+        return value
+      }
+      func delete(key: String) throws {}
+    }
+
+    @MainActor
+    @Test("A Claude-only saved key makes has_api_keys true (#158)")
+    func claudeOnlyKeyMakesHasApiKeysTrue() {
+      let suite = UserDefaults(suiteName: "StandingSnapshotBuilderTests-\(UUID().uuidString)")!
+      let settings = SettingsManager(defaults: suite)
+      let keychain = KeychainManager(
+        backend: .legacyFiles,
+        legacyStore: SingleKeyStore(key: KeychainManager.claudeKeyID, value: "sk-ant-test"))
+      let builder = StandingSnapshotBuilder(
+        settings: settings,
+        keychainManager: keychain,
+        customWordsCoordinator: CustomWordsCoordinator(),
+        permissions: PermissionsService(accessibilityReader: { true })
+      )
+
+      let box = EventBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        if event.name == "settings.snapshot" { box.set(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      builder.emit()
+
+      guard let event = box.value else {
+        Issue.record("Expected settings.snapshot event")
+        return
+      }
+      #expect(event.boolProps["has_api_keys"] == true)
     }
   }
 

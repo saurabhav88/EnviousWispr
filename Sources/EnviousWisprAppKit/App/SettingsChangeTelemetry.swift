@@ -185,18 +185,20 @@ enum SettingsProjection {
       // string — routing may treat it as ours, telemetry must not leak the name.
       if OllamaSetupService.isFirstPartyModel(id) { return "eg-1-variant" }
       return "custom"
-    case .openAI, .gemini:
+    case .openAI, .gemini, .claude:
       let base = stripDateSnapshotSuffix(id)
       return cloudModelAllowlist.contains(base) ? base : "custom"
     }
   }
 
-  /// Curated known PUBLIC cloud model ids (OpenAI + Gemini). Deny-by-default
-  /// anchor: anything not here is `custom`, so no private/unknown string leaks.
-  /// Trade-off: a brand-new public model not yet listed reads `custom` until
-  /// added (itself a useful "on an unrecognized model" signal). Seeded from the
-  /// shipped defaults + the families the discovery filters accept
-  /// (`LLMModelDiscovery`: gpt-/o1/o3/o4, gemini-).
+  /// Curated known PUBLIC cloud model ids (OpenAI + Gemini + Claude).
+  /// Deny-by-default anchor: anything not here is `custom`, so no
+  /// private/unknown string leaks. Trade-off: a brand-new public model not
+  /// yet listed reads `custom` until added (itself a useful "on an
+  /// unrecognized model" signal). Seeded from the shipped defaults + the
+  /// families the discovery filters accept (`LLMModelDiscovery`:
+  /// gpt-/o1/o3/o4, gemini-). Claude ids are the live-confirmed base ids
+  /// with their date-snapshot suffix already stripped (issue #158).
   private static let cloudModelAllowlist: Set<String> = [
     // OpenAI
     "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-4.1", "gpt-4.1-mini",
@@ -206,17 +208,29 @@ enum SettingsProjection {
     "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b",
     "gemini-2.0-flash", "gemini-2.0-flash-lite",
     "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
+    // Claude
+    "claude-sonnet-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7",
+    "claude-sonnet-4-6", "claude-opus-4-6", "claude-opus-4-5", "claude-haiku-4-5",
+    "claude-sonnet-4-5", "claude-opus-4-1",
   ]
 
-  /// Strip a trailing `-YYYY-MM-DD` provider date-snapshot suffix so dated
-  /// variants (`gpt-5-mini-2025-08-07`) match their base allowlist entry. The
-  /// suffix is public/non-sensitive; this only collapses cardinality.
+  /// Strip a trailing provider date-snapshot suffix so dated variants match
+  /// their base allowlist entry. The suffix is public/non-sensitive; this
+  /// only collapses cardinality. Two forms: OpenAI/Gemini's dashed
+  /// `-YYYY-MM-DD` (e.g. `gpt-5-mini-2025-08-07`) and Anthropic's compact,
+  /// undashed `-YYYYMMDD` (e.g. `claude-haiku-4-5-20251001`) — the two do
+  /// not share a pattern, so both are matched explicitly rather than
+  /// widening one regex to accidentally admit the other's shape.
   private static func stripDateSnapshotSuffix(_ id: String) -> String {
-    guard
-      let r = id.range(
-        of: "-[0-9]{4}-[0-9]{2}-[0-9]{2}$", options: .regularExpression)
-    else { return id }
-    return String(id[..<r.lowerBound])
+    if let r = id.range(
+      of: "-[0-9]{4}-[0-9]{2}-[0-9]{2}$", options: .regularExpression)
+    {
+      return String(id[..<r.lowerBound])
+    }
+    if let r = id.range(of: "-[0-9]{8}$", options: .regularExpression) {
+      return String(id[..<r.lowerBound])
+    }
+    return id
   }
 
   private static func languageModeLabel(_ mode: LanguageMode) -> String {

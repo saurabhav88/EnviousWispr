@@ -43,6 +43,14 @@ struct PromptPlannerTests {
         is CloudFixedPromptBuilder)
   }
 
+  @Test("Claude -> cloudFixed (#158)")
+  func claudeFamily() {
+    #expect(DefaultPromptPlanner.family(for: .claude, modelID: "claude-haiku-4-5") == .cloudFixed)
+    #expect(
+      DefaultPromptPlanner.builder(for: .claude, modelID: "claude-haiku-4-5")
+        is CloudFixedPromptBuilder)
+  }
+
   @Test("Ollama + gemma model -> gemmaFewShot")
   func ollamaGemmaFamily() {
     #expect(DefaultPromptPlanner.family(for: .ollama, modelID: "gemma3:4b") == .gemmaFewShot)

@@ -106,7 +106,7 @@ struct ProviderStatusMappingTests {
 
   @Test("Cloud valid → Key valid / ready")
   func cloudValid() {
-    for p in [LLMProvider.openAI, .gemini] {
+    for p in [LLMProvider.openAI, .gemini, .claude] {
       let s = status(for: p, cloudValidation: .valid)
       #expect(s.label == "Key valid")
       #expect(s.tone == .ready)
@@ -129,7 +129,7 @@ struct ProviderStatusMappingTests {
   func cloudIdleWithSavedKey() {
     // A saved key loaded on settings-open leaves validation .idle; the chip must
     // not alarm the user with "Key needed" (cloud review PR #1293).
-    for p in [LLMProvider.openAI, .gemini] {
+    for p in [LLMProvider.openAI, .gemini, .claude] {
       let s = status(for: p, cloudValidation: .idle, cloudKeyPresent: true)
       #expect(s.label == "Not checked")
       #expect(s.tone == .unavailable)

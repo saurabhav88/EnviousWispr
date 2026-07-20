@@ -19,19 +19,20 @@ import Foundation
 /// Every one of those was a separately-found bug. Keeping them in a testable
 /// unit means the sequence itself is covered, not just its parts.
 ///
-/// #1697 added a count on screen and nearly broke step 1 doing it. A save
-/// panel's message must exist BEFORE the panel opens, so putting the count
-/// there would have forced the refresh ahead of the ask. Grounded review r2
-/// established what that actually costs: `refreshFromDiskIfPossible` is not an
-/// in-memory read. It can rewrite a legacy file during migration, move a
-/// corrupt file into an archive, latch session corruption state, and publish a
-/// replaced library to runtime consumers. Opening Export and CANCELLING would
-/// have done all of that — the exact bug step 1 exists to prevent.
+/// Step 1 is why the count is passed IN rather than computed here. Grounded
+/// review r2 established what a refresh actually costs: `refreshFromDiskIfPossible`
+/// is not an in-memory read. It can rewrite a legacy file during migration, move
+/// a corrupt file into an archive, latch session corruption state, and publish a
+/// replaced library to runtime consumers. Opening Export and CANCELLING must not
+/// do any of that.
 ///
-/// So the count is derived on screen, passed in as `proposedExportWords`, and
-/// verified after the destination is chosen. One filtering authority, two
-/// time-separated snapshots: the proposed array owns both the number the user
-/// saw and the bytes written; the refreshed array only proves nothing moved.
+/// #1697 read that constraint as also forbidding the count from appearing in the
+/// save dialog, and put a sentence on the Your Words screen instead; #1715 moved
+/// it back. The number never needed a refresh — it is derived on screen from the
+/// in-memory coordinator, handed in as `proposedExportWords`, and shown in the
+/// dialog the file comes out of. One filtering authority, two time-separated
+/// snapshots: the proposed array owns both the number the user saw and the bytes
+/// written; the refreshed array only proves nothing moved.
 @MainActor
 enum CustomWordsExportAction {
   enum Outcome: Equatable {

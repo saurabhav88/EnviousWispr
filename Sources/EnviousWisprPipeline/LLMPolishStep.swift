@@ -54,6 +54,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     switch provider {
     case .openAI: OpenAIConnector(keychainManager: keychain)
     case .gemini: GeminiConnector(keychainManager: keychain)
+    case .claude: ClaudeConnector(keychainManager: keychain)
     case .ollama: OllamaConnector()
     // #832/#913 PR8: the on-device output-safety classifier runs ONLY on Apple
     // Intelligence output (the path where AFM can compose artifacts). Injected
@@ -188,6 +189,19 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // skip for this provider (TextProcessingRunner), never a surfaced error.
     case .egOne: return .seconds(15)
     case .appleIntelligence: return .seconds(10)
+    // #158 pre-merge latency receipt (30 real calls, Haiku + Sonnet 4.6,
+    // short/medium/long): observed max 7.47s (Sonnet, long bucket), with
+    // two Haiku calls over 4.6s. The shared 5 s backstop below would
+    // truncate that real tail. The picker offers every live-discovered
+    // model, including several Opus tiers the bucketed receipt never
+    // measured — the separate all-models sweep recorded a real successful
+    // claude-opus-4-5-20251101 call at 9.16s (Codex r10), which would leave
+    // almost no margin under a 10s deadline before TextProcessingRunner
+    // cancels a valid in-flight polish and silently falls back to raw text.
+    // 15s matches Ollama/EG-1's existing local-generation precedent above
+    // rather than inventing a new number, with real headroom over the
+    // worst real value measured across every offered model so far.
+    case .claude: return .seconds(15)
     case .openAI, .gemini, .none: return .seconds(5)
     }
   }
@@ -396,6 +410,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       switch provider {
       case .openAI: KeychainManager.openAIKeyID
       case .gemini: KeychainManager.geminiKeyID
+      case .claude: KeychainManager.claudeKeyID
       default: nil
       }
 
@@ -809,7 +824,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       return (useExtendedThinking ? LLMConstants.defaultThinkingBudget : 0, nil)
     case .openAI:
       return (nil, useExtendedThinking ? "medium" : "low")
-    case .ollama, .appleIntelligence, .egOne, .none:
+    case .ollama, .appleIntelligence, .egOne, .claude, .none:
       return (nil, nil)
     }
   }

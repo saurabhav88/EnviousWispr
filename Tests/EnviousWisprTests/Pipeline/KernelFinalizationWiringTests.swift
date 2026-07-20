@@ -373,25 +373,27 @@ import Testing
       telemetryState: telemetryState)
   }
 
-  // MARK: Fallback metrics gate (#1624)
+  // MARK: Fallback metrics gate (#1624, widened #158)
   //
   // `KernelFinalizationWiring`'s real gate is `emitFallbackFields =
   // outcome.polishMetadata != nil || outcome.polishFallbackReason ==
-  // "empty_output_floor"` — drive it end to end (store, THEN deliver, since
-  // deliver is what calls updateTranscriptMetrics) rather than recomputing a
-  // simplified version of the condition inside the test.
+  // "empty_output_floor" || outcome.llmProvider != nil` — drive it end to
+  // end (store, THEN deliver, since deliver is what calls
+  // updateTranscriptMetrics) rather than recomputing a simplified version of
+  // the condition inside the test.
 
   @Test(
-    "non-AFM fallback reasons remain suppressed from metrics",
+    "with no provider stamped at all, fallback reasons remain suppressed from metrics",
     .bug(
       "https://github.com/saurabhav88/EnviousWispr/issues/1624",
       "fallback metrics gate was recomputed inside its test"
     )
   )
-  func nonAFMFallbackReasonIsSuppressed() async throws {
+  func unstampedFallbackReasonIsSuppressed() async throws {
     let outcome = KernelFinalizationOutcome()
     outcome.rawText = "original transcript text"
     outcome.polishMetadata = nil
+    outcome.llmProvider = nil
     outcome.pipelineFellBackToRaw = true
     outcome.polishFallbackReason = "validator_discard"
 
@@ -402,6 +404,30 @@ import Testing
     let metrics = try #require(outcome.transcript?.metrics)
     #expect(metrics.polishFellBackToRaw == nil)
     #expect(metrics.polishFallbackReason == nil)
+  }
+
+  @Test(
+    "issue #158: a successful non-AFM provider call whose output was rejected now emits honestly"
+  )
+  func claudeSuccessfulCallWithRejectedOutputEmitsFallback() async throws {
+    // Models the real production shape a successful "all other providers"
+    // polish call leaves behind (LLMPolishStep.swift's success path stamps
+    // llmProvider unconditionally, for every provider, not just AFM) — the
+    // validator rejected the polished output and fell back to raw.
+    let outcome = KernelFinalizationOutcome()
+    outcome.rawText = "original transcript text"
+    outcome.polishMetadata = nil
+    outcome.llmProvider = "claude"
+    outcome.pipelineFellBackToRaw = true
+    outcome.polishFallbackReason = "validator_discard"
+
+    let wiring = makeWiring(outcome: outcome)
+    try await wiring.store("original transcript text", UUID())
+    _ = await wiring.deliver("original transcript text")
+
+    let metrics = try #require(outcome.transcript?.metrics)
+    #expect(metrics.polishFellBackToRaw == true)
+    #expect(metrics.polishFallbackReason == "validator_discard")
   }
 
   @Test(

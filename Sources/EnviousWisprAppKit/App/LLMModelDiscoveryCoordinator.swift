@@ -44,8 +44,13 @@ final class LLMModelDiscoveryCoordinator {
     if provider == .ollama || provider == .appleIntelligence {
       apiKey = ""
     } else {
-      let keychainId =
-        provider == .openAI ? KeychainManager.openAIKeyID : KeychainManager.geminiKeyID
+      let keychainId: String
+      switch provider {
+      case .openAI: keychainId = KeychainManager.openAIKeyID
+      case .gemini: keychainId = KeychainManager.geminiKeyID
+      case .claude: keychainId = KeychainManager.claudeKeyID
+      default: keychainId = ""
+      }
       guard let key = try? keychainManager.retrieve(key: keychainId), !key.isEmpty else {
         // Missing-key guard: no validation actually ran, so NO
         // `api_key.validation_completed` event (#1173).
@@ -64,7 +69,10 @@ final class LLMModelDiscoveryCoordinator {
         cacheModels(models, for: provider)
       }
       keyValidationState = .valid
-      emitValidationCompleted(provider: provider, result: "valid", source: source)
+      emitValidationCompleted(
+        provider: provider, result: "valid", source: source,
+        modelCount: models.count,
+        discoveryOutcome: models.isEmpty ? "zero_models" : "models_found")
 
       settings.applyDiscoveredModels(models, for: provider)
     } catch LLMError.providerUnavailable {
@@ -89,16 +97,18 @@ final class LLMModelDiscoveryCoordinator {
   }
 
   /// #1173: emit `api_key.validation_completed` for a terminal validation result.
-  /// Provider identity only — never the key. Gated to OpenAI/Gemini (Codex r2):
-  /// Ollama and Apple Intelligence are keyless local providers, so their
-  /// discovery outcome is NOT an API-key validation and must stay out of the
-  /// `api_key.*` metrics.
+  /// Provider identity only — never the key. Gated to real cloud BYOK providers
+  /// (Codex r2; widened to include Claude, issue #158): Ollama and Apple
+  /// Intelligence are keyless local providers, so their discovery outcome is
+  /// NOT an API-key validation and must stay out of the `api_key.*` metrics.
   private func emitValidationCompleted(
-    provider: LLMProvider, result: String, source: ApiKeyValidationSource
+    provider: LLMProvider, result: String, source: ApiKeyValidationSource,
+    modelCount: Int? = nil, discoveryOutcome: String? = nil
   ) {
-    guard provider == .openAI || provider == .gemini else { return }
+    guard provider == .openAI || provider == .gemini || provider == .claude else { return }
     TelemetryService.shared.apiKeyValidationCompleted(
-      provider: provider.rawValue, result: result, source: source.rawValue)
+      provider: provider.rawValue, result: result, source: source.rawValue,
+      modelCount: modelCount, discoveryOutcome: discoveryOutcome)
   }
 
   /// Load cached models from UserDefaults for the given provider.

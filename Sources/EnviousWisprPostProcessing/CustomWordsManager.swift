@@ -807,28 +807,14 @@ public final class CustomWordsManager {
   static func enforceAliases(
     on words: [CustomWord], touchedOrder: [UUID]
   ) -> (words: [CustomWord], dropped: [CustomWordsImportAliasCollision]) {
-    let touchedIDs = Set(touchedOrder)
-    var canonicalOwners: [String: UUID] = [:]
-    for word in words {
-      let key = importPersistenceKey(word.canonical)
-      if canonicalOwners[key] == nil { canonicalOwners[key] = word.id }
-    }
-
-    // Untouched words register first and are never modified, so an incumbent
-    // alias always outranks an imported one. Among two untouched words sharing
-    // an alias the LAST one wins, mirroring `WordCorrector.buildLookups`'s
-    // unconditional assignment (WordCorrector.swift:180-205) — the receipt's
-    // `heldBy` has to name the word that really holds the trigger.
-    var aliasOwners: [String: UUID] = [:]
-    for word in words where !touchedIDs.contains(word.id) {
-      for alias in word.aliases {
-        let key = importPersistenceKey(alias)
-        if !key.isEmpty { aliasOwners[key] = word.id }
-      }
-    }
-
+    // Ownership comes from `WordCorrector`, not from a third copy of its rules
+    // (#1667). This function used to mirror them itself, keyed on
+    // `importPersistenceKey`, which has no no-space surface at all — so an
+    // imported alias equal to an existing multi-word canonical's space-free
+    // form was KEPT here even once the compare screen had learned to disclose
+    // it. The screen said one thing and the commit did another; the alias was
+    // saved and then never fired.
     var result = words
-    var dropped: [CustomWordsImportAliasCollision] = []
     // Last wins, and the list must not be assumed id-unique. Renaming a
     // built-in stores a user override carrying the built-in's OWN id while
     // `mergedWords` keeps showing the built-in (its canonical no longer
@@ -838,31 +824,82 @@ public final class CustomWordsManager {
     // user's own word — the one an import can legitimately touch.
     let indexByID = Dictionary(
       result.indices.map { (result[$0].id, $0) }, uniquingKeysWith: { _, last in last })
+
+    // Canonical ownership is resolved by handing the WHOLE final array — the
+    // exact array the runtime corrector will build its own lookups from — to
+    // the one authority, in its own FINAL STORAGE order. A first version tried
+    // to replay just the touched canonicals in APPLY order instead. That is
+    // wrong: the compound namespace's last-write-wins rule is about storage
+    // order, because that is the order `buildExactTriggerIndex` iterates when
+    // it runs for real on the saved file. Apply order can name a winner the
+    // corrector itself would never produce (grounded review r7, #1667).
+    //
+    // Touched words' proposed final aliases are stripped from this seed,
+    // because their surviving aliases are decided by the loop below in the
+    // plan's approved order — that precedence is a genuinely separate,
+    // already-established rule this pass must not disturb. Canonicals stay,
+    // so ownership is still resolved from the complete final vocabulary.
+    let touchedIndices = Set(touchedOrder.compactMap { indexByID[$0] })
+    let ownershipSeed = result.indices.map { wordIndex -> CustomWord in
+      var word = result[wordIndex]
+      if touchedIndices.contains(wordIndex) { word.aliases = [] }
+      return word
+    }
+    var index = WordCorrector.buildExactTriggerIndex(words: ownershipSeed)
+
+    /// The owner that would beat this word to a surface, if any. Holding a key
+    /// is not always intercepting it — see `WordCorrector.ownerIntercepts`.
+    func blocker(
+      of claim: WordCorrector.ExactTriggerClaim, surface: String, for wordID: UUID
+    ) -> WordCorrector.TriggerOwner? {
+      guard let holder = index.owner(of: claim), holder.wordID != wordID else { return nil }
+      return WordCorrector.ownerIntercepts(claim: claim, rawSurface: surface, owner: holder)
+        ? holder : nil
+    }
+
+    var dropped: [CustomWordsImportAliasCollision] = []
     for id in touchedOrder {
-      guard let index = indexByID[id] else { continue }
-      let word = result[index]
+      guard let wordIndex = indexByID[id] else { continue }
+      let word = result[wordIndex]
       let canonicalKey = importPersistenceKey(word.canonical)
       var kept: [String] = []
       for alias in word.aliases {
-        let key = importPersistenceKey(alias)
-        if key.isEmpty { continue }
+        if importPersistenceKey(alias).isEmpty { continue }
         // Redundant with the word's own canonical: silently removed, never
         // reported — it is not an ambiguity anyone needs to hear about.
-        if key == canonicalKey { continue }
-        if let owner = canonicalOwners[key], owner != word.id {
-          dropped.append(CustomWordsImportAliasCollision(alias: alias, heldBy: owner))
+        if importPersistenceKey(alias) == canonicalKey { continue }
+
+        let claims = WordCorrector.exactClaims(forAlias: alias)
+        if claims.isEmpty { continue }
+
+        // Evaluate every claim before registering any: the stored alias is the
+        // unit kept or dropped, so a partially-registered alias that is then
+        // dropped would leave an owner that does not exist and wrongly block a
+        // later one. Same atomicity rule the compare engine follows.
+        let blockers = claims.compactMap { claim in
+          blocker(of: claim, surface: alias, for: word.id).map { (claim: claim, owner: $0) }
+        }
+        if let decisive = blockers.min(by: {
+          $0.claim.namespace.passPriority < $1.claim.namespace.passPriority
+        }) {
+          dropped.append(
+            CustomWordsImportAliasCollision(alias: alias, heldBy: decisive.owner.wordID))
           continue
         }
-        if let owner = aliasOwners[key] {
-          if owner != word.id {
-            dropped.append(CustomWordsImportAliasCollision(alias: alias, heldBy: owner))
-          }
-          continue
-        }
-        aliasOwners[key] = word.id
+
+        // Gap-fill, never overwrite. An alias reaches here unblocked for one of
+        // three reasons: nobody holds the key, this word already holds it, or a
+        // compound holder declines to intercept. In that last case the holder
+        // must STAY registered, because at runtime an alias only ever fills an
+        // empty compound slot. Overwriting handed the key to the wrong word.
+        index.gapFill(
+          claims,
+          owner: WordCorrector.TriggerOwner(
+            wordID: word.id, canonical: word.canonical, isPack: false)
+        )
         kept.append(alias)
       }
-      result[index].aliases = kept
+      result[wordIndex].aliases = kept
     }
     return (result, dropped)
   }

@@ -91,4 +91,17 @@ struct LLMProviderCapabilityTests {
       #expect(c.temperaturePolicy == .include)
     }
   }
+
+  // MARK: - Claude (#158): never reasons, always omits temperature
+
+  @Test(arguments: [
+    "claude-haiku-4-5", "claude-haiku-4-5-20251001", "claude-sonnet-5",
+    "claude-opus-4-8", "claude-fable-5",
+  ])
+  func claudeNeverReasonsAndOmitsTemperature(model: String) {
+    let c = LLMProvider.claude.modelCapabilities(model: model)
+    #expect(!c.supportsReasoning)
+    #expect(c.temperaturePolicy == .omit)
+    #expect(!c.supportsChatCompletions)
+  }
 }

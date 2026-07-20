@@ -9,6 +9,9 @@ import {
   hogql,
   runLimited,
   fetchReportData,
+  runReport,
+  resolveDevIds,
+  productionClauseFor,
   PostHogQueryError,
 } from "../src/index.js";
 
@@ -124,6 +127,19 @@ test("resolveBuckets: zero active users is not a divide-by-zero / throw case", (
   assert.deepEqual(polishBuckets, {});
 });
 
+// ---- productionClauseFor (#1720) ----
+
+test("productionClauseFor: empty dev-id list uses bare ENV_ONLY, never NOT IN ()", () => {
+  const clause = productionClauseFor([]);
+  assert.doesNotMatch(clause, /NOT IN/);
+  assert.match(clause, /properties\.environment = 'production'/);
+});
+
+test("productionClauseFor: non-empty list appends a literal NOT IN exclusion", () => {
+  const clause = productionClauseFor(["dev-1", "dev-2"]);
+  assert.match(clause, /NOT IN \('dev-1', 'dev-2'\)/);
+});
+
 // ---- buildMessage ----
 // Golden fixture: real production numbers from a live-query-smoke.mjs run
 // against the ACTUAL implemented queries (2026-07-08 Eastern calendar day,
@@ -175,6 +191,8 @@ test("buildMessage: golden fixture matches the founder-approved report shape", (
   assert.match(msg, /Top 5 users by dictation volume: 557, 139, 113, 94, 70\./);
   // No em-dashes/en-dashes anywhere (global CLAUDE.md Rule 6).
   assert.doesNotMatch(msg, /[–—]/);
+  // Nothing degraded on the golden run - no "temporarily unavailable" wording.
+  assert.doesNotMatch(msg, /temporarily unavailable/);
 });
 
 test("buildMessage: zero-count buckets are omitted, not shown as '(0%)'", () => {
@@ -191,6 +209,71 @@ test("buildMessage: zero total_users omits the engine/polish section entirely (n
   assert.doesNotMatch(msg, /Transcription engine/);
   assert.doesNotMatch(msg, /AI polishing/);
   assert.match(msg, /Total users: 0 people used the app today\./);
+});
+
+// ---- buildMessage: per-section fail-soft degradation (#1720) ----
+//
+// Each of the 5 non-essential primary queries can independently degrade to
+// "temporarily unavailable" - never a fabricated zero or empty list shown as
+// real data - while the rest of the report still ships. `totals` never
+// degrades (verified separately below via fetchReportData/runReport).
+
+test("buildMessage: installsDegraded omits the freshInstalls number, keeps onboarding intact", () => {
+  const msg = buildMessage("2026-07-08", { ...GOLDEN_DATA, installsDegraded: true }, GOLDEN_BUCKETS);
+  assert.match(msg, /New installs: temporarily unavailable\./);
+  assert.doesNotMatch(msg, /New installs: 90/);
+  assert.match(msg, /People who finished setup today: 82\. Of those, 60 also dictated today\./);
+  assert.match(msg, /Note: .*new installs/);
+});
+
+test("buildMessage: onboardActivateDegraded omits onboarding, keeps installs intact", () => {
+  const msg = buildMessage("2026-07-08", { ...GOLDEN_DATA, onboardActivateDegraded: true }, GOLDEN_BUCKETS);
+  assert.match(msg, /New installs: 90\./);
+  assert.match(msg, /Onboarding and activation: temporarily unavailable\./);
+  assert.doesNotMatch(msg, /People who finished setup today/);
+  assert.match(msg, /Note: .*onboarding\/activation/);
+});
+
+test("buildMessage: engineAndTierBDegraded omits both engine and polish lines, never fabricates a bucket", () => {
+  const msg = buildMessage("2026-07-08", { ...GOLDEN_DATA, engineAndTierBDegraded: true }, GOLDEN_BUCKETS);
+  assert.match(msg, /Transcription engine and AI-polish breakdown: temporarily unavailable\./);
+  assert.doesNotMatch(msg, /Parakeet/);
+  assert.doesNotMatch(msg, /Apple Intelligence/);
+  assert.match(msg, /Note: .*transcription engine and AI-polish breakdown/);
+});
+
+test("buildMessage: geoDegraded omits the countries line, not an empty list shown as zero data", () => {
+  const msg = buildMessage("2026-07-08", { ...GOLDEN_DATA, geoDegraded: true }, GOLDEN_BUCKETS);
+  assert.match(msg, /Where they are: temporarily unavailable\./);
+  assert.doesNotMatch(msg, /Germany/);
+  assert.match(msg, /Note: .*where they are/);
+});
+
+test("buildMessage: top5Degraded omits the top-users line", () => {
+  const msg = buildMessage("2026-07-08", { ...GOLDEN_DATA, top5Degraded: true }, GOLDEN_BUCKETS);
+  assert.match(msg, /Top 5 users by dictation volume: temporarily unavailable\./);
+  assert.doesNotMatch(msg, /557, 139/);
+  assert.match(msg, /Note: .*top 5 users/);
+});
+
+test("buildMessage: multiple degraded sections all appear in one combined note", () => {
+  const msg = buildMessage(
+    "2026-07-08",
+    { ...GOLDEN_DATA, installsDegraded: true, geoDegraded: true },
+    GOLDEN_BUCKETS
+  );
+  const noteLine = msg.split("\n").find((l) => l.startsWith("Note:"));
+  assert.ok(noteLine, "expected one combined Note line");
+  assert.match(noteLine, /new installs/);
+  assert.match(noteLine, /where they are/);
+});
+
+test("buildMessage: totals never has a degrade flag - no such branch exists", () => {
+  // totals staying fail-loud means fetchReportData/runReport throw before
+  // buildMessage is ever called with degraded totals data - there is no
+  // totalsDegraded field to test here by design (see fetchReportData tests).
+  const msg = buildMessage("2026-07-08", GOLDEN_DATA, GOLDEN_BUCKETS);
+  assert.doesNotMatch(msg, /Total users: temporarily unavailable/);
 });
 
 // ---- Source-level guardrail: every list-returning query still carries an
@@ -263,7 +346,7 @@ test("runLimited: rejects a non-positive-integer limit", async () => {
   await assert.rejects(() => runLimited([() => Promise.resolve(1)], 0), TypeError);
 });
 
-// ---- hogql retry (#1588 - PostHog project concurrency limit / 504s) ----
+// ---- hogql retry (#1588/#1720 - PostHog project concurrency limit / 5xx / 429) ----
 
 function fakeResponse(status, body, { onCancel } = {}) {
   return {
@@ -274,7 +357,7 @@ function fakeResponse(status, body, { onCancel } = {}) {
   };
 }
 
-test("hogql: retries once on 504 then succeeds, without a real delay", async () => {
+test("hogql: retries on 504, waits within the attempt-2 backoff range, then succeeds", async () => {
   let calls = 0;
   const fetchFn = async () => {
     calls += 1;
@@ -285,10 +368,44 @@ test("hogql: retries once on 504 then succeeds, without a real delay", async () 
   const json = await hogql({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, "SELECT 1", "test_query", {
     fetchFn,
     sleepFn,
+    randomFn: () => 0, // pins the delay to the range floor for a deterministic assertion
   });
   assert.deepEqual(json.results, [[1]]);
   assert.equal(calls, 2);
-  assert.deepEqual(sleeps, [1500]);
+  assert.deepEqual(sleeps, [12_000], "attempt 2's backoff floor is 12s");
+});
+
+test("hogql: retries on 429 (previously threw immediately)", async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return calls === 1 ? fakeResponse(429) : fakeResponse(200, { results: [[1]] });
+  };
+  const json = await hogql({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, "SELECT 1", "test_query", {
+    fetchFn,
+    sleepFn: async () => {},
+  });
+  assert.deepEqual(json.results, [[1]]);
+  assert.equal(calls, 2, "429 must be retried, not thrown immediately");
+});
+
+test("hogql: retry delay for attempt 3 falls within the documented 30-45s backoff range", async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return calls < 3 ? fakeResponse(503) : fakeResponse(200, { results: [[1]] });
+  };
+  const sleeps = [];
+  const json = await hogql({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, "SELECT 1", "test_query", {
+    fetchFn,
+    sleepFn: async (ms) => sleeps.push(ms),
+    // Math.random() returns [0, 1), never exactly 1 - 0.5 is a realistic
+    // midpoint probe, not an out-of-domain edge value.
+    randomFn: () => 0.5,
+  });
+  assert.deepEqual(json.results, [[1]]);
+  assert.equal(calls, 3);
+  assert.deepEqual(sleeps, [15_000, 37_500], "attempt 2 midpoint is 15s, attempt 3 midpoint is 37.5s");
 });
 
 // Codex code-diff review, round 2 (#1588): an earlier draft of the retry
@@ -324,7 +441,7 @@ test("hogql: does not retry on a non-transient 4xx status", async () => {
   assert.equal(calls, 1, "must not retry a non-transient status");
 });
 
-test("hogql: throws with the query name after exhausting retries on repeated 504", async () => {
+test("hogql: throws with the query name after exhausting all 3 attempts on repeated 504", async () => {
   let calls = 0;
   const fetchFn = async () => {
     calls += 1;
@@ -338,10 +455,45 @@ test("hogql: throws with the query name after exhausting retries on repeated 504
       }),
     /PostHog query engine_and_tier_b HTTP 504/
   );
-  assert.equal(calls, 2, "expected exactly 2 attempts total");
+  assert.equal(calls, 3, "expected exactly 3 attempts total (#1720 raised this from 2)");
 });
 
-// ---- tier-a fail-soft boundary (#1655) ----
+// ---- resolveDevIds (#1720) ----
+
+test("resolveDevIds: accepts hogqlOpts so its own retry path is test-deterministic", async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return calls === 1 ? fakeResponse(504) : fakeResponse(200, { results: [["dev-1"]] });
+  };
+  const devIds = await resolveDevIds({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, {
+    fetchFn,
+    sleepFn: async () => {},
+  });
+  assert.deepEqual(devIds, ["dev-1"]);
+  assert.equal(calls, 2, "resolveDevIds' own hogql call retries like any other query");
+});
+
+test("resolveDevIds: throws on overflow rather than silently building a truncated exclusion list", async () => {
+  // PER_USER_LIST_LIMIT is 5000; simulate a result over that ceiling via the
+  // LIMIT+1 query shape - the fetchFn doesn't need to know the real limit,
+  // it just needs to return more than 5000 rows.
+  const overflowRows = Array.from({ length: 5001 }, (_, i) => [`dev-${i}`]);
+  const fetchFn = async () => fakeResponse(200, { results: overflowRows });
+  await assert.rejects(
+    () => resolveDevIds({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, { fetchFn }),
+    /dev-id completeness check failed/,
+    "must fail loud on overflow, never silently truncate"
+  );
+});
+
+test("resolveDevIds: an empty result is a valid, non-throwing state", async () => {
+  const fetchFn = async () => fakeResponse(200, { results: [] });
+  const devIds = await resolveDevIds({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, { fetchFn });
+  assert.deepEqual(devIds, []);
+});
+
+// ---- fail-soft boundary: tier-a (#1655) and all 6 primary queries (#1720) ----
 //
 // These MUST drive fetchReportData, not hogql in isolation: the defect they
 // guard against (a blanket catch silently swallowing real errors) lives in
@@ -350,18 +502,38 @@ test("hogql: throws with the query name after exhausting retries on repeated 504
 // fetchFn, so the mock is installed on globalThis.fetch and dispatches on the
 // query name the worker puts in the request body.
 
-/** Installs a global fetch that lets every batch query succeed and lets the
- * caller decide what tier-a (or a named other query) does. Returns a restore fn. */
+/** Installs a global fetch that lets every batch query (including the new
+ * dev_ids preflight) succeed and lets the caller decide what one named query
+ * does. Also transparently succeeds any non-PostHog call (the Discord
+ * webhook POST runReport makes after a successful report - its body is
+ * `{content}`, with no `.name` field, unlike every hogql() request body) so
+ * tests can drive runReport end-to-end, not just fetchReportData. Returns a
+ * restore fn. */
 function mockPostHog({ failQuery, failWith }) {
   const realFetch = globalThis.fetch;
   const seen = [];
   globalThis.fetch = async (_url, init) => {
-    const name = JSON.parse(init.body).name; // "daily_report_<queryName>"
-    const queryName = name.replace(/^daily_report_/, "");
+    const body = init?.body ? JSON.parse(init.body) : {};
+    if (!body.name) {
+      return fakeResponse(204); // Discord webhook success shape, not a PostHog call
+    }
+    const queryName = body.name.replace(/^daily_report_/, "");
     seen.push(queryName);
     if (queryName === failQuery) {
       if (failWith instanceof Error) throw failWith;
       return fakeResponse(failWith);
+    }
+    // dev_ids: empty list is the common, valid case - keeps every downstream
+    // query's ${prod} predicate as plain ENV_ONLY in these tests.
+    if (queryName === "dev_ids") {
+      return fakeResponse(200, { results: [] });
+    }
+    // totals' total_users must match engine_and_tier_b's row count (1, "u1"),
+    // or resolveBuckets' completeness check throws on tests that chain all
+    // the way through runReport - the generic fallback below returns an
+    // unrelated {c: 0} shape that would falsely trip that check.
+    if (queryName === "totals") {
+      return fakeResponse(200, { results: [[42, 1]], columns: ["net_dictations", "total_users"] });
     }
     // engine_and_tier_b must return a non-empty id list, or tier-a is skipped
     // entirely and the degrade path is never reached.
@@ -439,31 +611,137 @@ test("tier-a: an ordinary Error still throws (no silent swallow)", async () => {
   }
 });
 
-test("a failure in a query OTHER than tier-a still fails the whole report", async () => {
+test("totals: an exhausted 504 still fails the whole report - the sole fail-loud primary query", async () => {
   const mock = mockPostHog({ failQuery: "totals", failWith: 504 });
   try {
     await assert.rejects(
       () => fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} }),
       /PostHog query totals HTTP 504/,
-      "fail-soft is scoped to tier-a only"
+      "totals must never degrade - it anchors resolveBuckets' completeness check"
     );
   } finally {
     mock.restore();
   }
 });
 
-test("a clean run leaves tierADegraded false", async () => {
-  const mock = mockPostHog({ failQuery: null });
+test("resolveDevIds: an exhausted 504 fails the whole report, never silently treated as 'no dev ids'", async () => {
+  const mock = mockPostHog({ failQuery: "dev_ids", failWith: 504 });
   try {
-    const data = await fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} });
-    assert.equal(data.tierADegraded, false);
-    assert.equal(data.tierA.length, 1);
+    await assert.rejects(
+      () => fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} }),
+      /PostHog query dev_ids HTTP 504/
+    );
   } finally {
     mock.restore();
   }
 });
 
-// ---- degraded note placement (#1655) ----
+test("a clean run leaves tierADegraded false and every other degraded flag false", async () => {
+  const mock = mockPostHog({ failQuery: null });
+  try {
+    const data = await fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} });
+    assert.equal(data.tierADegraded, false);
+    assert.equal(data.tierA.length, 1);
+    for (const key of ["installsDegraded", "onboardActivateDegraded", "engineAndTierBDegraded", "geoDegraded", "top5Degraded"]) {
+      assert.equal(data[key], false, `expected ${key} to be false on a clean run`);
+    }
+  } finally {
+    mock.restore();
+  }
+});
+
+// ---- fail-soft: the 5 non-essential primary queries individually (#1720) ----
+
+for (const queryName of ["installs", "onboard_activate", "engine_and_tier_b", "geo", "top5"]) {
+  test(`${queryName}: an exhausted 504 degrades that section instead of failing the whole report`, async () => {
+    const mock = mockPostHog({ failQuery: queryName, failWith: 504 });
+    try {
+      const data = await fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} });
+      const degradedKey = {
+        installs: "installsDegraded",
+        onboard_activate: "onboardActivateDegraded",
+        engine_and_tier_b: "engineAndTierBDegraded",
+        geo: "geoDegraded",
+        top5: "top5Degraded",
+      }[queryName];
+      assert.equal(data[degradedKey], true, `expected ${degradedKey} to be true`);
+    } finally {
+      mock.restore();
+    }
+  });
+
+  test(`${queryName}: a NON-retryable failure (401) still throws, no silent swallow`, async () => {
+    const mock = mockPostHog({ failQuery: queryName, failWith: 401 });
+    try {
+      await assert.rejects(
+        () => fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} }),
+        (err) => err instanceof PostHogQueryError && err.status === 401
+      );
+    } finally {
+      mock.restore();
+    }
+  });
+}
+
+test("engineAndTierBDegraded also empties activeIds, so tier_a is naturally skipped (not separately queried)", async () => {
+  const mock = mockPostHog({ failQuery: "engine_and_tier_b", failWith: 504 });
+  try {
+    const data = await fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} });
+    assert.equal(data.engineAndTierBDegraded, true);
+    assert.deepEqual(data.engineAndTierB, []);
+    assert.equal(data.tierADegraded, false, "tier_a was never attempted, so it is not itself degraded");
+    assert.ok(!mock.seen.includes("tier_a"), "tier_a must not be queried when there are no active ids to enrich");
+  } finally {
+    mock.restore();
+  }
+});
+
+// ---- runReport: engineAndTierBDegraded skips resolveBuckets entirely (#1720) ----
+//
+// Proven via an injected/spied deps.resolveBuckets, not just output
+// inspection - a test asserting only on runReport's return value can't
+// distinguish "resolveBuckets ran and happened to produce empty buckets"
+// from "resolveBuckets was never called." deps.hogqlOpts is also injected so
+// the exhausted-retry path here doesn't sit through real backoff delays.
+
+test("runReport: engineAndTierBDegraded means resolveBuckets is never called, and the report still renders", async () => {
+  const mock = mockPostHog({ failQuery: "engine_and_tier_b", failWith: 504 });
+  let resolveBucketsCalls = 0;
+  const spyResolveBuckets = (data) => {
+    resolveBucketsCalls += 1;
+    return resolveBuckets(data);
+  };
+  try {
+    const message = await runReport(TEST_ENV, "2026-07-17", {
+      resolveBuckets: spyResolveBuckets,
+      hogqlOpts: { sleepFn: async () => {} },
+    });
+    assert.equal(resolveBucketsCalls, 0, "resolveBuckets must not be called when engineAndTierB degraded");
+    assert.match(message, /Transcription engine and AI-polish breakdown: temporarily unavailable\./);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("runReport: a clean run DOES call resolveBuckets (the spy is a real trigger, not always-skipped)", async () => {
+  const mock = mockPostHog({ failQuery: null });
+  let resolveBucketsCalls = 0;
+  const spyResolveBuckets = (data) => {
+    resolveBucketsCalls += 1;
+    return resolveBuckets(data);
+  };
+  try {
+    await runReport(TEST_ENV, "2026-07-17", {
+      resolveBuckets: spyResolveBuckets,
+      hogqlOpts: { sleepFn: async () => {} },
+    });
+    assert.equal(resolveBucketsCalls, 1, "expected resolveBuckets to run exactly once on a clean report");
+  } finally {
+    mock.restore();
+  }
+});
+
+// ---- degraded note placement (#1655/#1720) ----
 
 test("degraded note appears near the top, above the truncation point", () => {
   // A long report: enough geo/top5 volume to push the tail past the 1990-char
@@ -484,29 +762,87 @@ test("degraded note appears near the top, above the truncation point", () => {
 test("no degraded note on a clean run", () => {
   const msg = buildMessage("2026-07-17", { ...GOLDEN_DATA, tierADegraded: false }, GOLDEN_BUCKETS);
   assert.doesNotMatch(msg, /approximate/);
+  assert.doesNotMatch(msg, /^Note:/m);
 });
 
-// ---- load-bearing coupling guard (#1655) ----
+// ---- load-bearing coupling guards ----
 //
-// tier-a may omit PROD's dev-ID exclusion ONLY because activeIds already came
-// from a full-PROD query. If a future edit breaks that coupling, the omission
-// silently becomes a correctness bug rather than a redundancy removal.
+// tier-a and activeUsersSubquery may each omit the whole-history dev-ID
+// exclusion ONLY because the population they're tested against was already
+// filtered by the report's shared `${prod}` predicate elsewhere. If a future
+// edit breaks that coupling, the omission silently becomes a correctness
+// bug rather than a redundancy removal.
 
-test("source guardrail: tier-a may omit dev exclusion only while active ids come from full PROD", async () => {
+test("source guardrail: tier-a may omit dev exclusion only while active ids come from the full production predicate", async () => {
   const fs = await import("node:fs");
   const src = fs.readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
 
   const engineQuery = src.match(/const engineAndTierBSql = `([\s\S]*?)`;/)?.[1];
   assert.ok(engineQuery, "expected engineAndTierBSql");
-  assert.match(engineQuery, /\$\{PROD\}/);
+  assert.match(engineQuery, /\$\{prod\}/);
 
   const tierAFunction = src.match(/function tierASqlFor\([\s\S]*?\n}\n/)?.[0];
   assert.ok(tierAFunction, "expected tierASqlFor");
-  assert.match(tierAFunction, /properties\.environment = 'production'/);
-  assert.doesNotMatch(tierAFunction, /\$\{PROD\}/);
+  assert.match(tierAFunction, /\$\{ENV_ONLY\}/);
+  assert.doesNotMatch(tierAFunction, /\$\{prod\}/);
   assert.equal(
     (tierAFunction.match(/distinct_id IN \(\$\{ids\}\)/g) || []).length,
     2,
     "both tier-a UNION branches must remain restricted to the pre-filtered active-id list"
   );
+});
+
+test("source guardrail: onboard-activate's active-user lookup may omit dev exclusion only while its own outer WHERE keeps the full predicate", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+
+  const activeUsersFunction = src.match(/function activeUsersSubquery\([\s\S]*?\n}\n/)?.[0];
+  assert.ok(activeUsersFunction, "expected activeUsersSubquery");
+  assert.match(activeUsersFunction, /\$\{ENV_ONLY\}/);
+  assert.doesNotMatch(activeUsersFunction, /\$\{prod\}/);
+
+  const onboardActivateQuery = src.match(/const onboardActivateSql = `([\s\S]*?)`;/)?.[1];
+  assert.ok(onboardActivateQuery, "expected onboardActivateSql");
+  assert.match(
+    onboardActivateQuery,
+    /WHERE event = 'onboarding\.completed' AND \$\{prod\} AND \$\{win\}/,
+    "the outer onboarding.completed filter must keep the full production predicate - activeUsersSubquery's env-only shortcut depends on it"
+  );
+});
+
+test("source guardrail: all 6 primary *Sql builders reference the shared ${prod} predicate, none re-embeds a raw dev-exclusion subquery", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+
+  for (const name of ["installsSql", "onboardActivateSql", "totalsSql", "engineAndTierBSql", "geoSql", "top5Sql"]) {
+    const query = src.match(new RegExp(`const ${name} = \`([\\s\\S]*?)\`;`))?.[1];
+    assert.ok(query, `expected ${name}`);
+    assert.match(query, /\$\{prod\}/, `${name} must reference the shared \${prod} predicate`);
+    assert.doesNotMatch(
+      query,
+      /app_version LIKE/,
+      `${name} must not re-embed the raw dev-exclusion subquery inline`
+    );
+  }
+});
+
+// ---- worst-case fetch-count bound (#1720, R1/R4 corrections) ----
+//
+// This worker is invoked via an incoming HTTP fetch (no Cloudflare hard
+// wall-time limit for that invocation type); the real caps are total
+// subrequests (50) and concurrent subrequests (6) per incoming request.
+// This test locks the arithmetic, not a wall-clock duration.
+
+test("worst-case explicit fetch count stays under Cloudflare's 50-subrequest cap", () => {
+  const PRIMARY_QUERIES = 6; // installs, onboard_activate, totals, engine_and_tier_b, geo, top5
+  const PREFLIGHT_QUERIES = 1; // resolveDevIds
+  const CONDITIONAL_QUERIES = 1; // tier_a, only when activeIds is non-empty
+  const MAX_ATTEMPTS_PER_QUERY = 3; // #1720 raised this from 2
+  const DISCORD_POSTS = 1;
+
+  const worstCase =
+    (PRIMARY_QUERIES + PREFLIGHT_QUERIES + CONDITIONAL_QUERIES) * MAX_ATTEMPTS_PER_QUERY + DISCORD_POSTS;
+
+  assert.equal(worstCase, 25);
+  assert.ok(worstCase < 50, "worst-case fetch count must stay under Cloudflare's 50-subrequest-per-request cap");
 });

@@ -13,7 +13,7 @@
 // `kSecUseDataProtectionKeychain` is the only reliable probe.
 //
 // Usage (interactive, founder-driven):
-//   swift scripts/uat/keychain-verify.swift                  # check both keys
+//   swift scripts/uat/keychain-verify.swift                  # check all three keys
 //   swift scripts/uat/keychain-verify.swift openai-api-key   # check just one
 //
 // Output is JSON for easy capture into .validation/runs/<id>/keychain-verify-*.json.
@@ -22,7 +22,7 @@ import Foundation
 import Security
 
 let productionService = "com.enviouswispr.app.api-keys"
-let defaultAccounts = ["openai-api-key", "gemini-api-key"]
+let defaultAccounts = ["openai-api-key", "gemini-api-key", "claude-api-key"]
 
 struct AccountResult: Encodable {
   let account: String
