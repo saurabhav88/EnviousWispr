@@ -159,11 +159,18 @@ package actor CustomWordsImportCompareEngine {
       }
     }
 
-    let collisions = try Self.detectAliasCollisions(
-      coalesced: coalesced, existingWords: existingWords)
-
-    var results: [CustomWordsImportComparison] = []
-    results.reserveCapacity(coalesced.count)
+    // Classify before detecting collisions, not after: only a `.new` row can
+    // ever be committed as an addition (`CustomWordsImportReviewRow.swift`);
+    // exact/variant/fuzzy/ambiguous rows are matches against something that
+    // already exists and are never themselves persisted as a fresh word. Only
+    // `.new` candidates may participate in provisional batch ownership — a
+    // forced-Skip or matched row must not be able to steal a trigger key away
+    // from its own real incumbent, or from another candidate that will
+    // actually be added (grounded review r6, #1667).
+    var classified:
+      [(candidate: CustomWordsImportCandidate, classification: CustomWordsImportClassification)] =
+        []
+    classified.reserveCapacity(coalesced.count)
     for candidate in coalesced {
       try Task.checkCancellation()
       let classification = Self.classify(
@@ -173,11 +180,27 @@ package actor CustomWordsImportCompareEngine {
         fuzzyIndexByLength: fuzzyIndexByLength,
         fuzzyPolicy: fuzzyPolicy
       )
+      classified.append((candidate, classification))
+    }
+    let participatingCandidateIDs = Set(
+      classified.compactMap { entry -> UUID? in
+        guard case .new = entry.classification else { return nil }
+        return entry.candidate.id
+      })
+
+    let collisions = try Self.detectAliasCollisions(
+      coalesced: coalesced,
+      existingWords: existingWords,
+      participatingCandidateIDs: participatingCandidateIDs)
+
+    var results: [CustomWordsImportComparison] = []
+    results.reserveCapacity(classified.count)
+    for entry in classified {
       results.append(
         CustomWordsImportComparison(
-          candidate: candidate,
-          classification: classification,
-          collidingAliases: collisions[candidate.id] ?? []
+          candidate: entry.candidate,
+          classification: entry.classification,
+          collidingAliases: collisions[entry.candidate.id] ?? []
         ))
     }
     return results
@@ -502,15 +525,26 @@ package actor CustomWordsImportCompareEngine {
   /// `suggestedAliases`, since enrichment has not run at compare time and a
   /// colliding suggestion is enforced-and-receipted at commit instead. Only the
   /// LOSING side is ever flagged; a winner's alias is not at risk.
+  /// - Parameter participatingCandidateIDs: candidates whose OWN canonical and
+  ///   aliases may become batch owners other candidates can collide against.
+  ///   Only a `.new`-classified candidate can ever be persisted as a fresh
+  ///   word (`CustomWordsImportReviewRow.swift`); an exact/variant/fuzzy/
+  ///   ambiguous match is not itself added, so it must not be able to steal a
+  ///   trigger key away from its own real incumbent or from a candidate that
+  ///   will actually be added (grounded review r6, #1667). This governs
+  ///   OWNERSHIP only — every candidate's own aliases are still evaluated for
+  ///   disclosure below, matching the decision-agnostic preview policy
+  ///   (`aliasOwnedByTheCandidatesOwnExactMatchRemainsDisclosed`).
   static func detectAliasCollisions(
     coalesced: [CustomWordsImportCandidate],
-    existingWords: [CustomWord]
+    existingWords: [CustomWord],
+    participatingCandidateIDs: Set<UUID>
   ) throws -> [UUID: [CustomWordsImportAliasCollision]] {
     typealias Owner = WordCorrector.TriggerOwner
 
-    // Effective incumbent ownership, already resolved, then every incoming
-    // canonical applied on top under the SAME rules the commit path and the
-    // corrector use.
+    // Effective incumbent ownership, already resolved, then every PARTICIPATING
+    // incoming canonical applied on top under the SAME rules the commit path
+    // and the corrector use.
     //
     // A first version kept batch ownership in its own side maps and registered
     // everything first-wins. That reproduced, on the review screen, the exact
@@ -519,18 +553,10 @@ package actor CustomWordsImportCompareEngine {
     // Whatever the screen predicts has to be what the commit does.
     var plannedOwners = WordCorrector.buildExactTriggerIndex(words: existingWords)
 
-    for candidate in coalesced {
-      let owner = Owner(wordID: candidate.id, canonical: candidate.canonical, isPack: false)
-      for claim in WordCorrector.exactClaims(forCanonical: candidate.canonical) {
-        switch claim.namespace {
-        case .nospace:
-          // Unconditional here, so the LATER canonical wins.
-          plannedOwners.register(claim, to: owner)
-        case .single, .multi:
-          // A self-entry yields to whoever already holds the key.
-          if plannedOwners.owner(of: claim) == nil { plannedOwners.register(claim, to: owner) }
-        }
-      }
+    for candidate in coalesced where participatingCandidateIDs.contains(candidate.id) {
+      plannedOwners.applyCanonical(
+        candidate.canonical,
+        owner: Owner(wordID: candidate.id, canonical: candidate.canonical, isPack: false))
     }
 
     /// The owner that would beat `candidate` to this surface, if any.
@@ -573,13 +599,18 @@ package actor CustomWordsImportCompareEngine {
           continue
         }
 
+        // Only a PARTICIPATING candidate's surviving alias becomes a future
+        // blocker: an exact/variant/fuzzy match's alias is disclosed above for
+        // preview, but it is never persisted as a fresh word, so it must not
+        // shadow a later candidate the way a real addition would.
+        guard participatingCandidateIDs.contains(candidate.id) else { continue }
+
         // Gap-fill, never overwrite — same rule as the commit path. An alias
         // reaching here unblocked may still sit behind a compound holder that
         // simply declines to intercept, and that holder keeps the slot.
-        let owner = Owner(wordID: candidate.id, canonical: candidate.canonical, isPack: false)
-        for claim in claims where plannedOwners.owner(of: claim) == nil {
-          plannedOwners.register(claim, to: owner)
-        }
+        plannedOwners.gapFill(
+          claims,
+          owner: Owner(wordID: candidate.id, canonical: candidate.canonical, isPack: false))
       }
     }
     return collisions

@@ -515,6 +515,35 @@ struct CustomWordsImportCompareEngineTests {
       ])
   }
 
+  @Test("a forced-Skip candidate cannot steal a trigger key from the real incumbent")
+  func nonNewCandidateNeverParticipatesInBatchOwnership() async throws {
+    // Grounded review r6. An exact-match row is never itself persisted — it is
+    // a decision about the EXISTING word, never a fresh addition — so its
+    // canonical must not out-rank the real incumbent for ownership purposes.
+    //
+    // The exact-match candidate spells the same compound key with different
+    // CASE ("claude code" vs "Claude Code"). If it were allowed to register,
+    // its unconditional no-space claim would overwrite the real incumbent with
+    // an owner whose canonical is all lowercase — and "ClaudeCode" would then
+    // no longer already spell that owner's name, so it would wrongly appear to
+    // collide against a row that is never persisted.
+    //
+    // Correctly excluded, the REAL incumbent keeps the key. The claimant's
+    // alias already spells that incumbent's own name exactly, so the runtime
+    // rule this whole issue is about — a holder that would not actually
+    // intercept is not a collision — applies, and nothing is reported.
+    let existing = CustomWord(canonical: "Claude Code")
+    let exactMatch = candidate("claude code")
+    let claimant = candidate("Zed", aliases: .supplied(["ClaudeCode"]))
+
+    let results = try await compare([exactMatch, claimant], against: [existing])
+
+    #expect(results[0].classification == .exact(existing: existing))
+    #expect(
+      results[1].collidingAliases.isEmpty,
+      "an exact-match row that is never persisted must not be able to steal ownership")
+  }
+
   @Test("a dropped alias's surviving claims never become a phantom owner")
   func blockedAliasRegistersNoneOfItsClaimsForLaterCandidates() async throws {
     // Atomicity (grounded review r4). The first candidate's alias is blocked on

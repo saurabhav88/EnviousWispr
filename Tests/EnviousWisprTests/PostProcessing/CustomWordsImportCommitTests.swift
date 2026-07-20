@@ -409,6 +409,47 @@ struct CustomWordsImportCommitTests {
       "the incoming canonical owns the compound key, not the older alias")
   }
 
+  @Test("touched canonicals resolve the compound key in APPLY order, not storage order")
+  func touchedCanonicalCompoundOwnershipFollowsApplyOrder() throws {
+    // Grounded review r6. The compound namespace is unconditional, so among
+    // two touched words claiming the same squashed key, whichever is resolved
+    // LAST wins. That has to be apply order — the plan the user approved — not
+    // incidental storage order, or this and the compare screen can pick
+    // different winners for the same import.
+    //
+    // Seeded First, then Second, so storage order is First/Second. The plan
+    // replaces them in the OPPOSITE order: Second becomes "Claude Code" first,
+    // then First becomes "claudecode" — so apply order gives "claudecode" the
+    // final, unconditional claim on the compound key.
+    let (manager, _) = makeManager()
+    var live = try seed(
+      manager,
+      [CustomWord(canonical: "First"), CustomWord(canonical: "Second")])
+    let first = try #require(live.first { $0.canonical == "First" })
+    let second = try #require(live.first { $0.canonical == "Second" })
+
+    let receipt = try manager.commitImport(
+      plan(
+        baseline: live,
+        additions: [candidate("Zed", aliases: .supplied(["Claude Code"]))],
+        replacements: [
+          CustomWordsImportReplacement(existingID: second.id, candidate: candidate("Claude Code")),
+          CustomWordsImportReplacement(existingID: first.id, candidate: candidate("claudecode")),
+        ]),
+      to: &live)
+
+    // Apply order gives "claudecode" (First) the final compound claim. It does
+    // NOT already spell "Claude Code", so it intercepts and blocks the alias.
+    // Storage order would instead leave "Claude Code" (Second) owning the key,
+    // which declines to intercept its own already-correct spelling — and the
+    // alias would wrongly be kept.
+    let added = try #require(live.first { $0.canonical == "Zed" })
+    #expect(added.aliases.isEmpty, "storage order would have kept this alias")
+    #expect(receipt.droppedAliasCollisions.map(\.alias) == ["Claude Code"])
+    let winner = try #require(live.first { $0.canonical == "claudecode" })
+    #expect(receipt.droppedAliasCollisions.map(\.heldBy) == [winner.id])
+  }
+
   @Test("an untouched incumbent alias always beats an imported one")
   func incumbentLibraryAliasAlwaysWinsOverImportedAlias() throws {
     let (manager, _) = makeManager()

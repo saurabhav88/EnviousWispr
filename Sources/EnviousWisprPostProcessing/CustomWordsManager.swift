@@ -822,23 +822,32 @@ public final class CustomWordsManager {
     var index = WordCorrector.buildExactTriggerIndex(
       words: words.filter { !touchedIDs.contains($0.id) })
 
+    var result = words
+    // Last wins, and the list must not be assumed id-unique. Renaming a
+    // built-in stores a user override carrying the built-in's OWN id while
+    // `mergedWords` keeps showing the built-in (its canonical no longer
+    // matches any user word), so within one process the two share an id and
+    // `uniqueKeysWithValues` would trap on a state the manager itself creates.
+    // `mergedWords` returns built-ins first, so last-wins resolves to the
+    // user's own word — the one an import can legitimately touch.
+    let indexByID = Dictionary(
+      result.indices.map { (result[$0].id, $0) }, uniquingKeysWith: { _, last in last })
+
     // A touched word's own canonical also exists in the final library, so it
-    // blocks another word's alias even though the word itself is being changed.
-    // The two namespaces do NOT share a rule, and treating them alike named the
-    // wrong owner: in the compound namespace a canonical is written
-    // unconditionally and overwrites an earlier alias, while an ordinary
-    // self-entry yields to whoever already holds the key.
-    for word in words where touchedIDs.contains(word.id) {
-      let owner = WordCorrector.TriggerOwner(
-        wordID: word.id, canonical: word.canonical, isPack: false)
-      for claim in WordCorrector.exactClaims(forCanonical: word.canonical) {
-        switch claim.namespace {
-        case .nospace:
-          index.register(claim, to: owner)
-        case .single, .multi:
-          if index.owner(of: claim) == nil { index.register(claim, to: owner) }
-        }
-      }
+    // blocks another word's alias even though the word itself is being
+    // changed. Registered in APPLY order via `touchedOrder`, not the words
+    // list's storage order: the compound namespace is unconditional, so which
+    // touched word ends up owning a shared compound key depends on which order
+    // they are resolved in. Grounded review r6 found this loop had drifted to
+    // storage order while the alias loop below correctly used `touchedOrder`,
+    // so the two could pick different winners for the same import.
+    for id in touchedOrder {
+      guard let wordIndex = indexByID[id] else { continue }
+      let word = result[wordIndex]
+      index.applyCanonical(
+        word.canonical,
+        owner: WordCorrector.TriggerOwner(wordID: word.id, canonical: word.canonical, isPack: false)
+      )
     }
 
     /// The owner that would beat this word to a surface, if any. Holding a key
@@ -851,17 +860,7 @@ public final class CustomWordsManager {
         ? holder : nil
     }
 
-    var result = words
     var dropped: [CustomWordsImportAliasCollision] = []
-    // Last wins, and the list must not be assumed id-unique. Renaming a
-    // built-in stores a user override carrying the built-in's OWN id while
-    // `mergedWords` keeps showing the built-in (its canonical no longer
-    // matches any user word), so within one process the two share an id and
-    // `uniqueKeysWithValues` would trap on a state the manager itself creates.
-    // `mergedWords` returns built-ins first, so last-wins resolves to the
-    // user's own word — the one an import can legitimately touch.
-    let indexByID = Dictionary(
-      result.indices.map { (result[$0].id, $0) }, uniquingKeysWith: { _, last in last })
     for id in touchedOrder {
       guard let wordIndex = indexByID[id] else { continue }
       let word = result[wordIndex]
@@ -896,11 +895,11 @@ public final class CustomWordsManager {
         // compound holder declines to intercept. In that last case the holder
         // must STAY registered, because at runtime an alias only ever fills an
         // empty compound slot. Overwriting handed the key to the wrong word.
-        let owner = WordCorrector.TriggerOwner(
-          wordID: word.id, canonical: word.canonical, isPack: false)
-        for claim in claims where index.owner(of: claim) == nil {
-          index.register(claim, to: owner)
-        }
+        index.gapFill(
+          claims,
+          owner: WordCorrector.TriggerOwner(
+            wordID: word.id, canonical: word.canonical, isPack: false)
+        )
         kept.append(alias)
       }
       result[wordIndex].aliases = kept

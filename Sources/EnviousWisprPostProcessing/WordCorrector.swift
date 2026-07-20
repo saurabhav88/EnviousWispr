@@ -244,6 +244,33 @@ public struct WordCorrector: Sendable {
       }
     }
 
+    /// Apply a WORD'S OWN canonical claims to an incrementally-resolved index.
+    ///
+    /// The two per-namespace rules do not read the same: an ordinary self-entry
+    /// yields to whoever already holds the key, while the compound form is
+    /// written unconditionally and can overwrite an earlier alias. This is that
+    /// rule stated once. Two import consumers — the compare screen and the
+    /// commit path — used to restate it inline, and diverged when only one of
+    /// them was corrected (grounded review r5/r6, #1667).
+    package mutating func applyCanonical(_ canonical: String, owner: TriggerOwner) {
+      for claim in WordCorrector.exactClaims(forCanonical: canonical) {
+        switch claim.namespace {
+        case .nospace: register(claim, to: owner)
+        case .single, .multi: if self.owner(of: claim) == nil { register(claim, to: owner) }
+        }
+      }
+    }
+
+    /// Register every claim in `claims` that nobody already holds. Never
+    /// overwrites: a claim already held — including by a compound owner that
+    /// declines to intercept this exact surface — keeps its existing owner,
+    /// because that is what the corrector's own gap-fill rule does at runtime.
+    package mutating func gapFill(_ claims: [ExactTriggerClaim], owner: TriggerOwner) {
+      for claim in claims where self.owner(of: claim) == nil {
+        register(claim, to: owner)
+      }
+    }
+
     /// The ordinary-namespace maps in `buildLookups`' shape, optionally limited
     /// to non-pack owners for the fuzzy pools that must exclude pack terms.
     func canonicalsByKey(
