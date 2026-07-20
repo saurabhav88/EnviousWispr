@@ -1152,6 +1152,16 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       minimumSamples: AudioConstants.minimumTranscriptionSamples
     )
     let batchOutcome = await runBatchDecode(samples: asrSamples)
+    // Codex r10: fetch the model name (the only remaining backend hop)
+    // BEFORE the staleness guard below, mirroring the normal finalize
+    // path's identical ordering (`:889`) — an await between the guard and
+    // the state mutation could let a cancel/interruption supersede this
+    // retry in the gap, so the code would still commit and emit success
+    // telemetry for an attempt the guard was meant to have already fenced.
+    var modelNameForTelemetry: String?
+    if case .success = batchOutcome {
+      modelNameForTelemetry = await backend.modelVariantName
+    }
     // Commit gate (§3.2a): write shared state ONLY while the captured
     // session and generation are still current — a late-arriving abandoned
     // retry must not mutate state belonging to a session/attempt that has
@@ -1164,14 +1174,20 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         return .empty(hadSpeechEvidence: true)
       }
       lastResult = result
-      // #1707 Codex r9: mirror the normal finalize path's per-transcription
-      // latency telemetry (`:930` above) — without this, every Phase-2
-      // retry-rescued dictation silently drops out of the model/language
-      // latency metric, biasing production data toward first-attempt-only
-      // successes.
-      if result.duration > 0 {
-        let modelName = await backend.modelVariantName
-        let msPerAudioSec = (result.processingTime * 1000.0) / result.duration
+      // #1707 Codex r9/r10: mirror the normal finalize path's per-
+      // transcription latency telemetry (`:930` above) — without this,
+      // every Phase-2 retry-rescued dictation silently drops out of the
+      // model/language latency metric. Duration is derived from the
+      // retry's own INPUT sample count, matching the normal path's
+      // `rawSamples.count` (`:882`) — NOT `result.duration`:
+      // `WhisperKitBackend.mapResults` sets that to the LAST DECODED
+      // SEGMENT's end time, which can be shorter than the real capture
+      // (trailing silence) or even zero when text exists without segment
+      // timestamps, silently dropping exactly the retry telemetry this
+      // fix exists to restore.
+      let audioDurationSec = Double(inputSamples.count) / AudioConstants.sampleRate
+      if audioDurationSec > 0, let modelName = modelNameForTelemetry {
+        let msPerAudioSec = (result.processingTime * 1000.0) / audioDurationSec
         TelemetryService.shared.trackTranscriptionLatency(
           lang: result.language,
           model: modelName,
