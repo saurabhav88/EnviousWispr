@@ -409,18 +409,28 @@ struct CustomWordsImportCommitTests {
       "the incoming canonical owns the compound key, not the older alias")
   }
 
-  @Test("touched canonicals resolve the compound key in APPLY order, not storage order")
-  func touchedCanonicalCompoundOwnershipFollowsApplyOrder() throws {
-    // Grounded review r6. The compound namespace is unconditional, so among
-    // two touched words claiming the same squashed key, whichever is resolved
-    // LAST wins. That has to be apply order — the plan the user approved — not
-    // incidental storage order, or this and the compare screen can pick
-    // different winners for the same import.
+  @Test("touched canonicals resolve the compound key in FINAL storage order, not apply order")
+  func touchedCanonicalCompoundOwnershipMatchesRuntimeStorageOrder() throws {
+    // Corrected in round 7, reversing round 6's own conclusion. r6 reasoned
+    // that the plan's APPLY order should decide a shared compound key, since
+    // that is the order the user approved. That reasoning was never checked
+    // against the real corrector.
     //
-    // Seeded First, then Second, so storage order is First/Second. The plan
-    // replaces them in the OPPOSITE order: Second becomes "Claude Code" first,
-    // then First becomes "claudecode" — so apply order gives "claudecode" the
-    // final, unconditional claim on the compound key.
+    // It is wrong. `WordCorrector.buildExactTriggerIndex` — the actual runtime
+    // authority — resolves the compound namespace by iterating whatever array
+    // it is HANDED, in that array's order, last-write-wins. Replacements update
+    // an existing word's STORAGE POSITION in place; they do not move it. So
+    // the array the corrector will build its lookups from next launch is in
+    // STORAGE order, never apply order, and enforcement has to predict that
+    // same array, not the plan's approval sequence.
+    //
+    // Verified against `buildExactTriggerIndex` and `correct()` directly before
+    // trusting this expectation, not derived by re-reasoning about passes.
+    //
+    // Seeded First, then Second — storage order First/Second. The plan
+    // replaces them in the OPPOSITE order (Second's replacement given first),
+    // so this also proves apply order is not silently equivalent to storage
+    // order for a two-word plan.
     let (manager, _) = makeManager()
     var live = try seed(
       manager,
@@ -438,16 +448,14 @@ struct CustomWordsImportCommitTests {
         ]),
       to: &live)
 
-    // Apply order gives "claudecode" (First) the final compound claim. It does
-    // NOT already spell "Claude Code", so it intercepts and blocks the alias.
-    // Storage order would instead leave "Claude Code" (Second) owning the key,
-    // which declines to intercept its own already-correct spelling — and the
-    // alias would wrongly be kept.
+    // Second occupies the LATER storage slot, so it owns the compound key —
+    // regardless of being resolved FIRST in the plan. It already spells
+    // "Claude Code" exactly, so it declines to intercept and the alias is kept.
     let added = try #require(live.first { $0.canonical == "Zed" })
-    #expect(added.aliases.isEmpty, "storage order would have kept this alias")
-    #expect(receipt.droppedAliasCollisions.map(\.alias) == ["Claude Code"])
-    let winner = try #require(live.first { $0.canonical == "claudecode" })
-    #expect(receipt.droppedAliasCollisions.map(\.heldBy) == [winner.id])
+    #expect(
+      added.aliases == ["Claude Code"],
+      "apply order would have wrongly dropped this alias")
+    #expect(receipt.droppedAliasCollisions.isEmpty)
   }
 
   @Test("an untouched incumbent alias always beats an imported one")

@@ -819,9 +819,6 @@ public final class CustomWordsManager {
     //
     // Untouched words register first and are never modified, so an incumbent
     // always outranks an imported alias.
-    var index = WordCorrector.buildExactTriggerIndex(
-      words: words.filter { !touchedIDs.contains($0.id) })
-
     var result = words
     // Last wins, and the list must not be assumed id-unique. Renaming a
     // built-in stores a user override carrying the built-in's OWN id while
@@ -833,22 +830,26 @@ public final class CustomWordsManager {
     let indexByID = Dictionary(
       result.indices.map { (result[$0].id, $0) }, uniquingKeysWith: { _, last in last })
 
-    // A touched word's own canonical also exists in the final library, so it
-    // blocks another word's alias even though the word itself is being
-    // changed. Registered in APPLY order via `touchedOrder`, not the words
-    // list's storage order: the compound namespace is unconditional, so which
-    // touched word ends up owning a shared compound key depends on which order
-    // they are resolved in. Grounded review r6 found this loop had drifted to
-    // storage order while the alias loop below correctly used `touchedOrder`,
-    // so the two could pick different winners for the same import.
-    for id in touchedOrder {
-      guard let wordIndex = indexByID[id] else { continue }
-      let word = result[wordIndex]
-      index.applyCanonical(
-        word.canonical,
-        owner: WordCorrector.TriggerOwner(wordID: word.id, canonical: word.canonical, isPack: false)
-      )
+    // Canonical ownership is resolved by handing the WHOLE final array — the
+    // exact array the runtime corrector will build its own lookups from — to
+    // the one authority, in its own FINAL STORAGE order. A first version tried
+    // to replay just the touched canonicals in APPLY order instead. That is
+    // wrong: the compound namespace's last-write-wins rule is about storage
+    // order, because that is the order `buildExactTriggerIndex` iterates when
+    // it runs for real on the saved file. Apply order can name a winner the
+    // corrector itself would never produce (grounded review r7, #1667).
+    //
+    // Touched words' OLD aliases are stripped from this seed, because their
+    // real aliases are re-decided by the loop below in the plan's approved
+    // order — that precedence is a genuinely separate, already-established
+    // rule this pass must not disturb.
+    let touchedIndices = Set(touchedOrder.compactMap { indexByID[$0] })
+    let ownershipSeed = result.indices.map { wordIndex -> CustomWord in
+      var word = result[wordIndex]
+      if touchedIndices.contains(wordIndex) { word.aliases = [] }
+      return word
     }
+    var index = WordCorrector.buildExactTriggerIndex(words: ownershipSeed)
 
     /// The owner that would beat this word to a surface, if any. Holding a key
     /// is not always intercepting it — see `WordCorrector.ownerIntercepts`.
