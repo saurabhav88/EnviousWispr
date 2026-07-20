@@ -506,24 +506,29 @@ package actor CustomWordsImportCompareEngine {
     coalesced: [CustomWordsImportCandidate],
     existingWords: [CustomWord]
   ) throws -> [UUID: [CustomWordsImportAliasCollision]] {
-    // Effective incumbent ownership, already resolved. Nothing is replayed.
-    let incumbents = WordCorrector.buildExactTriggerIndex(words: existingWords)
-
-    // Batch-only ownership, tracked per namespace because a key is only a
-    // conflict within the surface that consumes it.
-    typealias Namespace = WordCorrector.ExactTriggerNamespace
     typealias Owner = WordCorrector.TriggerOwner
-    var candidateCanonicalOwners: [Namespace: [String: Owner]] = [:]
-    var importedAliasOwners: [Namespace: [String: Owner]] = [:]
 
-    // Incoming canonicals are not in the library yet, so they rank below every
-    // incumbent surface — but above another candidate's alias, since all of
-    // them are registered before any imported alias is checked. First wins.
+    // Effective incumbent ownership, already resolved, then every incoming
+    // canonical applied on top under the SAME rules the commit path and the
+    // corrector use.
+    //
+    // A first version kept batch ownership in its own side maps and registered
+    // everything first-wins. That reproduced, on the review screen, the exact
+    // split this issue exists to close: the screen could warn about an alias
+    // the commit then kept, or stay silent about one the commit then dropped.
+    // Whatever the screen predicts has to be what the commit does.
+    var plannedOwners = WordCorrector.buildExactTriggerIndex(words: existingWords)
+
     for candidate in coalesced {
       let owner = Owner(wordID: candidate.id, canonical: candidate.canonical, isPack: false)
       for claim in WordCorrector.exactClaims(forCanonical: candidate.canonical) {
-        if candidateCanonicalOwners[claim.namespace]?[claim.key] == nil {
-          candidateCanonicalOwners[claim.namespace, default: [:]][claim.key] = owner
+        switch claim.namespace {
+        case .nospace:
+          // Unconditional here, so the LATER canonical wins.
+          plannedOwners.register(claim, to: owner)
+        case .single, .multi:
+          // A self-entry yields to whoever already holds the key.
+          if plannedOwners.owner(of: claim) == nil { plannedOwners.register(claim, to: owner) }
         }
       }
     }
@@ -537,14 +542,8 @@ package actor CustomWordsImportCompareEngine {
     func blocker(
       of claim: WordCorrector.ExactTriggerClaim, surface: String, for candidate: UUID
     ) -> Owner? {
-      // First HOLDER wins the slot, incumbents ahead of the batch. A holder
-      // behind it is not the runtime owner, so the search stops at the first
-      // one found and then asks only whether that one intercepts.
-      let holder =
-        incumbents.owner(of: claim)
-        ?? candidateCanonicalOwners[claim.namespace]?[claim.key]
-        ?? importedAliasOwners[claim.namespace]?[claim.key]
-      guard let holder, holder.wordID != candidate else { return nil }
+      guard let holder = plannedOwners.owner(of: claim), holder.wordID != candidate
+      else { return nil }
       return WordCorrector.ownerIntercepts(claim: claim, rawSurface: surface, owner: holder)
         ? holder : nil
     }
@@ -574,9 +573,12 @@ package actor CustomWordsImportCompareEngine {
           continue
         }
 
+        // Gap-fill, never overwrite — same rule as the commit path. An alias
+        // reaching here unblocked may still sit behind a compound holder that
+        // simply declines to intercept, and that holder keeps the slot.
         let owner = Owner(wordID: candidate.id, canonical: candidate.canonical, isPack: false)
-        for claim in claims {
-          importedAliasOwners[claim.namespace, default: [:]][claim.key] = owner
+        for claim in claims where plannedOwners.owner(of: claim) == nil {
+          plannedOwners.register(claim, to: owner)
         }
       }
     }

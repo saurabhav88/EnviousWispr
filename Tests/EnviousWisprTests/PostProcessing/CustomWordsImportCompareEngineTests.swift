@@ -465,6 +465,40 @@ struct CustomWordsImportCompareEngineTests {
       ])
   }
 
+  @Test("a kept alias gap-fills the compound slot rather than stealing it")
+  func keptAliasDoesNotCreateAFalseLaterCollision() async throws {
+    // The incumbent `Claude Code` holds "claudecode" but declines to intercept
+    // a surface that already spells it, so the first alias is kept. If keeping
+    // it OVERWROTE that slot, the second candidate would be told a word owns
+    // the trigger that does not — a warning about nothing (grounded review r5).
+    let incumbent = CustomWord(canonical: "Claude Code")
+    let first = candidate("Zed", aliases: .supplied(["ClaudeCode"]))
+    let second = candidate("Quinn", aliases: .supplied(["Claude Code"]))
+
+    let results = try await compare([first, second], against: [incumbent])
+
+    #expect(results[0].collidingAliases.isEmpty)
+    #expect(results[1].collidingAliases.isEmpty)
+  }
+
+  @Test("the later incoming canonical owns the compound slot")
+  func laterIncomingCanonicalControlsCompoundCollisionDisclosure() async throws {
+    // Compound canonicals are written unconditionally, so among incoming words
+    // the LATER one holds the squashed key. Registering incoming canonicals
+    // first-wins named the earlier one, which the commit path would then
+    // contradict.
+    let earlier = candidate("Claude Code")
+    let later = candidate("claudecode")
+    let claimant = candidate("Zed", aliases: .supplied(["Claude Code"]))
+
+    let results = try await compare([earlier, later, claimant], against: [])
+
+    #expect(
+      results[2].collidingAliases == [
+        CustomWordsImportAliasCollision(alias: "Claude Code", heldBy: later.id)
+      ])
+  }
+
   @Test("an imported alias equal to a multi-word canonical's space-free form is disclosed")
   func aliasMatchingAnExistingMultiWordCanonicalsNoSpaceFormIsFlagged() async throws {
     // The defect #1667 was filed for. `Claude Code` claims "claudecode" in the
