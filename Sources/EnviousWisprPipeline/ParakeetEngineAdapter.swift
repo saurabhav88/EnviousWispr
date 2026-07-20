@@ -669,6 +669,13 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       do {
         try await warmUp()
       } catch {
+        // Codex r6: without this, `lastFailureError` still holds the STALE
+        // error from the PRIMARY decode's own earlier failure (set by
+        // `commitAttempt` there) — the kernel's error-attribution fix
+        // (`?? retryError`) never triggers because that stale value is
+        // non-nil, so Sentry would attribute retry exhaustion to the wrong
+        // (primary) failure instead of this actual warm-up/repair failure.
+        lastFailureError = error
         return .failed(.decodeFailed)
       }
       // The repair awaited — re-check staleness BEFORE spending the decode

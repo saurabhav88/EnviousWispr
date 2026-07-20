@@ -181,9 +181,22 @@ public final class WisprBootstrapper {
     // ASRManagerProxy` is nil when the in-process `ASRManager` escape hatch
     // is active (`useXPCASRService=false`) — the Parakeet half of the oracle
     // simply no-ops then, exactly like every other DEBUG-only fault seam.
-    let batchDecodeFaultController = BatchDecodeFaultController(
-      whisperKitBackend: whisperKitBackend,
-      asrManagerProxy: asrManager as? ASRManagerProxy)
+    //
+    // Codex r6: the CONTROLLER TYPE is deliberately not `#if DEBUG`-gated
+    // (only its real-engine-boundary methods are, § the type's own header
+    // comment), but that does not mean it should exist in a Release build's
+    // OBJECT GRAPH — every real decode call consults its adapter-boundary
+    // `shouldForceFailBatchDecode`, which now also records an ever-growing,
+    // never-cleared attempt-identity list. Construct a real instance only in
+    // DEBUG; Release wires `nil`, exactly like production already does for
+    // every other DEBUG-only fault seam.
+    #if DEBUG
+      let batchDecodeFaultController: BatchDecodeFaultController? = BatchDecodeFaultController(
+        whisperKitBackend: whisperKitBackend,
+        asrManagerProxy: asrManager as? ASRManagerProxy)
+    #else
+      let batchDecodeFaultController: BatchDecodeFaultController? = nil
+    #endif
 
     // #1271/#1348 Phase 3 — EG-1 native runtime: the model bytes now move
     // through the shared delivery engine via `EGOneDeliveryAdapter` (a limb —
