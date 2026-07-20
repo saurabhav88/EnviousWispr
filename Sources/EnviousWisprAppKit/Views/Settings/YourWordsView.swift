@@ -93,14 +93,14 @@ struct YourWordsView: View {
           // compiled out of release builds until the founder ships it, and a
           // release-visible Export whose companion Import is invisible would be
           // half a promise.
-          // ONE body-render snapshot drives both the visible count and the
-          // array handed to the action, so the number the user reads and the
-          // bytes written cannot come from different moments (#1697).
+          // ONE body-render snapshot drives both the count shown in the save
+          // dialog and the array handed to the action, so the number the user
+          // reads and the bytes written cannot come from different moments
+          // (#1697). The sentence itself lives in the dialog, not on this
+          // screen: a paragraph wedged between two buttons competes with them
+          // (#1715).
           let proposed = CustomWordsExportAction.exportableWords(
             from: customWordsCoordinator.customWords)
-          Text(exportCountSummary(proposed.count))
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
           Button {
             exportWords(proposed: proposed)
           } label: {
@@ -181,7 +181,9 @@ struct YourWordsView: View {
         let outcome = await CustomWordsExportAction.run(
           coordinator: customWordsCoordinator,
           proposedExportWords: proposed,
-          chooseDestination: { CustomWordsExportPanel.chooseDestination() },
+          chooseDestination: {
+            CustomWordsExportPanel.chooseDestination(exportableCount: proposed.count)
+          },
           write: { document, destination in
             try await CustomWordsExportWriter.write(document, to: destination)
           }
@@ -202,22 +204,20 @@ struct YourWordsView: View {
               + "Vocabulary packs are not included.")
         case .libraryChanged:
           exportNotice = .info(
-            "Your word list changed. Nothing was exported. "
-              + "Review the updated count and try Export again.")
+            // Says nothing about WHEN or WHERE the list moved, because two
+            // different paths land here: the drift check after a folder was
+            // chosen, and a stale empty count that never opened a dialog at
+            // all. Naming folder selection would describe a step the second
+            // user never took (cloud review, #1715). It also can't say "review
+            // the updated count" any more — there is no count on this screen.
+            "Your word list changed, so nothing was exported. "
+              + "Try Export again.")
         case .failed(let message):
           exportNotice = .failure(message)
         }
       }
     }
 
-    /// Says what Export will actually produce, before it is pressed.
-    private func exportCountSummary(_ count: Int) -> String {
-      switch count {
-      case 0: return "No words of your own yet. Packs aren't included."
-      case 1: return "Exporting 1 word of your own. Packs aren't included."
-      default: return "Exporting \(count) of your own words. Packs aren't included."
-      }
-    }
   #endif
 
   private func saveNewWord(_ newWord: CustomWord) -> String? {
