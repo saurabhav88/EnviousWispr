@@ -3,7 +3,7 @@ import Foundation
 import OSLog
 import Security
 
-/// Manages customer API key storage for OpenAI and Gemini polish providers.
+/// Manages customer API key storage for OpenAI, Gemini, and Claude polish providers.
 ///
 /// Debug builds keep the historical file-based store at `~/.enviouswispr-keys/`
 /// so local rebuilds do not trigger Keychain ACL prompts. Release builds use
@@ -12,9 +12,10 @@ import Security
 public struct KeychainManager: Sendable {
   public static let openAIKeyID = "openai-api-key"
   public static let geminiKeyID = "gemini-api-key"
+  public static let claudeKeyID = "claude-api-key"
 
   private static let productionService = "com.enviouswispr.app.api-keys"
-  private static let supportedReleaseKeys: Set<String> = [openAIKeyID, geminiKeyID]
+  private static let supportedReleaseKeys: Set<String> = [openAIKeyID, geminiKeyID, claudeKeyID]
   private static let logger = Logger(subsystem: "com.enviouswispr.app", category: "Keychain")
 
   private let backend: KeyStorageBackend

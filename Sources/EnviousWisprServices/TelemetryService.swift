@@ -1373,25 +1373,41 @@ public final class TelemetryService {
   /// reached a terminal result (`valid` / `invalid` / `provider_unavailable` /
   /// `error`). NOT emitted for the missing-key guard (no validation ran).
   /// `source` is `save` (user pressed Save) or `model_discovery` (a refresh /
-  /// provider-switch discovery pass).
-  public func apiKeyValidationCompleted(provider: String, result: String, source: String) {
+  /// provider-switch discovery pass). `modelCount`/`discoveryOutcome`
+  /// (`"models_found"` / `"zero_models"`, issue #158) are optional so a
+  /// successful discovery that finds zero models is distinguishable from a
+  /// healthy one with real models — previously both read `result: "valid"`
+  /// with no way to tell them apart. Optional and defaulted so existing
+  /// callers (and their tests) stay source-compatible.
+  public func apiKeyValidationCompleted(
+    provider: String, result: String, source: String,
+    modelCount: Int? = nil, discoveryOutcome: String? = nil
+  ) {
     #if DEBUG
-      testEventHook?(
-        CapturedTelemetryEvent(
-          name: "api_key.validation_completed",
-          stringProps: [
-            "provider": provider,
-            "result": result,
-            "source": source,
-          ]))
-    #endif
-    PostHogSDK.shared.capture(
-      "api_key.validation_completed",
-      properties: [
+      var stringProps: [String: String] = [
         "provider": provider,
         "result": result,
         "source": source,
-      ])
+      ]
+      if let discoveryOutcome { stringProps["discovery_outcome"] = discoveryOutcome }
+      var intProps: [String: Int] = [:]
+      if let modelCount { intProps["model_count"] = modelCount }
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "api_key.validation_completed",
+          stringProps: stringProps,
+          intProps: intProps))
+    #endif
+    var properties: [String: Any] = [
+      "provider": provider,
+      "result": result,
+      "source": source,
+    ]
+    if let modelCount { properties["model_count"] = modelCount }
+    if let discoveryOutcome { properties["discovery_outcome"] = discoveryOutcome }
+    PostHogSDK.shared.capture(
+      "api_key.validation_completed",
+      properties: properties)
   }
 
   /// Telemetry Bible Phase 2 (#1171): a settings change could not be applied

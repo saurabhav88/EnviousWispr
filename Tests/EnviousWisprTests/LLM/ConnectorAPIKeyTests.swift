@@ -149,6 +149,73 @@ struct ConnectorAPIKeyTests {
     }
   }
 
+  // MARK: - Claude (#158): mirrors the OpenAI/Gemini coverage above
+
+  @Test("Claude with a key id but nothing stored -> apiKeyMissing (never apiKeyUnreadable)")
+  func claudeKeyIdButNothingStored() async {
+    let connector = ClaudeConnector(keychainManager: emptyKeychain())
+    await #expect(throws: LLMError.classified(.apiKeyMissing)) {
+      _ = try await connector.polish(
+        text: "hello there", instructions: .default,
+        config: config(keychainId: KeychainManager.claudeKeyID), onToken: nil)
+    }
+  }
+
+  @Test("Claude with no configured key id -> apiKeyMissing")
+  func claudeNoKeyConfigured() async {
+    let connector = ClaudeConnector(keychainManager: unreadableKeychain())
+    await #expect(throws: LLMError.classified(.apiKeyMissing)) {
+      _ = try await connector.polish(
+        text: "hello there", instructions: .default, config: config(keychainId: nil),
+        onToken: nil)
+    }
+  }
+
+  @Test("Claude with a stored-but-unreadable key -> apiKeyUnreadable, not apiKeyMissing")
+  func claudeStoredKeyUnreadable() async {
+    let connector = ClaudeConnector(keychainManager: unreadableKeychain())
+    await #expect(throws: LLMError.classified(.apiKeyUnreadable)) {
+      _ = try await connector.polish(
+        text: "hello there", instructions: .default,
+        config: config(keychainId: KeychainManager.claudeKeyID), onToken: nil)
+    }
+  }
+
+  // MARK: - Key isolation (#158, plan §11.3): clearing Claude must not touch
+  // OpenAI/Gemini's saved keys, and vice versa.
+
+  /// A per-key-id in-memory store, standing in for the real legacy-file
+  /// backend so the test can prove one key id's `delete` leaves siblings
+  /// untouched without ever touching the real Keychain/file store.
+  private final class MultiKeyStore: LegacyKeyFileStorage, @unchecked Sendable {
+    var values: [String: String] = [:]
+    func store(key: String, value: String) throws { values[key] = value }
+    func retrieve(key: String) throws -> String {
+      guard let value = values[key] else {
+        throw KeyStoreError.retrieveFailed(errSecItemNotFound)
+      }
+      return value
+    }
+    func delete(key: String) throws { values.removeValue(forKey: key) }
+  }
+
+  @Test("clearing the Claude key leaves saved OpenAI and Gemini keys retrievable")
+  func clearingClaudeKeyDoesNotAffectSiblings() throws {
+    let store = MultiKeyStore()
+    let keychain = KeychainManager(backend: .legacyFiles, legacyStore: store)
+    try keychain.store(key: KeychainManager.openAIKeyID, value: "sk-openai-test")
+    try keychain.store(key: KeychainManager.geminiKeyID, value: "gemini-test-key")
+    try keychain.store(key: KeychainManager.claudeKeyID, value: "sk-ant-test")
+
+    try keychain.delete(key: KeychainManager.claudeKeyID)
+
+    #expect(try keychain.retrieve(key: KeychainManager.openAIKeyID) == "sk-openai-test")
+    #expect(try keychain.retrieve(key: KeychainManager.geminiKeyID) == "gemini-test-key")
+    #expect(throws: (any Error).self) {
+      try keychain.retrieve(key: KeychainManager.claudeKeyID)
+    }
+  }
+
   // MARK: - Adversarial: the two exits must not collapse back into one
 
   @Test("the two key failures are distinguishable to us and identical to the user")

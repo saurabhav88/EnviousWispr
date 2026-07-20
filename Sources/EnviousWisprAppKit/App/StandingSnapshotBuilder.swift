@@ -39,6 +39,7 @@ struct StandingSnapshotBuilder {
     let hasKeys =
       (try? keychainManager.retrieve(key: KeychainManager.openAIKeyID)) != nil
       || (try? keychainManager.retrieve(key: KeychainManager.geminiKeyID)) != nil
+      || (try? keychainManager.retrieve(key: KeychainManager.claudeKeyID)) != nil
     TelemetryService.shared.settingsSnapshot(
       asrBackend: s.selectedBackend.rawValue,
       llmProvider: s.llmProvider.rawValue,

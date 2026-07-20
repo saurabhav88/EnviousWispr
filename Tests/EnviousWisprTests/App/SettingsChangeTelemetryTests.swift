@@ -406,6 +406,29 @@ import Testing
       #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "gpt-5-mini")
     }
 
+    @Test(
+      "Claude projection: compact-dated snapshot normalizes to base id, non-date suffix does not (#158)"
+    )
+    func claudeDatedSnapshotProjection() {
+      let suite = UserDefaults(suiteName: "SCT-claude-\(UUID().uuidString)")!
+      let settings = SettingsManager(defaults: suite)
+      settings.llmProvider = .claude
+      // A recognized public cloud id passes through verbatim.
+      settings.llmModel = "claude-haiku-4-5"
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "claude-haiku-4-5")
+      // Anthropic's dated snapshot uses a COMPACT, undashed suffix (-YYYYMMDD),
+      // a different shape from OpenAI/Gemini's dashed -YYYY-MM-DD — both forms
+      // must normalize to the same allowlisted base id.
+      settings.llmModel = "claude-haiku-4-5-20251001"
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "claude-haiku-4-5")
+      settings.llmModel = "claude-opus-4-1-20250805"
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "claude-opus-4-1")
+      // Negative: an ordinary non-date numeric segment must NOT be truncated —
+      // widening the regex to match compact dates must not over-match.
+      settings.llmModel = "claude-haiku-4-5-thinking"
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "custom")
+    }
+
     @Test("EG-1's fixed literal never leaks into a cloud provider's model")
     func egOneLiteralSweptOnProviderSwitch() {
       let suite = UserDefaults(suiteName: "SCT-eg1sweep-\(UUID().uuidString)")!

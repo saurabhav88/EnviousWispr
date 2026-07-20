@@ -4,6 +4,7 @@ import Foundation
 public enum LLMProvider: String, Codable, CaseIterable, Sendable {
   case openAI
   case gemini
+  case claude
   case ollama
   case appleIntelligence
   case egOne
@@ -22,6 +23,7 @@ extension LLMProvider {
     switch self {
     case .openAI: return "OpenAI"
     case .gemini: return "Gemini"
+    case .claude: return "Claude"
     case .ollama: return "Ollama"
     case .appleIntelligence: return "Apple Intelligence"
     case .egOne: return "EG-1"
@@ -36,10 +38,44 @@ extension LLMProvider {
     switch provider {
     case .openAI: return "gpt-4o-mini"
     case .gemini: return "gemini-2.0-flash"
+    case .claude: return "claude-haiku-4-5"
     case .ollama: return ollamaModel
     case .appleIntelligence: return "apple-intelligence"
     case .egOne: return LLMProvider.egOneModelName
     case .none: return ""
+    }
+  }
+
+  /// Coarse "does this model id look like it could belong to `provider`"
+  /// check for the three CLOUD providers only. Used to canonicalize
+  /// `llmModel` on a provider switch: without it, a leftover OpenAI/Gemini
+  /// /Claude model id from the PREVIOUS cloud selection survives the
+  /// switch unchanged (only fixed literals and empty were swept), and
+  /// every prewarm/polish request fails until async discovery repairs it
+  /// -- or persists broken indefinitely if discovery never runs (offline,
+  /// no key yet). Deliberately coarse prefix-only matching, not the fuller
+  /// published-model allowlist `SettingsChangeTelemetry` maintains in a
+  /// higher module -- good enough to catch "wrong provider entirely,"
+  /// which is the only thing this call site needs (#158, Codex r4).
+  public static func modelIDLooksLikeCloudProvider(_ modelID: String, _ provider: LLMProvider)
+    -> Bool
+  {
+    switch provider {
+    case .openAI:
+      // Mirrors LLMModelDiscovery.isOpenAIChatCompletionCandidate's accepted
+      // prefixes exactly (incl. the generic "o-" family, not just o1/o3/o4)
+      // so a model discovery already admits is never wiped here (#158,
+      // Codex r5).
+      let id = modelID.lowercased()
+      return id.hasPrefix("gpt-") || id.hasPrefix("o-") || id.hasPrefix("o1")
+        || id.hasPrefix("o3") || id.hasPrefix("o4") || id.hasPrefix("chatgpt-")
+    case .gemini:
+      return modelID.hasPrefix("gemini-")
+    case .claude:
+      return modelID.hasPrefix("claude-")
+    case .ollama, .appleIntelligence, .egOne, .none:
+      // Not a cloud provider -- this check does not apply to these arms.
+      return true
     }
   }
 }

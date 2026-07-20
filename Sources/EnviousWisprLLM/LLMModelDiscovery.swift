@@ -35,6 +35,8 @@ public struct LLMModelDiscovery: Sendable {
       modelIDs = try await fetchGeminiModels(apiKey: apiKey)
     case .openAI:
       modelIDs = try await fetchOpenAIModels(apiKey: apiKey)
+    case .claude:
+      modelIDs = try await fetchClaudeModels(apiKey: apiKey)
     case .ollama:
       modelIDs = try await fetchOllamaModels()
     case .appleIntelligence:
@@ -244,6 +246,125 @@ public struct LLMModelDiscovery: Sendable {
     ]
   }
 
+  // MARK: - Claude
+
+  /// One page's pagination outcome, decided from `has_more`/`last_id` alone —
+  /// pure and network-free so the malformed/repeated-cursor guard is directly
+  /// unit-testable (`LLMModelDiscoveryTests.swift`) without mocking HTTP.
+  enum ClaudePaginationDecision: Equatable {
+    case `continue`(afterID: String)
+    case stop
+    case malformedCursor
+  }
+
+  static func claudePaginationDecision(
+    hasMore: Bool, lastID: String?, seenCursors: Set<String>
+  ) -> ClaudePaginationDecision {
+    guard hasMore else { return .stop }
+    guard let lastID, !lastID.isEmpty, !seenCursors.contains(lastID) else {
+      return .malformedCursor
+    }
+    return .continue(afterID: lastID)
+  }
+
+  /// Fetches the full Claude model catalog, following cursor pagination
+  /// (`has_more`/`last_id`/`after_id`) rather than assuming a single page.
+  /// The founder's live account returned one page on 2026-07-20, but
+  /// Anthropic's documented default page size (20) is smaller than a
+  /// growing catalog, so a single-page assumption would silently truncate
+  /// the picker once the account has more models than fit on one page.
+  private func fetchClaudeModels(apiKey: String) async throws -> [(id: String, displayName: String)]
+  {
+    var allModels: [(id: String, displayName: String)] = []
+    var afterID: String?
+    var seenCursors: Set<String> = []
+
+    while true {
+      var urlString = "https://api.anthropic.com/v1/models?limit=1000"
+      if let afterID {
+        urlString += "&after_id=\(afterID)"
+      }
+      guard let url = URL(string: urlString) else {
+        throw LLMError.requestFailed("Invalid URL")
+      }
+      var request = URLRequest(url: url)
+      request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+      request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+      request.timeoutInterval = 15
+
+      let (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
+      guard let httpResponse = response as? HTTPURLResponse else {
+        throw LLMError.requestFailed("Invalid response")
+      }
+
+      if httpResponse.statusCode == 401 { throw LLMError.invalidAPIKey }
+      guard httpResponse.statusCode == 200 else {
+        throw LLMError.requestFailed("HTTP \(httpResponse.statusCode)")
+      }
+
+      let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+      guard let models = json?["data"] as? [[String: Any]] else { break }
+
+      allModels.append(
+        contentsOf: models.compactMap { model -> (id: String, displayName: String)? in
+          guard let id = model["id"] as? String else { return nil }
+          let displayName = model["display_name"] as? String ?? id
+          return (id: id, displayName: displayName)
+        })
+
+      switch Self.claudePaginationDecision(
+        hasMore: json?["has_more"] as? Bool ?? false,
+        lastID: json?["last_id"] as? String,
+        seenCursors: seenCursors
+      ) {
+      case .stop:
+        return allModels
+      case .malformedCursor:
+        throw LLMError.requestFailed("Claude model pagination returned a malformed cursor")
+      case .continue(let nextAfterID):
+        seenCursors.insert(nextAfterID)
+        afterID = nextAfterID
+      }
+    }
+
+    return allModels
+  }
+
+  private func probeClaude(modelID: String, apiKey: String) async -> Bool {
+    guard let url = URL(string: "https://api.anthropic.com/v1/messages") else { return false }
+    let body = ClaudeConnector.makeRequestBody(
+      model: modelID, maxTokens: 5, system: nil, userText: "Hi")
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+    request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+    request.timeoutInterval = 10
+
+    guard let (_, response) = try? await LLMNetworkSession.shared.session.data(for: request),
+      let httpResponse = response as? HTTPURLResponse
+    else { return false }
+
+    if httpResponse.statusCode == 200 { return true }
+    // A transient rate limit or server-side overload is not proof the key
+    // lacks access to this model — reading it as "locked" would falsely
+    // disable a valid model during a busy moment (Codex local review,
+    // widened after the live latency receipt showed real transient 5xx
+    // traffic from Anthropic). Unlike Gemini's ambiguous RESOURCE_EXHAUSTED
+    // (which needs body-sniffing to split rate-limit from a real
+    // quota-zero lock), Anthropic's 429 `rate_limit_error` and 5xx (incl.
+    // the documented 529 `overloaded_error`) are unambiguous transient
+    // signals — the same range `ClaudeConnector.classify` already treats
+    // as `providerServerError` and retries — so no body inspection is
+    // needed here either.
+    if httpResponse.statusCode == 429 || (500...599).contains(httpResponse.statusCode) {
+      return true
+    }
+    return false
+  }
+
   // MARK: - Ollama
 
   private func fetchOllamaModels() async throws -> [(id: String, displayName: String)] {
@@ -340,6 +461,7 @@ public struct LLMModelDiscovery: Sendable {
     switch provider {
     case .gemini: return await probeGemini(modelID: id, apiKey: apiKey)
     case .openAI: return await probeOpenAI(modelID: id, apiKey: apiKey)
+    case .claude: return await probeClaude(modelID: id, apiKey: apiKey)
     case .ollama: return true  // If model appears in tags list, it's available
     case .appleIntelligence: return true
     case .egOne: return true  // #1271: availability is the health probe's job, not discovery's

@@ -68,6 +68,36 @@ import Testing
       #expect(e?.stringProps["source"] == "save")
     }
 
+    @Test(
+      "apiKeyValidationCompleted with modelCount/discoveryOutcome distinguishes a healthy zero-model result from an unhealthy one (#158)"
+    )
+    func apiKeyValidationFacadeWithDiscoveryOutcome() {
+      let box = capture {
+        TelemetryService.shared.apiKeyValidationCompleted(
+          provider: "claude", result: "valid", source: "save",
+          modelCount: 0, discoveryOutcome: "zero_models")
+      }
+      let e = box.named("api_key.validation_completed").first
+      #expect(e?.stringProps["provider"] == "claude")
+      #expect(e?.stringProps["result"] == "valid")
+      #expect(e?.stringProps["discovery_outcome"] == "zero_models")
+      #expect(e?.intProps["model_count"] == 0)
+    }
+
+    @Test(
+      "apiKeyValidationCompleted's new params are optional — existing 3-arg callers stay source-compatible"
+    )
+    func apiKeyValidationFacadeBackwardCompatible() {
+      let box = capture {
+        TelemetryService.shared.apiKeyValidationCompleted(
+          provider: "openAI", result: "valid", source: "model_discovery")
+      }
+      let e = box.named("api_key.validation_completed").first
+      #expect(e?.stringProps["provider"] == "openAI")
+      #expect(e?.stringProps["discovery_outcome"] == nil)
+      #expect(e?.intProps["model_count"] == nil)
+    }
+
     @Test("ApiKeyValidationSource rawValues match the wire vocabulary")
     func validationSourceRawValues() {
       #expect(ApiKeyValidationSource.save.rawValue == "save")

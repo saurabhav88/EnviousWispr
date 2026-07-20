@@ -56,7 +56,7 @@ public struct DefaultPromptPlanner: PromptPlanning {
   /// Map (provider, modelID) to a PromptFamily.
   public static func family(for provider: LLMProvider, modelID: String) -> PromptFamily {
     switch provider {
-    case .openAI, .gemini:
+    case .openAI, .gemini, .claude:
       // Strong cloud models: one fixed prompt, no per-transcript mode selection (#1255).
       return .cloudFixed
     case .ollama:

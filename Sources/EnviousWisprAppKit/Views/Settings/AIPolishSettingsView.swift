@@ -115,7 +115,11 @@ enum AIPolishKeychainFailureMessage {
 /// Live validation against OpenAI + Gemini APIs (2026-05-04):
 /// `docs/audits/2026-05-04-issue-617-classifier-validation.txt`.
 enum AIPolishModelClassifier {
-  static let positives: Set<String> = ["mini", "nano", "flash"]
+  // "haiku" is Claude's fast/cheap tier — it has no "mini"/"nano"/"flash"
+  // analog in Anthropic's naming, so without it no Claude model would ever
+  // land in "Recommended for cleanup." Zero collision risk: no existing
+  // OpenAI/Gemini id contains "haiku."
+  static let positives: Set<String> = ["mini", "nano", "flash", "haiku"]
   static let disqualifiers: Set<String> = [
     "realtime", "audio", "native", "live",
     "tts", "image", "search", "transcribe", "banana", "codex",
@@ -149,6 +153,7 @@ struct AIPolishSettingsView: View {
 
   @State private var openAIKey: String = ""
   @State private var geminiKey: String = ""
+  @State private var claudeKey: String = ""
   @State private var validationStatus: String = ""
   /// #1455: whether a NON-EMPTY key is currently persisted in Keychain, for
   /// the missing-key notice. Cached, updated only at the 3 real mutation
@@ -168,9 +173,11 @@ struct AIPolishSettingsView: View {
   /// empty) is allowed to show the notice; `nil` and `true` both suppress it.
   @State private var openAIKeySaved: Bool?
   @State private var geminiKeySaved: Bool?
+  @State private var claudeKeySaved: Bool?
 
   private var isCloudProvider: Bool {
     settings.llmProvider == .openAI || settings.llmProvider == .gemini
+      || settings.llmProvider == .claude
   }
 
   private var isReasoningModel: Bool {
@@ -196,16 +203,39 @@ struct AIPolishSettingsView: View {
   /// coordinators the inline controls use (no cross-provider leak). Rendered
   /// once, in the detail header.
   private var currentProviderStatus: ProviderStatus {
-    ProviderStatusMapping.status(
+    let cloudKeyPresent: Bool
+    switch settings.llmProvider {
+    case .openAI: cloudKeyPresent = !openAIKey.isEmpty
+    case .gemini: cloudKeyPresent = !geminiKey.isEmpty
+    case .claude: cloudKeyPresent = !claudeKey.isEmpty
+    default: cloudKeyPresent = false
+    }
+    return ProviderStatusMapping.status(
       for: settings.llmProvider,
       egOneInstall: egOne.installState,
       egOneHealth: egOne.health,
       appleStatus: aiAvailability.latestReport?.overallStatus,
       cloudValidation: llmDiscovery.keyValidationState,
-      cloudKeyPresent: settings.llmProvider == .openAI
-        ? !openAIKey.isEmpty
-        : (settings.llmProvider == .gemini ? !geminiKey.isEmpty : false),
+      cloudKeyPresent: cloudKeyPresent,
       ollamaSetup: setup.ollamaSetup.setupState)
+  }
+
+  /// Whether the CONFIRMED-persisted key for the current provider read back
+  /// empty (as opposed to `nil` unknown or `true` present) — the sole trigger
+  /// for the missing-key notice in `providerSubConfig`. Extracted to a plain
+  /// computed property (not inlined as a `switch` inside the `@ViewBuilder`
+  /// body) because a `@ViewBuilder` context requires every statement to
+  /// produce a `View`; a bare value-assigning `switch` does not.
+  /// Explicit `== false` (not `!x`): `nil` (unknown) and `true` (confirmed
+  /// present) must both suppress the notice, only a confirmed-empty read
+  /// shows it.
+  private var savedKeyIsEmptyForCurrentProvider: Bool {
+    switch settings.llmProvider {
+    case .openAI: return openAIKeySaved == false
+    case .gemini: return geminiKeySaved == false
+    case .claude: return claudeKeySaved == false
+    default: return false
+    }
   }
 
   /// Rail + detail as the two-column master-detail from the approved mockup:
@@ -332,10 +362,9 @@ struct AIPolishSettingsView: View {
       // read, updated only at the 3 real mutation points.
       // Explicit `== false` (not `!x`): `nil` (unknown) and `true` (confirmed
       // present) must both suppress the notice, only a confirmed-empty read
-      // shows it.
-      let savedKeyIsEmpty =
-        (settings.llmProvider == .openAI ? openAIKeySaved : geminiKeySaved) == false
-      if savedKeyIsEmpty {
+      // shows it. See `savedKeyIsEmptyForCurrentProvider` for why this reads
+      // a computed property rather than an inline switch (ViewBuilder body).
+      if savedKeyIsEmptyForCurrentProvider {
         InsetNotice(
           text:
             "Dictation still works, but without a key, cleanup falls back to your raw, unedited text every time.",
@@ -497,6 +526,16 @@ struct AIPolishSettingsView: View {
       } catch {
         geminiKey = ""
       }
+      do {
+        let stored = try keychainManager.retrieve(key: KeychainManager.claudeKeyID)
+        claudeKey = stored
+        claudeKeySaved = !stored.isEmpty
+      } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
+        claudeKey = ""
+        claudeKeySaved = false
+      } catch {
+        claudeKey = ""
+      }
       if settings.llmProvider == .ollama {
         llmDiscovery.loadCachedModels(for: .ollama)
         Task {
@@ -579,63 +618,113 @@ struct AIPolishSettingsView: View {
 
   // MARK: - API Key Row
 
+  /// Per-provider label, placeholder, Keychain id, and privacy sentence for
+  /// `apiKeyRow`. Consolidates what used to be a two-way `isOpenAI` branch
+  /// duplicating the Save/Clear body per provider into one switch-computed
+  /// descriptor, so adding Claude widens this switch instead of tripling the
+  /// body (issue #158, plan §3).
+  private struct APIKeyDescriptor {
+    let label: String
+    let placeholder: String
+    let keychainId: String
+    let accessibilityLabel: String
+    let privacySentence: String
+  }
+
+  private var activeKeyDescriptor: APIKeyDescriptor {
+    switch settings.llmProvider {
+    case .openAI:
+      return APIKeyDescriptor(
+        label: "OpenAI API Key", placeholder: "sk-proj-…",
+        keychainId: KeychainManager.openAIKeyID,
+        accessibilityLabel: "OpenAI API Key",
+        privacySentence:
+          "OpenAI polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response."
+      )
+    case .gemini:
+      return APIKeyDescriptor(
+        label: "Google Gemini API Key", placeholder: "AI…",
+        keychainId: KeychainManager.geminiKeyID,
+        accessibilityLabel: "Google Gemini API Key",
+        privacySentence:
+          "Gemini polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response."
+      )
+    case .claude:
+      // Claude's privacy sentence does not reuse OpenAI/Gemini's "store:
+      // false" line — that names a real request field neither Claude's
+      // Messages API request sends (plan §3). All three providers share
+      // the `.cloudFixed` prompt family, which conditionally includes the
+      // active app name and custom word list in the system prompt
+      // (CloudFixedPromptBuilder) -- the sentence now names that context
+      // instead of claiming only the transcript leaves the Mac (#158,
+      // Codex r5).
+      return APIKeyDescriptor(
+        label: "Claude API Key", placeholder: "sk-ant-…",
+        keychainId: KeychainManager.claudeKeyID,
+        accessibilityLabel: "Claude API Key",
+        privacySentence:
+          "Claude polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. Anthropic's own retention policy for your API account governs how long the request is kept."
+      )
+    default:
+      // Unreachable: apiKeyRow only renders when isCloudProvider is true.
+      return APIKeyDescriptor(
+        label: "", placeholder: "", keychainId: "", accessibilityLabel: "", privacySentence: "")
+    }
+  }
+
+  private var activeKeyBinding: Binding<String> {
+    switch settings.llmProvider {
+    case .openAI: return $openAIKey
+    case .gemini: return $geminiKey
+    case .claude: return $claudeKey
+    default: return .constant("")
+    }
+  }
+
+  private func setKeySaved(_ saved: Bool) {
+    switch settings.llmProvider {
+    case .openAI: openAIKeySaved = saved
+    case .gemini: geminiKeySaved = saved
+    case .claude: claudeKeySaved = saved
+    default: break
+    }
+  }
+
   @ViewBuilder
   private var apiKeyRow: some View {
-    let isOpenAI = settings.llmProvider == .openAI
+    let descriptor = activeKeyDescriptor
     VStack(alignment: .leading, spacing: 6) {
-      Text(isOpenAI ? "OpenAI API Key" : "Google Gemini API Key")
+      Text(descriptor.label)
         .font(.stHelper)
         .foregroundStyle(Color.stTextSecondary)
       HStack(spacing: 8) {
-        if isOpenAI {
-          SecureField("sk-proj-…", text: $openAIKey)
-            .textFieldStyle(.roundedBorder)
-            .accessibilityLabel("OpenAI API Key")
-            .onChange(of: openAIKey) { _, _ in
-              dismissStaleFailureStatus()
-            }
-        } else {
-          SecureField("AI…", text: $geminiKey)
-            .textFieldStyle(.roundedBorder)
-            .accessibilityLabel("Google Gemini API Key")
-            .onChange(of: geminiKey) { _, _ in
-              dismissStaleFailureStatus()
-            }
-        }
+        SecureField(descriptor.placeholder, text: activeKeyBinding)
+          .textFieldStyle(.roundedBorder)
+          .accessibilityLabel(descriptor.accessibilityLabel)
+          .onChange(of: activeKeyBinding.wrappedValue) { _, _ in
+            dismissStaleFailureStatus()
+          }
 
         validationBadge
 
         Button("Save") {
-          if isOpenAI {
-            guard saveKey(key: openAIKey, keychainId: KeychainManager.openAIKeyID) else { return }
-            openAIKeySaved = !openAIKey.isEmpty
-            Task {
-              await llmDiscovery.validateKeyAndDiscoverModels(
-                provider: .openAI, settings: settings, source: .save)
-            }
-          } else {
-            guard saveKey(key: geminiKey, keychainId: KeychainManager.geminiKeyID) else { return }
-            geminiKeySaved = !geminiKey.isEmpty
-            Task {
-              await llmDiscovery.validateKeyAndDiscoverModels(
-                provider: .gemini, settings: settings, source: .save)
-            }
+          let provider = settings.llmProvider
+          let key = activeKeyBinding.wrappedValue
+          guard saveKey(key: key, keychainId: descriptor.keychainId) else { return }
+          setKeySaved(!key.isEmpty)
+          Task {
+            await llmDiscovery.validateKeyAndDiscoverModels(
+              provider: provider, settings: settings, source: .save)
           }
         }
-        .disabled(isOpenAI ? openAIKey.isEmpty : geminiKey.isEmpty)
+        .disabled(activeKeyBinding.wrappedValue.isEmpty)
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
 
         Button("Clear") {
-          if isOpenAI {
-            guard clearKey(keychainId: KeychainManager.openAIKeyID) else { return }
-            openAIKey = ""
-            openAIKeySaved = false
-          } else {
-            guard clearKey(keychainId: KeychainManager.geminiKeyID) else { return }
-            geminiKey = ""
-            geminiKeySaved = false
-          }
+          guard clearKey(keychainId: descriptor.keychainId) else { return }
+          activeKeyBinding.wrappedValue = ""
+          setKeySaved(false)
           llmDiscovery.reset()
         }
         .buttonStyle(.bordered)
@@ -643,10 +732,8 @@ struct AIPolishSettingsView: View {
         .foregroundStyle(.stError)
       }
 
-      Text(
-        "\(isOpenAI ? "OpenAI" : "Gemini") polish sends only transcribed text, never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response."
-      )
-      .settingsReadingCopy()
+      Text(descriptor.privacySentence)
+        .settingsReadingCopy()
     }
   }
 
@@ -744,6 +831,11 @@ struct AIPolishSettingsView: View {
   private var providerExplainerHeader: String {
     switch settings.llmProvider {
     case .openAI, .gemini: return cloudProviderExplainerHeader
+    // Claude does NOT join the OpenAI/Gemini shared arm above — it gets its
+    // own header, the same pattern Apple Intelligence/Ollama/EG-1 already
+    // use, so `cloudProviderExplainerHeader`'s internal ternary never needs
+    // a third arm (issue #158, plan §3).
+    case .claude: return "Why use Claude"
     case .appleIntelligence: return "Why use Apple Intelligence"
     case .ollama: return "Why use Local (Ollama)"
     case .egOne: return "Why use EG-1"
@@ -759,6 +851,8 @@ struct AIPolishSettingsView: View {
     switch settings.llmProvider {
     case .openAI, .gemini:
       cloudProviderExplainer
+    case .claude:
+      claudeExplainer
     case .appleIntelligence:
       appleIntelligenceExplainer
     case .ollama:
@@ -787,6 +881,27 @@ struct AIPolishSettingsView: View {
         "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there."
       )
       .settingsReadingCopy()
+    }
+  }
+
+  @ViewBuilder
+  private var claudeExplainer: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(
+        "Claude is a strong fit for technical writing, code review comments, and identifiers. Haiku is the recommended starting point for dictation cleanup: it is Anthropic's fastest and cheapest current tier, and most cleanup runs finish in one to two seconds. Model names and availability come from your Claude Platform account, so the list shown here can vary by account and usage tier. Cloud polish sends the transcript to Anthropic under your API account."
+      )
+      .settingsReadingCopy()
+
+      Text(
+        "A Claude Pro, Max, Team, or Enterprise chat subscription does not include API access. Create a separate API key in Claude Platform and add prepaid credits before using it here; Anthropic bills API usage separately from a chat subscription."
+      )
+      .settingsReadingCopy()
+
+      Link(
+        "Get your Claude API key",
+        destination: URL(string: "https://platform.claude.com/settings/keys")!
+      )
+      .font(.stHelper)
     }
   }
 
@@ -1442,6 +1557,7 @@ struct AIPolishSettingsView: View {
   private func apiKeyProviderLabel(_ keychainId: String) -> String {
     if keychainId == KeychainManager.openAIKeyID { return LLMProvider.openAI.rawValue }
     if keychainId == KeychainManager.geminiKeyID { return LLMProvider.gemini.rawValue }
+    if keychainId == KeychainManager.claudeKeyID { return LLMProvider.claude.rawValue }
     return keychainId
   }
 
