@@ -1164,6 +1164,21 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         return .empty(hadSpeechEvidence: true)
       }
       lastResult = result
+      // #1707 Codex r9: mirror the normal finalize path's per-transcription
+      // latency telemetry (`:930` above) — without this, every Phase-2
+      // retry-rescued dictation silently drops out of the model/language
+      // latency metric, biasing production data toward first-attempt-only
+      // successes.
+      if result.duration > 0 {
+        let modelName = await backend.modelVariantName
+        let msPerAudioSec = (result.processingTime * 1000.0) / result.duration
+        TelemetryService.shared.trackTranscriptionLatency(
+          lang: result.language,
+          model: modelName,
+          durationSeconds: result.processingTime,
+          msPerAudioSecond: msPerAudioSec
+        )
+      }
       return .transcript(result)
     case .cancelled:
       return .cancelled
