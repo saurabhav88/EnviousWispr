@@ -2210,6 +2210,15 @@ final class RecordingSessionKernel {
         // mislabel a batch retry as "streaming" whenever the ORIGINAL,
         // non-retry attempt happened to be a streaming session.
         stampAcceptedTranscriptTelemetry(result: retryResult, mode: "batch")
+        #if DEBUG
+          // The archive tail below still reads the ORIGINAL failed outcome
+          // unless rebound here — mirrors the salvage-ladder's identical
+          // rebind (Codex r1 finding): a successfully delivered, retry-
+          // rescued dictation must archive as its own success, not as the
+          // primary decode's failure.
+          archiveClassification = "phase2RetrySucceeded"
+          archiveEffectiveOutcome = .transcript(retryResult)
+        #endif
         await runFinalizing(sid, asrText: retryResult.text, transcriptID: transcriptID)
       default:  // nil (timed out), .empty, .cancelled, .failed — all discard identically
         telemetryState.asrRetryOutcome = .retryExhausted

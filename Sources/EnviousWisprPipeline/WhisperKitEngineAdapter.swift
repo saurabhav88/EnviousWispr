@@ -1124,6 +1124,21 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     let session = sessionID
     let generation = retryGeneration
     batchCaptureSamples = inputSamples
+    // The primary `finalize()` already marked this session terminal, so the
+    // kernel's normal terminal cleanup never calls `cancel()` after a retry —
+    // release this retained audio ourselves on every exit (success, empty,
+    // cancelled, failed, or the stale-guard's early return below), matching
+    // what `clearSessionBuffers()` already did for the first attempt. Guarded
+    // on currency (re-checked at defer time, not the pre-await snapshot): a
+    // STALE retry must NOT clear `batchCaptureSamples` if a superseding
+    // session has since started and populated its OWN samples into the same
+    // field — that would clobber the new session's audio, not just release
+    // this retry's own.
+    defer {
+      if sessionID == session, retryGeneration == generation {
+        batchCaptureSamples.removeAll()
+      }
+    }
     let asrSamples = WhisperKitPipelineSpeechRouting.paddedASRSamples(
       rawSamples: inputSamples,
       minimumSamples: AudioConstants.minimumTranscriptionSamples

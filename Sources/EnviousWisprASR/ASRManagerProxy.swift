@@ -691,6 +691,22 @@ public final class ASRManagerProxy: ASRManagerInterface {
         }
       }
     }
+
+    /// Clears all armed/held state (`ParakeetBackend.clearBatchDecodeFault`,
+    /// across XPC), so a forgotten trial from one Live UAT scenario cannot
+    /// leak into the next.
+    package func clearBatchDecodeFault() async {
+      try? await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
+        let guard_ = OneShotContinuationASR(cont)
+        serviceProxy { proxy in
+          proxy.clearBatchDecodeFault {
+            guard_.resume(returning: ())
+          }
+        } onProxyError: {
+          guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
+        }
+      }
+    }
   #endif
 
   // MARK: - XPC Connection

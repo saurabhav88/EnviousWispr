@@ -88,6 +88,10 @@ import Foundation
     /// No-op (still calls reply) if no call is currently held under
     /// `trialID`.
     func releaseBatchDecode(trialID: String, reply: @escaping () -> Void)
+
+    /// Clears all armed/held state, so a forgotten trial from one Live UAT
+    /// scenario cannot leak into the next.
+    func clearBatchDecodeFault(reply: @escaping () -> Void)
   #endif
 }
 

@@ -314,5 +314,13 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
         safeReply()
       }
     }
+
+    func clearBatchDecodeFault(reply: @escaping () -> Void) {
+      nonisolated(unsafe) let safeReply = reply
+      Task { @MainActor in
+        await self.parakeetBackend?.clearBatchDecodeFault()
+        safeReply()
+      }
+    }
   #endif
 }

@@ -87,69 +87,82 @@ package final class BatchDecodeFaultController {
   }
 
   // MARK: Real-engine-boundary hold/release/query (§3.2a-i)
+  //
+  // DEBUG-only: `WhisperKitBackend`'s and `ASRManagerProxy`'s hold/release/
+  // clear methods are themselves declared inside `#if DEBUG` (they don't
+  // exist in Release), and this controller is deliberately NOT gated at the
+  // type level (§ file header) — so these four methods must be individually
+  // gated, or a Release build fails to compile calling symbols that aren't
+  // there. The only caller, `DebugFaultEndpoint`, is itself a `#if DEBUG`
+  // file, so nothing outside DEBUG ever needs these.
 
-  /// Arms a one-shot hold on the NEXT real decode call the given backend
-  /// issues (`WhisperKitBackend.armBatchDecodeHold` in-process;
-  /// `ParakeetBackend.armBatchDecodeHold` across XPC via `ASRManagerProxy`).
-  package func holdBatchDecode(backend: ASRBackendType, trialID: String) async {
-    switch backend {
-    case .whisperKit:
-      await whisperKitBackend?.armBatchDecodeHold(trialID: trialID)
-    case .parakeet:
-      await asrManagerProxy?.armBatchDecodeHold(trialID: trialID)
+  #if DEBUG
+    /// Arms a one-shot hold on the NEXT real decode call the given backend
+    /// issues (`WhisperKitBackend.armBatchDecodeHold` in-process;
+    /// `ParakeetBackend.armBatchDecodeHold` across XPC via `ASRManagerProxy`).
+    package func holdBatchDecode(backend: ASRBackendType, trialID: String) async {
+      switch backend {
+      case .whisperKit:
+        await whisperKitBackend?.armBatchDecodeHold(trialID: trialID)
+      case .parakeet:
+        await asrManagerProxy?.armBatchDecodeHold(trialID: trialID)
+      }
     }
-  }
 
-  /// Releases a previously-armed hold, letting the held decode proceed.
-  package func releaseBatchDecode(backend: ASRBackendType, trialID: String) async {
-    switch backend {
-    case .whisperKit:
-      await whisperKitBackend?.releaseBatchDecode(trialID: trialID)
-    case .parakeet:
-      await asrManagerProxy?.releaseBatchDecode(trialID: trialID)
+    /// Releases a previously-armed hold, letting the held decode proceed.
+    package func releaseBatchDecode(backend: ASRBackendType, trialID: String) async {
+      switch backend {
+      case .whisperKit:
+        await whisperKitBackend?.releaseBatchDecode(trialID: trialID)
+      case .parakeet:
+        await asrManagerProxy?.releaseBatchDecode(trialID: trialID)
+      }
     }
-  }
 
-  /// Merges this controller's own kernel-side timestamps with the
-  /// backend-side timestamps — read directly from `WhisperKitBackend`
-  /// in-process, or from the shared `BatchDecodeFaultSnapshotFile` for
-  /// Parakeet (never over XPC — XPC replies serialize behind a pending
-  /// request, so a query cannot ask the service for progress while a
-  /// `transcribeSamples` reply is held pending; this is the SAME reason
-  /// `XPCOperationSignalFile` exists for progress queries). A one-shot
-  /// atomic snapshot read, NOT an arrival barrier — the caller is
-  /// responsible for polling with a bounded deadline until the required
-  /// field predicate is satisfied (§11.2).
-  package func queryBatchDecodeFault(
-    backend: ASRBackendType, trialID: String
-  ) async -> BatchDecodeFaultQueryResult {
-    let kernel = kernelTimestamps
-    let backendSnapshot: BatchDecodeFaultSnapshotState?
-    switch backend {
-    case .whisperKit:
-      backendSnapshot = await whisperKitBackend?.queryBatchDecodeFault(trialID: trialID)
-    case .parakeet:
-      backendSnapshot = BatchDecodeFaultSnapshotFile.shared.read()
-        .flatMap { $0.trialID == trialID ? $0 : nil }
+    /// Merges this controller's own kernel-side timestamps with the
+    /// backend-side timestamps — read directly from `WhisperKitBackend`
+    /// in-process, or from the shared `BatchDecodeFaultSnapshotFile` for
+    /// Parakeet (never over XPC — XPC replies serialize behind a pending
+    /// request, so a query cannot ask the service for progress while a
+    /// `transcribeSamples` reply is held pending; this is the SAME reason
+    /// `XPCOperationSignalFile` exists for progress queries). A one-shot
+    /// atomic snapshot read, NOT an arrival barrier — the caller is
+    /// responsible for polling with a bounded deadline until the required
+    /// field predicate is satisfied (§11.2).
+    package func queryBatchDecodeFault(
+      backend: ASRBackendType, trialID: String
+    ) async -> BatchDecodeFaultQueryResult {
+      let kernel = kernelTimestamps
+      let backendSnapshot: BatchDecodeFaultSnapshotState?
+      switch backend {
+      case .whisperKit:
+        backendSnapshot = await whisperKitBackend?.queryBatchDecodeFault(trialID: trialID)
+      case .parakeet:
+        backendSnapshot = BatchDecodeFaultSnapshotFile.shared.read()
+          .flatMap { $0.trialID == trialID ? $0 : nil }
+      }
+      return BatchDecodeFaultQueryResult(
+        kernelRetryStartedAtEpochSec: kernel.retryStartedAtEpochSec,
+        kernelRetryTimeoutFiredAtEpochSec: kernel.retryTimeoutFiredAtEpochSec,
+        heldDecodeEntryEpochSec: backendSnapshot?.heldDecodeEntryEpochSec,
+        heldDecodeCompletionEpochSec: backendSnapshot?.heldDecodeCompletionEpochSec,
+        newSessionEntryEpochSec: backendSnapshot?.newSessionEntryEpochSec,
+        newSessionCompletionEpochSec: backendSnapshot?.newSessionCompletionEpochSec
+      )
     }
-    return BatchDecodeFaultQueryResult(
-      kernelRetryStartedAtEpochSec: kernel.retryStartedAtEpochSec,
-      kernelRetryTimeoutFiredAtEpochSec: kernel.retryTimeoutFiredAtEpochSec,
-      heldDecodeEntryEpochSec: backendSnapshot?.heldDecodeEntryEpochSec,
-      heldDecodeCompletionEpochSec: backendSnapshot?.heldDecodeCompletionEpochSec,
-      newSessionEntryEpochSec: backendSnapshot?.newSessionEntryEpochSec,
-      newSessionCompletionEpochSec: backendSnapshot?.newSessionCompletionEpochSec
-    )
-  }
 
-  /// Clears all armed/held state (both backends) and the kernel-side
-  /// timestamps, so a forgotten trial from one Live UAT scenario cannot
-  /// leak into the next.
-  package func clearBatchDecodeFault(trialID: String) async {
-    kernelTimestamps = KernelTimestamps()
-    await whisperKitBackend?.clearBatchDecodeFault()
-    BatchDecodeFaultSnapshotFile.shared.clear()
-  }
+    /// Clears all armed/held state (both backends) and the kernel-side
+    /// timestamps, so a forgotten trial from one Live UAT scenario cannot
+    /// leak into the next. Both backends: WhisperKit in-process, Parakeet
+    /// across XPC via `ASRManagerProxy` — a Parakeet-only trial that skipped
+    /// this call would stay held until the 30-second safety release.
+    package func clearBatchDecodeFault(trialID: String) async {
+      kernelTimestamps = KernelTimestamps()
+      await whisperKitBackend?.clearBatchDecodeFault()
+      await asrManagerProxy?.clearBatchDecodeFault()
+      BatchDecodeFaultSnapshotFile.shared.clear()
+    }
+  #endif
 
   // MARK: Kernel-side timestamps (§3.3)
 
