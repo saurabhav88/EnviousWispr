@@ -348,13 +348,20 @@ public struct LLMModelDiscovery: Sendable {
     else { return false }
 
     if httpResponse.statusCode == 200 { return true }
-    // A transient rate limit is not proof the key lacks access to this
-    // model — reading it as "locked" would falsely disable a valid model
-    // during a busy moment (Codex local review). Unlike Gemini's ambiguous
-    // RESOURCE_EXHAUSTED (which needs body-sniffing to split rate-limit
-    // from a real quota-zero lock), Anthropic's 429 `rate_limit_error` type
-    // is an unambiguous transient signal, so no body inspection is needed.
-    if httpResponse.statusCode == 429 { return true }
+    // A transient rate limit or server-side overload is not proof the key
+    // lacks access to this model — reading it as "locked" would falsely
+    // disable a valid model during a busy moment (Codex local review,
+    // widened after the live latency receipt showed real transient 5xx
+    // traffic from Anthropic). Unlike Gemini's ambiguous RESOURCE_EXHAUSTED
+    // (which needs body-sniffing to split rate-limit from a real
+    // quota-zero lock), Anthropic's 429 `rate_limit_error` and 5xx (incl.
+    // the documented 529 `overloaded_error`) are unambiguous transient
+    // signals — the same range `ClaudeConnector.classify` already treats
+    // as `providerServerError` and retries — so no body inspection is
+    // needed here either.
+    if httpResponse.statusCode == 429 || (500...599).contains(httpResponse.statusCode) {
+      return true
+    }
     return false
   }
 

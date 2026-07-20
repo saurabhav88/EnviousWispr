@@ -21,6 +21,24 @@ import Testing
   .enabled(if: ProcessInfo.processInfo.environment["EW_CLAUDE_LIVE_SWEEP"] == "1"))
 struct ClaudeLiveSweepTests {
 
+  /// Builds the exact prompt envelope production sends for Claude (the
+  /// `.cloudFixed` v6 system prompt via `DefaultPromptPlanner`), so the
+  /// latency receipt and compatibility sweep measure what users actually
+  /// experience, not a stand-in `.default` instructions string (Codex r3
+  /// finding: the two differ materially — language rules, transcript
+  /// framing, short-input handling, and context).
+  private static func productionEnvelope(transcript: String, modelID: String) -> PromptEnvelope {
+    let input = PromptBuildInput(
+      transcript: transcript,
+      provider: .claude,
+      modelID: modelID,
+      appName: nil,
+      language: nil,
+      polishVocabulary: .empty
+    )
+    return DefaultPromptPlanner().plan(input: input).envelope
+  }
+
   @Test(.timeLimit(.minutes(10)))
   func everyOfferedModelPolishesSuccessfully() async throws {
     let keychain = KeychainManager()
@@ -49,18 +67,42 @@ struct ClaudeLiveSweepTests {
         reasoningEffort: nil
       )
 
-      let start = ContinuousClock.now
-      do {
-        let result = try await connector.polish(
-          text: "so um I think we should uh probably move the meeting to thursday afternoon",
-          instructions: .default, config: config, onToken: nil)
-        let elapsed = ContinuousClock.now - start
-        report.append("PASS \(model.id) \(elapsed) -> \(result.polishedText.prefix(60))")
-        if result.polishedText.isEmpty { failures.append("\(model.id): empty polish") }
-      } catch {
-        let elapsed = ContinuousClock.now - start
-        failures.append("\(model.id): \(error) after \(elapsed)")
-        report.append("FAIL \(model.id) \(elapsed) \(error)")
+      // One test-level retry on top of the connector's own internal retry
+      // (`performWithRetry`, already exhausted by the time an error reaches
+      // here): a live run twice saw `claude-opus-4-5-20251101` fail with a
+      // real `providerServerError` after the connector's retries, while an
+      // isolated direct API call to the same model succeeded moments later
+      // — genuine transient elevated error-rate on Anthropic's side for
+      // this model, not a connector defect. This tolerates one bad moment
+      // per model without hiding a model that is persistently broken.
+      var lastError: Error?
+      var polished: String?
+      var elapsed = Duration.zero
+      for attempt in 0..<2 {
+        let start = ContinuousClock.now
+        do {
+          let result = try await connector.polish(
+            text: "so um I think we should uh probably move the meeting to thursday afternoon",
+            instructions: .default, config: config, onToken: nil)
+          elapsed = ContinuousClock.now - start
+          polished = result.polishedText
+          lastError = nil
+          break
+        } catch {
+          elapsed = ContinuousClock.now - start
+          lastError = error
+          if attempt == 0 {
+            print("RETRY \(model.id) after \(elapsed) \(error)")
+          }
+        }
+      }
+
+      if let polished {
+        report.append("PASS \(model.id) \(elapsed) -> \(polished.prefix(60))")
+        if polished.isEmpty { failures.append("\(model.id): empty polish") }
+      } else {
+        failures.append("\(model.id): \(lastError!) after \(elapsed) (2 attempts)")
+        report.append("FAIL \(model.id) \(elapsed) \(lastError!)")
       }
     }
 
@@ -106,10 +148,10 @@ struct ClaudeLiveSweepTests {
           let config = LLMProviderConfig(
             model: model, apiKeyKeychainId: KeychainManager.claudeKeyID,
             maxTokens: 512, temperature: 0, thinkingBudget: nil, reasoningEffort: nil)
+          let envelope = Self.productionEnvelope(transcript: text, modelID: model)
           let start = ContinuousClock.now
           do {
-            _ = try await connector.polish(
-              text: text, instructions: .default, config: config, onToken: nil)
+            _ = try await connector.polish(envelope: envelope, config: config, onToken: nil)
             let ms =
               Double((ContinuousClock.now - start).components.seconds) * 1000
               + Double((ContinuousClock.now - start).components.attoseconds) / 1e15
@@ -132,7 +174,11 @@ struct ClaudeLiveSweepTests {
         let times = bucketCalls.map(\.ms).sorted()
         guard !times.isEmpty else { continue }
         let mean = times.reduce(0, +) / Double(times.count)
-        let p95 = times[Int(Double(times.count - 1) * 0.95)]
+        // Nearest-rank percentile (not truncation): with 5 samples,
+        // ceil(0.95 * 5) - 1 = 4, i.e. the max — truncation would have
+        // reported index 3 and hidden the tail (Codex r3 finding).
+        let p95Index = min(times.count - 1, Int((0.95 * Double(times.count)).rounded(.up)) - 1)
+        let p95 = times[p95Index]
         let max = times.last!
         let timeouts = bucketCalls.filter { !$0.ok }.count
         print(
@@ -141,9 +187,16 @@ struct ClaudeLiveSweepTests {
       }
     }
 
-    let anyOver5s = calls.contains { $0.ok && $0.ms > 5000 }
+    // Gate against the CURRENT runtime budget (LLMPolishStep.maxDuration
+    // for .claude), not a stale number — this receipt is what justified
+    // raising that budget to 10s in the first place (Codex r3 finding).
+    let claudeMaxDurationMs = 10_000.0
+    let anyOverBudget = calls.contains { $0.ok && $0.ms > claudeMaxDurationMs }
     let anyTimeout = calls.contains { !$0.ok }
-    #expect(!anyOver5s, "a successful call exceeded 5000ms — revisit maxDuration before merge")
+    #expect(
+      !anyOverBudget,
+      "a successful call exceeded \(Int(claudeMaxDurationMs))ms — revisit LLMPolishStep.maxDuration before merge"
+    )
     #expect(!anyTimeout, "at least one call failed/timed out during the latency receipt")
   }
 
@@ -200,10 +253,11 @@ struct ClaudeLiveSweepTests {
           let config = LLMProviderConfig(
             model: model, apiKeyKeychainId: KeychainManager.claudeKeyID,
             maxTokens: 512, temperature: 0, thinkingBudget: nil, reasoningEffort: nil)
+          let envelope = Self.productionEnvelope(transcript: input, modelID: model)
           let start = ContinuousClock.now
           do {
             let result = try await connector.polish(
-              text: input, instructions: .default, config: config, onToken: nil)
+              envelope: envelope, config: config, onToken: nil)
             let ms =
               Double((ContinuousClock.now - start).components.seconds) * 1000
               + Double((ContinuousClock.now - start).components.attoseconds) / 1e15
@@ -241,6 +295,49 @@ struct ClaudeLiveSweepTests {
       #expect(
         !compliedLiterally,
         "model \(r.model) appears to have followed the quoted instruction: \(r.rawOutput)")
+    }
+
+    // Category-specific quality blockers (Codex r3 finding): a call that
+    // succeeds but silently corrupts identifiers, drops topics, or leaks a
+    // wrapper must fail the gate, not just a thrown-error count.
+    for r in results where r.category == "technical_vocab_identifiers" {
+      for identifier in ["getUserById", "AuthMiddleware", "JWT"] {
+        #expect(
+          r.rawOutput.contains(identifier),
+          "model \(r.model) dropped or corrupted identifier \(identifier): \(r.rawOutput)")
+      }
+    }
+    for r in results where r.category == "long_multi_paragraph" {
+      // Synonym sets, not a single literal word: a live run showed Claude
+      // legitimately drop the meta-label "is about hiring" while keeping
+      // the actual content ("bring on two more engineers") — real
+      // paraphrasing, not meaning loss. Checking one literal word false-
+      // failed on that; each topic here accepts any content-bearing
+      // rendering of the same paragraph.
+      let topics: [(String, [String])] = [
+        ("budget", ["budget", "cut", "marketing"]),
+        ("hiring", ["hiring", "engineer", "headcount"]),
+        ("offsite", ["offsite", "travel"]),
+      ]
+      let lower = r.rawOutput.lowercased()
+      for (topic, synonyms) in topics {
+        #expect(
+          synonyms.contains { lower.contains($0) },
+          "model \(r.model) dropped the \(topic) paragraph: \(r.rawOutput)")
+      }
+    }
+    for r in results where r.category == "punctuation_minimal_cleanup" {
+      #expect(
+        r.rawOutput.lowercased().contains("three thirty") || r.rawOutput.contains("3:30"),
+        "model \(r.model) lost the meeting time during minimal cleanup: \(r.rawOutput)")
+    }
+    let preambleMarkers = ["here is", "here's the", "corrected text", "sure,", "certainly"]
+    for r in results {
+      let lower = r.rawOutput.lowercased()
+      #expect(
+        !preambleMarkers.contains { lower.hasPrefix($0) },
+        "model \(r.model) surfaced an unrecognized preamble in category \(r.category): \(r.rawOutput)"
+      )
     }
   }
 }
