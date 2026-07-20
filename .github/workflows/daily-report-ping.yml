@@ -18,6 +18,19 @@ on:
         required: false
         type: string
 
+# Serializes scheduled and manual runs of this workflow instead of letting
+# them overlap. queue: max is required alongside cancel-in-progress: false:
+# GitHub's default (queue: single) would silently CANCEL an already-pending
+# run when a new one is queued, even with cancel-in-progress: false (that
+# flag only governs already-RUNNING jobs) - a queued manual recovery run
+# could otherwise be dropped by the next scheduled cron firing before it
+# starts. Does not cover a direct curl to the public Worker endpoint; see
+# README for the procedural mitigation (#1720).
+concurrency:
+  group: daily-report
+  cancel-in-progress: false
+  queue: max
+
 permissions:
   contents: read
 

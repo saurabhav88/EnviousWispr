@@ -29,8 +29,9 @@ const DEFAULT_ENGINE = "parakeet";
 const DEFAULT_PROVIDER = "appleIntelligence";
 
 // Per-worker distinct_id list bound. Genuinely a defense-in-depth ceiling,
-// never the primary correctness mechanism - see PROD/completeness check below
-// and plan §3.3a. 5000 is far above any realistic single-day population.
+// never the primary correctness mechanism - see resolveDevIds/completeness
+// check below and plan §3.3a. 5000 is far above any realistic single-day
+// population.
 const PER_USER_LIST_LIMIT = 5000;
 
 export default {
@@ -128,20 +129,54 @@ function sqlTimestamp(date) {
 
 // ----- PostHog ---------------------------------------------------------------
 
-// Per-distinct_id -dev exclusion (analytics-operations.md RULE:
-// founder-machine-tell-in-distinct-id): a dev build anywhere in an id's
-// history marks the whole id as dogfood. Verbatim shape from
-// workers/product-health/src/index.js.
-const PROD = `properties.environment = 'production'
-  AND distinct_id NOT IN (
-    SELECT distinct_id FROM events
-    WHERE properties.app_version LIKE '%-dev%' )`;
-
-// Environment only, no whole-history dev-ID exclusion. Safe ONLY where the
-// caller separately applies full PROD to whichever set is being COUNTED -
-// see each call site's local comment for why (the #1655 doubled-subquery
-// class; never copy this constant in without re-deriving the argument).
+// Environment predicate alone, no whole-history dev-ID exclusion applied
+// here. See productionClauseFor() below for the report's shared,
+// resolved-once dev-exclusion predicate, and each ENV_ONLY call site's local
+// comment for why omitting the exclusion there is separately safe.
 const ENV_ONLY = "properties.environment = 'production'";
+
+/** Converts a resolved dev-tainted distinct_id list (from resolveDevIds
+ * below) into the reusable production-filter predicate: environment =
+ * production, AND (only if any dev ids exist) NOT IN that literal list.
+ * Resolving the list ONCE per report run and threading the result through
+ * every query that needs it replaces the old per-query inline dev-exclusion
+ * subquery, which independently re-scanned the same whole-history data in
+ * every one of the 6 primary queries - the duplicated-subquery shape that
+ * measurably timed out production PostHog for polish tier-a (#1655) and
+ * onboard_activate (#1716). An empty list is a legitimate state (genuinely
+ * zero dev-tainted ids found across event history) and must not produce
+ * invalid `NOT IN ()` SQL, hence the empty-list branch below (#1720). */
+export function productionClauseFor(devIds) {
+  if (devIds.length === 0) return ENV_ONLY;
+  return `${ENV_ONLY}
+    AND distinct_id NOT IN (${sqlIdList(devIds)})`;
+}
+
+/** Resolves the day's whole-history dev-tainted distinct_id list ONCE per
+ * report run (analytics-operations.md RULE: founder-machine-tell-in-
+ * distinct-id: a dev build anywhere in an id's history marks the whole id
+ * as dogfood, so this is an unbounded scan, not day-windowed). Queried at
+ * PER_USER_LIST_LIMIT+1 to detect overflow: if the true count exceeds the
+ * ceiling, this throws rather than silently building a truncated exclusion
+ * list that would under-exclude dev accounts from production totals - fail
+ * loud, not warn-and-continue (#1720). This is itself a fail-loud query: an
+ * unresolved dev-id list can never safely be treated as "no dev accounts,"
+ * so callers must never wrap it in querySection's fail-soft catch. */
+export async function resolveDevIds(env, hogqlOpts = {}) {
+  const result = await hogql(
+    env,
+    `SELECT DISTINCT distinct_id FROM events
+     WHERE properties.app_version LIKE '%-dev%'
+     LIMIT ${PER_USER_LIST_LIMIT + 1}`,
+    "dev_ids",
+    hogqlOpts
+  );
+  const devIds = (result.results || []).map((row) => row[0]);
+  if (devIds.length > PER_USER_LIST_LIMIT) {
+    throw new Error(`dev-id completeness check failed: more than ${PER_USER_LIST_LIMIT} ids`);
+  }
+  return devIds;
+}
 
 function windowClause(startUTC, endUTC) {
   return `timestamp >= '${sqlTimestamp(startUTC)}' AND timestamp < '${sqlTimestamp(endUTC)}'`;
@@ -149,17 +184,18 @@ function windowClause(startUTC, endUTC) {
 
 /** The day's active-user population (successful dictators), used once as an
  * IN-membership test inside onboardActivateSql's `activated` column - see
- * that query below. Deliberately ${ENV_ONLY}, not full PROD: every row this
- * set is tested against already came from onboardActivateSql's own outer
- * `WHERE ... AND ${PROD}` on onboarding.completed, so a dev-tainted id can
- * never appear on the outer side to begin with - whether this inner set is
- * ALSO dev-filtered cannot change which outer ids match it. Full PROD here
- * would evaluate the same whole-history dev-exclusion subquery a second time
- * for no change in result, which is exactly the doubled-subquery shape that
- * measurably timed out production PostHog for polish tier-a (#1655) - fixed
- * here the same way, after #1655's fix didn't cover this sibling query and
- * it 504'd for real on 2026-07-20. This argument is local to this one call
- * site; a new caller must re-derive it, not assume it. */
+ * that query below. Deliberately ${ENV_ONLY}, not the full production
+ * predicate: every row this set is tested against already came from
+ * onboardActivateSql's own outer `WHERE ... AND ${prod}` on
+ * onboarding.completed, so a dev-tainted id can never appear on the outer
+ * side to begin with - whether this inner set is ALSO dev-filtered cannot
+ * change which outer ids match it. The full predicate here would evaluate
+ * the dev-exclusion a second time for no change in result, which is exactly
+ * the doubled-subquery shape that measurably timed out production PostHog
+ * for polish tier-a (#1655) - fixed here the same way, after #1655's fix
+ * didn't cover this sibling query and it 504'd for real on 2026-07-20. This
+ * argument is local to this one call site; a new caller must re-derive it,
+ * not assume it. */
 function activeUsersSubquery(win) {
   return `SELECT DISTINCT distinct_id FROM events
     WHERE event = 'dictation.completed' AND properties.result = 'success'
@@ -177,14 +213,15 @@ function sqlIdList(ids) {
  * settings.changed, restricted to a literal list of already-known active-user
  * ids (rather than a re-evaluated subquery, which timed out).
  *
- * Deliberately uses ${ENV_ONLY} rather than full PROD. Every active id came
- * from engineAndTierBSql, which already applied full PROD, including the
- * whole-history dev-ID exclusion. Repeating that exclusion twice inside this
- * UNION adds substantial work without changing results. Live A/B
- * verification found identical provider attribution for all active users.
- * This argument is local to tier-a and to activeUsersSubquery's own,
- * separately-derived use of ${ENV_ONLY} below; every other query keeps full
- * PROD. */
+ * Deliberately uses ${ENV_ONLY} rather than the full production predicate.
+ * Every active id came from engineAndTierBSql, which already applied the
+ * full predicate, including the whole-history dev-ID exclusion. Repeating
+ * that exclusion twice inside this UNION adds substantial work without
+ * changing results. Live A/B verification found identical provider
+ * attribution for all active users. This argument is local to tier-a and to
+ * activeUsersSubquery's own, separately-derived use of ${ENV_ONLY} below;
+ * every other query keeps the full dev-exclusion via
+ * `productionClauseFor`. */
 function tierASqlFor(activeIds, endTs) {
   const ids = sqlIdList(activeIds);
   return `
@@ -206,19 +243,36 @@ function tierASqlFor(activeIds, endTs) {
     LIMIT ${PER_USER_LIST_LIMIT}`;
 }
 
-// PostHog's project-level rate limit allows only 3 concurrent queries and
-// queues/cancels/times-out (HTTP 502/503/504) anything beyond that (#1588,
-// posthog.com/docs/api/queries + posthog.com/docs/endpoints/rate-limits).
-// `runLimited` below caps our own concurrency under that ceiling; this retry
-// is the second, complementary layer for genuine transient contention (e.g.
-// the project is shared with EnviousStaging - analytics-operations.md FACT:
-// posthog-project-is-shared-with-enviousstaging). It retries exactly once,
-// only on the documented queue-timeout status class, and only ever before
-// any Discord post happens - unlike the deliberately-rejected outer
+// PostHog's project-level rate limit allows only 3 concurrent queries, up to
+// 10s execution time per query, and queues/cancels/times-out (HTTP
+// 502/503/504) anything beyond that; 429 is the documented, distinct
+// concurrency-limit-reached status (posthog.com/docs/api/queries,
+// posthog.com/docs/endpoints/troubleshooting - #1588, #1720). `runLimited`
+// below caps our own concurrency under that ceiling; this retry is the
+// second, complementary layer for genuine transient contention (e.g. the
+// project is shared with EnviousStaging - analytics-operations.md FACT:
+// posthog-project-is-shared-with-enviousstaging). It retries up to twice
+// (3 attempts total), only on this documented status class, and only ever
+// before any Discord post happens - unlike the deliberately-rejected outer
 // GitHub-Actions-level retry (see the comment in daily-report-ping.yml),
 // this cannot produce a duplicate or confusing failure notice.
-const RETRYABLE_POSTHOG_STATUSES = new Set([502, 503, 504]);
+const RETRYABLE_POSTHOG_STATUSES = new Set([429, 502, 503, 504]);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Randomized backoff windows for retry attempts 2 and 3, informed by (not a
+// guarantee derived from) PostHog's documented up-to-30s queue-wait: once a
+// request has already queued, waited, and failed, its original window is
+// already over, so this is conservative contention backoff, not a claim
+// that a fixed wait "clears" any specific prior window (#1720).
+const RETRY_DELAY_RANGES_MS = [
+  [12_000, 18_000],
+  [30_000, 45_000],
+];
+
+function retryDelayMs(range, randomFn) {
+  const [min, max] = range;
+  return Math.floor(min + randomFn() * (max - min + 1));
+}
 
 /** Carries the query name and HTTP status alongside the message, so a caller
  * can distinguish an exhausted transient failure (which tier-a is allowed to
@@ -239,11 +293,12 @@ export async function hogql(
   env,
   sql,
   queryName,
-  { fetchFn = fetch, sleepFn = sleep, retryDelayMs = 1500 } = {}
+  { fetchFn = fetch, sleepFn = sleep, randomFn = Math.random } = {}
 ) {
   const url = `${POSTHOG_HOST}/api/projects/${env.POSTHOG_PROJECT_ID}/query/`;
+  const maxAttempts = RETRY_DELAY_RANGES_MS.length + 1;
 
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const res = await fetchFn(url, {
       method: "POST",
       headers: {
@@ -279,10 +334,10 @@ export async function hogql(
       }
     }
 
-    if (attempt === 2 || !RETRYABLE_POSTHOG_STATUSES.has(status)) {
+    if (attempt === maxAttempts || !RETRYABLE_POSTHOG_STATUSES.has(status)) {
       throw new PostHogQueryError(queryName, status);
     }
-    await sleepFn(retryDelayMs);
+    await sleepFn(retryDelayMs(RETRY_DELAY_RANGES_MS[attempt - 1], randomFn));
   }
 }
 
@@ -306,6 +361,28 @@ export async function runLimited(tasks, limit) {
   return results;
 }
 
+/** Runs one hogql() call and reports whether it degraded instead of
+ * throwing, for any of the 5 non-essential primary queries (installs,
+ * onboard_activate, engineAndTierB, geo, top5). Only an EXHAUSTED retryable
+ * status (RETRYABLE_POSTHOG_STATUSES, after hogql's own retries) degrades;
+ * anything else - auth, bad SQL, a malformed response, a programming error -
+ * still throws, matching tier_a's existing degrade philosophy (#1655,
+ * extended report-wide by #1720). `totals` deliberately does NOT go through
+ * this helper - it stays fail-loud, see its call site in fetchReportData. */
+async function querySection(env, sql, queryName, hogqlOpts) {
+  try {
+    return { response: await hogql(env, sql, queryName, hogqlOpts), degraded: false };
+  } catch (err) {
+    const isExpectedTransientFailure =
+      err instanceof PostHogQueryError &&
+      err.queryName === queryName &&
+      RETRYABLE_POSTHOG_STATUSES.has(err.status);
+    if (!isExpectedTransientFailure) throw err;
+    console.log(`daily-report ${queryName} degraded after retries: HTTP ${err.status}`);
+    return { response: null, degraded: true };
+  }
+}
+
 function rowsToObjects(res) {
   const cols = res.columns || [];
   return (res.results || []).map((row) => {
@@ -316,28 +393,32 @@ function rowsToObjects(res) {
 }
 
 // `hogqlOpts` forwards the same injection bag `hogql` already accepts, so tests
-// can drive the retry path without a real 1.5s delay per retry - the pattern
-// the hogql unit tests already use. Production passes nothing.
+// can drive the retry path without real backoff delays - the pattern the
+// hogql unit tests already use. Production passes nothing.
 export async function fetchReportData(env, win, endUTC, hogqlOpts = {}) {
   const endTs = sqlTimestamp(endUTC);
+  // Resolved ONCE per report run and threaded through every query below,
+  // replacing the old per-query inline dev-exclusion subquery (#1720).
+  const devIds = await resolveDevIds(env, hogqlOpts);
+  const prod = productionClauseFor(devIds);
   const activeUsers = activeUsersSubquery(win);
 
   const installsSql = `
     SELECT uniqExact(distinct_id) FROM events
     WHERE event = 'app.launched' AND properties.is_fresh_install = true
-      AND ${PROD} AND ${win}`;
+      AND ${prod} AND ${win}`;
 
   const onboardActivateSql = `
     SELECT
       uniqExact(distinct_id) AS onboarded,
       uniqExactIf(distinct_id, distinct_id IN (${activeUsers})) AS activated
     FROM events
-    WHERE event = 'onboarding.completed' AND ${PROD} AND ${win}`;
+    WHERE event = 'onboarding.completed' AND ${prod} AND ${win}`;
 
   const totalsSql = `
     SELECT count() AS net_dictations, uniqExact(distinct_id) AS total_users
     FROM events
-    WHERE event = 'dictation.completed' AND properties.result = 'success' AND ${PROD} AND ${win}`;
+    WHERE event = 'dictation.completed' AND properties.result = 'success' AND ${prod} AND ${win}`;
 
   // Engine (row 3) + polish tier-b fallback (row 4) share the same event
   // population, so one query resolves both per user.
@@ -346,7 +427,7 @@ export async function fetchReportData(env, win, endUTC, hogqlOpts = {}) {
            argMax(properties.asr_backend, timestamp) AS engine,
            anyIf(properties.llm_provider, properties.llm_provider IS NOT NULL) AS tier_b_provider
     FROM events
-    WHERE event = 'dictation.completed' AND properties.result = 'success' AND ${PROD} AND ${win}
+    WHERE event = 'dictation.completed' AND properties.result = 'success' AND ${prod} AND ${win}
     GROUP BY distinct_id
     LIMIT ${PER_USER_LIST_LIMIT}`;
 
@@ -355,7 +436,7 @@ export async function fetchReportData(env, win, endUTC, hogqlOpts = {}) {
     FROM events
     WHERE event = 'dictation.completed' AND properties.result = 'success'
       AND properties.$geoip_country_name IS NOT NULL AND properties.$geoip_country_name != ''
-      AND ${PROD} AND ${win}
+      AND ${prod} AND ${win}
     GROUP BY country
     ORDER BY n DESC
     LIMIT 5`;
@@ -363,43 +444,46 @@ export async function fetchReportData(env, win, endUTC, hogqlOpts = {}) {
   const top5Sql = `
     SELECT distinct_id, count() AS n
     FROM events
-    WHERE event = 'dictation.completed' AND properties.result = 'success' AND ${PROD} AND ${win}
+    WHERE event = 'dictation.completed' AND properties.result = 'success' AND ${prod} AND ${win}
     GROUP BY distinct_id
     ORDER BY n DESC
     LIMIT 5`;
 
-  // These 6 queries are independent, but PostHog allows only 3 concurrent
-  // queries per project (#1588) - `runLimited(..., 2)` runs them in 3 fixed
-  // waves of 2, leaving one slot of headroom for the shared project's other
-  // traffic (EnviousStaging) rather than firing all 6 at once and getting
-  // the excess queued/timed-out. Polish tier-a (below) runs sequentially
-  // *after* all 3 waves finish - it does not need reserved concurrency.
-  // Tier-a has its own history: an EARLIER version embedded the active-user
-  // bound as a re-evaluated nested subquery inside a UNION and that
-  // measurably timed out against production PostHog (HTTP 504) - two nested
-  // re-scans of the whole PROD filter's dev-exclusion subquery, twice,
-  // inside a UNION, is too expensive. Fixed by resolving the active-user id
-  // list from `engineAndTierB` (already fetched, zero extra cost) and
-  // passing it to tier-a as a literal IN-list instead of a subquery.
-  const [installs, onboardActivate, totals, engineAndTierB, geo, top5] = await runLimited(
-    [
-      () => hogql(env, installsSql, "installs", hogqlOpts),
-      () => hogql(env, onboardActivateSql, "onboard_activate", hogqlOpts),
-      () => hogql(env, totalsSql, "totals", hogqlOpts),
-      () => hogql(env, engineAndTierBSql, "engine_and_tier_b", hogqlOpts),
-      () => hogql(env, geoSql, "geo", hogqlOpts),
-      () => hogql(env, top5Sql, "top5", hogqlOpts),
-    ],
-    2
-  );
+  // These 6 primary queries are independent, but PostHog allows only 3
+  // concurrent queries per project (#1588) - `runLimited(..., 2)` runs them
+  // in 3 fixed waves of 2, leaving one slot of headroom for the shared
+  // project's other traffic (EnviousStaging) rather than firing all 6 at
+  // once and getting the excess queued/timed-out. Polish tier-a (below)
+  // runs sequentially *after* all 3 waves finish - it does not need reserved
+  // concurrency. `totals` is the sole fail-loud query in this batch (it
+  // anchors resolveBuckets's completeness check and supplies the report's
+  // headline numbers); the other five go through querySection and degrade
+  // to "temporarily unavailable" instead of discarding the whole report on
+  // an exhausted transient failure (#1720).
+  const [installsResult, onboardActivateResult, totals, engineAndTierBResult, geoResult, top5Result] =
+    await runLimited(
+      [
+        () => querySection(env, installsSql, "installs", hogqlOpts),
+        () => querySection(env, onboardActivateSql, "onboard_activate", hogqlOpts),
+        () => hogql(env, totalsSql, "totals", hogqlOpts),
+        () => querySection(env, engineAndTierBSql, "engine_and_tier_b", hogqlOpts),
+        () => querySection(env, geoSql, "geo", hogqlOpts),
+        () => querySection(env, top5Sql, "top5", hogqlOpts),
+      ],
+      2
+    );
 
-  const activeIds = (engineAndTierB.results || []).map((row) => row[0]);
+  const engineAndTierB = engineAndTierBResult.degraded ? [] : rowsToObjects(engineAndTierBResult.response);
+  const activeIds = engineAndTierB.map((row) => row.distinct_id);
   // tier-a is an ENRICHMENT: resolveBuckets already falls back
   // tierA -> tier_b_provider -> DEFAULT_PROVIDER per user, so an empty tier-a
   // still yields a complete breakdown. A tier-a failure must therefore degrade
   // that one attribution tier rather than discard an otherwise-complete report.
   // On 2026-07-18 all six batched queries succeeded and were discarded because
-  // tier-a timed out (#1655).
+  // tier-a timed out (#1655). When engineAndTierB itself is degraded,
+  // activeIds is empty, so tier-a is naturally skipped below - runReport
+  // separately skips resolveBuckets entirely in that case (#1720), since a
+  // completeness check has nothing real to verify against.
   //
   // ONLY an exhausted retryable status degrades. Anything else - auth, bad SQL,
   // a malformed response, a programming error - stays loud: a silently
@@ -421,16 +505,21 @@ export async function fetchReportData(env, win, endUTC, hogqlOpts = {}) {
   }
 
   return {
-    freshInstalls: installs.results[0][0],
-    onboarded: rowsToObjects(onboardActivate)[0]?.onboarded ?? 0,
-    activated: rowsToObjects(onboardActivate)[0]?.activated ?? 0,
+    freshInstalls: installsResult.degraded ? null : installsResult.response.results[0][0],
+    installsDegraded: installsResult.degraded,
+    onboarded: onboardActivateResult.degraded ? null : rowsToObjects(onboardActivateResult.response)[0]?.onboarded ?? 0,
+    activated: onboardActivateResult.degraded ? null : rowsToObjects(onboardActivateResult.response)[0]?.activated ?? 0,
+    onboardActivateDegraded: onboardActivateResult.degraded,
     netDictations: rowsToObjects(totals)[0]?.net_dictations ?? 0,
     totalUsers: rowsToObjects(totals)[0]?.total_users ?? 0,
-    engineAndTierB: rowsToObjects(engineAndTierB),
+    engineAndTierB,
+    engineAndTierBDegraded: engineAndTierBResult.degraded,
     tierA: rowsToObjects(tierA),
     tierADegraded,
-    geo: rowsToObjects(geo),
-    top5: rowsToObjects(top5),
+    geo: geoResult.degraded ? [] : rowsToObjects(geoResult.response),
+    geoDegraded: geoResult.degraded,
+    top5: top5Result.degraded ? [] : rowsToObjects(top5Result.response),
+    top5Degraded: top5Result.degraded,
   };
 }
 
@@ -510,27 +599,51 @@ function formatWeekdayDate(dateStr) {
   }).format(noonUTC);
 }
 
+// Names for the "some sections were unavailable" summary note, keyed to the
+// same booleans fetchReportData returns. `totals` is deliberately absent -
+// it never degrades (#1720).
+const DEGRADED_SECTION_LABELS = [
+  ["installsDegraded", "new installs"],
+  ["onboardActivateDegraded", "onboarding/activation"],
+  ["engineAndTierBDegraded", "transcription engine and AI-polish breakdown"],
+  ["geoDegraded", "where they are"],
+  ["top5Degraded", "top 5 users"],
+];
+
 export function buildMessage(dateStr, data, buckets) {
   const lines = [`EnviousWispr Daily Report, ${formatWeekdayDate(dateStr)}`, ""];
 
   // Near the TOP deliberately: the tail is truncated at 1990 chars below, so a
   // note appended at the end could be silently cut off on exactly the busy days
-  // when the report is longest (#1655).
+  // when the report is longest (#1655). Distinct from the per-section inline
+  // "temporarily unavailable" wording below - this is a fast-skim summary,
+  // never a substitute for it, and never fabricates a zero for a degraded
+  // section (#1720).
+  const notes = [];
   if (data.tierADegraded) {
-    lines.push(
-      "Note: today's polish-provider breakdown is approximate because the settings lookup was temporarily unavailable.",
-      ""
-    );
+    notes.push("today's polish-provider breakdown is approximate because the settings lookup was temporarily unavailable");
+  }
+  const degradedSections = DEGRADED_SECTION_LABELS.filter(([key]) => data[key]).map(([, label]) => label);
+  if (degradedSections.length) {
+    notes.push(`some sections were temporarily unavailable today: ${degradedSections.join(", ")}`);
+  }
+  if (notes.length) {
+    lines.push(`Note: ${notes.join("; ")}.`, "");
   }
 
-  lines.push(
-    `New installs: ${data.freshInstalls}. People who finished setup today: ${data.onboarded}. Of those, ${data.activated} also dictated today.`,
-    ""
-  );
+  const installsPart = data.installsDegraded
+    ? "New installs: temporarily unavailable."
+    : `New installs: ${data.freshInstalls}.`;
+  const onboardPart = data.onboardActivateDegraded
+    ? "Onboarding and activation: temporarily unavailable."
+    : `People who finished setup today: ${data.onboarded}. Of those, ${data.activated} also dictated today.`;
+  lines.push(`${installsPart} ${onboardPart}`, "");
 
   lines.push(`Total users: ${data.totalUsers} people used the app today.`, "");
 
-  if (data.totalUsers > 0) {
+  if (data.engineAndTierBDegraded) {
+    lines.push("Transcription engine and AI-polish breakdown: temporarily unavailable.", "");
+  } else if (data.totalUsers > 0) {
     const engineLine = formatBuckets(buckets.engineBuckets, ENGINE_LABELS, data.totalUsers);
     if (engineLine) lines.push(`Transcription engine (by user): ${engineLine}.`, "");
 
@@ -540,11 +653,15 @@ export function buildMessage(dateStr, data, buckets) {
 
   lines.push(`Net total dictations: ${data.netDictations}.`, "");
 
-  if (data.geo.length) {
+  if (data.geoDegraded) {
+    lines.push("Where they are: temporarily unavailable.", "");
+  } else if (data.geo.length) {
     lines.push(`Where they are: ${data.geo.map((g) => `${g.country} ${g.n}`).join(", ")}.`, "");
   }
 
-  if (data.top5.length) {
+  if (data.top5Degraded) {
+    lines.push("Top 5 users by dictation volume: temporarily unavailable.");
+  } else if (data.top5.length) {
     lines.push(`Top 5 users by dictation volume: ${data.top5.map((u) => u.n).join(", ")}.`);
   }
 
@@ -572,14 +689,30 @@ async function safePost(env, content) {
   }
 }
 
-export async function runReport(env, dateOverride = null) {
+// `deps` is a test-only injection seam (production passes nothing, both
+// defaults apply): `deps.resolveBuckets` lets a degraded-engine test spy on
+// resolveBuckets and assert it was never called (proving the skip below
+// actually happened, not just that its output looks empty); `deps.hogqlOpts`
+// forwards into fetchReportData so the same test can force an exhausted
+// retry deterministically instead of waiting through real backoff delays
+// (#1720).
+export async function runReport(env, dateOverride = null, deps = {}) {
+  const resolveBucketsFn = deps.resolveBuckets || resolveBuckets;
+  const hogqlOpts = deps.hogqlOpts || {};
   const { dateStr, startUTC, endUTC } = easternYesterdayWindowUTC(new Date(), dateOverride);
   const win = windowClause(startUTC, endUTC);
 
   let data, buckets;
   try {
-    data = await fetchReportData(env, win, endUTC);
-    buckets = resolveBuckets(data);
+    data = await fetchReportData(env, win, endUTC, hogqlOpts);
+    // engineAndTierB degraded => no real per-user rows to check completeness
+    // against; resolveBucketsFn's completeness check would throw against
+    // absent data, so it is skipped entirely rather than called with a
+    // guaranteed-mismatched anchor (#1720). Empty placeholders let
+    // buildMessage omit the breakdown cleanly (see its own degraded branch).
+    buckets = data.engineAndTierBDegraded
+      ? { engineBuckets: {}, polishBuckets: {}, resolutionSource: { settings: 0, actual_dictation: 0, shipped_default: 0 } }
+      : resolveBucketsFn(data);
     // Resolution-tier logging (Cloudflare log only, never the Discord
     // message) - plan §3.3a. A spike in shipped_default's share vs
     // settings/actual_dictation is the telemetry-drift canary.
