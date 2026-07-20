@@ -88,12 +88,18 @@ struct ClaudeLiveSweepTests {
       var lastError: Error?
       var polished: String?
       var elapsed = Duration.zero
+      // Real production envelope, not `.default` (Codex r9): this is the
+      // ONLY sweep covering every catalog model, so a model that accepts
+      // the small `.default` prompt but rejects or mishandles the real
+      // `.cloudFixed` v6 system prompt would otherwise pass here and still
+      // show up as "available" in the picker despite not actually working.
+      let envelope = Self.productionEnvelope(
+        transcript: "so um I think we should uh probably move the meeting to thursday afternoon",
+        modelID: model.id)
       for attempt in 0..<2 {
         let start = ContinuousClock.now
         do {
-          let result = try await connector.polish(
-            text: "so um I think we should uh probably move the meeting to thursday afternoon",
-            instructions: .default, config: config, onToken: nil)
+          let result = try await connector.polish(envelope: envelope, config: config, onToken: nil)
           elapsed = ContinuousClock.now - start
           polished = result.polishedText
           lastError = nil
