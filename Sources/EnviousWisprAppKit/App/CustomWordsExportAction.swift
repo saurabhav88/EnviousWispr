@@ -90,14 +90,25 @@ enum CustomWordsExportAction {
 
     // 4. Verify the list did not move while the user was picking a folder.
     //    Complete records, not just the count: a same-size edit is exactly the
-    //    drift a count comparison cannot see. `CustomWord` synthesizes equality
-    //    over every stored field, and array equality is order-sensitive.
+    //    drift a count comparison cannot see.
+    //
+    //    Compare the DOCUMENTS, not the words. `CustomWord` is Hashable over
+    //    every stored field including `frequencyUsed` and `lastUsed`, which the
+    //    export format deliberately omits — so comparing words would refuse a
+    //    perfectly valid export whenever usage counts moved. That is not a rare
+    //    race: the usage counter is the app's one writer that runs with NO user
+    //    action (30s debounce or 50 corrections, #1695), and the save panel sits
+    //    open for exactly as long as a person takes to pick a folder. Dictating
+    //    while that panel is open would eventually refuse every export.
+    //
+    //    The document is the export payload, so asking whether the PAYLOAD
+    //    changed is the actual question, and it needs no second definition of
+    //    which fields matter (Codex review r1, P2).
     let refreshedExportWords = exportableWords(from: coordinator.customWords)
-    guard refreshedExportWords == proposedExportWords else { return .libraryChanged }
-
-    // 5. Build from the PROPOSED array — the one the user was shown a count of.
-    //    Step 4 has just proven it equals what is on disk.
     let document = CustomWordsTransferDocument(words: proposedExportWords)
+    guard document == CustomWordsTransferDocument(words: refreshedExportWords) else {
+      return .libraryChanged
+    }
 
     // 6. Refuse to write a file our own importer would reject. The exporter
     //    and importer are one round trip, so a limit enforced on only one side

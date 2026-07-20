@@ -416,6 +416,32 @@ struct CustomWordsExportActionTests {
     #expect(spy.written == nil)
   }
 
+  @Test("a usage-count flush does NOT refuse the write")
+  func usageOnlyChangeStillExports() async throws {
+    // The counter that bumps frequencyUsed runs with no user action, and the
+    // save panel is open for however long a person takes to pick a folder. If
+    // the drift check compared whole words, dictating while that panel is open
+    // would eventually refuse every export — a reproducible false refusal, not
+    // a rare race (Codex review r1, P2). Usage is not part of the export
+    // payload, so it must not be part of the question.
+    let coordinator = try coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
+    var used = CustomWordsExportAction.exportableWords(from: coordinator.customWords)
+    used[0].frequencyUsed += 7
+    used[0].lastUsed = Date(timeIntervalSince1970: 1_000_000)
+    let spy = WriteSpy()
+
+    let outcome = await CustomWordsExportAction.run(
+      coordinator: coordinator,
+      proposedExportWords: used,
+      chooseDestination: { self.tempURL() },
+      write: { data, _ in await MainActor.run { spy.written = data } }
+    )
+
+    #expect(outcome == .exported, "usage counts are not part of the exported payload")
+    let document = try CustomWordsTransferDocument(data: try #require(spy.written))
+    #expect(document.words.map(\.canonical) == ["Kubernetes"])
+  }
+
   @Test("an order-only change refuses the write")
   func orderOnlyChangeRefusesTheWrite() async throws {
     let coordinator = try coordinator(seedWords: [
