@@ -888,7 +888,7 @@ struct AIPolishSettingsView: View {
   private var claudeExplainer: some View {
     VStack(alignment: .leading, spacing: 10) {
       Text(
-        "Claude is a strong fit for technical writing, code review comments, and identifiers. Haiku is the recommended starting point for dictation cleanup: it is Anthropic's fastest and cheapest current tier, and most cleanup runs land in well under a second. Model names and availability come from your Claude Platform account, so the list shown here can vary by account and usage tier. Cloud polish sends the transcript to Anthropic under your API account."
+        "Claude is a strong fit for technical writing, code review comments, and identifiers. Haiku is the recommended starting point for dictation cleanup: it is Anthropic's fastest and cheapest current tier, and most cleanup runs finish in one to two seconds. Model names and availability come from your Claude Platform account, so the list shown here can vary by account and usage tier. Cloud polish sends the transcript to Anthropic under your API account."
       )
       .settingsReadingCopy()
 

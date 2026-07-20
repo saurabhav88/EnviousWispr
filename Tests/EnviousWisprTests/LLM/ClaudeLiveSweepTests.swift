@@ -201,8 +201,10 @@ struct ClaudeLiveSweepTests {
 
     // Gate against the CURRENT runtime budget (LLMPolishStep.maxDuration
     // for .claude), not a stale number — this receipt is what justified
-    // raising that budget to 10s in the first place (Codex r3 finding).
-    let claudeMaxDurationMs = 10_000.0
+    // raising that budget in the first place (Codex r3), and the r10
+    // all-models sweep (a real 9.16s Opus call) is what justified raising
+    // it again to 15s to match Ollama/EG-1's precedent.
+    let claudeMaxDurationMs = 15_000.0
     let anyOverBudget = calls.contains { $0.ok && $0.ms > claudeMaxDurationMs }
     let anyTimeout = calls.contains { !$0.ok }
     #expect(

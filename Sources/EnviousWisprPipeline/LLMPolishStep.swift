@@ -192,11 +192,16 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // #158 pre-merge latency receipt (30 real calls, Haiku + Sonnet 4.6,
     // short/medium/long): observed max 7.47s (Sonnet, long bucket), with
     // two Haiku calls over 4.6s. The shared 5 s backstop below would
-    // truncate that real tail, so Claude gets its own budget with headroom
-    // over the measured max — same precedent shape as Apple Intelligence's
-    // 10 s line above, not the shared OpenAI/Gemini number (unmeasured here,
-    // left as-is).
-    case .claude: return .seconds(10)
+    // truncate that real tail. The picker offers every live-discovered
+    // model, including several Opus tiers the bucketed receipt never
+    // measured — the separate all-models sweep recorded a real successful
+    // claude-opus-4-5-20251101 call at 9.16s (Codex r10), which would leave
+    // almost no margin under a 10s deadline before TextProcessingRunner
+    // cancels a valid in-flight polish and silently falls back to raw text.
+    // 15s matches Ollama/EG-1's existing local-generation precedent above
+    // rather than inventing a new number, with real headroom over the
+    // worst real value measured across every offered model so far.
+    case .claude: return .seconds(15)
     case .openAI, .gemini, .none: return .seconds(5)
     }
   }
