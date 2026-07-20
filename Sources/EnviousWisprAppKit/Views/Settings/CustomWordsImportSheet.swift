@@ -144,18 +144,22 @@ struct CustomWordsImportSheet: View {
         // Routed through requestCancel() (#1700): a `.nothingFound`/`.failed`
         // result still holds an uncommitted draft, so Done confirms first in
         // that case; `.completed`/`.nothingApproved` proceed silently, same
-        // as before. The second, hidden button gives Escape the same route:
+        // as before. The overlaid hidden button gives Escape the same route:
         // without it, this screen has no `.cancelAction` button at all, so
         // Escape would dismiss the system sheet directly and reach
         // `.onDisappear`'s unconfirmed cleanup — the exact bug this issue is
         // about, left open on the one screen this change touches (Codex
-        // code-diff review).
+        // code-diff review). `.overlay` rather than a second sibling button:
+        // `.hidden()` on a sibling still reserves its layout footprint,
+        // visibly shifting Done off the trailing edge (Codex, round 3).
         Button("Done") { requestCancel() }
           .keyboardShortcut(.defaultAction)
           .buttonStyle(.borderedProminent)
-        Button("Done") { requestCancel() }
-          .keyboardShortcut(.cancelAction)
-          .hidden()
+          .overlay {
+            Button("Done") { requestCancel() }
+              .keyboardShortcut(.cancelAction)
+              .hidden()
+          }
       case .review:
         Button("Cancel") { requestCancel() }
           .keyboardShortcut(.cancelAction)
