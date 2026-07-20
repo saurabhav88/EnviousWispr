@@ -189,7 +189,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // skip for this provider (TextProcessingRunner), never a surfaced error.
     case .egOne: return .seconds(15)
     case .appleIntelligence: return .seconds(10)
-    case .openAI, .gemini, .claude, .none: return .seconds(5)
+    // #158 pre-merge latency receipt (30 real calls, Haiku + Sonnet 4.6,
+    // short/medium/long): observed max 7.47s (Sonnet, long bucket), with
+    // two Haiku calls over 4.6s. The shared 5 s backstop below would
+    // truncate that real tail, so Claude gets its own budget with headroom
+    // over the measured max — same precedent shape as Apple Intelligence's
+    // 10 s line above, not the shared OpenAI/Gemini number (unmeasured here,
+    // left as-is).
+    case .claude: return .seconds(10)
+    case .openAI, .gemini, .none: return .seconds(5)
     }
   }
 
