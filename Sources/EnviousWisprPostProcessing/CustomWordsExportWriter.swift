@@ -10,6 +10,47 @@ import Foundation
 /// once; a shared temp name would let them overwrite each other's partial
 /// bytes and produce one corrupt file.
 package enum CustomWordsExportWriter {
+  /// Refusing to write onto EnviousWispr's own storage (#1686).
+  package enum ExportDestinationError: LocalizedError, Sendable, Equatable {
+    case wouldOverwriteLiveWords
+
+    package var errorDescription: String? {
+      "That's EnviousWispr's own words file. Choose a different name or folder, "
+        + "so your saved words aren't replaced by the export."
+    }
+  }
+
+  /// Whether this destination is the app's live word list.
+  ///
+  /// Selecting it would atomically replace the app's storage with the transfer
+  /// format; the next launch would find a file it cannot parse, archive it as
+  /// corrupt, and the user would have destroyed their dictionary by exporting
+  /// it. Compared on resolved paths so a symlink or `..` cannot walk around it.
+  package static func wouldOverwriteLiveWords(_ destination: URL) -> Bool {
+    guard let live = CustomWordsManager.liveFileURL else { return false }
+    let target = destination.resolvingSymlinksInPath().standardizedFileURL
+    let liveURL = live.resolvingSymlinksInPath().standardizedFileURL
+
+    // Ask the FILESYSTEM whether these are the same file, not the strings
+    // (code review r6). macOS is case-insensitive by default, so
+    // `CUSTOM-WORDS.JSON` and `custom-words.json` are one file that string
+    // equality calls two — and picking the shouty spelling would walk straight
+    // past this guard into the data loss it exists to prevent.
+    if let targetID = try? target.resourceValues(forKeys: [.fileResourceIdentifierKey])
+      .fileResourceIdentifier,
+      let liveID = try? liveURL.resourceValues(forKeys: [.fileResourceIdentifierKey])
+        .fileResourceIdentifier
+    {
+      return targetID.isEqual(liveID)
+    }
+
+    // The destination may not exist yet, so there is no identity to compare.
+    // Fall back to a case-insensitive path match: on the default volume that
+    // is the truth, and on a case-sensitive one it is merely stricter than
+    // necessary — which is the safe direction to be wrong in.
+    return target.path.compare(liveURL.path, options: .caseInsensitive) == .orderedSame
+  }
+
   /// `@concurrent` so this always runs OFF the caller's actor (code review r5).
   /// The caller is a SwiftUI button action on the main actor, and a plain
   /// `async` here would inherit that isolation — an export to a network,
@@ -19,6 +60,12 @@ package enum CustomWordsExportWriter {
   @concurrent package static func write(
     _ data: Data, to destination: URL
   ) async throws {
+    // Refuse before touching anything: exporting must never be the action that
+    // destroys the thing being exported (#1686).
+    guard !Self.wouldOverwriteLiveWords(destination) else {
+      throw ExportDestinationError.wouldOverwriteLiveWords
+    }
+
     let fm = FileManager.default
     let tmpURL =
       destination

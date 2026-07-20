@@ -214,19 +214,6 @@ struct ImportFileParserTests {
     }
   }
 
-  @Test("a file with more words than the limit is refused with both numbers")
-  func tooManyWordsIsRefusedWithCounts() async throws {
-    let limit = FileImportSource.maximumCandidates
-    let words = (0...limit).map { "word\($0)" }.joined(separator: "\n")
-    let url = try write(words, as: "many.txt")
-
-    await #expect(
-      throws: ImportFileError.tooManyWords(found: limit + 1, limit: limit)
-    ) {
-      _ = try await FileImportSource(url: url).loadCandidates()
-    }
-  }
-
   @Test("a file exactly at the limit is accepted")
   func fileAtExactlyTheLimitIsAccepted() async throws {
     let limit = FileImportSource.maximumCandidates

@@ -163,6 +163,20 @@ package enum PasteWordsParser {
     if let lengthFailure { throw lengthFailure }
     return results
   }
+
+  /// Count words off the caller's actor (code review r5).
+  ///
+  /// The paste screen recomputes this on every change, and the parse is
+  /// bounded but not free — at the ceiling it is still 25,000 words of work on
+  /// whatever actor asked. `@concurrent` keeps that off the main one, so a
+  /// large paste cannot make typing feel heavy.
+  /// Throws what `parse` throws rather than collapsing it to a count. A
+  /// counter must not surface a crash, but it must not invent an answer
+  /// either: swallowing an over-length entry as "0 words" told the user
+  /// nothing was found and left them with no way to act (#1683).
+  @concurrent package static func countWords(_ text: String, limit: Int) async throws -> Int {
+    try parse(text, limit: limit).count
+  }
 }
 
 /// Pasting more than the shared ceiling allows (#1683).

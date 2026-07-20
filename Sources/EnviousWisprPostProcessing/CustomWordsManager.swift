@@ -77,6 +77,25 @@ package enum CustomWordsInitialLoadFailure: Sendable, Equatable {
 public final class CustomWordsManager {
   private let fileURL: URL
 
+  /// Where the live word list is kept.
+  ///
+  /// Exposed so the export path can refuse to write ONTO it (#1686). Choosing
+  /// it as an export destination would atomically replace the app's own
+  /// storage with the transfer-document schema; the next load would find a
+  /// file it cannot parse, archive it as corrupt, and the user would have
+  /// destroyed their dictionary by exporting it.
+  /// `nonisolated`: this is a path computation with no state, and the export
+  /// writer runs off the main actor.
+  nonisolated package static var liveFileURL: URL? {
+    FileManager.default
+      .urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+      .appendingPathComponent("EnviousWispr", isDirectory: true)
+      .appendingPathComponent("custom-words.json")
+  }
+
+  /// This instance's file, so a test-injected manager can be guarded too.
+  package var storageURL: URL { fileURL }
+
   public init() {
     guard
       let baseURL = FileManager.default.urls(

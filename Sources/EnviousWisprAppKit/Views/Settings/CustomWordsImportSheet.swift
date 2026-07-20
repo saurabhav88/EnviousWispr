@@ -42,11 +42,8 @@ struct CustomWordsImportSheet: View {
           ImportUploadScreen(model: model)
             .transition(Self.screenTransition)
         case .smartImportAppPicker:
-          ImportPlaceholderScreen(
-            notice: "Importing from other apps arrives with a later update.",
-            model: model
-          )
-          .transition(Self.screenTransition)
+          ImportSmartAppPickerScreen(model: model)
+            .transition(Self.screenTransition)
         case .review:
           ImportReviewScreen(model: model)
             .transition(Self.screenTransition)
@@ -320,6 +317,11 @@ private struct ImportPasteScreen: View {
   /// progressively less responsive the more it contained.
   @State private var wordCount = 0
   @State private var parseProblem: String?
+  /// The in-flight count, so the next edit can cancel it.
+  @State private var countingTask: Task<Void, Never>?
+  /// True while the on-screen count belongs to an older draft than the one in
+  /// the editor. Continue stays disabled until the current draft is counted.
+  @State private var isCounting = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -357,7 +359,9 @@ private struct ImportPasteScreen: View {
         // the user on the terminal failure screen, which has no Back, so the
         // draft they could have split is gone. Block it where they can still
         // edit it (cloud review, #1683).
-        .disabled(wordCount == 0 || wordCount > CustomWordsImportLimits.maximumCandidates)
+        .disabled(
+          isCounting || wordCount == 0
+            || wordCount > CustomWordsImportLimits.maximumCandidates)
       }
     }
     .onAppear {
@@ -371,26 +375,53 @@ private struct ImportPasteScreen: View {
     }
   }
 
-  /// Keeps the parse failure rather than collapsing it to a zero count.
+  /// Counts OFF the main actor, and keeps the parse failure rather than
+  /// collapsing it to a zero count.
   ///
-  /// `try?` here turned a real, actionable error — an entry longer than the
-  /// limit — into "No words found", which is false and left the user stuck
-  /// with Continue disabled and nothing to act on (Codex review, #1683). A
-  /// counter must not surface a crash, but it must not invent an answer
-  /// either.
+  /// Two separate lessons, one function. `try?` here turned a real, actionable
+  /// error — an entry longer than the limit — into "No words found", which is
+  /// false and left the user stuck with Continue disabled and nothing to act
+  /// on (Codex review, #1683). And counting on the main actor made typing feel
+  /// heavy: bounded work is still work, and at the ceiling it is 25,000 words
+  /// per keystroke (code review r5, #1686).
+  ///
+  /// Off-main means results can land out of order, so each edit cancels the
+  /// previous count and a result is applied only while its draft is still the
+  /// current one — otherwise a slow count of a long list could finish after
+  /// the user cleared the box and re-enable Continue for text that no longer
+  /// exists (code review r6, #1686).
   private func recount(_ draft: String) {
-    do {
-      wordCount = try PasteWordsParser.parse(
-        draft, limit: CustomWordsImportLimits.maximumCandidates
-      ).count
-      parseProblem = nil
-    } catch {
-      wordCount = 0
-      parseProblem = error.localizedDescription
+    countingTask?.cancel()
+    // The count belongs to the PREVIOUS draft until the new one is counted.
+    // Leaving it on screen kept Continue enabled across the gap, so clearing
+    // a valid paste — or replacing it with an over-limit one — could still be
+    // submitted, landing on a terminal screen with no Back (Codex review,
+    // #1686). Moving the count off the main actor is what opened that window;
+    // an answer that is merely late must not be treated as current.
+    isCounting = true
+    countingTask = Task {
+      do {
+        let counted = try await PasteWordsParser.countWords(
+          draft, limit: CustomWordsImportLimits.maximumCandidates)
+        guard !Task.isCancelled, draft == model.pasteDraft else { return }
+        wordCount = counted
+        parseProblem = nil
+        isCounting = false
+      } catch is CancellationError {
+        return
+      } catch {
+        guard !Task.isCancelled, draft == model.pasteDraft else { return }
+        wordCount = 0
+        parseProblem = error.localizedDescription
+        isCounting = false
+      }
     }
   }
 
   private var summary: String {
+    // Says it is still working rather than reporting a stale number as
+    // current, or flashing "no words found" at text nobody has counted yet.
+    if isCounting { return "Counting…" }
     if let parseProblem { return parseProblem }
     let count = wordCount
     switch count {
@@ -448,6 +479,67 @@ private struct ImportUploadScreen: View {
       Text("Spreadsheets aren't supported yet.")
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
+    }
+  }
+}
+
+// MARK: - From another app (PR-4a/b/c)
+
+private struct ImportSmartAppPickerScreen: View {
+  let model: CustomWordsImportFlowModel
+  /// Detection runs when this screen appears, not at launch or when the sheet
+  /// opens: an installed competitor is never quietly inspected in the
+  /// background, only when the user has asked to see this list.
+  @State private var installed: [String] = []
+  @State private var didLookForApps = false
+
+  private var registry: SmartImportRegistry { .v1 }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text("Bring the words across from another dictation app you use.")
+        .settingsReadingCopy()
+
+      if !didLookForApps {
+        HStack(spacing: 8) {
+          ProgressView().controlSize(.small)
+          Text("Looking for apps on this Mac.").settingsReadingCopy()
+        }
+      } else if installed.isEmpty {
+        InsetNotice(
+          text: "No supported dictation apps found on this Mac. "
+            + "EnviousWispr can read Wispr Flow, FluidVoice, and Superwhisper.")
+      } else {
+        ForEach(registry.adapters.filter { installed.contains($0.identifier) }, id: \.identifier) {
+          adapter in
+          ImportMethodCard(
+            icon: "app.badge",
+            title: adapter.displayName,
+            subtitle: "Read your words from \(adapter.displayName)."
+          ) {
+            model.begin(with: SmartImportSource(adapter: adapter))
+          }
+        }
+      }
+
+      // Says the honest shape of the migration before they commit to it: this
+      // brings words across, not the corrections that map onto them.
+      Text(
+        "Words come across on their own. Alternate spellings you set up in the other app stay there."
+      )
+      .font(.stHelper)
+      .foregroundStyle(.stTextSecondary)
+    }
+    .task {
+      // Off the main actor: this touches the filesystem.
+      let found = await Task.detached { () -> [String] in
+        // Detached rather than a plain Task: a plain Task inherits MainActor
+        // from this view, and these are disk existence checks across several
+        // locations. Nothing here needs actor context.
+        SmartImportRegistry.v1.adapters.filter(\.isInstalled).map(\.identifier)
+      }.value
+      installed = found
+      didLookForApps = true
     }
   }
 }

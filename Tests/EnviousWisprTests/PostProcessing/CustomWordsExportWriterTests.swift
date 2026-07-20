@@ -161,4 +161,68 @@ struct CustomWordsExportWriterTests {
     #expect(["Kubernetes", "Anthropic"].contains(try #require(decoded.words.first).canonical))
     #expect(decoded.words.count == 1)
   }
+
+  @Test("exporting onto EnviousWispr's own words file is refused")
+  func exportRefusesToOverwriteTheLiveWordsFile() async throws {
+    // The worst possible outcome of an export: choosing the app's own storage
+    // as the destination would atomically replace the live dictionary with the
+    // transfer format, the next launch would find a file it cannot parse and
+    // archive it as corrupt, and the user would have destroyed their words BY
+    // EXPORTING THEM (code review r5).
+    let live = try #require(CustomWordsManager.liveFileURL)
+
+    await #expect(
+      throws: CustomWordsExportWriter.ExportDestinationError.wouldOverwriteLiveWords
+    ) {
+      try await CustomWordsExportWriter.write(try encoded(["Kubernetes"]), to: live)
+    }
+  }
+
+  @Test("the refusal cannot be walked around with a relative path")
+  func exportRefusalResolvesPathsBeforeComparing() async throws {
+    let live = try #require(CustomWordsManager.liveFileURL)
+    // Same file, spelled the long way round.
+    let indirect = live
+      .deletingLastPathComponent()
+      .appendingPathComponent("..")
+      .appendingPathComponent(live.deletingLastPathComponent().lastPathComponent)
+      .appendingPathComponent(live.lastPathComponent)
+
+    #expect(CustomWordsExportWriter.wouldOverwriteLiveWords(indirect))
+  }
+
+  @Test("an ordinary destination is still allowed")
+  func exportAllowsAnOrdinaryDestination() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    #expect(
+      !CustomWordsExportWriter.wouldOverwriteLiveWords(
+        dir.appendingPathComponent("EnviousWispr Words.json")))
+  }
+
+  @Test("a shouty spelling of the live file is still refused")
+  func exportRefusalIsCaseInsensitive() throws {
+    // macOS is case-insensitive by default, so CUSTOM-WORDS.JSON and
+    // custom-words.json are ONE file that string equality calls two. Picking
+    // the loud spelling would otherwise walk straight past the guard into the
+    // data loss it exists to prevent (code review r6).
+    let live = try #require(CustomWordsManager.liveFileURL)
+    let shouty = live
+      .deletingLastPathComponent()
+      .appendingPathComponent(live.lastPathComponent.uppercased())
+
+    #expect(CustomWordsExportWriter.wouldOverwriteLiveWords(shouty))
+  }
+
+  @Test("a different file in the same folder is still allowed")
+  func exportAllowsASiblingOfTheLiveFile() throws {
+    // The guard must be narrow: refusing the whole folder would stop someone
+    // legitimately exporting next to it.
+    let live = try #require(CustomWordsManager.liveFileURL)
+    let sibling = live
+      .deletingLastPathComponent()
+      .appendingPathComponent("my-words-export.json")
+
+    #expect(!CustomWordsExportWriter.wouldOverwriteLiveWords(sibling))
+  }
 }
