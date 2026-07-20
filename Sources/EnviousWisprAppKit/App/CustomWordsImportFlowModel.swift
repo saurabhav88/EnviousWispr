@@ -254,23 +254,25 @@ final class CustomWordsImportFlowModel {
     }
   }
 
-  /// "Keep editing" from a confirmation dialog (#1700). On `.result(.nothingFound)`
-  /// / `.result(.failed)` there is no Back button to return the user to their
-  /// draft, so this actively returns to Paste with the draft intact; everywhere
-  /// else there is nothing to do — the user is already looking at their
-  /// editable draft, or there was nothing to protect in the first place.
+  /// "Keep editing" from a confirmation dialog (#1700). No `.result` case has
+  /// a Back button, so any terminal result `hasDiscardableDraft` judged worth
+  /// protecting — `.nothingFound`/`.failed` always, or `.completed`/
+  /// `.nothingApproved` when they're guarding an abandoned draft from a
+  /// different, already-finished method (Codex code-diff review) — actively
+  /// returns to Paste with the draft intact. Everywhere else there is nothing
+  /// to do: the user is already looking at their editable draft, or the guard
+  /// above already ruled out there being anything to protect.
   func keepEditingDiscardableDraft() {
     guard hasDiscardableDraft else { return }
     switch step {
-    case .result(.nothingFound), .result(.failed):
+    case .result:
       abandonWork()
       rows = []
       staleNotice = nil
       droppedAliasCollisionCount = 0
       selectedMethod = .paste
       step = .paste
-    case .methodPicker, .paste, .upload, .smartImportAppPicker, .review,
-      .working, .result(.completed), .result(.nothingApproved):
+    case .methodPicker, .paste, .upload, .smartImportAppPicker, .review, .working:
       break
     }
   }

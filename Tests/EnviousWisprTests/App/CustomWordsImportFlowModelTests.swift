@@ -379,4 +379,29 @@ struct CustomWordsImportFlowModelTests {
     #expect(model.selectedMethod == .paste)
     #expect(model.pasteDraft == "Threadripper")
   }
+
+  @Test(
+    "keeping an abandoned draft protected behind a DIFFERENT method's terminal result also reopens it"
+  )
+  func keepingAbandonedDraftAfterOtherMethodTerminalReopensPasteDraft() {
+    // Codex code-diff review, round 2: hasDiscardableDraft can now be true on
+    // .completed/.nothingApproved too, when they're guarding an abandoned
+    // draft from a method the user backed away from — Keep editing must
+    // reach that draft, not leave the user stuck on a screen with no Back.
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Threadripper"
+    model.goBack()
+
+    model.select(.upload)
+    model.beginWork(.committing)
+    model.showResult(.completed(added: 1, replaced: 0))
+    #expect(model.hasDiscardableDraft == true)
+
+    model.keepEditingDiscardableDraft()
+
+    #expect(model.step == .paste)
+    #expect(model.selectedMethod == .paste)
+    #expect(model.pasteDraft == "Threadripper")
+  }
 }
