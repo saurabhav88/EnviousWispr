@@ -199,4 +199,144 @@ struct CustomWordsImportFlowModelTests {
     #expect(model.pasteDraft.isEmpty)
     #expect(model.step == .methodPicker)
   }
+
+  // MARK: - Discardable draft confirmation (#1700)
+
+  @Test("an empty draft has nothing discardable")
+  func hasDiscardableDraftIsFalseForEmptyDraft() {
+    let model = Self.makeModel()
+    model.select(.paste)
+    #expect(model.hasDiscardableDraft == false)
+  }
+
+  @Test("a whitespace-only draft has nothing discardable")
+  func hasDiscardableDraftIsFalseForWhitespaceOnlyDraft() {
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "   \n\t "
+    #expect(model.hasDiscardableDraft == false)
+  }
+
+  @Test("a non-empty draft on the paste screen is discardable")
+  func hasDiscardableDraftIsTrueOnPasteStep() {
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Threadripper"
+    #expect(model.hasDiscardableDraft == true)
+  }
+
+  @Test("a non-empty draft carried into review is still discardable")
+  func hasDiscardableDraftIsTrueOnReviewStep() {
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Threadripper"
+    model.beginWork(.comparing)
+    model.showReview()
+    #expect(model.step == .review)
+    #expect(model.hasDiscardableDraft == true)
+  }
+
+  @Test("a completed result has nothing left to discard")
+  func hasDiscardableDraftIsFalseWhenCompleted() {
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Threadripper"
+    model.beginWork(.committing)
+    model.showResult(.completed(added: 1, replaced: 0))
+    #expect(model.hasDiscardableDraft == false)
+  }
+
+  @Test("a nothing-approved result has nothing left to discard")
+  func hasDiscardableDraftIsFalseWhenNothingApproved() {
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Threadripper"
+    model.beginWork(.committing)
+    model.showResult(.nothingApproved)
+    #expect(model.hasDiscardableDraft == false)
+  }
+
+  @Test("a failed result still holds an uncommitted draft")
+  func failedResultKeepsDraftDiscardable() {
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Threadripper"
+    model.beginWork(.committing)
+    model.showResult(.failed(message: "Couldn't save"))
+    #expect(model.hasDiscardableDraft == true)
+  }
+
+  @Test("a nothing-found result still holds an uncommitted draft")
+  func nothingFoundResultKeepsDraftDiscardable() {
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Threadripper"
+    model.beginWork(.loadingCandidates)
+    model.showResult(.nothingFound)
+    #expect(model.hasDiscardableDraft == true)
+  }
+
+  @Test("an active commit has nothing framed as a discardable draft")
+  func hasDiscardableDraftIsFalseDuringCommit() {
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Threadripper"
+    model.beginWork(.committing)
+    #expect(model.hasDiscardableDraft == false)
+  }
+
+  @Test(
+    "loading or comparing candidates still counts as a discardable draft",
+    arguments: [
+      Model.Work.loadingCandidates, .comparing,
+    ])
+  func hasDiscardableDraftIsTrueDuringLoadOrCompare(work: Model.Work) {
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Threadripper"
+    model.beginWork(work)
+    #expect(model.hasDiscardableDraft == true)
+  }
+
+  @Test("cancel clears the draft and its own predicate")
+  func cancelClearsDraftAndItsOwnPredicate() {
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Threadripper"
+    model.cancel()
+    #expect(model.pasteDraft.isEmpty)
+    #expect(model.hasDiscardableDraft == false)
+  }
+
+  @Test("going back still preserves a non-empty draft after the cancel() change")
+  func goBackStillPreservesDraftAfterCancelChange() {
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Threadripper"
+    model.beginWork(.comparing)
+    model.showReview()
+    model.goBack()
+    #expect(model.step == .paste)
+    #expect(model.pasteDraft == "Threadripper")
+  }
+
+  @Test(
+    "keeping a discardable result reopens the pasted draft",
+    arguments: [
+      Model.Result.nothingFound,
+      .failed(message: "Couldn't import"),
+    ])
+  func keepingDiscardableResultReopensPasteDraft(result: Model.Result) {
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Threadripper"
+    model.beginWork(.loadingCandidates)
+    model.showResult(result)
+
+    model.keepEditingDiscardableDraft()
+
+    #expect(model.step == .paste)
+    #expect(model.selectedMethod == .paste)
+    #expect(model.pasteDraft == "Threadripper")
+  }
 }

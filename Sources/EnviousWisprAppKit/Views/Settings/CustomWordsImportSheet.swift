@@ -20,6 +20,7 @@ struct CustomWordsImportSheet: View {
   )
 
   @State private var model: CustomWordsImportFlowModel
+  @State private var showDiscardConfirm = false
   @Environment(\.dismiss) private var dismiss
 
   init(dependencies: CustomWordsImportFlowModel.Dependencies) {
@@ -27,6 +28,29 @@ struct CustomWordsImportSheet: View {
   }
 
   var body: some View {
+    // The macOS-15+ native window-close protection (#1700) is a second,
+    // deliberately separate, best-effort layer for the OS-level window-close
+    // trigger only — it is NOT proven reliable for this app's real nested
+    // sheet-inside-window topology (see the plan's empirical findings), so it
+    // is never relied on for Cancel/Escape/Done, which always use the local
+    // dialog below on every macOS version.
+    if #available(macOS 15.0, *) {
+      sheetContent
+        .dismissalConfirmationDialog(
+          "You've entered words. This will discard them.",
+          shouldPresent: model.hasDiscardableDraft
+        ) {
+          Button("Discard", role: .destructive) { model.cancel() }
+          Button("Keep editing", role: .cancel) {
+            model.keepEditingDiscardableDraft()
+          }
+        }
+    } else {
+      sheetContent
+    }
+  }
+
+  private var sheetContent: some View {
     VStack(alignment: .leading, spacing: 16) {
       header
 
@@ -68,6 +92,35 @@ struct CustomWordsImportSheet: View {
     // or clearing the sheet route dismisses without it, and an in-flight load
     // or comparison would otherwise keep running against a sheet that is gone.
     .onDisappear { model.cancel() }
+    // Single mechanism for Cancel, Escape, and Done, on every macOS version
+    // (#1700) — see `requestCancel()`.
+    .confirmationDialog(
+      "You've entered words. This will discard them.",
+      isPresented: $showDiscardConfirm,
+      titleVisibility: .visible
+    ) {
+      Button("Discard", role: .destructive) {
+        model.cancel()
+        dismiss()
+      }
+      Button("Keep editing", role: .cancel) {
+        model.keepEditingDiscardableDraft()
+      }
+    }
+  }
+
+  /// Single authority for every explicit discard action (Cancel, Escape via
+  /// the same `.keyboardShortcut(.cancelAction)`, and Done) (#1700). Calls
+  /// `model.cancel()` explicitly on the no-draft path rather than relying
+  /// solely on `.onDisappear`, so cleanup is part of the action's own
+  /// contract, not a lifecycle side effect.
+  private func requestCancel() {
+    if model.hasDiscardableDraft {
+      showDiscardConfirm = true
+    } else {
+      model.cancel()
+      dismiss()
+    }
   }
 
   private var header: some View {
@@ -88,24 +141,22 @@ struct CustomWordsImportSheet: View {
       Spacer()
       switch model.step {
       case .result:
-        Button("Done") { dismiss() }
+        // Routed through requestCancel() (#1700): a `.nothingFound`/`.failed`
+        // result still holds an uncommitted draft, so Done confirms first in
+        // that case; `.completed`/`.nothingApproved` proceed silently, same
+        // as before.
+        Button("Done") { requestCancel() }
           .keyboardShortcut(.defaultAction)
           .buttonStyle(.borderedProminent)
       case .review:
-        Button("Cancel") {
-          model.cancel()
-          dismiss()
-        }
-        .keyboardShortcut(.cancelAction)
+        Button("Cancel") { requestCancel() }
+          .keyboardShortcut(.cancelAction)
         Button(confirmTitle) { model.confirm() }
           .keyboardShortcut(.defaultAction)
           .buttonStyle(.borderedProminent)
       case .methodPicker, .paste, .upload, .smartImportAppPicker, .working:
-        Button("Cancel") {
-          model.cancel()
-          dismiss()
-        }
-        .keyboardShortcut(.cancelAction)
+        Button("Cancel") { requestCancel() }
+          .keyboardShortcut(.cancelAction)
       }
     }
   }

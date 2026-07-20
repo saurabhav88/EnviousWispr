@@ -220,9 +220,50 @@ final class CustomWordsImportFlowModel {
   }
 
   /// Sheet dismissal. Nothing is written on the way out; any in-flight stage
-  /// is cancelled and can no longer publish.
+  /// is cancelled and can no longer publish. Clears the draft so a confirmed
+  /// discard is final and idempotent, whether this runs from an explicit
+  /// discard action or from `.onDisappear`'s unconditional cleanup.
   func cancel() {
     abandonWork()
+    pasteDraft = ""
+  }
+
+  /// True iff closing the sheet right now, by any path, would silently throw
+  /// away words the user already typed (#1700). Excludes `.working(.committing)`
+  /// — an active write in flight is not "a draft" — and the two `.result`
+  /// cases where nothing is left to protect; includes `.result(.nothingFound)`
+  /// and `.result(.failed)`, since neither committed anything and the pasted
+  /// text is still sitting, uncommitted, in `pasteDraft`.
+  var hasDiscardableDraft: Bool {
+    switch step {
+    case .working(.committing), .result(.completed), .result(.nothingApproved):
+      return false
+    case .methodPicker, .paste, .upload, .smartImportAppPicker, .review,
+      .working(.loadingCandidates), .working(.comparing),
+      .result(.nothingFound), .result(.failed):
+      return !pasteDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+  }
+
+  /// "Keep editing" from a confirmation dialog (#1700). On `.result(.nothingFound)`
+  /// / `.result(.failed)` there is no Back button to return the user to their
+  /// draft, so this actively returns to Paste with the draft intact; everywhere
+  /// else there is nothing to do — the user is already looking at their
+  /// editable draft, or there was nothing to protect in the first place.
+  func keepEditingDiscardableDraft() {
+    guard hasDiscardableDraft else { return }
+    switch step {
+    case .result(.nothingFound), .result(.failed):
+      abandonWork()
+      rows = []
+      staleNotice = nil
+      droppedAliasCollisionCount = 0
+      selectedMethod = .paste
+      step = .paste
+    case .methodPicker, .paste, .upload, .smartImportAppPicker, .review,
+      .working, .result(.completed), .result(.nothingApproved):
+      break
+    }
   }
 
   // MARK: - Workflow (PR-F2c)
