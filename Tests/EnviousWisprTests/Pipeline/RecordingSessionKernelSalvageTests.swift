@@ -397,6 +397,82 @@ private func deletesRecoverySpool(_ outcome: RecordingOutcome) -> Bool {
         kernel.testInterruptedTerminalFloor(.failed(.noAudioCaptured)).kind == .audioInterrupted)
     }
 
+    // MARK: 2c. #1707 — the ASR-interruption source is WIDER than .engine
+
+    /// The `.asr` salvage source promises the SAME terminal every failure
+    /// mode already produced before salvage existed — not just the
+    /// deletion-class subset `.engine` protects (grounded review r4's
+    /// widened-floor correction). Only a genuine delivery (`.completed`) or
+    /// an explicit user cancel passes through unchanged.
+    @Test("the ASR-interruption source floors every unsuccessful outcome, wider than .engine")
+    func asrSourceFloorsEveryUnsuccessfulOutcome() async {
+      let (_, wrapper) = makeWrapper()
+      wrapper.telemetryState.interruptedSalvageSource = .asr
+      let kernel = wrapper.testKernel
+
+      for terminal in Self.allTerminals {
+        let floored = kernel.testInterruptedTerminalFloor(terminal)
+        switch terminal {
+        case .completed, .cancelled:
+          #expect(floored == terminal, "\(terminal) must pass through unchanged")
+        default:
+          #expect(
+            floored == .asrInterrupted(wasRecording: true),
+            "\(terminal) must float to the ASR-interruption terminal under the .asr source")
+        }
+      }
+    }
+
+    /// The end-to-end proof of grounded review r2/r3's central finding: a
+    /// salvage decode can succeed (non-empty raw text), enter `.finalizing`,
+    /// and STILL reach a no-transcript terminal if processing empties the
+    /// result — a state where NO `.asrInterrupted` payload was legal before
+    /// this fix's narrowly-widened `isLegalConclusion`. Proves the floor, the
+    /// widened legality, and the no-wedge guarantee together, for real,
+    /// through the actual `runFinalizing` path — not a bare unit call.
+    @Test(
+      "finalizing floor: a salvage decode that succeeds but polish empties still lands on .asrInterrupted(true), no wedge"
+    )
+    func finalizingFloorCatchesEmptyAfterProcessing() async {
+      let (context, wrapper) = makeWrapper(behavior: .batchSuccess(text: "hello"))
+      wrapper.testForceEmptyAfterProcessing()
+      let kernel = wrapper.testKernel
+
+      await startRecording(context)
+      kernel.externalASRInterrupted()
+      await wrapper.drainReadyWork()
+
+      #expect(
+        kernel.recordingOutcome == .asrInterrupted(wasRecording: true),
+        "reached \(String(describing: kernel.recordingOutcome)) — a wedge would leave no outcome")
+      #expect(kernel.recordingOutcome != nil, "the session must not wedge")
+      #expect(!deletesRecoverySpool(.asrInterrupted(wasRecording: true)))
+      #expect(context.paste.pasteCount == 0)
+      #expect(
+        kernel.lastASRSalvageOutcome == .decodeFailed,
+        "Codex code-diff r2: a rewarm that succeeded but decode/processing that didn't must read as decodeFailed, not rewarmFailed"
+      )
+    }
+
+    /// The recovery capability's `.cancelled` outcome (superseded attempt) is
+    /// handled identically to `.failed` — both mean "do not decode," never a
+    /// distinct terminal.
+    @Test("a .cancelled recovery outcome floors to the ASR-interrupted terminal, same as .failed")
+    func asrRecoveryCancelledFloors() async {
+      let (context, wrapper) = makeWrapper()
+      context.engine.asrInterruptionRecoveryResult = .cancelled
+      let kernel = wrapper.testKernel
+
+      await startRecording(context)
+      kernel.externalASRInterrupted()
+      await wrapper.drainReadyWork()
+
+      #expect(kernel.recordingOutcome == .asrInterrupted(wasRecording: true))
+      #expect(context.paste.pasteCount == 0)
+      #expect(context.engine.recoverFromASRInterruptionCallCount == 1)
+      #expect(kernel.lastASRSalvageOutcome == .cancelled)
+    }
+
     /// #1408 A3 retired `.maxDurationReached`: the hard cap is a normal
     /// auto-stop routed through the typed `.maxDuration` exit, so it can no
     /// longer stamp a cause, reach the floor, or claim an interruption at all.

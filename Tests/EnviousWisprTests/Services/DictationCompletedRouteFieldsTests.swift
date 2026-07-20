@@ -93,5 +93,34 @@ struct DictationCompletedRouteFieldsTests {
 
       #expect(box.event?.intProps["capture_native_channel_count"] == nil)
     }
+
+    @Test("#1707: asrSalvageOutcome threads into dictation.completed when a salvage was attempted")
+    func asrSalvageOutcomeThreaded() {
+      let box = Box()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Transcript(text: "hello"), inputMode: "ptt",
+        asrSalvageOutcome: "rewarm_succeeded")
+
+      #expect(box.event?.stringProps["asr_salvage_outcome"] == "rewarm_succeeded")
+    }
+
+    @Test("#1707: an uninterrupted completion omits the asr_salvage_outcome key")
+    func asrSalvageOutcomeOmittedWhenNil() {
+      let box = Box()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Transcript(text: "hello"), inputMode: "ptt")
+
+      #expect(box.event?.stringProps["asr_salvage_outcome"] == nil)
+    }
   #endif
 }

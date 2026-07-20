@@ -2,6 +2,33 @@ import EnviousWisprAudio
 import EnviousWisprCore
 import Foundation
 
+/// #1707: which of the two salvage-eligible interruption sources this
+/// session's capture was interrupted by. `.engine` carries the existing
+/// `EngineInterruptionCause` payload unchanged; `.asr` has no payload — the
+/// ASR-interruption salvage path always emits `.asrInterrupted(wasRecording:
+/// true)` on failure, so there is nothing further to distinguish. One enum,
+/// not two independently-settable fields, so "both set" is unrepresentable.
+enum InterruptedSalvageSource: Equatable, Sendable {
+  case engine(EngineInterruptionCause)
+  case asr
+}
+
+/// #1707 — Codex code-diff r2: a DEDICATED signal distinguishing an
+/// ASR-interruption salvage attempt's outcome, separate from `lastStopReason`
+/// (which only ever records the ORIGINAL exit, `"asr_interruption"`, whether
+/// the salvage that followed succeeded or not). Without this, production
+/// telemetry cannot distinguish a successful salvage from a rewarm failure, a
+/// decode failure, or a superseded attempt — exactly the breakdown needed to
+/// validate and eventually tune the recovery deadline (§3a).
+public enum ASRSalvageOutcome: String, Sendable {
+  /// The recovery capability confirmed readiness. Set immediately; if decode
+  /// then fails, `interruptedTerminalFloor` upgrades this to `.decodeFailed`.
+  case rewarmSucceeded = "rewarm_succeeded"
+  case rewarmFailed = "rewarm_failed"
+  case decodeFailed = "decode_failed"
+  case cancelled = "cancelled"
+}
+
 /// Per-session telemetry side-channel for details that do not belong in the
 /// kernel FSM state enum. The kernel writes this before terminal transitions;
 /// `KernelLifecycleTelemetrySink` reads it when rendering the lifecycle event.
@@ -26,22 +53,43 @@ final class KernelTelemetryState {
   /// guard passes — BEFORE the too-short / no-audio / dead-air early
   /// terminals — so no-audio, asrEmpty, and completed all share it.
   var captureHealth: KernelCaptureHealthTelemetry?
-  /// #1408: the ONE home for "this session's capture was interrupted, by cause X."
-  /// Stamped once per session by `RecordingSessionKernel.externalEngineInterrupted`
-  /// under its first-wins accept condition, and read by four consumers: the
-  /// kernel's salvage guard, the kernel's terminal floor, the History "Interrupted"
-  /// badge (via the `store` closure, which already captures this holder), and this
-  /// module's lifecycle telemetry sink. `RecordingSessionKernel
-  /// .lastAudioInterruptionCause` is a computed read-through to here, not a second
-  /// copy. Cleared ONLY by `resetForNewSession()` below — a second clearer would
-  /// let a stale cause leak into the next session and mis-fire the floor.
-  var interruptionCause: EngineInterruptionCause?
+  /// #1408/#1707: the ONE home for "this session's capture was interrupted, and
+  /// by what." Stamped once per session under a first-wins accept condition —
+  /// `.engine(cause)` by `RecordingSessionKernel.externalEngineInterrupted`,
+  /// `.asr` by the winning `.asrInterruption` exit from `.live` — and read by
+  /// the kernel's salvage guard, the kernel's terminal floor (and, for `.asr`,
+  /// the widened `isLegalConclusion`), the History "Interrupted" badge, and
+  /// this module's lifecycle telemetry sink. Cleared ONLY by
+  /// `resetForNewSession()` below — a second clearer would let a stale source
+  /// leak into the next session and mis-fire the floor.
+  var interruptedSalvageSource: InterruptedSalvageSource?
+
+  /// Read/write derived projection onto `interruptedSalvageSource`, preserving
+  /// every pre-#1707 production reader and test writer of the engine-only
+  /// cause (`RecordingSessionKernel.lastAudioInterruptionCause` reads through
+  /// here) without a second, independently-mutable copy. The getter returns
+  /// the associated cause only for `.engine(cause)`; the setter maps a
+  /// non-nil cause to `.engine(cause)` and nil to nil — it can never produce
+  /// `.asr`, matching the fact that no pre-#1707 writer ever meant that case.
+  var interruptionCause: EngineInterruptionCause? {
+    get {
+      guard case .engine(let cause) = interruptedSalvageSource else { return nil }
+      return cause
+    }
+    set {
+      interruptedSalvageSource = newValue.map { .engine($0) }
+    }
+  }
   /// #1317: the classified zero-signal failure mode for this session (nil =
   /// never classified). Stamped once, by whichever classification wins
   /// (reactive `.zeroSignal` exit OR STOP-time, §3.6) — drives the
   /// `.zeroSignal` pill for `allZeroFromStart` and the partial-capture
   /// disclosure for `becameZeroMidCapture` (§3.5).
   var zeroSignalFailureMode: CaptureStallFailureMode?
+
+  /// #1707: this session's ASR-interruption salvage outcome, or `nil` if no
+  /// salvage was attempted. See `ASRSalvageOutcome` for the value taxonomy.
+  var asrSalvageOutcome: ASRSalvageOutcome?
 
   func resetForNewSession(polishEnabled: Bool) {
     self.polishEnabled = polishEnabled
@@ -54,8 +102,9 @@ final class KernelTelemetryState {
     transcriptionFailureError = nil
     modelLoadError = nil
     captureHealth = nil
-    interruptionCause = nil
+    interruptedSalvageSource = nil
     zeroSignalFailureMode = nil
+    asrSalvageOutcome = nil
   }
 }
 

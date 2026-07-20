@@ -211,4 +211,46 @@ struct ASREventRouterTests {
       withExtendedLifetime(router) {}
     }
   #endif
+
+  #if DEBUG
+    @Test(
+      "a Parakeet-idle ASR crash while WhisperKit is recording marks Parakeet, never interrupts WhisperKit"
+    )
+    func parakeetIdleReapDuringWhisperKitRecordingDoesNotTouchWhisperKit() async {
+      // #1707 Codex code-diff r12: `asrManager.onServiceInterrupted` is
+      // Parakeet's OWN XPC service callback. Before this fix, the router
+      // forwarded it to `whisperKitKernelDriver.handleASRServiceInterruption()`
+      // whenever WhisperKit happened to be recording — even though Parakeet's
+      // crash has nothing to do with WhisperKit's independent, in-process
+      // engine. This is the regression test: Parakeet idle + WhisperKit
+      // actively recording must leave WhisperKit's session completely alone
+      // and mark only Parakeet's own idle-reap state.
+      let audio = RouterTestAudioCapture()
+      let asr = RouterTestASRManager()
+      let store = DictationRuntimeFixtures.tempStore()
+      let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
+        audioCapture: audio, asrManager: asr, store: store)
+      let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+        audioCapture: audio, store: store)
+      let router = ASREventRouter(
+        asrManager: asr, kernelDriver: parakeet, whisperKitKernelDriver: whisperKit)
+
+      let wkKernel = whisperKit.kernelForTesting
+      #expect(wkKernel.testForceTransition(to: .arming))
+      #expect(wkKernel.testForceTransition(to: .live))
+      #expect(whisperKit.state == .recording)
+      #expect(parakeet.state == .idle)
+
+      asr.onServiceInterrupted?()
+      await Task.yield()
+
+      // WhisperKit's healthy recording must be completely untouched — no
+      // terminal conclusion, still .recording.
+      #expect(whisperKit.state == .recording)
+      // Parakeet's own idle-reap marker is set instead (same handling as the
+      // both-idle case), never WhisperKit's driver.
+      #expect(parakeet.residentModelLostWhileIdle == true)
+      withExtendedLifetime(router) {}
+    }
+  #endif
 }

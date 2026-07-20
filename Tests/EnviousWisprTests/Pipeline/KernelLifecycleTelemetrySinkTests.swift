@@ -46,6 +46,7 @@ import Testing
       let category: SentryBreadcrumb.ErrorCategory
       let stage: String
       let errorDescription: String
+      let extraKeys: [String]  // sorted — Any-typed values aren't Equatable
     }
 
     /// #1408: the non-paging `audio.capture_interrupted` counter.
@@ -99,10 +100,11 @@ import Testing
             triggerSource: trigger, inputMode: mode, targetApp: target))
       },
       modelLoadWedged: { backend, _ in recorder.modelLoadWedgedBackends.append(backend) },
-      captureError: { error, category, stage, _ in
+      captureError: { error, category, stage, extra in
         recorder.captureErrors.append(
           Recorder.CaptureErrorCall(
-            category: category, stage: stage, errorDescription: error.localizedDescription))
+            category: category, stage: stage, errorDescription: error.localizedDescription,
+            extraKeys: (extra?.keys.map { $0 } ?? []).sorted()))
       },
       // #1408: injected so no test ever reaches the real PostHog SDK
       // (`tests-no-process-global-mutable-delegate`).
@@ -613,6 +615,21 @@ import Testing
     sink.emit(.asrInterrupted(wasRecording: false))
     #expect(recorder.captureErrors.count == 1)
     #expect(recorder.captureErrors.first?.category == .xpcServiceError)
+    // No salvage attempt was recorded on this bare telemetryState — the
+    // signal must stay absent, not a false-positive key (#1707).
+    #expect(!(recorder.captureErrors.first?.extraKeys.contains("asr_salvage_outcome") ?? true))
+  }
+
+  @Test(".asrInterrupted threads asr_salvage_outcome when a salvage was attempted (#1707)")
+  func asrInterruptedThreadsSalvageOutcome() {
+    let telemetryState = KernelTelemetryState()
+    telemetryState.interruptedSalvageSource = .asr
+    telemetryState.asrSalvageOutcome = .rewarmFailed
+    let recorder = Recorder()
+    let sink = makeSink(recorder: recorder, telemetryState: telemetryState)
+    sink.emit(.asrInterrupted(wasRecording: true))
+    #expect(recorder.captureErrors.count == 1)
+    #expect(recorder.captureErrors.first?.extraKeys.contains("asr_salvage_outcome") == true)
   }
 
   @Test(".discarded carries the reason as a data field (PR-1 §B.7.4)")
@@ -977,10 +994,11 @@ import Testing
       audioCapture: FakeAudioCapture(),
       context: KernelSessionContext(),
       captureTelemetry: CaptureTelemetryState(),
-      captureError: { error, category, stage, _ in
+      captureError: { error, category, stage, extra in
         recorder.captureErrors.append(
           Recorder.CaptureErrorCall(
-            category: category, stage: stage, errorDescription: error.localizedDescription))
+            category: category, stage: stage, errorDescription: error.localizedDescription,
+            extraKeys: (extra?.keys.map { $0 } ?? []).sorted()))
       },
       noAudioCapturedRich: { ctx in richCalls.append(ctx) })
     sink.emit(.failed(.noAudioCaptured))

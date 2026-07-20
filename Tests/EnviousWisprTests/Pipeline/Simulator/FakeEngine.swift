@@ -108,6 +108,26 @@ final class FakeEngine: ASREngineAdapter {
   /// an ASR-service crash while recording.
   var onEngineInterrupted: (@MainActor () -> Void)?
 
+  /// #1707: controllable result for `recoverFromASRInterruption()`. Defaults
+  /// to `.readyForBatchDecode` so scenarios that don't exercise the
+  /// ASR-interruption salvage path are unaffected. `asrInterruptionRecoveryDelayTicks`
+  /// places the kernel's await deterministically on the fake clock (e.g. to
+  /// race a cancel or a second interruption mid-recovery) — this is NOT a
+  /// simulation of `ParakeetEngineAdapter`'s own wall-clock deadline (that
+  /// mechanism has its own dedicated, real-timing tests); it only controls
+  /// when THIS fake's call resolves relative to other scripted events.
+  var asrInterruptionRecoveryResult: ASRInterruptionRecoveryOutcome = .readyForBatchDecode
+  var asrInterruptionRecoveryDelayTicks = 0
+  private(set) var recoverFromASRInterruptionCallCount = 0
+
+  func recoverFromASRInterruption() async -> ASRInterruptionRecoveryOutcome {
+    recoverFromASRInterruptionCallCount += 1
+    if asrInterruptionRecoveryDelayTicks > 0 {
+      await clock.sleep(ticks: asrInterruptionRecoveryDelayTicks)
+    }
+    return asrInterruptionRecoveryResult
+  }
+
   // MARK: Observed counters (for FakeEngineTests)
 
   private(set) var warmUpCallCount = 0

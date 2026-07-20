@@ -138,6 +138,44 @@ import Testing
     #expect(count == 0)
   }
 
+  // MARK: #1707 — recoverFromASRInterruption
+
+  @Test("recoverFromASRInterruption(): confirms readiness via the real backend.isReady authority")
+  func recoverFromASRInterruptionConfirmsReadiness() async {
+    // #1707 — this is the router-misrouting fix's actual mechanism: WhisperKit
+    // never crashes from this signal, so its engine is already ready; the
+    // adapter must confirm that via the awaited actor-isolated authority, not
+    // an unconditional stub.
+    let backend = StubWhisperKitBackend()
+    await backend.setIsReady(true)
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let outcome = await adapter.recoverFromASRInterruption()
+    #expect(outcome == .readyForBatchDecode)
+  }
+
+  @Test("recoverFromASRInterruption(): returns .failed when the backend genuinely is not ready")
+  func recoverFromASRInterruptionFailsWhenNotReady() async {
+    let backend = StubWhisperKitBackend()
+    await backend.setIsReady(false)
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let outcome = await adapter.recoverFromASRInterruption()
+    #expect(outcome == .failed)
+  }
+
+  @Test("recoverFromASRInterruption(): does NOT trust a stale cachedReadiness mirror")
+  func recoverFromASRInterruptionDoesNotTrustStaleCachedReadiness() async throws {
+    // The mirror can go stale (e.g. after an unload elsewhere); recovery must
+    // re-await the real backend, not read the cache alone.
+    let backend = StubWhisperKitBackend()
+    await backend.setIsReady(true)
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    try await adapter.warmUp()  // populates cachedReadiness == .ready
+    await backend.setIsReady(false)  // the backend itself became not-ready
+    let outcome = await adapter.recoverFromASRInterruption()
+    #expect(
+      outcome == .failed, "a stale cached .ready must not be trusted over the real backend state")
+  }
+
   @Test("warmUpFromCache() reads readiness and never triggers a load")
   func warmUpFromCacheDoesNotTriggerLoad() async throws {
     let backend = StubWhisperKitBackend()

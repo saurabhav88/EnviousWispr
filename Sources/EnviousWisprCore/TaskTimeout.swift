@@ -85,3 +85,52 @@ public func withDeadline<T: Sendable>(
     }
   }
 }
+
+/// Run `operation` with a wall-clock deadline, guaranteeing `onTimeout` runs
+/// to completion BEFORE the caller is resumed on timeout — the ordering
+/// `withDeadline` does not provide (it resumes the caller immediately once
+/// the deadline claims, with no hook to run cleanup first). Use this instead
+/// of `withDeadline` whenever a timeout must actively supersede/cancel a
+/// resource the operation was mutating, so a later caller (e.g. a fresh
+/// session) can never race an abandoned operation's late cleanup.
+///
+/// `onTimeout` MUST be synchronous, non-throwing, and MUST NOT suspend — an
+/// async cleanup hook would either leave this call's own wait unbounded, or
+/// need its own inner deadline, which would just recreate the exact same
+/// ordering race one layer down. If the real cleanup needs to await
+/// something, that something must itself already be synchronous
+/// (fire-and-forget with its own internal bookkeeping) — do not widen this
+/// contract to admit an async closure. (#1707 — Codex grounded review r3/r4.)
+///
+/// On success (operation wins the race), `onTimeout` is never called.
+public func withOrderedDeadline<T: Sendable>(
+  seconds: Double,
+  operation: @escaping @Sendable () async -> T,
+  onTimeout: @escaping @Sendable @MainActor () -> Void
+) async -> T? {
+  let resumed = OSAllocatedUnfairLock(initialState: false)
+  func claim() -> Bool {
+    resumed.withLock { done in
+      done
+        ? false
+        : {
+          done = true
+          return true
+        }()
+    }
+  }
+  return await withCheckedContinuation { (continuation: CheckedContinuation<T?, Never>) in
+    let operationTask = Task(priority: .userInitiated) {
+      let value = await operation()
+      if claim() { continuation.resume(returning: value) }
+    }
+    Task { @MainActor in
+      try? await Task.sleep(for: .seconds(seconds))
+      if claim() {
+        operationTask.cancel()  // best-effort; cannot preempt a blocked thread
+        onTimeout()  // synchronous — completes before the resume below
+        continuation.resume(returning: nil)
+      }
+    }
+  }
+}

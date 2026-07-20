@@ -304,10 +304,16 @@ final class KernelLifecycleTelemetrySink {
       // crash bucket by backend again.
       let bv = backend.rawValue
       let backendLabel = backend == .whisperKit ? "WhisperKit" : "Parakeet"
+      // #1707: which salvage outcome preceded this terminal — absent when the
+      // interruption was never salvage-eligible (recovery not attempted).
+      var extra: [String: Any] = ["was_recording": wasRecording, "backend": bv]
+      if let salvageOutcome = telemetryState.asrSalvageOutcome {
+        extra["asr_salvage_outcome"] = salvageOutcome.rawValue
+      }
       emitCaptureError(
         KernelFallbackSentryError.xpcServiceError(backendLabel: backendLabel),
         .xpcServiceError, "asr",
-        ["was_recording": wasRecording, "backend": bv],
+        extra,
         snapshot: recordingSnapshot())
       updateRecordingState(false, nil, nil)
 

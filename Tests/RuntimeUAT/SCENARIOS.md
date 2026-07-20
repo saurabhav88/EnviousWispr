@@ -30,7 +30,7 @@ run_scenario("A3_asr_xpc_kill")
 | Symptom (something broke in production?) | Scenario | Mechanism family |
 |---|---|---|
 | Real OS-level audio interruption (BT codec switch, Zoom mic-grab, device sleep/wake) | See `docs/LANE_B_AUDIO_TESTS.md` (HITL only — not synthetic-viable, see `docs/audits/2026-05-02-v2-synthetic-viability-codex.txt`) | hardware/HITL |
-| Pipeline stuck after ASR service crash | A3_asr_xpc_kill | xpc |
+| Dictation lost (or pipeline stuck) after ASR service crash | A3_asr_xpc_kill | xpc |
 | Cancel mid-record leaks task / state | A2_force_cancel | timing |
 | Rapid stop/start corrupts state | A1_rapid_stop_start | timing |
 | Live setting toggle doesn't apply mid-record | A6_settings_storm | settings |
@@ -58,11 +58,11 @@ Start recording, wait 1s, dispatch `force_cancel` via the DEBUG endpoint. Pipeli
 **Negative control:** remove cancellation cleanup in `TranscriptionPipeline.cancelRecording()` — cancelled task lingers, audio capture not stopped, asserted via `assert_no_zombie()`.
 
 ### A3_asr_xpc_kill (Lane A — XPC)
-Backends: parakeet (WhisperKit ASR is in-process). Budget: 5s. Mechanism: xpc.
+Backends: parakeet (WhisperKit ASR is in-process). Budget: 30s. Mechanism: xpc.
 
-Start recording, wait 1s, dispatch `force_xpc_kill` to invalidate the active `ASRManagerProxy.connection` mid-stream. Pipeline transitions to `.error` within 5s; `assert_no_zombie` confirms no orphan ASR helper.
+Start recording, wait 1s, `kill -9` the real `EnviousWisprASRService` process (`force_xpc_process_kill` — a genuine crash, not `force_xpc_kill`'s connection-only invalidation, which leaves the helper alive and the model resident and never exercises the slow reload path). #1707: the pipeline salvages the already-captured audio — it reconnects through a freshly-respawned process (cold model reload included) and decodes rather than discarding the dictation, within the poll window (15s, deliberately wider than the production recovery deadline of 8.0s plus decode/finalize time). `assert_no_zombie` confirms no orphan ASR helper. `salvage_succeeded` reads the kernel's own precomputed recovery-outcome log line, not the final pipeline state — gates on whether the recovery mechanism itself succeeded, not on whether the captured audio also happened to be VAD-detectable (a separate, test-environment-dependent concern); a build that regressed to discarding the dictation on crash raises `AssertionError`, not a silent pass.
 
-**Negative control:** remove the ASR-crash handler at `WhisperKitPipeline.swift:1044` (or the Parakeet-side equivalent). Pipeline gets stuck; `assert_terminated` returns `terminal=False`.
+**Negative control:** remove `ASREngineAdapter.recoverFromASRInterruption()` / revert #1707 (`RecordingSessionKernel`'s ASR-interruption salvage tail). The dictation is discarded instead of salvaged; `salvage_succeeded` is `False` and the scenario raises.
 
 **A4_audio_xpc_kill and A5_proxy_buffer_drop_watchdog were removed (#1543)** — both drove the deleted host-side audio-capture proxy DEBUG commands, which cannot exist now that capture runs in-process. Real OS-level audio interruption (BT codec switch, Zoom mic-grab, device sleep/wake) is covered by the HITL Lane B matrix (`docs/LANE_B_AUDIO_TESTS.md`); the capture-stall watchdog is exercised in-process by the #1317 zero-fill proof-bench.
 

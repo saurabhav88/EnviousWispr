@@ -887,6 +887,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   public var lastAudioInterruptionCause: EngineInterruptionCause? {
     kernel.lastAudioInterruptionCause
   }
+  /// #1707: non-nil when the most recent recording's `.live`-time ASR
+  /// interruption triggered a salvage attempt, distinguishing whether it
+  /// succeeded, failed to reconnect, failed to decode, or was superseded.
+  /// LIVE pass-through from the kernel; never persisted.
+  public var lastASRSalvageOutcome: ASRSalvageOutcome? {
+    kernel.lastASRSalvageOutcome
+  }
   /// #1317: non-nil when the most recent recording was classified as the
   /// mic-harness all-zero glitch (`allZeroFromStart` = the `.zeroSignal`
   /// pill; `becameZeroMidCapture` = a normal completion whose disclosure
