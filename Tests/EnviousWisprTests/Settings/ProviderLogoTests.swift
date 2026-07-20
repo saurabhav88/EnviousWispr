@@ -16,7 +16,10 @@ struct ProviderLogoTests {
 
   @Test("Each brand SVG builds a valid template image")
   func brandMarksBuild() {
-    for svg in [ProviderLogoSVG.openAI, ProviderLogoSVG.gemini, ProviderLogoSVG.ollama] {
+    for svg in [
+      ProviderLogoSVG.openAI, ProviderLogoSVG.gemini, ProviderLogoSVG.ollama,
+      ProviderLogoSVG.claude,
+    ] {
       let image = ProviderLogoSVG.templateImage(svg)
       #expect(image != nil, "brand SVG should rasterize to a valid image")
       #expect(image?.isTemplate == true, "monochrome marks must be template-tinted")
@@ -37,8 +40,8 @@ struct ProviderLogoTests {
     // would still pass. Assert the exact contract instead.
     #expect(ProviderLogoSVG.monogram(for: .openAI) == "OA")
     #expect(ProviderLogoSVG.monogram(for: .gemini) == "G")
-    // Claude ships with no hand-drawn brand SVG (plan §2.2 non-goal), so its
-    // monogram is a first-class fallback, not a degraded state (#158).
+    // Claude now ships a real brand SVG too; the monogram remains the
+    // macOS-14-floor rasterization-failure fallback, same as every other mark.
     #expect(ProviderLogoSVG.monogram(for: .claude) == "CL")
     #expect(ProviderLogoSVG.monogram(for: .ollama) == "OL")
     #expect(ProviderLogoSVG.monogram(for: .egOne) == "EG")
