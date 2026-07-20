@@ -219,25 +219,36 @@ package struct WisprFlowAdapter: SmartImportAdapter {
     // complete — which is exactly what the error message already tells the
     // user to do.
     let fm = FileManager.default
-    let hasWAL = fm.fileExists(atPath: url.path + "-wal")
-    let hasSHM = fm.fileExists(atPath: url.path + "-shm")
-    if hasWAL && !hasSHM {
+    func sidecarsExist() -> Bool {
+      fm.fileExists(atPath: url.path + "-wal") || fm.fileExists(atPath: url.path + "-shm")
+    }
+    // ANY sidecar means refuse — and the connection is ALWAYS immutable.
+    //
+    // The earlier shape read WAL-aware when a WAL was present, which required
+    // a non-immutable connection, which is the only mode that can CREATE
+    // files. That left a race no re-check could close: if the other app quit
+    // between this decision and the open, both sidecars vanished, SQLite
+    // recreated empty ones inside their directory, and the after-read check
+    // then saw a WAL again and called the import good (Codex review, #1686).
+    //
+    // Refusing instead removes the mode that can write at all, so there is no
+    // window left to lose. It costs the user one step — quit the other app,
+    // which flushes its WAL — and that is exactly what the error already asks
+    // for. Reading a live database was never going to be both safe and
+    // complete; this picks the honest half.
+    guard !sidecarsExist() else {
       throw SmartImportError.unreadable(displayName)
     }
-    let uri = hasWAL ? "file:\(url.path)" : "file:\(url.path)?immutable=1"
+    let uri = "file:\(url.path)?immutable=1"
 
-    // The check above and the open below are two moments, and Wispr Flow can
-    // start or stop writing in between (code review r4). Two ways that hurts:
-    // a WAL created after an immutable decision is ignored, silently importing
-    // stale words; a WAL that disappears makes the read-only path recreate
-    // sidecars in the competitor's directory.
-    //
-    // A snapshot copy would close the window completely, but the real database
-    // here is 151 MB — copying it to read a handful of words is a poor trade.
-    // Instead the state is re-checked after the read (see below): if it moved,
-    // the import is refused rather than reported. That turns an invisible
-    // wrong answer into a visible "try again", which is the honest failure.
-    let sidecarStateAtStart = hasWAL
+    // The check above and the open below are still two moments: Wispr Flow can
+    // START writing in between, and immutable would then read a stale view
+    // that ignores its uncommitted WAL. A snapshot copy would close the window
+    // completely, but the real database is 151 MB — copying it to read a
+    // handful of words is a poor trade. The state is re-checked after the read
+    // instead: if a sidecar appeared, the words may be stale, so refuse rather
+    // than report. Immutable cannot create one, so a sidecar found afterwards
+    // is always the other app's doing, never ours.
 
     var db: OpaquePointer?
     guard
@@ -263,7 +274,7 @@ package struct WisprFlowAdapter: SmartImportAdapter {
     // longer matches the database and these words may be a stale view. Refuse
     // rather than hand back something that looks complete — the error already
     // tells the user to quit the other app and try again.
-    guard fm.fileExists(atPath: url.path + "-wal") == sidecarStateAtStart else {
+    guard !sidecarsExist() else {
       throw SmartImportError.unreadable(displayName)
     }
     return words

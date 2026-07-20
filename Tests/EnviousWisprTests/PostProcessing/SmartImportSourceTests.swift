@@ -197,6 +197,42 @@ struct SmartImportSourceTests {
     #expect(!FileManager.default.fileExists(atPath: url.path + "-shm"))
   }
 
+  @Test("a live database with both sidecars is refused, not read WAL-aware")
+  func liveDatabaseWithSidecarsIsRefused() throws {
+    // Reading WAL-aware required a connection mode that can CREATE files, and
+    // that mode is the only way this can ever write into another app's folder.
+    // If the app quit between the check and the open, SQLite recreated empty
+    // sidecars there — and the after-read check then saw a WAL again and
+    // called the import good (Codex review, #1686).
+    //
+    // Refusing removes the writable mode entirely, so there is no window left
+    // to lose. The cost is one step the error already asks for: quit the app.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try makeWisprFlowDatabase(in: dir)
+    try Data("pretend wal".utf8).write(to: URL(fileURLWithPath: url.path + "-wal"))
+    try Data("pretend shm".utf8).write(to: URL(fileURLWithPath: url.path + "-shm"))
+
+    #expect(throws: SmartImportError.unreadable("Wispr Flow")) {
+      _ = try WisprFlowAdapter().loadWords(at: url)
+    }
+  }
+
+  @Test("an -shm alone is refused too, whichever sidecar it is")
+  func shmWithoutWalIsRefused() throws {
+    // The rule is "any sidecar", not "the WAL": naming one of a pair is how
+    // the earlier version left a case uncovered.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try makeWisprFlowDatabase(in: dir)
+    try Data("pretend shm".utf8).write(to: URL(fileURLWithPath: url.path + "-shm"))
+
+    #expect(throws: SmartImportError.unreadable("Wispr Flow")) {
+      _ = try WisprFlowAdapter().loadWords(at: url)
+    }
+    #expect(!FileManager.default.fileExists(atPath: url.path + "-wal"))
+  }
+
   @Test("a cleanly closed database is read without creating sidecars")
   func cleanDatabaseLeavesNoSidecarsBehind() throws {
     let dir = makeDirectory()

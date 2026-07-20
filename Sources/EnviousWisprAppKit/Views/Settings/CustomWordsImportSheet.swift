@@ -319,6 +319,9 @@ private struct ImportPasteScreen: View {
   @State private var parseProblem: String?
   /// The in-flight count, so the next edit can cancel it.
   @State private var countingTask: Task<Void, Never>?
+  /// True while the on-screen count belongs to an older draft than the one in
+  /// the editor. Continue stays disabled until the current draft is counted.
+  @State private var isCounting = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -356,7 +359,9 @@ private struct ImportPasteScreen: View {
         // the user on the terminal failure screen, which has no Back, so the
         // draft they could have split is gone. Block it where they can still
         // edit it (cloud review, #1683).
-        .disabled(wordCount == 0 || wordCount > CustomWordsImportLimits.maximumCandidates)
+        .disabled(
+          isCounting || wordCount == 0
+            || wordCount > CustomWordsImportLimits.maximumCandidates)
       }
     }
     .onAppear {
@@ -387,6 +392,13 @@ private struct ImportPasteScreen: View {
   /// exists (code review r6, #1686).
   private func recount(_ draft: String) {
     countingTask?.cancel()
+    // The count belongs to the PREVIOUS draft until the new one is counted.
+    // Leaving it on screen kept Continue enabled across the gap, so clearing
+    // a valid paste — or replacing it with an over-limit one — could still be
+    // submitted, landing on a terminal screen with no Back (Codex review,
+    // #1686). Moving the count off the main actor is what opened that window;
+    // an answer that is merely late must not be treated as current.
+    isCounting = true
     countingTask = Task {
       do {
         let counted = try await PasteWordsParser.countWords(
@@ -394,17 +406,22 @@ private struct ImportPasteScreen: View {
         guard !Task.isCancelled, draft == model.pasteDraft else { return }
         wordCount = counted
         parseProblem = nil
+        isCounting = false
       } catch is CancellationError {
         return
       } catch {
         guard !Task.isCancelled, draft == model.pasteDraft else { return }
         wordCount = 0
         parseProblem = error.localizedDescription
+        isCounting = false
       }
     }
   }
 
   private var summary: String {
+    // Says it is still working rather than reporting a stale number as
+    // current, or flashing "no words found" at text nobody has counted yet.
+    if isCounting { return "Counting…" }
     if let parseProblem { return parseProblem }
     let count = wordCount
     switch count {
