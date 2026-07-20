@@ -502,11 +502,37 @@ test("source guardrail: tier-a may omit dev exclusion only while active ids come
 
   const tierAFunction = src.match(/function tierASqlFor\([\s\S]*?\n}\n/)?.[0];
   assert.ok(tierAFunction, "expected tierASqlFor");
-  assert.match(tierAFunction, /properties\.environment = 'production'/);
+  assert.match(tierAFunction, /\$\{ENV_ONLY\}/);
   assert.doesNotMatch(tierAFunction, /\$\{PROD\}/);
   assert.equal(
     (tierAFunction.match(/distinct_id IN \(\$\{ids\}\)/g) || []).length,
     2,
     "both tier-a UNION branches must remain restricted to the pre-filtered active-id list"
+  );
+});
+
+// ---- load-bearing coupling guard (#1716, sibling of #1655's tier-a guard) ----
+//
+// activeUsersSubquery may omit PROD's dev-ID exclusion ONLY because every id
+// it is tested against inside onboardActivateSql already came from that
+// query's own full-PROD outer WHERE. If a future edit drops onboardActivateSql's
+// outer ${PROD}, or reuses activeUsersSubquery from a caller that doesn't
+// pre-filter the same way, the omission silently becomes a correctness bug.
+
+test("source guardrail: onboard-activate's active-user lookup may omit dev exclusion only while its own outer WHERE keeps full PROD", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+
+  const activeUsersFunction = src.match(/function activeUsersSubquery\([\s\S]*?\n}\n/)?.[0];
+  assert.ok(activeUsersFunction, "expected activeUsersSubquery");
+  assert.match(activeUsersFunction, /\$\{ENV_ONLY\}/);
+  assert.doesNotMatch(activeUsersFunction, /\$\{PROD\}/);
+
+  const onboardActivateQuery = src.match(/const onboardActivateSql = `([\s\S]*?)`;/)?.[1];
+  assert.ok(onboardActivateQuery, "expected onboardActivateSql");
+  assert.match(
+    onboardActivateQuery,
+    /WHERE event = 'onboarding\.completed' AND \$\{PROD\} AND \$\{win\}/,
+    "the outer onboarding.completed filter must keep full PROD - activeUsersSubquery's env-only shortcut depends on it"
   );
 });
