@@ -7,6 +7,10 @@ alerts on nothing — purely a digest for the founder's morning read.
 Plan + full metric-definition rationale (including the two real bugs caught
 during planning and the two grounded-review rounds that shaped the final
 design): `docs/feature-requests/issue-1433-2026-07-09-daily-report.md`.
+Reliability-hardening rationale (why every query shares one resolved-once
+dev-exclusion predicate, why retries are 3 attempts with randomized backoff,
+why 5 of 6 primary queries degrade instead of failing the whole report):
+`docs/feature-requests/issue-1720-2026-07-20-daily-report-reliability-hardening.md`.
 
 ## What it reports
 
@@ -60,6 +64,18 @@ message, posts nothing):
 The optional date argument overrides "yesterday" — useful for testing
 against a known day, and mirrors the deployed worker's `?date=` recovery
 parameter (see below).
+
+**Verification methodology — do not rapid-fire the live trigger.** PostHog's
+project-level limit is 3 concurrent queries; this worker alone can fire up
+to ~8 in one run (6 primary + `resolveDevIds` + conditional `tier_a`).
+Manually re-triggering the live production endpoint two or three times in a
+short window (each firing its own batch) was directly observed causing
+429/504 failures on 2026-07-20 that a single isolated trigger did not
+reproduce — the repeated triggering was itself the dominant traffic source,
+not proof the underlying fix was broken. Verify a change with, in order: (1)
+`node --test`, (2) one `live-query-smoke.mjs` run (posts nothing), (3) after
+deploying, real unattended scheduled runs over the following days. Do not
+declare a fix "proven" from repeated manual endpoint hits.
 
 ## Deploy — REQUIRED after every source change
 
@@ -152,27 +168,37 @@ cron trigger time. Same secret lives as repo secret
 
 Two independent signals, matching `workers/product-health`'s posture:
 
-1. **A query or completeness-check failure** posts an explicit "Daily
-   report failed to generate for `<date>`: `<error>`" notice to Discord
-   (EnviousNotes) AND makes the worker return a non-2xx status, which turns
-   the GitHub Actions job red. You will see BOTH the Discord notice and a
-   GitHub Actions failure.
+1. **A `totals` failure, an auth failure, a malformed query/response, a
+   completeness-check mismatch, or a dev-id-list overflow** posts an explicit
+   "Daily report failed to generate for `<date>`: `<error>`" notice to
+   Discord (EnviousNotes) AND makes the worker return a non-2xx status, which
+   turns the GitHub Actions job red. You will see BOTH the Discord notice and
+   a GitHub Actions failure. `totals` is deliberately the ONE primary query
+   that never degrades — it anchors `resolveBuckets`' completeness check and
+   supplies the report's headline numbers, so there is no safe partial
+   substitute for it.
 
-   **One deliberate exception: `tier_a` degrades instead of failing (#1655).**
-   It is the polish-provider *settings* lookup, and `resolveBuckets` already
-   falls back per user (settings → actual dictation → shipped default), so an
-   empty `tier_a` still yields a complete breakdown. If it exhausts its retry
-   on a transient PostHog status (502/503/504), the report is still posted with
-   a note near the top: "today's polish-provider breakdown is approximate
-   because the settings lookup was temporarily unavailable." Read that note as
-   "this day's provider split leans on runtime signal rather than configured
-   choice," not as "the report is wrong."
+   **Six deliberate exceptions degrade instead of failing (#1655, #1716,
+   #1720).** `tier_a` (the polish-provider *settings* lookup) and 5 of the 6
+   primary queries — `installs`, `onboard_activate`, `engineAndTierB`, `geo`,
+   `top5` — can each independently degrade on an exhausted transient PostHog
+   status (429/502/503/504). `tier_a` degrading still yields a full report
+   with a near-top note ("today's polish-provider breakdown is approximate
+   because the settings lookup was temporarily unavailable"), because
+   `resolveBuckets` already falls back per user (settings → actual dictation
+   → shipped default). The other 5 have no such fallback data — a degraded
+   section is OMITTED with inline "temporarily unavailable" wording in its
+   normal spot (never a fabricated `0` or empty list shown as real data),
+   plus a combined near-top note listing every degraded section for a fast
+   skim. `engineAndTierB` degrading additionally skips `tier_a` (no active-id
+   list to enrich) and `resolveBuckets` entirely (no per-user rows to check
+   completeness against) — the breakdown lines are simply omitted.
 
-   This exception is scoped tightly. Only `tier_a`, and only on an exhausted
-   502/503/504 — an auth failure, a malformed query, a bad response shape, or
-   any ordinary programming error still fails the whole report loudly, because
-   a silently "approximate" report that hides a real defect is worse than no
-   report at all. Every other query remains fail-loud.
+   This exception is scoped tightly. Only these six, and only on an
+   exhausted 429/502/503/504 — an auth failure, a malformed query, a bad
+   response shape, or any ordinary programming error still fails the whole
+   report loudly, because a silently "approximate" report that hides a real
+   defect is worse than no report at all.
 2. **If Discord itself is unreachable/erroring**, the GitHub Actions job
    still goes red (the one failure mode with no Discord-side notice —
    GitHub's own failure-run email is the signal here).
@@ -183,12 +209,21 @@ Two independent signals, matching `workers/product-health`'s posture:
    curl -fsS "https://enviouswispr-daily-report.saurabhav.workers.dev/?token=<TRIGGER_SECRET>&date=2026-07-08"
    ```
 
-**Duplicate posts are expected, not a bug.** A manual `workflow_dispatch` or
-a GitHub Actions job rerun on a day the scheduled run already posted will
-post a second, real, duplicate report — same accepted tradeoff as
-`workers/product-health`'s own manual-trigger runbook. No idempotency/dedup
-mechanism is built (would need new stateful infrastructure — a Workers KV
-namespace — for a low-stakes internal report).
+**Duplicate posts remain possible for a genuinely separate trigger, not a
+bug.** A manual `workflow_dispatch` on a day the scheduled run already
+posted will still post a second, real, duplicate report — same accepted
+tradeoff as `workers/product-health`'s own manual-trigger runbook. No
+idempotency/dedup mechanism is built (would need new stateful infrastructure
+— a Workers KV namespace — for a low-stakes internal report). What #1720
+DOES prevent: `daily-report-ping.yml`'s own `concurrency: {group:
+daily-report, cancel-in-progress: false, queue: max}` stops the scheduled
+cron and a manual dispatch from overlapping or silently cancelling each
+other's pending run within GitHub Actions — GitHub's default behavior
+(`queue: single`) would otherwise let a new pending run silently replace an
+already-queued one, which could drop a queued manual recovery run entirely.
+This does not cover a direct `curl` to the public Worker endpoint; see the
+verification-methodology note above for why that path stays a manual,
+deliberate, spaced-out action.
 
 ## Rollback
 
