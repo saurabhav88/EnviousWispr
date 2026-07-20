@@ -56,6 +56,8 @@ struct CustomWordsExportActionTests {
 
     let outcome = await CustomWordsExportAction.run(
       coordinator: coordinator,
+      proposedExportWords: CustomWordsExportAction.exportableWords(
+        from: coordinator.customWords),
       chooseDestination: { nil },
       write: { _, _ in await MainActor.run { spy.writeCount += 1 } }
     )
@@ -76,6 +78,8 @@ struct CustomWordsExportActionTests {
 
     let outcome = await CustomWordsExportAction.run(
       coordinator: coordinator,
+      proposedExportWords: CustomWordsExportAction.exportableWords(
+        from: coordinator.customWords),
       chooseDestination: { self.tempURL() },
       write: { data, _ in await MainActor.run { spy.written = data } }
     )
@@ -93,6 +97,8 @@ struct CustomWordsExportActionTests {
 
     let outcome = await CustomWordsExportAction.run(
       coordinator: coordinator,
+      proposedExportWords: CustomWordsExportAction.exportableWords(
+        from: coordinator.customWords),
       chooseDestination: { self.tempURL() },
       write: { data, _ in await MainActor.run { spy.written = data } }
     )
@@ -111,6 +117,8 @@ struct CustomWordsExportActionTests {
 
     let outcome = await CustomWordsExportAction.run(
       coordinator: coordinator,
+      proposedExportWords: CustomWordsExportAction.exportableWords(
+        from: coordinator.customWords),
       chooseDestination: { self.tempURL() },
       write: { _, _ in throw Boom() }
     )
@@ -146,6 +154,8 @@ struct CustomWordsExportActionTests {
     let spy = WriteSpy()
     let outcome = await CustomWordsExportAction.run(
       coordinator: coordinator,
+      proposedExportWords: CustomWordsExportAction.exportableWords(
+        from: coordinator.customWords),
       chooseDestination: { self.tempURL() },
       write: { data, _ in await MainActor.run { spy.written = data } }
     )
@@ -325,4 +335,214 @@ struct CustomWordsExportActionTests {
         document: document, encoded: try document.encoded()) == nil)
   }
 
+
+  // MARK: - #1697: the count on screen and the bytes on disk are one fact
+
+  /// The oracle here is an INDEPENDENTLY enumerated set, not `exportableWords`.
+  ///
+  /// Comparing the displayed count against the file proves the two AGREE, which
+  /// is not the same as proving either is right: a filter that drops a word
+  /// drops it from both and the test still passes green. Six later phases treat
+  /// this file as the user's backup, so the expected set has to come from
+  /// somewhere the export code cannot influence (council finding 2).
+  @Test("the exported file contains exactly the user's own words, judged independently")
+  func exportedFileMatchesAnIndependentlyEnumeratedSet() async throws {
+    let expected = ["Kubernetes", "Qualtrics", "Threadripper"]
+    // The oracle is only independent if it names words the app does not already
+    // ship. Seeding a built-in canonical collapses it onto the built-in, which
+    // export correctly excludes — the first draft of this test used
+    // "EnviousWispr" and failed for exactly that reason. Assert the fixture's
+    // own premise so the next author cannot repeat it silently.
+    for canonical in expected {
+      #expect(
+        !CustomWordsManager.builtinDefaults.contains { $0.word.canonical == canonical },
+        "\(canonical) is a built-in; it can never appear in a user-word export")
+    }
+    let coordinator = try coordinator(seedWords: expected.map { CustomWord(canonical: $0) })
+    let spy = WriteSpy()
+    let proposed = CustomWordsExportAction.exportableWords(from: coordinator.customWords)
+
+    let outcome = await CustomWordsExportAction.run(
+      coordinator: coordinator,
+      proposedExportWords: proposed,
+      chooseDestination: { self.tempURL() },
+      write: { data, _ in await MainActor.run { spy.written = data } }
+    )
+
+    #expect(outcome == .exported)
+    #expect(proposed.count == expected.count, "the number the user is shown")
+    let document = try CustomWordsTransferDocument(data: try #require(spy.written))
+    #expect(document.words.map(\.canonical).sorted() == expected.sorted())
+    // And the bytes round-trip back through the REAL import path, because a
+    // file the importer cannot read is not a backup.
+    let candidates = try ExportedWordsFileParser().parse(data: try #require(spy.written))
+    #expect(candidates.count == expected.count)
+  }
+
+  @Test("a same-size edit while the folder is being chosen refuses the write")
+  func sameCountRecordChangeRefusesTheWrite() async throws {
+    // The drift a count comparison cannot see: one word swapped for another, so
+    // the total never moves. This is why the check compares complete records.
+    let coordinator = try coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
+    let stale = [CustomWord(canonical: "SomethingElse")]
+    let spy = WriteSpy()
+
+    let outcome = await CustomWordsExportAction.run(
+      coordinator: coordinator,
+      proposedExportWords: stale,
+      chooseDestination: { self.tempURL() },
+      write: { data, _ in await MainActor.run { spy.written = data } }
+    )
+
+    #expect(outcome == .libraryChanged)
+    #expect(spy.written == nil, "nothing may be written when the list moved")
+  }
+
+  @Test("a field-only edit refuses the write")
+  func fieldOnlyChangeRefusesTheWrite() async throws {
+    let coordinator = try coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
+    var drifted = CustomWordsExportAction.exportableWords(from: coordinator.customWords)
+    drifted[0].aliases = ["kubernetties"]
+    let spy = WriteSpy()
+
+    let outcome = await CustomWordsExportAction.run(
+      coordinator: coordinator,
+      proposedExportWords: drifted,
+      chooseDestination: { self.tempURL() },
+      write: { data, _ in await MainActor.run { spy.written = data } }
+    )
+
+    #expect(outcome == .libraryChanged)
+    #expect(spy.written == nil)
+  }
+
+  @Test("a usage-count flush does NOT refuse the write")
+  func usageOnlyChangeStillExports() async throws {
+    // The counter that bumps frequencyUsed runs with no user action, and the
+    // save panel is open for however long a person takes to pick a folder. If
+    // the drift check compared whole words, dictating while that panel is open
+    // would eventually refuse every export — a reproducible false refusal, not
+    // a rare race (Codex review r1, P2). Usage is not part of the export
+    // payload, so it must not be part of the question.
+    let coordinator = try coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
+    var used = CustomWordsExportAction.exportableWords(from: coordinator.customWords)
+    used[0].frequencyUsed += 7
+    used[0].lastUsed = Date(timeIntervalSince1970: 1_000_000)
+    let spy = WriteSpy()
+
+    let outcome = await CustomWordsExportAction.run(
+      coordinator: coordinator,
+      proposedExportWords: used,
+      chooseDestination: { self.tempURL() },
+      write: { data, _ in await MainActor.run { spy.written = data } }
+    )
+
+    #expect(outcome == .exported, "usage counts are not part of the exported payload")
+    let document = try CustomWordsTransferDocument(data: try #require(spy.written))
+    #expect(document.words.map(\.canonical) == ["Kubernetes"])
+  }
+
+  @Test("an order-only change refuses the write")
+  func orderOnlyChangeRefusesTheWrite() async throws {
+    let coordinator = try coordinator(seedWords: [
+      CustomWord(canonical: "Kubernetes"), CustomWord(canonical: "Qualtrics"),
+    ])
+    let reversed = Array(
+      CustomWordsExportAction.exportableWords(from: coordinator.customWords).reversed())
+    let spy = WriteSpy()
+
+    let outcome = await CustomWordsExportAction.run(
+      coordinator: coordinator,
+      proposedExportWords: reversed,
+      chooseDestination: { self.tempURL() },
+      write: { data, _ in await MainActor.run { spy.written = data } }
+    )
+
+    #expect(outcome == .libraryChanged)
+    #expect(spy.written == nil)
+  }
+
+  @Test("no words of your own reports an honest empty state without opening a panel")
+  func emptyLibraryReportsNothingToExportAndNeverAsksForAFolder() async throws {
+    let coordinator = try coordinator()
+    let spy = WriteSpy()
+    var panelOpened = false
+
+    let outcome = await CustomWordsExportAction.run(
+      coordinator: coordinator,
+      proposedExportWords: [],
+      chooseDestination: {
+        panelOpened = true
+        return self.tempURL()
+      },
+      write: { data, _ in await MainActor.run { spy.written = data } }
+    )
+
+    #expect(outcome == .nothingToExport)
+    #expect(!panelOpened, "a dialog that can only produce an empty file is a trap")
+    #expect(spy.written == nil)
+  }
+
+  @Test("an empty count that is actually stale says so instead of exporting silently")
+  func emptyProposalThatRefreshesToNonEmptyReportsLibraryChanged() async throws {
+    // The user was shown zero; disk disagrees. Exporting here would write a
+    // snapshot they were never shown a number for.
+    let coordinator = try coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
+    var panelOpened = false
+
+    let outcome = await CustomWordsExportAction.run(
+      coordinator: coordinator,
+      proposedExportWords: [],
+      chooseDestination: {
+        panelOpened = true
+        return self.tempURL()
+      },
+      write: { _, _ in }
+    )
+
+    #expect(outcome == .libraryChanged)
+    #expect(!panelOpened)
+  }
+
+  @Test("a retry against unchanged state exports rather than refusing forever")
+  func stableRetryExportsAndDoesNotLoop() async throws {
+    let coordinator = try coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
+    let spy = WriteSpy()
+
+    // First attempt drifts and is refused.
+    let first = await CustomWordsExportAction.run(
+      coordinator: coordinator,
+      proposedExportWords: [CustomWord(canonical: "Stale")],
+      chooseDestination: { self.tempURL() },
+      write: { data, _ in await MainActor.run { spy.written = data } }
+    )
+    #expect(first == .libraryChanged)
+
+    // The screen re-renders from adopted state; the retry must succeed.
+    let second = await CustomWordsExportAction.run(
+      coordinator: coordinator,
+      proposedExportWords: CustomWordsExportAction.exportableWords(
+        from: coordinator.customWords),
+      chooseDestination: { self.tempURL() },
+      write: { data, _ in await MainActor.run { spy.written = data } }
+    )
+    #expect(second == .exported)
+  }
+
+  // MARK: - #1696 / #1699: panel defaults
+
+  @Test("the save panel starts in Downloads, and survives Downloads being unresolvable")
+  func startingDirectoryPrefersDownloadsAndToleratesItsAbsence() {
+    let downloads = URL(fileURLWithPath: "/Users/someone/Downloads", isDirectory: true)
+    #expect(CustomWordsExportPanel.startingDirectory(searchResults: [downloads]) == downloads)
+    // Unresolvable is not worth failing an export over: leave it unset.
+    #expect(CustomWordsExportPanel.startingDirectory(searchResults: []) == nil)
+  }
+
+  @Test("the import screen names the file the exporter actually writes")
+  func importCopyAndExportFilenameShareOneAuthority() {
+    // Two literals would let the exporter rename the file and leave the import
+    // copy describing one that no longer exists.
+    #expect(CustomWordsExportPanel.defaultFilename == "EnviousWispr Words.json")
+  }
 }

@@ -137,6 +137,30 @@ struct CustomWordEditSheet: View {
 
       Spacer()
 
+      // Suggestion status, LAID OUT rather than floated (#1705).
+      //
+      // This was an `.overlay(alignment: .bottomLeading)` with hardcoded
+      // padding, which put it directly on top of Delete — visually illegible,
+      // and an overlay sits above the button in the z-order, so it could
+      // intercept clicks meant for it.
+      //
+      // Height is reserved from REAL content, not a constant: both variants are
+      // laid out hidden so the row always reserves the taller one at whatever
+      // the current text size is. A fixed height would clip at larger text
+      // sizes, and a row that grows and shrinks moves Save and Delete under a
+      // cursor that is already on its way down.
+      ZStack(alignment: .leading) {
+        suggestionStatusRow(isLoading: true).hidden()
+        suggestionStatusRow(isLoading: false).hidden()
+        if isLoadingSuggestions {
+          suggestionStatusRow(isLoading: true)
+        } else if noSuggestionsAvailable {
+          suggestionStatusRow(isLoading: false)
+        }
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .accessibilityElement(children: .combine)
+
       // Actions
       HStack {
         if onDelete != nil {
@@ -176,24 +200,6 @@ struct CustomWordEditSheet: View {
     }
     .padding(20)
     .frame(width: 400, height: 480)
-    .overlay(alignment: .bottomLeading) {
-      if isLoadingSuggestions {
-        HStack(spacing: 6) {
-          ProgressView().controlSize(.small)
-          Text("Getting AI suggestions...")
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-        }
-        .padding(.leading, 20)
-        .padding(.bottom, 28)
-      } else if noSuggestionsAvailable {
-        Text("No suggestions available")
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
-          .padding(.leading, 20)
-          .padding(.bottom, 28)
-      }
-    }
     // Phase 1 (#637) + Phase 4 (#634) + Codex P2 fix: keyed task that restarts
     // when canonical changes. Empty-canonical guard prevents the AFM call from
     // running on the blank "+ Add term" sheet open. After the user types into
@@ -238,4 +244,24 @@ struct CustomWordEditSheet: View {
     word.aliases.append(trimmed)
     newAlias = ""
   }
+  // MARK: - Suggestion status
+
+  /// One row, two states, one shape — so the hidden layout copies that reserve
+  /// the row's height are the same views that will actually be shown.
+  @ViewBuilder
+  private func suggestionStatusRow(isLoading: Bool) -> some View {
+    if isLoading {
+      HStack(spacing: 6) {
+        ProgressView().controlSize(.small)
+        Text("Getting AI suggestions...")
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+      }
+    } else {
+      Text("No suggestions available")
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+    }
+  }
+
 }
