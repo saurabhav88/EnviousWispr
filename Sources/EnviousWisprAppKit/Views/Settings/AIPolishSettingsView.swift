@@ -639,7 +639,7 @@ struct AIPolishSettingsView: View {
         keychainId: KeychainManager.openAIKeyID,
         accessibilityLabel: "OpenAI API Key",
         privacySentence:
-          "OpenAI polish sends only transcribed text, never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response."
+          "OpenAI polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response."
       )
     case .gemini:
       return APIKeyDescriptor(
@@ -647,18 +647,23 @@ struct AIPolishSettingsView: View {
         keychainId: KeychainManager.geminiKeyID,
         accessibilityLabel: "Google Gemini API Key",
         privacySentence:
-          "Gemini polish sends only transcribed text, never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response."
+          "Gemini polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response."
       )
     case .claude:
       // Claude's privacy sentence does not reuse OpenAI/Gemini's "store:
       // false" line — that names a real request field neither Claude's
-      // Messages API request sends (plan §3).
+      // Messages API request sends (plan §3). All three providers share
+      // the `.cloudFixed` prompt family, which conditionally includes the
+      // active app name and custom word list in the system prompt
+      // (CloudFixedPromptBuilder) -- the sentence now names that context
+      // instead of claiming only the transcript leaves the Mac (#158,
+      // Codex r5).
       return APIKeyDescriptor(
         label: "Claude API Key", placeholder: "sk-ant-…",
         keychainId: KeychainManager.claudeKeyID,
         accessibilityLabel: "Claude API Key",
         privacySentence:
-          "Claude polish sends only transcribed text, never audio. Anthropic's own retention policy for your API account governs how long the request is kept."
+          "Claude polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. Anthropic's own retention policy for your API account governs how long the request is kept."
       )
     default:
       // Unreachable: apiKeyRow only renders when isCloudProvider is true.

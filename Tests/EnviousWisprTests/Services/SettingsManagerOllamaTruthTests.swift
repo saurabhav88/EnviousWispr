@@ -158,6 +158,21 @@ struct SettingsManagerOllamaTruthTests {
     #expect(settings.llmModel == LLMProvider.defaultModel(for: .claude))
   }
 
+  @Test("turning polish off preserves the selected model (#158 Codex r5 P1 claim, verified false)")
+  func polishOffPreservesSelectedModel() {
+    let settings = freshSettings()
+    settings.llmProvider = .claude
+    settings.llmModel = "claude-opus-4-8"
+
+    // `.none` is the "polish off" state (#1285). `modelIDLooksLikeCloudProvider`
+    // returns true for `.none` specifically so this arm's sweep condition
+    // never fires for it -- a real cloud model must survive polish being
+    // turned off, or turning it back on would silently lose the user's pick.
+    settings.llmProvider = .none
+
+    #expect(settings.llmModel == "claude-opus-4-8")
+  }
+
   @Test("a model id that already belongs to the currently selected cloud provider is left alone")
   func ownProviderModelSurvivesCanonicalization() {
     let settings = freshSettings()

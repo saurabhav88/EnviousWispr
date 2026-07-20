@@ -39,6 +39,16 @@ struct ClaudeLiveSweepTests {
     return DefaultPromptPlanner().plan(input: input).envelope
   }
 
+  /// Milliseconds elapsed since `start`, from ONE `ContinuousClock.now`
+  /// sample. Two separate `.now` reads (one for `.components.seconds`, one
+  /// for `.components.attoseconds`) can straddle a second boundary and
+  /// under-report by roughly a second, letting a call that is actually
+  /// over budget pass the ship gate (#158, Codex r5).
+  private static func elapsedMs(since start: ContinuousClock.Instant) -> Double {
+    let elapsed = ContinuousClock.now - start
+    return Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
+  }
+
   @Test(.timeLimit(.minutes(10)))
   func everyOfferedModelPolishesSuccessfully() async throws {
     let keychain = KeychainManager()
@@ -152,14 +162,10 @@ struct ClaudeLiveSweepTests {
           let start = ContinuousClock.now
           do {
             _ = try await connector.polish(envelope: envelope, config: config, onToken: nil)
-            let ms =
-              Double((ContinuousClock.now - start).components.seconds) * 1000
-              + Double((ContinuousClock.now - start).components.attoseconds) / 1e15
+            let ms = Self.elapsedMs(since: start)
             calls.append(Call(model: model, bucket: bucketName, ms: ms, ok: true))
           } catch {
-            let ms =
-              Double((ContinuousClock.now - start).components.seconds) * 1000
-              + Double((ContinuousClock.now - start).components.attoseconds) / 1e15
+            let ms = Self.elapsedMs(since: start)
             calls.append(Call(model: model, bucket: bucketName, ms: ms, ok: false))
             print("LATENCY_CALL_FAIL \(model) \(bucketName) \(ms)ms \(error)")
           }
@@ -258,9 +264,7 @@ struct ClaudeLiveSweepTests {
           do {
             let result = try await connector.polish(
               envelope: envelope, config: config, onToken: nil)
-            let ms =
-              Double((ContinuousClock.now - start).components.seconds) * 1000
-              + Double((ContinuousClock.now - start).components.attoseconds) / 1e15
+            let ms = Self.elapsedMs(since: start)
             results.append(
               Result(
                 category: category, model: model, rawInput: input,

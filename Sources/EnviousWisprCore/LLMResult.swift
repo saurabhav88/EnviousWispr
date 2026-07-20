@@ -62,8 +62,13 @@ extension LLMProvider {
   {
     switch provider {
     case .openAI:
-      return modelID.hasPrefix("gpt-") || modelID.hasPrefix("o1") || modelID.hasPrefix("o3")
-        || modelID.hasPrefix("o4") || modelID.hasPrefix("chatgpt-")
+      // Mirrors LLMModelDiscovery.isOpenAIChatCompletionCandidate's accepted
+      // prefixes exactly (incl. the generic "o-" family, not just o1/o3/o4)
+      // so a model discovery already admits is never wiped here (#158,
+      // Codex r5).
+      let id = modelID.lowercased()
+      return id.hasPrefix("gpt-") || id.hasPrefix("o-") || id.hasPrefix("o1")
+        || id.hasPrefix("o3") || id.hasPrefix("o4") || id.hasPrefix("chatgpt-")
     case .gemini:
       return modelID.hasPrefix("gemini-")
     case .claude:
