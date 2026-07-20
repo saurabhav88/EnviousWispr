@@ -2217,9 +2217,11 @@ final class RecordingSessionKernel {
       // nothing" would delete recoverable user audio. Leave
       // `asrRetryOutcome` at `.attempted` (never promote to
       // `.retryExhausted`) so `recoveryEnding`/`shouldDeleteOnLiveEnding`
-      // retain the spool exactly as a plain `.failed` — only a retry that
-      // ACTUALLY resolved (success, or a genuine `.empty`/`.cancelled`/
-      // `.failed`) is exhausted.
+      // retain the spool exactly as a plain `.failed`. GitHub cloud review
+      // (PR #1725): `.cancelled` gets the SAME non-exhausted treatment
+      // below — only `.empty`/`.failed` are a confirmed decode conclusion
+      // with nothing useful; `.cancelled` means we have no conclusion at
+      // all, same as the timeout case here.
       guard let retryOutcome else {
         finishTerminal(.failed(.asrFailed), sid: sid)
         return
@@ -2265,8 +2267,18 @@ final class RecordingSessionKernel {
           (adapter as? ASREngineTelemetryProviding)?.lastFailureError ?? retryError
         telemetryState.asrRetryOutcome = .retryExhausted
         finishTerminal(.failed(.asrFailed), sid: sid)
-      default:  // .empty, .cancelled — genuinely resolved with nothing useful; exhausted
+      case .empty:  // genuinely resolved with nothing useful; exhausted
         telemetryState.asrRetryOutcome = .retryExhausted
+        finishTerminal(.failed(.asrFailed), sid: sid)
+      case .cancelled:
+        // GitHub cloud review (PR #1725): `.cancelled` is NOT a confirmed
+        // second failure the way `.empty`/`.failed` are — both adapters can
+        // return it from a genuine backend `CancellationError` (a real
+        // Task/XPC cancellation mid-decode) with THIS session still
+        // current, not only from the staleness guard's own supersede path.
+        // Either way we have no confirmed decode conclusion, exactly the
+        // nil-timeout case above — leave `asrRetryOutcome` at `.attempted`
+        // so the spool is retained, never promoted to `.retryExhausted`.
         finishTerminal(.failed(.asrFailed), sid: sid)
       }
     }

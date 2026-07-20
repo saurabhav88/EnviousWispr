@@ -87,6 +87,25 @@ struct KernelPhase2RetryTests {
   }
 
   @Test(
+    "GitHub cloud review (PR #1725): a retry that resolves .cancelled (a genuine backend CancellationError, not a confirmed decode conclusion) still terminates as .asrFailed but retains the spool, same as a timeout"
+  )
+  func cancelledRetryTerminatesButRetainsSpool() async {
+    let ctx = makeContext(behavior: .crashOnFinalize)
+    ctx.engine.retryDecodeResult = .cancelled
+    await runToTerminal(ctx)
+    let kernel = ctx.wrapper.testKernel
+
+    #expect(kernel.recordingOutcome == .failed(.asrFailed))
+    #expect(kernel.deliveredTranscript == nil)
+    #expect(ctx.engine.retryDecodeCallCount == 1)
+    // The distinguishing assertion: NOT .retryExhausted — `.cancelled` is
+    // not a confirmed "the decode produced nothing," so the spool must be
+    // retained exactly like the timeout case above, not deleted like a
+    // genuine `.empty`/`.failed` exhaustion.
+    #expect(ctx.wrapper.telemetryState.asrRetryOutcome == .attempted)
+  }
+
+  @Test(
     "#1707 Codex r5: a retry that times out (never resolves) still terminates as .asrFailed but retains the spool, distinct from a genuinely exhausted retry"
   )
   func timedOutRetryTerminatesButRetainsSpool() async {
