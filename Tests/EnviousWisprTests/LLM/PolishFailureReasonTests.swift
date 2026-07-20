@@ -157,7 +157,7 @@ struct PolishFailureReasonTests {
   @Test("no message uses em-dashes or en-dashes (human-facing copy rule)")
   func noFancyDashes() {
     for reason in PolishFailureReason.allCases {
-      for provider in [LLMProvider.openAI, .gemini, .ollama] {
+      for provider in [LLMProvider.openAI, .gemini, .claude, .ollama] {
         let msg = reason.composedMessage(provider: provider)
         #expect(!msg.contains("\u{2014}"), "\(reason)/\(provider) contains em-dash")
         #expect(!msg.contains("\u{2013}"), "\(reason)/\(provider) contains en-dash")
@@ -280,7 +280,7 @@ struct PolishFailureReasonTests {
     .bug(
       "https://github.com/saurabhav88/EnviousWispr/issues/1446",
       "user-environment polish failures fired alerting Sentry errors"),
-    arguments: PolishFailureReason.allCases, [LLMProvider.openAI, .gemini, .ollama]
+    arguments: PolishFailureReason.allCases, [LLMProvider.openAI, .gemini, .claude, .ollama]
   )
   func telemetryChannelMatrix(reason: PolishFailureReason, provider: LLMProvider) {
     let expected: PolishFailureTelemetryChannel
@@ -302,6 +302,7 @@ struct PolishFailureReasonTests {
       #expect(reason.telemetryChannel(provider: .ollama) == .nonAlertingAnalytics)
       #expect(reason.telemetryChannel(provider: .openAI) == .alertingSentryError)
       #expect(reason.telemetryChannel(provider: .gemini) == .alertingSentryError)
+      #expect(reason.telemetryChannel(provider: .claude) == .alertingSentryError)
     }
   }
 
@@ -329,7 +330,7 @@ struct PolishFailureReasonTests {
   func userNetworkOutagesNeverAlert(code: URLError.Code) {
     let reason = PolishFailureReason.from(URLError(code))
     #expect(reason == .providerUnreachable)
-    for provider in [LLMProvider.openAI, .gemini, .ollama] {
+    for provider in [LLMProvider.openAI, .gemini, .claude, .ollama] {
       #expect(reason.telemetryChannel(provider: provider) == .nonAlertingAnalytics)
     }
   }
@@ -350,7 +351,7 @@ struct PolishFailureReasonTests {
   @Test("the user- and provider-owned reasons never page us, on any provider")
   func userEnvironmentReasonsNeverAlert() {
     for reason in Self.neverAlerting {
-      for provider in [LLMProvider.openAI, .gemini, .ollama] {
+      for provider in [LLMProvider.openAI, .gemini, .claude, .ollama] {
         #expect(reason.telemetryChannel(provider: provider) == .nonAlertingAnalytics)
       }
     }
@@ -383,7 +384,7 @@ struct PolishFailureReasonTests {
   func alertingSetIsExactlyOurBugs() {
     var alerting: Set<PolishFailureReason> = []
     for reason in PolishFailureReason.allCases {
-      for provider in [LLMProvider.openAI, .gemini, .ollama] {
+      for provider in [LLMProvider.openAI, .gemini, .claude, .ollama] {
         if reason.telemetryChannel(provider: provider) == .alertingSentryError {
           alerting.insert(reason)
         }
@@ -407,7 +408,7 @@ struct PolishFailureReasonTests {
   func unreadableKeyCopyParity() {
     let unreadable = PolishFailureReason.apiKeyUnreadable
     let missing = PolishFailureReason.apiKeyMissing
-    for provider in [LLMProvider.openAI, .gemini, .ollama] {
+    for provider in [LLMProvider.openAI, .gemini, .claude, .ollama] {
       #expect(unreadable.message(provider: provider) == missing.message(provider: provider))
       #expect(
         unreadable.composedMessage(provider: provider)
@@ -429,7 +430,7 @@ struct PolishFailureReasonTests {
       PolishFailureReason.apiKeyUnreadable.telemetryTag
         != PolishFailureReason.apiKeyMissing.telemetryTag)
     // ...and the opposite channel: our defect pages, the user's config does not.
-    for provider in [LLMProvider.openAI, .gemini, .ollama] {
+    for provider in [LLMProvider.openAI, .gemini, .claude, .ollama] {
       #expect(
         PolishFailureReason.apiKeyUnreadable.telemetryChannel(provider: provider)
           == .alertingSentryError)

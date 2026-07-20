@@ -4,6 +4,7 @@ import Foundation
 public enum LLMProvider: String, Codable, CaseIterable, Sendable {
   case openAI
   case gemini
+  case claude
   case ollama
   case appleIntelligence
   case egOne
@@ -22,6 +23,7 @@ extension LLMProvider {
     switch self {
     case .openAI: return "OpenAI"
     case .gemini: return "Gemini"
+    case .claude: return "Claude"
     case .ollama: return "Ollama"
     case .appleIntelligence: return "Apple Intelligence"
     case .egOne: return "EG-1"
@@ -36,6 +38,7 @@ extension LLMProvider {
     switch provider {
     case .openAI: return "gpt-4o-mini"
     case .gemini: return "gemini-2.0-flash"
+    case .claude: return "claude-haiku-4-5"
     case .ollama: return ollamaModel
     case .appleIntelligence: return "apple-intelligence"
     case .egOne: return LLMProvider.egOneModelName

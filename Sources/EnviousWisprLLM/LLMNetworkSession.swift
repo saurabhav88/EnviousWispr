@@ -40,12 +40,9 @@ public final class LLMNetworkSession: Sendable {
   public func preWarmModel(
     provider: LLMProvider, model: String, keychainManager: KeychainManager
   ) {
-    guard provider == .gemini || provider == .openAI else { return }
+    guard let keychainId = Self.warmupKeychainId(for: provider) else { return }
     guard !model.isEmpty else { return }
 
-    let keychainId =
-      provider == .openAI
-      ? KeychainManager.openAIKeyID : KeychainManager.geminiKeyID
     guard let key = try? keychainManager.retrieve(key: keychainId),
       !key.isEmpty
     else { return }
@@ -96,7 +93,22 @@ public final class LLMNetworkSession: Sendable {
     }
   }
 
-  private func buildWarmupRequest(
+  /// Selects the Keychain id `preWarmModel` reads for each cloud provider —
+  /// extracted to a pure, testable function (mirroring
+  /// `LLMModelDiscovery.claudePaginationDecision`) after this exact
+  /// selection was a two-way ternary that routed any non-OpenAI provider to
+  /// Gemini's key id (Grounded Review R2/R3, issue #158). `nil` for any
+  /// non-cloud or future provider — the caller's early guard.
+  static func warmupKeychainId(for provider: LLMProvider) -> String? {
+    switch provider {
+    case .openAI: return KeychainManager.openAIKeyID
+    case .gemini: return KeychainManager.geminiKeyID
+    case .claude: return KeychainManager.claudeKeyID
+    default: return nil
+    }
+  }
+
+  func buildWarmupRequest(
     provider: LLMProvider, model: String, apiKey: String
   ) -> URLRequest? {
     switch provider {
@@ -128,6 +140,19 @@ public final class LLMNetworkSession: Sendable {
         "max_completion_tokens": 1,
         "store": false,
       ]
+      request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+      return request
+
+    case .claude:
+      guard let url = URL(string: "https://api.anthropic.com/v1/messages") else { return nil }
+      var request = URLRequest(url: url)
+      request.httpMethod = "POST"
+      request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+      request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+      request.setValue("application/json", forHTTPHeaderField: "content-type")
+      request.timeoutInterval = 5
+      let body = ClaudeConnector.makeRequestBody(
+        model: model, maxTokens: 1, system: nil, userText: ".")
       request.httpBody = try? JSONSerialization.data(withJSONObject: body)
       return request
 

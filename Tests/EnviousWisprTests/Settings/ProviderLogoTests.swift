@@ -37,6 +37,9 @@ struct ProviderLogoTests {
     // would still pass. Assert the exact contract instead.
     #expect(ProviderLogoSVG.monogram(for: .openAI) == "OA")
     #expect(ProviderLogoSVG.monogram(for: .gemini) == "G")
+    // Claude ships with no hand-drawn brand SVG (plan §2.2 non-goal), so its
+    // monogram is a first-class fallback, not a degraded state (#158).
+    #expect(ProviderLogoSVG.monogram(for: .claude) == "CL")
     #expect(ProviderLogoSVG.monogram(for: .ollama) == "OL")
     #expect(ProviderLogoSVG.monogram(for: .egOne) == "EG")
     // Codex review flagged this as codifying a broken empty Apple fallback --

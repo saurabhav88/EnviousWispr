@@ -1,12 +1,12 @@
 import EnviousWisprCore
 
-/// Builds the ONE fixed polish prompt for the strong cloud providers (OpenAI, Gemini).
+/// Builds the ONE fixed polish prompt for the strong cloud providers (OpenAI, Gemini, Claude).
 ///
 /// Unlike the mode-switching cloud builders it replaces, this builder ignores `PolishMode`
 /// entirely — formatting is decided by the in-prompt rules of the fixed "v6" system prompt
 /// (mirroring how Apple Intelligence uses one fixed prompt). Selected by
-/// `DefaultPromptPlanner` for `.openAI` and `.gemini`. The local Ollama models keep their
-/// own per-model builders and mode selection.
+/// `DefaultPromptPlanner` for `.openAI`, `.gemini`, and `.claude` (issue #158). The local
+/// Ollama models keep their own per-model builders and mode selection.
 ///
 /// The system prompt below is the validated v6 prompt (1,890-case Type B benchmark, #1255:
 /// OpenAI 91.6% / Gemini 90.1% green). Canonical source of record:

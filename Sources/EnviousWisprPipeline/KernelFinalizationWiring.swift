@@ -446,15 +446,21 @@ struct KernelFinalizationWiring {
       rawText: outcome.rawText,
       pipelineFellBackToRaw: outcome.pipelineFellBackToRaw)
 
-    // The fallback fields were historically AFM-only (`polishMetadata != nil`);
-    // cloud/no-polish fallback reasons stay suppressed. #1358 adds a provider-
-    // agnostic producer — the empty-output recovery floor stamps
-    // `empty_output_floor` with no `polishMetadata` — so let THAT reason through
-    // the AFM gate (and only that reason) so the recovery is observable in
-    // telemetry without changing behavior for existing reasons. The pair is
-    // gated together, so the `(reason != nil) == fellBackToRaw` invariant holds.
+    // The fallback fields were historically AFM-only (`polishMetadata != nil`).
+    // #1358 added a provider-agnostic producer (the empty-output recovery
+    // floor stamps `empty_output_floor` with no `polishMetadata`). Issue #158
+    // widens this further: `outcome.llmProvider` is set on EVERY provider's
+    // successful polish path (`LLMPolishStep.swift`, the AFM arm and the "all
+    // other providers" arm both stamp it), so gating on its presence lets
+    // every provider's `fell_back_to_raw`/`fallback_reason` through, not just
+    // AFM's — a successful Claude/OpenAI/Gemini/Ollama/EG-1 call whose output
+    // was later found unchanged or rejected by a post-generation guard now
+    // reports honestly, matching what AFM has always reported. This is a
+    // telemetry-only change: `pipelineFellBackToRaw` above (which drives
+    // actual pipeline behavior) is unaffected.
     let emitFallbackFields =
       outcome.polishMetadata != nil || outcome.polishFallbackReason == "empty_output_floor"
+      || outcome.llmProvider != nil
 
     transcript.metrics = ExecutionMetrics(
       asrLatencySeconds: asrLatency,

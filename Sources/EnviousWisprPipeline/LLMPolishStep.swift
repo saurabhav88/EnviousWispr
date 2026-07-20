@@ -54,6 +54,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     switch provider {
     case .openAI: OpenAIConnector(keychainManager: keychain)
     case .gemini: GeminiConnector(keychainManager: keychain)
+    case .claude: ClaudeConnector(keychainManager: keychain)
     case .ollama: OllamaConnector()
     // #832/#913 PR8: the on-device output-safety classifier runs ONLY on Apple
     // Intelligence output (the path where AFM can compose artifacts). Injected
@@ -188,7 +189,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // skip for this provider (TextProcessingRunner), never a surfaced error.
     case .egOne: return .seconds(15)
     case .appleIntelligence: return .seconds(10)
-    case .openAI, .gemini, .none: return .seconds(5)
+    case .openAI, .gemini, .claude, .none: return .seconds(5)
     }
   }
 
@@ -396,6 +397,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       switch provider {
       case .openAI: KeychainManager.openAIKeyID
       case .gemini: KeychainManager.geminiKeyID
+      case .claude: KeychainManager.claudeKeyID
       default: nil
       }
 
@@ -809,7 +811,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       return (useExtendedThinking ? LLMConstants.defaultThinkingBudget : 0, nil)
     case .openAI:
       return (nil, useExtendedThinking ? "medium" : "low")
-    case .ollama, .appleIntelligence, .egOne, .none:
+    case .ollama, .appleIntelligence, .egOne, .claude, .none:
       return (nil, nil)
     }
   }

@@ -62,7 +62,7 @@ enum ProviderStatusMapping {
       return egOne(install: egOneInstall, health: egOneHealth)
     case .appleIntelligence:
       return apple(appleStatus)
-    case .openAI, .gemini:
+    case .openAI, .gemini, .claude:
       return cloud(cloudValidation, keyPresent: cloudKeyPresent)
     case .ollama:
       return ollama(ollamaSetup)
@@ -194,6 +194,9 @@ enum PolishRailCatalog {
     PolishRailProvider(
       provider: .gemini, name: "Google Gemini", tagline: "Your API key",
       isLocal: false, recommended: false),
+    PolishRailProvider(
+      provider: .claude, name: "Claude", tagline: "Your API key",
+      isLocal: false, recommended: false),
   ]
   static let all: [PolishRailProvider] = local + cloud
 
@@ -274,6 +277,11 @@ struct ProviderLogoTile: View {
       svgMark(ProviderLogoSVG.gemini, inset: 0.60)
     case .ollama:
       svgMark(ProviderLogoSVG.ollama, inset: 0.60)
+    case .claude:
+      // No hand-drawn brand SVG (avoids guessing Anthropic's trademark
+      // geometry from memory, plan §2.2 non-goal); the lettered monogram is
+      // an already-supported, first-class fallback, not a degraded state.
+      monogram(ProviderLogoSVG.monogram(for: provider))
     case .none:
       monogram("--")
     }
@@ -332,6 +340,7 @@ enum ProviderLogoSVG {
     switch provider {
     case .openAI: return "OA"
     case .gemini: return "G"
+    case .claude: return "CL"
     case .ollama: return "OL"
     case .egOne: return "EG"
     case .appleIntelligence: return ""

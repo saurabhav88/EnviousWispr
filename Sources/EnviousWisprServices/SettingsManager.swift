@@ -158,7 +158,7 @@ public final class SettingsManager {
       if fixedLiterals.contains(llmModel) {
         llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
       }
-    case .openAI, .gemini, .none:
+    case .openAI, .gemini, .claude, .none:
       if fixedLiterals.contains(llmModel) || llmModel.isEmpty {
         llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
       }
@@ -537,7 +537,7 @@ public final class SettingsManager {
     // import the LLM-module manifest; version detail rides eg1.* telemetry.
     case .egOne: return LLMProvider.egOneModelName
     case .ollama: return ollamaModel
-    case .openAI, .gemini, .none: return llmModel
+    case .openAI, .gemini, .claude, .none: return llmModel
     }
   }
 
@@ -813,9 +813,28 @@ public final class SettingsManager {
       return
     }
     if !models.contains(where: { $0.id == llmModel && $0.isAvailable }) {
-      if let first = models.first(where: { $0.isAvailable }) {
-        llmModel = first.id
-        if provider == .ollama { ollamaModel = first.id }
+      // Prefer the provider's own default-model family (an exact id match,
+      // or that default id as a dated-snapshot prefix — Anthropic returns
+      // Claude ids as a compact-dated snapshot, e.g. `claude-haiku-4-5` vs.
+      // discovered `claude-haiku-4-5-20251001`) over the plain first-available
+      // pick. Provider-generic, not Claude-specific: for OpenAI/Gemini/Ollama,
+      // whose default ids already exist verbatim in their own catalogs, only
+      // the exact-id branch is reachable — a no-op preserving prior behavior.
+      // For Claude, the dated-snapshot branch is load-bearing: a plain
+      // first-available pick would default a fresh user to whatever model
+      // sorts first alphabetically, not the fast/cheap Haiku default.
+      let defaultID = LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel)
+      let datedSnapshotPrefix = "\(defaultID)-"
+      let preferredDefault = models.first { model in
+        guard model.isAvailable else { return false }
+        if model.id == defaultID { return true }
+        guard model.id.hasPrefix(datedSnapshotPrefix) else { return false }
+        let snapshotSuffix = model.id.dropFirst(datedSnapshotPrefix.count)
+        return snapshotSuffix.count == 8 && snapshotSuffix.allSatisfy(\.isNumber)
+      }
+      if let fallback = preferredDefault ?? models.first(where: { $0.isAvailable }) {
+        llmModel = fallback.id
+        if provider == .ollama { ollamaModel = fallback.id }
       }
     }
   }

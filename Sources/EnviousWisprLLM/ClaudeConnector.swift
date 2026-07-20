@@ -1,0 +1,288 @@
+import EnviousWisprCore
+import Foundation
+
+/// Anthropic Claude Messages API connector for transcript polishing.
+///
+/// v1: no extended thinking, ever (`LLMModelCapabilities.supportsReasoning`
+/// is `false` for every Claude model), and no sampling parameter of any
+/// kind — `temperature`/`thinking`/`top_p`/`top_k` are all omitted from the
+/// request body. Claude generations released after Opus 4.6 reject a
+/// non-default `temperature`, including 0, with an HTTP 400; omitting it
+/// unconditionally is the same shape #1330 established for OpenAI's
+/// reasoning family, applied here so a future catalog model doesn't
+/// silently break. No streaming (`onToken` accepted but unused, matching
+/// OpenAI's precedent) and no unsupported-param strip-and-retry (the v1
+/// request body has nothing left to strip).
+public struct ClaudeConnector: TranscriptPolisher {
+  private let keychainManager: KeychainManager
+  private let baseURL = "https://api.anthropic.com/v1/messages"
+  private static let apiVersion = "2023-06-01"
+
+  public init(keychainManager: KeychainManager = KeychainManager()) {
+    self.keychainManager = keychainManager
+  }
+
+  public func polish(
+    text: String,
+    instructions: PolishInstructions,
+    config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    let apiKey = try getAPIKey(config: config)
+
+    guard let url = URL(string: baseURL) else {
+      throw LLMError.requestFailed("Invalid Claude URL")
+    }
+    let body = Self.makeRequestBody(
+      model: config.model,
+      maxTokens: config.maxTokens,
+      system: instructions.systemPrompt,
+      userText: text
+    )
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+    request.setValue(Self.apiVersion, forHTTPHeaderField: "anthropic-version")
+    request.setValue("application/json", forHTTPHeaderField: "content-type")
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    request.timeoutInterval = 60
+
+    // Allocate the call number once per logical polish. Retries reuse the
+    // same number so logs never mistake a retried polish for multiple
+    // independent calls (mirrors GeminiConnector/OpenAIConnector).
+    let callNumber = LLMNetworkSession.shared.nextCallNumber()
+
+    return try await performWithRetry(config: config) {
+      try await self.polishBatch(request: request, config: config, callNumber: callNumber)
+    }
+  }
+
+  public func polish(
+    envelope: PromptEnvelope,
+    config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    // The `.cloudFixed` family Claude joins always produces exactly one
+    // system and one user message, so this should never be reached — but
+    // the connector fails loud rather than silently dropping content if a
+    // future prompt path ever hands it a few-shot or multi-turn envelope.
+    guard let pair = envelope.asSingleTurn() else {
+      throw LLMError.requestFailed("Claude requires a single-turn prompt envelope")
+    }
+    return try await polish(
+      text: pair.user,
+      instructions: PolishInstructions(systemPrompt: pair.system ?? ""),
+      config: config,
+      onToken: onToken
+    )
+  }
+
+  // MARK: - Request construction
+
+  /// The single owner of the Claude request shape, used by both production
+  /// polish and `LLMModelDiscovery.probeClaude` — so a probe/production body
+  /// mismatch can never report a model "available" against a shape
+  /// production doesn't actually send. `system` is omitted entirely when
+  /// nil/empty (the probe passes `nil`; production always has a real system
+  /// prompt for the `.cloudFixed` family). Deliberately module-internal
+  /// (not `private`): `LLMModelDiscovery` calls this from another file in
+  /// the same `EnviousWisprLLM` module.
+  static func makeRequestBody(
+    model: String,
+    maxTokens: Int,
+    system: String?,
+    userText: String
+  ) -> [String: Any] {
+    var body: [String: Any] = [
+      "model": model,
+      "max_tokens": maxTokens,
+      "messages": [["role": "user", "content": userText]],
+    ]
+    if let system, !system.isEmpty {
+      body["system"] = system
+    }
+    return body
+  }
+
+  // MARK: - Batch
+
+  private func polishBatch(
+    request: URLRequest,
+    config: LLMProviderConfig,
+    callNumber: Int
+  ) async throws -> LLMResult {
+    let session = LLMNetworkSession.shared.session
+    let collector = LLMTaskMetricsCollector()
+    var statusForLog = "pending"
+    defer {
+      let line = LLMTaskMetricsCollector.format(
+        provider: "claude", model: config.model, callNumber: callNumber,
+        status: statusForLog, metrics: collector.metrics
+      )
+      Task { await AppLogger.shared.log(line, level: .info, category: "LLM") }
+    }
+
+    let data: Data
+    let response: URLResponse
+    do {
+      (data, response) = try await session.data(for: request, delegate: collector)
+    } catch {
+      statusForLog = "error:\(Self.shortError(error))"
+      throw error
+    }
+
+    guard let httpResponse = response as? HTTPURLResponse else {
+      statusForLog = "error:non_http_response"
+      throw LLMError.requestFailed("Invalid response")
+    }
+    statusForLog = String(httpResponse.statusCode)
+
+    // Post-header failures (non-200 body, malformed JSON, no text blocks,
+    // all-empty text) must be reflected in statusForLog so the defer never
+    // records a successful-looking line for a failed call. A genuinely
+    // malformed (non-JSON) body propagates as a raw JSONSerialization decode
+    // error here, matching GeminiConnector/OpenAIConnector's existing
+    // precedent rather than inventing a bespoke rewrite to `.emptyResponse`.
+    let responseText: String
+    do {
+      if httpResponse.statusCode != 200 {
+        let body = String(data: data, encoding: .utf8) ?? ""
+        try handleHTTPError(statusCode: httpResponse.statusCode, body: body)
+      }
+
+      let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+      guard let content = json?["content"] as? [[String: Any]] else {
+        throw LLMError.emptyResponse
+      }
+      let text =
+        content
+        .filter { $0["type"] as? String == "text" }
+        .compactMap { $0["text"] as? String }
+        .joined()
+      guard !text.isEmpty else {
+        throw LLMError.emptyResponse
+      }
+      responseText = text
+    } catch {
+      statusForLog = "error_after_\(httpResponse.statusCode):\(Self.shortError(error))"
+      throw error
+    }
+
+    return LLMResult(
+      polishedText: responseText.trimmingCharacters(in: .whitespacesAndNewlines)
+        .strippingLLMPreamble(stripTranscriptTags: false)
+    )
+  }
+
+  // MARK: - Shared
+
+  private func handleHTTPError(statusCode: Int, body: String) throws -> Never {
+    #if DEBUG
+      let truncated = String(body.prefix(200))
+      Task {
+        await AppLogger.shared.log(
+          "Claude HTTP \(statusCode): \(truncated)",
+          level: .verbose, category: "LLM"
+        )
+      }
+    #else
+      Task {
+        await AppLogger.shared.log(
+          "Claude HTTP \(statusCode)",
+          level: .verbose, category: "LLM"
+        )
+      }
+    #endif
+    throw LLMError.classified(Self.classify(statusCode: statusCode, bodyString: body))
+  }
+
+  /// Pure status+body -> reason classifier (#945). Anthropic's `rate_limit_error`
+  /// type is a clean signal (unlike Gemini's ambiguous `RESOURCE_EXHAUSTED`), so
+  /// 429 maps directly to `.rateLimited`, no `.rateLimitedOrQuota` needed. The
+  /// low-credit-balance body shape is unverified (JUDGMENT-CALL, plan §2.5): a
+  /// best-effort substring match on a 400 body, falling through to the generic
+  /// `.badRequest` otherwise. Unit-testable without network mocking.
+  static func classify(statusCode: Int, bodyString: String) -> PolishFailureReason {
+    switch statusCode {
+    case 400:
+      if bodyString.contains("credit balance") { return .outOfCredits }
+      return .badRequest
+    case 401:
+      return .apiKeyRejected
+    case 403:
+      return .accessDenied
+    case 404:
+      return .modelUnavailable
+    case 429:
+      return .rateLimited
+    case 500...599:
+      return .providerServerError
+    default:
+      return (400...499).contains(statusCode) ? .badRequest : .unknown
+    }
+  }
+
+  /// Short error token for diagnostic log lines. Mirrors
+  /// GeminiConnector.shortError/OpenAIConnector.shortError.
+  fileprivate static func shortError(_ error: Error) -> String {
+    if let urlError = error as? URLError {
+      return "urlerror_\(urlError.code.rawValue)"
+    }
+    if error is CancellationError {
+      return "cancelled"
+    }
+    return "\(type(of: error))"
+  }
+
+  // MARK: - Retry
+
+  private func performWithRetry(
+    config: LLMProviderConfig,
+    maxRetries: Int = LLMRetryPolicy.defaultMaxRetries,
+    delays: [UInt64] = LLMRetryPolicy.defaultDelays,
+    operation: () async throws -> LLMResult
+  ) async throws -> LLMResult {
+    var lastError: Error?
+    for attempt in 0...maxRetries {
+      if attempt > 0 {
+        let delay = delays[min(attempt - 1, delays.count - 1)]
+        Task {
+          await AppLogger.shared.log(
+            "Claude retry \(attempt)/\(maxRetries) after \(delay / 1_000_000_000)s (model=\(config.model))",
+            level: .verbose, category: "LLM"
+          )
+        }
+        try await Task.sleep(nanoseconds: delay)
+      }
+      do {
+        return try await operation()
+      } catch {
+        lastError = error
+        if !LLMRetryPolicy.isRetryable(error) { throw error }
+      }
+    }
+    throw lastError ?? LLMError.requestFailed("All retries exhausted")
+  }
+
+  private func getAPIKey(config: LLMProviderConfig) throws -> String {
+    guard let keychainId = config.apiKeyKeychainId else {
+      throw LLMError.classified(.apiKeyMissing)
+    }
+    do {
+      return try keychainManager.retrieve(key: keychainId)
+    } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
+      // No key is stored. NOTE this is the arm a real no-key user takes, not the
+      // `guard` above: `LLMPolishStep` always supplies the fixed key id for a cloud
+      // provider, so `apiKeyKeychainId` is never nil in production. Classify
+      // by what the STORE says, not by whether an id was passed.
+      throw LLMError.classified(.apiKeyMissing)
+    } catch {
+      // A key IS stored but could not be read (corrupt entry, locked Keychain,
+      // missing entitlement, migration bug). The user sees the same notice as the
+      // no-key case — re-entering the key in Settings fixes both — but this one is
+      // OUR defect and keeps its own alerting fingerprint.
+      throw LLMError.classified(.apiKeyUnreadable)
+    }
+  }
+}
