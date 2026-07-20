@@ -246,12 +246,22 @@ final class CustomWordsImportFlowModel {
       return false
     case .result(.completed), .result(.nothingApproved):
       guard selectedMethod != .paste else { return false }
-      return !pasteDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      return hasNonWhitespacePasteDraft
     case .methodPicker, .paste, .upload, .smartImportAppPicker, .review,
       .working(.loadingCandidates), .working(.comparing),
       .result(.nothingFound), .result(.failed):
-      return !pasteDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      return hasNonWhitespacePasteDraft
     }
+  }
+
+  /// `hasDiscardableDraft` is read from `body` on every keystroke, on macOS
+  /// 15+ via `dismissalConfirmationDialog(shouldPresent:)` (Codex code-diff
+  /// review). `contains(where:)` short-circuits at the first non-whitespace
+  /// character — real pasted text has one almost immediately — rather than
+  /// `trimmingCharacters(in:)`, which allocates a new trimmed `String` on
+  /// every call.
+  private var hasNonWhitespacePasteDraft: Bool {
+    pasteDraft.contains { !$0.isWhitespace }
   }
 
   /// "Keep editing" from a confirmation dialog (#1700). No `.result` case has
