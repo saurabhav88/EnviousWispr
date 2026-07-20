@@ -124,7 +124,7 @@ struct CustomWordsImportSheet: View {
     switch model.step {
     case .methodPicker: return "Import words"
     case .paste: return "Paste words"
-    case .upload: return "Upload a file"
+    case .upload: return "Open a file"
     case .smartImportAppPicker: return "From another app"
     case .review: return "Review & Merge"
     case .working(.loadingCandidates): return "Finding words"
@@ -155,10 +155,19 @@ private struct ImportMethodPickerScreen: View {
       ) {
         model.select(.paste)
       }
+      // "Upload" implied a cloud destination for a purely local file read,
+      // which fights the local-and-private positioning this whole feature is
+      // built on. The copy also names the actual file and BOTH journeys —
+      // moving Macs and restoring a backup. Six later phases treat the export
+      // as their safety net, so the person most likely to be on this screen is
+      // recovering on the same Mac, not migrating (#1699).
       ImportMethodCard(
         icon: "square.and.arrow.down",
-        title: "Upload a file",
-        subtitle: "Import words from a file you exported, or a list."
+        title: "Open a file",
+        subtitle:
+          "Moving Macs or restoring a backup? Pick the "
+          + "\(CustomWordsExportPanel.defaultFilename) you exported. "
+          + "Plain text lists work too."
       ) {
         model.select(.upload)
       }
@@ -445,7 +454,7 @@ private struct ImportPasteScreen: View {
   }
 }
 
-// MARK: - Upload a file (PR-U1)
+// MARK: - Open a file (PR-U1)
 
 /// Deliberately never says "restore" (founder, 2026-07-19).
 ///

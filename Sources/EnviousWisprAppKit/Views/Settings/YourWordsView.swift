@@ -25,8 +25,29 @@ struct YourWordsView: View {
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
   @State private var sheetRoute: YourWordsSheetRoute?
   #if DEBUG
-    /// Set when an export failed, so the failure is stated rather than silent.
-    @State private var exportError: String?
+    /// What to say after an export attempt. Two kinds, deliberately: a real
+    /// failure, and an honest outcome that is not a failure. Sharing one
+    /// "Export didn't finish" title for both would tell a pack-only user their
+    /// export broke when it worked exactly as designed (#1697).
+    enum ExportNotice: Equatable {
+      case failure(String)
+      case info(String)
+
+      var title: String {
+        switch self {
+        case .failure: return "Export didn't finish"
+        case .info: return "Nothing was exported"
+        }
+      }
+
+      var message: String {
+        switch self {
+        case .failure(let text), .info(let text): return text
+        }
+      }
+    }
+
+    @State private var exportNotice: ExportNotice?
   #endif
 
   var body: some View {
@@ -72,7 +93,17 @@ struct YourWordsView: View {
           // compiled out of release builds until the founder ships it, and a
           // release-visible Export whose companion Import is invisible would be
           // half a promise.
-          Button(action: exportWords) {
+          // ONE body-render snapshot drives both the visible count and the
+          // array handed to the action, so the number the user reads and the
+          // bytes written cannot come from different moments (#1697).
+          let proposed = CustomWordsExportAction.exportableWords(
+            from: customWordsCoordinator.customWords)
+          Text(exportCountSummary(proposed.count))
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+          Button {
+            exportWords(proposed: proposed)
+          } label: {
             Label("Export your words", systemImage: "square.and.arrow.up")
           }
         #endif
@@ -103,15 +134,15 @@ struct YourWordsView: View {
     }
     #if DEBUG
       .alert(
-        "Export didn't finish",
+        exportNotice?.title ?? "",
         isPresented: Binding(
-          get: { exportError != nil },
-          set: { if !$0 { exportError = nil } }
+          get: { exportNotice != nil },
+          set: { if !$0 { exportNotice = nil } }
         )
       ) {
-        Button("OK", role: .cancel) { exportError = nil }
+        Button("OK", role: .cancel) { exportNotice = nil }
       } message: {
-        Text(exportError ?? "")
+        Text(exportNotice?.message ?? "")
       }
     #endif
     .sheet(item: $sheetRoute) { route in
@@ -143,12 +174,13 @@ struct YourWordsView: View {
     /// word list snapshotted — so cancelling reads nothing and writes nothing.
     /// Built-ins are excluded; what ships is what the user authored or edited,
     /// which is the only scope whose restore path this app can actually honor.
-    private func exportWords() {
+    private func exportWords(proposed: [CustomWord]) {
       // The decision lives in CustomWordsExportAction so the ORDER of its
       // steps is testable; this is just the wiring (#1680).
       Task {
         let outcome = await CustomWordsExportAction.run(
           coordinator: customWordsCoordinator,
+          proposedExportWords: proposed,
           chooseDestination: { CustomWordsExportPanel.chooseDestination() },
           write: { document, destination in
             try await CustomWordsExportWriter.write(document, to: destination)
@@ -156,14 +188,34 @@ struct YourWordsView: View {
         )
         switch outcome {
         case .cancelled, .exported:
-          exportError = nil
+          exportNotice = nil
         case .refusedUnsafeLibrary:
-          exportError =
+          exportNotice = .failure(
             "Your saved words couldn't be read this time, so there's nothing safe to export. "
-            + "Relaunch EnviousWispr and try again."
+              + "Relaunch EnviousWispr and try again.")
+        // Neither of the next two is a failure, so neither wears the failure
+        // title. A pack-only user pressing Export has done nothing wrong; they
+        // need the reason their long word list produced no file (#1697).
+        case .nothingToExport:
+          exportNotice = .info(
+            "There are no words of your own to export yet. "
+              + "Vocabulary packs are not included.")
+        case .libraryChanged:
+          exportNotice = .info(
+            "Your word list changed. Nothing was exported. "
+              + "Review the updated count and try Export again.")
         case .failed(let message):
-          exportError = message
+          exportNotice = .failure(message)
         }
+      }
+    }
+
+    /// Says what Export will actually produce, before it is pressed.
+    private func exportCountSummary(_ count: Int) -> String {
+      switch count {
+      case 0: return "No words of your own yet. Packs aren't included."
+      case 1: return "Exporting 1 word of your own. Packs aren't included."
+      default: return "Exporting \(count) of your own words. Packs aren't included."
       }
     }
   #endif

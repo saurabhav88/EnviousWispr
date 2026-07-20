@@ -18,23 +18,67 @@ import Foundation
 ///   4. snapshot on the main actor, write off it.
 /// Every one of those was a separately-found bug. Keeping them in a testable
 /// unit means the sequence itself is covered, not just its parts.
+///
+/// #1697 added a count on screen and nearly broke step 1 doing it. A save
+/// panel's message must exist BEFORE the panel opens, so putting the count
+/// there would have forced the refresh ahead of the ask. Grounded review r2
+/// established what that actually costs: `refreshFromDiskIfPossible` is not an
+/// in-memory read. It can rewrite a legacy file during migration, move a
+/// corrupt file into an archive, latch session corruption state, and publish a
+/// replaced library to runtime consumers. Opening Export and CANCELLING would
+/// have done all of that — the exact bug step 1 exists to prevent.
+///
+/// So the count is derived on screen, passed in as `proposedExportWords`, and
+/// verified after the destination is chosen. One filtering authority, two
+/// time-separated snapshots: the proposed array owns both the number the user
+/// saw and the bytes written; the refreshed array only proves nothing moved.
 @MainActor
 enum CustomWordsExportAction {
   enum Outcome: Equatable {
     case cancelled
     case exported
     case refusedUnsafeLibrary
+    /// No words of the user's own. Not a failure — an honest empty state, and
+    /// the only place a pack-only user learns why their long list is excluded.
+    case nothingToExport
+    /// The library changed between the count being shown and the write. Nothing
+    /// was written. Neutral, not a failure: the user is told the number moved.
+    case libraryChanged
     case failed(message: String)
   }
 
+  /// The one filtering authority (#1697). Called once per snapshot, never once
+  /// per consumer — a count computed by a second call is a second measurement.
+  nonisolated static func exportableWords(from words: [CustomWord]) -> [CustomWord] {
+    words.filter { $0.source == .user }
+  }
+
   /// - Parameters:
+  ///   - proposedExportWords: the array the visible count was rendered from.
+  ///     The file is built from this exact array, so the number the user saw
+  ///     and the bytes on disk cannot disagree.
   ///   - chooseDestination: returns nil when the user cancels.
   ///   - write: performs the actual file write.
   static func run(
     coordinator: CustomWordsCoordinator,
+    proposedExportWords: [CustomWord],
     chooseDestination: () -> URL?,
     write: @escaping @Sendable (Data, URL) async throws -> Void
   ) async -> Outcome {
+    // An empty proposal never opens a panel: a save dialog that can only make an
+    // empty file is a trap. Refresh anyway — the on-screen count may be stale.
+    guard !proposedExportWords.isEmpty else {
+      guard coordinator.refreshFromDiskIfPossible(), coordinator.canExportCurrentWords
+      else {
+        return .refusedUnsafeLibrary
+      }
+      // Still empty after adopting disk: genuinely nothing of the user's own.
+      // No longer empty: the count the user saw was wrong, so say so rather
+      // than exporting a snapshot they were never shown.
+      return exportableWords(from: coordinator.customWords).isEmpty
+        ? .nothingToExport : .libraryChanged
+    }
+
     // 1. Ask first. Refreshing before this made cancelling mutate state.
     guard let destination = chooseDestination() else { return .cancelled }
 
@@ -44,12 +88,18 @@ enum CustomWordsExportAction {
       return .refusedUnsafeLibrary
     }
 
-    // 4. Snapshot here, synchronously, so the file reflects the moment the
-    // user confirmed rather than whenever the write happened to run.
-    let document = CustomWordsTransferDocument(
-      words: coordinator.customWords.filter { $0.source == .user })
+    // 4. Verify the list did not move while the user was picking a folder.
+    //    Complete records, not just the count: a same-size edit is exactly the
+    //    drift a count comparison cannot see. `CustomWord` synthesizes equality
+    //    over every stored field, and array equality is order-sensitive.
+    let refreshedExportWords = exportableWords(from: coordinator.customWords)
+    guard refreshedExportWords == proposedExportWords else { return .libraryChanged }
 
-    // 5. Refuse to write a file our own importer would reject. The exporter
+    // 5. Build from the PROPOSED array — the one the user was shown a count of.
+    //    Step 4 has just proven it equals what is on disk.
+    let document = CustomWordsTransferDocument(words: proposedExportWords)
+
+    // 6. Refuse to write a file our own importer would reject. The exporter
     //    and importer are one round trip, so a limit enforced on only one side
     //    is a promise the pair cannot keep.
     //
