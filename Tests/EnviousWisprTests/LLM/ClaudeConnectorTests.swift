@@ -183,6 +183,15 @@ struct ClaudeConnectorTests {
     #expect(ClaudeConnector.classify(statusCode: 404, bodyString: "") == .modelUnavailable)
   }
 
+  @Test func classify413IsInputTooLong() {
+    // Documented, not guessed (Codex r4, PR #1712): Anthropic's dedicated
+    // request_too_large status for exceeding the Messages API's byte-size
+    // limit, confirmed against
+    // https://platform.claude.com/docs/en/api/errors#request-size-limits.
+    let body = #"{"type":"error","error":{"type":"request_too_large","message":"..."}}"#
+    #expect(ClaudeConnector.classify(statusCode: 413, bodyString: body) == .inputTooLong)
+  }
+
   @Test func classify429IsRateLimited() {
     // Anthropic's rate_limit_error type is a clean signal (unlike Gemini's
     // ambiguous RESOURCE_EXHAUSTED), so no .rateLimitedOrQuota split is

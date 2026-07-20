@@ -262,6 +262,17 @@ public struct ClaudeConnector: TranscriptPolisher {
       return .accessDenied
     case 404:
       return .modelUnavailable
+    case 413:
+      // Documented, not guessed (GitHub cloud review r4, PR #1712,
+      // confirmed against the same
+      // https://platform.claude.com/docs/en/api/errors fetch that
+      // established 402 above): 413 is Anthropic's dedicated
+      // `request_too_large` status for a request exceeding the Messages
+      // API's byte-size limit — the same real-world "your dictation is
+      // too long for this request" condition `.inputTooLong` already
+      // names for the 400 prompt-is-too-long case above, just hit via a
+      // different limit (byte size vs. token count).
+      return .inputTooLong
     case 429:
       return .rateLimited
     case 500...599:
