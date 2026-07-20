@@ -1305,7 +1305,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// whose retry was exhausted projects to the distinct `.asrRetryExhausted`
   /// ending (§4) so `RecoveryCoordinator` can delete that spool specifically
   /// — a pre-capture `.failed` (retry never consulted, `retryOutcome == nil`)
-  /// still projects to plain `.failed` and retains exactly as today.
+  /// still projects to plain `.failed` and retains exactly as today. Codex r7:
+  /// `.asrInterrupted` honors the same exhausted-retry distinction, since the
+  /// kernel's `interruptedTerminalFloor` can raise an exhausted-retry `.failed`
+  /// into `.asrInterrupted` when an ASR-interruption salvage attempt preceded it.
   static func recoveryEnding(
     for outcome: RecordingOutcome, retryOutcome: ASRRetryOutcome? = nil
   )
@@ -1321,7 +1324,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     case .audioInterrupted:
       return .audioInterrupted
     case .asrInterrupted:
-      return .asrInterrupted
+      // #1707 Codex r7: `interruptedTerminalFloor` can raise a `.failed`
+      // whose retry exhausted into `.asrInterrupted` (an ASR-interruption
+      // salvage attempt AND the Phase 2 retry both failed in the same
+      // session) — honor the same exhausted-retry distinction here so the
+      // coordinator still deletes rather than replaying audio the retry
+      // already definitively gave up on.
+      return retryOutcome == .retryExhausted ? .asrRetryExhausted : .asrInterrupted
     case .noTransport:
       return .noTransport
     case .cancelled, .completed:

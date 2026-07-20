@@ -79,6 +79,38 @@ struct KernelTerminalKindTests {
         == .failed)
   }
 
+  @Test(
+    "#1707 Codex r7: an .asrInterrupted outcome whose retry was exhausted ALSO projects to .asrRetryExhausted, since interruptedTerminalFloor can raise an exhausted-retry .failed into .asrInterrupted"
+  )
+  func exhaustedRetryAfterInterruptionFloorProjectsToDistinctEnding() {
+    #expect(
+      KernelDictationDriver.recoveryEnding(
+        for: .asrInterrupted(wasRecording: true), retryOutcome: .retryExhausted)
+        == .asrRetryExhausted)
+    #expect(
+      KernelDictationDriver.recoveryEnding(
+        for: .asrInterrupted(wasRecording: false), retryOutcome: .retryExhausted)
+        == .asrRetryExhausted)
+  }
+
+  @Test(
+    "#1707 Codex r7: an .asrInterrupted outcome projects to plain .asrInterrupted when the retry was never consulted, only attempted, or succeeded"
+  )
+  func nonExhaustedRetryOutcomesProjectToPlainAsrInterrupted() {
+    #expect(
+      KernelDictationDriver.recoveryEnding(
+        for: .asrInterrupted(wasRecording: true), retryOutcome: nil)
+        == .asrInterrupted)
+    #expect(
+      KernelDictationDriver.recoveryEnding(
+        for: .asrInterrupted(wasRecording: true), retryOutcome: .attempted)
+        == .asrInterrupted)
+    #expect(
+      KernelDictationDriver.recoveryEnding(
+        for: .asrInterrupted(wasRecording: true), retryOutcome: .retrySucceeded)
+        == .asrInterrupted)
+  }
+
   @Test(".cancelled is excluded from the projection (resolved dynamically at the fire site)")
   func cancelledIsDynamic() {
     // `.cancelled` is reached by both a user cancel and a fault/system cancel, so

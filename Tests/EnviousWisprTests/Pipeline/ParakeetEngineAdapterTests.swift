@@ -755,6 +755,41 @@ import Testing
     #expect(adapter.lastResult == nil, "the discarded retry's result must never reach lastResult")
   }
 
+  @Test(
+    "#1707 Codex r7: a retry's warmUp() repair throwing AFTER it was superseded by a new session must not write its stale error into lastFailureError"
+  )
+  func supersededRetryWarmUpFailureDoesNotPolluteNewSessionError() async throws {
+    struct SimulatedRepairFailure: Error {}
+    let manager = StubParakeetASRManager()
+    manager.isModelLoaded = true
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+
+    // Readiness drops below .ready, so retryDecode's repair-before-retry gate
+    // engages warmUp() -> loadModel(). Park it, then queue a failure for
+    // when it's released.
+    manager.isModelLoaded = false
+    manager.gateLoadModel = true
+    manager.loadModelError = SimulatedRepairFailure()
+    async let outcome = adapter.retryDecode(inputSamples: [0.1, 0.2])
+    while manager.loadModelCount == 0 { await Task.yield() }
+
+    // A new session begins BEFORE the parked repair resolves — mirrors the
+    // kernel's onTimeout/new-session paths that make this retry stale.
+    try await adapter.beginSession(SessionID(), options: .default, streaming: false)
+    manager.releaseLoadGate()
+
+    guard case .failed = await outcome else {
+      Issue.record("expected the stale repair failure to still report .failed")
+      return
+    }
+    #expect(
+      adapter.lastFailureError == nil,
+      "a stale, superseded retry's repair failure must never write lastFailureError — it would corrupt the NEW session's own error attribution"
+    )
+  }
+
   // MARK: Helpers
 
   /// Feed one synthetic buffer stamped with `session` — the kernel always
@@ -844,12 +879,14 @@ final class StubParakeetASRManager: ASRManagerInterface {
 
   func loadModel() async throws {
     loadModelCount += 1
+    if gateLoadModel {
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in loadGates.append(c) }
+    }
+    // Checked AFTER the gate parks/releases so a test can script a load that
+    // throws once resumed (#1707 Codex r7), not only an immediate throw.
     if let error = loadModelError {
       loadModelError = nil
       throw error
-    }
-    if gateLoadModel {
-      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in loadGates.append(c) }
     }
     isModelLoaded = true
   }

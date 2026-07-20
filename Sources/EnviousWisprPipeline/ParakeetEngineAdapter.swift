@@ -675,7 +675,13 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         // (`?? retryError`) never triggers because that stale value is
         // non-nil, so Sentry would attribute retry exhaustion to the wrong
         // (primary) failure instead of this actual warm-up/repair failure.
-        lastFailureError = error
+        // Codex r7: but this write must be staleness-gated exactly like
+        // `commitAttempt`'s — an abandoned retry's `warmUp()` throwing AFTER
+        // it was superseded (session changed, or `bumpRetryGeneration()` from
+        // a timeout) must not overwrite a NEWER session's own failure.
+        if sessionID == session, retryGeneration == generation {
+          lastFailureError = error
+        }
         return .failed(.decodeFailed)
       }
       // The repair awaited — re-check staleness BEFORE spending the decode
