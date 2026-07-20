@@ -156,7 +156,10 @@ struct CustomWordsImportSheet: View {
         // interactions at all per Apple's own documentation, which would
         // silently reintroduce the exact Escape bug this button exists to
         // fix (Codex, round 4) — `.opacity` only affects rendering, not hit
-        // testing or shortcut dispatch.
+        // testing or shortcut dispatch. `.accessibilityHidden(true)` keeps
+        // VoiceOver/Full Keyboard Access from exposing two overlapping
+        // "Done" controls at the same location (Codex, round 6) — it only
+        // affects the accessibility tree, not keyboard shortcut dispatch.
         Button("Done") { requestCancel() }
           .keyboardShortcut(.defaultAction)
           .buttonStyle(.borderedProminent)
@@ -164,6 +167,7 @@ struct CustomWordsImportSheet: View {
             Button("Done") { requestCancel() }
               .keyboardShortcut(.cancelAction)
               .opacity(0)
+              .accessibilityHidden(true)
           }
       case .review:
         Button("Cancel") { requestCancel() }
