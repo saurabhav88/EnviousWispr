@@ -230,14 +230,23 @@ final class CustomWordsImportFlowModel {
 
   /// True iff closing the sheet right now, by any path, would silently throw
   /// away words the user already typed (#1700). Excludes `.working(.committing)`
-  /// — an active write in flight is not "a draft" — and the two `.result`
-  /// cases where nothing is left to protect; includes `.result(.nothingFound)`
+  /// — an active write in flight is not "a draft." Includes `.result(.nothingFound)`
   /// and `.result(.failed)`, since neither committed anything and the pasted
   /// text is still sitting, uncommitted, in `pasteDraft`.
+  ///
+  /// `.result(.completed)`/`.result(.nothingApproved)` are only genuinely
+  /// nothing-to-lose when THIS result's own method was paste — that's the
+  /// only case where `pasteDraft`'s content is guaranteed to be exactly what
+  /// was just committed. If the user typed a paste draft, went Back, and
+  /// completed a DIFFERENT method's import instead, `pasteDraft` still holds
+  /// that abandoned, never-committed text (Codex code-diff review, #1700).
   var hasDiscardableDraft: Bool {
     switch step {
-    case .working(.committing), .result(.completed), .result(.nothingApproved):
+    case .working(.committing):
       return false
+    case .result(.completed), .result(.nothingApproved):
+      guard selectedMethod != .paste else { return false }
+      return !pasteDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     case .methodPicker, .paste, .upload, .smartImportAppPicker, .review,
       .working(.loadingCandidates), .working(.comparing),
       .result(.nothingFound), .result(.failed):

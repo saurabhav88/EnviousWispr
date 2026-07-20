@@ -236,6 +236,46 @@ struct CustomWordsImportFlowModelTests {
     #expect(model.hasDiscardableDraft == true)
   }
 
+  @Test(
+    "an abandoned paste draft is still discardable after completing a DIFFERENT method's import"
+  )
+  func hasDiscardableDraftIsTrueForAbandonedDraftAfterOtherMethodCompletes() {
+    // Codex code-diff review: pasting a draft, backing out to try a different
+    // method, and completing THAT method's import must not let the earlier,
+    // never-committed paste draft be silently wiped by "nothing to lose"
+    // reasoning that only actually applies to the flow that just finished.
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Threadripper"
+    model.goBack()
+    #expect(model.step == .methodPicker)
+    #expect(model.pasteDraft == "Threadripper")
+
+    model.select(.upload)
+    model.beginWork(.committing)
+    model.showResult(.completed(added: 1, replaced: 0))
+
+    #expect(model.selectedMethod == .upload)
+    #expect(model.hasDiscardableDraft == true)
+  }
+
+  @Test(
+    "an abandoned paste draft is still discardable after a DIFFERENT method's import approves nothing"
+  )
+  func hasDiscardableDraftIsTrueForAbandonedDraftAfterOtherMethodApprovesNothing() {
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "Threadripper"
+    model.goBack()
+
+    model.select(.smartImport)
+    model.beginWork(.committing)
+    model.showResult(.nothingApproved)
+
+    #expect(model.selectedMethod == .smartImport)
+    #expect(model.hasDiscardableDraft == true)
+  }
+
   @Test("a completed result has nothing left to discard")
   func hasDiscardableDraftIsFalseWhenCompleted() {
     let model = Self.makeModel()
