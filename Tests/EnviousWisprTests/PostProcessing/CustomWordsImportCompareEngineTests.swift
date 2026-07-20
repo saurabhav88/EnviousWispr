@@ -426,18 +426,24 @@ struct CustomWordsImportCompareEngineTests {
 
   @Test("when two existing words share an alias, the collision names the runtime winner")
   func sharedIncumbentAliasReportsTheRuntimeWinningOwner() async throws {
-    // `WordCorrector.buildLookups` assigns the alias map unconditionally
-    // (WordCorrector.swift:180-214), so the LATER word claims the trigger at
-    // runtime — its own collision log says "using <later canonical>". The
-    // reported owner has to match that, or the Review screen names a word
-    // that is not really holding the alias.
+    // This test used to expect the LATER word, reasoning that the alias map is
+    // assigned unconditionally so the last writer wins. That reasoning reads
+    // one surface and stops. Pass 0 runs FIRST and accepts single tokens
+    // (`for n in (1...min(3, ...))`), and in the no-space namespace aliases are
+    // FIRST-wins — so the earlier word holds "annie" there and intercepts
+    // before the alias map is ever consulted.
+    //
+    // Corrected against the real corrector, which turns "Annie" into "Anika"
+    // here (`aRuntimeOracleForEveryOwnerThisSuiteNames`). Naming Annabelle told
+    // the user a word that never touches their text already uses the alias —
+    // exactly the class of blindness #1667 exists to end.
     let earlier = CustomWord(canonical: "Anika", aliases: ["annie"])
     let later = CustomWord(canonical: "Annabelle", aliases: ["annie"])
     let results = try await compare(
       [candidate("Zed", aliases: .supplied(["Annie"]))], against: [earlier, later])
     #expect(
       results[0].collidingAliases == [
-        CustomWordsImportAliasCollision(alias: "Annie", heldBy: later.id)
+        CustomWordsImportAliasCollision(alias: "Annie", heldBy: earlier.id)
       ])
   }
 
@@ -459,15 +465,170 @@ struct CustomWordsImportCompareEngineTests {
       ])
   }
 
-  @Test("aliases that differ only by internal whitespace do not collide")
-  func aliasesDifferingOnlyByInternalWhitespaceAreNotFlagged() async throws {
-    // Collisions are a claim about the stored/correction-map slot, which uses
-    // the manager's weaker key — these two never actually collide at runtime,
-    // so flagging them would be a false positive.
+  @Test("a kept alias gap-fills the compound slot rather than stealing it")
+  func keptAliasDoesNotCreateAFalseLaterCollision() async throws {
+    // The incumbent `Claude Code` holds "claudecode" but declines to intercept
+    // a surface that already spells it, so the first alias is kept. If keeping
+    // it OVERWROTE that slot, the second candidate would be told a word owns
+    // the trigger that does not — a warning about nothing (grounded review r5).
+    let incumbent = CustomWord(canonical: "Claude Code")
+    let first = candidate("Zed", aliases: .supplied(["ClaudeCode"]))
+    let second = candidate("Quinn", aliases: .supplied(["Claude Code"]))
+
+    let results = try await compare([first, second], against: [incumbent])
+
+    #expect(results[0].collidingAliases.isEmpty)
+    #expect(results[1].collidingAliases.isEmpty)
+  }
+
+  @Test("the later incoming canonical owns the compound slot")
+  func laterIncomingCanonicalControlsCompoundCollisionDisclosure() async throws {
+    // Compound canonicals are written unconditionally, so among incoming words
+    // the LATER one holds the squashed key. Registering incoming canonicals
+    // first-wins named the earlier one, which the commit path would then
+    // contradict.
+    let earlier = candidate("Claude Code")
+    let later = candidate("claudecode")
+    let claimant = candidate("Zed", aliases: .supplied(["Claude Code"]))
+
+    let results = try await compare([earlier, later, claimant], against: [])
+
+    #expect(
+      results[2].collidingAliases == [
+        CustomWordsImportAliasCollision(alias: "Claude Code", heldBy: later.id)
+      ])
+  }
+
+  @Test("an imported alias equal to a multi-word canonical's space-free form is disclosed")
+  func aliasMatchingAnExistingMultiWordCanonicalsNoSpaceFormIsFlagged() async throws {
+    // The defect #1667 was filed for. `Claude Code` claims "claudecode" in the
+    // no-space namespace, and Pass 0 resolves that n-gram before any alias pass
+    // runs — so this alias was reported collision-free, persisted, and then
+    // never fired. It has no entry in either alias map, which is precisely why
+    // a detector that mirrored only those maps could not see it.
+    let existing = CustomWord(canonical: "Claude Code")
+    let results = try await compare(
+      [candidate("Zed", aliases: .supplied(["claudecode"]))], against: [existing])
+    #expect(
+      results[0].collidingAliases == [
+        CustomWordsImportAliasCollision(alias: "claudecode", heldBy: existing.id)
+      ])
+  }
+
+  @Test("a forced-Skip candidate cannot steal a trigger key from the real incumbent")
+  func nonNewCandidateNeverParticipatesInBatchOwnership() async throws {
+    // Grounded review r6. An exact-match row is never itself persisted — it is
+    // a decision about the EXISTING word, never a fresh addition — so its
+    // canonical must not out-rank the real incumbent for ownership purposes.
+    //
+    // The exact-match candidate spells the same compound key with different
+    // CASE ("claude code" vs "Claude Code"). If it were allowed to register,
+    // its unconditional no-space claim would overwrite the real incumbent with
+    // an owner whose canonical is all lowercase — and "ClaudeCode" would then
+    // no longer already spell that owner's name, so it would wrongly appear to
+    // collide against a row that is never persisted.
+    //
+    // Correctly excluded, the REAL incumbent keeps the key. The claimant's
+    // alias already spells that incumbent's own name exactly, so the runtime
+    // rule this whole issue is about — a holder that would not actually
+    // intercept is not a collision — applies, and nothing is reported.
+    let existing = CustomWord(canonical: "Claude Code")
+    let exactMatch = candidate("claude code")
+    let claimant = candidate("Zed", aliases: .supplied(["ClaudeCode"]))
+
+    let results = try await compare([exactMatch, claimant], against: [existing])
+
+    #expect(results[0].classification == .exact(existing: existing))
+    #expect(
+      results[1].collidingAliases.isEmpty,
+      "an exact-match row that is never persisted must not be able to steal ownership")
+  }
+
+  @Test("a dropped alias's surviving claims never become a phantom owner")
+  func blockedAliasRegistersNoneOfItsClaimsForLaterCandidates() async throws {
+    // Atomicity (grounded review r4). The first candidate's alias is blocked on
+    // its ordinary surface, so the whole alias will be dropped at commit — the
+    // stored alias, not one trigger claim, is the unit that survives. If its
+    // UNBLOCKED no-space claim were registered anyway, it would become an owner
+    // that never exists in the library and would then falsely block the second
+    // candidate, whose alias is in fact free.
+    //
+    // The fixture matters, and two earlier ones were useless. Both gave the two
+    // candidates the SAME blocked claim, so both stayed blocked by the incumbent
+    // whether or not the first leaked a registration — the test could not fail
+    // for the reason it named (grounded review r1 and r2, #1667).
+    //
+    // This one can. A PACK incumbent enters the ordinary exact map but never the
+    // no-space map, so the first alias is blocked on its ordinary claim while
+    // its no-space claim is genuinely free. The second candidate's alias differs
+    // only by an internal space, so its ordinary claim is a different key and is
+    // free — but it strips to the SAME no-space key. It therefore stays clean
+    // only if the first alias registered nothing.
+    let incumbent = CustomWord(
+      canonical: "Pack Holder", aliases: ["New York"], source: .pack)
+    let first = candidate("Zed", aliases: .supplied(["New York"]))
+    let second = candidate("Quinn", aliases: .supplied(["New  York"]))
+    let results = try await compare([first, second], against: [incumbent])
+
+    #expect(
+      results[0].collidingAliases == [
+        CustomWordsImportAliasCollision(alias: "New York", heldBy: incumbent.id)
+      ])
+    // Fails the moment registration stops being all-or-none.
+    #expect(results[1].collidingAliases.isEmpty)
+  }
+
+  @Test("aliases that differ only by internal whitespace still collide, on the no-space surface")
+  func aliasesDifferingOnlyByInternalWhitespaceCollideOnTheCompoundSurface() async throws {
+    // Inverted deliberately (#1667). This test used to assert no collision, on
+    // the reasoning that the two aliases occupy different slots in the alias
+    // map and so "never actually collide at runtime". They do: both strip to
+    // "newyork" in the no-space namespace, where the incumbent got there first.
+    //
+    // The real corrector turns "new york" into "Anika" with both words present
+    // (`aRuntimeOracleForEveryOwnerThisSuiteNames`), so the imported alias is
+    // inert on every surface — it can never win the compound form, and its own
+    // double-spaced form is unreachable from speech, which normalises to one
+    // space. Silently persisting a dead alias is the defect; disclosing it is
+    // the fix.
     let incumbent = CustomWord(canonical: "Anika", aliases: ["New York"])
     let results = try await compare(
       [candidate("Zed", aliases: .supplied(["New  York"]))], against: [incumbent])
-    #expect(results[0].collidingAliases.isEmpty)
+    #expect(
+      results[0].collidingAliases == [
+        CustomWordsImportAliasCollision(alias: "New  York", heldBy: incumbent.id)
+      ])
+  }
+
+  /// The instrument that settled the two corrections above, kept rather than
+  /// deleted (#1667).
+  ///
+  /// Every earlier attempt to state this file's precedence reasoned from the
+  /// lookup maps and got it wrong, three times. These assertions ask the actual
+  /// corrector what happens to actual text, so a future change to pass order or
+  /// no-space precedence fails HERE, next to the collision tests that depend on
+  /// it, rather than silently making their expectations lies again.
+  @Test("the corrector itself confirms which word each named owner really is")
+  func aRuntimeOracleForEveryOwnerThisSuiteNames() {
+    func corrected(_ text: String, _ words: [CustomWord]) -> String {
+      WordCorrector().correct(text, using: WordCorrector.buildLookups(words: words)).corrected
+    }
+
+    // Two existing words share an alias: the no-space FIRST-wins owner
+    // intercepts in Pass 0, ahead of the alias map's last writer.
+    let anika = CustomWord(canonical: "Anika", aliases: ["annie"])
+    let annabelle = CustomWord(canonical: "Annabelle", aliases: ["annie"])
+    #expect(corrected("Annie", [anika, annabelle]) == "Anika")
+
+    // A no-space owner whose canonical the text already spells does NOT
+    // intercept: Pass 0 sees "already correct" and the alias map decides.
+    let annie = CustomWord(canonical: "Annie")
+    #expect(corrected("Annie", [annie, anika]) == "Anika")
+
+    // The compound surface is live for whitespace-only variants.
+    let newYork = CustomWord(canonical: "Anika", aliases: ["New York"])
+    let doubled = CustomWord(canonical: "Zed", aliases: ["New  York"])
+    #expect(corrected("new york", [newYork, doubled]) == "Anika")
   }
 
   @Test("non-colliding aliases are not flagged")
