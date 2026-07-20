@@ -2201,6 +2201,14 @@ final class RecordingSessionKernel {
           adapter?.bumpRetryGeneration()
         }
       )
+      // Codex r2 finding: `markASRTimingEnd()` already froze the end
+      // timestamp for the FAILED primary decode before this retry started.
+      // Mirrors the salvage ladder's identical re-stamp (`:2101`) — called
+      // unconditionally (success or exhaustion) because real wall-clock time
+      // elapsed either way, and BEFORE the currency guard below since the
+      // elapsed time is real even if this session turns out to be stale.
+      // Idempotent: a plain overwrite.
+      markASRTimingEnd()
       guard isCurrent(sid), recordingOutcome == nil else { return }
       switch retryOutcome {
       case .transcript(let retryResult):
@@ -2218,6 +2226,17 @@ final class RecordingSessionKernel {
           // primary decode's failure.
           archiveClassification = "phase2RetrySucceeded"
           archiveEffectiveOutcome = .transcript(retryResult)
+          // Codex r2 finding: for an originally-STREAMING Parakeet session,
+          // the retry's own diagnostics report `batchRescueAttempted ==
+          // false` (this is a Phase-2 retry, not the adapter's internal
+          // streaming-then-batch-rescue fallback), so the archive tail's
+          // heuristic would otherwise misclassify this as a streaming win
+          // and archive an empty fed buffer. Reuse the salvage ladder's own
+          // override slot — the same "what did this delivery actually
+          // decode" escape hatch, mutually exclusive with the salvage
+          // ladder's own use of it (that lives in the sibling `.empty` case
+          // of this same switch).
+          salvageArchiveFed = retryInput
         #endif
         await runFinalizing(sid, asrText: retryResult.text, transcriptID: transcriptID)
       default:  // nil (timed out), .empty, .cancelled, .failed — all discard identically
