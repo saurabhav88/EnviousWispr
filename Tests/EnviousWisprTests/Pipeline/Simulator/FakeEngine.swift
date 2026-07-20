@@ -91,6 +91,12 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   /// scenarios assert byte-identical strings.
   var engineIdentity: ASREngineIdentity = ASREngineIdentity(backendType: .parakeet)
 
+  /// #1707 Phase 2: settable so a test can drive `withOrderedDeadline`'s real
+  /// deadline race deliberately; the fake-clock-driven scenarios in this
+  /// simulator never wait anywhere near this long in real wall time, so the
+  /// exact default is inert for them.
+  var retryDecodeTimeoutSeconds: Double = 20.0
+
   /// Capabilities follow `behavior` — a `streamingSuccess` fake advertises
   /// `supportsStreaming`, so a kernel that branches on `capabilities` runs the
   /// A2 / A9 / A10 streaming scenarios through a genuinely streaming adapter.

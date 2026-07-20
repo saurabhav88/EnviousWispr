@@ -292,6 +292,9 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     ASREngineIdentity(backendType: .whisperKit)
   }
 
+  /// #1707 Phase 2: PLACEHOLDER — see the protocol doc comment.
+  var retryDecodeTimeoutSeconds: Double { 15.0 }
+
   /// WhisperKit runs engine-internal LID and, since #1276 Step 2 (PR-2),
   /// advertises streaming: the kernel's existing `useStreamingASR &&
   /// supportsStreaming` gate then routes the "Live transcription" toggle through
@@ -1110,11 +1113,12 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// `observedSpeechSegments` on the first `finalize()`'s exit, so this
   /// CANNOT re-derive `paddedLIDSamples`/`transcriptionOptions(from:
   /// speechSegments:)` the way the first attempt did — that derivation needs
-  /// segments that are gone. Instead: repopulate `batchCaptureSamples`
-  /// directly from `inputSamples` (bypassing the `observeSpeechSegments`
-  /// entry guard, which itself requires `!isTerminal`); re-derive ONLY
-  /// `paddedASRSamples` (a pure function of the raw bytes alone, no segments
-  /// needed); reuse the post-LID `decodeOptions` the first attempt already
+  /// segments that are gone. Instead: re-derive ONLY `paddedASRSamples` (a
+  /// pure function of the raw bytes alone, no segments needed) straight from
+  /// the `inputSamples` parameter — never touches `batchCaptureSamples`
+  /// (Codex r3: an earlier revision repopulated it needlessly, retaining the
+  /// full recording in memory for no reason since nothing reads it again
+  /// here); reuse the post-LID `decodeOptions` the first attempt already
   /// finalized and left in place UNCHANGED (`clearSessionBuffers()` does not
   /// touch it) — never re-run language detection. LID was not the failure
   /// point (the decode was), and re-running it would introduce fresh
@@ -1123,22 +1127,12 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   func retryDecode(inputSamples: [Float]) async -> ASREngineOutcome {
     let session = sessionID
     let generation = retryGeneration
-    batchCaptureSamples = inputSamples
-    // The primary `finalize()` already marked this session terminal, so the
-    // kernel's normal terminal cleanup never calls `cancel()` after a retry —
-    // release this retained audio ourselves on every exit (success, empty,
-    // cancelled, failed, or the stale-guard's early return below), matching
-    // what `clearSessionBuffers()` already did for the first attempt. Guarded
-    // on currency (re-checked at defer time, not the pre-await snapshot): a
-    // STALE retry must NOT clear `batchCaptureSamples` if a superseding
-    // session has since started and populated its OWN samples into the same
-    // field — that would clobber the new session's audio, not just release
-    // this retry's own.
-    defer {
-      if sessionID == session, retryGeneration == generation {
-        batchCaptureSamples.removeAll()
-      }
-    }
+    // Codex r3: `retryDecode` never reads `batchCaptureSamples` again after
+    // this point — it decodes solely from the local `inputSamples`/
+    // `asrSamples` — so writing it here served no purpose and, worse,
+    // retained the entire recording (potentially hundreds of MB) until some
+    // later session's `beginSession()`/`cancel()` happened to clear it. No
+    // assignment means nothing to release.
     let asrSamples = WhisperKitPipelineSpeechRouting.paddedASRSamples(
       rawSamples: inputSamples,
       minimumSamples: AudioConstants.minimumTranscriptionSamples

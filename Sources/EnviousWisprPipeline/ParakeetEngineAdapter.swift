@@ -256,6 +256,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     ASREngineIdentity(backendType: .parakeet)
   }
 
+  /// #1707 Phase 2: PLACEHOLDER — see the protocol doc comment.
+  var retryDecodeTimeoutSeconds: Double { 8.0 }
+
   /// Parakeet decodes incrementally and detects no language (D2, D15). Static —
   /// the kernel branches on `capabilities`, never on engine identity.
   var capabilities: ASREngineCapabilities {

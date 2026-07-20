@@ -409,16 +409,12 @@ final class RecordingSessionKernel {
   /// start.
   private var hasUsedPhase2Retry: Bool = false
 
-  /// #1707 Phase 2: per-backend retry-decode timeout budget. PLACEHOLDER —
-  /// §11.1 requires this to be tuned from a real, stratified Live UAT latency
-  /// measurement (≥30 samples per {backend}×{short/medium/long audio} bucket,
-  /// RULE: timeout-numbers-need-distribution-evidence), not asserted from
-  /// reasoning alone. These values are a conservative starting point only.
-  /// The per-backend split itself lives on `ASRBackendType` (mirrors
-  /// `displayName`), not here — a per-engine identity-case literal is
-  /// banned at this kernel reader site (`EngineIdentityFreezeTests`).
+  /// #1707 Phase 2: this adapter's own retry-decode timeout budget (Codex r3:
+  /// Pipeline-owned retry POLICY, read straight from the adapter seam — no
+  /// per-backend switch or identity-case literal at this kernel reader site
+  /// at all, closed-set or otherwise).
   private var asrRetryDeadlineSec: Double {
-    adapter.engineIdentity.backendType.defaultRetryDecodeTimeoutSeconds
+    adapter.retryDecodeTimeoutSeconds
   }
 
   /// How delivery happened, or `nil` if nothing was delivered.
@@ -2239,7 +2235,19 @@ final class RecordingSessionKernel {
           salvageArchiveFed = retryInput
         #endif
         await runFinalizing(sid, asrText: retryResult.text, transcriptID: transcriptID)
-      default:  // nil (timed out), .empty, .cancelled, .failed — all discard identically
+      case .failed(let retryError):
+        // Codex r3: the retry's OWN failure, not the stale primary-decode
+        // error `transcriptionFailureError` was set to before this retry
+        // started (`:2172`) — otherwise the Sentry `.asrFailed` capture
+        // attributes retry exhaustion to the wrong failure whenever the two
+        // attempts fail for different reasons. The terminal choice itself
+        // does not differentiate (RULE: discard-not-differentiate) — only
+        // this error-attribution field does.
+        telemetryState.transcriptionFailureError =
+          (adapter as? ASREngineTelemetryProviding)?.lastFailureError ?? retryError
+        telemetryState.asrRetryOutcome = .retryExhausted
+        finishTerminal(.failed(.asrFailed), sid: sid)
+      default:  // nil (timed out), .empty, .cancelled — discard identically, primary error stands
         telemetryState.asrRetryOutcome = .retryExhausted
         finishTerminal(.failed(.asrFailed), sid: sid)
       }

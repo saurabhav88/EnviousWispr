@@ -369,6 +369,17 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   /// in the sense `finalize(batchSamples:)`'s own parameter name implies.
   func retryDecode(inputSamples: [Float]) async -> ASREngineOutcome
 
+  /// #1707 Phase 2: this adapter's own budget for its one live retry decode.
+  /// PLACEHOLDER — §11.1 requires this tuned from a real, stratified Live
+  /// UAT latency measurement (≥30 samples per {backend}×{short/medium/long
+  /// audio} bucket, RULE: timeout-numbers-need-distribution-evidence), not
+  /// asserted from reasoning alone. Pipeline-owned retry POLICY, not a Core
+  /// model fact — each conformer returns its own constant directly (no
+  /// per-backend switch anywhere; `EngineIdentityFreezeTests` bans an
+  /// identity-case literal only at KERNEL reader sites, and this property
+  /// removes the need for one there entirely).
+  var retryDecodeTimeoutSeconds: Double { get }
+
   /// Best-effort, honest "stop waiting" signal for a retry that has timed out
   /// — NOT a claim of active cancellation. Neither adapter's decode call is
   /// genuinely interruptible mid-flight. Synchronous, so it can run directly
