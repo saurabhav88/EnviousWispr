@@ -94,8 +94,14 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   /// #1707 Phase 2: settable so a test can drive `withOrderedDeadline`'s real
   /// deadline race deliberately; the fake-clock-driven scenarios in this
   /// simulator never wait anywhere near this long in real wall time, so the
-  /// exact default is inert for them.
+  /// exact default is inert for them. Codex r8/r9: production made this
+  /// length-aware, but the fake stays a fixed, directly-settable value —
+  /// no test in this simulator needs the formula itself, only control over
+  /// the deadline race.
   var retryDecodeTimeoutSeconds: Double = 20.0
+  func retryDecodeTimeoutSeconds(forSampleCount sampleCount: Int) -> Double {
+    retryDecodeTimeoutSeconds
+  }
 
   /// Capabilities follow `behavior` — a `streamingSuccess` fake advertises
   /// `supportsStreaming`, so a kernel that branches on `capabilities` runs the

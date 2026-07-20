@@ -256,8 +256,21 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     ASREngineIdentity(backendType: .parakeet)
   }
 
-  /// #1707 Phase 2: PLACEHOLDER — see the protocol doc comment.
-  var retryDecodeTimeoutSeconds: Double { 8.0 }
+  /// #1707 Phase 2: measured 2026-07-20 against the live dev app — 10 real
+  /// batch decodes spanning 3.9-59.2s of audio, real-time factor (decode
+  /// seconds / audio seconds) observed 0.0056-0.0572, HIGHEST at the
+  /// shortest clips (fixed per-call overhead dominates) and settling near
+  /// 0.006-0.009 by 15-59s — i.e. Parakeet does not get slower per second of
+  /// audio as recordings grow. `3.0` fixed floor covers per-call/XPC
+  /// overhead with headroom over the worst short-clip observation; `0.15`
+  /// per second is ~2.6x the highest RTF seen at any length. At the 3600s
+  /// (60-minute) recording cap this budgets 543s — generous given the
+  /// measured trend, never the bottleneck for a genuinely succeeding decode.
+  /// Raw samples: `docs/audits/2026-07-20-recovery-v2-phase2-retry-decode-latency.md`.
+  func retryDecodeTimeoutSeconds(forSampleCount sampleCount: Int) -> Double {
+    let audioDurationSec = Double(sampleCount) / AudioConstants.sampleRate
+    return 3.0 + audioDurationSec * 0.15
+  }
 
   /// Parakeet decodes incrementally and detects no language (D2, D15). Static —
   /// the kernel branches on `capabilities`, never on engine identity.

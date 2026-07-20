@@ -1329,6 +1329,21 @@ import Testing
     #expect(FileManager.default.fileExists(atPath: url.path))
   }
 
+  @Test(
+    "#1707 Codex r8/r9: retryDecodeTimeoutSeconds(forSampleCount:) scales with audio length, not a flat constant"
+  )
+  func retryDecodeTimeoutScalesWithSampleCount() {
+    let adapter = WhisperKitEngineAdapter(backend: StubWhisperKitBackend())
+    let zero = adapter.retryDecodeTimeoutSeconds(forSampleCount: 0)
+    let oneMinute = adapter.retryDecodeTimeoutSeconds(forSampleCount: 16_000 * 60)
+    let oneHour = adapter.retryDecodeTimeoutSeconds(forSampleCount: 16_000 * 3600)
+    #expect(zero == 5.0, "the fixed floor with zero audio")
+    #expect(oneMinute > zero, "a longer recording must get a longer budget")
+    #expect(oneHour > oneMinute, "budget keeps scaling for the longest supported recording")
+    #expect(abs(oneMinute - 23.0) < 0.01)
+    #expect(abs(oneHour - 1085.0) < 0.01)
+  }
+
   // MARK: Helpers
 
   /// Feed one synthetic buffer stamped with `session` — the kernel always

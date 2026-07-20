@@ -412,9 +412,11 @@ final class RecordingSessionKernel {
   /// #1707 Phase 2: this adapter's own retry-decode timeout budget (Codex r3:
   /// Pipeline-owned retry POLICY, read straight from the adapter seam — no
   /// per-backend switch or identity-case literal at this kernel reader site
-  /// at all, closed-set or otherwise).
-  private var asrRetryDeadlineSec: Double {
-    adapter.retryDecodeTimeoutSeconds
+  /// at all, closed-set or otherwise). Codex r8/r9: length-aware — the
+  /// budget scales with the audio being retried, so a genuinely long
+  /// recording is not rejected on a one-size-fits-all deadline.
+  private func asrRetryDeadlineSec(forSampleCount sampleCount: Int) -> Double {
+    adapter.retryDecodeTimeoutSeconds(forSampleCount: sampleCount)
   }
 
   /// How delivery happened, or `nil` if nothing was delivered.
@@ -2185,7 +2187,7 @@ final class RecordingSessionKernel {
       // controller (never happens in release).
       batchDecodeFaultController?.recordRetryStarted()
       let retryOutcome = await withOrderedDeadline(
-        seconds: asrRetryDeadlineSec,  // measured per-backend — see §11.1
+        seconds: asrRetryDeadlineSec(forSampleCount: retryInput.count),  // measured, length-aware — see §11.1
         operation: { [adapter] in await adapter.retryDecode(inputSamples: retryInput) },
         // No genuine in-flight-decode cancellation exists on either backend.
         // `onTimeout` is honest about this: it bumps the adapter's own

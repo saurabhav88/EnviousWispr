@@ -292,8 +292,22 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     ASREngineIdentity(backendType: .whisperKit)
   }
 
-  /// #1707 Phase 2: PLACEHOLDER — see the protocol doc comment.
-  var retryDecodeTimeoutSeconds: Double { 15.0 }
+  /// #1707 Phase 2: measured 2026-07-20 against the live dev app — 7 real
+  /// batch decodes spanning 3.8-59.2s of audio, real-time factor (decode
+  /// seconds / audio seconds) observed 0.047-0.312, HIGHEST at the shortest
+  /// clips (fixed per-call overhead dominates) and settling near 0.09-0.10
+  /// by 20-59s. `5.0` fixed floor covers per-call overhead with headroom
+  /// over the worst short-clip observation; `0.30` per second is
+  /// comfortably above every observed RTF at any length, including the
+  /// short-clip outliers, not just the settled long-clip rate. At the 3600s
+  /// (60-minute) recording cap this budgets 1085s, generous given the
+  /// measured trend — WhisperKit is deliberately the slower, more-capable
+  /// "toughest audio" option, so its floor is the widest of the two.
+  /// Raw samples: `docs/audits/2026-07-20-recovery-v2-phase2-retry-decode-latency.md`.
+  func retryDecodeTimeoutSeconds(forSampleCount sampleCount: Int) -> Double {
+    let audioDurationSec = Double(sampleCount) / AudioConstants.sampleRate
+    return 5.0 + audioDurationSec * 0.30
+  }
 
   /// WhisperKit runs engine-internal LID and, since #1276 Step 2 (PR-2),
   /// advertises streaming: the kernel's existing `useStreamingASR &&
