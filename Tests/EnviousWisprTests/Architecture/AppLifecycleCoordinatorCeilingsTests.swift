@@ -42,7 +42,10 @@ import Testing
 /// coordinator carries NO Bluetooth predicate, overlay branching, or once-per-launch
 /// state — all decision logic lives on the presenter (§3b), so this is one narrow
 /// delegation, not accretion. Allowlist 21 → 22 (3 owned `var` + 19 injected `let`);
-/// non-private method count unchanged at 3.
+/// non-private method count unchanged at 3. #1707 Phase 2: 22 → 23 (3 owned
+/// `var` + 20 injected `let`) — `batchDecodeFaultController`, a deliberate,
+/// explicit addition for the new DEBUG fault-injection oracle (§11.1/§3.2a-i),
+/// forwarded into `DebugFaultEndpoint`'s construction; not accretion.
 @Suite struct AppLifecycleCoordinatorCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift"
@@ -70,6 +73,7 @@ import Testing
     "hotkeyService",
     "applicationRelocationCoordinator",
     "bluetoothAwarenessPresenter",
+    "batchDecodeFaultController",
   ]
 
   @Test func storedPropertyNamesMatchAllowlist() throws {

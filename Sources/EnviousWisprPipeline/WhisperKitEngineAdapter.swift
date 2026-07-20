@@ -68,12 +68,15 @@ import Foundation
 /// (`WhisperKitBackendDriving` below) so tests can inject a stub without
 /// loading a real model.
 @MainActor
-final class WhisperKitEngineAdapter: ASREngineAdapter {
+final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
 
   // MARK: Injected dependencies
 
   private let backend: any WhisperKitBackendDriving
   private let languageDetector: LanguageDetector
+  /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1) — `nil` in every
+  /// production/test path that doesn't explicitly construct one.
+  private let batchDecodeFaultController: BatchDecodeFaultController?
 
   // MARK: Engine-session bookkeeping (NOT FSM state — §3.11 adapter-shape check)
 
@@ -88,6 +91,13 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   private var isTerminal = false
   /// `true` once `cancel()` ran — `finalize()` then returns `.cancelled`.
   private var isCancelled = false
+
+  /// #1707 Phase 2: monotonic generation for `retryDecode()`'s commit gate.
+  /// Bumped by `beginSession`/`cancel()` (a new session or discard must
+  /// invalidate any in-flight retry attempt) and by `bumpRetryGeneration()`
+  /// itself (a retry's own honest "stop waiting" signal). Mirrors
+  /// `ParakeetEngineAdapter`'s identically-named field.
+  private var retryGeneration = 0
 
   /// Synchronously-readable cached readiness. WhisperKit's `isReady` lives on
   /// an actor (`public private(set) var isReady`); the `ASREngineAdapter`
@@ -262,12 +272,16 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     backend: any WhisperKitBackendDriving,
     languageDetector: LanguageDetector = LanguageDetector(),
     audioCaptureSessionIDSource: @escaping @MainActor () -> UInt64 = { 0 },
-    wedgeRecoveryUnloadDeadlineSec: Double = 2.0
+    wedgeRecoveryUnloadDeadlineSec: Double = 2.0,
+    // #1707 Phase 2: DEBUG fault-injection oracle (§11.1). Defaulted `nil`
+    // so every existing test construction site is unaffected.
+    batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) {
     self.backend = backend
     self.languageDetector = languageDetector
     self.audioCaptureSessionIDSource = audioCaptureSessionIDSource
     self.wedgeRecoveryUnloadDeadlineSec = wedgeRecoveryUnloadDeadlineSec
+    self.batchDecodeFaultController = batchDecodeFaultController
   }
 
   // MARK: ASREngineAdapter — identity & capability
@@ -387,6 +401,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     decodeOptions = options
     isTerminal = false
     isCancelled = false
+    retryGeneration &+= 1  // #1707 Phase 2: invalidate any pending retry.
     lastResult = nil
     lastASRDiagnostics = nil
     lastFailureError = nil
@@ -929,6 +944,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   func cancel() async {
     isCancelled = true
     isTerminal = true
+    retryGeneration &+= 1  // #1707 Phase 2: invalidate any pending retry.
     lastResult = nil
     lastLanguageDetection = nil
     // Drop feed-task handles — a `finalize()` after `cancel()` short-circuits to
@@ -1069,6 +1085,69 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   func cancelPendingUnload() {
     modelUnloadTask?.cancel()
     modelUnloadTask = nil
+  }
+
+  // MARK: ASREngineAdapter — Phase 2 retry
+
+  /// Best-effort, honest "stop waiting" signal for a retry that has timed
+  /// out — NOT active cancellation (no genuine in-flight-decode cancel
+  /// exists on this backend, §3.2a: a single in-flight CoreML prediction
+  /// call is not itself interruptible). Bumping `retryGeneration` is what
+  /// actually prevents a late-arriving abandoned result from mutating state
+  /// belonging to a session/attempt that has since moved on.
+  func bumpRetryGeneration() {
+    retryGeneration &+= 1
+  }
+
+  /// #1707 Phase 2: a second, bounded batch decode attempt over the raw
+  /// capture audio a PRIOR `finalize()` call already failed to decode.
+  /// `finalize(batchSamples:)` ignores its own parameter and decodes
+  /// `batchCaptureSamples` (raw capture) instead — so `inputSamples` here is
+  /// the kernel's `captureResult.samples`, NOT the conditioned `asrSamples`
+  /// (§3.2's per-adapter kernel-side selection).
+  ///
+  /// `clearSessionBuffers()` already cleared `batchCaptureSamples` and
+  /// `observedSpeechSegments` on the first `finalize()`'s exit, so this
+  /// CANNOT re-derive `paddedLIDSamples`/`transcriptionOptions(from:
+  /// speechSegments:)` the way the first attempt did — that derivation needs
+  /// segments that are gone. Instead: repopulate `batchCaptureSamples`
+  /// directly from `inputSamples` (bypassing the `observeSpeechSegments`
+  /// entry guard, which itself requires `!isTerminal`); re-derive ONLY
+  /// `paddedASRSamples` (a pure function of the raw bytes alone, no segments
+  /// needed); reuse the post-LID `decodeOptions` the first attempt already
+  /// finalized and left in place UNCHANGED (`clearSessionBuffers()` does not
+  /// touch it) — never re-run language detection. LID was not the failure
+  /// point (the decode was), and re-running it would introduce fresh
+  /// nondeterminism and violate "same audio-coordinate and timestamp rules
+  /// as the original attempt."
+  func retryDecode(inputSamples: [Float]) async -> ASREngineOutcome {
+    let session = sessionID
+    let generation = retryGeneration
+    batchCaptureSamples = inputSamples
+    let asrSamples = WhisperKitPipelineSpeechRouting.paddedASRSamples(
+      rawSamples: inputSamples,
+      minimumSamples: AudioConstants.minimumTranscriptionSamples
+    )
+    let batchOutcome = await runBatchDecode(samples: asrSamples)
+    // Commit gate (§3.2a): write shared state ONLY while the captured
+    // session and generation are still current — a late-arriving abandoned
+    // retry must not mutate state belonging to a session/attempt that has
+    // since moved on. Mirrors `ParakeetEngineAdapter.commitAttempt`.
+    guard sessionID == session, retryGeneration == generation else { return .cancelled }
+    switch batchOutcome {
+    case .success(let result):
+      let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+      if trimmed.isEmpty {
+        return .empty(hadSpeechEvidence: true)
+      }
+      lastResult = result
+      return .transcript(result)
+    case .cancelled:
+      return .cancelled
+    case .failed(let error):
+      lastFailureError = error
+      return .failed(.decodeFailed)
+    }
   }
 
   // MARK: PCM retention
@@ -1217,6 +1296,14 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   }
 
   private func runBatchDecode(samples: [Float]) async -> BatchDecodeOutcome {
+    // #1707 Phase 2 (§11.1): DEBUG-only forced-failure fault, consulted only
+    // AFTER the real retry input and decode-options snapshot are already
+    // prepared by the caller — proving the retry genuinely re-decodes real,
+    // already-captured audio, not a synthetic stand-in. `nil` controller
+    // (production, and every test that doesn't opt in) never forces a failure.
+    if batchDecodeFaultController?.shouldForceFailBatchDecode(backend: .whisperKit) == true {
+      return .failed(ASREngineError.decodeFailed)
+    }
     do {
       let result = try await backend.transcribe(
         audioSamples: samples, options: decodeOptions)

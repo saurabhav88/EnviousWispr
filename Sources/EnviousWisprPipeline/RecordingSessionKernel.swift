@@ -196,6 +196,12 @@ final class RecordingSessionKernel {
   private let audioCapture: any AudioCaptureInterface
   private let vad: any VADSignalSource
 
+  /// #1707 Phase 2: oracle for the shared-backend overlap Live UAT
+  /// (§3.2a-i). Always compiled — a plain timestamp-recording class; release
+  /// builds never construct/wire a real instance, so this stays `nil` and a
+  /// no-op in production.
+  private let batchDecodeFaultController: BatchDecodeFaultController?
+
   /// Logical-time seam (PR-3 plan §14a). Production wiring of a real clock is
   /// PR-4/PR-7; the simulator wires `FakeClock`.
   private let currentTick: @MainActor () -> UInt64
@@ -350,6 +356,15 @@ final class RecordingSessionKernel {
     telemetryState.asrSalvageOutcome
   }
 
+  /// #1707 Phase 2: read-through to this session's post-capture-decode retry
+  /// outcome, or `nil` if no Phase-2 retry ever started. Feeds the
+  /// success-side `dictation.completed` reporting chain (driver read-through
+  /// → `DictationCompletedReporting` → `TelemetryService`) and the
+  /// `.asrFailed`/`.asrInterrupted` Sentry breadcrumbs.
+  var asrRetryOutcome: ASRRetryOutcome? {
+    telemetryState.asrRetryOutcome
+  }
+
   /// #1317: which zero-signal failure mode this session was classified as, or
   /// `nil` if it never was. Stamped once by the winning classification
   /// (reactive `.zeroSignal` exit OR STOP-time), cleared per session in
@@ -386,6 +401,25 @@ final class RecordingSessionKernel {
   /// would misreport every streaming session as batch). Reset on session
   /// start.
   private(set) var isStreamingSession: Bool = false
+
+  /// #1707 Phase 2: `true` once this session has spent its one live retry
+  /// over a post-capture decode failure. A defensive re-entry guard, not a
+  /// race condition to protect against for the ordinary case — `finalize()`
+  /// is called exactly once per session by construction. Reset on session
+  /// start.
+  private var hasUsedPhase2Retry: Bool = false
+
+  /// #1707 Phase 2: per-backend retry-decode timeout budget. PLACEHOLDER —
+  /// §11.1 requires this to be tuned from a real, stratified Live UAT latency
+  /// measurement (≥30 samples per {backend}×{short/medium/long audio} bucket,
+  /// RULE: timeout-numbers-need-distribution-evidence), not asserted from
+  /// reasoning alone. These values are a conservative starting point only.
+  /// The per-backend split itself lives on `ASRBackendType` (mirrors
+  /// `displayName`), not here — a per-engine identity-case literal is
+  /// banned at this kernel reader site (`EngineIdentityFreezeTests`).
+  private var asrRetryDeadlineSec: Double {
+    adapter.engineIdentity.backendType.defaultRetryDecodeTimeoutSeconds
+  }
 
   /// How delivery happened, or `nil` if nothing was delivered.
   private(set) var deliveryOutcome: KernelDeliveryOutcome?
@@ -670,7 +704,14 @@ final class RecordingSessionKernel {
     markASRTimingStart: @escaping @MainActor (_ streaming: Bool) -> Void = { _ in },
     markASRTimingEnd: @escaping @MainActor () -> Void = {},
     telemetryState: KernelTelemetryState = KernelTelemetryState(),
-    dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false }
+    dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
+    // #1707 Phase 2: oracle for the shared-backend overlap Live UAT
+    // (§3.2a-i). Defaulted `nil` so every existing test construction site is
+    // unaffected. `BatchDecodeFaultController` is always compiled (a plain
+    // timestamp-recording class) — only its actual fault-actuating methods
+    // are `#if DEBUG`-gated, and release builds never construct/wire a real
+    // instance, so this stays a no-op in production.
+    batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) {
     self.adapter = adapter
     self.audioCapture = audioCapture
@@ -711,6 +752,7 @@ final class RecordingSessionKernel {
     self.markASRTimingEnd = markASRTimingEnd
     self.telemetryState = telemetryState
     self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
+    self.batchDecodeFaultController = batchDecodeFaultController
   }
 
   // MARK: Driver entry points (PR-1 §A.2 trigger vocabulary)
@@ -1956,46 +1998,53 @@ final class RecordingSessionKernel {
         decodedInputSampleCount: decodedInputCount,
         lastTokenEndMs: result.tokenTimingSummary?.lastTokenEndMs)
       let adapterDiag = (adapter as? ASREngineTelemetryProviding)?.lastASRDiagnostics
-      telemetryState.asrCompletedTelemetry = KernelASRCompletedTelemetry(
-        durationSeconds: result.processingTime,
-        charCount: result.text.trimmingCharacters(in: .whitespacesAndNewlines).count,
-        mode: isStreamingSession ? "streaming" : "batch",
-        language: result.language,
-        // PR-5 Rung 5 Pass 2 r2 #B1: carry the incremental-vs-batch outcome into
-        // the ASR-completed Sentry breadcrumb (parity with OLD
-        // `WhisperKitPipeline.swift:1049-1052`). nil for Parakeet.
-        incrementalAccepted: adapterDiag?.incrementalAccepted,
-        // #950 tail-trim diagnostic (eligible Parakeet batch only; nil omitted).
-        droppedTailMs: tailDroppedMs,
-        tailHadEnergy: tailHadEnergy,
-        // #950 tail-preserve recovery + tuning signals.
-        usedTailPreservation: usedTailPreservation,
-        recoveredTailMs: recoveredTailMs,
-        tailVoicedFraction: tailVoicedFractionForTelemetry,
-        tailRefusedReason: tailRefusedReason,
-        tailClipClassification: tailClip.classification.rawValue,
-        captureTrailingSilenceMs: tailClip.trailingSilenceMs,
-        captureTail200Rms: Double(tailClip.tail200RMS),
-        captureTail200Peak: Double(tailClip.tail200Peak),
-        asrInputDurationMs: tailClip.asrInputDurationMs,
-        asrLastTokenEndMs: tailClip.asrLastTokenEndMs,
-        asrLastTokenGapMs: tailClip.asrLastTokenGapMs,
-        asrChunked: tailClip.asrChunked,
-        // #1309 effective-path streaming telemetry. Requested comes from the
-        // kernel's own capability gate; effective/degrade/path from the
-        // adapter's diagnostics. WhisperKit-only (nil for Parakeet → omitted).
-        streamingRequested: adapterDiag?.streamingEffective != nil ? isStreamingSession : nil,
-        streamingEffective: adapterDiag?.streamingEffective,
-        streamingDegradeReason: adapterDiag?.streamingDegradeReason,
-        streamingFinalPath: adapterDiag?.streamingFinalPath,
-        streamingDecodeCount: adapterDiag?.incrementalDecodeCount,
-        streamingCoveredSec: adapterDiag?.incrementalSamplesCovered.map {
-          Double($0) / AudioConstants.sampleRate
-        },
-        tailDecodeSec: adapterDiag?.incrementalTailDecodeMs.map { Double($0) / 1000.0 },
-        maxUnconfirmedWindowSec: adapterDiag?.streamingMaxUnconfirmedWindowSec,
-        stopWhileDecodeInFlight: adapterDiag?.stopWhileDecodeInFlight
-      )
+      // #1707 Phase 2: the core fields (duration/char-count/mode/language) are
+      // stamped via the shared helper both this ordinary success path and the
+      // retry-success path (§3.3) use, so a retry-rescued completion can never
+      // skip this telemetry the way a bare `runFinalizing` call would. This
+      // branch then layers its own tail-clip/streaming/salvage-specific fields
+      // on top — a retry has no separate tail-trim/streaming event of its own,
+      // so those stay nil there (never duplicated from a stale first attempt).
+      stampAcceptedTranscriptTelemetry(
+        result: result, mode: isStreamingSession ? "streaming" : "batch")
+      var completedTelemetry = telemetryState.asrCompletedTelemetry!
+      // PR-5 Rung 5 Pass 2 r2 #B1: carry the incremental-vs-batch outcome into
+      // the ASR-completed Sentry breadcrumb (parity with OLD
+      // `WhisperKitPipeline.swift:1049-1052`). nil for Parakeet.
+      completedTelemetry.incrementalAccepted = adapterDiag?.incrementalAccepted
+      // #950 tail-trim diagnostic (eligible Parakeet batch only; nil omitted).
+      completedTelemetry.droppedTailMs = tailDroppedMs
+      completedTelemetry.tailHadEnergy = tailHadEnergy
+      // #950 tail-preserve recovery + tuning signals.
+      completedTelemetry.usedTailPreservation = usedTailPreservation
+      completedTelemetry.recoveredTailMs = recoveredTailMs
+      completedTelemetry.tailVoicedFraction = tailVoicedFractionForTelemetry
+      completedTelemetry.tailRefusedReason = tailRefusedReason
+      completedTelemetry.tailClipClassification = tailClip.classification.rawValue
+      completedTelemetry.captureTrailingSilenceMs = tailClip.trailingSilenceMs
+      completedTelemetry.captureTail200Rms = Double(tailClip.tail200RMS)
+      completedTelemetry.captureTail200Peak = Double(tailClip.tail200Peak)
+      completedTelemetry.asrInputDurationMs = tailClip.asrInputDurationMs
+      completedTelemetry.asrLastTokenEndMs = tailClip.asrLastTokenEndMs
+      completedTelemetry.asrLastTokenGapMs = tailClip.asrLastTokenGapMs
+      completedTelemetry.asrChunked = tailClip.asrChunked
+      // #1309 effective-path streaming telemetry. Requested comes from the
+      // kernel's own capability gate; effective/degrade/path from the
+      // adapter's diagnostics. WhisperKit-only (nil for Parakeet → omitted).
+      completedTelemetry.streamingRequested =
+        adapterDiag?.streamingEffective != nil ? isStreamingSession : nil
+      completedTelemetry.streamingEffective = adapterDiag?.streamingEffective
+      completedTelemetry.streamingDegradeReason = adapterDiag?.streamingDegradeReason
+      completedTelemetry.streamingFinalPath = adapterDiag?.streamingFinalPath
+      completedTelemetry.streamingDecodeCount = adapterDiag?.incrementalDecodeCount
+      completedTelemetry.streamingCoveredSec = adapterDiag?.incrementalSamplesCovered.map {
+        Double($0) / AudioConstants.sampleRate
+      }
+      completedTelemetry.tailDecodeSec =
+        adapterDiag?.incrementalTailDecodeMs.map { Double($0) / 1000.0 }
+      completedTelemetry.maxUnconfirmedWindowSec = adapterDiag?.streamingMaxUnconfirmedWindowSec
+      completedTelemetry.stopWhileDecodeInFlight = adapterDiag?.stopWhileDecodeInFlight
+      telemetryState.asrCompletedTelemetry = completedTelemetry
       // #1232 debug-log line: the per-dictation tail-clip verdict + lead signals,
       // greppable in app.log next to the conditioner line for live triage.
       log(
@@ -2121,7 +2170,51 @@ final class RecordingSessionKernel {
     case .failed(let error):
       telemetryState.transcriptionFailureError =
         (adapter as? ASREngineTelemetryProviding)?.lastFailureError ?? error
-      finishTerminal(.failed(.asrFailed), sid: sid)
+      // #1707 Phase 2: give this ONE specific failure (a post-capture decode
+      // failure over already-captured audio) exactly one retry before
+      // discarding. A pre-capture `beginSession` failure never reaches this
+      // switch at all (it fires from a structurally separate catch block), so
+      // `hasUsedPhase2Retry` is never even consulted there — zero retries by
+      // construction, not by an explicit check.
+      guard !hasUsedPhase2Retry else {
+        finishTerminal(.failed(.asrFailed), sid: sid)
+        break  // fall through to the shared archive tail, matching every other case
+      }
+      hasUsedPhase2Retry = true
+      telemetryState.asrRetryOutcome = .attempted  // breadcrumb BEFORE the await
+      let retryInput =
+        adapter.capabilities.decodesConditionedBatchSamples
+        ? asrSamples : captureResult.samples
+      // Oracle timestamp — nil no-op unless a Live UAT test wired a real
+      // controller (never happens in release).
+      batchDecodeFaultController?.recordRetryStarted()
+      let retryOutcome = await withOrderedDeadline(
+        seconds: asrRetryDeadlineSec,  // measured per-backend — see §11.1
+        operation: { [adapter] in await adapter.retryDecode(inputSamples: retryInput) },
+        // No genuine in-flight-decode cancellation exists on either backend.
+        // `onTimeout` is honest about this: it bumps the adapter's own
+        // retry-generation token (checked INSIDE the adapter's commit step) so
+        // a late-arriving result cannot mutate whatever session/state exists
+        // by the time it finishes, without pretending to actively stop anything.
+        onTimeout: { [weak self, weak adapter] in
+          self?.batchDecodeFaultController?.recordRetryTimeoutFired()
+          adapter?.bumpRetryGeneration()
+        }
+      )
+      guard isCurrent(sid), recordingOutcome == nil else { return }
+      switch retryOutcome {
+      case .transcript(let retryResult):
+        telemetryState.asrRetryOutcome = .retrySucceeded
+        // Every Phase-2 retry is batch-only by construction (§3.1's
+        // `retryDecode` doc comment) — using `isStreamingSession` here would
+        // mislabel a batch retry as "streaming" whenever the ORIGINAL,
+        // non-retry attempt happened to be a streaming session.
+        stampAcceptedTranscriptTelemetry(result: retryResult, mode: "batch")
+        await runFinalizing(sid, asrText: retryResult.text, transcriptID: transcriptID)
+      default:  // nil (timed out), .empty, .cancelled, .failed — all discard identically
+        telemetryState.asrRetryOutcome = .retryExhausted
+        finishTerminal(.failed(.asrFailed), sid: sid)
+      }
     }
 
     // #1230 — the single dictation-audio archive call. Runs AFTER the outcome
@@ -3289,6 +3382,7 @@ final class RecordingSessionKernel {
     forbiddenTransitionRejected = false
     formatStabilizedThisSession = nil
     captureRebuiltForFormatThisSession = nil
+    hasUsedPhase2Retry = false  // #1707 Phase 2
   }
 
   /// Derive decode options from the frozen session config's language mode
@@ -3354,6 +3448,24 @@ final class RecordingSessionKernel {
         outputTransport: resolvedRoute?.outputTransport,
         routeResolutionSource: resolvedRoute?.routeResolutionSource
       )
+    )
+  }
+
+  /// #1707 Phase 2: shared "accepted transcript" telemetry-population step.
+  /// Used by BOTH the ordinary `.transcript` success branch (which layers its
+  /// own tail-clip/streaming/salvage-specific fields on top afterward) and the
+  /// retry-success branch (§3.3, which adds nothing further — a retry has no
+  /// separate tail-trim/streaming event of its own to report, and duplicating
+  /// the first attempt's now-stale diagnostic values would be misleading, not
+  /// merely incomplete). Without this shared step, a retry-rescued completion
+  /// calling `runFinalizing` directly would never populate this telemetry at
+  /// all, since `runFinalizing` itself only processes/stores/delivers/completes.
+  private func stampAcceptedTranscriptTelemetry(result: ASRResult, mode: String) {
+    telemetryState.asrCompletedTelemetry = KernelASRCompletedTelemetry(
+      durationSeconds: result.processingTime,
+      charCount: result.text.trimmingCharacters(in: .whitespacesAndNewlines).count,
+      mode: mode,
+      language: result.language
     )
   }
 

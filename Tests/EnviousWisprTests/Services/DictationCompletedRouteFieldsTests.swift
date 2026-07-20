@@ -122,5 +122,37 @@ struct DictationCompletedRouteFieldsTests {
 
       #expect(box.event?.stringProps["asr_salvage_outcome"] == nil)
     }
+
+    @Test(
+      "#1707 Phase 2: asrRetryOutcome threads into dictation.completed when a retry rescued the take"
+    )
+    func asrRetryOutcomeThreaded() {
+      let box = Box()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Transcript(text: "hello"), inputMode: "ptt",
+        asrRetryOutcome: "retry_succeeded")
+
+      #expect(box.event?.stringProps["asr_retry_outcome"] == "retry_succeeded")
+    }
+
+    @Test(
+      "#1707 Phase 2: a first-attempt success (no Phase-2 retry) omits the asr_retry_outcome key")
+    func asrRetryOutcomeOmittedWhenNil() {
+      let box = Box()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Transcript(text: "hello"), inputMode: "ptt")
+
+      #expect(box.event?.stringProps["asr_retry_outcome"] == nil)
+    }
   #endif
 }

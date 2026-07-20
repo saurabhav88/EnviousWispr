@@ -91,8 +91,10 @@ struct TranscriptFinalizerTests {
 
   // MARK: - 4. Cancellation during text processing (deterministic gate)
 
-  @Test("Cancellation mid-processing throws CancellationError without saving")
-  func cancellationMidProcessingThrowsWithoutSaving() async {
+  @Test(
+    "#1707 Phase 2 (Open Decision #9): cancellation mid-processing is silently absorbed, raw ASR text is saved and delivered"
+  )
+  func cancellationMidProcessingSavesAndDeliversRawText() async throws {
     let savedTranscripts = Box<[Transcript]>([])
     let pasteCount = Box(0)
     let started = AsyncStream.makeStream(of: Void.self)
@@ -104,8 +106,13 @@ struct TranscriptFinalizerTests {
       started.continuation.yield(())
       started.continuation.finish()
       // Cancellation-aware sleep. Throws CancellationError when the outer
-      // task is cancelled, which the runner's `catch is CancellationError`
-      // branch rethrows up through `finalize`.
+      // task is cancelled — the runner's widened `isCancellationLike`
+      // classification (#1707 Phase 2, Open Decision #9) now absorbs this
+      // silently instead of rethrowing, so `finalize` completes with the
+      // pre-step (raw ASR) text unchanged. `TranscriptFinalizer` itself is a
+      // test-only seam (production finalization is `KernelFinalizationWiring`);
+      // the KERNEL's own `isCurrent(sid)` guard is the real session-staleness
+      // safety net when this fires from a superseded session.
       try await Task.sleep(for: .seconds(60))
       return ctx
     }
@@ -127,14 +134,15 @@ struct TranscriptFinalizerTests {
 
     let outcome = await task.result
     switch outcome {
-    case .success:
-      Issue.record("expected cancellation, got success")
+    case .success(let result):
+      #expect(result.transcript.text == "hello")
     case .failure(let error):
-      #expect(error is CancellationError, "expected CancellationError, got \(error)")
+      Issue.record("expected success (cancellation silently absorbed), got \(error)")
     }
 
-    #expect(savedTranscripts.value.isEmpty)
-    #expect(pasteCount.value == 0)
+    #expect(savedTranscripts.value.count == 1)
+    #expect(savedTranscripts.value.first?.text == "hello")
+    #expect(pasteCount.value == 1)
   }
 
   // MARK: - 5. Paste clipboard-only is non-fatal

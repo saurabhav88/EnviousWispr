@@ -245,8 +245,19 @@ public struct AudioBufferHandoff: @unchecked Sendable {
 /// never touches capture, finalization, paste, UI, or kernel state. The
 /// MUST / MUST NOT clauses in PR-1 §B.2.2 define the behavior every conformer
 /// (`FakeEngine`, and the PR-4 / PR-5 real adapters) must implement.
+// #1707 Phase 2: `Sendable` added so `retryDecode(inputSamples:)` can be
+// captured by name (`[adapter]`) inside `withOrderedDeadline`'s `@Sendable`
+// `operation` closure — capturing the EXISTENTIAL `any ASREngineAdapter`
+// directly (unlike a concrete `@MainActor` class, e.g. Phase 1's own
+// `recoverFromASRInterruption()` capturing `[weak self]`) does not get the
+// same automatic Sendable-safety inference the compiler grants concrete
+// MainActor-isolated types. Every conformer is `@MainActor`-isolated, so
+// `@unchecked Sendable` on each concrete conformer is the correct, safe
+// annotation — MainActor isolation (not value semantics) is what actually
+// prevents the data race the compiler cannot otherwise verify through this
+// existential boundary.
 @MainActor
-package protocol ASREngineAdapter: AnyObject {
+package protocol ASREngineAdapter: AnyObject, Sendable {
   // MARK: Identity & capability
 
   /// Self-declared engine identity. The kernel and factory read identity from
@@ -345,6 +356,27 @@ package protocol ASREngineAdapter: AnyObject {
   /// OPTIONAL `finalize()`-wedge signal (PR-1 §B.1.7). Same `nil` semantics as
   /// `loadProgress`.
   var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { get }
+
+  /// #1707 Phase 2 — a second, bounded decode attempt over audio a PRIOR
+  /// `finalize()` call already failed to decode. Distinct from calling
+  /// `finalize()` again: both `ParakeetEngineAdapter` and
+  /// `WhisperKitEngineAdapter` self-latch a terminal flag on every exit from
+  /// `finalize()` (each adapter's own `isTerminal`), so a second literal
+  /// `finalize()` call does not crash — it silently misbehaves. `inputSamples`
+  /// is REQUIRED (non-optional) — never falls back to adapter-held state,
+  /// because that state is already gone. Named `inputSamples`, NOT
+  /// `batchSamples`: for WhisperKit this is raw capture, not a "batch" buffer
+  /// in the sense `finalize(batchSamples:)`'s own parameter name implies.
+  func retryDecode(inputSamples: [Float]) async -> ASREngineOutcome
+
+  /// Best-effort, honest "stop waiting" signal for a retry that has timed out
+  /// — NOT a claim of active cancellation. Neither adapter's decode call is
+  /// genuinely interruptible mid-flight. Synchronous, so it can run directly
+  /// inside `withOrderedDeadline`'s `onTimeout` closure. Bumps an
+  /// adapter-local generation token; combined with the attempt/commit split,
+  /// this is what actually prevents a late-arriving abandoned result from
+  /// mutating state belonging to a session that has since moved on.
+  func bumpRetryGeneration()
 
   /// Idempotent discard. Calling it 2+ times has the same effect as once
   /// (PR-1 §B.2.2).

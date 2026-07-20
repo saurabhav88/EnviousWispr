@@ -894,6 +894,15 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   public var lastASRSalvageOutcome: ASRSalvageOutcome? {
     kernel.lastASRSalvageOutcome
   }
+  /// #1707 Phase 2: non-nil when this session started a post-capture-decode
+  /// retry — distinguishing an attempt left unresolved by a preempting
+  /// interruption from one this session actually accepted as succeeded or
+  /// exhausted. LIVE pass-through from the kernel; feeds the success-side
+  /// `dictation.completed` reporting chain (§3a) and the exhausted-retry
+  /// spool-deletion projection (`recoveryEnding(for:retryOutcome:)`).
+  public var asrRetryOutcome: ASRRetryOutcome? {
+    kernel.asrRetryOutcome
+  }
   /// #1317: non-nil when the most recent recording was classified as the
   /// mic-harness all-zero glitch (`allZeroFromStart` = the `.zeroSignal`
   /// pill; `becameZeroMidCapture` = a normal completion whose disclosure
@@ -1269,7 +1278,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       ending = .cancelled(pendingCancelOrigin)
       pendingCancelOrigin = .systemOrFault
     } else {
-      ending = Self.recoveryEnding(for: outcome)
+      ending = Self.recoveryEnding(for: outcome, retryOutcome: kernel.asrRetryOutcome)
     }
     guard let ending else { return }
     onSessionEndedWithoutSave?(context.config?.recoverySessionID, ending)
@@ -1287,7 +1296,19 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// Also nil for `.completed` (durable save ran). Exhaustive so a new
   /// `RecordingOutcome` forces a routing decision. Internal (not private) so the
   /// split is unit-tested directly (`matcher-set-adversarial-tests`).
-  static func recoveryEnding(for outcome: RecordingOutcome)
+  ///
+  /// #1707 Phase 2: `retryOutcome` defaults to `nil` so every existing call
+  /// site (16 across `KernelTerminalKindTests`/`RecordingSessionKernelSalvageTests`)
+  /// compiles and behaves unchanged — none of them pass a retry outcome, and
+  /// all continue to get plain `.failed`. Only the ONE production call site
+  /// above passes `kernel.asrRetryOutcome` explicitly. A `.failed` outcome
+  /// whose retry was exhausted projects to the distinct `.asrRetryExhausted`
+  /// ending (§4) so `RecoveryCoordinator` can delete that spool specifically
+  /// — a pre-capture `.failed` (retry never consulted, `retryOutcome == nil`)
+  /// still projects to plain `.failed` and retains exactly as today.
+  static func recoveryEnding(
+    for outcome: RecordingOutcome, retryOutcome: ASRRetryOutcome? = nil
+  )
     -> RecordingRecoveryEnding?
   {
     switch outcome {
@@ -1296,7 +1317,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     case .noSpeech:
       return .noSpeech
     case .failed:
-      return .failed
+      return retryOutcome == .retryExhausted ? .asrRetryExhausted : .failed
     case .audioInterrupted:
       return .audioInterrupted
     case .asrInterrupted:

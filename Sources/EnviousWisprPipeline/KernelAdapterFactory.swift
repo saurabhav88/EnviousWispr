@@ -27,25 +27,34 @@ package enum KernelAdapterFactory {
 
   /// The single Parakeet adapter construction site in `Sources/`.
   /// `delivery` (#1348 Phase 2): nil = legacy in-service download path.
+  /// `batchDecodeFaultController` (#1707 Phase 2): DEBUG fault-injection
+  /// oracle, defaulted `nil` so every existing test call site is unaffected.
   package static func makeParakeetAdapter(
     asrManager: any ASRManagerInterface,
-    delivery: ParakeetDeliveryHandle? = nil
+    delivery: ParakeetDeliveryHandle? = nil,
+    batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) -> any ASREngineAdapter {
-    ParakeetEngineAdapter(asrManager: asrManager, delivery: delivery)
+    ParakeetEngineAdapter(
+      asrManager: asrManager, delivery: delivery,
+      batchDecodeFaultController: batchDecodeFaultController)
   }
 
   /// The single WhisperKit adapter construction site in `Sources/`.
   /// `audioCaptureSessionIDSource` mirrors the adapter's own parameter (PR-5
   /// Rung 4.5) so the adapter can snapshot the capture session id at
   /// `beginSession` for race-safe delayed LID perf signposts.
+  /// `batchDecodeFaultController` (#1707 Phase 2): DEBUG fault-injection
+  /// oracle, defaulted `nil` so every existing test call site is unaffected.
   package static func makeWhisperKitAdapter(
     backend: any WhisperKitBackendDriving,
     languageDetector: LanguageDetector,
-    audioCaptureSessionIDSource: @escaping @MainActor () -> UInt64
+    audioCaptureSessionIDSource: @escaping @MainActor () -> UInt64,
+    batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) -> any ASREngineAdapter {
     WhisperKitEngineAdapter(
       backend: backend,
       languageDetector: languageDetector,
-      audioCaptureSessionIDSource: audioCaptureSessionIDSource)
+      audioCaptureSessionIDSource: audioCaptureSessionIDSource,
+      batchDecodeFaultController: batchDecodeFaultController)
   }
 }

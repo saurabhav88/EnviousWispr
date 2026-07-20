@@ -163,6 +163,28 @@ public final class WisprBootstrapper {
     // handle nil (legacy path), unit-tested can't-happen.
     let modelDelivery = ModelDeliveryHome()
 
+    // #1707 Phase 2: `whisperKitBackend` is hoisted here (only these two
+    // lines — NOT the full `whisperKitKernelDriver`, which still needs
+    // `vadSource`/`languageDetector` built later) so `BatchDecodeFaultController`
+    // can be constructed with BOTH backend references before the Parakeet
+    // driver below. No circular dependency: `WhisperKitDeliveryWiring.make`'s
+    // only input, `modelDelivery`, is already in scope. `whisperKitRetirement`
+    // is extracted from the SAME `whisperKit` value at its original site
+    // further down — `whisperKit` is a plain `let` that survives the
+    // intervening code.
+    let whisperKit = WhisperKitDeliveryWiring.make(modelDelivery: modelDelivery)
+    let whisperKitBackend = whisperKit.backend
+
+    // #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — the SOLE
+    // owner of every batch-decode fault command, dispatching to whichever
+    // backend-specific mechanism it holds a reference to. `asrManager as?
+    // ASRManagerProxy` is nil when the in-process `ASRManager` escape hatch
+    // is active (`useXPCASRService=false`) — the Parakeet half of the oracle
+    // simply no-ops then, exactly like every other DEBUG-only fault seam.
+    let batchDecodeFaultController = BatchDecodeFaultController(
+      whisperKitBackend: whisperKitBackend,
+      asrManagerProxy: asrManager as? ASRManagerProxy)
+
     // #1271/#1348 Phase 3 — EG-1 native runtime: the model bytes now move
     // through the shared delivery engine via `EGOneDeliveryAdapter` (a limb —
     // a delivery failure degrades polish to raw text, never blocks dictation).
@@ -259,7 +281,8 @@ public final class WisprBootstrapper {
         outputClassifierHolder: outputClassifierHolder,
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
         egOneRuntime: egOneRuntime,
-        parakeetDelivery: modelDelivery.parakeetHandle
+        parakeetDelivery: modelDelivery.parakeetHandle,
+        batchDecodeFaultController: batchDecodeFaultController
       ))
 
     // W6: language-flip telemetry wired via a closure so `EnviousWisprASR`
@@ -289,8 +312,10 @@ public final class WisprBootstrapper {
     // #1386 PR-2: the multilingual engine's delivery wiring (owned folder,
     // relocation coordinator, one gated backend, setup surface). Detail lives in
     // `WhisperKitDeliveryWiring`; the root just names it.
-    let whisperKit = WhisperKitDeliveryWiring.make(modelDelivery: modelDelivery)
-    let whisperKitBackend = whisperKit.backend
+    // #1707 Phase 2: `whisperKit`/`whisperKitBackend` are now constructed
+    // earlier (hoisted above the Parakeet driver, see the #1707 comment near
+    // `modelDelivery`) — only `whisperKitRetirement` is extracted here, from
+    // that SAME already-constructed `whisperKit` value.
     let whisperKitRetirement = whisperKit.retirement
 
     let whisperKitKernelDriver = KernelDictationDriverFactory.makeForWhisperKit(
@@ -305,7 +330,8 @@ public final class WisprBootstrapper {
         pasteCompletionRegistry: pasteCompletionRegistry,
         outputClassifierHolder: outputClassifierHolder,
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
-        egOneRuntime: egOneRuntime
+        egOneRuntime: egOneRuntime,
+        batchDecodeFaultController: batchDecodeFaultController
       ))
 
     // Phase F (#501) — `SetupCoordinator` needs `asrManager` + the WhisperKit
@@ -778,7 +804,8 @@ public final class WisprBootstrapper {
       hotkeyService: hotkeyService,
       applicationRelocationCoordinator: applicationRelocationCoordinator,
       bluetoothAwarenessPresenter: bluetoothAwarenessPresenter,
-      onboardingProgress: onboardingProgress
+      onboardingProgress: onboardingProgress,
+      batchDecodeFaultController: batchDecodeFaultController
     )
 
     self.navigationCoordinator = navigationCoordinator

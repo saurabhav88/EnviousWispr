@@ -46,6 +46,39 @@ struct KernelTerminalKindTests {
     #expect(KernelDictationDriver.recoveryEnding(for: .noTransport) == .noTransport)
   }
 
+  @Test(
+    "#1707 Phase 2: a .failed outcome whose retry was exhausted projects to .asrRetryExhausted, distinct from plain .failed"
+  )
+  func exhaustedRetryProjectsToDistinctEnding() {
+    #expect(
+      KernelDictationDriver.recoveryEnding(for: .failed(.asrFailed), retryOutcome: .retryExhausted)
+        == .asrRetryExhausted)
+  }
+
+  @Test(
+    "#1707 Phase 2: a .failed outcome projects to plain .failed when the retry was never consulted, only attempted, or succeeded"
+  )
+  func nonExhaustedRetryOutcomesProjectToPlainFailed() {
+    // Pre-capture producer — retry never consulted at all (the default,
+    // matching every existing call site above).
+    #expect(
+      KernelDictationDriver.recoveryEnding(for: .failed(.asrFailed), retryOutcome: nil) == .failed)
+    // A retry preempted mid-flight by a competing interruption before its own
+    // result was ever accepted (§3a) — still plain .failed, never the
+    // exhausted-specific ending (this session's OWN retry never resolved to
+    // exhausted).
+    #expect(
+      KernelDictationDriver.recoveryEnding(for: .failed(.asrFailed), retryOutcome: .attempted)
+        == .failed)
+    // A retry that actually succeeded reaches `.completed`, not `.failed`, in
+    // production — but the projection itself is exhaustive over
+    // `ASRRetryOutcome?` and must not accidentally map this combination to
+    // the exhausted ending either.
+    #expect(
+      KernelDictationDriver.recoveryEnding(for: .failed(.asrFailed), retryOutcome: .retrySucceeded)
+        == .failed)
+  }
+
   @Test(".cancelled is excluded from the projection (resolved dynamically at the fire site)")
   func cancelledIsDynamic() {
     // `.cancelled` is reached by both a user cancel and a fault/system cancel, so

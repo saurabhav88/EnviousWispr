@@ -11,6 +11,18 @@ public enum ASRBackendType: String, Codable, Sendable {
     case .whisperKit: return "WhisperKit"
     }
   }
+
+  /// #1707 Phase 2: per-backend budget for the one live post-capture retry
+  /// decode. PLACEHOLDER pending a real, stratified Live UAT latency
+  /// measurement (RULE: timeout-numbers-need-distribution-evidence) —
+  /// owned here, not at the kernel reader site, so `EngineIdentityFreezeTests`
+  /// keeps kernel code free of a bare `.parakeet`/`.whisperKit` literal.
+  public var defaultRetryDecodeTimeoutSeconds: Double {
+    switch self {
+    case .parakeet: return 8.0
+    case .whisperKit: return 15.0
+    }
+  }
 }
 
 /// Numbers-only summary of an ASR pass's token timings.

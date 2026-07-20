@@ -289,4 +289,30 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
   func checkStreamingSupport(backendType: String, reply: @escaping (Bool) -> Void) {
     reply(backendType == "parakeet")
   }
+
+  #if DEBUG
+    // MARK: - #1707 Phase 2: batch-decode fault oracle forwarding
+
+    /// Pure forwarder — holds no timing state itself. Awaits the FULL
+    /// forward into `ParakeetBackend` before replying, so `DebugFaultEndpoint`'s
+    /// reply (which itself already awaits this handler fully,
+    /// `DebugFaultEndpoint.swift:187-188`) is the acknowledged-arm barrier: a
+    /// caller that waits for that reply is guaranteed the arm has landed
+    /// service-side before triggering the next real transcription call.
+    func armBatchDecodeHold(trialID: String, reply: @escaping () -> Void) {
+      nonisolated(unsafe) let safeReply = reply
+      Task { @MainActor in
+        await self.parakeetBackend?.armBatchDecodeHold(trialID: trialID)
+        safeReply()
+      }
+    }
+
+    func releaseBatchDecode(trialID: String, reply: @escaping () -> Void) {
+      nonisolated(unsafe) let safeReply = reply
+      Task { @MainActor in
+        await self.parakeetBackend?.releaseBatchDecode(trialID: trialID)
+        safeReply()
+      }
+    }
+  #endif
 }

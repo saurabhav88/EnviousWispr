@@ -25,7 +25,7 @@ import Foundation
 
 /// Wraps Parakeet's `ASRManagerInterface` as a kernel-facing `ASREngineAdapter`.
 @MainActor
-final class ParakeetEngineAdapter: ASREngineAdapter {
+final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
 
   // MARK: Injected dependency
 
@@ -33,6 +33,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// #1348 Phase 2: the delivery stage that runs before any Parakeet load —
   /// nil means the legacy in-service download path (tests, or the flag off).
   private let delivery: ParakeetDeliveryHandle?
+  /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1) — `nil` in every
+  /// production/test path that doesn't explicitly construct one.
+  private let batchDecodeFaultController: BatchDecodeFaultController?
 
   // MARK: Engine-session bookkeeping (NOT FSM state — §3.11)
 
@@ -145,6 +148,18 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// cannot clear a newer call's shared tracking fields after it unwinds late.
   private var warmUpGeneration = 0
 
+  /// #1707 Phase 2: monotonic generation for the attempt/commit split shared
+  /// by `finalize()` and `retryDecode()`. Bumped by `beginSession`/
+  /// `discardSession` (a new session or a cancel/wedge-recovery must
+  /// invalidate any in-flight attempt, mirroring `recoveryGeneration`'s own
+  /// bump sites) AND by `bumpRetryGeneration()` specifically (a retry's own
+  /// honest "stop waiting" signal). A SEPARATE counter from
+  /// `recoveryGeneration`/`warmUpGeneration` — those are scoped entirely to
+  /// Phase 1's `recoverFromASRInterruption()`/`warmUp()` reentrancy, a
+  /// different mechanism at a different layer; not reused here, not
+  /// conflicting either.
+  private var retryGeneration = 0
+
   // MARK: ASREngineAdapter — engine interruption
 
   /// Optional adapter-local interruption hook. Parakeet leaves
@@ -219,11 +234,15 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 
   init(
     asrManager: any ASRManagerInterface, delivery: ParakeetDeliveryHandle? = nil,
-    asrInterruptionRecoveryDeadlineSec: Double = 8.0
+    asrInterruptionRecoveryDeadlineSec: Double = 8.0,
+    // #1707 Phase 2: DEBUG fault-injection oracle (§11.1). Defaulted `nil`
+    // so every existing test construction site is unaffected.
+    batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) {
     self.asrManager = asrManager
     self.delivery = delivery
     self.asrInterruptionRecoveryDeadlineSec = asrInterruptionRecoveryDeadlineSec
+    self.batchDecodeFaultController = batchDecodeFaultController
     (loadStream, loadContinuation) = AsyncStream.makeStream(of: ASRLoadProgressTick.self)
     // ASR service interruption is single-owner at the App router. Installing
     // here races `ASREventRouter`'s handler and loses by last-writer-wins.
@@ -417,6 +436,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     // #1707: a new session invalidates any recovery attempt still pending
     // from a prior one — its post-await checks compare against this.
     recoveryGeneration &+= 1
+    retryGeneration &+= 1  // #1707 Phase 2: also invalidate any pending retry.
     sessionID = id
     decodeOptions = options
     isTerminal = false
@@ -514,22 +534,24 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       return .cancelled
     }
     let session = sessionID
+    let generation = retryGeneration
     let outcome: ASREngineOutcome
     if streamingActive {
       await drainStreamingFeeds()
-      outcome = await finalizeStreamingWithRescue(batchSamples: batchSamples)
+      outcome = await finalizeStreamingWithRescue(
+        batchSamples: batchSamples, session: session, generation: generation)
     } else {
-      outcome = await finalizeBatch(batchSamples: batchSamples)
+      outcome = await finalizeBatch(
+        batchSamples: batchSamples, session: session, generation: generation)
     }
     // A `cancel()` + new `beginSession()` during the ASR await must not let
-    // this stale finalize clobber the fresh session's `lastResult` / retained
-    // PCM / terminal flag (Codex r2 — stale-finalize race). The kernel's own
-    // `finalize(_:)` wrapper drops the stale return value separately.
+    // this stale finalize clobber the fresh session's retained PCM / terminal
+    // flag (Codex r2 — stale-finalize race). `lastResult`/`lastASRDiagnostics`/
+    // `lastFailureError` are already gated on this SAME staleness check inside
+    // `commitAttempt`, called from `finalizeStreamingWithRescue`/`finalizeBatch`
+    // — not re-written here (single owner, #1707 Phase 2).
     guard sessionID == session, !isCancelled else {
       return isCancelled ? .cancelled : outcome
-    }
-    if case .transcript(let result) = outcome {
-      lastResult = result
     }
     isTerminal = true
     streamingActive = false
@@ -552,6 +574,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     // lifecycle op that can start replacement work invalidates any pending
     // recovery attempt in one place.
     recoveryGeneration &+= 1
+    retryGeneration &+= 1  // #1707 Phase 2: also invalidate any pending retry.
     isCancelled = true
     isTerminal = true
     lastResult = nil
@@ -613,6 +636,46 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 
   func applyUnloadPolicy(_ policy: ModelUnloadPolicy) {
     asrManager.noteTranscriptionComplete(policy: policy)
+  }
+
+  // MARK: ASREngineAdapter — Phase 2 retry
+
+  /// Best-effort, honest "stop waiting" signal for a retry that has timed
+  /// out — NOT active cancellation (no genuine in-flight-decode cancel
+  /// exists on this backend, §3.2a). Bumping `retryGeneration` is what
+  /// actually prevents a late-arriving abandoned result from mutating state
+  /// belonging to a session/attempt that has since moved on — checked inside
+  /// `commitAttempt`.
+  func bumpRetryGeneration() {
+    retryGeneration &+= 1
+  }
+
+  /// #1707 Phase 2: a second, bounded batch decode attempt over audio a
+  /// PRIOR `finalize()` call already failed to decode. Always batch-only —
+  /// never re-attempts the streaming-then-rescue sequence, since a retry is
+  /// scoped to a single failed decode, not a fresh session.
+  func retryDecode(inputSamples: [Float]) async -> ASREngineOutcome {
+    // Readiness-gated repair-before-retry (§3.2): `.decodeFailed` conflates a
+    // benign decode error (helper alive, connection intact) with the XPC
+    // helper actually dying mid-transcribe (which independently clears
+    // `isModelLoaded`). Gate on the live readiness snapshot rather than the
+    // outcome alone — an honest, non-atomic signal (§3.2's documented limit).
+    let session = sessionID
+    let generation = retryGeneration
+    if readiness != .ready {
+      do {
+        try await warmUp()
+      } catch {
+        return .failed(.decodeFailed)
+      }
+      // The repair awaited — re-check staleness BEFORE spending the decode
+      // attempt on audio that may no longer belong to the current session.
+      guard sessionID == session, retryGeneration == generation else { return .cancelled }
+    }
+    // Retry is always batch-only — never re-attempt streaming-then-rescue.
+    streamingActive = false
+    let attempt = await attemptBatchDecode(samples: inputSamples)
+    return commitAttempt(attempt, session: session, generation: generation)
   }
 
   // MARK: ASREngineAdapter optional engine hooks (PR-5 Rung 2A)
@@ -678,7 +741,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// saw samples), and the KERNEL re-maps it to `.noSpeech` because it knows the
   /// segments were empty. The rescue always attempts batch when streaming
   /// yields nothing.
-  private func finalizeStreamingWithRescue(batchSamples: [Float]?) async -> ASREngineOutcome {
+  private func finalizeStreamingWithRescue(
+    batchSamples: [Float]?, session: SessionID?, generation: Int
+  ) async -> ASREngineOutcome {
     var diagnostics = KernelASRAdapterDiagnostics(
       streamingBuffersDispatched: streamingBuffersDispatched,
       streamingBuffersFed: streamingBuffersFed
@@ -697,8 +762,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
         level: .info, category: "Pipeline"
       )
       if !trimmed.isEmpty {
-        lastASRDiagnostics = diagnostics
-        return .transcript(result)
+        let attempt = DecodeAttemptResult(
+          outcome: .transcript(result), diagnostics: diagnostics, failureError: nil)
+        return commitAttempt(attempt, session: session, generation: generation)
       }
       // Streaming returned empty — fall through to the batch rescue.
     } catch is CancellationError {
@@ -714,7 +780,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     }
     // Codex r1: store the rescue outcome locally so the emit can read whether the
     // batch rescue recovered a transcript before returning it.
-    let outcome = await finalizeBatchRescue(batchSamples: batchSamples, diagnostics: diagnostics)
+    let outcome = await finalizeBatchRescue(
+      batchSamples: batchSamples, diagnostics: diagnostics, session: session, generation: generation
+    )
     // #1177 (Telemetry Bible Phase 8): observe the quiet streaming-finalize failure.
     // The heart was fine (batch rescue gave text, or raw fell through), but until now
     // we never knew streaming broke. Fire ONLY on the genuine-failure branch — a
@@ -736,7 +804,8 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 
   private func finalizeBatchRescue(
     batchSamples: [Float]?,
-    diagnostics: KernelASRAdapterDiagnostics
+    diagnostics: KernelASRAdapterDiagnostics,
+    session: SessionID?, generation: Int
   ) async -> ASREngineOutcome {
     var diagnostics = diagnostics
     diagnostics.batchRescueAttempted = true
@@ -746,52 +815,89 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       level: .info, category: "Pipeline"
     )
     guard !samples.isEmpty else {
-      lastASRDiagnostics = diagnostics
-      return .empty(hadSpeechEvidence: true)
+      let attempt = DecodeAttemptResult(
+        outcome: .empty(hadSpeechEvidence: true), diagnostics: diagnostics, failureError: nil)
+      return commitAttempt(attempt, session: session, generation: generation)
     }
     do {
       let result = try await asrManager.transcribe(
         audioSamples: samples, options: decodeOptions)
       let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
       diagnostics.batchRescueResultChars = trimmed.count
-      lastASRDiagnostics = diagnostics
       await AppLogger.shared.log(
         "Streaming rescue result: batch produced \(trimmed.count) chars",
         level: .info, category: "Pipeline"
       )
-      if trimmed.isEmpty {
-        return .empty(hadSpeechEvidence: true)
-      }
-      return .transcript(result)
+      let outcome: ASREngineOutcome =
+        trimmed.isEmpty ? .empty(hadSpeechEvidence: true) : .transcript(result)
+      let attempt = DecodeAttemptResult(
+        outcome: outcome, diagnostics: diagnostics, failureError: nil)
+      return commitAttempt(attempt, session: session, generation: generation)
     } catch is CancellationError {
       return .cancelled
     } catch {
-      lastFailureError = error
-      lastASRDiagnostics = diagnostics
       await AppLogger.shared.log(
         "Streaming rescue result: batch failed: \(error.localizedDescription)",
         level: .info, category: "Pipeline"
       )
-      return .failed(.decodeFailed)
+      let attempt = DecodeAttemptResult(
+        outcome: .failed(.decodeFailed), diagnostics: diagnostics, failureError: error)
+      return commitAttempt(attempt, session: session, generation: generation)
     }
   }
 
   /// Batch decode (§3.2a). Uses kernel-conditioned `batchSamples` when
   /// supplied (PR-4.5 #5 — VAD-filtered + raw-fallback + silence-padded);
   /// else falls back to the adapter's raw retained PCM.
-  private func finalizeBatch(batchSamples: [Float]?) async -> ASREngineOutcome {
+  private func finalizeBatch(
+    batchSamples: [Float]?, session: SessionID?, generation: Int
+  ) async -> ASREngineOutcome {
     let samples = batchSamples ?? retainedPCM
+    let attempt = await attemptBatchDecode(samples: samples)
+    return commitAttempt(attempt, session: session, generation: generation)
+  }
+
+  // MARK: #1707 Phase 2 — attempt/commit split
+
+  /// Pure decode-attempt result — no shared-state writes. Both `finalize()`
+  /// (via `finalizeBatch`/`finalizeStreamingWithRescue`/`finalizeBatchRescue`)
+  /// and `retryDecode()` produce one of these, then commit it through the
+  /// SAME gated step (`commitAttempt`) — the generation guard that actually
+  /// prevents a late-arriving abandoned result from mutating state belonging
+  /// to a session/attempt that has since moved on (Grounded Review r1
+  /// finding #5: a check performed only AFTER this write would be too late).
+  private struct DecodeAttemptResult {
+    let outcome: ASREngineOutcome
+    let diagnostics: KernelASRAdapterDiagnostics
+    let failureError: (any Error)?
+  }
+
+  /// Pure batch-decode attempt over already-resolved `samples` — reused by
+  /// `finalizeBatch` (existing decode, `batchSamples ?? retainedPCM`) and
+  /// `retryDecode` (always the retry's own `inputSamples`, no fallback: the
+  /// first attempt's `retainedPCM` is already cleared by the time a retry
+  /// runs). No shared-state writes; the caller commits via `commitAttempt`.
+  private func attemptBatchDecode(samples: [Float]) async -> DecodeAttemptResult {
     var diagnostics = KernelASRAdapterDiagnostics(batchRescueAttempted: false)
     guard !samples.isEmpty else {
-      lastASRDiagnostics = diagnostics
-      return .empty(hadSpeechEvidence: true)
+      return DecodeAttemptResult(
+        outcome: .empty(hadSpeechEvidence: true), diagnostics: diagnostics, failureError: nil)
+    }
+    // #1707 Phase 2 (§11.1): DEBUG-only forced-failure fault, consulted only
+    // AFTER the real retry input snapshot above is already prepared — proving
+    // the retry genuinely re-decodes real, already-captured audio. `nil`
+    // controller (production, and every test that doesn't opt in) never
+    // forces a failure.
+    if batchDecodeFaultController?.shouldForceFailBatchDecode(backend: .parakeet) == true {
+      let error = ASREngineError.decodeFailed
+      return DecodeAttemptResult(
+        outcome: .failed(error), diagnostics: diagnostics, failureError: error)
     }
     do {
       let result = try await asrManager.transcribe(
         audioSamples: samples, options: decodeOptions)
       let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
       diagnostics.batchRescueResultChars = trimmed.count
-      lastASRDiagnostics = diagnostics
       if trimmed.isEmpty {
         // The adapter saw samples, so it reports `hadSpeechEvidence: true`. Past
         // the kernel's VAD no-speech gate this normally routes to
@@ -800,16 +906,40 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
         // recovery path (zero VAD segments but raw energy above the dead-air
         // floor) it re-maps this empty result to `.noSpeech`. The kernel owns
         // that decision; the adapter's report is unchanged.
-        return .empty(hadSpeechEvidence: true)
+        return DecodeAttemptResult(
+          outcome: .empty(hadSpeechEvidence: true), diagnostics: diagnostics, failureError: nil)
       }
-      return .transcript(result)
+      return DecodeAttemptResult(
+        outcome: .transcript(result), diagnostics: diagnostics, failureError: nil)
     } catch is CancellationError {
-      return .cancelled
+      return DecodeAttemptResult(outcome: .cancelled, diagnostics: diagnostics, failureError: nil)
     } catch {
-      lastFailureError = error
-      lastASRDiagnostics = diagnostics
-      return .failed(.decodeFailed)
+      return DecodeAttemptResult(
+        outcome: .failed(.decodeFailed), diagnostics: diagnostics, failureError: error)
     }
+  }
+
+  /// Commit step, shared by every batch-decode-shaped path
+  /// (`finalizeBatch`/`finalizeStreamingWithRescue`/`finalizeBatchRescue`/
+  /// `retryDecode`): writes `lastASRDiagnostics`/`lastFailureError`/
+  /// `lastResult` ONLY while the captured session and generation are still
+  /// current — the SOLE owner of these three fields (§3c single-authority).
+  /// Session-closing bookkeeping (`isTerminal`/`streamingActive`/
+  /// `retainedPCM`) is NOT this function's concern — `finalize()`'s own
+  /// wrapper owns that, since a retry does not re-terminate an
+  /// already-terminal session.
+  private func commitAttempt(
+    _ attempt: DecodeAttemptResult, session: SessionID?, generation: Int
+  ) -> ASREngineOutcome {
+    guard sessionID == session, retryGeneration == generation else { return .cancelled }
+    lastASRDiagnostics = attempt.diagnostics
+    if let failureError = attempt.failureError {
+      lastFailureError = failureError
+    }
+    if case .transcript(let result) = attempt.outcome {
+      lastResult = result
+    }
+    return attempt.outcome
   }
 
   // MARK: PCM retention

@@ -8,11 +8,13 @@ import Testing
 @Suite("ScenarioInventory")
 struct ScenarioInventoryTests {
 
-  @Test("the inventory holds exactly the 37 canonical scenarios")
-  func inventoryHoldsThirtySeven() {
+  @Test("the inventory holds exactly the 38 canonical scenarios")
+  func inventoryHoldsThirtyEight() {
     // #1543 removed C7 (audio helper death — impossible with capture in-process).
-    #expect(ScenarioInventory.all.count == 37)
-    #expect(ScenarioInventory.canonicalIDs.count == 37)
+    // #1707 Phase 2 added A23 (post-capture decode failure rescued by the
+    // one live retry) alongside A14's exhausted-retry counterpart.
+    #expect(ScenarioInventory.all.count == 38)
+    #expect(ScenarioInventory.canonicalIDs.count == 38)
   }
 
   @Test("the inventory's ID set matches the canonical ID set exactly")

@@ -28,6 +28,8 @@ enum FakeEngineEvent: Equatable, Sendable {
   case finalize
   case cancel
   case recoverFromWedge
+  case retryDecode
+  case bumpRetryGeneration
 }
 
 /// Synthetic error type for the cache-preload failure-bypass test
@@ -78,7 +80,7 @@ enum FakeEngineBehavior: Sendable {
 }
 
 @MainActor
-final class FakeEngine: ASREngineAdapter {
+final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   /// `var` so a scenario's `EngineDirective.setBehavior` can reconfigure the
   /// fake before a session begins (e.g. the engine-switch scenarios).
   var behavior: FakeEngineBehavior
@@ -126,6 +128,41 @@ final class FakeEngine: ASREngineAdapter {
       await clock.sleep(ticks: asrInterruptionRecoveryDelayTicks)
     }
     return asrInterruptionRecoveryResult
+  }
+
+  // MARK: #1707 Phase 2 — retry scripting
+
+  /// Scriptable result for `retryDecode(inputSamples:)`. Defaults to a
+  /// deterministic success so a scenario that never explicitly configures a
+  /// retry still resolves without hanging. `retryDecodeDelayTicks` mirrors
+  /// `asrInterruptionRecoveryDelayTicks`'s place-on-the-fake-clock pattern,
+  /// so a scenario can deterministically race a retry against the kernel's
+  /// own `withOrderedDeadline` timeout or a superseding session/cancel.
+  var retryDecodeResult: ASREngineOutcome = .transcript(
+    ASRResult(
+      text: "retried transcript", language: nil, duration: 0, processingTime: 0,
+      backendType: .parakeet))
+  var retryDecodeDelayTicks = 0
+  private(set) var retryDecodeCallCount = 0
+  private(set) var lastRetryDecodeInputSamples: [Float]?
+  private(set) var bumpRetryGenerationCallCount = 0
+
+  func retryDecode(inputSamples: [Float]) async -> ASREngineOutcome {
+    retryDecodeCallCount += 1
+    lastRetryDecodeInputSamples = inputSamples
+    eventLog.append(.retryDecode)
+    if retryDecodeDelayTicks > 0 {
+      await clock.sleep(ticks: retryDecodeDelayTicks)
+    }
+    if case .transcript(let result) = retryDecodeResult {
+      lastResult = result
+    }
+    return retryDecodeResult
+  }
+
+  func bumpRetryGeneration() {
+    bumpRetryGenerationCallCount += 1
+    eventLog.append(.bumpRetryGeneration)
   }
 
   // MARK: Observed counters (for FakeEngineTests)

@@ -121,7 +121,12 @@ public final class TelemetryService {
     // never reaches a completed transcript (it floors to `.asrInterrupted` or
     // `.cancelled` instead, reported via the Sentry capture in
     // `KernelLifecycleTelemetrySink`, not this PostHog event).
-    asrSalvageOutcome: String? = nil
+    asrSalvageOutcome: String? = nil,
+    // #1707 Phase 2: present only for a dictation rescued by the one live
+    // retry over a post-capture decode failure — always `retry_succeeded`
+    // here, since a `.retryExhausted`/preempted retry never reaches a
+    // completed transcript.
+    asrRetryOutcome: String? = nil
   ) {
     #if DEBUG
       var hookStringProps: [String: String] = [
@@ -130,6 +135,7 @@ public final class TelemetryService {
       ]
       if let ib = interruptedBy { hookStringProps["interrupted_by"] = ib }
       if let aso = asrSalvageOutcome { hookStringProps["asr_salvage_outcome"] = aso }
+      if let aro = asrRetryOutcome { hookStringProps["asr_retry_outcome"] = aro }
       // #1376: mirror the emitted route keys' presence-only semantics so the
       // App → Telemetry threading is unit-testable.
       if let st = selectedTransport { hookStringProps["selected_transport"] = st }
@@ -194,7 +200,8 @@ public final class TelemetryService {
       captureNativeChannelCount: captureNativeChannelCount,
       salvagedLeadTrimMs: salvagedLeadTrimMs,
       interruptedBy: interruptedBy,
-      asrSalvageOutcome: asrSalvageOutcome
+      asrSalvageOutcome: asrSalvageOutcome,
+      asrRetryOutcome: asrRetryOutcome
     )
     if let asrLat = m?.asrLatencySeconds {
       asrCompleted(
@@ -666,7 +673,8 @@ public final class TelemetryService {
     captureRebuiltForFormat: Bool? = nil, captureNativeChannelCount: Int? = nil,
     salvagedLeadTrimMs: Int? = nil,
     interruptedBy: String? = nil,
-    asrSalvageOutcome: String? = nil
+    asrSalvageOutcome: String? = nil,
+    asrRetryOutcome: String? = nil
   ) {
     var props: [String: Any] = [
       "result": result,
@@ -686,6 +694,9 @@ public final class TelemetryService {
     // #1707: which ASR/XPC-helper salvage outcome preceded this completion.
     // Present only for a dictation that survived a live-recording ASR crash.
     if let aso = asrSalvageOutcome { props["asr_salvage_outcome"] = aso }
+    // #1707 Phase 2: present only for a dictation rescued by the one live
+    // retry over a post-capture decode failure.
+    if let aro = asrRetryOutcome { props["asr_retry_outcome"] = aro }
     // #1434: capture-health facts + salvage marker (fleet visibility across
     // Bluetooth device models; counters omitted when zero at the call site).
     if let rate = captureNativeRateHz { props["capture_native_rate_hz"] = Int(rate) }

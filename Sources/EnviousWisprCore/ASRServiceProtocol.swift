@@ -68,6 +68,27 @@ import Foundation
 
   /// Check whether the specified backend supports streaming transcription.
   func checkStreamingSupport(backendType: String, reply: @escaping (Bool) -> Void)
+
+  #if DEBUG
+    // MARK: - #1707 Phase 2: batch-decode fault oracle (shared-backend
+    // overlap Live UAT, §3.2a-i). Arm/release cross XPC; the pre-release
+    // query does NOT — XPC replies serialize behind a pending request (this
+    // is exactly why `XPCOperationSignalFile` exists for progress queries),
+    // so `BatchDecodeFaultController` reads `BatchDecodeFaultSnapshotFile`
+    // directly instead of asking the service while a `transcribeSamples`
+    // reply is held pending. Additive, absent from release builds.
+
+    /// Arms a one-shot hold for the NEXT `transcribeSamples` call's real
+    /// `manager.transcribe(...)` decode (`ParakeetBackend`). Reply fires
+    /// once the arm has landed service-side (the acknowledged-arm barrier)
+    /// — not once a call is actually held.
+    func armBatchDecodeHold(trialID: String, reply: @escaping () -> Void)
+
+    /// Releases a previously-armed hold, letting the held decode proceed.
+    /// No-op (still calls reply) if no call is currently held under
+    /// `trialID`.
+    func releaseBatchDecode(trialID: String, reply: @escaping () -> Void)
+  #endif
 }
 
 /// XPC protocol: callbacks from ASR service to host app.

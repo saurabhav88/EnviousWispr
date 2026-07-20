@@ -230,7 +230,7 @@ final class RecoveryCoordinator {
   /// (`matcher-set-adversarial-tests`).
   static func shouldDeleteOnLiveEnding(_ ending: RecordingRecoveryEnding) -> Bool {
     switch ending {
-    case .discarded, .noSpeech:
+    case .discarded, .noSpeech, .asrRetryExhausted:
       return true
     case .failed, .audioInterrupted, .asrInterrupted, .noTransport:
       return false

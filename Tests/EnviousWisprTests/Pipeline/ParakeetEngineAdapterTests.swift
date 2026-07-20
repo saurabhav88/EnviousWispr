@@ -631,6 +631,130 @@ import Testing
     }
   }
 
+  // MARK: #1707 Phase 2 — post-capture decode retry
+
+  @Test("retryDecode() decodes the given samples and commits lastResult on success")
+  func retryDecodeSucceeds() async throws {
+    let manager = StubParakeetASRManager()
+    manager.transcribeResult = makeResult("retried text")
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+
+    let outcome = await adapter.retryDecode(inputSamples: [0.1, 0.2, 0.3])
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "retried text")
+    #expect(adapter.lastResult?.text == "retried text")
+    #expect(manager.transcribeCount == 1)
+    #expect(manager.lastTranscribeSamples == [0.1, 0.2, 0.3])
+  }
+
+  @Test(
+    "an adapter's own internal streaming-then-batch-rescue fallback and an explicit Phase-2 retryDecode are two distinct decode calls, never one shared budget"
+  )
+  func internalRescueAndPhase2RetryAreDistinctDecodeCalls() async throws {
+    let manager = StubParakeetASRManager()
+    // Streaming returns empty -> the internal batch-rescue fallback engages.
+    manager.finalizeStreamingResult = ASRResult(
+      text: "", language: "en", duration: 1, processingTime: 0, backendType: .parakeet)
+    // The internal rescue's own batch decode also fails for real, exactly the
+    // condition that makes the KERNEL spend its one Phase-2 retry.
+    manager.transcribeThrows = true
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: true)
+    feed(adapter, samples: [0.1], session: sid)
+
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .failed = outcome else {
+      Issue.record("expected the internal rescue to also fail, got \(outcome)")
+      return
+    }
+    #expect(
+      manager.transcribeCount == 1,
+      "the internal streaming-then-batch-rescue fallback is ONE decode call")
+
+    // The kernel now spends its one Phase-2 retry — a second, independent
+    // decode call, not a continuation of the internal rescue's own budget.
+    manager.transcribeThrows = false
+    manager.transcribeResult = makeResult("phase 2 retry text")
+    let retryOutcome = await adapter.retryDecode(inputSamples: [0.4, 0.5])
+    guard case .transcript(let retryResult) = retryOutcome else {
+      Issue.record("expected the Phase-2 retry to recover a transcript, got \(retryOutcome)")
+      return
+    }
+    #expect(retryResult.text == "phase 2 retry text")
+    #expect(
+      manager.transcribeCount == 2,
+      "the internal fallback and the explicit Phase-2 retry are two distinct decode calls")
+  }
+
+  @Test(
+    "retryDecode's readiness-gated repair re-checks staleness before spending the decode — a session change during the repair returns .cancelled and never decodes"
+  )
+  func retryDecodePostRepairStalenessRecheck() async throws {
+    let manager = StubParakeetASRManager()
+    manager.isModelLoaded = true
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sidA = SessionID()
+    try await adapter.beginSession(sidA, options: .default, streaming: false)
+
+    // Simulate the XPC helper dying mid-transcribe: readiness drops below
+    // .ready, so retryDecode's repair-before-retry gate engages warmUp().
+    manager.isModelLoaded = false
+    manager.gateLoadModel = true
+    async let outcome = adapter.retryDecode(inputSamples: [0.1, 0.2])
+    // Wait until the repair warmUp() has genuinely entered loadModel().
+    while manager.loadModelCount == 0 { await Task.yield() }
+
+    // A new session begins while the repair is still in flight.
+    try await adapter.beginSession(SessionID(), options: .default, streaming: false)
+    manager.releaseLoadGate()
+
+    guard case .cancelled = await outcome else {
+      Issue.record("expected .cancelled from the post-repair staleness recheck")
+      return
+    }
+    #expect(
+      manager.transcribeCount == 0,
+      "the decode attempt must never be spent once the repair discovers staleness")
+  }
+
+  @Test(
+    "bumpRetryGeneration() — mirroring the kernel's own onTimeout closure — supersedes an in-flight retry so its eventual late completion is discarded, idempotently"
+  )
+  func bumpRetryGenerationSupersedesInFlightRetry() async throws {
+    let manager = StubParakeetASRManager()
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+
+    // Force retryDecode down its readiness-repair path so it parks on the
+    // gated loadModel() — a deterministic stand-in for "the kernel's
+    // withOrderedDeadline decided this retry took too long."
+    manager.isModelLoaded = false
+    manager.gateLoadModel = true
+    manager.transcribeResult = makeResult("should be discarded")
+    async let outcome = adapter.retryDecode(inputSamples: [0.1])
+    while manager.loadModelCount == 0 { await Task.yield() }
+
+    // Mirrors the kernel's onTimeout closure: bump the retry generation
+    // (called twice — idempotent, never throws) BEFORE the parked repair
+    // resolves.
+    adapter.bumpRetryGeneration()
+    adapter.bumpRetryGeneration()
+    manager.releaseLoadGate()
+
+    guard case .cancelled = await outcome else {
+      Issue.record("expected the superseded retry to resolve .cancelled, not commit its decode")
+      return
+    }
+    #expect(adapter.lastResult == nil, "the discarded retry's result must never reach lastResult")
+  }
+
   // MARK: Helpers
 
   /// Feed one synthetic buffer stamped with `session` — the kernel always

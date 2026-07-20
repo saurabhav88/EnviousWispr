@@ -310,6 +310,13 @@ final class KernelLifecycleTelemetrySink {
       if let salvageOutcome = telemetryState.asrSalvageOutcome {
         extra["asr_salvage_outcome"] = salvageOutcome.rawValue
       }
+      // #1707 Phase 2: a retry preempted by a competing interruption before
+      // its own result was accepted leaves `.attempted` as the FINAL
+      // recorded value (§3a) — this is where that value actually surfaces,
+      // since that race publishes `.asrInterrupted`, not `.asrFailed`.
+      if let retryOutcome = telemetryState.asrRetryOutcome {
+        extra["asr_retry_outcome"] = retryOutcome.rawValue
+      }
       emitCaptureError(
         KernelFallbackSentryError.xpcServiceError(backendLabel: backendLabel),
         .xpcServiceError, "asr",
@@ -650,10 +657,18 @@ final class KernelLifecycleTelemetrySink {
       let error =
         telemetryState.transcriptionFailureError
         ?? KernelFallbackSentryError.transcriptionFailed
+      // #1707 Phase 2: a retry this session accepted as exhausted surfaces
+      // here (the retry-exhausted `default:` branch sets `.retryExhausted`
+      // immediately before this terminal fires) — absent when no Phase-2
+      // retry was ever consulted (the pre-capture producer).
+      var asrFailedExtra: [String: Any] = ["backend": backend.rawValue]
+      if let retryOutcome = telemetryState.asrRetryOutcome {
+        asrFailedExtra["asr_retry_outcome"] = retryOutcome.rawValue
+      }
       emitCaptureError(
         SentryCaptureBoundaryError.normalizingTranscriptionFailure(error),
         .asrFailed, "transcription",
-        ["backend": backend.rawValue],
+        asrFailedExtra,
         snapshot: recordingSnapshot())
     case .permissionDenied:
       let error =

@@ -1200,6 +1200,126 @@ import Testing
     #expect(count == 0, "unload from A's armed task must NOT fire under B")
   }
 
+  // MARK: #1707 Phase 2 — post-capture decode retry
+
+  @Test("retryDecode() decodes the given samples and commits lastResult on success")
+  func retryDecodeSucceeds() async throws {
+    let backend = StubWhisperKitBackend()
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "retried text", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: "en"), streaming: false)
+
+    let outcome = await adapter.retryDecode(inputSamples: speechSamples(count: 16_000))
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "retried text")
+    #expect(adapter.lastResult?.text == "retried text")
+    let txCount = await backend.transcribeCount
+    #expect(txCount == 1)
+  }
+
+  @Test(
+    "an adapter's own internal streaming-then-clean-batch-fallback and an explicit Phase-2 retryDecode are two distinct decode calls, never one shared budget"
+  )
+  func internalFallbackAndPhase2RetryAreDistinctDecodeCalls() async throws {
+    let backend = StubWhisperKitBackend()
+    let stubSession = StubIncrementalSession(result: .rejected(stopWhileDecodeInFlight: true))
+    await backend.setStreamingSessionFactory({ stubSession })
+    // The internal clean-batch fallback (triggered by the empty flush) also
+    // fails for real — exactly the condition that makes the KERNEL spend its
+    // one Phase-2 retry.
+    await backend.setTranscribeThrows(StubBackendError.decodeFailed)
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: "en"), streaming: true)
+    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .failed = outcome else {
+      Issue.record("expected the internal clean-batch fallback to also fail, got \(outcome)")
+      return
+    }
+    let firstCount = await backend.transcribeCount
+    #expect(firstCount == 1, "the internal streaming-then-clean-batch fallback is ONE decode call")
+
+    // The kernel now spends its one Phase-2 retry — a second, independent
+    // decode call, not a continuation of the internal fallback's own budget.
+    await backend.setTranscribeThrows(nil)
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "phase 2 retry text", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let retryOutcome = await adapter.retryDecode(inputSamples: speechSamples(count: 16_000))
+    guard case .transcript(let retryResult) = retryOutcome else {
+      Issue.record("expected the Phase-2 retry to recover a transcript, got \(retryOutcome)")
+      return
+    }
+    #expect(retryResult.text == "phase 2 retry text")
+    let secondCount = await backend.transcribeCount
+    #expect(
+      secondCount == 2,
+      "the internal fallback and the explicit Phase-2 retry are two distinct decode calls")
+  }
+
+  @Test(
+    "retryDecode reuses the first attempt's finalized decode options exactly and never re-runs LID"
+  )
+  func retryDecodePreservesDecodeOptionsAndSkipsLID() async throws {
+    let backend = StubWhisperKitBackend()
+    // Three unanimous, high-confidence votes for "es" — a clean, unambiguous
+    // LID resolution on the first (auto-language) attempt.
+    await backend.setObserveLIDResult(
+      .observations([
+        RawLIDObservation(argmaxLang: "es", logProb: -0.05),
+        RawLIDObservation(argmaxLang: "es", logProb: -0.05),
+        RawLIDObservation(argmaxLang: "es", logProb: -0.05),
+      ]))
+    // The first attempt's own batch decode fails for real, triggering the
+    // kernel's Phase-2 retry.
+    await backend.setTranscribeThrows(StubBackendError.decodeFailed)
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    // Auto-language (nil) — LID must run on this first attempt.
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: nil), streaming: false)
+    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    _ = await adapter.finalize(batchSamples: nil)
+
+    let lidCountAfterFirstAttempt = await backend.observeLIDCount
+    #expect(lidCountAfterFirstAttempt > 0, "precondition: the auto-language first attempt ran LID")
+    let resolvedLanguage = await backend.lastTranscribeOptions.language
+    #expect(resolvedLanguage == "es", "precondition: the first attempt resolved to es")
+
+    // The Phase-2 retry must reuse that resolved language exactly, never
+    // re-running LID.
+    await backend.setTranscribeThrows(nil)
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "retried spanish text", language: "es", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let retryOutcome = await adapter.retryDecode(inputSamples: speechSamples(count: 16_000))
+    guard case .transcript = retryOutcome else {
+      Issue.record("expected the retry to recover a transcript, got \(retryOutcome)")
+      return
+    }
+    let lidCountAfterRetry = await backend.observeLIDCount
+    #expect(
+      lidCountAfterRetry == lidCountAfterFirstAttempt,
+      "the retry must never re-run LID")
+    let retryLanguage = await backend.lastTranscribeOptions.language
+    #expect(retryLanguage == "es", "the retry must reuse the first attempt's resolved language")
+  }
+
   // MARK: Production-unwired sanity
 
   @Test("WhisperKitEngineAdapter exists at Sources/EnviousWisprPipeline/")

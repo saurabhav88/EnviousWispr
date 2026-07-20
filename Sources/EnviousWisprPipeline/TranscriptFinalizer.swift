@@ -105,9 +105,11 @@ internal final class TranscriptFinalizer {
 
   /// Finalize a transcription: process text, store transcript, paste to target.
   ///
-  /// Throws `FinalizationError` for typed failures. Throws `CancellationError` if cancelled.
-  /// Text processing step failures are handled internally (heart & limbs) and reported
-  /// via `polishError` in the result, NOT as thrown errors.
+  /// Throws `FinalizationError` for typed failures. Text processing step failures,
+  /// INCLUDING a `CancellationError` reaching a step (#1707 Phase 2, Open Decision
+  /// #9 — `TextProcessingRunner`'s widened `isCancellationLike` classification),
+  /// are handled internally (heart & limbs) and reported via `polishError` in the
+  /// result, NOT as thrown errors; the pre-step text ships instead.
   func finalize(_ request: FinalizationRequest) async throws -> FinalizationResult {
     // 1. Text processing (step failures handled internally by runner)
     let polishStart = CFAbsoluteTimeGetCurrent()

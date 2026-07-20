@@ -8,9 +8,9 @@ import Testing
 struct TextProcessingChainRacesTests {
 
   @Test(
-    "cancelling the outer task while a step is suspended rethrows CancellationError and stops the chain"
+    "#1707 Phase 2 (Open Decision #9): cancelling the outer task while a step is suspended is silently absorbed and the chain continues to completion"
   )
-  func cancellationMidStepRethrowsAndStopsLaterSteps() async {
+  func cancellationMidStepIsSilentlyAbsorbedAndChainContinues() async {
     let runner = TextProcessingRunner()
     let started = AsyncStream.makeStream(of: Void.self)
 
@@ -50,13 +50,18 @@ struct TextProcessingChainRacesTests {
     let outcome = await task.result
     switch outcome {
     case .success:
-      Issue.record("expected CancellationError, got success")
+      break
     case .failure(let error):
-      #expect(error is CancellationError, "expected CancellationError, got \(error)")
+      Issue.record("expected success (cancellation silently absorbed), got \(error)")
     }
 
     #expect(suspending.runCount == 1)
-    #expect(after.runCount == 0)
+    // "After" is entered (the loop advances past the cancelled step instead
+    // of aborting) — its OWN outcome, once entered, races the still-cancelled
+    // ambient task against its own `withThrowingTimeout` wrapper (Swift does
+    // not guarantee which finishes first when both are already-cancelled),
+    // so its exact text contribution is not asserted here.
+    #expect(after.runCount == 1)
   }
 
   @Test(
