@@ -791,6 +791,47 @@ import Testing
   }
 
   @Test(
+    "GitHub cloud review (PR #1725): a stale-readiness proxy error (readiness still .ready but the primary failed via .serviceUnreachable) forces a real reconnect before the retry, not a no-op warmUp()"
+  )
+  func retryDecodeForcesReconnectAfterStaleReadinessTransportFailure() async throws {
+    let manager = StubParakeetASRManager()
+    manager.isModelLoaded = true
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+    feed(adapter, samples: [0.1, 0.2, 0.3], session: sid)
+
+    // Primary decode fails via a per-call XPC proxy error — the STUB, like
+    // the real onProxyError path, never clears isModelLoaded on this error.
+    manager.transcribeError = XPCASRTransportError.serviceUnreachable
+    let primaryOutcome = await adapter.finalize(batchSamples: nil)
+    guard case .failed = primaryOutcome else {
+      Issue.record("expected the primary decode to fail, got \(primaryOutcome)")
+      return
+    }
+    #expect(
+      manager.isModelLoaded,
+      "onProxyError never clears isModelLoaded — the stale mirror this bug depends on")
+    #expect((adapter.lastFailureError as? XPCASRTransportError) == .serviceUnreachable)
+
+    // Retry: the stale readiness mirror alone would skip repair entirely.
+    manager.transcribeError = nil
+    manager.transcribeResult = makeResult("reconnected retry text")
+    let retryOutcome = await adapter.retryDecode(inputSamples: [0.1, 0.2, 0.3])
+    guard case .transcript(let result) = retryOutcome else {
+      Issue.record("expected the retry to succeed after a forced reconnect, got \(retryOutcome)")
+      return
+    }
+    #expect(result.text == "reconnected retry text")
+    #expect(
+      manager.cancelInFlightLoadCount == 1,
+      "must force the stale readiness mirror to reflect the actually-dead connection")
+    #expect(
+      manager.loadModelCount == 1,
+      "warmUp() must perform a REAL reload, not a no-op on the stale isModelLoaded flag")
+  }
+
+  @Test(
     "#1707 Codex r8/r9: retryDecodeTimeoutSeconds(forSampleCount:) scales with audio length, not a flat constant"
   )
   func retryDecodeTimeoutScalesWithSampleCount() {
@@ -857,6 +898,10 @@ final class StubParakeetASRManager: ASRManagerInterface {
     text: "default-batch", language: "en", duration: 1, processingTime: 0,
     backendType: .parakeet)
   var transcribeThrows = false
+  /// Settable so a test can inject a SPECIFIC error (e.g.
+  /// `XPCASRTransportError.serviceUnreachable`) rather than the fixed
+  /// `FakeASRError.decode` `transcribeThrows` always throws. Checked first.
+  var transcribeError: (any Error)?
   /// When set, `feedAudio` throws — models a transient ASR/XPC feed failure that
   /// the per-buffer feed task swallows (#867).
   var feedAudioThrows = false
@@ -929,6 +974,7 @@ final class StubParakeetASRManager: ASRManagerInterface {
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
     transcribeCount += 1
     lastTranscribeSamples = audioSamples
+    if let transcribeError { throw transcribeError }
     if transcribeThrows { throw FakeASRError.decode }
     return transcribeResult
   }
@@ -982,7 +1028,14 @@ final class StubParakeetASRManager: ASRManagerInterface {
   }
   func noteTranscriptionComplete(policy: ModelUnloadPolicy) { lastUnloadPolicy = policy }
   func cancelIdleTimer() { cancelIdleTimerCount += 1 }
-  func cancelInFlightLoad() { cancelInFlightLoadCount += 1 }
+  func cancelInFlightLoad() {
+    cancelInFlightLoadCount += 1
+    // Mirrors the real ASRManagerProxy.cancelInFlightLoad(), which
+    // synchronously clears isModelLoaded (GitHub cloud review, PR #1725) —
+    // a stub that only counted the call without this side effect could not
+    // distinguish "readiness now reflects reality" from "still stale".
+    isModelLoaded = false
+  }
 
   enum FakeASRError: Error { case streamingSetup, decode, feed }
 }

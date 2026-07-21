@@ -688,6 +688,22 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // outcome alone — an honest, non-atomic signal (§3.2's documented limit).
     let session = sessionID
     let generation = retryGeneration
+    // GitHub cloud review (PR #1725): a per-call XPC proxy error
+    // (`ASRManagerProxy.transcribe`'s `onProxyError` -> `.serviceUnreachable`)
+    // never clears `isModelLoaded`/`connection` — only the connection's OWN
+    // interruption/invalidation handler does that. So `readiness` can still
+    // read `.ready` even though the PRIMARY decode's own failure proves the
+    // connection is actually dead, and the check below would then skip
+    // repair entirely, re-attempting the same broken proxy and exhausting
+    // the one retry instead of reconnecting. `.serviceUnreachable`
+    // specifically (not the other `XPCASRTransportError` cases, which are
+    // encoding/decoding issues a reconnect would not fix — mirrors this same
+    // file's existing one-shot transport-retry classification) forces
+    // `cancelInFlightLoad()` to make the mirror honest before the existing
+    // gate below decides whether to repair.
+    if readiness == .ready, (lastFailureError as? XPCASRTransportError) == .serviceUnreachable {
+      asrManager.cancelInFlightLoad()
+    }
     if readiness != .ready {
       do {
         try await warmUp()
