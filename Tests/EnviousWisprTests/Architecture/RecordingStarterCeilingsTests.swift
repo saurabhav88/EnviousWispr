@@ -142,10 +142,16 @@ import Testing
     // `recovery.press_unblocked` telemetry. The recovery owner stays OFF
     // this type; only the paper-line ceiling moves (deterministic rule:
     // actual 603 + 10 → round up to nearest 5 = 615).
+    // #1732 (GitHub cloud review fix): 615 → 630 — doc-comment additions
+    // only, explaining why `pendingBlockedPressInfo` is deliberately NOT
+    // overwritten by a later refusal within the same blocked episode. No new
+    // collaborator, method, or stored property; only the paper-line ceiling
+    // moves (deterministic rule: actual 617 + 10 → round up to nearest 5 =
+    // 630).
     #expect(
-      count <= 615,
+      count <= 630,
       """
-      RecordingStarter line count exceeded: \(count) > 615. \
+      RecordingStarter line count exceeded: \(count) > 630. \
       Raise via Bible §30 only.
       """)
   }

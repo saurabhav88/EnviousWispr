@@ -127,21 +127,35 @@ final class RecordingStarter {
     asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
   }
 
-  /// #1707 Phase 3 — the backend + timestamp of the most recent recovery
-  /// refusal. Consumed (and cleared) ONLY by a LATER press that actually
-  /// mints an active kernel session — a failed or unrelated press never
-  /// consumes it, so it can't misattribute one recording's wait to a
-  /// different one's timing.
+  /// #1707 Phase 3 — the backend + timestamp of the FIRST recovery refusal in
+  /// an unbroken run of refusals ("blocked episode"). Consumed (and cleared)
+  /// ONLY by a LATER press that actually mints an active kernel session — a
+  /// failed or unrelated press never consumes it, so it can't misattribute
+  /// one recording's wait to a different one's timing.
+  ///
+  /// Deliberately NOT overwritten by a later refusal within the same episode
+  /// (GitHub cloud review, PR #1732): an impatient user pressing repeatedly
+  /// while still refused must not make `waitSeconds` shrink toward zero each
+  /// time — that would understate the real wait and could mask a genuine
+  /// regression in the bounded-wait fix this telemetry exists to validate.
+  /// This does not fully solve the inverse case (a user who presses once,
+  /// then waits well past recovery's actual release before retrying, still
+  /// inflates `waitSeconds` with real idle time) — that would need a release-
+  /// side timestamp from the recovery gate itself, out of scope for this
+  /// phase; disclosed in the plan as a known characteristic of this signal,
+  /// not corrected here.
   private var pendingBlockedPressInfo: (backend: String, blockedAt: ContinuousClock.Instant)?
 
   /// Every recovery-refusal read site funnels through here: shows the pill,
-  /// signals the scan to yield the engine (§3.1), records the blocked-press
-  /// timestamp for the pairing `recovery.press_unblocked` telemetry below, and
-  /// emits the existing `recovery.press_blocked` event.
+  /// signals the scan to yield the engine (§3.1), records the FIRST blocked-
+  /// press timestamp of this episode for the pairing `recovery.press_unblocked`
+  /// telemetry below, and emits the existing `recovery.press_blocked` event.
   private func handleRecoveryPressRefused(backend: ASRBackendType) {
     recordingOverlay.show(intent: .recoveringLastRecording)
     signalPendingLiveStart()
-    pendingBlockedPressInfo = (backend.rawValue, ContinuousClock.now)
+    if pendingBlockedPressInfo == nil {
+      pendingBlockedPressInfo = (backend.rawValue, ContinuousClock.now)
+    }
     TelemetryService.shared.recoveryPressBlocked(asrBackend: backend.rawValue)
   }
 
