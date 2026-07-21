@@ -490,11 +490,16 @@ package actor CustomWordsImportCompareEngine {
   /// no trim while this file trimmed, so on malformed or legacy decoded data the
   /// two disagreed about what a key even was.
   ///
-  /// So precedence is no longer mirrored here at all. `WordCorrector` owns what
-  /// a trigger key is and who wins it; this function asks it for the incoming
-  /// candidate's claims and reads incumbent winners out of its index. It never
-  /// lowercases, strips spaces, classifies single versus multi, or replays
-  /// corrector precedence — doing any of that is the defect this ends.
+  /// So precedence is no longer mirrored here at all. `WordCorrector` owns both
+  /// what a trigger key is (`ExactTriggerIndex`) AND the decision of whether a
+  /// given alias collides and who wins (`resolveAliasOwnership`, #1672). This
+  /// function builds the planned index, applies participating candidates' own
+  /// canonicals to it, and asks that one shared function for each alias's
+  /// answer — it never lowercases, strips spaces, classifies single versus
+  /// multi, replays corrector precedence, or re-derives blocker/decisive-owner
+  /// selection itself. `CustomWordsManager.enforceAliases` calls the identical
+  /// function; doing either of those things here again is the defect this
+  /// ends.
   ///
   /// What remains local is IMPORT-BATCH disposition, which is not corrector
   /// state: incoming canonicals reserve their claims first-wins, then each
@@ -540,8 +545,6 @@ package actor CustomWordsImportCompareEngine {
     existingWords: [CustomWord],
     participatingCandidateIDs: Set<UUID>
   ) throws -> [UUID: [CustomWordsImportAliasCollision]] {
-    typealias Owner = WordCorrector.TriggerOwner
-
     // Effective incumbent ownership, already resolved, then every PARTICIPATING
     // incoming canonical applied on top under the SAME rules the commit path
     // and the corrector use.
@@ -556,22 +559,8 @@ package actor CustomWordsImportCompareEngine {
     for candidate in coalesced where participatingCandidateIDs.contains(candidate.id) {
       plannedOwners.applyCanonical(
         candidate.canonical,
-        owner: Owner(wordID: candidate.id, canonical: candidate.canonical, isPack: false))
-    }
-
-    /// The owner that would beat `candidate` to this surface, if any.
-    ///
-    /// Holding a key is not always intercepting it, so every hit is checked
-    /// against the authority before it counts as a blocker: a no-space owner
-    /// whose canonical the surface already spells declines to substitute, and
-    /// naming it would point the user at a word that never touches their text.
-    func blocker(
-      of claim: WordCorrector.ExactTriggerClaim, surface: String, for candidate: UUID
-    ) -> Owner? {
-      guard let holder = plannedOwners.owner(of: claim), holder.wordID != candidate
-      else { return nil }
-      return WordCorrector.ownerIntercepts(claim: claim, rawSurface: surface, owner: holder)
-        ? holder : nil
+        owner: WordCorrector.TriggerOwner(
+          wordID: candidate.id, canonical: candidate.canonical, isPack: false))
     }
 
     var collisions: [UUID: [CustomWordsImportAliasCollision]] = [:]
@@ -579,38 +568,33 @@ package actor CustomWordsImportCompareEngine {
       try Task.checkCancellation()
       guard case .supplied(let sourceAliases) = candidate.aliases else { continue }
       for alias in sourceAliases {
-        let claims = WordCorrector.exactClaims(forAlias: alias)
-        if claims.isEmpty { continue }
-
-        // Evaluate every claim BEFORE registering any of them (atomicity).
-        let blockers = claims.compactMap { claim in
-          blocker(of: claim, surface: alias, for: candidate.id).map { (claim: claim, owner: $0) }
-        }
-
-        guard blockers.isEmpty else {
-          // The earliest-running surface is the one that actually intercepts.
-          let decisive = blockers.min {
-            $0.claim.namespace.passPriority < $1.claim.namespace.passPriority
-          }
-          if let decisive {
-            collisions[candidate.id, default: []].append(
-              CustomWordsImportAliasCollision(alias: alias, heldBy: decisive.owner.wordID))
-          }
+        // Blocker detection, decisive-owner selection, and the "holding a key
+        // isn't always intercepting it" gate are no longer restated here —
+        // `resolveAliasOwnership` is the one shared answer both this preview
+        // and the commit path (`CustomWordsManager.enforceAliases`) call, so
+        // there is nothing left in either file to drift apart again (#1672).
+        switch plannedOwners.resolveAliasOwnership(for: alias, excludingOwnerID: candidate.id) {
+        case .noClaims:
           continue
+        case .blocked(let owner):
+          collisions[candidate.id, default: []].append(
+            CustomWordsImportAliasCollision(alias: alias, heldBy: owner.wordID))
+        case .available(let claims):
+          // Only a PARTICIPATING candidate's surviving alias becomes a future
+          // blocker: an exact/variant/fuzzy match's alias is disclosed above
+          // for preview, but it is never persisted as a fresh word, so it
+          // must not shadow a later candidate the way a real addition would.
+          guard participatingCandidateIDs.contains(candidate.id) else { continue }
+
+          // Gap-fill, never overwrite — same rule as the commit path. An
+          // alias reaching here unblocked may still sit behind a compound
+          // holder that simply declines to intercept, and that holder keeps
+          // the slot.
+          plannedOwners.gapFill(
+            claims,
+            owner: WordCorrector.TriggerOwner(
+              wordID: candidate.id, canonical: candidate.canonical, isPack: false))
         }
-
-        // Only a PARTICIPATING candidate's surviving alias becomes a future
-        // blocker: an exact/variant/fuzzy match's alias is disclosed above for
-        // preview, but it is never persisted as a fresh word, so it must not
-        // shadow a later candidate the way a real addition would.
-        guard participatingCandidateIDs.contains(candidate.id) else { continue }
-
-        // Gap-fill, never overwrite — same rule as the commit path. An alias
-        // reaching here unblocked may still sit behind a compound holder that
-        // simply declines to intercept, and that holder keeps the slot.
-        plannedOwners.gapFill(
-          claims,
-          owner: Owner(wordID: candidate.id, canonical: candidate.canonical, isPack: false))
       }
     }
     return collisions

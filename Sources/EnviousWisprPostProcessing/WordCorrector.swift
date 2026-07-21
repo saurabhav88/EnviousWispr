@@ -215,6 +215,21 @@ public struct WordCorrector: Sendable {
     package let existingCanonical: String
   }
 
+  /// The three possible answers to "does this alias collide against a planned
+  /// ownership index, and who wins" (#1672). Not persisted, not Codable — a
+  /// pure in-memory decision value scoped to one compare/commit pass.
+  package enum ExactAliasOwnershipResolution: Sendable, Equatable {
+    /// The alias normalizes to no exact-trigger claims at all (e.g. empty).
+    case noClaims
+    /// Nothing intercepts this alias — every claim is either unheld, held
+    /// only by the excluded owner, or held by a compound owner that
+    /// declines to intercept. Carries the claims so the caller can gap-fill
+    /// them under its own ownership if it decides to keep this alias.
+    case available(claims: [ExactTriggerClaim])
+    /// The earliest-intercepting held claim blocks this alias.
+    case blocked(by: TriggerOwner)
+  }
+
   /// Effective incumbent ownership, after every overwrite and gap-fill rule has
   /// already been applied. Consumers read winners; they never replay precedence.
   package struct ExactTriggerIndex: Sendable {
@@ -269,6 +284,43 @@ public struct WordCorrector: Sendable {
       for claim in claims where self.owner(of: claim) == nil {
         register(claim, to: owner)
       }
+    }
+
+    /// The single shared answer to "does this alias collide, and who wins" —
+    /// called by BOTH the import preview
+    /// (`CustomWordsImportCompareEngine.detectAliasCollisions`) and the import
+    /// commit (`CustomWordsManager.enforceAliases`). Neither consumer may
+    /// re-derive blocker detection or decisive-owner selection locally; both
+    /// call this and branch only on the returned case (#1672).
+    ///
+    /// Read-only: does not mutate `self`. Registration (`gapFill`) remains the
+    /// caller's explicit, separate responsibility in the `.available` branch —
+    /// preserving the existing atomicity rule that a partially-registered
+    /// alias must never be created (evaluate fully, THEN register).
+    ///
+    /// `excludingOwnerID` is the word/candidate whose own claim on a key must
+    /// never count as blocking itself — an existing `CustomWord.id` for the
+    /// commit path, a not-yet-saved `CustomWordsImportCandidate.id` for the
+    /// preview path. Both are `UUID`; the exclusion semantics are identical
+    /// either way ("this owner's own claim cannot block its own alias").
+    package func resolveAliasOwnership(
+      for alias: String, excludingOwnerID: UUID
+    ) -> ExactAliasOwnershipResolution {
+      let claims = WordCorrector.exactClaims(forAlias: alias)
+      guard !claims.isEmpty else { return .noClaims }
+
+      let blockers = claims.compactMap {
+        claim -> (claim: ExactTriggerClaim, owner: TriggerOwner)? in
+        guard let holder = owner(of: claim), holder.wordID != excludingOwnerID else { return nil }
+        return WordCorrector.ownerIntercepts(claim: claim, rawSurface: alias, owner: holder)
+          ? (claim, holder) : nil
+      }
+      if let decisive = blockers.min(by: {
+        $0.claim.namespace.passPriority < $1.claim.namespace.passPriority
+      }) {
+        return .blocked(by: decisive.owner)
+      }
+      return .available(claims: claims)
     }
 
     /// The ordinary-namespace maps in `buildLookups`' shape, optionally limited
