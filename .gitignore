@@ -193,6 +193,7 @@ scripts/eval/alias_runner/Package.resolved
 !scripts/eval/corpus/alias-corpus-d.jsonl
 !scripts/eval/corpus/alias-corpus-e.jsonl
 !scripts/eval/corpus/alias-smoke.jsonl
+!scripts/eval/corpus/alias-throughput-corpus.jsonl
 # Private holdout — gitignored, founder-only, used for final sign-off
 scripts/eval/corpus/alias-holdout-private.jsonl
 !scripts/eval/baselines/alias-suggestions/
