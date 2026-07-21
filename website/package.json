@@ -22,7 +22,7 @@
     "@astrojs/sitemap": "^3.7.3",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/plus-jakarta-sans": "^5.2.8",
-    "astro": "^6.4.8"
+    "astro": "^7.1.0"
   },
   "devDependencies": {
     "wrangler": "^4.106.0"
