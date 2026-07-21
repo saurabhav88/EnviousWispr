@@ -523,6 +523,18 @@ final class RecoveryCoordinator {
     pendingLiveStartSignal = false
 
     for id in attemptable {
+      // GitHub cloud review, PR #1732: between the PRIOR item's `defer`
+      // (which flips `isRecovering` back to `false`) and this item's own
+      // claim below, nothing suspends — so a record-press whose Task is
+      // queued exactly in that window never actually gets a scheduling turn
+      // to observe `isRecovering == false` and proceed; Swift's MainActor
+      // only switches tasks at a genuine suspension point. `await
+      // Task.yield()` here gives such a press its turn BEFORE this item's
+      // check-and-claim sequence begins, so it can mint its own session
+      // normally instead of waiting through this item too. Placed before the
+      // atomic handshake below, not inside it — the handshake itself still
+      // has no `await` between its own check and claim.
+      await Task.yield()
       // Atomic per-item handshake (§3.1/§3.2) — ONE non-suspending MainActor
       // turn: checked and claimed here with no `await` between any step, so
       // there is no window between "checked" and "acted." Preserves the

@@ -80,6 +80,10 @@ struct RecoveryCoordinatorTests {
     let spoolStore: RecoverySpoolStore
     let replayer: FakeReplayer
     let resetEngineCount: Box<Int>
+    /// Exposed so a test can flip live-dictation-active state AFTER
+    /// construction (e.g. from a concurrently-spawned Task simulating a live
+    /// press that mints its own session mid-scan).
+    let dictationActiveBox: Box<Bool>
   }
 
   /// `existing` and `dictationActive` are boxed so a test can mutate them after
@@ -112,7 +116,7 @@ struct RecoveryCoordinatorTests {
     return Harness(
       coordinator: coordinator, keyStore: keyStore,
       spoolStore: RecoverySpoolStore(directory: spoolDir), replayer: replayer,
-      resetEngineCount: resetEngineCount)
+      resetEngineCount: resetEngineCount, dictationActiveBox: activeBox)
   }
 
   private static func writeSpool(_ store: RecoverySpoolStore, _ id: String) throws {
@@ -541,6 +545,43 @@ struct RecoveryCoordinatorTests {
     #expect(
       FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: second).path),
       "the retained second orphan stays on disk for the next real trigger")
+  }
+
+  @Test(
+    "a fresh record-press queued exactly at the item boundary gets a genuine scheduling turn before the next item re-claims the engine (GitHub cloud review, PR #1732)"
+  )
+  func freshPressAtItemBoundaryGetsScheduledBeforeNextClaim() async throws {
+    // Between one item's `defer` (isRecovering -> false) and the next item's
+    // own claim, nothing suspended in the OLD code — so a record-press Task
+    // queued exactly then never got an actual scheduling turn to observe
+    // `isRecovering == false` (Swift's MainActor only switches tasks at a
+    // real suspension point). The fix adds `await Task.yield()` at the top
+    // of each iteration so such a press gets its turn first. Modeled here as
+    // a Task spawned during item 1's replay that flips `isDictationActive`
+    // — simulating a live press that mints its own session — with NO
+    // internal yield of its own, so it is immediately ready to run the
+    // moment the coordinator's own Task next suspends.
+    let h = Self.makeHarness()
+    let first = "first-\(UUID().uuidString)"
+    let second = "second-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, first)
+    try Self.writeSpool(h.spoolStore, second)
+    h.replayer.onReplay = { [dictationActiveBox = h.dictationActiveBox] id in
+      if id == first {
+        Task { @MainActor in
+          dictationActiveBox.value = true
+        }
+      }
+    }
+    await h.coordinator.scanAndRecover()
+    #expect(
+      h.replayer.replayedIDs == [first],
+      "item 2 must never be attempted — the queued press's Task got a real turn at the yield and minted its own session before item 2's claim"
+    )
+    #expect(!h.coordinator.isRecovering, "the gate is clear after deferring")
+    #expect(
+      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: second).path),
+      "the un-attempted second orphan stays on disk for the next trigger")
   }
 
   @Test("pendingLiveStartSignal is cleared entering the next fresh scan pass")
