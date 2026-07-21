@@ -1100,6 +1100,20 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
           return true
         }
         guard claimed else { return }
+        // GitHub cloud review, PR #1732 round 10: the mutation-claim hop
+        // above is ITSELF a suspension point between the line-1088 final
+        // cancellation check and `backend.unload()` — a `beginSession(B)`
+        // landing in exactly this window would cancel this task the SAME
+        // way the line-1088 check exists to catch, but nothing re-checked
+        // it before the unload call. Re-check here, releasing the just-
+        // acquired claim (never leak it) before bailing.
+        guard !Task.isCancelled else {
+          await MainActor.run { [weak self] in
+            guard let self else { return }
+            if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
+          }
+          return
+        }
         await backend.unload()
         // #1707 Phase 3 (§3.2, row 6 — Codex code-diff round 1 P2): release
         // the claim UNCONDITIONALLY right after the awaited unload returns,
@@ -1143,6 +1157,17 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
           return true
         }
         guard claimed else { return }
+        // GitHub cloud review, PR #1732 round 10: see the `.immediately`
+        // branch above — the claim hop is itself a suspension point a
+        // `beginSession(B)` can cancel through, so re-check before unloading,
+        // releasing the just-acquired claim rather than leaking it.
+        guard !Task.isCancelled else {
+          await MainActor.run { [weak self] in
+            guard let self else { return }
+            if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
+          }
+          return
+        }
         await backend.unload()
         // #1707 Phase 3 (§3.2, row 6 — Codex code-diff round 1 P2): release
         // UNCONDITIONALLY before the cancellation check; see the `.immediately`
