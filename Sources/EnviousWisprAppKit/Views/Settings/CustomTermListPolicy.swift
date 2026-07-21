@@ -51,6 +51,20 @@ enum CustomTermListPolicy {
     guard start < filtered.count else { return [] }
     return Array(filtered[start..<end])
   }
+
+  /// IDs eligible for bulk selection (#1703) = exactly the IDs
+  /// `CustomWordsExportAction.exportableWords` would back up. One authority
+  /// for "the user's own," not a second one.
+  static func selectableIDs(in words: [CustomWord]) -> Set<UUID> {
+    Set(CustomWordsExportAction.exportableWords(from: words).map(\.id))
+  }
+
+  /// Select-All/Deselect-All toggle over the CURRENT FILTERED target — not
+  /// the whole library, and not just the current page. If `target` is
+  /// already fully selected, deselect exactly it; otherwise union it in.
+  static func toggledSelection(current: Set<UUID>, target: Set<UUID>) -> Set<UUID> {
+    target.isSubset(of: current) ? current.subtracting(target) : current.union(target)
+  }
 }
 
 /// Phase 4 (#634) — Match Strictness picker mapping for `CustomWord.minSimilarityOverride`.

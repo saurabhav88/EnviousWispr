@@ -118,6 +118,66 @@ struct CustomTermListPolicyTests {
     #expect(CustomTermListPolicy.paged(words, page: 5).isEmpty)
   }
 
+  // MARK: - selectableIDs (#1703)
+
+  @Test(
+    "selectableIDs matches source == .user for every WordSource case",
+    arguments: WordSource.allCases
+  )
+  func selectableIDsMatchesUserSource(source: WordSource) {
+    let word = CustomWord(canonical: "Test", source: source)
+    let ids = CustomTermListPolicy.selectableIDs(in: [word])
+    #expect(ids.contains(word.id) == (source == .user))
+  }
+
+  @Test("selectableIDs on empty input returns empty set")
+  func selectableIDsEmptyInput() {
+    #expect(CustomTermListPolicy.selectableIDs(in: []).isEmpty)
+  }
+
+  @Test("selectableIDs excludes built-in and pack words in a mixed list")
+  func selectableIDsMixedSources() {
+    let userWord = CustomWord(canonical: "UserWord", source: .user)
+    let builtinWord = CustomWord(canonical: "BuiltinWord", source: .builtin)
+    let packWord = CustomWord(canonical: "PackWord", source: .pack)
+    let ids = CustomTermListPolicy.selectableIDs(in: [userWord, builtinWord, packWord])
+    #expect(ids == [userWord.id])
+  }
+
+  // MARK: - toggledSelection (#1703)
+
+  @Test("toggledSelection: target fully selected already → deselects exactly the target")
+  func toggledSelectionDeselectsFullySelectedTarget() {
+    let hidden = UUID()
+    let visible = UUID()
+    let result = CustomTermListPolicy.toggledSelection(
+      current: [hidden, visible], target: [visible])
+    #expect(result == [hidden])
+  }
+
+  @Test("toggledSelection: target not fully selected → unions it in")
+  func toggledSelectionUnionsPartialTarget() {
+    let already = UUID()
+    let a = UUID()
+    let b = UUID()
+    let result = CustomTermListPolicy.toggledSelection(current: [already], target: [a, b])
+    #expect(result == [already, a, b])
+  }
+
+  @Test("toggledSelection: empty target → no change")
+  func toggledSelectionEmptyTargetNoChange() {
+    let existing = UUID()
+    let result = CustomTermListPolicy.toggledSelection(current: [existing], target: [])
+    #expect(result == [existing])
+  }
+
+  @Test("toggledSelection: empty current, non-empty target → selects the target")
+  func toggledSelectionEmptyCurrentSelectsTarget() {
+    let a = UUID()
+    let result = CustomTermListPolicy.toggledSelection(current: [], target: [a])
+    #expect(result == [a])
+  }
+
   // MARK: - MatchStrictness
 
   @Test("MatchStrictness override mapping")
