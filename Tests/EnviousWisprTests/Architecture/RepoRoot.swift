@@ -15,6 +15,18 @@ enum RepoRoot {
   /// symlink to `/private/tmp` on macOS, which perturbs a fixed-depth trim's
   /// component count for a checkout there and produced 6 false freeze-test
   /// failures (#1675).
+  ///
+  /// Canonicalized through POSIX `realpath(3)`, NOT `URL.resolvingSymlinksInPath()`
+  /// / `.standardized` — both deliberately leave `/tmp` unresolved (an Apple
+  /// Foundation special case), while `FileManager.enumerator(at:)` returns
+  /// fully OS-resolved paths (`/private/tmp/...`) for anything under it. Every
+  /// scan function below compares an enumerated URL's path against this root's
+  /// path to compute a repo-relative path; leaving this root unresolved made
+  /// that comparison silently fail under a `/tmp` checkout (confirmed
+  /// empirically: `resolvingSymlinksInPath()` and `.standardized` both left
+  /// `/tmp/<dir>` unchanged, while `realpath(3)` correctly returned
+  /// `/private/tmp/<dir>`), producing the mangled `/privateSources/...`
+  /// offender paths in the original bug report.
   static let url: URL = resolve()
 
   private static func resolve() -> URL {
@@ -23,7 +35,7 @@ enum RepoRoot {
       if FileManager.default.fileExists(
         atPath: candidate.appending(path: "Package.swift").path)
       {
-        return candidate
+        return canonicalize(candidate)
       }
       let parent = candidate.deletingLastPathComponent()
       precondition(
@@ -34,6 +46,12 @@ enum RepoRoot {
     }
     preconditionFailure(
       "RepoRoot: no Package.swift found within 32 parent directories of \(#filePath)")
+  }
+
+  private static func canonicalize(_ url: URL) -> URL {
+    var buffer = [Int8](repeating: 0, count: Int(PATH_MAX))
+    guard realpath(url.path, &buffer) != nil else { return url }
+    return URL(fileURLWithPath: String(cString: buffer))
   }
 
   /// Absolute URL for a repo-relative source path (e.g.
