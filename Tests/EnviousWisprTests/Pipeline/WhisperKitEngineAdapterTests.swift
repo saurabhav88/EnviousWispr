@@ -1359,7 +1359,7 @@ import Testing
   @Test("WhisperKitEngineAdapter exists at Sources/EnviousWisprPipeline/")
   func productionFileExists() throws {
     let path = "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift"
-    let url = repoRoot().appending(path: path)
+    let url = RepoRoot.url.appending(path: path)
     #expect(FileManager.default.fileExists(atPath: url.path))
   }
 
@@ -1398,13 +1398,6 @@ import Testing
     (0..<count).map { _ in 0.1 }
   }
 
-  private func repoRoot() -> URL {
-    URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-  }
 }
 
 // MARK: - Test-only inspectors on the adapter

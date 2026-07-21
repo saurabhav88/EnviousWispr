@@ -276,7 +276,7 @@ import Testing
 
   @Test("WhisperKit factory branch has exactly one production caller")
   func makeForWhisperKitHasExactlyOneProductionCaller() throws {
-    let sourcesRoot = Self.repoRoot().appending(path: "Sources")
+    let sourcesRoot = RepoRoot.url.appending(path: "Sources")
     let enumerator = FileManager.default.enumerator(
       at: sourcesRoot, includingPropertiesForKeys: nil,
       options: [.skipsHiddenFiles, .skipsPackageDescendants])
@@ -285,7 +285,7 @@ import Testing
     while let url = enumerator?.nextObject() as? URL {
       guard url.pathExtension == "swift" else { continue }
       let relative = url.path.replacingOccurrences(
-        of: Self.repoRoot().path + "/", with: "")
+        of: RepoRoot.url.path + "/", with: "")
       // The factory's own definition site is not a caller.
       if relative == "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift" {
         continue
@@ -524,7 +524,7 @@ import Testing
       acc, hook in
       acc[hook] = try NSRegularExpression(pattern: #"\badapter\."# + hook + #"\("#)
     }
-    let sourcesRoot = Self.repoRoot().appending(path: "Sources")
+    let sourcesRoot = RepoRoot.url.appending(path: "Sources")
     let enumerator = FileManager.default.enumerator(
       at: sourcesRoot, includingPropertiesForKeys: nil,
       options: [.skipsHiddenFiles, .skipsPackageDescendants])
@@ -536,7 +536,7 @@ import Testing
       let ns = source as NSString
       let range = NSRange(location: 0, length: ns.length)
       let relative = url.path.replacingOccurrences(
-        of: Self.repoRoot().path + "/", with: "")
+        of: RepoRoot.url.path + "/", with: "")
       visited.insert(relative)
       let allowedPerHook = allowed[relative] ?? [:]
       for hook in hooks {
@@ -663,7 +663,7 @@ import Testing
   // MARK: Helpers
 
   private static func readSource(_ relative: String) throws -> String {
-    let url = repoRoot().appending(path: relative)
+    let url = RepoRoot.url.appending(path: relative)
     return try String(contentsOf: url, encoding: .utf8)
   }
 
@@ -678,7 +678,7 @@ import Testing
   /// historical breadcrumbs and must not trip the freeze.
   private static func scanSources(pattern: String) throws -> [String] {
     let regex = try NSRegularExpression(pattern: pattern)
-    let sourcesRoot = repoRoot().appending(path: "Sources")
+    let sourcesRoot = RepoRoot.url.appending(path: "Sources")
     let enumerator = FileManager.default.enumerator(
       at: sourcesRoot, includingPropertiesForKeys: nil,
       options: [.skipsHiddenFiles, .skipsPackageDescendants])
@@ -687,7 +687,7 @@ import Testing
       guard url.pathExtension == "swift" else { continue }
       let source = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
       let relative = url.path.replacingOccurrences(
-        of: repoRoot().path + "/", with: "")
+        of: RepoRoot.url.path + "/", with: "")
       for (idx, line) in source.split(separator: "\n", omittingEmptySubsequences: false)
         .enumerated()
       {
@@ -736,13 +736,4 @@ import Testing
     return false
   }
 
-  /// Repo root, anchored off `#filePath` — this file lives at
-  /// `Tests/EnviousWisprTests/Architecture/`, four levels below the root.
-  private static func repoRoot() -> URL {
-    URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-  }
 }

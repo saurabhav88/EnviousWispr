@@ -202,7 +202,7 @@ import Testing
 
   private static func scan(root: String, pattern: String, allowing: [String]) throws -> [String] {
     let regex = try NSRegularExpression(pattern: pattern)
-    let rootURL = repoRoot().appending(path: root)
+    let rootURL = RepoRoot.url.appending(path: root)
     let enumerator = FileManager.default.enumerator(
       at: rootURL, includingPropertiesForKeys: nil,
       options: [.skipsHiddenFiles, .skipsPackageDescendants])
@@ -211,7 +211,7 @@ import Testing
       guard url.pathExtension == "swift" else { continue }
       if allowing.contains(url.lastPathComponent) { continue }
       let source = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-      let relative = url.path.replacingOccurrences(of: repoRoot().path + "/", with: "")
+      let relative = url.path.replacingOccurrences(of: RepoRoot.url.path + "/", with: "")
       for (idx, line) in source.split(separator: "\n", omittingEmptySubsequences: false)
         .enumerated()
       {
@@ -256,15 +256,5 @@ import Testing
       }
     }
     return false
-  }
-
-  /// Repo root, anchored off `#filePath` — this file lives at
-  /// `Tests/EnviousWisprTests/Architecture/`, four levels below the root.
-  private static func repoRoot() -> URL {
-    URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
   }
 }

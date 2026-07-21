@@ -157,17 +157,17 @@ import Testing
   }
 
   private static func requiredFile(_ path: String) -> String? {
-    FileManager.default.fileExists(atPath: repoRoot().appendingPathComponent(path).path)
+    FileManager.default.fileExists(atPath: RepoRoot.url.appendingPathComponent(path).path)
       ? nil : "Missing required file: \(path)"
   }
 
   private static func forbiddenFile(_ path: String) -> String? {
-    FileManager.default.fileExists(atPath: repoRoot().appendingPathComponent(path).path)
+    FileManager.default.fileExists(atPath: RepoRoot.url.appendingPathComponent(path).path)
       ? "Legacy file must stay deleted: \(path)" : nil
   }
 
   private static func read(_ path: String) throws -> String {
-    try String(contentsOf: repoRoot().appendingPathComponent(path), encoding: .utf8)
+    try String(contentsOf: RepoRoot.url.appendingPathComponent(path), encoding: .utf8)
   }
 
   private static func requireContains(_ source: String, _ needle: String, _ message: String)
@@ -180,13 +180,5 @@ import Testing
     -> String?
   {
     source.contains(needle) ? message : nil
-  }
-
-  private static func repoRoot() -> URL {
-    URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()  // Architecture/
-      .deletingLastPathComponent()  // EnviousWisprTests/
-      .deletingLastPathComponent()  // Tests/
-      .deletingLastPathComponent()  // repo root
   }
 }

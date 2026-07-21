@@ -11,12 +11,11 @@ import Foundation
 /// `#filePath` is the compile-time absolute source path inside whatever checkout
 /// is being built, so this resolves correctly on the dev machine and CI alike.
 enum OutputClassifierTestPaths {
-  /// `<repo>` — four parents up from this file (LLM → EnviousWisprTests → Tests → repo).
-  static let repoRoot: URL = URL(filePath: #filePath)
-    .deletingLastPathComponent()  // LLM
-    .deletingLastPathComponent()  // EnviousWisprTests
-    .deletingLastPathComponent()  // Tests
-    .deletingLastPathComponent()  // repo root
+  /// `<repo>`, resolved by the shared marker-walk helper (`RepoRoot.swift`,
+  /// `Tests/EnviousWisprTests/Architecture/`) rather than a fixed-depth trim.
+  /// A fixed 4-hop trim from this file broke under a `/tmp` checkout (`/tmp`
+  /// is a symlink to `/private/tmp` on macOS) — see #1675.
+  static let repoRoot: URL = RepoRoot.url
 
   static let tokenizerFolder = repoRoot.appending(
     path: "Sources/EnviousWisprLLM/Resources/OutputClassifierTokenizer")
