@@ -506,6 +506,43 @@ struct RecoveryCoordinatorTests {
       "the un-attempted second orphan stays on disk for the next trigger")
   }
 
+  @Test(
+    "a live-start signal observed during the LAST item's replay still yields — a concurrent wake-up does not immediately reclaim the engine"
+  )
+  func pendingLiveStartYieldsAfterFinalItem() async throws {
+    // GitHub cloud review, PR #1732: the top-of-loop guard only catches a
+    // live-start signal if there is a NEXT item to check it before. A signal
+    // arriving during the LAST item's replay had no such checkpoint, so if an
+    // UNRELATED wake-up cause also fires during that same window (setting
+    // `pendingRescan`, coalesced since a scan is already in progress),
+    // `drainPendingRescan()` would immediately run another pass — whose own
+    // per-pass reset clears the signal and reclaims the engine right after
+    // refusing the user's press, before their retry gets a chance.
+    let h = Self.makeHarness()
+    let first = "first-\(UUID().uuidString)"
+    let second = "second-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, first)
+    try Self.writeSpool(h.spoolStore, second)
+    // `second` is RETAINED (not deleted) so it would still be on disk for an
+    // improper immediate re-pass to (incorrectly) rediscover and re-attempt.
+    h.replayer.outcomeByID[second] = .failed(.save(.other))
+    h.replayer.onReplay = { [coordinator = h.coordinator] id in
+      if id == second {
+        coordinator.pendingLiveStartSignal = true
+        // Simulate an unrelated wake-up cause firing in the same window.
+        coordinator.requestRecoveryRecheck()
+      }
+    }
+    await h.coordinator.scanAndRecover()
+    #expect(
+      h.replayer.replayedIDs == [first, second],
+      "each real orphan attempted exactly once — no improper immediate re-pass")
+    #expect(!h.coordinator.isRecovering, "the gate is clear after yielding")
+    #expect(
+      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: second).path),
+      "the retained second orphan stays on disk for the next real trigger")
+  }
+
   @Test("pendingLiveStartSignal is cleared entering the next fresh scan pass")
   func pendingLiveStartClearedOnNextPass() async throws {
     let h = Self.makeHarness()

@@ -562,6 +562,18 @@ final class RecoveryCoordinator {
       // launch/rescan. Every other outcome continues to the next orphan.
       if outcome == .aborted { break }
     }
+    // GitHub cloud review, PR #1732: a live-start signal that arrived during
+    // the LAST item's replay (or the discard `break` above) has no further
+    // loop iteration left to catch it at the top-of-loop guard — check once
+    // more here. Confirmed by reproduction (not just reasoning): without this
+    // check, a `pendingRescan` that ALSO gets set during that same window (an
+    // unrelated wake-up cause, coalesced since a scan is already in progress)
+    // makes `drainPendingRescan()` immediately run another pass; if the
+    // retained item's own rediscovery keeps re-triggering the same wake-up
+    // cause, this is not just a stranded signal but a genuine infinite loop
+    // (reproduced via `pendingLiveStartYieldsAfterFinalItem`, which hangs
+    // without this line).
+    if pendingLiveStartSignal { return true }
     return false
   }
 

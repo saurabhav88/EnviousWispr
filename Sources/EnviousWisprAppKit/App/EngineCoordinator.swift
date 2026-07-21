@@ -266,6 +266,13 @@ final class EngineCoordinator {
       }
       clearEpoch()
       publishStatus()
+      // GitHub cloud review, PR #1732: a recovery pass that deferred because
+      // `isEngineSwitching()` was true can reach a genuinely converged engine
+      // through a `reason` this function doesn't otherwise wake recovery for
+      // (e.g. `.settingsChanged` looping back here after a superseded switch
+      // re-settled to the id it started from) — without this, such a pass
+      // stays stranded until an unrelated wake-up or the next launch.
+      onEngineStateChangedForRecovery?()
       return
     }
 
@@ -323,6 +330,14 @@ final class EngineCoordinator {
       TelemetryService.shared.engineSwitchSuperseded(from: want.rawValue, to: wantNow.rawValue)
       currentSwitchPhase = .idle
       publishStatus()
+      // GitHub cloud review, PR #1732: `isSwitching` just cleared (line 325)
+      // — a recovery pass that deferred behind THIS switch may now be able to
+      // proceed even though this particular switch was superseded rather than
+      // cleanly completed. The queued `.settingsChanged` poke below re-drives
+      // the engine toward the new target but is not itself a recovery-wake
+      // reason (line ~254), so without this call a pass deferred here has no
+      // guaranteed wake-up.
+      onEngineStateChangedForRecovery?()
       poke(.settingsChanged)  // loop to the latest target
       return
     }
