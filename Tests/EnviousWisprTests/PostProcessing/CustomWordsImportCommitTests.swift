@@ -504,6 +504,37 @@ struct CustomWordsImportCommitTests {
     #expect(receipt.droppedAliasCollisions.count == 1)
   }
 
+  @Test(
+    "a key held by both an existing alias and an existing canonical names the alias owner on commit"
+  )
+  func keyHeldByBothAnExistingAliasAndCanonicalReportsTheAliasOwnerOnCommit() throws {
+    // #1672's originally-requested proof, mirroring the existing preview-side
+    // test `CustomWordsImportCompareEngineTests.keyHeldByBothAnExistingAliasAndCanonicalReportsTheAliasOwner`.
+    // The corrector builds every alias into the lookup FIRST, then skips any
+    // canonical whose key an alias already owns — so when both kinds of owner
+    // exist, the alias owner is the real holder. Before #1672, the commit path
+    // and the preview screen answered this differently.
+    let (manager, _) = makeManager()
+    var live = try seed(
+      manager,
+      [
+        CustomWord(canonical: "Annie"),
+        CustomWord(canonical: "Anika", aliases: ["annie"]),
+      ])
+    let aliasHolder = try #require(live.first { $0.canonical == "Anika" })
+
+    let receipt = try manager.commitImport(
+      plan(baseline: live, additions: [candidate("Zed", aliases: .supplied(["Annie"]))]),
+      to: &live)
+
+    #expect(
+      receipt.droppedAliasCollisions == [
+        CustomWordsImportAliasCollision(alias: "Annie", heldBy: aliasHolder.id)
+      ])
+    #expect(try #require(live.first { $0.canonical == "Zed" }).aliases.isEmpty)
+    #expect(try #require(live.first { $0.canonical == "Anika" }).aliases == ["annie"])
+  }
+
   @Test("an alias equal to its own canonical is removed silently, not reported")
   func aliasEqualToItsOwnCanonicalIsSilentlyRemovedNotReportedAsADrop() throws {
     let (manager, _) = makeManager()

@@ -224,4 +224,92 @@ struct ExactTriggerIndexTests {
       WordCorrector.ExactTriggerNamespace.multi.passPriority
         < WordCorrector.ExactTriggerNamespace.single.passPriority)
   }
+
+  // MARK: - resolveAliasOwnership (#1672)
+  //
+  // The shared decision both `CustomWordsImportCompareEngine` and
+  // `CustomWordsManager` call instead of each hand-rolling their own blocker
+  // detection and decisive-owner selection.
+
+  @Test("resolveAliasOwnership returns blocked when a single alias-holder intercepts")
+  func resolveAliasOwnershipBlockedBySingleHolder() {
+    let owner = CustomWord(canonical: "Anika", aliases: ["annie"])
+    let index = WordCorrector.buildExactTriggerIndex(words: [owner])
+    let ownerID = try! #require(index.single["annie"]?.wordID)
+
+    let resolution = index.resolveAliasOwnership(for: "Annie", excludingOwnerID: UUID())
+    #expect(resolution == .blocked(by: .init(wordID: ownerID, canonical: "Anika", isPack: false)))
+  }
+
+  @Test("resolveAliasOwnership returns available when nobody holds the key")
+  func resolveAliasOwnershipAvailableWhenUnclaimed() {
+    let index = WordCorrector.buildExactTriggerIndex(words: [CustomWord(canonical: "Anika")])
+    let resolution = index.resolveAliasOwnership(for: "Zed", excludingOwnerID: UUID())
+    guard case .available(let claims) = resolution else {
+      Issue.record("expected .available, got \(resolution)")
+      return
+    }
+    #expect(!claims.isEmpty)
+  }
+
+  @Test("resolveAliasOwnership excludes the given owner id from counting as a blocker")
+  func resolveAliasOwnershipExcludesOwnOwner() {
+    let owner = CustomWord(canonical: "Anika", aliases: ["annie"])
+    let index = WordCorrector.buildExactTriggerIndex(words: [owner])
+    let ownerID = try! #require(index.single["annie"]?.wordID)
+
+    let resolution = index.resolveAliasOwnership(for: "Annie", excludingOwnerID: ownerID)
+    guard case .available = resolution else {
+      Issue.record("expected .available when excluding the key's own holder, got \(resolution)")
+      return
+    }
+  }
+
+  @Test("resolveAliasOwnership returns noClaims for an empty alias")
+  func resolveAliasOwnershipNoClaimsForEmptyAlias() {
+    // `exactClaims(forAlias:)` lowercases but does NOT trim whitespace — a
+    // whitespace-only alias like "   " is NOT empty after lowercasing and
+    // yields a real `.multi` claim, not `.noClaims`. Only the literal empty
+    // string produces zero claims.
+    let index = WordCorrector.ExactTriggerIndex()
+    #expect(index.resolveAliasOwnership(for: "", excludingOwnerID: UUID()) == .noClaims)
+  }
+
+  @Test("resolveAliasOwnership names the earliest-intercepting namespace's owner")
+  func resolveAliasOwnershipPrefersEarliestNamespace() {
+    // "New York" claims both the .multi surface ("new york") and the .nospace
+    // surface ("newyork"). Register two DIFFERENT owners on those two keys, so
+    // whichever one the resolution names proves which namespace actually wins.
+    let multiOwner = WordCorrector.TriggerOwner(
+      wordID: UUID(), canonical: "Multi Owner", isPack: false)
+    let nospaceOwner = WordCorrector.TriggerOwner(
+      wordID: UUID(), canonical: "Nospace Owner", isPack: false)
+
+    var index = WordCorrector.ExactTriggerIndex()
+    index.register(.init(key: "new york", namespace: .multi), to: multiOwner)
+    index.register(.init(key: "newyork", namespace: .nospace), to: nospaceOwner)
+
+    let resolution = index.resolveAliasOwnership(for: "New York", excludingOwnerID: UUID())
+    #expect(resolution == .blocked(by: nospaceOwner), "nospace runs Pass 0, before multi's Pass 1")
+  }
+
+  @Test("resolveAliasOwnership skips a non-intercepting holder and finds the real blocker")
+  func resolveAliasOwnershipSkipsNonInterceptingHolder() {
+    // The no-space owner's OWN canonical already spells the surface, so Pass 0
+    // declines to substitute (`ownerIntercepts`) — the real blocker is the
+    // .multi owner, which DOES intercept.
+    let nospaceOwner = WordCorrector.TriggerOwner(
+      wordID: UUID(), canonical: "New York", isPack: false)
+    let multiOwner = WordCorrector.TriggerOwner(
+      wordID: UUID(), canonical: "Other Word", isPack: false)
+
+    var index = WordCorrector.ExactTriggerIndex()
+    index.register(.init(key: "newyork", namespace: .nospace), to: nospaceOwner)
+    index.register(.init(key: "new york", namespace: .multi), to: multiOwner)
+
+    let resolution = index.resolveAliasOwnership(for: "New York", excludingOwnerID: UUID())
+    #expect(
+      resolution == .blocked(by: multiOwner),
+      "the declining no-space holder must not shadow the real, intercepting blocker")
+  }
 }
