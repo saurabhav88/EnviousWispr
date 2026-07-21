@@ -293,7 +293,7 @@ struct ProviderLogoTile: View {
         .frame(width: size * 0.52, height: size * 0.52)
         .foregroundStyle(markTint)
     } else {
-      monogram("")  // Apple glyph unavailable on the macOS-14 floor → letter fallback
+      monogram("A")  // Apple glyph unavailable on the macOS-14 floor → letter fallback
     }
   }
 
