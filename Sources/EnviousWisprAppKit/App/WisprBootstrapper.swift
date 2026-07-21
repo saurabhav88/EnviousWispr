@@ -138,6 +138,15 @@ public final class WisprBootstrapper {
     let asrManager: any ASRManagerInterface =
       useXPCASR ? ASRManagerProxy() : ASRManager()
 
+    // #1707 Phase 3 (§3.2): the atomic mutual-exclusion primitive between
+    // crash-recovery replay and every OTHER engine-mutating operation. One
+    // instance per app session, injected downward as closures into every
+    // guarded call site below — never referenced by concrete type outside
+    // `EnviousWisprAppKit` (the composition root is the only place both
+    // this AppKit-level type and the lower-module call sites are in scope
+    // together).
+    let engineRecoveryGate = EngineRecoveryGate()
+
     let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
 
     let transcriptStore = TranscriptStore()
@@ -594,6 +603,17 @@ public final class WisprBootstrapper {
           customWordsCoordinator.customWords,
           generation: UInt64(customWordsCoordinator.customWords.count) &+ 1)
       })
+    // GitHub cloud review, PR #1732: captured by `isDictationActive` below,
+    // assigned once `engineCoordinator` exists a few lines down. A record
+    // press that has called `beginMinting()` but not yet reached an active
+    // kernel session (still suspended in `preWarm`/the recovery-arm await)
+    // does not make `liveRecordingState.isDictationActive` true — without
+    // this, recovery's per-item scan could reclaim the engine for the next
+    // orphan during exactly that window, and the in-flight press would
+    // abort when its own stale-gate re-check catches up.
+    // `weak`, matching every other cross-reference between these two
+    // coordinators in this file — avoids a retain cycle.
+    weak var engineCoordinatorForRecoveryGate: EngineCoordinator?
     let recoveryCoordinator = RecoveryCoordinator(
       keyStore: recoveryKeyStore,
       makeSpoolStore: makeRecoverySpoolStore,
@@ -602,7 +622,10 @@ public final class WisprBootstrapper {
         let all = (try? await transcriptStore.loadAll()) ?? []
         return Set(all.compactMap(\.recoverySessionID))
       },
-      isDictationActive: { [liveRecordingState] in liveRecordingState.isDictationActive },
+      isDictationActive: { [liveRecordingState] in
+        liveRecordingState.isDictationActive
+          || (engineCoordinatorForRecoveryGate?.isMintingAnySession ?? false)
+      },
       // Discard hard-resets the ACTIVE engine (#445 service-kill) so an in-flight,
       // otherwise-uncancellable recovery load/transcribe aborts and the next
       // recording gets a clean engine. Routed through the active-engine door
@@ -648,7 +671,17 @@ public final class WisprBootstrapper {
         warm: { [kernelDriver, whisperKitKernelDriver] backend in
           await (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver)
             .ensureEngineWarm(reason: .engineSwap)
+        },
+        // #1707 Phase 3 (§3.2, row 4): `startWarm()`'s background convenience
+        // warm must never race recovery on the shared engine.
+        tryBeginEngineMutation: { [engineRecoveryGate] in engineRecoveryGate.tryBeginMutation() },
+        endEngineMutation: { [engineRecoveryGate] in engineRecoveryGate.endMutation() },
+        wakeRecoveryIfOwed: { [weak recoveryCoordinator] in
+          recoveryCoordinator?.requestRecoveryRecheck()
         }))
+    // GitHub cloud review, PR #1732: now that `engineCoordinator` exists,
+    // `isDictationActive` (wired above) can read its minting state.
+    engineCoordinatorForRecoveryGate = engineCoordinator
     // The picker change notifies the coordinator (it reads the live selection).
     settingsSync.onSelectedBackendChanged = { [weak engineCoordinator] in
       engineCoordinator?.poke(.settingsChanged)
@@ -662,6 +695,99 @@ public final class WisprBootstrapper {
     recoveryCoordinator.onRecoveryComplete = { [weak engineCoordinator] in
       engineCoordinator?.poke(.recoveryComplete)
     }
+
+    // #1707 Phase 3 (§3.1/§3.2/§3.4) — the `EngineRecoveryGate` wiring pass.
+    // `RecoveryCoordinator` is the SOLE owner of the recovery claim itself.
+    recoveryCoordinator.tryBeginRecoveryClaim = { [engineRecoveryGate] in
+      engineRecoveryGate.tryBeginRecovery()
+    }
+    recoveryCoordinator.endRecoveryClaim = { [engineRecoveryGate] in
+      engineRecoveryGate.endRecovery()
+    }
+    // §3.4 wake-up table: a completed switch/warm/setup-change may unblock a
+    // recovery pass that previously yielded.
+    engineCoordinator.onEngineStateChangedForRecovery = { [weak recoveryCoordinator] in
+      recoveryCoordinator?.requestRecoveryRecheck()
+    }
+    // Rows 4/12/13/15/16/18 (via `ensureEngineWarm()`'s shared choke point) +
+    // row 6 (propagated onto the WhisperKit adapter by `KernelDictationDriver`'s
+    // own `didSet`, since the adapter's concrete type is not visible here) +
+    // §3.4's "active dictation ended" wake-up cause.
+    for driver in [kernelDriver, whisperKitKernelDriver] {
+      driver.tryBeginEngineMutation = { [engineRecoveryGate] in
+        engineRecoveryGate.tryBeginMutation()
+      }
+      driver.endEngineMutation = { [engineRecoveryGate] in engineRecoveryGate.endMutation() }
+      driver.wakeRecoveryIfOwed = { [weak recoveryCoordinator] in
+        recoveryCoordinator?.requestRecoveryRecheck()
+      }
+      driver.onDictationEndedForRecovery = { [weak recoveryCoordinator] in
+        recoveryCoordinator?.requestRecoveryRecheck()
+      }
+    }
+    // Row 7: Parakeet's idle-unload choke point. Concrete-type downcast — these
+    // closures are not part of `ASRManagerInterface` (only the composition root
+    // needs them, so widening the protocol for every conformer is unwarranted).
+    if let asrManager = asrManager as? ASRManager {
+      asrManager.tryBeginEngineMutation = { [engineRecoveryGate] in
+        engineRecoveryGate.tryBeginMutation()
+      }
+      asrManager.endEngineMutation = { [engineRecoveryGate] in engineRecoveryGate.endMutation() }
+      asrManager.wakeRecoveryIfOwed = { [weak recoveryCoordinator] in
+        recoveryCoordinator?.requestRecoveryRecheck()
+      }
+    }
+    if let asrManagerProxy = asrManager as? ASRManagerProxy {
+      asrManagerProxy.tryBeginEngineMutation = { [engineRecoveryGate] in
+        engineRecoveryGate.tryBeginMutation()
+      }
+      asrManagerProxy.endEngineMutation = { [engineRecoveryGate] in
+        engineRecoveryGate.endMutation()
+      }
+      asrManagerProxy.wakeRecoveryIfOwed = { [weak recoveryCoordinator] in
+        recoveryCoordinator?.requestRecoveryRecheck()
+      }
+    }
+    // Rows 9/10: WhisperKit Settings Remove/Download/Cancel.
+    let whisperKitSetupForGate = whisperKit.setupService
+    whisperKitSetupForGate.tryBeginEngineMutation = { [engineRecoveryGate] in
+      engineRecoveryGate.tryBeginMutation()
+    }
+    whisperKitSetupForGate.endEngineMutation = { [engineRecoveryGate] in
+      engineRecoveryGate.endMutation()
+    }
+    whisperKitSetupForGate.wakeRecoveryIfOwed = { [weak recoveryCoordinator] in
+      recoveryCoordinator?.requestRecoveryRecheck()
+    }
+    // Row 14: the WhisperKit legacy-migration delete+refetch window.
+    whisperKitRetirement?.tryBeginEngineMutation = { [engineRecoveryGate] in
+      engineRecoveryGate.tryBeginMutation()
+    }
+    whisperKitRetirement?.endEngineMutation = { [engineRecoveryGate] in
+      engineRecoveryGate.endMutation()
+    }
+    whisperKitRetirement?.wakeRecoveryIfOwed = { [weak recoveryCoordinator] in
+      recoveryCoordinator?.requestRecoveryRecheck()
+    }
+    // Row 17: Parakeet Settings Download/Cancel.
+    modelDelivery.tryBeginEngineMutation = { [engineRecoveryGate] in
+      engineRecoveryGate.tryBeginMutation()
+    }
+    modelDelivery.endEngineMutation = { [engineRecoveryGate] in engineRecoveryGate.endMutation() }
+    modelDelivery.wakeRecoveryIfOwed = { [weak recoveryCoordinator] in
+      recoveryCoordinator?.requestRecoveryRecheck()
+    }
+    // Rows 23/27: the Diagnostics benchmark suite (DEBUG-only surface).
+    let benchmarkForGate = diagnosticsCoordinator.benchmark
+    benchmarkForGate.tryBeginEngineMutation = { [engineRecoveryGate] in
+      engineRecoveryGate.tryBeginMutation()
+    }
+    benchmarkForGate.endEngineMutation = { [engineRecoveryGate] in engineRecoveryGate.endMutation()
+    }
+    benchmarkForGate.wakeRecoveryIfOwed = { [weak recoveryCoordinator] in
+      recoveryCoordinator?.requestRecoveryRecheck()
+    }
+
     let lastRecordingResult = LastRecordingResult()
     let backendMetadata = BackendMetadata(
       settings: settings,

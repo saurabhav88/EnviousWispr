@@ -123,10 +123,21 @@ import Testing
     // instead. No new collaborator: both driver properties are already-owned
     // collaborators (collaboratorCount stays ≤ 11); no new method (nonPrivateMethodCount
     // unchanged). Deterministic rule: actual 446 + 10 → round up to nearest 5 = 460.
+    // #1732 (GitHub cloud review round 6): 460 → 500. Both `handleParakeet`/
+    // `handleWhisperKit` gained a 6-line block reading `kernelDriver`/
+    // `whisperKitKernelDriver.lastHistorySaved` + `.currentTranscript?
+    // .recoverySessionID` and calling the new `onDurableSaveFailed` closure on
+    // a `.complete`-with-failed-save transition — protects a spool this same
+    // transition's own recovery wake-up would otherwise immediately rescan.
+    // No new collaborator (both driver properties already owned); one new
+    // off-cap `var` closure (`onDurableSaveFailed`, same pattern as
+    // `onDurableSave`/`onRecordingEndedWithoutDurableSave`, already excluded
+    // from `nonPrivateMethodCount`). Deterministic rule: actual 488 + 10 →
+    // round up to nearest 5 = 500.
     #expect(
-      count <= 460,
+      count <= 500,
       """
-      DictationLifecycleCoordinator line count exceeded: \(count) > 460. \
+      DictationLifecycleCoordinator line count exceeded: \(count) > 500. \
       Raise via Bible §30 only.
       """)
   }

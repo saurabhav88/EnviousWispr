@@ -45,6 +45,21 @@ public final class ModelDeliveryHome {
   /// model whose baseline was never recorded is treated as not-first-run).
   private var firstRunByIdentity: [ModelIdentity: Bool] = [:]
 
+  /// #1707 Phase 3 (§3.2, row 17) — `EngineRecoveryGate.tryBeginMutation()`/
+  /// `endMutation()`, injected by the composition root (this type never
+  /// references `EngineRecoveryGate` by concrete type). Guards Parakeet's
+  /// Settings Download/Cancel — a separate guarded site from `ensureEngineWarm()`,
+  /// since Parakeet delivery admission does not always route through it.
+  /// Defaults keep every existing test/legacy construction unchanged (always
+  /// able to proceed).
+  var tryBeginEngineMutation: @MainActor () -> Bool = { true }
+  /// Returns whether recovery was denied while this mutation was in flight
+  /// and is now owed a wake-up.
+  var endEngineMutation: @MainActor () -> Bool = { false }
+  /// Called when `endEngineMutation()` returns true — wakes a stranded
+  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
+  var wakeRecoveryIfOwed: @MainActor () -> Void = {}
+
   public init() {
     do {
       let manifest = try DeliveryManifest.loadBundled(resource: "parakeet-delivery-manifest")
@@ -153,14 +168,36 @@ public final class ModelDeliveryHome {
   /// the controller's cancel resolves only after the drain).
   public func cancelParakeetDownload() {
     guard let identity = parakeetIdentity else { return }
-    Task { _ = await controller.cancel(identity) }
+    Task { [weak self] in
+      // #1707 Phase 3 (§3.2, row 17): hold a mutation claim for the FULL
+      // cancel-drain.
+      guard let self, self.tryBeginEngineMutation() else {
+        TelemetryService.shared.recoveryEngineActionDeferred(site: "parakeetCancelDownload")
+        return
+      }
+      defer {
+        if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
+      }
+      _ = await self.controller.cancel(identity)
+    }
   }
 
   /// Settings-row Resume / Try Again: re-enters the single door (resume-aware
   /// by construction — staged partials survive a cancel).
   public func resumeParakeetDownload() {
     guard let handle = parakeetHandle else { return }
-    Task { _ = await handle.ensureAvailable() }
+    Task { [weak self] in
+      // #1707 Phase 3 (§3.2, row 17): hold a mutation claim for the FULL
+      // download.
+      guard let self, self.tryBeginEngineMutation() else {
+        TelemetryService.shared.recoveryEngineActionDeferred(site: "parakeetResumeDownload")
+        return
+      }
+      defer {
+        if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
+      }
+      _ = await handle.ensureAvailable()
+    }
   }
 }
 

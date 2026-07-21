@@ -66,6 +66,10 @@ public enum RecoveryTelemetryReason: String, Sendable {
   case markerWriteFailed = "marker_write_failed"
   case markerClearFailed = "marker_clear_failed"
   case crashLoop = "crash_loop"
+  /// #1707 Phase 3 — a Keychain read returned a transient OSStatus (device
+  /// locked / keychain daemon not yet unlocked); the spool is retained and
+  /// retried, not deleted. Bypass, not Failure.
+  case keychainTransient = "keychain_transient"
 }
 
 /// #1464 — the narrow failure CLASS behind a transcription-stage recovery failure,
@@ -1028,6 +1032,34 @@ public final class TelemetryService {
   public func recoveryPressBlocked(asrBackend: String) {
     PostHogSDK.shared.capture(
       "recovery.press_blocked", properties: ["asr_backend": asrBackend])
+  }
+
+  /// #1707 Phase 3 — pairs with `recoveryPressBlocked`: a press that was
+  /// previously blocked went on to mint an active session. `waitSeconds` is
+  /// the measured gap between the block and this later successful start,
+  /// bucketed the same as every other recovery duration. Lets production
+  /// telemetry measure whether the bounded-wait fix actually shrank real wait
+  /// times, not just whether presses get blocked at all.
+  public func recoveryPressUnblocked(asrBackend: String, waitSeconds: Int) {
+    PostHogSDK.shared.capture(
+      "recovery.press_unblocked",
+      properties: [
+        "asr_backend": asrBackend,
+        "wait_seconds_bucket": Self.recoverySecondsBucket(waitSeconds),
+      ])
+  }
+
+  /// #1707 Phase 3 — an engine-mutating call site deferred its own mutation
+  /// because `EngineRecoveryGate.tryBeginMutation()` returned `false` (recovery
+  /// held the engine). Observability only, no behavior change: today these
+  /// deferrals emit nothing, so a future regression reopening one of these
+  /// races has no telemetry signal to catch it by. One shared event with a
+  /// `site` property (e.g. `"startWarm"` / `"whisperKitUnload"` /
+  /// `"parakeetUnload"` / `"pttPrewarm"` / `"benchmarkSuite"`), not five
+  /// separate events.
+  public func recoveryEngineActionDeferred(site: String) {
+    PostHogSDK.shared.capture(
+      "recovery.engine_action_deferred", properties: ["site": site])
   }
 
   /// Coarse duration bucket (seconds) for recovery telemetry — keeps exact

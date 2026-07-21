@@ -115,6 +115,9 @@ let package = Package(
         "EnviousWisprCore",
         "EnviousWisprAudio",
         "EnviousWisprFluidAudioBridge",
+        // #1707 Phase 3: TelemetryService (recoveryEngineActionDeferred) for
+        // the EngineRecoveryGate mutation-claim guards on the idle-unload path.
+        "EnviousWisprServices",
         .product(name: "WhisperKit", package: "argmax-oss-swift"),
         "FluidAudio",
       ],

@@ -133,10 +133,33 @@ import Testing
     // #1386 PR-2c: 550 → 565 for the founder's removal gate — the honest
     // not-installed pill on BOTH press paths before any readiness logic (a
     // removal's first instants can still read ready). Actual 560 + ~2 → 565.
+    // #1707 Phase 3 (crash-safety-net readiness gating): 565 → 615 for the
+    // `signalPendingLiveStart` bare closure (also excluded — a non-`async`
+    // `() -> Void` closure is not a collaborator, collaboratorCount still
+    // ≤ 7) at all four existing recovery-refusal sites, plus the blocked-
+    // press timestamp state and the `handleRecoveryPressRefused`/
+    // `consumePendingBlockedPressIfAny` private helpers feeding the new
+    // `recovery.press_unblocked` telemetry. The recovery owner stays OFF
+    // this type; only the paper-line ceiling moves (deterministic rule:
+    // actual 603 + 10 → round up to nearest 5 = 615).
+    // #1732 (GitHub cloud review fix, round 1): 615 → 630 — doc-comment
+    // additions only, explaining why `pendingBlockedPressInfo` is
+    // deliberately NOT overwritten by a later refusal within the same
+    // blocked episode. No new collaborator, method, or stored property; only
+    // the paper-line ceiling moves (deterministic rule: actual 617 + 10 →
+    // round up to nearest 5 = 630).
+    // #1732 (GitHub cloud review fix, round 2): 630 → 645 — moved
+    // `consumePendingBlockedPressIfAny()` in BOTH `start()` and `toggle()` to
+    // fire only after a real session is confirmed active (not before
+    // `handle(event:)`, which could throw or silently not activate), each
+    // with an explanatory comment. No new collaborator or stored property;
+    // `toggle()`'s new `active.state.isActive` read is a property access, not
+    // a method. Only the paper-line ceiling moves (deterministic rule: actual
+    // 631 + 10 → round up to nearest 5 = 645).
     #expect(
-      count <= 565,
+      count <= 645,
       """
-      RecordingStarter line count exceeded: \(count) > 565. \
+      RecordingStarter line count exceeded: \(count) > 645. \
       Raise via Bible §30 only.
       """)
   }

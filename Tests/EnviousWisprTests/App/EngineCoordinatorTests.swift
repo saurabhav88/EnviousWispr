@@ -126,6 +126,51 @@ struct EngineCoordinatorTests {
     #expect(applied, "the deferred switch must apply once recovery completes")
   }
 
+  @Test(
+    "a deferred switch applying on recovery-complete still wakes recovery (round-2 fix, PR #1732)"
+  )
+  func deferredSwitchAppliedOnRecoveryCompleteWakesRecovery() async {
+    let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
+    fake.recovering = true
+    let c = fake.makeStartedCoordinator()
+    var wakeCount = 0
+    c.onEngineStateChangedForRecovery = { wakeCount += 1 }
+    fake.selected = .whisperKit
+    c.poke(.settingsChanged)
+    _ = await enginePoll(.milliseconds(150)) { fake.active == .whisperKit }
+    fake.recovering = false
+    c.poke(.recoveryComplete)
+    let applied = await enginePoll { fake.active == .whisperKit }
+    #expect(applied, "the deferred switch must still apply once recovery completes")
+    // >=1, not an exact count: the switch-completion path (pre-existing,
+    // unconditional) AND the subsequent warm-completion path (pre-existing,
+    // `.warmCompleted`-gated) both legitimately fire here — this test's point
+    // is that the ROUND-2 gating change (only wake on a genuine
+    // switching->idle transition) does not accidentally suppress the real
+    // wake this scenario depends on, not to pin an incidental trigger count.
+    #expect(wakeCount >= 1, "a genuine switching->idle transition must wake recovery")
+  }
+
+  @Test(
+    "an already-converged recovery-complete poke never wakes recovery — GitHub cloud review round 1's fix, self-caught before shipping, was a closed loop for any RETAINED recovery outcome (PR #1732)"
+  )
+  func alreadyConvergedRecoveryCompletePokeNeverWakesRecovery() async {
+    let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
+    let c = fake.makeStartedCoordinator()
+    var wakeCount = 0
+    c.onEngineStateChangedForRecovery = { wakeCount += 1 }
+    // Mirrors `RecoveryCoordinator.onRecoveryComplete` firing after EVERY
+    // replayed item, retained or not — repeated to prove this never becomes
+    // a self-perpetuating loop when nothing was ever switching.
+    for _ in 0..<5 {
+      c.poke(.recoveryComplete)
+      _ = await enginePoll(.milliseconds(50)) { false }  // let the mailbox drain
+    }
+    #expect(
+      wakeCount == 0,
+      "an ordinary already-converged poke must never wake recovery — no switch ever deferred")
+  }
+
   @Test("not-installed selection never loads, applies once the model downloads")
   func notInstalledDefersUntilDownloaded() async {
     let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
@@ -183,6 +228,23 @@ struct EngineCoordinatorTests {
     c.endMinting()
     let applied = await enginePoll { fake.active == .whisperKit }
     #expect(applied, "the deferred switch applies once minting ends")
+  }
+
+  @Test(
+    "isMintingAnySession tracks beginMinting/endMinting for BOTH backends (GitHub cloud review, PR #1732)"
+  )
+  func isMintingAnySessionTracksBothBackends() async {
+    // `isMintingWhisperKitSession` is scoped to WhisperKit; `RecoveryCoordinator`'s
+    // isDictationActive check needs a backend-agnostic signal so a record-press
+    // still mid-start (beginMinting called, not yet an active kernel session)
+    // is never mistaken for "engine free" regardless of which backend it targets.
+    let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
+    let c = fake.makeStartedCoordinator()
+    #expect(!c.isMintingAnySession, "not minting before any press")
+    c.beginMinting()
+    #expect(c.isMintingAnySession, "true while a record-start is minting (Parakeet active)")
+    c.endMinting()
+    #expect(!c.isMintingAnySession, "false again once minting ends")
   }
 
   // MARK: - Failure model

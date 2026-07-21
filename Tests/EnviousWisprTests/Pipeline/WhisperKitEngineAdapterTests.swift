@@ -103,6 +103,40 @@ import Testing
     #expect(unloadCount == 1)
   }
 
+  @Test(
+    "applyUnloadPolicy(.immediately): a cancellation landing exactly during the mutation-claim hop must NOT let the unload proceed (GitHub cloud review, PR #1732 round 10)"
+  )
+  func unloadCancelledDuringClaimHopNeverUnloads() async throws {
+    // The mutation-claim acquisition is ITSELF a suspension point between the
+    // pre-existing final-cancellation check and `backend.unload()` — a
+    // `beginSession(B)` landing exactly there cancels this task the same way
+    // that earlier check exists to catch, but nothing re-checked it before
+    // the unload call. Modeled by having `tryBeginEngineMutation` itself
+    // cancel the running unload task (standing in for `beginSession`
+    // cancelling it), then asserting the unload never executes and the
+    // just-acquired claim is still released, not leaked.
+    let backend = StubWhisperKitBackend()
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    try await adapter.warmUp()
+    #expect(adapter.readiness == .ready)
+    var mutationEndedCount = 0
+    adapter.tryBeginEngineMutation = { [weak adapter] in
+      adapter?.modelUnloadTaskForUnitTests?.cancel()
+      return true
+    }
+    adapter.endEngineMutation = {
+      mutationEndedCount += 1
+      return false
+    }
+    adapter.applyUnloadPolicy(.immediately)
+    await adapter.modelUnloadTaskForUnitTests?.value
+    let unloadCount = await backend.unloadCount
+    #expect(
+      unloadCount == 0, "a cancellation during the claim hop must prevent the unload from executing"
+    )
+    #expect(mutationEndedCount == 1, "the just-acquired claim must still be released, not leaked")
+  }
+
   @Test("readiness goes notReady when warmUp throws (failed prepare)")
   func cachedReadinessAfterFailedPrepare() async {
     let backend = StubWhisperKitBackend()

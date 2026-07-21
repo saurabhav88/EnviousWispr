@@ -1,3 +1,4 @@
+import EnviousWisprServices
 import Foundation
 
 /// States in the WhisperKit model setup flow.
@@ -62,6 +63,21 @@ public final class WhisperKitSetupService {
   /// 2c: the explicit Remove action. nil notice = removed; a notice = refused
   /// or failed, rendered inline.
   private let removeModelAction: @MainActor () async -> WhisperKitRemoveNotice?
+
+  /// #1707 Phase 3 (§3.2, rows 9/10) — `EngineRecoveryGate.tryBeginMutation()`/
+  /// `endMutation()`, injected by the composition root exactly like the
+  /// action closures above (this type never references `EngineRecoveryGate`
+  /// by concrete type). Guards Download/Cancel/Remove's engine-touching
+  /// work — none of these route through `ensureEngineWarm()`. Defaults keep
+  /// every existing test/legacy construction unchanged (always able to
+  /// proceed).
+  public var tryBeginEngineMutation: @MainActor () -> Bool = { true }
+  /// Returns whether recovery was denied while this mutation was in flight
+  /// and is now owed a wake-up.
+  public var endEngineMutation: @MainActor () -> Bool = { false }
+  /// Called when `endEngineMutation()` returns true — wakes a stranded
+  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
+  public var wakeRecoveryIfOwed: @MainActor () -> Void = {}
 
   /// The default wiring reports "not downloaded" and does nothing: a build with
   /// no delivery wiring must offer no fetch at all rather than quietly resurrect
@@ -136,6 +152,17 @@ public final class WhisperKitSetupService {
         await self?.forceDetectState()
         return
       }
+      // #1707 Phase 3 (§3.2, row 9): hold a mutation claim for the FULL
+      // download — a Settings-initiated fetch must never race crash
+      // recovery on the shared engine.
+      guard self.tryBeginEngineMutation() else {
+        TelemetryService.shared.recoveryEngineActionDeferred(site: "whisperKitDownload")
+        await self.forceDetectState()
+        return
+      }
+      defer {
+        if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
+      }
       if await startDownload() == false {
         await self.forceDetectState()
       }
@@ -150,7 +177,18 @@ public final class WhisperKitSetupService {
     // Invalidate any download intent whose task has not run yet — cancelling
     // downstream cannot reach a request that has not been made.
     downloadIntentEpoch += 1
-    Task { [cancelActiveDownload] in
+    Task { [cancelActiveDownload, weak self] in
+      // #1707 Phase 3 (§3.2, row 10): hold a mutation claim for the FULL
+      // cancel-drain — same reasoning as Download above. A denied claim
+      // (recovery holds the engine) skips this attempt; the fetch keeps
+      // running and the user can press Cancel again.
+      guard let self, self.tryBeginEngineMutation() else {
+        TelemetryService.shared.recoveryEngineActionDeferred(site: "whisperKitCancelDownload")
+        return
+      }
+      defer {
+        if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
+      }
       // No re-detect on an accepted cancel: the delivery-state projection
       // publishes the terminal (paused/cancelled) state, and detection would
       // wipe it back to not-downloaded (Codex 2c-r7 P2). A REFUSED cancel
@@ -198,8 +236,18 @@ public final class WhisperKitSetupService {
     guard !isRemoving else { return }
     isRemoving = true
     Task { [removeModelAction, weak self] in
+      // #1707 Phase 3 (§3.2, row 10): hold a mutation claim for the FULL
+      // removal drain — same reasoning as Download/Cancel above.
+      guard let self, self.tryBeginEngineMutation() else {
+        TelemetryService.shared.recoveryEngineActionDeferred(site: "whisperKitRemove")
+        self?.isRemoving = false
+        self?.removeNotice = .failed
+        return
+      }
+      defer {
+        if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
+      }
       let notice = await removeModelAction()
-      guard let self else { return }
       self.isRemoving = false
       self.removeNotice = notice
       if notice == nil {

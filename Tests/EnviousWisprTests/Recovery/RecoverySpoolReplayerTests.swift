@@ -3,6 +3,7 @@ import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import Foundation
+import Security
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -246,6 +247,93 @@ struct RecoverySpoolReplayerTests {
     #expect(h.transcriptCoordinator.transcripts.isEmpty)
     #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
   }
+
+  // MARK: - #1707 Phase 3 §3.3: Keychain transient-vs-terminal
+
+  #if DEBUG
+    @Test(
+      "a transient Keychain read status defers WITHOUT treating it as unrecoverable — spool retained, marker cleared"
+    )
+    func transientKeyReadDefers() async throws {
+      let h = Self.makeHarness()
+      let id = "transient-\(UUID().uuidString)"
+      try await Self.seedSpool(h, id: id, samples: [0.6])
+      DebugRecoveryKeyFaultController.shared.arm(
+        status: errSecInteractionNotAllowed, forSessionID: id)
+      let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+      #expect(outcome == .deferred)
+      #expect(h.asr.transcribeCallCount == 0, "never reaches transcribe on a deferred key read")
+      #expect(h.transcriptCoordinator.transcripts.isEmpty)
+      // Bypass, not failure: the spool + key are retained for a retry, and the
+      // marker is cleared so a later attempt does not misread this as a
+      // crashed attempt (the exact regression this fix prevents).
+      #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+      #expect(
+        (try? h.keyStore.retrieve(for: id)) != nil, "the ARMED fault is one-shot and consumed")
+      #expect(!h.spoolStore.hasAttemptMarker(for: id), "marker cleared so a retry does not abandon")
+    }
+
+    @Test(
+      "a SECOND replay after a transient-deferred first attempt does NOT see a surviving marker (the exact regression this fix prevents)"
+    )
+    func secondReplayAfterTransientDeferralDoesNotAbandon() async throws {
+      let h = Self.makeHarness()
+      let id = "transient-retry-\(UUID().uuidString)"
+      try await Self.seedSpool(h, id: id, samples: [0.6])
+      DebugRecoveryKeyFaultController.shared.arm(
+        status: errSecInteractionNotAllowed, forSessionID: id)
+      let first = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+      #expect(first == .deferred)
+      // No fault armed this time — the retry reads the REAL stored key.
+      let second = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+      #expect(
+        second == .recovered, "a clean retry succeeds — the marker never survived to abandon it")
+    }
+
+    @Test(
+      "errSecAuthFailed / errSecUserCanceled stay terminal — not treated as transient (§3.3's explicit exclusion)",
+      arguments: [errSecAuthFailed, errSecUserCanceled]
+    )
+    func excludedStatusesStayTerminal(status: OSStatus) async throws {
+      let h = Self.makeHarness()
+      let id = "terminal-\(UUID().uuidString)"
+      try await Self.seedSpool(h, id: id, samples: [0.6])
+      DebugRecoveryKeyFaultController.shared.arm(status: status, forSessionID: id)
+      let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+      #expect(
+        outcome == .failed(.unrecoverable),
+        "excluded statuses fall through to the existing terminal path")
+      #expect(h.asr.transcribeCallCount == 0)
+    }
+
+    @Test(
+      "a Keychain-transient marker-clear FAILURE returns .deferredMarkerClearFailed, distinct from plain .deferred"
+    )
+    func transientKeyReadWithMarkerClearFailure() async throws {
+      let h = Self.makeHarness()
+      let id = "transient-markerfail-\(UUID().uuidString)"
+      try await Self.seedSpool(h, id: id, samples: [0.3])
+      defer { _ = chmod(h.spoolDir.path, 0o700) }  // restore so temp cleanup/GC can proceed
+      DebugRecoveryKeyFaultController.shared.arm(
+        status: errSecInteractionNotAllowed, forSessionID: id)
+      // Deterministic ordering via a real signal, not a poll (GitHub cloud
+      // review, PR #1732): a poll on `hasAttemptMarker` raced the replayer's
+      // own detached Keychain-read task and could miss the narrow true→false
+      // window entirely (empirically ~2/3 runs, not a rare edge case).
+      // `onAttemptMarkerWritten` fires SYNCHRONOUSLY on the replayer's own
+      // MainActor turn, right after the marker write and before the
+      // `Task.detached` retrieve is even created — revoking write access from
+      // inside it is guaranteed to land before any clear attempt, no race
+      // window to catch.
+      h.replayer.onAttemptMarkerWritten = { [spoolDir = h.spoolDir] in
+        _ = chmod(spoolDir.path, 0o500)
+      }
+      let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+      #expect(outcome == .deferredMarkerClearFailed)
+      #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+      #expect((try? h.keyStore.retrieve(for: id)) != nil)
+    }
+  #endif
 
   @Test("Discard during transcribe drops the result — nothing saved (generation guard, R2)")
   func discardDuringTranscribeDropsResult() async throws {

@@ -5,6 +5,7 @@ import EnviousWisprPipeline
 import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
+import Security
 
 /// The terminal outcome of one orphan's recovery attempt (#1063 PR2). The
 /// `discarded` outcome is owned by `RecoveryCoordinator` (it deletes + emits on
@@ -24,6 +25,13 @@ enum RecoveryReplayOutcome: Equatable {
   /// The attempt marker could not be written, so recovery was deferred WITHOUT
   /// risking an un-guarded attempt — the spool stays for a future launch.
   case deferred
+  /// #1707 Phase 3 (§3.3): a Keychain read failed with a TRANSIENT status
+  /// (device locked / keychain daemon not yet unlocked) and the attempt
+  /// marker's clear ALSO failed — distinct from bare `.deferred` because the
+  /// surviving marker means only a genuine NEW launch (never a same-launch
+  /// rescan) may safely re-check this spool; `RecoveryCoordinator` routes
+  /// this into `nextLaunchOnlyRecoveryIDs`.
+  case deferredMarkerClearFailed
 }
 
 /// Why a replay `.failed`, carried to `RecoveryCoordinator` so it can apply the
@@ -91,6 +99,15 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   private let currentVocabulary:
     @MainActor () -> (corrector: CorrectorVocabulary, polish: PolishVocabulary)
 
+  /// Test-only observation seam (GitHub cloud review, PR #1732): fires right
+  /// after the attempt marker write succeeds, before the Keychain retrieve
+  /// begins. Nil in production — exists so a test can deterministically
+  /// revoke spool-directory write access between the marker WRITE and its
+  /// later CLEAR (simulating a marker-clear failure) instead of polling
+  /// `hasAttemptMarker`, which can miss the narrow true→false window
+  /// entirely if the detached Keychain-read task races ahead of the poll.
+  var onAttemptMarkerWritten: (() -> Void)?
+
   init(
     activeEngine: ActiveEngineOperation,
     keyStore: RecoveryKeyStore,
@@ -152,6 +169,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       TelemetryService.shared.recoveryCompleted(outcome: "deferred", reason: .markerWriteFailed)
       return .deferred
     }
+    onAttemptMarkerWritten?()
 
     // Retrieve the per-session key off the MainActor (`keychain-not-mainactor`).
     // #1464: split a MISSING key (`key_missing`) from a store READ failure
@@ -166,6 +184,16 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     case .success(let data):
       keyData = data
     case .failure(let error):
+      // #1707 Phase 3 (§3.3, #1360): a TRANSIENT Keychain status (device
+      // locked / keychain daemon not yet unlocked) is a genuinely different
+      // condition from a permanent read failure — defer this attempt rather
+      // than treating it as unrecoverable and deleting a recoverable spool.
+      if let keyStoreError = error as? RecoveryKeyStoreError,
+        case .retrieveFailed(let status) = keyStoreError,
+        Self.isTransientKeychainStatus(status)
+      {
+        return deferForTransientKeychainFailure(spoolStore: spoolStore, id: id)
+      }
       let reason: RecoveryTelemetryReason =
         (error as? RecoveryKeyStoreError) == .notFound ? .keyMissing : .keyReadFailed
       return failUnrecoverable(reason: reason, category: .recoveryDecryptFailed)
@@ -345,6 +373,48 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       campBCandidate: reconstructedSampleCount != nil ? true : nil,
       spoolSeconds: spoolSeconds)
     return .failed(.unrecoverable)
+  }
+
+  /// #1707 Phase 3 (§3.3): a Keychain read failed with a status expected to
+  /// clear on its own — defer this attempt WITHOUT treating it as
+  /// unrecoverable. Clears the attempt marker written above (mirrors the
+  /// existing `.save`/`.saveMarkerClearFailed` retention path, RULE:
+  /// port-proven-patterns-wholesale) so a same-launch or next-launch retry
+  /// sees a clean spool, not a crashed one. If the clear itself throws, the
+  /// marker survives and `RecoveryCoordinator` must treat this id as
+  /// next-launch-only — a same-launch rescan would otherwise misread the
+  /// surviving marker as a crashed attempt and abandon (delete) it.
+  private func deferForTransientKeychainFailure(
+    spoolStore: RecoverySpoolStore, id: String
+  ) -> RecoveryReplayOutcome {
+    do {
+      try spoolStore.deleteAttemptMarker(for: id)
+      TelemetryService.shared.recoveryCompleted(outcome: "deferred", reason: .keychainTransient)
+      return .deferred
+    } catch {
+      TelemetryService.shared.recoveryCompleted(outcome: "deferred", reason: .markerClearFailed)
+      return .deferredMarkerClearFailed
+    }
+  }
+
+  /// #1707 Phase 3 (§3.3): OSStatus values expected to clear on their own —
+  /// documented Apple meanings, not app-evidenced (the raw status is
+  /// discarded before Sentry/PostHog ever see it, so no production history
+  /// exists to confirm against). A false-transient (retrying a truly-terminal
+  /// code) costs one extra deferred cycle before the next wake-up re-attempts
+  /// and still eventually fails clean; a false-terminal (deleting a
+  /// recoverable spool) costs the recording permanently — the asymmetry
+  /// favors inclusion. `errSecAuthFailed`/`errSecUserCanceled` stay terminal:
+  /// a later retry CAN succeed after user action, but nothing in this flow (a
+  /// background replay, no user present to act) can clear them.
+  private static func isTransientKeychainStatus(_ status: OSStatus) -> Bool {
+    switch status {
+    case errSecInteractionNotAllowed, errSecInteractionRequired, errSecInDarkWake,
+      errSecNotAvailable, errSecServiceNotAvailable, errSecDatabaseLocked:
+      return true
+    default:
+      return false
+    }
   }
 
   /// Map a caught ASR/storage error to the narrow telemetry failure class (#1464).

@@ -4,6 +4,7 @@
   import EnviousWisprAudio
   import EnviousWisprCore
   import EnviousWisprPipeline
+  import EnviousWisprServices
   import Foundation
   import Network
 
@@ -32,7 +33,10 @@
   ///   `query_batch_decode_fault(backend,trialID)`, `query_batch_decode_attempts(backend)`
   ///   (#1707 Phase 2 — the shared-backend overlap Live UAT oracle, §3.2a-i,
   ///   plus the content-free attempt-identity check, Codex r4; all seven
-  ///   route to the ONE `BatchDecodeFaultController`).
+  ///   route to the ONE `BatchDecodeFaultController`); `force_recovery_key_fault(status)`
+  ///   (#1707 Phase 3 — arms the NEXT crash-recovery Keychain read to fail
+  ///   with the given OSStatus, simulating a locked-keychain-state read
+  ///   without a real signed-release Data-Protection-Keychain).
   /// - Each command dispatches to `@MainActor` via `Task { @MainActor in ... }`
   ///   so command handling matches the actor isolation of the seams it drives.
   ///
@@ -328,6 +332,15 @@
           guard let batchDecodeFaultController else { return "ERR no_dependency" }
           let counts = batchDecodeFaultController.attemptSampleCounts(backend: backend)
           return "OK " + counts.map { (n: Int) in String(n) }.joined(separator: ",")
+        }
+        // #1707 Phase 3 (§11.1): arm the NEXT crash-recovery Keychain read to
+        // fail with the given OSStatus (may be negative — every documented
+        // Security-framework status is).
+        if let raw = parseStringArgCommand(cmd, prefix: "force_recovery_key_fault("),
+          let status = Int32(raw)
+        {
+          DebugRecoveryKeyFaultController.shared.arm(status: status)
+          return "OK"
         }
         return "ERR unknown_command"
       }

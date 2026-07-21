@@ -258,6 +258,9 @@ let project = Project(
         .target(name: "EnviousWisprCore"),
         .target(name: "EnviousWisprAudio"),
         .target(name: "EnviousWisprFluidAudioBridge"),
+        // #1707 Phase 3: TelemetryService (recoveryEngineActionDeferred) for
+        // the EngineRecoveryGate mutation-claim guards on the idle-unload path.
+        .target(name: "EnviousWisprServices"),
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
       ]),

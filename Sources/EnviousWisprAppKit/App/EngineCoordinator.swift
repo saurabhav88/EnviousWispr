@@ -73,6 +73,18 @@ final class EngineCoordinator {
     /// Background warm of the given engine (the matching driver's
     /// `ensureEngineWarm`). The ONLY place a load failure surfaces.
     let warm: @MainActor (ASRBackendType) async -> EngineWarmupOutcome
+    /// #1707 Phase 3 (§3.2, row 4) — `EngineRecoveryGate.tryBeginMutation()`,
+    /// injected exactly like `isRecovering` above (this type never references
+    /// `EngineRecoveryGate` by concrete type). Bound by the composition root;
+    /// default keeps every existing test that doesn't wire a gate behaving as
+    /// before (always able to proceed).
+    var tryBeginEngineMutation: @MainActor () -> Bool = { true }
+    /// `EngineRecoveryGate.endMutation()` — returns whether recovery was
+    /// denied while this mutation was in flight and is now owed a wake-up.
+    var endEngineMutation: @MainActor () -> Bool = { false }
+    /// Called when `endEngineMutation()` returns true — wakes a stranded
+    /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
+    var wakeRecoveryIfOwed: @MainActor () -> Void = {}
   }
 
   // MARK: - Published snapshot + gate
@@ -85,6 +97,13 @@ final class EngineCoordinator {
   /// before the `await`, cleared synchronously after). Recovery-start and
   /// record-start read it to mutually exclude with a switch (§3.4).
   private(set) var isSwitching = false
+
+  /// #1707 Phase 3 (§3.4 wake-up table) — fired when a warm completes, a
+  /// setup/migration state change lands, or an engine switch completes: any
+  /// of these may unblock a recovery pass that previously yielded. The
+  /// composition root binds this to
+  /// `RecoveryCoordinator.requestRecoveryRecheck`.
+  var onEngineStateChangedForRecovery: (() -> Void)?
 
   // MARK: - Wiring
 
@@ -175,6 +194,18 @@ final class EngineCoordinator {
   /// multilingual model.
   var isMintingWhisperKitSession: Bool { isMinting && status.active == .whisperKit }
 
+  /// GitHub cloud review, PR #1732: backend-agnostic twin of
+  /// `isMintingWhisperKitSession`, for `RecoveryCoordinator`'s
+  /// `isDictationActive` check. A record-press that has called
+  /// `beginMinting()` but not yet reached an active kernel session (still
+  /// suspended in `preWarm`/the recovery-arm await) does not yet make
+  /// `LiveRecordingState.isDictationActive` true — without this, recovery's
+  /// per-item scan could reclaim the engine for the next orphan during
+  /// exactly that window, and the in-flight press would abort when its own
+  /// stale-gate re-check catches up, defeating the "yield between items"
+  /// promise for this narrow start-window race.
+  var isMintingAnySession: Bool { isMinting }
+
   /// Called when the record-start path finishes (via `defer`, so it runs on every
   /// exit). Re-pokes so an engine switch deferred during the start window applies
   /// now (or stays deferred behind the live recording, which gate 5 still covers).
@@ -229,17 +260,46 @@ final class EngineCoordinator {
     // Every exit resumes any record-start waiter whose condition is now met.
     defer { resumePressWaitersIfReady() }
 
+    // #1707 Phase 3 (§3.4 wake-up table): either of these may unblock a
+    // recovery pass that previously yielded because the engine wasn't ready
+    // or a migration was in flight.
+    if reason == .warmCompleted || reason == .setupStateChanged {
+      onEngineStateChangedForRecovery?()
+    }
+
     let want = deps.selectedBackend()
     let actual = deps.activeBackend()
 
     // 3. Converged — nothing owed.
     if want == actual {
       currentBlockedReason = nil
+      var justLeftSwitchingPhase = false
       if deps.readiness(actual) == .ready, case .switching = currentSwitchPhase {
         currentSwitchPhase = .idle
+        justLeftSwitchingPhase = true
       }
       clearEpoch()
       publishStatus()
+      // GitHub cloud review, PR #1732 (round 2 — the round-1 fix here was
+      // itself a real self-inflicted regression, caught by a later review
+      // round rather than shipped): a recovery pass that deferred because
+      // `isEngineSwitching()` was true can reach a genuinely converged engine
+      // through a `reason` this function doesn't otherwise wake recovery for
+      // (e.g. `.settingsChanged` looping back here after a superseded switch
+      // re-settled to the id it started from) — without a wake here, such a
+      // pass stays stranded until an unrelated wake-up or the next launch.
+      // MUST be gated on `justLeftSwitchingPhase`, not unconditional: this
+      // fast path is ALSO reached via `.recoveryComplete` itself (fired after
+      // EVERY replayed item, retained or not) — an unconditional wake here
+      // creates a closed loop for any RETAINED outcome (e.g. persistent
+      // marker-write or History-save failure): replay → onRecoveryComplete →
+      // poke(.recoveryComplete) → this fast path → wake → requestRecheck →
+      // re-discover the SAME still-retained spool → replay again, forever.
+      // Gating on the phase transition breaks the cycle: `currentSwitchPhase`
+      // is already `.idle` by the second iteration, so the condition is false.
+      if justLeftSwitchingPhase {
+        onEngineStateChangedForRecovery?()
+      }
       return
     }
 
@@ -297,6 +357,14 @@ final class EngineCoordinator {
       TelemetryService.shared.engineSwitchSuperseded(from: want.rawValue, to: wantNow.rawValue)
       currentSwitchPhase = .idle
       publishStatus()
+      // GitHub cloud review, PR #1732: `isSwitching` just cleared (line 325)
+      // — a recovery pass that deferred behind THIS switch may now be able to
+      // proceed even though this particular switch was superseded rather than
+      // cleanly completed. The queued `.settingsChanged` poke below re-drives
+      // the engine toward the new target but is not itself a recovery-wake
+      // reason (line ~254), so without this call a pass deferred here has no
+      // guaranteed wake-up.
+      onEngineStateChangedForRecovery?()
       poke(.settingsChanged)  // loop to the latest target
       return
     }
@@ -307,6 +375,9 @@ final class EngineCoordinator {
     currentSwitchPhase = .idle
     clearEpoch()
     publishStatus()
+    // #1707 Phase 3 (§3.4 wake-up table): a completed switch may unblock a
+    // recovery pass that previously yielded because a switch was in flight.
+    onEngineStateChangedForRecovery?()
 
     // 8. Warm the now-active engine in the background (never awaited here).
     startWarm(for: want)
@@ -326,6 +397,20 @@ final class EngineCoordinator {
     warmingBackend = backend
     warmTask = Task(priority: .utility) { [weak self] in
       guard let self else { return }
+      // #1707 Phase 3 (§3.2, row 4): hold a mutation claim for the FULL
+      // awaited warm — recovery must never race a background warm. A denied
+      // claim (recovery holds the engine) skips this attempt; the next
+      // natural trigger (a future switch landing here, or a press's own
+      // cold-press warm) re-attempts — no bespoke retry machinery for a
+      // background convenience warm.
+      guard self.deps.tryBeginEngineMutation() else {
+        TelemetryService.shared.recoveryEngineActionDeferred(site: "startWarm")
+        self.warmingBackend = nil
+        return
+      }
+      defer {
+        if self.deps.endEngineMutation() { self.deps.wakeRecoveryIfOwed() }
+      }
       let start = ContinuousClock.now
       let outcome = await self.deps.warm(backend)
       self.warmingBackend = nil

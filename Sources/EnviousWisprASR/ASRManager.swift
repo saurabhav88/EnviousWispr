@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
 /// Manages ASR backend selection and delegates transcription calls.
@@ -15,6 +16,19 @@ public final class ASRManager: ASRManagerInterface {
   public private(set) var downloadPhase: String = ""
   public private(set) var downloadDetail: String = ""
   public var onServiceInterrupted: (() -> Void)?  // No-op for in-process — no XPC crash path
+  /// #1707 Phase 3 (§3.2, row 7) — `EngineRecoveryGate.tryBeginMutation()`/
+  /// `endMutation()`, injected exactly like `onServiceInterrupted` above (this
+  /// type never references `EngineRecoveryGate` by concrete type). Guards
+  /// `unloadModel()`'s idle-timer unload — a background actor unrelated to
+  /// any active session, so recovery must never race it. Defaults keep every
+  /// existing test/legacy construction unchanged (always able to proceed).
+  public var tryBeginEngineMutation: @MainActor () -> Bool = { true }
+  /// Returns whether recovery was denied while this mutation was in flight
+  /// and is now owed a wake-up.
+  public var endEngineMutation: @MainActor () -> Bool = { false }
+  /// Called when `endEngineMutation()` returns true — wakes a stranded
+  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
+  public var wakeRecoveryIfOwed: @MainActor () -> Void = {}
   /// Issue #445: in-process variant. Tests do not drive a progress-file stream,
   /// so this stays unset at runtime; the protocol requires it.
   public var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
@@ -244,6 +258,23 @@ public final class ASRManager: ASRManagerInterface {
         )
       }
       return
+    }
+    // #1707 Phase 3 (§3.2, row 7): hold a mutation claim BEFORE touching
+    // anything below — including the load-generation bump and in-flight-load
+    // cancel, which would otherwise cancel a load RECOVERY is currently
+    // running under its own recovery claim (Codex code-diff round 1 P1: the
+    // original ordering let an idle-unload fire mid-recovery-load, invalidate
+    // its generation, and have recovery treat the resulting throw as an
+    // unrecoverable failure — deleting a recoverable spool). A denied claim
+    // (recovery holds the engine) skips this attempt entirely, touching
+    // NOTHING; the next genuine idle-unload trigger re-attempts — no bespoke
+    // retry machinery for a background convenience unload.
+    guard tryBeginEngineMutation() else {
+      TelemetryService.shared.recoveryEngineActionDeferred(site: "asrManagerUnload")
+      return
+    }
+    defer {
+      if endEngineMutation() { wakeRecoveryIfOwed() }
     }
     // Bump before the loaded-guard so an in-flight load (flag still false) is
     // superseded too, not just a resident model.
