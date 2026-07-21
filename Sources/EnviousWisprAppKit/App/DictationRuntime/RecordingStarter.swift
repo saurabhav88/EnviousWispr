@@ -406,7 +406,6 @@ final class RecordingStarter {
       // #1171 — no engine-changed re-check here: the `beginMinting()` state-gate
       // (held since before preWarm) guarantees the coordinator did NOT switch the
       // active engine across these awaits, so `active` is still the user's choice.
-      consumePendingBlockedPressIfAny()
       try await active.handle(event: .toggleRecording(config))
     } catch {
       heartControlRecovery.recover(
@@ -453,6 +452,13 @@ final class RecordingStarter {
       recordingLockedAccess.set(false)
       return
     }
+    // GitHub cloud review, PR #1732: consume the pending blocked-press info
+    // (and emit `recovery.press_unblocked`) only NOW, after both post-
+    // condition early-returns above have been survived — a genuine session
+    // (active or a real pipeline error, not a silent wedge or a user-stop-
+    // during-arm no-op) actually started. Firing this before `handle(event:)`
+    // let a throw or an unactivated session get counted as "unblocked".
+    consumePendingBlockedPressIfAny()
     Task {
       await AppLogger.shared.log(
         "COLD-START [RecordingStarter] PTT-to-recording: total=\(totalMs)ms preWarm=\(preWarmMs)ms startRecording=\(totalMs - preWarmMs)ms backend=\(backend.rawValue) engineReadinessAtPTT=\(readinessAtEntry.coldStartCohortToken)",
@@ -556,9 +562,17 @@ final class RecordingStarter {
         // #1171 — no engine-changed re-check here: the `beginMinting()` state-gate
         // (held since before the recovery-arm await) guarantees the coordinator did
         // NOT switch the active engine, so `active` is still the user's choice.
-        consumePendingBlockedPressIfAny()
       }
       try await active.handle(event: .toggleRecording(config))
+      // GitHub cloud review, PR #1732: consume the pending blocked-press info
+      // (and emit `recovery.press_unblocked`) only after `handle(event:)`
+      // returned WITHOUT throwing AND the pipeline is genuinely active — a
+      // throw, or a dispatch that silently didn't activate anything, must not
+      // be counted as "unblocked". Toggle has no separate post-condition
+      // check the way `start()` does, so read `active.state.isActive` here.
+      if isStartingFromIdle && active.state.isActive {
+        consumePendingBlockedPressIfAny()
+      }
     } catch {
       heartControlRecovery.recover(
         error: error, op: "toggle",
