@@ -960,6 +960,24 @@ public final class CustomWordsManager {
 
     var file = try loadFileForMutation()
 
+    // An edit that MOVES a built-in's canonical away has to retire the
+    // built-in too (mirrors the commitImport tombstone rule, #1668) —
+    // otherwise the built-in still matches no user word, so `mergedWords`
+    // keeps showing it beside the rename and the user gets two words where
+    // they edited one (#1670). A same-canonical edit (alias-only change)
+    // must NOT tombstone: the override already hides the built-in on its
+    // own, and recording a tombstone would persist a deletion the user never
+    // performed.
+    let previousCanonical = words[index].canonical
+    if let builtin = Self.builtinDefaults.first(where: {
+      $0.word.canonical.lowercased() == previousCanonical.lowercased()
+    }),
+      builtin.word.canonical.lowercased() != sanitized.canonical.lowercased(),
+      !file.deletedBuiltinIds.contains(builtin.id)
+    {
+      file.deletedBuiltinIds.append(builtin.id)
+    }
+
     // Check if this is a built-in word being edited — store as user override
     if let existingIdx = file.words.firstIndex(where: { $0.id == word.id }) {
       file.words[existingIdx] = sanitized
