@@ -99,6 +99,15 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   private let currentVocabulary:
     @MainActor () -> (corrector: CorrectorVocabulary, polish: PolishVocabulary)
 
+  /// Test-only observation seam (GitHub cloud review, PR #1732): fires right
+  /// after the attempt marker write succeeds, before the Keychain retrieve
+  /// begins. Nil in production — exists so a test can deterministically
+  /// revoke spool-directory write access between the marker WRITE and its
+  /// later CLEAR (simulating a marker-clear failure) instead of polling
+  /// `hasAttemptMarker`, which can miss the narrow true→false window
+  /// entirely if the detached Keychain-read task races ahead of the poll.
+  var onAttemptMarkerWritten: (() -> Void)?
+
   init(
     activeEngine: ActiveEngineOperation,
     keyStore: RecoveryKeyStore,
@@ -160,6 +169,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       TelemetryService.shared.recoveryCompleted(outcome: "deferred", reason: .markerWriteFailed)
       return .deferred
     }
+    onAttemptMarkerWritten?()
 
     // Retrieve the per-session key off the MainActor (`keychain-not-mainactor`).
     // #1464: split a MISSING key (`key_missing`) from a store READ failure

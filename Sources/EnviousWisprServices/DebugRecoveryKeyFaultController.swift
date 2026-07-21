@@ -26,27 +26,42 @@
     public static let shared = DebugRecoveryKeyFaultController()
 
     private let lock = NSLock()
-    private var armedStatus: OSStatus?
+    private var armed: (sessionID: String?, status: OSStatus)?
 
     private init() {}
 
     /// Arm the NEXT `retrieve()` call to fail with `status`. One-shot —
     /// consumed by the first read that observes it, so a Live UAT scenario
     /// staging a single deferred attempt cannot leak into a later real read.
-    public func arm(status: OSStatus) {
+    ///
+    /// `sessionID`, when provided, scopes the fault to that EXACT recovery
+    /// session — a `retrieve()` for any other id passes through untouched
+    /// (GitHub cloud review, PR #1732): the full Swift Testing suite runs
+    /// suites in parallel, and this controller is a process-wide singleton,
+    /// so an un-scoped one-shot fault could be consumed by an unrelated
+    /// concurrent `RecoveryKeyStore.retrieve()` call in a different test
+    /// suite (`RecoveryKeyStoreTests`, `RecoveryCoordinatorTests`) instead of
+    /// the specific replay this test armed it for. `nil` preserves the
+    /// original "fire on whichever call comes next" behavior the Live UAT
+    /// fault-injection endpoint uses, where there is no concurrent-suite
+    /// contention to worry about.
+    public func arm(status: OSStatus, forSessionID sessionID: String? = nil) {
       lock.lock()
       defer { lock.unlock() }
-      armedStatus = status
+      armed = (sessionID, status)
     }
 
-    /// Consume the armed status (if any), clearing it. Called by
+    /// Consume the armed status for `recoverySessionID` (if any and if it
+    /// matches — a `nil`-scoped arm matches any id), clearing it. Called by
     /// `RecoveryKeyStore.retrieve()` before every real read.
-    func consumeArmedStatus() -> OSStatus? {
+    func consumeArmedStatus(forSessionID recoverySessionID: String) -> OSStatus? {
       lock.lock()
       defer { lock.unlock() }
-      let status = armedStatus
-      armedStatus = nil
-      return status
+      guard let armed, armed.sessionID == nil || armed.sessionID == recoverySessionID else {
+        return nil
+      }
+      self.armed = nil
+      return armed.status
     }
   }
 

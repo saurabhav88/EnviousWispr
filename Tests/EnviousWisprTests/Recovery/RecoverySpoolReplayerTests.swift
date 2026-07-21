@@ -258,7 +258,8 @@ struct RecoverySpoolReplayerTests {
       let h = Self.makeHarness()
       let id = "transient-\(UUID().uuidString)"
       try await Self.seedSpool(h, id: id, samples: [0.6])
-      DebugRecoveryKeyFaultController.shared.arm(status: errSecInteractionNotAllowed)
+      DebugRecoveryKeyFaultController.shared.arm(
+        status: errSecInteractionNotAllowed, forSessionID: id)
       let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
       #expect(outcome == .deferred)
       #expect(h.asr.transcribeCallCount == 0, "never reaches transcribe on a deferred key read")
@@ -279,7 +280,8 @@ struct RecoverySpoolReplayerTests {
       let h = Self.makeHarness()
       let id = "transient-retry-\(UUID().uuidString)"
       try await Self.seedSpool(h, id: id, samples: [0.6])
-      DebugRecoveryKeyFaultController.shared.arm(status: errSecInteractionNotAllowed)
+      DebugRecoveryKeyFaultController.shared.arm(
+        status: errSecInteractionNotAllowed, forSessionID: id)
       let first = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
       #expect(first == .deferred)
       // No fault armed this time — the retry reads the REAL stored key.
@@ -296,7 +298,7 @@ struct RecoverySpoolReplayerTests {
       let h = Self.makeHarness()
       let id = "terminal-\(UUID().uuidString)"
       try await Self.seedSpool(h, id: id, samples: [0.6])
-      DebugRecoveryKeyFaultController.shared.arm(status: status)
+      DebugRecoveryKeyFaultController.shared.arm(status: status, forSessionID: id)
       let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
       #expect(
         outcome == .failed(.unrecoverable),
@@ -312,14 +314,21 @@ struct RecoverySpoolReplayerTests {
       let id = "transient-markerfail-\(UUID().uuidString)"
       try await Self.seedSpool(h, id: id, samples: [0.3])
       defer { _ = chmod(h.spoolDir.path, 0o700) }  // restore so temp cleanup/GC can proceed
-      DebugRecoveryKeyFaultController.shared.arm(status: errSecInteractionNotAllowed)
-      let replayTask = Task { await h.replayer.replay(recoverySessionID: id, isAborted: { false }) }
-      // Let the marker WRITE (needs a writable spool dir) land first, then
-      // revoke write access so the marker CLEAR the transient path triggers
-      // throws — deterministic ordering via a real signal, not a sleep.
-      while !h.spoolStore.hasAttemptMarker(for: id) { await Task.yield() }
-      _ = chmod(h.spoolDir.path, 0o500)
-      let outcome = await replayTask.value
+      DebugRecoveryKeyFaultController.shared.arm(
+        status: errSecInteractionNotAllowed, forSessionID: id)
+      // Deterministic ordering via a real signal, not a poll (GitHub cloud
+      // review, PR #1732): a poll on `hasAttemptMarker` raced the replayer's
+      // own detached Keychain-read task and could miss the narrow true→false
+      // window entirely (empirically ~2/3 runs, not a rare edge case).
+      // `onAttemptMarkerWritten` fires SYNCHRONOUSLY on the replayer's own
+      // MainActor turn, right after the marker write and before the
+      // `Task.detached` retrieve is even created — revoking write access from
+      // inside it is guaranteed to land before any clear attempt, no race
+      // window to catch.
+      h.replayer.onAttemptMarkerWritten = { [spoolDir = h.spoolDir] in
+        _ = chmod(spoolDir.path, 0o500)
+      }
+      let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
       #expect(outcome == .deferredMarkerClearFailed)
       #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
       #expect((try? h.keyStore.retrieve(for: id)) != nil)

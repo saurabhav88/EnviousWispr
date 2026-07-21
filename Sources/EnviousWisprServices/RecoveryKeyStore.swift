@@ -67,7 +67,9 @@ public struct RecoveryKeyStore: Sendable {
 
   public func retrieve(for recoverySessionID: String) throws -> Data {
     #if DEBUG
-      if let status = DebugRecoveryKeyFaultController.shared.consumeArmedStatus() {
+      if let status = DebugRecoveryKeyFaultController.shared.consumeArmedStatus(
+        forSessionID: recoverySessionID)
+      {
         throw RecoveryKeyStoreError.retrieveFailed(status)
       }
     #endif
