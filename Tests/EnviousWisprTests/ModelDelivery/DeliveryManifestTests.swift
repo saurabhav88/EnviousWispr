@@ -348,6 +348,37 @@ enum ManifestFixture {
     #expect(flags.orderedSources(from: manifest).map(\.id) == ["our_copy", "backup"])
   }
 
+  /// #1671: `orderedSources` indexed sources with a trapping
+  /// `Dictionary(uniqueKeysWithValues:)`. A manifest with a duplicate source
+  /// id must degrade (first-wins), not crash the app.
+  @Test func duplicateSourceIDDoesNotCrashAndFirstWins() throws {
+    let manifest = try ManifestFixture.manifest(
+      files: ManifestFixture.smallFiles)
+    let duplicated = DeliveryManifest(
+      schemaVersion: manifest.schemaVersion,
+      identity: manifest.identity,
+      files: manifest.files,
+      optionalFiles: manifest.optionalFiles,
+      totalBytes: manifest.totalBytes,
+      sources: [
+        DeliveryManifest.Source(
+          id: "our_copy", baseURL: try #require(URL(string: "https://first.invalid.example/"))),
+        DeliveryManifest.Source(
+          id: "our_copy", baseURL: try #require(URL(string: "https://second.invalid.example/"))),
+        manifest.sources[1],
+      ],
+      admission: manifest.admission,
+      manifestDigest: manifest.manifestDigest)
+    let d = defaults()
+    d.set("our_copy,backup", forKey: "modelDelivery.parakeet.sourceOrder")
+    let flags = DeliveryFlags.snapshot(family: .parakeet, defaults: d)
+    let ordered = flags.orderedSources(from: duplicated)
+    #expect(ordered.map(\.id) == ["our_copy", "backup"])
+    #expect(
+      ordered.first(where: { $0.id == "our_copy" })?.baseURL.absoluteString
+        == "https://first.invalid.example/")
+  }
+
   @Test func mirrorAndBackupKillSwitches() throws {
     let manifest = try ManifestFixture.manifest(files: ManifestFixture.smallFiles)
     let d = defaults()

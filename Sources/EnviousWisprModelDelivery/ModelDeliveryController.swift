@@ -63,7 +63,11 @@ public struct DeliveryFlags: Sendable {
       let wanted = sourceOrder.split(separator: ",").map {
         $0.trimmingCharacters(in: .whitespaces)
       }
-      let byID = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0) })
+      // First-wins: a manifest with a duplicate source id must degrade, not
+      // trap (#1671). Every other branch here is fail-soft on bad input; a
+      // publishing typo on remote manifest data must not be the one line that
+      // crashes the app.
+      let byID = Dictionary(sources.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
       let reordered = wanted.compactMap { byID[$0] }
       if !reordered.isEmpty { sources = reordered }
     }
