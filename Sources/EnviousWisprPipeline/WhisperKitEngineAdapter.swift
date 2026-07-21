@@ -1101,10 +1101,20 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         }
         guard claimed else { return }
         await backend.unload()
-        guard !Task.isCancelled else { return }
+        // #1707 Phase 3 (§3.2, row 6 — Codex code-diff round 1 P2): release
+        // the claim UNCONDITIONALLY right after the awaited unload returns,
+        // BEFORE the cancellation check below. Gating the release behind
+        // `!Task.isCancelled` left the claim permanently stranded whenever
+        // `cancelPendingUnload()` cancelled this Task while `backend.unload()`
+        // was in flight — `mutationCount` would never drain, refusing every
+        // later recovery attempt for the rest of the app session.
         await MainActor.run { [weak self] in
           guard let self else { return }
           if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
+        }
+        guard !Task.isCancelled else { return }
+        await MainActor.run { [weak self] in
+          guard let self else { return }
           self.cachedReadiness = .notReady
         }
       }
@@ -1134,10 +1144,17 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         }
         guard claimed else { return }
         await backend.unload()
-        guard !Task.isCancelled else { return }
+        // #1707 Phase 3 (§3.2, row 6 — Codex code-diff round 1 P2): release
+        // UNCONDITIONALLY before the cancellation check; see the `.immediately`
+        // branch above for why gating this behind `!Task.isCancelled` leaks
+        // the claim forever.
         await MainActor.run { [weak self] in
           guard let self else { return }
           if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
+        }
+        guard !Task.isCancelled else { return }
+        await MainActor.run { [weak self] in
+          guard let self else { return }
           self.cachedReadiness = .notReady
         }
       }

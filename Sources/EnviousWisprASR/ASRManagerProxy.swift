@@ -345,6 +345,23 @@ public final class ASRManagerProxy: ASRManagerInterface {
   }
 
   public func unloadModel() async {
+    // #1707 Phase 3 (§3.2, row 7): hold a mutation claim BEFORE touching
+    // anything below — including the load-generation bump and in-flight-load
+    // cancel, which would otherwise cancel a load RECOVERY is currently
+    // running under its own recovery claim (Codex code-diff round 1 P1: the
+    // original ordering let an idle-unload fire mid-recovery-load, invalidate
+    // its generation, and have recovery treat the resulting throw as an
+    // unrecoverable failure — deleting a recoverable spool). A denied claim
+    // (recovery holds the engine) skips this attempt entirely, touching
+    // NOTHING; the next genuine idle-unload trigger re-attempts — no bespoke
+    // retry machinery for a background convenience unload.
+    guard tryBeginEngineMutation() else {
+      TelemetryService.shared.recoveryEngineActionDeferred(site: "asrManagerProxyUnload")
+      return
+    }
+    defer {
+      if endEngineMutation() { wakeRecoveryIfOwed() }
+    }
     // #959: bump BEFORE the loaded-guard so an in-flight load (whose
     // `isModelLoaded` is still false) is superseded too, not just a resident model.
     invalidateCurrentLoadGeneration(cause: "unload")
@@ -357,17 +374,6 @@ public final class ASRManagerProxy: ASRManagerInterface {
     inFlightLoadTask?.cancel()
     inFlightLoadTask = nil
     guard isModelLoaded else { return }
-    // #1707 Phase 3 (§3.2, row 7): hold a mutation claim for the FULL awaited
-    // unload. A denied claim (recovery holds the engine) skips this attempt;
-    // the next genuine idle-unload trigger re-attempts — no bespoke retry
-    // machinery for a background convenience unload.
-    guard tryBeginEngineMutation() else {
-      TelemetryService.shared.recoveryEngineActionDeferred(site: "asrManagerProxyUnload")
-      return
-    }
-    defer {
-      if endEngineMutation() { wakeRecoveryIfOwed() }
-    }
     await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
       serviceProxy { proxy in
         proxy.unloadModel {

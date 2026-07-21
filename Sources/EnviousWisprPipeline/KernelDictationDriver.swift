@@ -353,28 +353,36 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// `endMutation()`, injected exactly like `onStateChange` above. Bound by
   /// the composition root; defaults keep every existing test/legacy
   /// construction unchanged (always able to proceed). `didSet` also forwards
-  /// the SAME closure onto a `WhisperKitEngineAdapter` (row 6's idle-unload
-  /// guard, `WhisperKitEngineAdapter.swift`) when this driver's adapter is
-  /// one — `WisprBootstrapper` sets these once here, never on the adapter
-  /// directly, since the adapter's concrete type is not visible outside
+  /// the SAME closure onto (a) a `WhisperKitEngineAdapter` (row 6's
+  /// idle-unload guard, `WhisperKitEngineAdapter.swift`) when this driver's
+  /// adapter is one, and (b) the owned `RecordingSessionKernel` (row 21's
+  /// `preWarm()` guard) — `WisprBootstrapper` sets these once here, never on
+  /// either directly, since neither concrete type is visible outside
   /// `EnviousWisprPipeline`.
   @ObservationIgnored
   public var tryBeginEngineMutation: @MainActor () -> Bool = { true } {
     didSet {
       (adapter as? WhisperKitEngineAdapter)?.tryBeginEngineMutation = tryBeginEngineMutation
+      kernel.tryBeginEngineMutation = tryBeginEngineMutation
     }
   }
   /// Returns whether recovery was denied while this mutation was in flight
   /// and is now owed a wake-up.
   @ObservationIgnored
   public var endEngineMutation: @MainActor () -> Bool = { false } {
-    didSet { (adapter as? WhisperKitEngineAdapter)?.endEngineMutation = endEngineMutation }
+    didSet {
+      (adapter as? WhisperKitEngineAdapter)?.endEngineMutation = endEngineMutation
+      kernel.endEngineMutation = endEngineMutation
+    }
   }
   /// Called when `endEngineMutation()` returns true — wakes a stranded
   /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
   @ObservationIgnored
   public var wakeRecoveryIfOwed: @MainActor () -> Void = {} {
-    didSet { (adapter as? WhisperKitEngineAdapter)?.wakeRecoveryIfOwed = wakeRecoveryIfOwed }
+    didSet {
+      (adapter as? WhisperKitEngineAdapter)?.wakeRecoveryIfOwed = wakeRecoveryIfOwed
+      kernel.wakeRecoveryIfOwed = wakeRecoveryIfOwed
+    }
   }
 
   /// Fire-once latch for `onSessionEndedWithoutSave` (#1548 D1). Tracks the
