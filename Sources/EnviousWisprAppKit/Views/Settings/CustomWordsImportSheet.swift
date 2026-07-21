@@ -20,6 +20,7 @@ struct CustomWordsImportSheet: View {
   )
 
   @State private var model: CustomWordsImportFlowModel
+  @State private var showDiscardConfirm = false
   @Environment(\.dismiss) private var dismiss
 
   init(dependencies: CustomWordsImportFlowModel.Dependencies) {
@@ -27,6 +28,29 @@ struct CustomWordsImportSheet: View {
   }
 
   var body: some View {
+    // The macOS-15+ native window-close protection (#1700) is a second,
+    // deliberately separate, best-effort layer for the OS-level window-close
+    // trigger only — it is NOT proven reliable for this app's real nested
+    // sheet-inside-window topology (see the plan's empirical findings), so it
+    // is never relied on for Cancel/Escape/Done, which always use the local
+    // dialog below on every macOS version.
+    if #available(macOS 15.0, *) {
+      sheetContent
+        .dismissalConfirmationDialog(
+          "You've entered words. This will discard them.",
+          shouldPresent: model.hasDiscardableDraft
+        ) {
+          Button("Discard", role: .destructive) { model.cancel() }
+          Button("Keep editing", role: .cancel) {
+            model.keepEditingDiscardableDraft()
+          }
+        }
+    } else {
+      sheetContent
+    }
+  }
+
+  private var sheetContent: some View {
     VStack(alignment: .leading, spacing: 16) {
       header
 
@@ -68,6 +92,35 @@ struct CustomWordsImportSheet: View {
     // or clearing the sheet route dismisses without it, and an in-flight load
     // or comparison would otherwise keep running against a sheet that is gone.
     .onDisappear { model.cancel() }
+    // Single mechanism for Cancel, Escape, and Done, on every macOS version
+    // (#1700) — see `requestCancel()`.
+    .confirmationDialog(
+      "You've entered words. This will discard them.",
+      isPresented: $showDiscardConfirm,
+      titleVisibility: .visible
+    ) {
+      Button("Discard", role: .destructive) {
+        model.cancel()
+        dismiss()
+      }
+      Button("Keep editing", role: .cancel) {
+        model.keepEditingDiscardableDraft()
+      }
+    }
+  }
+
+  /// Single authority for every explicit discard action (Cancel, Escape via
+  /// the same `.keyboardShortcut(.cancelAction)`, and Done) (#1700). Calls
+  /// `model.cancel()` explicitly on the no-draft path rather than relying
+  /// solely on `.onDisappear`, so cleanup is part of the action's own
+  /// contract, not a lifecycle side effect.
+  private func requestCancel() {
+    if model.hasDiscardableDraft {
+      showDiscardConfirm = true
+    } else {
+      model.cancel()
+      dismiss()
+    }
   }
 
   private var header: some View {
@@ -88,24 +141,43 @@ struct CustomWordsImportSheet: View {
       Spacer()
       switch model.step {
       case .result:
-        Button("Done") { dismiss() }
+        // Routed through requestCancel() (#1700): a `.nothingFound`/`.failed`
+        // result still holds an uncommitted draft, so Done confirms first in
+        // that case; `.completed`/`.nothingApproved` proceed silently, same
+        // as before. The overlaid, zero-opacity button gives Escape the same
+        // route: without it, this screen has no `.cancelAction` button at
+        // all, so Escape would dismiss the system sheet directly and reach
+        // `.onDisappear`'s unconfirmed cleanup — the exact bug this issue is
+        // about, left open on the one screen this change touches (Codex
+        // code-diff review). `.overlay` rather than a second sibling button:
+        // a sibling would reserve its own layout footprint, visibly shifting
+        // Done off the trailing edge (Codex, round 3). `.opacity(0)` rather
+        // than `.hidden()`: `.hidden()` views cannot receive or respond to
+        // interactions at all per Apple's own documentation, which would
+        // silently reintroduce the exact Escape bug this button exists to
+        // fix (Codex, round 4) — `.opacity` only affects rendering, not hit
+        // testing or shortcut dispatch. `.accessibilityHidden(true)` keeps
+        // VoiceOver/Full Keyboard Access from exposing two overlapping
+        // "Done" controls at the same location (Codex, round 6) — it only
+        // affects the accessibility tree, not keyboard shortcut dispatch.
+        Button("Done") { requestCancel() }
           .keyboardShortcut(.defaultAction)
           .buttonStyle(.borderedProminent)
+          .overlay {
+            Button("Done") { requestCancel() }
+              .keyboardShortcut(.cancelAction)
+              .opacity(0)
+              .accessibilityHidden(true)
+          }
       case .review:
-        Button("Cancel") {
-          model.cancel()
-          dismiss()
-        }
-        .keyboardShortcut(.cancelAction)
+        Button("Cancel") { requestCancel() }
+          .keyboardShortcut(.cancelAction)
         Button(confirmTitle) { model.confirm() }
           .keyboardShortcut(.defaultAction)
           .buttonStyle(.borderedProminent)
       case .methodPicker, .paste, .upload, .smartImportAppPicker, .working:
-        Button("Cancel") {
-          model.cancel()
-          dismiss()
-        }
-        .keyboardShortcut(.cancelAction)
+        Button("Cancel") { requestCancel() }
+          .keyboardShortcut(.cancelAction)
       }
     }
   }

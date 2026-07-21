@@ -220,9 +220,71 @@ final class CustomWordsImportFlowModel {
   }
 
   /// Sheet dismissal. Nothing is written on the way out; any in-flight stage
-  /// is cancelled and can no longer publish.
+  /// is cancelled and can no longer publish. Clears the draft so a confirmed
+  /// discard is final and idempotent, whether this runs from an explicit
+  /// discard action or from `.onDisappear`'s unconditional cleanup.
   func cancel() {
     abandonWork()
+    pasteDraft = ""
+  }
+
+  /// True iff closing the sheet right now, by any path, would silently throw
+  /// away words the user already typed (#1700). Excludes `.working(.committing)`
+  /// — an active write in flight is not "a draft." Includes `.result(.nothingFound)`
+  /// and `.result(.failed)`, since neither committed anything and the pasted
+  /// text is still sitting, uncommitted, in `pasteDraft`.
+  ///
+  /// `.result(.completed)`/`.result(.nothingApproved)` are only genuinely
+  /// nothing-to-lose when THIS result's own method was paste — that's the
+  /// only case where `pasteDraft`'s content is guaranteed to be exactly what
+  /// was just committed. If the user typed a paste draft, went Back, and
+  /// completed a DIFFERENT method's import instead, `pasteDraft` still holds
+  /// that abandoned, never-committed text (Codex code-diff review, #1700).
+  var hasDiscardableDraft: Bool {
+    switch step {
+    case .working(.committing):
+      return false
+    case .result(.completed), .result(.nothingApproved):
+      guard selectedMethod != .paste else { return false }
+      return hasNonWhitespacePasteDraft
+    case .methodPicker, .paste, .upload, .smartImportAppPicker, .review,
+      .working(.loadingCandidates), .working(.comparing),
+      .result(.nothingFound), .result(.failed):
+      return hasNonWhitespacePasteDraft
+    }
+  }
+
+  /// `hasDiscardableDraft` is read from `body` on every keystroke, on macOS
+  /// 15+ via `dismissalConfirmationDialog(shouldPresent:)` (Codex code-diff
+  /// review). `contains(where:)` short-circuits at the first non-whitespace
+  /// character — real pasted text has one almost immediately — rather than
+  /// `trimmingCharacters(in:)`, which allocates a new trimmed `String` on
+  /// every call.
+  private var hasNonWhitespacePasteDraft: Bool {
+    pasteDraft.contains { !$0.isWhitespace }
+  }
+
+  /// "Keep editing" from a confirmation dialog (#1700). No `.result` case has
+  /// a Back button, so any terminal result `hasDiscardableDraft` judged worth
+  /// protecting — `.nothingFound`/`.failed` always, or `.completed`/
+  /// `.nothingApproved` when they're guarding an abandoned draft from a
+  /// different, already-finished method (Codex code-diff review) — actively
+  /// returns to Paste with the draft intact. Everywhere else there is nothing
+  /// to do: the user is already looking at their editable draft, or the guard
+  /// above already ruled out there being anything to protect.
+  func keepEditingDiscardableDraft() {
+    guard hasDiscardableDraft else { return }
+    switch step {
+    case .result:
+      abandonWork()
+      rows = []
+      staleNotice = nil
+      droppedAliasCollisionCount = 0
+      selectedMethod = .paste
+      step = .paste
+    case .methodPicker, .paste, .upload, .smartImportAppPicker, .review, .working:
+      break
+    }
   }
 
   // MARK: - Workflow (PR-F2c)
