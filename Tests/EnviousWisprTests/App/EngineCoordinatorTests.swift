@@ -230,6 +230,23 @@ struct EngineCoordinatorTests {
     #expect(applied, "the deferred switch applies once minting ends")
   }
 
+  @Test(
+    "isMintingAnySession tracks beginMinting/endMinting for BOTH backends (GitHub cloud review, PR #1732)"
+  )
+  func isMintingAnySessionTracksBothBackends() async {
+    // `isMintingWhisperKitSession` is scoped to WhisperKit; `RecoveryCoordinator`'s
+    // isDictationActive check needs a backend-agnostic signal so a record-press
+    // still mid-start (beginMinting called, not yet an active kernel session)
+    // is never mistaken for "engine free" regardless of which backend it targets.
+    let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
+    let c = fake.makeStartedCoordinator()
+    #expect(!c.isMintingAnySession, "not minting before any press")
+    c.beginMinting()
+    #expect(c.isMintingAnySession, "true while a record-start is minting (Parakeet active)")
+    c.endMinting()
+    #expect(!c.isMintingAnySession, "false again once minting ends")
+  }
+
   // MARK: - Failure model
 
   @Test("warm-after-switch failure honors the choice and never reverts")

@@ -603,6 +603,17 @@ public final class WisprBootstrapper {
           customWordsCoordinator.customWords,
           generation: UInt64(customWordsCoordinator.customWords.count) &+ 1)
       })
+    // GitHub cloud review, PR #1732: captured by `isDictationActive` below,
+    // assigned once `engineCoordinator` exists a few lines down. A record
+    // press that has called `beginMinting()` but not yet reached an active
+    // kernel session (still suspended in `preWarm`/the recovery-arm await)
+    // does not make `liveRecordingState.isDictationActive` true — without
+    // this, recovery's per-item scan could reclaim the engine for the next
+    // orphan during exactly that window, and the in-flight press would
+    // abort when its own stale-gate re-check catches up.
+    // `weak`, matching every other cross-reference between these two
+    // coordinators in this file — avoids a retain cycle.
+    weak var engineCoordinatorForRecoveryGate: EngineCoordinator?
     let recoveryCoordinator = RecoveryCoordinator(
       keyStore: recoveryKeyStore,
       makeSpoolStore: makeRecoverySpoolStore,
@@ -611,7 +622,10 @@ public final class WisprBootstrapper {
         let all = (try? await transcriptStore.loadAll()) ?? []
         return Set(all.compactMap(\.recoverySessionID))
       },
-      isDictationActive: { [liveRecordingState] in liveRecordingState.isDictationActive },
+      isDictationActive: { [liveRecordingState] in
+        liveRecordingState.isDictationActive
+          || (engineCoordinatorForRecoveryGate?.isMintingAnySession ?? false)
+      },
       // Discard hard-resets the ACTIVE engine (#445 service-kill) so an in-flight,
       // otherwise-uncancellable recovery load/transcribe aborts and the next
       // recording gets a clean engine. Routed through the active-engine door
@@ -665,6 +679,9 @@ public final class WisprBootstrapper {
         wakeRecoveryIfOwed: { [weak recoveryCoordinator] in
           recoveryCoordinator?.requestRecoveryRecheck()
         }))
+    // GitHub cloud review, PR #1732: now that `engineCoordinator` exists,
+    // `isDictationActive` (wired above) can read its minting state.
+    engineCoordinatorForRecoveryGate = engineCoordinator
     // The picker change notifies the coordinator (it reads the live selection).
     settingsSync.onSelectedBackendChanged = { [weak engineCoordinator] in
       engineCoordinator?.poke(.settingsChanged)

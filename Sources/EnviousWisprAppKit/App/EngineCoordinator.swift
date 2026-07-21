@@ -194,6 +194,18 @@ final class EngineCoordinator {
   /// multilingual model.
   var isMintingWhisperKitSession: Bool { isMinting && status.active == .whisperKit }
 
+  /// GitHub cloud review, PR #1732: backend-agnostic twin of
+  /// `isMintingWhisperKitSession`, for `RecoveryCoordinator`'s
+  /// `isDictationActive` check. A record-press that has called
+  /// `beginMinting()` but not yet reached an active kernel session (still
+  /// suspended in `preWarm`/the recovery-arm await) does not yet make
+  /// `LiveRecordingState.isDictationActive` true — without this, recovery's
+  /// per-item scan could reclaim the engine for the next orphan during
+  /// exactly that window, and the in-flight press would abort when its own
+  /// stale-gate re-check catches up, defeating the "yield between items"
+  /// promise for this narrow start-window race.
+  var isMintingAnySession: Bool { isMinting }
+
   /// Called when the record-start path finishes (via `defer`, so it runs on every
   /// exit). Re-pokes so an engine switch deferred during the start window applies
   /// now (or stays deferred behind the live recording, which gate 5 still covers).

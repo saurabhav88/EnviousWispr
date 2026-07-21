@@ -412,14 +412,22 @@ import Testing
   /// wire them together; no domain logic moved here (the gate itself and
   /// every guard's behavior live on their own types). Cap by deterministic
   /// rule (actual 1309 + ~2, rounded up to nearest 5 = 1315).
+  /// #1732 (GitHub cloud review round 9): 1315 → 1330 for the
+  /// `engineCoordinatorForRecoveryGate` weak local var + its wiring into
+  /// `isDictationActive`, closing a narrow race where a record-press still
+  /// mid-`beginMinting()` (not yet an active kernel session) could have its
+  /// engine reclaimed by the next recovery item. Same class of irreducible
+  /// composition-root residue as the entries above; no domain logic moved
+  /// here. Cap by deterministic rule (actual 1326 + ~2, rounded up to
+  /// nearest 5 = 1330).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1315,
+      lineCount <= 1330,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1315. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1330. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }
