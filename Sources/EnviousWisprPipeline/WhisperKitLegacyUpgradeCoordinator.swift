@@ -1,4 +1,5 @@
 import EnviousWisprModelDelivery
+import EnviousWisprServices
 import Foundation
 
 /// Retires the multilingual engine's foreign copy and refetches a verified one.
@@ -39,6 +40,24 @@ public final class WhisperKitLegacyUpgradeCoordinator {
   }
 
   public var onEvent: (@MainActor @Sendable (Event) -> Void)?
+
+  /// #1707 Phase 3 (§3.2, row 14) — `EngineRecoveryGate.tryBeginMutation()`/
+  /// `endMutation()`, injected exactly like `onEvent` above (this type never
+  /// references `EngineRecoveryGate` by concrete type). This coordinator
+  /// never moves the engine itself, but its delete+refetch window (steps 6-7
+  /// of `retireAndRefetchIfNeeded()`) mutates the SAME on-disk model files a
+  /// concurrent crash-recovery replay's `activeEngine.load()` reads from — a
+  /// genuine hazard the launch grounding brief found (this Task and
+  /// `RecoveryCoordinator.scanAndRecover()`'s Task fire one line apart with
+  /// zero ordering). Defaults keep every existing test/legacy construction
+  /// unchanged (always able to proceed).
+  public var tryBeginEngineMutation: @MainActor () -> Bool = { true }
+  /// Returns whether recovery was denied while this mutation was in flight
+  /// and is now owed a wake-up.
+  public var endEngineMutation: @MainActor () -> Bool = { false }
+  /// Called when `endEngineMutation()` returns true — wakes a stranded
+  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
+  public var wakeRecoveryIfOwed: @MainActor () -> Void = {}
 
   /// L5: at most one command is current, and its KIND is load-bearing — a later ensure-intent
   /// must know whether it is joining a fetch or waiting out a Cancel.
@@ -351,6 +370,21 @@ public final class WhisperKitLegacyUpgradeCoordinator {
         emit(.legacyRetirementFailed(reason: .markerWrite))
         return
       }
+    }
+
+    // #1707 Phase 3 (§3.2, row 14): hold a mutation claim across the
+    // delete+refetch window below — a concurrent crash-recovery replay's
+    // `activeEngine.load()` must never read these files mid-flux. A denied
+    // claim (recovery holds the engine) defers this launch's migration
+    // attempt entirely; it is safe to retry on a future launch since the
+    // owed marker (freshly written above at step 5, or already owed from a
+    // prior launch) already exists and nothing has been deleted yet.
+    guard tryBeginEngineMutation() else {
+      TelemetryService.shared.recoveryEngineActionDeferred(site: "whisperKitLegacyMigration")
+      return
+    }
+    defer {
+      if endEngineMutation() { wakeRecoveryIfOwed() }
     }
 
     // 6. Delete only what still matches the identity we captured (L3).

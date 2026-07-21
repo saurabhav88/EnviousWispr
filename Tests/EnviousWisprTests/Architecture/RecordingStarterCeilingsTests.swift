@@ -133,10 +133,19 @@ import Testing
     // #1386 PR-2c: 550 → 565 for the founder's removal gate — the honest
     // not-installed pill on BOTH press paths before any readiness logic (a
     // removal's first instants can still read ready). Actual 560 + ~2 → 565.
+    // #1707 Phase 3 (crash-safety-net readiness gating): 565 → 615 for the
+    // `signalPendingLiveStart` bare closure (also excluded — a non-`async`
+    // `() -> Void` closure is not a collaborator, collaboratorCount still
+    // ≤ 7) at all four existing recovery-refusal sites, plus the blocked-
+    // press timestamp state and the `handleRecoveryPressRefused`/
+    // `consumePendingBlockedPressIfAny` private helpers feeding the new
+    // `recovery.press_unblocked` telemetry. The recovery owner stays OFF
+    // this type; only the paper-line ceiling moves (deterministic rule:
+    // actual 603 + 10 → round up to nearest 5 = 615).
     #expect(
-      count <= 565,
+      count <= 615,
       """
-      RecordingStarter line count exceeded: \(count) > 565. \
+      RecordingStarter line count exceeded: \(count) > 615. \
       Raise via Bible §30 only.
       """)
   }

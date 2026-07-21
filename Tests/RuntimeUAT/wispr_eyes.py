@@ -1541,6 +1541,30 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
 def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     """End-to-end PTT (push-to-talk) recording test via key hold.
 
+    #1707 Phase 3 crash-safety-net Live UAT recipe (bounded-wait + refuse-
+    then-retry): no new helper is warranted here — compose the existing
+    low-level calls directly, per RULE: wispr-eyes-fallback-to-direct-python.
+    1. Stage 2+ crashed spools: start a recording, wait for recovery arming
+       (the recovery key/spool are written before the risky work), then
+       kill the app with `SIGKILL` from the shell (`pgrep -f "EnviousWispr
+       Local.app/Contents/MacOS/EnviousWispr"` -> `kill -9`); repeat once
+       more for a second spool.
+    2. Relaunch the app fresh (the measured THIRD launch is the actual test
+       run — the app must not already be running before this launch).
+    3. Immediately call `test_ptt()` (or `tap()`), before the scan can
+       finish item 1's decode.
+    4. Assert refusal: read the "recovering" pill via `see()`/`read()`, and
+       grep `~/Library/Logs/EnviousWispr/app.log` for `recoveryPressBlocked`.
+    5. Wait roughly one item's expected decode time (measured empirically
+       per backend), bounded — this is what the harness itself times to
+       prove the bounded-wait claim (press-to-engine-release, not
+       `Pipeline timing TOTAL`).
+    6. Call `test_ptt()` again; assert success and the expected token in
+       `observed_transcript`.
+    Direct fault injection (`EW_FAULT_INJECTION=1`, `force_recovery_key_fault
+    (status)`) stages the Keychain-transient-lock scenario, since it is not
+    reachable through normal TTS-driven dictation alone.
+
     Precisely times key hold to match audio duration:
     1. Press key down (recording starts)
     2. Wait for recording to engage

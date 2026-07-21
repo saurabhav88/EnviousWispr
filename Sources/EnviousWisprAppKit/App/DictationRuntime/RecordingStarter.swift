@@ -62,6 +62,13 @@ final class RecordingStarter {
   /// legacy/test construction unchanged.
   let isRecovering: @MainActor () -> Bool
 
+  /// #1707 Phase 3 (§3.1) — set on every recovery-refusal read site so a
+  /// multi-item recovery scan yields the engine BETWEEN items instead of only
+  /// after the whole scan. Bare closure (off the collaborator cap); bound to
+  /// `RecoveryCoordinator.pendingLiveStartSignal = true`. Default no-op keeps
+  /// recovery-off and legacy/test construction unchanged.
+  let signalPendingLiveStart: @MainActor () -> Void
+
   /// #1171 — drives the SELECTED engine to ready (the coordinator owns the
   /// single-flight switch + warm) and returns the outcome (ready / notInstalled /
   /// notReady). Bound to `EngineCoordinator.ensureSelectedReadyForPress`; default
@@ -120,6 +127,40 @@ final class RecordingStarter {
     asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
   }
 
+  /// #1707 Phase 3 — the backend + timestamp of the most recent recovery
+  /// refusal. Consumed (and cleared) ONLY by a LATER press that actually
+  /// mints an active kernel session — a failed or unrelated press never
+  /// consumes it, so it can't misattribute one recording's wait to a
+  /// different one's timing.
+  private var pendingBlockedPressInfo: (backend: String, blockedAt: ContinuousClock.Instant)?
+
+  /// Every recovery-refusal read site funnels through here: shows the pill,
+  /// signals the scan to yield the engine (§3.1), records the blocked-press
+  /// timestamp for the pairing `recovery.press_unblocked` telemetry below, and
+  /// emits the existing `recovery.press_blocked` event.
+  private func handleRecoveryPressRefused(backend: ASRBackendType) {
+    recordingOverlay.show(intent: .recoveringLastRecording)
+    signalPendingLiveStart()
+    pendingBlockedPressInfo = (backend.rawValue, ContinuousClock.now)
+    TelemetryService.shared.recoveryPressBlocked(asrBackend: backend.rawValue)
+  }
+
+  /// Called immediately before a press commits to minting an active kernel
+  /// session (every gate, including the recovery one, has already passed).
+  /// Consumes any pending blocked-press info and emits the pairing
+  /// `recovery.press_unblocked` event so production telemetry can measure
+  /// whether the bounded-wait fix actually shrank real wait times. Reports
+  /// the BLOCKED press's backend (not the current one — an engine switch
+  /// could occur in between), so a backend's own wait times stay attributable
+  /// to it.
+  private func consumePendingBlockedPressIfAny() {
+    guard let info = pendingBlockedPressInfo else { return }
+    pendingBlockedPressInfo = nil
+    let waitSeconds = Int((ContinuousClock.now - info.blockedAt).components.seconds)
+    TelemetryService.shared.recoveryPressUnblocked(
+      asrBackend: info.backend, waitSeconds: waitSeconds)
+  }
+
   init(
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
@@ -139,6 +180,7 @@ final class RecordingStarter {
     )? = { _, _, _ in nil },
     cleanupRecoveryArm: @escaping @MainActor (String?) -> Void = { _ in },
     isRecovering: @escaping @MainActor () -> Bool = { false },
+    signalPendingLiveStart: @escaping @MainActor () -> Void = {},
     ensureSelectedReadyForPress: @escaping @MainActor () async -> EngineCoordinator.PressReadiness =
       {
         .notReady
@@ -150,6 +192,7 @@ final class RecordingStarter {
     self.makeRecoveryDirective = makeRecoveryDirective
     self.cleanupRecoveryArm = cleanupRecoveryArm
     self.isRecovering = isRecovering
+    self.signalPendingLiveStart = signalPendingLiveStart
     self.ensureSelectedReadyForPress = ensureSelectedReadyForPress
     self.isEngineSwitching = isEngineSwitching
     self.beginMinting = beginMinting
@@ -196,8 +239,7 @@ final class RecordingStarter {
     // pill (with Discard) and bail, before warming the engine the recovery is
     // using. Takes precedence over the cold-engine gate below (same shape).
     if isRecovering() {
-      recordingOverlay.show(intent: .recoveringLastRecording)
-      TelemetryService.shared.recoveryPressBlocked(asrBackend: backend.rawValue)
+      handleRecoveryPressRefused(backend: backend)
       return
     }
     // #1171 — start-of-recording safety: never record on an engine other than the
@@ -343,13 +385,14 @@ final class RecordingStarter {
       if isRecovering() {
         audioCapture.abortPreWarm()
         cleanupRecoveryArm(config.recoverySessionID)
-        recordingOverlay.show(intent: .recoveringLastRecording)
+        handleRecoveryPressRefused(backend: backend)
         recordingLockedAccess.set(false)
         return
       }
       // #1171 — no engine-changed re-check here: the `beginMinting()` state-gate
       // (held since before preWarm) guarantees the coordinator did NOT switch the
       // active engine across these awaits, so `active` is still the user's choice.
+      consumePendingBlockedPressIfAny()
       try await active.handle(event: .toggleRecording(config))
     } catch {
       heartControlRecovery.recover(
@@ -422,8 +465,7 @@ final class RecordingStarter {
       // A toggle that STOPS an active session is unaffected (guarded by
       // `isStartingFromIdle`).
       if isRecovering() {
-        recordingOverlay.show(intent: .recoveringLastRecording)
-        TelemetryService.shared.recoveryPressBlocked(asrBackend: backend.rawValue)
+        handleRecoveryPressRefused(backend: backend)
         return
       }
       // #1171 — start-of-recording safety, same as the PTT path: never record on
@@ -494,12 +536,13 @@ final class RecordingStarter {
         // armed id.
         if isRecovering() {
           cleanupRecoveryArm(config.recoverySessionID)
-          recordingOverlay.show(intent: .recoveringLastRecording)
+          handleRecoveryPressRefused(backend: backend)
           return
         }
         // #1171 — no engine-changed re-check here: the `beginMinting()` state-gate
         // (held since before the recovery-arm await) guarantees the coordinator did
         // NOT switch the active engine, so `active` is still the user's choice.
+        consumePendingBlockedPressIfAny()
       }
       try await active.handle(event: .toggleRecording(config))
     } catch {

@@ -66,6 +66,11 @@ public struct RecoveryKeyStore: Sendable {
   }
 
   public func retrieve(for recoverySessionID: String) throws -> Data {
+    #if DEBUG
+      if let status = DebugRecoveryKeyFaultController.shared.consumeArmedStatus() {
+        throw RecoveryKeyStoreError.retrieveFailed(status)
+      }
+    #endif
     switch backend {
     case .file:
       return try fileRetrieve(account: recoverySessionID)

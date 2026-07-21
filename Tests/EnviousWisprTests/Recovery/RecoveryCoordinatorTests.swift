@@ -43,6 +43,10 @@ struct RecoveryCoordinatorTests {
     var isRecoveringDuringReplay: [Bool] = []
     var abortedSeen: [Bool] = []
     var outcomeByDefault: RecoveryReplayOutcome = .recovered
+    /// #1707 Phase 3 — per-id scripted outcome, taking precedence over
+    /// `outcomeByDefault` when present (for multi-item scans where different
+    /// orphans need different outcomes).
+    var outcomeByID: [String: RecoveryReplayOutcome] = [:]
     var onReplay: ((String) -> Void)?
     /// When true, the FIRST replay suspends on a continuation until the test
     /// resumes it — so the test can run a second scan while one is genuinely
@@ -66,7 +70,7 @@ struct RecoveryCoordinatorTests {
       onReplay?(id)
       let aborted = isAborted()
       abortedSeen.append(aborted)
-      return aborted ? .aborted : outcomeByDefault
+      return aborted ? .aborted : (outcomeByID[id] ?? outcomeByDefault)
     }
   }
 
@@ -385,6 +389,153 @@ struct RecoveryCoordinatorTests {
     try Self.writeSpool(h.spoolStore, "orphan-\(UUID().uuidString)")
     await h.coordinator.scanAndRecover()
     #expect(!h.coordinator.isRecovering)
+  }
+
+  // MARK: - #1707 Phase 3: nextLaunchOnlyRecoveryIDs
+
+  @Test(
+    ".deferredMarkerClearFailed and .failed(.saveMarkerClearFailed) both suppress same-launch rescan"
+  )
+  func markerClearFailureOutcomesSuppressSameLaunchRescan() async throws {
+    let h = Self.makeHarness()
+    let deferredID = "deferred-markerfail-\(UUID().uuidString)"
+    let saveID = "save-markerfail-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, deferredID)
+    try Self.writeSpool(h.spoolStore, saveID)
+    h.replayer.outcomeByID[deferredID] = .deferredMarkerClearFailed
+    h.replayer.outcomeByID[saveID] = .failed(.saveMarkerClearFailed(.other))
+    await h.coordinator.scanAndRecover()
+    #expect(Set(h.replayer.replayedIDs) == Set([deferredID, saveID]))
+    // Both outcomes RETAIN — neither spool is deleted.
+    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: deferredID).path))
+    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: saveID).path))
+    // A same-launch rescan (the SAME coordinator instance) must not re-attempt
+    // either id — they are next-launch-only.
+    h.replayer.replayedIDs = []
+    await h.coordinator.scanAndRecover()
+    #expect(h.replayer.replayedIDs.isEmpty, "both ids suppressed on this instance's rescan")
+  }
+
+  @Test("nextLaunchOnlyRecoveryIDs is never cleared within one coordinator instance's lifetime")
+  func nextLaunchOnlyIDsNeverClearedOnSameInstance() async throws {
+    let h = Self.makeHarness()
+    let id = "persist-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    h.replayer.outcomeByID[id] = .deferredMarkerClearFailed
+    await h.coordinator.scanAndRecover()
+    #expect(h.replayer.replayedIDs == [id])
+    // Repeated rescans on the SAME instance never re-attempt it.
+    for _ in 0..<3 {
+      h.replayer.replayedIDs = []
+      await h.coordinator.scanAndRecover()
+      #expect(h.replayer.replayedIDs.isEmpty)
+    }
+  }
+
+  @Test("a FRESH coordinator instance (a genuine new launch) starts with an empty suppression set")
+  func freshInstanceStartsEmpty() async throws {
+    let h = Self.makeHarness()
+    let id = "newlaunch-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    h.replayer.outcomeByID[id] = .deferredMarkerClearFailed
+    await h.coordinator.scanAndRecover()
+    #expect(h.replayer.replayedIDs == [id])
+    // A genuinely NEW launch constructs a fresh coordinator (and fresh
+    // replayer) — the suppression set is per-instance, not persisted.
+    let h2 = Self.makeHarness()
+    try Self.writeSpool(h2.spoolStore, id)
+    h2.replayer.outcomeByDefault = .recovered
+    await h2.coordinator.scanAndRecover()
+    #expect(
+      h2.replayer.replayedIDs == [id], "a fresh instance re-attempts a previously-suppressed id")
+  }
+
+  // MARK: - #1707 Phase 3 §3.1: live-dictation-preempts-recovery-between-items
+
+  @Test(
+    "a pending live-start signal observed mid-scan yields the engine BETWEEN items — item 2 is never attempted"
+  )
+  func pendingLiveStartYieldsBetweenItems() async throws {
+    let h = Self.makeHarness()
+    let first = "first-\(UUID().uuidString)"
+    let second = "second-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, first)
+    try Self.writeSpool(h.spoolStore, second)
+    // Simulate `RecordingStarter`'s refusal path firing WHILE item 1 replays.
+    h.replayer.onReplay = { [coordinator = h.coordinator] id in
+      if id == first { coordinator.pendingLiveStartSignal = true }
+    }
+    await h.coordinator.scanAndRecover()
+    #expect(h.replayer.replayedIDs == [first], "item 2 never attempted — the scan yielded first")
+    #expect(!h.coordinator.isRecovering, "the gate is clear after yielding")
+    #expect(
+      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: second).path),
+      "the un-attempted second orphan stays on disk for the next trigger")
+  }
+
+  @Test("pendingLiveStartSignal is cleared entering the next fresh scan pass")
+  func pendingLiveStartClearedOnNextPass() async throws {
+    let h = Self.makeHarness()
+    let first = "first-\(UUID().uuidString)"
+    let second = "second-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, first)
+    try Self.writeSpool(h.spoolStore, second)
+    // A RETAINED (not deleted) outcome for `first`, so it is still on disk
+    // for pass 2 — isolating the assertion to the signal-clearing behavior,
+    // not to whether a successfully-recovered item gets deleted.
+    h.replayer.outcomeByID[first] = .failed(.save(.other))
+    h.replayer.onReplay = { [coordinator = h.coordinator] id in
+      if id == first { coordinator.pendingLiveStartSignal = true }
+    }
+    await h.coordinator.scanAndRecover()
+    #expect(h.replayer.replayedIDs == [first])
+    // A later wake-up (e.g. the live dictation ending) triggers a fresh pass.
+    // The stale signal from the PRIOR pass must not spuriously yield this one.
+    h.replayer.onReplay = nil
+    h.replayer.replayedIDs = []
+    await h.coordinator.scanAndRecover()
+    #expect(
+      Set(h.replayer.replayedIDs) == Set([first, second]),
+      "a fresh pass re-attempts both remaining orphans — the prior signal is cleared, not stale")
+  }
+
+  // MARK: - #1707 Phase 3 §3.2: EngineRecoveryGate integration
+
+  @Test("a mutation claim held on the gate defers the ENTIRE scan — no item is attempted")
+  func gateDeniedRecoveryDefersWholeScan() async throws {
+    let h = Self.makeHarness()
+    let gate = EngineRecoveryGate()
+    h.coordinator.tryBeginRecoveryClaim = { gate.tryBeginRecovery() }
+    h.coordinator.endRecoveryClaim = { gate.endRecovery() }
+    #expect(gate.tryBeginMutation(), "an unrelated engine mutation holds the gate")
+    try Self.writeSpool(h.spoolStore, "orphan-\(UUID().uuidString)")
+    await h.coordinator.scanAndRecover()
+    #expect(
+      h.replayer.replayedIDs.isEmpty, "the gate denied the claim before any item was attempted")
+    #expect(!h.coordinator.isRecovering)
+  }
+
+  @Test("once the held mutation releases, requestRecoveryRecheck() lets the deferred scan succeed")
+  func gateReleaseThenRequestRecheckSucceeds() async throws {
+    let h = Self.makeHarness()
+    let gate = EngineRecoveryGate()
+    h.coordinator.tryBeginRecoveryClaim = { gate.tryBeginRecovery() }
+    h.coordinator.endRecoveryClaim = { gate.endRecovery() }
+    #expect(gate.tryBeginMutation())
+    let id = "orphan-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    await h.coordinator.scanAndRecover()
+    #expect(h.replayer.replayedIDs.isEmpty, "denied while the mutation is held")
+    // The mutation releases — recovery was owed a retry (§3.2's `recoveryRetryOwed`).
+    #expect(gate.endMutation() == true)
+    h.coordinator.requestRecoveryRecheck()
+    // `requestRecoveryRecheck()` spawns its drain asynchronously — poll the
+    // real signal (`replayedIDs` becoming non-empty), backing off between
+    // checks rather than waiting a fixed duration.
+    for _ in 0..<200 where h.replayer.replayedIDs.isEmpty {
+      try? await Task.sleep(for: .milliseconds(5))  // settle: bounded poll backoff, not a fixed wait
+    }
+    #expect(h.replayer.replayedIDs == [id], "the deferred scan succeeded once the gate opened")
   }
 
   @Test("single-flight: a scan started while another is in-flight is rejected")

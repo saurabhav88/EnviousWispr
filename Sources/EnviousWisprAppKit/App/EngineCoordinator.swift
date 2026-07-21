@@ -73,6 +73,18 @@ final class EngineCoordinator {
     /// Background warm of the given engine (the matching driver's
     /// `ensureEngineWarm`). The ONLY place a load failure surfaces.
     let warm: @MainActor (ASRBackendType) async -> EngineWarmupOutcome
+    /// #1707 Phase 3 (§3.2, row 4) — `EngineRecoveryGate.tryBeginMutation()`,
+    /// injected exactly like `isRecovering` above (this type never references
+    /// `EngineRecoveryGate` by concrete type). Bound by the composition root;
+    /// default keeps every existing test that doesn't wire a gate behaving as
+    /// before (always able to proceed).
+    var tryBeginEngineMutation: @MainActor () -> Bool = { true }
+    /// `EngineRecoveryGate.endMutation()` — returns whether recovery was
+    /// denied while this mutation was in flight and is now owed a wake-up.
+    var endEngineMutation: @MainActor () -> Bool = { false }
+    /// Called when `endEngineMutation()` returns true — wakes a stranded
+    /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
+    var wakeRecoveryIfOwed: @MainActor () -> Void = {}
   }
 
   // MARK: - Published snapshot + gate
@@ -85,6 +97,13 @@ final class EngineCoordinator {
   /// before the `await`, cleared synchronously after). Recovery-start and
   /// record-start read it to mutually exclude with a switch (§3.4).
   private(set) var isSwitching = false
+
+  /// #1707 Phase 3 (§3.4 wake-up table) — fired when a warm completes, a
+  /// setup/migration state change lands, or an engine switch completes: any
+  /// of these may unblock a recovery pass that previously yielded. The
+  /// composition root binds this to
+  /// `RecoveryCoordinator.requestRecoveryRecheck`.
+  var onEngineStateChangedForRecovery: (() -> Void)?
 
   // MARK: - Wiring
 
@@ -229,6 +248,13 @@ final class EngineCoordinator {
     // Every exit resumes any record-start waiter whose condition is now met.
     defer { resumePressWaitersIfReady() }
 
+    // #1707 Phase 3 (§3.4 wake-up table): either of these may unblock a
+    // recovery pass that previously yielded because the engine wasn't ready
+    // or a migration was in flight.
+    if reason == .warmCompleted || reason == .setupStateChanged {
+      onEngineStateChangedForRecovery?()
+    }
+
     let want = deps.selectedBackend()
     let actual = deps.activeBackend()
 
@@ -307,6 +333,9 @@ final class EngineCoordinator {
     currentSwitchPhase = .idle
     clearEpoch()
     publishStatus()
+    // #1707 Phase 3 (§3.4 wake-up table): a completed switch may unblock a
+    // recovery pass that previously yielded because a switch was in flight.
+    onEngineStateChangedForRecovery?()
 
     // 8. Warm the now-active engine in the background (never awaited here).
     startWarm(for: want)
@@ -326,6 +355,20 @@ final class EngineCoordinator {
     warmingBackend = backend
     warmTask = Task(priority: .utility) { [weak self] in
       guard let self else { return }
+      // #1707 Phase 3 (§3.2, row 4): hold a mutation claim for the FULL
+      // awaited warm — recovery must never race a background warm. A denied
+      // claim (recovery holds the engine) skips this attempt; the next
+      // natural trigger (a future switch landing here, or a press's own
+      // cold-press warm) re-attempts — no bespoke retry machinery for a
+      // background convenience warm.
+      guard self.deps.tryBeginEngineMutation() else {
+        TelemetryService.shared.recoveryEngineActionDeferred(site: "startWarm")
+        self.warmingBackend = nil
+        return
+      }
+      defer {
+        if self.deps.endEngineMutation() { self.deps.wakeRecoveryIfOwed() }
+      }
       let start = ContinuousClock.now
       let outcome = await self.deps.warm(backend)
       self.warmingBackend = nil

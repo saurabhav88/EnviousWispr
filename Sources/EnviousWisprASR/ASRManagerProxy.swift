@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
 /// XPC-backed implementation of `ASRManagerInterface`.
@@ -33,6 +34,24 @@ public final class ASRManagerProxy: ASRManagerInterface {
 
   /// Fires when the ASR XPC service crashes during an active session (streaming or batch in-flight).
   public var onServiceInterrupted: (() -> Void)?
+
+  /// #1707 Phase 3 (§3.2, row 7) — `EngineRecoveryGate.tryBeginMutation()`/
+  /// `endMutation()`, injected exactly like `onServiceInterrupted` above (this
+  /// type never references `EngineRecoveryGate` by concrete type). Guards
+  /// `unloadModel()`'s idle-timer unload — a background actor unrelated to
+  /// any active session, so recovery must never race it. (A call arriving
+  /// via `switchBackend()` is already covered by `EngineCoordinator
+  /// .isSwitching`'s full-duration claim; recovery's own atomic handshake
+  /// checks `isEngineSwitching()` before claiming, so this claim can never
+  /// be denied during a genuine switch.) Defaults keep every existing
+  /// test/legacy construction unchanged (always able to proceed).
+  public var tryBeginEngineMutation: @MainActor () -> Bool = { true }
+  /// Returns whether recovery was denied while this mutation was in flight
+  /// and is now owed a wake-up.
+  public var endEngineMutation: @MainActor () -> Bool = { false }
+  /// Called when `endEngineMutation()` returns true — wakes a stranded
+  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
+  public var wakeRecoveryIfOwed: @MainActor () -> Void = {}
 
   /// Issue #445: per-tick callback wired by the dictation kernel to feed
   /// its `LoadProgressWatcher` from the existing 8Hz polling timer.
@@ -338,6 +357,17 @@ public final class ASRManagerProxy: ASRManagerInterface {
     inFlightLoadTask?.cancel()
     inFlightLoadTask = nil
     guard isModelLoaded else { return }
+    // #1707 Phase 3 (§3.2, row 7): hold a mutation claim for the FULL awaited
+    // unload. A denied claim (recovery holds the engine) skips this attempt;
+    // the next genuine idle-unload trigger re-attempts — no bespoke retry
+    // machinery for a background convenience unload.
+    guard tryBeginEngineMutation() else {
+      TelemetryService.shared.recoveryEngineActionDeferred(site: "asrManagerProxyUnload")
+      return
+    }
+    defer {
+      if endEngineMutation() { wakeRecoveryIfOwed() }
+    }
     await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
       serviceProxy { proxy in
         proxy.unloadModel {

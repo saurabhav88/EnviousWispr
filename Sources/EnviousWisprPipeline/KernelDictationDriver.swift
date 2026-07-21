@@ -338,6 +338,45 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   public var onSessionEndedWithoutSave: (@MainActor (String?, RecordingRecoveryEnding) -> Void)?
 
+  /// #1707 Phase 3 (§3.4 wake-up table) — fired whenever this driver's
+  /// dictation ends (from BOTH `fireStateChangeIfNeeded()`'s transition out
+  /// of an active phase and `fireSessionEndedWithoutSaveIfNeeded()`): may
+  /// unblock a recovery pass that previously yielded because a live
+  /// dictation was active. Bound by the composition root to
+  /// `RecoveryCoordinator.requestRecoveryRecheck` — never referenced by name
+  /// here (`EnviousWisprPipeline` cannot import the AppKit-level type).
+  /// Firing from both sites is harmless: the underlying recheck coalesces.
+  @ObservationIgnored
+  public var onDictationEndedForRecovery: (@MainActor () -> Void)?
+
+  /// #1707 Phase 3 (§3.2) — `EngineRecoveryGate.tryBeginMutation()`/
+  /// `endMutation()`, injected exactly like `onStateChange` above. Bound by
+  /// the composition root; defaults keep every existing test/legacy
+  /// construction unchanged (always able to proceed). `didSet` also forwards
+  /// the SAME closure onto a `WhisperKitEngineAdapter` (row 6's idle-unload
+  /// guard, `WhisperKitEngineAdapter.swift`) when this driver's adapter is
+  /// one — `WisprBootstrapper` sets these once here, never on the adapter
+  /// directly, since the adapter's concrete type is not visible outside
+  /// `EnviousWisprPipeline`.
+  @ObservationIgnored
+  public var tryBeginEngineMutation: @MainActor () -> Bool = { true } {
+    didSet {
+      (adapter as? WhisperKitEngineAdapter)?.tryBeginEngineMutation = tryBeginEngineMutation
+    }
+  }
+  /// Returns whether recovery was denied while this mutation was in flight
+  /// and is now owed a wake-up.
+  @ObservationIgnored
+  public var endEngineMutation: @MainActor () -> Bool = { false } {
+    didSet { (adapter as? WhisperKitEngineAdapter)?.endEngineMutation = endEngineMutation }
+  }
+  /// Called when `endEngineMutation()` returns true — wakes a stranded
+  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
+  @ObservationIgnored
+  public var wakeRecoveryIfOwed: @MainActor () -> Void = {} {
+    didSet { (adapter as? WhisperKitEngineAdapter)?.wakeRecoveryIfOwed = wakeRecoveryIfOwed }
+  }
+
   /// Fire-once latch for `onSessionEndedWithoutSave` (#1548 D1). Tracks the
   /// `currentSessionID` the ended-without-save check last fired for, so a
   /// re-armed observation can't double-fire for one concluded session while two
@@ -489,6 +528,21 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         wedgeGuard.disarm()
         sessionlessWedgeGuard = nil
       }
+    }
+    // #1707 Phase 3 (§3.2) — the SINGLE shared choke point every warm-up site
+    // routes through (per this method's own doc comment above), so gating
+    // here closes rows 2/9/10/12/13/15/16/18 at once rather than at each
+    // caller separately. Hold the claim for the FULL awaited `warmUp()`, not
+    // a point-in-time check. A denied claim (recovery holds the engine) is
+    // reported as `.cancelled` — a deliberate system choice, not a failure —
+    // so callers never surface the error UI for it; the next genuine
+    // poke/press re-attempts.
+    guard tryBeginEngineMutation() else {
+      TelemetryService.shared.recoveryEngineActionDeferred(site: "ensureEngineWarm")
+      return .cancelled
+    }
+    defer {
+      if endEngineMutation() { wakeRecoveryIfOwed() }
     }
     do {
       try await adapter.warmUp()
@@ -1249,6 +1303,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     guard mapped != lastFiredState else { return }
     lastFiredState = mapped
     onStateChange?(mapped)
+    // #1707 Phase 3 (§3.4): a transition OUT of an active phase means this
+    // dictation just ended (including the normal saved-completion case,
+    // which `onSessionEndedWithoutSave` never fires for) — the engine may be
+    // free for a recovery pass that previously yielded.
+    if !mapped.isActive { onDictationEndedForRecovery?() }
   }
 
   /// #1063 PR2 — fire `onSessionEndedWithoutSave` when the kernel enters a fresh
@@ -1282,6 +1341,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     }
     guard let ending else { return }
     onSessionEndedWithoutSave?(context.config?.recoverySessionID, ending)
+    // #1707 Phase 3 (§3.4) — see `fireStateChangeIfNeeded()`'s twin call.
+    onDictationEndedForRecovery?()
   }
 
   /// Project the non-`.completed` terminal `RecordingOutcome` into the narrow

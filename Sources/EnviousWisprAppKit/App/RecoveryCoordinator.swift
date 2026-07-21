@@ -58,18 +58,29 @@ final class RecoveryCoordinator {
   /// concurrent-arm race. MainActor-confined.
   private var armedSessionID: String?
 
-  /// True while the launch scan is replaying orphans behind the blocking pill.
+  /// True while an orphan is being actively replayed on the shared engine.
   /// DRIVES the recording gate: a record-press while true mints no session (shows
   /// the "recovering" pill). `private(set)` — only the scan/discard own it, and a
-  /// `defer` guarantees it clears on EVERY scan exit (a stuck `true` would brick
-  /// recording). Read by the gate via an injected closure.
+  /// per-item `defer` guarantees it clears on EVERY item exit (a stuck `true`
+  /// would brick recording). Read by the gate via an injected closure.
+  ///
+  /// #1707 Phase 3 (§3.1): PER-ITEM, not scan-wide — a multi-item scan sets/
+  /// clears this once per orphan (immediately before/after that orphan's
+  /// replay), not once for the whole scan. This is what lets a live record-press
+  /// preempt recovery between items instead of waiting for an entire multi-item
+  /// scan (RULE: live-dictation-preempts-recovery-between-items). Any new
+  /// engine-mutating call site must observe the SAME two claims this phase
+  /// closes — `isEngineSwitching()` (unchanged, full-duration) and
+  /// `EngineRecoveryGate`'s begin/end mutation pair (§3.2) — not merely read
+  /// this flag; copy an EXISTING guarded call site (e.g. `EngineCoordinator
+  /// .startWarm()`) rather than inventing a new pattern.
   private(set) var isRecovering = false
 
-  /// #1171 — fired after a recovery scan finishes AND `isRecovering` has cleared
-  /// (registered as a `defer` AFTER the `isRecovering = false` defer, so LIFO runs
-  /// it second). Lets the composition root poke `EngineCoordinator` so an engine
-  /// switch deferred because it arrived while recovery held the shared engine
-  /// applies now. Set by the root.
+  /// #1171 — fired after EACH item's per-item claim releases (§3.1 moved
+  /// `isRecovering` from scan-wide to per-item, so a switch deferred while ONE
+  /// item held the engine can now retry as soon as THAT item releases, not only
+  /// after the whole multi-item scan). Lets the composition root poke
+  /// `EngineCoordinator` so a deferred switch applies now. Set by the root.
   var onRecoveryComplete: (() -> Void)?
 
   /// #1464 — fired after each `.recovered` replay result (a leftover recording
@@ -86,6 +97,47 @@ final class RecoveryCoordinator {
   /// switch while recovery is active). Default no-switch keeps tests unchanged.
   var isEngineSwitching: () -> Bool = { false }
 
+  /// #1707 Phase 3 (§3.2) — `EngineRecoveryGate.tryBeginRecovery()`/
+  /// `endRecovery()`, injected by the composition root exactly like
+  /// `isEngineSwitching` above (this type never references `EngineRecoveryGate`
+  /// by concrete type, matching the existing closure-injection convention).
+  /// `RecoveryCoordinator` is the SOLE owner of these calls — `RecoverySpool
+  /// Replayer` runs entirely underneath the already-held claim and never calls
+  /// them itself. Defaults keep every existing test that doesn't wire a gate
+  /// behaving as before (always able to claim).
+  var tryBeginRecoveryClaim: () -> Bool = { true }
+  var endRecoveryClaim: () -> Void = {}
+
+  /// #1707 Phase 3 (§3.1) — set by `RecordingStarter`'s refusal path when a
+  /// live record-press was refused because recovery held the engine. Checked
+  /// before each item's handshake so a multi-item scan yields the engine
+  /// BETWEEN items, not only at the very end. Cleared at the top of every fresh
+  /// scan pass (a stale signal from a prior pass must not spuriously yield a new
+  /// one that has nothing to do with it).
+  var pendingLiveStartSignal = false
+
+  /// #1707 Phase 3 (§3.4) — single-flight scan-in-progress guard, now shared by
+  /// both the launch-time `scanAndRecover()` entry point and every later
+  /// `requestRecoveryRecheck()` wake-up, coalesced through one owning drain
+  /// loop (`drainPendingRescan()`) rather than a recursive re-invocation.
+  private var scanInProgress = false
+  /// Set by any wake-up trigger arriving while a pass is already running (or by
+  /// a rejected concurrent `scanAndRecover()`/`requestRecoveryRecheck()` call);
+  /// the owning drain loop clears it immediately before each pass, so a trigger
+  /// arriving mid-pass causes exactly one later pass, never zero and never two.
+  private var pendingRescan = false
+
+  /// #1707 Phase 3 (§3.3) — ids whose attempt-marker clear FAILED after a
+  /// deferred outcome (Keychain-transient or a History-save failure). A
+  /// surviving marker would be misread by a SAME-launch rescan as a crashed
+  /// attempt (the crash-loop guard's "marker present ⇒ abandoned" reasoning
+  /// only holds for a genuinely NEW launch) — every same-launch pass skips
+  /// these ids, leaving them untouched on disk for a future launch's fresh
+  /// `RecoveryCoordinator` instance (which always starts empty). NEVER cleared
+  /// during one instance's lifetime; tests model "a new launch" by constructing
+  /// a new coordinator, never by clearing this set on an existing one.
+  private var nextLaunchOnlyRecoveryIDs: Set<String> = []
+
   /// Monotonic token bumped by `discardActiveRecovery()`. The replayer captures
   /// it per orphan and re-checks after every `await`: a mismatch means "discarded
   /// while my uncancellable batch transcribe was in flight" → drop the result,
@@ -96,9 +148,6 @@ final class RecoveryCoordinator {
   /// The orphan id currently being replayed, so Discard can delete exactly the
   /// recording the user is waiting on. nil when the scan is between orphans.
   private var activeRecoveryID: String?
-
-  /// Single-flight guard so a re-trigger of `scanAndRecover()` can't double-run.
-  private var scanInProgress = false
 
   /// Hard-reset the shared engine (the #445 service-kill: kills any in-flight
   /// load/transcribe and marks the engine for reinit). Lets Discard return the
@@ -244,9 +293,11 @@ final class RecoveryCoordinator {
   /// Delete-versus-retain after a launch replay attempt (#1464). Delete a recovered
   /// (saved) or unrecoverable orphan and a crash-loop `.abandoned` one; RETAIN a
   /// History-save failure (the audio is still good, §3.3). `.aborted` (the user
-  /// discarded — already deleted by `discardActiveRecovery`) and `.deferred` (the
-  /// marker was never written — keep for a future launch) delete nothing here.
-  /// Static + internal for direct adversarial testing.
+  /// discarded — already deleted by `discardActiveRecovery`), `.deferred` (the
+  /// marker was never written — keep for a future launch), and #1707 Phase 3's
+  /// `.deferredMarkerClearFailed` (Keychain-transient, marker survives — keep for
+  /// a future launch) delete nothing here. Static + internal for direct
+  /// adversarial testing.
   static func shouldDeleteAfterReplay(_ outcome: RecoveryReplayOutcome) -> Bool {
     switch outcome {
     case .recovered, .abandoned:
@@ -255,7 +306,7 @@ final class RecoveryCoordinator {
       return true
     case .failed(.save), .failed(.saveMarkerClearFailed):
       return false
-    case .aborted, .deferred:
+    case .aborted, .deferred, .deferredMarkerClearFailed:
       return false
     }
   }
@@ -300,14 +351,57 @@ final class RecoveryCoordinator {
     return destroySpoolAndKey(id: id)
   }
 
-  /// On launch, scan for orphan spools and recover them behind the blocking pill
-  /// (#1063 PR2 — replaces PR1's purge). Single-flight. Sequential. One attempt
-  /// per orphan. Strict limb: fails open at every step.
+  /// On launch, scan for orphan spools and recover them (#1063 PR2 — replaces
+  /// PR1's purge). Single-flight via the same owning drain loop
+  /// `requestRecoveryRecheck()` uses (#1707 Phase 3, §3.4) — a concurrent call
+  /// coalesces into a follow-up pass rather than running twice.
   func scanAndRecover() async {
+    pendingRescan = true
     guard !scanInProgress else { return }
     scanInProgress = true
-    defer { scanInProgress = false }
+    await drainPendingRescan()
+  }
 
+  /// #1707 Phase 3 (§3.4) — the sole synchronous, MainActor, no-`await` entry
+  /// point every wake-up cause calls to request a fresh recovery pass: a live
+  /// dictation ending, an engine switch/warm/setup-migration completing, or
+  /// `EngineRecoveryGate.endMutation()` returning true (a denied recovery claim
+  /// is now owed a retry, §3.2). Safe to call from a bare `defer`. Coalesces
+  /// with any in-progress pass through the SAME owning drain loop
+  /// `scanAndRecover()` uses — never a parallel path.
+  func requestRecoveryRecheck() {
+    pendingRescan = true
+    guard !scanInProgress else { return }
+    scanInProgress = true
+    Task { await drainPendingRescan() }
+  }
+
+  /// The single owning loop behind both public entry points above (§3.4 —
+  /// replaces an earlier recursive re-invocation design that had a lost-trigger
+  /// race and a live-yield/pending-rescan interaction). Clears `pendingRescan`
+  /// immediately before each pass, so a trigger arriving mid-pass causes
+  /// exactly one later pass, never zero and never two. A pass that yielded
+  /// specifically because of a pending live-start signal discards any pending
+  /// rescan rather than honoring it immediately — reclaiming the engine right
+  /// after yielding it would defeat the entire point of the yield; the live
+  /// dictation's own later end becomes the next legitimate wake-up instead.
+  private func drainPendingRescan() async {
+    defer { scanInProgress = false }
+    while pendingRescan {
+      pendingRescan = false
+      let yieldedToLiveStart = await runOneScanPass()
+      if yieldedToLiveStart {
+        pendingRescan = false
+        return
+      }
+    }
+  }
+
+  /// One full discovery + per-item-replay pass. Returns `true` exactly when
+  /// the pass stopped because a live record-press was refused mid-scan (§3.1)
+  /// — the signal `drainPendingRescan()` uses to stop draining outright rather
+  /// than immediately re-claiming the engine for a stale pending rescan.
+  private func runOneScanPass() async -> Bool {
     let store = makeSpoolStore()
     // Fail CLOSED on a scan error (Codex code-diff r3 P2): a directory IO /
     // permission failure must NOT be read as "no spools" — the key-only sweep
@@ -318,7 +412,7 @@ final class RecoveryCoordinator {
     do {
       spoolIDs = try store.listSpoolSessionIDs()
     } catch {
-      return
+      return false
     }
     let armed = armedSessionID
 
@@ -356,7 +450,7 @@ final class RecoveryCoordinator {
       }
     }
 
-    guard !spoolIDs.isEmpty else { return }
+    guard !spoolIDs.isEmpty else { return false }
 
     // Snapshot the History dedup set. A recording that arms during the dedup
     // `await` mints a fresh UUID not in `spoolIDs` (listed above) — already
@@ -375,35 +469,69 @@ final class RecoveryCoordinator {
         recoverable.append(id)
       }
     }
-    guard !recoverable.isEmpty else { return }
+    guard !recoverable.isEmpty else { return false }
 
-    // Contention guard: never run the shared engine while a live dictation is in
-    // flight (a recording can start in the launch window, including with recovery
-    // OFF) OR while an engine switch is in flight (#1171 — a switch unloads/sets
-    // the active engine; starting recovery on top would race the shared engine).
-    // Defer the orphans to a future launch — they stay on disk.
-    guard !isDictationActive(), !isEngineSwitching() else { return }
+    // #1707 Phase 3 (§3.3): skip ids whose marker-clear failure means only a
+    // genuinely NEW launch may safely re-check them — they stay on disk,
+    // untouched, waiting for a future launch's fresh coordinator instance.
+    let attemptable = recoverable.filter { !nextLaunchOnlyRecoveryIDs.contains($0) }
+    guard !attemptable.isEmpty else { return false }
 
-    TelemetryService.shared.recoveryFound(count: recoverable.count)
-    isRecovering = true
-    // #1171 — registered BEFORE the `isRecovering = false` defer so LIFO runs this
-    // SECOND (after the flag clears): the deferred-switch retry it triggers sees
-    // `isRecovering == false` and can apply. Only fires when recovery actually ran.
-    defer { onRecoveryComplete?() }
-    // R1 (Codex REV-2, BLOCKER): clear the gate on EVERY exit — normal completion,
-    // a thrown error, or an early return. A stuck `isRecovering = true` would
-    // refuse every record-start and brick the heart path.
-    defer { isRecovering = false }
+    TelemetryService.shared.recoveryFound(count: attemptable.count)
+    // #1707 Phase 3 (§3.1): cleared once per fresh pass — a live-start refusal
+    // observed DURING this pass (between items, below) still yields the
+    // engine; a refusal from a PRIOR pass must not spuriously yield this one.
+    pendingLiveStartSignal = false
 
-    for id in recoverable {
+    for id in attemptable {
+      // Atomic per-item handshake (§3.1/§3.2) — ONE non-suspending MainActor
+      // turn: checked and claimed here with no `await` between any step, so
+      // there is no window between "checked" and "acted." Preserves the
+      // existing switch symmetry exactly: a switch already in progress makes
+      // recovery defer here; once `isRecovering` is set below, a NEW switch
+      // cannot begin (`EngineCoordinator` already checks it).
+      guard !pendingLiveStartSignal else { return true }
+      // Contention guard: never run the shared engine while a live dictation is
+      // in flight (a recording can start in the launch window, including with
+      // recovery OFF) OR while an engine switch is in flight (#1171 — a switch
+      // unloads/sets the active engine; starting recovery on top would race the
+      // shared engine). Defer the remaining orphans — they stay on disk.
+      guard !isDictationActive(), !isEngineSwitching() else { return false }
+      guard tryBeginRecoveryClaim() else {
+        // The gate is held by an in-flight mutation; its `endMutation()`
+        // wake-up (§3.2's `recoveryRetryOwed`) calls `requestRecoveryRecheck()`
+        // when it releases, so stopping here is never a stranded deferral.
+        return false
+      }
+      isRecovering = true
+
       activeRecoveryID = id
       let generationAtStart = recoveryGeneration
+      // Per-item — not per-scan (§3.1) — so a switch deferred behind THIS item
+      // can retry as soon as THIS item's claim releases, not only after the
+      // whole multi-item scan. R1 (Codex REV-2, BLOCKER) still holds: this
+      // fires on EVERY exit from this iteration — normal completion, a thrown
+      // error, or `break` — so a stuck `isRecovering = true` can never brick
+      // recording.
+      defer {
+        activeRecoveryID = nil
+        isRecovering = false
+        endRecoveryClaim()
+        onRecoveryComplete?()
+      }
       let outcome = await replayer.replay(recoverySessionID: id) { [weak self] in
         // Discard bumps `recoveryGeneration`; a mismatch ⇒ abandon this in-flight
         // replay. Coordinator gone ⇒ treat as aborted (safe).
         self?.recoveryGeneration != generationAtStart
       }
-      activeRecoveryID = nil
+      // #1707 Phase 3 (§3.3): a marker-clear failure under either deferred
+      // outcome means only a genuinely new launch may safely re-check this id.
+      switch outcome {
+      case .deferredMarkerClearFailed, .failed(.saveMarkerClearFailed):
+        nextLaunchOnlyRecoveryIDs.insert(id)
+      default:
+        break
+      }
       // #1464: the coordinator is the sole destructor — the replayer no longer
       // deletes, so apply the replay predicate now that `replay()` has returned.
       // (`.aborted` deletes nothing here: `discardActiveRecovery` already did.)
@@ -411,9 +539,10 @@ final class RecoveryCoordinator {
       // Post the standalone success notice for a recording that landed in History.
       if case .recovered = outcome { onRecoverySucceeded?() }
       // A Discard ends the whole hold; remaining orphans (rare) wait for the next
-      // launch. Every other outcome continues to the next orphan.
+      // launch/rescan. Every other outcome continues to the next orphan.
       if outcome == .aborted { break }
     }
+    return false
   }
 
   /// The user pressed Discard on the recovering pill. No-op when nothing is

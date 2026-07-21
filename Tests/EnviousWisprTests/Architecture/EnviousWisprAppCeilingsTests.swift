@@ -398,14 +398,28 @@ import Testing
   /// Codex r6 required gating the controller's own construction behind
   /// `#if DEBUG` (a Release build must not wire real fault-injection
   /// machinery into its object graph): actual 1200 + ~2, rounded to 1205.
+  /// #1707 Phase 3 (crash-safety-net readiness gating): 1205 → 1315 for the
+  /// `EngineRecoveryGate` construction + the composition-root wiring pass
+  /// that injects its closures downward into every guarded engine-mutating
+  /// call site (`kernelDriver`/`whisperKitKernelDriver`, `asrManager`'s
+  /// concrete type, `whisperKitSetup`, `whisperKitRetirement`,
+  /// `modelDelivery`, `diagnosticsCoordinator.benchmark`) plus
+  /// `EngineCoordinator`'s three new `Dependencies` fields and
+  /// `RecoveryCoordinator`'s claim closures. This is the irreducible cost of
+  /// naming a new cross-cutting subsystem, the same class of residue
+  /// `activeEngine`/`whisperKitRetirement` already justify above — only the
+  /// composition root has every guarded object in scope simultaneously to
+  /// wire them together; no domain logic moved here (the gate itself and
+  /// every guard's behavior live on their own types). Cap by deterministic
+  /// rule (actual 1309 + ~2, rounded up to nearest 5 = 1315).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1205,
+      lineCount <= 1315,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1205. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1315. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

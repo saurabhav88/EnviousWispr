@@ -145,6 +145,9 @@ final class DictationRuntime {
       // #1063 PR2: the recording gate — a press while recovery holds the shared
       // engine mints no session (shows the "recovering" pill).
       isRecovering: { recoveryCoordinator.isRecovering },
+      // #1707 Phase 3 (§3.1): a refused press yields the engine BETWEEN a
+      // multi-item recovery scan's items, not only after the whole scan.
+      signalPendingLiveStart: { recoveryCoordinator.pendingLiveStartSignal = true },
       // #1171: drive the selected engine to ready before recording, gate a press
       // during an in-flight switch, and hold the start-window state-gate so the
       // coordinator can't switch the engine out mid-startup.

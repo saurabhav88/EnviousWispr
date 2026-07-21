@@ -2,6 +2,7 @@
 import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
 /// Measures ASR transcription performance across different audio durations.
@@ -29,6 +30,20 @@ final class BenchmarkSuite {
   private(set) var isRunning = false
   private(set) var progress: String = ""
 
+  /// #1707 Phase 3 (§3.2, rows 23/27) — `EngineRecoveryGate.tryBeginMutation()`/
+  /// `endMutation()`, injected by the composition root (this type never
+  /// references `EngineRecoveryGate` by concrete type). A Diagnostics-
+  /// triggered benchmark must never race crash recovery on the shared
+  /// engine. Defaults keep every existing test/legacy construction unchanged
+  /// (always able to proceed).
+  var tryBeginEngineMutation: @MainActor () -> Bool = { true }
+  /// Returns whether recovery was denied while this mutation was in flight
+  /// and is now owed a wake-up.
+  var endEngineMutation: @MainActor () -> Bool = { false }
+  /// Called when `endEngineMutation()` returns true — wakes a stranded
+  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
+  var wakeRecoveryIfOwed: @MainActor () -> Void = {}
+
   /// Ensure model is loaded, returning false (and updating progress) if loading fails.
   private func ensureModelLoaded(using activeEngine: ActiveEngineOperation) async -> Bool {
     guard !(await activeEngine.isLoaded()) else { return true }
@@ -47,6 +62,18 @@ final class BenchmarkSuite {
     guard !isRunning else { return }
     isRunning = true
     results = []
+
+    // #1707 Phase 3 (§3.2, row 23): hold a mutation claim for the FULL
+    // load+transcribe duration — a Diagnostics-triggered benchmark must
+    // never race crash recovery on the shared engine.
+    guard tryBeginEngineMutation() else {
+      TelemetryService.shared.recoveryEngineActionDeferred(site: "benchmarkSuiteBatch")
+      isRunning = false
+      return
+    }
+    defer {
+      if endEngineMutation() { wakeRecoveryIfOwed() }
+    }
 
     guard await ensureModelLoaded(using: activeEngine) else {
       isRunning = false
@@ -82,6 +109,23 @@ final class BenchmarkSuite {
     guard !isRunning else { return }
     isRunning = true
     pipelineResult = nil
+
+    // #1707 Phase 3 (§3.2, row 23): hold a mutation claim for the FULL
+    // load+batch-transcribe duration below — released before the separate
+    // streaming portion (row 27) claims its own, since they are genuinely
+    // distinct engine-touching surfaces, not one operation.
+    guard tryBeginEngineMutation() else {
+      TelemetryService.shared.recoveryEngineActionDeferred(site: "benchmarkSuiteBatch")
+      isRunning = false
+      return
+    }
+    var batchClaimReleased = false
+    let releaseBatchClaim = {
+      guard !batchClaimReleased else { return }
+      batchClaimReleased = true
+      if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
+    }
+    defer { releaseBatchClaim() }
 
     guard await ensureModelLoaded(using: activeEngine) else {
       isRunning = false
@@ -123,6 +167,9 @@ final class BenchmarkSuite {
     let batchResult = try? await activeEngine.transcribe(testSamples, .default)
     let batchTime = CFAbsoluteTimeGetCurrent() - batchStart
     let batchTranscript = batchResult?.text ?? ""
+    // Row 23's claim covers only the batch work above — release it now,
+    // before row 27's genuinely separate streaming surface claims its own.
+    releaseBatchClaim()
 
     // Step 2: Streaming ASR (if supported)
     var streamingFinalizeTime: TimeInterval?
@@ -132,8 +179,34 @@ final class BenchmarkSuite {
     let supportsStreaming = await asrManager.activeBackendSupportsStreaming
     if supportsStreaming {
       progress = "Running streaming ASR..."
+      // #1707 Phase 3 (§3.2, row 27): hold a mutation claim for the whole
+      // start/feed/finalize sequence below. Round 3 correction: releasing
+      // the claim is NOT simply "on completion or abort" — `finalizeStreaming()`
+      // only clears streaming state after a SUCCESSFUL awaited finalize, so
+      // any throw below must first `await asrManager.cancelStreaming()`
+      // WHILE the claim is still held, and release only after that
+      // cancellation completes (or after a successful finalize) — never on
+      // the bare throw alone, or the claim would say "safe" while the
+      // backend's streaming session is still actually active underneath.
+      guard tryBeginEngineMutation() else {
+        TelemetryService.shared.recoveryEngineActionDeferred(site: "benchmarkSuiteStreaming")
+        progress = "Pipeline benchmark complete"
+        isRunning = false
+        pipelineResult = PipelineBenchmarkResult(
+          batchASRTime: batchTime, streamingFinalizeTime: nil, werDelta: nil,
+          audioDuration: testAudioDuration)
+        return
+      }
+      var streamingClaimReleased = false
+      let releaseStreamingClaim = {
+        guard !streamingClaimReleased else { return }
+        streamingClaimReleased = true
+        if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
+      }
+      var startedStreaming = false
       do {
         try await asrManager.startStreaming(options: .default)
+        startedStreaming = true
 
         // Chunk the samples into AVAudioPCMBuffers and feed them
         let chunkSize = AudioConstants.captureBufferSize
@@ -169,7 +242,20 @@ final class BenchmarkSuite {
           let werResult = WERCalculator.calculate(reference: batchTranscript, hypothesis: streaming)
           werDelta = werResult.wer
         }
+        // Successful finalize — the backend's streaming session has
+        // genuinely ended; safe to release now.
+        releaseStreamingClaim()
       } catch {
+        // #1707 Phase 3 (§3.2, row 27 fix): `feed`/`finalize` throwing means
+        // the streaming session may still be genuinely active underneath —
+        // await the real cancellation WHILE the claim is still held, so
+        // recovery cannot acquire until the backend has actually stopped,
+        // not merely until this throw is caught. `startStreaming()` itself
+        // throwing means there is no active session to cancel.
+        if startedStreaming {
+          await asrManager.cancelStreaming()
+        }
+        releaseStreamingClaim()
         Task {
           await AppLogger.shared.log(
             "Pipeline benchmark: streaming ASR failed: \(error.localizedDescription)",
