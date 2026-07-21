@@ -261,18 +261,33 @@ final class EngineCoordinator {
     // 3. Converged — nothing owed.
     if want == actual {
       currentBlockedReason = nil
+      var justLeftSwitchingPhase = false
       if deps.readiness(actual) == .ready, case .switching = currentSwitchPhase {
         currentSwitchPhase = .idle
+        justLeftSwitchingPhase = true
       }
       clearEpoch()
       publishStatus()
-      // GitHub cloud review, PR #1732: a recovery pass that deferred because
+      // GitHub cloud review, PR #1732 (round 2 — the round-1 fix here was
+      // itself a real self-inflicted regression, caught by a later review
+      // round rather than shipped): a recovery pass that deferred because
       // `isEngineSwitching()` was true can reach a genuinely converged engine
       // through a `reason` this function doesn't otherwise wake recovery for
       // (e.g. `.settingsChanged` looping back here after a superseded switch
-      // re-settled to the id it started from) — without this, such a pass
-      // stays stranded until an unrelated wake-up or the next launch.
-      onEngineStateChangedForRecovery?()
+      // re-settled to the id it started from) — without a wake here, such a
+      // pass stays stranded until an unrelated wake-up or the next launch.
+      // MUST be gated on `justLeftSwitchingPhase`, not unconditional: this
+      // fast path is ALSO reached via `.recoveryComplete` itself (fired after
+      // EVERY replayed item, retained or not) — an unconditional wake here
+      // creates a closed loop for any RETAINED outcome (e.g. persistent
+      // marker-write or History-save failure): replay → onRecoveryComplete →
+      // poke(.recoveryComplete) → this fast path → wake → requestRecheck →
+      // re-discover the SAME still-retained spool → replay again, forever.
+      // Gating on the phase transition breaks the cycle: `currentSwitchPhase`
+      // is already `.idle` by the second iteration, so the condition is false.
+      if justLeftSwitchingPhase {
+        onEngineStateChangedForRecovery?()
+      }
       return
     }
 
