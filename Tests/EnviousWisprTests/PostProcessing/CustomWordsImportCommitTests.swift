@@ -756,25 +756,120 @@ struct CustomWordsImportCommitTests {
     #expect(matching.first?.aliases.contains("fresh alias") == true)
   }
 
-  @Test("an import survives a library where a renamed built-in duplicates its own ID")
-  func importSurvivesDuplicateIDsFromARenamedBuiltin() throws {
-    let (manager, _) = makeManager()
+  @Test(
+    "renaming a built-in through update leaves exactly one word, not the built-in plus an override (#1670)"
+  )
+  func renamingABuiltinThroughUpdateRetiresTheBuiltinInsteadOfDuplicatingIt() throws {
+    let (manager, url) = makeManager()
     var live = try #require(manager.load())
     let builtin = try #require(live.first)
+    let originalCount = live.count
 
-    // Renaming a built-in stores a user override carrying the built-in's OWN
-    // UUID, while `mergedWords` keeps showing the built-in (its canonical no
-    // longer matches any user word). Within this process the two therefore
-    // share an id. A later re-read is what surfaces the pair to a caller.
-    //
-    // That duplicate is itself the bug in #1670, so the `count == 2` guard
-    // below is a precondition, not a desired outcome: fixing #1670 will make
-    // it fail. When that lands, keep the commit assertions and build the
-    // duplicate directly instead — this test defends commitImport against a
-    // non-unique list, whatever produced it.
     var renamed = builtin
     renamed.canonical = "\(builtin.canonical) Renamed"
     try manager.update(word: renamed, in: &live)
+
+    #expect(live.count == originalCount)
+    #expect(live.contains { $0.canonical == "\(builtin.canonical) Renamed" })
+    #expect(live.contains { $0.canonical == builtin.canonical } == false)
+
+    // Same duplicate-ID hazard `replacingABuiltinRetiresTheBuiltinInsteadOfDuplicatingIt`
+    // guards for commitImport: a reload must not resurface the built-in either.
+    let reloaded = try #require(manager.load())
+    #expect(reloaded.filter { $0.id == builtin.id }.count == 1)
+
+    // `deletedBuiltinIds` stores `BuiltinWord.id` (a stable string like
+    // "enviouswispr"), not the `CustomWord.id` UUID shown above — look up the
+    // matching entry by canonical to get the right key to check.
+    let matchingBuiltin = try #require(
+      CustomWordsManager.builtinDefaults.first {
+        $0.word.canonical.lowercased() == builtin.canonical.lowercased()
+      })
+    let file = try #require(
+      try? JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+    let tombstones = file["deletedBuiltinIds"] as? [String] ?? []
+    #expect(tombstones.contains(matchingBuiltin.id))
+  }
+
+  @Test("renaming a built-in then renaming it back leaves exactly one word (#1670 DoD)")
+  func renamingABuiltinThenRestoringItsOriginalNameLeavesExactlyOneWord() throws {
+    let (manager, _) = makeManager()
+    var live = try #require(manager.load())
+    let builtin = try #require(live.first)
+    let originalCount = live.count
+    let originalCanonical = builtin.canonical
+
+    var renamed = builtin
+    renamed.canonical = "\(originalCanonical) Renamed"
+    try manager.update(word: renamed, in: &live)
+
+    // Rename back to the built-in's original text. The built-in stays
+    // tombstoned (the identity is now this user override, not a restored
+    // built-in) — the DoD asks only that this behave sanely, i.e. exactly
+    // one word, never the duplicate-ID hazard the forward rename used to hit.
+    var restored = renamed
+    restored.canonical = originalCanonical
+    try manager.update(word: restored, in: &live)
+
+    #expect(live.count == originalCount)
+    let matching = live.filter { $0.canonical == originalCanonical }
+    #expect(matching.count == 1)
+
+    let reloaded = try #require(manager.load())
+    #expect(reloaded.filter { $0.id == builtin.id }.count == 1)
+  }
+
+  @Test(
+    "renaming a built-in's aliases through update, without moving its canonical, does not tombstone it (#1670)"
+  )
+  func updateWithoutRenamingLeavesTheBuiltinRestorable() throws {
+    let (manager, url) = makeManager()
+    var live = try #require(manager.load())
+    let builtin = try #require(live.first)
+    let originalCount = live.count
+
+    // Same canonical, new aliases: the override keeps hiding the built-in on
+    // its own, so recording a tombstone would persist a deletion the user
+    // never performed (mirrors replacingABuiltinWithoutRenamingLeavesItRestorable).
+    var edited = builtin
+    edited.aliases = builtin.aliases + ["extra alias"]
+    try manager.update(word: edited, in: &live)
+
+    #expect(live.count == originalCount)
+
+    let file = try #require(
+      try? JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+    let tombstones = file["deletedBuiltinIds"] as? [String] ?? []
+    #expect(tombstones.isEmpty)
+
+    let matching = live.filter { $0.canonical == builtin.canonical }
+    #expect(matching.count == 1)
+    #expect(matching.first?.aliases.contains("extra alias") == true)
+  }
+
+  @Test("an import survives a library where a duplicate ID was constructed directly")
+  func importSurvivesADirectlyConstructedDuplicateID() throws {
+    let (manager, url) = makeManager()
+    let live = try #require(manager.load())
+    let builtin = try #require(live.first)
+
+    // #1670 (fixed): renaming a built-in through `update` used to leave a
+    // user override carrying the built-in's OWN UUID while `mergedWords`
+    // kept showing the (no-longer-tombstoned) built-in too, so the two
+    // shared an id. That path is fixed now — `update` tombstones the
+    // built-in when the canonical moves away, so it can no longer produce
+    // this duplicate. `commitImport`'s defensive handling of a non-unique
+    // list is still worth proving, so construct the duplicate directly by
+    // writing it to disk rather than relying on a (fixed) bug to produce it.
+    struct RawFile: Codable {
+      var version = 1
+      var builtinsVersion = 1
+      var deletedBuiltinIds: [String] = []
+      var words: [CustomWord] = []
+    }
+    var renamed = builtin
+    renamed.canonical = "\(builtin.canonical) Renamed"
+    try JSONEncoder().encode(RawFile(words: [renamed])).write(to: url, options: [.atomic])
 
     let reloaded = try #require(manager.load())
     #expect(reloaded.filter { $0.id == builtin.id }.count == 2)
