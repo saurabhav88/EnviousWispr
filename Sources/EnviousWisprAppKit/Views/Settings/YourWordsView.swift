@@ -25,29 +25,11 @@ struct YourWordsView: View {
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
   @State private var sheetRoute: YourWordsSheetRoute?
   #if DEBUG
-    /// What to say after an export attempt. Two kinds, deliberately: a real
-    /// failure, and an honest outcome that is not a failure. Sharing one
-    /// "Export didn't finish" title for both would tell a pack-only user their
-    /// export broke when it worked exactly as designed (#1697).
-    enum ExportNotice: Equatable {
-      case failure(String)
-      case info(String)
-
-      var title: String {
-        switch self {
-        case .failure: return "Export didn't finish"
-        case .info: return "Nothing was exported"
-        }
-      }
-
-      var message: String {
-        switch self {
-        case .failure(let text), .info(let text): return text
-        }
-      }
-    }
-
-    @State private var exportNotice: ExportNotice?
+    // Outcome-to-message mapping moved to shared `CustomWordsExportNotice`
+    // (#1703) so `BulkDeleteConfirmSheet`'s release-visible export offer can
+    // present the identical copy. This button stays DEBUG-only; only the
+    // mapping it reads from is now shared, not private.
+    @State private var exportNotice: CustomWordsExportNotice?
   #endif
 
   var body: some View {
@@ -188,33 +170,7 @@ struct YourWordsView: View {
             try await CustomWordsExportWriter.write(document, to: destination)
           }
         )
-        switch outcome {
-        case .cancelled, .exported:
-          exportNotice = nil
-        case .refusedUnsafeLibrary:
-          exportNotice = .failure(
-            "Your saved words couldn't be read this time, so there's nothing safe to export. "
-              + "Relaunch EnviousWispr and try again.")
-        // Neither of the next two is a failure, so neither wears the failure
-        // title. A pack-only user pressing Export has done nothing wrong; they
-        // need the reason their long word list produced no file (#1697).
-        case .nothingToExport:
-          exportNotice = .info(
-            "There are no words of your own to export yet. "
-              + "Vocabulary packs are not included.")
-        case .libraryChanged:
-          exportNotice = .info(
-            // Says nothing about WHEN or WHERE the list moved, because two
-            // different paths land here: the drift check after a folder was
-            // chosen, and a stale empty count that never opened a dialog at
-            // all. Naming folder selection would describe a step the second
-            // user never took (cloud review, #1715). It also can't say "review
-            // the updated count" any more — there is no count on this screen.
-            "Your word list changed, so nothing was exported. "
-              + "Try Export again.")
-        case .failed(let message):
-          exportNotice = .failure(message)
-        }
+        exportNotice = CustomWordsExportNotice.forOutcome(outcome)
       }
     }
 

@@ -1,14 +1,28 @@
 import EnviousWisprCore
 import SwiftUI
 
+/// A pending bulk-delete confirmation, keyed by request rather than a bare
+/// boolean (#1703) — the confirmation's content depends on which IDs were
+/// selected, so `.sheet(item:)` is the correct presentation, matching the
+/// data-dependent sheet pattern this repo already uses (`YourWordsView`).
+private struct BulkDeleteRequest: Identifiable {
+  let id = UUID()
+  let ids: Set<UUID>
+}
+
 /// Phase 4 (#634) — Custom Terms section. Search + pagination + per-term Edit.
 /// Reads `frequencyUsed` from Phase 3a/b for "used N times" subtitle (omitted
 /// when frequency is 0 to avoid the "0 times" looks-like-a-bug case). Bible §10.2.
+/// Bulk select/delete (#1703): a "Select" mode lets several of the user's own
+/// words be checked off and removed in one action.
 struct CustomTermsSection: View {
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
   @State private var searchQuery: String = ""
   @State private var currentPage: Int = 0
   @State private var editingWord: CustomWord?
+  @State private var isSelecting = false
+  @State private var selectedIDs: Set<UUID> = []
+  @State private var pendingBulkDelete: BulkDeleteRequest?
 
   private var allWords: [CustomWord] {
     customWordsCoordinator.customWords
@@ -16,6 +30,13 @@ struct CustomTermsSection: View {
 
   private var filteredWords: [CustomWord] {
     CustomTermListPolicy.filtered(allWords, query: searchQuery)
+  }
+
+  /// IDs eligible for bulk selection within the current search/filter — never
+  /// the whole library, and never a built-in or vocabulary-pack term. One
+  /// projection reused by both the Select-All control and row rendering.
+  private var filteredSelectableIDs: Set<UUID> {
+    CustomTermListPolicy.selectableIDs(in: filteredWords)
   }
 
   private var pageCount: Int {
@@ -29,7 +50,7 @@ struct CustomTermsSection: View {
 
   var body: some View {
     BrandedSection(header: "Custom terms · \(filteredWords.count)") {
-      // Search
+      // Search + selection controls
       BrandedRow(showDivider: true) {
         HStack(spacing: 6) {
           Image(systemName: "magnifyingglass")
@@ -52,6 +73,8 @@ struct CustomTermsSection: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Clear search")
           }
+          Spacer()
+          selectionControls
         }
       }
 
@@ -69,20 +92,23 @@ struct CustomTermsSection: View {
       } else {
         ForEach(Array(pagedWords.enumerated()), id: \.element.id) { idx, word in
           BrandedRow(showDivider: idx < pagedWords.count - 1 || pageCount > 1) {
-            HStack {
-              VStack(alignment: .leading, spacing: 2) {
-                Text(word.canonical)
-                  .font(.body)
-                Text(usageSubtitle(for: word))
-                  .font(.stHelper)
-                  .foregroundStyle(.stTextSecondary)
-              }
-              Spacer()
-              Button("Edit") {
-                editingWord = word
-              }
-              .controlSize(.small)
+            termRow(for: word)
+          }
+        }
+      }
+
+      // Bulk-delete action row, shown only once something is selected.
+      if isSelecting, !selectedIDs.isEmpty {
+        BrandedRow(showDivider: false) {
+          HStack {
+            Text("\(selectedIDs.count) selected")
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+            Spacer()
+            Button("Delete…", role: .destructive) {
+              pendingBulkDelete = BulkDeleteRequest(ids: selectedIDs)
             }
+            .controlSize(.small)
           }
         }
       }
@@ -116,6 +142,12 @@ struct CustomTermsSection: View {
         }
       }
     }
+    .onChange(of: allWords) { _, newWords in
+      // Prune against current ELIGIBILITY, not merely current ID existence:
+      // if a live refresh replaces an already-selected ID with a word that
+      // still exists but is no longer the user's own, drop it too (#1703).
+      selectedIDs.formIntersection(CustomTermListPolicy.selectableIDs(in: newWords))
+    }
     .sheet(item: $editingWord) { word in
       CustomWordEditSheet(
         word: word,
@@ -127,6 +159,90 @@ struct CustomTermsSection: View {
           customWordsCoordinator.remove(id: word.id)
         }
       )
+    }
+    .sheet(item: $pendingBulkDelete) { request in
+      BulkDeleteConfirmSheet(
+        ids: request.ids,
+        onDeleted: {
+          selectedIDs.subtract(request.ids)
+          isSelecting = false
+          pendingBulkDelete = nil
+        },
+        onCancel: { pendingBulkDelete = nil }
+      )
+    }
+  }
+
+  @ViewBuilder
+  private func termRow(for word: CustomWord) -> some View {
+    if isSelecting, filteredSelectableIDs.contains(word.id) {
+      Toggle(
+        isOn: Binding(
+          get: { selectedIDs.contains(word.id) },
+          set: { selected in
+            if selected {
+              selectedIDs.insert(word.id)
+            } else {
+              selectedIDs.remove(word.id)
+            }
+          }
+        )
+      ) {
+        termLabel(for: word)
+      }
+      .toggleStyle(.checkbox)
+    } else {
+      HStack {
+        termLabel(for: word)
+        Spacer()
+        // Edit is unavailable while selecting — structurally, not merely by
+        // convention, so the two sheets this section presents never both
+        // apply to the same row at once.
+        if !isSelecting {
+          Button("Edit") {
+            editingWord = word
+          }
+          .controlSize(.small)
+        }
+      }
+    }
+  }
+
+  private func termLabel(for word: CustomWord) -> some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(word.canonical)
+        .font(.body)
+      Text(usageSubtitle(for: word))
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+    }
+  }
+
+  /// Trailing controls in the search row: "Select" when idle (only offered
+  /// if there is anything selectable in the current filtered set), or
+  /// "Select All"/"Deselect All" + "Cancel" while selecting.
+  @ViewBuilder
+  private var selectionControls: some View {
+    if isSelecting {
+      let allSelected =
+        !filteredSelectableIDs.isEmpty && filteredSelectableIDs.isSubset(of: selectedIDs)
+      Button(allSelected ? "Deselect All" : "Select All") {
+        selectedIDs = CustomTermListPolicy.toggledSelection(
+          current: selectedIDs, target: filteredSelectableIDs)
+      }
+      .controlSize(.small)
+      .disabled(filteredSelectableIDs.isEmpty)
+
+      Button("Cancel") {
+        selectedIDs = []
+        isSelecting = false
+      }
+      .controlSize(.small)
+    } else if !filteredSelectableIDs.isEmpty {
+      Button("Select") {
+        isSelecting = true
+      }
+      .controlSize(.small)
     }
   }
 
