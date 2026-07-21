@@ -9,7 +9,7 @@
 #   EnviousWisprAppKit     -> Core, Storage, PostProcessing, Audio, Services, ASR, LLM, Pipeline, Contacts (app-shell library; #919, top of stack)
 #   EnviousWisprASRService -> Core, ASR, Audio, ObservabilityCore (XPC executable; the audio capture XPC service was removed at #1543)
 #   EnviousWisprPipeline   -> Core, ASR, Audio, LLM, PostProcessing, Services, Storage
-#   EnviousWisprASR        -> Core, Audio, FluidAudioBridge
+#   EnviousWisprASR        -> Core, Audio, FluidAudioBridge, Services (idle-unload mutation guards emit via TelemetryService; #1707 Phase 3)
 #   EnviousWisprFluidAudioBridge -> (no app deps; internal FluidAudio vendor-error classifier leaf; #1525 PR I-B)
 #   EnviousWisprServices   -> Core, ObservabilityCore
 #   EnviousWisprLLM        -> Core, ModelDelivery
@@ -32,7 +32,7 @@ permitted_imports_for() {
     EnviousWisprObservabilityCore) echo "" ;;
     EnviousWisprAudio)             echo "EnviousWisprCore" ;;
     EnviousWisprFluidAudioBridge)  echo "" ;;
-    EnviousWisprASR)               echo "EnviousWisprCore EnviousWisprAudio EnviousWisprFluidAudioBridge" ;;
+    EnviousWisprASR)               echo "EnviousWisprCore EnviousWisprAudio EnviousWisprFluidAudioBridge EnviousWisprServices" ;;
     EnviousWisprPostProcessing)    echo "EnviousWisprCore" ;;
     EnviousWisprContacts)          echo "EnviousWisprCore" ;;
     EnviousWisprStorage)           echo "EnviousWisprCore" ;;
