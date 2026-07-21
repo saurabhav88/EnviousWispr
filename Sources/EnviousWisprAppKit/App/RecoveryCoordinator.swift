@@ -127,15 +127,21 @@ final class RecoveryCoordinator {
   /// arriving mid-pass causes exactly one later pass, never zero and never two.
   private var pendingRescan = false
 
-  /// #1707 Phase 3 (§3.3) — ids whose attempt-marker clear FAILED after a
-  /// deferred outcome (Keychain-transient or a History-save failure). A
-  /// surviving marker would be misread by a SAME-launch rescan as a crashed
-  /// attempt (the crash-loop guard's "marker present ⇒ abandoned" reasoning
-  /// only holds for a genuinely NEW launch) — every same-launch pass skips
-  /// these ids, leaving them untouched on disk for a future launch's fresh
-  /// `RecoveryCoordinator` instance (which always starts empty). NEVER cleared
-  /// during one instance's lifetime; tests model "a new launch" by constructing
-  /// a new coordinator, never by clearing this set on an existing one.
+  /// #1707 Phase 3 (§3.3) — ids that must wait for a genuinely NEW launch
+  /// rather than any same-launch rescan. Two populations: (1) an attempt-
+  /// marker clear that FAILED after a deferred outcome (Keychain-transient or
+  /// a History-save failure) — a surviving marker would be misread by a
+  /// same-launch rescan as a crashed attempt (the crash-loop guard's "marker
+  /// present ⇒ abandoned" reasoning only holds for a genuinely new launch);
+  /// (2) a live recording's own RETAINED failure ending (GitHub cloud review,
+  /// PR #1732) — the engine may still be in the exact broken state that
+  /// produced the failure, so this same session's own wake-up must not
+  /// immediately re-attempt (and potentially delete) the spool it just
+  /// retained. Every same-launch pass skips these ids, leaving them untouched
+  /// on disk for a future launch's fresh `RecoveryCoordinator` instance
+  /// (which always starts empty). NEVER cleared during one instance's
+  /// lifetime; tests model "a new launch" by constructing a new coordinator,
+  /// never by clearing this set on an existing one.
   private var nextLaunchOnlyRecoveryIDs: Set<String> = []
 
   /// Monotonic token bumped by `discardActiveRecovery()`. The replayer captures
@@ -328,13 +334,27 @@ final class RecoveryCoordinator {
   /// Idempotent + best-effort; a no-op when `id` is nil. Always clears the live-
   /// recording protection (the recording is over). Returns the detached delete
   /// work (delete endings only) so tests can await it.
+  ///
+  /// A retain ending ALSO defers this id to `nextLaunchOnlyRecoveryIDs`
+  /// (GitHub cloud review, PR #1732): this same session's own
+  /// `onDictationEndedForRecovery` wake-up fires right after this call and
+  /// requests a same-launch rescan — without this, that rescan could pick up
+  /// the spool just retained here while the engine is still in the exact
+  /// state that produced the failure, replay it, classify it
+  /// `.failed(.unrecoverable)`, and delete the very audio this branch meant
+  /// to keep for a healthier future launch. Runs before that rescan Task is
+  /// even scheduled (both synchronous MainActor calls from the same driver
+  /// callback), so the exclusion is always in place before the pass runs.
   @discardableResult
   func handleRecordingEndedWithoutDurableSave(
     recoverySessionID id: String?, ending: RecordingRecoveryEnding
   ) -> Task<Void, Never>? {
     guard let id else { return nil }
     if armedSessionID == id { armedSessionID = nil }
-    guard Self.shouldDeleteOnLiveEnding(ending) else { return nil }
+    guard Self.shouldDeleteOnLiveEnding(ending) else {
+      nextLaunchOnlyRecoveryIDs.insert(id)
+      return nil
+    }
     return destroySpoolAndKey(id: id)
   }
 

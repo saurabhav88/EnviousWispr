@@ -432,6 +432,39 @@ struct RecoveryCoordinatorTests {
     }
   }
 
+  @Test(
+    "a live recording's own retained failure is excluded from THIS SAME session's wake-up rescan"
+  )
+  func retainedLiveFailureExcludedFromSameSessionRescan() async throws {
+    // GitHub cloud review, PR #1732: `onDictationEndedForRecovery` fires right
+    // after a live recording ends. For a RETAIN ending, the engine may still be
+    // in the exact broken state that produced the failure — a same-launch
+    // rescan must not immediately re-attempt (and potentially delete) the very
+    // spool this ending just retained.
+    let h = Self.makeHarness()
+    let id = "live-fail-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    // `.failed` is a RETAIN-kind ending (`shouldDeleteOnLiveEnding` returns
+    // false) — mirrors the live driver calling this on a genuine failure.
+    h.coordinator.handleRecordingEndedWithoutDurableSave(recoverySessionID: id, ending: .failed)
+    #expect(
+      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+      "a retain ending never deletes")
+    // If the engine were still broken, a replay attempt here would fail again.
+    h.replayer.outcomeByID[id] = .failed(.unrecoverable)
+    // The SAME session's own wake-up call — must not touch `id` this pass.
+    h.coordinator.requestRecoveryRecheck()
+    for _ in 0..<20 {
+      try? await Task.sleep(for: .milliseconds(5))  // settle: bounded drain to let any spurious replay run
+    }
+    #expect(
+      h.replayer.replayedIDs.isEmpty,
+      "the just-retained id must not be re-attempted by this same session's own rescan")
+    #expect(
+      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+      "still on disk — not destroyed by a same-launch replay of the just-retained spool")
+  }
+
   @Test("a FRESH coordinator instance (a genuine new launch) starts with an empty suppression set")
   func freshInstanceStartsEmpty() async throws {
     let h = Self.makeHarness()
