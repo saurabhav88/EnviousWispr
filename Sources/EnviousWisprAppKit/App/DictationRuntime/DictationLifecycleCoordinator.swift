@@ -108,6 +108,18 @@ final class DictationLifecycleCoordinator {
   /// behavior. (PR1's published-state cleanup branch is replaced by this signal.)
   var onRecordingEndedWithoutDurableSave: (String?, RecordingRecoveryEnding) -> Void = { _, _ in }
 
+  /// #1707 Phase 3 (GitHub cloud review, PR #1732 round 6) — fires when a
+  /// recording reaches `.complete` but its History save FAILED. Distinct from
+  /// `onRecordingEndedWithoutDurableSave` (which never fires for `.complete`)
+  /// and from `onDurableSave` (which only fires on a SUCCESSFUL save).
+  /// `DictationRuntime` sets it to
+  /// `RecoveryCoordinator.suppressUntilNextLaunch(recoverySessionID:)` so this
+  /// session's spool is protected from THIS SAME terminal transition's own
+  /// `onDictationEndedForRecovery` wake-up before that wake-up fires (both
+  /// calls happen synchronously, in this order, from the kernel's single
+  /// `fireStateChangeIfNeeded()` turn). Off-cap `var` closure, default no-op.
+  var onDurableSaveFailed: (String?) -> Void = { _ in }
+
   /// #1171 — fired on every pipeline state change (both drivers). The composition
   /// root binds it to `EngineCoordinator.poke(.driverStateChanged)` so the
   /// coordinator refreshes engine status on non-terminal transitions AND applies
@@ -285,6 +297,16 @@ final class DictationLifecycleCoordinator {
         ? .otherInterruption
         : CompletionInterruptionDisclosure(cause: kernelDriver.lastAudioInterruptionCause)
     )
+    // #1707 Phase 3 (GitHub cloud review, PR #1732 round 6): a `.complete`
+    // whose History save failed retains its spool, but `onSessionEndedWithoutSave`
+    // never fires for `.complete` — protect it from THIS SAME transition's own
+    // `onDictationEndedForRecovery` wake-up (fired moments later by the kernel's
+    // single `fireStateChangeIfNeeded()` turn) before that wake-up runs.
+    if case .complete = newState, !kernelDriver.lastHistorySaved,
+      let sid = kernelDriver.currentTranscript?.recoverySessionID
+    {
+      onDurableSaveFailed(sid)
+    }
     // PR7 of #763 — push polish error to the post-recording result home so
     // views can read `lastRecordingResult.polishError` without reaching
     // through the former root state. Sunset PR11.
@@ -346,6 +368,13 @@ final class DictationLifecycleCoordinator {
         ? .otherInterruption
         : CompletionInterruptionDisclosure(cause: whisperKitKernelDriver.lastAudioInterruptionCause)
     )
+    // #1707 Phase 3 (GitHub cloud review, PR #1732 round 6) — see the Parakeet
+    // handler above for why this must run before the kernel's own wake-up.
+    if case .complete = newState, !whisperKitKernelDriver.lastHistorySaved,
+      let sid = whisperKitKernelDriver.currentTranscript?.recoverySessionID
+    {
+      onDurableSaveFailed(sid)
+    }
     lastRecordingResult.polishError = whisperKitKernelDriver.lastPolishError
     dispatchChipLifecycle(
       newState: newState,

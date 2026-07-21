@@ -128,20 +128,23 @@ final class RecoveryCoordinator {
   private var pendingRescan = false
 
   /// #1707 Phase 3 (§3.3) — ids that must wait for a genuinely NEW launch
-  /// rather than any same-launch rescan. Two populations: (1) an attempt-
+  /// rather than any same-launch rescan. Three populations: (1) an attempt-
   /// marker clear that FAILED after a deferred outcome (Keychain-transient or
-  /// a History-save failure) — a surviving marker would be misread by a
-  /// same-launch rescan as a crashed attempt (the crash-loop guard's "marker
-  /// present ⇒ abandoned" reasoning only holds for a genuinely new launch);
-  /// (2) a live recording's own RETAINED failure ending (GitHub cloud review,
-  /// PR #1732) — the engine may still be in the exact broken state that
-  /// produced the failure, so this same session's own wake-up must not
-  /// immediately re-attempt (and potentially delete) the spool it just
-  /// retained. Every same-launch pass skips these ids, leaving them untouched
-  /// on disk for a future launch's fresh `RecoveryCoordinator` instance
-  /// (which always starts empty). NEVER cleared during one instance's
-  /// lifetime; tests model "a new launch" by constructing a new coordinator,
-  /// never by clearing this set on an existing one.
+  /// a History-save failure DURING REPLAY) — a surviving marker would be
+  /// misread by a same-launch rescan as a crashed attempt (the crash-loop
+  /// guard's "marker present ⇒ abandoned" reasoning only holds for a
+  /// genuinely new launch); (2) a LIVE recording's own RETAINED failure
+  /// ending (GitHub cloud review, PR #1732 round 1) — the engine may still be
+  /// in the exact broken state that produced the failure; (3) a LIVE
+  /// recording that reached `.complete` but whose History save failed (PR
+  /// #1732 round 6) — `onDurableSave` never fires for this case (nothing to
+  /// delete), but the same terminal transition's own wake-up must not
+  /// immediately re-attempt (and potentially delete) the spool this failure
+  /// just retained. Every same-launch pass skips these ids, leaving them
+  /// untouched on disk for a future launch's fresh `RecoveryCoordinator`
+  /// instance (which always starts empty). NEVER cleared during one
+  /// instance's lifetime; tests model "a new launch" by constructing a new
+  /// coordinator, never by clearing this set on an existing one.
   private var nextLaunchOnlyRecoveryIDs: Set<String> = []
 
   /// Monotonic token bumped by `discardActiveRecovery()`. The replayer captures
@@ -324,6 +327,22 @@ final class RecoveryCoordinator {
   func handleDurableSave(recoverySessionID id: String) -> Task<Void, Never> {
     if armedSessionID == id { armedSessionID = nil }
     return destroySpoolAndKey(id: id)
+  }
+
+  /// A `.complete` dictation whose History save FAILED (GitHub cloud review,
+  /// PR #1732 round 6): `onDurableSave` never fires for this case (correctly
+  /// — nothing to delete, the spool must be retained), but this session's own
+  /// terminal transition ALSO fires `onDictationEndedForRecovery` moments
+  /// later via the SAME synchronous `fireStateChangeIfNeeded()` call that
+  /// dispatches to the caller of this method first — without this
+  /// suppression, that same-launch wake-up could immediately rescan and
+  /// destructively replay the spool this failure meant to retain for a
+  /// healthier future launch, exactly like the live-failure-ending case this
+  /// mirrors. No-op when `id` is nil (armed only when recovery was on for
+  /// this take).
+  func suppressUntilNextLaunch(recoverySessionID id: String?) {
+    guard let id else { return }
+    nextLaunchOnlyRecoveryIDs.insert(id)
   }
 
   /// A recording ended at a terminal state WITHOUT a durable transcript save

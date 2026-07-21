@@ -170,6 +170,12 @@ final class DictationRuntime {
       recoveryCoordinator.handleRecordingEndedWithoutDurableSave(
         recoverySessionID: id, ending: ending)
     }
+    // #1707 Phase 3 (GitHub cloud review, PR #1732 round 6): a `.complete`
+    // whose History save failed retains its spool but fires no delete
+    // callback — protect it from this same transition's own recovery wake-up.
+    dictationLifecycleCoordinator.onDurableSaveFailed = { id in
+      recoveryCoordinator.suppressUntilNextLaunch(recoverySessionID: id)
+    }
     let hotkeyController = HotkeyController(
       hotkeyService: hotkeyService,
       starter: starter,
