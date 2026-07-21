@@ -29,6 +29,19 @@ public enum ASRSalvageOutcome: String, Sendable {
   case cancelled = "cancelled"
 }
 
+/// #1707 Phase 2 — this session's ASR post-capture-decode retry outcome.
+/// `.attempted` is set BEFORE the retry's own await begins and can be the
+/// FINAL recorded value (a retry preempted by a competing interruption/
+/// supersession before its own result is accepted never reaches `.retrySucceeded`/
+/// `.retryExhausted`) — this is not a bug, it is the honest terminal state for
+/// that race. `nil` means no Phase-2 retry ever started for this session
+/// (covers both the pre-capture producer and a first-attempt success).
+public enum ASRRetryOutcome: String, Sendable {
+  case attempted = "attempted"
+  case retrySucceeded = "retry_succeeded"
+  case retryExhausted = "retry_exhausted"
+}
+
 /// Per-session telemetry side-channel for details that do not belong in the
 /// kernel FSM state enum. The kernel writes this before terminal transitions;
 /// `KernelLifecycleTelemetrySink` reads it when rendering the lifecycle event.
@@ -91,6 +104,10 @@ final class KernelTelemetryState {
   /// salvage was attempted. See `ASRSalvageOutcome` for the value taxonomy.
   var asrSalvageOutcome: ASRSalvageOutcome?
 
+  /// #1707 Phase 2: this session's post-capture-decode retry outcome, or
+  /// `nil` if no Phase-2 retry ever started. See `ASRRetryOutcome`.
+  var asrRetryOutcome: ASRRetryOutcome?
+
   func resetForNewSession(polishEnabled: Bool) {
     self.polishEnabled = polishEnabled
     recordingSnapshot = nil
@@ -105,6 +122,7 @@ final class KernelTelemetryState {
     interruptedSalvageSource = nil
     zeroSignalFailureMode = nil
     asrSalvageOutcome = nil
+    asrRetryOutcome = nil
   }
 }
 

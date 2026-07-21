@@ -649,6 +649,64 @@ public final class ASRManagerProxy: ASRManagerInterface {
     package func forceConnectionTerminationNow() {
       connection?.invalidate()
     }
+
+    // MARK: - #1707 Phase 2: batch-decode fault oracle (shared-backend
+    // overlap Live UAT, §3.2a-i). Copies `transcribe(audioSamples:options:)`'s
+    // FULL existing XPC pattern (`:420-434`) — the same `OneShotContinuationASR`
+    // resume-once guard and `onProxyError` handling, so arm/release cannot
+    // leave a continuation suspended when the connection is missing or dies.
+    // Best-effort: a missing connection silently no-ops (`try?`) rather than
+    // throwing — a Live UAT scenario observes whether the arm actually landed
+    // via the shared snapshot file / the held decode's own behavior, not via
+    // this call's return.
+
+    /// Arms a one-shot hold on the NEXT `transcribeSamples` call's real
+    /// decode (`ParakeetBackend.armBatchDecodeHold`, across XPC). Awaits the
+    /// FULL round trip before returning — the acknowledged-arm barrier
+    /// `BatchDecodeFaultController` depends on.
+    package func armBatchDecodeHold(trialID: String) async {
+      try? await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
+        let guard_ = OneShotContinuationASR(cont)
+        serviceProxy { proxy in
+          proxy.armBatchDecodeHold(trialID: trialID) {
+            guard_.resume(returning: ())
+          }
+        } onProxyError: {
+          guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
+        }
+      }
+    }
+
+    /// Releases a previously-armed hold (`ParakeetBackend.releaseBatchDecode`,
+    /// across XPC), letting the held decode proceed.
+    package func releaseBatchDecode(trialID: String) async {
+      try? await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
+        let guard_ = OneShotContinuationASR(cont)
+        serviceProxy { proxy in
+          proxy.releaseBatchDecode(trialID: trialID) {
+            guard_.resume(returning: ())
+          }
+        } onProxyError: {
+          guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
+        }
+      }
+    }
+
+    /// Clears all armed/held state (`ParakeetBackend.clearBatchDecodeFault`,
+    /// across XPC), so a forgotten trial from one Live UAT scenario cannot
+    /// leak into the next.
+    package func clearBatchDecodeFault() async {
+      try? await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
+        let guard_ = OneShotContinuationASR(cont)
+        serviceProxy { proxy in
+          proxy.clearBatchDecodeFault {
+            guard_.resume(returning: ())
+          }
+        } onProxyError: {
+          guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
+        }
+      }
+    }
   #endif
 
   // MARK: - XPC Connection

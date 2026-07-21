@@ -632,6 +632,31 @@ import Testing
     #expect(recorder.captureErrors.first?.extraKeys.contains("asr_salvage_outcome") == true)
   }
 
+  @Test(
+    "#1707 Phase 2: .asrInterrupted surfaces asr_retry_outcome when a preempting interruption left a retry at .attempted"
+  )
+  func asrInterruptedThreadsRetryOutcome() {
+    let telemetryState = KernelTelemetryState()
+    telemetryState.asrRetryOutcome = .attempted
+    let recorder = Recorder()
+    let sink = makeSink(recorder: recorder, telemetryState: telemetryState)
+    sink.emit(.asrInterrupted(wasRecording: true))
+    #expect(recorder.captureErrors.count == 1)
+    #expect(recorder.captureErrors.first?.extraKeys.contains("asr_retry_outcome") == true)
+  }
+
+  @Test(
+    "#1707 Phase 2: .asrInterrupted omits asr_retry_outcome when no Phase-2 retry was ever consulted"
+  )
+  func asrInterruptedOmitsRetryOutcomeWhenNil() {
+    let telemetryState = KernelTelemetryState()
+    let recorder = Recorder()
+    let sink = makeSink(recorder: recorder, telemetryState: telemetryState)
+    sink.emit(.asrInterrupted(wasRecording: true))
+    #expect(recorder.captureErrors.count == 1)
+    #expect(recorder.captureErrors.first?.extraKeys.contains("asr_retry_outcome") == false)
+  }
+
   @Test(".discarded carries the reason as a data field (PR-1 §B.7.4)")
   func discardedEmission() {
     let recorder = Recorder()
@@ -875,6 +900,30 @@ import Testing
     #expect(recorder.captureErrors.count == 1)
     #expect(recorder.captureErrors.first?.category == .asrFailed)
     #expect(recorder.captureErrors.first?.stage == "transcription")
+  }
+
+  @Test(
+    "#1707 Phase 2: .failed(.asrFailed) surfaces asr_retry_outcome when this session exhausted its retry"
+  )
+  func failedASRFailedThreadsRetryOutcome() {
+    let telemetryState = KernelTelemetryState()
+    telemetryState.asrRetryOutcome = .retryExhausted
+    let recorder = Recorder()
+    let sink = makeSink(recorder: recorder, telemetryState: telemetryState)
+    sink.emit(.failed(.asrFailed))
+    #expect(recorder.captureErrors.count == 1)
+    #expect(recorder.captureErrors.first?.extraKeys.contains("asr_retry_outcome") == true)
+  }
+
+  @Test(
+    "#1707 Phase 2: .failed(.asrFailed) omits asr_retry_outcome for a pre-capture failure (retry never consulted)"
+  )
+  func failedASRFailedOmitsRetryOutcomeWhenNil() {
+    let recorder = Recorder()
+    let sink = makeSink(recorder: recorder)
+    sink.emit(.failed(.asrFailed))
+    #expect(recorder.captureErrors.count == 1)
+    #expect(recorder.captureErrors.first?.extraKeys.contains("asr_retry_outcome") == false)
   }
 
   @Test(".failed(.asrWedged) routes through the same .asrFailed/transcription path")

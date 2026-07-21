@@ -178,9 +178,15 @@ enum ScenarioInventory {
         terminalState: .failed(.asrWedged), pasteCount: 0, pasteOutcome: .none,
         transcript: .none, userVisibleError: .recoverableError)),
     Scenario(
-      id: "A14", name: "adapter fails after audio captured",
+      // #1707 Phase 2: a post-capture decode failure now spends one live
+      // retry before a terminal `.failed`. The FakeEngine's `retryDecode`
+      // default scripts a SUCCESSFUL retry (A23 covers that rescue path), so
+      // this scenario must explicitly exhaust the retry too to keep testing
+      // genuine, unrescuable engine failure.
+      id: "A14", name: "adapter fails after audio captured, retry also exhausted",
       steps: [
         .engine(.setBehavior(.crashOnFinalize)),
+        .engine(.setRetryDecodeResult(.failed(.decodeFailed))),
         .trigger(.start), .capture(.deliverBuffer), .trigger(.stop),
       ],
       expected: ExpectedOutcome(
@@ -284,6 +290,20 @@ enum ScenarioInventory {
       expected: ExpectedOutcome(
         terminalState: .noSpeech, pasteCount: 0, pasteOutcome: .none,
         transcript: .none)),
+    Scenario(
+      // #1707 Phase 2: the rescue counterpart to A14. A post-capture decode
+      // failure spends its one live retry; `FakeEngine.retryDecodeResult`'s
+      // default already scripts a successful "retried transcript" decode, so
+      // this scenario proves the session completes and delivers it instead
+      // of terminating on the first failure.
+      id: "A23", name: "adapter fails once, Phase 2 retry rescues it",
+      steps: [
+        .engine(.setBehavior(.crashOnFinalize)),
+        .trigger(.start), .capture(.deliverBuffer), .trigger(.stop),
+      ],
+      expected: ExpectedOutcome(
+        terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,
+        transcript: .exact("retried transcript"))),
   ]
 
   // MARK: §1.3 regression locks (R1, R2)
@@ -473,7 +493,7 @@ enum ScenarioInventory {
   static let canonicalIDs: Set<String> = [
     "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10",
     "A11", "A12", "A13", "A14", "A15", "A16", "A17", "A18", "A19",
-    "A20", "A21", "A22",
+    "A20", "A21", "A22", "A23",
     "R1", "R2",
     "C1", "C2", "C3", "C4", "C5", "C6", "C8",
     "L1", "L2", "L3", "L4", "L5", "L6",

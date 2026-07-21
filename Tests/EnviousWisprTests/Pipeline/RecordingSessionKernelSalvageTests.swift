@@ -18,6 +18,42 @@ private func deletesRecoverySpool(_ outcome: RecordingOutcome) -> Bool {
   return RecoveryCoordinator.shouldDeleteOnLiveEnding(ending)
 }
 
+/// #1707 Phase 2 sibling of `deletesRecoverySpool(_:)`, threading the retry
+/// outcome through the SAME two real authorities.
+@MainActor
+private func deletesRecoverySpool(_ outcome: RecordingOutcome, retryOutcome: ASRRetryOutcome?)
+  -> Bool
+{
+  guard let ending = KernelDictationDriver.recoveryEnding(for: outcome, retryOutcome: retryOutcome)
+  else { return false }
+  return RecoveryCoordinator.shouldDeleteOnLiveEnding(ending)
+}
+
+/// #1707 Phase 2: an exhausted Phase-2 retry deletes its spool — the decode
+/// genuinely never produced anything, so there is nothing worth recovering
+/// (§4/§6). The negative (RULE: matcher-set-adversarial-tests): a pre-capture
+/// or never-retried `.asrFailed` — `retryOutcome == nil`, exactly the default
+/// every existing call site above already exercises — still retains.
+@MainActor
+@Suite("Exhausted-retry spool deletion (#1707 Phase 2)")
+struct ExhaustedRetrySpoolDeletionTests {
+  @Test("an exhausted retry's failed session deletes its spool")
+  func exhaustedRetryDeletes() {
+    #expect(deletesRecoverySpool(.failed(.asrFailed), retryOutcome: .retryExhausted))
+  }
+
+  @Test("a pre-capture or never-retried failed session still retains its spool")
+  func neverRetriedFailureRetains() {
+    #expect(!deletesRecoverySpool(.failed(.asrFailed), retryOutcome: nil))
+    #expect(!deletesRecoverySpool(.failed(.asrFailed)))
+  }
+
+  @Test("a retry left at .attempted by a preempting interruption does not delete as .failed")
+  func attemptedOnlyRetryDoesNotDeleteAsFailed() {
+    #expect(!deletesRecoverySpool(.failed(.asrFailed), retryOutcome: .attempted))
+  }
+}
+
 // MARK: - #1408 — salvage a dictation whose capture was interrupted mid-recording
 //
 // Before this change, a microphone that died mid-sentence sent the recording

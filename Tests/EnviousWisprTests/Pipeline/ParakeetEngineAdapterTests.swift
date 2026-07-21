@@ -631,6 +631,228 @@ import Testing
     }
   }
 
+  // MARK: #1707 Phase 2 — post-capture decode retry
+
+  @Test("retryDecode() decodes the given samples and commits lastResult on success")
+  func retryDecodeSucceeds() async throws {
+    let manager = StubParakeetASRManager()
+    manager.transcribeResult = makeResult("retried text")
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+
+    let outcome = await adapter.retryDecode(inputSamples: [0.1, 0.2, 0.3])
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "retried text")
+    #expect(adapter.lastResult?.text == "retried text")
+    #expect(manager.transcribeCount == 1)
+    #expect(manager.lastTranscribeSamples == [0.1, 0.2, 0.3])
+  }
+
+  @Test(
+    "an adapter's own internal streaming-then-batch-rescue fallback and an explicit Phase-2 retryDecode are two distinct decode calls, never one shared budget"
+  )
+  func internalRescueAndPhase2RetryAreDistinctDecodeCalls() async throws {
+    let manager = StubParakeetASRManager()
+    // Streaming returns empty -> the internal batch-rescue fallback engages.
+    manager.finalizeStreamingResult = ASRResult(
+      text: "", language: "en", duration: 1, processingTime: 0, backendType: .parakeet)
+    // The internal rescue's own batch decode also fails for real, exactly the
+    // condition that makes the KERNEL spend its one Phase-2 retry.
+    manager.transcribeThrows = true
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: true)
+    feed(adapter, samples: [0.1], session: sid)
+
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .failed = outcome else {
+      Issue.record("expected the internal rescue to also fail, got \(outcome)")
+      return
+    }
+    #expect(
+      manager.transcribeCount == 1,
+      "the internal streaming-then-batch-rescue fallback is ONE decode call")
+
+    // The kernel now spends its one Phase-2 retry — a second, independent
+    // decode call, not a continuation of the internal rescue's own budget.
+    manager.transcribeThrows = false
+    manager.transcribeResult = makeResult("phase 2 retry text")
+    let retryOutcome = await adapter.retryDecode(inputSamples: [0.4, 0.5])
+    guard case .transcript(let retryResult) = retryOutcome else {
+      Issue.record("expected the Phase-2 retry to recover a transcript, got \(retryOutcome)")
+      return
+    }
+    #expect(retryResult.text == "phase 2 retry text")
+    #expect(
+      manager.transcribeCount == 2,
+      "the internal fallback and the explicit Phase-2 retry are two distinct decode calls")
+  }
+
+  @Test(
+    "retryDecode's readiness-gated repair re-checks staleness before spending the decode — a session change during the repair returns .cancelled and never decodes"
+  )
+  func retryDecodePostRepairStalenessRecheck() async throws {
+    let manager = StubParakeetASRManager()
+    manager.isModelLoaded = true
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sidA = SessionID()
+    try await adapter.beginSession(sidA, options: .default, streaming: false)
+
+    // Simulate the XPC helper dying mid-transcribe: readiness drops below
+    // .ready, so retryDecode's repair-before-retry gate engages warmUp().
+    manager.isModelLoaded = false
+    manager.gateLoadModel = true
+    async let outcome = adapter.retryDecode(inputSamples: [0.1, 0.2])
+    // Wait until the repair warmUp() has genuinely entered loadModel().
+    while manager.loadModelCount == 0 { await Task.yield() }
+
+    // A new session begins while the repair is still in flight.
+    try await adapter.beginSession(SessionID(), options: .default, streaming: false)
+    manager.releaseLoadGate()
+
+    guard case .cancelled = await outcome else {
+      Issue.record("expected .cancelled from the post-repair staleness recheck")
+      return
+    }
+    #expect(
+      manager.transcribeCount == 0,
+      "the decode attempt must never be spent once the repair discovers staleness")
+  }
+
+  @Test(
+    "bumpRetryGeneration() — mirroring the kernel's own onTimeout closure — supersedes an in-flight retry so its eventual late completion is discarded, idempotently"
+  )
+  func bumpRetryGenerationSupersedesInFlightRetry() async throws {
+    let manager = StubParakeetASRManager()
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+
+    // Force retryDecode down its readiness-repair path so it parks on the
+    // gated loadModel() — a deterministic stand-in for "the kernel's
+    // withOrderedDeadline decided this retry took too long."
+    manager.isModelLoaded = false
+    manager.gateLoadModel = true
+    manager.transcribeResult = makeResult("should be discarded")
+    async let outcome = adapter.retryDecode(inputSamples: [0.1])
+    while manager.loadModelCount == 0 { await Task.yield() }
+
+    // Mirrors the kernel's onTimeout closure: bump the retry generation
+    // (called twice — idempotent, never throws) BEFORE the parked repair
+    // resolves.
+    adapter.bumpRetryGeneration()
+    adapter.bumpRetryGeneration()
+    manager.releaseLoadGate()
+
+    guard case .cancelled = await outcome else {
+      Issue.record("expected the superseded retry to resolve .cancelled, not commit its decode")
+      return
+    }
+    #expect(adapter.lastResult == nil, "the discarded retry's result must never reach lastResult")
+  }
+
+  @Test(
+    "#1707 Codex r7: a retry's warmUp() repair throwing AFTER it was superseded by a new session must not write its stale error into lastFailureError"
+  )
+  func supersededRetryWarmUpFailureDoesNotPolluteNewSessionError() async throws {
+    struct SimulatedRepairFailure: Error {}
+    let manager = StubParakeetASRManager()
+    manager.isModelLoaded = true
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+
+    // Readiness drops below .ready, so retryDecode's repair-before-retry gate
+    // engages warmUp() -> loadModel(). Park it, then queue a failure for
+    // when it's released.
+    manager.isModelLoaded = false
+    manager.gateLoadModel = true
+    manager.loadModelError = SimulatedRepairFailure()
+    async let outcome = adapter.retryDecode(inputSamples: [0.1, 0.2])
+    while manager.loadModelCount == 0 { await Task.yield() }
+
+    // A new session begins BEFORE the parked repair resolves — mirrors the
+    // kernel's onTimeout/new-session paths that make this retry stale.
+    try await adapter.beginSession(SessionID(), options: .default, streaming: false)
+    manager.releaseLoadGate()
+
+    guard case .failed = await outcome else {
+      Issue.record("expected the stale repair failure to still report .failed")
+      return
+    }
+    #expect(
+      adapter.lastFailureError == nil,
+      "a stale, superseded retry's repair failure must never write lastFailureError — it would corrupt the NEW session's own error attribution"
+    )
+  }
+
+  @Test(
+    "GitHub cloud review (PR #1725): a stale-readiness proxy error (readiness still .ready but the primary failed via .serviceUnreachable) forces a real reconnect before the retry, not a no-op warmUp()"
+  )
+  func retryDecodeForcesReconnectAfterStaleReadinessTransportFailure() async throws {
+    let manager = StubParakeetASRManager()
+    manager.isModelLoaded = true
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+    feed(adapter, samples: [0.1, 0.2, 0.3], session: sid)
+
+    // Primary decode fails via a per-call XPC proxy error — the STUB, like
+    // the real onProxyError path, never clears isModelLoaded on this error.
+    manager.transcribeError = XPCASRTransportError.serviceUnreachable
+    let primaryOutcome = await adapter.finalize(batchSamples: nil)
+    guard case .failed = primaryOutcome else {
+      Issue.record("expected the primary decode to fail, got \(primaryOutcome)")
+      return
+    }
+    #expect(
+      manager.isModelLoaded,
+      "onProxyError never clears isModelLoaded — the stale mirror this bug depends on")
+    #expect((adapter.lastFailureError as? XPCASRTransportError) == .serviceUnreachable)
+
+    // Retry: the stale readiness mirror alone would skip repair entirely.
+    manager.transcribeError = nil
+    manager.transcribeResult = makeResult("reconnected retry text")
+    let retryOutcome = await adapter.retryDecode(inputSamples: [0.1, 0.2, 0.3])
+    guard case .transcript(let result) = retryOutcome else {
+      Issue.record("expected the retry to succeed after a forced reconnect, got \(retryOutcome)")
+      return
+    }
+    #expect(result.text == "reconnected retry text")
+    #expect(
+      manager.cancelInFlightLoadCount == 1,
+      "must force the stale readiness mirror to reflect the actually-dead connection")
+    #expect(
+      manager.loadModelCount == 1,
+      "warmUp() must perform a REAL reload, not a no-op on the stale isModelLoaded flag")
+  }
+
+  @Test(
+    "#1707 Codex r8/r9: retryDecodeTimeoutSeconds(forSampleCount:) scales with audio length, not a flat constant"
+  )
+  func retryDecodeTimeoutScalesWithSampleCount() {
+    let manager = StubParakeetASRManager()
+    // Default asrInterruptionRecoveryDeadlineSec (8.0) is the fixed floor —
+    // GitHub cloud review (PR #1725): reused directly since retryDecode's
+    // readiness-gated repair calls warmUp() before the second decode, and
+    // the whole call (repair included) is bounded by this ONE deadline.
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    // 16kHz mono — 16_000 samples/sec (AudioConstants.sampleRate).
+    let zero = adapter.retryDecodeTimeoutSeconds(forSampleCount: 0)
+    let oneMinute = adapter.retryDecodeTimeoutSeconds(forSampleCount: 16_000 * 60)
+    let oneHour = adapter.retryDecodeTimeoutSeconds(forSampleCount: 16_000 * 3600)
+    #expect(
+      zero == 8.0, "the fixed floor with zero audio matches asrInterruptionRecoveryDeadlineSec")
+    #expect(oneMinute > zero, "a longer recording must get a longer budget")
+    #expect(oneHour > oneMinute, "budget keeps scaling for the longest supported recording")
+    #expect(abs(oneMinute - 17.0) < 0.01)
+    #expect(abs(oneHour - 548.0) < 0.01)
+  }
+
   // MARK: Helpers
 
   /// Feed one synthetic buffer stamped with `session` — the kernel always
@@ -676,6 +898,10 @@ final class StubParakeetASRManager: ASRManagerInterface {
     text: "default-batch", language: "en", duration: 1, processingTime: 0,
     backendType: .parakeet)
   var transcribeThrows = false
+  /// Settable so a test can inject a SPECIFIC error (e.g.
+  /// `XPCASRTransportError.serviceUnreachable`) rather than the fixed
+  /// `FakeASRError.decode` `transcribeThrows` always throws. Checked first.
+  var transcribeError: (any Error)?
   /// When set, `feedAudio` throws — models a transient ASR/XPC feed failure that
   /// the per-buffer feed task swallows (#867).
   var feedAudioThrows = false
@@ -720,12 +946,14 @@ final class StubParakeetASRManager: ASRManagerInterface {
 
   func loadModel() async throws {
     loadModelCount += 1
+    if gateLoadModel {
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in loadGates.append(c) }
+    }
+    // Checked AFTER the gate parks/releases so a test can script a load that
+    // throws once resumed (#1707 Codex r7), not only an immediate throw.
     if let error = loadModelError {
       loadModelError = nil
       throw error
-    }
-    if gateLoadModel {
-      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in loadGates.append(c) }
     }
     isModelLoaded = true
   }
@@ -746,6 +974,7 @@ final class StubParakeetASRManager: ASRManagerInterface {
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
     transcribeCount += 1
     lastTranscribeSamples = audioSamples
+    if let transcribeError { throw transcribeError }
     if transcribeThrows { throw FakeASRError.decode }
     return transcribeResult
   }
@@ -799,7 +1028,14 @@ final class StubParakeetASRManager: ASRManagerInterface {
   }
   func noteTranscriptionComplete(policy: ModelUnloadPolicy) { lastUnloadPolicy = policy }
   func cancelIdleTimer() { cancelIdleTimerCount += 1 }
-  func cancelInFlightLoad() { cancelInFlightLoadCount += 1 }
+  func cancelInFlightLoad() {
+    cancelInFlightLoadCount += 1
+    // Mirrors the real ASRManagerProxy.cancelInFlightLoad(), which
+    // synchronously clears isModelLoaded (GitHub cloud review, PR #1725) —
+    // a stub that only counted the call without this side effect could not
+    // distinguish "readiness now reflects reality" from "still stale".
+    isModelLoaded = false
+  }
 
   enum FakeASRError: Error { case streamingSetup, decode, feed }
 }

@@ -39,6 +39,12 @@ enum EngineDirective: Sendable {
   /// session's lifetime, so the active session keeps its original engine
   /// (PR-3 plan §3.6).
   case requestMidSessionSwitch
+  /// #1707 Phase 2: reconfigure the fake's `retryDecode(inputSamples:)`
+  /// result before the next session step. `FakeEngine`'s default already
+  /// scripts a successful retry, so a scenario needs this ONLY to model an
+  /// exhausted retry (A14) — a scenario proving the rescue path (A23) relies
+  /// on the untouched default.
+  case setRetryDecodeResult(ASREngineOutcome)
 }
 
 /// A directive to the `FakePasteTarget` mid-scenario.

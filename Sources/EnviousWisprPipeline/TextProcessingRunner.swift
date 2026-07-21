@@ -234,8 +234,6 @@ internal final class TextProcessingRunner {
             )
           }
         }
-      } catch is CancellationError {
-        throw CancellationError()
       } catch {
         let stepMs = (CFAbsoluteTimeGetCurrent() - stepStart) * 1000
         let isTimeout = error is TimeoutError
@@ -320,10 +318,23 @@ internal final class TextProcessingRunner {
         }
         let isSilentPolishSkip = silentPolishSkipReason != nil
         // #945: a raw `URLError.cancelled` from a torn-down request is not a real
-        // failure — never surface a notice or fire a capture for it. Swift
-        // `CancellationError` is already short-circuited above
-        // (`catch is CancellationError`); this covers the URL-loading variant.
-        let isCancellationLike = (error as? URLError)?.code == .cancelled
+        // failure — never surface a notice or fire a capture for it.
+        // #1707 Phase 2 (Open Decision #9): a bare `CancellationError` reaching
+        // here is, by construction, ALWAYS an incidental Task-tree cancellation
+        // today — `RecordingFinalizer.cancel()` cannot fire once state has
+        // moved past recording/loading, so no producer carries deliberate
+        // user-cancel provenance. Reclassified from "abort the whole run,
+        // retain the spool" to the SAME silent skip the URLError variant
+        // already gets: if a limb is interrupted after valid deterministic
+        // text already exists, the user gets that text, not data loss. Simply
+        // deleting the old `catch is CancellationError { throw
+        // CancellationError() }` line would NOT have been sufficient — an
+        // unclassified `CancellationError` matches none of the OTHER silent-skip
+        // conditions below and would have been treated as a SURFACED failure,
+        // the opposite of the intended silent skip.
+        let isCancellationLike =
+          error is CancellationError
+          || (error as? URLError)?.code == .cancelled
         if step.errorSurfacePolicy == .surface, let skipReason = localPolishSkipReason {
           // #1305 surfaced skip: set the pinned skipped-tone notice, fire NO
           // Sentry capture (that is the point of the class). The composed

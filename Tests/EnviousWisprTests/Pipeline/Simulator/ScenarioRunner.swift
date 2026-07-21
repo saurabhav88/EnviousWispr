@@ -97,6 +97,8 @@ struct ScenarioRunner {
         // A18 — a factory-preference change request (PR-6 owns the factory).
         // Inert against the running adapter; the active session is unaffected.
         context.engine.noteMidSessionSwitchRequest()
+      case .setRetryDecodeResult(let outcome):
+        context.engine.retryDecodeResult = outcome
       }
 
     case .capture(let directive):

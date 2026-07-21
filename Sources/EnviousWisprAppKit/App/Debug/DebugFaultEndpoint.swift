@@ -26,7 +26,13 @@
   ///   `force_cancel`, `force_xpc_kill` (ASR helper), `query_state`,
   ///   `force_zero_fill(mode,N,trialID)`, `query_fault_status(trialID)` (#1317
   ///   proof-bench; the last two drive the DEBUG all-zero injector directly on
-  ///   the in-process `AudioCaptureManager` — #1543).
+  ///   the in-process `AudioCaptureManager` — #1543); `fail_batch_decode(backend)`,
+  ///   `fail_every_batch_decode(backend)`, `clear_batch_decode_fault(backend,trialID)`,
+  ///   `hold_batch_decode(backend,trialID)`, `release_batch_decode(backend,trialID)`,
+  ///   `query_batch_decode_fault(backend,trialID)`, `query_batch_decode_attempts(backend)`
+  ///   (#1707 Phase 2 — the shared-backend overlap Live UAT oracle, §3.2a-i,
+  ///   plus the content-free attempt-identity check, Codex r4; all seven
+  ///   route to the ONE `BatchDecodeFaultController`).
   /// - Each command dispatches to `@MainActor` via `Task { @MainActor in ... }`
   ///   so command handling matches the actor isolation of the seams it drives.
   ///
@@ -49,6 +55,9 @@
     private let kernelDriver: KernelDictationDriver
     private let whisperKitKernelDriver: KernelDictationDriver
     private let activeBackend: () -> ASRBackendType
+    /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — the SOLE
+    /// dispatch target for every `*_batch_decode*` command below.
+    private let batchDecodeFaultController: BatchDecodeFaultController?
 
     // MARK: - Listener state
 
@@ -68,7 +77,8 @@
       kernelDriver: KernelDictationDriver,
       whisperKitKernelDriver: KernelDictationDriver,
       activeBackend: @escaping () -> ASRBackendType,
-      port: UInt16 = 8765
+      port: UInt16 = 8765,
+      batchDecodeFaultController: BatchDecodeFaultController? = nil
     ) {
       self.audioCapture = audioCapture
       self.asrProxy = asrProxy
@@ -76,6 +86,7 @@
       self.whisperKitKernelDriver = whisperKitKernelDriver
       self.activeBackend = activeBackend
       self.port = port
+      self.batchDecodeFaultController = batchDecodeFaultController
       self.token = Self.generateToken()
       self.tokenPath = Self.tokenURL(pid: ProcessInfo.processInfo.processIdentifier)
     }
@@ -253,6 +264,71 @@
             + "source_incarnation=\(status.sourceIncarnation) "
             + "capture_source=\(status.captureSourceType)"
         }
+        // #1707 Phase 2 (§11.1/§3.2a-i): the seven batch-decode fault
+        // commands, all routing to the ONE `BatchDecodeFaultController` —
+        // adapter-boundary forced failures (`fail_batch_decode`/
+        // `fail_every_batch_decode`/`clear_batch_decode_fault`/
+        // `query_batch_decode_attempts`) and the real-engine-boundary overlap
+        // oracle (`hold_batch_decode`/`release_batch_decode`/
+        // `query_batch_decode_fault`).
+        if let backend = parseBackendArgCommand(cmd, prefix: "fail_batch_decode(") {
+          guard let batchDecodeFaultController else { return "ERR no_dependency" }
+          batchDecodeFaultController.failNextBatchDecode(backend: backend)
+          return "OK"
+        }
+        if let backend = parseBackendArgCommand(cmd, prefix: "fail_every_batch_decode(") {
+          guard let batchDecodeFaultController else { return "ERR no_dependency" }
+          batchDecodeFaultController.failEveryBatchDecode(backend: backend)
+          return "OK"
+        }
+        // `clear_batch_decode_fault(<backend>,<trialID>)` clears BOTH the
+        // adapter-boundary pending-failure state for `backend` and the
+        // oracle/trial state for `trialID`, so a forgotten trial from one
+        // Live UAT scenario cannot leak into the next.
+        if let (backend, trialID) = parseBackendAndTrialArgCommand(
+          cmd, prefix: "clear_batch_decode_fault(")
+        {
+          guard let batchDecodeFaultController else { return "ERR no_dependency" }
+          batchDecodeFaultController.clearBatchDecodeFault(backend: backend)
+          await batchDecodeFaultController.clearBatchDecodeFault(trialID: trialID)
+          return "OK"
+        }
+        if let (backend, trialID) = parseBackendAndTrialArgCommand(
+          cmd, prefix: "hold_batch_decode(")
+        {
+          guard let batchDecodeFaultController else { return "ERR no_dependency" }
+          // Acknowledged-arm barrier: this reply fires only AFTER the arm has
+          // landed (across XPC for Parakeet), so a caller that waits for it
+          // is guaranteed the arm took effect before triggering the next real
+          // transcription call.
+          await batchDecodeFaultController.holdBatchDecode(backend: backend, trialID: trialID)
+          return "OK"
+        }
+        if let (backend, trialID) = parseBackendAndTrialArgCommand(
+          cmd, prefix: "release_batch_decode(")
+        {
+          guard let batchDecodeFaultController else { return "ERR no_dependency" }
+          await batchDecodeFaultController.releaseBatchDecode(backend: backend, trialID: trialID)
+          return "OK"
+        }
+        if let (backend, trialID) = parseBackendAndTrialArgCommand(
+          cmd, prefix: "query_batch_decode_fault(")
+        {
+          guard let batchDecodeFaultController else { return "ERR no_dependency" }
+          let r = await batchDecodeFaultController.queryBatchDecodeFault(
+            backend: backend, trialID: trialID)
+          return Self.formatBatchDecodeFaultQueryReply(r)
+        }
+        // #1707 Phase 2 (Codex r4): content-free sample counts for every real
+        // batch-decode attempt this backend has issued, oldest first — lets a
+        // Live UAT test confirm the retry decoded the SAME captured audio as
+        // the failed attempt (never a synthetic stand-in), without exposing
+        // any transcript text.
+        if let backend = parseBackendArgCommand(cmd, prefix: "query_batch_decode_attempts(") {
+          guard let batchDecodeFaultController else { return "ERR no_dependency" }
+          let counts = batchDecodeFaultController.attemptSampleCounts(backend: backend)
+          return "OK " + counts.map { (n: Int) in String(n) }.joined(separator: ",")
+        }
         return "ERR unknown_command"
       }
     }
@@ -281,6 +357,53 @@
       guard cmd.hasPrefix(prefix), cmd.hasSuffix(")") else { return nil }
       let inner = String(cmd.dropFirst(prefix.count).dropLast())
       return inner.isEmpty ? nil : inner
+    }
+
+    /// #1707 Phase 2: parse `<prefix><backend>)` — `<backend>` is
+    /// `ASRBackendType`'s raw value (`parakeet` or `whisperKit`).
+    private func parseBackendArgCommand(_ cmd: String, prefix: String) -> ASRBackendType? {
+      guard let raw = parseStringArgCommand(cmd, prefix: prefix) else { return nil }
+      return ASRBackendType(rawValue: raw)
+    }
+
+    /// #1707 Phase 2: parse `<prefix><backend>,<trialID>)`. Only the first
+    /// comma splits, so `trialID` is the final unsplit field and may itself
+    /// contain commas; it must be non-empty.
+    private func parseBackendAndTrialArgCommand(
+      _ cmd: String, prefix: String
+    ) -> (backend: ASRBackendType, trialID: String)? {
+      guard cmd.hasPrefix(prefix), cmd.hasSuffix(")") else { return nil }
+      let inner = cmd.dropFirst(prefix.count).dropLast()
+      let parts = inner.split(separator: ",", maxSplits: 1, omittingEmptySubsequences: false)
+      guard parts.count == 2, let backend = ASRBackendType(rawValue: String(parts[0])) else {
+        return nil
+      }
+      let trialID = String(parts[1])
+      guard !trialID.isEmpty else { return nil }
+      return (backend, trialID)
+    }
+
+    /// #1707 Phase 2: broken into intermediate statements — a single chained
+    /// string-interpolation expression here made the type checker time out.
+    private static func formatBatchDecodeFaultQueryReply(
+      _ r: BatchDecodeFaultQueryResult
+    ) -> String {
+      let kernelRetryStarted =
+        r.kernelRetryStartedAtEpochSec.map { (v: Double) in String(v) } ?? "nil"
+      let kernelTimeoutFired =
+        r.kernelRetryTimeoutFiredAtEpochSec.map { (v: Double) in String(v) } ?? "nil"
+      let heldEntry = r.heldDecodeEntryEpochSec.map { (v: Double) in String(v) } ?? "nil"
+      let heldCompletion = r.heldDecodeCompletionEpochSec.map { (v: Double) in String(v) } ?? "nil"
+      let newSessionEntry = r.newSessionEntryEpochSec.map { (v: Double) in String(v) } ?? "nil"
+      let newSessionCompletion =
+        r.newSessionCompletionEpochSec.map { (v: Double) in String(v) } ?? "nil"
+      var reply = "OK kernel_retry_started=\(kernelRetryStarted) "
+      reply += "kernel_timeout_fired=\(kernelTimeoutFired) "
+      reply += "held_entry=\(heldEntry) "
+      reply += "held_completion=\(heldCompletion) "
+      reply += "new_session_entry=\(newSessionEntry) "
+      reply += "new_session_completion=\(newSessionCompletion)"
+      return reply
     }
 
     // MARK: - Token file management

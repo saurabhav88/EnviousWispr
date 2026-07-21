@@ -67,6 +67,13 @@ final class AppLifecycleCoordinator {
   // Bluetooth predicate, overlay branching, or once-per-launch state — it only
   // hands the presenter a `Trigger` fact.
   private let bluetoothAwarenessPresenter: BluetoothAwarenessPresenter
+  /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i), forwarded
+  /// into `DebugFaultEndpoint`'s construction below — a deliberate, explicit
+  /// stored-property allowlist addition (`AppLifecycleCoordinatorCeilingsTests.swift`),
+  /// not a workaround around it: the ceilings test exists to catch accidental
+  /// growth, and this is one genuinely new capability adding exactly one
+  /// dependency.
+  private let batchDecodeFaultController: BatchDecodeFaultController?
 
   init(
     settings: SettingsManager,
@@ -90,7 +97,8 @@ final class AppLifecycleCoordinator {
     bluetoothAwarenessPresenter: BluetoothAwarenessPresenter,
     // #1176: captured in the onboarding-dismiss closure below (NOT stored — keeps
     // this coordinator's stored-property ceiling clean).
-    onboardingProgress: OnboardingProgress
+    onboardingProgress: OnboardingProgress,
+    batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) {
     self.settings = settings
     self.permissions = permissions
@@ -111,6 +119,7 @@ final class AppLifecycleCoordinator {
     self.hotkeyService = hotkeyService
     self.applicationRelocationCoordinator = applicationRelocationCoordinator
     self.bluetoothAwarenessPresenter = bluetoothAwarenessPresenter
+    self.batchDecodeFaultController = batchDecodeFaultController
     // Icon-refresh seam: the window coordinator's two onboarding-dismiss
     // callsites route through this closure. Was wired in `AppDelegate.attach`
     // before PR-B.4.
@@ -297,7 +306,8 @@ final class AppLifecycleCoordinator {
           whisperKitKernelDriver: whisperKitKernelDriver,
           activeBackend: { [weak self] in
             self?.settings.selectedBackend ?? .parakeet
-          }
+          },
+          batchDecodeFaultController: batchDecodeFaultController
         )
         endpoint.start()
         debugFaultEndpoint = endpoint

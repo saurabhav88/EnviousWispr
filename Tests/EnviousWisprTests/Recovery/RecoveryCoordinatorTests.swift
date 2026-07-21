@@ -208,6 +208,11 @@ struct RecoveryCoordinatorTests {
     #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.asrInterrupted))
     #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.noTransport))
     #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.systemOrFault)))
+    // #1707 Phase 2: an exhausted Phase-2 retry deletes its spool (the
+    // decode genuinely never produced anything); a pre-capture / never-
+    // retried `.failed` (plain, no retry consulted) still retains — the
+    // negative half of this same adversarial pair.
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.asrRetryExhausted))
   }
 
   @Test(

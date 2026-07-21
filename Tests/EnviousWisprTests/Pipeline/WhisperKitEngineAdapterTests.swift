@@ -1200,6 +1200,160 @@ import Testing
     #expect(count == 0, "unload from A's armed task must NOT fire under B")
   }
 
+  // MARK: #1707 Phase 2 — post-capture decode retry
+
+  @Test("retryDecode() decodes the given samples and commits lastResult on success")
+  func retryDecodeSucceeds() async throws {
+    let backend = StubWhisperKitBackend()
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "retried text", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: "en"), streaming: false)
+
+    let outcome = await adapter.retryDecode(inputSamples: speechSamples(count: 16_000))
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "retried text")
+    #expect(adapter.lastResult?.text == "retried text")
+    let txCount = await backend.transcribeCount
+    #expect(txCount == 1)
+  }
+
+  @Test(
+    "GitHub cloud review: a retry-rescued result whose backend duration is short (trailing silence) or zero (no segment timestamps) still commits the FULL capture duration to lastResult, since KernelFinalizationWiring saves History metadata straight from it"
+  )
+  func retryDecodeCorrectsBackendDurationBeforeCommitting() async throws {
+    let backend = StubWhisperKitBackend()
+    // Simulates WhisperKitBackend.mapResults deriving duration from the last
+    // decoded segment's end time — 0 here models "text exists without
+    // segment timestamps," the case that would otherwise silently skip
+    // telemetry AND persist a zero-duration History entry.
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "retried text", language: "en", duration: 0, processingTime: 0.1,
+        backendType: .whisperKit))
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: "en"), streaming: false)
+
+    // 4 seconds of real captured audio at 16kHz.
+    let outcome = await adapter.retryDecode(inputSamples: speechSamples(count: 16_000 * 4))
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(
+      abs(result.duration - 4.0) < 0.001,
+      "the returned result must carry the real capture duration, not the backend's own (short/zero) value"
+    )
+    #expect(
+      abs((adapter.lastResult?.duration ?? -1) - 4.0) < 0.001,
+      "lastResult is what KernelFinalizationWiring saves to History — it must never persist the backend's raw duration"
+    )
+  }
+
+  @Test(
+    "an adapter's own internal streaming-then-clean-batch-fallback and an explicit Phase-2 retryDecode are two distinct decode calls, never one shared budget"
+  )
+  func internalFallbackAndPhase2RetryAreDistinctDecodeCalls() async throws {
+    let backend = StubWhisperKitBackend()
+    let stubSession = StubIncrementalSession(result: .rejected(stopWhileDecodeInFlight: true))
+    await backend.setStreamingSessionFactory({ stubSession })
+    // The internal clean-batch fallback (triggered by the empty flush) also
+    // fails for real — exactly the condition that makes the KERNEL spend its
+    // one Phase-2 retry.
+    await backend.setTranscribeThrows(StubBackendError.decodeFailed)
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: "en"), streaming: true)
+    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .failed = outcome else {
+      Issue.record("expected the internal clean-batch fallback to also fail, got \(outcome)")
+      return
+    }
+    let firstCount = await backend.transcribeCount
+    #expect(firstCount == 1, "the internal streaming-then-clean-batch fallback is ONE decode call")
+
+    // The kernel now spends its one Phase-2 retry — a second, independent
+    // decode call, not a continuation of the internal fallback's own budget.
+    await backend.setTranscribeThrows(nil)
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "phase 2 retry text", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let retryOutcome = await adapter.retryDecode(inputSamples: speechSamples(count: 16_000))
+    guard case .transcript(let retryResult) = retryOutcome else {
+      Issue.record("expected the Phase-2 retry to recover a transcript, got \(retryOutcome)")
+      return
+    }
+    #expect(retryResult.text == "phase 2 retry text")
+    let secondCount = await backend.transcribeCount
+    #expect(
+      secondCount == 2,
+      "the internal fallback and the explicit Phase-2 retry are two distinct decode calls")
+  }
+
+  @Test(
+    "retryDecode reuses the first attempt's finalized decode options exactly and never re-runs LID"
+  )
+  func retryDecodePreservesDecodeOptionsAndSkipsLID() async throws {
+    let backend = StubWhisperKitBackend()
+    // Three unanimous, high-confidence votes for "es" — a clean, unambiguous
+    // LID resolution on the first (auto-language) attempt.
+    await backend.setObserveLIDResult(
+      .observations([
+        RawLIDObservation(argmaxLang: "es", logProb: -0.05),
+        RawLIDObservation(argmaxLang: "es", logProb: -0.05),
+        RawLIDObservation(argmaxLang: "es", logProb: -0.05),
+      ]))
+    // The first attempt's own batch decode fails for real, triggering the
+    // kernel's Phase-2 retry.
+    await backend.setTranscribeThrows(StubBackendError.decodeFailed)
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    // Auto-language (nil) — LID must run on this first attempt.
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: nil), streaming: false)
+    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    _ = await adapter.finalize(batchSamples: nil)
+
+    let lidCountAfterFirstAttempt = await backend.observeLIDCount
+    #expect(lidCountAfterFirstAttempt > 0, "precondition: the auto-language first attempt ran LID")
+    let resolvedLanguage = await backend.lastTranscribeOptions.language
+    #expect(resolvedLanguage == "es", "precondition: the first attempt resolved to es")
+
+    // The Phase-2 retry must reuse that resolved language exactly, never
+    // re-running LID.
+    await backend.setTranscribeThrows(nil)
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "retried spanish text", language: "es", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let retryOutcome = await adapter.retryDecode(inputSamples: speechSamples(count: 16_000))
+    guard case .transcript = retryOutcome else {
+      Issue.record("expected the retry to recover a transcript, got \(retryOutcome)")
+      return
+    }
+    let lidCountAfterRetry = await backend.observeLIDCount
+    #expect(
+      lidCountAfterRetry == lidCountAfterFirstAttempt,
+      "the retry must never re-run LID")
+    let retryLanguage = await backend.lastTranscribeOptions.language
+    #expect(retryLanguage == "es", "the retry must reuse the first attempt's resolved language")
+  }
+
   // MARK: Production-unwired sanity
 
   @Test("WhisperKitEngineAdapter exists at Sources/EnviousWisprPipeline/")
@@ -1207,6 +1361,21 @@ import Testing
     let path = "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift"
     let url = repoRoot().appending(path: path)
     #expect(FileManager.default.fileExists(atPath: url.path))
+  }
+
+  @Test(
+    "#1707 Codex r8/r9: retryDecodeTimeoutSeconds(forSampleCount:) scales with audio length, not a flat constant"
+  )
+  func retryDecodeTimeoutScalesWithSampleCount() {
+    let adapter = WhisperKitEngineAdapter(backend: StubWhisperKitBackend())
+    let zero = adapter.retryDecodeTimeoutSeconds(forSampleCount: 0)
+    let oneMinute = adapter.retryDecodeTimeoutSeconds(forSampleCount: 16_000 * 60)
+    let oneHour = adapter.retryDecodeTimeoutSeconds(forSampleCount: 16_000 * 3600)
+    #expect(zero == 5.0, "the fixed floor with zero audio")
+    #expect(oneMinute > zero, "a longer recording must get a longer budget")
+    #expect(oneHour > oneMinute, "budget keeps scaling for the longest supported recording")
+    #expect(abs(oneMinute - 23.0) < 0.01)
+    #expect(abs(oneHour - 1085.0) < 0.01)
   }
 
   // MARK: Helpers

@@ -390,15 +390,22 @@ import Testing
   /// wired the install read into the press path (isSelectedModelInstalled):
   /// actual 1151 + ~2, rounded to 1155. Then that read became removal-aware
   /// (founder: a model mid-removal accepts no dictations; Codex 2c-r7 P1):
-  /// actual 1160 + ~2, rounded to 1165.
+  /// actual 1160 + ~2, rounded to 1165. #1707 Phase 2 (recovery-v2
+  /// transcription-engine retry): hoisted the WhisperKit backend construction
+  /// earlier so `BatchDecodeFaultController` can be built from both backends,
+  /// and threaded that controller into both `ParakeetInputs`/`WhisperKitInputs`
+  /// and `AppLifecycleCoordinator`: actual 1187 + ~2, rounded to 1190. Then
+  /// Codex r6 required gating the controller's own construction behind
+  /// `#if DEBUG` (a Release build must not wire real fault-injection
+  /// machinery into its object graph): actual 1200 + ~2, rounded to 1205.
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1165,
+      lineCount <= 1205,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1165. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1205. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

@@ -49,7 +49,12 @@ enum DictationCompletedReporting {
       interruptedBy: driver.lastAudioInterruptionCause?.rawValue,
       // #1707: which ASR/XPC-helper salvage outcome preceded this completion.
       // Absent unless a live ASR crash was salvaged during this session.
-      asrSalvageOutcome: driver.lastASRSalvageOutcome?.rawValue)
+      asrSalvageOutcome: driver.lastASRSalvageOutcome?.rawValue,
+      // #1707 Phase 2: without this, a retry-rescued dictation's completion
+      // is invisible — it never reaches either Sentry capture site (those
+      // only fire on `.asrFailed`/`.asrInterrupted`), so this read-through
+      // chain is a successful retry's ONLY visibility.
+      asrRetryOutcome: driver.asrRetryOutcome?.rawValue)
   }
 
   private static func positive(_ value: Int?) -> Int? {

@@ -147,6 +147,16 @@ public actor ParakeetBackend: ASRBackend {
     // `source:` parameter is gone. Language hint intentionally NOT passed in PR-2
     // (parity with the d5fcca4 behavior); G7 language propagation ships in PR-4.
     var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
+    #if DEBUG
+      // #1707 Phase 2: the real shared-engine call boundary for the overlap
+      // Live UAT oracle (§3.2a-i) — `defer` closes the interval on every
+      // exit (success or either catch), and the entry suspension (if this
+      // call is the classified "held" one) happens BEFORE the real call, so
+      // a genuinely NEW session's decode can reach and enter this SAME
+      // boundary while the first is suspended here.
+      let batchDecodeFaultRole = await enterBatchDecodeFaultBoundary()
+      defer { exitBatchDecodeFaultBoundary(role: batchDecodeFaultRole) }
+    #endif
     do {
       let fluidResult = try await manager.transcribe(audioSamples, decoderState: &decoderState)
       let elapsed = CFAbsoluteTimeGetCurrent() - startTime
@@ -246,4 +256,109 @@ public actor ParakeetBackend: ASRBackend {
     fluidModels = nil
     isReady = false
   }
+
+  #if DEBUG
+    // MARK: #1707 Phase 2 — batch-decode fault oracle (shared-backend overlap
+    // Live UAT, §3.2a-i). One armed trial at a time by construction (a DEBUG
+    // test seam, never a concurrent-scenario primitive). The first real
+    // `transcribe(...)` call after arming is classified `held` (suspends
+    // until released); a SECOND call arriving while the trial is still
+    // active is classified `newSession` (records timestamps, does not
+    // suspend) — this is what lets a Live UAT test prove genuine overlap at
+    // the real shared-engine boundary.
+
+    private enum BatchDecodeFaultRole {
+      case none
+      case held(trialID: String)
+      case newSession(trialID: String)
+    }
+
+    private var armedBatchDecodeTrialID: String?
+    private var batchDecodeHeldClassified = false
+    private var batchDecodeHoldContinuation: CheckedContinuation<Void, Never>?
+
+    /// A forgotten release cannot wedge the ASR service process — bounded by
+    /// this safety unhold, well past any realistic Live UAT test duration.
+    private static let batchDecodeFaultSafetyUnholdSec: Double = 30.0
+
+    /// Arms a one-shot hold for the NEXT `manager.transcribe(...)` call this
+    /// actor issues. `package` access: callable from `ASRServiceHandler` in
+    /// the sibling `EnviousWisprASRService` target (same package,
+    /// `Package.swift`), mirroring `ASRManagerProxy`'s existing `package`
+    /// DEBUG methods.
+    package func armBatchDecodeHold(trialID: String) {
+      armedBatchDecodeTrialID = trialID
+      batchDecodeHeldClassified = false
+      BatchDecodeFaultSnapshotFile.shared.write(BatchDecodeFaultSnapshotState(trialID: trialID))
+    }
+
+    /// Releases a held decode, letting it proceed to the real
+    /// `manager.transcribe(...)` call. No-op if `trialID` does not match the
+    /// currently-armed trial or nothing is currently held.
+    package func releaseBatchDecode(trialID: String) {
+      guard armedBatchDecodeTrialID == trialID else { return }
+      batchDecodeHoldContinuation?.resume()
+      batchDecodeHoldContinuation = nil
+    }
+
+    /// Clears all armed/held state and the shared snapshot file, so a
+    /// forgotten trial from one Live UAT scenario cannot leak into the next.
+    package func clearBatchDecodeFault() {
+      batchDecodeHoldContinuation?.resume()
+      batchDecodeHoldContinuation = nil
+      armedBatchDecodeTrialID = nil
+      batchDecodeHeldClassified = false
+      BatchDecodeFaultSnapshotFile.shared.clear()
+    }
+
+    private func enterBatchDecodeFaultBoundary() async -> BatchDecodeFaultRole {
+      guard let trialID = armedBatchDecodeTrialID else { return .none }
+      let now = Date().timeIntervalSince1970
+      var snapshot =
+        BatchDecodeFaultSnapshotFile.shared.read().flatMap { $0.trialID == trialID ? $0 : nil }
+        ?? BatchDecodeFaultSnapshotState(trialID: trialID)
+      guard !batchDecodeHeldClassified else {
+        snapshot.newSessionEntryEpochSec = now
+        BatchDecodeFaultSnapshotFile.shared.write(snapshot)
+        return .newSession(trialID: trialID)
+      }
+      batchDecodeHeldClassified = true
+      snapshot.heldDecodeEntryEpochSec = now
+      BatchDecodeFaultSnapshotFile.shared.write(snapshot)
+      await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+        batchDecodeHoldContinuation = cont
+        Task { [weak self] in
+          try? await Task.sleep(for: .seconds(Self.batchDecodeFaultSafetyUnholdSec))
+          await self?.autoReleaseBatchDecodeHoldIfStillHeld(trialID: trialID)
+        }
+      }
+      return .held(trialID: trialID)
+    }
+
+    private func exitBatchDecodeFaultBoundary(role: BatchDecodeFaultRole) {
+      let now = Date().timeIntervalSince1970
+      switch role {
+      case .none:
+        return
+      case .held(let trialID):
+        guard var snapshot = BatchDecodeFaultSnapshotFile.shared.read(),
+          snapshot.trialID == trialID
+        else { return }
+        snapshot.heldDecodeCompletionEpochSec = now
+        BatchDecodeFaultSnapshotFile.shared.write(snapshot)
+      case .newSession(let trialID):
+        guard var snapshot = BatchDecodeFaultSnapshotFile.shared.read(),
+          snapshot.trialID == trialID
+        else { return }
+        snapshot.newSessionCompletionEpochSec = now
+        BatchDecodeFaultSnapshotFile.shared.write(snapshot)
+      }
+    }
+
+    private func autoReleaseBatchDecodeHoldIfStillHeld(trialID: String) {
+      guard armedBatchDecodeTrialID == trialID, batchDecodeHoldContinuation != nil else { return }
+      batchDecodeHoldContinuation?.resume()
+      batchDecodeHoldContinuation = nil
+    }
+  #endif
 }

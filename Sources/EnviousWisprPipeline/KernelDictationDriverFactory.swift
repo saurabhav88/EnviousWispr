@@ -100,6 +100,9 @@ public enum KernelDictationDriverFactory {
     /// bundled-manifest load, which a unit test makes can't-happen in
     /// release) means the legacy in-service download path.
     package let parakeetDelivery: ParakeetDeliveryHandle?
+    /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — nil in
+    /// every existing test call site.
+    package let batchDecodeFaultController: BatchDecodeFaultController?
 
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct. `@MainActor`
@@ -119,7 +122,8 @@ public enum KernelDictationDriverFactory {
       outputClassifierHolder: OutputClassifierHolder? = nil,
       dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
       egOneRuntime: (any EGOneEndpointProviding)? = nil,
-      parakeetDelivery: ParakeetDeliveryHandle? = nil
+      parakeetDelivery: ParakeetDeliveryHandle? = nil,
+      batchDecodeFaultController: BatchDecodeFaultController? = nil
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
@@ -133,6 +137,7 @@ public enum KernelDictationDriverFactory {
       self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
       self.egOneRuntime = egOneRuntime
       self.parakeetDelivery = parakeetDelivery
+      self.batchDecodeFaultController = batchDecodeFaultController
     }
   }
 
@@ -160,6 +165,9 @@ public enum KernelDictationDriverFactory {
     package let dictationAudioArchiveOptInProvider: @MainActor () -> Bool
     /// #1271: EG-1 runtime handle. See `ParakeetInputs.egOneRuntime`.
     package let egOneRuntime: (any EGOneEndpointProviding)?
+    /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — nil in
+    /// every existing test call site.
+    package let batchDecodeFaultController: BatchDecodeFaultController?
 
     /// Explicit package init — same reasoning as `ParakeetInputs.init`.
     /// `languageDetector` is intentionally non-optional (no default) so the
@@ -181,7 +189,8 @@ public enum KernelDictationDriverFactory {
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
       outputClassifierHolder: OutputClassifierHolder? = nil,
       dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
-      egOneRuntime: (any EGOneEndpointProviding)? = nil
+      egOneRuntime: (any EGOneEndpointProviding)? = nil,
+      batchDecodeFaultController: BatchDecodeFaultController? = nil
     ) {
       self.audioCapture = audioCapture
       self.whisperKitBackend = whisperKitBackend
@@ -195,6 +204,7 @@ public enum KernelDictationDriverFactory {
       self.outputClassifierHolder = outputClassifierHolder
       self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
       self.egOneRuntime = egOneRuntime
+      self.batchDecodeFaultController = batchDecodeFaultController
     }
   }
 
@@ -238,7 +248,8 @@ public enum KernelDictationDriverFactory {
     // longer names a concrete adapter type in code (EngineIdentityFreezeTests
     // Test B); it assembles around the opaque `any ASREngineAdapter` returned.
     let adapter = KernelAdapterFactory.makeParakeetAdapter(
-      asrManager: inputs.asrManager, delivery: inputs.parakeetDelivery)
+      asrManager: inputs.asrManager, delivery: inputs.parakeetDelivery,
+      batchDecodeFaultController: inputs.batchDecodeFaultController)
     return assembleDriver(
       adapter: adapter,
       audioCapture: inputs.audioCapture,
@@ -250,7 +261,8 @@ public enum KernelDictationDriverFactory {
       captureErrorSink: inputs.captureErrorSink,
       outputClassifierHolder: inputs.outputClassifierHolder,
       dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider,
-      egOneRuntime: inputs.egOneRuntime)
+      egOneRuntime: inputs.egOneRuntime,
+      batchDecodeFaultController: inputs.batchDecodeFaultController)
   }
 
   /// Build the driver stack for the WhisperKit engine. PR-5 Rung 5 flips the
@@ -268,7 +280,8 @@ public enum KernelDictationDriverFactory {
     let adapter = KernelAdapterFactory.makeWhisperKitAdapter(
       backend: inputs.whisperKitBackend,
       languageDetector: inputs.languageDetector,
-      audioCaptureSessionIDSource: { captureSource.currentCaptureSessionID })
+      audioCaptureSessionIDSource: { captureSource.currentCaptureSessionID },
+      batchDecodeFaultController: inputs.batchDecodeFaultController)
     return assembleDriver(
       adapter: adapter,
       audioCapture: inputs.audioCapture,
@@ -280,7 +293,8 @@ public enum KernelDictationDriverFactory {
       captureErrorSink: inputs.captureErrorSink,
       outputClassifierHolder: inputs.outputClassifierHolder,
       dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider,
-      egOneRuntime: inputs.egOneRuntime)
+      egOneRuntime: inputs.egOneRuntime,
+      batchDecodeFaultController: inputs.batchDecodeFaultController)
   }
 
   /// Engine-agnostic assembler. The two package entry points construct their
@@ -299,7 +313,8 @@ public enum KernelDictationDriverFactory {
     captureErrorSink: @escaping HeartPathCaptureErrorSink,
     outputClassifierHolder: OutputClassifierHolder? = nil,
     dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
-    egOneRuntime: (any EGOneEndpointProviding)? = nil
+    egOneRuntime: (any EGOneEndpointProviding)? = nil,
+    batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) -> KernelDictationDriver {
     // 1. LimbSteps — same instances driver + wiring hold by reference.
     // #832/#913 PR8: the live-dictation LLMPolishStep receives the app-owned
@@ -439,7 +454,8 @@ public enum KernelDictationDriverFactory {
         outcome.asrEndedAtSeconds = CFAbsoluteTimeGetCurrent()
       },
       telemetryState: telemetryState,
-      dictationAudioArchiveOptInProvider: dictationAudioArchiveOptInProvider
+      dictationAudioArchiveOptInProvider: dictationAudioArchiveOptInProvider,
+      batchDecodeFaultController: batchDecodeFaultController
     )
     telemetryRelay.kernel = kernel
 

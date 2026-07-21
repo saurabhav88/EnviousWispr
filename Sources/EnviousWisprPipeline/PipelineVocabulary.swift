@@ -161,8 +161,10 @@ public enum RecordingCancelOrigin: Equatable, Sendable {
 /// crosses into AppKit, where `RecoveryCoordinator` applies the SOLE
 /// delete-versus-retain predicate:
 ///
-/// - delete: `.discarded`, `.noSpeech`, `.cancelled(.user)` — nothing worth
-///   recovering, or the user asked to drop it.
+/// - delete: `.discarded`, `.noSpeech`, `.cancelled(.user)`, `.asrRetryExhausted`
+///   — nothing worth recovering, the user asked to drop it, or (#1707 Phase 2)
+///   this session spent and exhausted its one live retry over the exact same
+///   audio, so there is nothing left to recover on the next launch either.
 /// - retain: `.failed`, `.audioInterrupted`, `.asrInterrupted`, `.noTransport`,
 ///   `.cancelled(.systemOrFault)` — the captured audio is the user's words; keep
 ///   the spool so the next launch recovers it.
@@ -173,6 +175,11 @@ public enum RecordingRecoveryEnding: Equatable, Sendable {
   case discarded
   case noSpeech
   case failed
+  /// #1707 Phase 2: a `.failed` session that spent and exhausted its one
+  /// Phase-2 retry over the exact same already-captured audio. Distinct from
+  /// plain `.failed` (a pre-capture failure, or a `.failed` that never
+  /// consulted Phase 2) — only this case deletes the spool.
+  case asrRetryExhausted
   case audioInterrupted
   case asrInterrupted
   case noTransport

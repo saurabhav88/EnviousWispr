@@ -447,8 +447,10 @@ struct TextProcessingRunnerTests {
     #expect(fakeTimeout.capturedBudgets == [5.0, 0.05, 5.0])
   }
 
-  @Test("rethrows CancellationError and does not run later steps")
-  func rethrowsCancellationError() async {
+  @Test(
+    "#1707 Phase 2 (Open Decision #9): silently skips a CancellationError and continues the chain"
+  )
+  func silentlySkipsCancellationAndContinuesChain() async throws {
     let runner = deterministicRunner()
 
     let first = RecordingStep(name: "A") { context in
@@ -467,21 +469,18 @@ struct TextProcessingRunnerTests {
       return next
     }
 
-    do {
-      _ = try await runner.run(
-        rawText: "start",
-        language: "en",
-        targetAppName: nil,
-        steps: [first, cancelling, third]
-      )
-      Issue.record("Expected CancellationError to be thrown")
-    } catch is CancellationError {
-      #expect(first.runCount == 1)
-      #expect(cancelling.runCount == 1)
-      #expect(third.runCount == 0)
-    } catch {
-      Issue.record("Expected CancellationError, got \(error)")
-    }
+    let result = try await runner.run(
+      rawText: "start",
+      language: "en",
+      targetAppName: nil,
+      steps: [first, cancelling, third]
+    )
+
+    #expect(first.runCount == 1)
+    #expect(cancelling.runCount == 1)
+    #expect(third.runCount == 1)
+    #expect(result.context.text == "start-A-C")
+    #expect(result.polishError == nil)
   }
 
   // MARK: - Phase G1 — error-surface policy contract tests
