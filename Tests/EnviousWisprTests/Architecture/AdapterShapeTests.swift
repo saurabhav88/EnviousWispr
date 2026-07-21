@@ -35,7 +35,7 @@ import Testing
 
   @Test("the production ParakeetEngineAdapter carries no FSM tokens")
   func realAdapterIsClean() throws {
-    let url = repoRoot().appending(path: Self.adapterRelativePath)
+    let url = RepoRoot.url.appending(path: Self.adapterRelativePath)
     let source = try String(contentsOf: url, encoding: .utf8)
     let violations = Self.scan(source)
     #expect(
@@ -116,15 +116,5 @@ import Testing
       }
     }
     return violations
-  }
-
-  /// Repo root, anchored off `#filePath` — this file lives at
-  /// `Tests/EnviousWisprTests/Architecture/`, four levels below the root.
-  private func repoRoot() -> URL {
-    URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
   }
 }

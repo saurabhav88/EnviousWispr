@@ -143,7 +143,7 @@ struct RecoveryTextProcessorTests {
       "a second telemetry seam must not be left live in crash recovery")
   )
   func recoveryWiresTheSilentSeams() throws {
-    let path = repoRoot().appending(
+    let path = RepoRoot.url.appending(
       path: "Sources/EnviousWisprPipeline/RecoveryTextProcessor.swift")
     let source = try String(contentsOf: path, encoding: .utf8)
     let code = source.split(separator: "\n")
@@ -179,7 +179,7 @@ struct RecoveryTextProcessorTests {
       "LLMPolishStep's own emitters must not leak into crash recovery")
   )
   func recoveryWiresLLMPolishStepSilent() throws {
-    let path = repoRoot().appending(
+    let path = RepoRoot.url.appending(
       path: "Sources/EnviousWisprPipeline/RecoveryTextProcessor.swift")
     let source = try String(contentsOf: path, encoding: .utf8)
     let code = source.split(separator: "\n")
@@ -196,15 +196,5 @@ struct RecoveryTextProcessorTests {
 
     #expect(buildsStepFromSilent)
     #expect(handRolledSeams.isEmpty, "recovery must name .silent, not per-seam closures")
-  }
-
-  /// Repo root, anchored off `#filePath` — this file lives at
-  /// `Tests/EnviousWisprTests/Recovery/`, four levels below the root.
-  private func repoRoot() -> URL {
-    URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
   }
 }

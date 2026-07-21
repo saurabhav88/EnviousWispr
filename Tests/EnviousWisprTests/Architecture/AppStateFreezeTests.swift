@@ -28,7 +28,7 @@ import Testing
 
   @Test func appStateFileDoesNotExist() {
     for relativePath in Self.appStateRelativePaths {
-      let url = repoRoot().appending(path: relativePath)
+      let url = RepoRoot.url.appending(path: relativePath)
       #expect(
         !FileManager.default.fileExists(atPath: url.path),
         """
@@ -63,24 +63,13 @@ import Testing
 
   // MARK: - Helpers
 
-  /// Repo root, anchored off `#filePath` (cwd-independent in CI).
-  /// This file lives at `Tests/EnviousWisprTests/Architecture/` — three levels
-  /// below the root.
-  private func repoRoot() -> URL {
-    URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-  }
-
   /// Returns `"path:line: text"` for every line under `directory` that contains
   /// a whole-word `AppState`, skipping files whose name is in `allowing`.
   private func referencingFiles(
     under directory: String, allowing: Set<String>
   ) throws -> [String] {
     let regex = try NSRegularExpression(pattern: Self.tokenPattern)
-    let root = repoRoot().appending(path: directory)
+    let root = RepoRoot.url.appending(path: directory)
     guard
       let enumerator = FileManager.default.enumerator(
         at: root, includingPropertiesForKeys: nil)

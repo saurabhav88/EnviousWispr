@@ -125,14 +125,14 @@ import Testing
 
   private static func scanSources(pattern: String, excludingDir: String?) throws -> [String] {
     let regex = try NSRegularExpression(pattern: pattern)
-    let rootURL = repoRoot().appending(path: "Sources")
+    let rootURL = RepoRoot.url.appending(path: "Sources")
     let enumerator = FileManager.default.enumerator(
       at: rootURL, includingPropertiesForKeys: nil,
       options: [.skipsHiddenFiles, .skipsPackageDescendants])
     var hits: [String] = []
     while let url = enumerator?.nextObject() as? URL {
       guard url.pathExtension == "swift" else { continue }
-      let relative = url.path.replacingOccurrences(of: repoRoot().path + "/", with: "")
+      let relative = url.path.replacingOccurrences(of: RepoRoot.url.path + "/", with: "")
       if let dir = excludingDir, relative.hasPrefix(dir) { continue }
       let source = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
       for (idx, line) in source.split(separator: "\n", omittingEmptySubsequences: false)
@@ -168,15 +168,5 @@ import Testing
     guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
     let ns = source as NSString
     return regex.firstMatch(in: source, range: NSRange(location: 0, length: ns.length)) != nil
-  }
-
-  /// Repo root, anchored off `#filePath` — this file lives at
-  /// `Tests/EnviousWisprTests/Architecture/`, four levels below the root.
-  private static func repoRoot() -> URL {
-    URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
   }
 }

@@ -23,7 +23,7 @@ import Testing
   ]
 
   @Test func workerFileDoesNotExist() {
-    let url = repoRoot().appending(
+    let url = RepoRoot.url.appending(
       path: "Sources/EnviousWisprASR/WhisperKitIncrementalWorker.swift")
     #expect(
       !FileManager.default.fileExists(atPath: url.path),
@@ -68,7 +68,7 @@ import Testing
   private func filesReferencing(
     pattern: String, under directory: String, allowing allowlist: [String]
   ) throws -> [String] {
-    let root = repoRoot().appending(path: directory)
+    let root = RepoRoot.url.appending(path: directory)
     let regex = try NSRegularExpression(pattern: pattern)
     var offenders: [String] = []
     let enumerator = FileManager.default.enumerator(
@@ -83,14 +83,5 @@ import Testing
       }
     }
     return offenders.sorted()
-  }
-
-  private func repoRoot() -> URL {
-    // #file = .../Tests/EnviousWisprTests/Architecture/WhisperKitStitchFreezeTests.swift
-    URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()  // Architecture
-      .deletingLastPathComponent()  // EnviousWisprTests
-      .deletingLastPathComponent()  // Tests
-      .deletingLastPathComponent()  // repo root
   }
 }
