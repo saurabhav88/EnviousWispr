@@ -212,7 +212,10 @@ public struct GeminiConnector: TranscriptPolisher {
       throw error
     }
 
-    guard !fullText.isEmpty else {
+    // Trimmed, not raw (#1710): see extractBatchResponseText's doc comment
+    // for why a whitespace/newline-only accumulation must not pass as a
+    // successful result.
+    guard !fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       statusForLog = "error_after_\(httpResponse.statusCode):empty_response"
       throw LLMError.emptyResponse
     }
@@ -264,46 +267,59 @@ public struct GeminiConnector: TranscriptPolisher {
     // call. The responseText empty-check is inside this do block because
     // an all-thought response still throws LLMError.emptyResponse and would
     // otherwise leak through with status=200.
-    let firstCandidate: [String: Any]
-    let responseText: String
+    let extracted: (text: String, finishReason: String?)
     do {
       if httpResponse.statusCode != 200 {
         let body = String(data: data, encoding: .utf8) ?? ""
         try handleHTTPError(statusCode: httpResponse.statusCode, body: body)
       }
 
-      let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-      guard let candidates = json?["candidates"] as? [[String: Any]],
-        let candidate = candidates.first,
-        let content = candidate["content"] as? [String: Any],
-        let candidateParts = content["parts"] as? [[String: Any]]
-      else {
-        throw LLMError.emptyResponse
-      }
-      let text =
-        candidateParts
-        .filter { $0["thought"] as? Bool != true }
-        .compactMap { $0["text"] as? String }
-        .joined()
-      guard !text.isEmpty else {
-        throw LLMError.emptyResponse
-      }
-      firstCandidate = candidate
-      responseText = text
+      extracted = try Self.extractBatchResponseText(from: data)
     } catch {
       statusForLog = "error_after_\(httpResponse.statusCode):\(Self.shortError(error))"
       throw error
     }
 
-    logTruncationIfNeeded(
-      finishReason: firstCandidate["finishReason"] as? String,
-      config: config
-    )
+    logTruncationIfNeeded(finishReason: extracted.finishReason, config: config)
 
     return LLMResult(
-      polishedText: responseText.trimmingCharacters(in: .whitespacesAndNewlines)
+      polishedText: extracted.text.trimmingCharacters(in: .whitespacesAndNewlines)
         .strippingLLMPreamble(stripTranscriptTags: false)
     )
+  }
+
+  /// Pure success-body parser for the non-streaming path (#1710, mirroring
+  /// `ClaudeConnector.extractResponseText`). Extracted out of `polishBatch`
+  /// so the emptiness edge case is unit-testable directly against `Data`
+  /// literals without a transport seam (neither Gemini nor Claude has one —
+  /// see `ClaudeConnectorTests.swift`).
+  ///
+  /// Emptiness is checked on the TRIMMED text, not the raw joined text: a
+  /// whitespace/newline-only response has a non-empty raw string but is a
+  /// successful-looking empty result once `polishBatch` trims it into the
+  /// final `LLMResult` — checking the untrimmed value here would let that
+  /// case through as a false "success" and hide a real provider failure
+  /// from the pipeline's fallback logic.
+  static func extractBatchResponseText(
+    from data: Data
+  ) throws -> (text: String, finishReason: String?) {
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    guard let candidates = json?["candidates"] as? [[String: Any]],
+      let candidate = candidates.first,
+      let content = candidate["content"] as? [String: Any],
+      let candidateParts = content["parts"] as? [[String: Any]]
+    else {
+      throw LLMError.emptyResponse
+    }
+    let text =
+      candidateParts
+      .filter { $0["thought"] as? Bool != true }
+      .compactMap { $0["text"] as? String }
+      .joined()
+    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw LLMError.emptyResponse
+    }
+    return (text, candidate["finishReason"] as? String)
   }
 
   // MARK: - Shared

@@ -155,6 +155,11 @@ struct OpenAIParamStripTests {
   private static let successBody = Data(
     #"{"choices": [{"message": {"content": "Polished."}, "finish_reason": "stop"}]}"#.utf8)
 
+  // The raw content is non-empty ("   \n  "), so a check against the
+  // UNTRIMMED string would incorrectly treat this as success (#1710 Gap 2).
+  private static let whitespaceOnlyBody = Data(
+    #"{"choices": [{"message": {"content": "   \n  "}, "finish_reason": "stop"}]}"#.utf8)
+
   private static func rejection(param: String) -> Data {
     Data(
       """
@@ -310,5 +315,26 @@ struct OpenAIParamStripTests {
       Issue.record("unexpected error: \(error)")
     }
     #expect(transport.requestCount == 0)
+  }
+
+  // MARK: - Empty/whitespace response (#1710 Gap 2)
+
+  @Test func whitespaceOnlyContentThrowsEmptyResponse() async {
+    let model = "gpt-4o-whitespace-\(UUID().uuidString)"
+    defer { OpenAIConnector.resetOmissions(model: model) }
+    let transport = ScriptedTransport(script: [
+      (Self.whitespaceOnlyBody, Self.response(200))
+    ])
+
+    do {
+      _ = try await connector(transport).polish(
+        text: "hello", instructions: .default, config: config(model: model), onToken: nil)
+      Issue.record("expected LLMError.emptyResponse")
+    } catch LLMError.emptyResponse {
+      // expected
+    } catch {
+      Issue.record("unexpected error: \(error)")
+    }
+    #expect(transport.requestCount == 1)
   }
 }

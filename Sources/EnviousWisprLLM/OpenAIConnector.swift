@@ -353,6 +353,13 @@ public struct OpenAIConnector: TranscriptPolisher {
   /// Parse a successful OpenAI 200 response into an LLMResult.
   /// Throws `LLMError.emptyResponse` on missing/empty content so the retry
   /// caller can mark statusForLog as error_after_200.
+  ///
+  /// Emptiness is checked on the TRIMMED content, not the raw string (#1710):
+  /// a whitespace/newline-only response has a non-empty raw string but is a
+  /// successful-looking empty result once this function trims it into the
+  /// final `LLMResult` — checking the untrimmed value would let that case
+  /// through as a false "success" and hide a real provider failure from the
+  /// pipeline's fallback logic. Mirrors `ClaudeConnector.extractResponseText`.
   private static func parseSuccess(
     data: Data, config: LLMProviderConfig
   ) throws -> LLMResult {
@@ -360,7 +367,7 @@ public struct OpenAIConnector: TranscriptPolisher {
     guard let choices = json?["choices"] as? [[String: Any]],
       let message = choices.first?["message"] as? [String: Any],
       let content = message["content"] as? String,
-      !content.isEmpty
+      !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else {
       throw LLMError.emptyResponse
     }
