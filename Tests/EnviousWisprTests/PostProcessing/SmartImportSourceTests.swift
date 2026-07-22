@@ -792,6 +792,27 @@ struct SmartImportSourceTests {
     }
   }
 
+  @Test("blank/whitespace-only alias padding does not count against the stored-value ceiling")
+  func blankAliasPaddingDoesNotCountAgainstStoredValueCeiling() async throws {
+    // Fixed, GitHub cloud review (PR #1748): the ceiling used to count raw,
+    // pre-trim aliases, so a term padded with blank slots that were always
+    // going to be dropped could trip the ceiling and refuse an import that
+    // never actually approached the real stored-surface limit.
+    let limit = CustomWordsImportLimits.maximumExportedStoredValues
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    // Far more raw aliases than the limit, every one blank — the trimmed
+    // surface is just the one canonical.
+    let aliasesJSON = (0..<(limit + 100)).map { _ in "\"   \"" }.joined(separator: ",")
+    let url = try write(
+      #"{ "terms": [ { "text": "Word", "aliases": [\#(aliasesJSON)] } ] }"#, to: dir, as: "v.json")
+
+    let batch = try await SmartImportSource(adapter: FixedFluidVoice(url: url)).loadCandidates()
+    let candidate = try #require(batch.candidates.first)
+    #expect(candidate.canonical == "Word")
+    #expect(candidate.aliases == .unspecified)
+  }
+
   // MARK: - Pipeline: real adapter output through the real compare/commit boundary
   //
   // Proves the boundary this source relies on (§2.5.1 Hop 4, Hop 6), not just

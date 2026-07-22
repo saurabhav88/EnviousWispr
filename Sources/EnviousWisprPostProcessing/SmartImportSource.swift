@@ -412,13 +412,26 @@ package struct SmartImportSource: CustomWordsImportSource {
         found: words.count, limit: CustomWordsImportLimits.maximumCandidates)
     }
 
+    // Trim aliases up front so both the ceiling below and candidate
+    // construction judge the same values that would actually get stored —
+    // matching CustomWordsImportCandidate.storedValues's own rule (judge the
+    // trimmed value, since that is what gets saved). Counting raw,
+    // pre-trim aliases let a FluidVoice term padded with blank/whitespace-only
+    // alias slots trip this ceiling on values that were always going to be
+    // dropped and never stored (GitHub cloud review, PR #1748).
+    let trimmedAliasesByIndex = words.map { word in
+      word.aliases
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+    }
+
     // A second, new ceiling: total stored surface (canonical + every alias),
     // not just row count. FluidVoice's real schema can attach an unbounded
     // alias array to one term, which the row-count check above cannot see.
     // Same all-or-nothing shape as the sibling ceiling above, reusing the
     // error family the Upload path already established for this concern.
-    let storedValueCount = words.reduce(into: 0) { count, word in
-      count += 1 + word.aliases.count
+    let storedValueCount = trimmedAliasesByIndex.reduce(into: 0) { count, aliases in
+      count += 1 + aliases.count
     }
     guard storedValueCount <= CustomWordsImportLimits.maximumExportedStoredValues else {
       throw ImportFileError.tooManyStoredValues(
@@ -430,12 +443,9 @@ package struct SmartImportSource: CustomWordsImportSource {
     // downstream — the existing, already-tested owner of "should these merge"
     // (§3c) — rather than re-deciding it locally with a different key.
     var canonicals: [CustomWordsImportCandidate] = []
-    for word in words {
+    for (word, aliases) in zip(words, trimmedAliasesByIndex) {
       let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
       guard !CustomWordsImportCompareEngine.normalize(trimmed).isEmpty else { continue }
-      let aliases = word.aliases
-        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        .filter { !$0.isEmpty }
       canonicals.append(
         CustomWordsImportCandidate(
           canonical: trimmed,
