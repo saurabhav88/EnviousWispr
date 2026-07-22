@@ -34,10 +34,22 @@ package protocol SmartImportAdapter: Sendable {
   var displayName: String { get }
   /// Where this app keeps vocabulary, in probe order.
   var candidatePaths: [URL] { get }
-  /// Read the canonical words. Aliases are deliberately NOT returned: v1
-  /// import carries the main word only (founder rule), so an adapter that
-  /// harvested synonyms would be supplying data the pipeline must discard.
-  func loadWords(at url: URL) throws -> [String]
+  /// Read the canonical words, alongside any misspelling the source app
+  /// itself records as correcting to that word.
+  func loadWords(at url: URL) throws -> [SmartImportWord]
+}
+
+/// One word an adapter found, with the human-typed misspelling it corrects
+/// FROM, if the source app records one. `aliases` is always an array — plural
+/// because FluidVoice supplies a real list; Superwhisper and Wispr Flow only
+/// ever produce at most one.
+package struct SmartImportWord: Sendable, Equatable {
+  package let canonical: String
+  package let aliases: [String]
+  package init(canonical: String, aliases: [String] = []) {
+    self.canonical = canonical
+    self.aliases = aliases
+  }
 }
 
 extension SmartImportAdapter {
@@ -86,7 +98,10 @@ package struct FluidVoiceAdapter: SmartImportAdapter {
   package let displayName = "FluidVoice"
 
   private struct Vocabulary: Decodable {
-    struct Term: Decodable { let text: String }
+    struct Term: Decodable {
+      let text: String
+      let aliases: [String]?
+    }
     let terms: [Term]?
   }
 
@@ -100,13 +115,15 @@ package struct FluidVoiceAdapter: SmartImportAdapter {
 
   package init() {}
 
-  package func loadWords(at url: URL) throws -> [String] {
+  package func loadWords(at url: URL) throws -> [SmartImportWord] {
     let data = try boundedData(at: url, appName: displayName)
     guard let vocabulary = try? JSONDecoder().decode(Vocabulary.self, from: data) else {
       throw SmartImportError.unreadable(displayName)
     }
     // `terms` absent entirely is a legitimate fresh install, not a failure.
-    return (vocabulary.terms ?? []).map(\.text)
+    return (vocabulary.terms ?? []).map {
+      SmartImportWord(canonical: $0.text, aliases: $0.aliases ?? [])
+    }
   }
 }
 
@@ -119,7 +136,10 @@ package struct SuperwhisperAdapter: SmartImportAdapter {
   package let displayName = "Superwhisper"
 
   private struct Settings: Decodable {
-    struct Replacement: Decodable { let with: String? }
+    struct Replacement: Decodable {
+      let with: String?
+      let original: String?
+    }
     let vocabulary: [String]?
     let replacements: [Replacement]?
   }
@@ -140,16 +160,23 @@ package struct SuperwhisperAdapter: SmartImportAdapter {
 
   package init() {}
 
-  package func loadWords(at url: URL) throws -> [String] {
+  package func loadWords(at url: URL) throws -> [SmartImportWord] {
     let data = try boundedData(at: url, appName: displayName)
     guard let settings = try? JSONDecoder().decode(Settings.self, from: data) else {
       throw SmartImportError.unreadable(displayName)
     }
     // A replacement is a find/replace pair; its `with` side is the spelling
-    // the user actually wants, which is the word worth bringing across. The
-    // `original` side is the alias, and v1 does not import aliases.
-    let corrected = (settings.replacements ?? []).compactMap(\.with)
-    return (settings.vocabulary ?? []) + corrected
+    // the user actually wants, which is the word worth bringing across; its
+    // `original` side, when present, is the misspelling that prompted it.
+    let plain = (settings.vocabulary ?? []).map { SmartImportWord(canonical: $0) }
+    let corrected = (settings.replacements ?? []).compactMap { replacement -> SmartImportWord? in
+      guard let with = replacement.with?.trimmingCharacters(in: .whitespacesAndNewlines),
+        !with.isEmpty
+      else { return nil }
+      let alias = replacement.original?.trimmingCharacters(in: .whitespacesAndNewlines)
+      return SmartImportWord(canonical: with, aliases: (alias?.isEmpty == false) ? [alias!] : [])
+    }
+    return plain + corrected
   }
 }
 
@@ -169,17 +196,25 @@ package struct WisprFlowAdapter: SmartImportAdapter {
 
   package init() {}
 
-  package func loadWords(at url: URL) throws -> [String] {
+  package func loadWords(at url: URL) throws -> [SmartImportWord] {
     // isDeleted: a soft-delete flag. Importing unfiltered would resurrect
     // words the user deliberately removed — the single worst thing this
     // adapter could do.
     // isSnippet: text expansions are a different feature, not vocabulary.
     // `replacement` is the corrected spelling when present; `phrase` is the
-    // alias in that case, and v1 does not import aliases.
+    // misspelling that prompted it, carried across as an alias.
+    //
+    // `ORDER BY id` is new: a bare `LIMIT` with no order leaves SQLite's row
+    // order unspecified, and "the same word claimed as an alias by two
+    // different corrected spellings" needs a real, stable "earlier" for that
+    // to mean anything. `id` (VARCHAR(36) PRIMARY KEY) is ordered, not
+    // `rowid` — this table's PK does not alias `rowid`, and an unaliased
+    // `rowid` is not guaranteed persistent across a `VACUUM`.
     let sql = """
-      SELECT COALESCE(NULLIF(TRIM(replacement), ''), phrase)
+      SELECT phrase, replacement
       FROM Dictionary
       WHERE isDeleted = 0 AND isSnippet = 0
+      ORDER BY id COLLATE BINARY ASC
       LIMIT \(CustomWordsImportLimits.maximumCandidates + 1)
       """
 
@@ -280,13 +315,25 @@ package struct WisprFlowAdapter: SmartImportAdapter {
     return words
   }
 
-  private func readWords(from statement: OpaquePointer?) throws -> [String] {
+  private func readWords(from statement: OpaquePointer?) throws -> [SmartImportWord] {
 
-    var words: [String] = []
+    var words: [SmartImportWord] = []
     var result = sqlite3_step(statement)
     while result == SQLITE_ROW {
-      if let text = sqlite3_column_text(statement, 0) {
-        words.append(String(cString: text))
+      guard let phraseText = sqlite3_column_text(statement, 0) else {
+        result = sqlite3_step(statement)
+        continue
+      }
+      let phrase = String(cString: phraseText)
+      let replacement = sqlite3_column_text(statement, 1).map { String(cString: $0) }
+      // `.whitespacesAndNewlines` also strips tabs/newlines, unlike the
+      // ASCII-space-only `TRIM()` this replaced — matching the trim already
+      // used everywhere else in this file.
+      let trimmedReplacement = replacement?.trimmingCharacters(in: .whitespacesAndNewlines)
+      if let trimmedReplacement, !trimmedReplacement.isEmpty {
+        words.append(SmartImportWord(canonical: trimmedReplacement, aliases: [phrase]))
+      } else {
+        words.append(SmartImportWord(canonical: phrase))
       }
       result = sqlite3_step(statement)
     }
@@ -365,25 +412,48 @@ package struct SmartImportSource: CustomWordsImportSource {
         found: words.count, limit: CustomWordsImportLimits.maximumCandidates)
     }
 
-    // Reuse the shared splitter's normalization so a competitor's list dedups
-    // exactly the way a pasted one does, and trim/blank handling is identical.
-    var seen = Set<String>()
-    var canonicals: [String] = []
-    for word in words {
-      let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !trimmed.isEmpty else { continue }
-      let key = CustomWordsImportCompareEngine.normalize(trimmed)
-      guard !key.isEmpty, seen.insert(key).inserted else { continue }
-      canonicals.append(trimmed)
+    // Trim aliases up front so both the ceiling below and candidate
+    // construction judge the same values that would actually get stored —
+    // matching CustomWordsImportCandidate.storedValues's own rule (judge the
+    // trimmed value, since that is what gets saved). Counting raw,
+    // pre-trim aliases let a FluidVoice term padded with blank/whitespace-only
+    // alias slots trip this ceiling on values that were always going to be
+    // dropped and never stored (GitHub cloud review, PR #1748).
+    let trimmedAliasesByIndex = words.map { word in
+      word.aliases
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+    }
+
+    // A second, new ceiling: total stored surface (canonical + every alias),
+    // not just row count. FluidVoice's real schema can attach an unbounded
+    // alias array to one term, which the row-count check above cannot see.
+    // Same all-or-nothing shape as the sibling ceiling above, reusing the
+    // error family the Upload path already established for this concern.
+    let storedValueCount = trimmedAliasesByIndex.reduce(into: 0) { count, aliases in
+      count += 1 + aliases.count
+    }
+    guard storedValueCount <= CustomWordsImportLimits.maximumExportedStoredValues else {
+      throw ImportFileError.tooManyStoredValues(
+        found: storedValueCount, limit: CustomWordsImportLimits.maximumExportedStoredValues)
+    }
+
+    // Trim and drop blanks only; no merge here. Two rows resolving to the
+    // same word are left for `CustomWordsImportCompareEngine.coalesceDuplicates`
+    // downstream — the existing, already-tested owner of "should these merge"
+    // (§3c) — rather than re-deciding it locally with a different key.
+    var canonicals: [CustomWordsImportCandidate] = []
+    for (word, aliases) in zip(words, trimmedAliasesByIndex) {
+      let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !CustomWordsImportCompareEngine.normalize(trimmed).isEmpty else { continue }
+      canonicals.append(
+        CustomWordsImportCandidate(
+          canonical: trimmed,
+          aliases: aliases.isEmpty ? .unspecified : .supplied(aliases)))
     }
 
     return CustomWordsImportBatch(
-      sourceID: adapter.identifier,
-      sourceDisplayName: adapter.displayName,
-      // Main word only, every authority field unspecified — the same contract
-      // paste and plain text honour. A competitor's synonyms are not imported
-      // in v1, so an existing word is skipped rather than modified.
-      candidates: canonicals.map { CustomWordsImportCandidate(canonical: $0) }
-    )
+      sourceID: adapter.identifier, sourceDisplayName: adapter.displayName,
+      candidates: canonicals)
   }
 }

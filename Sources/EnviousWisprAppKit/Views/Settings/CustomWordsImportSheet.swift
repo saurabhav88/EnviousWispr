@@ -612,9 +612,12 @@ private struct ImportSmartAppPickerScreen: View {
       }
 
       // Says the honest shape of the migration before they commit to it: this
-      // brings words across, not the corrections that map onto them.
+      // brings NEW words across WITH the alternate spellings that correct
+      // them. Every match against a word already in the library is Skip-only
+      // (CustomWordsImportReviewRow.allowedDecisions) — this sentence must
+      // not read as a promise to enrich those (GitHub cloud review, PR #1748).
       Text(
-        "Words come across on their own. Alternate spellings you set up in the other app stay there."
+        "New words come across with the alternate spellings you set up in the other app."
       )
       .font(.stHelper)
       .foregroundStyle(.stTextSecondary)
