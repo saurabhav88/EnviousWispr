@@ -244,6 +244,16 @@ struct CustomWordsManagerPersistenceTests {
     let mgr = CustomWordsManager(fileURL: url)
     var words: [CustomWord] = []
 
+    // Pre-create the companion lock while the directory is writable. This
+    // fixture targets quarantine's archive-move failure, not lock creation.
+    let lockURL = url.appendingPathExtension("lock")
+    let lockCreated = FileManager.default.createFile(
+      atPath: lockURL.path,
+      contents: Data(),
+      attributes: [.posixPermissions: 0o600]
+    )
+    try #require(lockCreated)
+
     // Read-only directory: the archive moveItem cannot succeed, so the result
     // must be .unreadable (permanently retry-safe), never a promised self-heal.
     try FileManager.default.setAttributes(

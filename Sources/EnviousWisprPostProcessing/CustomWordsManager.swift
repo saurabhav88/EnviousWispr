@@ -43,6 +43,12 @@ package enum CustomWordsPersistenceError: LocalizedError, Sendable, Equatable {
   case unreadableExistingFile
   case corruptedExistingFile
   case unusableValue
+  /// Another process currently holds the cross-process lock (#1690). Thrown
+  /// only by the non-blocking explicit mutation paths; nothing was written.
+  case libraryBusy
+  /// The lock file itself could not be opened, or `flock` failed for a
+  /// reason other than contention (#1690), e.g. permissions or disk full.
+  case coordinationUnavailable
 
   package var errorDescription: String? {
     switch self {
@@ -54,6 +60,12 @@ package enum CustomWordsPersistenceError: LocalizedError, Sendable, Equatable {
     case .unusableValue:
       return
         "That word or spelling can't be saved. It may be too long, or contain characters that aren't part of a word."
+    case .libraryBusy:
+      return
+        "Your word list is being updated by another EnviousWispr window. Nothing was changed. Try again."
+    case .coordinationUnavailable:
+      return
+        "Your saved words could not be updated safely. Nothing was changed. Try again."
     }
   }
 }
@@ -245,14 +257,26 @@ public final class CustomWordsManager {
     var words: [CustomWord] = []
   }
 
-  /// `loadFile()`'s result (#1646) — distinguishes the three conditions the
-  /// old `CustomWordsFile?` collapsed into one `nil`, so callers can fail
-  /// closed instead of treating every failure as "the library is empty".
+  /// `loadFileWhileLocked()`'s result (#1646) — distinguishes the three
+  /// conditions the old `CustomWordsFile?` collapsed into one `nil`, so
+  /// callers can fail closed instead of treating every failure as "the
+  /// library is empty".
   private enum CustomWordsLoadResult {
     case missing  // path does not exist — legitimate first-run state
     case loaded(CustomWordsFile)  // decoded (current or migrated legacy format)
     case unreadable(underlying: Error)  // exists, but the I/O read itself failed
     case corrupted  // exists, readable, undecodable — archived aside
+  }
+
+  /// `load()`'s lock-free classification (#1690) — distinguishes only
+  /// "definitely fine as-is" from "hand this to the locked repair cascade".
+  /// It never makes the finer legacy-vs-corrupted distinction itself; that
+  /// stays the real cascade's job, decided fresh under the lock.
+  private enum ReadOnlyLoadResult {
+    case missing
+    case loaded(CustomWordsFile)  // decodes as current format — no write ever needed
+    case unreadable(underlying: Error)  // I/O read itself failed — no write ever needed
+    case needsRepair  // readable bytes exist but aren't current-format
   }
 
   // MARK: - Public API
@@ -262,11 +286,52 @@ public final class CustomWordsManager {
   /// launch to show an honest banner instead of a silent empty list.
   package private(set) var lastLoadFailure: CustomWordsInitialLoadFailure?
 
+  /// Test seam: fires once, immediately after `loadFileReadOnly()` confirms
+  /// the canonical file exists but before it attempts to read it — lets a
+  /// test deterministically simulate a sibling process's file vanishing in
+  /// that exact window (#1690 cloud review), which no other seam in this
+  /// file can reach since this fast path is deliberately lock-free.
+  /// Production never sets this.
+  // periphery:ignore - test seam
+  package var afterFileExistsCheckForTesting: (() -> Void)?
+
+  /// Classifies the current on-disk state without ever creating/opening the
+  /// lock file, migrating, saving, quarantining, moving, or otherwise
+  /// mutating disk (#1690). Missing, current-format, and unreadable are the
+  /// fast path `load()` returns from immediately, with no lock involved at
+  /// all. `.needsRepair` is the rare signal that legacy migration or
+  /// corruption quarantine may be needed — decided for real only under the
+  /// lock, by `loadFileWhileLocked()`'s existing cascade, never duplicated
+  /// here.
+  private func loadFileReadOnly() -> ReadOnlyLoadResult {
+    guard FileManager.default.fileExists(atPath: fileURL.path) else { return .missing }
+    afterFileExistsCheckForTesting?()
+    let data: Data
+    do {
+      data = try Data(contentsOf: fileURL)
+    } catch {
+      // The file existed a moment ago but reading it just failed. If it has
+      // now vanished entirely, a sibling process's quarantine (or some other
+      // deletion) raced this read; that ambiguity must be resolved under the
+      // lock like any other needs-repair case, never silently reported as a
+      // stable first-run state that could mask a corruption signal a moment
+      // later (#1690 cloud review).
+      guard FileManager.default.fileExists(atPath: fileURL.path) else {
+        return .needsRepair
+      }
+      return .unreadable(underlying: error)
+    }
+    if let file = try? JSONDecoder().decode(CustomWordsFile.self, from: data) {
+      return .loaded(file)
+    }
+    return .needsRepair
+  }
+
   /// Load the effective word list: built-in defaults (minus tombstones) + user words.
   /// Returns nil only on unrecoverable I/O failure or a corrupted (archived)
   /// file — `lastLoadFailure` says which (#1646).
   public func load() -> [CustomWord]? {
-    switch loadFile() {
+    switch loadFileReadOnly() {
     case .missing:
       lastLoadFailure = nil
       return mergedWords(file: CustomWordsFile())
@@ -276,18 +341,58 @@ public final class CustomWordsManager {
     case .unreadable:
       lastLoadFailure = .unreadable
       return nil
-    case .corrupted:
-      lastLoadFailure = .corrupted
-      return nil
+    case .needsRepair:
+      // Rare path: migration or quarantine. `loadFileWhileLocked()` requires
+      // an already-held companion lock, acquired here BLOCKING — the
+      // deliberate exception to every other caller's non-blocking policy
+      // (#1690). Once the lock is acquired, the existing cascade re-reads
+      // the current truth in one shot and returns exactly the right one of
+      // its four outcomes, matching pre-#1690 single-process behavior
+      // exactly, now guaranteed to only ever run while the lock is held.
+      // There is no cross-call retry state to track.
+      do {
+        let result = try withExclusiveFileLock(blocking: true) { loadFileWhileLocked() }
+        switch result {
+        case .missing:
+          // This same load() call already observed readable, non-current-format
+          // bytes moments ago (that is why we are in the `.needsRepair` branch
+          // at all). The app never deletes the canonical file except during
+          // quarantine, so a fresh `.missing` result here, under the lock,
+          // means a sibling process completed quarantine while we waited —
+          // never a clean first run.
+          lastLoadFailure = .corrupted
+          return nil
+        case .loaded(let file):
+          lastLoadFailure = nil
+          return mergedWords(file: file)
+        case .unreadable:
+          lastLoadFailure = .unreadable
+          return nil
+        case .corrupted:
+          lastLoadFailure = .corrupted
+          return nil
+        }
+      } catch {
+        // Only a genuine lock-file-open or flock-syscall failure reaches
+        // here — blocking acquisition never fails with "busy," it only ever
+        // waits. Reuses the existing `.unreadable` contract on purpose: the
+        // coordinator already treats it as "leave the current list
+        // untouched, return false" / "fall back to an empty list," exactly
+        // what this rare failure needs.
+        lastLoadFailure = .unreadable
+        return nil
+      }
     }
   }
 
-  /// The strict read every explicit CRUD mutation uses (#1646). `.missing` is
-  /// a legitimate first run (fresh empty file); an unreadable or corrupted
-  /// existing file throws so the mutation writes nothing and the caller's
-  /// in-memory list stays untouched.
-  private func loadFileForMutation() throws -> CustomWordsFile {
-    switch loadFile() {
+  /// The strict read every explicit mutation uses (#1646), now exclusively
+  /// through `performLockedTransaction` (#1690). `.missing` is a legitimate
+  /// first run (fresh empty file); an unreadable or corrupted existing file
+  /// throws so the mutation writes nothing and the caller's in-memory list
+  /// stays untouched. Lock-free internally — the caller MUST already hold
+  /// the companion-file lock before calling this.
+  private func loadFileForMutationWhileLocked() throws -> CustomWordsFile {
+    switch loadFileWhileLocked() {
     case .missing:
       return CustomWordsFile()
     case .loaded(let file):
@@ -299,6 +404,63 @@ public final class CustomWordsManager {
     }
   }
 
+  // MARK: - Cross-Process Locking (#1690)
+
+  /// Test seam: the `flock` acquisition syscall, injectable so a test can
+  /// force a non-contention failure (e.g. `errno = EIO`) without needing a
+  /// real second process. Production code always uses the real syscall.
+  package var lockSyscall: (Int32, Int32) -> Int32 = { flock($0, $1) }
+
+  /// The single cross-process lock authority for every disk mutation. Opens
+  /// a stable companion file next to `fileURL` and takes `flock` on it,
+  /// never on `fileURL` itself.
+  ///
+  /// Non-blocking by default so explicit mutations fail closed rather than
+  /// freezing this `@MainActor` class. Blocking acquisition is reserved for
+  /// the approved repair-aware load path.
+  private func withExclusiveFileLock<T>(
+    blocking: Bool = false, _ body: () throws -> T
+  ) throws -> T {
+    let lockURL = fileURL.appendingPathExtension("lock")
+    let fd = lockURL.path.withCString {
+      Foundation.open($0, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+    }
+    guard fd >= 0 else {
+      throw CustomWordsPersistenceError.coordinationUnavailable
+    }
+    defer { close(fd) }
+
+    let flags: Int32 = blocking ? LOCK_EX : (LOCK_EX | LOCK_NB)
+    guard lockSyscall(fd, flags) == 0 else {
+      if !blocking, errno == EWOULDBLOCK {
+        throw CustomWordsPersistenceError.libraryBusy
+      }
+      throw CustomWordsPersistenceError.coordinationUnavailable
+    }
+    defer { _ = flock(fd, LOCK_UN) }
+
+    return try body()
+  }
+
+  /// Wraps an explicit mutation's load-transform-save in one non-blocking
+  /// lock hold. `transform` returns whether the result actually needs a
+  /// disk write, so a transform that made no change (e.g. an all-skip
+  /// batch or import) can correctly skip the write, matching pre-lock
+  /// behavior. Every one of the six ordinary CRUD mutations, the automatic
+  /// usage flush, and the import commit route through this (#1690).
+  private func performLockedTransaction<T>(
+    _ transform: (inout CustomWordsFile) throws -> (value: T, shouldSave: Bool)
+  ) throws -> T {
+    try withExclusiveFileLock {
+      var file = try loadFileForMutationWhileLocked()
+      let outcome = try transform(&file)
+      if outcome.shouldSave {
+        try saveFileWhileLocked(file)
+      }
+      return outcome.value
+    }
+  }
+
   /// Phase 3b (#631): debounced writer that bumps `frequencyUsed` and
   /// `lastUsed` on each source `CustomWord`. Bible §9.3.
   ///
@@ -306,13 +468,19 @@ public final class CustomWordsManager {
   /// - Aggregate increments in `pendingIncrements` (per UUID).
   /// - Flush sync when total pending count >= 50.
   /// - Otherwise schedule a 30s timer flush (cancel + reschedule on each call).
-  /// - On flush: load file → bump frequencyUsed and set lastUsed for each
-  ///   pending UUID found in `file.words` → save → clear pending.
+  /// - On flush: one locked load-transform-save via `performLockedTransaction`
+  ///   bumps `frequencyUsed` and sets `lastUsed` for each pending UUID found
+  ///   in the persisted file (#1690).
   ///
-  /// IDs not found in `file.words` (rare: file edited concurrently, built-in
-  /// term not yet in file) are skipped silently. Errors during save are
-  /// logged + the pending state is cleared (best-effort writer; the next
-  /// correction will start a fresh accumulator).
+  /// IDs not found in the persisted file (rare: file edited concurrently,
+  /// built-in term not yet in file) are skipped silently, and a snapshot
+  /// that matches nothing writes nothing. An unreadable, corrupted, busy, or
+  /// contended file (#1690) requeues the WHOLE captured snapshot and
+  /// reschedules the debounce timer instead of dropping it — see
+  /// `requeuePendingIncrementSnapshot`. Any OTHER save failure is logged and
+  /// genuinely dropped, not retried: this remains a best-effort writer for
+  /// that narrower class of failure, and the next correction starts a fresh
+  /// accumulator.
   public func recordReplacements(_ ids: [UUID]) {
     guard !ids.isEmpty else { return }
     let now = Date()
@@ -365,52 +533,77 @@ public final class CustomWordsManager {
     pendingIncrements.removeAll()
     guard !snapshot.isEmpty else { return }
 
-    var file: CustomWordsFile
-    switch loadFile() {
-    case .missing:
-      file = CustomWordsFile()
-    case .loaded(let loaded):
-      file = loaded
-    case .unreadable, .corrupted:
-      // Best-effort writer (#1646): requeue instead of dropping so the
-      // increments survive to the next flush attempt — and reschedule the
-      // debounce timer, since this method already cancelled it on entry;
-      // without that, a quiet session would strand the requeued increments
-      // in memory until app exit (cloud review, PR #1647).
-      for (id, increment) in snapshot {
-        var entry =
-          pendingIncrements[id]
-          ?? PendingIncrement(count: 0, lastTimestamp: increment.lastTimestamp)
-        entry.count += increment.count
-        entry.lastTimestamp = max(entry.lastTimestamp, increment.lastTimestamp)
-        pendingIncrements[id] = entry
-      }
-      schedulePendingFlush()
-      Task {
-        await AppLogger.shared.log(
-          "CustomWordsManager: flush skipped — words file unreadable; increments requeued",
-          level: .info, category: "CustomWords"
-        )
-      }
-      return
-    }
-    var changed = false
-    for (id, increment) in snapshot {
-      guard let idx = file.words.firstIndex(where: { $0.id == id }) else { continue }
-      file.words[idx].frequencyUsed += increment.count
-      file.words[idx].lastUsed = increment.lastTimestamp
-      changed = true
-    }
-    guard changed else { return }
     do {
-      try saveFile(file)
+      try performLockedTransaction { file -> (value: Void, shouldSave: Bool) in
+        var changed = false
+        for (id, increment) in snapshot {
+          guard let idx = file.words.firstIndex(where: { $0.id == id }) else { continue }
+          file.words[idx].frequencyUsed += increment.count
+          // Merge, don't assign (#1690 cloud review): the freshly loaded
+          // `lastUsed` may already be newer than this snapshot's timestamp if
+          // a sibling process's own, later-captured flush acquired the lock
+          // first — the same max() merge `requeuePendingIncrementSnapshot`
+          // already uses below, applied here against the persisted value too.
+          file.words[idx].lastUsed = max(
+            file.words[idx].lastUsed ?? .distantPast, increment.lastTimestamp)
+          changed = true
+        }
+        guard changed else { return ((), false) }
+        return ((), true)
+      }
+    } catch let persistenceError as CustomWordsPersistenceError {
+      switch persistenceError {
+      case .unreadableExistingFile, .corruptedExistingFile, .libraryBusy, .coordinationUnavailable:
+        // Best-effort writer (#1646, extended #1690): requeue instead of
+        // dropping so the increments survive to the next flush attempt.
+        requeuePendingIncrementSnapshot(snapshot)
+      case .unusableValue:
+        // Never actually thrown on this path today — this method never calls
+        // the isStorable-gated authoring doors `add`/`update` use — but this
+        // case keeps it from silently falling into the requeue policy meant
+        // for lock/read failures if that ever changed.
+        Task {
+          await AppLogger.shared.log(
+            "CustomWordsManager: recordReplacements flush failed: \(persistenceError.localizedDescription)",
+            level: .info, category: "CustomWords"
+          )
+        }
+      }
     } catch {
+      // An arbitrary save failure (e.g. disk full mid-write) is logged and
+      // genuinely dropped, not requeued — preserving the pre-#1690 policy
+      // that this narrower class of failure is not retried.
       Task {
         await AppLogger.shared.log(
           "CustomWordsManager: recordReplacements flush failed: \(error.localizedDescription)",
           level: .info, category: "CustomWords"
         )
       }
+    }
+  }
+
+  /// Merges a flush snapshot back into any already-pending increments — adds
+  /// counts, keeps the later timestamp, never overwrites what's already
+  /// queued — and reschedules the debounce timer, since `flushPendingIncrements`
+  /// already cancelled it on entry; without that, a quiet session would
+  /// strand the requeued increments in memory until app exit (cloud review,
+  /// PR #1647). Shared by every persistence failure that must not drop a
+  /// captured usage-count increment (#1690).
+  private func requeuePendingIncrementSnapshot(_ snapshot: [UUID: PendingIncrement]) {
+    for (id, increment) in snapshot {
+      var entry =
+        pendingIncrements[id]
+        ?? PendingIncrement(count: 0, lastTimestamp: increment.lastTimestamp)
+      entry.count += increment.count
+      entry.lastTimestamp = max(entry.lastTimestamp, increment.lastTimestamp)
+      pendingIncrements[id] = entry
+    }
+    schedulePendingFlush()
+    Task {
+      await AppLogger.shared.log(
+        "CustomWordsManager: flush skipped — words file unreadable, corrupted, or contended; increments requeued",
+        level: .info, category: "CustomWords"
+      )
     }
   }
 
@@ -438,32 +631,45 @@ public final class CustomWordsManager {
       })
     else { return }
 
-    var file = try loadFileForMutation()
+    let merged = try performLockedTransaction {
+      file -> (value: [CustomWord], shouldSave: Bool) in
+      // If this matches a deleted built-in, restore it instead of adding a user word
+      if let builtin = Self.builtinDefaults.first(where: {
+        $0.word.canonical.caseInsensitiveCompare(trimmed) == .orderedSame
+      }) {
+        file.deletedBuiltinIds.removeAll { $0 == builtin.id }
+        return (mergedWords(file: file), true)
+      }
 
-    // If this matches a deleted built-in, restore it instead of adding a user word
-    if let builtin = Self.builtinDefaults.first(where: {
-      $0.word.canonical.caseInsensitiveCompare(trimmed) == .orderedSame
-    }) {
-      file.deletedBuiltinIds.removeAll { $0 == builtin.id }
-      try saveFile(file)
-      words = mergedWords(file: file)
-      return
+      // Re-check uniqueness against the FRESH file, not just the caller's
+      // possibly-stale in-memory snapshot above (#1690 cloud review): another
+      // process's write can land between that check and this lock actually
+      // being acquired. Skipping here — rather than appending a duplicate —
+      // matches the pre-lock check's existing no-op contract, and refreshes
+      // the caller's `words` to the word the other process already added.
+      guard
+        !file.words.contains(where: {
+          $0.canonical.caseInsensitiveCompare(trimmed) == .orderedSame
+        })
+      else {
+        return (mergedWords(file: file), false)
+      }
+
+      var sanitized = word
+      sanitized.canonical = trimmed
+      sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
+      file.words.append(sanitized)
+      return (mergedWords(file: file), true)
     }
-
-    var sanitized = word
-    sanitized.canonical = trimmed
-    sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
-    file.words.append(sanitized)
-    try saveFile(file)
-    words = mergedWords(file: file)
+    words = merged
   }
 
   /// Bulk-insert custom words with a single file read + write. Mirrors
   /// `add(word:to:)` per word — canonical trim, reject-empty, case-insensitive
   /// de-dupe (against existing terms AND earlier entries in this same batch),
   /// alias sanitize, and the tombstoned-built-in restore branch — but collapses
-  /// the O(n) per-word `loadFile`/`saveFile` into one of each so a large import
-  /// (thousands of names) never rewrites the file per word.
+  /// the O(n) per-word locked load/save cycle into one of each so a large
+  /// import (thousands of names) never rewrites the file per word.
   ///
   /// Returns the UUIDs of the user words this call actually appended, in input
   /// order. De-duplicated inputs and tombstoned-built-in restores are NOT in the
@@ -473,89 +679,93 @@ public final class CustomWordsManager {
   public func addBatch(_ incoming: [CustomWord], to words: inout [CustomWord]) throws
     -> [UUID]
   {
-    var file = try loadFileForMutation()
-    // Seed dedupe from BOTH the in-memory merged list and the on-disk file so a
-    // stale `words` snapshot can't produce a duplicate at batch scale.
-    var seen = Set(words.map { $0.canonical.lowercased() })
-    seen.formUnion(file.words.map { $0.canonical.lowercased() })
-    var createdIDs: [UUID] = []
+    let (createdIDs, merged) = try performLockedTransaction {
+      file -> (value: ([UUID], [CustomWord]), shouldSave: Bool) in
+      // Seed dedupe from BOTH the in-memory merged list and the on-disk file so a
+      // stale `words` snapshot can't produce a duplicate at batch scale.
+      var seen = Set(words.map { $0.canonical.lowercased() })
+      seen.formUnion(file.words.map { $0.canonical.lowercased() })
+      var createdIDs: [UUID] = []
 
-    for word in incoming {
-      let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard Self.isStorable(trimmed) else { continue }
-      let key = trimmed.lowercased()
-      guard !seen.contains(key) else { continue }
+      for word in incoming {
+        let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard Self.isStorable(trimmed) else { continue }
+        let key = trimmed.lowercased()
+        guard !seen.contains(key) else { continue }
 
-      // Tombstoned-built-in restore (mirrors the built-in branch of add(word:)).
-      // A LIVE built-in is already in `seen` (it is in merged `words`), so a
-      // built-in match here means it was tombstoned: un-delete it instead of
-      // adding a duplicate user word. Restored built-ins are not in createdIDs.
-      if let builtin = Self.builtinDefaults.first(where: {
-        $0.word.canonical.caseInsensitiveCompare(trimmed) == .orderedSame
-      }) {
-        file.deletedBuiltinIds.removeAll { $0 == builtin.id }
+        // Tombstoned-built-in restore (mirrors the built-in branch of add(word:)).
+        // A LIVE built-in is already in `seen` (it is in merged `words`), so a
+        // built-in match here means it was tombstoned: un-delete it instead of
+        // adding a duplicate user word. Restored built-ins are not in createdIDs.
+        if let builtin = Self.builtinDefaults.first(where: {
+          $0.word.canonical.caseInsensitiveCompare(trimmed) == .orderedSame
+        }) {
+          file.deletedBuiltinIds.removeAll { $0 == builtin.id }
+          seen.insert(key)
+          continue
+        }
+
+        var sanitized = word
+        sanitized.canonical = trimmed
+        sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
+        file.words.append(sanitized)
+        createdIDs.append(sanitized.id)
         seen.insert(key)
-        continue
       }
 
-      var sanitized = word
-      sanitized.canonical = trimmed
-      sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
-      file.words.append(sanitized)
-      createdIDs.append(sanitized.id)
-      seen.insert(key)
+      return ((createdIDs, mergedWords(file: file)), true)
     }
-
-    try saveFile(file)
-    words = mergedWords(file: file)
+    words = merged
     return createdIDs
   }
 
   public func remove(id: UUID, from words: inout [CustomWord]) throws {
     let word = words.first { $0.id == id }
-    var file = try loadFileForMutation()
-
-    // If this matches a built-in, tombstone it
-    if let word = word,
-      let builtin = Self.builtinDefaults.first(where: {
-        $0.word.canonical.lowercased() == word.canonical.lowercased()
-      })
-    {
-      if !file.deletedBuiltinIds.contains(builtin.id) {
-        file.deletedBuiltinIds.append(builtin.id)
+    let merged = try performLockedTransaction {
+      file -> (value: [CustomWord], shouldSave: Bool) in
+      // If this matches a built-in, tombstone it
+      if let word = word,
+        let builtin = Self.builtinDefaults.first(where: {
+          $0.word.canonical.lowercased() == word.canonical.lowercased()
+        })
+      {
+        if !file.deletedBuiltinIds.contains(builtin.id) {
+          file.deletedBuiltinIds.append(builtin.id)
+        }
       }
-    }
 
-    file.words.removeAll { $0.id == id }
-    try saveFile(file)
-    words = mergedWords(file: file)
+      file.words.removeAll { $0.id == id }
+      return (mergedWords(file: file), true)
+    }
+    words = merged
   }
 
   /// Bulk-remove by ID with a single file read + write. Mirrors `remove(id:)`
   /// per ID — including tombstoning a built-in whose canonical matches a removed
-  /// word — but collapses to one `loadFile`/`saveFile`. IDs not present are
+  /// word — but collapses to one locked load/save cycle. IDs not present are
   /// skipped. Used by the contacts-import bulk-remove pill (#636) to avoid an
   /// O(n) per-word rewrite when clearing a large import.
   public func removeBatch(ids: [UUID], from words: inout [CustomWord]) throws {
     guard !ids.isEmpty else { return }
     let idSet = Set(ids)
-    var file = try loadFileForMutation()
-
-    // Tombstone any built-ins whose canonical matches a removed word (mirror
-    // remove(id:)). Import-created words are user words, so this is normally
-    // inert for the import path, but keeps batch semantics identical to single.
-    for id in ids {
-      guard let word = words.first(where: { $0.id == id }) else { continue }
-      if let builtin = Self.builtinDefaults.first(where: {
-        $0.word.canonical.lowercased() == word.canonical.lowercased()
-      }), !file.deletedBuiltinIds.contains(builtin.id) {
-        file.deletedBuiltinIds.append(builtin.id)
+    let merged = try performLockedTransaction {
+      file -> (value: [CustomWord], shouldSave: Bool) in
+      // Tombstone any built-ins whose canonical matches a removed word (mirror
+      // remove(id:)). Import-created words are user words, so this is normally
+      // inert for the import path, but keeps batch semantics identical to single.
+      for id in ids {
+        guard let word = words.first(where: { $0.id == id }) else { continue }
+        if let builtin = Self.builtinDefaults.first(where: {
+          $0.word.canonical.lowercased() == word.canonical.lowercased()
+        }), !file.deletedBuiltinIds.contains(builtin.id) {
+          file.deletedBuiltinIds.append(builtin.id)
+        }
       }
-    }
 
-    file.words.removeAll { idSet.contains($0.id) }
-    try saveFile(file)
-    words = mergedWords(file: file)
+      file.words.removeAll { idSet.contains($0.id) }
+      return (mergedWords(file: file), true)
+    }
+    words = merged
   }
 
   // MARK: - Import commit (#1665, epic #1619 PR-F2b)
@@ -571,130 +781,163 @@ public final class CustomWordsManager {
   package func commitImport(
     _ plan: CustomWordsImportCommitPlan, to words: inout [CustomWord]
   ) throws -> CustomWordsImportCommitReceipt {
-    // (1) Strict read — fail closed on an unreadable/corrupted existing file.
-    var file: CustomWordsFile
+    let outcome: (CustomWordsImportCommitReceipt, [CustomWord]?)
     do {
-      file = try loadFileForMutation()
-    } catch {
-      throw CustomWordsImportCommitError.unreadableLibrary
-    }
+      outcome = try performLockedTransaction {
+        file -> (value: (CustomWordsImportCommitReceipt, [CustomWord]?), shouldSave: Bool) in
+        // (1) Stale check against the EFFECTIVE list Review was built from —
+        // now against the freshly, LOCKED load, so it is more current than
+        // before, never weaker (#1690).
+        let effective = mergedWords(file: file)
+        guard plan.baseline.semanticallyMatches(effective) else {
+          throw CustomWordsImportCommitError.staleLibrary
+        }
 
-    // (2) Stale check against the EFFECTIVE list Review was built from.
-    let effective = mergedWords(file: file)
-    guard plan.baseline.semanticallyMatches(effective) else {
-      throw CustomWordsImportCommitError.staleLibrary
-    }
+        // An all-Skip confirm changes nothing: no backup, no write.
+        guard !plan.isEmpty else {
+          return (
+            (
+              CustomWordsImportCommitReceipt(
+                addedIDs: [], replacedIDs: [], droppedAliasCollisions: []), nil
+            ), false
+          )
+        }
 
-    // An all-Skip confirm changes nothing: no backup, no write.
-    guard !plan.isEmpty else {
-      return CustomWordsImportCommitReceipt(
-        addedIDs: [], replacedIDs: [], droppedAliasCollisions: [])
-    }
-
-    // (3) Replacements. `existingID` may name a built-in, which lives in
-    // `builtinDefaults` rather than `file.words`.
-    //
-    // Two replacements aimed at the SAME existing word are rejected, not
-    // silently resolved: both would apply against the original entry and the
-    // later one would quietly win, so the user would get an import they did
-    // not approve while the receipt claimed both landed.
-    guard Set(plan.replacements.map(\.existingID)).count == plan.replacements.count else {
-      throw CustomWordsImportCommitError.invalidPlan
-    }
-    var replacedIDs: [UUID] = []
-    for replacement in plan.replacements {
-      guard let existing = effective.first(where: { $0.id == replacement.existingID }) else {
-        throw CustomWordsImportCommitError.invalidPlan
-      }
-      let merged = Self.applyReplace(existing: existing, candidate: replacement.candidate)
-      guard !merged.canonical.isEmpty else { throw CustomWordsImportCommitError.invalidPlan }
-
-      // A built-in stays hidden only while some user word still carries its
-      // canonical, so a Replace that MOVES the canonical away has to retire the
-      // built-in too — otherwise it reappears beside the replacement and the
-      // user gets two words where they approved one.
-      //
-      // This is checked before the branch on purpose: it applies whether the
-      // override is being created now (built-in never edited) or already exists
-      // in `file.words` (built-in edited earlier, which is why the canonical
-      // still matches). Guarding only the create case leaves the identical bug
-      // reachable through the update case.
-      if let builtin = Self.builtinDefaults.first(where: {
-        $0.word.canonical.caseInsensitiveCompare(existing.canonical) == .orderedSame
-      }),
-        builtin.word.canonical.caseInsensitiveCompare(merged.canonical) != .orderedSame,
-        !file.deletedBuiltinIds.contains(builtin.id)
-      {
-        file.deletedBuiltinIds.append(builtin.id)
-      }
-
-      if let index = file.words.firstIndex(where: { $0.id == existing.id }) {
-        file.words[index] = merged
-      } else {
-        file.words.append(merged)
-      }
-      replacedIDs.append(existing.id)
-    }
-
-    // (4) Additions — fresh UUID each; unspecified fields take type defaults,
-    // since there is no existing word to preserve from.
-    var addedIDs: [UUID] = []
-    for candidate in plan.additions {
-      let word = Self.makeAddition(from: candidate)
-      guard !word.canonical.isEmpty else { throw CustomWordsImportCommitError.invalidPlan }
-      file.words.append(word)
-      addedIDs.append(word.id)
-    }
-
-    let touchedIDs = Set(addedIDs + replacedIDs)
-
-    // (5) Canonical uniqueness, and no imported canonical may land on an alias
-    // held by a different word this import did not replace. F2c never offers a
-    // decision that produces either shape, so reaching here means a bad plan.
-    var resulting = mergedWords(file: file)
-    var seenCanonicals: [String: UUID] = [:]
-    for word in resulting {
-      let key = Self.importPersistenceKey(word.canonical)
-      if let owner = seenCanonicals[key], owner != word.id {
-        throw CustomWordsImportCommitError.invalidPlan
-      }
-      seenCanonicals[key] = word.id
-    }
-    for word in resulting where touchedIDs.contains(word.id) {
-      let canonicalKey = Self.importPersistenceKey(word.canonical)
-      for other in resulting where other.id != word.id && !touchedIDs.contains(other.id) {
-        if other.aliases.contains(where: { Self.importPersistenceKey($0) == canonicalKey }) {
+        // (2) Replacements. `existingID` may name a built-in, which lives in
+        // `builtinDefaults` rather than `file.words`.
+        //
+        // Two replacements aimed at the SAME existing word are rejected, not
+        // silently resolved: both would apply against the original entry and the
+        // later one would quietly win, so the user would get an import they did
+        // not approve while the receipt claimed both landed.
+        guard Set(plan.replacements.map(\.existingID)).count == plan.replacements.count else {
           throw CustomWordsImportCommitError.invalidPlan
         }
+        var replacedIDs: [UUID] = []
+        for replacement in plan.replacements {
+          guard let existing = effective.first(where: { $0.id == replacement.existingID }) else {
+            throw CustomWordsImportCommitError.invalidPlan
+          }
+          let merged = Self.applyReplace(existing: existing, candidate: replacement.candidate)
+          guard !merged.canonical.isEmpty else { throw CustomWordsImportCommitError.invalidPlan }
+
+          // A built-in stays hidden only while some user word still carries its
+          // canonical, so a Replace that MOVES the canonical away has to retire the
+          // built-in too — otherwise it reappears beside the replacement and the
+          // user gets two words where they approved one.
+          //
+          // This is checked before the branch on purpose: it applies whether the
+          // override is being created now (built-in never edited) or already exists
+          // in `file.words` (built-in edited earlier, which is why the canonical
+          // still matches). Guarding only the create case leaves the identical bug
+          // reachable through the update case.
+          if let builtin = Self.builtinDefaults.first(where: {
+            $0.word.canonical.caseInsensitiveCompare(existing.canonical) == .orderedSame
+          }),
+            builtin.word.canonical.caseInsensitiveCompare(merged.canonical) != .orderedSame,
+            !file.deletedBuiltinIds.contains(builtin.id)
+          {
+            file.deletedBuiltinIds.append(builtin.id)
+          }
+
+          if let index = file.words.firstIndex(where: { $0.id == existing.id }) {
+            file.words[index] = merged
+          } else {
+            file.words.append(merged)
+          }
+          replacedIDs.append(existing.id)
+        }
+
+        // (3) Additions — fresh UUID each; unspecified fields take type defaults,
+        // since there is no existing word to preserve from.
+        var addedIDs: [UUID] = []
+        for candidate in plan.additions {
+          let word = Self.makeAddition(from: candidate)
+          guard !word.canonical.isEmpty else { throw CustomWordsImportCommitError.invalidPlan }
+          file.words.append(word)
+          addedIDs.append(word.id)
+        }
+
+        let touchedIDs = Set(addedIDs + replacedIDs)
+
+        // (4) Canonical uniqueness, and no imported canonical may land on an alias
+        // held by a different word this import did not replace. F2c never offers a
+        // decision that produces either shape, so reaching here means a bad plan.
+        var resulting = mergedWords(file: file)
+        var seenCanonicals: [String: UUID] = [:]
+        for word in resulting {
+          let key = Self.importPersistenceKey(word.canonical)
+          if let owner = seenCanonicals[key], owner != word.id {
+            throw CustomWordsImportCommitError.invalidPlan
+          }
+          seenCanonicals[key] = word.id
+        }
+        for word in resulting where touchedIDs.contains(word.id) {
+          let canonicalKey = Self.importPersistenceKey(word.canonical)
+          for other in resulting where other.id != word.id && !touchedIDs.contains(other.id) {
+            if other.aliases.contains(where: { Self.importPersistenceKey($0) == canonicalKey }) {
+              throw CustomWordsImportCommitError.invalidPlan
+            }
+          }
+        }
+
+        // (5) Alias enforcement on the APPLIED result, so two replacements in one
+        // plan are covered, not just additions. Only words this import touched can
+        // lose an alias — an untouched word is not this import's to edit.
+        // Touched words are resolved in APPLY order (replacements in plan order,
+        // then additions), not the merged library's own order — otherwise which of
+        // two claimants keeps a shared alias would depend on incidental storage
+        // order rather than on the plan the user approved.
+        let (filtered, dropped) = Self.enforceAliases(
+          on: resulting, touchedOrder: replacedIDs + addedIDs)
+        for word in filtered where touchedIDs.contains(word.id) {
+          if let index = file.words.firstIndex(where: { $0.id == word.id }) {
+            file.words[index].aliases = word.aliases
+          }
+        }
+
+        // (6) Best-effort backup, WHILE THE LOCK IS STILL HELD, immediately
+        // before requesting the save — so it snapshots the exact same
+        // pre-transaction live file this locked transform just loaded, not a
+        // separately fetched read (#1690). A backup failure logs and
+        // proceeds: correctness comes from the atomic write and the strict
+        // loader, not from the backup existing.
+        writePreImportBackup()
+
+        // (7) Compute the post-write publication shape now; `performLockedTransaction`
+        // saves `file` right after this closure returns, so this IS what will be on disk.
+        resulting = mergedWords(file: file)
+        let receipt = CustomWordsImportCommitReceipt(
+          addedIDs: addedIDs, replacedIDs: replacedIDs, droppedAliasCollisions: dropped)
+        return ((receipt, resulting), true)
+      }
+    } catch let persistenceError as CustomWordsPersistenceError {
+      switch persistenceError {
+      case .unreadableExistingFile, .corruptedExistingFile:
+        throw CustomWordsImportCommitError.unreadableLibrary
+      case .libraryBusy, .coordinationUnavailable:
+        // Propagate unchanged — a lock problem is not "the library is
+        // unreadable," and the coordinator's honest retry message for these
+        // cases is the correct one to show (#1690).
+        throw persistenceError
+      case .unusableValue:
+        // Never actually thrown on this path — commitImport never calls the
+        // isStorable-gated authoring doors `add`/`update` use — but this case
+        // keeps it from silently collapsing into .unreadableLibrary if that
+        // ever changed.
+        throw persistenceError
       }
     }
 
-    // (6) Alias enforcement on the APPLIED result, so two replacements in one
-    // plan are covered, not just additions. Only words this import touched can
-    // lose an alias — an untouched word is not this import's to edit.
-    // Touched words are resolved in APPLY order (replacements in plan order,
-    // then additions), not the merged library's own order — otherwise which of
-    // two claimants keeps a shared alias would depend on incidental storage
-    // order rather than on the plan the user approved.
-    let (filtered, dropped) = Self.enforceAliases(
-      on: resulting, touchedOrder: replacedIDs + addedIDs)
-    for word in filtered where touchedIDs.contains(word.id) {
-      if let index = file.words.firstIndex(where: { $0.id == word.id }) {
-        file.words[index].aliases = word.aliases
-      }
+    // (8) Publish only after the wrapper's write succeeded — this line only
+    // runs once `performLockedTransaction` has returned normally, which only
+    // happens after `saveFileWhileLocked` itself succeeded whenever
+    // `shouldSave` was true. All-Skip and every thrown validation/staleness
+    // error skip this entirely, matching the pre-#1690 contract exactly.
+    if let merged = outcome.1 {
+      words = merged
     }
-
-    // (7) Best-effort backup, then ONE save. A backup failure logs and
-    // proceeds: correctness comes from the atomic write and the strict loader,
-    // not from the backup existing.
-    writePreImportBackup()
-    try saveFile(file)
-
-    // (8) Publish only after the write succeeded.
-    resulting = mergedWords(file: file)
-    words = resulting
-    return CustomWordsImportCommitReceipt(
-      addedIDs: addedIDs, replacedIDs: replacedIDs, droppedAliasCollisions: dropped)
+    return outcome.0
   }
 
   /// This type's own dedup rule, named so the import path cannot accidentally
@@ -946,8 +1189,6 @@ public final class CustomWordsManager {
     // change until the next launch decoded it. (No-op for words already `.user`.)
     let sanitized = edited.ownedByUser()
 
-    var file = try loadFileForMutation()
-
     // An edit that MOVES a built-in's canonical away has to retire the
     // built-in too (mirrors the commitImport tombstone rule, #1668) —
     // otherwise the built-in still matches no user word, so `mergedWords`
@@ -957,33 +1198,38 @@ public final class CustomWordsManager {
     // own, and recording a tombstone would persist a deletion the user never
     // performed.
     let previousCanonical = words[index].canonical
-    if let builtin = Self.builtinDefaults.first(where: {
-      $0.word.canonical.lowercased() == previousCanonical.lowercased()
-    }),
-      builtin.word.canonical.lowercased() != sanitized.canonical.lowercased(),
-      !file.deletedBuiltinIds.contains(builtin.id)
-    {
-      file.deletedBuiltinIds.append(builtin.id)
-    }
 
-    // Check if this is a built-in word being edited — store as user override
-    if let existingIdx = file.words.firstIndex(where: { $0.id == word.id }) {
-      file.words[existingIdx] = sanitized
-    } else {
-      // Editing a built-in: add as user word (overrides built-in by canonical match).
-      file.words.append(sanitized)
-    }
-    try saveFile(file)
+    // Publish the freshly merged file, not a manual patch of the caller's
+    // stale array (#1690 cloud review): the other five ordinary mutations
+    // already do this, so any OTHER change a sibling process saved while
+    // this lock was held stays visible instead of being silently dropped
+    // until the next reload or mutation.
+    let merged = try performLockedTransaction {
+      file -> (value: [CustomWord], shouldSave: Bool) in
+      if let builtin = Self.builtinDefaults.first(where: {
+        $0.word.canonical.lowercased() == previousCanonical.lowercased()
+      }),
+        builtin.word.canonical.lowercased() != sanitized.canonical.lowercased(),
+        !file.deletedBuiltinIds.contains(builtin.id)
+      {
+        file.deletedBuiltinIds.append(builtin.id)
+      }
 
-    // Update the in-memory array directly for the caller
-    var updated = words
-    updated[index] = sanitized
-    words = updated
+      // Check if this is a built-in word being edited — store as user override
+      if let existingIdx = file.words.firstIndex(where: { $0.id == word.id }) {
+        file.words[existingIdx] = sanitized
+      } else {
+        // Editing a built-in: add as user word (overrides built-in by canonical match).
+        file.words.append(sanitized)
+      }
+      return (mergedWords(file: file), true)
+    }
+    words = merged
   }
 
   /// Bulk-update existing words by ID with a single file read + write. Mirrors
   /// `update(word:)` per word — canonical trim, reject-empty, alias sanitize —
-  /// but collapses the per-word `loadFile`/`saveFile` into one of each so the
+  /// but collapses the per-word locked load/save cycle into one of each so the
   /// contacts-import alias enrichment can flush a batch of generated aliases
   /// without an O(n) per-word rewrite (#636 follow-up).
   ///
@@ -993,30 +1239,37 @@ public final class CustomWordsManager {
   /// with `words` untouched if nothing matched.
   public func updateBatch(_ updates: [CustomWord], to words: inout [CustomWord]) throws {
     guard !updates.isEmpty else { return }
-    var file = try loadFileForMutation()
-    var changed = false
-    for word in updates {
-      let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard Self.isStorable(trimmed) else { continue }
-      guard let idx = file.words.firstIndex(where: { $0.id == word.id }) else { continue }
-      var sanitized = word
-      sanitized.canonical = trimmed
-      sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
-      file.words[idx] = sanitized
-      changed = true
+    let merged = try performLockedTransaction {
+      file -> (value: [CustomWord]?, shouldSave: Bool) in
+      var changed = false
+      for word in updates {
+        let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard Self.isStorable(trimmed) else { continue }
+        guard let idx = file.words.firstIndex(where: { $0.id == word.id }) else { continue }
+        var sanitized = word
+        sanitized.canonical = trimmed
+        sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
+        file.words[idx] = sanitized
+        changed = true
+      }
+      guard changed else { return (nil, false) }
+      return (mergedWords(file: file), true)
     }
-    guard changed else { return }
-    try saveFile(file)
-    words = mergedWords(file: file)
+    guard let merged else { return }
+    words = merged
   }
 
   // MARK: - Private File I/O
 
-  /// Single read path — normalizes legacy formats to CustomWordsFile.
-  /// All callers (load, flush, CRUD mutations) go through this. The result
-  /// distinguishes missing / loaded / unreadable / corrupted (#1646) so
-  /// callers can fail closed instead of treating every failure as "empty".
-  private func loadFile() -> CustomWordsLoadResult {
+  /// Single read path — normalizes legacy formats to CustomWordsFile. The
+  /// result distinguishes missing / loaded / unreadable / corrupted (#1646)
+  /// so callers can fail closed instead of treating every failure as
+  /// "empty". Lock-free internally and must never call
+  /// `withExclusiveFileLock` itself — every caller MUST already hold the
+  /// companion-file lock before calling this (#1690): `load()`'s rare
+  /// repair path (acquired blocking) and `loadFileForMutationWhileLocked()`
+  /// (reached only through the non-blocking `performLockedTransaction`).
+  private func loadFileWhileLocked() -> CustomWordsLoadResult {
     guard FileManager.default.fileExists(atPath: fileURL.path) else { return .missing }
     let data: Data
     do {
@@ -1039,7 +1292,7 @@ public final class CustomWordsManager {
     // Migrate from old [CustomWord] array format
     if let oldWords = try? JSONDecoder().decode([CustomWord].self, from: data) {
       let file = CustomWordsFile(words: oldWords)
-      try? saveFile(file)
+      try? saveFileWhileLocked(file)
       Task {
         await AppLogger.shared.log(
           "Migrated \(oldWords.count) custom words from [CustomWord] to versioned format",
@@ -1057,7 +1310,7 @@ public final class CustomWordsManager {
         .filter { !$0.isEmpty }
         .map { CustomWord(canonical: $0) }
       let file = CustomWordsFile(words: migrated)
-      try? saveFile(file)
+      try? saveFileWhileLocked(file)
       Task {
         await AppLogger.shared.log(
           "Migrated \(oldStrings.count) custom words from [String] to versioned format",
@@ -1123,7 +1376,13 @@ public final class CustomWordsManager {
   ///    file that had become 0644 would stay world-readable through every
   ///    subsequent save. `rename` is atomic, refuses a directory by the kernel
   ///    (EISDIR), and keeps the temp file's own 0600.
-  private func saveFile(_ file: CustomWordsFile) throws {
+  ///
+  /// Lock-free internally and must never acquire the lock itself (#1690) —
+  /// every caller MUST already hold the companion-file lock: the non-blocking
+  /// `performLockedTransaction` and the two legacy migrations inside
+  /// `loadFileWhileLocked()` (reached only while a caller of THAT holds the
+  /// lock).
+  private func saveFileWhileLocked(_ file: CustomWordsFile) throws {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     let data = try encoder.encode(file)
