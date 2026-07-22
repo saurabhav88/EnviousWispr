@@ -1,5 +1,4 @@
 @preconcurrency import AVFoundation
-import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
@@ -8,6 +7,7 @@ import EnviousWisprStorage
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 /// V2 fault-injection — Lane C invariant C1 (issue #291).
@@ -44,6 +44,7 @@ struct DedupSurvivesStallTests {
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
+        engineMutationScope: .alwaysAllowedForTesting,
         // No-op sink: this test asserts on STATE flips, not on Sentry. Inject a
         // no-op so the pipeline's stall captureError never reaches the
         // process-global delegate, where it could pollute a concurrent test's

@@ -4,6 +4,7 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 // MARK: - KernelHeartPathTelemetryObserverTests (epic #827, PR-4 §11.4)
@@ -310,6 +311,7 @@ import Testing
         processText: { raw, _ in raw },
         store: { _, _ in },
         deliver: { _ in .pasted },
+        engineMutationScope: .alwaysAllowedForTesting,
         minimumRecordingTicks: 0)  // PR-4.5 #4: clock never advances; opt out of the gate
     }
 

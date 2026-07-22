@@ -131,13 +131,6 @@ public final class WisprBootstrapper {
     // helper was collapsed away). The ASR helper below stays isolated.
     let audioCapture: any AudioCaptureInterface = AudioCaptureManager()
 
-    // XPC ASR service — default ON. ASR inference runs in a separate XPC
-    // service process for memory isolation. Escape hatch:
-    // `defaults write ... useXPCASRService -bool false`.
-    let useXPCASR = UserDefaults.standard.object(forKey: "useXPCASRService") as? Bool ?? true
-    let asrManager: any ASRManagerInterface =
-      useXPCASR ? ASRManagerProxy() : ASRManager()
-
     // #1707 Phase 3 (§3.2): the atomic mutual-exclusion primitive between
     // crash-recovery replay and every OTHER engine-mutating operation. One
     // instance per app session, injected downward as closures into every
@@ -145,7 +138,36 @@ public final class WisprBootstrapper {
     // `EnviousWisprAppKit` (the composition root is the only place both
     // this AppKit-level type and the lower-module call sites are in scope
     // together).
+    // #1741 Chunk 3 — moved before `asrManager` (was constructed 10 lines
+    // below it): `asrManager`'s new required `engineMutationScope` argument
+    // needs the gate, and the one shared capability value below, to already
+    // exist.
     let engineRecoveryGate = EngineRecoveryGate()
+    // #1741 Chunk 3 — forward reference for the shared scope's wake closure;
+    // `recoveryCoordinator` isn't constructed until much later in this
+    // function. Matches the existing `engineCoordinatorForRecoveryGate`
+    // forward-declared-then-assigned-after-construction pattern below.
+    weak var recoveryCoordinatorForEngineMutationScope: RecoveryCoordinator?
+    // #1741 — the ONE shared mutation-side capability (§3 construction-
+    // topology correction: one value, not one per consumer), threaded through
+    // each consumer's required initializer argument as this plan migrates it
+    // off the old defaulted-closure-triplet shape, one type at a time across
+    // several chunks. A consumer not yet migrated stays on its existing
+    // per-consumer closure wiring below until its own chunk lands.
+    let engineMutationScope = EngineMutationScope.live(
+      tryBegin: { [engineRecoveryGate] in engineRecoveryGate.tryBeginMutation() },
+      end: { [engineRecoveryGate] in engineRecoveryGate.endMutation() },
+      wake: { recoveryCoordinatorForEngineMutationScope?.requestRecoveryRecheck() },
+      onRefused: { site in TelemetryService.shared.recoveryEngineActionDeferred(site: site) })
+
+    // XPC ASR service — default ON. ASR inference runs in a separate XPC
+    // service process for memory isolation. Escape hatch:
+    // `defaults write ... useXPCASRService -bool false`.
+    let useXPCASR = UserDefaults.standard.object(forKey: "useXPCASRService") as? Bool ?? true
+    let asrManager: any ASRManagerInterface =
+      useXPCASR
+      ? ASRManagerProxy(engineMutationScope: engineMutationScope)
+      : ASRManager(engineMutationScope: engineMutationScope)
 
     let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
 
@@ -170,7 +192,10 @@ public final class WisprBootstrapper {
     // §Decision A construction-order fix: the adapter must exist before launch
     // activation calls it). A failed bundled-manifest load leaves the Parakeet
     // handle nil (legacy path), unit-tested can't-happen.
-    let modelDelivery = ModelDeliveryHome()
+    // #1741 Chunk 6 — `.main` is the ONLY production value: the signed app's
+    // own bundle stays the manifest trust root (contract §4a), unchanged.
+    let modelDelivery = ModelDeliveryHome(
+      engineMutationScope: engineMutationScope, manifestBundle: .main)
 
     // #1707 Phase 2: `whisperKitBackend` is hoisted here (only these two
     // lines — NOT the full `whisperKitKernelDriver`, which still needs
@@ -181,7 +206,8 @@ public final class WisprBootstrapper {
     // is extracted from the SAME `whisperKit` value at its original site
     // further down — `whisperKit` is a plain `let` that survives the
     // intervening code.
-    let whisperKit = WhisperKitDeliveryWiring.make(modelDelivery: modelDelivery)
+    let whisperKit = WhisperKitDeliveryWiring.make(
+      modelDelivery: modelDelivery, engineMutationScope: engineMutationScope)
     let whisperKitBackend = whisperKit.backend
 
     // #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — the SOLE
@@ -300,6 +326,7 @@ public final class WisprBootstrapper {
         keychainManager: keychainManager,
         captureTelemetry: captureTelemetry,
         pasteCompletionRegistry: pasteCompletionRegistry,
+        engineMutationScope: engineMutationScope,
         outputClassifierHolder: outputClassifierHolder,
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
         egOneRuntime: egOneRuntime,
@@ -350,6 +377,7 @@ public final class WisprBootstrapper {
         keychainManager: keychainManager,
         captureTelemetry: captureTelemetry,
         pasteCompletionRegistry: pasteCompletionRegistry,
+        engineMutationScope: engineMutationScope,
         outputClassifierHolder: outputClassifierHolder,
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
         egOneRuntime: egOneRuntime,
@@ -501,7 +529,7 @@ public final class WisprBootstrapper {
     if settings.selectedBackend == .parakeet {
       Task { [weak kernelDriver] in
         // Discard the outcome so the Task's Success type stays Void
-        // (`EngineWarmupOutcome` is @MainActor-only, not Sendable).
+        // (`EngineWarmupOutcome` does not declare Sendable conformance).
         _ = await kernelDriver?.ensureEngineWarm(reason: .launch)
       }
     }
@@ -512,7 +540,7 @@ public final class WisprBootstrapper {
     let activeEngine = ActiveEngineOperation.live(
       asrManager: asrManager, whisperKitBackend: whisperKitBackend)
 
-    let diagnosticsCoordinator = DiagnosticsCoordinator()
+    let diagnosticsCoordinator = DiagnosticsCoordinator(engineMutationScope: engineMutationScope)
 
     // PR4 of #763 construction-order constraint preserved: LanguageSuggestionPresenter
     // captures `recordingOverlay` through narrow closures.
@@ -614,6 +642,12 @@ public final class WisprBootstrapper {
     // `weak`, matching every other cross-reference between these two
     // coordinators in this file — avoids a retain cycle.
     weak var engineCoordinatorForRecoveryGate: EngineCoordinator?
+    // #1741 Chunk 2 — the recovery-side capability, required at construction
+    // (replacing the post-init `tryBeginRecoveryClaim`/`endRecoveryClaim`
+    // closure assignments this plan removes below).
+    let recoveryEngineClaim = RecoveryEngineClaim.live(
+      tryBegin: { [engineRecoveryGate] in engineRecoveryGate.tryBeginRecovery() },
+      end: { [engineRecoveryGate] in engineRecoveryGate.endRecovery() })
     let recoveryCoordinator = RecoveryCoordinator(
       keyStore: recoveryKeyStore,
       makeSpoolStore: makeRecoverySpoolStore,
@@ -626,12 +660,17 @@ public final class WisprBootstrapper {
         liveRecordingState.isDictationActive
           || (engineCoordinatorForRecoveryGate?.isMintingAnySession ?? false)
       },
+      recoveryEngineClaim: recoveryEngineClaim,
       // Discard hard-resets the ACTIVE engine (#445 service-kill) so an in-flight,
       // otherwise-uncancellable recovery load/transcribe aborts and the next
       // recording gets a clean engine. Routed through the active-engine door
       // because recovery itself runs there: resetting only the Parakeet manager
       // would leave a WhisperKit recovery uncancellable (Codex 2b-r2 P1).
       resetEngine: { [activeEngine] in Task { await activeEngine.hardCancel() } })
+    // #1741 Chunk 3 — now that `recoveryCoordinator` exists, the shared
+    // `engineMutationScope`'s wake closure (constructed before `asrManager`,
+    // above) can reach it.
+    recoveryCoordinatorForEngineMutationScope = recoveryCoordinator
     // #1063 PR2: the "recovering" pill's Discard action.
     recordingOverlay.setDiscardRecoveryHandler { [weak recoveryCoordinator] in
       recoveryCoordinator?.discardActiveRecovery()
@@ -672,13 +711,10 @@ public final class WisprBootstrapper {
           await (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver)
             .ensureEngineWarm(reason: .engineSwap)
         },
-        // #1707 Phase 3 (§3.2, row 4): `startWarm()`'s background convenience
-        // warm must never race recovery on the shared engine.
-        tryBeginEngineMutation: { [engineRecoveryGate] in engineRecoveryGate.tryBeginMutation() },
-        endEngineMutation: { [engineRecoveryGate] in engineRecoveryGate.endMutation() },
-        wakeRecoveryIfOwed: { [weak recoveryCoordinator] in
-          recoveryCoordinator?.requestRecoveryRecheck()
-        }))
+        // #1707 Phase 3 (§3.2, row 4) / #1741 Chunk 7: `startWarm()`'s
+        // background convenience warm must never race recovery on the shared
+        // engine — guarded by the one shared `engineMutationScope`.
+        engineMutationScope: engineMutationScope))
     // GitHub cloud review, PR #1732: now that `engineCoordinator` exists,
     // `isDictationActive` (wired above) can read its minting state.
     engineCoordinatorForRecoveryGate = engineCoordinator
@@ -696,97 +732,43 @@ public final class WisprBootstrapper {
       engineCoordinator?.poke(.recoveryComplete)
     }
 
-    // #1707 Phase 3 (§3.1/§3.2/§3.4) — the `EngineRecoveryGate` wiring pass.
-    // `RecoveryCoordinator` is the SOLE owner of the recovery claim itself.
-    recoveryCoordinator.tryBeginRecoveryClaim = { [engineRecoveryGate] in
-      engineRecoveryGate.tryBeginRecovery()
-    }
-    recoveryCoordinator.endRecoveryClaim = { [engineRecoveryGate] in
-      engineRecoveryGate.endRecovery()
-    }
     // §3.4 wake-up table: a completed switch/warm/setup-change may unblock a
     // recovery pass that previously yielded.
     engineCoordinator.onEngineStateChangedForRecovery = { [weak recoveryCoordinator] in
       recoveryCoordinator?.requestRecoveryRecheck()
     }
     // Rows 4/12/13/15/16/18 (via `ensureEngineWarm()`'s shared choke point) +
-    // row 6 (propagated onto the WhisperKit adapter by `KernelDictationDriver`'s
-    // own `didSet`, since the adapter's concrete type is not visible here) +
-    // §3.4's "active dictation ended" wake-up cause.
+    // row 6 (the WhisperKit adapter) + row 21 (the owned
+    // `RecordingSessionKernel`'s `preWarm()`) — #1741 Chunk 9: `kernelDriver`
+    // and `whisperKitKernelDriver`, their owned kernels, and the WhisperKit
+    // adapter all received the shared `engineMutationScope` directly at
+    // THEIR OWN construction, via the factories above; no post-init
+    // forwarding needed here anymore. §3.4's "active dictation ended" wake-up
+    // cause still needs per-driver wiring.
     for driver in [kernelDriver, whisperKitKernelDriver] {
-      driver.tryBeginEngineMutation = { [engineRecoveryGate] in
-        engineRecoveryGate.tryBeginMutation()
-      }
-      driver.endEngineMutation = { [engineRecoveryGate] in engineRecoveryGate.endMutation() }
-      driver.wakeRecoveryIfOwed = { [weak recoveryCoordinator] in
-        recoveryCoordinator?.requestRecoveryRecheck()
-      }
       driver.onDictationEndedForRecovery = { [weak recoveryCoordinator] in
         recoveryCoordinator?.requestRecoveryRecheck()
       }
     }
-    // Row 7: Parakeet's idle-unload choke point. Concrete-type downcast — these
-    // closures are not part of `ASRManagerInterface` (only the composition root
-    // needs them, so widening the protocol for every conformer is unwarranted).
-    if let asrManager = asrManager as? ASRManager {
-      asrManager.tryBeginEngineMutation = { [engineRecoveryGate] in
-        engineRecoveryGate.tryBeginMutation()
-      }
-      asrManager.endEngineMutation = { [engineRecoveryGate] in engineRecoveryGate.endMutation() }
-      asrManager.wakeRecoveryIfOwed = { [weak recoveryCoordinator] in
-        recoveryCoordinator?.requestRecoveryRecheck()
-      }
-    }
-    if let asrManagerProxy = asrManager as? ASRManagerProxy {
-      asrManagerProxy.tryBeginEngineMutation = { [engineRecoveryGate] in
-        engineRecoveryGate.tryBeginMutation()
-      }
-      asrManagerProxy.endEngineMutation = { [engineRecoveryGate] in
-        engineRecoveryGate.endMutation()
-      }
-      asrManagerProxy.wakeRecoveryIfOwed = { [weak recoveryCoordinator] in
-        recoveryCoordinator?.requestRecoveryRecheck()
-      }
-    }
-    // Rows 9/10: WhisperKit Settings Remove/Download/Cancel.
-    let whisperKitSetupForGate = whisperKit.setupService
-    whisperKitSetupForGate.tryBeginEngineMutation = { [engineRecoveryGate] in
-      engineRecoveryGate.tryBeginMutation()
-    }
-    whisperKitSetupForGate.endEngineMutation = { [engineRecoveryGate] in
-      engineRecoveryGate.endMutation()
-    }
-    whisperKitSetupForGate.wakeRecoveryIfOwed = { [weak recoveryCoordinator] in
-      recoveryCoordinator?.requestRecoveryRecheck()
-    }
-    // Row 14: the WhisperKit legacy-migration delete+refetch window.
-    whisperKitRetirement?.tryBeginEngineMutation = { [engineRecoveryGate] in
-      engineRecoveryGate.tryBeginMutation()
-    }
-    whisperKitRetirement?.endEngineMutation = { [engineRecoveryGate] in
-      engineRecoveryGate.endMutation()
-    }
-    whisperKitRetirement?.wakeRecoveryIfOwed = { [weak recoveryCoordinator] in
-      recoveryCoordinator?.requestRecoveryRecheck()
-    }
-    // Row 17: Parakeet Settings Download/Cancel.
-    modelDelivery.tryBeginEngineMutation = { [engineRecoveryGate] in
-      engineRecoveryGate.tryBeginMutation()
-    }
-    modelDelivery.endEngineMutation = { [engineRecoveryGate] in engineRecoveryGate.endMutation() }
-    modelDelivery.wakeRecoveryIfOwed = { [weak recoveryCoordinator] in
-      recoveryCoordinator?.requestRecoveryRecheck()
-    }
+    // Row 7: Parakeet's idle-unload choke point. #1741 Chunk 3 — `asrManager`
+    // (whichever concrete type) already received the shared `engineMutationScope`
+    // at construction, above; no post-init wiring needed here anymore.
+    // Rows 9/10: WhisperKit Settings Remove/Download/Cancel. #1741 Chunk 4 —
+    // `whisperKit.setupService` already received the shared `engineMutationScope`
+    // at construction, via `WhisperKitDeliveryWiring.make(...)` above; no
+    // post-init wiring needed here anymore.
+    // Row 14: the WhisperKit legacy-migration delete+refetch window. #1741
+    // Chunk 8 — `whisperKitRetirement` already received the shared
+    // `engineMutationScope` at construction, via
+    // `WhisperKitDeliveryWiring.make(...)` above; no post-init wiring needed
+    // here anymore.
+    // Row 17: Parakeet Settings Download/Cancel. #1741 Chunk 6 —
+    // `modelDelivery` already received the shared `engineMutationScope` at
+    // construction, above; no post-init wiring needed here anymore.
     // Rows 23/27: the Diagnostics benchmark suite (DEBUG-only surface).
-    let benchmarkForGate = diagnosticsCoordinator.benchmark
-    benchmarkForGate.tryBeginEngineMutation = { [engineRecoveryGate] in
-      engineRecoveryGate.tryBeginMutation()
-    }
-    benchmarkForGate.endEngineMutation = { [engineRecoveryGate] in engineRecoveryGate.endMutation()
-    }
-    benchmarkForGate.wakeRecoveryIfOwed = { [weak recoveryCoordinator] in
-      recoveryCoordinator?.requestRecoveryRecheck()
-    }
+    // #1741 Chunk 5 — `diagnosticsCoordinator.benchmark` already received the
+    // shared `engineMutationScope` at construction, above; no post-init
+    // wiring needed here anymore.
 
     let lastRecordingResult = LastRecordingResult()
     let backendMetadata = BackendMetadata(

@@ -32,6 +32,15 @@ let package = Package(
     .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
     .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.0.0"),
     .package(url: "https://github.com/getsentry/sentry-cocoa.git", from: "9.8.0"),
+    // Test-only (#1741 Chunk 10): real Swift lexical/syntactic awareness for
+    // EngineMutationInventoryFreezeTests's comment/string handling, replacing
+    // a hand-rolled character scanner that hit diminishing returns across 5
+    // Codex review rounds. 603.0.2 matches this project's Swift 6.3.3
+    // toolchain (swift-syntax's own versioning: major version 60X aligns
+    // with Swift 6.X). Depended on ONLY by the EnviousWisprTests test
+    // target below — SwiftPM links a dependency only into targets that
+    // import it, so this never reaches the shipped app or the XPC helper.
+    .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.2"),
   ],
   targets: [
     .target(
@@ -219,6 +228,15 @@ let package = Package(
         // so `swift test` / `xcodebuild test` never launch the app.
         "EnviousWisprAppKit",
         "EnviousWisprContacts",
+        // #1741 Chunk 10: EngineMutationInventoryFreezeTests's real Swift
+        // parser (replaces its hand-rolled comment/string scanner). This is
+        // the ONLY place swift-syntax is depended on in this package.
+        // `SwiftOperators` (operator-sequence folding) was added in round 2
+        // and removed in the council-approved contract pivot — it existed
+        // only to resolve a call's callee, which the current
+        // reference-inventory design no longer attempts.
+        .product(name: "SwiftParser", package: "swift-syntax"),
+        .product(name: "SwiftSyntax", package: "swift-syntax"),
       ],
       path: "Tests/EnviousWisprTests"
     ),

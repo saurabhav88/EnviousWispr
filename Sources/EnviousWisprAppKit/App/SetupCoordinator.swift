@@ -37,7 +37,7 @@ final class SetupCoordinator {
 
   init(
     asrManager: any ASRManagerInterface,
-    whisperKitSetup: WhisperKitSetupService = WhisperKitSetupService(),
+    whisperKitSetup: WhisperKitSetupService,
     setupStateReader: (@MainActor () -> WhisperKitSetupState)? = nil,
     runDocumentsMigration: @escaping @MainActor () async -> Void = {},
     preloadAction: @escaping @MainActor () async -> Void

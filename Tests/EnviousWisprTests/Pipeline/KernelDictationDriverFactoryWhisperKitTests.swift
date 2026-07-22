@@ -1,4 +1,3 @@
-import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
@@ -7,6 +6,7 @@ import EnviousWisprStorage
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 // MARK: - KernelDictationDriverFactoryWhisperKitTests (epic #827, PR-5 Rung 4)
@@ -60,7 +60,8 @@ import Testing
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
-        pasteCompletionRegistry: PasteCompletionRegistry())
+        pasteCompletionRegistry: PasteCompletionRegistry(),
+        engineMutationScope: .alwaysAllowedForTesting)
       return KernelDictationDriverFactory.makeForWhisperKit(inputs: inputs)
     }
 
@@ -93,7 +94,8 @@ import Testing
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
-        pasteCompletionRegistry: PasteCompletionRegistry())
+        pasteCompletionRegistry: PasteCompletionRegistry(),
+        engineMutationScope: .alwaysAllowedForTesting)
       _ = KernelDictationDriverFactory.makeForWhisperKit(inputs: inputs)
       // Factory construction is synchronous and pure — no warm-up dispatch.
       // Backend's `isReady` flips to true only after `prepare()` completes.

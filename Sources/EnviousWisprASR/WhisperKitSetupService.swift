@@ -1,4 +1,3 @@
-import EnviousWisprServices
 import Foundation
 
 /// States in the WhisperKit model setup flow.
@@ -64,30 +63,27 @@ public final class WhisperKitSetupService {
   /// or failed, rendered inline.
   private let removeModelAction: @MainActor () async -> WhisperKitRemoveNotice?
 
-  /// #1707 Phase 3 (§3.2, rows 9/10) — `EngineRecoveryGate.tryBeginMutation()`/
-  /// `endMutation()`, injected by the composition root exactly like the
-  /// action closures above (this type never references `EngineRecoveryGate`
-  /// by concrete type). Guards Download/Cancel/Remove's engine-touching
-  /// work — none of these route through `ensureEngineWarm()`. Defaults keep
-  /// every existing test/legacy construction unchanged (always able to
-  /// proceed).
-  public var tryBeginEngineMutation: @MainActor () -> Bool = { true }
-  /// Returns whether recovery was denied while this mutation was in flight
-  /// and is now owed a wake-up.
-  public var endEngineMutation: @MainActor () -> Bool = { false }
-  /// Called when `endEngineMutation()` returns true — wakes a stranded
-  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
-  public var wakeRecoveryIfOwed: @MainActor () -> Void = {}
+  /// #1707 Phase 3 (§3.2, rows 9/10) / #1741 Chunk 4 — the mutation-side
+  /// capability guarding Download/Cancel/Remove's engine-touching work, none
+  /// of which routes through `ensureEngineWarm()`. Required at construction
+  /// (no default) — replaces the old defaulted `tryBeginEngineMutation`/
+  /// `endEngineMutation`/`wakeRecoveryIfOwed` closure triplet. `package`, not
+  /// `public`: `EnviousWisprASR` is an exported library product and
+  /// `EngineMutationScope` is itself only `package`-visible, so a wider
+  /// property could not hold it.
+  package let engineMutationScope: EngineMutationScope
 
   /// The default wiring reports "not downloaded" and does nothing: a build with
   /// no delivery wiring must offer no fetch at all rather than quietly resurrect
   /// an unverified one.
-  public init(
+  package init(
+    engineMutationScope: EngineMutationScope,
     readAvailability: @escaping @MainActor () async -> WhisperKitSetupState = { .notDownloaded },
     startDownload: @escaping @MainActor () async -> Bool = { false },
     cancelActiveDownload: @escaping @MainActor () async -> Bool = { false },
     removeModelAction: @escaping @MainActor () async -> WhisperKitRemoveNotice? = { .failed }
   ) {
+    self.engineMutationScope = engineMutationScope
     self.readAvailability = readAvailability
     self.startDownload = startDownload
     self.cancelActiveDownload = cancelActiveDownload
@@ -152,18 +148,15 @@ public final class WhisperKitSetupService {
         await self?.forceDetectState()
         return
       }
-      // #1707 Phase 3 (§3.2, row 9): hold a mutation claim for the FULL
-      // download — a Settings-initiated fetch must never race crash
+      // #1707 Phase 3 (§3.2, row 9) / #1741 Chunk 4: hold a mutation claim for
+      // the FULL download — a Settings-initiated fetch must never race crash
       // recovery on the shared engine.
-      guard self.tryBeginEngineMutation() else {
-        TelemetryService.shared.recoveryEngineActionDeferred(site: "whisperKitDownload")
-        await self.forceDetectState()
-        return
+      let outcome = await self.engineMutationScope.withClaim(site: "whisperKitDownload") {
+        if await startDownload() == false {
+          await self.forceDetectState()
+        }
       }
-      defer {
-        if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
-      }
-      if await startDownload() == false {
+      if case .refused = outcome {
         await self.forceDetectState()
       }
     }
@@ -178,22 +171,19 @@ public final class WhisperKitSetupService {
     // downstream cannot reach a request that has not been made.
     downloadIntentEpoch += 1
     Task { [cancelActiveDownload, weak self] in
-      // #1707 Phase 3 (§3.2, row 10): hold a mutation claim for the FULL
-      // cancel-drain — same reasoning as Download above. A denied claim
-      // (recovery holds the engine) skips this attempt; the fetch keeps
-      // running and the user can press Cancel again.
-      guard let self, self.tryBeginEngineMutation() else {
-        TelemetryService.shared.recoveryEngineActionDeferred(site: "whisperKitCancelDownload")
-        return
-      }
-      defer {
-        if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
-      }
+      guard let self else { return }
+      // #1707 Phase 3 (§3.2, row 10) / #1741 Chunk 4: hold a mutation claim
+      // for the FULL cancel-drain — same reasoning as Download above. A
+      // denied claim (recovery holds the engine) skips this attempt; the
+      // fetch keeps running and the user can press Cancel again.
+      //
       // No re-detect on an accepted cancel: the delivery-state projection
       // publishes the terminal (paused/cancelled) state, and detection would
       // wipe it back to not-downloaded (Codex 2c-r7 P2). A REFUSED cancel
-      // changes nothing either way.
-      _ = await cancelActiveDownload()
+      // (gate or coordinator) changes nothing either way.
+      _ = await self.engineMutationScope.withClaim(site: "whisperKitCancelDownload") {
+        _ = await cancelActiveDownload()
+      }
     }
   }
 
@@ -236,35 +226,33 @@ public final class WhisperKitSetupService {
     guard !isRemoving else { return }
     isRemoving = true
     Task { [removeModelAction, weak self] in
-      // #1707 Phase 3 (§3.2, row 10): hold a mutation claim for the FULL
-      // removal drain — same reasoning as Download/Cancel above.
-      guard let self, self.tryBeginEngineMutation() else {
-        TelemetryService.shared.recoveryEngineActionDeferred(site: "whisperKitRemove")
-        self?.isRemoving = false
-        self?.removeNotice = .failed
-        return
+      guard let self else { return }
+      // #1707 Phase 3 (§3.2, row 10) / #1741 Chunk 4: hold a mutation claim
+      // for the FULL removal drain — same reasoning as Download/Cancel above.
+      let outcome = await self.engineMutationScope.withClaim(site: "whisperKitRemove") {
+        let notice = await removeModelAction()
+        self.isRemoving = false
+        self.removeNotice = notice
+        if notice == nil {
+          // Successful removal is authoritative terminal delivery truth on its
+          // own — probing the controller again would call adoptIfPresent(),
+          // which republishes .notReady and re-enters this exact removal
+          // completion through the delivery observer (the live infinite-loop
+          // bug: Remove -> .notReady -> forceDetectState -> adoptIfPresent ->
+          // .notReady -> repeat forever, pinning the main actor). Apply the
+          // known terminal state directly instead.
+          self.applyDeliveryState(.notDownloaded)
+        } else {
+          // A failure may have partially deleted (marker gone, bytes
+          // remaining), and the row must show disk truth while the notice
+          // above it explains the failure (Codex 2c-r1 P2 — the notice now
+          // survives state flips by rendering outside the state switch).
+          await self.forceDetectState()
+        }
       }
-      defer {
-        if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
-      }
-      let notice = await removeModelAction()
-      self.isRemoving = false
-      self.removeNotice = notice
-      if notice == nil {
-        // Successful removal is authoritative terminal delivery truth on its
-        // own — probing the controller again would call adoptIfPresent(),
-        // which republishes .notReady and re-enters this exact removal
-        // completion through the delivery observer (the live infinite-loop
-        // bug: Remove -> .notReady -> forceDetectState -> adoptIfPresent ->
-        // .notReady -> repeat forever, pinning the main actor). Apply the
-        // known terminal state directly instead.
-        self.applyDeliveryState(.notDownloaded)
-      } else {
-        // A failure may have partially deleted (marker gone, bytes
-        // remaining), and the row must show disk truth while the notice
-        // above it explains the failure (Codex 2c-r1 P2 — the notice now
-        // survives state flips by rendering outside the state switch).
-        await self.forceDetectState()
+      if case .refused = outcome {
+        self.isRemoving = false
+        self.removeNotice = .failed
       }
     }
   }

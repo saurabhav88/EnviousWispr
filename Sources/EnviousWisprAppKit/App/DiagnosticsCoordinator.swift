@@ -1,3 +1,4 @@
+import EnviousWisprASR
 import Observation
 
 /// Owns the diagnostics-tab benchmark surface that the Settings →
@@ -8,5 +9,13 @@ import Observation
 @MainActor
 @Observable
 final class DiagnosticsCoordinator {
-  let benchmark = BenchmarkSuite()
+  let benchmark: BenchmarkSuite
+
+  /// #1741 Chunk 5 — threads the one shared `EngineMutationScope`
+  /// `WisprBootstrapper` constructs straight into `BenchmarkSuite`; not
+  /// stored here, since nothing else in this home needs it after
+  /// construction.
+  init(engineMutationScope: EngineMutationScope) {
+    benchmark = BenchmarkSuite(engineMutationScope: engineMutationScope)
+  }
 }

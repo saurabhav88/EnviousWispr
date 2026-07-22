@@ -40,7 +40,14 @@ import Testing
       transcriptStore: TranscriptStore(),
       keychainManager: KeychainManager(),
       captureTelemetry: CaptureTelemetryState(),
-      pasteCompletionRegistry: PasteCompletionRegistry())
+      pasteCompletionRegistry: PasteCompletionRegistry(),
+      // #1741 Chunk 9 — `EngineMutationScope` and `.live(...)` are both
+      // `package`-level (not `internal`), so this stays reachable without
+      // `@testable`, preserving this file's whole point: proving the public/
+      // package surface compiles from outside the module. `.alwaysAllowedForTesting`
+      // is deliberately `internal`-only and would defeat that.
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { false }, wake: {}, onRefused: { _ in }))
     let driver = KernelDictationDriverFactory.makeForParakeet(inputs: inputs)
 
     // Read every member named in PR-4b.2 §3.2's table. The point is that

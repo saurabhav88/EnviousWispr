@@ -2,7 +2,6 @@
 import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
-import EnviousWisprServices
 import Foundation
 
 /// Measures ASR transcription performance across different audio durations.
@@ -30,19 +29,18 @@ final class BenchmarkSuite {
   private(set) var isRunning = false
   private(set) var progress: String = ""
 
-  /// #1707 Phase 3 (§3.2, rows 23/27) — `EngineRecoveryGate.tryBeginMutation()`/
-  /// `endMutation()`, injected by the composition root (this type never
+  /// #1707 Phase 3 (§3.2, rows 23/27) / #1741 Chunk 5 — the mutation-side
+  /// capability guarding both benchmark methods below (this type never
   /// references `EngineRecoveryGate` by concrete type). A Diagnostics-
   /// triggered benchmark must never race crash recovery on the shared
-  /// engine. Defaults keep every existing test/legacy construction unchanged
-  /// (always able to proceed).
-  var tryBeginEngineMutation: @MainActor () -> Bool = { true }
-  /// Returns whether recovery was denied while this mutation was in flight
-  /// and is now owed a wake-up.
-  var endEngineMutation: @MainActor () -> Bool = { false }
-  /// Called when `endEngineMutation()` returns true — wakes a stranded
-  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
-  var wakeRecoveryIfOwed: @MainActor () -> Void = {}
+  /// engine. Required at construction (no default) — replaces the old
+  /// defaulted `tryBeginEngineMutation`/`endEngineMutation`/`wakeRecoveryIfOwed`
+  /// closure triplet.
+  let engineMutationScope: EngineMutationScope
+
+  init(engineMutationScope: EngineMutationScope) {
+    self.engineMutationScope = engineMutationScope
+  }
 
   /// Ensure model is loaded, returning false (and updating progress) if loading fails.
   private func ensureModelLoaded(using activeEngine: ActiveEngineOperation) async -> Bool {
@@ -63,42 +61,32 @@ final class BenchmarkSuite {
     isRunning = true
     results = []
 
-    // #1707 Phase 3 (§3.2, row 23): hold a mutation claim for the FULL
-    // load+transcribe duration — a Diagnostics-triggered benchmark must
-    // never race crash recovery on the shared engine.
-    guard tryBeginEngineMutation() else {
-      TelemetryService.shared.recoveryEngineActionDeferred(site: "benchmarkSuiteBatch")
-      isRunning = false
-      return
+    // #1707 Phase 3 (§3.2, row 23) / #1741 Chunk 5: hold a mutation claim for
+    // the FULL load+transcribe duration — a Diagnostics-triggered benchmark
+    // must never race crash recovery on the shared engine.
+    _ = await engineMutationScope.withClaim(site: "benchmarkSuiteBatch") {
+      guard await ensureModelLoaded(using: activeEngine) else { return }
+
+      let durations: [TimeInterval] = [5, 15, 30]
+
+      for duration in durations {
+        progress = "Testing \(Int(duration))s audio..."
+        let samples = generateTestAudio(duration: duration)
+
+        let start = CFAbsoluteTimeGetCurrent()
+        _ = try? await activeEngine.transcribe(samples, .default)
+        let elapsed = CFAbsoluteTimeGetCurrent() - start
+
+        results.append(
+          Result(
+            label: "\(Int(duration))s",
+            processingTime: elapsed,
+            rtf: duration / elapsed
+          ))
+      }
+
+      progress = "Complete"
     }
-    defer {
-      if endEngineMutation() { wakeRecoveryIfOwed() }
-    }
-
-    guard await ensureModelLoaded(using: activeEngine) else {
-      isRunning = false
-      return
-    }
-
-    let durations: [TimeInterval] = [5, 15, 30]
-
-    for duration in durations {
-      progress = "Testing \(Int(duration))s audio..."
-      let samples = generateTestAudio(duration: duration)
-
-      let start = CFAbsoluteTimeGetCurrent()
-      _ = try? await activeEngine.transcribe(samples, .default)
-      let elapsed = CFAbsoluteTimeGetCurrent() - start
-
-      results.append(
-        Result(
-          label: "\(Int(duration))s",
-          processingTime: elapsed,
-          rtf: duration / elapsed
-        ))
-    }
-
-    progress = "Complete"
     isRunning = false
   }
 
@@ -110,66 +98,70 @@ final class BenchmarkSuite {
     isRunning = true
     pipelineResult = nil
 
-    // #1707 Phase 3 (§3.2, row 23): hold a mutation claim for the FULL
-    // load+batch-transcribe duration below — released before the separate
-    // streaming portion (row 27) claims its own, since they are genuinely
-    // distinct engine-touching surfaces, not one operation.
-    guard tryBeginEngineMutation() else {
-      TelemetryService.shared.recoveryEngineActionDeferred(site: "benchmarkSuiteBatch")
-      isRunning = false
-      return
-    }
-    var batchClaimReleased = false
-    let releaseBatchClaim = {
-      guard !batchClaimReleased else { return }
-      batchClaimReleased = true
-      if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
-    }
-    defer { releaseBatchClaim() }
+    // #1707 Phase 3 (§3.2, row 23) / #1741 Chunk 5: hold a mutation claim for
+    // the FULL load+batch-transcribe duration below — released before the
+    // separate streaming portion (row 27) claims its own, since they are
+    // genuinely distinct engine-touching surfaces, not one operation. The two
+    // claims map onto two separate `withClaim` calls, in sequence, never
+    // nested or overlapping — this closure's own natural return is what
+    // releases the batch claim, before the streaming `withClaim` below ever
+    // starts.
+    var testAudioDuration: TimeInterval = 0
+    var testSamples: [Float] = []
+    var batchTime: TimeInterval = 0
+    var batchTranscript = ""
+    var loadFailed = false
 
-    guard await ensureModelLoaded(using: activeEngine) else {
-      isRunning = false
-      return
-    }
-
-    // Load test audio — try jfk.wav from WhisperKit test resources, fall back to synthetic
-    let testAudioDuration: TimeInterval
-    let testSamples: [Float]
-
-    // Resolve jfk.wav relative to the bundle: .app is inside the project's build/ dir,
-    // so go up two levels (Contents/MacOS → .app → build/) then ../Tests/Resources/
-    let executableURL = Bundle.main.executableURL ?? URL(fileURLWithPath: "/")
-    let projectRoot =
-      executableURL
-      .deletingLastPathComponent()  // MacOS/
-      .deletingLastPathComponent()  // Contents/
-      .deletingLastPathComponent()  // EnviousWispr.app/
-      .deletingLastPathComponent()  // build/
-    let jfkURL = projectRoot.appendingPathComponent("Tests/Resources/jfk.wav")
-    if FileManager.default.fileExists(atPath: jfkURL.path) {
-      progress = "Loading test audio..."
-      do {
-        testSamples = try loadAudioFile(url: jfkURL)
-        testAudioDuration = Double(testSamples.count) / AudioConstants.sampleRate
-      } catch {
-        progress = "Failed to load test audio: \(error.localizedDescription)"
-        isRunning = false
+    let batchOutcome = await engineMutationScope.withClaim(site: "benchmarkSuiteBatch") {
+      guard await ensureModelLoaded(using: activeEngine) else {
+        loadFailed = true
         return
       }
-    } else {
-      testAudioDuration = 15.0
-      testSamples = generateTestAudio(duration: testAudioDuration)
-    }
 
-    // Step 1: Batch ASR
-    progress = "Running batch ASR..."
-    let batchStart = CFAbsoluteTimeGetCurrent()
-    let batchResult = try? await activeEngine.transcribe(testSamples, .default)
-    let batchTime = CFAbsoluteTimeGetCurrent() - batchStart
-    let batchTranscript = batchResult?.text ?? ""
-    // Row 23's claim covers only the batch work above — release it now,
-    // before row 27's genuinely separate streaming surface claims its own.
-    releaseBatchClaim()
+      // Load test audio — try jfk.wav from WhisperKit test resources, fall back to synthetic
+      // Resolve jfk.wav relative to the bundle: .app is inside the project's build/ dir,
+      // so go up two levels (Contents/MacOS → .app → build/) then ../Tests/Resources/
+      let executableURL = Bundle.main.executableURL ?? URL(fileURLWithPath: "/")
+      let projectRoot =
+        executableURL
+        .deletingLastPathComponent()  // MacOS/
+        .deletingLastPathComponent()  // Contents/
+        .deletingLastPathComponent()  // EnviousWispr.app/
+        .deletingLastPathComponent()  // build/
+      let jfkURL = projectRoot.appendingPathComponent("Tests/Resources/jfk.wav")
+      if FileManager.default.fileExists(atPath: jfkURL.path) {
+        progress = "Loading test audio..."
+        do {
+          testSamples = try loadAudioFile(url: jfkURL)
+          testAudioDuration = Double(testSamples.count) / AudioConstants.sampleRate
+        } catch {
+          progress = "Failed to load test audio: \(error.localizedDescription)"
+          loadFailed = true
+          return
+        }
+      } else {
+        testAudioDuration = 15.0
+        testSamples = generateTestAudio(duration: testAudioDuration)
+      }
+
+      // Step 1: Batch ASR
+      progress = "Running batch ASR..."
+      let batchStart = CFAbsoluteTimeGetCurrent()
+      let batchResult = try? await activeEngine.transcribe(testSamples, .default)
+      batchTime = CFAbsoluteTimeGetCurrent() - batchStart
+      batchTranscript = batchResult?.text ?? ""
+      // This closure's own return below is what releases row 23's claim
+      // (via `withClaim`'s `defer`) — before row 27's genuinely separate
+      // streaming surface claims its own, further down.
+    }
+    if case .refused = batchOutcome {
+      isRunning = false
+      return
+    }
+    if loadFailed {
+      isRunning = false
+      return
+    }
 
     // Step 2: Streaming ASR (if supported)
     var streamingFinalizeTime: TimeInterval?
@@ -179,89 +171,91 @@ final class BenchmarkSuite {
     let supportsStreaming = await asrManager.activeBackendSupportsStreaming
     if supportsStreaming {
       progress = "Running streaming ASR..."
-      // #1707 Phase 3 (§3.2, row 27): hold a mutation claim for the whole
-      // start/feed/finalize sequence below. Round 3 correction: releasing
-      // the claim is NOT simply "on completion or abort" — `finalizeStreaming()`
+      // #1707 Phase 3 (§3.2, row 27) / #1741 Chunk 5: hold a mutation claim
+      // for the whole start/feed/finalize sequence below. Releasing the
+      // claim is NOT simply "on completion or abort" — `finalizeStreaming()`
       // only clears streaming state after a SUCCESSFUL awaited finalize, so
       // any throw below must first `await asrManager.cancelStreaming()`
       // WHILE the claim is still held, and release only after that
       // cancellation completes (or after a successful finalize) — never on
       // the bare throw alone, or the claim would say "safe" while the
       // backend's streaming session is still actually active underneath.
-      guard tryBeginEngineMutation() else {
-        TelemetryService.shared.recoveryEngineActionDeferred(site: "benchmarkSuiteStreaming")
+      // The `do`/`catch` below absorbs every error INSIDE this closure so
+      // none of it ever escapes `withClaim`'s operation parameter: letting
+      // an error propagate out would run `withClaim`'s release/wake `defer`
+      // immediately, before the cancellation below has had a chance to run.
+      let streamingOutcome = await engineMutationScope.withClaim(site: "benchmarkSuiteStreaming") {
+        var startedStreaming = false
+        do {
+          try await asrManager.startStreaming(options: .default)
+          startedStreaming = true
+
+          // Chunk the samples into AVAudioPCMBuffers and feed them
+          let chunkSize = AudioConstants.captureBufferSize
+          let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: AudioConstants.sampleRate,
+            channels: AVAudioChannelCount(AudioConstants.channels),
+            interleaved: false
+          )!
+
+          var offset = 0
+          while offset < testSamples.count {
+            let remaining = testSamples.count - offset
+            let count = min(chunkSize, remaining)
+            let buffer = AVAudioPCMBuffer(
+              pcmFormat: format, frameCapacity: AVAudioFrameCount(count))!
+            buffer.frameLength = AVAudioFrameCount(count)
+            if let channelData = buffer.floatChannelData {
+              testSamples.withUnsafeBufferPointer { ptr in
+                channelData[0].update(from: ptr.baseAddress! + offset, count: count)
+              }
+            }
+            try await asrManager.feedAudio(buffer)
+            offset += count
+          }
+
+          let finalizeStart = CFAbsoluteTimeGetCurrent()
+          let streamResult = try await asrManager.finalizeStreaming()
+          streamingFinalizeTime = CFAbsoluteTimeGetCurrent() - finalizeStart
+          streamingTranscript = streamResult.text
+
+          // WER comparison (if both transcripts have content)
+          if !batchTranscript.isEmpty, let streaming = streamingTranscript, !streaming.isEmpty {
+            let werResult = WERCalculator.calculate(
+              reference: batchTranscript, hypothesis: streaming)
+            werDelta = werResult.wer
+          }
+          // Successful finalize — the backend's streaming session has
+          // genuinely ended; safe to let this closure return now, which
+          // releases the claim via `withClaim`'s own `defer`.
+        } catch {
+          // #1707 Phase 3 (§3.2, row 27 fix): `feed`/`finalize` throwing means
+          // the streaming session may still be genuinely active underneath —
+          // await the real cancellation WHILE the claim is still held (this
+          // closure has not returned yet, so `withClaim`'s release/wake
+          // `defer` has not fired), so recovery cannot acquire until the
+          // backend has actually stopped, not merely until this throw is
+          // caught. `startStreaming()` itself throwing means there is no
+          // active session to cancel.
+          if startedStreaming {
+            await asrManager.cancelStreaming()
+          }
+          Task {
+            await AppLogger.shared.log(
+              "Pipeline benchmark: streaming ASR failed: \(error.localizedDescription)",
+              level: .info, category: "Benchmark"
+            )
+          }
+        }
+      }
+      if case .refused = streamingOutcome {
         progress = "Pipeline benchmark complete"
         isRunning = false
         pipelineResult = PipelineBenchmarkResult(
           batchASRTime: batchTime, streamingFinalizeTime: nil, werDelta: nil,
           audioDuration: testAudioDuration)
         return
-      }
-      var streamingClaimReleased = false
-      let releaseStreamingClaim = {
-        guard !streamingClaimReleased else { return }
-        streamingClaimReleased = true
-        if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
-      }
-      var startedStreaming = false
-      do {
-        try await asrManager.startStreaming(options: .default)
-        startedStreaming = true
-
-        // Chunk the samples into AVAudioPCMBuffers and feed them
-        let chunkSize = AudioConstants.captureBufferSize
-        let format = AVAudioFormat(
-          commonFormat: .pcmFormatFloat32,
-          sampleRate: AudioConstants.sampleRate,
-          channels: AVAudioChannelCount(AudioConstants.channels),
-          interleaved: false
-        )!
-
-        var offset = 0
-        while offset < testSamples.count {
-          let remaining = testSamples.count - offset
-          let count = min(chunkSize, remaining)
-          let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count))!
-          buffer.frameLength = AVAudioFrameCount(count)
-          if let channelData = buffer.floatChannelData {
-            testSamples.withUnsafeBufferPointer { ptr in
-              channelData[0].update(from: ptr.baseAddress! + offset, count: count)
-            }
-          }
-          try await asrManager.feedAudio(buffer)
-          offset += count
-        }
-
-        let finalizeStart = CFAbsoluteTimeGetCurrent()
-        let streamResult = try await asrManager.finalizeStreaming()
-        streamingFinalizeTime = CFAbsoluteTimeGetCurrent() - finalizeStart
-        streamingTranscript = streamResult.text
-
-        // WER comparison (if both transcripts have content)
-        if !batchTranscript.isEmpty, let streaming = streamingTranscript, !streaming.isEmpty {
-          let werResult = WERCalculator.calculate(reference: batchTranscript, hypothesis: streaming)
-          werDelta = werResult.wer
-        }
-        // Successful finalize — the backend's streaming session has
-        // genuinely ended; safe to release now.
-        releaseStreamingClaim()
-      } catch {
-        // #1707 Phase 3 (§3.2, row 27 fix): `feed`/`finalize` throwing means
-        // the streaming session may still be genuinely active underneath —
-        // await the real cancellation WHILE the claim is still held, so
-        // recovery cannot acquire until the backend has actually stopped,
-        // not merely until this throw is caught. `startStreaming()` itself
-        // throwing means there is no active session to cancel.
-        if startedStreaming {
-          await asrManager.cancelStreaming()
-        }
-        releaseStreamingClaim()
-        Task {
-          await AppLogger.shared.log(
-            "Pipeline benchmark: streaming ASR failed: \(error.localizedDescription)",
-            level: .info, category: "Benchmark"
-          )
-        }
       }
     }
 

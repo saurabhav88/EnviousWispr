@@ -442,6 +442,13 @@ let project = Project(
         .target(name: "EnviousWisprFluidAudioBridge"),
         .package(product: "FluidAudio"),
         .package(product: "Sparkle"),
+        // #1741 Chunk 10: EngineMutationInventoryFreezeTests's real Swift
+        // parser. Test-target-only — never reaches the app or XPC targets
+        // above (see Package.swift for the matching SPM dependency).
+        // `SwiftOperators` was removed in the council-approved contract
+        // pivot (no longer resolving callees, so no folding needed).
+        .package(product: "SwiftParser"),
+        .package(product: "SwiftSyntax"),
       ],
       settings: projectSettings
     ),

@@ -1,6 +1,5 @@
 @preconcurrency import AVFoundation
 import EnviousWisprCore
-import EnviousWisprServices
 import Foundation
 
 /// XPC-backed implementation of `ASRManagerInterface`.
@@ -35,23 +34,17 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// Fires when the ASR XPC service crashes during an active session (streaming or batch in-flight).
   public var onServiceInterrupted: (() -> Void)?
 
-  /// #1707 Phase 3 (§3.2, row 7) — `EngineRecoveryGate.tryBeginMutation()`/
-  /// `endMutation()`, injected exactly like `onServiceInterrupted` above (this
-  /// type never references `EngineRecoveryGate` by concrete type). Guards
-  /// `unloadModel()`'s idle-timer unload — a background actor unrelated to
-  /// any active session, so recovery must never race it. (A call arriving
+  /// #1707 Phase 3 (§3.2, row 7) / #1741 Chunk 3 — the mutation-side capability
+  /// guarding `unloadModel()`'s idle-timer unload, a background actor unrelated
+  /// to any active session, so recovery must never race it. (A call arriving
   /// via `switchBackend()` is already covered by `EngineCoordinator
   /// .isSwitching`'s full-duration claim; recovery's own atomic handshake
   /// checks `isEngineSwitching()` before claiming, so this claim can never
-  /// be denied during a genuine switch.) Defaults keep every existing
-  /// test/legacy construction unchanged (always able to proceed).
-  public var tryBeginEngineMutation: @MainActor () -> Bool = { true }
-  /// Returns whether recovery was denied while this mutation was in flight
-  /// and is now owed a wake-up.
-  public var endEngineMutation: @MainActor () -> Bool = { false }
-  /// Called when `endEngineMutation()` returns true — wakes a stranded
-  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
-  public var wakeRecoveryIfOwed: @MainActor () -> Void = {}
+  /// be denied during a genuine switch.) Required at construction (no
+  /// default) — replaces the old defaulted `tryBeginEngineMutation`/
+  /// `endEngineMutation`/`wakeRecoveryIfOwed` closure triplet. `package`, not
+  /// `public`, matching `ASRManager`'s identical narrowing.
+  package let engineMutationScope: EngineMutationScope
 
   /// Issue #445: per-tick callback wired by the dictation kernel to feed
   /// its `LoadProgressWatcher` from the existing 8Hz polling timer.
@@ -105,7 +98,11 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// private `ensureConnection()`.
   private let connectionPreflight: @MainActor (ASRManagerProxy) -> Void
 
-  public init(connectionPreflight: (@MainActor (ASRManagerProxy) -> Void)? = nil) {
+  package init(
+    engineMutationScope: EngineMutationScope,
+    connectionPreflight: (@MainActor (ASRManagerProxy) -> Void)? = nil
+  ) {
+    self.engineMutationScope = engineMutationScope
     self.connectionPreflight = connectionPreflight ?? { $0.ensureConnection() }
   }
 
@@ -345,45 +342,40 @@ public final class ASRManagerProxy: ASRManagerInterface {
   }
 
   public func unloadModel() async {
-    // #1707 Phase 3 (§3.2, row 7): hold a mutation claim BEFORE touching
-    // anything below — including the load-generation bump and in-flight-load
-    // cancel, which would otherwise cancel a load RECOVERY is currently
-    // running under its own recovery claim (Codex code-diff round 1 P1: the
-    // original ordering let an idle-unload fire mid-recovery-load, invalidate
-    // its generation, and have recovery treat the resulting throw as an
-    // unrecoverable failure — deleting a recoverable spool). A denied claim
-    // (recovery holds the engine) skips this attempt entirely, touching
+    // #1707 Phase 3 (§3.2, row 7) / #1741 Chunk 3: hold a mutation claim BEFORE
+    // touching anything below — including the load-generation bump and
+    // in-flight-load cancel, which would otherwise cancel a load RECOVERY is
+    // currently running under its own recovery claim (Codex code-diff round 1
+    // P1: the original ordering let an idle-unload fire mid-recovery-load,
+    // invalidate its generation, and have recovery treat the resulting throw
+    // as an unrecoverable failure — deleting a recoverable spool). A denied
+    // claim (recovery holds the engine) skips this attempt entirely, touching
     // NOTHING; the next genuine idle-unload trigger re-attempts — no bespoke
     // retry machinery for a background convenience unload.
-    guard tryBeginEngineMutation() else {
-      TelemetryService.shared.recoveryEngineActionDeferred(site: "asrManagerProxyUnload")
-      return
-    }
-    defer {
-      if endEngineMutation() { wakeRecoveryIfOwed() }
-    }
-    // #959: bump BEFORE the loaded-guard so an in-flight load (whose
-    // `isModelLoaded` is still false) is superseded too, not just a resident model.
-    invalidateCurrentLoadGeneration(cause: "unload")
-    // #959 (Codex re-review P2): retire the superseded in-flight load task the
-    // same way `switchBackend()` / `cancelInFlightLoad()` do — otherwise a retry
-    // that joins via single-flight before the doomed task finishes propagates
-    // `ASRLoadSupersededError` instead of starting a fresh load. Must run BEFORE
-    // the loaded-guard, because the in-flight case is exactly when `isModelLoaded`
-    // is still false and the guard would early-return with the stale handle live.
-    inFlightLoadTask?.cancel()
-    inFlightLoadTask = nil
-    guard isModelLoaded else { return }
-    await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-      serviceProxy { proxy in
-        proxy.unloadModel {
+    _ = await engineMutationScope.withClaim(site: "asrManagerProxyUnload") {
+      // #959: bump BEFORE the loaded-guard so an in-flight load (whose
+      // `isModelLoaded` is still false) is superseded too, not just a resident model.
+      self.invalidateCurrentLoadGeneration(cause: "unload")
+      // #959 (Codex re-review P2): retire the superseded in-flight load task the
+      // same way `switchBackend()` / `cancelInFlightLoad()` do — otherwise a retry
+      // that joins via single-flight before the doomed task finishes propagates
+      // `ASRLoadSupersededError` instead of starting a fresh load. Must run BEFORE
+      // the loaded-guard, because the in-flight case is exactly when `isModelLoaded`
+      // is still false and the guard would early-return with the stale handle live.
+      self.inFlightLoadTask?.cancel()
+      self.inFlightLoadTask = nil
+      guard self.isModelLoaded else { return }
+      await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+        self.serviceProxy { proxy in
+          proxy.unloadModel {
+            cont.resume()
+          }
+        } onProxyError: {
           cont.resume()
         }
-      } onProxyError: {
-        cont.resume()
       }
+      self.isModelLoaded = false
     }
-    isModelLoaded = false
   }
 
   /// Set the backend type synchronously at app startup. No unload (nothing loaded yet).

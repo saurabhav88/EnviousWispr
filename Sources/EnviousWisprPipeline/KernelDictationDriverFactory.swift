@@ -103,6 +103,10 @@ public enum KernelDictationDriverFactory {
     /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — nil in
     /// every existing test call site.
     package let batchDecodeFaultController: BatchDecodeFaultController?
+    /// #1741 Chunk 9 — the shared `EngineMutationScope` constructed once by
+    /// the composition root, threaded into the driver and kernel this
+    /// factory builds. Required — no default.
+    package let engineMutationScope: EngineMutationScope
 
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct. `@MainActor`
@@ -118,6 +122,7 @@ public enum KernelDictationDriverFactory {
       keychainManager: KeychainManager,
       captureTelemetry: CaptureTelemetryState,
       pasteCompletionRegistry: PasteCompletionRegistry,
+      engineMutationScope: EngineMutationScope,
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
       outputClassifierHolder: OutputClassifierHolder? = nil,
       dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
@@ -132,6 +137,7 @@ public enum KernelDictationDriverFactory {
       self.keychainManager = keychainManager
       self.captureTelemetry = captureTelemetry
       self.pasteCompletionRegistry = pasteCompletionRegistry
+      self.engineMutationScope = engineMutationScope
       self.captureErrorSink = captureErrorSink
       self.outputClassifierHolder = outputClassifierHolder
       self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
@@ -168,6 +174,10 @@ public enum KernelDictationDriverFactory {
     /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — nil in
     /// every existing test call site.
     package let batchDecodeFaultController: BatchDecodeFaultController?
+    /// #1741 Chunk 9 — the shared `EngineMutationScope` constructed once by
+    /// the composition root, threaded into the driver, kernel, and
+    /// `WhisperKitEngineAdapter` this factory builds. Required — no default.
+    package let engineMutationScope: EngineMutationScope
 
     /// Explicit package init — same reasoning as `ParakeetInputs.init`.
     /// `languageDetector` is intentionally non-optional (no default) so the
@@ -186,6 +196,7 @@ public enum KernelDictationDriverFactory {
       keychainManager: KeychainManager,
       captureTelemetry: CaptureTelemetryState,
       pasteCompletionRegistry: PasteCompletionRegistry,
+      engineMutationScope: EngineMutationScope,
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
       outputClassifierHolder: OutputClassifierHolder? = nil,
       dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
@@ -200,6 +211,7 @@ public enum KernelDictationDriverFactory {
       self.keychainManager = keychainManager
       self.captureTelemetry = captureTelemetry
       self.pasteCompletionRegistry = pasteCompletionRegistry
+      self.engineMutationScope = engineMutationScope
       self.captureErrorSink = captureErrorSink
       self.outputClassifierHolder = outputClassifierHolder
       self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
@@ -258,6 +270,7 @@ public enum KernelDictationDriverFactory {
       keychainManager: inputs.keychainManager,
       captureTelemetry: inputs.captureTelemetry,
       pasteCompletionRegistry: inputs.pasteCompletionRegistry,
+      engineMutationScope: inputs.engineMutationScope,
       captureErrorSink: inputs.captureErrorSink,
       outputClassifierHolder: inputs.outputClassifierHolder,
       dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider,
@@ -281,6 +294,7 @@ public enum KernelDictationDriverFactory {
       backend: inputs.whisperKitBackend,
       languageDetector: inputs.languageDetector,
       audioCaptureSessionIDSource: { captureSource.currentCaptureSessionID },
+      engineMutationScope: inputs.engineMutationScope,
       batchDecodeFaultController: inputs.batchDecodeFaultController)
     return assembleDriver(
       adapter: adapter,
@@ -290,6 +304,7 @@ public enum KernelDictationDriverFactory {
       keychainManager: inputs.keychainManager,
       captureTelemetry: inputs.captureTelemetry,
       pasteCompletionRegistry: inputs.pasteCompletionRegistry,
+      engineMutationScope: inputs.engineMutationScope,
       captureErrorSink: inputs.captureErrorSink,
       outputClassifierHolder: inputs.outputClassifierHolder,
       dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider,
@@ -310,6 +325,7 @@ public enum KernelDictationDriverFactory {
     keychainManager: KeychainManager,
     captureTelemetry: CaptureTelemetryState,
     pasteCompletionRegistry: PasteCompletionRegistry,
+    engineMutationScope: EngineMutationScope,
     captureErrorSink: @escaping HeartPathCaptureErrorSink,
     outputClassifierHolder: OutputClassifierHolder? = nil,
     dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
@@ -413,6 +429,7 @@ public enum KernelDictationDriverFactory {
       processText: wiring.processText,
       store: wiring.store,
       deliver: wiring.deliver,
+      engineMutationScope: engineMutationScope,
       // Production wedge-stall window — `RecordingSessionKernel` defaults
       // to 2 ticks (test-only value); with the wiring's 100ms tick clock
       // that would cancel cold model loads after ~200ms instead of the
@@ -515,6 +532,7 @@ public enum KernelDictationDriverFactory {
       context: context,
       steps: limbSteps,
       adapter: adapter,
+      engineMutationScope: engineMutationScope,
       captureErrorSink: captureErrorSink
     )
     driver.start()  // arms driver-side state observation (PR-4a)

@@ -3,6 +3,7 @@ import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 // MARK: - SUT seam (epic #827, PR-2 plan §3.0, §3b)
@@ -233,6 +234,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
       // advance the FakeClock between start and stop, so a positive
       // minimum-recording threshold would discard most scenarios. The
       // dedicated #4 coverage lives in `ConductorParitySeamTests`.
+      engineMutationScope: .alwaysAllowedForTesting,
       minimumRecordingTicks: minimumRecordingTicks,
       captureTelemetry: captureTelemetry,
       deadMicRetireAttemptTelemetry: { [deadMicLog] ctx in

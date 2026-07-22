@@ -3,6 +3,7 @@ import EnviousWisprModelDelivery
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 /// #1386 PR-2b. The retire-and-refetch coordinator: L1–L7 of the plan's §1.
@@ -112,7 +113,8 @@ import Testing
         world.fetchRelease?.resume()
         world.fetchRelease = nil
       },
-      isDeliveryEnabled: { world.deliveryEnabled })
+      isDeliveryEnabled: { world.deliveryEnabled },
+      engineMutationScope: .alwaysAllowedForTesting)
     coordinator.onEvent = { world.events.append($0) }
     coordinator.unloadForRemoval = {
       world.unloadCalls += 1
@@ -207,7 +209,8 @@ import Testing
         world.fetches += 1
         return false
       },
-      cancelActiveFetch: {}, isDeliveryEnabled: { true }, hashFile: countingHash)
+      cancelActiveFetch: {}, isDeliveryEnabled: { true },
+      engineMutationScope: .alwaysAllowedForTesting, hashFile: countingHash)
     await first.runLaunch()
     let afterFirst = hashes
     #expect(afterFirst > 0, "the first pass must actually hash")
@@ -221,7 +224,8 @@ import Testing
         world.fetches += 1
         return false
       },
-      cancelActiveFetch: {}, isDeliveryEnabled: { true }, hashFile: countingHash)
+      cancelActiveFetch: {}, isDeliveryEnabled: { true },
+      engineMutationScope: .alwaysAllowedForTesting, hashFile: countingHash)
     await second.runLaunch()
 
     // This is the forever-cost guard: §2.1 makes this run on every launch for the life of the
@@ -474,7 +478,8 @@ import Testing
     // re-check after the cancelled join and immediately starts fetch #2 —
     // restarting the multi-GB download the user just cancelled.
     #expect(world.fetches == 1, "the cancelled Download must not fall through to a second fetch")
-    #expect(!FileManager.default.fileExists(atPath: world.markerURL.path), "cancel cleared the debt")
+    #expect(
+      !FileManager.default.fileExists(atPath: world.markerURL.path), "cancel cleared the debt")
   }
 
   @Test func aDownloadDuringTheCancelDrainWaitsItOutThenFetchesFresh() async throws {
@@ -531,7 +536,8 @@ import Testing
     #expect(outcome == .removed)
     #expect(!FileManager.default.fileExists(atPath: world.markerURL.path), "marker cleared FIRST")
     // L1: controller drain precedes unload precedes deletion.
-    #expect(world.callOrder == ["cancelFetch", "unload", "remove"],
+    #expect(
+      world.callOrder == ["cancelFetch", "unload", "remove"],
       "L1 order violated: \(world.callOrder)")
   }
 

@@ -1,8 +1,8 @@
 @preconcurrency import AVFoundation
-import EnviousWisprASR
 import EnviousWisprCore
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
 
 /// Unit tests for SetupCoordinator's preload observation behavior.
@@ -32,13 +32,20 @@ struct SetupCoordinatorTests {
     let counter = InvocationCounter()
     let coord = SetupCoordinator(
       asrManager: fakeASR,
+      whisperKitSetup: WhisperKitSetupService(engineMutationScope: .alwaysAllowedForTesting),
       setupStateReader: { .ready },
       preloadAction: { @MainActor in counter.increment() }
     )
 
     coord.startPreloadObservation()
+    // Signal, not clock: wait for the observation Task to actually reach and
+    // read the backend guard before asserting the negative it implies.
+    for _ in 0..<200 where fakeASR.activeBackendTypeAccessCount == 0 {
+      await Task.yield()
+    }
     await drainMainActorTasks()
 
+    #expect(fakeASR.activeBackendTypeAccessCount > 0, "the backend guard must have been reached")
     #expect(
       counter.count == 0,
       "preloadAction must not fire for a parakeet backend even when setup is .ready"
@@ -59,6 +66,7 @@ struct SetupCoordinatorTests {
     let counter = InvocationCounter()
     let coord = SetupCoordinator(
       asrManager: fakeASR,
+      whisperKitSetup: WhisperKitSetupService(engineMutationScope: .alwaysAllowedForTesting),
       setupStateReader: { .ready },
       preloadAction: { @MainActor in counter.increment() }
     )
@@ -93,8 +101,17 @@ private final class InvocationCounter {
 /// `activeBackendType`; everything else traps to make accidental use loud.
 @MainActor
 private final class FakeASRManager: ASRManagerInterface {
-  let activeBackendType: ASRBackendType
-  init(backend: ASRBackendType) { self.activeBackendType = backend }
+  private let backendType: ASRBackendType
+  /// Signal, not clock: `startPreloadObservation()`'s guard reads this exactly
+  /// once per loop entry before deciding whether to proceed — a test polls
+  /// this count to prove the observation Task actually reached the guard,
+  /// rather than waiting a fixed number of yields and hoping.
+  private(set) var activeBackendTypeAccessCount = 0
+  var activeBackendType: ASRBackendType {
+    activeBackendTypeAccessCount += 1
+    return backendType
+  }
+  init(backend: ASRBackendType) { self.backendType = backend }
 
   var isModelLoaded: Bool { false }
   var isStreaming: Bool { false }

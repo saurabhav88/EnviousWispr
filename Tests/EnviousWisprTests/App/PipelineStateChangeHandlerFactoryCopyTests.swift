@@ -6,6 +6,7 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
 
@@ -47,6 +48,7 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
       currentTick: { 0 }, sleepTicks: { _ in },
       processText: { raw, _ in raw },
       store: { _, _ in }, deliver: { _ in .pasted },
+      engineMutationScope: .alwaysAllowedForTesting,
       minimumRecordingTicks: 0)
     let observer = KernelHeartPathTelemetryObserver(
       kernel: kernel, audioCapture: FakeAudioCapture(),
@@ -55,7 +57,8 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
       emitLifecycleEvent: { _ in })
     let driver = KernelDictationDriver(
       kernel: kernel, observer: observer, outcome: outcome,
-      context: context, steps: steps, adapter: adapter)
+      context: context, steps: steps, adapter: adapter,
+      engineMutationScope: .alwaysAllowedForTesting)
     let deps = PipelineStateChangeHandlerFactory.Deps(
       showOverlay: { _ in },
       cancelPendingWarning: {},

@@ -1,9 +1,9 @@
 @preconcurrency import AVFoundation
-import EnviousWisprASR
 import EnviousWisprCore
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 // MARK: - WhisperKitEngineAdapterLastResultLifecycleTests (epic #827, PR-5 Rung 3 §11.2)
@@ -24,7 +24,8 @@ import Testing
       ASRResult(
         text: "first", language: "en", duration: 1, processingTime: 0.1,
         backendType: .whisperKit))
-    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let adapter = WhisperKitEngineAdapter(
+      backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: speechSamples(count: 16_000), session: sid)
@@ -42,7 +43,8 @@ import Testing
       ASRResult(
         text: "polished", language: "en", duration: 1, processingTime: 0.1,
         backendType: .whisperKit))
-    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let adapter = WhisperKitEngineAdapter(
+      backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: speechSamples(count: 16_000), session: sid)
@@ -63,7 +65,8 @@ import Testing
       ASRResult(
         text: "done", language: "en", duration: 1, processingTime: 0.1,
         backendType: .whisperKit))
-    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let adapter = WhisperKitEngineAdapter(
+      backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: speechSamples(count: 16_000), session: sid)
@@ -81,7 +84,8 @@ import Testing
       ASRResult(
         text: "", language: "en", duration: 1, processingTime: 0.1,
         backendType: .whisperKit))
-    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let adapter = WhisperKitEngineAdapter(
+      backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: speechSamples(count: 16_000), session: sid)
@@ -100,7 +104,8 @@ import Testing
   func lastResultNotSetOnFailedFinalize() async throws {
     let backend = StubWhisperKitBackend()
     await backend.setTranscribeThrows(StubBackendError.decodeFailed)
-    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let adapter = WhisperKitEngineAdapter(
+      backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: speechSamples(count: 16_000), session: sid)
@@ -116,7 +121,8 @@ import Testing
   @Test("lastResult is NOT set on .cancelled finalize outcomes")
   func lastResultNotSetOnCancelledFinalize() async throws {
     let backend = StubWhisperKitBackend()
-    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let adapter = WhisperKitEngineAdapter(
+      backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.beginSession(SessionID(), options: .default, streaming: false)
     await adapter.cancel()
     _ = await adapter.finalize(batchSamples: nil)

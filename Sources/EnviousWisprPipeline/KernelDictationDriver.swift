@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprServices
@@ -47,8 +48,8 @@ public enum EngineWarmupReason: Sendable {
 /// callers (a warm-up failure must not crash the heart-path press), so it
 /// reports the result as a value. Most callers discard it (they re-read live
 /// readiness); onboarding consumes `.failed` to drive its "download failed →
-/// Retry" UX, which needs the underlying error. Not `Sendable` — produced and
-/// consumed on the `@MainActor`.
+/// Retry" UX, which needs the underlying error. Does not declare `Sendable`
+/// conformance; produced and consumed on the `@MainActor`.
 ///
 /// #1388: `.cancelled` is a user-chosen terminal, NOT a failure. A user's
 /// Cancel during the onboarding install (or a task cancellation of the
@@ -349,41 +350,17 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   public var onDictationEndedForRecovery: (@MainActor () -> Void)?
 
-  /// #1707 Phase 3 (§3.2) — `EngineRecoveryGate.tryBeginMutation()`/
-  /// `endMutation()`, injected exactly like `onStateChange` above. Bound by
-  /// the composition root; defaults keep every existing test/legacy
-  /// construction unchanged (always able to proceed). `didSet` also forwards
-  /// the SAME closure onto (a) a `WhisperKitEngineAdapter` (row 6's
-  /// idle-unload guard, `WhisperKitEngineAdapter.swift`) when this driver's
-  /// adapter is one, and (b) the owned `RecordingSessionKernel` (row 21's
-  /// `preWarm()` guard) — `WisprBootstrapper` sets these once here, never on
-  /// either directly, since neither concrete type is visible outside
-  /// `EnviousWisprPipeline`.
+  /// #1707 Phase 3 (§3.2) / #1741 Chunk 9 — the shared `EngineMutationScope`
+  /// constructed once by the composition root, injected exactly like
+  /// `onStateChange` above. Guards this driver's own `ensureEngineWarm(_:)`
+  /// claim (row 4/12/13/15/16/18's single shared choke point). The owned
+  /// `RecordingSessionKernel` (row 21's `preWarm()` guard) and, when this
+  /// driver's adapter is a `WhisperKitEngineAdapter` (row 6's idle-unload
+  /// guard), the adapter itself now each receive the SAME shared value
+  /// directly at THEIR OWN construction, via the factories — no more
+  /// post-construction forwarding through this property.
   @ObservationIgnored
-  public var tryBeginEngineMutation: @MainActor () -> Bool = { true } {
-    didSet {
-      (adapter as? WhisperKitEngineAdapter)?.tryBeginEngineMutation = tryBeginEngineMutation
-      kernel.tryBeginEngineMutation = tryBeginEngineMutation
-    }
-  }
-  /// Returns whether recovery was denied while this mutation was in flight
-  /// and is now owed a wake-up.
-  @ObservationIgnored
-  public var endEngineMutation: @MainActor () -> Bool = { false } {
-    didSet {
-      (adapter as? WhisperKitEngineAdapter)?.endEngineMutation = endEngineMutation
-      kernel.endEngineMutation = endEngineMutation
-    }
-  }
-  /// Called when `endEngineMutation()` returns true — wakes a stranded
-  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
-  @ObservationIgnored
-  public var wakeRecoveryIfOwed: @MainActor () -> Void = {} {
-    didSet {
-      (adapter as? WhisperKitEngineAdapter)?.wakeRecoveryIfOwed = wakeRecoveryIfOwed
-      kernel.wakeRecoveryIfOwed = wakeRecoveryIfOwed
-    }
-  }
+  package let engineMutationScope: EngineMutationScope
 
   /// Fire-once latch for `onSessionEndedWithoutSave` (#1548 D1). Tracks the
   /// `currentSessionID` the ended-without-save check last fired for, so a
@@ -449,6 +426,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     context: KernelSessionContext,
     steps: LimbSteps,
     adapter: any ASREngineAdapter,
+    engineMutationScope: EngineMutationScope,
     captureErrorSink: @escaping KernelDictationDriverFactory.HeartPathCaptureErrorSink =
       KernelDictationDriverFactory.defaultCaptureErrorSink
   ) {
@@ -458,6 +436,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     self.context = context
     self.steps = steps
     self.adapter = adapter
+    self.engineMutationScope = engineMutationScope
     self.captureErrorSink = captureErrorSink
     self.lastFiredState = Self.pipelineState(
       for: kernel.state, outcome: kernel.recordingOutcome, externalReason: nil)
@@ -537,84 +516,88 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         sessionlessWedgeGuard = nil
       }
     }
-    // #1707 Phase 3 (§3.2) — the SINGLE shared choke point every warm-up site
-    // routes through (per this method's own doc comment above), so gating
-    // here closes rows 2/9/10/12/13/15/16/18 at once rather than at each
-    // caller separately. Hold the claim for the FULL awaited `warmUp()`, not
-    // a point-in-time check. A denied claim (recovery holds the engine) is
-    // reported as `.cancelled` — a deliberate system choice, not a failure —
-    // so callers never surface the error UI for it; the next genuine
-    // poke/press re-attempts.
-    guard tryBeginEngineMutation() else {
-      TelemetryService.shared.recoveryEngineActionDeferred(site: "ensureEngineWarm")
-      return .cancelled
-    }
-    defer {
-      if endEngineMutation() { wakeRecoveryIfOwed() }
-    }
-    do {
-      try await adapter.warmUp()
-      residentModelLostWhileIdle = false  // #959: load succeeded — drop stale marker.
-      let ms = Self.elapsedMs(since: start)
-      // #1388: un-truncated install-phase observation. With gate (B) removed
-      // there is no auto-abort at 15s, so the success event finally records
-      // what real installs look like (duration + longest internal silence).
-      // Nil when no guard covered this warm-up (WhisperKit, in-process debug).
-      let install = observedGuard?.installObservation
-      TelemetryService.shared.coldStartWarmupCompleted(
-        engine: engine, reason: reason.telemetryToken, durationMs: ms,
-        inferenceWarmupMs: adapter.lastWarmupInferenceMs,
-        installDurationMs: install?.durationMs,
-        installSilenceMaxMs: install?.silenceMaxMs)
-      if reason == .launch {
-        TelemetryService.shared.launchModelPreloadCompleted(
-          backend: engine, result: warmupInFlight ? "joined_in_flight" : "success",
-          durationMs: ms)
+    // #1707 Phase 3 (§3.2) / #1741 Chunk 9 — the SINGLE shared choke point
+    // every warm-up site routes through (per this method's own doc comment
+    // above), so gating here closes rows 2/9/10/12/13/15/16/18 at once rather
+    // than at each caller separately. Hold the claim for the FULL awaited
+    // `warmUp()`, not a point-in-time check. A denied claim (recovery holds
+    // the engine) is reported as `.cancelled` — a deliberate system choice,
+    // not a failure — so callers never surface the error UI for it; the next
+    // genuine poke/press re-attempts.
+    //
+    // `EngineWarmupOutcome` does not declare `Sendable` conformance, so it
+    // cannot be `withClaim`'s generic `T` directly — the operation closure
+    // mutates this local instead of returning through T, then the claim's
+    // own outcome (never the local's stale initial value) decides the final
+    // return.
+    var warmResult: EngineWarmupOutcome = .cancelled
+    let claimOutcome = await engineMutationScope.withClaim(site: "ensureEngineWarm") {
+      do {
+        try await adapter.warmUp()
+        residentModelLostWhileIdle = false  // #959: load succeeded — drop stale marker.
+        let ms = Self.elapsedMs(since: start)
+        // #1388: un-truncated install-phase observation. With gate (B) removed
+        // there is no auto-abort at 15s, so the success event finally records
+        // what real installs look like (duration + longest internal silence).
+        // Nil when no guard covered this warm-up (WhisperKit, in-process debug).
+        let install = observedGuard?.installObservation
+        TelemetryService.shared.coldStartWarmupCompleted(
+          engine: engine, reason: reason.telemetryToken, durationMs: ms,
+          inferenceWarmupMs: adapter.lastWarmupInferenceMs,
+          installDurationMs: install?.durationMs,
+          installSilenceMaxMs: install?.silenceMaxMs)
+        if reason == .launch {
+          TelemetryService.shared.launchModelPreloadCompleted(
+            backend: engine, result: warmupInFlight ? "joined_in_flight" : "success",
+            durationMs: ms)
+        }
+        warmResult = .ready
+      } catch {
+        let ms = Self.elapsedMs(since: start)
+        switch Self.classifyWarmupThrow(error, guardFired: observedGuard?.didFire == true) {
+        case .wedge:
+          // A guard fire is a detector VERDICT — with gate (B) removed this can
+          // only be gate (A): the service reported nothing whatsoever inside
+          // the deadline. Classified as the wedge it actually is so onboarding
+          // shows the setup-failure copy + Retry, not a raw transport string.
+          let classified: any Error = ModelLoadWatchdog.WedgeError()
+          TelemetryService.shared.coldStartWarmupFailed(
+            engine: engine, reason: reason.telemetryToken,
+            error: String(describing: classified))
+          if reason == .launch {
+            TelemetryService.shared.launchModelPreloadCompleted(
+              backend: engine, result: "failed", durationMs: ms)
+          }
+          warmResult = .failed(classified)
+        case .cancelled:
+          // A deliberate cancel (user Cancel via `cancelInFlightLoad`, or a
+          // cancelled surrounding task / delivery download cancel) is a CHOICE:
+          // never `warmup_failed`, never the error UI. `install_cancelled` is
+          // the population signal for how often users bail out of the wait.
+          TelemetryService.shared.installCancelled(
+            engine: engine, reason: reason.telemetryToken, durationMs: ms)
+          if reason == .launch {
+            TelemetryService.shared.launchModelPreloadCompleted(
+              backend: engine, result: "cancelled", durationMs: ms)
+          }
+          warmResult = .cancelled
+        case .failure:
+          // Everything else is a genuine failure with the true underlying
+          // error (typed transport error on service death — step 1 made that
+          // path actually resume; before #1388 it hung with no outcome).
+          TelemetryService.shared.coldStartWarmupFailed(
+            engine: engine, reason: reason.telemetryToken,
+            error: String(describing: error))
+          if reason == .launch {
+            TelemetryService.shared.launchModelPreloadCompleted(
+              backend: engine, result: "failed", durationMs: ms)
+          }
+          warmResult = .failed(error)
+        }
       }
-      return .ready
-    } catch {
-      let ms = Self.elapsedMs(since: start)
-      switch Self.classifyWarmupThrow(error, guardFired: observedGuard?.didFire == true) {
-      case .wedge:
-        // A guard fire is a detector VERDICT — with gate (B) removed this can
-        // only be gate (A): the service reported nothing whatsoever inside
-        // the deadline. Classified as the wedge it actually is so onboarding
-        // shows the setup-failure copy + Retry, not a raw transport string.
-        let classified: any Error = ModelLoadWatchdog.WedgeError()
-        TelemetryService.shared.coldStartWarmupFailed(
-          engine: engine, reason: reason.telemetryToken,
-          error: String(describing: classified))
-        if reason == .launch {
-          TelemetryService.shared.launchModelPreloadCompleted(
-            backend: engine, result: "failed", durationMs: ms)
-        }
-        return .failed(classified)
-      case .cancelled:
-        // A deliberate cancel (user Cancel via `cancelInFlightLoad`, or a
-        // cancelled surrounding task / delivery download cancel) is a CHOICE:
-        // never `warmup_failed`, never the error UI. `install_cancelled` is
-        // the population signal for how often users bail out of the wait.
-        TelemetryService.shared.installCancelled(
-          engine: engine, reason: reason.telemetryToken, durationMs: ms)
-        if reason == .launch {
-          TelemetryService.shared.launchModelPreloadCompleted(
-            backend: engine, result: "cancelled", durationMs: ms)
-        }
-        return .cancelled
-      case .failure:
-        // Everything else is a genuine failure with the true underlying
-        // error (typed transport error on service death — step 1 made that
-        // path actually resume; before #1388 it hung with no outcome).
-        TelemetryService.shared.coldStartWarmupFailed(
-          engine: engine, reason: reason.telemetryToken,
-          error: String(describing: error))
-        if reason == .launch {
-          TelemetryService.shared.launchModelPreloadCompleted(
-            backend: engine, result: "failed", durationMs: ms)
-        }
-        return .failed(error)
-      }
     }
+    if case .refused = claimOutcome { return .cancelled }
+    return warmResult
   }
 
   /// #1388: how a warm-up throw maps to a terminal outcome.
