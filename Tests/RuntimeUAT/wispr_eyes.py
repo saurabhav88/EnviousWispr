@@ -1217,8 +1217,17 @@ def switch_backend(name, wait=3.0):
         raise ValueError(f"Unknown backend '{name}'. Use one of: {list(_BACKEND_LABELS)}")
     connect()
     # nav("Transcription") requires AXOutline and silently no-ops against the
-    # button sidebar (#1296); tap() on the sidebar button itself is reliable.
-    tap("Transcription")
+    # button sidebar (#1296); tap() on the sidebar button itself is reliable
+    # once Settings is open. But nav()'s own auto-open-Settings fallback still
+    # ran before it gave up on the sidebar search, so a caller relying on that
+    # side effect (e.g. after Settings closed between two switch_backend calls)
+    # needs the same explicit open here (Codex code-diff review, 2026-07-22).
+    if not tap("Transcription"):
+        if not tap("Settings..."):
+            raise RuntimeError("Could not open Settings to reach Transcription")
+        time.sleep(0.8)  # settle: mirrors nav()'s own post-auto-open wait for the window to animate in
+        if not tap("Transcription"):
+            raise RuntimeError("Could not tap 'Transcription' in the Settings sidebar")
     time.sleep(0.3)
     label = _BACKEND_LABELS[name]
     if not tap(label):
