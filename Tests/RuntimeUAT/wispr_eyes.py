@@ -390,7 +390,7 @@ def read(label):
 
 
 _CARD_GROUPS = {
-    "engine": ["Fast (English)", "Multi-Language"],
+    "engine": ["Fast", "All Languages"],
     "style": ["Formal", "Standard", "Friendly"],
 }
 
