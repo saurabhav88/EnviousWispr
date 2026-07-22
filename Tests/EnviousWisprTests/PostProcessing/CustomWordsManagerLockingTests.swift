@@ -382,6 +382,45 @@ struct CustomWordsManagerLockingTests {
     #expect(words.first { $0.canonical == "Qualtrics" }?.aliases == ["Qualtrics XM"])
   }
 
+  /// A cloud review finding on the PR built from this plan (#1690): `update`'s
+  /// fallback branch assumed a missing id always meant "a built-in being
+  /// overridden for the first time." It could also mean a sibling process
+  /// deleted this exact user word while the edit was in flight — absence
+  /// alone cannot tell the two apart. The old code silently resurrected the
+  /// deleted word by appending the caller's stale edit. Proves it now drops
+  /// the stale edit and publishes the fresh (word-gone) state instead.
+  @Test
+  func updateDoesNotResurrectAWordASiblingDeleted() throws {
+    let dir = Self.tempDir()
+    defer { Self.cleanup(dir) }
+    let url = dir.appendingPathComponent("custom-words.json")
+    let mgr = CustomWordsManager(fileURL: url)
+
+    var words = try #require(mgr.load())
+    try mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &words)
+    let target = try #require(words.first { $0.canonical == "Qualtrics" })
+
+    // This caller's snapshot still shows "Qualtrics" as present — captured
+    // before the sibling's delete below.
+    var staleWords = words
+    var edited = target
+    edited.aliases = ["Qualtrics XM"]
+
+    // A sibling process deletes the SAME word the edit above targets,
+    // landing after staleWords was captured.
+    let sibling = CustomWordsManager(fileURL: url)
+    var siblingWords = try #require(sibling.load())
+    try sibling.remove(id: target.id, from: &siblingWords)
+
+    try mgr.update(word: edited, in: &staleWords)
+
+    let onDisk = try #require(CustomWordsManager(fileURL: url).load())
+    #expect(onDisk.contains { $0.id == target.id } == false)
+    #expect(onDisk.contains { $0.canonical == "Qualtrics" } == false)
+    #expect(staleWords.contains { $0.id == target.id } == false)
+    #expect(staleWords.contains { $0.canonical == "Qualtrics" } == false)
+  }
+
   /// A third fresh Phase 3 review finding (#1690): the debounced usage-count
   /// writer assigned `lastUsed` unconditionally, so an older captured
   /// timestamp could regress a newer one already persisted by a sibling

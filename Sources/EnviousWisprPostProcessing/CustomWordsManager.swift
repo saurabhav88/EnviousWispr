@@ -1206,6 +1206,23 @@ public final class CustomWordsManager {
     // until the next reload or mutation.
     let merged = try performLockedTransaction {
       file -> (value: [CustomWord], shouldSave: Bool) in
+      let existingIdx = file.words.firstIndex(where: { $0.id == word.id })
+
+      // A missing id means one of two things: this is a built-in being
+      // overridden for the first time (expected, append it), or a sibling
+      // process deleted this exact user word while this edit was in flight
+      // (#1690 cloud review). Absence alone cannot distinguish them — only a
+      // real match against this process's own built-in ids can. Silently
+      // resurrecting a word the user, via the other window, already removed
+      // is wrong; drop the stale edit instead and publish the fresh state so
+      // the caller's view self-heals to reflect the deletion.
+      guard
+        existingIdx != nil
+          || Self.builtinDefaults.contains(where: { $0.word.id == word.id })
+      else {
+        return (mergedWords(file: file), false)
+      }
+
       if let builtin = Self.builtinDefaults.first(where: {
         $0.word.canonical.lowercased() == previousCanonical.lowercased()
       }),
@@ -1216,7 +1233,7 @@ public final class CustomWordsManager {
       }
 
       // Check if this is a built-in word being edited — store as user override
-      if let existingIdx = file.words.firstIndex(where: { $0.id == word.id }) {
+      if let existingIdx {
         file.words[existingIdx] = sanitized
       } else {
         // Editing a built-in: add as user word (overrides built-in by canonical match).
