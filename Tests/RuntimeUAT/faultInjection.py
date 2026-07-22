@@ -1423,10 +1423,10 @@ def A9_backend_switch_mid_record(**_) -> dict:
         _stop_recording_locked(settle_s=2.0)
     pre_backend = _read_setting("selectedBackend") or "parakeet"
     target_button_for_switch_attempt = (
-        "Multi-Language" if pre_backend.lower() == "parakeet" else "Fast (English)"
+        "All Languages" if pre_backend.lower() == "parakeet" else "Fast"
     )
     target_button_for_restore = (
-        "Fast (English)" if pre_backend.lower() == "parakeet" else "Multi-Language"
+        "Fast" if pre_backend.lower() == "parakeet" else "All Languages"
     )
 
     if not _start_recording_locked():
