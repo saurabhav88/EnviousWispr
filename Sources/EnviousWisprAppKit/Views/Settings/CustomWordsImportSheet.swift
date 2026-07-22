@@ -612,9 +612,9 @@ private struct ImportSmartAppPickerScreen: View {
       }
 
       // Says the honest shape of the migration before they commit to it: this
-      // brings words across, not the corrections that map onto them.
+      // brings words across WITH the alternate spellings that correct them.
       Text(
-        "Words come across on their own. Alternate spellings you set up in the other app stay there."
+        "Words come across with the alternate spellings you set up in the other app."
       )
       .font(.stHelper)
       .foregroundStyle(.stTextSecondary)
