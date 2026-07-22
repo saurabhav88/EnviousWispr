@@ -1193,8 +1193,8 @@ def _extract_transcript_text(signal, log_state_before, clip_seen=None, lines_acc
 # Settings UI labels for the two ASR engines. Source of truth for switch_backend.
 # Updated when the buttons in Settings -> Transcription change copy.
 _BACKEND_LABELS = {
-    "parakeet": "Fast (English)",
-    "whisperkit": "Multi-Language",
+    "parakeet": "Fast",
+    "whisperkit": "All Languages",
 }
 
 
@@ -1206,8 +1206,8 @@ def switch_backend(name, wait=3.0):
         wait: seconds to let the model load after switching.
 
     Settings -> Transcription has two buttons:
-        Fast (English)   -> Parakeet (PR #720-era label)
-        Multi-Language   -> WhisperKit
+        Fast            -> Parakeet
+        All Languages   -> WhisperKit
 
     Usage:
         switch_backend("whisperkit")
@@ -1216,7 +1216,9 @@ def switch_backend(name, wait=3.0):
     if name not in _BACKEND_LABELS:
         raise ValueError(f"Unknown backend '{name}'. Use one of: {list(_BACKEND_LABELS)}")
     connect()
-    nav("Transcription")
+    # nav("Transcription") requires AXOutline and silently no-ops against the
+    # button sidebar (#1296); tap() on the sidebar button itself is reliable.
+    tap("Transcription")
     time.sleep(0.3)
     label = _BACKEND_LABELS[name]
     if not tap(label):
