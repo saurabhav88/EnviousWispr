@@ -254,36 +254,63 @@ import Testing
       let typeName: String
       let methodName: String
       var foundType = false
-      var matches: [String] = []
+      var matches: [MemberSignature] = []
+      var thrown: Error?
       init(typeName: String, methodName: String) {
         self.typeName = typeName
         self.methodName = methodName
         super.init(viewMode: .sourceAccurate)
       }
-      private func scanMembers(_ list: MemberBlockItemListSyntax) {
+      // Recurses into `#if` blocks and preserves (combined, nested) conditions
+      // exactly like the protocol-member collector above (Codex final-
+      // integration r2: a bare `item.decl.as(FunctionDeclSyntax.self)` check
+      // silently skipped a conditionally-compiled overload entirely — an
+      // `#if DEBUG` variant of a pinned concrete method could change or
+      // disappear with the surface-freeze test passing unchanged).
+      private func scanMembers(_ list: MemberBlockItemListSyntax, condition: String?) {
         for item in list {
+          if let ifConfig = item.decl.as(IfConfigDeclSyntax.self) {
+            for clause in ifConfig.clauses {
+              guard case .decls(let nested) = clause.elements else {
+                thrown = ScanFailedError(
+                  context: "#if clause inside a concrete type's member block",
+                  reason:
+                    "clause does not contain a declaration list — fail closed rather than skip"
+                )
+                continue
+              }
+              let clauseCondition = clause.condition?.trimmedDescription ?? "else"
+              let combinedCondition = [condition, clauseCondition].compactMap { $0 }.joined(
+                separator: " && ")
+              scanMembers(nested, condition: combinedCondition)
+            }
+            continue
+          }
           guard let fn = item.decl.as(FunctionDeclSyntax.self), fn.name.text == methodName else {
             continue
           }
-          matches.append(EngineProtocolSurfaceFreezeTests.truncatedAtBody(fn.trimmedDescription))
+          matches.append(
+            MemberSignature(
+              condition: condition,
+              signature: EngineProtocolSurfaceFreezeTests.truncatedAtBody(fn.trimmedDescription)))
         }
       }
       override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
         guard node.name.text == typeName else { return .visitChildren }
         foundType = true
-        scanMembers(node.memberBlock.members)
+        scanMembers(node.memberBlock.members, condition: nil)
         return .skipChildren
       }
       override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
         guard node.name.text == typeName else { return .visitChildren }
         foundType = true
-        scanMembers(node.memberBlock.members)
+        scanMembers(node.memberBlock.members, condition: nil)
         return .skipChildren
       }
       override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
         guard node.name.text == typeName else { return .visitChildren }
         foundType = true
-        scanMembers(node.memberBlock.members)
+        scanMembers(node.memberBlock.members, condition: nil)
         return .skipChildren
       }
       override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
@@ -291,12 +318,13 @@ import Testing
           ident.name.text == typeName
         else { return .visitChildren }
         foundType = true
-        scanMembers(node.memberBlock.members)
+        scanMembers(node.memberBlock.members, condition: nil)
         return .skipChildren
       }
     }
     let collector = Collector(typeName: typeName, methodName: methodName)
     collector.walk(tree)
+    if let thrown = collector.thrown { throw thrown }
     guard collector.foundType else {
       throw ScanFailedError(
         context: context, reason: "type `\(typeName)` not found — fail closed rather than guess")
@@ -308,7 +336,7 @@ import Testing
           "type `\(typeName)` has no `\(methodName)` declaration — fail closed rather than report an empty surface"
       )
     }
-    return collector.matches.map { MemberSignature(condition: nil, signature: $0) }
+    return collector.matches
   }
 
   /// Reads `file` and pins ONE concrete method's own signature(s) by name —
@@ -987,5 +1015,25 @@ import Testing
         struct Other { func prepare() async throws {} }
         """, typeName: "Target", methodName: "prepare", context: "<fixture>")
     #expect(members.count == 1, "expected exactly Target's own prepare, found: \(members)")
+  }
+
+  @Test(
+    "a conditionally-compiled overload of a pinned concrete method is still collected, not silently skipped (Codex final-integration r2)"
+  )
+  func adversarialConditionalConcreteMethodOverloadIsDetected() throws {
+    let members = try Self.concreteMethodMembers(
+      inParsedSource: """
+        struct Target {
+          func prepare() async throws {}
+          #if DEBUG
+            func prepare(fake: Bool) async throws {}
+          #endif
+        }
+        """, typeName: "Target", methodName: "prepare", context: "<fixture>")
+    #expect(
+      members.count == 2,
+      "expected both the unconditional and #if DEBUG overloads, found: \(members)")
+    let conditional = members.first { $0.signature.contains("fake") }
+    #expect(conditional?.condition == "DEBUG")
   }
 }
