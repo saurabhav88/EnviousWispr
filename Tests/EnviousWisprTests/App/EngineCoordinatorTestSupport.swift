@@ -2,6 +2,7 @@ import EnviousWisprCore
 import EnviousWisprPipeline
 import Foundation
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
 
 /// #1171 — a fully programmable fake for `EngineCoordinator.Dependencies`, so
@@ -87,7 +88,8 @@ final class FakeEngineDeps {
         let outcome = self.warmOutcome[backend] ?? .ready
         if case .ready = outcome { self.setReadiness(backend, .ready) }
         return outcome
-      })
+      },
+      engineMutationScope: .alwaysAllowedForTesting)
   }
 
   /// Build a started coordinator over this fake. `start()` fires the initial

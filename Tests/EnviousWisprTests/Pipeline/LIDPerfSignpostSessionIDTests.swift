@@ -1,9 +1,9 @@
 @preconcurrency import AVFoundation
-import EnviousWisprASR
 import EnviousWisprCore
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 // MARK: - LIDPerfSignpostSessionIDTests (epic #827, PR-5 Rung 4.5)
@@ -39,6 +39,7 @@ import Testing
     var readCount = 0
     let adapter = WhisperKitEngineAdapter(
       backend: StubWhisperKitBackend(),
+      engineMutationScope: .alwaysAllowedForTesting,
       audioCaptureSessionIDSource: {
         readCount += 1
         return 42
@@ -61,6 +62,7 @@ import Testing
     var readCount = 0
     let adapter = WhisperKitEngineAdapter(
       backend: backend,
+      engineMutationScope: .alwaysAllowedForTesting,
       audioCaptureSessionIDSource: {
         readCount += 1
         return 555
@@ -98,6 +100,7 @@ import Testing
     let capturedID: UInt64 = 7777
     let adapter = WhisperKitEngineAdapter(
       backend: backend,
+      engineMutationScope: .alwaysAllowedForTesting,
       audioCaptureSessionIDSource: { capturedID })
 
     try await adapter.beginSession(

@@ -9,7 +9,7 @@ struct ASRManagerColdStateContractTests {
 
   @Test("default manager starts on Parakeet, unloaded, not streaming")
   func defaultState() async {
-    let sut = ASRManager()
+    let sut = ASRManager(engineMutationScope: .alwaysAllowedForTesting)
 
     #expect(sut.activeBackendType == .parakeet)
     #expect(sut.isModelLoaded == false)
@@ -26,7 +26,7 @@ struct ASRManagerColdStateContractTests {
     // and capability bit on a fresh manager. Proving the reset branch requires
     // a seam to put flags into a non-default state first (see #398 for the
     // proposed refactor).
-    let sut = ASRManager()
+    let sut = ASRManager(engineMutationScope: .alwaysAllowedForTesting)
 
     sut.setInitialBackendType(.whisperKit)
 
@@ -38,7 +38,7 @@ struct ASRManagerColdStateContractTests {
 
   @Test("sequential switchBackend calls leave the last requested backend active")
   func sequentialSwitchesTrackLastRequest() async {
-    let sut = ASRManager()
+    let sut = ASRManager(engineMutationScope: .alwaysAllowedForTesting)
 
     await sut.switchBackend(to: .whisperKit)
     #expect(sut.activeBackendType == .whisperKit)
@@ -58,7 +58,7 @@ struct ASRManagerColdStateContractTests {
 
   @Test("transcribe before load throws notReady and preserves manager flags")
   func transcribeBeforeLoadThrowsNotReady() async {
-    let sut = ASRManager()
+    let sut = ASRManager(engineMutationScope: .alwaysAllowedForTesting)
 
     do {
       _ = try await sut.transcribe(audioSamples: [], options: .default)
@@ -81,7 +81,7 @@ struct ASRManagerColdStateContractTests {
 
   @Test("startStreaming before prepare on Parakeet throws notReady and leaves isStreaming false")
   func startStreamingBeforePrepareOnParakeet() async {
-    let sut = ASRManager()
+    let sut = ASRManager(engineMutationScope: .alwaysAllowedForTesting)
 
     do {
       try await sut.startStreaming(options: .default)
@@ -104,7 +104,7 @@ struct ASRManagerColdStateContractTests {
 
   @Test("startStreaming on WhisperKit is a no-op because streaming is unsupported")
   func startStreamingOnWhisperKitDoesNothing() async throws {
-    let sut = ASRManager()
+    let sut = ASRManager(engineMutationScope: .alwaysAllowedForTesting)
     sut.setInitialBackendType(.whisperKit)
 
     try await sut.startStreaming(options: .default)
@@ -118,7 +118,7 @@ struct ASRManagerColdStateContractTests {
   @Test(
     "finalizeStreaming without an active stream throws streamingNotSupported and preserves flags")
   func finalizeWithoutActiveStreamThrows() async {
-    let sut = ASRManager()
+    let sut = ASRManager(engineMutationScope: .alwaysAllowedForTesting)
 
     do {
       _ = try await sut.finalizeStreaming()

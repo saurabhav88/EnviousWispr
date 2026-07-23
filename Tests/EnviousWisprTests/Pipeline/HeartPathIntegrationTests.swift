@@ -1,6 +1,5 @@
 @preconcurrency import AVFoundation
 import AppKit
-import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
@@ -9,6 +8,7 @@ import EnviousWisprStorage
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 @MainActor
@@ -99,7 +99,8 @@ struct HeartPathIntegrationTests {
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
-        pasteCompletionRegistry: PasteCompletionRegistry()
+        pasteCompletionRegistry: PasteCompletionRegistry(),
+        engineMutationScope: .alwaysAllowedForTesting
       ))
     let stateWaiter = PipelineStateWaiter(pipeline)
     #expect(pipeline.currentSessionConfig == nil)

@@ -27,7 +27,7 @@ struct ASRManagerProxyProgressPollingTests {
 
   @Test("startProgressPolling schedules a live timer on the main run loop")
   func startActivates() throws {
-    let proxy = ASRManagerProxy()
+    let proxy = ASRManagerProxy(engineMutationScope: .alwaysAllowedForTesting)
     #expect(proxy.progressPollTimerForTesting == nil)
 
     proxy.startProgressPolling()
@@ -51,7 +51,7 @@ struct ASRManagerProxyProgressPollingTests {
 
   @Test("stopProgressPolling clears the timer (the defer-cleanup invariant)")
   func stopClears() {
-    let proxy = ASRManagerProxy()
+    let proxy = ASRManagerProxy(engineMutationScope: .alwaysAllowedForTesting)
     proxy.startProgressPolling()
     #expect(proxy.isProgressPollingActiveForTesting == true)
 
@@ -61,7 +61,7 @@ struct ASRManagerProxyProgressPollingTests {
 
   @Test("re-arming via startProgressPolling invalidates the prior timer (no leak)")
   func reArmingDoesNotLeak() {
-    let proxy = ASRManagerProxy()
+    let proxy = ASRManagerProxy(engineMutationScope: .alwaysAllowedForTesting)
     proxy.startProgressPolling()
     let firstTimer = proxy.progressPollTimerForTesting
     #expect(firstTimer?.isValid == true)
@@ -84,7 +84,7 @@ struct ASRManagerProxyProgressPollingTests {
 
   @Test("stopProgressPolling is idempotent — calling twice is safe")
   func stopIsIdempotent() {
-    let proxy = ASRManagerProxy()
+    let proxy = ASRManagerProxy(engineMutationScope: .alwaysAllowedForTesting)
     proxy.startProgressPolling()
     proxy.stopProgressPolling()
     proxy.stopProgressPolling()
@@ -93,7 +93,7 @@ struct ASRManagerProxyProgressPollingTests {
 
   @Test("stopProgressPolling on a never-started proxy is a no-op")
   func stopOnNeverStartedProxy() {
-    let proxy = ASRManagerProxy()
+    let proxy = ASRManagerProxy(engineMutationScope: .alwaysAllowedForTesting)
     proxy.stopProgressPolling()
     #expect(proxy.isProgressPollingActiveForTesting == false)
   }
@@ -112,7 +112,8 @@ struct ASRManagerProxyProgressPollingTests {
     // `defer { self.stopProgressPolling() }` inside `loadModel()` — the #586
     // leak guard. Deleting that defer leaves the timer alive after the awaited
     // throw, so this test goes red.
-    let proxy = ASRManagerProxy(connectionPreflight: { _ in })
+    let proxy = ASRManagerProxy(
+      engineMutationScope: .alwaysAllowedForTesting, connectionPreflight: { _ in })
 
     await #expect(throws: XPCASRTransportError.self) {
       try await proxy.loadModel()

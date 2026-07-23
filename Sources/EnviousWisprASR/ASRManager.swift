@@ -1,6 +1,5 @@
 @preconcurrency import AVFoundation
 import EnviousWisprCore
-import EnviousWisprServices
 import Foundation
 
 /// Manages ASR backend selection and delegates transcription calls.
@@ -16,19 +15,15 @@ public final class ASRManager: ASRManagerInterface {
   public private(set) var downloadPhase: String = ""
   public private(set) var downloadDetail: String = ""
   public var onServiceInterrupted: (() -> Void)?  // No-op for in-process — no XPC crash path
-  /// #1707 Phase 3 (§3.2, row 7) — `EngineRecoveryGate.tryBeginMutation()`/
-  /// `endMutation()`, injected exactly like `onServiceInterrupted` above (this
-  /// type never references `EngineRecoveryGate` by concrete type). Guards
-  /// `unloadModel()`'s idle-timer unload — a background actor unrelated to
-  /// any active session, so recovery must never race it. Defaults keep every
-  /// existing test/legacy construction unchanged (always able to proceed).
-  public var tryBeginEngineMutation: @MainActor () -> Bool = { true }
-  /// Returns whether recovery was denied while this mutation was in flight
-  /// and is now owed a wake-up.
-  public var endEngineMutation: @MainActor () -> Bool = { false }
-  /// Called when `endEngineMutation()` returns true — wakes a stranded
-  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
-  public var wakeRecoveryIfOwed: @MainActor () -> Void = {}
+  /// #1707 Phase 3 (§3.2, row 7) / #1741 Chunk 3 — the mutation-side capability
+  /// guarding `unloadModel()`'s idle-timer unload, a background actor unrelated
+  /// to any active session, so recovery must never race it. Required at
+  /// construction (no default) — replaces the old defaulted
+  /// `tryBeginEngineMutation`/`endEngineMutation`/`wakeRecoveryIfOwed` closure
+  /// triplet. `package`, not `public`: `EnviousWisprASR` is an exported
+  /// library product and `EngineMutationScope` is itself only
+  /// `package`-visible, so a wider property could not hold it.
+  package let engineMutationScope: EngineMutationScope
   /// Issue #445: in-process variant. Tests do not drive a progress-file stream,
   /// so this stays unset at runtime; the protocol requires it.
   public var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
@@ -68,7 +63,8 @@ public final class ASRManager: ASRManagerInterface {
   // reset-branch coverage in `setInitialBackendType` and `switchBackend`.
   private var parakeetBackend: any ASRBackend
 
-  public init(parakeetBackend: (any ASRBackend)? = nil) {
+  package init(engineMutationScope: EngineMutationScope, parakeetBackend: (any ASRBackend)? = nil) {
+    self.engineMutationScope = engineMutationScope
     self.parakeetBackend = parakeetBackend ?? ParakeetBackend()
   }
 
@@ -259,37 +255,32 @@ public final class ASRManager: ASRManagerInterface {
       }
       return
     }
-    // #1707 Phase 3 (§3.2, row 7): hold a mutation claim BEFORE touching
-    // anything below — including the load-generation bump and in-flight-load
-    // cancel, which would otherwise cancel a load RECOVERY is currently
-    // running under its own recovery claim (Codex code-diff round 1 P1: the
-    // original ordering let an idle-unload fire mid-recovery-load, invalidate
-    // its generation, and have recovery treat the resulting throw as an
-    // unrecoverable failure — deleting a recoverable spool). A denied claim
-    // (recovery holds the engine) skips this attempt entirely, touching
+    // #1707 Phase 3 (§3.2, row 7) / #1741 Chunk 3: hold a mutation claim BEFORE
+    // touching anything below — including the load-generation bump and
+    // in-flight-load cancel, which would otherwise cancel a load RECOVERY is
+    // currently running under its own recovery claim (Codex code-diff round 1
+    // P1: the original ordering let an idle-unload fire mid-recovery-load,
+    // invalidate its generation, and have recovery treat the resulting throw
+    // as an unrecoverable failure — deleting a recoverable spool). A denied
+    // claim (recovery holds the engine) skips this attempt entirely, touching
     // NOTHING; the next genuine idle-unload trigger re-attempts — no bespoke
     // retry machinery for a background convenience unload.
-    guard tryBeginEngineMutation() else {
-      TelemetryService.shared.recoveryEngineActionDeferred(site: "asrManagerUnload")
-      return
+    _ = await engineMutationScope.withClaim(site: "asrManagerUnload") {
+      // Bump before the loaded-guard so an in-flight load (flag still false) is
+      // superseded too, not just a resident model.
+      self.invalidateCurrentLoadGeneration(cause: "unload")
+      // #959 (Codex re-review P2): retire the superseded in-flight load task the
+      // same way `switchBackend()` / `cancelInFlightLoad()` do — otherwise a retry
+      // that joins via single-flight before the doomed task finishes propagates
+      // `ASRLoadSupersededError` instead of starting a fresh load. Must run BEFORE
+      // the loaded-guard, because the in-flight case is exactly when `isModelLoaded`
+      // is still false and the guard would early-return with the stale handle live.
+      self.inFlightLoadTask?.cancel()
+      self.inFlightLoadTask = nil
+      guard self.isModelLoaded, let activeBackend = self.activeBackend else { return }
+      await activeBackend.unload()
+      self.isModelLoaded = false
     }
-    defer {
-      if endEngineMutation() { wakeRecoveryIfOwed() }
-    }
-    // Bump before the loaded-guard so an in-flight load (flag still false) is
-    // superseded too, not just a resident model.
-    invalidateCurrentLoadGeneration(cause: "unload")
-    // #959 (Codex re-review P2): retire the superseded in-flight load task the
-    // same way `switchBackend()` / `cancelInFlightLoad()` do — otherwise a retry
-    // that joins via single-flight before the doomed task finishes propagates
-    // `ASRLoadSupersededError` instead of starting a fresh load. Must run BEFORE
-    // the loaded-guard, because the in-flight case is exactly when `isModelLoaded`
-    // is still false and the guard would early-return with the stale handle live.
-    inFlightLoadTask?.cancel()
-    inFlightLoadTask = nil
-    guard isModelLoaded, let activeBackend else { return }
-    await activeBackend.unload()
-    isModelLoaded = false
   }
 
   /// Issue #445: in-process variant of the watchdog recovery. No XPC connection

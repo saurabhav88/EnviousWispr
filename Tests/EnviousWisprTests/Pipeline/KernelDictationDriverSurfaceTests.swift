@@ -1,4 +1,3 @@
-import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
@@ -7,6 +6,7 @@ import EnviousWisprStorage
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 // MARK: - KernelDictationDriverSurfaceTests (epic #827, PR-4b.2 §11)
@@ -54,7 +54,8 @@ import Testing
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
-        pasteCompletionRegistry: PasteCompletionRegistry())
+        pasteCompletionRegistry: PasteCompletionRegistry(),
+        engineMutationScope: .alwaysAllowedForTesting)
       return KernelDictationDriverFactory.makeForParakeet(inputs: inputs)
     }
 

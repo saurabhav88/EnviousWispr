@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprServices
@@ -535,22 +536,17 @@ final class RecordingSessionKernel {
   /// user-facing copy lives here — copy stays in the App layer.
   var onApproachingMaxDuration: (@MainActor (TimeInterval) -> Void)?
 
-  /// #1707 Phase 3 (§3.2, row 21) — `EngineRecoveryGate.tryBeginMutation()`/
-  /// `endMutation()`, injected exactly like `onApproachingMaxDuration` above
-  /// (this type never references `EngineRecoveryGate` by concrete type).
-  /// Guards `preWarm()`'s spawned adapter warm-up — the single most
-  /// surprising gap this phase closes: that warm-up runs BEFORE the session
-  /// reaches `.arming` (`state == .idle` still holds), so a recovery replay
-  /// could otherwise be racing an unsupervised warm-up here. Defaults keep
-  /// every existing test/legacy construction unchanged (always able to
-  /// proceed).
-  var tryBeginEngineMutation: @MainActor () -> Bool = { true }
-  /// Returns whether recovery was denied while this mutation was in flight
-  /// and is now owed a wake-up.
-  var endEngineMutation: @MainActor () -> Bool = { false }
-  /// Called when `endEngineMutation()` returns true — wakes a stranded
-  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
-  var wakeRecoveryIfOwed: @MainActor () -> Void = {}
+  /// #1707 Phase 3 (§3.2, row 21) / #1741 Chunk 9 — the shared
+  /// `EngineMutationScope` constructed once by the composition root, injected
+  /// exactly like `onApproachingMaxDuration` above (this type never
+  /// references `EngineRecoveryGate` by concrete type). Guards `preWarm()`'s
+  /// spawned adapter warm-up — the single most surprising gap this phase
+  /// closes: that warm-up runs BEFORE the session reaches `.arming`
+  /// (`state == .idle` still holds), so a recovery replay could otherwise be
+  /// racing an unsupervised warm-up here. Required at construction (no
+  /// default) — replaces the old defaulted `tryBeginEngineMutation`/
+  /// `endEngineMutation`/`wakeRecoveryIfOwed` closure triplet.
+  let engineMutationScope: EngineMutationScope
 
   /// Low-cardinality reason the most recent recording stopped, set when the
   /// recording-exit latches and cleared at session start (#1060). Read by the
@@ -698,6 +694,7 @@ final class RecordingSessionKernel {
     ) async throws -> String,
     store: @escaping @MainActor (_ text: String, _ transcriptID: UUID) async throws -> Void,
     deliver: @escaping @MainActor (_ text: String) async -> KernelDeliveryOutcome,
+    engineMutationScope: EngineMutationScope,
     wedgeStallTicks: Int = 2,
     minimumRecordingTicks: Int = 5,
     zombieZeroPeakTelemetry: @escaping @MainActor (ZeroPeakContext) -> Void = { _ in },
@@ -736,6 +733,7 @@ final class RecordingSessionKernel {
     self.processText = processText
     self.store = store
     self.deliver = deliver
+    self.engineMutationScope = engineMutationScope
     self.wedgeStallTicks = wedgeStallTicks
     self.minimumRecordingTicks = minimumRecordingTicks
     self.zombieZeroPeakTelemetry = zombieZeroPeakTelemetry
@@ -946,28 +944,25 @@ final class RecordingSessionKernel {
     // Adapter warm-up is spawned (can be a slow cold model load; the session's
     // own warmUp re-checks readiness and reruns cold if needed).
     //
-    // #1707 Phase 3 (§3.2, row 21): hold a mutation claim for the FULL
-    // awaited warm-up — this runs while `state == .idle`, BEFORE the session
-    // is confirmed active, so recovery must never race it. A denied claim
-    // (recovery holds the engine) skips this attempt; the session's own
+    // #1707 Phase 3 (§3.2, row 21) / #1741 Chunk 9: hold a mutation claim for
+    // the FULL awaited warm-up — this runs while `state == .idle`, BEFORE the
+    // session is confirmed active, so recovery must never race it. A denied
+    // claim (recovery holds the engine) skips this attempt; the session's own
     // in-session `warmUp(_:)` (row 22, already structurally safe) re-checks
     // readiness and reruns cold if needed, so no bespoke retry machinery is
-    // needed for this best-effort pre-warm.
-    spawn(sid) { [adapter, weak self] in
-      // `self` gone ⇒ proceed anyway (matches this task's existing tolerance
-      // for a deallocated kernel — `self?.log(...)` below already no-ops).
-      guard self?.tryBeginEngineMutation() ?? true else {
-        TelemetryService.shared.recoveryEngineActionDeferred(site: "preWarm")
-        return
-      }
-      defer {
-        if let self, self.endEngineMutation() { self.wakeRecoveryIfOwed() }
-      }
-      do {
-        try await adapter.warmUp()
-        self?.log("preWarm adapter.warmUp succeeded sid=\(sid.raw)")
-      } catch {
-        self?.log("preWarm adapter.warmUp failed sid=\(sid.raw) error=\(error)")
+    // needed for this best-effort pre-warm. `engineMutationScope` is
+    // captured directly (like `adapter`), not read through `self` — the SAME
+    // "self gone ⇒ proceed anyway" tolerance the old `?? true` fallback gave
+    // this task now holds structurally: the claim check no longer depends on
+    // the kernel surviving at all.
+    spawn(sid) { [adapter, engineMutationScope, weak self] in
+      _ = await engineMutationScope.withClaim(site: "preWarm") {
+        do {
+          try await adapter.warmUp()
+          self?.log("preWarm adapter.warmUp succeeded sid=\(sid.raw)")
+        } catch {
+          self?.log("preWarm adapter.warmUp failed sid=\(sid.raw) error=\(error)")
+        }
       }
     }
     // Capture pre-warm is awaited end-to-end (Codex r4): the BT codec

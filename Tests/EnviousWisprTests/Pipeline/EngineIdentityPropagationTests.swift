@@ -2,6 +2,7 @@ import EnviousWisprCore
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 // MARK: - EngineIdentityPropagationTests (epic #827, PR-5 Rung 1)
@@ -33,6 +34,7 @@ import Testing
       processText: { raw, _ in raw },
       store: { _, _ in },
       deliver: { _ in .pasted },
+      engineMutationScope: .alwaysAllowedForTesting,
       minimumRecordingTicks: 0,
       telemetryState: telemetryState)
 
@@ -62,6 +64,7 @@ import Testing
       processText: { raw, _ in raw },
       store: { _, _ in },
       deliver: { _ in .pasted },
+      engineMutationScope: .alwaysAllowedForTesting,
       minimumRecordingTicks: 0,
       telemetryState: telemetryState)
 

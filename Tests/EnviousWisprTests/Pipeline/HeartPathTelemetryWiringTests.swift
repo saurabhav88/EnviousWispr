@@ -1,5 +1,4 @@
 @preconcurrency import AVFoundation
-import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
@@ -8,6 +7,7 @@ import EnviousWisprStorage
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 /// Pipeline-level tests for the `HeartPathTelemetryEmitter` wiring.
@@ -111,6 +111,7 @@ struct HeartPathTelemetryWiringTests {
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
+        engineMutationScope: .alwaysAllowedForTesting,
         captureErrorSink: captureErrorSink
       ))
   }
@@ -224,6 +225,7 @@ struct HeartPathTelemetryWiringTests {
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
+        engineMutationScope: .alwaysAllowedForTesting,
         // Asserts on STATE, not Sentry — no-op sink keeps the stall captureError
         // off the process-global delegate (#875).
         captureErrorSink: { _, _, _, _, _ in }

@@ -29,7 +29,8 @@ import Testing
   /// remoteObjectProxyWithErrorHandler callback is integration-covered by
   /// the drill matrix's teardown rows.
   @Test func proxyErrorRecyclesConnection() {
-    let proxy = ASRManagerProxy(connectionPreflight: { _ in })  // no real XPC
+    let proxy = ASRManagerProxy(
+      engineMutationScope: .alwaysAllowedForTesting, connectionPreflight: { _ in })  // no real XPC
     #expect(!proxy.hasConnectionForTesting)
     proxy.recycleConnectionAfterProxyError()
     #expect(!proxy.hasConnectionForTesting)
@@ -39,7 +40,8 @@ import Testing
   /// The XPC call carries cacheOnly ONLY for Parakeet — a WhisperKit-typed
   /// proxy never flips the service's offline switch.
   @Test func cacheOnlyIsParakeetScoped() {
-    let proxy = ASRManagerProxy(connectionPreflight: { _ in })
+    let proxy = ASRManagerProxy(
+      engineMutationScope: .alwaysAllowedForTesting, connectionPreflight: { _ in })
     proxy.parakeetCacheOnly = true
     proxy.setInitialBackendType(.whisperKit)
     #expect(proxy.activeBackendType == .whisperKit)

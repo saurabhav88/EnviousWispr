@@ -11,6 +11,7 @@ import Testing
   /// The refusal must re-detect back to honest truth.
   @Test func aRefusedDownloadReturnsTheRowToHonestStateInsteadOfStickingForever() async throws {
     let service = WhisperKitSetupService(
+      engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .notDownloaded },
       startDownload: { false })
 
@@ -31,13 +32,22 @@ import Testing
   /// An ACCEPTED download keeps the optimistic state — progress arrives via the
   /// delivery-state projection, not via detection.
   @Test func anAcceptedDownloadKeepsTheOptimisticStateForTheProjection() async throws {
+    final class Box: @unchecked Sendable { var startCalls = 0 }
+    let box = Box()
     let service = WhisperKitSetupService(
+      engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .notDownloaded },
-      startDownload: { true })
+      startDownload: {
+        box.startCalls += 1
+        return true
+      })
 
     service.downloadModel()
-    for _ in 0..<50 { await Task.yield() }
+    // Signal, not clock: wait for startDownload to actually run before
+    // asserting the state it leaves behind.
+    for _ in 0..<200 where box.startCalls == 0 { await Task.yield() }
 
+    #expect(box.startCalls == 1)
     if case .downloading = service.setupState {
     } else {
       Issue.record("accepted download must not re-detect away: \(service.setupState)")
@@ -48,14 +58,23 @@ import Testing
   /// marker) means the fetch is still running — re-detecting to "not downloaded"
   /// would lie. The row must keep showing the live download.
   @Test func aRefusedCancelKeepsShowingTheRunningFetch() async throws {
+    final class Box: @unchecked Sendable { var cancelCalls = 0 }
+    let box = Box()
     let service = WhisperKitSetupService(
+      engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .notDownloaded },
-      cancelActiveDownload: { false })
+      cancelActiveDownload: {
+        box.cancelCalls += 1
+        return false
+      })
     service.applyDeliveryState(.downloading(progress: 0.5, status: "Downloading model files..."))
 
     service.cancelDownload()
-    for _ in 0..<50 { await Task.yield() }
+    // Signal, not clock: wait for cancelActiveDownload to actually run before
+    // asserting the state it leaves behind.
+    for _ in 0..<200 where box.cancelCalls == 0 { await Task.yield() }
 
+    #expect(box.cancelCalls == 1)
     if case .downloading = service.setupState {
     } else {
       Issue.record("refused cancel must not re-detect away: \(service.setupState)")
@@ -69,6 +88,7 @@ import Testing
     final class Box: @unchecked Sendable { var started = 0 }
     let box = Box()
     let service = WhisperKitSetupService(
+      engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .notDownloaded },
       startDownload: {
         box.started += 1
@@ -91,13 +111,23 @@ import Testing
   /// 2026-07-17; Codex 2c-r7 P2). The projection then publishes paused and it
   /// STICKS.
   @Test func anAcceptedCancelLeavesTheRowToTheProjection() async throws {
+    final class Box: @unchecked Sendable { var cancelCalls = 0 }
+    let box = Box()
     let service = WhisperKitSetupService(
+      engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .notDownloaded },
-      cancelActiveDownload: { true })
+      cancelActiveDownload: {
+        box.cancelCalls += 1
+        return true
+      })
     service.applyDeliveryState(.downloading(progress: 0.5, status: "Downloading model files..."))
 
     service.cancelDownload()
-    for _ in 0..<100 { await Task.yield() }
+    // Signal, not clock: wait for cancelActiveDownload to actually run before
+    // asserting the state it leaves behind.
+    for _ in 0..<200 where box.cancelCalls == 0 { await Task.yield() }
+
+    #expect(box.cancelCalls == 1)
     if case .downloading = service.setupState {
     } else {
       Issue.record("cancel itself must not rewrite the row: \(service.setupState)")
@@ -113,6 +143,7 @@ import Testing
     final class Box: @unchecked Sendable { var actionCalls = 0 }
     let box = Box()
     let service = WhisperKitSetupService(
+      engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .ready },
       removeModelAction: {
         box.actionCalls += 1
@@ -131,6 +162,7 @@ import Testing
     final class Box: @unchecked Sendable { var actionCalls = 0 }
     let box = Box()
     let service = WhisperKitSetupService(
+      engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .ready },
       removeModelAction: {
         box.actionCalls += 1
@@ -160,6 +192,7 @@ import Testing
     final class Box: @unchecked Sendable { var actionCalls = 0 }
     let box = Box()
     let service = WhisperKitSetupService(
+      engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .ready },
       removeModelAction: {
         box.actionCalls += 1
@@ -179,6 +212,7 @@ import Testing
     final class Box: @unchecked Sendable { var actionCalls = 0 }
     let box = Box()
     let service = WhisperKitSetupService(
+      engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .ready },
       removeModelAction: {
         box.actionCalls += 1
@@ -195,6 +229,7 @@ import Testing
 
   @Test func aFailedRemovalShowsTheFailureNoticeAndReDetectsDiskTruth() async throws {
     let service = WhisperKitSetupService(
+      engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .notDownloaded },  // partial deletion: marker gone
       removeModelAction: { .failed })
     service.isDictationInFlight = { false }
@@ -223,6 +258,7 @@ import Testing
     final class Box: @unchecked Sendable { var readAvailabilityCalls = 0 }
     let box = Box()
     let service = WhisperKitSetupService(
+      engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: {
         box.readAvailabilityCalls += 1
         return .ready  // if this fires again, the row would flicker back
@@ -253,6 +289,7 @@ import Testing
     }
     let box = Box()
     let service = WhisperKitSetupService(
+      engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .notDownloaded },
       removeModelAction: {
         box.calls += 1
@@ -278,8 +315,88 @@ import Testing
   }
 
   @Test func aResumableCancelPresentsPausedNotNotDownloaded() async throws {
-    let service = WhisperKitSetupService(readAvailability: { .notDownloaded })
+    let service = WhisperKitSetupService(
+      engineMutationScope: .alwaysAllowedForTesting, readAvailability: { .notDownloaded })
     service.applyDeliveryState(.paused)
     #expect(service.setupState == .paused, "paused survives as its own presentation")
+  }
+
+  // MARK: - #1741 Chunk 4: EngineMutationScope gate refusal (distinct from the
+  // action-closure refusals above — these deny at the shared gate itself,
+  // proving the gate-refusal outcome each of the three call sites maps to).
+
+  @Test func aGateRefusedDownloadNeverStartsAndReDetects() async throws {
+    final class Box: @unchecked Sendable { var started = 0 }
+    let box = Box()
+    let service = WhisperKitSetupService(
+      engineMutationScope: .live(
+        tryBegin: { false }, end: { false }, wake: {}, onRefused: { _ in }),
+      readAvailability: { .notDownloaded },
+      startDownload: {
+        box.started += 1
+        return true
+      })
+
+    service.downloadModel()
+    for _ in 0..<200 where service.setupState != .notDownloaded {
+      await Task.yield()
+    }
+    #expect(box.started == 0, "a gate-refused download must never call startDownload")
+    #expect(
+      service.setupState == .notDownloaded, "a gate-refused download re-detects to honest state")
+  }
+
+  @Test func aGateRefusedCancelNeverCancelsAndLeavesTheFetchRunning() async throws {
+    final class Box: @unchecked Sendable {
+      var cancelCalls = 0
+      var refusedSites: [String] = []
+    }
+    let box = Box()
+    let service = WhisperKitSetupService(
+      engineMutationScope: .live(
+        tryBegin: { false }, end: { false }, wake: {},
+        onRefused: { box.refusedSites.append($0) }),
+      readAvailability: { .notDownloaded },
+      cancelActiveDownload: {
+        box.cancelCalls += 1
+        return true
+      })
+    service.applyDeliveryState(.downloading(progress: 0.5, status: "Downloading model files..."))
+
+    service.cancelDownload()
+    // Signal, not clock: wait for the gate's own refusal telemetry, proving
+    // the Task actually reached and was refused by the claim, before asserting
+    // the negative (no cancel, state unchanged) that refusal implies.
+    for _ in 0..<200 where box.refusedSites.isEmpty { await Task.yield() }
+
+    #expect(box.refusedSites == ["whisperKitCancelDownload"])
+    #expect(box.cancelCalls == 0, "a gate-refused cancel must never call cancelActiveDownload")
+    if case .downloading = service.setupState {
+    } else {
+      Issue.record("a gate-refused cancel must leave the fetch running: \(service.setupState)")
+    }
+  }
+
+  @Test func aGateRefusedRemoveClearsIsRemovingAndSurfacesFailed() async throws {
+    final class Box: @unchecked Sendable { var actionCalls = 0 }
+    let box = Box()
+    let service = WhisperKitSetupService(
+      engineMutationScope: .live(
+        tryBegin: { false }, end: { false }, wake: {}, onRefused: { _ in }),
+      readAvailability: { .ready },
+      removeModelAction: {
+        box.actionCalls += 1
+        return nil
+      })
+    service.isDictationInFlight = { false }
+
+    service.removeModel()
+    for _ in 0..<200 where service.removeNotice == nil {
+      await Task.yield()
+    }
+
+    #expect(box.actionCalls == 0, "a gate-refused remove must never call removeModelAction")
+    #expect(service.removeNotice == .failed)
+    #expect(service.isRemoving == false)
   }
 }

@@ -1,9 +1,9 @@
 import AVFoundation
-import EnviousWisprASR
 import EnviousWisprCore
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 // MARK: - KernelAdapterFactoryTests (epic #827, PR-6)
@@ -36,7 +36,8 @@ import Testing
     let adapter = KernelAdapterFactory.makeWhisperKitAdapter(
       backend: WhisperKitBackend(admittedModelFolder: { nil }),
       languageDetector: LanguageDetector(),
-      audioCaptureSessionIDSource: { 0 })
+      audioCaptureSessionIDSource: { 0 },
+      engineMutationScope: .alwaysAllowedForTesting)
     #expect(adapter.engineIdentity.backendType == .whisperKit)
   }
 }

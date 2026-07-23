@@ -95,7 +95,8 @@ struct RecoveryCoordinatorTests {
 
   private static func makeHarness(
     existing: Set<String> = [],
-    dictationActive: Bool = false
+    dictationActive: Bool = false,
+    recoveryEngineClaim: RecoveryEngineClaim = .alwaysAllowedForTesting
   ) -> Harness {
     let keyStore = RecoveryKeyStore(backend: .file, fileDirectory: tempDir())
     let spoolDir = tempDir()
@@ -111,6 +112,7 @@ struct RecoveryCoordinatorTests {
       replayer: replayer,
       existingRecoveryIDs: { existingBox.value },
       isDictationActive: { activeBox.value },
+      recoveryEngineClaim: recoveryEngineClaim,
       resetEngine: { resetEngineCount.value += 1 })
     coordinatorRef = coordinator
     return Harness(
@@ -614,10 +616,10 @@ struct RecoveryCoordinatorTests {
 
   @Test("a mutation claim held on the gate defers the ENTIRE scan — no item is attempted")
   func gateDeniedRecoveryDefersWholeScan() async throws {
-    let h = Self.makeHarness()
     let gate = EngineRecoveryGate()
-    h.coordinator.tryBeginRecoveryClaim = { gate.tryBeginRecovery() }
-    h.coordinator.endRecoveryClaim = { gate.endRecovery() }
+    let h = Self.makeHarness(
+      recoveryEngineClaim: .live(
+        tryBegin: { gate.tryBeginRecovery() }, end: { gate.endRecovery() }))
     #expect(gate.tryBeginMutation(), "an unrelated engine mutation holds the gate")
     try Self.writeSpool(h.spoolStore, "orphan-\(UUID().uuidString)")
     await h.coordinator.scanAndRecover()
@@ -628,10 +630,10 @@ struct RecoveryCoordinatorTests {
 
   @Test("once the held mutation releases, requestRecoveryRecheck() lets the deferred scan succeed")
   func gateReleaseThenRequestRecheckSucceeds() async throws {
-    let h = Self.makeHarness()
     let gate = EngineRecoveryGate()
-    h.coordinator.tryBeginRecoveryClaim = { gate.tryBeginRecovery() }
-    h.coordinator.endRecoveryClaim = { gate.endRecovery() }
+    let h = Self.makeHarness(
+      recoveryEngineClaim: .live(
+        tryBegin: { gate.tryBeginRecovery() }, end: { gate.endRecovery() }))
     #expect(gate.tryBeginMutation())
     let id = "orphan-\(UUID().uuidString)"
     try Self.writeSpool(h.spoolStore, id)
@@ -801,7 +803,8 @@ struct RecoveryCoordinatorTests {
       makeSpoolStore: { RecoverySpoolStore(directory: spoolDir) },
       replayer: replayer,
       existingRecoveryIDs: { [] },
-      isDictationActive: { false })
+      isDictationActive: { false },
+      recoveryEngineClaim: .alwaysAllowedForTesting)
     let result = await coordinator.makeDirective(
       settings: Self.freshSettings(crashRecoveryEnabled: true),
       backendType: .parakeet, supportsLanguageDetection: false)

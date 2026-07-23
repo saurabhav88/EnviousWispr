@@ -24,7 +24,8 @@ struct ASRManagerProxyLoadCompletionTests {
 
   @Test("cancelInFlightLoad with no load in flight is a safe no-op")
   func cancelWithNoLoadIsNoOp() {
-    let proxy = ASRManagerProxy(connectionPreflight: { _ in })
+    let proxy = ASRManagerProxy(
+      engineMutationScope: .alwaysAllowedForTesting, connectionPreflight: { _ in })
     #expect(proxy.hasPendingLoadCompletionForTesting == false)
     proxy.cancelInFlightLoad()
     #expect(proxy.hasPendingLoadCompletionForTesting == false)
@@ -39,7 +40,8 @@ struct ASRManagerProxyLoadCompletionTests {
     // stale non-nil guard here would let a LATER cancel/invalidation resume a
     // continuation that already completed (the one-shot drops it, but the
     // registration leak would still mask real pending state).
-    let proxy = ASRManagerProxy(connectionPreflight: { _ in })
+    let proxy = ASRManagerProxy(
+      engineMutationScope: .alwaysAllowedForTesting, connectionPreflight: { _ in })
     await #expect(throws: XPCASRTransportError.self) {
       try await proxy.loadModel()
     }

@@ -199,7 +199,7 @@ struct BackendMetadataTests {
 
   private func makeBackendMetadata() -> BackendMetadata {
     let settings = SettingsManager()
-    let asrManager = ASRManager()
+    let asrManager = ASRManager(engineMutationScope: .alwaysAllowedForTesting)
     let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: KeychainManager())
     return BackendMetadata(
       settings: settings,

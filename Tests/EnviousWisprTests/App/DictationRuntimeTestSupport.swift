@@ -127,7 +127,8 @@ enum DictationRuntimeFixtures {
         transcriptStore: store,
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
-        pasteCompletionRegistry: PasteCompletionRegistry()
+        pasteCompletionRegistry: PasteCompletionRegistry(),
+        engineMutationScope: .alwaysAllowedForTesting
       ))
   }
 
@@ -163,7 +164,8 @@ enum DictationRuntimeFixtures {
         transcriptStore: store,
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
-        pasteCompletionRegistry: PasteCompletionRegistry()
+        pasteCompletionRegistry: PasteCompletionRegistry(),
+        engineMutationScope: .alwaysAllowedForTesting
       ))
   }
 

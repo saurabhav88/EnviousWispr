@@ -22,7 +22,9 @@ enum WhisperKitDeliveryWiring {
     let setupService: WhisperKitSetupService
   }
 
-  static func make(modelDelivery: ModelDeliveryHome) -> Wired {
+  static func make(modelDelivery: ModelDeliveryHome, engineMutationScope: EngineMutationScope)
+    -> Wired
+  {
     let handle = modelDelivery.whisperKitHandle
     let installDirectory = modelDelivery.whisperKitRegistration?.installDirectory
     let trustedFiles = modelDelivery.whisperKitRegistration?.manifest.files.map {
@@ -76,7 +78,8 @@ enum WhisperKitDeliveryWiring {
         cancelActiveFetch: { [weak handle] in await handle?.cancelActiveFetch() },
         // Read again at the TOP of every run: retiring bytes while the switch is
         // off would strand a rollback user with neither model (Codex 2b-r1 P1).
-        isDeliveryEnabled: { [weak handle] in handle?.isEnabled() == true })
+        isDeliveryEnabled: { [weak handle] in handle?.isEnabled() == true },
+        engineMutationScope: engineMutationScope)
     }
     // The migration must not ship blind: retirement outcomes ride the shared
     // delivery funnel, same wiring shape as EG-1's bridge (#1386 PR-2b).
@@ -93,6 +96,7 @@ enum WhisperKitDeliveryWiring {
     // and never loaded, and the shipped `.notDownloaded` + Download button is the
     // honest answer for an engine whose model is not installed.
     let setupService = WhisperKitSetupService(
+      engineMutationScope: engineMutationScope,
       readAvailability: { [weak handle] in
         guard let handle else { return .notDownloaded }
         if await handle.isAdmitted() { return .ready }

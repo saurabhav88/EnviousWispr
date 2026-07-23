@@ -97,16 +97,16 @@ final class RecoveryCoordinator {
   /// switch while recovery is active). Default no-switch keeps tests unchanged.
   var isEngineSwitching: () -> Bool = { false }
 
-  /// #1707 Phase 3 (§3.2) — `EngineRecoveryGate.tryBeginRecovery()`/
-  /// `endRecovery()`, injected by the composition root exactly like
-  /// `isEngineSwitching` above (this type never references `EngineRecoveryGate`
-  /// by concrete type, matching the existing closure-injection convention).
-  /// `RecoveryCoordinator` is the SOLE owner of these calls — `RecoverySpool
-  /// Replayer` runs entirely underneath the already-held claim and never calls
-  /// them itself. Defaults keep every existing test that doesn't wire a gate
-  /// behaving as before (always able to claim).
-  var tryBeginRecoveryClaim: () -> Bool = { true }
-  var endRecoveryClaim: () -> Void = {}
+  /// #1707 Phase 3 (§3.2), required capability (#1741) — wraps
+  /// `EngineRecoveryGate.tryBeginRecovery()`/`endRecovery()`, constructed by
+  /// the composition root exactly like before (this type never references
+  /// `EngineRecoveryGate` by concrete type, matching the existing
+  /// closure-injection convention). `RecoveryCoordinator` is the SOLE owner
+  /// of these calls — `RecoverySpoolReplayer` runs entirely underneath the
+  /// already-held claim and never calls them itself. Required at
+  /// construction, no default — a test that wants always-able-to-claim opts
+  /// in explicitly via `.alwaysAllowedForTesting`.
+  private let recoveryEngineClaim: RecoveryEngineClaim
 
   /// #1707 Phase 3 (§3.1) — set by `RecordingStarter`'s refusal path when a
   /// live record-press was refused because recovery held the engine. Checked
@@ -171,6 +171,7 @@ final class RecoveryCoordinator {
     replayer: any RecoverySpoolReplaying,
     existingRecoveryIDs: @escaping @MainActor () async -> Set<String>,
     isDictationActive: @escaping @MainActor () -> Bool,
+    recoveryEngineClaim: RecoveryEngineClaim,
     resetEngine: @escaping @MainActor () -> Void = {}
   ) {
     self.keyStore = keyStore
@@ -178,6 +179,7 @@ final class RecoveryCoordinator {
     self.replayer = replayer
     self.existingRecoveryIDs = existingRecoveryIDs
     self.isDictationActive = isDictationActive
+    self.recoveryEngineClaim = recoveryEngineClaim
     self.resetEngine = resetEngine
   }
 
@@ -548,7 +550,7 @@ final class RecoveryCoordinator {
       // unloads/sets the active engine; starting recovery on top would race the
       // shared engine). Defer the remaining orphans — they stay on disk.
       guard !isDictationActive(), !isEngineSwitching() else { return false }
-      guard tryBeginRecoveryClaim() else {
+      guard recoveryEngineClaim.tryBegin() else {
         // The gate is held by an in-flight mutation; its `endMutation()`
         // wake-up (§3.2's `recoveryRetryOwed`) calls `requestRecoveryRecheck()`
         // when it releases, so stopping here is never a stranded deferral.
@@ -567,7 +569,7 @@ final class RecoveryCoordinator {
       defer {
         activeRecoveryID = nil
         isRecovering = false
-        endRecoveryClaim()
+        recoveryEngineClaim.end()
         onRecoveryComplete?()
       }
       let outcome = await replayer.replay(recoverySessionID: id) { [weak self] in

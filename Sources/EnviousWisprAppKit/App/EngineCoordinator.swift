@@ -73,18 +73,15 @@ final class EngineCoordinator {
     /// Background warm of the given engine (the matching driver's
     /// `ensureEngineWarm`). The ONLY place a load failure surfaces.
     let warm: @MainActor (ASRBackendType) async -> EngineWarmupOutcome
-    /// #1707 Phase 3 (§3.2, row 4) — `EngineRecoveryGate.tryBeginMutation()`,
-    /// injected exactly like `isRecovering` above (this type never references
-    /// `EngineRecoveryGate` by concrete type). Bound by the composition root;
-    /// default keeps every existing test that doesn't wire a gate behaving as
-    /// before (always able to proceed).
-    var tryBeginEngineMutation: @MainActor () -> Bool = { true }
-    /// `EngineRecoveryGate.endMutation()` — returns whether recovery was
-    /// denied while this mutation was in flight and is now owed a wake-up.
-    var endEngineMutation: @MainActor () -> Bool = { false }
-    /// Called when `endEngineMutation()` returns true — wakes a stranded
-    /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
-    var wakeRecoveryIfOwed: @MainActor () -> Void = {}
+    /// #1707 Phase 3 (§3.2, row 4) / #1741 Chunk 7 — the shared
+    /// `EngineMutationScope` constructed once by the composition root (this
+    /// type never references `EngineRecoveryGate` by concrete type). Guards
+    /// `startWarm()`'s background convenience warm — recovery must never race
+    /// it. Required at construction (no default) — replaces the old defaulted
+    /// `tryBeginEngineMutation`/`endEngineMutation`/`wakeRecoveryIfOwed`
+    /// closure triplet; the scope's own `onRefused` closure now owns refusal
+    /// telemetry.
+    let engineMutationScope: EngineMutationScope
   }
 
   // MARK: - Published snapshot + gate
@@ -403,45 +400,43 @@ final class EngineCoordinator {
       // natural trigger (a future switch landing here, or a press's own
       // cold-press warm) re-attempts — no bespoke retry machinery for a
       // background convenience warm.
-      guard self.deps.tryBeginEngineMutation() else {
-        TelemetryService.shared.recoveryEngineActionDeferred(site: "startWarm")
+      let claimOutcome = await self.deps.engineMutationScope.withClaim(site: "startWarm") {
+        let start = ContinuousClock.now
+        let outcome = await self.deps.warm(backend)
         self.warmingBackend = nil
-        return
+        if Task.isCancelled { return }
+        let ms = Self.elapsedMs(since: start)
+        switch outcome {
+        case .ready:
+          TelemetryService.shared.engineWarm(
+            engine: backend.rawValue, durationMs: ms, outcome: "ready")
+          if case .failed = self.currentSwitchPhase { self.currentSwitchPhase = .idle }
+        case .failed:
+          // switchBackend itself cannot fail; a load failure is a WARM outcome.
+          // Honor the user's choice (active stays the newly-selected engine) and
+          // surface honestly — the next press takes the cold-press path. No tight
+          // retry; the next genuine poke/press re-attempts.
+          self.currentSwitchPhase = .failed(reason: "warm_failed")
+          TelemetryService.shared.engineWarm(
+            engine: backend.rawValue, durationMs: ms, outcome: "failed")
+          TelemetryService.shared.engineSwitchFailed(
+            engine: backend.rawValue, reason: "warm_failed")
+        case .cancelled:
+          // #1388: a deliberate cancel (user Cancel during the onboarding
+          // install, which shares the single-flighted load this warm joined) is
+          // a choice, not a failure — no failed switch phase, no
+          // engine_switch_failed. The next genuine poke/press re-attempts.
+          TelemetryService.shared.engineWarm(
+            engine: backend.rawValue, durationMs: ms, outcome: "cancelled")
+        }
+        // Readiness changed with NO kernel state transition, so `onStateChange`
+        // would miss it — self-poke so the published status reflects it AND any
+        // gate-4b-deferred switch re-arms (REV-4).
+        self.poke(.warmCompleted)
       }
-      defer {
-        if self.deps.endEngineMutation() { self.deps.wakeRecoveryIfOwed() }
+      if case .refused = claimOutcome {
+        self.warmingBackend = nil
       }
-      let start = ContinuousClock.now
-      let outcome = await self.deps.warm(backend)
-      self.warmingBackend = nil
-      if Task.isCancelled { return }
-      let ms = Self.elapsedMs(since: start)
-      switch outcome {
-      case .ready:
-        TelemetryService.shared.engineWarm(
-          engine: backend.rawValue, durationMs: ms, outcome: "ready")
-        if case .failed = self.currentSwitchPhase { self.currentSwitchPhase = .idle }
-      case .failed:
-        // switchBackend itself cannot fail; a load failure is a WARM outcome.
-        // Honor the user's choice (active stays the newly-selected engine) and
-        // surface honestly — the next press takes the cold-press path. No tight
-        // retry; the next genuine poke/press re-attempts.
-        self.currentSwitchPhase = .failed(reason: "warm_failed")
-        TelemetryService.shared.engineWarm(
-          engine: backend.rawValue, durationMs: ms, outcome: "failed")
-        TelemetryService.shared.engineSwitchFailed(engine: backend.rawValue, reason: "warm_failed")
-      case .cancelled:
-        // #1388: a deliberate cancel (user Cancel during the onboarding
-        // install, which shares the single-flighted load this warm joined) is
-        // a choice, not a failure — no failed switch phase, no
-        // engine_switch_failed. The next genuine poke/press re-attempts.
-        TelemetryService.shared.engineWarm(
-          engine: backend.rawValue, durationMs: ms, outcome: "cancelled")
-      }
-      // Readiness changed with NO kernel state transition, so `onStateChange`
-      // would miss it — self-poke so the published status reflects it AND any
-      // gate-4b-deferred switch re-arms (REV-4).
-      self.poke(.warmCompleted)
     }
   }
 

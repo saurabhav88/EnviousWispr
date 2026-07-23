@@ -1,11 +1,11 @@
 import AppKit
-import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 // MARK: - KernelDictationDriverTests (epic #827, PR-4 §11.4)
@@ -712,6 +712,7 @@ import Testing
       processText: { raw, _ in raw },
       store: { _, _ in },
       deliver: { _ in .pasted },
+      engineMutationScope: .alwaysAllowedForTesting,
       minimumRecordingTicks: 0)  // PR-4.5 #4: clock never advances; opt out of the gate
     let observer = KernelHeartPathTelemetryObserver(
       kernel: kernel, audioCapture: FakeAudioCapture(),
@@ -728,7 +729,8 @@ import Testing
       emojiRestore: EmojiRestoreStep())
     let driver = KernelDictationDriver(
       kernel: kernel, observer: observer, outcome: outcome,
-      context: KernelSessionContext(), steps: steps, adapter: adapter)
+      context: KernelSessionContext(), steps: steps, adapter: adapter,
+      engineMutationScope: .alwaysAllowedForTesting)
     driver.start()
     return Harness(
       driver: driver, kernel: kernel, outcome: outcome, adapter: adapter, clock: clock,

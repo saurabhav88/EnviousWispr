@@ -6,6 +6,7 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 // MARK: - KernelDictationDriverBridgeMatrixTests (epic #827, PR-4b.2 bridge matrix)
@@ -56,6 +57,7 @@ import Testing
         currentTick: { 0 }, sleepTicks: { _ in },
         processText: { raw, _ in raw },
         store: { _, _ in }, deliver: { _ in .pasted },
+        engineMutationScope: .alwaysAllowedForTesting,
         minimumRecordingTicks: 0)
       let observer = KernelHeartPathTelemetryObserver(
         kernel: kernel, audioCapture: FakeAudioCapture(),
@@ -64,7 +66,8 @@ import Testing
         emitLifecycleEvent: { _ in })
       let driver = KernelDictationDriver(
         kernel: kernel, observer: observer, outcome: outcome,
-        context: context, steps: steps, adapter: adapter)
+        context: context, steps: steps, adapter: adapter,
+        engineMutationScope: .alwaysAllowedForTesting)
       driver.start()
       return Fixture(driver: driver, kernel: kernel)
     }

@@ -94,7 +94,8 @@ struct AudioEventRouterTests {
       transcriptStore: TranscriptStore(),
       keychainManager: KeychainManager(),
       captureTelemetry: CaptureTelemetryState(),
-      pasteCompletionRegistry: PasteCompletionRegistry())
+      pasteCompletionRegistry: PasteCompletionRegistry(),
+      engineMutationScope: .alwaysAllowedForTesting)
     let driver = KernelDictationDriverFactory.makeForParakeet(inputs: inputs)
 
     // Signal-based state-change waiter. Resumes the instant the driver

@@ -1,5 +1,5 @@
+import EnviousWisprASR
 import EnviousWisprModelDelivery
-import EnviousWisprServices
 import Foundation
 
 /// Retires the multilingual engine's foreign copy and refetches a verified one.
@@ -41,23 +41,19 @@ public final class WhisperKitLegacyUpgradeCoordinator {
 
   public var onEvent: (@MainActor @Sendable (Event) -> Void)?
 
-  /// #1707 Phase 3 (§3.2, row 14) — `EngineRecoveryGate.tryBeginMutation()`/
-  /// `endMutation()`, injected exactly like `onEvent` above (this type never
-  /// references `EngineRecoveryGate` by concrete type). This coordinator
-  /// never moves the engine itself, but its delete+refetch window (steps 6-7
-  /// of `retireAndRefetchIfNeeded()`) mutates the SAME on-disk model files a
-  /// concurrent crash-recovery replay's `activeEngine.load()` reads from — a
-  /// genuine hazard the launch grounding brief found (this Task and
-  /// `RecoveryCoordinator.scanAndRecover()`'s Task fire one line apart with
-  /// zero ordering). Defaults keep every existing test/legacy construction
-  /// unchanged (always able to proceed).
-  public var tryBeginEngineMutation: @MainActor () -> Bool = { true }
-  /// Returns whether recovery was denied while this mutation was in flight
-  /// and is now owed a wake-up.
-  public var endEngineMutation: @MainActor () -> Bool = { false }
-  /// Called when `endEngineMutation()` returns true — wakes a stranded
-  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
-  public var wakeRecoveryIfOwed: @MainActor () -> Void = {}
+  /// #1707 Phase 3 (§3.2, row 14) / #1741 Chunk 8 — the shared
+  /// `EngineMutationScope` constructed once by the composition root (this
+  /// type never references `EngineRecoveryGate` by concrete type). This
+  /// coordinator never moves the engine itself, but its delete+refetch window
+  /// (steps 6-8 of `retireAndRefetchIfNeeded()`) mutates the SAME on-disk
+  /// model files a concurrent crash-recovery replay's `activeEngine.load()`
+  /// reads from — a genuine hazard the launch grounding brief found (this
+  /// Task and `RecoveryCoordinator.scanAndRecover()`'s Task fire one line
+  /// apart with zero ordering). Required at construction (no default) —
+  /// replaces the old defaulted `tryBeginEngineMutation`/`endEngineMutation`/
+  /// `wakeRecoveryIfOwed` closure triplet; the scope's own `onRefused`
+  /// closure now owns refusal telemetry.
+  package let engineMutationScope: EngineMutationScope
 
   /// L5: at most one command is current, and its KIND is load-bearing — a later ensure-intent
   /// must know whether it is joining a fetch or waiting out a Cancel.
@@ -110,7 +106,7 @@ public final class WhisperKitLegacyUpgradeCoordinator {
   private var commandTicket = 0
   private var commandGeneration = 0
 
-  public init(
+  package init(
     documentsDirectory: URL = FileManager.default.urls(
       for: .documentDirectory, in: .userDomainMask)[0],
     appSupportDirectory: URL = FileManager.default.urls(
@@ -121,6 +117,7 @@ public final class WhisperKitLegacyUpgradeCoordinator {
     ensureAvailable: @escaping @MainActor @Sendable () async -> Bool,
     cancelActiveFetch: @escaping @MainActor @Sendable () async -> Void,
     isDeliveryEnabled: @escaping @MainActor @Sendable () -> Bool,
+    engineMutationScope: EngineMutationScope,
     hashFile: (@Sendable (URL) async throws -> String)? = nil,
     removeItem: ((URL) throws -> Void)? = nil
   ) {
@@ -132,6 +129,7 @@ public final class WhisperKitLegacyUpgradeCoordinator {
     self.ensureAvailable = ensureAvailable
     self.cancelActiveFetch = cancelActiveFetch
     self.isDeliveryEnabled = isDeliveryEnabled
+    self.engineMutationScope = engineMutationScope
     self.hashFile = hashFile
     self.removeItem = removeItem
   }
@@ -379,36 +377,30 @@ public final class WhisperKitLegacyUpgradeCoordinator {
     // attempt entirely; it is safe to retry on a future launch since the
     // owed marker (freshly written above at step 5, or already owed from a
     // prior launch) already exists and nothing has been deleted yet.
-    guard tryBeginEngineMutation() else {
-      TelemetryService.shared.recoveryEngineActionDeferred(site: "whisperKitLegacyMigration")
-      return
-    }
-    defer {
-      if endEngineMutation() { wakeRecoveryIfOwed() }
-    }
+    _ = await engineMutationScope.withClaim(site: "whisperKitLegacyMigration") {
+      // 6. Delete only what still matches the identity we captured (L3).
+      let result = LegacyRetirement.unlinkUnchanged(
+        root: foreignVariantDirectory, verdicts: verdicts, removeItem: removeItem)
+      if result.preserved.isEmpty {
+        removeEmptyManifestDirectories()
+        emit(.legacyRetired)
+      } else {
+        // Keep the marker and fetch anyway: we owe them a model either way, and the stale bytes
+        // are a disk cost, not a correctness one.
+        emit(.legacyRetirementFailed(reason: .delete))
+      }
 
-    // 6. Delete only what still matches the identity we captured (L3).
-    let result = LegacyRetirement.unlinkUnchanged(
-      root: foreignVariantDirectory, verdicts: verdicts, removeItem: removeItem)
-    if result.preserved.isEmpty {
-      removeEmptyManifestDirectories()
-      emit(.legacyRetired)
-    } else {
-      // Keep the marker and fetch anyway: we owe them a model either way, and the stale bytes
-      // are a disk cost, not a correctness one.
-      emit(.legacyRetirementFailed(reason: .delete))
-    }
+      guard generation == commandGeneration else { return }
 
-    guard generation == commandGeneration else { return }
+      // 7. Refetch through the verified path.
+      let admitted = await ensureAvailable()
+      guard generation == commandGeneration else { return }
 
-    // 7. Refetch through the verified path.
-    let admitted = await ensureAvailable()
-    guard generation == commandGeneration else { return }
-
-    // 8. Clear the marker on admission. Nothing else — no engine was ever moved.
-    if admitted {
-      try? LegacyRetirement.clearMarker(owedMarkerURL)
-      emit(.replacementCompleted)
+      // 8. Clear the marker on admission. Nothing else — no engine was ever moved.
+      if admitted {
+        try? LegacyRetirement.clearMarker(owedMarkerURL)
+        emit(.replacementCompleted)
+      }
     }
   }
 

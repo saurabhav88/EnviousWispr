@@ -251,20 +251,15 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// this remains settable but unused inside the adapter.
   var onEngineInterrupted: (@MainActor () -> Void)?
 
-  /// #1707 Phase 3 (§3.2, row 6) — `EngineRecoveryGate.tryBeginMutation()`/
-  /// `endMutation()`, injected exactly like `onEngineInterrupted` above (this
-  /// type never references `EngineRecoveryGate` by concrete type). Guards
-  /// `applyUnloadPolicy()`'s idle-timer unload — a background actor
-  /// unrelated to any active session, so recovery must never race it.
-  /// Defaults keep every existing test/legacy construction unchanged
-  /// (always able to proceed).
-  var tryBeginEngineMutation: @MainActor () -> Bool = { true }
-  /// Returns whether recovery was denied while this mutation was in flight
-  /// and is now owed a wake-up.
-  var endEngineMutation: @MainActor () -> Bool = { false }
-  /// Called when `endEngineMutation()` returns true — wakes a stranded
-  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
-  var wakeRecoveryIfOwed: @MainActor () -> Void = {}
+  /// #1707 Phase 3 (§3.2, row 6) / #1741 Chunk 9 — the shared
+  /// `EngineMutationScope` constructed once by the composition root, injected
+  /// exactly like `onEngineInterrupted` above (this type never references
+  /// `EngineRecoveryGate` by concrete type). Guards `applyUnloadPolicy()`'s
+  /// idle-timer unload — a background actor unrelated to any active session,
+  /// so recovery must never race it. Required at construction (no default) —
+  /// replaces the old defaulted `tryBeginEngineMutation`/`endEngineMutation`/
+  /// `wakeRecoveryIfOwed` closure triplet.
+  let engineMutationScope: EngineMutationScope
 
   /// #1707: WhisperKit is never the SOURCE of an ASR-interruption signal (no
   /// out-of-process connection to lose), but the shared `ASREventRouter` can
@@ -285,6 +280,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
 
   init(
     backend: any WhisperKitBackendDriving,
+    engineMutationScope: EngineMutationScope,
     languageDetector: LanguageDetector = LanguageDetector(),
     audioCaptureSessionIDSource: @escaping @MainActor () -> UInt64 = { 0 },
     wedgeRecoveryUnloadDeadlineSec: Double = 2.0,
@@ -293,6 +289,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) {
     self.backend = backend
+    self.engineMutationScope = engineMutationScope
     self.languageDetector = languageDetector
     self.audioCaptureSessionIDSource = audioCaptureSessionIDSource
     self.wedgeRecoveryUnloadDeadlineSec = wedgeRecoveryUnloadDeadlineSec
@@ -1072,7 +1069,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     case .never:
       return
     case .immediately:
-      modelUnloadTask = Task { [backend, weak self] in
+      modelUnloadTask = Task { [backend, engineMutationScope, weak self] in
         guard !Task.isCancelled else { return }
         // Re-check session keying right before the unload call — a
         // `beginSession(B)` between arm and execute must NOT see A's
@@ -1086,55 +1083,34 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         // task. Without the recheck, the cancelled task can still fire
         // `backend.unload()` under session B (Codex code-diff r8).
         guard !Task.isCancelled else { return }
-        // #1707 Phase 3 (§3.2, row 6): hold a mutation claim for the FULL
-        // awaited unload — a background idle-timer actor unrelated to any
-        // active session, so recovery must never race it. `self` gone ⇒
-        // proceed anyway (matches this task's existing tolerance for a
-        // deallocated adapter, e.g. the `cachedReadiness` no-op below).
-        let claimed = await MainActor.run { () -> Bool in
-          guard let self else { return true }
-          guard self.tryBeginEngineMutation() else {
-            TelemetryService.shared.recoveryEngineActionDeferred(site: "whisperKitIdleUnload")
-            return false
-          }
-          return true
-        }
-        guard claimed else { return }
-        // GitHub cloud review, PR #1732 round 10: the mutation-claim hop
-        // above is ITSELF a suspension point between the line-1088 final
-        // cancellation check and `backend.unload()` — a `beginSession(B)`
-        // landing in exactly this window would cancel this task the SAME
-        // way the line-1088 check exists to catch, but nothing re-checked
-        // it before the unload call. Re-check here, releasing the just-
-        // acquired claim (never leak it) before bailing.
-        guard !Task.isCancelled else {
-          await MainActor.run { [weak self] in
-            guard let self else { return }
-            if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
-          }
-          return
-        }
-        await backend.unload()
-        // #1707 Phase 3 (§3.2, row 6 — Codex code-diff round 1 P2): release
-        // the claim UNCONDITIONALLY right after the awaited unload returns,
-        // BEFORE the cancellation check below. Gating the release behind
-        // `!Task.isCancelled` left the claim permanently stranded whenever
-        // `cancelPendingUnload()` cancelled this Task while `backend.unload()`
-        // was in flight — `mutationCount` would never drain, refusing every
-        // later recovery attempt for the rest of the app session.
-        await MainActor.run { [weak self] in
-          guard let self else { return }
-          if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
-        }
-        guard !Task.isCancelled else { return }
-        await MainActor.run { [weak self] in
-          guard let self else { return }
-          self.cachedReadiness = .notReady
+        // #1707 Phase 3 (§3.2, row 6) / #1741 Chunk 9: hold a mutation claim
+        // for the FULL awaited unload — a background idle-timer actor
+        // unrelated to any active session, so recovery must never race it.
+        // `engineMutationScope` is captured directly (like `backend`), not
+        // read through `self` — the SAME "self gone ⇒ proceed anyway"
+        // tolerance the old claim check gave this task now holds
+        // structurally, since the claim no longer depends on the adapter
+        // surviving at all. The scope's own `defer` releases and wakes
+        // UNCONDITIONALLY on every exit from the operation below — the old
+        // manual "release even when cancelled, never gate it behind
+        // !Task.isCancelled" fix (Codex code-diff round 1 P2) is now
+        // structurally guaranteed rather than hand-maintained.
+        _ = await engineMutationScope.withClaim(site: "whisperKitIdleUnload") { [weak self] in
+          // GitHub cloud review, PR #1732 round 10: reaching this closure
+          // required an actor hop onto MainActor to acquire the claim — a
+          // `beginSession(B)` landing in exactly that window would cancel
+          // this task the SAME way the checks above exist to catch, but
+          // nothing would re-check it before the unload call otherwise.
+          // Re-check here, on entry, before ever calling `backend.unload()`.
+          guard !Task.isCancelled else { return }
+          await backend.unload()
+          guard !Task.isCancelled else { return }
+          self?.cachedReadiness = .notReady
         }
       }
     case .twoMinutes, .fiveMinutes, .tenMinutes, .fifteenMinutes, .sixtyMinutes:
       guard let interval = policy.interval else { return }
-      modelUnloadTask = Task { [backend, weak self] in
+      modelUnloadTask = Task { [backend, engineMutationScope, weak self] in
         try? await Task.sleep(for: .seconds(interval))
         guard !Task.isCancelled else { return }
         let shouldUnload = await MainActor.run { [weak self] () -> Bool in
@@ -1146,41 +1122,17 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         // task. Without the recheck, the cancelled task can still fire
         // `backend.unload()` under session B (Codex code-diff r8).
         guard !Task.isCancelled else { return }
-        // #1707 Phase 3 (§3.2, row 6): same atomic claim as the `.immediately`
-        // branch above.
-        let claimed = await MainActor.run { () -> Bool in
-          guard let self else { return true }
-          guard self.tryBeginEngineMutation() else {
-            TelemetryService.shared.recoveryEngineActionDeferred(site: "whisperKitIdleUnload")
-            return false
-          }
-          return true
-        }
-        guard claimed else { return }
-        // GitHub cloud review, PR #1732 round 10: see the `.immediately`
-        // branch above — the claim hop is itself a suspension point a
-        // `beginSession(B)` can cancel through, so re-check before unloading,
-        // releasing the just-acquired claim rather than leaking it.
-        guard !Task.isCancelled else {
-          await MainActor.run { [weak self] in
-            guard let self else { return }
-            if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
-          }
-          return
-        }
-        await backend.unload()
-        // #1707 Phase 3 (§3.2, row 6 — Codex code-diff round 1 P2): release
-        // UNCONDITIONALLY before the cancellation check; see the `.immediately`
-        // branch above for why gating this behind `!Task.isCancelled` leaks
-        // the claim forever.
-        await MainActor.run { [weak self] in
-          guard let self else { return }
-          if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
-        }
-        guard !Task.isCancelled else { return }
-        await MainActor.run { [weak self] in
-          guard let self else { return }
-          self.cachedReadiness = .notReady
+        // #1707 Phase 3 (§3.2, row 6) / #1741 Chunk 9: same atomic claim as
+        // the `.immediately` branch above.
+        _ = await engineMutationScope.withClaim(site: "whisperKitIdleUnload") { [weak self] in
+          // GitHub cloud review, PR #1732 round 10: see the `.immediately`
+          // branch above — reaching this closure required an actor hop onto
+          // MainActor to acquire the claim, so re-check cancellation here,
+          // on entry, before ever calling `backend.unload()`.
+          guard !Task.isCancelled else { return }
+          await backend.unload()
+          guard !Task.isCancelled else { return }
+          self?.cachedReadiness = .notReady
         }
       }
     }

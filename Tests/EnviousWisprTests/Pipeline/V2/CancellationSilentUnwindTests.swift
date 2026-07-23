@@ -1,5 +1,4 @@
 @preconcurrency import AVFoundation
-import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
@@ -8,6 +7,7 @@ import EnviousWisprStorage
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
 /// V2 fault-injection — Lane C invariant C2 (issue #291).
@@ -87,6 +87,7 @@ struct CancellationSilentUnwindTests {
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
+        engineMutationScope: .alwaysAllowedForTesting,
         captureErrorSink: { _, category, stage, _, _ in
           spy.record(.init(category: category, stage: stage))
         }

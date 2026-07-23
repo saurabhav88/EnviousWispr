@@ -1,3 +1,4 @@
+import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline
@@ -45,24 +46,31 @@ public final class ModelDeliveryHome {
   /// model whose baseline was never recorded is treated as not-first-run).
   private var firstRunByIdentity: [ModelIdentity: Bool] = [:]
 
-  /// #1707 Phase 3 (§3.2, row 17) — `EngineRecoveryGate.tryBeginMutation()`/
-  /// `endMutation()`, injected by the composition root (this type never
-  /// references `EngineRecoveryGate` by concrete type). Guards Parakeet's
-  /// Settings Download/Cancel — a separate guarded site from `ensureEngineWarm()`,
-  /// since Parakeet delivery admission does not always route through it.
-  /// Defaults keep every existing test/legacy construction unchanged (always
-  /// able to proceed).
-  var tryBeginEngineMutation: @MainActor () -> Bool = { true }
-  /// Returns whether recovery was denied while this mutation was in flight
-  /// and is now owed a wake-up.
-  var endEngineMutation: @MainActor () -> Bool = { false }
-  /// Called when `endEngineMutation()` returns true — wakes a stranded
-  /// recovery attempt. Bound to `RecoveryCoordinator.requestRecoveryRecheck`.
-  var wakeRecoveryIfOwed: @MainActor () -> Void = {}
+  /// #1707 Phase 3 (§3.2, row 17) / #1741 Chunk 6 — the shared
+  /// `EngineMutationScope` constructed once by the composition root (this
+  /// type never references `EngineRecoveryGate` by concrete type). Guards
+  /// Parakeet's Settings Download/Cancel — a separate guarded site from
+  /// `ensureEngineWarm()`, since Parakeet delivery admission does not always
+  /// route through it. Required at construction (no default) — replaces the
+  /// old defaulted `tryBeginEngineMutation`/`endEngineMutation`/
+  /// `wakeRecoveryIfOwed` closure triplet; the scope's own `onRefused`
+  /// closure now owns refusal telemetry, so this home no longer emits it.
+  let engineMutationScope: EngineMutationScope
 
-  public init() {
+  /// #1741 Chunk 6 — the ONLY seam this type exposes for the two bundled
+  /// manifest loads below. Production ALWAYS passes `.main` (the signed
+  /// app's own bundle stays the trust root, contract §4a — unchanged);
+  /// `WisprBootstrapper` is the sole production construction site and does
+  /// so explicitly. A unit-test process's own `Bundle.main` cannot see these
+  /// resources (they ride the app target, not any framework/test bundle),
+  /// so tests pass a bundle pointed at the SAME committed manifest files
+  /// instead of a divergent fixture. Internal, not public — no other
+  /// consumer needs it.
+  init(engineMutationScope: EngineMutationScope, manifestBundle: Bundle) {
+    self.engineMutationScope = engineMutationScope
     do {
-      let manifest = try DeliveryManifest.loadBundled(resource: "parakeet-delivery-manifest")
+      let manifest = try DeliveryManifest.loadBundled(
+        resource: "parakeet-delivery-manifest", bundle: manifestBundle)
       let identity = manifest.identity
       let registration = DeliveryRegistration(
         manifest: manifest,
@@ -87,7 +95,8 @@ public final class ModelDeliveryHome {
     // observers wired above are per-identity for Parakeet's mirror only, and the
     // event bridge below them is already generic across every identity.
     do {
-      let manifest = try DeliveryManifest.loadBundled(resource: "whisperkit-delivery-manifest")
+      let manifest = try DeliveryManifest.loadBundled(
+        resource: "whisperkit-delivery-manifest", bundle: manifestBundle)
       let appSupport = FileManager.default.urls(
         for: .applicationSupportDirectory, in: .userDomainMask)[0]
       let registration = DeliveryRegistration(
@@ -169,16 +178,12 @@ public final class ModelDeliveryHome {
   public func cancelParakeetDownload() {
     guard let identity = parakeetIdentity else { return }
     Task { [weak self] in
+      guard let self else { return }
       // #1707 Phase 3 (§3.2, row 17): hold a mutation claim for the FULL
       // cancel-drain.
-      guard let self, self.tryBeginEngineMutation() else {
-        TelemetryService.shared.recoveryEngineActionDeferred(site: "parakeetCancelDownload")
-        return
+      _ = await self.engineMutationScope.withClaim(site: "parakeetCancelDownload") {
+        _ = await self.controller.cancel(identity)
       }
-      defer {
-        if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
-      }
-      _ = await self.controller.cancel(identity)
     }
   }
 
@@ -187,16 +192,12 @@ public final class ModelDeliveryHome {
   public func resumeParakeetDownload() {
     guard let handle = parakeetHandle else { return }
     Task { [weak self] in
+      guard let self else { return }
       // #1707 Phase 3 (§3.2, row 17): hold a mutation claim for the FULL
       // download.
-      guard let self, self.tryBeginEngineMutation() else {
-        TelemetryService.shared.recoveryEngineActionDeferred(site: "parakeetResumeDownload")
-        return
+      _ = await self.engineMutationScope.withClaim(site: "parakeetResumeDownload") {
+        _ = await handle.ensureAvailable()
       }
-      defer {
-        if self.endEngineMutation() { self.wakeRecoveryIfOwed() }
-      }
-      _ = await handle.ensureAvailable()
     }
   }
 }
