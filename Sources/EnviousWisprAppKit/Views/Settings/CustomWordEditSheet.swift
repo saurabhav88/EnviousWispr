@@ -218,22 +218,23 @@ struct CustomWordEditSheet: View {
       guard !snapshotCanonical.isEmpty, snapshotCanonical == trimmed else { return }
       isLoadingSuggestions = true
       noSuggestionsAvailable = false
-      let suggestions = await service.suggest(for: trimmed)
-      guard !Task.isCancelled else {
+      let fetchResult = await CustomWordSuggestionFlow.fetch(
+        canonical: trimmed,
+        suggest: { await service.suggest(for: $0, priority: .interactive) })
+      guard case .completed(let suggestions) = fetchResult else {
         isLoadingSuggestions = false
         return
       }
-      if let suggestions {
-        if word.aliases.isEmpty {
-          word.aliases = suggestions.suggestedAliases
-        }
-        if word.category == .general {
-          word.category = suggestions.category
-        }
-        suggestionsApplied = true
-      } else {
-        noSuggestionsAvailable = true
-      }
+      // Read word.aliases/word.category LIVE, here, after the await — never a
+      // value captured before it — so a manual edit made while the fetch was
+      // in flight is never silently overwritten (#1701 Grounded Review
+      // Chunk 1 round 2 finding).
+      let outcome = CustomWordSuggestionFlow.apply(
+        suggestions: suggestions, currentAliases: word.aliases, currentCategory: word.category)
+      word.aliases = outcome.aliases
+      word.category = outcome.category
+      suggestionsApplied = outcome.suggestionsApplied
+      noSuggestionsAvailable = outcome.noSuggestionsAvailable
       isLoadingSuggestions = false
     }
   }
@@ -264,4 +265,87 @@ struct CustomWordEditSheet: View {
     }
   }
 
+}
+
+/// The suggestion-fetch-and-apply step of `CustomWordEditSheet`'s
+/// `.task(id:)` body, extracted so it can be driven and characterized by a
+/// unit test without a live view hierarchy (#1701 Grounded Review Chunk 1 —
+/// the founder authorized this extraction after the reviewer stopped the
+/// build for skipping the plan's required Add-term characterization test).
+/// Covers exactly the piece this PR's migration touches: applying the
+/// service's result. The surrounding debounce, empty/already-applied guards,
+/// and loading-indicator choreography stay in the view body, unchanged.
+/// `suggest` is a closure, not a concrete `WordSuggestionService`, so a test
+/// can drive this deterministically without live FoundationModels — the
+/// production call site (above) is what pins the actual `.interactive`
+/// priority argument.
+@MainActor
+enum CustomWordSuggestionFlow {
+  /// `.cancelled` when the calling task was cancelled before `suggest`
+  /// returned (checked AFTER the await, matching the original's post-await
+  /// `!Task.isCancelled` guard) — the caller must discard this entirely and
+  /// leave every `@State` field as it was, never calling `apply`.
+  enum FetchResult {
+    case cancelled
+    case completed(WordSuggestions?)
+  }
+
+  /// The async half: call `suggest` and report whether the calling task
+  /// survived. Deliberately does NOT touch aliases/category at all — see
+  /// `apply` below for why applying the result must happen synchronously,
+  /// after this returns, using live state read at that exact moment.
+  /// `suggest` is `@MainActor`-isolated, matching the view's own isolation —
+  /// it's invoked in place, never sent across actors.
+  static func fetch(
+    canonical: String,
+    suggest: @MainActor (String) async -> WordSuggestions?
+  ) async -> FetchResult {
+    let suggestions = await suggest(canonical)
+    guard !Task.isCancelled else { return .cancelled }
+    return .completed(suggestions)
+  }
+
+  struct Outcome: Equatable {
+    var aliases: [String]
+    var category: WordCategory
+    var suggestionsApplied: Bool
+    var noSuggestionsAvailable: Bool
+  }
+
+  /// Synchronous — mirrors the original inline body's `if let suggestions
+  /// { ... } else { ... }` exactly: aliases/category are only ever set once
+  /// (`if aliases.isEmpty` / `if category == .general`, never overwriting
+  /// what's already there). Being synchronous is the point (#1701 Grounded
+  /// Review Chunk 1 round 2 finding): `currentAliases`/`currentCategory`
+  /// must be the view's LIVE `@State` read by the caller at the moment this
+  /// is called, never a value captured before `fetch`'s await — a manual
+  /// edit made while the suggestion request was in flight must never be
+  /// silently overwritten by a stale pre-await snapshot.
+  static func apply(
+    suggestions: WordSuggestions?,
+    currentAliases: [String],
+    currentCategory: WordCategory
+  ) -> Outcome {
+    var aliases = currentAliases
+    var category = currentCategory
+    var suggestionsApplied = false
+    var noSuggestionsAvailable = false
+    if let suggestions {
+      if aliases.isEmpty {
+        aliases = suggestions.suggestedAliases
+      }
+      if category == .general {
+        category = suggestions.category
+      }
+      suggestionsApplied = true
+    } else {
+      noSuggestionsAvailable = true
+    }
+    return Outcome(
+      aliases: aliases,
+      category: category,
+      suggestionsApplied: suggestionsApplied,
+      noSuggestionsAvailable: noSuggestionsAvailable
+    )
+  }
 }

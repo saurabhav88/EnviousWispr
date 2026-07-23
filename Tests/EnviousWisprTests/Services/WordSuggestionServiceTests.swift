@@ -341,3 +341,362 @@ struct WordSuggestionServiceHeuristicClassifierTests {
     #expect(WordSuggestionService.classifyByHeuristic("   ") == nil)
   }
 }
+
+// MARK: - Permit queue test helpers (#1701)
+
+/// Deterministically waits for a waiter to actually register on the queue —
+/// polls real actor state via `Task.yield()`, bounded by a deadline-fallback
+/// `withThrowingTimeout` (`swift-patterns.md` RULE:
+/// tests-no-unconditional-continuation-await — an unbounded wait hangs CI on
+/// a genuine regression instead of failing; mirrors
+/// `LLMTelemetrySinkLiveTests`'s deadline-fallback shape, Grounded Review
+/// Chunk 1 finding).
+private func waitForWaiterCount(
+  _ queue: AliasSuggestionPermitQueue, toEqual expected: Int, timeoutSeconds: Double = 5
+) async throws {
+  try await withThrowingTimeout(seconds: timeoutSeconds) {
+    while await queue.waiterCountForTesting != expected {
+      try Task.checkCancellation()
+      await Task.yield()
+    }
+  }
+}
+
+/// Test-only rendezvous: `wait()` parks until `resume()` is called elsewhere.
+/// `waitUntilParked()` blocks until a concurrently-running `wait()` call has
+/// genuinely parked, giving tests a happens-before point to act from — e.g.
+/// cancelling a task only once it is provably suspended inside the hook
+/// under test, never racing real Swift Concurrency scheduling. Both are
+/// deadline-bounded (`withThrowingTimeout`, never an unconditional wait —
+/// same rule and finding as `waitForWaiterCount` above).
+private actor ResumeGate {
+  private(set) var parked = false
+  private var released = false
+
+  func markParked() { parked = true }
+  func resume() { released = true }
+
+  func wait(timeoutSeconds: Double = 5) async throws {
+    markParked()
+    try await withThrowingTimeout(seconds: timeoutSeconds) {
+      while await self.released == false {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
+    }
+  }
+
+  func waitUntilParked(timeoutSeconds: Double = 5) async throws {
+    try await withThrowingTimeout(seconds: timeoutSeconds) {
+      while await self.parked == false {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
+    }
+  }
+}
+
+/// Records call order from concurrent tasks without a data race.
+private actor OrderLog {
+  private(set) var entries: [String] = []
+  func record(_ entry: String) { entries.append(entry) }
+}
+
+/// Counts operation invocations without a data race.
+private actor CallCounter {
+  private(set) var count = 0
+  func increment() { count += 1 }
+}
+
+/// Pins the explicit permit queue behind `WordSuggestionService.suggest(for:)`
+/// and `.suggestAliases(for:category:)` (#1701). Swift actors are reentrant
+/// across a suspension point, so a naive "await inside an actor" would not
+/// actually serialize two concurrent callers — these tests exercise the
+/// actual continuation-based queue, not a simulation of it. Every test drives
+/// `AliasSuggestionPermitQueue` / `WordSuggestionService.withPermit` directly
+/// via `@testable import`: the public `suggest`/`suggestAliases` entry points
+/// gate on live FoundationModels/macOS 26 runtime availability, which is
+/// unavailable-or-unreliable in a test environment (this file has never
+/// exercised those two methods end-to-end, for the same reason — see the
+/// suites above, which only ever test the pure static helpers). The queue
+/// mechanics under test here are identical regardless of which entry point
+/// calls them.
+@Suite("WordSuggestionService — permit queue (#1701)")
+struct WordSuggestionServicePermitQueueTests {
+
+  @Test(
+    "An interactive arrival is granted the next permit ahead of already-queued background waiters")
+  func interactiveJumpsBackgroundQueue() async throws {
+    let queue = AliasSuggestionPermitQueue()
+    let holderGranted = await queue.acquire(id: UUID(), priority: .interactive)
+    #expect(holderGranted)
+
+    let bg1: Task<Bool, Never> = Task { await queue.acquire(id: UUID(), priority: .background) }
+    try await waitForWaiterCount(queue, toEqual: 1)
+    let bg2: Task<Bool, Never> = Task { await queue.acquire(id: UUID(), priority: .background) }
+    try await waitForWaiterCount(queue, toEqual: 2)
+    let interactive: Task<Bool, Never> = Task {
+      await queue.acquire(id: UUID(), priority: .interactive)
+    }
+    try await waitForWaiterCount(queue, toEqual: 3)
+
+    await queue.release()  // holder done — interactive must jump ahead of bg1/bg2
+    #expect(await interactive.value)
+    #expect(await queue.waiterCountForTesting == 2)  // bg1, bg2 still waiting
+
+    await queue.release()  // interactive done — bg1 (FIFO-first) granted next
+    #expect(await bg1.value)
+    #expect(await queue.waiterCountForTesting == 1)
+
+    await queue.release()  // bg1 done — bg2 granted last
+    #expect(await bg2.value)
+    #expect(await queue.waiterCountForTesting == 0)
+
+    await queue.release()  // bg2 done — no waiters remain
+  }
+
+  @Test("Two background requests are served FIFO")
+  func backgroundRequestsAreFIFO() async throws {
+    let queue = AliasSuggestionPermitQueue()
+    let holderGranted = await queue.acquire(id: UUID(), priority: .interactive)
+    #expect(holderGranted)
+
+    let first: Task<Bool, Never> = Task { await queue.acquire(id: UUID(), priority: .background) }
+    try await waitForWaiterCount(queue, toEqual: 1)
+    let second: Task<Bool, Never> = Task { await queue.acquire(id: UUID(), priority: .background) }
+    try await waitForWaiterCount(queue, toEqual: 2)
+
+    await queue.release()
+    #expect(await first.value)
+    #expect(await queue.waiterCountForTesting == 1)  // second must still be waiting
+
+    await queue.release()
+    #expect(await second.value)
+  }
+
+  @Test("A request cancelled while queued performs zero model operations")
+  func cancelledWhileQueuedNeverRunsOperation() async throws {
+    let queue = AliasSuggestionPermitQueue()
+    let holderGranted = await queue.acquire(id: UUID(), priority: .interactive)
+    #expect(holderGranted)
+
+    let waiting: Task<Bool, Never> = Task { await queue.acquire(id: UUID(), priority: .background) }
+    try await waitForWaiterCount(queue, toEqual: 1)
+
+    waiting.cancel()
+    #expect(await waiting.value == false)
+    #expect(await queue.waiterCountForTesting == 0)  // removed, not left dangling
+
+    await queue.release()  // holder done — nobody left to grant
+    #expect(await queue.waiterCountForTesting == 0)
+  }
+
+  @Test(
+    "release() skips a queued waiter whose latch is cancelled but not yet removed, granting the next live waiter directly — exactly-one continuation resumption throughout (Grounded Review Chunk 1 round 3 finding)"
+  )
+  func releaseSkipsLatchCancelledWaiterBeforeRemovalArrives() async throws {
+    let queue = AliasSuggestionPermitQueue()
+    let holderGranted = await queue.acquire(id: UUID(), priority: .interactive)
+    #expect(holderGranted)
+
+    let firstID = UUID()
+    let first: Task<Bool, Never> = Task { await queue.acquire(id: firstID, priority: .background) }
+    try await waitForWaiterCount(queue, toEqual: 1)
+    let second: Task<Bool, Never> = Task { await queue.acquire(id: UUID(), priority: .background) }
+    try await waitForWaiterCount(queue, toEqual: 2)
+
+    // Simulate the exact race release()'s doc comment describes: the latch
+    // is cancelled, but the async `cancelWaiting` removal message has NOT
+    // yet reached the actor — `first` is still physically present in
+    // `waiters` when release() runs below.
+    await queue.cancelLatchWithoutRemovingForTesting(id: firstID)
+
+    await queue.release()  // holder done — must skip the cancelled `first` and grant `second` directly
+    #expect(await second.value)
+    #expect(await first.value == false)
+    // release()'s skip-loop physically removed `first` too — nothing left
+    // for the (now redundant, since it already ran here) real cancellation
+    // path to find later; no double-resume, no leaked entry.
+    #expect(await queue.waiterCountForTesting == 0)
+  }
+
+  @Test(
+    "A request cancelled after grant but before inference starts performs zero model operations")
+  func cancelledInGapBetweenGrantAndInferencePerformsZeroModelCalls() async throws {
+    let service = WordSuggestionService()
+    let counter = CallCounter()
+    let gate = ResumeGate()
+
+    // Permit is free, so acquire() grants immediately; the operation is held
+    // at the gate right after grant, before it can run — the exact window
+    // this test proves is cancellation-safe.
+    let waiting: Task<Bool, Never> = Task {
+      await service.withPermit(
+        priority: .interactive,
+        whenNotGranted: false,
+        afterGrantForTesting: { try? await gate.wait() }
+      ) {
+        await counter.increment()
+        return true
+      }
+    }
+    try await gate.waitUntilParked()  // provably suspended right after grant, before the isCancelled check
+
+    waiting.cancel()
+    await gate.resume()
+
+    #expect(await waiting.value == false)
+    #expect(await counter.count == 0)
+  }
+
+  @Test("A higher-priority arrival never preempts the in-flight permit holder")
+  func inFlightHolderNeverPreempted() async throws {
+    let queue = AliasSuggestionPermitQueue()
+    let holderGranted = await queue.acquire(id: UUID(), priority: .background)
+    #expect(holderGranted)
+
+    let interactive: Task<Bool, Never> = Task {
+      await queue.acquire(id: UUID(), priority: .interactive)
+    }
+    try await waitForWaiterCount(queue, toEqual: 1)
+    // Nothing in the design can force the background holder to give up the
+    // permit early — the interactive arrival can only queue.
+    #expect(await queue.waiterCountForTesting == 1)
+
+    await queue.release()  // only the holder's own explicit release grants it
+    #expect(await interactive.value)
+  }
+
+  @Test("Both production entry points serialize through one shared permit")
+  func sharedPermitAcrossEntryPoints() async throws {
+    let service = WordSuggestionService()
+    let order = OrderLog()
+    let holdGate = ResumeGate()
+
+    let first: Task<Bool, Never> = Task {
+      await service.withPermit(priority: .interactive, whenNotGranted: false) {
+        try? await holdGate.wait()
+        await order.record("first")
+        return true
+      }
+    }
+    try await holdGate.waitUntilParked()  // `first` now holds the one permit
+
+    let second: Task<Bool, Never> = Task {
+      await service.withPermit(priority: .background, whenNotGranted: false) {
+        await order.record("second")
+        return true
+      }
+    }
+    // `second` genuinely had to queue behind `first` on `service.permitQueue`
+    // — proof they share the exact same instance, not independent permits.
+    try await waitForWaiterCount(service.permitQueue, toEqual: 1)
+
+    await holdGate.resume()
+    #expect(await first.value)
+    #expect(await second.value)
+    #expect(await order.entries == ["first", "second"])
+  }
+
+  #if DEBUG
+    // `rawSuggestionOverrideForTesting` is `#if DEBUG`-gated end to end
+    // (Grounded Review Chunk 1 round 2 finding) so the Release alias-eval
+    // harness's `benchmarkSuggest` measurements never gain an added actor
+    // hop; this test is gated the same way since it references that symbol.
+    @Test(
+      "benchmarkSuggest never touches the production permit queue, driven with a deterministic fake — no live model inference"
+    )
+    func benchmarkSuggestStaysOutsideQueue() async throws {
+      let service = WordSuggestionService()
+      // Deterministic fake, no live FoundationModels call — real Apple
+      // Intelligence eligibility is environment-dependent (Grounded Review
+      // Chunk 1 finding: the prior revision's assertion on the real model's
+      // output was flaky by construction — it happened to pass on this
+      // machine only because this machine has it enabled).
+      await service.rawSuggestionOverrideForTesting.set { word in
+        (category: .general, aliases: ["\(word)-alt-one", "\(word)-alt-two"])
+      }
+      let holdGate = ResumeGate()
+
+      let holder: Task<Bool, Never> = Task {
+        await service.withPermit(priority: .interactive, whenNotGranted: false) {
+          try? await holdGate.wait()
+          return true
+        }
+      }
+      try await holdGate.waitUntilParked()  // production permit held and stays held
+
+      // If `benchmarkSuggest` called `withPermit`/`permitQueue.acquire` like
+      // a production entry point would, this call would deadlock until
+      // `holdGate.resume()` below, which cannot run before this line does.
+      let record = await service.benchmarkSuggest(for: "gemini")
+      #expect(record.rawAliases == ["gemini-alt-one", "gemini-alt-two"])
+      #expect(record.errorDescription == nil)
+      #expect(record.timedOut == false)
+
+      await holdGate.resume()
+      #expect(await holder.value)
+    }
+  #endif
+
+  @Test(
+    "A request already cancelled before entering acquire() is granted no permit and leaves no queue state"
+  )
+  func cancelledBeforeRegistrationLeavesNoState() async throws {
+    // Creating a Task and immediately calling .cancel() does NOT prove the
+    // child hasn't started — it can run concurrently on another executor
+    // thread (Grounded Review Chunk 1 round 2 finding). A gate makes this
+    // deterministic instead: park BEFORE ever calling acquire(), cancel
+    // while provably parked, then resume — acquire() is entered already
+    // cancelled, which `withTaskCancellationHandler` guarantees invokes
+    // `onCancel` before `operation` ever runs.
+    let queue = AliasSuggestionPermitQueue()
+    let gate = ResumeGate()
+    let task: Task<Bool, Never> = Task {
+      try? await gate.wait()
+      return await queue.acquire(id: UUID(), priority: .interactive)
+    }
+    try await gate.waitUntilParked()
+    task.cancel()
+    await gate.resume()
+    #expect(await task.value == false)
+    #expect(await queue.waiterCountForTesting == 0)
+  }
+
+  @Test(
+    "Repeated grant-then-cancel-while-parked-after-grant leaves no residual actor state (Grounded Review Chunk 1 finding)"
+  )
+  func repeatedGrantThenCancelInGapLeavesNoResidue() async throws {
+    // Reproduces the exact shape of the leak Grounded Review found: a
+    // request is granted immediately (permit free) and is THEN cancelled
+    // while still parked in the post-grant hook, before its operation ever
+    // runs — a real, repeatedly reachable path via Add-term's debounced
+    // `.task(id:)` restarting on every keystroke. Cancelling only after the
+    // task has already completed (the round-1 version of this test) proves
+    // nothing: a completed task's cancellation handler is no longer active.
+    // The `CancellationLatch` redesign scopes the cancellation signal to the
+    // call stack instead of an actor-owned Set, so nothing should
+    // accumulate across repeated cycles of this real shape.
+    let service = WordSuggestionService()
+    for _ in 0..<50 {
+      let counter = CallCounter()
+      let gate = ResumeGate()
+      let waiting: Task<Bool, Never> = Task {
+        await service.withPermit(
+          priority: .interactive,
+          whenNotGranted: false,
+          afterGrantForTesting: { try? await gate.wait() }
+        ) {
+          await counter.increment()
+          return true
+        }
+      }
+      try await gate.waitUntilParked()  // permit granted; parked before the isCancelled check
+      waiting.cancel()
+      await gate.resume()
+      #expect(await waiting.value == false)
+      #expect(await counter.count == 0)
+      #expect(await service.permitQueue.waiterCountForTesting == 0)
+    }
+  }
+}

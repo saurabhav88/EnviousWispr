@@ -1,5 +1,17 @@
 import EnviousWisprCore
 
+/// Scheduling hint for `WordSuggestionService`'s shared permit queue (#1701).
+/// Does not change what a call returns, only when it runs relative to other
+/// queued calls: an `.interactive` waiter is granted the next permit ahead of
+/// any already-queued `.background` waiter; two waiters of equal priority are
+/// served FIFO. `public` because `WordSuggestionService.suggest(for:priority:)`
+/// is a public API and Swift requires its parameter types be at least as
+/// visible as the function itself.
+public enum AliasSuggestionPriority: Sendable, Equatable {
+  case interactive
+  case background
+}
+
 /// Narrow, on-device alias generator seam. Declared `package` (same-package
 /// consumers only — EnviousWisprAppKit's contacts-import enrichment), mirroring
 /// Core's package narrow protocols. The sole production conformer is
@@ -12,5 +24,9 @@ package protocol AliasSuggesting: Sendable {
   /// Generate spoken-variant aliases for `word`, with the category already known
   /// so no classification call is made. Returns nil when unavailable, timed out,
   /// or the model degenerated to self-echoes (mirrors `suggest(for:)`).
-  func suggestAliases(for word: String, category: WordCategory) async -> [String]?
+  /// `priority` has no default: every caller must state its own scheduling
+  /// intent explicitly rather than silently inheriting `.interactive` (#1701).
+  func suggestAliases(
+    for word: String, category: WordCategory, priority: AliasSuggestionPriority
+  ) async -> [String]?
 }
