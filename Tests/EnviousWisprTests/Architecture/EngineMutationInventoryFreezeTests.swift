@@ -1308,33 +1308,109 @@ import Testing
     return hits
   }
 
-  /// Generic recursive scan under an arbitrary repo-relative root, used by the
-  /// whole-repo single-authority tests (5/6/7/8) that are not scoped to the
-  /// four mutation-vocabulary directories.
-  private static func scanSources(pattern: String, under root: String) throws -> [String] {
-    let regex = try NSRegularExpression(pattern: pattern)
-    let rootURL = RepoRoot.sourceURL(root)
-    let enumerator = FileManager.default.enumerator(
-      at: rootURL, includingPropertiesForKeys: nil,
-      options: [.skipsHiddenFiles, .skipsPackageDescendants])
-    var hits: [String] = []
-    while let url = enumerator?.nextObject() as? URL {
+  /// The narrow source shapes used by the whole-repo single-authority tests
+  /// (5/6/7/8), structurally recognized from Swift tokens rather than text.
+  private enum SourceNeedle: Hashable, Sendable {
+    case identifier(String)
+    case staticMember(type: String, member: String)
+  }
+
+  private static func scanSources(_ needle: SourceNeedle, at rootURL: URL) throws -> [String] {
+    try scanSources([needle], at: rootURL)[needle, default: []]
+  }
+
+  /// URL-taking overload so the live single-authority checks and their
+  /// adversarial fixtures exercise the same discovery/read/parse/match path.
+  private static func scanSources(
+    _ needles: Set<SourceNeedle>, at rootURL: URL
+  ) throws -> [SourceNeedle: [String]] {
+    var enumerationError: Error?
+    guard
+      let enumerator = FileManager.default.enumerator(
+        at: rootURL, includingPropertiesForKeys: nil,
+        options: [.skipsHiddenFiles, .skipsPackageDescendants],
+        errorHandler: { _, error in
+          enumerationError = error
+          return false
+        })
+    else {
+      throw ScanFailedError(file: rootURL.path, reason: "could not create a directory enumerator")
+    }
+    var hits = Dictionary(uniqueKeysWithValues: needles.map { ($0, [String]()) })
+    while let url = enumerator.nextObject() as? URL {
       guard url.pathExtension == "swift" else { continue }
       let relative = url.path.replacingOccurrences(of: RepoRoot.url.path + "/", with: "")
-      let source = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-      for (idx, line) in source.split(separator: "\n", omittingEmptySubsequences: false)
-        .enumerated()
-      {
-        let text = String(line)
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        if trimmed.hasPrefix("//") { continue }
-        let ns = text as NSString
-        if regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) != nil {
-          hits.append("\(relative):\(idx + 1): \(trimmed)")
+      let source: String
+      do {
+        source = try String(contentsOf: url, encoding: .utf8)
+      } catch {
+        throw ScanFailedError(file: url.path, reason: "could not be read: \(error)")
+      }
+      let tree = Parser.parse(source: source)
+      guard !tree.hasError else {
+        throw ScanFailedError(
+          file: url.path, reason: "source did not parse cleanly (tree.hasError)")
+      }
+      let converter = SourceLocationConverter(fileName: url.path, tree: tree)
+      let tokens = Array(tree.tokens(viewMode: .sourceAccurate))
+
+      func appendHit(for needle: SourceNeedle, at token: TokenSyntax) {
+        let line = converter.location(for: token.positionAfterSkippingLeadingTrivia).line
+        hits[needle, default: []].append("\(relative):\(line)")
+      }
+
+      for needle in needles {
+        switch needle {
+        case .identifier(let expected):
+          for token in tokens {
+            if case .identifier(let name) = token.tokenKind, name == expected {
+              appendHit(for: needle, at: token)
+            }
+          }
+        case .staticMember(let expectedType, let expectedMember):
+          guard tokens.count >= 3 else { continue }
+          for index in 0...(tokens.count - 3) {
+            guard
+              case .identifier(let typeName) = tokens[index].tokenKind,
+              typeName == expectedType,
+              tokens[index + 1].tokenKind == .period,
+              case .identifier(let memberName) = tokens[index + 2].tokenKind,
+              memberName == expectedMember
+            else {
+              continue
+            }
+            appendHit(for: needle, at: tokens[index])
+          }
         }
       }
     }
+    if let enumerationError {
+      throw ScanFailedError(
+        file: rootURL.path, reason: "directory enumeration failed: \(enumerationError)")
+    }
     return hits
+  }
+
+  private struct SourceAuthoritySnapshot: Sendable {
+    let alwaysAllowedForTesting: [String]
+    let engineMutationScopeLive: [String]
+    let recoveryEngineClaimLive: [String]
+  }
+
+  /// One fail-closed parse of `Sources/`, shared by tests 5/6/7/8. Without
+  /// this snapshot those four assertions would independently parse the same
+  /// production tree five times.
+  private static let sourceAuthoritySnapshot: Result<SourceAuthoritySnapshot, any Error> = Result {
+    let alwaysAllowed = SourceNeedle.identifier("alwaysAllowedForTesting")
+    let mutationScope = SourceNeedle.staticMember(type: "EngineMutationScope", member: "live")
+    let recoveryClaim = SourceNeedle.staticMember(type: "RecoveryEngineClaim", member: "live")
+    let hits = try scanSources(
+      [alwaysAllowed, mutationScope, recoveryClaim],
+      at: RepoRoot.sourceURL("Sources"))
+    return SourceAuthoritySnapshot(
+      alwaysAllowedForTesting: hits[alwaysAllowed, default: []],
+      engineMutationScopeLive: hits[mutationScope, default: []],
+      recoveryEngineClaimLive: hits[recoveryClaim, default: []])
   }
 
   // MARK: 1 — the live scan's raw multiset exactly matches the frozen table
@@ -1612,6 +1688,10 @@ import Testing
     #expect(throws: ScanFailedError.self) {
       try Self.scanRoot(at: tempDir)
     }
+    #expect(throws: ScanFailedError.self) {
+      try Self.scanSources(
+        .staticMember(type: "EngineMutationScope", member: "live"), at: tempDir)
+    }
   }
 
   @Test(
@@ -1622,6 +1702,10 @@ import Testing
       "does-not-exist-\(UUID().uuidString)")
     #expect(throws: ScanFailedError.self) {
       try Self.scanRoot(at: missingDir)
+    }
+    #expect(throws: ScanFailedError.self) {
+      try Self.scanSources(
+        .staticMember(type: "EngineMutationScope", member: "live"), at: missingDir)
     }
   }
 
@@ -1758,7 +1842,7 @@ import Testing
       "Sources/EnviousWisprASR/EngineMutationScope.swift",
       "Sources/EnviousWisprAppKit/App/RecoveryEngineClaim.swift",
     ]
-    let hits = try Self.scanSources(pattern: #"alwaysAllowedForTesting"#, under: "Sources")
+    let hits = try Self.sourceAuthoritySnapshot.get().alwaysAllowedForTesting
     let offenders = hits.filter { hit in
       !declaringFiles.contains { hit.hasPrefix($0 + ":") }
     }
@@ -1774,9 +1858,29 @@ import Testing
 
   // MARK: 6 — exactly one production EngineMutationScope.live(...) call
 
+  @Test("a capability construction split across physical lines is still detected")
+  func multilineCapabilityConstructionIsDetected() throws {
+    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tempDir) }
+    let fileURL = tempDir.appendingPathComponent("MultilineConstruction.swift")
+    try """
+    let scope = EngineMutationScope
+      .live(
+        tryBegin: { true },
+        end: { false },
+        wake: {},
+        onRefused: { _ in })
+    """.write(to: fileURL, atomically: true, encoding: .utf8)
+
+    let hits = try Self.scanSources(
+      .staticMember(type: "EngineMutationScope", member: "live"), at: tempDir)
+    #expect(hits.count == 1, "multiline construction must count as one hit: \(hits)")
+  }
+
   @Test("exactly one production EngineMutationScope.live(...) construction")
   func engineMutationScopeLiveConstructedOnce() throws {
-    let hits = try Self.scanSources(pattern: #"EngineMutationScope\.live\("#, under: "Sources")
+    let hits = try Self.sourceAuthoritySnapshot.get().engineMutationScopeLive
     #expect(
       hits.count == 1,
       "expected exactly one `EngineMutationScope.live(...)` construction, found \(hits.count): \(hits)"
@@ -1788,7 +1892,7 @@ import Testing
 
   @Test("exactly one production RecoveryEngineClaim.live(...) construction")
   func recoveryEngineClaimLiveConstructedOnce() throws {
-    let hits = try Self.scanSources(pattern: #"RecoveryEngineClaim\.live\("#, under: "Sources")
+    let hits = try Self.sourceAuthoritySnapshot.get().recoveryEngineClaimLive
     #expect(
       hits.count == 1,
       "expected exactly one `RecoveryEngineClaim.live(...)` construction, found \(hits.count): \(hits)"
@@ -1800,8 +1904,9 @@ import Testing
 
   @Test("both .live(...) capability constructions live in WisprBootstrapper.swift")
   func bothLiveConstructionsShareOneCompositionRoot() throws {
-    let scopeHits = try Self.scanSources(pattern: #"EngineMutationScope\.live\("#, under: "Sources")
-    let claimHits = try Self.scanSources(pattern: #"RecoveryEngineClaim\.live\("#, under: "Sources")
+    let snapshot = try Self.sourceAuthoritySnapshot.get()
+    let scopeHits = snapshot.engineMutationScopeLive
+    let claimHits = snapshot.recoveryEngineClaimLive
     let allInBootstrapper =
       (scopeHits + claimHits).allSatisfy { $0.contains("App/WisprBootstrapper.swift") }
     let allHits = scopeHits + claimHits
