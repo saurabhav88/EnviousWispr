@@ -29,9 +29,14 @@ import Testing
 // the ten protocols (including a changed parameter label, type, return
 // type, `async`/`throws`, property accessor kind, or an added overload); a
 // changed inheritance clause; a member added only via a protocol extension
-// with no matching requirement; and a signature change to either pinned
-// concrete method. It will NOT, and cannot, catch: a brand-new protocol
-// nobody has told it about, a brand-new concrete type, a new XPC route, a
+// declared in the SAME FILE as the protocol, with no matching requirement;
+// and a signature change to either pinned concrete method. It will NOT, and
+// cannot, catch: a brand-new protocol nobody has told it about, a
+// brand-new concrete type, a new XPC route, an extension of one of these
+// ten protocols declared in a DIFFERENT file (grounded 2026-07-23: none of
+// the ten currently has one — Codex final-integration r1 flagged this as a
+// theoretical future gap, not a present one — but the scanner does not look
+// beyond each protocol's own declaration file), a
 // macro-generated call, or a concrete engine type accessed with no
 // protocol and no cast at all (the exact structural hole a proposed
 // general downcast scanner had — Codex's second grounded review round
@@ -125,8 +130,19 @@ import Testing
               context: "#if clause inside a protocol/extension member block",
               reason: "clause does not contain a declaration list — fail closed rather than skip")
           }
-          let clauseCondition = clause.condition?.trimmedDescription
-          try collectMembers(nested, condition: clauseCondition, into: &members)
+          // `#else` has no condition expression of its own (Codex final-
+          // integration r1: recording it as `nil` made it indistinguishable
+          // from a genuinely unconditional top-level member — moving a
+          // requirement from `#else` to unconditional code would then leave
+          // the frozen signature unchanged). Labeled "else" instead, which
+          // can never collide with a real condition's trimmed text.
+          let clauseCondition = clause.condition?.trimmedDescription ?? "else"
+          // A NESTED `#if` combines with its outer condition rather than
+          // replacing it (same review round: replacing silently dropped the
+          // outer guard, under-reporting the true compiled condition).
+          let combinedCondition = [condition, clauseCondition].compactMap { $0 }.joined(
+            separator: " && ")
+          try collectMembers(nested, condition: combinedCondition, into: &members)
         }
         continue
       }
@@ -858,6 +874,47 @@ import Testing
         }
         """, protocolName: "P")
     #expect(members.contains { $0.condition == "DEBUG" && $0.signature.contains("armHold") })
+  }
+
+  @Test(
+    "an #else member is labeled distinctly from a genuinely unconditional member, so moving a requirement from #else to unconditional code is a real detected change (Codex final-integration r1)"
+  )
+  func adversarialElseMemberIsDistinguishedFromUnconditional() throws {
+    let members = try Self.members(
+      of: """
+        protocol P {
+          #if DEBUG
+            func armHold() async
+          #else
+            func releaseHold() async
+          #endif
+        }
+        """, protocolName: "P")
+    let releaseHold = members.first { $0.signature.contains("releaseHold") }
+    #expect(releaseHold?.condition != nil, "an #else member must not be recorded as unconditional")
+    // Moving it to genuinely unconditional code must be a real, detected change.
+    let unconditional = try Self.members(
+      of: "protocol P { func releaseHold() async }", protocolName: "P")
+    #expect(members != unconditional)
+  }
+
+  @Test(
+    "a nested #if combines with its outer condition rather than replacing it (Codex final-integration r1)"
+  )
+  func adversarialNestedConditionCombinesWithOuter() throws {
+    let members = try Self.members(
+      of: """
+        protocol P {
+          #if DEBUG
+            #if os(macOS)
+              func armHold() async
+            #endif
+          #endif
+        }
+        """, protocolName: "P")
+    let armHold = members.first { $0.signature.contains("armHold") }
+    #expect(armHold?.condition?.contains("DEBUG") == true)
+    #expect(armHold?.condition?.contains("os(macOS)") == true)
   }
 
   @Test(
