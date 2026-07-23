@@ -86,6 +86,53 @@ import Testing
 // must match this frozen table. A site that appears, disappears, or is
 // duplicated fails immediately; the classification labels are then verified
 // by self-review and Codex against live source (never trusted as-is).
+//
+// Chunk 11 (2026-07-23): what this suite covers, and an honest statement of
+// what it cannot. A grounded review of Chunk 10's original 13-name
+// vocabulary found it omitted real engine-mutating methods. Grounding
+// expanded the deliberately bounded surface from three protocols to ten:
+// seven additional known protocols this file had not previously enumerated
+// (`ASREngineLanguageIdentifying`, `ASREngineWarmupCancelling`,
+// `WhisperKitBackendDriving`, `WhisperKitIncrementalSession`,
+// `WhisperKitTranscribing`, `ASRServiceProtocol`,
+// `ASREngineTelemetryProviding` — some read-only, frozen for drift even
+// though they are not vocabulary candidates themselves; see
+// `EngineProtocolSurfaceFreezeTests` for all ten's frozen signatures) plus
+// two concrete-only method surfaces not declared by any of the ten frozen
+// protocols (`WhisperKitEngineAdapter.unloadForRemoval()`, reached via a
+// type-cast at one call site; `ParakeetBackend.prepare(cacheOnly:progressCallback:)`,
+// reached via a type-cast at one call site AND via direct, uncast
+// construction/ownership at another — `ASRServiceHandler.swift` builds and
+// holds a concrete `ParakeetBackend` natively, so "reached only via a cast"
+// would be false for this one). Two consecutive grounded
+// Codex reviews each found "one more engine-facing surface" the prior pass
+// had missed — including, on the second pass, a structural hole in a
+// proposed general downcast scanner (a real production call site takes a
+// concrete engine type directly as a typed parameter, no cast at all). That
+// pattern — repeated discovery with no sign of converging to zero — is this
+// project's own signal that hand-enumerating "every possible way into the
+// engine" cannot be proven exhaustive, and that trying to build a
+// general-purpose detector for it was the wrong goal.
+//
+// So Chunk 11 does NOT claim, and no comment in this file should ever claim
+// again, that this suite "detects all future engine-touching code," proves
+// the vocabulary is complete, or makes an unsafe engine access structurally
+// impossible. What it DOES do, concretely: freezes the reference inventory
+// for every method name in `vocabulary` below (this file) and the exact
+// signatures of the ten protocols named above plus the two known concrete
+// escape hatches (`EngineProtocolSurfaceFreezeTests`) — so a NEW reference to
+// an ALREADY-tracked name, or a change to an ALREADY-tracked protocol's
+// signature, fails the build and demands classification. It does NOT, and
+// structurally cannot, discover a brand-new protocol nobody has told it
+// about, a brand-new concrete type, a new XPC route, a macro-generated call,
+// or a concrete engine type accessed with no protocol and no cast at all —
+// those require a human doing the same kind of grounding pass that found the
+// ten protocols and two escape hatches here, not a bigger test. Real,
+// already-known production races found along the way are tracked as
+// `knownGap` entries pointing at their own issues (#1745, #1749) — this
+// suite documents them; it does not fix them, and a test cannot substitute
+// for the documentation, code review, and engineering judgment an actual
+// fix or a future architecture change would need.
 @Suite struct EngineMutationInventoryFreezeTests {
 
   // MARK: Classification
@@ -188,26 +235,100 @@ import Testing
 
   // MARK: Vocabulary — sessionless/maintenance mutation calls only
 
-  /// Exact vocabulary from the approved Chunk 10 scope. Deliberately excludes
-  /// `applyUnloadPolicy(` — a container that arms a policy-scoped Task, not a
-  /// raw mutation call itself (its OWN body's `backend.unload()` is what the
-  /// `unload` matcher below catches).
+  /// Vocabulary as of the #1741 Chunk 11 bounded known-surface freeze
+  /// (2026-07-23), superseding Chunk 10's original 13 names. Two grounded
+  /// Codex plan reviews traced the full engine-facing surface across TEN
+  /// protocols (`ASRBackend`, `ASRManagerInterface`, `ASREngineAdapter`,
+  /// `ASREngineLanguageIdentifying`, `ASREngineWarmupCancelling`,
+  /// `WhisperKitBackendDriving`, `WhisperKitIncrementalSession`,
+  /// `WhisperKitTranscribing`, `ASRServiceProtocol`,
+  /// `ASREngineTelemetryProviding` — see `EngineProtocolSurfaceFreezeTests`
+  /// for their frozen signatures) plus two concrete-only method surfaces not
+  /// declared by any of the ten frozen protocols
+  /// (`WhisperKitEngineAdapter.unloadForRemoval()`, reached via a type-cast;
+  /// `ParakeetBackend.prepare(cacheOnly:progressCallback:)`, reached via a
+  /// type-cast at one call site and via direct, uncast construction/ownership
+  /// in `ASRServiceHandler`; both are already caught here because their names
+  /// match an existing/added entry below. Only their EXISTENCE and signature
+  /// were invisible to the old name-only protocol check, which
+  /// `EngineProtocolSurfaceFreezeTests` now pins explicitly).
   ///
-  /// #1741 Chunk 10, council-approved contract pivot: a "hit" is any real
-  /// code reference (bare `DeclReferenceExprSyntax`, or the `.declName` of a
-  /// `MemberAccessExprSyntax` — see `CallSiteVisitor` below) whose terminal
-  /// identifier is one of these 13 names — not a proof that the reference is
-  /// ultimately called. `switchBackend` is matched uniformly like every
-  /// other name; the founder's prior `.switchBackend(to:` argument-label
-  /// distinction was deliberately dropped (Codex plan review: keeping any
-  /// argument-shape special case reintroduces the exact "does this shape
-  /// count" question the pivot exists to retire — the one production
-  /// reference already carries `to:` in its recorded source text
-  /// descriptively, so no information is lost).
+  /// New in Chunk 11: `transcribe`, `feedAudio`, `finalizeStreaming`,
+  /// `cancelStreaming` (Codex's original finding — real across ALL of
+  /// `ASRBackend`/`ASRManagerInterface`/`ASRServiceProtocol`, matched once
+  /// per name since bare-identifier matching does not distinguish layers),
+  /// `beginSession`, `acceptAudio`, `finalize` (`ASREngineAdapter` /
+  /// `WhisperKitIncrementalSession` — `finalize` also matches
+  /// `WhisperKitStreamingSession.finalize(finalSamples:speechSegments:)`,
+  /// a different type sharing the bare name; classified like every other
+  /// entry, not specially unified), `observeLID`, `makeStreamingSession`
+  /// (`WhisperKitBackendDriving`), `cancelSessionlessWarmup`
+  /// (`ASREngineWarmupCancelling`), `unloadForRemoval` (concrete-only,
+  /// reached via `adapter as? WhisperKitEngineAdapter`), `transcribeSamples`,
+  /// `feedAudioBuffer` (`ASRServiceProtocol` — its own `loadModel`/
+  /// `unloadModel`/`startStreaming`/`finalizeStreaming`/`cancelStreaming`
+  /// requirements share bare names already tracked, so only these two
+  /// XPC-specific names are new).
+  ///
+  /// Deliberately excludes `applyUnloadPolicy(` — a container that arms a
+  /// policy-scoped Task, not a raw mutation call itself (its own body's
+  /// `backend.unload()` is what the `unload` matcher below catches) — and,
+  /// for the same reason, `noteTranscriptionComplete`: both route to an
+  /// already-tracked `unload`/`unloadModel` reference; the CORRECT reason to
+  /// exclude them is that their target is independently caught, NOT (an
+  /// earlier draft's wrong claim) that they "don't gate engine mutation" —
+  /// `applyUnloadPolicy`'s `.immediately` case directly arms a real
+  /// deferred `backend.unload()` call (`WhisperKitEngineAdapter.swift:1072`).
+  ///
+  /// Two names are deliberately excluded despite being real engine
+  /// operations, for the SAME bare-name-collision reason, each documented
+  /// with its real production call sites so the exclusion is never mistaken
+  /// for an oversight:
+  /// - `cancel` (`ASREngineAdapter`/`WhisperKitIncrementalSession`): ~134
+  ///   raw text matches across the four scanned roots, almost all
+  ///   `Task.cancel()`/`<x>Task?.cancel()` and other types' own unrelated
+  ///   `cancel()` methods. The real engine-touching sites are
+  ///   `KernelDictationDriver.swift:641`, `RecordingSessionKernel.swift:3852`
+  ///   (`adapter.cancel()`), and `WhisperKitEngineAdapter.swift:988`
+  ///   (`live.cancel()`, forwarding to `WhisperKitStreamingSession.cancel()`).
+  ///   NOT claimed safe merely because their owners hold
+  ///   `EngineMutationScope` — `RecordingSessionKernel.swift:3852`'s call
+  ///   specifically sits inside the #1749 race window (see the doc comment
+  ///   above `expected` for how that race surfaces in this table instead,
+  ///   through `transcribe`).
+  /// - `start` (`WhisperKitIncrementalSession`): 25 raw text matches, almost
+  ///   all `Timer`/`NWListener`/`NWConnection`/hotkey-service/watcher
+  ///   `.start()` calls with no relation to the ASR engine. The real sites
+  ///   are `TailBenchmarkHarness.swift:163`, `TailBenchmarkHarness.swift:288`,
+  ///   and `WhisperKitEngineAdapter.swift:526` (`session.start(audioSamplesProvider:)`).
+  ///
+  /// Both exclusions are permanent under THIS design, not temporary
+  /// oversights — a future rename of either protocol requirement (e.g.
+  /// `cancelEngine()`, `startIncrementalDecoding()`) would remove the
+  /// bare-name collision and let either be tracked; that rename is out of
+  /// scope for this chunk (no separate architecture issue tracks it — a
+  /// test suite is a guardrail, not a substitute for the documentation,
+  /// review, and engineering judgment an actual rename decision needs).
+  ///
+  /// #1741 Chunk 10, council-approved contract pivot, unchanged by Chunk 11:
+  /// a "hit" is any real code reference (bare `DeclReferenceExprSyntax`, or
+  /// the `.declName` of a `MemberAccessExprSyntax` — see `CallSiteVisitor`
+  /// below) whose terminal identifier is one of these names — not a proof
+  /// that the reference is ultimately called. `switchBackend` is matched
+  /// uniformly like every other name; the founder's prior
+  /// `.switchBackend(to:` argument-label distinction was deliberately
+  /// dropped (Codex plan review: keeping any argument-shape special case
+  /// reintroduces the exact "does this shape count" question the pivot
+  /// exists to retire — the one production reference already carries `to:`
+  /// in its recorded source text descriptively, so no information is lost).
   private static let vocabulary: Set<String> = [
     "warmUp", "warmUpFromCache", "unload", "unloadModel", "prepare", "loadModel", "loadModels",
     "switchBackend", "startStreaming", "cancelInFlightLoad", "recoverFromWedge",
     "recoverFromASRInterruption", "retryDecode",
+    // Chunk 11 additions:
+    "transcribe", "feedAudio", "finalizeStreaming", "cancelStreaming", "beginSession",
+    "acceptAudio", "finalize", "observeLID", "makeStreamingSession", "cancelSessionlessWarmup",
+    "unloadForRemoval", "transcribeSamples", "feedAudioBuffer",
   ]
 
   /// A member-access reference (`adapter.warmUp`) or bare reference
@@ -259,12 +380,58 @@ import Testing
     // `BenchmarkSuite.ensureModelLoaded` (under its own
     // `engineMutationScope.withClaim`) — always reached with a claim already
     // held, so `transitivelyCoveredByCaller` rather than `recoveryOwned`.
+    // #1749 (found during the Chunk 11 grounding pass): this `load` closure is
+    // reached from BOTH `BenchmarkSuite` (safe, its own separate claim) and
+    // `RecoverySpoolReplayer` (recovery) — but recovery's claim does not wait
+    // for a just-ended ordinary session's unawaited termination cleanup to
+    // finish before this call proceeds, so this single physical site carries
+    // the less-safe caller's classification rather than a caller-averaged one.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "prepare",
-      text: "try await whisperKitBackend.prepare()", classification: .transitivelyCoveredByCaller),
+      text: "try await whisperKitBackend.prepare()",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "recovery's claim does not wait for a just-ended ordinary session's unawaited termination cleanup to finish before this call proceeds"
+      )),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "loadModel",
-      text: "try await asrManager.loadModel()", classification: .transitivelyCoveredByCaller),
+      text: "try await asrManager.loadModel()",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "recovery's claim does not wait for a just-ended ordinary session's unawaited termination cleanup to finish before this call proceeds"
+      )),
+    // #1749: recovery's two concrete transcribe routes, reached only after
+    // the `load` calls directly above.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "transcribe",
+      text:
+        "return try await whisperKitBackend.transcribe(audioSamples: samples, options: options)",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "recovery's claim does not wait for a just-ended ordinary session's unawaited termination cleanup to finish before this call proceeds"
+      )),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "transcribe",
+      text: "return try await asrManager.transcribe(audioSamples: samples, options: options)",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "recovery's claim does not wait for a just-ended ordinary session's unawaited termination cleanup to finish before this call proceeds"
+      )),
+    // #1749 — the original site this whole gap was found at: `RecoverySpoolReplayer`'s
+    // own call into `activeEngine.transcribe`, one caller of the two
+    // `ActiveEngineOperation` transcribe routes directly above.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/RecoverySpoolReplayer.swift", matcher: "transcribe",
+      text: "result = try await activeEngine.transcribe(recovered.samples, options)",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "recovery's claim does not wait for a just-ended ordinary session's unawaited termination cleanup to finish before this call proceeds"
+      )),
     // `hardCancel` is DIFFERENT: its sole production caller
     // (`RecoveryCoordinator.discardActiveRecovery()` -> `resetEngine` closure,
     // `WisprBootstrapper.swift:669`) fires it inside an unawaited, unstructured
@@ -641,6 +808,348 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "prepare",
       text: "let task = Task<Void, Error> { try await captured.prepare() }",
+      classification: .transitivelyCoveredByCaller),
+    // `startStreamingSession`'s vend — reached only at a session's own start
+    // (same window `ParakeetEngineAdapter.beginSession`'s streaming-start
+    // entry above covers), a `WhisperKitBackendDriving` requirement.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift",
+      matcher: "makeStreamingSession",
+      text: "guard let session = await backend.makeStreamingSession(options: options) else {",
+      classification: .structurallySafe),
+    // Language-ID observation inside the adapter's own finalize/decode flow —
+    // session-scoped, an `ASREngineLanguageIdentifying`-adjacent read that
+    // runs a real inference but never mutates persistent engine state.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "observeLID",
+      text: "await backendForObserver.observeLID(", classification: .structurallySafe),
+    // The adapter's own flush into its incremental streaming session's
+    // `WhisperKitIncrementalSession.finalize` — session-scoped (`streamingSession`
+    // is non-nil only during an active streaming session).
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "finalize",
+      text: "let result = await live.finalize(finalSamples: [], speechSegments: [])",
+      classification: .structurallySafe),
+    // #1749 — the WhisperKit batch transcribe inside `finalize()`, one of the
+    // "ordinary-session operations that can remain in flight" Codex's
+    // grounded review traced: not guaranteed to stop when the session's own
+    // unawaited cancellation races recovery's gate opening.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "transcribe",
+      text: "let result = try await backend.transcribe(",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "an in-flight batch transcribe is not guaranteed to stop before recovery's gate opens"
+      )),
+
+    // MARK: ASRManager — new Chunk 11 XPC-mirrored operations. Same inherited-
+    // safety reasoning as the file's existing `prepare`/`startStreaming`
+    // entries: these are `ASRManager`'s own forwarding implementations,
+    // reached by both safe (gated/session-scoped) and, transitively, the
+    // #1749-affected recovery path — the #1749 tag lives at the specific
+    // `ActiveEngineOperation`/adapter-level call sites Codex's grounded
+    // review named, not cascaded through every deeper forwarding layer.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "transcribe",
+      text:
+        "return try await activeBackend.transcribe(audioSamples: audioSamples, options: options)",
+      classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "feedAudio",
+      text: "try await activeBackend.feedAudio(buffer)",
+      classification: .transitivelyCoveredByCaller),
+    // `startStreaming`'s pre-start drain, and `finalizeStreaming`'s own
+    // post-finalize path — both reached via the same mixed caller set.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "cancelStreaming",
+      text: "await activeBackend.cancelStreaming()", classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "cancelStreaming",
+      text: "await activeBackend.cancelStreaming()", classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "finalizeStreaming",
+      text: "let result = try await activeBackend.finalizeStreaming()",
+      classification: .transitivelyCoveredByCaller),
+
+    // MARK: ASRManagerProxy — new Chunk 11 XPC-client forwarding, same
+    // reasoning as the file's existing `loadModel`/`startStreaming` entries.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "transcribeSamples",
+      text: "proxy.transcribeSamples(", classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "feedAudioBuffer",
+      text: "proxy.feedAudioBuffer(data, frameCount: count)",
+      classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "finalizeStreaming",
+      text: "proxy.finalizeStreaming { resultData, nsError in",
+      classification: .transitivelyCoveredByCaller),
+    // #1749 — this XPC-client `cancelStreaming` forward is part of the same
+    // fire-and-forget chain `detachedAdapterCancel()` triggers on Parakeet;
+    // no reply is awaited, so it can still be in flight when recovery's gate
+    // opens.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "cancelStreaming",
+      text: "serviceProxy { proxy in proxy.cancelStreaming() }",
+      classification: .knownGap(
+        issue: 1749,
+        reason: "fire-and-forget XPC cancel forward, no reply awaited, part of the #1749 chain"
+      )),
+
+    // MARK: ASRServiceHandler — new Chunk 11 XPC-service forwarding, same
+    // reasoning as the file's existing `startStreaming`/`prepare` entries.
+    CallSite(
+      file: "Sources/EnviousWisprASRService/ASRServiceHandler.swift", matcher: "transcribe",
+      text: "let result = try await parakeet.transcribe(audioSamples: samples, options: options)",
+      classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprASRService/ASRServiceHandler.swift", matcher: "feedAudio",
+      text: "Task { try? await parakeet.feedAudio(unsafeBuffer) }",
+      classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprASRService/ASRServiceHandler.swift", matcher: "finalizeStreaming",
+      text: "let result = try await parakeet.finalizeStreaming()",
+      classification: .transitivelyCoveredByCaller),
+    // #1749 — the service-side twin of the XPC-client cancel forward above;
+    // spawns its own untracked `Task`, never awaited by the client.
+    CallSite(
+      file: "Sources/EnviousWisprASRService/ASRServiceHandler.swift", matcher: "cancelStreaming",
+      text: "Task { await parakeet.cancelStreaming() }",
+      classification: .knownGap(
+        issue: 1749,
+        reason: "fire-and-forget XPC cancel forward, no reply awaited, part of the #1749 chain"
+      )),
+
+    // MARK: ParakeetBackend — new Chunk 11 entry, same inherited coverage as
+    // the file's existing `prepare`/`loadModels`/`startStreaming` entries:
+    // the concrete `ASRBackend.transcribe` implementation, forwarding to
+    // FluidAudio's own manager.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "transcribe",
+      text:
+        "let fluidResult = try await manager.transcribe(audioSamples, decoderState: &decoderState)",
+      classification: .transitivelyCoveredByCaller),
+
+    // MARK: WhisperKitBackend — new Chunk 11 entries.
+    // `performWarmup`'s silent probe decode — part of `warmUp()`'s own
+    // already-tracked chain (gated/structurallySafe depending on caller),
+    // unrelated to the #1749 race.
+    CallSite(
+      file: "Sources/EnviousWisprASR/WhisperKitBackend.swift", matcher: "transcribe",
+      text: "_ = try await wk.transcribe(audioArray: silence, decodeOptions: opts)",
+      classification: .transitivelyCoveredByCaller),
+    // The concrete `ASRBackend.transcribe` implementation, forwarding to the
+    // real WhisperKit SDK decode. #1749 — every currently-known external
+    // caller of this specific method (`ActiveEngineOperation.swift`'s direct
+    // `whisperKitBackend.transcribe` and `WhisperKitEngineAdapter.swift`'s
+    // `backend.transcribe`) is already tagged `knownGap(1749)` above; marking
+    // this deeper layer `transitivelyCoveredByCaller` would overstate safety
+    // this method does not currently have from any known caller.
+    CallSite(
+      file: "Sources/EnviousWisprASR/WhisperKitBackend.swift", matcher: "transcribe",
+      text:
+        "results = try await kit.transcribe(audioArray: paddedSamples, decodeOptions: decodeOptions)",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "every currently-known caller of this method is itself part of the #1749 race window"
+      )),
+
+    // MARK: WhisperKitIncrementalSession — `WhisperKitTranscribing`'s
+    // forwarding wrapper around WhisperKit's own real decode entry point (a
+    // THIRD-PARTY method sharing this vocabulary's bare name coincidentally);
+    // safety is inherited from whichever caller reached this layer, same as
+    // `ASRProtocol.swift`'s existing `prepare()` forward.
+    CallSite(
+      file: "Sources/EnviousWisprASR/WhisperKitIncrementalSession.swift", matcher: "transcribe",
+      text: "try await self.transcribe(", classification: .transitivelyCoveredByCaller),
+
+    // MARK: WhisperKitStreamingSession — the concrete incremental-decode
+    // session vended by `WhisperKitBackend.makeStreamingSession()`. All three
+    // `transcribe` calls below are internal decode-loop steps; #1749 —
+    // "ordinary-session operations that can remain in flight" per Codex's
+    // grounded review: not guaranteed to stop before recovery's gate opens.
+    CallSite(
+      file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
+      text: "let results = try await whisperKit.transcribe(",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "an in-flight incremental decode is not guaranteed to stop before recovery's gate opens"
+      )),
+    CallSite(
+      file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
+      text:
+        "let results = try await whisperKit.transcribe(audioArray: paddedSamples, decodeOptions: opts)",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "an in-flight incremental decode is not guaranteed to stop before recovery's gate opens"
+      )),
+    CallSite(
+      file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
+      text:
+        "let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: opts)",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "an in-flight incremental decode is not guaranteed to stop before recovery's gate opens"
+      )),
+
+    // MARK: RecordingSessionKernel — Chunk 11 additions, same session-scoped
+    // reasoning as this file's existing entries for this type.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift", matcher: "acceptAudio",
+      text: "self.adapter.acceptAudio(handoff)", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift", matcher: "beginSession",
+      text: "try await adapter.beginSession(", classification: .structurallySafe),
+    // The real adapter-facing finalize call.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift", matcher: "finalize",
+      text: "let outcome = await adapter.finalize(batchSamples: batchSamples)",
+      classification: .structurallySafe),
+    // The kernel's own private `finalize(sid:batchSamples:)` called
+    // recursively during ASR-interruption salvage and the empty-result retry
+    // ladder — bare, implicit-`self` calls to an already-counted deeper
+    // engine touch, same pattern as the file's existing `warmUp(sid)` entry.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift", matcher: "finalize",
+      text: "let outcome = await finalize(sid, batchSamples: asrSamples)",
+      classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift", matcher: "finalize",
+      text: "let retry = await finalize(sid, batchSamples: Array(samples[trim...]))",
+      classification: .transitivelyCoveredByCaller),
+
+    // MARK: ParakeetEngineAdapter — Chunk 11 additions.
+    // Streaming-feed dispatch, guarded by session/terminal checks on the
+    // `@MainActor` hop — session-scoped, same as this file's existing
+    // `beginSession`/`startStreaming` entries for this type.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "feedAudio",
+      text: "try await self.asrManager.feedAudio(pcmBuffer)", classification: .structurallySafe),
+    // #1749 — the batch-rescue transcribe inside `finalize`/`retryDecode`,
+    // reached during normal decode; one of the "ordinary-session operations
+    // that can remain in flight" per Codex's grounded review.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "transcribe",
+      text: "let result = try await asrManager.transcribe(",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "an in-flight batch transcribe is not guaranteed to stop before recovery's gate opens"
+      )),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "transcribe",
+      text: "let result = try await asrManager.transcribe(",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "an in-flight batch transcribe is not guaranteed to stop before recovery's gate opens"
+      )),
+    // #1749 — `discardSession()`'s `cancelStreaming` forward, the same
+    // fire-and-forget chain `detachedAdapterCancel()` triggers.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "cancelStreaming",
+      text: "await asrManager.cancelStreaming()",
+      classification: .knownGap(
+        issue: 1749,
+        reason: "fire-and-forget cancel forward, part of the #1749 chain"
+      )),
+    // #1749 — `finalizeStreaming` reached when cancellation lands mid-finalize
+    // (the `catch` path's own await, still able to overlap recovery).
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift",
+      matcher: "finalizeStreaming",
+      text: "let result = try await asrManager.finalizeStreaming()",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "finalizeStreaming reached when cancellation lands mid-finalize is not guaranteed to stop before recovery's gate opens"
+      )),
+
+    // MARK: BenchmarkSuite — Chunk 11 additions, all directly inside this
+    // file's own "benchmarkSuiteBatch"/"benchmarkSuiteStreaming" claims
+    // (same claims the file's existing `startStreaming` entry already uses).
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "transcribe",
+      text: "_ = try? await activeEngine.transcribe(samples, .default)", classification: .gated),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "transcribe",
+      text: "let batchResult = try? await activeEngine.transcribe(testSamples, .default)",
+      classification: .gated),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "feedAudio",
+      text: "try await asrManager.feedAudio(buffer)", classification: .gated),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "finalizeStreaming",
+      text: "let streamResult = try await asrManager.finalizeStreaming()", classification: .gated),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "cancelStreaming",
+      text: "await asrManager.cancelStreaming()", classification: .gated),
+
+    // MARK: TailBenchmarkHarness — an external eval-harness support type
+    // (`scripts/eval/tail_runner`), never constructed anywhere in production
+    // `Sources/` (grep-verified). Reachable in theory, never exercised by the
+    // shipping app's own configuration — the same `dormant` bucket as
+    // `WhisperKitBackend`'s existing test-seam entry.
+    CallSite(
+      file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "transcribe",
+      text:
+        "let results = try await model.kit.transcribe(audioArray: decodeInput, decodeOptions: opts)",
+      classification: .dormant),
+    CallSite(
+      file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "transcribe",
+      text: "let results = try await model.kit.transcribe(audioArray: padded, decodeOptions: opts)",
+      classification: .dormant),
+    CallSite(
+      file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "transcribe",
+      text: "let results = try await model.kit.transcribe(audioArray: padded, decodeOptions: opts)",
+      classification: .dormant),
+    CallSite(
+      file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "finalize",
+      text: "let result = await session.finalize(finalSamples: [], speechSegments: [])",
+      classification: .dormant),
+
+    // MARK: DictationRuntime / KernelDictationDriver — the onboarding
+    // install Cancel button's seam (#1388 step 3). Race-safe by
+    // construction, not by claim: "the adapter's in-flight gate and the
+    // delivery controller's completion-wins-the-race handling both make it a
+    // no-op" against a just-completed load — `structurallySafe` category (c).
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/DictationRuntime/DictationRuntime.swift",
+      matcher: "cancelSessionlessWarmup",
+      text: "await starter.activeDriver.cancelSessionlessWarmup()",
+      classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/KernelDictationDriver.swift",
+      matcher: "cancelSessionlessWarmup", text: "await cancelling.cancelSessionlessWarmup()",
+      classification: .transitivelyCoveredByCaller),
+
+    // MARK: WhisperKitLegacyUpgradeCoordinator / KernelDictationDriver /
+    // WisprBootstrapper — the three remaining links in the ALREADY-verified
+    // "whisperKitRemove" claim chain this file's existing
+    // `WhisperKitEngineAdapter.swift` `unloadForRemoval` entry documents
+    // end-to-end (`WhisperKitSetupService.removeModel()` ->
+    // `WhisperKitLegacyUpgradeCoordinator.remove()` -> `unloadForRemoval`
+    // closure -> `KernelDictationDriver.unloadEngineForRemoval()` -> the
+    // already-counted adapter entry). Each is one more layer of that same
+    // verified chain, not a new one.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/WhisperKitLegacyUpgradeCoordinator.swift",
+      matcher: "unloadForRemoval", text: "await unloadForRemoval()",
+      classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/KernelDictationDriver.swift", matcher: "unloadForRemoval",
+      text: "await (adapter as? WhisperKitEngineAdapter)?.unloadForRemoval()",
+      classification: .transitivelyCoveredByCaller),
+    // The closure WIRING itself — a property assignment, not a call; safety
+    // inherited from wherever it is actually invoked (the same chain above).
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unloadForRemoval",
+      text: "whisperKitRetirement?.unloadForRemoval = { [weak whisperKitKernelDriver] in",
       classification: .transitivelyCoveredByCaller),
   ]
 
@@ -1304,6 +1813,14 @@ import Testing
   // MARK: 9 — every knownGap entry is fully tracked, and only the confirmed
   // sites carry it
 
+  /// Every issue a `knownGap` entry may currently point at. #1745 (recovery
+  /// Discard's fire-and-forget engine reset) and #1749 (recovery's claim not
+  /// waiting for an ordinary session's own fire-and-forget termination
+  /// cleanup) — both a real, tracked, out-of-#1741-scope production gap, not
+  /// a placeholder. A future third gap needs its own issue added here
+  /// deliberately, never silently.
+  private static let knownGapIssues: Set<Int> = [1745, 1749]
+
   @Test("every knownGap classification names a positive, concrete issue and reason")
   func knownGapEntriesAreFullyTracked() {
     let gaps: [(issue: Int, reason: String)] = Self.expected.compactMap { site in
@@ -1311,32 +1828,94 @@ import Testing
       return (issue, reason)
     }
     #expect(
-      gaps.count == 2,
-      "expected exactly the two ActiveEngineOperation hardCancel entries to carry `knownGap`, found \(gaps.count)"
+      gaps.count == 18,
+      "expected exactly 18 `knownGap` entries (2 for #1745, 16 for #1749), found \(gaps.count)"
     )
     for gap in gaps {
       #expect(
         gap.issue > 0,
         "a `knownGap` entry must name a real, positive GitHub issue number — never a placeholder")
       #expect(
-        gap.issue == 1745,
-        "expected every current `knownGap` entry to point at #1745; found #\(gap.issue) instead")
+        Self.knownGapIssues.contains(gap.issue),
+        "expected every current `knownGap` entry to point at #1745 or #1749; found #\(gap.issue) instead"
+      )
       #expect(
         !gap.reason.trimmingCharacters(in: .whitespaces).isEmpty,
         "a `knownGap` entry must carry a concrete reason, not a blank string")
     }
   }
 
-  @Test(
-    "knownGap applies to exactly the two confirmed-unsafe ActiveEngineOperation sites, no others")
+  @Test("knownGap applies to exactly the confirmed-unsafe sites tracked at #1745/#1749, no others")
   func knownGapAppliesOnlyToTheConfirmedUnsafeSites() {
+    // Ground truth extracted directly from a failing run of this test with an
+    // empty expectation (measure-with-the-real-tool, not hand-transcription) —
+    // 17 distinct sites; 18 total `knownGap` entries above because
+    // `ParakeetEngineAdapter.swift`'s two identical-text `transcribe(` sites
+    // collapse to one `SiteKey`, preserving multiplicity only in Test 1's own
+    // multiset check, not in this Set-based one.
     let expectedGapKeys: Set<SiteKey> = [
+      // #1745
       SiteKey(
         file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "unload",
         text: "await whisperKitBackend.unload()"),
       SiteKey(
         file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift",
         matcher: "cancelInFlightLoad", text: "asrManager.cancelInFlightLoad()"),
+      // #1749
+      SiteKey(
+        file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "prepare",
+        text: "try await whisperKitBackend.prepare()"),
+      SiteKey(
+        file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "loadModel",
+        text: "try await asrManager.loadModel()"),
+      SiteKey(
+        file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "transcribe",
+        text:
+          "return try await whisperKitBackend.transcribe(audioSamples: samples, options: options)"
+      ),
+      SiteKey(
+        file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "transcribe",
+        text: "return try await asrManager.transcribe(audioSamples: samples, options: options)"),
+      SiteKey(
+        file: "Sources/EnviousWisprAppKit/App/RecoverySpoolReplayer.swift", matcher: "transcribe",
+        text: "result = try await activeEngine.transcribe(recovered.samples, options)"),
+      SiteKey(
+        file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "cancelStreaming",
+        text: "serviceProxy { proxy in proxy.cancelStreaming() }"),
+      SiteKey(
+        file: "Sources/EnviousWisprASRService/ASRServiceHandler.swift", matcher: "cancelStreaming",
+        text: "Task { await parakeet.cancelStreaming() }"),
+      SiteKey(
+        file: "Sources/EnviousWisprASR/WhisperKitBackend.swift", matcher: "transcribe",
+        text:
+          "results = try await kit.transcribe(audioArray: paddedSamples, decodeOptions: decodeOptions)"
+      ),
+      SiteKey(
+        file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
+        text: "let results = try await whisperKit.transcribe("),
+      SiteKey(
+        file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
+        text:
+          "let results = try await whisperKit.transcribe(audioArray: paddedSamples, decodeOptions: opts)"
+      ),
+      SiteKey(
+        file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
+        text:
+          "let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: opts)"
+      ),
+      SiteKey(
+        file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "transcribe",
+        text: "let result = try await backend.transcribe("),
+      SiteKey(
+        file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "transcribe",
+        text: "let result = try await asrManager.transcribe("),
+      SiteKey(
+        file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift",
+        matcher: "cancelStreaming",
+        text: "await asrManager.cancelStreaming()"),
+      SiteKey(
+        file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift",
+        matcher: "finalizeStreaming", text: "let result = try await asrManager.finalizeStreaming()"),
     ]
     let actualGapKeys = Set(
       Self.expected.compactMap { site -> SiteKey? in
@@ -1346,8 +1925,7 @@ import Testing
     #expect(
       actualGapKeys == expectedGapKeys,
       """
-      `knownGap` must apply to exactly the two confirmed-unsafe
-      `ActiveEngineOperation.hardCancel` sites tracked at #1745 — found:
+      `knownGap` must apply to exactly the confirmed-unsafe sites tracked at #1745/#1749 — found:
       \(actualGapKeys)
       A different entry carrying `knownGap` means either a real new gap was found (open its own
       issue and add it here deliberately) or an already-safe entry was quietly weakened to dodge
