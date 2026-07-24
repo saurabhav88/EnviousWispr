@@ -254,6 +254,46 @@ struct WordSuggestionServiceParserTests {
 
     #expect(parsed == ["kuber netties", "cube ernetes", "cooper nettys"])
   }
+
+  @Test("Nested and blockquote container markers around a fence are stripped repeatedly")
+  func nestedContainerMarkersAroundFenceDropped() {
+    let raw = [
+      "kuber netties",
+      "> ```plaintext",
+      "- - ```",
+      "+ ```swift",
+      "- > ```",
+      "cube ernetes",
+    ].joined(separator: "\n")
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["kuber netties", "cube ernetes"])
+  }
+
+  @Test("Interleaved wrapper types around a fence converge to nothing, not one layer")
+  func interleavedWrapperTypesAroundFenceDropped() {
+    let raw = [
+      "kuber netties",
+      "\"- ```plaintext\"",
+      "[- > ```]",
+      "- \"```\"",
+      "cube ernetes",
+    ].joined(separator: "\n")
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["kuber netties", "cube ernetes"])
+  }
+
+  @Test("Punctuation-prefixed content is preserved, not eaten as a repeated list marker")
+  func punctuationPrefixedContentPreserved() {
+    let raw = "+44\n++alias\n--alias\n***alias\n1.2"
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["+44", "++alias", "--alias", "***alias", "1.2"])
+  }
 }
 
 /// Pins the multi-call dedupe pool helper.

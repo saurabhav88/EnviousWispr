@@ -608,26 +608,42 @@ public final class WordSuggestionService: Sendable {
     let fenceRegex = try? NSRegularExpression(
       pattern: #"^(?:`{3,}|~{3,}).*$"#
     )
+    // List/blockquote container markers: all three CommonMark bullet
+    // characters (-, *, +), ordered markers, and blockquote '>'. Compiled
+    // once per call, applied repeatedly below (they nest arbitrarily, e.g.
+    // "- > text" or "\"- text\"", so a single fixed-order pass of
+    // bracket/list/quote stripping can leave an inner wrapper behind —
+    // GitHub cloud review, PR #1765 r2/r3). Ordered/bullet markers require
+    // trailing whitespace or end-of-line so the fixed-point loop below
+    // cannot repeatedly eat real content like "+44" or "--alias" one
+    // character at a time (Codex final sweep, PR #1765 r4) — blockquote
+    // '>' keeps optional whitespace since CommonMark permits ">text".
+    let listPrefixRegex = try? NSRegularExpression(
+      pattern: #"^(?:\d+[.)](?:\s+|$)|[-*•+](?:\s+|$)|>\s*)"#
+    )
     for line in raw.components(separatedBy: .newlines) {
       var s = line.trimmingCharacters(in: .whitespacesAndNewlines)
       if s.isEmpty { continue }
-      s = s.trimmingCharacters(in: CharacterSet(charactersIn: "[]()"))
-      s = s.trimmingCharacters(in: .whitespacesAndNewlines)
-      if s.isEmpty { continue }
-      if let regex = try? NSRegularExpression(
-        pattern: #"^(?:\d+[.)]\s*|[-*•]\s*)"#
-      ) {
-        let range = NSRange(s.startIndex..., in: s)
-        s = regex.stringByReplacingMatches(in: s, range: range, withTemplate: "")
+      // Strip brackets, quotes, and list/blockquote markers to a fixed
+      // point — any interleaving or nesting of these wrapper types (a
+      // quoted bullet, a bulleted blockquote, brackets around a numbered
+      // line) converges to the real inner content, not just one layer of it.
+      var previous = ""
+      while previous != s {
+        previous = s
+        s = s.trimmingCharacters(in: CharacterSet(charactersIn: "[]()"))
+        s = s.trimmingCharacters(
+          in: CharacterSet(charactersIn: "\"'\u{201C}\u{201D}\u{2018}\u{2019},."))
+        if let listPrefixRegex {
+          let range = NSRange(s.startIndex..., in: s)
+          s = listPrefixRegex.stringByReplacingMatches(in: s, range: range, withTemplate: "")
+        }
+        s = s.trimmingCharacters(in: .whitespacesAndNewlines)
       }
-      s = s.trimmingCharacters(
-        in: CharacterSet(charactersIn: "\"'\u{201C}\u{201D}\u{2018}\u{2019},."))
-      s = s.trimmingCharacters(in: .whitespacesAndNewlines)
       if s.isEmpty { continue }
-      // Re-check for a fence AFTER list-marker/quote/bracket stripping —
-      // a numbered/bulleted/quoted fence line (e.g. "1. ```plaintext") does
-      // not match the bare-fence pattern until its wrapper is removed
-      // (GitHub cloud review, PR #1765).
+      // Fence check runs AFTER wrapper convergence — a wrapped fence line
+      // (numbered, bulleted, quoted, blockquoted, or any nesting of those)
+      // does not match the bare-fence pattern until every wrapper is gone.
       if let fenceRegex,
         fenceRegex.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
       {
