@@ -630,15 +630,19 @@ public final class WordSuggestionService: Sendable {
     for line in raw.components(separatedBy: .newlines) {
       var s = line.trimmingCharacters(in: .whitespacesAndNewlines)
       if s.isEmpty { continue }
-      // Strip list/blockquote markers, brackets, and quotes to a fixed
-      // point — any interleaving or nesting of these wrapper types (a
-      // quoted bullet, a bulleted blockquote, brackets around a numbered
-      // line) converges to the real inner content, not just one layer of
-      // it. List-marker stripping runs FIRST in each pass, before comma/
-      // period trimming ever gets a chance to eat a marker's own "."/")"
-      // out from under it and leave an orphaned digit behind (GitHub cloud
-      // review, PR #1765 r6) — comma/period trimming is deliberately
-      // deferred to a single pass after the loop converges, below.
+      // Strip list/blockquote markers, brackets, quotes, and trailing
+      // comma/period to a fixed point — any interleaving or nesting of
+      // these wrapper types converges to the real inner content, not just
+      // one layer of it. A comma sitting outside a closing quote (AFM's
+      // JSON-array-style output, `"word",`) blocks that quote from the
+      // string's true edge until the comma is removed — removing
+      // comma/period only ONCE, outside the loop, left that exposed quote
+      // permanently stuck on the end (GitHub cloud review, PR #1765 r7).
+      // List-marker stripping still runs FIRST in each pass, before
+      // comma/period trimming gets a chance to eat a marker's own "."/")"
+      // out from under it and leave an orphaned digit behind (r6) — moving
+      // comma/period back into the loop does not reopen that: the marker
+      // regex always sees the untouched line at the start of every pass.
       var previous = ""
       while previous != s {
         previous = s
@@ -649,15 +653,9 @@ public final class WordSuggestionService: Sendable {
         s = s.trimmingCharacters(in: CharacterSet(charactersIn: "[]()"))
         s = s.trimmingCharacters(
           in: CharacterSet(charactersIn: "\"'\u{201C}\u{201D}\u{2018}\u{2019}"))
+        s = s.trimmingCharacters(in: CharacterSet(charactersIn: ",."))
         s = s.trimmingCharacters(in: .whitespacesAndNewlines)
       }
-      if s.isEmpty { continue }
-      // Comma/period trimming runs ONCE, after convergence, not inside the
-      // loop — combining it with quote trimming let it strip a marker's own
-      // "." out from under the list-marker regex before that regex ever saw
-      // the whole marker (GitHub cloud review, PR #1765 r6).
-      s = s.trimmingCharacters(in: CharacterSet(charactersIn: ",."))
-      s = s.trimmingCharacters(in: .whitespacesAndNewlines)
       if s.isEmpty { continue }
       // Fence check runs AFTER wrapper convergence — a wrapped fence line
       // (numbered, bulleted, quoted, blockquoted, or any nesting of those)

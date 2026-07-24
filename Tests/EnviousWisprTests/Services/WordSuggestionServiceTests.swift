@@ -320,6 +320,15 @@ struct WordSuggestionServiceParserTests {
 
     #expect(parsed == ["word", "word", "1.2", "12.34", "cube"])
   }
+
+  @Test("Quoted line with a trailing comma fully unwraps (JSON-array-style output)")
+  func quotedLineWithTrailingCommaFullyUnwraps() {
+    let raw = "\"kuber netties\",\n\"cube ernetes\",\ncooper nettys"
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["kuber netties", "cube ernetes", "cooper nettys"])
+  }
 }
 
 /// Pins the multi-call dedupe pool helper.
