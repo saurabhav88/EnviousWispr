@@ -3029,9 +3029,10 @@ final class RecordingSessionKernel {
   /// Routing differs by state because the recording-exit continuation is
   /// consumed once: in `.recording` we send through the channel so the
   /// forward-path coroutine sees the exit and runs unified cleanup; in
-  /// `.transcribing` the continuation is gone, so we go DIRECTLY to terminal.
-  /// Other states (.stopping, .finalizing, terminal) are unchanged from the
-  /// prior drop — out of scope for #7.
+  /// `.transcribing` (#1755 chunk 3) we freeze diagnostics and let the
+  /// suspended `finalize` fail into the existing Phase-2 retry — no direct
+  /// terminal. Other states (.stopping, .finalizing, terminal) are unchanged
+  /// from the prior drop — out of scope for #7.
   private func routeASRInterruption(sid: SessionID) {
     guard isCurrent(sid) else { return }
     // PR-4.5 §8: record the FSM state at callback time. The OLD pipeline's
@@ -3051,11 +3052,19 @@ final class RecordingSessionKernel {
       freezeRecordingSnapshot()
       deliverRecordingExit(.asrInterruption)
     case .delivering where deliveringPhase == .transcribing:
-      // Pre-transcript delivering — the continuation is gone, so conclude
-      // directly. `wasRecording: false` (not `.live`) folds in the observer's
-      // old `priorState == .recording` distinction (§3.7).
+      // #1755 chunk 3 (§3.4 Option B): do NOT conclude here. The forward
+      // coroutine is suspended on `await finalize(...)` and still owns the
+      // captured samples; the helper's death resolves that call as a failure
+      // (the #1755 chunk-1 drained continuation), which lands in the ordinary
+      // `.failed(let error)` switch and spends the ONE existing Phase-2
+      // retry. Publishing `.asrInterrupted(wasRecording: false)` first would
+      // preempt that rescue and race the losing signal (#1713, settled by not
+      // racing at all). Freeze the diagnostics snapshot and return — the
+      // session stays in `.delivering(.transcribing)` until its own decode
+      // resolves. Deliberately NOT stamping `interruptedSalvageSource = .asr`:
+      // that field means an interruption won while capture was still `.live`
+      // and would invoke the live-interruption terminal floor.
       freezeRecordingSnapshot()
-      finishTerminal(.asrInterrupted(wasRecording: false), sid: sid)
     default:
       // `.arming` / `.stopping` / `delivering(.finalizing(_))` (safe point) —
       // unchanged prior drop (out of scope for #7 / #1548).
@@ -3173,9 +3182,10 @@ final class RecordingSessionKernel {
     case .delivering:
       switch phase {
       case .transcribing:
-        // Old transcribing terminal edges. `.asrInterrupted(false)` is the
-        // pre-existing direct producer (routed from `delivering(.transcribing)`
-        // by a genuinely NEW interruption at that phase); `.asrInterrupted(true)`
+        // Old transcribing terminal edges. `.asrInterrupted(false)` is
+        // legacy/defensive legality only — #1755 chunk 3 removed its direct
+        // producer (a transcribe-phase interruption now lets the suspended
+        // finalize fail into the Phase-2 retry); `.asrInterrupted(true)`
         // is #1707's salvage-recovery-failure floor target, typed-gated below.
         switch outcome {
         case .failed, .noSpeech, .cancelled, .audioInterrupted:

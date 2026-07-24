@@ -55,6 +55,104 @@ struct KernelPhase2RetryTests {
     await ctx.wrapper.drainReadyWork()
   }
 
+  /// #1755 chunk 3 helper: stop with the held finalize suspended, await the
+  /// fake's registration signal (never scheduler timing), and return once the
+  /// kernel is genuinely parked in `.delivering(.transcribing)`.
+  private func stopIntoHeldFinalize(_ ctx: Context) async {
+    await ctx.wrapper.apply(.start)
+    await ctx.wrapper.drainReadyWork()
+    deliverVoicedCapture(ctx)
+    await ctx.wrapper.drainReadyWork()
+    var pendingSignal: CheckedContinuation<Void, Never>?
+    ctx.engine.onHeldFinalizePending = { pendingSignal?.resume() }
+    await ctx.wrapper.apply(.stop)
+    if !ctx.engine.heldFinalizePending {
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+        pendingSignal = c
+        if ctx.engine.heldFinalizePending { c.resume() }
+      }
+    }
+    ctx.engine.onHeldFinalizePending = nil
+  }
+
+  // MARK: #1755 chunk 3 — transcribe-phase helper death enters the SAME retry
+
+  @Test("helper death mid-decode routes into the one Phase-2 retry, and a successful retry delivers")
+  func helperDeathMidDecodeRetriesAndDelivers() async {
+    let ctx = makeContext(behavior: .heldFinalize)
+    ctx.engine.retryDecodeResult = .transcript(
+      ASRResult(
+        text: "rescued after death", language: nil, duration: 0, processingTime: 0,
+        backendType: .parakeet))
+    await stopIntoHeldFinalize(ctx)
+    let kernel = ctx.wrapper.testKernel
+    #expect(ctx.engine.heldFinalizePending, "the initial finalize must be genuinely suspended")
+    #expect(ctx.engine.finalizeCallCount == 1)
+
+    // Helper death arrives while the decode is suspended.
+    kernel.externalASRInterrupted()
+    await ctx.wrapper.drainReadyWork()
+
+    // No early terminal: the session keeps waiting for its own decode to fail.
+    #expect(kernel.recordingOutcome == nil, "no terminal may be published before finalize resolves")
+    #expect(kernel.state == .delivering)
+    #expect(kernel.deliveringPhase == .transcribing)
+    #expect(ctx.engine.retryDecodeCallCount == 0, "the retry must not start early")
+
+    // Chunk 1's drained continuation: the suspended decode now fails.
+    ctx.engine.resolveHeldFinalizeAsHelperDeath()
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(ctx.engine.finalizeCallCount == 1, "the initial decode ran exactly once")
+    #expect(
+      ctx.engine.recoverFromASRInterruptionCallCount == 0,
+      "this is NOT the .live Phase-1 rewarm path")
+    #expect(ctx.engine.retryDecodeCallCount == 1, "exactly one Phase-2 retry")
+    #expect(
+      !(ctx.engine.lastRetryDecodeInputSamples?.isEmpty ?? true),
+      "the retry decodes the captured audio, not an empty buffer")
+    #expect(ctx.wrapper.telemetryState.asrRetryOutcome == .retrySucceeded)
+    #expect(kernel.recordingOutcome == .completed)
+    #expect(kernel.deliveredTranscript == "rescued after death")
+    #expect(ctx.wrapper.storedTexts == ["rescued after death"])
+    #expect(ctx.paste.pasteAttempts == ["rescued after death"])
+    #expect(ctx.paste.pasteCount == 1)
+    #expect(kernel.recordingOutcome != .asrInterrupted(wasRecording: false))
+  }
+
+  @Test("helper death mid-decode with an exhausted retry ends .asrFailed and projects .asrRetryExhausted")
+  func helperDeathMidDecodeExhaustsOnce() async {
+    let ctx = makeContext(behavior: .heldFinalize)
+    ctx.engine.retryDecodeResult = .failed(.decodeFailed)
+    await stopIntoHeldFinalize(ctx)
+    let kernel = ctx.wrapper.testKernel
+    #expect(ctx.engine.heldFinalizePending, "the initial finalize must be genuinely suspended")
+
+    kernel.externalASRInterrupted()
+    await ctx.wrapper.drainReadyWork()
+    #expect(kernel.recordingOutcome == nil, "no terminal may be published before finalize resolves")
+    #expect(kernel.state == .delivering)
+    #expect(kernel.deliveringPhase == .transcribing)
+    #expect(ctx.engine.retryDecodeCallCount == 0)
+
+    ctx.engine.resolveHeldFinalizeAsHelperDeath()
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(ctx.engine.finalizeCallCount == 1)
+    #expect(ctx.engine.recoverFromASRInterruptionCallCount == 0)
+    #expect(ctx.engine.retryDecodeCallCount == 1, "one retry, no second budget")
+    #expect(!(ctx.engine.lastRetryDecodeInputSamples?.isEmpty ?? true))
+    #expect(ctx.wrapper.telemetryState.asrRetryOutcome == .retryExhausted)
+    #expect(kernel.recordingOutcome == .failed(.asrFailed))
+    #expect(
+      KernelDictationDriver.recoveryEnding(for: .failed(.asrFailed), retryOutcome: .retryExhausted)
+        == .asrRetryExhausted)
+    #expect(ctx.wrapper.storedTexts.isEmpty, "storage receives zero calls")
+    #expect(ctx.paste.pasteAttempts.isEmpty, "the delivery seam is never called")
+    #expect(kernel.deliveredTranscript == nil)
+    #expect(kernel.pasteCount == 0)
+  }
+
   @Test("a decode failure spends exactly one retry, and a successful retry delivers its own text")
   func decodeFailureRetriesOnceAndDelivers() async {
     let ctx = makeContext(behavior: .crashOnFinalize)
