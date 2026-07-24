@@ -329,6 +329,12 @@ struct WordSuggestionServiceParserTests {
 
     #expect(parsed == ["kuber netties", "cube ernetes", "cooper nettys"])
   }
+
+  @Test("A marker's own delimiter is never consumed alongside an unrelated outer wrapper")
+  func markerDelimiterNotConsumedByOuterWrapperRun() {
+    #expect(WordSuggestionService.parsePlainStringAliases("(1))").isEmpty)
+    #expect(WordSuggestionService.parsePlainStringAliases(",1.,").isEmpty)
+  }
 }
 
 /// Pins the multi-call dedupe pool helper.

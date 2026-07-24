@@ -627,22 +627,23 @@ public final class WordSuggestionService: Sendable {
     let listPrefixRegex = try? NSRegularExpression(
       pattern: #"^(?:\d+[.)](?!\d)|[-*•+](?:\s+|$)|>\s*)"#
     )
+    let bracketSet = CharacterSet(charactersIn: "[]()")
+    let quoteSet = CharacterSet(charactersIn: "\"'\u{201C}\u{201D}\u{2018}\u{2019}")
+    let commaPeriodSet = CharacterSet(charactersIn: ",.")
     for line in raw.components(separatedBy: .newlines) {
       var s = line.trimmingCharacters(in: .whitespacesAndNewlines)
       if s.isEmpty { continue }
       // Strip list/blockquote markers, brackets, quotes, and trailing
       // comma/period to a fixed point — any interleaving or nesting of
       // these wrapper types converges to the real inner content, not just
-      // one layer of it. A comma sitting outside a closing quote (AFM's
-      // JSON-array-style output, `"word",`) blocks that quote from the
-      // string's true edge until the comma is removed — removing
-      // comma/period only ONCE, outside the loop, left that exposed quote
-      // permanently stuck on the end (GitHub cloud review, PR #1765 r7).
-      // List-marker stripping still runs FIRST in each pass, before
-      // comma/period trimming gets a chance to eat a marker's own "."/")"
-      // out from under it and leave an orphaned digit behind (r6) — moving
-      // comma/period back into the loop does not reopen that: the marker
-      // regex always sees the untouched line at the start of every pass.
+      // one layer of it. Brackets/quotes/comma-period are peeled ONE
+      // character per edge per pass (never `trimmingCharacters`'s
+      // whole-run removal): a run-trim can eat an outer wrapper AND a
+      // marker's own delimiter together in one call before the marker
+      // regex — which always runs first each pass — gets another look,
+      // e.g. "(1))" wrongly collapsing straight to "1" instead of exposing
+      // "1)" for the marker regex to strip on the next pass (GitHub cloud
+      // review structured pair-matrix check, PR #1765 r8).
       var previous = ""
       while previous != s {
         previous = s
@@ -650,10 +651,9 @@ public final class WordSuggestionService: Sendable {
           let range = NSRange(s.startIndex..., in: s)
           s = listPrefixRegex.stringByReplacingMatches(in: s, range: range, withTemplate: "")
         }
-        s = s.trimmingCharacters(in: CharacterSet(charactersIn: "[]()"))
-        s = s.trimmingCharacters(
-          in: CharacterSet(charactersIn: "\"'\u{201C}\u{201D}\u{2018}\u{2019}"))
-        s = s.trimmingCharacters(in: CharacterSet(charactersIn: ",."))
+        s = Self.peelOneEdgeCharacter(s, in: bracketSet)
+        s = Self.peelOneEdgeCharacter(s, in: quoteSet)
+        s = Self.peelOneEdgeCharacter(s, in: commaPeriodSet)
         s = s.trimmingCharacters(in: .whitespacesAndNewlines)
       }
       if s.isEmpty { continue }
@@ -681,6 +681,25 @@ public final class WordSuggestionService: Sendable {
       aliases.append(s)
     }
     return aliases
+  }
+
+  /// Removes at most one matching character from the front and one from
+  /// the back — deliberately NOT `trimmingCharacters(in:)`, which removes
+  /// an entire consecutive run and can consume a wrapper character together
+  /// with an unrelated adjacent delimiter (e.g. a list marker's own "."/")")
+  /// in a single call. Used by `parsePlainStringAliases`'s convergence loop
+  /// so every removal gets re-evaluated by the marker regex on the next
+  /// pass, rather than several edge characters vanishing at once (#1763).
+  private static func peelOneEdgeCharacter(_ s: String, in set: CharacterSet) -> String {
+    guard !s.isEmpty else { return s }
+    var s = s
+    if let first = s.unicodeScalars.first, set.contains(first) {
+      s.removeFirst()
+    }
+    if let last = s.unicodeScalars.last, set.contains(last) {
+      s.removeLast()
+    }
+    return s
   }
 
   /// Deterministic classification by syntax. Returns nil when AFM should
