@@ -230,9 +230,12 @@ public enum LLMConstants {
   /// Maximum concurrent model probes to avoid rate limiting.
   public static let maxConcurrentProbes: Int = 5
 
-  /// Default max tokens for cloud LLM providers (supports ~5 min dictations with safe headroom).
-  /// Thinking models (Gemini 2.5) consume output tokens for reasoning, so this must be generous.
-  public static let defaultMaxTokens: Int = 8192
+  /// Claude's fixed output-token cap (#1710). The Anthropic API REQUIRES
+  /// `max_tokens` (probe-verified: omission is rejected with "max_tokens:
+  /// Field required"), so Claude cannot use `.providerDefault`. 8,192 is
+  /// generous for polish (output ≈ input length); the value exists only
+  /// because the API demands a number, not as a policy ceiling.
+  public static let claudeMaxOutputTokens: Int = 8192
 
   /// Floor for Ollama max tokens on non-thinking-capable models (weak/small
   /// models, plain completion models like llama3.2). Actual cap scales with
@@ -252,9 +255,6 @@ public enum LLMConstants {
 
   /// Default thinking budget for extended thinking models (Gemini 2.5 Flash/Pro).
   public static let defaultThinkingBudget: Int = 8192
-
-  /// Floor for dynamic output token cap. Ensures short transcripts have room to expand.
-  public static let polishMaxTokensFloor: Int = 512
 }
 
 public enum FormattingConstants {

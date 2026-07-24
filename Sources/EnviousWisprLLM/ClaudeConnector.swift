@@ -43,9 +43,23 @@ public struct ClaudeConnector: TranscriptPolisher {
     guard let url = URL(string: baseURL) else {
       throw LLMError.requestFailed("Invalid Claude URL")
     }
+    // #1710: the Anthropic API REQUIRES `max_tokens`. `.capped` carries the
+    // policy value; an unexpected `.providerDefault` maps defensively to the
+    // fixed constant (non-crashing invariant guard, not a second authority).
+    let resolved = Self.resolvedMaxTokens(config.outputTokens)
+    let maxTokens = resolved.value
+    if resolved.usedFallback {
+      Task {
+        await AppLogger.shared.log(
+          "Claude received providerDefault output-token policy; "
+            + "using required fallback \(maxTokens)",
+          level: .info, category: "LLM"
+        )
+      }
+    }
     let body = Self.makeRequestBody(
       model: config.model,
-      maxTokens: config.maxTokens,
+      maxTokens: maxTokens,
       system: instructions.systemPrompt,
       userText: text
     )
@@ -98,6 +112,18 @@ public struct ClaudeConnector: TranscriptPolisher {
   /// prompt for the `.cloudFixed` family). Deliberately module-internal
   /// (not `private`): `LLMModelDiscovery` calls this from another file in
   /// the same `EnviousWisprLLM` module.
+  /// Resolve the required `max_tokens` value for a policy (#1710). Static
+  /// and pure for fixture testing. `usedFallback` marks the defensive
+  /// `.providerDefault` mapping so the call site can log the invariant breach.
+  static func resolvedMaxTokens(
+    _ policy: OutputTokenPolicy
+  ) -> (value: Int, usedFallback: Bool) {
+    switch policy {
+    case .capped(let value): return (value, false)
+    case .providerDefault: return (LLMConstants.claudeMaxOutputTokens, true)
+    }
+  }
+
   static func makeRequestBody(
     model: String,
     maxTokens: Int,
@@ -192,7 +218,8 @@ public struct ClaudeConnector: TranscriptPolisher {
       if extracted.truncated {
         Task {
           await AppLogger.shared.log(
-            "WARNING: Claude response truncated (stop_reason=max_tokens, model=\(config.model), max_tokens=\(config.maxTokens))",
+            "WARNING: Claude response truncated (stop_reason=max_tokens, "
+              + "model=\(config.model), policy=\(config.outputTokens))",
             level: .info, category: "LLM"
           )
         }

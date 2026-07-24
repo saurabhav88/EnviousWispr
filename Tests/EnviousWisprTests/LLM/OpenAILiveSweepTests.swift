@@ -39,7 +39,7 @@ struct OpenAILiveSweepTests {
       let config = LLMProviderConfig(
         model: model.id,
         apiKeyKeychainId: KeychainManager.openAIKeyID,
-        maxTokens: capabilities.supportsReasoning ? LLMConstants.defaultMaxTokens : 512,
+        outputTokens: .providerDefault,
         temperature: 0,
         thinkingBudget: nil,
         reasoningEffort: capabilities.supportsReasoning ? "low" : nil

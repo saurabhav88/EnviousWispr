@@ -415,43 +415,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       }
 
     let (thinkingBudget, reasoningEffort) = resolveThinkingConfig()
-    let maxTokens: Int = {
-      if provider == .ollama {
-        // Estimate tokens (~3 chars per token for English), add headroom.
-        // For 921-char input: 921/3 + 100 = 407 tokens (~2x actual output of ~195).
-        // The pipeline-level timeout (15s) caps runaway generation.
-        //
-        // Only thinking-capable families (Gemma4, qwen3, deepseek-r1,
-        // gpt-oss) get the larger 2048-token floor — they emit reasoning
-        // into `message.thinking` separately from `message.content`, and
-        // that reasoning still counts against `num_predict` (#272). All
-        // other Ollama models (weak or not) keep the tight 256 floor so
-        // a rambly generation can't outrun the 15s pipeline timeout.
-        // `done_reason=stop` ends generation early for short transcripts.
-        let floor =
-          OllamaSetupService.isThinkingCapableModel(model)
-          ? LLMConstants.ollamaThinkingMaxTokens
-          : LLMConstants.ollamaMaxTokens
-        return max(context.text.count / 3 + 100, floor)
-      }
-      if provider == .egOne {
-        // #1271: character-count cap, same CJK-safe shape as the cloud path
-        // below (Codex r14) — the Ollama-style `count/3` estimate assumes
-        // spaced Latin text and under-budgets unsegmented scripts (a 3,000-
-        // char Japanese dictation needs ~3,000 output tokens, not ~1,100),
-        // letting llama-server stop at the cap and paste a TRUNCATED polish.
-        // Latin gets ~4x headroom; the tight 256 floor stays (fixed-prompt
-        // instruct tune, no thinking tokens) and the 15 s budget bounds
-        // wall-clock — an over-long generation now times out to silent raw
-        // instead of truncating.
-        return max(context.text.count, LLMConstants.ollamaMaxTokens)
-      }
-      // OpenAI reasoning models include reasoning in max_completion_tokens — keep generous.
-      if reasoningEffort != nil { return LLMConstants.defaultMaxTokens }
-      // Character-based cap: ~1 token per 4 chars, so charCount ≈ 4× token estimate.
-      // Using charCount directly as token cap gives ~4x headroom. Safe for CJK too.
-      return max(context.text.count, LLMConstants.polishMaxTokensFloor)
-    }()
+    let outputTokens = Self.outputTokenPolicy(
+      provider: provider, model: model, textCount: context.text.count)
 
     // Prefer live LID but fall back to the context's persisted language so
     // standalone callers that clear `languageDetection` (crash-recovery's
@@ -464,12 +429,23 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let config = LLMProviderConfig(
       model: model,
       apiKeyKeychainId: keychainId,
-      maxTokens: maxTokens,
+      outputTokens: outputTokens,
       temperature: 0,
       thinkingBudget: thinkingBudget,
       reasoningEffort: reasoningEffort,
       detectedLanguage: detectedLanguage
     )
+
+    // #1710 request-shape receipt for Live UAT: policy only, never content.
+    Task {
+      await AppLogger.shared.log(
+        "LLM request budget: provider=\(provider.rawValue), model=\(model), "
+          + "output_tokens=\(outputTokens), "
+          + "thinking_budget=\(thinkingBudget.map(String.init) ?? "nil"), "
+          + "reasoning_effort=\(reasoningEffort ?? "nil")",
+        level: .info, category: "LLM"
+      )
+    }
 
     // Apple Intelligence: own prompt path (unchanged, out of scope for planner).
     if provider == .appleIntelligence {
@@ -811,6 +787,50 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
           + "(provider=\(provider.rawValue), model=\(model))",
         level: .info, category: "PipelineTiming"
       )
+    }
+  }
+
+  /// #1710 output-token policy: cloud providers that permit it send NO
+  /// client ceiling (`.providerDefault`) — the provider's own per-model
+  /// maximum applies, so a stale client cap can never truncate a healthy
+  /// polish. Local engines and Claude keep explicit caps. Static and pure
+  /// for fixture testing.
+  nonisolated static func outputTokenPolicy(
+    provider: LLMProvider, model: String, textCount: Int
+  ) -> OutputTokenPolicy {
+    switch provider {
+    case .ollama:
+      // Estimate tokens (~3 chars per token for English), add headroom.
+      // For 921-char input: 921/3 + 100 = 407 tokens (~2x actual output of ~195).
+      // The pipeline-level timeout (15s) caps runaway generation.
+      //
+      // Only thinking-capable families (Gemma4, qwen3, deepseek-r1,
+      // gpt-oss) get the larger 2048-token floor — they emit reasoning
+      // into `message.thinking` separately from `message.content`, and
+      // that reasoning still counts against `num_predict` (#272). All
+      // other Ollama models (weak or not) keep the tight 256 floor so
+      // a rambly generation can't outrun the 15s pipeline timeout.
+      // `done_reason=stop` ends generation early for short transcripts.
+      let floor =
+        OllamaSetupService.isThinkingCapableModel(model)
+        ? LLMConstants.ollamaThinkingMaxTokens
+        : LLMConstants.ollamaMaxTokens
+      return .capped(max(textCount / 3 + 100, floor))
+    case .egOne:
+      // #1271: character-count cap, CJK-safe shape (Codex r14) — the
+      // Ollama-style `count/3` estimate assumes spaced Latin text and
+      // under-budgets unsegmented scripts (a 3,000-char Japanese dictation
+      // needs ~3,000 output tokens, not ~1,100), letting llama-server stop
+      // at the cap and paste a TRUNCATED polish. Latin gets ~4x headroom;
+      // the tight 256 floor stays (fixed-prompt instruct tune, no thinking
+      // tokens) and the 15 s budget bounds wall-clock.
+      return .capped(max(textCount, LLMConstants.ollamaMaxTokens))
+    case .claude:
+      // The Anthropic API requires `max_tokens`; fixed generous value.
+      return .capped(LLMConstants.claudeMaxOutputTokens)
+    case .openAI, .gemini, .appleIntelligence, .none:
+      // Apple Intelligence ignores the field (computes its own budget).
+      return .providerDefault
     }
   }
 

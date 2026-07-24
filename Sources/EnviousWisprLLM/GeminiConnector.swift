@@ -28,13 +28,7 @@ public struct GeminiConnector: TranscriptPolisher {
     // Use systemInstruction for the system prompt so Flash models follow
     // instructions precisely rather than treating the combined message as a
     // summarization task.
-    var generationConfig: [String: Any] = [
-      "temperature": config.temperature,
-      "maxOutputTokens": config.maxTokens,
-    ]
-    if let budget = config.thinkingBudget {
-      generationConfig["thinkingConfig"] = ["thinkingBudget": budget]
-    }
+    let generationConfig = Self.makeGenerationConfig(config: config)
 
     let body = Self.makeRequestBody(
       text: text,
@@ -90,6 +84,23 @@ public struct GeminiConnector: TranscriptPolisher {
       config: config,
       onToken: onToken
     )
+  }
+
+  /// Build the generationConfig for `config` (#1710). Static and pure for
+  /// fixture testing: `.capped` serializes `maxOutputTokens`;
+  /// `.providerDefault` omits it so the provider's own per-model maximum
+  /// applies. Thinking budget passes through unchanged.
+  static func makeGenerationConfig(config: LLMProviderConfig) -> [String: Any] {
+    var generationConfig: [String: Any] = [
+      "temperature": config.temperature
+    ]
+    if case .capped(let value) = config.outputTokens {
+      generationConfig["maxOutputTokens"] = value
+    }
+    if let budget = config.thinkingBudget {
+      generationConfig["thinkingConfig"] = ["thinkingBudget": budget]
+    }
+    return generationConfig
   }
 
   static func makeRequestBody(
@@ -328,7 +339,8 @@ public struct GeminiConnector: TranscriptPolisher {
     guard finishReason == "MAX_TOKENS" else { return }
     Task {
       await AppLogger.shared.log(
-        "WARNING: Gemini response truncated (finishReason=MAX_TOKENS, model=\(config.model), maxOutputTokens=\(config.maxTokens))",
+        "WARNING: Gemini response truncated (finishReason=MAX_TOKENS, "
+          + "model=\(config.model), policy=\(config.outputTokens))",
         level: .info, category: "LLM"
       )
     }

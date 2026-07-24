@@ -142,7 +142,7 @@ struct OpenAIParamStripTests {
 
   private func config(model: String, reasoningEffort: String? = nil) -> LLMProviderConfig {
     LLMProviderConfig(
-      model: model, apiKeyKeychainId: "openai-api-key", maxTokens: 512,
+      model: model, apiKeyKeychainId: "openai-api-key", outputTokens: .capped(512),
       temperature: 0, thinkingBudget: nil, reasoningEffort: reasoningEffort)
   }
 

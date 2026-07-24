@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -13,6 +14,30 @@ import Testing
 /// unit-testable directly against `Data` literals without a transport seam.
 @Suite("Claude request body and classification")
 struct ClaudeConnectorTests {
+
+  @Test func discoveryProbeShapeKeepsLiteralCapOfFive() {
+    // Mirrors LLMModelDiscovery.probeClaude's builder call exactly.
+    let body = ClaudeConnector.makeRequestBody(
+      model: "claude-haiku-4-5", maxTokens: 5, system: nil, userText: "Hi")
+    #expect(body["max_tokens"] as? Int == 5)
+  }
+
+  // MARK: - Output-token policy resolution (#1710)
+
+  @Test func cappedPolicyResolvesToExactValue() {
+    let resolved = ClaudeConnector.resolvedMaxTokens(.capped(700))
+    #expect(resolved.value == 700)
+    #expect(resolved.usedFallback == false)
+  }
+
+  @Test func providerDefaultPolicyFallsBackToRequiredConstant() {
+    // The Anthropic API requires max_tokens; providerDefault is an invariant
+    // breach mapped defensively, never a crash.
+    let resolved = ClaudeConnector.resolvedMaxTokens(.providerDefault)
+    #expect(resolved.value == LLMConstants.claudeMaxOutputTokens)
+    #expect(resolved.value == 8192)
+    #expect(resolved.usedFallback == true)
+  }
 
   // MARK: - Request body shape
 
