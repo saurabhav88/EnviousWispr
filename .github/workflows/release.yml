@@ -324,8 +324,15 @@ jobs:
           MISE_URL="https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-macos-arm64"
           MISE_TMP="$RUNNER_TEMP/mise"
           echo "==> Downloading pinned mise ${MISE_VERSION} from ${MISE_URL}"
+          # --retry-all-errors is load-bearing, not belt-and-braces: bare --retry
+          # only retries curl's "transient" set (timeouts, 408/429/5xx STATUS
+          # lines). v2.4.1's first release run died on `curl: (56) ... error: 504`
+          # — a gateway error delivered mid-transfer, which curl classifies as a
+          # RECV error, not a retryable status, so --retry 3 never fired once.
+          # --retry-all-errors covers that class. --max-time is per-attempt.
           curl --proto '=https' --tlsv1.2 --fail --location \
-            --retry 3 --retry-connrefused --connect-timeout 15 --max-time 120 \
+            --retry 5 --retry-all-errors --retry-delay 3 --retry-connrefused \
+            --connect-timeout 15 --max-time 120 \
             -sS -o "$MISE_TMP" "$MISE_URL"
           echo "${MISE_SHA256}  ${MISE_TMP}" | shasum -a 256 -c -
           mkdir -p "$HOME/.local/bin"
@@ -1097,7 +1104,12 @@ jobs:
         needs.publish-github-release.result == 'success'
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 15, not 5: the dispatch step now hashes the published DMG and waits for the
+    # cask to actually land (see "Dispatch cask bump and verify it landed"). The
+    # cap must EXCEED that step's worst case (~8.5 min) with room for the failure
+    # -reporting step, because a timeout cancels the job and !cancelled() would
+    # then suppress the very alert this verification exists to raise.
+    timeout-minutes: 15
     permissions:
       contents: read
       issues: write   # #1368: the failure-alert step files an issue via the repo GITHUB_TOKEN
@@ -1124,7 +1136,7 @@ jobs:
           echo "DRY RUN: would dispatch the Homebrew cask bump for v${VERSION}:"
           echo "  gh workflow run bump-cask.yml -R saurabhav88/homebrew-tap -f version=${VERSION}"
 
-      - name: Dispatch cask bump
+      - name: Dispatch cask bump and verify it landed
         id: dispatch-cask
         if: inputs.dry_run != true
         continue-on-error: true
@@ -1135,7 +1147,70 @@ jobs:
           set -euo pipefail
           echo "==> Dispatching bump-cask.yml on saurabhav88/homebrew-tap for v${VERSION}"
           gh workflow run bump-cask.yml -R saurabhav88/homebrew-tap -f version="${VERSION}"
-          echo "==> Dispatched (fire-and-forget). The tap workflow reconciles the cask; it is idempotent + self-healing."
+
+          # This step used to end here, fire-and-forget: it reported SUCCESS for
+          # having SENT the request, so a tap workflow that failed outright still
+          # showed a green "Homebrew cask" row in the release summary. Green meant
+          # "dispatched", never "users can brew install this version".
+          #
+          # Verify the END STATE rather than an intermediate job status — a tap
+          # run can conclude success without the cask landing on main.
+          #
+          # BOTH fields, not just version. `brew install` fails on a checksum
+          # mismatch exactly as hard as on a wrong version, and version alone is
+          # the weaker signal precisely when it matters: re-running a release for
+          # an existing version, or repairing a cask whose version is already
+          # right but whose sha256 is stale, would match on the FIRST poll and
+          # exit green before the tap reconciled the checksum.
+          # Every bound below is deliberate and must stay inside this job's
+          # timeout-minutes. A job that hits its timeout is CANCELLED, and the
+          # "Report cask bump failure" step is guarded by !cancelled() — so an
+          # over-long verifier would go SILENT under exactly the network failures
+          # it exists to detect. Worst case here: download 4 x 60s + 3 x 3s delay
+          # (~4.2 min) + poll deadline 4 min + one in-flight iteration (~20s)
+          # = ~8.5 min, against a 15 min cap. Re-do this arithmetic before
+          # loosening any retry count, --max-time, or the poll deadline.
+          DMG_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/EnviousWispr-${VERSION}.dmg"
+          echo "==> Hashing the published DMG to get the expected checksum"
+          curl -sS --fail --location --retry 3 --retry-all-errors --retry-delay 3 \
+            --connect-timeout 15 --max-time 60 -o "$RUNNER_TEMP/verify.dmg" "$DMG_URL"
+          EXPECTED_SHA="$(sha256sum "$RUNNER_TEMP/verify.dmg" | awk '{print $1}')"
+          rm -f "$RUNNER_TEMP/verify.dmg"
+          echo "    expected sha256: ${EXPECTED_SHA}"
+
+          # Cache-busted: the raw CDN serves a stale copy for minutes after a push.
+          # Bounded by WALL CLOCK, not an iteration count: a count times a curl
+          # timeout is not a duration, which is how the 12-min overrun above hid.
+          CASK_URL="https://raw.githubusercontent.com/saurabhav88/homebrew-tap/main/Casks/enviouswispr.rb"
+          POLL_DEADLINE=$(( $(date +%s) + 240 ))
+          attempt=0
+          echo "==> Waiting for the cask to report ${VERSION} + matching sha256 (up to 4 min)"
+          while [ "$(date +%s)" -lt "$POLL_DEADLINE" ]; do
+            attempt=$(( attempt + 1 ))
+            sleep 10
+            CASK_BODY="$(curl -sS --fail --max-time 10 "${CASK_URL}?cb=${GITHUB_RUN_ID}-${attempt}" || true)"
+            CASK_VERSION="$(printf '%s' "$CASK_BODY" | sed -n 's/^[[:space:]]*version "\([^"]*\)".*/\1/p' | head -1)"
+            CASK_SHA="$(printf '%s' "$CASK_BODY" | sed -n 's/^[[:space:]]*sha256 "\([^"]*\)".*/\1/p' | head -1)"
+            # Distinguish "not updated YET" from "cannot parse this file at all".
+            # Both look like an empty CASK_VERSION, but only the first is worth
+            # waiting out; the second would burn the whole deadline and then file
+            # a cask-did-not-land issue that names the wrong cause. Fail fast and
+            # accurately instead. Deliberately NOT solved by loosening the match:
+            # the `url` line also contains the word `version`, so a laxer pattern
+            # could return a WRONG value, which is worse than returning none.
+            if [ -n "$CASK_BODY" ] && [ -z "$CASK_VERSION" ] && [ -z "$CASK_SHA" ]; then
+              echo "::error::Fetched the cask but could not parse version/sha256 from it — the tap's file format likely changed, so this check can no longer verify anything. Update the parse in this step."
+              printf '%s\n' "$CASK_BODY" | head -5
+              exit 1
+            fi
+            if [ "$CASK_VERSION" = "$VERSION" ] && [ "$CASK_SHA" = "$EXPECTED_SHA" ]; then
+              echo "==> Cask is at ${VERSION} with the correct checksum after ${attempt} check(s)."
+              exit 0
+            fi
+            echo "    attempt ${attempt}: version='${CASK_VERSION:-<unreadable>}' sha256='${CASK_SHA:-<unreadable>}'"
+          done
+          echo "::error::Cask did not reach ${VERSION} with checksum ${EXPECTED_SHA} within the wait window (last saw version='${CASK_VERSION:-<unreadable>}' sha256='${CASK_SHA:-<unreadable>}'). brew install will fail or serve the OLD version until this is fixed."
+          exit 1
 
       # #1368: fire when EITHER the App-token mint failed (e.g. the App lacks tap
       # access/actions:write — cloud review P2) OR the dispatch failed. The mint
@@ -1144,7 +1219,10 @@ jobs:
       # this run after that failure. A continue-on-error dispatch failure needs
       # the explicit OUTCOME check (bare `failure()` never fires for it). Uses the
       # current-repo GITHUB_TOKEN (issues:write above), NOT the tap App token.
-      - name: Report cask trigger failure
+      # Fires for a failed token mint, a failed dispatch, OR (since #1778) a
+      # dispatch that was accepted but whose cask never actually reached this
+      # version — the case that used to pass silently as green.
+      - name: Report cask bump failure
         if: >
           !cancelled() && inputs.dry_run != true &&
           (steps.app-token.outcome == 'failure' || steps.dispatch-cask.outcome == 'failure')
@@ -1158,10 +1236,10 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          echo "::warning::Homebrew cask auto-bump could not be triggered for v${VERSION} — cask may be stale. Filing an issue."
+          echo "::warning::Homebrew cask did not reach v${VERSION} — brew install serves the OLD version. Filing an issue."
           gh issue create \
             --title "Homebrew cask auto-bump failed for v${VERSION}" \
-            --body "$(printf 'The release pipeline could not trigger the tap cask bump for v%s (App-token mint or workflow dispatch failed).\n\nRelease shipped fine (this is a non-blocking limb), but Homebrew may be stale.\n\nRun: %s\n\nManual fix: gh workflow run bump-cask.yml -R saurabhav88/homebrew-tap -f version=%s' "${VERSION}" "${RUN_URL}" "${VERSION}")" \
+            --body "$(printf 'The tap cask did not reach v%s: the App-token mint failed, the workflow dispatch failed, or the dispatch was accepted but the cask never landed.\n\nRelease shipped fine (this is a non-blocking limb), but `brew install --cask enviouswispr` serves the PREVIOUS version until this is fixed.\n\nRun: %s\n\nManual fix: gh workflow run bump-cask.yml -R saurabhav88/homebrew-tap -f version=%s\n\nThen confirm the cask really moved, not just that the run went green:\n  curl -s "https://raw.githubusercontent.com/saurabhav88/homebrew-tap/main/Casks/enviouswispr.rb?cb=$RANDOM" | head -3' "${VERSION}" "${RUN_URL}" "${VERSION}")" \
             --label "bug" || echo "::warning::Could not file the cask-failure issue (labels/perms?)."
           # #1368 (Codex P2): fail the job so needs.bump-homebrew-cask.result ==
           # 'failure' → release-summary surfaces the cask follow-up + Discord alert.

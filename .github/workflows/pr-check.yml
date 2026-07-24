@@ -52,6 +52,15 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: scripts/ci/classify-changes.sh "$BASE_SHA" "$HEAD_SHA"
 
+      # #1778: the notices gate used to run ONLY during release packaging, so a
+      # dependency bump that forgot the generator sat green on main until someone
+      # tried to ship - v2.4.1 lost two release runs to exactly that (Sparkle
+      # 2.9.4 via #1733, swift-syntax via #1741). `--check` reads only committed
+      # files (no .build/checkouts), so it is seconds and runs unconditionally:
+      # a paths filter here would be one more thing that can drift out of sync.
+      - name: Verify third-party notices are in sync
+        run: scripts/ci/gen-third-party-notices.sh --check
+
       - name: Verify environment
         if: steps.changes.outputs.needs_build == 'true'
         run: |
