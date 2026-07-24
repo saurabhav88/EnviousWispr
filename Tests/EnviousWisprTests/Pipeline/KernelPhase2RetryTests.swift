@@ -2,6 +2,7 @@ import EnviousWisprCore
 import Foundation
 import Testing
 
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
 
 // MARK: - #1707 Phase 2 — one live post-capture decode retry (kernel routing)
@@ -185,9 +186,9 @@ struct KernelPhase2RetryTests {
   }
 
   @Test(
-    "GitHub cloud review (PR #1725): a retry that resolves .cancelled (a genuine backend CancellationError, not a confirmed decode conclusion) still terminates as .asrFailed but retains the spool, same as a timeout"
+    "#1755 founder override: a retry that resolves .cancelled still terminates .asrFailed, stays diagnostically .attempted, and now DELETES"
   )
-  func cancelledRetryTerminatesButRetainsSpool() async {
+  func cancelledRetryTerminatesAndDeletes() async {
     let ctx = makeContext(behavior: .crashOnFinalize)
     ctx.engine.retryDecodeResult = .cancelled
     await runToTerminal(ctx)
@@ -195,18 +196,26 @@ struct KernelPhase2RetryTests {
 
     #expect(kernel.recordingOutcome == .failed(.asrFailed))
     #expect(kernel.deliveredTranscript == nil)
-    #expect(ctx.engine.retryDecodeCallCount == 1)
-    // The distinguishing assertion: NOT .retryExhausted — `.cancelled` is
-    // not a confirmed "the decode produced nothing," so the spool must be
-    // retained exactly like the timeout case above, not deleted like a
-    // genuine `.empty`/`.failed` exhaustion.
+    #expect(ctx.wrapper.storedTexts.isEmpty)
+    #expect(ctx.paste.pasteAttempts.isEmpty)
+    #expect(ctx.engine.retryDecodeCallCount == 1, "retry budget unchanged: exactly one")
+    // `.attempted` remains the honest diagnostic that no decode conclusion
+    // was accepted (late-result fencing unchanged); the founder's Gate 2
+    // decision makes the DISPOSITION delete anyway — the user watched the
+    // retry fail and re-dictates.
     #expect(ctx.wrapper.telemetryState.asrRetryOutcome == .attempted)
+    let ending = KernelDictationDriver.recoveryEnding(
+      for: .failed(.asrFailed), retryOutcome: .attempted)
+    #expect(ending == .failed, "projects to plain .failed")
+    #expect(
+      RecoveryCoordinator.shouldDeleteOnLiveEnding(.failed),
+      "#1755: the composed authorities delete")
   }
 
   @Test(
-    "#1707 Codex r5: a retry that times out (never resolves) still terminates as .asrFailed but retains the spool, distinct from a genuinely exhausted retry"
+    "#1755 founder override: a retry that times out still terminates .asrFailed, stays diagnostically .attempted, and now DELETES"
   )
-  func timedOutRetryTerminatesButRetainsSpool() async {
+  func timedOutRetryTerminatesAndDeletes() async {
     let ctx = makeContext(behavior: .crashOnFinalize)
     // A real, tiny wall-clock deadline — the retry never resolves within it
     // (the fake-clock delay is never advanced during this test), so
@@ -226,13 +235,22 @@ struct KernelPhase2RetryTests {
     }
 
     #expect(kernel.recordingOutcome == .failed(.asrFailed))
-    #expect(ctx.engine.bumpRetryGenerationCallCount == 1)
-    // The distinguishing assertion (Codex r5): NOT .retryExhausted. A mere
-    // timeout must never be conflated with a confirmed second failure — the
-    // underlying decode call is still running with no genuine cancellation,
-    // and deleting the spool now could discard audio a slower-but-healthy
-    // retry would have recovered.
+    #expect(kernel.deliveredTranscript == nil)
+    #expect(ctx.wrapper.storedTexts.isEmpty, "zero storage")
+    #expect(ctx.paste.pasteAttempts.isEmpty, "zero delivery")
+    #expect(kernel.pasteCount == 0, "zero paste")
+    #expect(ctx.engine.retryDecodeCallCount == 1, "exactly one retry, no second budget")
+    #expect(ctx.engine.bumpRetryGenerationCallCount == 1, "late-result fencing unchanged")
+    // `.attempted` (not .retryExhausted) remains the honest diagnostic: we
+    // stopped waiting, no conclusion was accepted. The founder's Gate 2
+    // decision deletes anyway — the visible live rescue failed.
     #expect(ctx.wrapper.telemetryState.asrRetryOutcome == .attempted)
+    let ending = KernelDictationDriver.recoveryEnding(
+      for: .failed(.asrFailed), retryOutcome: .attempted)
+    #expect(ending == .failed, "projects to plain .failed")
+    #expect(
+      RecoveryCoordinator.shouldDeleteOnLiveEnding(.failed),
+      "#1755: the composed authorities delete")
   }
 
   @Test(

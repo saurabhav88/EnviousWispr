@@ -18,9 +18,10 @@ import Foundation
 /// - **Clean up on success:** once a recording's transcript is durably saved,
 ///   delete that session's spool file + key.
 /// - **Clean up on a non-saved ending:** apply `shouldDeleteOnLiveEnding` to the
-///   narrow `RecordingRecoveryEnding` — discard / no-speech / user-cancel delete
-///   now; a fault ending (pipeline / audio / engine / system-cancel) RETAINS the
-///   spool so the audio is recovered on the next launch.
+///   narrow `RecordingRecoveryEnding` — under the #1755 discard doctrine EVERY
+///   concluded live ending requests best-effort deletion (the user witnessed
+///   the failure and re-dictates). Launch replay serves only the no-ending
+///   app-gone orphan and the History-save self-heal case.
 /// - **Scan + recover on launch (PR2):** find orphan spools, dedup any already
 ///   in History, then — behind a blocking "recovering your last recording" pill
 ///   that holds new recordings off the one shared engine — replay each orphan
@@ -127,24 +128,13 @@ final class RecoveryCoordinator {
   /// arriving mid-pass causes exactly one later pass, never zero and never two.
   private var pendingRescan = false
 
-  /// #1707 Phase 3 (§3.3) — ids that must wait for a genuinely NEW launch
-  /// rather than any same-launch rescan. Three populations: (1) an attempt-
-  /// marker clear that FAILED after a deferred outcome (Keychain-transient or
-  /// a History-save failure DURING REPLAY) — a surviving marker would be
-  /// misread by a same-launch rescan as a crashed attempt (the crash-loop
-  /// guard's "marker present ⇒ abandoned" reasoning only holds for a
-  /// genuinely new launch); (2) a LIVE recording's own RETAINED failure
-  /// ending (GitHub cloud review, PR #1732 round 1) — the engine may still be
-  /// in the exact broken state that produced the failure; (3) a LIVE
-  /// recording that reached `.complete` but whose History save failed (PR
-  /// #1732 round 6) — `onDurableSave` never fires for this case (nothing to
-  /// delete), but the same terminal transition's own wake-up must not
-  /// immediately re-attempt (and potentially delete) the spool this failure
-  /// just retained. Every same-launch pass skips these ids, leaving them
-  /// untouched on disk for a future launch's fresh `RecoveryCoordinator`
-  /// instance (which always starts empty). NEVER cleared during one
-  /// instance's lifetime; tests model "a new launch" by constructing a new
-  /// coordinator, never by clearing this set on an existing one.
+  /// IDs excluded from SAME-LAUNCH rescans, cleared only by a genuine new
+  /// launch (a fresh coordinator). Two populations remain (#1755 narrowed it
+  /// from three — concluded live endings now delete instead of retaining):
+  /// 1. Replay continuation cases — `.failed(.save)` / marker-clear failures /
+  ///    `.deferredMarkerClearFailed` — retained for a FUTURE launch, never
+  ///    re-attempted by this one.
+  /// 2. A live `.completed` whose History save failed (self-heal next launch).
   private var nextLaunchOnlyRecoveryIDs: Set<String> = []
 
   /// Monotonic token bumped by `discardActiveRecovery()`. The replayer captures
@@ -340,22 +330,30 @@ final class RecoveryCoordinator {
     }
   }
 
-  /// Delete-versus-retain for a live recording that ended without a durable save
-  /// (#1464). Reproduces the former driver `endedWithoutSaveKind` mapping EXACTLY:
-  /// delete when there is nothing worth keeping (discard / no-speech) or the user
-  /// asked to drop it; RETAIN when the captured audio is the user's words a fault
-  /// cut short. Static + internal so the split is unit-tested directly
-  /// (`matcher-set-adversarial-tests`).
+  /// Delete-versus-retain for a live recording that ended without a durable
+  /// save (#1464; policy cutover #1755, founder Gate 2 2026-07-23). An ending
+  /// fired ⇒ the app was ALIVE ⇒ the user witnessed the outcome, got the one
+  /// in-session rescue, and re-dictates — so EVERY represented ending requests
+  /// best-effort deletion (`discard-not-differentiate`). Launch replay is
+  /// reserved for the no-ending app-gone orphan, which never reaches this
+  /// predicate. The switch stays exhaustive with no `default` so a future
+  /// ending case forces an explicit decision here. Static + internal so the
+  /// cells are unit-tested directly (`matcher-set-adversarial-tests`).
   static func shouldDeleteOnLiveEnding(_ ending: RecordingRecoveryEnding) -> Bool {
     switch ending {
     case .discarded, .noSpeech, .asrRetryExhausted:
       return true
     case .failed, .audioInterrupted, .asrInterrupted, .noTransport:
-      return false
+      // #1755: flipped from retain — the in-session salvage/retry was the
+      // user's one rescue; a surprise replay at a later launch is a bug in
+      // the user's eyes, not a favor.
+      return true
     case .cancelled(.user):
       return true
     case .cancelled(.systemOrFault):
-      return false
+      // #1755: flipped — every producer is app-alive by construction (an
+      // app-gone event cannot publish any ending; it leaves an orphan).
+      return true
     }
   }
 
@@ -397,31 +395,26 @@ final class RecoveryCoordinator {
   /// dispatches to the caller of this method first — without this
   /// suppression, that same-launch wake-up could immediately rescan and
   /// destructively replay the spool this failure meant to retain for a
-  /// healthier future launch, exactly like the live-failure-ending case this
-  /// mirrors. No-op when `id` is nil (armed only when recovery was on for
-  /// this take).
+  /// healthier future launch. (#1755: this History-save self-heal case is now
+  /// the ONLY live path that retains.) No-op when `id` is nil (armed only
+  /// when recovery was on for this take).
   func suppressUntilNextLaunch(recoverySessionID id: String?) {
     guard let id else { return }
     nextLaunchOnlyRecoveryIDs.insert(id)
   }
 
   /// A recording ended at a terminal state WITHOUT a durable transcript save
-  /// (#1063 PR2 / #1464). Applies `shouldDeleteOnLiveEnding` to the narrow
-  /// `RecordingRecoveryEnding` the driver projected: a delete ending (discard /
-  /// no-speech / user-cancel) destroys the spool + key now; a retain ending
-  /// (pipeline / audio / engine / system-cancel) keeps it for the next launch.
-  /// Idempotent + best-effort; a no-op when `id` is nil. Always clears the live-
-  /// recording protection (the recording is over). Returns the detached delete
-  /// work (delete endings only) so tests can await it.
+  /// (#1063 PR2 / #1464; #1755 cutover). Applies `shouldDeleteOnLiveEnding`
+  /// to the narrow `RecordingRecoveryEnding` the driver projected — under the
+  /// discard doctrine EVERY represented ending destroys the spool + key now.
+  /// Idempotent + best-effort; a no-op when `id` is nil. Always clears the
+  /// live-recording protection (the recording is over). Returns the detached
+  /// delete work so tests can await it.
   ///
-  /// A retain ending ALSO defers this id to `nextLaunchOnlyRecoveryIDs`
-  /// (GitHub cloud review, PR #1732): this same session's own
-  /// `onDictationEndedForRecovery` wake-up fires right after this call and
-  /// requests a same-launch rescan — without this, that rescan could pick up
-  /// the spool just retained here while the engine is still in the exact
-  /// state that produced the failure, replay it, classify it
-  /// `.failed(.unrecoverable)`, and delete the very audio this branch meant
-  /// to keep for a healthier future launch. Runs before that rescan Task is
+  /// The retain branch below is the future-proof expression of the sole
+  /// policy authority: currently unreachable (no ending returns false), it
+  /// keeps the deferral wiring honest should a future ending case ever
+  /// decide to retain. Runs before the same-launch rescan Task is
   /// even scheduled (both synchronous MainActor calls from the same driver
   /// callback), so the exclusion is always in place before the pass runs.
   @discardableResult

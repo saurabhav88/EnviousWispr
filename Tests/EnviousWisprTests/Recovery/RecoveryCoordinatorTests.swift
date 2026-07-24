@@ -164,37 +164,30 @@ struct RecoveryCoordinatorTests {
 
   // MARK: - Non-saved terminal routing (#1464 live-ending predicate)
 
-  @Test("a delete ending (discard/no-speech/user-cancel) deletes the spool + key")
-  func discardTerminalDeletes() async throws {
+  @Test("EVERY concluded live ending physically deletes the spool + key (#1755 discard doctrine)")
+  func everyLiveEndingDeletes() async throws {
+    // #1755: an ending fired ⇒ the app was alive ⇒ the user witnessed the
+    // outcome and re-dictates. All nine representable endings request
+    // best-effort deletion; only the no-ending app-gone orphan retains.
     let h = Self.makeHarness()
-    for ending in [RecordingRecoveryEnding.discarded, .noSpeech, .cancelled(.user)] {
-      let id = "del-\(UUID().uuidString)"
-      try Self.writeSpool(h.spoolStore, id)
-      try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
-      await h.coordinator.handleRecordingEndedWithoutDurableSave(
-        recoverySessionID: id, ending: ending)?.value
-      #expect(
-        !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
-        "\(ending) should delete the spool")
-      #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
-    }
-  }
-
-  @Test("a retain ending (fault / system-cancel) RETAINS the spool + key")
-  func failureTerminalRetains() async throws {
-    let h = Self.makeHarness()
-    let retainEndings: [RecordingRecoveryEnding] = [
-      .failed, .audioInterrupted, .asrInterrupted, .noTransport, .cancelled(.systemOrFault),
+    let allEndings: [RecordingRecoveryEnding] = [
+      .discarded, .noSpeech, .failed, .asrRetryExhausted, .audioInterrupted,
+      .asrInterrupted, .noTransport, .cancelled(.user), .cancelled(.systemOrFault),
     ]
-    for ending in retainEndings {
-      let id = "keep-\(UUID().uuidString)"
+    for ending in allEndings {
+      let id = "del-\(UUID().uuidString)"
       try Self.writeSpool(h.spoolStore, id)
       try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
       let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
         recoverySessionID: id, ending: ending)
-      #expect(task == nil, "\(ending) retains — no delete work")
-      #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
-      #expect((try? h.keyStore.retrieve(for: id)) != nil)
+      let unwrapped = try #require(task, "\(ending) must return the destruction work")
+      await unwrapped.value
+      #expect(
+        !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+        "\(ending) must delete the spool")
+      #expect(
+        throws: RecoveryKeyStoreError.notFound, "\(ending) must delete the key"
+      ) { try h.keyStore.retrieve(for: id) }
     }
   }
 
@@ -208,21 +201,31 @@ struct RecoveryCoordinatorTests {
 
   // MARK: - #1464 delete/retain predicates (adversarial: every case in both classes)
 
-  @Test("shouldDeleteOnLiveEnding: delete endings delete, retain endings retain")
+  @Test("shouldDeleteOnLiveEnding: all nine ending cells delete (#1755 founder discard doctrine)")
   func liveEndingPredicate() {
-    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.discarded))
-    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.noSpeech))
-    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.user)))
-    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.failed))
-    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.audioInterrupted))
-    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.asrInterrupted))
-    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.noTransport))
-    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.systemOrFault)))
+    // Unchanged cells (already deleted before #1755):
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.discarded), "unchanged")
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.noSpeech), "unchanged")
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.user)), "unchanged")
+    // FLIPPED by the founder's discard doctrine (#1755, Gate 2 2026-07-23):
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.failed), "flipped: live failure discards")
+    #expect(
+      RecoveryCoordinator.shouldDeleteOnLiveEnding(.audioInterrupted),
+      "flipped: in-session salvage already ran; discard on failure")
+    #expect(
+      RecoveryCoordinator.shouldDeleteOnLiveEnding(.asrInterrupted),
+      "flipped: the live rescue is the Phase-2 retry; discard on failure")
+    #expect(
+      RecoveryCoordinator.shouldDeleteOnLiveEnding(.noTransport),
+      "flipped: nothing recoverable by construction")
+    #expect(
+      RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.systemOrFault)),
+      "flipped: every producer is app-alive")
     // #1707 Phase 2: an exhausted Phase-2 retry deletes its spool (the
     // decode genuinely never produced anything); a pre-capture / never-
-    // retried `.failed` (plain, no retry consulted) still retains — the
+    // #1755: plain `.failed` (no retry consulted) ALSO deletes now — the
     // negative half of this same adversarial pair.
-    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.asrRetryExhausted))
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.asrRetryExhausted), "unchanged")
   }
 
   @Test(
@@ -438,37 +441,27 @@ struct RecoveryCoordinatorTests {
     }
   }
 
-  @Test(
-    "a live recording's own retained failure is excluded from THIS SAME session's wake-up rescan"
-  )
-  func retainedLiveFailureExcludedFromSameSessionRescan() async throws {
-    // GitHub cloud review, PR #1732: `onDictationEndedForRecovery` fires right
-    // after a live recording ends. For a RETAIN ending, the engine may still be
-    // in the exact broken state that produced the failure — a same-launch
-    // rescan must not immediately re-attempt (and potentially delete) the very
-    // spool this ending just retained.
+  @Test("a live failure deletes its spool, so a same-launch scan finds nothing to replay (#1755)")
+  func liveFailureDeletedNothingForSameSessionRescan() async throws {
+    // #1755 rewrite of the PR #1732 retention test: `.failed` now DELETES —
+    // the launch/wake scan has nothing left to replay, which removes the
+    // same-launch race population at the source instead of suppressing it.
     let h = Self.makeHarness()
     let id = "live-fail-\(UUID().uuidString)"
     try Self.writeSpool(h.spoolStore, id)
-    // `.failed` is a RETAIN-kind ending (`shouldDeleteOnLiveEnding` returns
-    // false) — mirrors the live driver calling this on a genuine failure.
-    h.coordinator.handleRecordingEndedWithoutDurableSave(recoverySessionID: id, ending: .failed)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: id, ending: .failed)
+    let unwrapped = try #require(task, ".failed now returns destruction work")
+    await unwrapped.value
     #expect(
-      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
-      "a retain ending never deletes")
-    // If the engine were still broken, a replay attempt here would fail again.
-    h.replayer.outcomeByID[id] = .failed(.unrecoverable)
-    // The SAME session's own wake-up call — must not touch `id` this pass.
-    h.coordinator.requestRecoveryRecheck()
-    for _ in 0..<20 {
-      try? await Task.sleep(for: .milliseconds(5))  // settle: bounded drain to let any spurious replay run
-    }
+      !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+      "the live failure's spool is gone")
+    // A direct same-launch scan attempts nothing — the population is empty.
+    await h.coordinator.scanAndRecover()
     #expect(
       h.replayer.replayedIDs.isEmpty,
-      "the just-retained id must not be re-attempted by this same session's own rescan")
-    #expect(
-      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
-      "still on disk — not destroyed by a same-launch replay of the just-retained spool")
+      "nothing remains for the same-launch scan to replay")
   }
 
   @Test("a FRESH coordinator instance (a genuine new launch) starts with an empty suppression set")
